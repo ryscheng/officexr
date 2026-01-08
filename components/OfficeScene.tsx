@@ -1,0 +1,413 @@
+'use client';
+
+import { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+
+export default function OfficeScene() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // Scene setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+    sceneRef.current = scene;
+
+    // Camera setup
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    camera.position.set(0, 1.6, 5);
+    cameraRef.current = camera;
+
+    // Renderer setup
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.xr.enabled = true;
+    rendererRef.current = renderer;
+    containerRef.current.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 10, 5);
+    directionalLight.castShadow = true;
+    scene.add(directionalLight);
+
+    // Floor
+    const floorGeometry = new THREE.PlaneGeometry(20, 20);
+    const floorMaterial = new THREE.MeshStandardMaterial({
+      color: 0x808080,
+      roughness: 0.8,
+    });
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // Walls
+    const wallMaterial = new THREE.MeshStandardMaterial({
+      color: 0xf0f0f0,
+      roughness: 0.7,
+    });
+
+    // Back wall
+    const backWall = new THREE.Mesh(
+      new THREE.BoxGeometry(20, 5, 0.2),
+      wallMaterial
+    );
+    backWall.position.set(0, 2.5, -10);
+    scene.add(backWall);
+
+    // Left wall
+    const leftWall = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 5, 20),
+      wallMaterial
+    );
+    leftWall.position.set(-10, 2.5, 0);
+    scene.add(leftWall);
+
+    // Right wall
+    const rightWall = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 5, 20),
+      wallMaterial
+    );
+    rightWall.position.set(10, 2.5, 0);
+    scene.add(rightWall);
+
+    // Ceiling
+    const ceiling = new THREE.Mesh(
+      new THREE.PlaneGeometry(20, 20),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    );
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = 5;
+    scene.add(ceiling);
+
+    // Create desk
+    const createDesk = (x: number, z: number) => {
+      const deskGroup = new THREE.Group();
+
+      // Desk top
+      const deskTop = new THREE.Mesh(
+        new THREE.BoxGeometry(2, 0.1, 1),
+        new THREE.MeshStandardMaterial({ color: 0x8b4513 })
+      );
+      deskTop.position.y = 0.75;
+      deskGroup.add(deskTop);
+
+      // Desk legs
+      const legGeometry = new THREE.BoxGeometry(0.1, 0.75, 0.1);
+      const legMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 });
+
+      const positions = [
+        [-0.9, 0.375, -0.4],
+        [0.9, 0.375, -0.4],
+        [-0.9, 0.375, 0.4],
+        [0.9, 0.375, 0.4],
+      ];
+
+      positions.forEach((pos) => {
+        const leg = new THREE.Mesh(legGeometry, legMaterial);
+        leg.position.set(pos[0], pos[1], pos[2]);
+        deskGroup.add(leg);
+      });
+
+      deskGroup.position.set(x, 0, z);
+      return deskGroup;
+    };
+
+    // Create chair
+    const createChair = (x: number, z: number) => {
+      const chairGroup = new THREE.Group();
+
+      // Seat
+      const seat = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.1, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0x000080 })
+      );
+      seat.position.y = 0.5;
+      chairGroup.add(seat);
+
+      // Backrest
+      const backrest = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.5, 0.1),
+        new THREE.MeshStandardMaterial({ color: 0x000080 })
+      );
+      backrest.position.set(0, 0.75, -0.2);
+      chairGroup.add(backrest);
+
+      // Legs
+      const legGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.5);
+      const legMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 });
+
+      const legPositions = [
+        [-0.2, 0.25, -0.2],
+        [0.2, 0.25, -0.2],
+        [-0.2, 0.25, 0.2],
+        [0.2, 0.25, 0.2],
+      ];
+
+      legPositions.forEach((pos) => {
+        const leg = new THREE.Mesh(legGeometry, legMaterial);
+        leg.position.set(pos[0], pos[1], pos[2]);
+        chairGroup.add(leg);
+      });
+
+      chairGroup.position.set(x, 0, z);
+      return chairGroup;
+    };
+
+    // Create bookshelf
+    const createBookshelf = (x: number, z: number) => {
+      const shelfGroup = new THREE.Group();
+
+      // Main structure
+      const structure = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 2, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x654321 })
+      );
+      structure.position.y = 1;
+      shelfGroup.add(structure);
+
+      // Shelves
+      for (let i = 0; i < 4; i++) {
+        const shelf = new THREE.Mesh(
+          new THREE.BoxGeometry(1.4, 0.05, 0.38),
+          new THREE.MeshStandardMaterial({ color: 0x8b4513 })
+        );
+        shelf.position.set(0, 0.2 + i * 0.5, 0);
+        shelfGroup.add(shelf);
+      }
+
+      shelfGroup.position.set(x, 0, z);
+      return shelfGroup;
+    };
+
+    // Add office furniture
+    scene.add(createDesk(-5, -5));
+    scene.add(createChair(-5, -3.5));
+
+    scene.add(createDesk(5, -5));
+    scene.add(createChair(5, -3.5));
+
+    scene.add(createDesk(-5, 5));
+    scene.add(createChair(-5, 6.5));
+
+    scene.add(createBookshelf(8, -8));
+    scene.add(createBookshelf(8, 0));
+
+    // Add some decorative elements (pictures on wall)
+    const pictureGeometry = new THREE.PlaneGeometry(1, 0.7);
+    const pictureMaterial = new THREE.MeshStandardMaterial({ color: 0xff6347 });
+    const picture = new THREE.Mesh(pictureGeometry, pictureMaterial);
+    picture.position.set(0, 2.5, -9.9);
+    scene.add(picture);
+
+    // Movement variables
+    const moveSpeed = 0.1;
+    const keys: { [key: string]: boolean } = {};
+
+    // Keyboard controls
+    const handleKeyDown = (event: KeyboardEvent) => {
+      keys[event.key.toLowerCase()] = true;
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      keys[event.key.toLowerCase()] = false;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    // Mouse controls for looking around
+    let mouseDown = false;
+    let mouseX = 0;
+    let mouseY = 0;
+
+    const handleMouseDown = () => {
+      mouseDown = true;
+    };
+
+    const handleMouseUp = () => {
+      mouseDown = false;
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (mouseDown) {
+        const deltaX = event.movementX || 0;
+        const deltaY = event.movementY || 0;
+
+        camera.rotation.y -= deltaX * 0.002;
+        camera.rotation.x -= deltaY * 0.002;
+        camera.rotation.x = Math.max(
+          -Math.PI / 2,
+          Math.min(Math.PI / 2, camera.rotation.x)
+        );
+      }
+    };
+
+    renderer.domElement.addEventListener('mousedown', handleMouseDown);
+    renderer.domElement.addEventListener('mouseup', handleMouseUp);
+    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+
+    // Handle window resize
+    const handleResize = () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    // Animation loop
+    const animate = () => {
+      // Handle movement
+      const direction = new THREE.Vector3();
+      const forward = new THREE.Vector3();
+      const right = new THREE.Vector3();
+
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      forward.normalize();
+
+      right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
+
+      if (keys['w'] || keys['arrowup']) {
+        direction.add(forward);
+      }
+      if (keys['s'] || keys['arrowdown']) {
+        direction.sub(forward);
+      }
+      if (keys['a'] || keys['arrowleft']) {
+        direction.sub(right);
+      }
+      if (keys['d'] || keys['arrowright']) {
+        direction.add(right);
+      }
+
+      if (direction.length() > 0) {
+        direction.normalize();
+        camera.position.add(direction.multiplyScalar(moveSpeed));
+
+        // Keep camera within bounds
+        camera.position.x = Math.max(-9, Math.min(9, camera.position.x));
+        camera.position.z = Math.max(-9, Math.min(9, camera.position.z));
+      }
+
+      renderer.render(scene, camera);
+    };
+
+    renderer.setAnimationLoop(animate);
+
+    // Create VR button
+    const createVRButton = () => {
+      const button = document.createElement('button');
+      button.style.position = 'absolute';
+      button.style.bottom = '20px';
+      button.style.left = '50%';
+      button.style.transform = 'translateX(-50%)';
+      button.style.padding = '12px 24px';
+      button.style.border = 'none';
+      button.style.borderRadius = '4px';
+      button.style.background = '#1a73e8';
+      button.style.color = 'white';
+      button.style.fontSize = '16px';
+      button.style.cursor = 'pointer';
+      button.style.zIndex = '999';
+      button.textContent = 'ENTER VR';
+
+      button.onclick = () => {
+        if (renderer.xr.isPresenting) {
+          renderer.xr.getSession()?.end();
+        } else {
+          renderer.domElement.requestFullscreen?.();
+          navigator.xr?.requestSession('immersive-vr', {
+            optionalFeatures: ['local-floor', 'bounded-floor']
+          }).then((session) => {
+            renderer.xr.setSession(session);
+          }).catch((err) => {
+            console.error('Error starting VR session:', err);
+            alert('WebXR not supported or VR device not connected');
+          });
+        }
+      };
+
+      // Check if WebXR is available
+      if (navigator.xr) {
+        navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+          if (supported) {
+            document.body.appendChild(button);
+          } else {
+            button.textContent = 'VR NOT SUPPORTED';
+            button.style.background = '#666';
+            button.style.cursor = 'not-allowed';
+            document.body.appendChild(button);
+          }
+        });
+      } else {
+        button.textContent = 'WEBXR NOT AVAILABLE';
+        button.style.background = '#666';
+        button.style.cursor = 'not-allowed';
+        document.body.appendChild(button);
+      }
+
+      return button;
+    };
+
+    const vrButton = createVRButton();
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('mousedown', handleMouseDown);
+      renderer.domElement.removeEventListener('mouseup', handleMouseUp);
+      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+
+      if (vrButton.parentNode) {
+        vrButton.parentNode.removeChild(vrButton);
+      }
+
+      if (containerRef.current && renderer.domElement.parentNode) {
+        containerRef.current.removeChild(renderer.domElement);
+      }
+
+      renderer.dispose();
+    };
+  }, []);
+
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '100vh' }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: '20px',
+          left: '20px',
+          color: 'white',
+          background: 'rgba(0, 0, 0, 0.7)',
+          padding: '15px',
+          borderRadius: '8px',
+          fontFamily: 'monospace',
+          zIndex: 100,
+        }}
+      >
+        <h3 style={{ margin: '0 0 10px 0' }}>Controls:</h3>
+        <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys - Move</p>
+        <p style={{ margin: '5px 0' }}>Click + Drag Mouse - Look Around</p>
+        <p style={{ margin: '5px 0' }}>VR Button - Enter VR Mode</p>
+      </div>
+    </div>
+  );
+}
