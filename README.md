@@ -4,6 +4,10 @@ A 3D virtual office environment built with Next.js, TypeScript, Three.js, and We
 
 ## Features
 
+- **Google Authentication**: Secure login with Google OAuth via NextAuth.js
+- **Multiplayer Support**: See and interact with other users in real-time
+- **3D Avatars**: Each user is represented by a unique 3D avatar with their name
+- **Real-time Position Sync**: WebSocket-based position synchronization across clients
 - **3D Office Environment**: Complete office space with desks, chairs, bookshelves, and decorative elements
 - **WebXR Support**: Full VR support for immersive experiences with compatible headsets
 - **Desktop Navigation**: Keyboard and mouse controls for desktop browsing
@@ -40,15 +44,44 @@ The virtual office includes:
 
 ### Installation
 
-```bash
-# Install dependencies
-npm install
+1. **Clone the repository and install dependencies**
 
-# Run the development server
+```bash
+npm install
+```
+
+2. **Set up Google OAuth credentials**
+
+   - Go to the [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select an existing one
+   - Enable the Google+ API
+   - Go to "Credentials" and create an OAuth 2.0 Client ID
+   - Add authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
+   - Copy the Client ID and Client Secret
+
+3. **Configure environment variables**
+
+Create a `.env.local` file in the root directory:
+
+```env
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-secret-key-here
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+```
+
+Generate a secure secret for `NEXTAUTH_SECRET`:
+```bash
+openssl rand -base64 32
+```
+
+4. **Run the development server**
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser. You'll be prompted to sign in with Google.
 
 ### Building for Production
 
@@ -62,10 +95,12 @@ npm start
 
 ## Technology Stack
 
-- **Next.js 15**: React framework with App Router
+- **Next.js 16**: React framework with App Router
 - **TypeScript**: Type-safe development
 - **Three.js**: 3D graphics library
 - **WebXR**: Virtual reality browser API
+- **NextAuth.js**: Authentication for Next.js
+- **WebSocket (ws)**: Real-time bidirectional communication
 - **Tailwind CSS**: Utility-first CSS framework
 
 ## Browser Compatibility
@@ -87,11 +122,24 @@ npm start
 ```
 officexr/
 ├── app/
-│   ├── layout.tsx       # Root layout with metadata
-│   ├── page.tsx         # Main page component
-│   └── globals.css      # Global styles
+│   ├── api/
+│   │   └── auth/[...nextauth]/
+│   │       └── route.ts          # NextAuth API route
+│   ├── login/
+│   │   └── page.tsx              # Login page
+│   ├── layout.tsx                # Root layout with SessionProvider
+│   ├── page.tsx                  # Main page component
+│   └── globals.css               # Global styles
 ├── components/
-│   └── OfficeScene.tsx  # Three.js WebXR office scene
+│   ├── OfficeScene.tsx           # Three.js WebXR office scene
+│   ├── Avatar.tsx                # 3D avatar creation and management
+│   └── SessionProvider.tsx       # NextAuth session provider wrapper
+├── lib/
+│   └── auth.ts                   # NextAuth configuration
+├── types/
+│   └── next-auth.d.ts            # NextAuth type definitions
+├── server.js                     # Custom server with WebSocket support
+├── middleware.ts                 # Authentication middleware
 ├── package.json
 └── README.md
 ```
@@ -104,6 +152,15 @@ The main 3D scene logic is in `components/OfficeScene.tsx`, which handles:
 - 3D object creation (office furniture)
 - Navigation controls
 - Camera management
+- WebSocket client connection
+- Real-time avatar position updates
+- User join/leave event handling
+
+The WebSocket server (`server.js`) manages:
+- Real-time position synchronization
+- User connection state
+- Broadcasting position updates to all connected clients
+- Automatic reconnection handling
 
 ## Future Enhancements
 

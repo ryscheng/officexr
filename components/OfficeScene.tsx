@@ -1,16 +1,23 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSession, signOut } from 'next-auth/react';
 import * as THREE from 'three';
+import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 
 export default function OfficeScene() {
+  const { data: session } = useSession();
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
+  const [userCount, setUserCount] = useState(0);
+  const lastPositionUpdate = useRef<number>(0);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !session?.user) return;
 
     // Scene setup
     const scene = new THREE.Scene();
@@ -232,8 +239,6 @@ export default function OfficeScene() {
 
     // Mouse controls for looking around
     let mouseDown = false;
-    let mouseX = 0;
-    let mouseY = 0;
 
     const handleMouseDown = () => {
       mouseDown = true;
@@ -270,6 +275,92 @@ export default function OfficeScene() {
 
     window.addEventListener('resize', handleResize);
 
+    // WebSocket connection
+    const connectWebSocket = () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        // Send join message
+        ws.send(
+          JSON.stringify({
+            type: 'join',
+            userId: session.user.id,
+            name: session.user.name,
+            image: session.user.image,
+            position: {
+              x: camera.position.x,
+              y: camera.position.y,
+              z: camera.position.z,
+            },
+            rotation: {
+              x: camera.rotation.x,
+              y: camera.rotation.y,
+              z: camera.rotation.z,
+            },
+          })
+        );
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        switch (data.type) {
+          case 'users':
+            // Add existing users
+            data.users.forEach((user: AvatarData) => {
+              if (!avatarsRef.current.has(user.id)) {
+                const avatar = createAvatar(scene, user);
+                avatarsRef.current.set(user.id, avatar);
+              }
+            });
+            setUserCount(data.users.length + 1);
+            break;
+
+          case 'user-joined':
+            // Add new user
+            if (!avatarsRef.current.has(data.user.id)) {
+              const avatar = createAvatar(scene, data.user);
+              avatarsRef.current.set(data.user.id, avatar);
+              setUserCount((prev) => prev + 1);
+            }
+            break;
+
+          case 'user-left':
+            // Remove user
+            const avatar = avatarsRef.current.get(data.userId);
+            if (avatar) {
+              scene.remove(avatar);
+              avatarsRef.current.delete(data.userId);
+              setUserCount((prev) => Math.max(0, prev - 1));
+            }
+            break;
+
+          case 'position':
+            // Update user position
+            const userAvatar = avatarsRef.current.get(data.userId);
+            if (userAvatar) {
+              updateAvatar(userAvatar, data.position, data.rotation);
+            }
+            break;
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        // Attempt to reconnect after 3 seconds
+        setTimeout(connectWebSocket, 3000);
+      };
+    };
+
+    connectWebSocket();
+
     // Animation loop
     const animate = () => {
       // Handle movement
@@ -283,17 +374,23 @@ export default function OfficeScene() {
 
       right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
 
+      let moved = false;
+
       if (keys['w'] || keys['arrowup']) {
         direction.add(forward);
+        moved = true;
       }
       if (keys['s'] || keys['arrowdown']) {
         direction.sub(forward);
+        moved = true;
       }
       if (keys['a'] || keys['arrowleft']) {
         direction.sub(right);
+        moved = true;
       }
       if (keys['d'] || keys['arrowright']) {
         direction.add(right);
+        moved = true;
       }
 
       if (direction.length() > 0) {
@@ -303,6 +400,31 @@ export default function OfficeScene() {
         // Keep camera within bounds
         camera.position.x = Math.max(-9, Math.min(9, camera.position.x));
         camera.position.z = Math.max(-9, Math.min(9, camera.position.z));
+      }
+
+      // Send position updates to server (throttled to 60ms)
+      const now = Date.now();
+      if (
+        moved &&
+        wsRef.current?.readyState === WebSocket.OPEN &&
+        now - lastPositionUpdate.current > 60
+      ) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: 'position',
+            position: {
+              x: camera.position.x,
+              y: camera.position.y,
+              z: camera.position.z,
+            },
+            rotation: {
+              x: camera.rotation.x,
+              y: camera.rotation.y,
+              z: camera.rotation.z,
+            },
+          })
+        );
+        lastPositionUpdate.current = now;
       }
 
       renderer.render(scene, camera);
@@ -332,14 +454,17 @@ export default function OfficeScene() {
           renderer.xr.getSession()?.end();
         } else {
           renderer.domElement.requestFullscreen?.();
-          navigator.xr?.requestSession('immersive-vr', {
-            optionalFeatures: ['local-floor', 'bounded-floor']
-          }).then((session) => {
-            renderer.xr.setSession(session);
-          }).catch((err) => {
-            console.error('Error starting VR session:', err);
-            alert('WebXR not supported or VR device not connected');
-          });
+          navigator.xr
+            ?.requestSession('immersive-vr', {
+              optionalFeatures: ['local-floor', 'bounded-floor'],
+            })
+            .then((session) => {
+              renderer.xr.setSession(session);
+            })
+            .catch((err) => {
+              console.error('Error starting VR session:', err);
+              alert('WebXR not supported or VR device not connected');
+            });
         }
       };
 
@@ -376,6 +501,10 @@ export default function OfficeScene() {
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
 
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+
       if (vrButton.parentNode) {
         vrButton.parentNode.removeChild(vrButton);
       }
@@ -386,7 +515,7 @@ export default function OfficeScene() {
 
       renderer.dispose();
     };
-  }, []);
+  }, [session]);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100vh' }}>
@@ -407,6 +536,40 @@ export default function OfficeScene() {
         <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys - Move</p>
         <p style={{ margin: '5px 0' }}>Click + Drag Mouse - Look Around</p>
         <p style={{ margin: '5px 0' }}>VR Button - Enter VR Mode</p>
+      </div>
+
+      <div
+        style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          color: 'white',
+          background: 'rgba(0, 0, 0, 0.7)',
+          padding: '15px',
+          borderRadius: '8px',
+          fontFamily: 'monospace',
+          zIndex: 100,
+        }}
+      >
+        <p style={{ margin: '5px 0' }}>
+          <strong>{session?.user?.name}</strong>
+        </p>
+        <p style={{ margin: '5px 0' }}>Users online: {userCount}</p>
+        <button
+          onClick={() => signOut()}
+          style={{
+            marginTop: '10px',
+            padding: '8px 16px',
+            background: '#dc2626',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}
+        >
+          Sign Out
+        </button>
       </div>
     </div>
   );
