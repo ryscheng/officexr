@@ -6,15 +6,19 @@
     "dev": "node server.js",
     "build": "next build",
     "start": "NODE_ENV=production node server.js",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:init": "ts-node scripts/init-db.ts"
   },
   "dependencies": {
     "@types/three": "^0.182.0",
     "next": "16.1.1",
     "next-auth": "^4.24.13",
+    "pg": "^8.16.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "reflect-metadata": "^0.2.2",
     "three": "^0.182.0",
+    "typeorm": "^0.3.28",
     "uuid": "^13.0.0",
     "ws": "^8.19.0"
   },
@@ -28,6 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }
