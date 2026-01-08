@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import * as THREE from 'three';
 import { createAvatar, updateAvatar, AvatarData } from './Avatar';
+import SettingsPanel from './SettingsPanel';
+import { AvatarCustomization } from '@/types/avatar';
 
 export default function OfficeScene() {
   const { data: session } = useSession();
@@ -15,6 +17,29 @@ export default function OfficeScene() {
   const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
   const [userCount, setUserCount] = useState(0);
   const lastPositionUpdate = useRef<number>(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
+    bodyColor: '#3498db',
+    skinColor: '#ffdbac',
+    style: 'default',
+    accessories: [],
+  });
+
+  // Load avatar customization from database
+  useEffect(() => {
+    if (!session?.user) return;
+
+    fetch('/api/avatar')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.customization) {
+          setAvatarCustomization(data.customization);
+        }
+      })
+      .catch((error) => {
+        console.error('Error loading avatar customization:', error);
+      });
+  }, [session]);
 
   useEffect(() => {
     if (!containerRef.current || !session?.user) return;
@@ -300,6 +325,7 @@ export default function OfficeScene() {
               y: camera.rotation.y,
               z: camera.rotation.z,
             },
+            customization: avatarCustomization,
           })
         );
       };
@@ -343,6 +369,23 @@ export default function OfficeScene() {
             const userAvatar = avatarsRef.current.get(data.userId);
             if (userAvatar) {
               updateAvatar(userAvatar, data.position, data.rotation);
+            }
+            break;
+
+          case 'avatar-update':
+            // Update user avatar customization
+            const existingAvatar = avatarsRef.current.get(data.userId);
+            if (existingAvatar) {
+              // Remove old avatar
+              scene.remove(existingAvatar);
+
+              // Create new avatar with updated customization
+              const newAvatarData: AvatarData = {
+                ...existingAvatar.userData,
+                customization: data.customization,
+              };
+              const newAvatar = createAvatar(scene, newAvatarData);
+              avatarsRef.current.set(data.userId, newAvatar);
             }
             break;
         }
@@ -515,7 +558,38 @@ export default function OfficeScene() {
 
       renderer.dispose();
     };
-  }, [session]);
+  }, [session, avatarCustomization]);
+
+  const handleSaveSettings = async (settings: AvatarCustomization) => {
+    try {
+      const response = await fetch('/api/avatar', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save settings');
+      }
+
+      setAvatarCustomization(settings);
+
+      // Broadcast avatar update to other users
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: 'avatar-update',
+            customization: settings,
+          })
+        );
+      }
+    } catch (error) {
+      console.error('Error saving avatar settings:', error);
+      throw error;
+    }
+  };
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100vh' }}>
@@ -556,6 +630,22 @@ export default function OfficeScene() {
         </p>
         <p style={{ margin: '5px 0' }}>Users online: {userCount}</p>
         <button
+          onClick={() => setShowSettings(true)}
+          style={{
+            marginTop: '10px',
+            padding: '8px 16px',
+            background: '#3498db',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            width: '100%',
+          }}
+        >
+          ⚙️ Avatar Settings
+        </button>
+        <button
           onClick={() => signOut()}
           style={{
             marginTop: '10px',
@@ -566,11 +656,19 @@ export default function OfficeScene() {
             borderRadius: '4px',
             cursor: 'pointer',
             fontSize: '14px',
+            width: '100%',
           }}
         >
           Sign Out
         </button>
       </div>
+
+      <SettingsPanel
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        currentSettings={avatarCustomization}
+        onSave={handleSaveSettings}
+      />
     </div>
   );
 }

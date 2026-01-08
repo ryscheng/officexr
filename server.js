@@ -46,6 +46,7 @@ app.prepare().then(() => {
               image: data.image,
               position: data.position || { x: 0, y: 1.6, z: 5 },
               rotation: data.rotation || { x: 0, y: 0, z: 0 },
+              customization: data.customization,
               ws,
             });
 
@@ -56,6 +57,7 @@ app.prepare().then(() => {
               image: u.image,
               position: u.position,
               rotation: u.rotation,
+              customization: u.customization,
             }));
 
             ws.send(JSON.stringify({
@@ -72,6 +74,7 @@ app.prepare().then(() => {
                 image: data.image,
                 position: data.position || { x: 0, y: 1.6, z: 5 },
                 rotation: data.rotation || { x: 0, y: 0, z: 0 },
+                customization: data.customization,
               },
             }, userId);
 
@@ -91,6 +94,22 @@ app.prepare().then(() => {
                 position: data.position,
                 rotation: data.rotation,
               }, userId);
+            }
+            break;
+
+          case 'avatar-update':
+            if (userId && users.has(userId)) {
+              const user = users.get(userId);
+              user.customization = data.customization;
+
+              // Broadcast avatar update to all other users
+              broadcast({
+                type: 'avatar-update',
+                userId,
+                customization: data.customization,
+              }, userId);
+
+              console.log(`User ${userId} updated avatar customization`);
             }
             break;
         }

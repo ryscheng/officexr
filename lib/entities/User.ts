@@ -26,6 +26,18 @@ export class User {
   @Column({ type: "varchar", nullable: true })
   image!: string | null;
 
+  @Column({ type: "varchar", nullable: true, default: "#3498db" })
+  avatarBodyColor!: string | null;
+
+  @Column({ type: "varchar", nullable: true, default: "#ffdbac" })
+  avatarSkinColor!: string | null;
+
+  @Column({ type: "varchar", nullable: true, default: "default" })
+  avatarStyle!: string | null;
+
+  @Column({ type: "json", nullable: true })
+  avatarAccessories!: string[] | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
