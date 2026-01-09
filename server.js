@@ -10,8 +10,9 @@ const port = 3000;
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-// Store connected users and their positions
-const users = new Map();
+// Store connected users and their positions by office
+// Structure: Map<officeId, Map<userId, userData>>
+const offices = new Map();
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
@@ -32,6 +33,7 @@ app.prepare().then(() => {
     console.log('New WebSocket connection');
 
     let userId = null;
+    let officeId = null;
 
     ws.on('message', (message) => {
       try {
@@ -40,7 +42,23 @@ app.prepare().then(() => {
         switch (data.type) {
           case 'join':
             userId = data.userId;
-            users.set(userId, {
+            officeId = data.officeId;
+
+            if (!officeId) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'officeId is required to join',
+              }));
+              return;
+            }
+
+            // Ensure office exists in map
+            if (!offices.has(officeId)) {
+              offices.set(officeId, new Map());
+            }
+
+            const officeUsers = offices.get(officeId);
+            officeUsers.set(userId, {
               id: userId,
               name: data.name,
               image: data.image,
@@ -50,8 +68,8 @@ app.prepare().then(() => {
               ws,
             });
 
-            // Send current users to the new user
-            const currentUsers = Array.from(users.values()).map(u => ({
+            // Send current users in this office to the new user
+            const currentUsers = Array.from(officeUsers.values()).map(u => ({
               id: u.id,
               name: u.name,
               image: u.image,
@@ -65,8 +83,8 @@ app.prepare().then(() => {
               users: currentUsers.filter(u => u.id !== userId),
             }));
 
-            // Broadcast new user to all other users
-            broadcast({
+            // Broadcast new user to all other users in this office
+            broadcastToOffice(officeId, {
               type: 'user-joined',
               user: {
                 id: userId,
@@ -78,38 +96,44 @@ app.prepare().then(() => {
               },
             }, userId);
 
-            console.log(`User ${userId} (${data.name}) joined. Total users: ${users.size}`);
+            console.log(`User ${userId} (${data.name}) joined office ${officeId}. Office users: ${officeUsers.size}`);
             break;
 
           case 'position':
-            if (userId && users.has(userId)) {
-              const user = users.get(userId);
-              user.position = data.position;
-              user.rotation = data.rotation;
+            if (userId && officeId && offices.has(officeId)) {
+              const officeUsers = offices.get(officeId);
+              if (officeUsers.has(userId)) {
+                const user = officeUsers.get(userId);
+                user.position = data.position;
+                user.rotation = data.rotation;
 
-              // Broadcast position update to all other users
-              broadcast({
-                type: 'position',
-                userId,
-                position: data.position,
-                rotation: data.rotation,
-              }, userId);
+                // Broadcast position update to all other users in this office
+                broadcastToOffice(officeId, {
+                  type: 'position',
+                  userId,
+                  position: data.position,
+                  rotation: data.rotation,
+                }, userId);
+              }
             }
             break;
 
           case 'avatar-update':
-            if (userId && users.has(userId)) {
-              const user = users.get(userId);
-              user.customization = data.customization;
+            if (userId && officeId && offices.has(officeId)) {
+              const officeUsers = offices.get(officeId);
+              if (officeUsers.has(userId)) {
+                const user = officeUsers.get(userId);
+                user.customization = data.customization;
 
-              // Broadcast avatar update to all other users
-              broadcast({
-                type: 'avatar-update',
-                userId,
-                customization: data.customization,
-              }, userId);
+                // Broadcast avatar update to all other users in this office
+                broadcastToOffice(officeId, {
+                  type: 'avatar-update',
+                  userId,
+                  customization: data.customization,
+                }, userId);
 
-              console.log(`User ${userId} updated avatar customization`);
+                console.log(`User ${userId} updated avatar customization in office ${officeId}`);
+              }
             }
             break;
         }
@@ -119,16 +143,23 @@ app.prepare().then(() => {
     });
 
     ws.on('close', () => {
-      if (userId) {
-        users.delete(userId);
+      if (userId && officeId && offices.has(officeId)) {
+        const officeUsers = offices.get(officeId);
+        officeUsers.delete(userId);
 
-        // Broadcast user left to all other users
-        broadcast({
+        // Broadcast user left to all other users in this office
+        broadcastToOffice(officeId, {
           type: 'user-left',
           userId,
         }, userId);
 
-        console.log(`User ${userId} left. Total users: ${users.size}`);
+        console.log(`User ${userId} left office ${officeId}. Office users: ${officeUsers.size}`);
+
+        // Clean up empty offices
+        if (officeUsers.size === 0) {
+          offices.delete(officeId);
+          console.log(`Office ${officeId} is now empty and removed`);
+        }
       }
     });
 
@@ -137,9 +168,15 @@ app.prepare().then(() => {
     });
   });
 
-  function broadcast(message, excludeUserId) {
+  function broadcastToOffice(officeId, message, excludeUserId) {
+    if (!offices.has(officeId)) {
+      return;
+    }
+
     const messageStr = JSON.stringify(message);
-    users.forEach((user, id) => {
+    const officeUsers = offices.get(officeId);
+
+    officeUsers.forEach((user, id) => {
       if (id !== excludeUserId && user.ws.readyState === 1) { // 1 = OPEN
         user.ws.send(messageStr);
       }

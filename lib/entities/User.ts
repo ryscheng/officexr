@@ -8,6 +8,7 @@ import {
 } from "typeorm";
 import { Account } from "./Account";
 import { Session } from "./Session";
+import { OfficeUser } from "./OfficeUser";
 
 @Entity("users")
 export class User {
@@ -49,4 +50,7 @@ export class User {
 
   @OneToMany(() => Session, (session) => session.user, { cascade: true })
   sessions!: Session[];
+
+  @OneToMany(() => OfficeUser, (officeUser) => officeUser.user, { cascade: true })
+  offices!: OfficeUser[];
 }

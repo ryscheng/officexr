@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { getDataSource } from '@/lib/db';
-import { User } from '@/lib/entities/User';
 
 export async function PUT(request: NextRequest) {
   try {
+    const { getAuthOptions } = await import('@/lib/auth');
+    const authOptions = await getAuthOptions();
     const session = await getServerSession(authOptions);
 
     if (!session || !session.user) {
@@ -22,6 +21,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    const { getDataSource } = await import('@/lib/db');
+    const { User } = await import('@/lib/entities/User');
     const dataSource = await getDataSource();
     const userRepo = dataSource.getRepository(User);
 
@@ -59,12 +60,16 @@ export async function PUT(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const { getAuthOptions } = await import('@/lib/auth');
+    const authOptions = await getAuthOptions();
     const session = await getServerSession(authOptions);
 
     if (!session || !session.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { getDataSource } = await import('@/lib/db');
+    const { User } = await import('@/lib/entities/User');
     const dataSource = await getDataSource();
     const userRepo = dataSource.getRepository(User);
 

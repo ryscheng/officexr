@@ -7,7 +7,12 @@ import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 import SettingsPanel from './SettingsPanel';
 import { AvatarCustomization } from '@/types/avatar';
 
-export default function OfficeScene() {
+interface OfficeSceneProps {
+  officeId: string;
+  onLeave: () => void;
+}
+
+export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
   const { data: session } = useSession();
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -313,6 +318,7 @@ export default function OfficeScene() {
           JSON.stringify({
             type: 'join',
             userId: session.user.id,
+            officeId: officeId,
             name: session.user.name,
             image: session.user.image,
             position: {
@@ -380,8 +386,13 @@ export default function OfficeScene() {
               scene.remove(existingAvatar);
 
               // Create new avatar with updated customization
+              const oldData = existingAvatar.userData as AvatarData;
               const newAvatarData: AvatarData = {
-                ...existingAvatar.userData,
+                id: oldData.id,
+                name: oldData.name,
+                image: oldData.image,
+                position: oldData.position,
+                rotation: oldData.rotation,
                 customization: data.customization,
               };
               const newAvatar = createAvatar(scene, newAvatarData);
@@ -558,7 +569,7 @@ export default function OfficeScene() {
 
       renderer.dispose();
     };
-  }, [session, avatarCustomization]);
+  }, [session, avatarCustomization, officeId]);
 
   const handleSaveSettings = async (settings: AvatarCustomization) => {
     try {
@@ -644,6 +655,22 @@ export default function OfficeScene() {
           }}
         >
           ⚙️ Avatar Settings
+        </button>
+        <button
+          onClick={onLeave}
+          style={{
+            marginTop: '10px',
+            padding: '8px 16px',
+            background: '#f59e0b',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            width: '100%',
+          }}
+        >
+          🚪 Leave Office
         </button>
         <button
           onClick={() => signOut()}

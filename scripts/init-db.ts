@@ -1,14 +1,14 @@
 import "reflect-metadata";
-import { AppDataSource } from "../lib/db";
+import { getDataSource } from "../lib/db";
 
 async function initializeDatabase() {
   try {
     console.log("Initializing database connection...");
-    await AppDataSource.initialize();
+    const dataSource = await getDataSource();
     console.log("Database connection initialized successfully!");
 
     console.log("Running synchronization...");
-    await AppDataSource.synchronize();
+    await dataSource.synchronize();
     console.log("Database synchronized successfully!");
 
     console.log("\nDatabase is ready to use.");

@@ -77,7 +77,7 @@ export function TypeORMAdapter(dataSource: DataSource): Adapter {
         session_state: account.session_state,
       });
       await accountRepo.save(newAccount);
-      return newAccount as AdapterAccount;
+      return newAccount as unknown as AdapterAccount;
     },
 
     async unlinkAccount({
