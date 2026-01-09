@@ -30,6 +30,20 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
     accessories: [],
   });
 
+  // Chat state
+  interface ChatMessage {
+    id: string;
+    userId: string;
+    userName: string;
+    message: string;
+    timestamp: number;
+  }
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const chatInputRef = useRef<HTMLInputElement>(null);
+  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Load avatar customization from database
   useEffect(() => {
     if (!session?.user) return;
@@ -45,6 +59,75 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
         console.error('Error loading avatar customization:', error);
       });
   }, [session]);
+
+  // Handle chat visibility and Enter key
+  useEffect(() => {
+    const handleChatKey = (event: KeyboardEvent) => {
+      // Don't handle Enter if settings panel is open
+      if (showSettings) return;
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+
+        if (!chatVisible) {
+          // Show chat
+          setChatVisible(true);
+          // Focus input after a brief delay to ensure it's rendered
+          setTimeout(() => chatInputRef.current?.focus(), 50);
+        } else if (chatInput.trim() === '') {
+          // Hide chat if input is empty
+          setChatVisible(false);
+        } else {
+          // Send message
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(
+              JSON.stringify({
+                type: 'chat',
+                message: chatInput.trim(),
+              })
+            );
+            setChatInput('');
+          }
+        }
+      } else if (event.key === 'Escape' && chatVisible) {
+        // Hide chat on Escape
+        event.preventDefault();
+        setChatVisible(false);
+        setChatInput('');
+      }
+    };
+
+    window.addEventListener('keydown', handleChatKey);
+    return () => window.removeEventListener('keydown', handleChatKey);
+  }, [chatVisible, chatInput, showSettings]);
+
+  // Focus chat input when chat becomes visible
+  useEffect(() => {
+    if (chatVisible && chatInputRef.current) {
+      chatInputRef.current.focus();
+    }
+  }, [chatVisible]);
+
+  // Auto-hide chat after inactivity
+  useEffect(() => {
+    if (chatVisible && chatInput === '') {
+      // Clear existing timer
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+
+      // Set new timer to hide after 10 seconds of inactivity
+      hideTimerRef.current = setTimeout(() => {
+        setChatVisible(false);
+      }, 10000);
+    }
+
+    return () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, [chatVisible, chatInput]);
 
   useEffect(() => {
     if (!containerRef.current || !session?.user) return;
@@ -399,6 +482,16 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
               avatarsRef.current.set(data.userId, newAvatar);
             }
             break;
+
+          case 'chat-history':
+            // Load chat history
+            setChatMessages(data.messages);
+            break;
+
+          case 'chat':
+            // Receive new chat message
+            setChatMessages((prev) => [...prev, data.message]);
+            break;
         }
       };
 
@@ -696,6 +789,101 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
         currentSettings={avatarCustomization}
         onSave={handleSaveSettings}
       />
+
+      {/* Chat UI */}
+      {chatVisible && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            left: '20px',
+            width: '400px',
+            maxHeight: '300px',
+            background: 'rgba(0, 0, 0, 0.8)',
+            borderRadius: '8px',
+            padding: '10px',
+            color: 'white',
+            fontFamily: 'monospace',
+            zIndex: 100,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/* Messages */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              marginBottom: '10px',
+              maxHeight: '220px',
+            }}
+          >
+            {chatMessages.slice(-10).map((msg) => (
+              <div
+                key={msg.id}
+                style={{
+                  marginBottom: '8px',
+                  wordWrap: 'break-word',
+                }}
+              >
+                <span
+                  style={{
+                    color: msg.userId === session?.user?.id ? '#3498db' : '#2ecc71',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {msg.userName}
+                </span>
+                : {msg.message}
+              </div>
+            ))}
+            {chatMessages.length === 0 && (
+              <div style={{ color: '#888', fontSize: '14px' }}>
+                No messages yet. Type a message and press Enter to send.
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <input
+            ref={chatInputRef}
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder="Type a message... (Esc to close)"
+            style={{
+              width: '100%',
+              padding: '8px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              borderRadius: '4px',
+              color: 'white',
+              fontSize: '14px',
+              outline: 'none',
+            }}
+          />
+        </div>
+      )}
+
+      {/* Chat hint when hidden */}
+      {!chatVisible && !showSettings && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            left: '20px',
+            padding: '8px 12px',
+            background: 'rgba(0, 0, 0, 0.6)',
+            color: 'white',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            zIndex: 100,
+          }}
+        >
+          Press Enter to chat
+        </div>
+      )}
     </div>
   );
 }

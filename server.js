@@ -14,6 +14,11 @@ const handle = app.getRequestHandler();
 // Structure: Map<officeId, Map<userId, userData>>
 const offices = new Map();
 
+// Store chat messages by office (in memory, ephemeral)
+// Structure: Map<officeId, Array<chatMessage>>
+const chatHistory = new Map();
+const MAX_CHAT_HISTORY = 50;
+
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     try {
@@ -83,6 +88,14 @@ app.prepare().then(() => {
               users: currentUsers.filter(u => u.id !== userId),
             }));
 
+            // Send recent chat history to the new user
+            if (chatHistory.has(officeId)) {
+              ws.send(JSON.stringify({
+                type: 'chat-history',
+                messages: chatHistory.get(officeId),
+              }));
+            }
+
             // Broadcast new user to all other users in this office
             broadcastToOffice(officeId, {
               type: 'user-joined',
@@ -136,6 +149,43 @@ app.prepare().then(() => {
               }
             }
             break;
+
+          case 'chat':
+            if (userId && officeId && offices.has(officeId)) {
+              const officeUsers = offices.get(officeId);
+              if (officeUsers.has(userId)) {
+                const user = officeUsers.get(userId);
+
+                const chatMessage = {
+                  id: `${Date.now()}-${userId}`,
+                  userId,
+                  userName: user.name,
+                  message: data.message,
+                  timestamp: Date.now(),
+                };
+
+                // Store message in chat history
+                if (!chatHistory.has(officeId)) {
+                  chatHistory.set(officeId, []);
+                }
+                const messages = chatHistory.get(officeId);
+                messages.push(chatMessage);
+
+                // Keep only the last MAX_CHAT_HISTORY messages
+                if (messages.length > MAX_CHAT_HISTORY) {
+                  messages.shift();
+                }
+
+                // Broadcast chat message to all users in this office (including sender)
+                broadcastToOffice(officeId, {
+                  type: 'chat',
+                  message: chatMessage,
+                });
+
+                console.log(`[Office ${officeId}] ${user.name}: ${data.message}`);
+              }
+            }
+            break;
         }
       } catch (error) {
         console.error('Error processing message:', error);
@@ -158,6 +208,7 @@ app.prepare().then(() => {
         // Clean up empty offices
         if (officeUsers.size === 0) {
           offices.delete(officeId);
+          chatHistory.delete(officeId);
           console.log(`Office ${officeId} is now empty and removed`);
         }
       }
