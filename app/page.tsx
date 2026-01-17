@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession } from 'next-auth/react';
 import dynamic from 'next/dynamic';
 import OfficeSelector from '@/components/OfficeSelector';
 
@@ -9,19 +10,38 @@ const OfficeScene = dynamic(() => import('@/components/OfficeScene'), {
 });
 
 export default function Home() {
-  const [selectedOfficeId, setSelectedOfficeId] = useState<string | null>(null);
+  const { data: session } = useSession();
+  const [selectedOfficeId, setSelectedOfficeId] = useState<string | null>('global');
+  const [showOfficeSelector, setShowOfficeSelector] = useState(false);
 
   const handleSelectOffice = (officeId: string) => {
     setSelectedOfficeId(officeId);
+    setShowOfficeSelector(false);
+  };
+
+  const handleShowOfficeSelector = () => {
+    setShowOfficeSelector(true);
   };
 
   const handleLeaveOffice = () => {
-    setSelectedOfficeId(null);
+    if (session) {
+      // Logged in users go back to office selector
+      setShowOfficeSelector(true);
+    } else {
+      // Anonymous users go back to global office
+      setSelectedOfficeId('global');
+    }
   };
 
-  if (!selectedOfficeId) {
+  if (showOfficeSelector && session) {
     return <OfficeSelector onSelectOffice={handleSelectOffice} />;
   }
 
-  return <OfficeScene officeId={selectedOfficeId} onLeave={handleLeaveOffice} />;
+  return (
+    <OfficeScene
+      officeId={selectedOfficeId || 'global'}
+      onLeave={handleLeaveOffice}
+      onShowOfficeSelector={session ? handleShowOfficeSelector : undefined}
+    />
+  );
 }

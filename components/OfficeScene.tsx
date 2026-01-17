@@ -10,10 +10,24 @@ import { AvatarCustomization } from '@/types/avatar';
 interface OfficeSceneProps {
   officeId: string;
   onLeave: () => void;
+  onShowOfficeSelector?: () => void;
 }
 
-export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
+export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }: OfficeSceneProps) {
   const { data: session } = useSession();
+
+  // Generate anonymous user data if not logged in
+  const anonymousUserRef = useRef<{id: string, name: string} | null>(null);
+  if (!session && !anonymousUserRef.current) {
+    const randomId = `anon-${Math.random().toString(36).substr(2, 9)}`;
+    const guestNumber = Math.floor(Math.random() * 1000);
+    anonymousUserRef.current = {
+      id: randomId,
+      name: `Guest ${guestNumber}`,
+    };
+  }
+
+  const currentUser = session?.user || anonymousUserRef.current;
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -130,7 +144,7 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
   }, [chatVisible, chatInput]);
 
   useEffect(() => {
-    if (!containerRef.current || !session?.user) return;
+    if (!containerRef.current || !currentUser) return;
 
     // Scene setup
     const scene = new THREE.Scene();
@@ -151,7 +165,10 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.xr.enabled = true;
+    // Only enable XR if available (desktop browsers may support it, mobile browsers typically don't)
+    if (navigator.xr) {
+      renderer.xr.enabled = true;
+    }
     rendererRef.current = renderer;
     containerRef.current.appendChild(renderer.domElement);
 
@@ -379,6 +396,46 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
     renderer.domElement.addEventListener('mouseup', handleMouseUp);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
 
+    // Touch controls for mobile
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isTouching = false;
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length === 1) {
+        isTouching = true;
+        touchStartX = event.touches[0].clientX;
+        touchStartY = event.touches[0].clientY;
+      }
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (isTouching && event.touches.length === 1) {
+        const touchX = event.touches[0].clientX;
+        const touchY = event.touches[0].clientY;
+        const deltaX = touchX - touchStartX;
+        const deltaY = touchY - touchStartY;
+
+        camera.rotation.y -= deltaX * 0.002;
+        camera.rotation.x -= deltaY * 0.002;
+        camera.rotation.x = Math.max(
+          -Math.PI / 2,
+          Math.min(Math.PI / 2, camera.rotation.x)
+        );
+
+        touchStartX = touchX;
+        touchStartY = touchY;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      isTouching = false;
+    };
+
+    renderer.domElement.addEventListener('touchstart', handleTouchStart, { passive: true });
+    renderer.domElement.addEventListener('touchmove', handleTouchMove, { passive: true });
+    renderer.domElement.addEventListener('touchend', handleTouchEnd);
+
     // Handle window resize
     const handleResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -400,10 +457,10 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
         ws.send(
           JSON.stringify({
             type: 'join',
-            userId: session.user.id,
+            userId: currentUser!.id,
             officeId: officeId,
-            name: session.user.name,
-            image: session.user.image,
+            name: currentUser!.name,
+            image: session?.user?.image || null,
             position: {
               x: camera.position.x,
               y: camera.position.y,
@@ -647,12 +704,15 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('touchstart', handleTouchStart);
+      renderer.domElement.removeEventListener('touchmove', handleTouchMove);
+      renderer.domElement.removeEventListener('touchend', handleTouchEnd);
 
       if (wsRef.current) {
         wsRef.current.close();
       }
 
-      if (vrButton.parentNode) {
+      if (vrButton && vrButton.parentNode) {
         vrButton.parentNode.removeChild(vrButton);
       }
 
@@ -662,7 +722,7 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
 
       renderer.dispose();
     };
-  }, [session, avatarCustomization, officeId]);
+  }, [avatarCustomization, officeId, currentUser]);
 
   const handleSaveSettings = async (settings: AvatarCustomization) => {
     try {
@@ -712,8 +772,8 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
       >
         <h3 style={{ margin: '0 0 10px 0' }}>Controls:</h3>
         <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys - Move</p>
-        <p style={{ margin: '5px 0' }}>Click + Drag Mouse - Look Around</p>
-        <p style={{ margin: '5px 0' }}>VR Button - Enter VR Mode</p>
+        <p style={{ margin: '5px 0' }}>Mouse/Touch Drag - Look Around</p>
+        <p style={{ margin: '5px 0' }}>Enter - Chat</p>
       </div>
 
       <div
@@ -730,57 +790,105 @@ export default function OfficeScene({ officeId, onLeave }: OfficeSceneProps) {
         }}
       >
         <p style={{ margin: '5px 0' }}>
-          <strong>{session?.user?.name}</strong>
+          <strong>{currentUser?.name}</strong>
+          {!session && <span style={{ color: '#888', fontSize: '12px' }}> (Guest)</span>}
         </p>
         <p style={{ margin: '5px 0' }}>Users online: {userCount}</p>
-        <button
-          onClick={() => setShowSettings(true)}
-          style={{
-            marginTop: '10px',
-            padding: '8px 16px',
-            background: '#3498db',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            width: '100%',
-          }}
-        >
-          ⚙️ Avatar Settings
-        </button>
-        <button
-          onClick={onLeave}
-          style={{
-            marginTop: '10px',
-            padding: '8px 16px',
-            background: '#f59e0b',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            width: '100%',
-          }}
-        >
-          🚪 Leave Office
-        </button>
-        <button
-          onClick={() => signOut()}
-          style={{
-            marginTop: '10px',
-            padding: '8px 16px',
-            background: '#dc2626',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            width: '100%',
-          }}
-        >
-          Sign Out
-        </button>
+        <p style={{ margin: '5px 0', fontSize: '12px', color: '#888' }}>
+          Office: {officeId === 'global' ? 'Global' : 'Private'}
+        </p>
+
+        {session ? (
+          <>
+            {session && (
+              <button
+                onClick={() => setShowSettings(true)}
+                style={{
+                  marginTop: '10px',
+                  padding: '8px 16px',
+                  background: '#3498db',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  width: '100%',
+                }}
+              >
+                ⚙️ Avatar Settings
+              </button>
+            )}
+            {onShowOfficeSelector && officeId !== 'global' && (
+              <button
+                onClick={onShowOfficeSelector}
+                style={{
+                  marginTop: '10px',
+                  padding: '8px 16px',
+                  background: '#8b5cf6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  width: '100%',
+                }}
+              >
+                🏢 My Offices
+              </button>
+            )}
+            {officeId !== 'global' && (
+              <button
+                onClick={onLeave}
+                style={{
+                  marginTop: '10px',
+                  padding: '8px 16px',
+                  background: '#f59e0b',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  width: '100%',
+                }}
+              >
+                🚪 Leave Office
+              </button>
+            )}
+            <button
+              onClick={() => signOut()}
+              style={{
+                marginTop: '10px',
+                padding: '8px 16px',
+                background: '#dc2626',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                width: '100%',
+              }}
+            >
+              Sign Out
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => window.location.href = '/login'}
+            style={{
+              marginTop: '10px',
+              padding: '8px 16px',
+              background: '#10b981',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              width: '100%',
+            }}
+          >
+            🔑 Sign In
+          </button>
+        )}
       </div>
 
       <SettingsPanel
