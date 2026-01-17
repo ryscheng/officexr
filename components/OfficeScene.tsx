@@ -57,6 +57,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [chatInput, setChatInput] = useState('');
   const chatInputRef = useRef<HTMLInputElement>(null);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const keysRef = useRef<{ [key: string]: boolean }>({});
 
   // Load avatar customization from database
   useEffect(() => {
@@ -265,7 +266,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
 
     // Create chair
-    const createChair = (x: number, z: number) => {
+    const createChair = (x: number, z: number, rotation: number = 0) => {
       const chairGroup = new THREE.Group();
 
       // Seat
@@ -302,6 +303,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       });
 
       chairGroup.position.set(x, 0, z);
+      chairGroup.rotation.y = rotation;
       return chairGroup;
     };
 
@@ -333,13 +335,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Add office furniture
     scene.add(createDesk(-5, -5));
-    scene.add(createChair(-5, -3.5));
+    scene.add(createChair(-5, -3.5, Math.PI)); // Rotate 180° to face desk
 
     scene.add(createDesk(5, -5));
-    scene.add(createChair(5, -3.5));
+    scene.add(createChair(5, -3.5, Math.PI)); // Rotate 180° to face desk
 
     scene.add(createDesk(-5, 5));
-    scene.add(createChair(-5, 6.5));
+    scene.add(createChair(-5, 6.5, Math.PI)); // Rotate 180° to face desk
 
     scene.add(createBookshelf(8, -8));
     scene.add(createBookshelf(8, 0));
@@ -353,7 +355,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Movement variables
     const moveSpeed = 0.1;
-    const keys: { [key: string]: boolean } = {};
+    const keys = keysRef.current;
 
     // Keyboard controls
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -992,6 +994,121 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           Press Enter to chat
         </div>
       )}
+
+      {/* Mobile Navigation Controls */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: '20px',
+          right: '20px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 60px)',
+          gridTemplateRows: 'repeat(3, 60px)',
+          gap: '5px',
+          zIndex: 100,
+        }}
+        onTouchStart={(e) => e.preventDefault()}
+      >
+        {/* Forward */}
+        <div style={{ gridColumn: '2', gridRow: '1' }}>
+          <button
+            onTouchStart={() => { keysRef.current['w'] = true; }}
+            onTouchEnd={() => { keysRef.current['w'] = false; }}
+            onMouseDown={() => { keysRef.current['w'] = true; }}
+            onMouseUp={() => { keysRef.current['w'] = false; }}
+            onMouseLeave={() => { keysRef.current['w'] = false; }}
+            style={{
+              width: '100%',
+              height: '100%',
+              background: 'rgba(255, 255, 255, 0.3)',
+              border: '2px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '24px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              touchAction: 'none',
+            }}
+          >
+            ▲
+          </button>
+        </div>
+
+        {/* Left */}
+        <div style={{ gridColumn: '1', gridRow: '2' }}>
+          <button
+            onTouchStart={() => { keysRef.current['a'] = true; }}
+            onTouchEnd={() => { keysRef.current['a'] = false; }}
+            onMouseDown={() => { keysRef.current['a'] = true; }}
+            onMouseUp={() => { keysRef.current['a'] = false; }}
+            onMouseLeave={() => { keysRef.current['a'] = false; }}
+            style={{
+              width: '100%',
+              height: '100%',
+              background: 'rgba(255, 255, 255, 0.3)',
+              border: '2px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '24px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              touchAction: 'none',
+            }}
+          >
+            ◄
+          </button>
+        </div>
+
+        {/* Backward */}
+        <div style={{ gridColumn: '2', gridRow: '2' }}>
+          <button
+            onTouchStart={() => { keysRef.current['s'] = true; }}
+            onTouchEnd={() => { keysRef.current['s'] = false; }}
+            onMouseDown={() => { keysRef.current['s'] = true; }}
+            onMouseUp={() => { keysRef.current['s'] = false; }}
+            onMouseLeave={() => { keysRef.current['s'] = false; }}
+            style={{
+              width: '100%',
+              height: '100%',
+              background: 'rgba(255, 255, 255, 0.3)',
+              border: '2px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '24px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              touchAction: 'none',
+            }}
+          >
+            ▼
+          </button>
+        </div>
+
+        {/* Right */}
+        <div style={{ gridColumn: '3', gridRow: '2' }}>
+          <button
+            onTouchStart={() => { keysRef.current['d'] = true; }}
+            onTouchEnd={() => { keysRef.current['d'] = false; }}
+            onMouseDown={() => { keysRef.current['d'] = true; }}
+            onMouseUp={() => { keysRef.current['d'] = false; }}
+            onMouseLeave={() => { keysRef.current['d'] = false; }}
+            style={{
+              width: '100%',
+              height: '100%',
+              background: 'rgba(255, 255, 255, 0.3)',
+              border: '2px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '24px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              touchAction: 'none',
+            }}
+          >
+            ►
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
