@@ -847,7 +847,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     renderer.setAnimationLoop(animate);
 
-    // Create VR button
+    // Create VR button (only if WebXR is supported)
+    let vrButton: HTMLButtonElement | null = null;
     const createVRButton = () => {
       const button = document.createElement('button');
       button.style.position = 'absolute';
@@ -883,29 +884,20 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }
       };
 
-      // Check if WebXR is available
+      // Only show button if WebXR is available and supported
       if (navigator.xr) {
         navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
           if (supported) {
             document.body.appendChild(button);
-          } else {
-            button.textContent = 'VR NOT SUPPORTED';
-            button.style.background = '#666';
-            button.style.cursor = 'not-allowed';
-            document.body.appendChild(button);
+            vrButton = button;
           }
+          // Don't show button if VR is not supported
         });
-      } else {
-        button.textContent = 'WEBXR NOT AVAILABLE';
-        button.style.background = '#666';
-        button.style.cursor = 'not-allowed';
-        document.body.appendChild(button);
       }
-
-      return button;
+      // Don't show button if navigator.xr doesn't exist
     };
 
-    const vrButton = createVRButton();
+    createVRButton();
 
     // Cleanup
     return () => {
@@ -1009,26 +1001,26 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           Office: {officeId === 'global' ? 'Global' : 'Private'}
         </p>
 
+        {/* Settings button - available for all users */}
+        <button
+          onClick={() => setShowSettings(true)}
+          style={{
+            marginTop: '10px',
+            padding: '8px 16px',
+            background: '#3498db',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            width: '100%',
+          }}
+        >
+          ⚙️ Settings
+        </button>
+
         {session ? (
           <>
-            {session && (
-              <button
-                onClick={() => setShowSettings(true)}
-                style={{
-                  marginTop: '10px',
-                  padding: '8px 16px',
-                  background: '#3498db',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  width: '100%',
-                }}
-              >
-                ⚙️ Avatar Settings
-              </button>
-            )}
             {onShowOfficeSelector && officeId !== 'global' && (
               <button
                 onClick={onShowOfficeSelector}
@@ -1106,7 +1098,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
         currentSettings={avatarCustomization}
-        onSave={handleSaveSettings}
+        onSave={session ? handleSaveSettings : undefined}
         currentEnvironment={environment}
         onEnvironmentChange={handleEnvironmentChange}
       />

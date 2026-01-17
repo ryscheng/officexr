@@ -15,7 +15,7 @@ interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   currentSettings: AvatarCustomization;
-  onSave: (settings: AvatarCustomization) => void;
+  onSave?: (settings: AvatarCustomization) => void;
   currentEnvironment?: EnvironmentType;
   onEnvironmentChange?: (env: EnvironmentType) => void;
 }
@@ -34,6 +34,7 @@ export default function SettingsPanel({
   if (!isOpen) return null;
 
   const handleSave = async () => {
+    if (!onSave) return;
     setIsSaving(true);
     try {
       await onSave(settings);
@@ -189,11 +190,14 @@ export default function SettingsPanel({
           </div>
         )}
 
-        <h3 style={{ marginBottom: '16px', fontSize: '20px', fontWeight: '600' }}>
-          Avatar Customization
-        </h3>
+        {/* Only show avatar customization for logged-in users */}
+        {onSave && (
+          <>
+            <h3 style={{ marginBottom: '16px', fontSize: '20px', fontWeight: '600' }}>
+              Avatar Customization
+            </h3>
 
-        {/* Body Color */}
+            {/* Body Color */}
         <div style={{ marginBottom: '24px' }}>
           <h3 style={{ marginBottom: '12px', fontSize: '18px', fontWeight: '600' }}>
             Body Color
@@ -329,43 +333,66 @@ export default function SettingsPanel({
           </div>
         </div>
 
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
-          <button
-            onClick={onClose}
-            disabled={isSaving}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: '#e0e0e0',
-              color: '#333',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: isSaving ? 'not-allowed' : 'pointer',
-              fontSize: '16px',
-              fontWeight: '500',
-              opacity: isSaving ? 0.5 : 1,
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: '#3498db',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: isSaving ? 'not-allowed' : 'pointer',
-              fontSize: '16px',
-              fontWeight: '500',
-              opacity: isSaving ? 0.5 : 1,
-            }}
-          >
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </button>
-        </div>
+            {/* Actions for logged-in users */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+              <button
+                onClick={onClose}
+                disabled={isSaving}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#e0e0e0',
+                  color: '#333',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  opacity: isSaving ? 0.5 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#3498db',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  opacity: isSaving ? 0.5 : 1,
+                }}
+              >
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Close button for anonymous users */}
+        {!onSave && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: '#3498db',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: '500',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
