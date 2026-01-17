@@ -9,11 +9,15 @@ import {
   SKIN_COLOR_PRESETS,
 } from '@/types/avatar';
 
+type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
+
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   currentSettings: AvatarCustomization;
   onSave: (settings: AvatarCustomization) => void;
+  currentEnvironment?: EnvironmentType;
+  onEnvironmentChange?: (env: EnvironmentType) => void;
 }
 
 export default function SettingsPanel({
@@ -21,6 +25,8 @@ export default function SettingsPanel({
   onClose,
   currentSettings,
   onSave,
+  currentEnvironment = 'corporate',
+  onEnvironmentChange,
 }: SettingsPanelProps) {
   const [settings, setSettings] = useState<AvatarCustomization>(currentSettings);
   const [isSaving, setIsSaving] = useState(false);
@@ -79,8 +85,113 @@ export default function SettingsPanel({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 style={{ margin: '0 0 20px 0', fontSize: '24px', fontWeight: 'bold' }}>
-          Avatar Settings
+          Settings
         </h2>
+
+        {/* Environment Selector */}
+        {onEnvironmentChange && (
+          <div style={{ marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #e0e0e0' }}>
+            <h3 style={{ marginBottom: '12px', fontSize: '18px', fontWeight: '600' }}>
+              Office Environment
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+              <button
+                onClick={() => onEnvironmentChange('corporate')}
+                style={{
+                  padding: '16px',
+                  backgroundColor: currentEnvironment === 'corporate' ? '#3498db' : '#f0f0f0',
+                  color: currentEnvironment === 'corporate' ? 'white' : '#333',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (currentEnvironment !== 'corporate') {
+                    e.currentTarget.style.backgroundColor = '#e0e0e0';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentEnvironment !== 'corporate') {
+                    e.currentTarget.style.backgroundColor = '#f0f0f0';
+                  }
+                }}
+              >
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>🏢 Corporate Office</div>
+                <div style={{ fontSize: '14px', opacity: 0.8 }}>
+                  Modern skyscraper office with city views
+                </div>
+              </button>
+              <button
+                onClick={() => onEnvironmentChange('cabin')}
+                style={{
+                  padding: '16px',
+                  backgroundColor: currentEnvironment === 'cabin' ? '#3498db' : '#f0f0f0',
+                  color: currentEnvironment === 'cabin' ? 'white' : '#333',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (currentEnvironment !== 'cabin') {
+                    e.currentTarget.style.backgroundColor = '#e0e0e0';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentEnvironment !== 'cabin') {
+                    e.currentTarget.style.backgroundColor = '#f0f0f0';
+                  }
+                }}
+              >
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>🏔️ Cabin in the Woods</div>
+                <div style={{ fontSize: '14px', opacity: 0.8 }}>
+                  Cozy cabin near a lake with fireplace
+                </div>
+              </button>
+              <button
+                onClick={() => onEnvironmentChange('coffeeshop')}
+                style={{
+                  padding: '16px',
+                  backgroundColor: currentEnvironment === 'coffeeshop' ? '#3498db' : '#f0f0f0',
+                  color: currentEnvironment === 'coffeeshop' ? 'white' : '#333',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (currentEnvironment !== 'coffeeshop') {
+                    e.currentTarget.style.backgroundColor = '#e0e0e0';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentEnvironment !== 'coffeeshop') {
+                    e.currentTarget.style.backgroundColor = '#f0f0f0';
+                  }
+                }}
+              >
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>☕ Coffee Shop</div>
+                <div style={{ fontSize: '14px', opacity: 0.8 }}>
+                  Trendy third wave coffee shop with brick walls
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        <h3 style={{ marginBottom: '16px', fontSize: '20px', fontWeight: '600' }}>
+          Avatar Customization
+        </h3>
 
         {/* Body Color */}
         <div style={{ marginBottom: '24px' }}>

@@ -59,6 +59,24 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const keysRef = useRef<{ [key: string]: boolean }>({});
 
+  // Environment settings
+  type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
+  const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
+
+  // Load environment preference from localStorage
+  useEffect(() => {
+    const savedEnv = localStorage.getItem('officeEnvironment') as EnvironmentType;
+    if (savedEnv && ['corporate', 'cabin', 'coffeeshop'].includes(savedEnv)) {
+      setEnvironment(savedEnv);
+    }
+  }, []);
+
+  // Save environment preference to localStorage
+  const handleEnvironmentChange = (env: EnvironmentType) => {
+    setEnvironment(env);
+    localStorage.setItem('officeEnvironment', env);
+  };
+
   // Load avatar customization from database
   useEffect(() => {
     if (!session?.user) return;
@@ -182,176 +200,367 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     directionalLight.castShadow = true;
     scene.add(directionalLight);
 
-    // Floor
-    const floorGeometry = new THREE.PlaneGeometry(20, 20);
-    const floorMaterial = new THREE.MeshStandardMaterial({
-      color: 0x808080,
-      roughness: 0.8,
-    });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
+    // Build environment based on selection
+    const buildEnvironment = () => {
+      if (environment === 'corporate') {
+        // Corporate Office - Skysc skyscraper with city view
+        scene.background = new THREE.Color(0x87ceeb);
 
-    // Walls
-    const wallMaterial = new THREE.MeshStandardMaterial({
-      color: 0xf0f0f0,
-      roughness: 0.7,
-    });
+        // Floor - polished marble
+        const floor = new THREE.Mesh(
+          new THREE.PlaneGeometry(30, 30),
+          new THREE.MeshStandardMaterial({
+            color: 0x2a2a2a,
+            roughness: 0.1,
+            metalness: 0.6,
+          })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
 
-    // Back wall
-    const backWall = new THREE.Mesh(
-      new THREE.BoxGeometry(20, 5, 0.2),
-      wallMaterial
-    );
-    backWall.position.set(0, 2.5, -10);
-    scene.add(backWall);
+        // Glass walls with city view
+        const glassWalls = new THREE.Mesh(
+          new THREE.BoxGeometry(30, 10, 30),
+          new THREE.MeshStandardMaterial({
+            color: 0x88ccff,
+            transparent: true,
+            opacity: 0.3,
+            metalness: 0.9,
+            roughness: 0.1,
+          })
+        );
+        glassWalls.position.y = 5;
+        scene.add(glassWalls);
 
-    // Left wall
-    const leftWall = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 5, 20),
-      wallMaterial
-    );
-    leftWall.position.set(-10, 2.5, 0);
-    scene.add(leftWall);
+        // Window frames
+        for (let i = -15; i <= 15; i += 5) {
+          const frame = new THREE.Mesh(
+            new THREE.BoxGeometry(0.2, 10, 0.1),
+            new THREE.MeshStandardMaterial({ color: 0x333333 })
+          );
+          frame.position.set(i, 5, -15);
+          scene.add(frame);
+        }
 
-    // Right wall
-    const rightWall = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 5, 20),
-      wallMaterial
-    );
-    rightWall.position.set(10, 2.5, 0);
-    scene.add(rightWall);
+        // Modern desk
+        const deskTop = new THREE.Mesh(
+          new THREE.BoxGeometry(3, 0.05, 1.5),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
+        );
+        deskTop.position.set(0, 0.75, -5);
+        scene.add(deskTop);
 
-    // Ceiling
-    const ceiling = new THREE.Mesh(
-      new THREE.PlaneGeometry(20, 20),
-      new THREE.MeshStandardMaterial({ color: 0xffffff })
-    );
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.y = 5;
-    scene.add(ceiling);
+        // Desk legs
+        [-1.4, 1.4].forEach((x) => {
+          const leg = new THREE.Mesh(
+            new THREE.BoxGeometry(0.1, 0.75, 1.4),
+            new THREE.MeshStandardMaterial({ color: 0x666666 })
+          );
+          leg.position.set(x, 0.375, -5);
+          scene.add(leg);
+        });
 
-    // Create desk
-    const createDesk = (x: number, z: number) => {
-      const deskGroup = new THREE.Group();
+        // Executive chair
+        const chairSeat = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.4, 0.4, 0.1, 32),
+          new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
+        );
+        chairSeat.position.set(0, 0.5, -3.5);
+        scene.add(chairSeat);
 
-      // Desk top
-      const deskTop = new THREE.Mesh(
-        new THREE.BoxGeometry(2, 0.1, 1),
-        new THREE.MeshStandardMaterial({ color: 0x8b4513 })
-      );
-      deskTop.position.y = 0.75;
-      deskGroup.add(deskTop);
+        const chairBack = new THREE.Mesh(
+          new THREE.BoxGeometry(0.7, 0.8, 0.1),
+          new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
+        );
+        chairBack.position.set(0, 0.9, -3.7);
+        scene.add(chairBack);
 
-      // Desk legs
-      const legGeometry = new THREE.BoxGeometry(0.1, 0.75, 0.1);
-      const legMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 });
+        // Conference table
+        const confTable = new THREE.Mesh(
+          new THREE.BoxGeometry(6, 0.08, 3),
+          new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.2, metalness: 0.5 })
+        );
+        confTable.position.set(-8, 0.75, 5);
+        scene.add(confTable);
 
-      const positions = [
-        [-0.9, 0.375, -0.4],
-        [0.9, 0.375, -0.4],
-        [-0.9, 0.375, 0.4],
-        [0.9, 0.375, 0.4],
-      ];
+        // Chairs around conference table
+        [[-9, 3], [-7, 3], [-9, 7], [-7, 7]].forEach(([x, z]) => {
+          const chair = new THREE.Mesh(
+            new THREE.BoxGeometry(0.5, 0.5, 0.5),
+            new THREE.MeshStandardMaterial({ color: 0x333333 })
+          );
+          chair.position.set(x, 0.5, z);
+          scene.add(chair);
+        });
 
-      positions.forEach((pos) => {
-        const leg = new THREE.Mesh(legGeometry, legMaterial);
-        leg.position.set(pos[0], pos[1], pos[2]);
-        deskGroup.add(leg);
-      });
+        // Potted plants
+        [[5, -10], [-5, -10]].forEach(([x, z]) => {
+          const pot = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.3, 0.25, 0.6, 8),
+            new THREE.MeshStandardMaterial({ color: 0x8b4513 })
+          );
+          pot.position.set(x, 0.3, z);
+          scene.add(pot);
 
-      deskGroup.position.set(x, 0, z);
-      return deskGroup;
-    };
+          const plant = new THREE.Mesh(
+            new THREE.SphereGeometry(0.4, 8, 8),
+            new THREE.MeshStandardMaterial({ color: 0x228b22 })
+          );
+          plant.position.set(x, 0.9, z);
+          scene.add(plant);
+        });
 
-    // Create chair
-    const createChair = (x: number, z: number, rotation: number = 0) => {
-      const chairGroup = new THREE.Group();
+      } else if (environment === 'cabin') {
+        // Cabin in the woods - warm and cozy
+        scene.background = new THREE.Color(0x87a96b);
 
-      // Seat
-      const seat = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 0.1, 0.5),
-        new THREE.MeshStandardMaterial({ color: 0x000080 })
-      );
-      seat.position.y = 0.5;
-      chairGroup.add(seat);
+        // Wood floor
+        const floor = new THREE.Mesh(
+          new THREE.PlaneGeometry(25, 25),
+          new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.9 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
 
-      // Backrest
-      const backrest = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 0.5, 0.1),
-        new THREE.MeshStandardMaterial({ color: 0x000080 })
-      );
-      backrest.position.set(0, 0.75, -0.2);
-      chairGroup.add(backrest);
+        // Log walls
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.8 });
 
-      // Legs
-      const legGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.5);
-      const legMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 });
+        [-12.5, 12.5].forEach((x) => {
+          const wall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 6, 25), wallMat);
+          wall.position.set(x, 3, 0);
+          scene.add(wall);
+        });
 
-      const legPositions = [
-        [-0.2, 0.25, -0.2],
-        [0.2, 0.25, -0.2],
-        [-0.2, 0.25, 0.2],
-        [0.2, 0.25, 0.2],
-      ];
+        [-12.5, 12.5].forEach((z) => {
+          const wall = new THREE.Mesh(new THREE.BoxGeometry(25, 6, 0.5), wallMat);
+          wall.position.set(0, 3, z);
+          scene.add(wall);
+        });
 
-      legPositions.forEach((pos) => {
-        const leg = new THREE.Mesh(legGeometry, legMaterial);
-        leg.position.set(pos[0], pos[1], pos[2]);
-        chairGroup.add(leg);
-      });
+        // Wooden ceiling
+        const ceiling = new THREE.Mesh(
+          new THREE.PlaneGeometry(25, 25),
+          new THREE.MeshStandardMaterial({ color: 0x654321 })
+        );
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.y = 6;
+        scene.add(ceiling);
 
-      chairGroup.position.set(x, 0, z);
-      chairGroup.rotation.y = rotation;
-      return chairGroup;
-    };
+        // Fireplace
+        const fireplace = new THREE.Mesh(
+          new THREE.BoxGeometry(3, 3, 1),
+          new THREE.MeshStandardMaterial({ color: 0x696969 })
+        );
+        fireplace.position.set(0, 1.5, -12);
+        scene.add(fireplace);
 
-    // Create bookshelf
-    const createBookshelf = (x: number, z: number) => {
-      const shelfGroup = new THREE.Group();
+        // Fire (glowing orange)
+        const fire = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 0.8, 0.5),
+          new THREE.MeshStandardMaterial({
+            color: 0xff4500,
+            emissive: 0xff4500,
+            emissiveIntensity: 1
+          })
+        );
+        fire.position.set(0, 0.8, -11.5);
+        scene.add(fire);
 
-      // Main structure
-      const structure = new THREE.Mesh(
-        new THREE.BoxGeometry(1.5, 2, 0.4),
-        new THREE.MeshStandardMaterial({ color: 0x654321 })
-      );
-      structure.position.y = 1;
-      shelfGroup.add(structure);
-
-      // Shelves
-      for (let i = 0; i < 4; i++) {
-        const shelf = new THREE.Mesh(
-          new THREE.BoxGeometry(1.4, 0.05, 0.38),
+        // Wooden desk
+        const desk = new THREE.Mesh(
+          new THREE.BoxGeometry(2.5, 0.15, 1.2),
           new THREE.MeshStandardMaterial({ color: 0x8b4513 })
         );
-        shelf.position.set(0, 0.2 + i * 0.5, 0);
-        shelfGroup.add(shelf);
-      }
+        desk.position.set(-8, 0.75, -5);
+        scene.add(desk);
 
-      shelfGroup.position.set(x, 0, z);
-      return shelfGroup;
+        // Rustic chair
+        const chair = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.6, 0.6),
+          new THREE.MeshStandardMaterial({ color: 0x654321 })
+        );
+        chair.position.set(-8, 0.5, -3.5);
+        scene.add(chair);
+
+        // Bookshelf
+        const shelf = new THREE.Mesh(
+          new THREE.BoxGeometry(2, 4, 0.4),
+          new THREE.MeshStandardMaterial({ color: 0x8b4513 })
+        );
+        shelf.position.set(10, 2, -10);
+        scene.add(shelf);
+
+        // Books on shelf
+        for (let i = 0; i < 3; i++) {
+          for (let j = 0; j < 5; j++) {
+            const book = new THREE.Mesh(
+              new THREE.BoxGeometry(0.15, 0.3, 0.2),
+              new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff })
+            );
+            book.position.set(9.8 + j * 0.3 - 0.6, 0.5 + i * 1.2, -10);
+            scene.add(book);
+          }
+        }
+
+        // Rug
+        const rug = new THREE.Mesh(
+          new THREE.PlaneGeometry(6, 4),
+          new THREE.MeshStandardMaterial({ color: 0x8b0000 })
+        );
+        rug.rotation.x = -Math.PI / 2;
+        rug.position.set(0, 0.01, 0);
+        scene.add(rug);
+
+        // Window with lake view
+        const window = new THREE.Mesh(
+          new THREE.PlaneGeometry(4, 2.5),
+          new THREE.MeshStandardMaterial({
+            color: 0x87ceeb,
+            transparent: true,
+            opacity: 0.7
+          })
+        );
+        window.position.set(0, 3, 12.4);
+        scene.add(window);
+
+      } else {
+        // Coffee shop - trendy and cozy
+        scene.background = new THREE.Color(0xf5deb3);
+
+        // Floor - hardwood
+        const floor = new THREE.Mesh(
+          new THREE.PlaneGeometry(30, 30),
+          new THREE.MeshStandardMaterial({ color: 0xdeb887, roughness: 0.8 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        // Brick walls
+        const brickWall = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9 });
+
+        const backWall = new THREE.Mesh(
+          new THREE.BoxGeometry(30, 8, 0.3),
+          brickWall
+        );
+        backWall.position.set(0, 4, -15);
+        scene.add(backWall);
+
+        [-15, 15].forEach((x) => {
+          const wall = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 8, 30),
+            brickWall
+          );
+          wall.position.set(x, 4, 0);
+          scene.add(wall);
+        });
+
+        // Counter
+        const counter = new THREE.Mesh(
+          new THREE.BoxGeometry(8, 1, 1.5),
+          new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.3 })
+        );
+        counter.position.set(-8, 0.5, -10);
+        scene.add(counter);
+
+        // Espresso machine
+        const machine = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 1, 0.8),
+          new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.8 })
+        );
+        machine.position.set(-10, 1.5, -10);
+        scene.add(machine);
+
+        // Tables
+        [[-5, 0], [5, 0], [0, 8]].forEach(([x, z]) => {
+          const tableTop = new THREE.Mesh(
+            new THREE.CylinderGeometry(1, 1, 0.05, 32),
+            new THREE.MeshStandardMaterial({ color: 0x654321 })
+          );
+          tableTop.position.set(x, 0.75, z);
+          scene.add(tableTop);
+
+          const tableLeg = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.1, 0.15, 0.75, 16),
+            new THREE.MeshStandardMaterial({ color: 0x3a3a3a })
+          );
+          tableLeg.position.set(x, 0.375, z);
+          scene.add(tableLeg);
+        });
+
+        // Chairs
+        [[-5, -1.5], [-5, 1.5], [5, -1.5], [5, 1.5], [-1.5, 8], [1.5, 8]].forEach(([x, z]) => {
+          const chairSeat = new THREE.Mesh(
+            new THREE.BoxGeometry(0.5, 0.1, 0.5),
+            new THREE.MeshStandardMaterial({ color: 0x654321 })
+          );
+          chairSeat.position.set(x, 0.5, z);
+          scene.add(chairSeat);
+
+          const chairBack = new THREE.Mesh(
+            new THREE.BoxGeometry(0.5, 0.6, 0.1),
+            new THREE.MeshStandardMaterial({ color: 0x654321 })
+          );
+          chairBack.position.set(x, 0.8, z - 0.2);
+          scene.add(chairBack);
+        });
+
+        // Hanging plants
+        [[8, -8], [-8, 8]].forEach(([x, z]) => {
+          const chain = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.02, 2, 8),
+            new THREE.MeshStandardMaterial({ color: 0x666666 })
+          );
+          chain.position.set(x, 6, z);
+          scene.add(chain);
+
+          const planter = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.3, 0.2, 0.4, 16),
+            new THREE.MeshStandardMaterial({ color: 0x8b4513 })
+          );
+          planter.position.set(x, 5, z);
+          scene.add(planter);
+
+          const leaves = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 8, 8),
+            new THREE.MeshStandardMaterial({ color: 0x228b22 })
+          );
+          leaves.position.set(x, 5.3, z);
+          scene.add(leaves);
+        });
+
+        // Chalkboard menu
+        const chalkboard = new THREE.Mesh(
+          new THREE.PlaneGeometry(4, 2),
+          new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
+        );
+        chalkboard.position.set(0, 4, -14.8);
+        scene.add(chalkboard);
+
+        // Pendant lights
+        [[-5, 0], [5, 0], [0, 8]].forEach(([x, z]) => {
+          const cord = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.01, 0.01, 2, 8),
+            new THREE.MeshStandardMaterial({ color: 0x333333 })
+          );
+          cord.position.set(x, 6.5, z);
+          scene.add(cord);
+
+          const bulb = new THREE.Mesh(
+            new THREE.SphereGeometry(0.2, 16, 16),
+            new THREE.MeshStandardMaterial({
+              color: 0xffd700,
+              emissive: 0xffaa00,
+              emissiveIntensity: 0.8
+            })
+          );
+          bulb.position.set(x, 5.5, z);
+          scene.add(bulb);
+        });
+      }
     };
 
-    // Add office furniture
-    scene.add(createDesk(-5, -5));
-    scene.add(createChair(-5, -3.5, Math.PI)); // Rotate 180° to face desk
-
-    scene.add(createDesk(5, -5));
-    scene.add(createChair(5, -3.5, Math.PI)); // Rotate 180° to face desk
-
-    scene.add(createDesk(-5, 5));
-    scene.add(createChair(-5, 6.5, Math.PI)); // Rotate 180° to face desk
-
-    scene.add(createBookshelf(8, -8));
-    scene.add(createBookshelf(8, 0));
-
-    // Add some decorative elements (pictures on wall)
-    const pictureGeometry = new THREE.PlaneGeometry(1, 0.7);
-    const pictureMaterial = new THREE.MeshStandardMaterial({ color: 0xff6347 });
-    const picture = new THREE.Mesh(pictureGeometry, pictureMaterial);
-    picture.position.set(0, 2.5, -9.9);
-    scene.add(picture);
+    buildEnvironment();
 
     // Movement variables
     const moveSpeed = 0.1;
@@ -724,7 +933,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       renderer.dispose();
     };
-  }, [avatarCustomization, officeId, currentUser]);
+  }, [avatarCustomization, officeId, currentUser, environment]);
 
   const handleSaveSettings = async (settings: AvatarCustomization) => {
     try {
@@ -898,6 +1107,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onClose={() => setShowSettings(false)}
         currentSettings={avatarCustomization}
         onSave={handleSaveSettings}
+        currentEnvironment={environment}
+        onEnvironmentChange={handleEnvironmentChange}
       />
 
       {/* Chat UI */}
