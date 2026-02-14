@@ -4,6 +4,10 @@ A 3D virtual office environment built with Next.js, TypeScript, Three.js, and We
 
 ## Features
 
+- **Google Authentication**: Secure login with Google OAuth via NextAuth.js
+- **Multiplayer Support**: See and interact with other users in real-time
+- **3D Avatars**: Each user is represented by a unique 3D avatar with their name
+- **Real-time Position Sync**: WebSocket-based position synchronization across clients
 - **3D Office Environment**: Complete office space with desks, chairs, bookshelves, and decorative elements
 - **WebXR Support**: Full VR support for immersive experiences with compatible headsets
 - **Desktop Navigation**: Keyboard and mouse controls for desktop browsing
@@ -35,20 +39,83 @@ The virtual office includes:
 
 ### Prerequisites
 - Node.js 18+ installed
+- PostgreSQL 12+ installed and running
 - A modern web browser (Chrome, Firefox, Edge)
 - For VR: A WebXR-compatible VR headset (Meta Quest, etc.)
 
 ### Installation
 
-```bash
-# Install dependencies
-npm install
+1. **Clone the repository and install dependencies**
 
-# Run the development server
+```bash
+npm install
+```
+
+2. **Set up Google OAuth credentials**
+
+   - Go to the [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select an existing one
+   - Enable the Google+ API
+   - Go to "Credentials" and create an OAuth 2.0 Client ID
+   - Add authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
+   - Copy the Client ID and Client Secret
+
+3. **Set up PostgreSQL database**
+
+Create a new database for the application:
+
+```bash
+# Connect to PostgreSQL
+psql -U postgres
+
+# Create database
+CREATE DATABASE officexr;
+
+# Exit psql
+\q
+```
+
+4. **Configure environment variables**
+
+Create a `.env.local` file in the root directory:
+
+```env
+# NextAuth
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-secret-key-here
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# Database
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_USER=postgres
+DATABASE_PASSWORD=your-postgres-password
+DATABASE_NAME=officexr
+```
+
+Generate a secure secret for `NEXTAUTH_SECRET`:
+```bash
+openssl rand -base64 32
+```
+
+5. **Initialize the database**
+
+Run the database initialization script to create tables:
+
+```bash
+npm run db:init
+```
+
+6. **Run the development server**
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser. You'll be prompted to sign in with Google.
 
 ### Building for Production
 
@@ -62,10 +129,14 @@ npm start
 
 ## Technology Stack
 
-- **Next.js 15**: React framework with App Router
+- **Next.js 16**: React framework with App Router
 - **TypeScript**: Type-safe development
 - **Three.js**: 3D graphics library
 - **WebXR**: Virtual reality browser API
+- **NextAuth.js**: Authentication for Next.js
+- **TypeORM**: ORM for TypeScript and JavaScript
+- **PostgreSQL**: Relational database for user data and sessions
+- **WebSocket (ws)**: Real-time bidirectional communication
 - **Tailwind CSS**: Utility-first CSS framework
 
 ## Browser Compatibility
@@ -87,11 +158,33 @@ npm start
 ```
 officexr/
 ├── app/
-│   ├── layout.tsx       # Root layout with metadata
-│   ├── page.tsx         # Main page component
-│   └── globals.css      # Global styles
+│   ├── api/
+│   │   └── auth/[...nextauth]/
+│   │       └── route.ts          # NextAuth API route
+│   ├── login/
+│   │   └── page.tsx              # Login page
+│   ├── layout.tsx                # Root layout with SessionProvider
+│   ├── page.tsx                  # Main page component
+│   └── globals.css               # Global styles
 ├── components/
-│   └── OfficeScene.tsx  # Three.js WebXR office scene
+│   ├── OfficeScene.tsx           # Three.js WebXR office scene
+│   ├── Avatar.tsx                # 3D avatar creation and management
+│   └── SessionProvider.tsx       # NextAuth session provider wrapper
+├── lib/
+│   ├── auth.ts                   # NextAuth configuration
+│   ├── db.ts                     # TypeORM database connection
+│   ├── typeorm-adapter.ts        # Custom TypeORM adapter for NextAuth
+│   └── entities/
+│       ├── User.ts               # User entity
+│       ├── Account.ts            # Account entity (OAuth)
+│       ├── Session.ts            # Session entity
+│       └── VerificationToken.ts  # Verification token entity
+├── scripts/
+│   └── init-db.ts                # Database initialization script
+├── types/
+│   └── next-auth.d.ts            # NextAuth type definitions
+├── server.js                     # Custom server with WebSocket support
+├── middleware.ts                 # Authentication middleware
 ├── package.json
 └── README.md
 ```
@@ -104,6 +197,22 @@ The main 3D scene logic is in `components/OfficeScene.tsx`, which handles:
 - 3D object creation (office furniture)
 - Navigation controls
 - Camera management
+- WebSocket client connection
+- Real-time avatar position updates
+- User join/leave event handling
+
+The WebSocket server (`server.js`) manages:
+- Real-time position synchronization
+- User connection state
+- Broadcasting position updates to all connected clients
+- Automatic reconnection handling
+
+The database layer uses TypeORM with PostgreSQL:
+- **Entities**: User, Account, Session, VerificationToken
+- **Custom Adapter**: TypeORM adapter for NextAuth.js
+- **Database Sessions**: Persistent authentication sessions
+- **Auto-sync**: Automatic schema synchronization in development
+- **Initialization**: `npm run db:init` creates all required tables
 
 ## Future Enhancements
 
