@@ -1163,6 +1163,33 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             type="text"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (chatInput.trim() === '') {
+                  // Hide chat if input is empty
+                  setChatVisible(false);
+                } else {
+                  // Send message
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(
+                      JSON.stringify({
+                        type: 'chat',
+                        message: chatInput.trim(),
+                      })
+                    );
+                    setChatInput('');
+                  }
+                }
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setChatVisible(false);
+                setChatInput('');
+              }
+            }}
             placeholder="Type a message... (Esc to close)"
             style={{
               width: '100%',
