@@ -57,6 +57,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [chatInput, setChatInput] = useState('');
   const chatInputRef = useRef<HTMLInputElement>(null);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const chatVisibleRef = useRef<boolean>(false);
   const keysRef = useRef<{ [key: string]: boolean }>({});
 
   // Environment settings
@@ -138,6 +139,24 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   useEffect(() => {
     if (chatVisible && chatInputRef.current) {
       chatInputRef.current.focus();
+    }
+  }, [chatVisible]);
+
+  // Sync chatVisible ref and clear navigation keys when chat opens
+  useEffect(() => {
+    chatVisibleRef.current = chatVisible;
+
+    // Clear all navigation keys when chat opens to stop movement
+    if (chatVisible) {
+      const keys = keysRef.current;
+      keys['w'] = false;
+      keys['a'] = false;
+      keys['s'] = false;
+      keys['d'] = false;
+      keys['arrowup'] = false;
+      keys['arrowdown'] = false;
+      keys['arrowleft'] = false;
+      keys['arrowright'] = false;
     }
   }, [chatVisible]);
 
@@ -568,11 +587,31 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Keyboard controls
     const handleKeyDown = (event: KeyboardEvent) => {
-      keys[event.key.toLowerCase()] = true;
+      const key = event.key.toLowerCase();
+
+      // Ignore navigation keys when chat is visible
+      if (chatVisibleRef.current) {
+        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+        if (navigationKeys.includes(key)) {
+          return;
+        }
+      }
+
+      keys[key] = true;
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      keys[event.key.toLowerCase()] = false;
+      const key = event.key.toLowerCase();
+
+      // Ignore navigation keys when chat is visible
+      if (chatVisibleRef.current) {
+        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+        if (navigationKeys.includes(key)) {
+          return;
+        }
+      }
+
+      keys[key] = false;
     };
 
     window.addEventListener('keydown', handleKeyDown);
