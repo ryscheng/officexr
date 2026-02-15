@@ -100,6 +100,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Don't handle Enter if settings panel is open
       if (showSettings) return;
 
+      // Don't handle Enter if the chat input is focused
+      if (event.target === chatInputRef.current) return;
+
       if (event.key === 'Enter') {
         event.preventDefault();
 
