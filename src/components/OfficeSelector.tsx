@@ -1,7 +1,8 @@
-'use client';
-
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth, signOut } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Office {
   id: string;
@@ -27,7 +28,8 @@ interface OfficeSelectorProps {
 }
 
 export default function OfficeSelector({ onSelectOffice }: OfficeSelectorProps) {
-  const { data: session } = useSession();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [offices, setOffices] = useState<Office[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -37,91 +39,154 @@ export default function OfficeSelector({ onSelectOffice }: OfficeSelectorProps) 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchOffices();
-    fetchInvitations();
-  }, []);
+    if (user) {
+      fetchOffices();
+      fetchInvitations();
+    }
+  }, [user]);
 
   const fetchOffices = async () => {
-    try {
-      const response = await fetch('/api/offices');
-      if (response.ok) {
-        const data = await response.json();
-        setOffices(data.offices);
-      }
-    } catch (error) {
+    const { data, error } = await supabase
+      .from('office_members')
+      .select('role, created_at, offices(id, name, description, created_at)')
+      .eq('user_id', user!.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
       console.error('Error fetching offices:', error);
+      return;
     }
+
+    const officeList: Office[] = (data || [])
+      .filter((row) => row.offices)
+      .map((row) => {
+        const office = row.offices as unknown as { id: string; name: string; description: string | null; created_at: string };
+        return {
+          id: office.id,
+          name: office.name,
+          description: office.description,
+          role: row.role,
+          createdAt: office.created_at,
+        };
+      });
+
+    setOffices(officeList);
   };
 
   const fetchInvitations = async () => {
-    try {
-      const response = await fetch('/api/invitations');
-      if (response.ok) {
-        const data = await response.json();
-        setInvitations(data.invitations);
-      }
-    } catch (error) {
+    if (!user?.email) return;
+
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('invitations')
+      .select(`
+        id, role, token, expires_at, created_at,
+        offices(name, description),
+        profiles!invitations_inviter_id_fkey(name)
+      `)
+      .eq('email', user.email)
+      .eq('status', 'pending')
+      .gt('expires_at', now);
+
+    if (error) {
       console.error('Error fetching invitations:', error);
+      return;
     }
+
+    const invitationList: Invitation[] = (data || []).map((row) => {
+      const office = row.offices as unknown as { name: string; description: string | null } | null;
+      const inviter = row.profiles as unknown as { name: string | null } | null;
+      return {
+        id: row.id,
+        officeName: office?.name || 'Unknown Office',
+        officeDescription: office?.description || null,
+        inviterName: inviter?.name || 'Someone',
+        role: row.role,
+        token: row.token,
+        expiresAt: row.expires_at,
+        createdAt: row.created_at,
+      };
+    });
+
+    setInvitations(invitationList);
   };
 
   const handleCreateOffice = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/offices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newOfficeName,
-          description: newOfficeDescription,
-        }),
+      const { data: office, error: officeError } = await supabase
+        .from('offices')
+        .insert({
+          name: newOfficeName.trim(),
+          description: newOfficeDescription.trim() || null,
+        })
+        .select()
+        .single();
+
+      if (officeError) throw officeError;
+
+      const { error: memberError } = await supabase.from('office_members').insert({
+        office_id: office.id,
+        user_id: user.id,
+        role: 'owner',
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setNewOfficeName('');
-        setNewOfficeDescription('');
-        setShowCreateForm(false);
-        await fetchOffices();
-        // Automatically enter the newly created office
-        onSelectOffice(data.office.id);
-      } else {
-        const data = await response.json();
-        setError(data.error || 'Failed to create office');
-      }
-    } catch (error) {
-      setError('An error occurred while creating the office');
+      if (memberError) throw memberError;
+
+      setNewOfficeName('');
+      setNewOfficeDescription('');
+      setShowCreateForm(false);
+      await fetchOffices();
+      onSelectOffice(office.id);
+    } catch (err) {
+      console.error('Error creating office:', err);
+      setError('Failed to create office');
     } finally {
       setLoading(false);
     }
   };
 
   const handleAcceptInvitation = async (token: string) => {
+    if (!user) return;
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/invitations/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
+      // Get the invitation
+      const { data: invitation, error: fetchError } = await supabase
+        .from('invitations')
+        .select('id, office_id, role')
+        .eq('token', token)
+        .eq('status', 'pending')
+        .single();
+
+      if (fetchError || !invitation) throw new Error('Invitation not found');
+
+      // Add user to office
+      const { error: memberError } = await supabase.from('office_members').insert({
+        office_id: invitation.office_id,
+        user_id: user.id,
+        role: invitation.role,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        await fetchOffices();
-        await fetchInvitations();
-        // Automatically enter the newly joined office
-        onSelectOffice(data.office.id);
-      } else {
-        const data = await response.json();
-        setError(data.error || 'Failed to accept invitation');
-      }
-    } catch (error) {
-      setError('An error occurred while accepting the invitation');
+      if (memberError) throw memberError;
+
+      // Mark invitation as accepted
+      await supabase
+        .from('invitations')
+        .update({ status: 'accepted' })
+        .eq('id', invitation.id);
+
+      await fetchOffices();
+      await fetchInvitations();
+      onSelectOffice(invitation.office_id);
+    } catch (err) {
+      console.error('Error accepting invitation:', err);
+      setError('Failed to accept invitation');
     } finally {
       setLoading(false);
     }
@@ -130,9 +195,17 @@ export default function OfficeSelector({ onSelectOffice }: OfficeSelectorProps) 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">OfficeXR</h1>
-          <p className="text-gray-600">Select or create your virtual office</p>
+        <div className="flex justify-between items-start mb-8">
+          <div className="text-center flex-1">
+            <h1 className="text-4xl font-bold text-gray-800 mb-2">OfficeXR</h1>
+            <p className="text-gray-600">Select or create your virtual office</p>
+          </div>
+          <button
+            onClick={() => signOut().then(() => navigate('/login'))}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            Sign out
+          </button>
         </div>
 
         {error && (
@@ -178,7 +251,7 @@ export default function OfficeSelector({ onSelectOffice }: OfficeSelectorProps) 
           <h2 className="text-xl font-semibold text-gray-800 mb-3">Your Offices</h2>
           {offices.length === 0 ? (
             <p className="text-gray-600 text-center py-4">
-              You haven't joined any offices yet. Create one to get started!
+              You haven&apos;t joined any offices yet. Create one to get started!
             </p>
           ) : (
             <div className="space-y-2">

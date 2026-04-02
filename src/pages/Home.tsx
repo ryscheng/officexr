@@ -1,16 +1,10 @@
-'use client';
-
 import { useState } from 'react';
-import { useSession } from 'next-auth/react';
-import dynamic from 'next/dynamic';
+import { useAuth } from '@/hooks/useAuth';
 import OfficeSelector from '@/components/OfficeSelector';
-
-const OfficeScene = dynamic(() => import('@/components/OfficeScene'), {
-  ssr: false,
-});
+import OfficeScene from '@/components/OfficeScene';
 
 export default function Home() {
-  const { data: session } = useSession();
+  const { user } = useAuth();
   const [selectedOfficeId, setSelectedOfficeId] = useState<string | null>('global');
   const [showOfficeSelector, setShowOfficeSelector] = useState(false);
 
@@ -24,16 +18,14 @@ export default function Home() {
   };
 
   const handleLeaveOffice = () => {
-    if (session) {
-      // Logged in users go back to office selector
+    if (user) {
       setShowOfficeSelector(true);
     } else {
-      // Anonymous users go back to global office
       setSelectedOfficeId('global');
     }
   };
 
-  if (showOfficeSelector && session) {
+  if (showOfficeSelector && user) {
     return <OfficeSelector onSelectOffice={handleSelectOffice} />;
   }
 
@@ -41,7 +33,7 @@ export default function Home() {
     <OfficeScene
       officeId={selectedOfficeId || 'global'}
       onLeave={handleLeaveOffice}
-      onShowOfficeSelector={session ? handleShowOfficeSelector : undefined}
+      onShowOfficeSelector={user ? handleShowOfficeSelector : undefined}
     />
   );
 }
