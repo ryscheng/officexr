@@ -2,11 +2,30 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { JitsiMeeting } from '@jitsi/react-sdk';
 import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 import SettingsPanel from './SettingsPanel';
 import { AvatarCustomization } from '@/types/avatar';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut } from '@/hooks/useAuth';
+
+const PROXIMITY_RADIUS = 3; // Three.js units — spheres overlap when distance < PROXIMITY_RADIUS * 2
+
+type PresenceEntry = AvatarData & { jitsiRoom?: string | null };
+
+function createBubbleSphere(scene: THREE.Scene): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(PROXIMITY_RADIUS, 24, 24);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x4499ff,
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const sphere = new THREE.Mesh(geo, mat);
+  scene.add(sphere);
+  return sphere;
+}
 
 interface OfficeSceneProps {
   officeId: string;
@@ -36,7 +55,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
+  const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
+  const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
+  const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
+  const nearbyUserIdsRef = useRef<Set<string>>(new Set());
+  const jitsiRoomRef = useRef<string | null>(null);
+  const myPresenceRef = useRef<PresenceEntry | null>(null);
   const [userCount, setUserCount] = useState(0);
+  const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
   const lastPositionUpdate = useRef<number>(0);
   const [showSettings, setShowSettings] = useState(false);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
@@ -537,6 +563,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     buildEnvironment();
 
+    // Local user bubble sphere
+    const localSphere = createBubbleSphere(scene);
+    localSphere.position.set(camera.position.x, camera.position.y, camera.position.z);
+    localBubbleSphereRef.current = localSphere;
+
     // Movement
     const moveSpeed = 0.1;
     const keys = keysRef.current;
@@ -648,24 +679,31 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Presence: sync existing users
     channel.on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState<AvatarData>();
+      const state = channel.presenceState<PresenceEntry>();
       const presentIds = new Set<string>();
 
       Object.values(state).forEach((presences) => {
         presences.forEach((presence) => {
           presentIds.add(presence.id);
+          presenceDataRef.current.set(presence.id, presence);
           if (presence.id !== currentUser.id && !avatarsRef.current.has(presence.id)) {
             const avatar = createAvatar(scene, presence);
             avatarsRef.current.set(presence.id, avatar);
+            const sphere = createBubbleSphere(scene);
+            sphere.position.copy(avatar.position);
+            bubbleSpheresRef.current.set(presence.id, sphere);
           }
         });
       });
 
-      // Remove avatars for users who left
+      // Remove avatars and spheres for users who left
       avatarsRef.current.forEach((_avatar, id) => {
         if (!presentIds.has(id)) {
           scene.remove(avatarsRef.current.get(id)!);
           avatarsRef.current.delete(id);
+          const sphere = bubbleSpheresRef.current.get(id);
+          if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
+          presenceDataRef.current.delete(id);
         }
       });
 
@@ -675,10 +713,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Presence: user joined
     channel.on('presence', { event: 'join' }, ({ newPresences }) => {
       newPresences.forEach((presence) => {
-        const p = presence as unknown as AvatarData;
+        const p = presence as unknown as PresenceEntry;
+        presenceDataRef.current.set(p.id, p);
         if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
           const avatar = createAvatar(scene, p);
           avatarsRef.current.set(p.id, avatar);
+          const sphere = createBubbleSphere(scene);
+          sphere.position.copy(avatar.position);
+          bubbleSpheresRef.current.set(p.id, sphere);
           setUserCount((prev) => prev + 1);
         }
       });
@@ -687,11 +729,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Presence: user left
     channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
       leftPresences.forEach((presence) => {
-        const p = presence as unknown as AvatarData;
+        const p = presence as unknown as PresenceEntry;
         const avatar = avatarsRef.current.get(p.id);
         if (avatar) {
           scene.remove(avatar);
           avatarsRef.current.delete(p.id);
+          const sphere = bubbleSpheresRef.current.get(p.id);
+          if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
+          presenceDataRef.current.delete(p.id);
           setUserCount((prev) => Math.max(0, prev - 1));
         }
       });
@@ -735,16 +780,53 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        await channel.track({
+        const presence: PresenceEntry = {
           id: currentUser.id,
-          name: currentUser.name,
+          name: currentUser.name || 'User',
           image: user?.image || null,
           position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
           rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
           customization: avatarCustomization,
-        });
+          jitsiRoom: null,
+        };
+        myPresenceRef.current = presence;
+        await channel.track(presence);
       }
     });
+
+    // Proximity-based Jitsi room coordination
+    const handleProximityChange = (nearbyIds: Set<string>) => {
+      if (nearbyIds.size === 0) {
+        if (jitsiRoomRef.current !== null) {
+          jitsiRoomRef.current = null;
+          setJitsiRoom(null);
+          if (myPresenceRef.current) {
+            const updated = { ...myPresenceRef.current, jitsiRoom: null };
+            myPresenceRef.current = updated;
+            channelRef.current?.track(updated);
+          }
+        }
+        return;
+      }
+
+      // Check if any nearby user already has a Jitsi room
+      let existingRoom: string | null = null;
+      nearbyIds.forEach(uid => {
+        const pd = presenceDataRef.current.get(uid);
+        if (pd?.jitsiRoom) existingRoom = pd.jitsiRoom;
+      });
+
+      const roomToJoin = existingRoom || `officexr-${Math.random().toString(36).substr(2, 8)}`;
+      if (roomToJoin !== jitsiRoomRef.current) {
+        jitsiRoomRef.current = roomToJoin;
+        setJitsiRoom(roomToJoin);
+        if (myPresenceRef.current) {
+          const updated = { ...myPresenceRef.current, jitsiRoom: roomToJoin };
+          myPresenceRef.current = updated;
+          channelRef.current?.track(updated);
+        }
+      }
+    };
 
     // Animation loop
     const animate = () => {
@@ -783,6 +865,47 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           },
         });
         lastPositionUpdate.current = now;
+      }
+
+      // Update local bubble sphere position
+      if (localBubbleSphereRef.current) {
+        localBubbleSphereRef.current.position.set(
+          camera.position.x, camera.position.y, camera.position.z
+        );
+      }
+
+      // Update remote bubble sphere positions and detect proximity
+      const newNearby = new Set<string>();
+      bubbleSpheresRef.current.forEach((sphere, uid) => {
+        const avatar = avatarsRef.current.get(uid);
+        if (avatar) {
+          sphere.position.copy(avatar.position);
+          // Bubble overlap when centers are within PROXIMITY_RADIUS * 2
+          if (camera.position.distanceTo(avatar.position) < PROXIMITY_RADIUS * 2) {
+            newNearby.add(uid);
+          }
+        }
+      });
+
+      // Update sphere colors: green when in same room, blue otherwise
+      const inRoom = jitsiRoomRef.current !== null;
+      const activeMat = inRoom ? 0x44ff99 : 0x4499ff;
+      bubbleSpheresRef.current.forEach((sphere) => {
+        (sphere.material as THREE.MeshStandardMaterial).color.setHex(activeMat);
+      });
+      if (localBubbleSphereRef.current) {
+        (localBubbleSphereRef.current.material as THREE.MeshStandardMaterial).color.setHex(activeMat);
+      }
+
+      // Fire proximity change handler only when the set changes
+      const prevNearby = nearbyUserIdsRef.current;
+      const setChanged =
+        newNearby.size !== prevNearby.size ||
+        [...newNearby].some(id => !prevNearby.has(id)) ||
+        [...prevNearby].some(id => !newNearby.has(id));
+      if (setChanged) {
+        nearbyUserIdsRef.current = newNearby;
+        handleProximityChange(newNearby);
       }
 
       renderer.render(scene, camera);
@@ -827,6 +950,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       channel.unsubscribe();
       channelRef.current = null;
+
+      if (localBubbleSphereRef.current) {
+        scene.remove(localBubbleSphereRef.current);
+        localBubbleSphereRef.current = null;
+      }
+      bubbleSpheresRef.current.clear();
+      presenceDataRef.current.clear();
+      nearbyUserIdsRef.current = new Set();
 
       if (vrButton?.parentNode) {
         vrButton.parentNode.removeChild(vrButton);
@@ -874,7 +1005,56 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys - Move</p>
         <p style={{ margin: '5px 0' }}>Mouse/Touch Drag - Look Around</p>
         <p style={{ margin: '5px 0' }}>Enter - Chat</p>
+        <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
+          Walk near others to voice chat
+        </p>
       </div>
+
+      {/* Voice proximity indicator + hidden Jitsi iframe for audio */}
+      {jitsiRoom && (
+        <div
+          style={{
+            position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
+            background: 'rgba(0, 180, 100, 0.9)', borderRadius: '8px',
+            padding: '8px 16px', color: 'white', zIndex: 200,
+            display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'monospace',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+          }}
+        >
+          <span style={{ fontSize: '18px' }}>🎙</span>
+          <span style={{ fontSize: '13px' }}>
+            Voice chat active · {nearbyUserIdsRef.current.size + 1} people in range
+          </span>
+          {/* Jitsi iframe renders audio; hidden visually */}
+          <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, overflow: 'hidden' }}>
+            <JitsiMeeting
+              domain="meet.jit.si"
+              roomName={jitsiRoom}
+              configOverwrite={{
+                startWithAudioMuted: false,
+                startWithVideoMuted: true,
+                prejoinPageEnabled: false,
+                disableModeratorIndicator: true,
+                enableNoisyMicDetection: false,
+                disableDeepLinking: true,
+              }}
+              interfaceConfigOverwrite={{
+                TOOLBAR_BUTTONS: [],
+                SHOW_JITSI_WATERMARK: false,
+                SHOW_WATERMARK_FOR_GUESTS: false,
+              }}
+              userInfo={{
+                displayName: currentUser?.name || 'User',
+                email: user?.email || '',
+              }}
+              getIFrameRef={(iframeRef) => {
+                iframeRef.style.width = '1px';
+                iframeRef.style.height = '1px';
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <div
         style={{
