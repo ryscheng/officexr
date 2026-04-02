@@ -708,6 +708,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       });
 
       setUserCount(presentIds.size);
+
+      // When a nearby user's jitsiRoom changes (e.g. their cluster merged with
+      // another), re-evaluate our own room assignment so all clusters converge
+      // on the same room.
+      if (nearbyUserIdsRef.current.size > 0) {
+        handleProximityChange(nearbyUserIdsRef.current);
+      }
     });
 
     // Presence: user joined
