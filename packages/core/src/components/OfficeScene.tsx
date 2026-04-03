@@ -1117,17 +1117,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           Office: {officeId === 'global' ? 'Global' : 'Private'}
         </p>
 
-        <button
-          onClick={() => setShowSettings(true)}
-          style={{
-            marginTop: '10px', padding: '8px 16px',
-            background: '#3498db', color: 'white',
-            border: 'none', borderRadius: '4px', cursor: 'pointer',
-            fontSize: '14px', width: '100%',
-          }}
-        >
-          ⚙️ Settings
-        </button>
+        {user && (
+          <button
+            onClick={() => setShowSettings(true)}
+            style={{
+              marginTop: '10px', padding: '8px 16px',
+              background: '#3498db', color: 'white',
+              border: 'none', borderRadius: '4px', cursor: 'pointer',
+              fontSize: '14px', width: '100%',
+            }}
+          >
+            ⚙️ Settings
+          </button>
+        )}
 
         {user ? (
           <>
