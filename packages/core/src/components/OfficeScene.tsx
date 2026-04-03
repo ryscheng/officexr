@@ -598,6 +598,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Mouse control mode (desktop) — click to lock pointer, Escape to release.
     // When WebXR is presenting, the XR session drives head orientation; mouse lock is inactive.
+    //
+    // Track pitch and yaw independently and reconstruct the rotation each frame
+    // using 'YXZ' order so roll is always zero (standard FPS camera technique).
+    let cameraPitch = 0; // radians — vertical look (X axis)
+    let cameraYaw = 0;   // radians — horizontal look (Y axis)
+    camera.rotation.order = 'YXZ';
+
     const handleCanvasClick = () => {
       if (!renderer.xr.isPresenting) {
         renderer.domElement.requestPointerLock();
@@ -606,9 +613,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     const handleMouseMove = (event: MouseEvent) => {
       if (document.pointerLockElement === renderer.domElement && !renderer.xr.isPresenting) {
-        camera.rotation.y -= (event.movementX || 0) * 0.002;
-        camera.rotation.x -= (event.movementY || 0) * 0.002;
-        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+        cameraYaw   -= (event.movementX || 0) * 0.002;
+        cameraPitch -= (event.movementY || 0) * 0.002;
+        cameraPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraPitch));
+        camera.rotation.set(cameraPitch, cameraYaw, 0, 'YXZ');
       }
     };
 
