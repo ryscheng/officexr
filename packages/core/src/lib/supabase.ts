@@ -1,6 +1,5 @@
-// Platform-agnostic Database schema type shared by all platform packages.
-// Each platform creates its own Supabase client singleton.
-//
+import { createClient } from '@supabase/supabase-js';
+
 // NOTE: @supabase/postgrest-js ≥ v1.17 (supabase-js ≥ v2.50) requires every table to
 // have a `Relationships` field and the schema to have `Views` and `Functions`.
 export type Database = {
@@ -20,7 +19,18 @@ export type Database = {
           avatar_model_url: string | null;
           created_at: string;
         };
-        Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'created_at'>;
+        Insert: {
+          id: string;
+          name?: string | null;
+          email?: string | null;
+          avatar_url?: string | null;
+          avatar_body_color?: string;
+          avatar_skin_color?: string;
+          avatar_style?: string;
+          avatar_accessories?: string[];
+          avatar_preset_id?: string | null;
+          avatar_model_url?: string | null;
+        };
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
         Relationships: [];
       };
@@ -81,3 +91,12 @@ export type Database = {
     Functions: Record<string, never>;
   };
 };
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY environment variables');
+}
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);

@@ -18,11 +18,9 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "@officexr/core": ["./packages/core/src/index.ts"],
-      "@officexr/core/*": ["./packages/core/src/*"]
+      "@/*": ["./packages/core/src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["packages/core/src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
