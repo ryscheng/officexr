@@ -89,6 +89,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const keysRef = useRef<{ [key: string]: boolean }>({});
   const [mouseLockActive, setMouseLockActive] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [createRoomName, setCreateRoomName] = useState('');
+  const [createRoomLinkAccess, setCreateRoomLinkAccess] = useState(true);
+  const [createRoomLoading, setCreateRoomLoading] = useState(false);
+  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
 
   // Environment settings
   type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
@@ -1024,6 +1029,46 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     });
   };
 
+  function validateSlug(value: string): string | null {
+    if (!value) return 'Room name is required.';
+    if (value.length < 2) return 'Must be at least 2 characters.';
+    if (value.length > 50) return 'Must be 50 characters or fewer.';
+    if (!/^[a-z0-9-]+$/.test(value)) return 'Only lowercase letters, numbers, and hyphens allowed.';
+    if (value.startsWith('-') || value.endsWith('-')) return 'Cannot start or end with a hyphen.';
+    if (/--/.test(value)) return 'No consecutive hyphens allowed.';
+    return null;
+  }
+
+  const handleCreateRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    const slugError = validateSlug(createRoomName);
+    if (slugError) { setCreateRoomError(slugError); return; }
+    setCreateRoomLoading(true);
+    setCreateRoomError(null);
+    try {
+      const { data: office, error: officeError } = await supabase
+        .from('offices')
+        .insert({ name: createRoomName, link_access: createRoomLinkAccess })
+        .select()
+        .single();
+      if (officeError) throw officeError;
+      await supabase.from('office_members').insert({
+        office_id: office.id,
+        user_id: user.id,
+        role: 'owner',
+      });
+      setShowCreateRoom(false);
+      setCreateRoomName('');
+      setCreateRoomLinkAccess(true);
+      onShowOfficeSelector?.();
+    } catch {
+      setCreateRoomError('Failed to create room. Please try again.');
+    } finally {
+      setCreateRoomLoading(false);
+    }
+  };
+
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100vh' }}>
       {/* Green outline when mouse look mode is active */}
@@ -1118,17 +1163,30 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </p>
 
         {user && (
-          <button
-            onClick={() => setShowSettings(true)}
-            style={{
-              marginTop: '10px', padding: '8px 16px',
-              background: '#3498db', color: 'white',
-              border: 'none', borderRadius: '4px', cursor: 'pointer',
-              fontSize: '14px', width: '100%',
-            }}
-          >
-            ⚙️ Settings
-          </button>
+          <>
+            <button
+              onClick={() => setShowCreateRoom(true)}
+              style={{
+                marginTop: '10px', padding: '8px 16px',
+                background: '#7c3aed', color: 'white',
+                border: 'none', borderRadius: '4px', cursor: 'pointer',
+                fontSize: '14px', width: '100%',
+              }}
+            >
+              + New Room
+            </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              style={{
+                marginTop: '8px', padding: '8px 16px',
+                background: '#3498db', color: 'white',
+                border: 'none', borderRadius: '4px', cursor: 'pointer',
+                fontSize: '14px', width: '100%',
+              }}
+            >
+              ⚙️ Settings
+            </button>
+          </>
         )}
 
         {user ? (
@@ -1305,6 +1363,114 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             <p style={{ margin: '20px 0 0 0', fontSize: '13px', color: '#9ca3af' }}>
               Or continue exploring as a guest — no sign-in required
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Create room dialog */}
+      {showCreateRoom && (
+        <div
+          onClick={() => { setShowCreateRoom(false); setCreateRoomError(null); setCreateRoomName(''); }}
+          style={{
+            position: 'absolute', inset: 0, zIndex: 500,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#1e1e2e', borderRadius: '12px',
+              padding: '32px', width: '380px', maxWidth: '90vw',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '700', color: 'white' }}>
+              Create a new room
+            </h2>
+            <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>
+              The room name becomes part of its identity — use a short, descriptive slug.
+            </p>
+
+            <form onSubmit={handleCreateRoom}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.6)', marginBottom: '6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Room name (slug)
+              </label>
+              <input
+                value={createRoomName}
+                onChange={e => {
+                  const val = e.target.value.toLowerCase().replace(/\s+/g, '-');
+                  setCreateRoomName(val);
+                  setCreateRoomError(validateSlug(val));
+                }}
+                placeholder="my-team-room"
+                autoFocus
+                spellCheck={false}
+                style={{
+                  width: '100%', padding: '10px 12px',
+                  background: 'rgba(255,255,255,0.07)',
+                  border: `1px solid ${createRoomError && createRoomName ? '#ef4444' : 'rgba(255,255,255,0.15)'}`,
+                  borderRadius: '8px', color: 'white', fontSize: '15px',
+                  fontFamily: 'monospace', boxSizing: 'border-box', outline: 'none',
+                }}
+              />
+              <div style={{ minHeight: '20px', marginTop: '6px' }}>
+                {createRoomError && createRoomName && (
+                  <p style={{ margin: 0, fontSize: '12px', color: '#f87171' }}>{createRoomError}</p>
+                )}
+                {!createRoomError && createRoomName && (
+                  <p style={{ margin: 0, fontSize: '12px', color: '#4ade80' }}>✓ Valid room name</p>
+                )}
+              </div>
+
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                marginTop: '16px', cursor: 'pointer', fontSize: '14px', color: 'rgba(255,255,255,0.7)',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={createRoomLinkAccess}
+                  onChange={e => setCreateRoomLinkAccess(e.target.checked)}
+                  style={{ width: '15px', height: '15px' }}
+                />
+                Anyone with the link can join
+              </label>
+
+              {createRoomError && !createRoomName && (
+                <p style={{ margin: '12px 0 0 0', fontSize: '12px', color: '#f87171' }}>{createRoomError}</p>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '24px' }}>
+                <button
+                  type="submit"
+                  disabled={createRoomLoading || !!validateSlug(createRoomName)}
+                  style={{
+                    flex: 1, padding: '10px',
+                    background: createRoomLoading || validateSlug(createRoomName) ? '#4b3f7c' : '#7c3aed',
+                    color: 'white', border: 'none', borderRadius: '8px',
+                    cursor: createRoomLoading || validateSlug(createRoomName) ? 'not-allowed' : 'pointer',
+                    fontSize: '14px', fontWeight: '600',
+                    opacity: createRoomLoading || validateSlug(createRoomName) ? 0.6 : 1,
+                  }}
+                >
+                  {createRoomLoading ? 'Creating…' : 'Create Room'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateRoom(false); setCreateRoomError(null); setCreateRoomName(''); }}
+                  style={{
+                    flex: 1, padding: '10px',
+                    background: 'rgba(255,255,255,0.07)',
+                    color: 'rgba(255,255,255,0.7)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
