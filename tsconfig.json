@@ -18,7 +18,9 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@officexr/core": ["./packages/core/src/index.ts"],
+      "@officexr/core/*": ["./packages/core/src/*"]
     }
   },
   "include": ["src"],

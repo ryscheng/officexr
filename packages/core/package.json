@@ -1,0 +1,11 @@
+{
+  "name": "@officexr/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types/avatar": "./src/types/avatar.ts",
+    "./lib/supabase": "./src/lib/supabase.ts"
+  }
+}

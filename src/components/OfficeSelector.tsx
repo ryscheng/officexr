@@ -57,10 +57,12 @@ export default function OfficeSelector({ onSelectOffice }: OfficeSelectorProps) 
       return;
     }
 
-    const officeList: Office[] = (data || [])
+    // Cast to any[] because supabase-js v2.50+ returns `never` for joined
+    // queries when Relationships are not explicitly defined in the Database type.
+    const officeList: Office[] = ((data || []) as any[])
       .filter((row) => row.offices)
       .map((row) => {
-        const office = row.offices as unknown as { id: string; name: string; description: string | null; created_at: string };
+        const office = row.offices as { id: string; name: string; description: string | null; created_at: string };
         return {
           id: office.id,
           name: office.name,
@@ -93,9 +95,9 @@ export default function OfficeSelector({ onSelectOffice }: OfficeSelectorProps) 
       return;
     }
 
-    const invitationList: Invitation[] = (data || []).map((row) => {
-      const office = row.offices as unknown as { name: string; description: string | null } | null;
-      const inviter = row.profiles as unknown as { name: string | null } | null;
+    const invitationList: Invitation[] = ((data || []) as any[]).map((row) => {
+      const office = row.offices as { name: string; description: string | null } | null;
+      const inviter = row.profiles as { name: string | null } | null;
       return {
         id: row.id,
         officeName: office?.name || 'Unknown Office',
