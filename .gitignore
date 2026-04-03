@@ -19,6 +19,11 @@
 
 # production
 /build
+/dist
+
+# vite tsc emit
+vite.config.js
+vite.config.d.ts
 
 # misc
 .DS_Store
