@@ -44,7 +44,7 @@ officexr/
 │   │   ├── tsconfig.json
 │   │   ├── tsconfig.node.json
 │   │   ├── public/             # Static assets
-│   │   └── .env.example        # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+│   │   └── .env.example        # VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY
 │   ├── desktop/                # @officexr/desktop — Electron wrapper
 │   │   └── src/
 │   │       ├── main.ts         # Electron main process
@@ -163,7 +163,7 @@ pnpm --filter @officexr/mobile run ios
 
 ```
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
 Copy from `packages/web/.env.example`. Vite loads `.env` from `packages/web/` when
@@ -173,7 +173,7 @@ Copy from `packages/web/.env.example`. Vite loads `.env` from `packages/web/` wh
 
 ```
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 EXPO_PUBLIC_WEB_APP_URL=https://your-officexr-deployment.vercel.app
 ```
 
