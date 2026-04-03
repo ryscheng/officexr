@@ -3,27 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "packages/*"
-  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint",
     "build:web": "tsc -b && vite build",
-    "build:desktop": "npm run build:web && npm run build --workspace=packages/desktop",
-    "dist:desktop:mac": "npm run build:web && npm run dist:mac --workspace=packages/desktop",
-    "dist:desktop:win": "npm run build:web && npm run dist:win --workspace=packages/desktop",
-    "dist:desktop:linux": "npm run build:web && npm run dist:linux --workspace=packages/desktop",
-    "dist:desktop:all": "npm run build:web && npm run dist:all --workspace=packages/desktop",
-    "dev:mobile": "npm run start --workspace=packages/mobile",
-    "build:mobile:ios": "npm run build:ios --workspace=packages/mobile",
-    "build:mobile:android": "npm run build:android --workspace=packages/mobile"
+    "build:desktop": "pnpm run build:web && pnpm --filter @officexr/desktop run build",
+    "dist:desktop:mac": "pnpm run build:web && pnpm --filter @officexr/desktop run dist:mac",
+    "dist:desktop:win": "pnpm run build:web && pnpm --filter @officexr/desktop run dist:win",
+    "dist:desktop:linux": "pnpm run build:web && pnpm --filter @officexr/desktop run dist:linux",
+    "dist:desktop:all": "pnpm run build:web && pnpm --filter @officexr/desktop run dist:all",
+    "dev:mobile": "pnpm --filter @officexr/mobile run start",
+    "build:mobile:ios": "pnpm --filter @officexr/mobile run build:ios",
+    "build:mobile:android": "pnpm --filter @officexr/mobile run build:android"
   },
   "dependencies": {
     "@jitsi/react-sdk": "^1.4.4",
-    "@officexr/core": "*",
+    "@officexr/core": "workspace:*",
     "@supabase/supabase-js": "^2.49.4",
     "@types/three": "^0.182.0",
     "react": "19.2.3",

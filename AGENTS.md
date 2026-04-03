@@ -3,7 +3,10 @@
 ## Project Overview
 
 OfficeXR is a 3D virtual office platform with real-time presence, spatial audio, and avatar customization.
-The codebase is organized as an **npm workspaces monorepo** targeting six platform builds:
+The codebase is organized as a **pnpm workspaces monorepo** targeting six platform builds:
+
+> **Package manager: pnpm.** Always use `pnpm` — do not use `npm` or `yarn`.
+> Workspace config lives in `pnpm-workspace.yaml`; cross-package deps use the `workspace:*` protocol.
 
 | Build | Target | Toolchain |
 |-------|--------|-----------|
@@ -80,9 +83,9 @@ while adding native auth (expo-auth-session) and native UI (React Navigation + S
 > unless a `:<platform>` suffix is specified.
 
 ```bash
-npm run dev          # Start web dev server (Vite, http://localhost:5173)
-npm run build        # Build web (outputs to dist/)
-npm run preview      # Preview the production web build
+pnpm dev          # Start web dev server (Vite, http://localhost:5173)
+pnpm build        # Build web (outputs to dist/)
+pnpm preview      # Preview the production web build
 ```
 
 ---
@@ -92,7 +95,7 @@ npm run preview      # Preview the production web build
 ### Web (default)
 
 ```bash
-npm run build          # or: npm run build:web
+pnpm build          # or: pnpm build:web
 ```
 
 Output: `dist/`
@@ -103,17 +106,17 @@ The desktop build wraps the web build. Always run `build:web` first or use the c
 scripts below:
 
 ```bash
-npm run dist:desktop:mac    # macOS .dmg + .zip (universal)
-npm run dist:desktop:win    # Windows .exe installer (x64 + arm64)
-npm run dist:desktop:linux  # Linux .AppImage, .deb, .rpm (x64)
-npm run dist:desktop:all    # All three platforms
+pnpm dist:desktop:mac    # macOS .dmg + .zip (universal)
+pnpm dist:desktop:win    # Windows .exe installer (x64 + arm64)
+pnpm dist:desktop:linux  # Linux .AppImage, .deb, .rpm (x64)
+pnpm dist:desktop:all    # All three platforms
 ```
 
 Desktop development (loads from Vite dev server):
 ```bash
-npm run dev                                  # terminal 1 — Vite
-npm run build --workspace=packages/desktop   # compile main.ts
-npx electron packages/desktop               # terminal 2 — Electron
+pnpm dev                                           # terminal 1 — Vite
+pnpm --filter @officexr/desktop run build          # compile main.ts
+pnpm --filter @officexr/desktop exec electron .    # terminal 2 — Electron
 ```
 
 ### Mobile (React Native / Expo)
@@ -121,15 +124,15 @@ npx electron packages/desktop               # terminal 2 — Electron
 Prerequisites: [EAS CLI](https://docs.expo.dev/eas/) installed and logged in.
 
 ```bash
-npm run dev:mobile             # Start Expo dev server (scan QR with Expo Go)
-npm run build:mobile:ios       # EAS cloud build → .ipa
-npm run build:mobile:android   # EAS cloud build → .aab / .apk
+pnpm dev:mobile             # Start Expo dev server (scan QR with Expo Go)
+pnpm build:mobile:ios       # EAS cloud build → .ipa
+pnpm build:mobile:android   # EAS cloud build → .aab / .apk
 ```
 
 Local device runs (requires local Android/iOS toolchain):
 ```bash
-npm run android --workspace=packages/mobile
-npm run ios     --workspace=packages/mobile
+pnpm --filter @officexr/mobile run android
+pnpm --filter @officexr/mobile run ios
 ```
 
 ---
