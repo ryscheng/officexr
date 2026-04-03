@@ -1,12 +1,16 @@
-'use client';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth, signInWithGoogle } from '@/hooks/useAuth';
 
-import { signIn } from 'next-auth/react';
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+export default function Login() {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
 
-function LoginContent() {
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/';
+  useEffect(() => {
+    if (!loading && user) {
+      navigate('/', { replace: true });
+    }
+  }, [user, loading, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600">
@@ -18,7 +22,7 @@ function LoginContent() {
 
         <div className="space-y-4">
           <button
-            onClick={() => signIn('google', { callbackUrl })}
+            onClick={() => signInWithGoogle()}
             className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 shadow-sm"
           >
             <svg className="w-6 h-6" viewBox="0 0 24 24">
@@ -48,13 +52,5 @@ function LoginContent() {
         </div>
       </div>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-      <LoginContent />
-    </Suspense>
   );
 }
