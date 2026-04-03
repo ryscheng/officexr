@@ -1,0 +1,29 @@
+{
+  "name": "@officexr/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types/avatar": "./src/types/avatar.ts",
+    "./lib/supabase": "./src/lib/supabase.ts"
+  },
+  "dependencies": {
+    "@jitsi/react-sdk": "^1.4.4",
+    "@supabase/supabase-js": "^2.49.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-router-dom": "^7.5.1",
+    "three": "^0.182.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/three": "^0.182.0",
+    "@types/uuid": "^10.0.0",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vite": "^6.3.2"
+  }
+}

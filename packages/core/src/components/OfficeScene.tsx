@@ -112,7 +112,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     supabase
       .from('profiles')
-      .select('avatar_body_color, avatar_skin_color, avatar_style, avatar_accessories')
+      .select('avatar_body_color, avatar_skin_color, avatar_style, avatar_accessories, avatar_preset_id, avatar_model_url')
       .eq('id', user.id)
       .single()
       .then(({ data }) => {
@@ -122,6 +122,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             skinColor: data.avatar_skin_color || '#ffdbac',
             style: (data.avatar_style as AvatarCustomization['style']) || 'default',
             accessories: data.avatar_accessories || [],
+            presetId: data.avatar_preset_id || null,
+            modelUrl: data.avatar_model_url || null,
           });
         }
       });
@@ -985,6 +987,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       avatar_skin_color: settings.skinColor,
       avatar_style: settings.style,
       avatar_accessories: settings.accessories,
+      avatar_preset_id: settings.presetId ?? null,
+      avatar_model_url: settings.modelUrl ?? null,
     });
 
     if (error) throw new Error('Failed to save settings');
