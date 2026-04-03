@@ -1,12 +1,13 @@
-'use client';
-
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 import {
   AvatarCustomization,
   AVATAR_STYLES,
   AVATAR_ACCESSORIES,
   BODY_COLOR_PRESETS,
   SKIN_COLOR_PRESETS,
+  MARIO_PRESETS,
 } from '@/types/avatar';
 
 type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
@@ -20,6 +21,34 @@ interface SettingsPanelProps {
   onEnvironmentChange?: (env: EnvironmentType) => void;
 }
 
+const panelStyle: React.CSSProperties = {
+  position: 'fixed', inset: 0,
+  backgroundColor: 'rgba(0,0,0,0.7)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  zIndex: 1000,
+};
+
+const cardStyle: React.CSSProperties = {
+  backgroundColor: 'white', borderRadius: '12px',
+  padding: '24px', maxWidth: '620px', width: '90%',
+  maxHeight: '85vh', overflowY: 'auto',
+  boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+};
+
+const sectionStyle: React.CSSProperties = {
+  marginBottom: '24px', paddingBottom: '24px',
+  borderBottom: '1px solid #e0e0e0',
+};
+
+const sectionTitle: React.CSSProperties = {
+  margin: '0 0 14px 0', fontSize: '17px', fontWeight: '600',
+};
+
+const btnBase: React.CSSProperties = {
+  border: 'none', borderRadius: '8px', cursor: 'pointer',
+  fontWeight: '500', transition: 'all 0.15s',
+};
+
 export default function SettingsPanel({
   isOpen,
   onClose,
@@ -28,8 +57,12 @@ export default function SettingsPanel({
   currentEnvironment = 'corporate',
   onEnvironmentChange,
 }: SettingsPanelProps) {
+  const { user } = useAuth();
   const [settings, setSettings] = useState<AvatarCustomization>(currentSettings);
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -39,355 +72,305 @@ export default function SettingsPanel({
     try {
       await onSave(settings);
       onClose();
-    } catch (error) {
-      console.error('Error saving settings:', error);
+    } catch {
       alert('Failed to save settings. Please try again.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const toggleAccessory = (accessory: string) => {
-    setSettings((prev) => ({
-      ...prev,
-      accessories: prev.accessories.includes(accessory)
-        ? prev.accessories.filter((a) => a !== accessory)
-        : [...prev.accessories, accessory],
-    }));
+  const selectPreset = (presetId: string) => {
+    const preset = MARIO_PRESETS.find(p => p.id === presetId);
+    if (preset) setSettings({ ...preset.customization, modelUrl: null });
   };
 
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '24px',
-          maxWidth: '600px',
-          width: '90%',
-          maxHeight: '80vh',
-          overflowY: 'auto',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ margin: '0 0 20px 0', fontSize: '24px', fontWeight: 'bold' }}>
-          Settings
-        </h2>
+  const clearPreset = () =>
+    setSettings(prev => ({ ...prev, presetId: null, modelUrl: null }));
 
-        {/* Environment Selector */}
+  const toggleAccessory = (acc: string) =>
+    setSettings(prev => ({
+      ...prev,
+      accessories: prev.accessories.includes(acc)
+        ? prev.accessories.filter(a => a !== acc)
+        : [...prev.accessories, acc],
+    }));
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext !== 'glb' && ext !== 'gltf') {
+      setUploadError('Only .glb and .gltf files are supported.');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadError('File must be under 20 MB.');
+      return;
+    }
+
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const path = `${user.id}/avatar.${ext}`;
+      const { data, error } = await supabase.storage
+        .from('avatar-models')
+        .upload(path, file, { upsert: true, contentType: 'model/gltf-binary' });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatar-models')
+        .getPublicUrl(data.path);
+
+      setSettings(prev => ({ ...prev, presetId: null, modelUrl: publicUrl }));
+    } catch (err) {
+      console.error(err);
+      setUploadError('Upload failed. Make sure the avatar-models storage bucket exists in Supabase.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const isPresetActive = (id: string) => settings.presetId === id && !settings.modelUrl;
+  const isCustomModel = !!settings.modelUrl;
+  const isCustomAvatar = !settings.presetId && !settings.modelUrl;
+
+  return (
+    <div style={panelStyle} onClick={onClose}>
+      <div style={cardStyle} onClick={e => e.stopPropagation()}>
+        <h2 style={{ margin: '0 0 20px 0', fontSize: '22px', fontWeight: 'bold' }}>Settings</h2>
+
+        {/* ── Environment ── */}
         {onEnvironmentChange && (
-          <div style={{ marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #e0e0e0' }}>
-            <h3 style={{ marginBottom: '12px', fontSize: '18px', fontWeight: '600' }}>
-              Office Environment
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-              <button
-                onClick={() => onEnvironmentChange('corporate')}
-                style={{
-                  padding: '16px',
-                  backgroundColor: currentEnvironment === 'corporate' ? '#3498db' : '#f0f0f0',
-                  color: currentEnvironment === 'corporate' ? 'white' : '#333',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  textAlign: 'left',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  if (currentEnvironment !== 'corporate') {
-                    e.currentTarget.style.backgroundColor = '#e0e0e0';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (currentEnvironment !== 'corporate') {
-                    e.currentTarget.style.backgroundColor = '#f0f0f0';
-                  }
-                }}
-              >
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>🏢 Corporate Office</div>
-                <div style={{ fontSize: '14px', opacity: 0.8 }}>
-                  Modern skyscraper office with city views
-                </div>
-              </button>
-              <button
-                onClick={() => onEnvironmentChange('cabin')}
-                style={{
-                  padding: '16px',
-                  backgroundColor: currentEnvironment === 'cabin' ? '#3498db' : '#f0f0f0',
-                  color: currentEnvironment === 'cabin' ? 'white' : '#333',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  textAlign: 'left',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  if (currentEnvironment !== 'cabin') {
-                    e.currentTarget.style.backgroundColor = '#e0e0e0';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (currentEnvironment !== 'cabin') {
-                    e.currentTarget.style.backgroundColor = '#f0f0f0';
-                  }
-                }}
-              >
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>🏔️ Cabin in the Woods</div>
-                <div style={{ fontSize: '14px', opacity: 0.8 }}>
-                  Cozy cabin near a lake with fireplace
-                </div>
-              </button>
-              <button
-                onClick={() => onEnvironmentChange('coffeeshop')}
-                style={{
-                  padding: '16px',
-                  backgroundColor: currentEnvironment === 'coffeeshop' ? '#3498db' : '#f0f0f0',
-                  color: currentEnvironment === 'coffeeshop' ? 'white' : '#333',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  textAlign: 'left',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  if (currentEnvironment !== 'coffeeshop') {
-                    e.currentTarget.style.backgroundColor = '#e0e0e0';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (currentEnvironment !== 'coffeeshop') {
-                    e.currentTarget.style.backgroundColor = '#f0f0f0';
-                  }
-                }}
-              >
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>☕ Coffee Shop</div>
-                <div style={{ fontSize: '14px', opacity: 0.8 }}>
-                  Trendy third wave coffee shop with brick walls
-                </div>
-              </button>
+          <div style={sectionStyle}>
+            <h3 style={sectionTitle}>Office Environment</h3>
+            <div style={{ display: 'grid', gap: '10px' }}>
+              {([
+                ['corporate',  '🏢 Corporate Office',      'Modern skyscraper with city views'],
+                ['cabin',      '🏔️ Cabin in the Woods',    'Cozy cabin near a lake with fireplace'],
+                ['coffeeshop', '☕ Coffee Shop',            'Trendy third wave coffee shop'],
+              ] as const).map(([val, label, desc]) => (
+                <button
+                  key={val}
+                  onClick={() => onEnvironmentChange(val)}
+                  style={{
+                    ...btnBase, padding: '14px', textAlign: 'left',
+                    backgroundColor: currentEnvironment === val ? '#3498db' : '#f0f0f0',
+                    color: currentEnvironment === val ? 'white' : '#333',
+                  }}
+                >
+                  <div style={{ fontWeight: 'bold', marginBottom: '3px' }}>{label}</div>
+                  <div style={{ fontSize: '13px', opacity: 0.8 }}>{desc}</div>
+                </button>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Only show avatar customization for logged-in users */}
+        {/* ── Avatar (authenticated users only) ── */}
         {onSave && (
           <>
-            <h3 style={{ marginBottom: '16px', fontSize: '20px', fontWeight: '600' }}>
-              Avatar Customization
-            </h3>
+            {/* Character presets */}
+            <div style={sectionStyle}>
+              <h3 style={sectionTitle}>Choose Character</h3>
 
-            {/* Body Color */}
-        <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ marginBottom: '12px', fontSize: '18px', fontWeight: '600' }}>
-            Body Color
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
-            {BODY_COLOR_PRESETS.map((preset) => (
-              <button
-                key={preset.value}
-                onClick={() => setSettings({ ...settings, bodyColor: preset.value })}
-                style={{
-                  width: '50px',
-                  height: '50px',
-                  backgroundColor: preset.value,
-                  border: settings.bodyColor === preset.value ? '3px solid #000' : '1px solid #ccc',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s',
-                }}
-                title={preset.name}
-                onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-              />
-            ))}
-          </div>
-        </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '14px' }}>
+                {MARIO_PRESETS.map(preset => (
+                  <button
+                    key={preset.id}
+                    onClick={() => selectPreset(preset.id)}
+                    style={{
+                      ...btnBase, padding: '10px 6px',
+                      backgroundColor: isPresetActive(preset.id) ? '#3498db' : '#f5f5f5',
+                      color: isPresetActive(preset.id) ? 'white' : '#333',
+                      border: `2px solid ${isPresetActive(preset.id) ? '#2980b9' : 'transparent'}`,
+                      fontSize: '13px',
+                    }}
+                  >
+                    <div style={{ fontSize: '22px', marginBottom: '4px' }}>{preset.emoji}</div>
+                    <div style={{ fontWeight: '600' }}>{preset.name}</div>
+                  </button>
+                ))}
 
-        {/* Skin Color */}
-        <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ marginBottom: '12px', fontSize: '18px', fontWeight: '600' }}>
-            Skin Tone
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px' }}>
-            {SKIN_COLOR_PRESETS.map((preset) => (
-              <button
-                key={preset.value}
-                onClick={() => setSettings({ ...settings, skinColor: preset.value })}
-                style={{
-                  width: '50px',
-                  height: '50px',
-                  backgroundColor: preset.value,
-                  border: settings.skinColor === preset.value ? '3px solid #000' : '1px solid #ccc',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s',
-                }}
-                title={preset.name}
-                onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Style */}
-        <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ marginBottom: '12px', fontSize: '18px', fontWeight: '600' }}>
-            Avatar Style
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-            {AVATAR_STYLES.map((style) => (
-              <button
-                key={style}
-                onClick={() => setSettings({ ...settings, style })}
-                style={{
-                  padding: '12px',
-                  backgroundColor: settings.style === style ? '#3498db' : '#f0f0f0',
-                  color: settings.style === style ? 'white' : '#333',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  textTransform: 'capitalize',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  if (settings.style !== style) {
-                    e.currentTarget.style.backgroundColor = '#e0e0e0';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (settings.style !== style) {
-                    e.currentTarget.style.backgroundColor = '#f0f0f0';
-                  }
-                }}
-              >
-                {style}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Accessories */}
-        <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ marginBottom: '12px', fontSize: '18px', fontWeight: '600' }}>
-            Accessories
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-            {AVATAR_ACCESSORIES.map((accessory) => {
-              const isSelected = settings.accessories.includes(accessory);
-              return (
                 <button
-                  key={accessory}
-                  onClick={() => toggleAccessory(accessory)}
+                  onClick={clearPreset}
                   style={{
-                    padding: '12px',
-                    backgroundColor: isSelected ? '#2ecc71' : '#f0f0f0',
-                    color: isSelected ? 'white' : '#333',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    fontWeight: '500',
-                    textTransform: 'capitalize',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = '#e0e0e0';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = '#f0f0f0';
-                    }
+                    ...btnBase, padding: '10px 6px',
+                    backgroundColor: isCustomAvatar ? '#3498db' : '#f5f5f5',
+                    color: isCustomAvatar ? 'white' : '#333',
+                    border: `2px solid ${isCustomAvatar ? '#2980b9' : 'transparent'}`,
+                    fontSize: '13px',
                   }}
                 >
-                  {isSelected ? '✓ ' : ''}
-                  {accessory}
+                  <div style={{ fontSize: '22px', marginBottom: '4px' }}>🎨</div>
+                  <div style={{ fontWeight: '600' }}>Custom</div>
                 </button>
-              );
-            })}
-          </div>
-        </div>
+              </div>
 
-            {/* Actions for logged-in users */}
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+              {/* glTF upload */}
+              <div style={{
+                padding: '14px', borderRadius: '8px',
+                border: `2px dashed ${isCustomModel ? '#2e8b34' : '#ccc'}`,
+                background: isCustomModel ? '#f0fff4' : '#fafafa',
+              }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
+                  Upload Custom 3D Model (.glb / .gltf)
+                </div>
+
+                {isCustomModel ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '13px', color: '#2e8b34', flexGrow: 1 }}>
+                      ✓ Custom model active
+                    </span>
+                    <button
+                      onClick={() => setSettings(prev => ({ ...prev, modelUrl: null }))}
+                      style={{ ...btnBase, padding: '5px 12px', background: '#e74c3c', color: 'white', fontSize: '13px' }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    style={{
+                      ...btnBase, padding: '8px 16px', fontSize: '13px',
+                      background: uploading ? '#aaa' : '#555', color: 'white',
+                    }}
+                  >
+                    {uploading ? 'Uploading…' : '📁 Choose file'}
+                  </button>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".glb,.gltf"
+                  style={{ display: 'none' }}
+                  onChange={handleFileUpload}
+                />
+
+                {uploadError && (
+                  <div style={{ marginTop: '8px', fontSize: '13px', color: '#e74c3c' }}>{uploadError}</div>
+                )}
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#888' }}>
+                  Max 20 MB · auto-scaled to avatar height · visible to all users in the room
+                </div>
+              </div>
+            </div>
+
+            {/* Color & style (hidden when a custom glTF is active) */}
+            {!isCustomModel && (
+              <>
+                <div style={sectionStyle}>
+                  <h3 style={sectionTitle}>Body Color</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
+                    {BODY_COLOR_PRESETS.map(p => (
+                      <button
+                        key={p.value}
+                        onClick={() => setSettings(s => ({ ...s, bodyColor: p.value }))}
+                        title={p.name}
+                        style={{
+                          width: '50px', height: '50px', borderRadius: '8px', cursor: 'pointer',
+                          backgroundColor: p.value,
+                          border: settings.bodyColor === p.value ? '3px solid #000' : '1px solid #ccc',
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div style={sectionStyle}>
+                  <h3 style={sectionTitle}>Skin Tone</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px' }}>
+                    {SKIN_COLOR_PRESETS.map(p => (
+                      <button
+                        key={p.value}
+                        onClick={() => setSettings(s => ({ ...s, skinColor: p.value }))}
+                        title={p.name}
+                        style={{
+                          width: '50px', height: '50px', borderRadius: '8px', cursor: 'pointer',
+                          backgroundColor: p.value,
+                          border: settings.skinColor === p.value ? '3px solid #000' : '1px solid #ccc',
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {isCustomAvatar && (
+                  <>
+                    <div style={sectionStyle}>
+                      <h3 style={sectionTitle}>Avatar Style</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                        {AVATAR_STYLES.map(style => (
+                          <button
+                            key={style}
+                            onClick={() => setSettings(s => ({ ...s, style }))}
+                            style={{
+                              ...btnBase, padding: '12px',
+                              backgroundColor: settings.style === style ? '#3498db' : '#f0f0f0',
+                              color: settings.style === style ? 'white' : '#333',
+                              fontSize: '15px', textTransform: 'capitalize',
+                            }}
+                          >
+                            {style}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={sectionTitle}>Accessories</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                        {AVATAR_ACCESSORIES.map(acc => {
+                          const on = settings.accessories.includes(acc);
+                          return (
+                            <button
+                              key={acc}
+                              onClick={() => toggleAccessory(acc)}
+                              style={{
+                                ...btnBase, padding: '12px',
+                                backgroundColor: on ? '#2ecc71' : '#f0f0f0',
+                                color: on ? 'white' : '#333',
+                                fontSize: '15px', textTransform: 'capitalize',
+                              }}
+                            >
+                              {on ? '✓ ' : ''}{acc}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button
-                onClick={onClose}
-                disabled={isSaving}
-                style={{
-                  padding: '12px 24px',
-                  backgroundColor: '#e0e0e0',
-                  color: '#333',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  opacity: isSaving ? 0.5 : 1,
-                }}
+                onClick={onClose} disabled={isSaving}
+                style={{ ...btnBase, padding: '12px 24px', background: '#e0e0e0', color: '#333', fontSize: '16px', opacity: isSaving ? 0.5 : 1 }}
               >
                 Cancel
               </button>
               <button
-                onClick={handleSave}
-                disabled={isSaving}
-                style={{
-                  padding: '12px 24px',
-                  backgroundColor: '#3498db',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  opacity: isSaving ? 0.5 : 1,
-                }}
+                onClick={handleSave} disabled={isSaving}
+                style={{ ...btnBase, padding: '12px 24px', background: '#3498db', color: 'white', fontSize: '16px', opacity: isSaving ? 0.5 : 1 }}
               >
-                {isSaving ? 'Saving...' : 'Save Changes'}
+                {isSaving ? 'Saving…' : 'Save Changes'}
               </button>
             </div>
           </>
         )}
 
-        {/* Close button for anonymous users */}
         {!onSave && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
             <button
               onClick={onClose}
-              style={{
-                padding: '12px 24px',
-                backgroundColor: '#3498db',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '16px',
-                fontWeight: '500',
-              }}
+              style={{ ...btnBase, padding: '12px 24px', background: '#3498db', color: 'white', fontSize: '16px' }}
             >
               Close
             </button>

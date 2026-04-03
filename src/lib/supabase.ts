@@ -22,6 +22,8 @@ export type Database = {
           avatar_skin_color: string;
           avatar_style: string;
           avatar_accessories: string[];
+          avatar_preset_id: string | null;
+          avatar_model_url: string | null;
           created_at: string;
         };
         Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'created_at'>;

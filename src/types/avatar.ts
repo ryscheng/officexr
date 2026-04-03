@@ -3,7 +3,55 @@ export interface AvatarCustomization {
   skinColor: string;
   style: 'default' | 'athletic' | 'casual' | 'formal';
   accessories: string[];
+  presetId?: string | null;
+  modelUrl?: string | null;
 }
+
+export interface AvatarPreset {
+  id: string;
+  name: string;
+  emoji: string;
+  customization: AvatarCustomization;
+}
+
+export const MARIO_PRESETS: AvatarPreset[] = [
+  {
+    id: 'mario',
+    name: 'Mario',
+    emoji: '🔴',
+    customization: { bodyColor: '#e63232', skinColor: '#ffdbac', style: 'default', accessories: [], presetId: 'mario' },
+  },
+  {
+    id: 'luigi',
+    name: 'Luigi',
+    emoji: '🟢',
+    customization: { bodyColor: '#2e8b34', skinColor: '#ffdbac', style: 'default', accessories: [], presetId: 'luigi' },
+  },
+  {
+    id: 'peach',
+    name: 'Peach',
+    emoji: '👑',
+    customization: { bodyColor: '#f5a8c8', skinColor: '#f1c27d', style: 'casual', accessories: [], presetId: 'peach' },
+  },
+  {
+    id: 'toad',
+    name: 'Toad',
+    emoji: '🍄',
+    customization: { bodyColor: '#4a7cc7', skinColor: '#f1c27d', style: 'athletic', accessories: [], presetId: 'toad' },
+  },
+  {
+    id: 'bowser',
+    name: 'Bowser',
+    emoji: '🐢',
+    customization: { bodyColor: '#2e8b34', skinColor: '#f39c12', style: 'athletic', accessories: [], presetId: 'bowser' },
+  },
+  {
+    id: 'wario',
+    name: 'Wario',
+    emoji: '💛',
+    customization: { bodyColor: '#f5e642', skinColor: '#ffdbac', style: 'athletic', accessories: [], presetId: 'wario' },
+  },
+];
 
 export const AVATAR_STYLES = ['default', 'athletic', 'casual', 'formal'] as const;
 
