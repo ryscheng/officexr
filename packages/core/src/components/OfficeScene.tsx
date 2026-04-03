@@ -87,6 +87,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatVisibleRef = useRef<boolean>(false);
   const keysRef = useRef<{ [key: string]: boolean }>({});
+  const [mouseLockActive, setMouseLockActive] = useState(false);
 
   // Environment settings
   type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
@@ -595,21 +596,29 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // Mouse controls
-    let mouseDown = false;
-    const handleMouseDown = () => { mouseDown = true; };
-    const handleMouseUp = () => { mouseDown = false; };
+    // Mouse control mode (desktop) — click to lock pointer, Escape to release.
+    // When WebXR is presenting, the XR session drives head orientation; mouse lock is inactive.
+    const handleCanvasClick = () => {
+      if (!renderer.xr.isPresenting) {
+        renderer.domElement.requestPointerLock();
+      }
+    };
+
     const handleMouseMove = (event: MouseEvent) => {
-      if (mouseDown) {
+      if (document.pointerLockElement === renderer.domElement && !renderer.xr.isPresenting) {
         camera.rotation.y -= (event.movementX || 0) * 0.002;
         camera.rotation.x -= (event.movementY || 0) * 0.002;
         camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
       }
     };
 
-    renderer.domElement.addEventListener('mousedown', handleMouseDown);
-    renderer.domElement.addEventListener('mouseup', handleMouseUp);
+    const handlePointerLockChange = () => {
+      setMouseLockActive(document.pointerLockElement === renderer.domElement);
+    };
+
+    renderer.domElement.addEventListener('click', handleCanvasClick);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('pointerlockchange', handlePointerLockChange);
 
     // Touch controls
     let touchStartX = 0;
@@ -950,9 +959,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
-      renderer.domElement.removeEventListener('mousedown', handleMouseDown);
-      renderer.domElement.removeEventListener('mouseup', handleMouseUp);
+      renderer.domElement.removeEventListener('click', handleCanvasClick);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      if (document.pointerLockElement === renderer.domElement) {
+        document.exitPointerLock();
+      }
       renderer.domElement.removeEventListener('touchstart', handleTouchStart);
       renderer.domElement.removeEventListener('touchmove', handleTouchMove);
       renderer.domElement.removeEventListener('touchend', handleTouchEnd);
@@ -1005,6 +1017,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100vh' }}>
+      {/* Green outline when mouse look mode is active */}
+      {mouseLockActive && (
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 50,
+          boxShadow: 'inset 0 0 0 4px #00ff00',
+        }} />
+      )}
+
       <div
         style={{
           position: 'absolute', top: '20px', left: '20px',
@@ -1014,10 +1034,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       >
         <h3 style={{ margin: '0 0 10px 0' }}>Controls:</h3>
         <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys - Move</p>
-        <p style={{ margin: '5px 0' }}>Mouse/Touch Drag - Look Around</p>
+        <p style={{ margin: '5px 0' }}>Click Scene - Enable Mouse Look</p>
+        <p style={{ margin: '5px 0' }}>Mouse - Look Around (when active)</p>
+        <p style={{ margin: '5px 0' }}>Esc - Exit Mouse Look</p>
         <p style={{ margin: '5px 0' }}>Enter - Chat</p>
         <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
           Walk near others to voice chat
+        </p>
+        <p style={{ margin: '5px 0', color: '#a78bfa', fontSize: '11px' }}>
+          VR/AR: head tracking via device sensors
         </p>
       </div>
 
