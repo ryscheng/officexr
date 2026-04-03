@@ -23,18 +23,28 @@ The codebase is organized as a **pnpm workspaces monorepo** targeting six platfo
 
 ```
 officexr/
-├── src/                        # Web app source (React, Three.js, Tailwind)
-│   ├── components/             # Three.js scene, avatars, settings, office selector
-│   ├── hooks/                  # useAuth (Supabase session)
-│   ├── lib/                    # Supabase client singleton (re-exports core)
-│   ├── pages/                  # Home, Login
-│   └── types/                  # avatar.ts re-exports from @officexr/core
 ├── packages/
-│   ├── core/                   # @officexr/core — shared, platform-agnostic code
+│   ├── core/                   # @officexr/core — all application source + shared types
 │   │   └── src/
-│   │       ├── index.ts        # Barrel re-export
-│   │       ├── lib/supabase.ts # Database types + createSupabaseClient factory
-│   │       └── types/avatar.ts # AvatarCustomization, AvatarPreset, MARIO_PRESETS, etc.
+│   │       ├── index.ts        # Barrel: platform-agnostic type exports (Database, avatars)
+│   │       ├── main.tsx        # Web entry point
+│   │       ├── App.tsx
+│   │       ├── index.css
+│   │       ├── vite-env.d.ts
+│   │       ├── components/     # Avatar, OfficeScene, OfficeSelector, SettingsPanel
+│   │       ├── hooks/          # useAuth (Supabase session)
+│   │       ├── lib/
+│   │       │   └── supabase.ts # Database type + Supabase web client singleton
+│   │       ├── pages/          # Home, Login
+│   │       └── types/
+│   │           └── avatar.ts   # AvatarCustomization, AvatarPreset, MARIO_PRESETS, etc.
+│   ├── web/                    # @officexr/web — Vite build wrapper for the browser
+│   │   ├── index.html          # SPA shell (entry: ../core/src/main.tsx)
+│   │   ├── vite.config.ts      # @ alias → ../core/src
+│   │   ├── tsconfig.json
+│   │   ├── tsconfig.node.json
+│   │   ├── public/             # Static assets
+│   │   └── .env.example        # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
 │   ├── desktop/                # @officexr/desktop — Electron wrapper
 │   │   └── src/
 │   │       ├── main.ts         # Electron main process
@@ -43,13 +53,12 @@ officexr/
 │       └── src/
 │           ├── App.tsx
 │           ├── hooks/useAuth.ts
-│           ├── lib/supabase.ts
+│           ├── lib/supabase.ts  # Native Supabase client (AsyncStorage)
 │           ├── navigation/
 │           └── screens/        # LoginScreen, HomeScreen, OfficeScreen
-├── index.html                  # Web SPA entry point
-├── vite.config.ts              # Web build config
-├── tsconfig.json               # Web + workspace TypeScript config
 ├── supabase/migrations/        # SQL migrations
+├── pnpm-workspace.yaml         # Workspace package globs
+├── tsconfig.json               # Root: IDE project references only
 └── AGENTS.md                   # This file
 ```
 
@@ -57,23 +66,27 @@ officexr/
 
 ## Shared Code Strategy
 
-All platform-agnostic logic lives in **`packages/core`** and is the single source of truth.
+All application source lives in **`packages/core/src`**. The web build (`packages/web`) is
+a thin Vite wrapper that points its entry and `@` alias at `packages/core/src` — it adds
+no application logic of its own.
 
 | What | Where |
 |------|-------|
 | Database schema types (`Database`) | `packages/core/src/lib/supabase.ts` |
-| Supabase client factory (`createSupabaseClient`) | `packages/core/src/lib/supabase.ts` |
+| Supabase web client singleton | `packages/core/src/lib/supabase.ts` |
 | Avatar types & presets | `packages/core/src/types/avatar.ts` |
+| React components, pages, hooks | `packages/core/src/` |
 
-Platform packages import from `@officexr/core`. The web app's `src/types/avatar.ts` and
-`src/lib/supabase.ts` are thin re-export wrappers around `@officexr/core` so existing
-`@/types/avatar` and `@/lib/supabase` imports keep working without change.
+The `packages/core/src/index.ts` barrel exports **only** platform-agnostic types
+(`Database`, avatar interfaces/constants) so mobile packages that import
+`@officexr/core` never encounter `import.meta.env` at runtime.
 
-The desktop package does **not** import from `@officexr/core` at runtime — it loads the
-pre-built web dist in a WebView, so the web app's own code runs as-is.
+The desktop package loads the pre-built web dist via a custom `app://` protocol; it does
+not import from `@officexr/core` directly.
 
-The mobile package **does** import from `@officexr/core` for types and the Supabase factory,
-while adding native auth (expo-auth-session) and native UI (React Navigation + StyleSheet).
+The mobile package imports the `Database` type and avatar types from `@officexr/core`
+(resolved by Babel's `module-resolver`), while providing its own Supabase client
+(AsyncStorage-backed) and native UI (React Navigation).
 
 ---
 
@@ -84,7 +97,7 @@ while adding native auth (expo-auth-session) and native UI (React Navigation + S
 
 ```bash
 pnpm dev          # Start web dev server (Vite, http://localhost:5173)
-pnpm build        # Build web (outputs to dist/)
+pnpm build        # Build web (outputs to packages/web/dist/)
 pnpm preview      # Preview the production web build
 ```
 
@@ -98,7 +111,14 @@ pnpm preview      # Preview the production web build
 pnpm build          # or: pnpm build:web
 ```
 
-Output: `dist/`
+Output: `packages/web/dist/`
+
+To work directly inside the package:
+```bash
+cd packages/web
+pnpm dev
+pnpm build
+```
 
 ### Desktop (Electron)
 
@@ -139,12 +159,15 @@ pnpm --filter @officexr/mobile run ios
 
 ## Environment Variables
 
-### Web / Desktop (`.env` at repo root)
+### Web (`packages/web/.env`)
 
 ```
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
+
+Copy from `packages/web/.env.example`. Vite loads `.env` from `packages/web/` when
+`pnpm dev` / `pnpm build` are run inside that package.
 
 ### Mobile (`packages/mobile/.env`)
 
@@ -154,7 +177,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 EXPO_PUBLIC_WEB_APP_URL=https://your-officexr-deployment.vercel.app
 ```
 
-Both files are gitignored. Copy from the corresponding `.env.example` files.
+Copy from `packages/mobile/.env.example`.
 
 ---
 
@@ -163,7 +186,8 @@ Both files are gitignored. Copy from the corresponding `.env.example` files.
 ### Desktop: Electron wraps the web build
 
 - `packages/desktop/src/main.ts` registers a custom `app://` protocol that serves
-  `dist/` files, falling back to `index.html` for any unknown path so React Router works.
+  `packages/web/dist/` files, falling back to `index.html` for any unknown path so
+  React Router works.
 - In development mode (`!app.isPackaged`) it loads from the Vite dev server at
   `http://localhost:5173` instead, enabling HMR.
 - WebGL (Three.js) and experimental WebXR work in Electron's Chromium renderer.
@@ -175,17 +199,14 @@ Both files are gitignored. Copy from the corresponding `.env.example` files.
 - The 3D office scene (`OfficeScreen`) embeds the **deployed web build** in a
   `react-native-webview`. The Supabase session token is injected into `localStorage` so
   the web app recognises the already-authenticated user without a second login.
-- This approach avoids reimplementing Three.js + WebXR in React Native for the initial
-  release. The native-to-webview boundary means the mobile user gets the full 3D experience
-  while login and navigation feel native.
 - **Future:** Replace the WebView with `expo-gl` + `expo-three` for a fully native render
   path with deeper OS integration (AR via ARKit/ARCore).
 
 ### Supabase Realtime
 
 All real-time features (presence, position sync, chat, proximity voice) are implemented
-using Supabase Realtime channels in `src/components/OfficeScene.tsx` and shared equally
-by web and desktop (same code). Mobile inherits this through the WebView.
+using Supabase Realtime channels in `packages/core/src/components/OfficeScene.tsx` and
+shared equally by web and desktop (same code). Mobile inherits this through the WebView.
 
 ### Proximity Voice Chat
 
@@ -197,10 +218,10 @@ room membership on every presence `sync` event.
 
 ## Adding New Shared Logic
 
-1. Add to `packages/core/src/` (no framework dependencies allowed).
-2. Re-export from `packages/core/src/index.ts`.
+1. Add to `packages/core/src/` (keep framework deps out of `lib/` and `types/` if possible).
+2. If platform-agnostic, re-export from `packages/core/src/index.ts`.
 3. Import in mobile as `@officexr/core` (resolved by Babel's `module-resolver`).
-4. Import in web as `@officexr/core` (resolved by Vite alias in `vite.config.ts`).
+4. Import in web using the `@/` alias (resolved by Vite to `packages/core/src`).
 
 ## Database Migrations
 

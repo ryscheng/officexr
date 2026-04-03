@@ -19,8 +19,8 @@
 /out/
 
 # production
-/build
-/dist
+**/build
+**/dist
 
 # vite tsc emit
 vite.config.js
@@ -38,6 +38,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!**/.env.example
 
 # vercel
 .vercel

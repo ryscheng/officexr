@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
-const coreRoot = path.resolve(__dirname, 'packages/core/src');
+// packages/core/src is one level up from packages/web
+const coreRoot = path.resolve(__dirname, '../core/src');
 
 export default defineConfig({
   plugins: [
