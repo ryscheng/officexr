@@ -1130,7 +1130,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
         {user ? (
           <>
-            {onShowOfficeSelector && officeId !== 'global' && (
+            {onShowOfficeSelector && (
               <button
                 onClick={onShowOfficeSelector}
                 style={{
@@ -1140,7 +1140,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                   fontSize: '14px', width: '100%',
                 }}
               >
-                🏢 My Offices
+                🏠 Back to Lobby
               </button>
             )}
             <button
@@ -1240,7 +1240,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         currentSettings={avatarCustomization}
         onSave={user ? handleSaveSettings : undefined}
         currentEnvironment={environment}
-        onEnvironmentChange={handleEnvironmentChange}
+        onEnvironmentChange={user ? handleEnvironmentChange : undefined}
       />
     </div>
   );
