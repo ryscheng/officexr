@@ -57,6 +57,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
+  const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
   const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
@@ -778,6 +779,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         if (!presentIds.has(id)) {
           scene.remove(avatarsRef.current.get(id)!);
           avatarsRef.current.delete(id);
+          avatarTargetsRef.current.delete(id);
           const sphere = bubbleSpheresRef.current.get(id);
           if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
           presenceDataRef.current.delete(id);
@@ -818,6 +820,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         if (avatar) {
           scene.remove(avatar);
           avatarsRef.current.delete(p.id);
+          avatarTargetsRef.current.delete(p.id);
           const sphere = bubbleSpheresRef.current.get(p.id);
           if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
           presenceDataRef.current.delete(p.id);
@@ -826,16 +829,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       });
     });
 
-    // Broadcast: position updates
+    // Broadcast: position updates — store as interpolation targets, smoothed each frame
     channel.on('broadcast', { event: 'position' }, ({ payload }) => {
       const { userId, position, rotation } = payload as {
         userId: string;
         position: { x: number; y: number; z: number };
         rotation: { x: number; y: number; z: number };
       };
-      const avatar = avatarsRef.current.get(userId);
-      if (avatar) {
-        updateAvatar(avatar, position, rotation);
+      if (avatarsRef.current.has(userId)) {
+        avatarTargetsRef.current.set(userId, {
+          position: new THREE.Vector3(position.x, position.y, position.z),
+          rotationY: rotation.y,
+        });
       }
     });
 
@@ -970,6 +975,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           camera.position.x, camera.position.y, camera.position.z
         );
       }
+
+      // Smoothly interpolate remote avatars toward their latest received positions
+      avatarTargetsRef.current.forEach((target, uid) => {
+        const avatar = avatarsRef.current.get(uid);
+        if (avatar) {
+          avatar.position.lerp(target.position, 0.15);
+          // Lerp rotation via shortest-path on Y axis
+          let dy = target.rotationY - avatar.rotation.y;
+          if (dy > Math.PI) dy -= Math.PI * 2;
+          if (dy < -Math.PI) dy += Math.PI * 2;
+          avatar.rotation.y += dy * 0.15;
+        }
+      });
 
       // Update remote bubble sphere positions and detect proximity
       const newNearby = new Set<string>();
