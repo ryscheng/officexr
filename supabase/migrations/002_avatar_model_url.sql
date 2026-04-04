@@ -4,9 +4,9 @@ ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS avatar_model_url  TEXT DEFAULT NULL;
 
 -- Storage bucket for custom avatar models (run once via Supabase dashboard or CLI)
--- INSERT INTO storage.buckets (id, name, public)
--- VALUES ('avatar-models', 'avatar-models', true)
--- ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatar-models', 'avatar-models', true)
+ON CONFLICT (id) DO NOTHING;
 
 -- RLS: anyone can read avatar models (public bucket)
 CREATE POLICY IF NOT EXISTS "Public read avatar models"

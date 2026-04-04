@@ -7,7 +7,7 @@ import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 import SettingsPanel from './SettingsPanel';
 import { AvatarCustomization } from '@/types/avatar';
 import { supabase } from '@/lib/supabase';
-import { useAuth, signOut } from '@/hooks/useAuth';
+import { useAuth, signOut, signInWithGoogle } from '@/hooks/useAuth';
 
 const PROXIMITY_RADIUS = 3; // Three.js units — spheres overlap when distance < PROXIMITY_RADIUS * 2
 
@@ -63,6 +63,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const myPresenceRef = useRef<PresenceEntry | null>(null);
   const [userCount, setUserCount] = useState(0);
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
+  const [jitsiError, setJitsiError] = useState<string | null>(null);
+  const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPositionUpdate = useRef<number>(0);
   const [showSettings, setShowSettings] = useState(false);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
@@ -87,6 +89,20 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatVisibleRef = useRef<boolean>(false);
   const keysRef = useRef<{ [key: string]: boolean }>({});
+  const [mouseLockActive, setMouseLockActive] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [motionPermission, setMotionPermission] = useState<'unavailable' | 'prompt' | 'granted' | 'denied'>('unavailable');
+  const motionActiveRef = useRef(false);
+  const recalibrateMotionRef = useRef<(() => void) | null>(null);
+  const joystickInputRef = useRef({ x: 0, y: 0 });
+  const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
+  const [joystickActive, setJoystickActive] = useState(false);
+  const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [createRoomName, setCreateRoomName] = useState('');
+  const [createRoomLinkAccess, setCreateRoomLinkAccess] = useState(true);
+  const [createRoomLoading, setCreateRoomLoading] = useState(false);
+  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
 
   // Environment settings
   type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
@@ -105,6 +121,76 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setEnvironment(env);
     localStorage.setItem('officeEnvironment', env);
   };
+
+  // Detect device orientation capability once on mount
+  useEffect(() => {
+    if (typeof DeviceOrientationEvent === 'undefined') return;
+    if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+      setMotionPermission('prompt'); // iOS 13+ — needs explicit user gesture
+    } else {
+      setMotionPermission('granted'); // Android / older iOS — always available
+    }
+  }, []);
+
+  // Keep motionActiveRef in sync so handlers inside the main useEffect can read it
+  useEffect(() => {
+    motionActiveRef.current = motionPermission === 'granted';
+  }, [motionPermission]);
+
+  // Device orientation listener — runs whenever permission is granted
+  useEffect(() => {
+    if (motionPermission !== 'granted') return;
+
+    let alphaOffset: number | null = null;
+    recalibrateMotionRef.current = () => { alphaOffset = null; };
+
+    const handler = (event: DeviceOrientationEvent) => {
+      const camera = cameraRef.current;
+      const renderer = rendererRef.current;
+      if (!camera || !renderer) return;
+      if (renderer.xr.isPresenting) return;
+      if (document.pointerLockElement === renderer.domElement) return;
+      if (event.alpha === null) return;
+
+      const alpha = event.alpha;
+      const beta  = event.beta  ?? 90;
+      const gamma = event.gamma ?? 0;
+
+      // Capture the initial compass heading so the current look direction = yaw 0
+      if (alphaOffset === null) alphaOffset = alpha;
+
+      let relAlpha = alpha - alphaOffset;
+      if (relAlpha >  180) relAlpha -= 360;
+      if (relAlpha < -180) relAlpha += 360;
+
+      const screenAngle = window.screen?.orientation?.angle ?? 0;
+      // alpha increases counterclockwise (MDN spec), so rotating device left increases alpha.
+      // Positive yaw in YXZ = camera turns left, so no negation needed.
+      const yaw = THREE.MathUtils.degToRad(relAlpha);
+
+      // Pitch mapping differs between portrait and landscape.
+      // In portrait: beta ≈ 90 when upright. Tilting up decreases beta, so (beta - 90) goes
+      // negative, and negative pitch in YXZ = looking up. ✓
+      let pitch: number;
+      if (screenAngle === 90 || screenAngle === -270) {
+        pitch = THREE.MathUtils.degToRad(gamma);  // landscape-left
+      } else if (screenAngle === 270 || screenAngle === -90) {
+        pitch = THREE.MathUtils.degToRad(-gamma); // landscape-right
+      } else {
+        // Portrait
+        pitch = THREE.MathUtils.degToRad(beta - 90);
+      }
+
+      pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+      camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    };
+
+    window.addEventListener('deviceorientation', handler);
+    return () => {
+      window.removeEventListener('deviceorientation', handler);
+      recalibrateMotionRef.current = null;
+    };
+  }, [motionPermission]);
 
   // Load avatar customization from Supabase
   useEffect(() => {
@@ -199,6 +285,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     };
   }, [chatVisible, chatInput]);
+
+  // Start a connection timeout whenever we attempt to join a Jitsi room.
+  // If onApiReady fires first it clears the timer; otherwise show an error.
+  useEffect(() => {
+    if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
+    if (!jitsiRoom) { setJitsiError(null); return; }
+
+    setJitsiError(null);
+    jitsiConnectTimeoutRef.current = setTimeout(() => {
+      setJitsiError('Could not connect to voice chat — the server may be unreachable.');
+    }, 15000);
+
+    return () => {
+      if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
+    };
+  }, [jitsiRoom]);
 
   const sendChatMessage = (message: string) => {
     if (!channelRef.current || !currentUser) return;
@@ -595,21 +697,38 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // Mouse controls
-    let mouseDown = false;
-    const handleMouseDown = () => { mouseDown = true; };
-    const handleMouseUp = () => { mouseDown = false; };
-    const handleMouseMove = (event: MouseEvent) => {
-      if (mouseDown) {
-        camera.rotation.y -= (event.movementX || 0) * 0.002;
-        camera.rotation.x -= (event.movementY || 0) * 0.002;
-        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+    // Mouse control mode (desktop) — click to lock pointer, Escape to release.
+    // When WebXR is presenting, the XR session drives head orientation; mouse lock is inactive.
+    //
+    // Track pitch and yaw independently and reconstruct the rotation each frame
+    // using 'YXZ' order so roll is always zero (standard FPS camera technique).
+    let cameraPitch = 0; // radians — vertical look (X axis)
+    let cameraYaw = 0;   // radians — horizontal look (Y axis)
+    camera.rotation.order = 'YXZ';
+
+    const handleCanvasClick = () => {
+      // Don't fight device orientation with pointer lock on touch devices
+      if (!renderer.xr.isPresenting && !motionActiveRef.current) {
+        renderer.domElement.requestPointerLock();
       }
     };
 
-    renderer.domElement.addEventListener('mousedown', handleMouseDown);
-    renderer.domElement.addEventListener('mouseup', handleMouseUp);
+    const handleMouseMove = (event: MouseEvent) => {
+      if (document.pointerLockElement === renderer.domElement && !renderer.xr.isPresenting) {
+        cameraYaw   -= (event.movementX || 0) * 0.002;
+        cameraPitch -= (event.movementY || 0) * 0.002;
+        cameraPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraPitch));
+        camera.rotation.set(cameraPitch, cameraYaw, 0, 'YXZ');
+      }
+    };
+
+    const handlePointerLockChange = () => {
+      setMouseLockActive(document.pointerLockElement === renderer.domElement);
+    };
+
+    renderer.domElement.addEventListener('click', handleCanvasClick);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('pointerlockchange', handlePointerLockChange);
 
     // Touch controls
     let touchStartX = 0;
@@ -625,6 +744,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
 
     const handleTouchMove = (event: TouchEvent) => {
+      // Device orientation handles look direction on mobile — skip touch drag
+      if (motionActiveRef.current) return;
       if (isTouching && event.touches.length === 1) {
         const deltaX = event.touches[0].clientX - touchStartX;
         const deltaY = event.touches[0].clientY - touchStartY;
@@ -855,6 +976,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (keys['a'] || keys['arrowleft']) { direction.sub(right); moved = true; }
       if (keys['d'] || keys['arrowright']) { direction.add(right); moved = true; }
 
+      // Virtual joystick input (touch devices)
+      const { x: jx, y: jy } = joystickInputRef.current;
+      if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
+        direction.addScaledVector(forward, -jy);
+        direction.addScaledVector(right, jx);
+        moved = true;
+      }
+
       if (direction.length() > 0) {
         direction.normalize();
         camera.position.add(direction.multiplyScalar(moveSpeed));
@@ -950,9 +1079,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
-      renderer.domElement.removeEventListener('mousedown', handleMouseDown);
-      renderer.domElement.removeEventListener('mouseup', handleMouseUp);
+      renderer.domElement.removeEventListener('click', handleCanvasClick);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      if (document.pointerLockElement === renderer.domElement) {
+        document.exitPointerLock();
+      }
       renderer.domElement.removeEventListener('touchstart', handleTouchStart);
       renderer.domElement.removeEventListener('touchmove', handleTouchMove);
       renderer.domElement.removeEventListener('touchend', handleTouchEnd);
@@ -1003,8 +1135,62 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     });
   };
 
+  const handleRequestMotionPermission = () => {
+    (DeviceOrientationEvent as any).requestPermission()
+      .then((state: string) => setMotionPermission(state === 'granted' ? 'granted' : 'denied'))
+      .catch(() => setMotionPermission('denied'));
+  };
+
+  function validateSlug(value: string): string | null {
+    if (!value) return 'Room name is required.';
+    if (value.length < 2) return 'Must be at least 2 characters.';
+    if (value.length > 50) return 'Must be 50 characters or fewer.';
+    if (!/^[a-z0-9-]+$/.test(value)) return 'Only lowercase letters, numbers, and hyphens allowed.';
+    if (value.startsWith('-') || value.endsWith('-')) return 'Cannot start or end with a hyphen.';
+    if (/--/.test(value)) return 'No consecutive hyphens allowed.';
+    return null;
+  }
+
+  const handleCreateRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    const slugError = validateSlug(createRoomName);
+    if (slugError) { setCreateRoomError(slugError); return; }
+    setCreateRoomLoading(true);
+    setCreateRoomError(null);
+    try {
+      const { data: office, error: officeError } = await supabase
+        .from('offices')
+        .insert({ name: createRoomName, link_access: createRoomLinkAccess })
+        .select()
+        .single();
+      if (officeError) throw officeError;
+      await supabase.from('office_members').insert({
+        office_id: office.id,
+        user_id: user.id,
+        role: 'owner',
+      });
+      setShowCreateRoom(false);
+      setCreateRoomName('');
+      setCreateRoomLinkAccess(true);
+      onShowOfficeSelector?.();
+    } catch {
+      setCreateRoomError('Failed to create room. Please try again.');
+    } finally {
+      setCreateRoomLoading(false);
+    }
+  };
+
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100vh' }}>
+      {/* Green outline when mouse look mode is active */}
+      {mouseLockActive && (
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 50,
+          boxShadow: 'inset 0 0 0 4px #00ff00',
+        }} />
+      )}
+
       <div
         style={{
           position: 'absolute', top: '20px', left: '20px',
@@ -1014,12 +1200,82 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       >
         <h3 style={{ margin: '0 0 10px 0' }}>Controls:</h3>
         <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys - Move</p>
-        <p style={{ margin: '5px 0' }}>Mouse/Touch Drag - Look Around</p>
+        {motionPermission === 'granted' ? (
+          <>
+            <p style={{ margin: '5px 0', color: '#4ade80' }}>📱 Tilt device - Look Around</p>
+            <button
+              onClick={() => recalibrateMotionRef.current?.()}
+              style={{
+                marginTop: '6px', padding: '4px 10px', fontSize: '12px',
+                background: 'rgba(255,255,255,0.15)', color: 'white',
+                border: '1px solid rgba(255,255,255,0.3)', borderRadius: '4px', cursor: 'pointer',
+              }}
+            >
+              ↺ Recalibrate
+            </button>
+          </>
+        ) : (
+          <>
+            <p style={{ margin: '5px 0' }}>Click Scene - Enable Mouse Look</p>
+            <p style={{ margin: '5px 0' }}>Mouse - Look Around (when active)</p>
+            <p style={{ margin: '5px 0' }}>Esc - Exit Mouse Look</p>
+          </>
+        )}
         <p style={{ margin: '5px 0' }}>Enter - Chat</p>
         <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
           Walk near others to voice chat
         </p>
       </div>
+
+      {/* iOS motion permission prompt */}
+      {motionPermission === 'prompt' && (
+        <div style={{
+          position: 'absolute', bottom: '30px', left: '50%',
+          transform: 'translateX(-50%)', zIndex: 200,
+          background: 'rgba(0,0,0,0.85)', color: 'white',
+          padding: '14px 20px', borderRadius: '10px',
+          fontFamily: 'monospace', textAlign: 'center',
+          border: '1px solid rgba(255,255,255,0.2)',
+          display: 'flex', alignItems: 'center', gap: '12px',
+        }}>
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>
+            Enable gyroscope to look around by moving your device
+          </span>
+          <button
+            onClick={handleRequestMotionPermission}
+            style={{
+              padding: '8px 16px', background: '#6366f1', color: 'white',
+              border: 'none', borderRadius: '6px', cursor: 'pointer',
+              fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap',
+            }}
+          >
+            Enable Motion
+          </button>
+        </div>
+      )}
+
+      {/* Jitsi voice chat error banner */}
+      {jitsiError && (
+        <div style={{
+          position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(185, 28, 28, 0.92)', color: 'white',
+          padding: '10px 16px', borderRadius: '8px', zIndex: 300,
+          fontFamily: 'monospace', fontSize: '13px',
+          display: 'flex', alignItems: 'center', gap: '12px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.5)', maxWidth: '90vw',
+        }}>
+          <span>⚠️ {jitsiError}</span>
+          <button
+            onClick={() => setJitsiError(null)}
+            style={{
+              background: 'none', border: 'none', color: 'white',
+              cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: 0, flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Voice proximity indicator + hidden Jitsi iframe for audio */}
       {jitsiRoom && (
@@ -1039,7 +1295,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           {/* Jitsi iframe renders audio; hidden visually */}
           <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, overflow: 'hidden' }}>
             <JitsiMeeting
-              domain="meet.jit.si"
+              domain={import.meta.env.VITE_JITSI_DOMAIN ?? 'meet.jit.si'}
               roomName={jitsiRoom}
               configOverwrite={{
                 startWithAudioMuted: false,
@@ -1062,6 +1318,26 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 iframeRef.style.width = '1px';
                 iframeRef.style.height = '1px';
               }}
+              onApiReady={api => {
+                // Connected — cancel the timeout and clear any previous error
+                if (jitsiConnectTimeoutRef.current) {
+                  clearTimeout(jitsiConnectTimeoutRef.current);
+                  jitsiConnectTimeoutRef.current = null;
+                }
+                setJitsiError(null);
+
+                api.on('connectionFailed', () =>
+                  setJitsiError('Voice chat connection failed. Check your network connection.'));
+
+                api.on('errorOccurred', (e: any) => {
+                  if (e?.error?.isFatal) {
+                    setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
+                  }
+                });
+
+                api.on('kickedOut', () =>
+                  setJitsiError('You were disconnected from voice chat.'));
+              }}
             />
           </div>
         </div>
@@ -1083,21 +1359,36 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           Office: {officeId === 'global' ? 'Global' : 'Private'}
         </p>
 
-        <button
-          onClick={() => setShowSettings(true)}
-          style={{
-            marginTop: '10px', padding: '8px 16px',
-            background: '#3498db', color: 'white',
-            border: 'none', borderRadius: '4px', cursor: 'pointer',
-            fontSize: '14px', width: '100%',
-          }}
-        >
-          ⚙️ Settings
-        </button>
+        {user && (
+          <>
+            <button
+              onClick={() => setShowCreateRoom(true)}
+              style={{
+                marginTop: '10px', padding: '8px 16px',
+                background: '#7c3aed', color: 'white',
+                border: 'none', borderRadius: '4px', cursor: 'pointer',
+                fontSize: '14px', width: '100%',
+              }}
+            >
+              + New Room
+            </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              style={{
+                marginTop: '8px', padding: '8px 16px',
+                background: '#3498db', color: 'white',
+                border: 'none', borderRadius: '4px', cursor: 'pointer',
+                fontSize: '14px', width: '100%',
+              }}
+            >
+              ⚙️ Settings
+            </button>
+          </>
+        )}
 
         {user ? (
           <>
-            {onShowOfficeSelector && officeId !== 'global' && (
+            {onShowOfficeSelector && (
               <button
                 onClick={onShowOfficeSelector}
                 style={{
@@ -1107,7 +1398,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                   fontSize: '14px', width: '100%',
                 }}
               >
-                🏢 My Offices
+                🏠 Back to Lobby
               </button>
             )}
             <button
@@ -1124,7 +1415,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           </>
         ) : (
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => setShowLoginModal(true)}
             style={{
               marginTop: '10px', padding: '8px 16px',
               background: '#22c55e', color: 'white',
@@ -1207,8 +1498,228 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         currentSettings={avatarCustomization}
         onSave={user ? handleSaveSettings : undefined}
         currentEnvironment={environment}
-        onEnvironmentChange={handleEnvironmentChange}
+        onEnvironmentChange={user ? handleEnvironmentChange : undefined}
       />
+
+      {/* Login modal — overlays the scene so the world stays visible behind it */}
+      {showLoginModal && (
+        <div
+          onClick={() => setShowLoginModal(false)}
+          style={{
+            position: 'absolute', inset: 0, zIndex: 500,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'white', borderRadius: '12px',
+              padding: '40px 36px', maxWidth: '380px', width: '90%',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+              textAlign: 'center',
+            }}
+          >
+            <button
+              onClick={() => setShowLoginModal(false)}
+              style={{
+                position: 'absolute', top: '12px', right: '16px',
+                background: 'none', border: 'none', fontSize: '22px',
+                cursor: 'pointer', color: '#666', lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+
+            <h1 style={{ margin: '0 0 6px 0', fontSize: '28px', fontWeight: 'bold', color: '#1f2937' }}>
+              OfficeXR
+            </h1>
+            <p style={{ margin: '0 0 28px 0', color: '#6b7280', fontSize: '15px' }}>
+              Sign in to access your private rooms
+            </p>
+
+            <button
+              onClick={() => signInWithGoogle()}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', gap: '12px',
+                padding: '12px 20px', borderRadius: '8px', cursor: 'pointer',
+                border: '2px solid #e5e7eb', background: 'white',
+                color: '#374151', fontSize: '15px', fontWeight: '500',
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+              Sign in with Google
+            </button>
+
+            <p style={{ margin: '20px 0 0 0', fontSize: '13px', color: '#9ca3af' }}>
+              Or continue exploring as a guest — no sign-in required
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Create room dialog */}
+      {showCreateRoom && (
+        <div
+          onClick={() => { setShowCreateRoom(false); setCreateRoomError(null); setCreateRoomName(''); }}
+          style={{
+            position: 'absolute', inset: 0, zIndex: 500,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#1e1e2e', borderRadius: '12px',
+              padding: '32px', width: '380px', maxWidth: '90vw',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '700', color: 'white' }}>
+              Create a new room
+            </h2>
+            <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>
+              The room name becomes part of its identity — use a short, descriptive slug.
+            </p>
+
+            <form onSubmit={handleCreateRoom}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.6)', marginBottom: '6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Room name (slug)
+              </label>
+              <input
+                value={createRoomName}
+                onChange={e => {
+                  const val = e.target.value.toLowerCase().replace(/\s+/g, '-');
+                  setCreateRoomName(val);
+                  setCreateRoomError(validateSlug(val));
+                }}
+                placeholder="my-team-room"
+                autoFocus
+                spellCheck={false}
+                style={{
+                  width: '100%', padding: '10px 12px',
+                  background: 'rgba(255,255,255,0.07)',
+                  border: `1px solid ${createRoomError && createRoomName ? '#ef4444' : 'rgba(255,255,255,0.15)'}`,
+                  borderRadius: '8px', color: 'white', fontSize: '15px',
+                  fontFamily: 'monospace', boxSizing: 'border-box', outline: 'none',
+                }}
+              />
+              <div style={{ minHeight: '20px', marginTop: '6px' }}>
+                {createRoomError && createRoomName && (
+                  <p style={{ margin: 0, fontSize: '12px', color: '#f87171' }}>{createRoomError}</p>
+                )}
+                {!createRoomError && createRoomName && (
+                  <p style={{ margin: 0, fontSize: '12px', color: '#4ade80' }}>✓ Valid room name</p>
+                )}
+              </div>
+
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                marginTop: '16px', cursor: 'pointer', fontSize: '14px', color: 'rgba(255,255,255,0.7)',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={createRoomLinkAccess}
+                  onChange={e => setCreateRoomLinkAccess(e.target.checked)}
+                  style={{ width: '15px', height: '15px' }}
+                />
+                Anyone with the link can join
+              </label>
+
+              {createRoomError && !createRoomName && (
+                <p style={{ margin: '12px 0 0 0', fontSize: '12px', color: '#f87171' }}>{createRoomError}</p>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '24px' }}>
+                <button
+                  type="submit"
+                  disabled={createRoomLoading || !!validateSlug(createRoomName)}
+                  style={{
+                    flex: 1, padding: '10px',
+                    background: createRoomLoading || validateSlug(createRoomName) ? '#4b3f7c' : '#7c3aed',
+                    color: 'white', border: 'none', borderRadius: '8px',
+                    cursor: createRoomLoading || validateSlug(createRoomName) ? 'not-allowed' : 'pointer',
+                    fontSize: '14px', fontWeight: '600',
+                    opacity: createRoomLoading || validateSlug(createRoomName) ? 0.6 : 1,
+                  }}
+                >
+                  {createRoomLoading ? 'Creating…' : 'Create Room'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateRoom(false); setCreateRoomError(null); setCreateRoomName(''); }}
+                  style={{
+                    flex: 1, padding: '10px',
+                    background: 'rgba(255,255,255,0.07)',
+                    color: 'rgba(255,255,255,0.7)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Virtual joystick — touch devices only */}
+      {isTouchDevice && (
+        <div
+          onTouchStart={e => {
+            e.preventDefault();
+            setJoystickActive(true);
+          }}
+          onTouchMove={e => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            let dx = touch.clientX - cx;
+            let dy = touch.clientY - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const maxR = 45;
+            if (dist > maxR) {
+              dx = (dx / dist) * maxR;
+              dy = (dy / dist) * maxR;
+            }
+            setJoystickKnob({ x: dx, y: dy });
+            joystickInputRef.current = { x: dx / maxR, y: dy / maxR };
+          }}
+          onTouchEnd={() => {
+            setJoystickActive(false);
+            setJoystickKnob({ x: 0, y: 0 });
+            joystickInputRef.current = { x: 0, y: 0 };
+          }}
+          style={{
+            position: 'absolute', bottom: '40px', left: '40px',
+            width: '120px', height: '120px', borderRadius: '50%',
+            background: 'rgba(255,255,255,0.12)',
+            border: '2px solid rgba(255,255,255,0.25)',
+            zIndex: 200, touchAction: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div style={{
+            width: '52px', height: '52px', borderRadius: '50%',
+            background: joystickActive ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.25)',
+            border: '2px solid rgba(255,255,255,0.5)',
+            transform: `translate(${joystickKnob.x}px, ${joystickKnob.y}px)`,
+            transition: joystickActive ? 'none' : 'transform 0.15s ease-out',
+            pointerEvents: 'none',
+          }} />
+        </div>
+      )}
     </div>
   );
 }

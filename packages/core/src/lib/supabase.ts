@@ -39,9 +39,10 @@ export type Database = {
           id: string;
           name: string;
           description: string | null;
+          link_access: boolean;
           created_at: string;
         };
-        Insert: Omit<Database['public']['Tables']['offices']['Row'], 'id' | 'created_at'>;
+        Insert: { name: string; description?: string | null; link_access?: boolean };
         Update: Partial<Database['public']['Tables']['offices']['Insert']>;
         Relationships: [];
       };

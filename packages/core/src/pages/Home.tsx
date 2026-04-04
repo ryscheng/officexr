@@ -1,39 +1,29 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import OfficeSelector from '@/components/OfficeSelector';
+import UserLobby from '@/components/UserLobby';
 import OfficeScene from '@/components/OfficeScene';
 
 export default function Home() {
   const { user } = useAuth();
-  const [selectedOfficeId, setSelectedOfficeId] = useState<string | null>('global');
-  const [showOfficeSelector, setShowOfficeSelector] = useState(false);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 
-  const handleSelectOffice = (officeId: string) => {
-    setSelectedOfficeId(officeId);
-    setShowOfficeSelector(false);
-  };
-
-  const handleShowOfficeSelector = () => {
-    setShowOfficeSelector(true);
-  };
-
-  const handleLeaveOffice = () => {
-    if (user) {
-      setShowOfficeSelector(true);
-    } else {
-      setSelectedOfficeId('global');
-    }
-  };
-
-  if (showOfficeSelector && user) {
-    return <OfficeSelector onSelectOffice={handleSelectOffice} />;
+  // Anonymous users always see the hardcoded global scene.
+  // They cannot change environments or switch rooms.
+  if (!user) {
+    return <OfficeScene officeId="global" onLeave={() => {}} />;
   }
 
-  return (
-    <OfficeScene
-      officeId={selectedOfficeId || 'global'}
-      onLeave={handleLeaveOffice}
-      onShowOfficeSelector={user ? handleShowOfficeSelector : undefined}
-    />
-  );
+  // Authenticated user inside a specific room
+  if (selectedRoomId) {
+    return (
+      <OfficeScene
+        officeId={selectedRoomId}
+        onLeave={() => setSelectedRoomId(null)}
+        onShowOfficeSelector={() => setSelectedRoomId(null)}
+      />
+    );
+  }
+
+  // Authenticated user — show their personal 3D lobby
+  return <UserLobby onEnterRoom={setSelectedRoomId} />;
 }
