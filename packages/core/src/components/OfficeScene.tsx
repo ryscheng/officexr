@@ -164,17 +164,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (relAlpha < -180) relAlpha += 360;
 
       const screenAngle = window.screen?.orientation?.angle ?? 0;
-      const yaw = -THREE.MathUtils.degToRad(relAlpha);
+      // alpha increases counterclockwise (MDN spec), so rotating device left increases alpha.
+      // Positive yaw in YXZ = camera turns left, so no negation needed.
+      const yaw = THREE.MathUtils.degToRad(relAlpha);
 
-      // Pitch mapping differs between portrait and landscape
+      // Pitch mapping differs between portrait and landscape.
+      // In portrait: beta ≈ 90 when upright. Tilting up decreases beta, so (beta - 90) goes
+      // negative, and negative pitch in YXZ = looking up. ✓
       let pitch: number;
       if (screenAngle === 90 || screenAngle === -270) {
-        pitch = THREE.MathUtils.degToRad(-gamma); // landscape-left
+        pitch = THREE.MathUtils.degToRad(gamma);  // landscape-left
       } else if (screenAngle === 270 || screenAngle === -90) {
-        pitch = THREE.MathUtils.degToRad(gamma);  // landscape-right
+        pitch = THREE.MathUtils.degToRad(-gamma); // landscape-right
       } else {
-        // Portrait: beta ≈ 90 when holding upright = level gaze
-        pitch = THREE.MathUtils.degToRad(90 - beta);
+        // Portrait
+        pitch = THREE.MathUtils.degToRad(beta - 90);
       }
 
       pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
