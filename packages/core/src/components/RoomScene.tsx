@@ -1542,8 +1542,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               });
 
               // Only mark connected when actually inside the conference room
-              api.addEventListener('videoConferenceJoined', (e: any) => {
-                console.log('[VoiceChat] videoConferenceJoined — connected to room:', jitsiRoom, e);
+              api.addEventListener('videoConferenceJoined', () => {
+                console.log('[VoiceChat] videoConferenceJoined — connected to room:', jitsiRoom);
                 if (jitsiConnectTimeoutRef.current) {
                   clearTimeout(jitsiConnectTimeoutRef.current);
                   jitsiConnectTimeoutRef.current = null;
@@ -1561,12 +1561,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 setRemoteAudioLevel(0);
               };
 
-              api.addEventListener('videoConferenceLeft', (e: any) => {
-                console.warn('[VoiceChat] videoConferenceLeft:', e);
+              api.addEventListener('videoConferenceLeft', () => {
+                console.warn('[VoiceChat] videoConferenceLeft');
                 onDisconnect('videoConferenceLeft');
               });
-              api.addEventListener('conferenceTerminated', (e: any) => {
-                console.warn('[VoiceChat] conferenceTerminated:', e);
+              api.addEventListener('conferenceTerminated', () => {
+                console.warn('[VoiceChat] conferenceTerminated');
                 onDisconnect('conferenceTerminated');
               });
 
