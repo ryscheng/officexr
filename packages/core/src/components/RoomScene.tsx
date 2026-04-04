@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { JaaSMeeting } from '@jitsi/react-sdk';
+import { generateJaaSJwt } from '@/lib/jaasJwt';
 import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
@@ -68,6 +69,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
   const [jitsiError, setJitsiError] = useState<string | null>(null);
   const [jitsiConnected, setJitsiConnected] = useState(false);
+  const [jaasJwt, setJaasJwt] = useState<string | null>(null);
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
   const jitsiApiRef = useRef<any>(null);
   const remoteAudioDecayRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -137,6 +139,29 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       setEnvironment(savedEnv);
     }
   }, []);
+
+  // Generate a JaaS JWT from the private key stored in env vars.
+  // Regenerated whenever the current user changes (e.g. login/logout).
+  // TTL is 1 week; the token is generated client-side via Web Crypto (RS256).
+  useEffect(() => {
+    const appId      = import.meta.env.VITE_JAAS_APP_ID      as string | undefined;
+    const apiKeyId   = import.meta.env.VITE_JAAS_API_KEY_ID  as string | undefined;
+    const privateKey = import.meta.env.VITE_JAAS_PRIVATE_KEY as string | undefined;
+
+    if (!appId || !apiKeyId || !privateKey || !currentUser) {
+      setJaasJwt(null);
+      return;
+    }
+
+    generateJaaSJwt(appId, apiKeyId, privateKey, {
+      id:    currentUser.id,
+      name:  currentUser.name || 'User',
+      email: user?.email ?? '',
+    }).then(setJaasJwt).catch(err => {
+      console.error('JaaS JWT generation failed:', err);
+      setJaasJwt(null);
+    });
+  }, [currentUser?.id, currentUser?.name, user?.email]);
 
   // Continuously monitor the local microphone so the mic indicator always reflects
   // real audio input, independent of any Jitsi connection.
@@ -1416,14 +1441,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       {/* Jitsi audio iframe — positioned off-screen at a real size (not 1x1) so
           mobile browsers (especially iOS) don't throttle/suspend its media tracks.
           The allow attribute is required for microphone access in cross-origin iframes. */}
-      {jitsiRoom && (
+      {jitsiRoom && jaasJwt && (
         <div style={{
           position: 'fixed', top: '-400px', left: '-600px',
           width: '480px', height: '270px', overflow: 'hidden',
         }}>
           <JaaSMeeting
             appId={import.meta.env.VITE_JAAS_APP_ID ?? ''}
-            jwt={import.meta.env.VITE_JAAS_JWT ?? ''}
+            jwt={jaasJwt}
             roomName={jitsiRoom}
             configOverwrite={{
               startWithAudioMuted: false,
