@@ -70,6 +70,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [jitsiError, setJitsiError] = useState<string | null>(null);
   const [jitsiConnected, setJitsiConnected] = useState(false);
   const [jaasJwt, setJaasJwt] = useState<string | null>(null);
+  const [jaasJwtError, setJaasJwtError] = useState<string | null>(null);
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
   const jitsiApiRef = useRef<any>(null);
   const remoteAudioDecayRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -150,16 +151,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     if (!appId || !apiKeyId || !privateKey || !currentUser) {
       setJaasJwt(null);
+      setJaasJwtError(null);
       return;
     }
 
+    setJaasJwtError(null);
     generateJaaSJwt(appId, apiKeyId, privateKey, {
       id:    currentUser.id,
       name:  currentUser.name || 'User',
       email: user?.email ?? '',
-    }).then(setJaasJwt).catch(err => {
+    }).then(jwt => {
+      setJaasJwt(jwt);
+      setJaasJwtError(null);
+    }).catch(err => {
       console.error('JaaS JWT generation failed:', err);
       setJaasJwt(null);
+      setJaasJwtError(String(err?.message ?? err));
     });
   }, [currentUser?.id, currentUser?.name, user?.email]);
 
@@ -386,12 +393,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   };
 
   // Start a connection timeout whenever we attempt to join a Jitsi room.
-  // If onApiReady fires first it clears the timer; otherwise show an error.
+  // Only start the timer when jaasJwt is also available — that's when JaaSMeeting
+  // actually mounts. If jwt is null the iframe never renders, so onApiReady will
+  // never fire and the old code would always time out and show a spurious error.
   // Also reset all per-session Jitsi state when the room changes.
   useEffect(() => {
     if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
 
-    if (!jitsiRoom) {
+    if (!jitsiRoom || !jaasJwt) {
       setJitsiError(null);
       setJitsiConnected(false);
       setRemoteAudioLevel(0);
@@ -406,13 +415,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setJitsiError(null);
     setJitsiConnected(false);
     jitsiConnectTimeoutRef.current = setTimeout(() => {
-      setJitsiError('Could not connect to voice chat — the server may be unreachable.');
+      setJitsiError('Could not connect to voice chat — the server may be unavailable.');
     }, 15000);
 
     return () => {
       if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
     };
-  }, [jitsiRoom]);
+  }, [jitsiRoom, jaasJwt]);
 
   const sendChatMessage = (message: string) => {
     if (!channelRef.current || !currentUser) return;
@@ -1400,43 +1409,75 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
-      {/* Voice chat status indicator — green only when Jitsi is actually connected */}
-      {jitsiRoom && (
-        <div
-          style={{
-            position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
-            background: jitsiConnected ? 'rgba(0, 160, 90, 0.92)' : 'rgba(180, 120, 0, 0.92)',
-            borderRadius: '8px', padding: '8px 16px', color: 'white', zIndex: 200,
-            display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'monospace',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.4)', transition: 'background 0.4s',
-          }}
-        >
-          <span style={{ fontSize: '16px' }}>{jitsiConnected ? '🟢' : '🟡'}</span>
-          <span style={{ fontSize: '13px' }}>
-            {jitsiConnected
-              ? `Voice active · ${nearbyUserIdsRef.current.size + 1} in range`
-              : 'Voice connecting…'}
-          </span>
-          {/* Remote audio level bar — visible when connected */}
-          {jitsiConnected && (
-            <div title="Remote audio level" style={{
-              display: 'flex', alignItems: 'center', gap: '2px',
-            }}>
-              {[0.15, 0.35, 0.55, 0.75, 0.95].map((thresh, i) => (
-                <div key={i} style={{
-                  width: '4px',
-                  height: `${8 + i * 3}px`,
-                  borderRadius: '2px',
-                  background: remoteAudioLevel >= thresh
-                    ? (thresh > 0.7 ? '#f87171' : thresh > 0.45 ? '#fbbf24' : '#4ade80')
-                    : 'rgba(255,255,255,0.25)',
-                  transition: 'background 0.1s',
-                }} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Voice chat status indicator — always visible, reflects full Jitsi state */}
+      {(() => {
+        let bg: string;
+        let icon: string;
+        let label: string;
+        const missing = [
+          !import.meta.env.VITE_JAAS_APP_ID     && 'VITE_JAAS_APP_ID',
+          !import.meta.env.VITE_JAAS_API_KEY_ID && 'VITE_JAAS_API_KEY_ID',
+          !import.meta.env.VITE_JAAS_PRIVATE_KEY && 'VITE_JAAS_PRIVATE_KEY',
+        ].filter(Boolean) as string[];
+        const jaasConfigured = missing.length === 0;
+        if (jaasJwtError) {
+          bg = 'rgba(185, 28, 28, 0.92)';  // red — credentials invalid
+          icon = '❌';
+          label = `Voice chat credential error: ${jaasJwtError}`;
+        } else if (!jaasConfigured) {
+          bg = 'rgba(75, 85, 99, 0.92)';   // grey — not configured
+          icon = '⚙️';
+          label = `Voice chat not configured — missing: ${missing.join(', ')}`;
+        } else if (!jaasJwt) {
+          bg = 'rgba(75, 85, 99, 0.92)';   // grey — JWT pending
+          icon = '⏳';
+          label = 'Voice chat initializing…';
+        } else if (!jitsiRoom) {
+          bg = 'rgba(55, 65, 81, 0.92)';   // dark — idle
+          icon = '🔇';
+          label = 'Walk near others to voice chat';
+        } else if (jitsiConnected) {
+          bg = 'rgba(0, 160, 90, 0.92)';   // green — active
+          icon = '🟢';
+          label = `Voice active · ${nearbyUserIdsRef.current.size + 1} in range`;
+        } else {
+          bg = 'rgba(180, 120, 0, 0.92)';  // amber — connecting
+          icon = '🟡';
+          label = 'Voice connecting…';
+        }
+        return (
+          <div
+            style={{
+              position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
+              background: bg,
+              borderRadius: '8px', padding: '8px 16px', color: 'white', zIndex: 200,
+              display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'monospace',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.4)', transition: 'background 0.4s',
+            }}
+          >
+            <span style={{ fontSize: '16px' }}>{icon}</span>
+            <span style={{ fontSize: '13px' }}>{label}</span>
+            {/* Remote audio level bar — visible when connected */}
+            {jitsiConnected && (
+              <div title="Remote audio level" style={{
+                display: 'flex', alignItems: 'center', gap: '2px',
+              }}>
+                {[0.15, 0.35, 0.55, 0.75, 0.95].map((thresh, i) => (
+                  <div key={i} style={{
+                    width: '4px',
+                    height: `${8 + i * 3}px`,
+                    borderRadius: '2px',
+                    background: remoteAudioLevel >= thresh
+                      ? (thresh > 0.7 ? '#f87171' : thresh > 0.45 ? '#fbbf24' : '#4ade80')
+                      : 'rgba(255,255,255,0.25)',
+                    transition: 'background 0.1s',
+                  }} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Jitsi audio iframe — positioned off-screen at a real size (not 1x1) so
           mobile browsers (especially iOS) don't throttle/suspend its media tracks.
@@ -1480,6 +1521,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
               // onApiReady means the iframe JS loaded — NOT that the conference was
               // joined. Wait for videoConferenceJoined before marking as connected.
+              // The 15s timeout keeps running: if videoConferenceJoined never fires
+              // we still want to show the "server unavailable" error.
 
               // If user was muted before the API loaded, sync into Jitsi
               if (micMuted) api.executeCommand('toggleAudio');
