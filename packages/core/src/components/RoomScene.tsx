@@ -67,7 +67,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [userCount, setUserCount] = useState(0);
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
   const [jitsiError, setJitsiError] = useState<string | null>(null);
+  const [jitsiConnected, setJitsiConnected] = useState(false);
+  const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
+  const jitsiApiRef = useRef<any>(null);
+  const remoteAudioDecayRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [micMuted, setMicMuted] = useState(false);
+  const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = no permission
+  const micStreamRef = useRef<MediaStream | null>(null);
   const lastPositionUpdate = useRef<number>(0);
   const [showSettings, setShowSettings] = useState(false);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
@@ -126,6 +133,41 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     if (savedEnv && ['corporate', 'cabin', 'coffeeshop'].includes(savedEnv)) {
       setEnvironment(savedEnv);
     }
+  }, []);
+
+  // Continuously monitor the local microphone so the mic indicator always reflects
+  // real audio input, independent of any Jitsi connection.
+  useEffect(() => {
+    let animFrameId: number;
+    let audioCtx: AudioContext | null = null;
+
+    const setup = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        micStreamRef.current = stream;
+        audioCtx = new AudioContext();
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        audioCtx.createMediaStreamSource(stream).connect(analyser);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          analyser.getByteFrequencyData(buf);
+          const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length) / 128;
+          setMicLevel(rms);
+          animFrameId = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch {
+        setMicLevel(-1); // permission denied or no mic
+      }
+    };
+    setup();
+
+    return () => {
+      cancelAnimationFrame(animFrameId);
+      micStreamRef.current?.getTracks().forEach(t => t.stop());
+      audioCtx?.close();
+    };
   }, []);
 
   // Save environment preference to localStorage
@@ -241,13 +283,37 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
   }, [chatVisible, chatInput]);
 
+  // Track a mute toggle function in a ref so onApiReady (inside the Three.js
+  // useEffect closure) can always call the latest version.
+  const handleMuteToggle = () => {
+    const newMuted = !micMuted;
+    setMicMuted(newMuted);
+    // Silence the local stream so the mic indicator reflects mute state
+    micStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
+    // Mirror in Jitsi if a session is active
+    jitsiApiRef.current?.executeCommand('toggleAudio');
+  };
+
   // Start a connection timeout whenever we attempt to join a Jitsi room.
   // If onApiReady fires first it clears the timer; otherwise show an error.
+  // Also reset all per-session Jitsi state when the room changes.
   useEffect(() => {
     if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
-    if (!jitsiRoom) { setJitsiError(null); return; }
+
+    if (!jitsiRoom) {
+      setJitsiError(null);
+      setJitsiConnected(false);
+      setRemoteAudioLevel(0);
+      jitsiApiRef.current = null;
+      if (remoteAudioDecayRef.current) {
+        clearInterval(remoteAudioDecayRef.current);
+        remoteAudioDecayRef.current = null;
+      }
+      return;
+    }
 
     setJitsiError(null);
+    setJitsiConnected(false);
     jitsiConnectTimeoutRef.current = setTimeout(() => {
       setJitsiError('Could not connect to voice chat — the server may be unreachable.');
     }, 15000);
@@ -1243,21 +1309,41 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
-      {/* Voice proximity indicator */}
+      {/* Voice chat status indicator — green only when Jitsi is actually connected */}
       {jitsiRoom && (
         <div
           style={{
             position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
-            background: 'rgba(0, 180, 100, 0.9)', borderRadius: '8px',
-            padding: '8px 16px', color: 'white', zIndex: 200,
+            background: jitsiConnected ? 'rgba(0, 160, 90, 0.92)' : 'rgba(180, 120, 0, 0.92)',
+            borderRadius: '8px', padding: '8px 16px', color: 'white', zIndex: 200,
             display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'monospace',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.4)', transition: 'background 0.4s',
           }}
         >
-          <span style={{ fontSize: '18px' }}>🎙</span>
+          <span style={{ fontSize: '16px' }}>{jitsiConnected ? '🟢' : '🟡'}</span>
           <span style={{ fontSize: '13px' }}>
-            Voice chat active · {nearbyUserIdsRef.current.size + 1} people in range
+            {jitsiConnected
+              ? `Voice active · ${nearbyUserIdsRef.current.size + 1} in range`
+              : 'Voice connecting…'}
           </span>
+          {/* Remote audio level bar — visible when connected */}
+          {jitsiConnected && (
+            <div title="Remote audio level" style={{
+              display: 'flex', alignItems: 'center', gap: '2px',
+            }}>
+              {[0.15, 0.35, 0.55, 0.75, 0.95].map((thresh, i) => (
+                <div key={i} style={{
+                  width: '4px',
+                  height: `${8 + i * 3}px`,
+                  borderRadius: '2px',
+                  background: remoteAudioLevel >= thresh
+                    ? (thresh > 0.7 ? '#f87171' : thresh > 0.45 ? '#fbbf24' : '#4ade80')
+                    : 'rgba(255,255,255,0.25)',
+                  transition: 'background 0.1s',
+                }} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1294,24 +1380,58 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 'camera; microphone; display-capture; autoplay; screen-wake-lock';
             }}
             onApiReady={api => {
-              // Connected — cancel the timeout and clear any previous error
+              jitsiApiRef.current = api;
+
+              // Connected — cancel the timeout, mark as connected
               if (jitsiConnectTimeoutRef.current) {
                 clearTimeout(jitsiConnectTimeoutRef.current);
                 jitsiConnectTimeoutRef.current = null;
               }
               setJitsiError(null);
+              setJitsiConnected(true);
 
-              api.on('connectionFailed', () =>
-                setJitsiError('Voice chat connection failed. Check your network connection.'));
+              // If user was muted before connecting, sync state into Jitsi
+              // (Jitsi starts unmuted per startWithAudioMuted:false)
+              if (micMuted) api.executeCommand('toggleAudio');
+
+              // Remote audio level — decay toward 0 between events
+              if (remoteAudioDecayRef.current) clearInterval(remoteAudioDecayRef.current);
+              remoteAudioDecayRef.current = setInterval(() => {
+                setRemoteAudioLevel(prev => (prev > 0.01 ? prev * 0.85 : 0));
+              }, 80);
+
+              api.addListener('audioLevelsChanged', ({ id, level }: { id: string; level: number }) => {
+                // Jitsi fires this for every participant including local; we want the
+                // maximum level across ALL participants as a simple "someone is speaking" signal.
+                void id;
+                setRemoteAudioLevel(prev => Math.max(prev, level));
+              });
+
+              const onDisconnect = () => {
+                setJitsiConnected(false);
+                if (remoteAudioDecayRef.current) {
+                  clearInterval(remoteAudioDecayRef.current);
+                  remoteAudioDecayRef.current = null;
+                }
+                setRemoteAudioLevel(0);
+              };
+
+              api.on('connectionFailed', () => {
+                setJitsiError('Voice chat connection failed. Check your network connection.');
+                onDisconnect();
+              });
 
               api.on('errorOccurred', (e: any) => {
                 if (e?.error?.isFatal) {
                   setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
+                  onDisconnect();
                 }
               });
 
-              api.on('kickedOut', () =>
-                setJitsiError('You were disconnected from voice chat.'));
+              api.on('kickedOut', () => {
+                setJitsiError('You were disconnected from voice chat.');
+                onDisconnect();
+              });
             }}
           />
         </div>
@@ -1329,6 +1449,47 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           {!user && <span style={{ color: '#888', fontSize: '12px' }}> (Guest)</span>}
         </p>
         <p style={{ margin: '5px 0' }}>Users online: {userCount}</p>
+
+        {/* Microphone indicator + mute toggle — always visible */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          marginTop: '8px', paddingTop: '8px',
+          borderTop: '1px solid rgba(255,255,255,0.15)',
+        }}>
+          {/* VU meter: 5 segments driven by live mic level */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '18px' }}
+               title={micLevel < 0 ? 'Microphone unavailable' : micMuted ? 'Muted' : 'Microphone active'}>
+            {[0.08, 0.22, 0.40, 0.62, 0.85].map((thresh, i) => (
+              <div key={i} style={{
+                width: '4px',
+                height: `${6 + i * 3}px`,
+                borderRadius: '2px',
+                background: micMuted || micLevel < 0
+                  ? 'rgba(255,255,255,0.2)'
+                  : micLevel >= thresh
+                    ? (thresh > 0.55 ? '#f87171' : thresh > 0.3 ? '#fbbf24' : '#4ade80')
+                    : 'rgba(255,255,255,0.2)',
+                transition: 'background 0.08s',
+              }} />
+            ))}
+          </div>
+          {/* Mute toggle button */}
+          <button
+            onClick={handleMuteToggle}
+            title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+            style={{
+              background: micMuted ? 'rgba(220,38,38,0.8)' : 'rgba(255,255,255,0.15)',
+              border: 'none', borderRadius: '4px', cursor: 'pointer',
+              color: 'white', fontSize: '13px', padding: '3px 8px',
+              transition: 'background 0.2s',
+            }}
+          >
+            {micLevel < 0 ? '🚫' : micMuted ? '🔇' : '🎤'}
+          </button>
+          <span style={{ fontSize: '11px', color: '#aaa' }}>
+            {micLevel < 0 ? 'No mic' : micMuted ? 'Muted' : 'Live'}
+          </span>
+        </div>
         <p style={{ margin: '5px 0', fontSize: '12px', color: '#888' }}>
           Office: {officeId === 'global' ? 'Global' : 'Private'}
         </p>
