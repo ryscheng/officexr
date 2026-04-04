@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { JitsiMeeting } from '@jitsi/react-sdk';
+import { JaaSMeeting } from '@jitsi/react-sdk';
+import { generateJaaSJwt } from '@/lib/jaasJwt';
 import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
@@ -57,6 +58,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
+  const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
   const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
@@ -66,7 +68,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [userCount, setUserCount] = useState(0);
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
   const [jitsiError, setJitsiError] = useState<string | null>(null);
+  const [jitsiConnected, setJitsiConnected] = useState(false);
+  const [jaasJwt, setJaasJwt] = useState<string | null>(null);
+  const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
+  const jitsiApiRef = useRef<any>(null);
+  const remoteAudioDecayRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [micMuted, setMicMuted] = useState(false);
+  const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
+  const [micError, setMicError] = useState<string | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micAudioCtxRef = useRef<AudioContext | null>(null);
+  const startMicRef = useRef<(() => Promise<void>) | null>(null);
   const lastPositionUpdate = useRef<number>(0);
   const [showSettings, setShowSettings] = useState(false);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
@@ -125,6 +138,127 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     if (savedEnv && ['corporate', 'cabin', 'coffeeshop'].includes(savedEnv)) {
       setEnvironment(savedEnv);
     }
+  }, []);
+
+  // Generate a JaaS JWT from the private key stored in env vars.
+  // Regenerated whenever the current user changes (e.g. login/logout).
+  // TTL is 1 week; the token is generated client-side via Web Crypto (RS256).
+  useEffect(() => {
+    const appId      = import.meta.env.VITE_JAAS_APP_ID      as string | undefined;
+    const apiKeyId   = import.meta.env.VITE_JAAS_API_KEY_ID  as string | undefined;
+    const privateKey = import.meta.env.VITE_JAAS_PRIVATE_KEY as string | undefined;
+
+    if (!appId || !apiKeyId || !privateKey || !currentUser) {
+      setJaasJwt(null);
+      return;
+    }
+
+    generateJaaSJwt(appId, apiKeyId, privateKey, {
+      id:    currentUser.id,
+      name:  currentUser.name || 'User',
+      email: user?.email ?? '',
+    }).then(setJaasJwt).catch(err => {
+      console.error('JaaS JWT generation failed:', err);
+      setJaasJwt(null);
+    });
+  }, [currentUser?.id, currentUser?.name, user?.email]);
+
+  // Continuously monitor the local microphone so the mic indicator always reflects
+  // real audio input, independent of any Jitsi connection.
+  useEffect(() => {
+    let animFrameId: number;
+
+    const startMic = async () => {
+      // Tear down any prior session before retrying
+      cancelAnimationFrame(animFrameId);
+      micStreamRef.current?.getTracks().forEach(t => t.stop());
+      micStreamRef.current = null;
+      await micAudioCtxRef.current?.close();
+      micAudioCtxRef.current = null;
+
+      setMicError(null);
+      setMicLevel(0);
+
+      // navigator.mediaDevices is only available on secure origins (HTTPS / localhost)
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        setMicLevel(-1);
+        setMicError('HTTPS is required — microphone is unavailable on insecure origins');
+        return;
+      }
+
+      // Query the Permissions API first so we can give precise instructions.
+      // Chrome and Safari on iOS both support this; it won't throw but may not resolve.
+      let permState: PermissionState | 'unknown' = 'unknown';
+      try {
+        const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        permState = status.state;
+      } catch { /* API not available on this browser */ }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } catch (err: any) {
+        setMicLevel(-1);
+        const name: string = err?.name ?? '';
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          if (permState === 'denied') {
+            // Browser-level block (Chrome site settings). iOS Settings won't help here.
+            setMicError(
+              'Blocked in browser settings. Tap the 🔒 icon in the address bar → Site settings → Microphone → Allow'
+            );
+          } else {
+            // OS-level block or permission prompt was dismissed/denied
+            setMicError(
+              'Permission denied. Check: iOS Settings → ' +
+              (navigator.userAgent.includes('CriOS') ? 'Chrome' : 'Safari') +
+              ' → Microphone → ON. Then tap "Tap to enable" again.'
+            );
+          }
+        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          setMicError('No microphone hardware found on this device');
+        } else {
+          setMicError(`${name || 'Error'}: ${err?.message ?? 'unknown'}`);
+        }
+        return;
+      }
+
+      micStreamRef.current = stream;
+
+      // iOS/Safari creates AudioContext in 'suspended' state.
+      // Calling resume() here works when startMic() is invoked from a user gesture
+      // (e.g. the retry button). The auto-attempt on mount may still leave it
+      // suspended on iOS — the user tapping the retry button fixes that.
+      const audioCtx = new AudioContext();
+      micAudioCtxRef.current = audioCtx;
+      try { await audioCtx.resume(); } catch { /* best-effort */ }
+
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+
+      const tick = () => {
+        if (audioCtx.state === 'running') {
+          analyser.getByteFrequencyData(buf);
+          const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length) / 128;
+          setMicLevel(rms);
+        }
+        animFrameId = requestAnimationFrame(tick);
+      };
+      tick();
+    };
+
+    // Store so the retry button can call startMic() from within a user gesture
+    startMicRef.current = startMic;
+
+    // Auto-attempt on mount — works on desktop and modern Android/iOS in most cases
+    startMic();
+
+    return () => {
+      cancelAnimationFrame(animFrameId);
+      micStreamRef.current?.getTracks().forEach(t => t.stop());
+      micAudioCtxRef.current?.close();
+    };
   }, []);
 
   // Save environment preference to localStorage
@@ -240,13 +374,37 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
   }, [chatVisible, chatInput]);
 
+  // Track a mute toggle function in a ref so onApiReady (inside the Three.js
+  // useEffect closure) can always call the latest version.
+  const handleMuteToggle = () => {
+    const newMuted = !micMuted;
+    setMicMuted(newMuted);
+    // Silence the local stream so the mic indicator reflects mute state
+    micStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
+    // Mirror in Jitsi if a session is active
+    jitsiApiRef.current?.executeCommand('toggleAudio');
+  };
+
   // Start a connection timeout whenever we attempt to join a Jitsi room.
   // If onApiReady fires first it clears the timer; otherwise show an error.
+  // Also reset all per-session Jitsi state when the room changes.
   useEffect(() => {
     if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
-    if (!jitsiRoom) { setJitsiError(null); return; }
+
+    if (!jitsiRoom) {
+      setJitsiError(null);
+      setJitsiConnected(false);
+      setRemoteAudioLevel(0);
+      jitsiApiRef.current = null;
+      if (remoteAudioDecayRef.current) {
+        clearInterval(remoteAudioDecayRef.current);
+        remoteAudioDecayRef.current = null;
+      }
+      return;
+    }
 
     setJitsiError(null);
+    setJitsiConnected(false);
     jitsiConnectTimeoutRef.current = setTimeout(() => {
       setJitsiError('Could not connect to voice chat — the server may be unreachable.');
     }, 15000);
@@ -778,6 +936,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         if (!presentIds.has(id)) {
           scene.remove(avatarsRef.current.get(id)!);
           avatarsRef.current.delete(id);
+          avatarTargetsRef.current.delete(id);
           const sphere = bubbleSpheresRef.current.get(id);
           if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
           presenceDataRef.current.delete(id);
@@ -818,6 +977,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         if (avatar) {
           scene.remove(avatar);
           avatarsRef.current.delete(p.id);
+          avatarTargetsRef.current.delete(p.id);
           const sphere = bubbleSpheresRef.current.get(p.id);
           if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
           presenceDataRef.current.delete(p.id);
@@ -826,16 +986,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       });
     });
 
-    // Broadcast: position updates
+    // Broadcast: position updates — store as interpolation targets, smoothed each frame
     channel.on('broadcast', { event: 'position' }, ({ payload }) => {
       const { userId, position, rotation } = payload as {
         userId: string;
         position: { x: number; y: number; z: number };
         rotation: { x: number; y: number; z: number };
       };
-      const avatar = avatarsRef.current.get(userId);
-      if (avatar) {
-        updateAvatar(avatar, position, rotation);
+      if (avatarsRef.current.has(userId)) {
+        avatarTargetsRef.current.set(userId, {
+          position: new THREE.Vector3(position.x, position.y, position.z),
+          rotationY: rotation.y,
+        });
       }
     });
 
@@ -951,8 +1113,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
 
       const now = Date.now();
-      if (moved && channelRef.current && now - lastPositionUpdate.current > 60) {
-        channelRef.current.send({
+      // Send position when moving (60ms throttle) OR as a heartbeat every 3s
+      // so stationary users are visible for proximity detection on all clients.
+      const shouldSend = channelRef.current && (
+        (moved && now - lastPositionUpdate.current > 60) ||
+        (now - lastPositionUpdate.current > 3000)
+      );
+      if (shouldSend) {
+        channelRef.current!.send({
           type: 'broadcast',
           event: 'position',
           payload: {
@@ -962,6 +1130,16 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           },
         });
         lastPositionUpdate.current = now;
+        // Keep presence position fresh so users who join mid-session see the right
+        // initial avatar position and can correctly evaluate proximity.
+        if (myPresenceRef.current) {
+          const updatedPresence = {
+            ...myPresenceRef.current,
+            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+            rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
+          };
+          myPresenceRef.current = updatedPresence;
+        }
       }
 
       // Update local bubble sphere position
@@ -970,6 +1148,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           camera.position.x, camera.position.y, camera.position.z
         );
       }
+
+      // Smoothly interpolate remote avatars toward their latest received positions
+      avatarTargetsRef.current.forEach((target, uid) => {
+        const avatar = avatarsRef.current.get(uid);
+        if (avatar) {
+          avatar.position.lerp(target.position, 0.15);
+          // Lerp rotation via shortest-path on Y axis
+          let dy = target.rotationY - avatar.rotation.y;
+          if (dy > Math.PI) dy -= Math.PI * 2;
+          if (dy < -Math.PI) dy += Math.PI * 2;
+          avatar.rotation.y += dy * 0.15;
+        }
+      });
 
       // Update remote bubble sphere positions and detect proximity
       const newNearby = new Set<string>();
@@ -1209,69 +1400,140 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
-      {/* Voice proximity indicator + hidden Jitsi iframe for audio */}
+      {/* Voice chat status indicator — green only when Jitsi is actually connected */}
       {jitsiRoom && (
         <div
           style={{
             position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
-            background: 'rgba(0, 180, 100, 0.9)', borderRadius: '8px',
-            padding: '8px 16px', color: 'white', zIndex: 200,
+            background: jitsiConnected ? 'rgba(0, 160, 90, 0.92)' : 'rgba(180, 120, 0, 0.92)',
+            borderRadius: '8px', padding: '8px 16px', color: 'white', zIndex: 200,
             display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'monospace',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.4)', transition: 'background 0.4s',
           }}
         >
-          <span style={{ fontSize: '18px' }}>🎙</span>
+          <span style={{ fontSize: '16px' }}>{jitsiConnected ? '🟢' : '🟡'}</span>
           <span style={{ fontSize: '13px' }}>
-            Voice chat active · {nearbyUserIdsRef.current.size + 1} people in range
+            {jitsiConnected
+              ? `Voice active · ${nearbyUserIdsRef.current.size + 1} in range`
+              : 'Voice connecting…'}
           </span>
-          {/* Jitsi iframe renders audio; hidden visually */}
-          <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, overflow: 'hidden' }}>
-            <JitsiMeeting
-              domain={import.meta.env.VITE_JITSI_DOMAIN ?? 'meet.jit.si'}
-              roomName={jitsiRoom}
-              configOverwrite={{
-                startWithAudioMuted: false,
-                startWithVideoMuted: true,
-                prejoinPageEnabled: false,
-                disableModeratorIndicator: true,
-                enableNoisyMicDetection: false,
-                disableDeepLinking: true,
-              }}
-              interfaceConfigOverwrite={{
-                TOOLBAR_BUTTONS: [],
-                SHOW_JITSI_WATERMARK: false,
-                SHOW_WATERMARK_FOR_GUESTS: false,
-              }}
-              userInfo={{
-                displayName: currentUser?.name || 'User',
-                email: user?.email || '',
-              }}
-              getIFrameRef={(iframeRef) => {
-                iframeRef.style.width = '1px';
-                iframeRef.style.height = '1px';
-              }}
-              onApiReady={api => {
-                // Connected — cancel the timeout and clear any previous error
+          {/* Remote audio level bar — visible when connected */}
+          {jitsiConnected && (
+            <div title="Remote audio level" style={{
+              display: 'flex', alignItems: 'center', gap: '2px',
+            }}>
+              {[0.15, 0.35, 0.55, 0.75, 0.95].map((thresh, i) => (
+                <div key={i} style={{
+                  width: '4px',
+                  height: `${8 + i * 3}px`,
+                  borderRadius: '2px',
+                  background: remoteAudioLevel >= thresh
+                    ? (thresh > 0.7 ? '#f87171' : thresh > 0.45 ? '#fbbf24' : '#4ade80')
+                    : 'rgba(255,255,255,0.25)',
+                  transition: 'background 0.1s',
+                }} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Jitsi audio iframe — positioned off-screen at a real size (not 1x1) so
+          mobile browsers (especially iOS) don't throttle/suspend its media tracks.
+          The allow attribute is required for microphone access in cross-origin iframes. */}
+      {jitsiRoom && jaasJwt && (
+        <div style={{
+          position: 'fixed', top: '-400px', left: '-600px',
+          width: '480px', height: '270px', overflow: 'hidden',
+        }}>
+          <JaaSMeeting
+            appId={import.meta.env.VITE_JAAS_APP_ID ?? ''}
+            jwt={jaasJwt}
+            roomName={jitsiRoom}
+            configOverwrite={{
+              startWithAudioMuted: false,
+              startWithVideoMuted: true,
+              prejoinPageEnabled: false,
+              disableModeratorIndicator: true,
+              enableNoisyMicDetection: false,
+              disableDeepLinking: true,
+            }}
+            interfaceConfigOverwrite={{
+              TOOLBAR_BUTTONS: [],
+              SHOW_JITSI_WATERMARK: false,
+              SHOW_WATERMARK_FOR_GUESTS: false,
+            }}
+            userInfo={{
+              displayName: currentUser?.name || 'User',
+              email: user?.email || '',
+            }}
+            getIFrameRef={(iframeRef) => {
+              iframeRef.style.width = '480px';
+              iframeRef.style.height = '270px';
+              // Required for microphone/camera access inside cross-origin iframes
+              (iframeRef as unknown as HTMLIFrameElement).allow =
+                'camera; microphone; display-capture; autoplay; screen-wake-lock';
+            }}
+            onApiReady={api => {
+              jitsiApiRef.current = api;
+              setJitsiError(null);
+
+              // onApiReady means the iframe JS loaded — NOT that the conference was
+              // joined. Wait for videoConferenceJoined before marking as connected.
+
+              // If user was muted before the API loaded, sync into Jitsi
+              if (micMuted) api.executeCommand('toggleAudio');
+
+              // Remote audio level — decay toward 0 between events
+              if (remoteAudioDecayRef.current) clearInterval(remoteAudioDecayRef.current);
+              remoteAudioDecayRef.current = setInterval(() => {
+                setRemoteAudioLevel(prev => (prev > 0.01 ? prev * 0.85 : 0));
+              }, 80);
+
+              api.addListener('audioLevelsChanged', ({ id, level }: { id: string; level: number }) => {
+                void id;
+                setRemoteAudioLevel(prev => Math.max(prev, level));
+              });
+
+              // Only mark connected when actually inside the conference room
+              api.addEventListener('videoConferenceJoined', () => {
                 if (jitsiConnectTimeoutRef.current) {
                   clearTimeout(jitsiConnectTimeoutRef.current);
                   jitsiConnectTimeoutRef.current = null;
                 }
-                setJitsiError(null);
+                setJitsiConnected(true);
+              });
 
-                api.on('connectionFailed', () =>
-                  setJitsiError('Voice chat connection failed. Check your network connection.'));
+              const onDisconnect = () => {
+                setJitsiConnected(false);
+                if (remoteAudioDecayRef.current) {
+                  clearInterval(remoteAudioDecayRef.current);
+                  remoteAudioDecayRef.current = null;
+                }
+                setRemoteAudioLevel(0);
+              };
 
-                api.on('errorOccurred', (e: any) => {
-                  if (e?.error?.isFatal) {
-                    setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
-                  }
-                });
+              api.addEventListener('videoConferenceLeft', onDisconnect);
+              api.addEventListener('conferenceTerminated', onDisconnect);
 
-                api.on('kickedOut', () =>
-                  setJitsiError('You were disconnected from voice chat.'));
-              }}
-            />
-          </div>
+              api.on('connectionFailed', () => {
+                setJitsiError('Voice chat connection failed. Check your network connection.');
+                onDisconnect();
+              });
+
+              api.on('errorOccurred', (e: any) => {
+                if (e?.error?.isFatal) {
+                  setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
+                  onDisconnect();
+                }
+              });
+
+              api.on('kickedOut', () => {
+                setJitsiError('You were disconnected from voice chat.');
+                onDisconnect();
+              });
+            }}
+          />
         </div>
       )}
 
@@ -1287,6 +1549,72 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           {!user && <span style={{ color: '#888', fontSize: '12px' }}> (Guest)</span>}
         </p>
         <p style={{ margin: '5px 0' }}>Users online: {userCount}</p>
+
+        {/* Microphone indicator + mute toggle — always visible */}
+        <div style={{
+          marginTop: '8px', paddingTop: '8px',
+          borderTop: '1px solid rgba(255,255,255,0.15)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* VU meter: 5 segments driven by live mic level */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '18px' }}
+                 title={micLevel < 0 ? (micError ?? 'Microphone unavailable') : micMuted ? 'Muted' : 'Microphone active'}>
+              {[0.08, 0.22, 0.40, 0.62, 0.85].map((thresh, i) => (
+                <div key={i} style={{
+                  width: '4px',
+                  height: `${6 + i * 3}px`,
+                  borderRadius: '2px',
+                  background: micMuted || micLevel < 0
+                    ? 'rgba(255,255,255,0.2)'
+                    : micLevel >= thresh
+                      ? (thresh > 0.55 ? '#f87171' : thresh > 0.3 ? '#fbbf24' : '#4ade80')
+                      : 'rgba(255,255,255,0.2)',
+                  transition: 'background 0.08s',
+                }} />
+              ))}
+            </div>
+
+            {micLevel < 0 ? (
+              /* Error state: tap to retry (user gesture unlocks iOS mic + AudioContext) */
+              <button
+                onClick={() => startMicRef.current?.()}
+                title="Tap to request microphone access"
+                style={{
+                  background: 'rgba(220,38,38,0.8)', border: 'none', borderRadius: '4px',
+                  cursor: 'pointer', color: 'white', fontSize: '12px', padding: '3px 8px',
+                }}
+              >
+                🎤 Tap to enable
+              </button>
+            ) : (
+              /* Normal state: mute toggle */
+              <>
+                <button
+                  onClick={handleMuteToggle}
+                  title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                  style={{
+                    background: micMuted ? 'rgba(220,38,38,0.8)' : 'rgba(255,255,255,0.15)',
+                    border: 'none', borderRadius: '4px', cursor: 'pointer',
+                    color: 'white', fontSize: '13px', padding: '3px 8px',
+                    transition: 'background 0.2s',
+                  }}
+                >
+                  {micMuted ? '🔇' : '🎤'}
+                </button>
+                <span style={{ fontSize: '11px', color: '#aaa' }}>
+                  {micMuted ? 'Muted' : 'Live'}
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Show actual error reason below the buttons when mic failed */}
+          {micLevel < 0 && micError && (
+            <div style={{ fontSize: '10px', color: '#f87171', marginTop: '4px', maxWidth: '160px', wordBreak: 'break-word' }}>
+              {micError}
+            </div>
+          )}
+        </div>
         <p style={{ margin: '5px 0', fontSize: '12px', color: '#888' }}>
           Office: {officeId === 'global' ? 'Global' : 'Private'}
         </p>
