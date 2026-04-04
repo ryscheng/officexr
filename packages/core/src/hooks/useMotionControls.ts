@@ -67,7 +67,7 @@ function detectNaturalLandscape(lockedScreenAngle: number): boolean {
  *   Natural landscape (iPad):   in landscape the pitch axis is gamma (tilting
  *     top away → gamma decreases → rawPitch decreases) ✓.  In portrait the
  *     short edge is horizontal so the pitch axis shifts to beta (tilting top
- *     away → beta decreases → rawPitch decreases) ✓
+ *     away → beta increases → rawPitch = −beta decreases) ✓
  */
 function calcRawPitch(
   beta: number,
@@ -80,8 +80,8 @@ function calcRawPitch(
     // horizontal, so pitch tilts rotate around it and change beta.  gamma stays
     // ~0 and only responds to left-right tilt, making it unusable for pitch.
     // The two portrait orientations mirror each other, so the sign flips.
-    if (screenAngle === 90  || screenAngle === -270) return beta;
-    if (screenAngle === 270 || screenAngle === -90)  return -beta;
+    if (screenAngle === 90  || screenAngle === -270) return -beta;
+    if (screenAngle === 270 || screenAngle === -90)  return beta;
     // iPad landscape (angle 0/180): the long edge is horizontal and pitch
     // tilts change gamma.
     return gamma;
