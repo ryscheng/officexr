@@ -109,21 +109,23 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
     //
     //   Yaw (alpha):  near device-flat (|rawPitch| → 90°), the magnetometer
     //     reference frame can flip, causing alpha to jump by ±180° in a single
-    //     frame while the device barely moved.  Incrementally accumulated and
-    //     scaled by cos(rawPitch) — the damping smoothly reaches zero exactly
-    //     where alpha is meaningless.
+    //     frame while the device barely moved.  The yawDamping factor cos(rawPitch)
+    //     smoothly reduces yaw sensitivity to zero exactly where alpha is
+    //     meaningless.
     //
-    //   Pitch (beta/gamma):  as beta approaches 0° (device flat), the iOS
-    //     sensor fusion can snap beta between 0° and ±180° in a single frame.
-    //     An absolute formula like (beta-90) would see a ~180° pitch jump even
-    //     during a slow, steady tilt — snapping the camera from "looking up" to
-    //     "looking down" all at once.  Driving pitch incrementally prevents this.
+    //   Pitch (beta/gamma):  as beta approaches 0° (device flat), iOS sensor
+    //     fusion can snap beta between 0° and ±180° in a single frame.  An
+    //     absolute formula like (beta-90) would see a ~180° pitch jump.
+    //     Incrementally accumulated pitch doesn't snap.
     //
-    // A per-frame cap (MAX_DELTA_DEG) absorbs any residual spike from either
-    // singularity.  At 60 Hz the cap allows up to 300°/s intentional rotation,
-    // which is faster than any realistic hand movement.
+    // Glitch protection: instead of capping every frame (which throttles normal
+    // movement at low sensor rates), skip any frame whose per-axis delta exceeds
+    // GLITCH_THRESHOLD_DEG.  No human hand can rotate a device faster than
+    // ~30°/frame at 30 Hz (= 900°/s); anything larger is a singularity spike.
+    // The camera just freezes for that single frame rather than jumping or being
+    // slowed down.
 
-    const MAX_DELTA_DEG = 5; // degrees per frame before capping
+    const GLITCH_THRESHOLD_DEG = 30;
 
     let prevAlpha: number | null = null;
     let prevRawPitch: number | null = null;
@@ -169,29 +171,31 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
         return; // skip this frame; deltas are zero by definition
       }
 
-      // ── Yaw (incremental + cosine damping) ─────────────────────────────────
+      // ── Yaw (incremental + cosine damping + glitch skip) ───────────────────
       let deltaAlpha = alpha - prevAlpha;
       if (deltaAlpha >  180) deltaAlpha -= 360;
       if (deltaAlpha < -180) deltaAlpha += 360;
       prevAlpha = alpha;
 
-      const cappedDeltaAlpha = Math.max(-MAX_DELTA_DEG, Math.min(MAX_DELTA_DEG, deltaAlpha));
-      const yawDamping = Math.cos(THREE.MathUtils.degToRad(rawPitch));
-      accYaw = (accYaw ?? camera.rotation.y) +
-        THREE.MathUtils.degToRad(cappedDeltaAlpha) * yawDamping;
+      if (Math.abs(deltaAlpha) <= GLITCH_THRESHOLD_DEG) {
+        const yawDamping = Math.cos(THREE.MathUtils.degToRad(rawPitch));
+        accYaw = (accYaw ?? camera.rotation.y) +
+          THREE.MathUtils.degToRad(deltaAlpha) * yawDamping;
+      }
 
-      // ── Pitch (incremental + cap) ───────────────────────────────────────────
+      // ── Pitch (incremental + glitch skip) ──────────────────────────────────
       const deltaPitch = rawPitch - (prevRawPitch ?? rawPitch);
       prevRawPitch = rawPitch;
 
-      const cappedDeltaPitch = Math.max(-MAX_DELTA_DEG, Math.min(MAX_DELTA_DEG, deltaPitch));
-      accPitch = Math.max(
-        -Math.PI * 85 / 180,
-        Math.min(
-          Math.PI * 85 / 180,
-          (accPitch ?? camera.rotation.x) + THREE.MathUtils.degToRad(cappedDeltaPitch),
-        ),
-      );
+      if (Math.abs(deltaPitch) <= GLITCH_THRESHOLD_DEG) {
+        accPitch = Math.max(
+          -Math.PI * 85 / 180,
+          Math.min(
+            Math.PI * 85 / 180,
+            (accPitch ?? camera.rotation.x) + THREE.MathUtils.degToRad(deltaPitch),
+          ),
+        );
+      }
 
       camera.rotation.set(accPitch, accYaw, 0, 'YXZ');
     };
