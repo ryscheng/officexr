@@ -9,6 +9,24 @@ interface UseMotionControlsOptions {
 }
 
 /**
+ * Returns the current screen rotation angle in degrees.
+ *
+ * Prefers the standardised ScreenOrientation API (screen.orientation.angle)
+ * and falls back to the legacy window.orientation property that iOS Safari
+ * has always supported (needed for iOS < 16.4 where ScreenOrientation is
+ * absent).  Both APIs use the same convention: 0 = portrait, 90 = landscape-
+ * left, 270 (or -90) = landscape-right.
+ */
+function getScreenAngle(): number {
+  if (typeof window === 'undefined') return 0;
+  const so = (window.screen as any)?.orientation;
+  if (so && typeof so.angle === 'number') return so.angle;
+  const wo = (window as any).orientation;
+  if (typeof wo === 'number') return wo;
+  return 0;
+}
+
+/**
  * Handles device orientation (gyroscope) controls for a Three.js camera.
  * Abstracts capability detection, iOS permission prompting, and the
  * deviceorientation event listener so both RoomScene and UserLobby
@@ -70,17 +88,19 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
   useEffect(() => {
     if (motionPermission !== 'granted') return;
 
-    // Offsets captured on the first event so that enabling motion does NOT snap
-    // the camera to a new direction — it continues from wherever it was pointing.
-    let alphaOffset: number | null = null;       // device yaw at activation
-    let devicePitchOffset: number | null = null; // device pitch at activation
-    let cameraYawAtStart: number | null = null;  // camera yaw at activation
-    let cameraPitchAtStart: number | null = null;// camera pitch at activation
+    // ── State captured on the first (or post-recalibrate) event ─────────────
+    // Anchoring to the camera's current orientation means enabling motion never
+    // snaps the view to a direction determined by compass / gravity alone.
+
+    let prevAlpha: number | null = null;       // alpha from previous frame (incremental yaw)
+    let accYaw: number | null = null;          // accumulated camera yaw (radians)
+    let devicePitchOffset: number | null = null; // device rawPitch at anchor time
+    let cameraPitchAtStart: number | null = null; // camera pitch (x rotation) at anchor time
 
     const recalibrate = () => {
-      alphaOffset = null;
+      prevAlpha = null;
+      accYaw = null;
       devicePitchOffset = null;
-      cameraYawAtStart = null;
       cameraPitchAtStart = null;
     };
     recalibrateMotionRef.current = recalibrate;
@@ -99,9 +119,14 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       const beta  = event.beta  ?? 90;
       const gamma = event.gamma ?? 0;
 
-      // Raw device pitch in the current screen orientation
-      const screenAngle = window.screen?.orientation?.angle ?? 0;
-      let rawPitch: number;
+      // ── Screen-orientation-aware pitch ────────────────────────────────────
+      // Use getScreenAngle() which falls back to window.orientation for iOS <
+      // 16.4 where screen.orientation is undefined.  Without the fallback the
+      // portrait formula (beta - 90) is always used, meaning that on a
+      // landscape iPad the user's natural up/down tilt moves gamma (ignored
+      // for pitch) rather than beta, making pitch completely unresponsive.
+      const screenAngle = getScreenAngle();
+      let rawPitch: number; // degrees; 0 = neutral upright, positive = tilting top toward user
       if (screenAngle === 90 || screenAngle === -270) {
         rawPitch = gamma;   // landscape-left
       } else if (screenAngle === 270 || screenAngle === -90) {
@@ -110,26 +135,38 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
         rawPitch = beta - 90; // portrait: 0° when held upright
       }
 
-      // On the very first event after activation, anchor to the camera's current
-      // orientation so there is no jarring snap when motion is enabled.
-      if (alphaOffset === null) {
-        alphaOffset       = alpha;
+      // ── Anchor on first event (or after recalibrate) ──────────────────────
+      if (prevAlpha === null) {
+        prevAlpha = alpha;
         devicePitchOffset = rawPitch;
-        cameraYawAtStart   = camera.rotation.y;
         cameraPitchAtStart = camera.rotation.x;
+        accYaw = camera.rotation.y;
+        return; // skip this frame; use clean offsets from the next one
       }
 
-      // Delta yaw from initial heading, wrapped to [-180, 180]
-      let deltaAlpha = alpha - alphaOffset;
+      // ── Incremental yaw with gimbal-lock dampening ─────────────────────────
+      // Computing yaw from a fixed alphaOffset means that when the device
+      // approaches flat (|rawPitch| → 90°) the compass alpha reading becomes
+      // unreliable and can jump by hundreds of degrees, snapping the view to a
+      // dark/empty direction.  Instead, accumulate frame-to-frame alpha deltas
+      // and scale them by cos(rawPitch) so yaw sensitivity fades smoothly to
+      // zero as the device flattens — exactly where alpha is meaningless.
+      let deltaAlpha = alpha - prevAlpha;
       if (deltaAlpha >  180) deltaAlpha -= 360;
       if (deltaAlpha < -180) deltaAlpha += 360;
+      prevAlpha = alpha;
 
-      const yaw   = (cameraYawAtStart ?? 0)   + THREE.MathUtils.degToRad(deltaAlpha);
-      const pitch = (cameraPitchAtStart ?? 0) + THREE.MathUtils.degToRad(rawPitch - (devicePitchOffset ?? 0));
+      const yawDamping = Math.cos(THREE.MathUtils.degToRad(rawPitch));
+      accYaw = (accYaw ?? camera.rotation.y) + THREE.MathUtils.degToRad(deltaAlpha) * yawDamping;
 
+      // ── Pitch from device tilt, anchored to camera start ──────────────────
+      const pitch = (cameraPitchAtStart ?? 0) +
+        THREE.MathUtils.degToRad(rawPitch - (devicePitchOffset ?? 0));
+
+      // Clamp to ±85° — prevents looking at pure dark sky/floor at the extremes
       camera.rotation.set(
-        Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch)),
-        yaw,
+        Math.max(-Math.PI * 85 / 180, Math.min(Math.PI * 85 / 180, pitch)),
+        accYaw,
         0,
         'YXZ',
       );
