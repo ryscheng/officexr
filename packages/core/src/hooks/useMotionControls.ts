@@ -101,6 +101,8 @@ function calcRawPitch(
  */
 export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsOptions) {
   const [motionPermission, setMotionPermission] = useState<MotionPermission>('unavailable');
+  // Tracks whether the device has real motion sensors so we can offer re-enable
+  const [motionCapable, setMotionCapable] = useState(false);
   const motionActiveRef = useRef(false);
   const recalibrateMotionRef = useRef<(() => void) | null>(null);
   const motionDebugRef = useRef<MotionDebug | null>(null);
@@ -122,6 +124,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
     if (typeof DeviceOrientationEvent === 'undefined') return;
 
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+      setMotionCapable(true);
       setMotionPermission('prompt'); // iOS 13+ — needs explicit user gesture
       return;
     }
@@ -131,6 +134,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       if (e.alpha !== null || e.beta !== null || e.gamma !== null) {
         clearTimeout(timeout);
         window.removeEventListener('deviceorientation', onFirstEvent);
+        setMotionCapable(true);
         setMotionPermission('granted');
       }
     };
@@ -262,8 +266,15 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
   const handleRequestMotionPermission = () => {
     (DeviceOrientationEvent as any)
       .requestPermission()
-      .then((state: string) => setMotionPermission(state === 'granted' ? 'granted' : 'denied'))
+      .then((state: string) => {
+        if (state === 'granted') setMotionCapable(true);
+        setMotionPermission(state === 'granted' ? 'granted' : 'denied');
+      })
       .catch(() => setMotionPermission('denied'));
+  };
+
+  const enableMotion = () => {
+    if (motionCapable) setMotionPermission('granted');
   };
 
   const disableMotion = () => setMotionPermission('unavailable');
@@ -271,9 +282,11 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
   return {
     motionPermission,
     motionActiveRef,
+    motionCapable,
     recalibrateMotionRef,
     motionDebugRef,
     handleRequestMotionPermission,
+    enableMotion,
     disableMotion,
   };
 }

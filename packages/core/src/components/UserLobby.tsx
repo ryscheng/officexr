@@ -59,9 +59,11 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
   const {
     motionPermission,
     motionActiveRef,
+    motionCapable,
     recalibrateMotionRef,
     motionDebugRef,
     handleRequestMotionPermission,
+    enableMotion,
     disableMotion,
   } = useMotionControls({ cameraRef, rendererRef });
 
@@ -438,7 +440,9 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
       <ControlsOverlay
         title="Your Lobby"
         motionPermission={motionPermission}
+        motionCapable={motionCapable}
         onRecalibrate={() => recalibrateMotionRef.current?.()}
+        onEnableMotion={enableMotion}
         onDisableMotion={disableMotion}
         motionDebugRef={motionDebugRef}
         proximityHint="Walk into a glowing portal to enter a room"

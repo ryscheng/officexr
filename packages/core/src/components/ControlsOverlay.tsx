@@ -8,7 +8,10 @@ interface ControlsOverlayProps {
   /** Panel heading */
   title?: string;
   motionPermission: MotionPermission;
+  /** True when the device has real motion sensors (show enable button after disable) */
+  motionCapable?: boolean;
   onRecalibrate: () => void;
+  onEnableMotion: () => void;
   onDisableMotion: () => void;
   /** Show "Enter — Chat" hint (RoomScene) */
   showChat?: boolean;
@@ -27,7 +30,9 @@ interface ControlsOverlayProps {
 export default function ControlsOverlay({
   title = 'Controls:',
   motionPermission,
+  motionCapable = false,
   onRecalibrate,
+  onEnableMotion,
   onDisableMotion,
   showChat = false,
   proximityHint,
@@ -129,6 +134,18 @@ export default function ControlsOverlay({
           <p style={{ margin: '5px 0' }}>Click Scene — Enable Mouse Look</p>
           <p style={{ margin: '5px 0' }}>Mouse — Look Around (when active)</p>
           <p style={{ margin: '5px 0' }}>Esc — Exit Mouse Look</p>
+          {motionCapable && (
+            <button
+              onClick={onEnableMotion}
+              style={{
+                marginTop: '6px', width: '100%', padding: '4px 8px', fontSize: '12px',
+                background: 'rgba(74,222,128,0.2)', color: '#4ade80',
+                border: '1px solid rgba(74,222,128,0.4)', borderRadius: '4px', cursor: 'pointer',
+              }}
+            >
+              📱 Enable Motion
+            </button>
+          )}
         </>
       )}
 
