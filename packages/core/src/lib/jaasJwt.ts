@@ -77,7 +77,7 @@ export async function generateJaaSJwt(
     sub: appId,
     context: {
       user: {
-        moderator: 'true',
+        moderator: true,
         name: user.name,
         id: user.id,
         avatar: '',
