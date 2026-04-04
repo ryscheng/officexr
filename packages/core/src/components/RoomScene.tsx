@@ -78,7 +78,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jitsiHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jitsiMessageListenerRef = useRef<((evt: MessageEvent) => void) | null>(null);
-  const jitsiPreJoinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [micMuted, setMicMuted] = useState(false);
   const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
   const [micError, setMicError] = useState<string | null>(null);
@@ -411,10 +411,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     if (jitsiMessageListenerRef.current) {
       window.removeEventListener('message', jitsiMessageListenerRef.current);
       jitsiMessageListenerRef.current = null;
-    }
-    if (jitsiPreJoinTimeoutRef.current) {
-      clearTimeout(jitsiPreJoinTimeoutRef.current);
-      jitsiPreJoinTimeoutRef.current = null;
     }
     if (remoteAudioDecayRef.current) {
       clearInterval(remoteAudioDecayRef.current);
@@ -1572,7 +1568,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               // Clean up any leftover intervals/listeners from a prior session
               if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
               if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
-              if (jitsiPreJoinTimeoutRef.current) { clearTimeout(jitsiPreJoinTimeoutRef.current); jitsiPreJoinTimeoutRef.current = null; }
 
               // Now that the iframe has loaded, replace the 30s safety-net
               // timeout with a tighter 20s timeout for the XMPP connection.
@@ -1581,13 +1576,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 console.error('[VoiceChat] Connection timed out after 20s from onApiReady — videoConferenceJoined never fired. Room:', jitsiRoomRef.current);
                 setJitsiError('Could not connect to voice chat — the server may be unavailable.');
               }, 20000);
-
-              // Fallback: if the pre-join page is stuck inside the hidden iframe
-              // despite prejoinConfig, try toggling audio to trigger auto-join.
-              jitsiPreJoinTimeoutRef.current = setTimeout(() => {
-                console.log('[VoiceChat] Pre-join fallback — sending toggleAudio after 5s to nudge past pre-join screen');
-                try { api.executeCommand('toggleAudio'); } catch (e) { console.warn('[VoiceChat] toggleAudio fallback failed:', e); }
-              }, 5000);
 
               // Decode JWT header+payload (no crypto needed) to confirm what we sent
               try {
@@ -1660,7 +1648,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
                 if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
                 if (jitsiConnectTimeoutRef.current) { clearTimeout(jitsiConnectTimeoutRef.current); jitsiConnectTimeoutRef.current = null; }
-                if (jitsiPreJoinTimeoutRef.current) { clearTimeout(jitsiPreJoinTimeoutRef.current); jitsiPreJoinTimeoutRef.current = null; }
                 setJitsiConnected(true);
               });
 

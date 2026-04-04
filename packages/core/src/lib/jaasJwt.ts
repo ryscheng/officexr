@@ -69,6 +69,7 @@ export async function generateJaaSJwt(
   const header = { alg: 'RS256', kid: apiKeyId, typ: 'JWT' };
   const payload = {
     iss: 'chat',
+    aud: 'jitsi',
     iat: now,
     exp: now + ttlSeconds,
     nbf: now - 10,
