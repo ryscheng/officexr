@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { JitsiMeeting } from '@jitsi/react-sdk';
+import { JaaSMeeting } from '@jitsi/react-sdk';
 import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
@@ -1421,8 +1421,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           position: 'fixed', top: '-400px', left: '-600px',
           width: '480px', height: '270px', overflow: 'hidden',
         }}>
-          <JitsiMeeting
-            domain={import.meta.env.VITE_JITSI_DOMAIN ?? 'meet.jit.si'}
+          <JaaSMeeting
+            appId={import.meta.env.VITE_JAAS_APP_ID ?? ''}
+            jwt={import.meta.env.VITE_JAAS_JWT ?? ''}
             roomName={jitsiRoom}
             configOverwrite={{
               startWithAudioMuted: false,
