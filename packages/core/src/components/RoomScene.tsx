@@ -900,7 +900,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         if (pd?.jitsiRoom) existingRoom = pd.jitsiRoom;
       });
 
-      const roomToJoin = existingRoom || `officexr-${Math.random().toString(36).substr(2, 8)}`;
+      // Deterministic fallback: when no nearby user has a room yet, both
+      // sides independently compute the same name using the lexicographically
+      // smallest user ID in the group.  This prevents the race where each
+      // user generates a different random room before presence propagates.
+      const seed = [currentUser.id, ...nearbyIds].sort()[0];
+      const roomToJoin = existingRoom || `officexr-${officeId.slice(0, 8)}-${seed.slice(0, 8)}`;
       if (roomToJoin !== jitsiRoomRef.current) {
         jitsiRoomRef.current = roomToJoin;
         setJitsiRoom(roomToJoin);
