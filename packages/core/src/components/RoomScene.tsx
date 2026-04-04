@@ -1531,9 +1531,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               startWithAudioMuted: false,
               startWithVideoMuted: true,
               prejoinPageEnabled: false,
+              // Newer Jitsi config format — JaaS may strip the legacy key above
+              prejoinConfig: { enabled: false },
               disableModeratorIndicator: true,
               enableNoisyMicDetection: false,
               disableDeepLinking: true,
+              // Disable lobby to prevent another join-blocking screen
+              lobby: { autoKnock: true, enableChat: false },
             }}
             interfaceConfigOverwrite={{
               TOOLBAR_BUTTONS: [],
@@ -1579,10 +1583,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               }, 20000);
 
               // Fallback: if the pre-join page is stuck inside the hidden iframe
-              // despite prejoinPageEnabled:false, force-join after 5s.
+              // despite prejoinConfig, try toggling audio to trigger auto-join.
               jitsiPreJoinTimeoutRef.current = setTimeout(() => {
-                console.log('[VoiceChat] Pre-join fallback — forcing joinConference after 5s');
-                try { api.executeCommand('joinConference'); } catch { /* not supported in all versions */ }
+                console.log('[VoiceChat] Pre-join fallback — sending toggleAudio after 5s to nudge past pre-join screen');
+                try { api.executeCommand('toggleAudio'); } catch (e) { console.warn('[VoiceChat] toggleAudio fallback failed:', e); }
               }, 5000);
 
               // Decode JWT header+payload (no crypto needed) to confirm what we sent
