@@ -1414,11 +1414,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         let bg: string;
         let icon: string;
         let label: string;
-        const jaasConfigured = !!(
-          import.meta.env.VITE_JAAS_APP_ID &&
-          import.meta.env.VITE_JAAS_API_KEY_ID &&
-          import.meta.env.VITE_JAAS_PRIVATE_KEY
-        );
+        const missing = [
+          !import.meta.env.VITE_JAAS_APP_ID     && 'VITE_JAAS_APP_ID',
+          !import.meta.env.VITE_JAAS_API_KEY_ID && 'VITE_JAAS_API_KEY_ID',
+          !import.meta.env.VITE_JAAS_PRIVATE_KEY && 'VITE_JAAS_PRIVATE_KEY',
+        ].filter(Boolean) as string[];
+        const jaasConfigured = missing.length === 0;
         if (jaasJwtError) {
           bg = 'rgba(185, 28, 28, 0.92)';  // red — credentials invalid
           icon = '❌';
@@ -1426,7 +1427,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         } else if (!jaasConfigured) {
           bg = 'rgba(75, 85, 99, 0.92)';   // grey — not configured
           icon = '⚙️';
-          label = 'Voice chat not configured';
+          label = `Voice chat not configured — missing: ${missing.join(', ')}`;
         } else if (!jaasJwt) {
           bg = 'rgba(75, 85, 99, 0.92)';   // grey — JWT pending
           icon = '⏳';
