@@ -1402,43 +1402,61 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
-      {/* Voice chat status indicator — only shown when JaaSMeeting is also rendering */}
-      {jitsiRoom && jaasJwt && (
-        <div
-          style={{
-            position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
-            background: jitsiConnected ? 'rgba(0, 160, 90, 0.92)' : 'rgba(180, 120, 0, 0.92)',
-            borderRadius: '8px', padding: '8px 16px', color: 'white', zIndex: 200,
-            display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'monospace',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.4)', transition: 'background 0.4s',
-          }}
-        >
-          <span style={{ fontSize: '16px' }}>{jitsiConnected ? '🟢' : '🟡'}</span>
-          <span style={{ fontSize: '13px' }}>
-            {jitsiConnected
-              ? `Voice active · ${nearbyUserIdsRef.current.size + 1} in range`
-              : 'Voice connecting…'}
-          </span>
-          {/* Remote audio level bar — visible when connected */}
-          {jitsiConnected && (
-            <div title="Remote audio level" style={{
-              display: 'flex', alignItems: 'center', gap: '2px',
-            }}>
-              {[0.15, 0.35, 0.55, 0.75, 0.95].map((thresh, i) => (
-                <div key={i} style={{
-                  width: '4px',
-                  height: `${8 + i * 3}px`,
-                  borderRadius: '2px',
-                  background: remoteAudioLevel >= thresh
-                    ? (thresh > 0.7 ? '#f87171' : thresh > 0.45 ? '#fbbf24' : '#4ade80')
-                    : 'rgba(255,255,255,0.25)',
-                  transition: 'background 0.1s',
-                }} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Voice chat status indicator — always visible, reflects full Jitsi state */}
+      {(() => {
+        let bg: string;
+        let icon: string;
+        let label: string;
+        if (!jaasJwt) {
+          bg = 'rgba(75, 85, 99, 0.92)';   // grey — not configured
+          icon = '⚙️';
+          label = 'Voice chat not configured';
+        } else if (!jitsiRoom) {
+          bg = 'rgba(55, 65, 81, 0.92)';   // dark — idle
+          icon = '🔇';
+          label = 'Walk near others to voice chat';
+        } else if (jitsiConnected) {
+          bg = 'rgba(0, 160, 90, 0.92)';   // green — active
+          icon = '🟢';
+          label = `Voice active · ${nearbyUserIdsRef.current.size + 1} in range`;
+        } else {
+          bg = 'rgba(180, 120, 0, 0.92)';  // amber — connecting
+          icon = '🟡';
+          label = 'Voice connecting…';
+        }
+        return (
+          <div
+            style={{
+              position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
+              background: bg,
+              borderRadius: '8px', padding: '8px 16px', color: 'white', zIndex: 200,
+              display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'monospace',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.4)', transition: 'background 0.4s',
+            }}
+          >
+            <span style={{ fontSize: '16px' }}>{icon}</span>
+            <span style={{ fontSize: '13px' }}>{label}</span>
+            {/* Remote audio level bar — visible when connected */}
+            {jitsiConnected && (
+              <div title="Remote audio level" style={{
+                display: 'flex', alignItems: 'center', gap: '2px',
+              }}>
+                {[0.15, 0.35, 0.55, 0.75, 0.95].map((thresh, i) => (
+                  <div key={i} style={{
+                    width: '4px',
+                    height: `${8 + i * 3}px`,
+                    borderRadius: '2px',
+                    background: remoteAudioLevel >= thresh
+                      ? (thresh > 0.7 ? '#f87171' : thresh > 0.45 ? '#fbbf24' : '#4ade80')
+                      : 'rgba(255,255,255,0.25)',
+                    transition: 'background 0.1s',
+                  }} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Jitsi audio iframe — positioned off-screen at a real size (not 1x1) so
           mobile browsers (especially iOS) don't throttle/suspend its media tracks.
