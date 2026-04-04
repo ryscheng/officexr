@@ -956,8 +956,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
 
       const now = Date.now();
-      if (moved && channelRef.current && now - lastPositionUpdate.current > 60) {
-        channelRef.current.send({
+      // Send position when moving (60ms throttle) OR as a heartbeat every 3s
+      // so stationary users are visible for proximity detection on all clients.
+      const shouldSend = channelRef.current && (
+        (moved && now - lastPositionUpdate.current > 60) ||
+        (now - lastPositionUpdate.current > 3000)
+      );
+      if (shouldSend) {
+        channelRef.current!.send({
           type: 'broadcast',
           event: 'position',
           payload: {
@@ -967,6 +973,16 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           },
         });
         lastPositionUpdate.current = now;
+        // Keep presence position fresh so users who join mid-session see the right
+        // initial avatar position and can correctly evaluate proximity.
+        if (myPresenceRef.current) {
+          const updatedPresence = {
+            ...myPresenceRef.current,
+            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+            rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
+          };
+          myPresenceRef.current = updatedPresence;
+        }
       }
 
       // Update local bubble sphere position
@@ -1227,7 +1243,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
-      {/* Voice proximity indicator + hidden Jitsi iframe for audio */}
+      {/* Voice proximity indicator */}
       {jitsiRoom && (
         <div
           style={{
@@ -1242,54 +1258,61 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           <span style={{ fontSize: '13px' }}>
             Voice chat active · {nearbyUserIdsRef.current.size + 1} people in range
           </span>
-          {/* Jitsi iframe renders audio; hidden visually */}
-          <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, overflow: 'hidden' }}>
-            <JitsiMeeting
-              domain={import.meta.env.VITE_JITSI_DOMAIN ?? 'meet.jit.si'}
-              roomName={jitsiRoom}
-              configOverwrite={{
-                startWithAudioMuted: false,
-                startWithVideoMuted: true,
-                prejoinPageEnabled: false,
-                disableModeratorIndicator: true,
-                enableNoisyMicDetection: false,
-                disableDeepLinking: true,
-              }}
-              interfaceConfigOverwrite={{
-                TOOLBAR_BUTTONS: [],
-                SHOW_JITSI_WATERMARK: false,
-                SHOW_WATERMARK_FOR_GUESTS: false,
-              }}
-              userInfo={{
-                displayName: currentUser?.name || 'User',
-                email: user?.email || '',
-              }}
-              getIFrameRef={(iframeRef) => {
-                iframeRef.style.width = '1px';
-                iframeRef.style.height = '1px';
-              }}
-              onApiReady={api => {
-                // Connected — cancel the timeout and clear any previous error
-                if (jitsiConnectTimeoutRef.current) {
-                  clearTimeout(jitsiConnectTimeoutRef.current);
-                  jitsiConnectTimeoutRef.current = null;
+        </div>
+      )}
+
+      {/* Jitsi audio iframe — rendered off-screen (not clipped) so browsers don't
+          suspend its media tracks. The allow attribute is required for microphone
+          access inside cross-origin iframes. */}
+      {jitsiRoom && (
+        <div style={{ position: 'fixed', top: 0, left: '-2px', width: '1px', height: '1px', zIndex: -1 }}>
+          <JitsiMeeting
+            domain={import.meta.env.VITE_JITSI_DOMAIN ?? 'meet.jit.si'}
+            roomName={jitsiRoom}
+            configOverwrite={{
+              startWithAudioMuted: false,
+              startWithVideoMuted: true,
+              prejoinPageEnabled: false,
+              disableModeratorIndicator: true,
+              enableNoisyMicDetection: false,
+              disableDeepLinking: true,
+            }}
+            interfaceConfigOverwrite={{
+              TOOLBAR_BUTTONS: [],
+              SHOW_JITSI_WATERMARK: false,
+              SHOW_WATERMARK_FOR_GUESTS: false,
+            }}
+            userInfo={{
+              displayName: currentUser?.name || 'User',
+              email: user?.email || '',
+            }}
+            getIFrameRef={(iframeRef) => {
+              iframeRef.style.width = '1px';
+              iframeRef.style.height = '1px';
+              // Required for microphone/camera access inside cross-origin iframes
+              iframeRef.allow = 'camera; microphone; display-capture; autoplay; screen-wake-lock';
+            }}
+            onApiReady={api => {
+              // Connected — cancel the timeout and clear any previous error
+              if (jitsiConnectTimeoutRef.current) {
+                clearTimeout(jitsiConnectTimeoutRef.current);
+                jitsiConnectTimeoutRef.current = null;
+              }
+              setJitsiError(null);
+
+              api.on('connectionFailed', () =>
+                setJitsiError('Voice chat connection failed. Check your network connection.'));
+
+              api.on('errorOccurred', (e: any) => {
+                if (e?.error?.isFatal) {
+                  setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
                 }
-                setJitsiError(null);
+              });
 
-                api.on('connectionFailed', () =>
-                  setJitsiError('Voice chat connection failed. Check your network connection.'));
-
-                api.on('errorOccurred', (e: any) => {
-                  if (e?.error?.isFatal) {
-                    setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
-                  }
-                });
-
-                api.on('kickedOut', () =>
-                  setJitsiError('You were disconnected from voice chat.'));
-              }}
-            />
-          </div>
+              api.on('kickedOut', () =>
+                setJitsiError('You were disconnected from voice chat.'));
+            }}
+          />
         </div>
       )}
 
