@@ -146,14 +146,38 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         micStreamRef.current = stream;
         audioCtx = new AudioContext();
+
+        // iOS/Safari starts AudioContext in 'suspended' state and requires a user
+        // gesture to resume it. Try immediately, then retry on the first interaction.
+        const tryResume = async () => {
+          if (audioCtx && audioCtx.state === 'suspended') {
+            try { await audioCtx.resume(); } catch { /* ignore */ }
+          }
+        };
+        await tryResume();
+        if (audioCtx.state === 'suspended') {
+          const resumeOnInteraction = () => {
+            tryResume();
+            document.removeEventListener('touchstart', resumeOnInteraction);
+            document.removeEventListener('click', resumeOnInteraction);
+            document.removeEventListener('keydown', resumeOnInteraction);
+          };
+          document.addEventListener('touchstart', resumeOnInteraction, { once: true });
+          document.addEventListener('click', resumeOnInteraction, { once: true });
+          document.addEventListener('keydown', resumeOnInteraction, { once: true });
+        }
+
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 512;
         audioCtx.createMediaStreamSource(stream).connect(analyser);
         const buf = new Uint8Array(analyser.frequencyBinCount);
         const tick = () => {
-          analyser.getByteFrequencyData(buf);
-          const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length) / 128;
-          setMicLevel(rms);
+          // Don't report levels while suspended (shows 0 rather than stale data)
+          if (audioCtx && audioCtx.state === 'running') {
+            analyser.getByteFrequencyData(buf);
+            const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length) / 128;
+            setMicLevel(rms);
+          }
           animFrameId = requestAnimationFrame(tick);
         };
         tick();
@@ -1347,11 +1371,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
-      {/* Jitsi audio iframe — rendered off-screen (not clipped) so browsers don't
-          suspend its media tracks. The allow attribute is required for microphone
-          access inside cross-origin iframes. */}
+      {/* Jitsi audio iframe — positioned off-screen at a real size (not 1x1) so
+          mobile browsers (especially iOS) don't throttle/suspend its media tracks.
+          The allow attribute is required for microphone access in cross-origin iframes. */}
       {jitsiRoom && (
-        <div style={{ position: 'fixed', top: 0, left: '-2px', width: '1px', height: '1px', zIndex: -1 }}>
+        <div style={{
+          position: 'fixed', top: '-400px', left: '-600px',
+          width: '480px', height: '270px', overflow: 'hidden',
+        }}>
           <JitsiMeeting
             domain={import.meta.env.VITE_JITSI_DOMAIN ?? 'meet.jit.si'}
             roomName={jitsiRoom}
@@ -1373,25 +1400,20 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               email: user?.email || '',
             }}
             getIFrameRef={(iframeRef) => {
-              iframeRef.style.width = '1px';
-              iframeRef.style.height = '1px';
+              iframeRef.style.width = '480px';
+              iframeRef.style.height = '270px';
               // Required for microphone/camera access inside cross-origin iframes
               (iframeRef as unknown as HTMLIFrameElement).allow =
                 'camera; microphone; display-capture; autoplay; screen-wake-lock';
             }}
             onApiReady={api => {
               jitsiApiRef.current = api;
-
-              // Connected — cancel the timeout, mark as connected
-              if (jitsiConnectTimeoutRef.current) {
-                clearTimeout(jitsiConnectTimeoutRef.current);
-                jitsiConnectTimeoutRef.current = null;
-              }
               setJitsiError(null);
-              setJitsiConnected(true);
 
-              // If user was muted before connecting, sync state into Jitsi
-              // (Jitsi starts unmuted per startWithAudioMuted:false)
+              // onApiReady means the iframe JS loaded — NOT that the conference was
+              // joined. Wait for videoConferenceJoined before marking as connected.
+
+              // If user was muted before the API loaded, sync into Jitsi
               if (micMuted) api.executeCommand('toggleAudio');
 
               // Remote audio level — decay toward 0 between events
@@ -1401,10 +1423,17 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               }, 80);
 
               api.addListener('audioLevelsChanged', ({ id, level }: { id: string; level: number }) => {
-                // Jitsi fires this for every participant including local; we want the
-                // maximum level across ALL participants as a simple "someone is speaking" signal.
                 void id;
                 setRemoteAudioLevel(prev => Math.max(prev, level));
+              });
+
+              // Only mark connected when actually inside the conference room
+              api.addEventListener('videoConferenceJoined', () => {
+                if (jitsiConnectTimeoutRef.current) {
+                  clearTimeout(jitsiConnectTimeoutRef.current);
+                  jitsiConnectTimeoutRef.current = null;
+                }
+                setJitsiConnected(true);
               });
 
               const onDisconnect = () => {
@@ -1415,6 +1444,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 }
                 setRemoteAudioLevel(0);
               };
+
+              api.addEventListener('videoConferenceLeft', onDisconnect);
+              api.addEventListener('conferenceTerminated', onDisconnect);
 
               api.on('connectionFailed', () => {
                 setJitsiError('Voice chat connection failed. Check your network connection.');
