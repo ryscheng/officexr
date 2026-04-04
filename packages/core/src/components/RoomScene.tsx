@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -76,6 +76,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const jitsiApiRef = useRef<any>(null);
   const remoteAudioDecayRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jitsiHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const jitsiMessageListenerRef = useRef<((evt: MessageEvent) => void) | null>(null);
+  const jitsiPreJoinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [micMuted, setMicMuted] = useState(false);
   const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
   const [micError, setMicError] = useState<string | null>(null);
@@ -393,20 +396,45 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     jitsiApiRef.current?.executeCommand('toggleAudio');
   };
 
+  // Thoroughly clean up all Jitsi resources (intervals, listeners, API, timeouts).
+  // Called on room change, retry, and unmount to prevent leaked intervals.
+  const cleanupJitsi = useCallback(() => {
+    if (jitsiConnectTimeoutRef.current) {
+      clearTimeout(jitsiConnectTimeoutRef.current);
+      jitsiConnectTimeoutRef.current = null;
+    }
+    if (jitsiHeartbeatRef.current) {
+      clearInterval(jitsiHeartbeatRef.current);
+      jitsiHeartbeatRef.current = null;
+    }
+    if (jitsiMessageListenerRef.current) {
+      window.removeEventListener('message', jitsiMessageListenerRef.current);
+      jitsiMessageListenerRef.current = null;
+    }
+    if (jitsiPreJoinTimeoutRef.current) {
+      clearTimeout(jitsiPreJoinTimeoutRef.current);
+      jitsiPreJoinTimeoutRef.current = null;
+    }
+    if (remoteAudioDecayRef.current) {
+      clearInterval(remoteAudioDecayRef.current);
+      remoteAudioDecayRef.current = null;
+    }
+    if (jitsiApiRef.current) {
+      try { jitsiApiRef.current.dispose(); } catch { /* already disposed */ }
+      jitsiApiRef.current = null;
+    }
+  }, []);
+
   // Reset Jitsi state when the room changes and start a safety timeout for
   // iframe loading. The tighter XMPP-connection timeout starts in onApiReady.
   useEffect(() => {
-    if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
+    // Clean up everything from the previous Jitsi session (intervals, listeners, API)
+    cleanupJitsi();
 
     if (!jitsiRoom || !jaasJwt) {
       setJitsiError(null);
       setJitsiConnected(false);
       setRemoteAudioLevel(0);
-      jitsiApiRef.current = null;
-      if (remoteAudioDecayRef.current) {
-        clearInterval(remoteAudioDecayRef.current);
-        remoteAudioDecayRef.current = null;
-      }
       return;
     }
 
@@ -420,9 +448,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }, 30000);
 
     return () => {
-      if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
+      cleanupJitsi();
     };
-  }, [jitsiRoom, jaasJwt, jitsiRetryCount]);
+  }, [jitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
 
   const sendChatMessage = (message: string) => {
     if (!channelRef.current || !currentUser) return;
@@ -1536,6 +1564,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               jitsiApiRef.current = api;
               setJitsiError(null);
 
+              // Clean up any leftover intervals/listeners from a prior session
+              if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
+              if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
+              if (jitsiPreJoinTimeoutRef.current) { clearTimeout(jitsiPreJoinTimeoutRef.current); jitsiPreJoinTimeoutRef.current = null; }
+
               // Now that the iframe has loaded, replace the 30s safety-net
               // timeout with a tighter 20s timeout for the XMPP connection.
               if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
@@ -1543,6 +1576,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 console.error('[VoiceChat] Connection timed out after 20s from onApiReady — videoConferenceJoined never fired. Room:', jitsiRoomRef.current);
                 setJitsiError('Could not connect to voice chat — the server may be unavailable.');
               }, 20000);
+
+              // Fallback: if the pre-join page is stuck inside the hidden iframe
+              // despite prejoinPageEnabled:false, force-join after 5s.
+              jitsiPreJoinTimeoutRef.current = setTimeout(() => {
+                console.log('[VoiceChat] Pre-join fallback — forcing joinConference after 5s');
+                try { api.executeCommand('joinConference'); } catch { /* not supported in all versions */ }
+              }, 5000);
 
               // Decode JWT header+payload (no crypto needed) to confirm what we sent
               try {
@@ -1566,11 +1606,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 console.warn('[VoiceChat] Could not decode JWT for inspection:', jwtErr);
               }
 
-              // onApiReady means the iframe JS loaded — NOT that the conference was
-              // joined. Wait for videoConferenceJoined before marking as connected.
-              // The 15s timeout keeps running: if videoConferenceJoined never fires
-              // we still want to show the "server unavailable" error.
-
               // If user was muted before the API loaded, sync into Jitsi
               if (micMuted) api.executeCommand('toggleAudio');
 
@@ -1586,9 +1621,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               });
 
               // Periodic heartbeat: probe participant count while waiting for join.
-              // Helps detect if Jitsi is silently stuck vs. not attempting to connect.
+              // Stored in a ref so cleanupJitsi() can clear it on unmount/retry.
               let heartbeatCount = 0;
-              const heartbeatInterval = setInterval(() => {
+              jitsiHeartbeatRef.current = setInterval(() => {
                 heartbeatCount++;
                 try {
                   const participants = api.getNumberOfParticipants?.();
@@ -1598,39 +1633,36 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 }
               }, 3000);
 
-              // Listen for raw postMessages from the Jitsi iframe. These reveal
-              // internal events (XMPP, WebSocket, join attempts) before they bubble
-              // up through the external API, and are critical for diagnosing silent
-              // connection failures.
+              // Listen for raw postMessages from the Jitsi iframe.
+              // Stored in a ref so cleanupJitsi() can remove it on unmount/retry.
               const onIframeMessage = (evt: MessageEvent) => {
                 if (!evt.data || typeof evt.data !== 'object') return;
                 const name = evt.data.name ?? evt.data.type ?? evt.data.event;
                 if (!name) return;
-                // Only log Jitsi-originated messages (filter out unrelated noise)
                 const jitsiPrefixes = ['conference.', 'connection.', 'video.', 'chat.', 'participant', 'dominant', 'error', 'ready', 'joined', 'left'];
                 const lc = String(name).toLowerCase();
                 if (jitsiPrefixes.some(p => lc.includes(p))) {
                   console.log('[VoiceChat] iframe postMessage:', name, evt.data);
                 }
               };
+              jitsiMessageListenerRef.current = onIframeMessage;
               window.addEventListener('message', onIframeMessage);
 
               // Only mark connected when actually inside the conference room
               api.addEventListener('videoConferenceJoined', () => {
-                console.log('[VoiceChat] videoConferenceJoined — connected to room:', jitsiRoom);
-                clearInterval(heartbeatInterval);
-                window.removeEventListener('message', onIframeMessage);
-                if (jitsiConnectTimeoutRef.current) {
-                  clearTimeout(jitsiConnectTimeoutRef.current);
-                  jitsiConnectTimeoutRef.current = null;
-                }
+                console.log('[VoiceChat] videoConferenceJoined — connected to room:', jitsiRoomRef.current);
+                // Clear diagnostic intervals/listeners — connection succeeded
+                if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
+                if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
+                if (jitsiConnectTimeoutRef.current) { clearTimeout(jitsiConnectTimeoutRef.current); jitsiConnectTimeoutRef.current = null; }
+                if (jitsiPreJoinTimeoutRef.current) { clearTimeout(jitsiPreJoinTimeoutRef.current); jitsiPreJoinTimeoutRef.current = null; }
                 setJitsiConnected(true);
               });
 
               const onDisconnect = (reason?: string) => {
                 console.warn('[VoiceChat] Disconnected from voice chat. Reason:', reason ?? '(unknown)');
-                clearInterval(heartbeatInterval);
-                window.removeEventListener('message', onIframeMessage);
+                if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
+                if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
                 setJitsiConnected(false);
                 if (remoteAudioDecayRef.current) {
                   clearInterval(remoteAudioDecayRef.current);
@@ -1649,9 +1681,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               });
 
               // Log events that fire between window-loaded and videoConferenceJoined
-              // to pinpoint where the connection stalls.
-              // Note: api.on() is used (not addEventListener) because the TS typings
-              // for addEventListener require () => void and reject event params.
               api.on('participantJoined', (e: any) => {
                 console.log('[VoiceChat] participantJoined:', e);
               });
@@ -1671,19 +1700,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 console.warn('[VoiceChat] readyToClose — Jitsi wants to close the meeting');
               });
               api.on('log', (e: any) => {
-                // Forward Jitsi's internal log lines to the main console so
-                // XMPP / WebSocket errors are visible without opening the iframe DevTools.
                 const logArgs: any[] = e?.args ?? [e];
                 const lvl: string = (e?.logLevel ?? 'log').toLowerCase();
                 const fn = (lvl === 'error' || lvl === 'warn') ? console[lvl as 'error' | 'warn'] : console.log;
                 fn('[VoiceChat][jitsi-log]', ...logArgs);
               });
 
-              // connectionFailed / errorOccurred can surface via addEventListener too
               api.addEventListener('connectionFailed', () => {
                 console.error('[VoiceChat] connectionFailed (addEventListener)');
               });
-
               api.on('connectionFailed', (e: any) => {
                 console.error('[VoiceChat] connectionFailed:', e);
                 setJitsiError('Voice chat connection failed. Check your network connection.');
