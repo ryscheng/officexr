@@ -1295,7 +1295,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           {/* Jitsi iframe renders audio; hidden visually */}
           <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, overflow: 'hidden' }}>
             <JitsiMeeting
-              domain="meet.jit.si"
+              domain={import.meta.env.VITE_JITSI_DOMAIN ?? 'meet.jit.si'}
               roomName={jitsiRoom}
               configOverwrite={{
                 startWithAudioMuted: false,
