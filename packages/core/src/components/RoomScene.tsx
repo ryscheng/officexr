@@ -1402,8 +1402,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
-      {/* Voice chat status indicator — green only when Jitsi is actually connected */}
-      {jitsiRoom && (
+      {/* Voice chat status indicator — only shown when JaaSMeeting is also rendering */}
+      {jitsiRoom && jaasJwt && (
         <div
           style={{
             position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
@@ -1479,16 +1479,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             onApiReady={api => {
               jitsiApiRef.current = api;
               setJitsiError(null);
-              // The iframe JS loaded successfully — the server is reachable.
-              // Clear the "server unavailable" timeout; separate error handlers cover
-              // any subsequent conference-join failures.
-              if (jitsiConnectTimeoutRef.current) {
-                clearTimeout(jitsiConnectTimeoutRef.current);
-                jitsiConnectTimeoutRef.current = null;
-              }
 
               // onApiReady means the iframe JS loaded — NOT that the conference was
               // joined. Wait for videoConferenceJoined before marking as connected.
+              // The 15s timeout keeps running: if videoConferenceJoined never fires
+              // we still want to show the "server unavailable" error.
 
               // If user was muted before the API loaded, sync into Jitsi
               if (micMuted) api.executeCommand('toggleAudio');
