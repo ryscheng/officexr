@@ -1,243 +1,173 @@
-# OfficeXR - WebXR Office Environment
+# OfficeXR
 
-A 3D virtual office environment built with Next.js, TypeScript, Three.js, and WebXR. Navigate through a fully immersive office space in your browser or VR headset.
+A 3D virtual office platform with real-time presence, spatial audio, and avatar customization. Navigate immersive rooms in your browser, desktop app, or VR headset.
 
 ## Features
 
-- **Google Authentication**: Secure login with Google OAuth via NextAuth.js
-- **Multiplayer Support**: See and interact with other users in real-time
-- **3D Avatars**: Each user is represented by a unique 3D avatar with their name
-- **Real-time Position Sync**: WebSocket-based position synchronization across clients
-- **3D Office Environment**: Complete office space with desks, chairs, bookshelves, and decorative elements
-- **WebXR Support**: Full VR support for immersive experiences with compatible headsets
-- **Desktop Navigation**: Keyboard and mouse controls for desktop browsing
-- **Responsive Design**: Adapts to different screen sizes and devices
-- **TypeScript**: Fully typed for better development experience
+- **Google Authentication** — Supabase Auth with Google OAuth
+- **Real-time Presence** — See other users move around in 3D via Supabase Realtime
+- **3D Avatars** — Customizable avatars with name labels
+- **Proximity Voice Chat** — Jitsi-powered spatial audio that activates when users are near each other
+- **Multiple Environments** — Corporate office, cabin, and coffee shop scenes
+- **HDRI Skybox** — Photorealistic outdoor panorama for the global lobby
+- **WebXR Support** — Full VR support for compatible headsets
+- **Desktop App** — Electron wrapper for macOS, Windows, and Linux
+- **Mobile App** — Expo/React Native app for iOS and Android
 
-## Office Elements
+## Tech Stack
 
-The virtual office includes:
-- Multiple workstations with desks and chairs
-- Bookshelves with detailed shelf structures
-- Walls with decorative pictures
-- Proper lighting (ambient and directional)
-- Textured floor and ceiling
-
-## Controls
-
-### Desktop Mode
-- **W/A/S/D** or **Arrow Keys**: Move around the office
-- **Click + Drag Mouse**: Look around
-- Movement is constrained within the office boundaries
-
-### VR Mode
-- Click the **"ENTER VR"** button at the bottom of the screen
-- Use your VR headset's controllers for navigation
-- Requires a WebXR-compatible browser and VR device
-
-## Getting Started
-
-### Prerequisites
-- Node.js 18+ installed
-- PostgreSQL 12+ installed and running
-- A modern web browser (Chrome, Firefox, Edge)
-- For VR: A WebXR-compatible VR headset (Meta Quest, etc.)
-
-### Installation
-
-1. **Clone the repository and install dependencies**
-
-```bash
-npm install
-```
-
-2. **Set up Google OAuth credentials**
-
-   - Go to the [Google Cloud Console](https://console.cloud.google.com/)
-   - Create a new project or select an existing one
-   - Enable the Google+ API
-   - Go to "Credentials" and create an OAuth 2.0 Client ID
-   - Add authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
-   - Copy the Client ID and Client Secret
-
-3. **Set up PostgreSQL database**
-
-Create a new database for the application:
-
-```bash
-# Connect to PostgreSQL
-psql -U postgres
-
-# Create database
-CREATE DATABASE officexr;
-
-# Exit psql
-\q
-```
-
-4. **Configure environment variables**
-
-Create a `.env.local` file in the root directory:
-
-```env
-# NextAuth
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-secret-key-here
-
-# Google OAuth
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-# Database
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_USER=postgres
-DATABASE_PASSWORD=your-postgres-password
-DATABASE_NAME=officexr
-```
-
-Generate a secure secret for `NEXTAUTH_SECRET`:
-```bash
-openssl rand -base64 32
-```
-
-5. **Initialize the database**
-
-Run the database initialization script to create tables:
-
-```bash
-npm run db:init
-```
-
-6. **Run the development server**
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser. You'll be prompted to sign in with Google.
-
-### Building for Production
-
-```bash
-# Create an optimized production build
-npm run build
-
-# Start the production server
-npm start
-```
-
-## Technology Stack
-
-- **Next.js 16**: React framework with App Router
-- **TypeScript**: Type-safe development
-- **Three.js**: 3D graphics library
-- **WebXR**: Virtual reality browser API
-- **NextAuth.js**: Authentication for Next.js
-- **TypeORM**: ORM for TypeScript and JavaScript
-- **PostgreSQL**: Relational database for user data and sessions
-- **WebSocket (ws)**: Real-time bidirectional communication
-- **Tailwind CSS**: Utility-first CSS framework
-
-## Browser Compatibility
-
-### Desktop Mode
-- Chrome 90+
-- Firefox 88+
-- Safari 15+
-- Edge 90+
-
-### VR Mode (WebXR)
-- Chrome 90+ (with VR headset)
-- Edge 90+ (with VR headset)
-- Firefox Reality
-- Oculus Browser
+| Layer | Technology |
+|-------|-----------|
+| Web framework | Vite + React 19 |
+| 3D rendering | Three.js + WebXR |
+| Auth & database | Supabase (PostgreSQL + Realtime) |
+| Voice chat | Jitsi as a Service (JaaS) |
+| Desktop | Electron + electron-builder |
+| Mobile | Expo (React Native) + EAS Build |
+| Package manager | pnpm workspaces |
 
 ## Project Structure
 
 ```
 officexr/
-├── app/
-│   ├── api/
-│   │   └── auth/[...nextauth]/
-│   │       └── route.ts          # NextAuth API route
-│   ├── login/
-│   │   └── page.tsx              # Login page
-│   ├── layout.tsx                # Root layout with SessionProvider
-│   ├── page.tsx                  # Main page component
-│   └── globals.css               # Global styles
-├── components/
-│   ├── RoomScene.tsx           # Three.js WebXR office scene
-│   ├── Avatar.tsx                # 3D avatar creation and management
-│   └── SessionProvider.tsx       # NextAuth session provider wrapper
-├── lib/
-│   ├── auth.ts                   # NextAuth configuration
-│   ├── db.ts                     # TypeORM database connection
-│   ├── typeorm-adapter.ts        # Custom TypeORM adapter for NextAuth
-│   └── entities/
-│       ├── User.ts               # User entity
-│       ├── Account.ts            # Account entity (OAuth)
-│       ├── Session.ts            # Session entity
-│       └── VerificationToken.ts  # Verification token entity
-├── scripts/
-│   └── init-db.ts                # Database initialization script
-├── types/
-│   └── next-auth.d.ts            # NextAuth type definitions
-├── server.js                     # Custom server with WebSocket support
-├── middleware.ts                 # Authentication middleware
-├── package.json
-└── README.md
+├── packages/
+│   ├── core/                   # @officexr/core — shared application source
+│   │   └── src/
+│   │       ├── App.tsx
+│   │       ├── main.tsx        # Web entry point
+│   │       ├── index.ts        # Barrel: platform-agnostic type exports
+│   │       ├── index.css
+│   │       ├── vite-env.d.ts
+│   │       ├── assets/
+│   │       │   └── hdri/       # HDRI environment maps (EXR)
+│   │       ├── components/
+│   │       │   ├── Avatar.tsx
+│   │       │   ├── ControlsOverlay.tsx
+│   │       │   ├── OfficeSelector.tsx
+│   │       │   ├── RoomScene.tsx
+│   │       │   ├── SettingsPanel.tsx
+│   │       │   └── UserLobby.tsx
+│   │       ├── hooks/
+│   │       │   ├── useAuth.ts
+│   │       │   └── useMotionControls.ts
+│   │       ├── lib/
+│   │       │   ├── jaasJwt.ts  # JaaS JWT generation (Web Crypto, RS256)
+│   │       │   └── supabase.ts # Supabase client + Database types
+│   │       ├── pages/
+│   │       │   ├── Home.tsx
+│   │       │   ├── Login.tsx
+│   │       │   └── RoomPage.tsx
+│   │       └── types/
+│   │           └── avatar.ts
+│   ├── web/                    # @officexr/web — Vite browser build
+│   │   ├── index.html
+│   │   ├── vite.config.ts      # @ alias → ../core/src
+│   │   ├── public/             # Static assets
+│   │   └── .env.example
+│   ├── desktop/                # @officexr/desktop — Electron wrapper
+│   │   └── src/
+│   │       ├── main.ts
+│   │       └── preload.ts
+│   └── mobile/                 # @officexr/mobile — React Native / Expo
+│       └── src/
+│           ├── App.tsx
+│           ├── index.ts
+│           ├── hooks/useAuth.ts
+│           ├── lib/supabase.ts
+│           ├── navigation/
+│           └── screens/
+│               ├── HomeScreen.tsx
+│               ├── LoginScreen.tsx
+│               └── OfficeScreen.tsx
+├── supabase/migrations/        # SQL migrations (applied via Supabase CLI)
+├── .github/workflows/
+│   └── supabase-migrations.yml # Auto-applies migrations on push to main
+├── pnpm-workspace.yaml
+└── package.json                # Root scripts
 ```
 
-## Development
+## Getting Started
 
-The main 3D scene logic is in `components/RoomScene.tsx`, which handles:
-- Three.js scene initialization
-- WebXR session management
-- 3D object creation (office furniture)
-- Navigation controls
-- Camera management
-- WebSocket client connection
-- Real-time avatar position updates
-- User join/leave event handling
+### Prerequisites
 
-The WebSocket server (`server.js`) manages:
-- Real-time position synchronization
-- User connection state
-- Broadcasting position updates to all connected clients
-- Automatic reconnection handling
+- Node.js 18+
+- pnpm (`npm install -g pnpm`)
+- A [Supabase](https://supabase.com) project
+- A [JaaS](https://jaas.8x8.vc) account (for proximity voice chat)
 
-The database layer uses TypeORM with PostgreSQL:
-- **Entities**: User, Account, Session, VerificationToken
-- **Custom Adapter**: TypeORM adapter for NextAuth.js
-- **Database Sessions**: Persistent authentication sessions
-- **Auto-sync**: Automatic schema synchronization in development
-- **Initialization**: `npm run db:init` creates all required tables
+### Installation
 
-## Future Enhancements
+```bash
+pnpm install
+```
 
-Potential improvements:
-- Add more detailed office objects (computers, plants, etc.)
-- Implement collision detection
-- Add interactive elements (clickable objects)
-- Multiplayer support
-- Custom office layouts
-- Import 3D models (GLTF/GLB)
-- Better lighting and shadows
-- Sound effects and spatial audio
+### Environment Variables
 
-## Learn More
+Copy and fill in `packages/web/.env.example`:
 
-To learn more about the technologies used:
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Three.js Documentation](https://threejs.org/docs/)
-- [WebXR Device API](https://developer.mozilla.org/en-US/docs/Web/API/WebXR_Device_API)
+```bash
+cp packages/web/.env.example packages/web/.env
+```
 
-## Deploy on Vercel
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+VITE_JAAS_APP_ID=your-jaas-app-id
+VITE_JAAS_API_KEY_ID=your-jaas-api-key-id
+VITE_JAAS_PRIVATE_KEY=your-jaas-private-key-base64
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme).
+### Database
 
-Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Apply migrations to your Supabase project:
+
+```bash
+supabase link --project-ref <your-project-id>
+supabase db push
+```
+
+### Run
+
+```bash
+pnpm dev        # Web dev server at http://localhost:5173
+```
+
+## Controls
+
+### Desktop (keyboard + mouse)
+
+- **W / A / S / D** or **Arrow Keys** — Move
+- **Click** — Capture mouse for look-around (pointer lock)
+- **Mouse drag** — Look around (after clicking)
+- **Esc** — Release mouse
+
+### Mobile
+
+- **Drag** — Look around
+- **Virtual joystick** — Move
+- **Gyroscope** — Look around by tilting your device (iOS requires permission)
+
+### VR (WebXR)
+
+- Click **Enter VR** in the controls panel
+- Use your headset's controllers for navigation
+
+## Building
+
+```bash
+# Web
+pnpm build                  # outputs to packages/web/dist/
+
+# Desktop
+pnpm dist:desktop:mac       # macOS .dmg + .zip
+pnpm dist:desktop:win       # Windows installer
+pnpm dist:desktop:linux     # Linux .AppImage / .deb / .rpm
+pnpm dist:desktop:all       # All platforms
+
+# Mobile (requires EAS CLI)
+pnpm build:mobile:ios
+pnpm build:mobile:android
+```
 
 ## License
 

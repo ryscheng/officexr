@@ -7,6 +7,7 @@ import path from 'path';
 const coreRoot = path.resolve(__dirname, '../core/src');
 
 export default defineConfig({
+  assetsInclude: ['**/*.exr'],
   plugins: [
     react(),
     tailwindcss(),
