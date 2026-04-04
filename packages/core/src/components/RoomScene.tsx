@@ -1520,11 +1520,42 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               // Required for microphone/camera access inside cross-origin iframes
               (iframeRef as unknown as HTMLIFrameElement).allow =
                 'camera; microphone; display-capture; autoplay; screen-wake-lock';
+              // Verify the iframe is actually intersecting the viewport.
+              // Chrome throttles cross-origin iframes that are fully off-screen,
+              // which prevents Jitsi's XMPP connection from completing.
+              const observer = new IntersectionObserver(([entry]) => {
+                console.log('[VoiceChat] iframe IntersectionObserver — isIntersecting:', entry.isIntersecting, '| intersectionRatio:', entry.intersectionRatio, '| boundingClientRect:', JSON.stringify(entry.boundingClientRect));
+                observer.disconnect();
+              });
+              observer.observe(iframeRef);
             }}
             onApiReady={api => {
               console.log('[VoiceChat] onApiReady fired — iframe JS loaded, waiting for videoConferenceJoined');
+              console.log('[VoiceChat] Page state at onApiReady — visibilityState:', document.visibilityState, '| hasFocus:', document.hasFocus());
               jitsiApiRef.current = api;
               setJitsiError(null);
+
+              // Decode JWT header+payload (no crypto needed) to confirm what we sent
+              try {
+                const jwtParts = (jaasJwt ?? '').split('.');
+                if (jwtParts.length === 3) {
+                  const hdr = JSON.parse(atob(jwtParts[0].replace(/-/g, '+').replace(/_/g, '/')));
+                  const pay = JSON.parse(atob(jwtParts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                  console.log('[VoiceChat] JWT header:', hdr);
+                  console.log('[VoiceChat] JWT payload (redacted key):', {
+                    ...pay,
+                    context: {
+                      ...pay.context,
+                      user: pay.context?.user,
+                    },
+                    iat: pay.iat, exp: pay.exp, nbf: pay.nbf,
+                    expired: pay.exp < Math.floor(Date.now() / 1000),
+                    secondsUntilExpiry: pay.exp - Math.floor(Date.now() / 1000),
+                  });
+                }
+              } catch (jwtErr) {
+                console.warn('[VoiceChat] Could not decode JWT for inspection:', jwtErr);
+              }
 
               // onApiReady means the iframe JS loaded — NOT that the conference was
               // joined. Wait for videoConferenceJoined before marking as connected.
@@ -1545,9 +1576,41 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 setRemoteAudioLevel(prev => Math.max(prev, level));
               });
 
+              // Periodic heartbeat: probe participant count while waiting for join.
+              // Helps detect if Jitsi is silently stuck vs. not attempting to connect.
+              let heartbeatCount = 0;
+              const heartbeatInterval = setInterval(() => {
+                heartbeatCount++;
+                try {
+                  const participants = api.getNumberOfParticipants?.();
+                  console.log(`[VoiceChat] Heartbeat #${heartbeatCount} (${heartbeatCount * 3}s elapsed) — participants: ${participants ?? 'n/a'} | visibilityState: ${document.visibilityState} | hasFocus: ${document.hasFocus()}`);
+                } catch (e) {
+                  console.log(`[VoiceChat] Heartbeat #${heartbeatCount} — getNumberOfParticipants threw:`, e);
+                }
+              }, 3000);
+
+              // Listen for raw postMessages from the Jitsi iframe. These reveal
+              // internal events (XMPP, WebSocket, join attempts) before they bubble
+              // up through the external API, and are critical for diagnosing silent
+              // connection failures.
+              const onIframeMessage = (evt: MessageEvent) => {
+                if (!evt.data || typeof evt.data !== 'object') return;
+                const name = evt.data.name ?? evt.data.type ?? evt.data.event;
+                if (!name) return;
+                // Only log Jitsi-originated messages (filter out unrelated noise)
+                const jitsiPrefixes = ['conference.', 'connection.', 'video.', 'chat.', 'participant', 'dominant', 'error', 'ready', 'joined', 'left'];
+                const lc = String(name).toLowerCase();
+                if (jitsiPrefixes.some(p => lc.includes(p))) {
+                  console.log('[VoiceChat] iframe postMessage:', name, evt.data);
+                }
+              };
+              window.addEventListener('message', onIframeMessage);
+
               // Only mark connected when actually inside the conference room
               api.addEventListener('videoConferenceJoined', () => {
                 console.log('[VoiceChat] videoConferenceJoined — connected to room:', jitsiRoom);
+                clearInterval(heartbeatInterval);
+                window.removeEventListener('message', onIframeMessage);
                 if (jitsiConnectTimeoutRef.current) {
                   clearTimeout(jitsiConnectTimeoutRef.current);
                   jitsiConnectTimeoutRef.current = null;
@@ -1557,6 +1620,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
               const onDisconnect = (reason?: string) => {
                 console.warn('[VoiceChat] Disconnected from voice chat. Reason:', reason ?? '(unknown)');
+                clearInterval(heartbeatInterval);
+                window.removeEventListener('message', onIframeMessage);
                 setJitsiConnected(false);
                 if (remoteAudioDecayRef.current) {
                   clearInterval(remoteAudioDecayRef.current);
@@ -1574,6 +1639,37 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 onDisconnect('conferenceTerminated');
               });
 
+              // Log events that fire between window-loaded and videoConferenceJoined
+              // to pinpoint where the connection stalls.
+              // Note: api.on() is used (not addEventListener) because the TS typings
+              // for addEventListener require () => void and reject event params.
+              api.on('participantJoined', (e: any) => {
+                console.log('[VoiceChat] participantJoined:', e);
+              });
+              api.on('participantLeft', (e: any) => {
+                console.log('[VoiceChat] participantLeft:', e);
+              });
+              api.on('cameraError', (e: any) => {
+                console.warn('[VoiceChat] cameraError:', e);
+              });
+              api.on('micError', (e: any) => {
+                console.error('[VoiceChat] micError:', e);
+              });
+              api.on('dominantSpeakerChanged', (e: any) => {
+                console.log('[VoiceChat] dominantSpeakerChanged:', e);
+              });
+              api.addEventListener('readyToClose', () => {
+                console.warn('[VoiceChat] readyToClose — Jitsi wants to close the meeting');
+              });
+              api.on('log', (e: any) => {
+                // Forward Jitsi's internal log lines to the main console so
+                // XMPP / WebSocket errors are visible without opening the iframe DevTools.
+                const logArgs: any[] = e?.args ?? [e];
+                const lvl: string = (e?.logLevel ?? 'log').toLowerCase();
+                const fn = (lvl === 'error' || lvl === 'warn') ? console[lvl as 'error' | 'warn'] : console.log;
+                fn('[VoiceChat][jitsi-log]', ...logArgs);
+              });
+
               // connectionFailed / errorOccurred can surface via addEventListener too
               api.addEventListener('connectionFailed', () => {
                 console.error('[VoiceChat] connectionFailed (addEventListener)');
@@ -1586,7 +1682,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               });
 
               api.addEventListener('conferenceError', () => {
-                console.error('[VoiceChat] conferenceError (see Jitsi logs above for details)');
+                console.error('[VoiceChat] conferenceError (check Jitsi logs / jitsi-log entries above)');
+              });
+              api.on('conferenceError', (e: any) => {
+                console.error('[VoiceChat] conferenceError (on):', e);
               });
 
               api.on('errorOccurred', (e: any) => {
