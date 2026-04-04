@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
+import liliensteinHdriUrl from '../assets/hdri/lilienstein_4k.exr?url';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { JaaSMeeting } from '@jitsi/react-sdk';
 import { generateJaaSJwt } from '@/lib/jaasJwt';
@@ -513,7 +514,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     let hdriTexture: THREE.DataTexture | null = null;
     if (officeId === 'global') {
       const exrLoader = new EXRLoader();
-      exrLoader.load('/hdri/lilienstein_4k.exr', (texture) => {
+      exrLoader.load(liliensteinHdriUrl, (texture) => {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         scene.background = texture;
         scene.environment = texture;
