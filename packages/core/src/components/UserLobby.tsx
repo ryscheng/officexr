@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut } from '@/hooks/useAuth';
+import { useMotionControls } from '@/hooks/useMotionControls';
+import ControlsOverlay from '@/components/ControlsOverlay';
 
 interface Room {
   id: string;
@@ -48,6 +50,25 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Promoted to component-level refs so useMotionControls can access them
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+
+  // Shared motion / gyroscope controls (same behaviour as OfficeScene)
+  const {
+    motionPermission,
+    motionActiveRef,
+    recalibrateMotionRef,
+    handleRequestMotionPermission,
+  } = useMotionControls({ cameraRef, rendererRef });
+
+  // Virtual joystick (touch devices)
+  const joystickInputRef = useRef({ x: 0, y: 0 });
+  const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
+  const [joystickActive, setJoystickActive] = useState(false);
+  const isTouchDevice = typeof window !== 'undefined' &&
+    ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
   // Proximity hint synced from animation loop to React via ref+state
   const proximityNameRef = useRef<string | null>(null);
@@ -145,10 +166,12 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
     camera.position.set(0, 1.6, 5);
     camera.rotation.order = 'YXZ';
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
+    rendererRef.current = renderer;
     containerRef.current.appendChild(renderer.domElement);
 
     // Lighting
@@ -222,18 +245,25 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     portalsRef.current = portals;
     enteringRef.current = false;
 
-    // Mouse look (pointer lock)
+    // ── Mouse look (pointer lock) ────────────────────────────────────────────
     let cameraPitch = 0;
     let cameraYaw = 0;
 
-    const handleCanvasClick = () => renderer.domElement.requestPointerLock();
+    const handleCanvasClick = () => {
+      // Don't conflict with device orientation on touch/mobile devices
+      if (!motionActiveRef.current) {
+        renderer.domElement.requestPointerLock();
+      }
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== renderer.domElement) return;
-      cameraYaw -= (e.movementX || 0) * 0.002;
+      cameraYaw   -= (e.movementX || 0) * 0.002;
       cameraPitch -= (e.movementY || 0) * 0.002;
       cameraPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraPitch));
       camera.rotation.set(cameraPitch, cameraYaw, 0, 'YXZ');
     };
+
     const handlePointerLockChange = () =>
       setMouseLockActive(document.pointerLockElement === renderer.domElement);
 
@@ -241,10 +271,43 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
 
-    // WASD movement
+    // ── Touch look (drag to rotate when no gyroscope) ────────────────────────
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isTouching = false;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        isTouching = true;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      // Device orientation handles look direction on mobile — skip touch drag
+      if (motionActiveRef.current) return;
+      if (isTouching && e.touches.length === 1) {
+        const dx = e.touches[0].clientX - touchStartX;
+        const dy = e.touches[0].clientY - touchStartY;
+        camera.rotation.y -= dx * 0.002;
+        camera.rotation.x -= dy * 0.002;
+        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }
+    };
+
+    const handleTouchEnd = () => { isTouching = false; };
+
+    renderer.domElement.addEventListener('touchstart', handleTouchStart, { passive: true });
+    renderer.domElement.addEventListener('touchmove', handleTouchMove, { passive: true });
+    renderer.domElement.addEventListener('touchend', handleTouchEnd);
+
+    // ── WASD keyboard movement ────────────────────────────────────────────────
     const keys: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keys[e.key.toLowerCase()] = true; };
-    const onKeyUp = (e: KeyboardEvent) => { keys[e.key.toLowerCase()] = false; };
+    const onKeyUp   = (e: KeyboardEvent) => { keys[e.key.toLowerCase()] = false; };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
@@ -255,24 +318,39 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     };
     window.addEventListener('resize', onResize);
 
+    // ── Animation loop ────────────────────────────────────────────────────────
     const moveSpeed = 0.05;
     let rafId: number;
 
     const animate = () => {
       rafId = requestAnimationFrame(animate);
 
-      // WASD
       const forward = new THREE.Vector3();
-      const right = new THREE.Vector3();
+      const right   = new THREE.Vector3();
       camera.getWorldDirection(forward);
       forward.y = 0;
       forward.normalize();
       right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
 
-      if (keys['w'] || keys['arrowup'])    camera.position.addScaledVector(forward, moveSpeed);
-      if (keys['s'] || keys['arrowdown'])  camera.position.addScaledVector(forward, -moveSpeed);
-      if (keys['a'] || keys['arrowleft'])  camera.position.addScaledVector(right, -moveSpeed);
-      if (keys['d'] || keys['arrowright']) camera.position.addScaledVector(right, moveSpeed);
+      const direction = new THREE.Vector3();
+
+      if (keys['w'] || keys['arrowup'])    direction.add(forward);
+      if (keys['s'] || keys['arrowdown'])  direction.sub(forward);
+      if (keys['a'] || keys['arrowleft'])  direction.sub(right);
+      if (keys['d'] || keys['arrowright']) direction.add(right);
+
+      // Virtual joystick input (touch devices)
+      const { x: jx, y: jy } = joystickInputRef.current;
+      if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
+        direction.addScaledVector(forward, -jy);
+        direction.addScaledVector(right, jx);
+      }
+
+      if (direction.length() > 0) {
+        direction.normalize();
+        camera.position.addScaledVector(direction, moveSpeed);
+      }
+
       camera.position.y = 1.6;
 
       // Portal proximity
@@ -309,6 +387,9 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
       cancelAnimationFrame(rafId);
       renderer.domElement.removeEventListener('click', handleCanvasClick);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('touchstart', handleTouchStart);
+      renderer.domElement.removeEventListener('touchmove', handleTouchMove);
+      renderer.domElement.removeEventListener('touchend', handleTouchEnd);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
@@ -318,6 +399,8 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
         containerRef.current.removeChild(renderer.domElement);
       }
       renderer.dispose();
+      cameraRef.current = null;
+      rendererRef.current = null;
     };
   }, [rooms]); // Recreate portals whenever room list changes
 
@@ -349,20 +432,40 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
         </div>
       )}
 
-      {/* Controls (top-left) */}
-      <div style={{
-        position: 'absolute', top: '20px', left: '20px',
-        color: 'white', background: 'rgba(0,0,0,0.72)',
-        padding: '14px 18px', borderRadius: '8px', fontFamily: 'monospace', zIndex: 100,
-      }}>
-        <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', fontSize: '14px' }}>Your Lobby</p>
-        <p style={{ margin: '3px 0', fontSize: '12px' }}>W/A/S/D — Move</p>
-        <p style={{ margin: '3px 0', fontSize: '12px' }}>Click — Enable Mouse Look</p>
-        <p style={{ margin: '3px 0', fontSize: '12px' }}>Esc — Exit Mouse Look</p>
-        <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#7dd3fc' }}>
-          Walk into a glowing portal to enter a room
-        </p>
-      </div>
+      {/* Controls panel (top-left) — shared with OfficeScene */}
+      <ControlsOverlay
+        title="Your Lobby"
+        motionPermission={motionPermission}
+        onRecalibrate={() => recalibrateMotionRef.current?.()}
+        proximityHint="Walk into a glowing portal to enter a room"
+      />
+
+      {/* iOS motion permission prompt */}
+      {motionPermission === 'prompt' && (
+        <div style={{
+          position: 'absolute', bottom: '30px', left: '50%',
+          transform: 'translateX(-50%)', zIndex: 200,
+          background: 'rgba(0,0,0,0.85)', color: 'white',
+          padding: '14px 20px', borderRadius: '10px',
+          fontFamily: 'monospace', textAlign: 'center',
+          border: '1px solid rgba(255,255,255,0.2)',
+          display: 'flex', alignItems: 'center', gap: '12px',
+        }}>
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>
+            Enable gyroscope to look around by moving your device
+          </span>
+          <button
+            onClick={handleRequestMotionPermission}
+            style={{
+              padding: '8px 16px', background: '#6366f1', color: 'white',
+              border: 'none', borderRadius: '6px', cursor: 'pointer',
+              fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap',
+            }}
+          >
+            Enable Motion
+          </button>
+        </div>
+      )}
 
       {/* Room management panel (top-right) */}
       <div style={{
@@ -508,6 +611,54 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
           fontFamily: 'monospace', textAlign: 'center', zIndex: 100,
         }}>
           No rooms yet — create one using the panel on the right!
+        </div>
+      )}
+
+      {/* Virtual joystick — touch devices only */}
+      {isTouchDevice && (
+        <div
+          onTouchStart={e => {
+            e.preventDefault();
+            setJoystickActive(true);
+          }}
+          onTouchMove={e => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            let dx = touch.clientX - cx;
+            let dy = touch.clientY - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const maxR = 45;
+            if (dist > maxR) {
+              dx = (dx / dist) * maxR;
+              dy = (dy / dist) * maxR;
+            }
+            setJoystickKnob({ x: dx, y: dy });
+            joystickInputRef.current = { x: dx / maxR, y: dy / maxR };
+          }}
+          onTouchEnd={() => {
+            setJoystickActive(false);
+            setJoystickKnob({ x: 0, y: 0 });
+            joystickInputRef.current = { x: 0, y: 0 };
+          }}
+          style={{
+            position: 'absolute', bottom: '40px', left: '60px',
+            width: '100px', height: '100px', borderRadius: '50%',
+            background: 'rgba(255,255,255,0.1)',
+            border: '2px solid rgba(255,255,255,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 200, touchAction: 'none',
+            opacity: joystickActive ? 1 : 0.5,
+          }}
+        >
+          <div style={{
+            width: '40px', height: '40px', borderRadius: '50%',
+            background: 'rgba(255,255,255,0.6)',
+            transform: `translate(${joystickKnob.x}px, ${joystickKnob.y}px)`,
+            transition: joystickActive ? 'none' : 'transform 0.1s',
+          }} />
         </div>
       )}
     </div>
