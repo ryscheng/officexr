@@ -105,25 +105,33 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
     if (motionPermission !== 'granted') return;
 
     // Both yaw and pitch are driven incrementally (frame-to-frame deltas) rather
-    // than from a fixed offset.  This avoids two classes of Euler singularity:
+    // than from a fixed offset.  This avoids Euler singularities:
     //
     //   Yaw (alpha):  near device-flat (|rawPitch| → 90°), the magnetometer
-    //     reference frame can flip, causing alpha to jump by ±180° in a single
-    //     frame while the device barely moved.  The yawDamping factor cos(rawPitch)
-    //     smoothly reduces yaw sensitivity to zero exactly where alpha is
-    //     meaningless.
+    //     reference frame can flip, causing alpha to jump by ±180° in one frame.
+    //     The 30° glitch-skip threshold discards such spikes without dampening
+    //     normal movement.
     //
     //   Pitch (beta/gamma):  as beta approaches 0° (device flat), iOS sensor
     //     fusion can snap beta between 0° and ±180° in a single frame.  An
     //     absolute formula like (beta-90) would see a ~180° pitch jump.
     //     Incrementally accumulated pitch doesn't snap.
     //
-    // Glitch protection: instead of capping every frame (which throttles normal
-    // movement at low sensor rates), skip any frame whose per-axis delta exceeds
-    // GLITCH_THRESHOLD_DEG.  No human hand can rotate a device faster than
-    // ~30°/frame at 30 Hz (= 900°/s); anything larger is a singularity spike.
-    // The camera just freezes for that single frame rather than jumping or being
-    // slowed down.
+    // Sign convention (Three.js 'YXZ' Euler, camera default looks at -Z):
+    //   rotation.y > 0  →  looking LEFT
+    //   rotation.y < 0  →  looking RIGHT
+    //   rotation.x > 0  →  looking UP
+    //   rotation.x < 0  →  looking DOWN
+    //
+    //   Yaw:   device rotates CW (right) → alpha DECREASES → deltaAlpha < 0
+    //          → accYaw decreases → rotation.y < 0 → looking RIGHT ✓
+    //   Pitch: device tilts top away (looking up) → beta DECREASES → rawPitch
+    //          decreases → deltaPitch < 0 → negate → accPitch increases
+    //          → rotation.x > 0 → looking UP ✓
+    //
+    // Glitch protection: skip frames where the per-axis delta exceeds
+    // GLITCH_THRESHOLD_DEG (singularity spikes) rather than capping every
+    // frame (which throttles normal movement at low sensor rates).
 
     const GLITCH_THRESHOLD_DEG = 30;
 
@@ -178,12 +186,14 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       prevAlpha = alpha;
 
       if (Math.abs(deltaAlpha) <= GLITCH_THRESHOLD_DEG) {
-        const yawDamping = Math.cos(THREE.MathUtils.degToRad(rawPitch));
         accYaw = (accYaw ?? camera.rotation.y) +
-          THREE.MathUtils.degToRad(deltaAlpha) * yawDamping;
+          THREE.MathUtils.degToRad(deltaAlpha);
       }
 
       // ── Pitch (incremental + glitch skip) ──────────────────────────────────
+      // Negated: tilting phone top away (beta decreasing) = rawPitch decreasing
+      // = deltaPitch negative, but camera.rotation.x must INCREASE to look up
+      // in Three.js 'YXZ' (positive x = looking up).
       const deltaPitch = rawPitch - (prevRawPitch ?? rawPitch);
       prevRawPitch = rawPitch;
 
@@ -192,7 +202,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
           -Math.PI * 85 / 180,
           Math.min(
             Math.PI * 85 / 180,
-            (accPitch ?? camera.rotation.x) + THREE.MathUtils.degToRad(deltaPitch),
+            (accPitch ?? camera.rotation.x) - THREE.MathUtils.degToRad(deltaPitch),
           ),
         );
       }
