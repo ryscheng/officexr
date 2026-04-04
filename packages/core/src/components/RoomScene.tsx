@@ -412,9 +412,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       return;
     }
 
+    console.log('[VoiceChat] Attempting to connect — room:', jitsiRoom, 'jwt length:', jaasJwt?.length);
     setJitsiError(null);
     setJitsiConnected(false);
     jitsiConnectTimeoutRef.current = setTimeout(() => {
+      console.error('[VoiceChat] Connection timed out after 15s — videoConferenceJoined never fired. Room:', jitsiRoom);
       setJitsiError('Could not connect to voice chat — the server may be unavailable.');
     }, 15000);
 
@@ -1516,6 +1518,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 'camera; microphone; display-capture; autoplay; screen-wake-lock';
             }}
             onApiReady={api => {
+              console.log('[VoiceChat] onApiReady fired — iframe JS loaded, waiting for videoConferenceJoined');
               jitsiApiRef.current = api;
               setJitsiError(null);
 
@@ -1539,7 +1542,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               });
 
               // Only mark connected when actually inside the conference room
-              api.addEventListener('videoConferenceJoined', () => {
+              api.addEventListener('videoConferenceJoined', (e: any) => {
+                console.log('[VoiceChat] videoConferenceJoined — connected to room:', jitsiRoom, e);
                 if (jitsiConnectTimeoutRef.current) {
                   clearTimeout(jitsiConnectTimeoutRef.current);
                   jitsiConnectTimeoutRef.current = null;
@@ -1547,7 +1551,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 setJitsiConnected(true);
               });
 
-              const onDisconnect = () => {
+              const onDisconnect = (reason?: string) => {
+                console.warn('[VoiceChat] Disconnected from voice chat. Reason:', reason ?? '(unknown)');
                 setJitsiConnected(false);
                 if (remoteAudioDecayRef.current) {
                   clearInterval(remoteAudioDecayRef.current);
@@ -1556,24 +1561,33 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 setRemoteAudioLevel(0);
               };
 
-              api.addEventListener('videoConferenceLeft', onDisconnect);
-              api.addEventListener('conferenceTerminated', onDisconnect);
+              api.addEventListener('videoConferenceLeft', (e: any) => {
+                console.warn('[VoiceChat] videoConferenceLeft:', e);
+                onDisconnect('videoConferenceLeft');
+              });
+              api.addEventListener('conferenceTerminated', (e: any) => {
+                console.warn('[VoiceChat] conferenceTerminated:', e);
+                onDisconnect('conferenceTerminated');
+              });
 
-              api.on('connectionFailed', () => {
+              api.on('connectionFailed', (e: any) => {
+                console.error('[VoiceChat] connectionFailed:', e);
                 setJitsiError('Voice chat connection failed. Check your network connection.');
-                onDisconnect();
+                onDisconnect('connectionFailed');
               });
 
               api.on('errorOccurred', (e: any) => {
+                console.error('[VoiceChat] errorOccurred:', e);
                 if (e?.error?.isFatal) {
                   setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
-                  onDisconnect();
+                  onDisconnect('errorOccurred (fatal)');
                 }
               });
 
-              api.on('kickedOut', () => {
+              api.on('kickedOut', (e: any) => {
+                console.warn('[VoiceChat] kickedOut:', e);
                 setJitsiError('You were disconnected from voice chat.');
-                onDisconnect();
+                onDisconnect('kickedOut');
               });
             }}
           />
