@@ -23,5 +23,8 @@ jobs:
         with:
           version: latest
 
+      - name: Link to Supabase project
+        run: supabase link --project-ref $SUPABASE_PROJECT_ID
+      
       - name: Run migrations
-        run: supabase db push --db-url "${{ secrets.SUPABASE_DB_URL }}"
+        run: supabase db push
