@@ -3,6 +3,12 @@ import * as THREE from 'three';
 
 export type MotionPermission = 'unavailable' | 'prompt' | 'granted' | 'denied';
 
+export interface MotionDebug {
+  alpha: number; beta: number; gamma: number;
+  screenAngle: number; naturalLandscape: boolean;
+  rawPitch: number; deltaPitch: number; deltaAlpha: number;
+}
+
 interface UseMotionControlsOptions {
   cameraRef: React.RefObject<THREE.PerspectiveCamera | null>;
   rendererRef: React.RefObject<THREE.WebGLRenderer | null>;
@@ -14,8 +20,7 @@ interface UseMotionControlsOptions {
  * Prefers the standardised ScreenOrientation API (screen.orientation.angle)
  * and falls back to the legacy window.orientation property that iOS Safari
  * has always supported (needed for iOS < 16.4 where ScreenOrientation is
- * absent).  Both APIs use the same convention: 0 = portrait, 90 = landscape-
- * left, 270 (or -90) = landscape-right.
+ * absent).
  */
 function getScreenAngle(): number {
   if (typeof window === 'undefined') return 0;
@@ -27,19 +32,61 @@ function getScreenAngle(): number {
 }
 
 /**
- * Converts device sensor axes (alpha/beta/gamma) into a scalar "raw pitch"
- * value (degrees) whose sign convention matches Three.js camera pitch:
- *   0   = device held upright / neutral viewing angle
- *   neg = looking up (device top tilted away from user)
- *   pos = looking down (device top tilted toward user)
+ * Determines whether the device's natural (factory) orientation is landscape.
  *
- * The mapping depends on screen orientation because the physical axis that
- * controls "up/down gaze" rotates with the screen.
+ * screen.orientation.angle is measured relative to the natural orientation.
+ * If angle=0 but the viewport is landscape, natural orientation must be landscape
+ * (typical of iPads). If angle=0 and viewport is portrait, natural = portrait
+ * (typical of iPhones).  Works across all iOS versions.
+ *
+ * Called once per calibration (when screen angle is first locked) so it uses
+ * the current viewport size which reflects the actual device orientation.
  */
-function calcRawPitch(beta: number, gamma: number, screenAngle: number): number {
-  if (screenAngle === 90 || screenAngle === -270) return gamma;   // landscape-left
-  if (screenAngle === 270 || screenAngle === -90) return -gamma;  // landscape-right
-  return beta - 90; // portrait: 0° when held upright
+function detectNaturalLandscape(lockedScreenAngle: number): boolean {
+  if (typeof window === 'undefined') return false;
+  const landscapeViewport = window.innerWidth > window.innerHeight;
+  // When angle=0 the viewport IS in the natural orientation.
+  // When angle=90/270 the viewport has been rotated, so invert the check.
+  const isRotated = lockedScreenAngle === 90 || lockedScreenAngle === 270 ||
+                    lockedScreenAngle === -90 || lockedScreenAngle === -270;
+  return isRotated ? !landscapeViewport : landscapeViewport;
+}
+
+/**
+ * Converts device sensor axes (alpha/beta/gamma) into a scalar "raw pitch"
+ * value (degrees) that DECREASES when tilting the device's top away from the
+ * user (i.e. when looking up in the virtual world), regardless of screen or
+ * natural orientation.  The accumulator negates this so that looking up maps
+ * to an increase in camera.rotation.x (Three.js 'YXZ': positive x = look up).
+ *
+ * Two device families have different natural orientations:
+ *
+ *   Natural portrait  (iPhone): the pitch axis at angle=0 is beta (tilting
+ *     top away → beta decreases → rawPitch = beta−90 decreases) ✓
+ *
+ *   Natural landscape (iPad):   the pitch axis at angle=0 is −gamma (tilting
+ *     top away → gamma increases → rawPitch = −gamma decreases) ✓
+ *
+ * For rotated orientations (angle=90/270), the axis/sign also flips with
+ * natural orientation, so the same naturalLandscape flag handles all cases.
+ */
+function calcRawPitch(
+  beta: number,
+  gamma: number,
+  screenAngle: number,
+  naturalLandscape: boolean,
+): number {
+  if (naturalLandscape) {
+    // iPad-style: pitch axis is gamma, but the sign is opposite to iPhone
+    // landscape, because the axes are swapped relative to natural orientation.
+    if (screenAngle === 270 || screenAngle === -90) return gamma;
+    return -gamma; // angle = 0, 90, 180
+  } else {
+    // iPhone-style: pitch axis is beta in portrait, gamma in landscape.
+    if (screenAngle === 90 || screenAngle === -270) return gamma;
+    if (screenAngle === 270 || screenAngle === -90) return -gamma;
+    return beta - 90; // portrait: 0° when held upright, decreases when tilting up
+  }
 }
 
 /**
@@ -48,11 +95,6 @@ function calcRawPitch(beta: number, gamma: number, screenAngle: number): number 
  * deviceorientation event listener so both RoomScene and UserLobby
  * can share the same motion-look behaviour.
  */
-export interface MotionDebug {
-  alpha: number; beta: number; gamma: number;
-  screenAngle: number; rawPitch: number; deltaPitch: number; deltaAlpha: number;
-}
-
 export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsOptions) {
   const [motionPermission, setMotionPermission] = useState<MotionPermission>('unavailable');
   const motionActiveRef = useRef(false);
@@ -110,34 +152,17 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
   useEffect(() => {
     if (motionPermission !== 'granted') return;
 
-    // Both yaw and pitch are driven incrementally (frame-to-frame deltas) rather
-    // than from a fixed offset.  This avoids Euler singularities:
+    // Both yaw and pitch are driven incrementally (frame-to-frame deltas).
+    // This avoids Euler singularities that absolute formulas suffer from.
     //
-    //   Yaw (alpha):  near device-flat (|rawPitch| → 90°), the magnetometer
-    //     reference frame can flip, causing alpha to jump by ±180° in one frame.
-    //     The 30° glitch-skip threshold discards such spikes without dampening
-    //     normal movement.
-    //
-    //   Pitch (beta/gamma):  as beta approaches 0° (device flat), iOS sensor
-    //     fusion can snap beta between 0° and ±180° in a single frame.  An
-    //     absolute formula like (beta-90) would see a ~180° pitch jump.
-    //     Incrementally accumulated pitch doesn't snap.
-    //
-    // Sign convention (Three.js 'YXZ' Euler, camera default looks at -Z):
-    //   rotation.y > 0  →  looking LEFT
-    //   rotation.y < 0  →  looking RIGHT
-    //   rotation.x > 0  →  looking UP
-    //   rotation.x < 0  →  looking DOWN
-    //
-    //   Yaw:   device rotates CW (right) → alpha DECREASES → deltaAlpha < 0
-    //          → accYaw decreases → rotation.y < 0 → looking RIGHT ✓
-    //   Pitch: device tilts top away (looking up) → beta DECREASES → rawPitch
-    //          decreases → deltaPitch < 0 → negate → accPitch increases
-    //          → rotation.x > 0 → looking UP ✓
+    // Yaw:   device rotates CW (right) → alpha DECREASES → deltaAlpha < 0
+    //        → accYaw decreases → rotation.y < 0 → looking RIGHT ✓
+    // Pitch: tilting top away (looking up) → rawPitch DECREASES → deltaPitch < 0
+    //        → accPitch INCREASES (negated) → rotation.x > 0 → looking UP ✓
     //
     // Glitch protection: skip frames where the per-axis delta exceeds
-    // GLITCH_THRESHOLD_DEG (singularity spikes) rather than capping every
-    // frame (which throttles normal movement at low sensor rates).
+    // GLITCH_THRESHOLD_DEG. Sensor singularity spikes are 90-180°; normal
+    // hand movement at realistic sensor rates is under 30°/event.
 
     const GLITCH_THRESHOLD_DEG = 30;
 
@@ -145,9 +170,8 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
     let prevRawPitch: number | null = null;
     let accYaw: number | null = null;
     let accPitch: number | null = null;
-    // Lock screen angle at calibration time; re-lock after recalibrate.
-    // Avoids mid-tilt formula switches if the screen auto-rotates.
     let lockedScreenAngle: number | null = null;
+    let lockedNaturalLandscape = false;
 
     const recalibrate = () => {
       prevAlpha = null;
@@ -170,40 +194,37 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       const beta  = event.beta  ?? 90;
       const gamma = event.gamma ?? 0;
 
-      // Lock screen angle on first event so a mid-session auto-rotate doesn't
-      // switch the pitch axis formula unexpectedly mid-tilt.
-      if (lockedScreenAngle === null) lockedScreenAngle = getScreenAngle();
-      const rawPitch = calcRawPitch(beta, gamma, lockedScreenAngle);
+      // Lock screen angle + natural-landscape flag on first event so a
+      // mid-session screen auto-rotate doesn't switch the pitch formula.
+      if (lockedScreenAngle === null) {
+        lockedScreenAngle = getScreenAngle();
+        lockedNaturalLandscape = detectNaturalLandscape(lockedScreenAngle);
+      }
+      const rawPitch = calcRawPitch(beta, gamma, lockedScreenAngle, lockedNaturalLandscape);
 
       // First event: anchor accumulators to the camera's current orientation
       // so enabling motion never snaps the view.
       if (prevAlpha === null) {
-        prevAlpha     = alpha;
-        prevRawPitch  = rawPitch;
-        accYaw        = camera.rotation.y;
-        accPitch      = camera.rotation.x;
-        return; // skip this frame; deltas are zero by definition
+        prevAlpha    = alpha;
+        prevRawPitch = rawPitch;
+        accYaw       = camera.rotation.y;
+        accPitch     = camera.rotation.x;
+        return;
       }
 
-      // ── Yaw (incremental + glitch skip) ────────────────────────────────────
+      // ── Yaw ────────────────────────────────────────────────────────────────
       let deltaAlpha = alpha - prevAlpha;
       if (deltaAlpha >  180) deltaAlpha -= 360;
       if (deltaAlpha < -180) deltaAlpha += 360;
       prevAlpha = alpha;
 
       if (Math.abs(deltaAlpha) <= GLITCH_THRESHOLD_DEG) {
-        accYaw = (accYaw ?? camera.rotation.y) +
-          THREE.MathUtils.degToRad(deltaAlpha);
+        accYaw = (accYaw ?? camera.rotation.y) + THREE.MathUtils.degToRad(deltaAlpha);
       }
 
-      // ── Pitch (incremental + glitch skip) ──────────────────────────────────
-      // Negated: tilting phone top away (beta decreasing) = rawPitch decreasing
-      // = deltaPitch negative, but camera.rotation.x must INCREASE to look up
-      // in Three.js 'YXZ' (positive x = looking up).
+      // ── Pitch (negated: rawPitch decreases when tilting up) ─────────────────
       const deltaPitch = rawPitch - (prevRawPitch ?? rawPitch);
       prevRawPitch = rawPitch;
-
-      motionDebugRef.current = { alpha, beta, gamma, screenAngle: lockedScreenAngle!, rawPitch, deltaPitch, deltaAlpha };
 
       if (Math.abs(deltaPitch) <= GLITCH_THRESHOLD_DEG) {
         accPitch = Math.max(
@@ -216,11 +237,16 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       }
 
       camera.rotation.set(accPitch ?? camera.rotation.x, accYaw ?? camera.rotation.y, 0, 'YXZ');
+
+      motionDebugRef.current = {
+        alpha, beta, gamma,
+        screenAngle: lockedScreenAngle,
+        naturalLandscape: lockedNaturalLandscape,
+        rawPitch, deltaPitch, deltaAlpha,
+      };
     };
 
     window.addEventListener('deviceorientation', handler);
-    // Re-calibrate if the screen orientation changes so the next event
-    // re-locks to the new screen angle and re-anchors the camera.
     window.addEventListener('orientationchange', recalibrate);
     return () => {
       window.removeEventListener('deviceorientation', handler);
@@ -236,7 +262,6 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       .catch(() => setMotionPermission('denied'));
   };
 
-  // Let users switch back to mouse-look at any time
   const disableMotion = () => setMotionPermission('unavailable');
 
   return {

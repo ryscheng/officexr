@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { MotionPermission, MotionDebug } from '@/hooks/useMotionControls';
 
+const DEBUG_KEY = 'officexr_motion_debug';
+
 interface ControlsOverlayProps {
   /** Panel heading */
   title?: string;
@@ -14,7 +16,7 @@ interface ControlsOverlayProps {
   proximityHint?: string;
   /** Extra content rendered at the bottom of the panel */
   extras?: ReactNode;
-  /** Optional debug ref from useMotionControls — shows live sensor values */
+  /** Live sensor values from useMotionControls for the debug panel */
   motionDebugRef?: RefObject<MotionDebug | null>;
 }
 
@@ -32,14 +34,32 @@ export default function ControlsOverlay({
   extras,
   motionDebugRef,
 }: ControlsOverlayProps) {
+  // Persistent debug toggle — survives page reloads
+  const [showDebug, setShowDebug] = useState(
+    () => localStorage.getItem(DEBUG_KEY) === '1'
+  );
   const [dbg, setDbg] = useState<MotionDebug | null>(null);
 
-  // Poll the debug ref at ~10 Hz when motion is active
+  const toggleDebug = () => {
+    setShowDebug(prev => {
+      const next = !prev;
+      localStorage.setItem(DEBUG_KEY, next ? '1' : '0');
+      return next;
+    });
+  };
+
+  // Poll the debug ref at ~10 Hz when motion is active and debug is on
   useEffect(() => {
-    if (motionPermission !== 'granted' || !motionDebugRef) return;
-    const id = setInterval(() => setDbg(motionDebugRef.current ? { ...motionDebugRef.current } : null), 100);
+    if (motionPermission !== 'granted' || !showDebug || !motionDebugRef) {
+      setDbg(null);
+      return;
+    }
+    const id = setInterval(
+      () => setDbg(motionDebugRef.current ? { ...motionDebugRef.current } : null),
+      100,
+    );
     return () => clearInterval(id);
-  }, [motionPermission, motionDebugRef]);
+  }, [motionPermission, showDebug, motionDebugRef]);
 
   return (
     <div style={{
@@ -74,15 +94,33 @@ export default function ControlsOverlay({
             >
               ✕ Disable
             </button>
+            <button
+              onClick={toggleDebug}
+              title="Toggle sensor debug readout"
+              style={{
+                padding: '4px 8px', fontSize: '12px',
+                background: showDebug ? 'rgba(253,230,138,0.25)' : 'rgba(255,255,255,0.08)',
+                color: showDebug ? '#fde68a' : 'rgba(255,255,255,0.5)',
+                border: `1px solid ${showDebug ? 'rgba(253,230,138,0.4)' : 'rgba(255,255,255,0.15)'}`,
+                borderRadius: '4px', cursor: 'pointer',
+              }}
+            >
+              ⚙
+            </button>
           </div>
 
-          {/* Debug panel — remove once pitch issue is diagnosed */}
-          {dbg && (
-            <div style={{ marginTop: '8px', fontSize: '10px', color: '#fde68a', lineHeight: '1.5' }}>
-              <div>screen∠={dbg.screenAngle}°</div>
-              <div>α={dbg.alpha.toFixed(1)}° β={dbg.beta.toFixed(1)}° γ={dbg.gamma.toFixed(1)}°</div>
-              <div>rawPitch={dbg.rawPitch.toFixed(1)}° Δpitch={dbg.deltaPitch.toFixed(2)}°</div>
+          {/* Sensor debug panel — toggle with the ⚙ button, persists across reloads */}
+          {showDebug && dbg && (
+            <div style={{ marginTop: '8px', fontSize: '10px', color: '#fde68a', lineHeight: '1.6' }}>
+              <div>screen∠={dbg.screenAngle}°  natural={(dbg.naturalLandscape ? 'landscape' : 'portrait')}</div>
+              <div>α={dbg.alpha.toFixed(1)}°  β={dbg.beta.toFixed(1)}°  γ={dbg.gamma.toFixed(1)}°</div>
+              <div>rawPitch={dbg.rawPitch.toFixed(1)}°  Δpitch={dbg.deltaPitch.toFixed(2)}°</div>
               <div>Δyaw={dbg.deltaAlpha.toFixed(2)}°</div>
+            </div>
+          )}
+          {showDebug && !dbg && motionPermission === 'granted' && (
+            <div style={{ marginTop: '8px', fontSize: '10px', color: '#fde68a' }}>
+              Waiting for sensor data…
             </div>
           )}
         </>
