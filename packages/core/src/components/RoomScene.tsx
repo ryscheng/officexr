@@ -73,8 +73,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const remoteAudioDecayRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [micMuted, setMicMuted] = useState(false);
-  const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = no permission
+  const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
+  const [micError, setMicError] = useState<string | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const micAudioCtxRef = useRef<AudioContext | null>(null);
+  const startMicRef = useRef<(() => Promise<void>) | null>(null);
   const lastPositionUpdate = useRef<number>(0);
   const [showSettings, setShowSettings] = useState(false);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
@@ -139,58 +142,77 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   // real audio input, independent of any Jitsi connection.
   useEffect(() => {
     let animFrameId: number;
-    let audioCtx: AudioContext | null = null;
 
-    const setup = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        micStreamRef.current = stream;
-        audioCtx = new AudioContext();
+    const startMic = async () => {
+      // Tear down any prior session before retrying
+      cancelAnimationFrame(animFrameId);
+      micStreamRef.current?.getTracks().forEach(t => t.stop());
+      micStreamRef.current = null;
+      await micAudioCtxRef.current?.close();
+      micAudioCtxRef.current = null;
 
-        // iOS/Safari starts AudioContext in 'suspended' state and requires a user
-        // gesture to resume it. Try immediately, then retry on the first interaction.
-        const tryResume = async () => {
-          if (audioCtx && audioCtx.state === 'suspended') {
-            try { await audioCtx.resume(); } catch { /* ignore */ }
-          }
-        };
-        await tryResume();
-        if (audioCtx.state === 'suspended') {
-          const resumeOnInteraction = () => {
-            tryResume();
-            document.removeEventListener('touchstart', resumeOnInteraction);
-            document.removeEventListener('click', resumeOnInteraction);
-            document.removeEventListener('keydown', resumeOnInteraction);
-          };
-          document.addEventListener('touchstart', resumeOnInteraction, { once: true });
-          document.addEventListener('click', resumeOnInteraction, { once: true });
-          document.addEventListener('keydown', resumeOnInteraction, { once: true });
-        }
+      setMicError(null);
+      setMicLevel(0);
 
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 512;
-        audioCtx.createMediaStreamSource(stream).connect(analyser);
-        const buf = new Uint8Array(analyser.frequencyBinCount);
-        const tick = () => {
-          // Don't report levels while suspended (shows 0 rather than stale data)
-          if (audioCtx && audioCtx.state === 'running') {
-            analyser.getByteFrequencyData(buf);
-            const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length) / 128;
-            setMicLevel(rms);
-          }
-          animFrameId = requestAnimationFrame(tick);
-        };
-        tick();
-      } catch {
-        setMicLevel(-1); // permission denied or no mic
+      // navigator.mediaDevices is only available on secure origins (HTTPS / localhost)
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setMicLevel(-1);
+        setMicError('HTTPS required for microphone access');
+        return;
       }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } catch (err: any) {
+        setMicLevel(-1);
+        const name: string = err?.name ?? '';
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          setMicError('Permission denied — check browser/OS settings');
+        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          setMicError('No microphone found');
+        } else {
+          setMicError(`${name || 'Error'}: ${err?.message ?? 'unknown'}`);
+        }
+        return;
+      }
+
+      micStreamRef.current = stream;
+
+      // iOS/Safari creates AudioContext in 'suspended' state.
+      // Calling resume() here works when startMic() is invoked from a user gesture
+      // (e.g. the retry button). The auto-attempt on mount may still leave it
+      // suspended on iOS — the user tapping the retry button fixes that.
+      const audioCtx = new AudioContext();
+      micAudioCtxRef.current = audioCtx;
+      try { await audioCtx.resume(); } catch { /* best-effort */ }
+
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+
+      const tick = () => {
+        if (audioCtx.state === 'running') {
+          analyser.getByteFrequencyData(buf);
+          const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length) / 128;
+          setMicLevel(rms);
+        }
+        animFrameId = requestAnimationFrame(tick);
+      };
+      tick();
     };
-    setup();
+
+    // Store so the retry button can call startMic() from within a user gesture
+    startMicRef.current = startMic;
+
+    // Auto-attempt on mount — works on desktop and modern Android/iOS in most cases
+    startMic();
 
     return () => {
       cancelAnimationFrame(animFrameId);
       micStreamRef.current?.getTracks().forEach(t => t.stop());
-      audioCtx?.close();
+      micAudioCtxRef.current?.close();
     };
   }, []);
 
@@ -1484,43 +1506,68 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
         {/* Microphone indicator + mute toggle — always visible */}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
           marginTop: '8px', paddingTop: '8px',
           borderTop: '1px solid rgba(255,255,255,0.15)',
         }}>
-          {/* VU meter: 5 segments driven by live mic level */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '18px' }}
-               title={micLevel < 0 ? 'Microphone unavailable' : micMuted ? 'Muted' : 'Microphone active'}>
-            {[0.08, 0.22, 0.40, 0.62, 0.85].map((thresh, i) => (
-              <div key={i} style={{
-                width: '4px',
-                height: `${6 + i * 3}px`,
-                borderRadius: '2px',
-                background: micMuted || micLevel < 0
-                  ? 'rgba(255,255,255,0.2)'
-                  : micLevel >= thresh
-                    ? (thresh > 0.55 ? '#f87171' : thresh > 0.3 ? '#fbbf24' : '#4ade80')
-                    : 'rgba(255,255,255,0.2)',
-                transition: 'background 0.08s',
-              }} />
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* VU meter: 5 segments driven by live mic level */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '18px' }}
+                 title={micLevel < 0 ? (micError ?? 'Microphone unavailable') : micMuted ? 'Muted' : 'Microphone active'}>
+              {[0.08, 0.22, 0.40, 0.62, 0.85].map((thresh, i) => (
+                <div key={i} style={{
+                  width: '4px',
+                  height: `${6 + i * 3}px`,
+                  borderRadius: '2px',
+                  background: micMuted || micLevel < 0
+                    ? 'rgba(255,255,255,0.2)'
+                    : micLevel >= thresh
+                      ? (thresh > 0.55 ? '#f87171' : thresh > 0.3 ? '#fbbf24' : '#4ade80')
+                      : 'rgba(255,255,255,0.2)',
+                  transition: 'background 0.08s',
+                }} />
+              ))}
+            </div>
+
+            {micLevel < 0 ? (
+              /* Error state: tap to retry (user gesture unlocks iOS mic + AudioContext) */
+              <button
+                onClick={() => startMicRef.current?.()}
+                title="Tap to request microphone access"
+                style={{
+                  background: 'rgba(220,38,38,0.8)', border: 'none', borderRadius: '4px',
+                  cursor: 'pointer', color: 'white', fontSize: '12px', padding: '3px 8px',
+                }}
+              >
+                🎤 Tap to enable
+              </button>
+            ) : (
+              /* Normal state: mute toggle */
+              <>
+                <button
+                  onClick={handleMuteToggle}
+                  title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                  style={{
+                    background: micMuted ? 'rgba(220,38,38,0.8)' : 'rgba(255,255,255,0.15)',
+                    border: 'none', borderRadius: '4px', cursor: 'pointer',
+                    color: 'white', fontSize: '13px', padding: '3px 8px',
+                    transition: 'background 0.2s',
+                  }}
+                >
+                  {micMuted ? '🔇' : '🎤'}
+                </button>
+                <span style={{ fontSize: '11px', color: '#aaa' }}>
+                  {micMuted ? 'Muted' : 'Live'}
+                </span>
+              </>
+            )}
           </div>
-          {/* Mute toggle button */}
-          <button
-            onClick={handleMuteToggle}
-            title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
-            style={{
-              background: micMuted ? 'rgba(220,38,38,0.8)' : 'rgba(255,255,255,0.15)',
-              border: 'none', borderRadius: '4px', cursor: 'pointer',
-              color: 'white', fontSize: '13px', padding: '3px 8px',
-              transition: 'background 0.2s',
-            }}
-          >
-            {micLevel < 0 ? '🚫' : micMuted ? '🔇' : '🎤'}
-          </button>
-          <span style={{ fontSize: '11px', color: '#aaa' }}>
-            {micLevel < 0 ? 'No mic' : micMuted ? 'Muted' : 'Live'}
-          </span>
+
+          {/* Show actual error reason below the buttons when mic failed */}
+          {micLevel < 0 && micError && (
+            <div style={{ fontSize: '10px', color: '#f87171', marginTop: '4px', maxWidth: '160px', wordBreak: 'break-word' }}>
+              {micError}
+            </div>
+          )}
         </div>
         <p style={{ margin: '5px 0', fontSize: '12px', color: '#888' }}>
           Office: {officeId === 'global' ? 'Global' : 'Private'}
