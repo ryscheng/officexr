@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
-import OfficeScene from '@/components/OfficeScene';
+import RoomScene from '@/components/RoomScene';
 
 type PageState = 'checking' | 'ready' | 'denied' | 'not-found';
 
@@ -76,7 +76,7 @@ export default function RoomPage() {
 
   if (state === 'ready') {
     return (
-      <OfficeScene
+      <RoomScene
         officeId={id!}
         onLeave={() => navigate('/')}
         onShowOfficeSelector={() => navigate('/')}

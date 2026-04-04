@@ -11,7 +11,7 @@ interface UseMotionControlsOptions {
 /**
  * Handles device orientation (gyroscope) controls for a Three.js camera.
  * Abstracts capability detection, iOS permission prompting, and the
- * deviceorientation event listener so both OfficeScene and UserLobby
+ * deviceorientation event listener so both RoomScene and UserLobby
  * can share the same motion-look behaviour.
  */
 export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsOptions) {
@@ -45,7 +45,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       const camera = cameraRef.current;
       const renderer = rendererRef.current;
       if (!camera || !renderer) return;
-      // Skip when WebXR is presenting (OfficeScene) — check defensively
+      // Skip when WebXR is presenting (RoomScene) — check defensively
       if ((renderer as any).xr?.isPresenting) return;
       // Skip when mouse pointer lock is active
       if (document.pointerLockElement === renderer.domElement) return;

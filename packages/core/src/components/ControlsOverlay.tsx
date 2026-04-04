@@ -5,7 +5,7 @@ interface ControlsOverlayProps {
   title?: string;
   motionPermission: MotionPermission;
   onRecalibrate: () => void;
-  /** Show "Enter — Chat" hint (OfficeScene) */
+  /** Show "Enter — Chat" hint (RoomScene) */
   showChat?: boolean;
   /** Show proximity hint below controls (UserLobby) */
   proximityHint?: string;
@@ -14,7 +14,7 @@ interface ControlsOverlayProps {
 }
 
 /**
- * Shared top-left controls overlay rendered by both OfficeScene and UserLobby.
+ * Shared top-left controls overlay rendered by both RoomScene and UserLobby.
  * Adapts displayed instructions to whether device motion or mouse look is active.
  */
 export default function ControlsOverlay({

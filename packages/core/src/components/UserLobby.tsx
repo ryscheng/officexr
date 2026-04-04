@@ -55,7 +55,7 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
-  // Shared motion / gyroscope controls (same behaviour as OfficeScene)
+  // Shared motion / gyroscope controls (same behaviour as RoomScene)
   const {
     motionPermission,
     motionActiveRef,
@@ -432,7 +432,7 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
         </div>
       )}
 
-      {/* Controls panel (top-left) — shared with OfficeScene */}
+      {/* Controls panel (top-left) — shared with RoomScene */}
       <ControlsOverlay
         title="Your Lobby"
         motionPermission={motionPermission}
