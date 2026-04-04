@@ -75,6 +75,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     style: 'default',
     accessories: [],
   });
+  const avatarCustomizationRef = useRef(avatarCustomization);
 
   // Chat state
   interface ChatMessage {
@@ -155,6 +156,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }
       });
   }, [user]);
+
+  // Keep the ref in sync and re-track presence whenever customization changes
+  // (profile load or manual save) so other users see the updated avatar without
+  // tearing down the entire realtime channel.
+  useEffect(() => {
+    avatarCustomizationRef.current = avatarCustomization;
+    const channel = channelRef.current;
+    if (!channel || !myPresenceRef.current) return;
+    const updated = { ...myPresenceRef.current, customization: avatarCustomization };
+    myPresenceRef.current = updated;
+    channel.track(updated);
+  }, [avatarCustomization]);
 
   // Handle chat visibility and Enter key
   useEffect(() => {
@@ -857,7 +870,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           image: user?.image || null,
           position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
           rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
-          customization: avatarCustomization,
+          customization: avatarCustomizationRef.current,
           jitsiRoom: null,
         };
         myPresenceRef.current = presence;
@@ -1030,7 +1043,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       renderer.domElement.removeEventListener('touchmove', handleTouchMove);
       renderer.domElement.removeEventListener('touchend', handleTouchEnd);
 
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
       channelRef.current = null;
 
       if (localBubbleSphereRef.current) {
@@ -1049,7 +1062,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
       renderer.dispose();
     };
-  }, [avatarCustomization, officeId, currentUser, environment]);
+  }, [officeId, currentUser, environment]);
 
   const handleSaveSettings = async (settings: AvatarCustomization) => {
     if (!user) return;
