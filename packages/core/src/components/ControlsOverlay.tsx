@@ -5,6 +5,7 @@ interface ControlsOverlayProps {
   title?: string;
   motionPermission: MotionPermission;
   onRecalibrate: () => void;
+  onDisableMotion: () => void;
   /** Show "Enter — Chat" hint (RoomScene) */
   showChat?: boolean;
   /** Show proximity hint below controls (UserLobby) */
@@ -21,6 +22,7 @@ export default function ControlsOverlay({
   title = 'Controls:',
   motionPermission,
   onRecalibrate,
+  onDisableMotion,
   showChat = false,
   proximityHint,
   extras,
@@ -37,16 +39,28 @@ export default function ControlsOverlay({
       {motionPermission === 'granted' ? (
         <>
           <p style={{ margin: '5px 0', color: '#4ade80' }}>📱 Tilt device — Look Around</p>
-          <button
-            onClick={onRecalibrate}
-            style={{
-              marginTop: '6px', padding: '4px 10px', fontSize: '12px',
-              background: 'rgba(255,255,255,0.15)', color: 'white',
-              border: '1px solid rgba(255,255,255,0.3)', borderRadius: '4px', cursor: 'pointer',
-            }}
-          >
-            ↺ Recalibrate
-          </button>
+          <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+            <button
+              onClick={onRecalibrate}
+              style={{
+                flex: 1, padding: '4px 8px', fontSize: '12px',
+                background: 'rgba(255,255,255,0.15)', color: 'white',
+                border: '1px solid rgba(255,255,255,0.3)', borderRadius: '4px', cursor: 'pointer',
+              }}
+            >
+              ↺ Recalibrate
+            </button>
+            <button
+              onClick={onDisableMotion}
+              style={{
+                flex: 1, padding: '4px 8px', fontSize: '12px',
+                background: 'rgba(239,68,68,0.25)', color: '#fca5a5',
+                border: '1px solid rgba(239,68,68,0.4)', borderRadius: '4px', cursor: 'pointer',
+              }}
+            >
+              ✕ Disable
+            </button>
+          </div>
         </>
       ) : (
         <>

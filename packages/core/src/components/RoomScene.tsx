@@ -99,6 +99,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     motionActiveRef,
     recalibrateMotionRef,
     handleRequestMotionPermission,
+    disableMotion,
   } = useMotionControls({ cameraRef, rendererRef });
   const joystickInputRef = useRef({ x: 0, y: 0 });
   const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
@@ -1125,6 +1126,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       <ControlsOverlay
         motionPermission={motionPermission}
         onRecalibrate={() => recalibrateMotionRef.current?.()}
+        onDisableMotion={disableMotion}
         showChat
         extras={
           <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>

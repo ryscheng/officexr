@@ -61,6 +61,7 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     motionActiveRef,
     recalibrateMotionRef,
     handleRequestMotionPermission,
+    disableMotion,
   } = useMotionControls({ cameraRef, rendererRef });
 
   // Virtual joystick (touch devices)
@@ -437,6 +438,7 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
         title="Your Lobby"
         motionPermission={motionPermission}
         onRecalibrate={() => recalibrateMotionRef.current?.()}
+        onDisableMotion={disableMotion}
         proximityHint="Walk into a glowing portal to enter a room"
       />
 

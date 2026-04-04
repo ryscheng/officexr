@@ -70,8 +70,20 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
   useEffect(() => {
     if (motionPermission !== 'granted') return;
 
-    let alphaOffset: number | null = null;
-    recalibrateMotionRef.current = () => { alphaOffset = null; };
+    // Offsets captured on the first event so that enabling motion does NOT snap
+    // the camera to a new direction — it continues from wherever it was pointing.
+    let alphaOffset: number | null = null;       // device yaw at activation
+    let devicePitchOffset: number | null = null; // device pitch at activation
+    let cameraYawAtStart: number | null = null;  // camera yaw at activation
+    let cameraPitchAtStart: number | null = null;// camera pitch at activation
+
+    const recalibrate = () => {
+      alphaOffset = null;
+      devicePitchOffset = null;
+      cameraYawAtStart = null;
+      cameraPitchAtStart = null;
+    };
+    recalibrateMotionRef.current = recalibrate;
 
     const handler = (event: DeviceOrientationEvent) => {
       const camera = cameraRef.current;
@@ -87,29 +99,40 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       const beta  = event.beta  ?? 90;
       const gamma = event.gamma ?? 0;
 
-      // Capture the initial heading so the current look direction = yaw 0
-      if (alphaOffset === null) alphaOffset = alpha;
-
-      let relAlpha = alpha - alphaOffset;
-      if (relAlpha >  180) relAlpha -= 360;
-      if (relAlpha < -180) relAlpha += 360;
-
-      const yaw = THREE.MathUtils.degToRad(relAlpha);
-
-      // Pitch mapping differs between portrait and landscape.
-      // Portrait: beta ≈ 90 when upright; tilting up decreases beta.
+      // Raw device pitch in the current screen orientation
       const screenAngle = window.screen?.orientation?.angle ?? 0;
-      let pitch: number;
+      let rawPitch: number;
       if (screenAngle === 90 || screenAngle === -270) {
-        pitch = THREE.MathUtils.degToRad(gamma);   // landscape-left
+        rawPitch = gamma;   // landscape-left
       } else if (screenAngle === 270 || screenAngle === -90) {
-        pitch = THREE.MathUtils.degToRad(-gamma);  // landscape-right
+        rawPitch = -gamma;  // landscape-right
       } else {
-        pitch = THREE.MathUtils.degToRad(beta - 90); // portrait
+        rawPitch = beta - 90; // portrait: 0° when held upright
       }
 
-      pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
-      camera.rotation.set(pitch, yaw, 0, 'YXZ');
+      // On the very first event after activation, anchor to the camera's current
+      // orientation so there is no jarring snap when motion is enabled.
+      if (alphaOffset === null) {
+        alphaOffset       = alpha;
+        devicePitchOffset = rawPitch;
+        cameraYawAtStart   = camera.rotation.y;
+        cameraPitchAtStart = camera.rotation.x;
+      }
+
+      // Delta yaw from initial heading, wrapped to [-180, 180]
+      let deltaAlpha = alpha - alphaOffset;
+      if (deltaAlpha >  180) deltaAlpha -= 360;
+      if (deltaAlpha < -180) deltaAlpha += 360;
+
+      const yaw   = (cameraYawAtStart ?? 0)   + THREE.MathUtils.degToRad(deltaAlpha);
+      const pitch = (cameraPitchAtStart ?? 0) + THREE.MathUtils.degToRad(rawPitch - (devicePitchOffset ?? 0));
+
+      camera.rotation.set(
+        Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch)),
+        yaw,
+        0,
+        'YXZ',
+      );
     };
 
     window.addEventListener('deviceorientation', handler);
@@ -126,10 +149,14 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       .catch(() => setMotionPermission('denied'));
   };
 
+  // Let users switch back to mouse-look at any time
+  const disableMotion = () => setMotionPermission('unavailable');
+
   return {
     motionPermission,
     motionActiveRef,
     recalibrateMotionRef,
     handleRequestMotionPermission,
+    disableMotion,
   };
 }
