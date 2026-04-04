@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { MotionPermission } from '@/hooks/useMotionControls';
 
 interface ControlsOverlayProps {
@@ -11,7 +12,7 @@ interface ControlsOverlayProps {
   /** Show proximity hint below controls (UserLobby) */
   proximityHint?: string;
   /** Extra content rendered at the bottom of the panel */
-  extras?: React.ReactNode;
+  extras?: ReactNode;
 }
 
 /**

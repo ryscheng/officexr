@@ -197,7 +197,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
         );
       }
 
-      camera.rotation.set(accPitch, accYaw, 0, 'YXZ');
+      camera.rotation.set(accPitch ?? camera.rotation.x, accYaw ?? camera.rotation.y, 0, 'YXZ');
     };
 
     window.addEventListener('deviceorientation', handler);
