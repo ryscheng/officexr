@@ -151,7 +151,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   useEffect(() => {
     const appId      = import.meta.env.VITE_JAAS_APP_ID      as string | undefined;
     const apiKeyId   = import.meta.env.VITE_JAAS_API_KEY_ID  as string | undefined;
-    const privateKey = import.meta.env.VITE_JAAS_PRIVATE_KEY as string | undefined;
+    const privateKeyB64 = import.meta.env.VITE_JAAS_PRIVATE_KEY as string | undefined;
+    const privateKey = privateKeyB64 ? atob(privateKeyB64) : undefined;
 
     if (!appId || !apiKeyId || !privateKey || !currentUser) {
       setJaasJwt(null);

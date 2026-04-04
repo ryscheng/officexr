@@ -7,9 +7,9 @@
  * Required env vars:
  *   VITE_JAAS_APP_ID       — your JaaS App ID (vpaas-magic-cookie-…)
  *   VITE_JAAS_API_KEY_ID   — the Key ID shown in the JaaS console for this key
- *   VITE_JAAS_PRIVATE_KEY  — RSA private key in PKCS#8 PEM format (the full
- *                            "-----BEGIN PRIVATE KEY-----…" block). In .env
- *                            files use double quotes and literal \n escapes.
+ *   VITE_JAAS_PRIVATE_KEY  — RSA private key in PKCS#8 PEM format, base64-encoded.
+ *                            The caller must decode from base64 before passing
+ *                            the PEM string to generateJaaSJwt().
  */
 
 export interface JaaSUserInfo {
