@@ -98,6 +98,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     motionPermission,
     motionActiveRef,
     recalibrateMotionRef,
+    motionDebugRef,
     handleRequestMotionPermission,
     disableMotion,
   } = useMotionControls({ cameraRef, rendererRef });
@@ -1127,6 +1128,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         motionPermission={motionPermission}
         onRecalibrate={() => recalibrateMotionRef.current?.()}
         onDisableMotion={disableMotion}
+        motionDebugRef={motionDebugRef}
         showChat
         extras={
           <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>

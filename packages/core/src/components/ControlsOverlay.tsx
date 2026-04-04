@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
-import { MotionPermission } from '@/hooks/useMotionControls';
+import { useEffect, useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { MotionPermission, MotionDebug } from '@/hooks/useMotionControls';
 
 interface ControlsOverlayProps {
   /** Panel heading */
@@ -13,6 +14,8 @@ interface ControlsOverlayProps {
   proximityHint?: string;
   /** Extra content rendered at the bottom of the panel */
   extras?: ReactNode;
+  /** Optional debug ref from useMotionControls — shows live sensor values */
+  motionDebugRef?: RefObject<MotionDebug | null>;
 }
 
 /**
@@ -27,7 +30,17 @@ export default function ControlsOverlay({
   showChat = false,
   proximityHint,
   extras,
+  motionDebugRef,
 }: ControlsOverlayProps) {
+  const [dbg, setDbg] = useState<MotionDebug | null>(null);
+
+  // Poll the debug ref at ~10 Hz when motion is active
+  useEffect(() => {
+    if (motionPermission !== 'granted' || !motionDebugRef) return;
+    const id = setInterval(() => setDbg(motionDebugRef.current ? { ...motionDebugRef.current } : null), 100);
+    return () => clearInterval(id);
+  }, [motionPermission, motionDebugRef]);
+
   return (
     <div style={{
       position: 'absolute', top: '20px', left: '20px',
@@ -62,6 +75,16 @@ export default function ControlsOverlay({
               ✕ Disable
             </button>
           </div>
+
+          {/* Debug panel — remove once pitch issue is diagnosed */}
+          {dbg && (
+            <div style={{ marginTop: '8px', fontSize: '10px', color: '#fde68a', lineHeight: '1.5' }}>
+              <div>screen∠={dbg.screenAngle}°</div>
+              <div>α={dbg.alpha.toFixed(1)}° β={dbg.beta.toFixed(1)}° γ={dbg.gamma.toFixed(1)}°</div>
+              <div>rawPitch={dbg.rawPitch.toFixed(1)}° Δpitch={dbg.deltaPitch.toFixed(2)}°</div>
+              <div>Δyaw={dbg.deltaAlpha.toFixed(2)}°</div>
+            </div>
+          )}
         </>
       ) : (
         <>

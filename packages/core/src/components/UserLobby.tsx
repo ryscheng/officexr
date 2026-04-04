@@ -60,6 +60,7 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     motionPermission,
     motionActiveRef,
     recalibrateMotionRef,
+    motionDebugRef,
     handleRequestMotionPermission,
     disableMotion,
   } = useMotionControls({ cameraRef, rendererRef });
@@ -439,6 +440,7 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
         motionPermission={motionPermission}
         onRecalibrate={() => recalibrateMotionRef.current?.()}
         onDisableMotion={disableMotion}
+        motionDebugRef={motionDebugRef}
         proximityHint="Walk into a glowing portal to enter a room"
       />
 

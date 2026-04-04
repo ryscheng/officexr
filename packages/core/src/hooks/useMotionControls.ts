@@ -48,10 +48,16 @@ function calcRawPitch(beta: number, gamma: number, screenAngle: number): number 
  * deviceorientation event listener so both RoomScene and UserLobby
  * can share the same motion-look behaviour.
  */
+export interface MotionDebug {
+  alpha: number; beta: number; gamma: number;
+  screenAngle: number; rawPitch: number; deltaPitch: number; deltaAlpha: number;
+}
+
 export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsOptions) {
   const [motionPermission, setMotionPermission] = useState<MotionPermission>('unavailable');
   const motionActiveRef = useRef(false);
   const recalibrateMotionRef = useRef<(() => void) | null>(null);
+  const motionDebugRef = useRef<MotionDebug | null>(null);
 
   // Detect device orientation capability once on mount.
   //
@@ -179,7 +185,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
         return; // skip this frame; deltas are zero by definition
       }
 
-      // ── Yaw (incremental + cosine damping + glitch skip) ───────────────────
+      // ── Yaw (incremental + glitch skip) ────────────────────────────────────
       let deltaAlpha = alpha - prevAlpha;
       if (deltaAlpha >  180) deltaAlpha -= 360;
       if (deltaAlpha < -180) deltaAlpha += 360;
@@ -196,6 +202,8 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       // in Three.js 'YXZ' (positive x = looking up).
       const deltaPitch = rawPitch - (prevRawPitch ?? rawPitch);
       prevRawPitch = rawPitch;
+
+      motionDebugRef.current = { alpha, beta, gamma, screenAngle: lockedScreenAngle!, rawPitch, deltaPitch, deltaAlpha };
 
       if (Math.abs(deltaPitch) <= GLITCH_THRESHOLD_DEG) {
         accPitch = Math.max(
@@ -235,6 +243,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
     motionPermission,
     motionActiveRef,
     recalibrateMotionRef,
+    motionDebugRef,
     handleRequestMotionPermission,
     disableMotion,
   };
