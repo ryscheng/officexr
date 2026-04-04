@@ -1481,13 +1481,17 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         );
       })()}
 
-      {/* Jitsi audio iframe — positioned off-screen at a real size (not 1x1) so
-          mobile browsers (especially iOS) don't throttle/suspend its media tracks.
+      {/* Jitsi audio iframe — kept in-viewport (bottom-right corner) but invisible.
+          opacity:0 hides it from users while keeping it "visible" to Chrome so the
+          browser does NOT throttle the cross-origin iframe's JS timers.
+          Positioning it fully off-screen (top:-400px) causes Chrome to suspend the
+          iframe's task queue, preventing Jitsi from initiating the XMPP connection.
           The allow attribute is required for microphone access in cross-origin iframes. */}
       {jitsiRoom && jaasJwt && (
         <div style={{
-          position: 'fixed', top: '-400px', left: '-600px',
-          width: '480px', height: '270px', overflow: 'hidden',
+          position: 'fixed', bottom: 0, right: 0,
+          width: '480px', height: '270px',
+          opacity: 0, pointerEvents: 'none', zIndex: -1,
         }}>
           <JaaSMeeting
             appId={import.meta.env.VITE_JAAS_APP_ID ?? ''}
