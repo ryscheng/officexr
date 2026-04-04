@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
+import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { JaaSMeeting } from '@jitsi/react-sdk';
 import { generateJaaSJwt } from '@/lib/jaasJwt';
@@ -503,8 +504,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     if (navigator.xr) {
       renderer.xr.enabled = true;
     }
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
     rendererRef.current = renderer;
     containerRef.current.appendChild(renderer.domElement);
+
+    // Load HDRI skybox for the global lobby
+    let hdriTexture: THREE.DataTexture | null = null;
+    if (officeId === 'global') {
+      const exrLoader = new EXRLoader();
+      exrLoader.load('/hdri/lilienstein_4k.exr', (texture) => {
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        scene.background = texture;
+        scene.environment = texture;
+        hdriTexture = texture;
+      });
+    }
 
     // Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -1276,6 +1291,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
       if (containerRef.current && renderer.domElement.parentNode) {
         containerRef.current.removeChild(renderer.domElement);
+      }
+      if (hdriTexture) {
+        hdriTexture.dispose();
+        hdriTexture = null;
       }
       renderer.dispose();
     };
