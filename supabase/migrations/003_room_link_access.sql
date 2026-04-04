@@ -6,7 +6,7 @@ ALTER TABLE public.offices
 -- Allow authenticated users to read offices that have link access enabled.
 -- (The existing "Offices are viewable by members" policy already covers members;
 --  Postgres OR's multiple SELECT policies together.)
-CREATE POLICY IF NOT EXISTS "Authenticated users can view link-accessible offices"
+CREATE POLICY "Authenticated users can view link-accessible offices"
   ON public.offices FOR SELECT
   TO authenticated
   USING (link_access = true);

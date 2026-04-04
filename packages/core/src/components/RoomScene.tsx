@@ -828,7 +828,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     };
 
-    buildEnvironment();
+    if (officeId === 'global') {
+      // For the global lobby use the HDRI skybox — just add a ground plane so avatars have something to stand on
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(200, 200),
+        new THREE.MeshStandardMaterial({ color: 0x4a7c59, roughness: 1, metalness: 0 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+    } else {
+      buildEnvironment();
+    }
 
     // Local user bubble sphere
     const localSphere = createBubbleSphere(scene);
