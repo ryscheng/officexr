@@ -64,11 +64,10 @@ function detectNaturalLandscape(lockedScreenAngle: number): boolean {
  *   Natural portrait  (iPhone): the pitch axis at angle=0 is beta (tilting
  *     top away → beta decreases → rawPitch = beta−90 decreases) ✓
  *
- *   Natural landscape (iPad):   the pitch axis at angle=0 is −gamma (tilting
- *     top away → gamma increases → rawPitch = −gamma decreases) ✓
- *
- * For rotated orientations (angle=90/270), the axis/sign also flips with
- * natural orientation, so the same naturalLandscape flag handles all cases.
+ *   Natural landscape (iPad):   in landscape the pitch axis is gamma (tilting
+ *     top away → gamma decreases → rawPitch decreases) ✓.  In portrait the
+ *     short edge is horizontal so the pitch axis shifts to beta (tilting top
+ *     away → beta increases → rawPitch = −beta decreases) ✓
  */
 function calcRawPitch(
   beta: number,
@@ -77,10 +76,15 @@ function calcRawPitch(
   naturalLandscape: boolean,
 ): number {
   if (naturalLandscape) {
-    // iPad-style: pitch axis is gamma, but the sign is opposite to iPhone
-    // landscape, because the axes are swapped relative to natural orientation.
-    if (screenAngle === 270 || screenAngle === -90) return gamma;
-    return -gamma; // angle = 0, 90, 180
+    // iPad portrait (angle 90/270): the device's short edge (X-axis) is now
+    // horizontal, so pitch tilts rotate around it and change beta.  gamma stays
+    // ~0 and only responds to left-right tilt, making it unusable for pitch.
+    // The two portrait orientations mirror each other, so the sign flips.
+    if (screenAngle === 90  || screenAngle === -270) return -beta;
+    if (screenAngle === 270 || screenAngle === -90)  return beta;
+    // iPad landscape (angle 0/180): the long edge is horizontal and pitch
+    // tilts change gamma.
+    return gamma;
   } else {
     // iPhone-style: pitch axis is beta in portrait, gamma in landscape.
     if (screenAngle === 90 || screenAngle === -270) return gamma;
@@ -97,6 +101,8 @@ function calcRawPitch(
  */
 export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsOptions) {
   const [motionPermission, setMotionPermission] = useState<MotionPermission>('unavailable');
+  // Tracks whether the device has real motion sensors so we can offer re-enable
+  const [motionCapable, setMotionCapable] = useState(false);
   const motionActiveRef = useRef(false);
   const recalibrateMotionRef = useRef<(() => void) | null>(null);
   const motionDebugRef = useRef<MotionDebug | null>(null);
@@ -118,6 +124,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
     if (typeof DeviceOrientationEvent === 'undefined') return;
 
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+      setMotionCapable(true);
       setMotionPermission('prompt'); // iOS 13+ — needs explicit user gesture
       return;
     }
@@ -127,6 +134,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       if (e.alpha !== null || e.beta !== null || e.gamma !== null) {
         clearTimeout(timeout);
         window.removeEventListener('deviceorientation', onFirstEvent);
+        setMotionCapable(true);
         setMotionPermission('granted');
       }
     };
@@ -258,8 +266,15 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
   const handleRequestMotionPermission = () => {
     (DeviceOrientationEvent as any)
       .requestPermission()
-      .then((state: string) => setMotionPermission(state === 'granted' ? 'granted' : 'denied'))
+      .then((state: string) => {
+        if (state === 'granted') setMotionCapable(true);
+        setMotionPermission(state === 'granted' ? 'granted' : 'denied');
+      })
       .catch(() => setMotionPermission('denied'));
+  };
+
+  const enableMotion = () => {
+    if (motionCapable) setMotionPermission('granted');
   };
 
   const disableMotion = () => setMotionPermission('unavailable');
@@ -267,9 +282,11 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
   return {
     motionPermission,
     motionActiveRef,
+    motionCapable,
     recalibrateMotionRef,
     motionDebugRef,
     handleRequestMotionPermission,
+    enableMotion,
     disableMotion,
   };
 }
