@@ -19,14 +19,46 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
   const motionActiveRef = useRef(false);
   const recalibrateMotionRef = useRef<(() => void) | null>(null);
 
-  // Detect device orientation capability once on mount
+  // Detect device orientation capability once on mount.
+  //
+  // Problem: DeviceOrientationEvent is defined in all modern browsers, including
+  // desktop Chrome/Firefox, but desktops never fire real events (no accelerometer).
+  // Checking only for the constructor's existence therefore incorrectly marks desktop
+  // as "motion granted", blocking the pointer-lock mouse-look path.
+  //
+  // Strategy:
+  //   iOS 13+  → requestPermission() exists → set 'prompt' (needs user gesture)
+  //   Others   → listen for a first real event (non-null alpha/beta/gamma) within
+  //              500 ms.  If one arrives the device has a live accelerometer and we
+  //              set 'granted'.  If the timeout expires first we leave the state as
+  //              'unavailable' so desktop mouse-look remains active.
   useEffect(() => {
     if (typeof DeviceOrientationEvent === 'undefined') return;
+
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
       setMotionPermission('prompt'); // iOS 13+ — needs explicit user gesture
-    } else {
-      setMotionPermission('granted'); // Android / older iOS — always available
+      return;
     }
+
+    // Probe: wait up to 500 ms for the first real orientation event.
+    const onFirstEvent = (e: DeviceOrientationEvent) => {
+      if (e.alpha !== null || e.beta !== null || e.gamma !== null) {
+        clearTimeout(timeout);
+        window.removeEventListener('deviceorientation', onFirstEvent);
+        setMotionPermission('granted');
+      }
+    };
+
+    const timeout = setTimeout(() => {
+      window.removeEventListener('deviceorientation', onFirstEvent);
+      // State stays 'unavailable' — desktop or device with no live sensor
+    }, 500);
+
+    window.addEventListener('deviceorientation', onFirstEvent);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('deviceorientation', onFirstEvent);
+    };
   }, []);
 
   // Keep motionActiveRef in sync so Three.js event handlers can read it
