@@ -386,12 +386,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   };
 
   // Start a connection timeout whenever we attempt to join a Jitsi room.
-  // If onApiReady fires first it clears the timer; otherwise show an error.
+  // Only start the timer when jaasJwt is also available — that's when JaaSMeeting
+  // actually mounts. If jwt is null the iframe never renders, so onApiReady will
+  // never fire and the old code would always time out and show a spurious error.
   // Also reset all per-session Jitsi state when the room changes.
   useEffect(() => {
     if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
 
-    if (!jitsiRoom) {
+    if (!jitsiRoom || !jaasJwt) {
       setJitsiError(null);
       setJitsiConnected(false);
       setRemoteAudioLevel(0);
@@ -406,13 +408,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setJitsiError(null);
     setJitsiConnected(false);
     jitsiConnectTimeoutRef.current = setTimeout(() => {
-      setJitsiError('Could not connect to voice chat — the server may be unreachable.');
+      setJitsiError('Could not connect to voice chat — the server may be unavailable.');
     }, 15000);
 
     return () => {
       if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
     };
-  }, [jitsiRoom]);
+  }, [jitsiRoom, jaasJwt]);
 
   const sendChatMessage = (message: string) => {
     if (!channelRef.current || !currentUser) return;
@@ -1477,6 +1479,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             onApiReady={api => {
               jitsiApiRef.current = api;
               setJitsiError(null);
+              // The iframe JS loaded successfully — the server is reachable.
+              // Clear the "server unavailable" timeout; separate error handlers cover
+              // any subsequent conference-join failures.
+              if (jitsiConnectTimeoutRef.current) {
+                clearTimeout(jitsiConnectTimeoutRef.current);
+                jitsiConnectTimeoutRef.current = null;
+              }
 
               // onApiReady means the iframe JS loaded — NOT that the conference was
               // joined. Wait for videoConferenceJoined before marking as connected.
