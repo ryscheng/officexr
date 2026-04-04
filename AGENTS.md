@@ -31,20 +31,34 @@ officexr/
 │   │       ├── App.tsx
 │   │       ├── index.css
 │   │       ├── vite-env.d.ts
-│   │       ├── components/     # Avatar, RoomScene, OfficeSelector, SettingsPanel
-│   │       ├── hooks/          # useAuth (Supabase session)
+│   │       ├── assets/
+│   │       │   └── hdri/       # HDRI environment maps (EXR) — global lobby skybox
+│   │       ├── components/
+│   │       │   ├── Avatar.tsx
+│   │       │   ├── ControlsOverlay.tsx  # Shared controls UI (motion, recalibrate)
+│   │       │   ├── OfficeSelector.tsx
+│   │       │   ├── RoomScene.tsx        # Three.js WebXR scene + Realtime presence
+│   │       │   ├── SettingsPanel.tsx
+│   │       │   └── UserLobby.tsx        # Authenticated user lobby with room portals
+│   │       ├── hooks/
+│   │       │   ├── useAuth.ts           # Supabase session
+│   │       │   └── useMotionControls.ts # Gyroscope / device-orientation look controls
 │   │       ├── lib/
+│   │       │   ├── jaasJwt.ts  # JaaS JWT generation (Web Crypto, RS256)
 │   │       │   └── supabase.ts # Database type + Supabase web client singleton
-│   │       ├── pages/          # Home, Login
+│   │       ├── pages/
+│   │       │   ├── Home.tsx     # Route "/" — lobby or room depending on auth state
+│   │       │   ├── Login.tsx    # Route "/login"
+│   │       │   └── RoomPage.tsx # Route "/room/:id" — deep-link into a specific room
 │   │       └── types/
 │   │           └── avatar.ts   # AvatarCustomization, AvatarPreset, MARIO_PRESETS, etc.
 │   ├── web/                    # @officexr/web — Vite build wrapper for the browser
 │   │   ├── index.html          # SPA shell (entry: ../core/src/main.tsx)
-│   │   ├── vite.config.ts      # @ alias → ../core/src
+│   │   ├── vite.config.ts      # @ alias → ../core/src; assetsInclude EXR
 │   │   ├── tsconfig.json
 │   │   ├── tsconfig.node.json
-│   │   ├── public/             # Static assets
-│   │   └── .env.example        # VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY
+│   │   ├── public/             # Static assets (SVGs etc.)
+│   │   └── .env.example        # VITE_SUPABASE_*, VITE_JAAS_*
 │   ├── desktop/                # @officexr/desktop — Electron wrapper
 │   │   └── src/
 │   │       ├── main.ts         # Electron main process
@@ -52,11 +66,14 @@ officexr/
 │   └── mobile/                 # @officexr/mobile — React Native / Expo
 │       └── src/
 │           ├── App.tsx
+│           ├── index.ts
 │           ├── hooks/useAuth.ts
 │           ├── lib/supabase.ts  # Native Supabase client (AsyncStorage)
 │           ├── navigation/
 │           └── screens/        # LoginScreen, HomeScreen, OfficeScreen
 ├── supabase/migrations/        # SQL migrations
+├── .github/workflows/
+│   └── supabase-migrations.yml # Applies migrations on push to main + workflow_dispatch
 ├── pnpm-workspace.yaml         # Workspace package globs
 ├── tsconfig.json               # Root: IDE project references only
 └── AGENTS.md                   # This file
