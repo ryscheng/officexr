@@ -89,6 +89,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const keysRef = useRef<{ [key: string]: boolean }>({});
   const [mouseLockActive, setMouseLockActive] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [motionPermission, setMotionPermission] = useState<'unavailable' | 'prompt' | 'granted' | 'denied'>('unavailable');
+  const motionActiveRef = useRef(false);
+  const recalibrateMotionRef = useRef<(() => void) | null>(null);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [createRoomName, setCreateRoomName] = useState('');
   const [createRoomLinkAccess, setCreateRoomLinkAccess] = useState(true);
@@ -112,6 +115,72 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setEnvironment(env);
     localStorage.setItem('officeEnvironment', env);
   };
+
+  // Detect device orientation capability once on mount
+  useEffect(() => {
+    if (typeof DeviceOrientationEvent === 'undefined') return;
+    if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+      setMotionPermission('prompt'); // iOS 13+ — needs explicit user gesture
+    } else {
+      setMotionPermission('granted'); // Android / older iOS — always available
+    }
+  }, []);
+
+  // Keep motionActiveRef in sync so handlers inside the main useEffect can read it
+  useEffect(() => {
+    motionActiveRef.current = motionPermission === 'granted';
+  }, [motionPermission]);
+
+  // Device orientation listener — runs whenever permission is granted
+  useEffect(() => {
+    if (motionPermission !== 'granted') return;
+
+    let alphaOffset: number | null = null;
+    recalibrateMotionRef.current = () => { alphaOffset = null; };
+
+    const handler = (event: DeviceOrientationEvent) => {
+      const camera = cameraRef.current;
+      const renderer = rendererRef.current;
+      if (!camera || !renderer) return;
+      if (renderer.xr.isPresenting) return;
+      if (document.pointerLockElement === renderer.domElement) return;
+      if (event.alpha === null) return;
+
+      const alpha = event.alpha;
+      const beta  = event.beta  ?? 90;
+      const gamma = event.gamma ?? 0;
+
+      // Capture the initial compass heading so the current look direction = yaw 0
+      if (alphaOffset === null) alphaOffset = alpha;
+
+      let relAlpha = alpha - alphaOffset;
+      if (relAlpha >  180) relAlpha -= 360;
+      if (relAlpha < -180) relAlpha += 360;
+
+      const screenAngle = window.screen?.orientation?.angle ?? 0;
+      const yaw = -THREE.MathUtils.degToRad(relAlpha);
+
+      // Pitch mapping differs between portrait and landscape
+      let pitch: number;
+      if (screenAngle === 90 || screenAngle === -270) {
+        pitch = THREE.MathUtils.degToRad(-gamma); // landscape-left
+      } else if (screenAngle === 270 || screenAngle === -90) {
+        pitch = THREE.MathUtils.degToRad(gamma);  // landscape-right
+      } else {
+        // Portrait: beta ≈ 90 when holding upright = level gaze
+        pitch = THREE.MathUtils.degToRad(90 - beta);
+      }
+
+      pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+      camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    };
+
+    window.addEventListener('deviceorientation', handler);
+    return () => {
+      window.removeEventListener('deviceorientation', handler);
+      recalibrateMotionRef.current = null;
+    };
+  }, [motionPermission]);
 
   // Load avatar customization from Supabase
   useEffect(() => {
@@ -612,7 +681,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     camera.rotation.order = 'YXZ';
 
     const handleCanvasClick = () => {
-      if (!renderer.xr.isPresenting) {
+      // Don't fight device orientation with pointer lock on touch devices
+      if (!renderer.xr.isPresenting && !motionActiveRef.current) {
         renderer.domElement.requestPointerLock();
       }
     };
@@ -648,6 +718,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
 
     const handleTouchMove = (event: TouchEvent) => {
+      // Device orientation handles look direction on mobile — skip touch drag
+      if (motionActiveRef.current) return;
       if (isTouching && event.touches.length === 1) {
         const deltaX = event.touches[0].clientX - touchStartX;
         const deltaY = event.touches[0].clientY - touchStartY;
@@ -1029,6 +1101,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     });
   };
 
+  const handleRequestMotionPermission = () => {
+    (DeviceOrientationEvent as any).requestPermission()
+      .then((state: string) => setMotionPermission(state === 'granted' ? 'granted' : 'denied'))
+      .catch(() => setMotionPermission('denied'));
+  };
+
   function validateSlug(value: string): string | null {
     if (!value) return 'Room name is required.';
     if (value.length < 2) return 'Must be at least 2 characters.';
@@ -1088,17 +1166,59 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       >
         <h3 style={{ margin: '0 0 10px 0' }}>Controls:</h3>
         <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys - Move</p>
-        <p style={{ margin: '5px 0' }}>Click Scene - Enable Mouse Look</p>
-        <p style={{ margin: '5px 0' }}>Mouse - Look Around (when active)</p>
-        <p style={{ margin: '5px 0' }}>Esc - Exit Mouse Look</p>
+        {motionPermission === 'granted' ? (
+          <>
+            <p style={{ margin: '5px 0', color: '#4ade80' }}>📱 Tilt device - Look Around</p>
+            <button
+              onClick={() => recalibrateMotionRef.current?.()}
+              style={{
+                marginTop: '6px', padding: '4px 10px', fontSize: '12px',
+                background: 'rgba(255,255,255,0.15)', color: 'white',
+                border: '1px solid rgba(255,255,255,0.3)', borderRadius: '4px', cursor: 'pointer',
+              }}
+            >
+              ↺ Recalibrate
+            </button>
+          </>
+        ) : (
+          <>
+            <p style={{ margin: '5px 0' }}>Click Scene - Enable Mouse Look</p>
+            <p style={{ margin: '5px 0' }}>Mouse - Look Around (when active)</p>
+            <p style={{ margin: '5px 0' }}>Esc - Exit Mouse Look</p>
+          </>
+        )}
         <p style={{ margin: '5px 0' }}>Enter - Chat</p>
         <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
           Walk near others to voice chat
         </p>
-        <p style={{ margin: '5px 0', color: '#a78bfa', fontSize: '11px' }}>
-          VR/AR: head tracking via device sensors
-        </p>
       </div>
+
+      {/* iOS motion permission prompt */}
+      {motionPermission === 'prompt' && (
+        <div style={{
+          position: 'absolute', bottom: '30px', left: '50%',
+          transform: 'translateX(-50%)', zIndex: 200,
+          background: 'rgba(0,0,0,0.85)', color: 'white',
+          padding: '14px 20px', borderRadius: '10px',
+          fontFamily: 'monospace', textAlign: 'center',
+          border: '1px solid rgba(255,255,255,0.2)',
+          display: 'flex', alignItems: 'center', gap: '12px',
+        }}>
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>
+            Enable gyroscope to look around by moving your device
+          </span>
+          <button
+            onClick={handleRequestMotionPermission}
+            style={{
+              padding: '8px 16px', background: '#6366f1', color: 'white',
+              border: 'none', borderRadius: '6px', cursor: 'pointer',
+              fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap',
+            }}
+          >
+            Enable Motion
+          </button>
+        </div>
+      )}
 
       {/* Voice proximity indicator + hidden Jitsi iframe for audio */}
       {jitsiRoom && (
