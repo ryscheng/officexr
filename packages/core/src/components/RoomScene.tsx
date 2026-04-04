@@ -1570,10 +1570,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 onDisconnect('conferenceTerminated');
               });
 
+              // connectionFailed / errorOccurred can surface via addEventListener too
+              api.addEventListener('connectionFailed', () => {
+                console.error('[VoiceChat] connectionFailed (addEventListener)');
+              });
+
               api.on('connectionFailed', (e: any) => {
                 console.error('[VoiceChat] connectionFailed:', e);
                 setJitsiError('Voice chat connection failed. Check your network connection.');
                 onDisconnect('connectionFailed');
+              });
+
+              api.addEventListener('conferenceError', () => {
+                console.error('[VoiceChat] conferenceError (see Jitsi logs above for details)');
               });
 
               api.on('errorOccurred', (e: any) => {
