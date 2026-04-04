@@ -70,6 +70,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [jitsiError, setJitsiError] = useState<string | null>(null);
   const [jitsiConnected, setJitsiConnected] = useState(false);
   const [jaasJwt, setJaasJwt] = useState<string | null>(null);
+  const [jaasJwtError, setJaasJwtError] = useState<string | null>(null);
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
   const jitsiApiRef = useRef<any>(null);
   const remoteAudioDecayRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -150,16 +151,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     if (!appId || !apiKeyId || !privateKey || !currentUser) {
       setJaasJwt(null);
+      setJaasJwtError(null);
       return;
     }
 
+    setJaasJwtError(null);
     generateJaaSJwt(appId, apiKeyId, privateKey, {
       id:    currentUser.id,
       name:  currentUser.name || 'User',
       email: user?.email ?? '',
-    }).then(setJaasJwt).catch(err => {
+    }).then(jwt => {
+      setJaasJwt(jwt);
+      setJaasJwtError(null);
+    }).catch(err => {
       console.error('JaaS JWT generation failed:', err);
       setJaasJwt(null);
+      setJaasJwtError(String(err?.message ?? err));
     });
   }, [currentUser?.id, currentUser?.name, user?.email]);
 
@@ -1407,10 +1414,23 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         let bg: string;
         let icon: string;
         let label: string;
-        if (!jaasJwt) {
+        const jaasConfigured = !!(
+          import.meta.env.VITE_JAAS_APP_ID &&
+          import.meta.env.VITE_JAAS_API_KEY_ID &&
+          import.meta.env.VITE_JAAS_PRIVATE_KEY
+        );
+        if (jaasJwtError) {
+          bg = 'rgba(185, 28, 28, 0.92)';  // red — credentials invalid
+          icon = '❌';
+          label = `Voice chat credential error: ${jaasJwtError}`;
+        } else if (!jaasConfigured) {
           bg = 'rgba(75, 85, 99, 0.92)';   // grey — not configured
           icon = '⚙️';
           label = 'Voice chat not configured';
+        } else if (!jaasJwt) {
+          bg = 'rgba(75, 85, 99, 0.92)';   // grey — JWT pending
+          icon = '⏳';
+          label = 'Voice chat initializing…';
         } else if (!jitsiRoom) {
           bg = 'rgba(55, 65, 81, 0.92)';   // dark — idle
           icon = '🔇';
