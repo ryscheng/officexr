@@ -1290,7 +1290,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               iframeRef.style.width = '1px';
               iframeRef.style.height = '1px';
               // Required for microphone/camera access inside cross-origin iframes
-              iframeRef.allow = 'camera; microphone; display-capture; autoplay; screen-wake-lock';
+              (iframeRef as unknown as HTMLIFrameElement).allow =
+                'camera; microphone; display-capture; autoplay; screen-wake-lock';
             }}
             onApiReady={api => {
               // Connected — cancel the timeout and clear any previous error
