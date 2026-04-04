@@ -5,9 +5,11 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { JitsiMeeting } from '@jitsi/react-sdk';
 import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 import SettingsPanel from './SettingsPanel';
+import ControlsOverlay from './ControlsOverlay';
 import { AvatarCustomization } from '@/types/avatar';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut, signInWithGoogle } from '@/hooks/useAuth';
+import { useMotionControls } from '@/hooks/useMotionControls';
 
 const PROXIMITY_RADIUS = 3; // Three.js units — spheres overlap when distance < PROXIMITY_RADIUS * 2
 
@@ -91,9 +93,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const keysRef = useRef<{ [key: string]: boolean }>({});
   const [mouseLockActive, setMouseLockActive] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [motionPermission, setMotionPermission] = useState<'unavailable' | 'prompt' | 'granted' | 'denied'>('unavailable');
-  const motionActiveRef = useRef(false);
-  const recalibrateMotionRef = useRef<(() => void) | null>(null);
+  // Motion controls — device orientation (gyroscope) shared with UserLobby
+  const {
+    motionPermission,
+    motionActiveRef,
+    recalibrateMotionRef,
+    motionDebugRef,
+    handleRequestMotionPermission,
+    disableMotion,
+  } = useMotionControls({ cameraRef, rendererRef });
   const joystickInputRef = useRef({ x: 0, y: 0 });
   const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
   const [joystickActive, setJoystickActive] = useState(false);
@@ -122,75 +130,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     localStorage.setItem('officeEnvironment', env);
   };
 
-  // Detect device orientation capability once on mount
-  useEffect(() => {
-    if (typeof DeviceOrientationEvent === 'undefined') return;
-    if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
-      setMotionPermission('prompt'); // iOS 13+ — needs explicit user gesture
-    } else {
-      setMotionPermission('granted'); // Android / older iOS — always available
-    }
-  }, []);
-
-  // Keep motionActiveRef in sync so handlers inside the main useEffect can read it
-  useEffect(() => {
-    motionActiveRef.current = motionPermission === 'granted';
-  }, [motionPermission]);
-
-  // Device orientation listener — runs whenever permission is granted
-  useEffect(() => {
-    if (motionPermission !== 'granted') return;
-
-    let alphaOffset: number | null = null;
-    recalibrateMotionRef.current = () => { alphaOffset = null; };
-
-    const handler = (event: DeviceOrientationEvent) => {
-      const camera = cameraRef.current;
-      const renderer = rendererRef.current;
-      if (!camera || !renderer) return;
-      if (renderer.xr.isPresenting) return;
-      if (document.pointerLockElement === renderer.domElement) return;
-      if (event.alpha === null) return;
-
-      const alpha = event.alpha;
-      const beta  = event.beta  ?? 90;
-      const gamma = event.gamma ?? 0;
-
-      // Capture the initial compass heading so the current look direction = yaw 0
-      if (alphaOffset === null) alphaOffset = alpha;
-
-      let relAlpha = alpha - alphaOffset;
-      if (relAlpha >  180) relAlpha -= 360;
-      if (relAlpha < -180) relAlpha += 360;
-
-      const screenAngle = window.screen?.orientation?.angle ?? 0;
-      // alpha increases counterclockwise (MDN spec), so rotating device left increases alpha.
-      // Positive yaw in YXZ = camera turns left, so no negation needed.
-      const yaw = THREE.MathUtils.degToRad(relAlpha);
-
-      // Pitch mapping differs between portrait and landscape.
-      // In portrait: beta ≈ 90 when upright. Tilting up decreases beta, so (beta - 90) goes
-      // negative, and negative pitch in YXZ = looking up. ✓
-      let pitch: number;
-      if (screenAngle === 90 || screenAngle === -270) {
-        pitch = THREE.MathUtils.degToRad(gamma);  // landscape-left
-      } else if (screenAngle === 270 || screenAngle === -90) {
-        pitch = THREE.MathUtils.degToRad(-gamma); // landscape-right
-      } else {
-        // Portrait
-        pitch = THREE.MathUtils.degToRad(beta - 90);
-      }
-
-      pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
-      camera.rotation.set(pitch, yaw, 0, 'YXZ');
-    };
-
-    window.addEventListener('deviceorientation', handler);
-    return () => {
-      window.removeEventListener('deviceorientation', handler);
-      recalibrateMotionRef.current = null;
-    };
-  }, [motionPermission]);
 
   // Load avatar customization from Supabase
   useEffect(() => {
@@ -1135,12 +1074,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     });
   };
 
-  const handleRequestMotionPermission = () => {
-    (DeviceOrientationEvent as any).requestPermission()
-      .then((state: string) => setMotionPermission(state === 'granted' ? 'granted' : 'denied'))
-      .catch(() => setMotionPermission('denied'));
-  };
-
   function validateSlug(value: string): string | null {
     if (!value) return 'Room name is required.';
     if (value.length < 2) return 'Must be at least 2 characters.';
@@ -1191,41 +1124,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }} />
       )}
 
-      <div
-        style={{
-          position: 'absolute', top: '20px', left: '20px',
-          color: 'white', background: 'rgba(0, 0, 0, 0.7)',
-          padding: '15px', borderRadius: '8px', fontFamily: 'monospace', zIndex: 100,
-        }}
-      >
-        <h3 style={{ margin: '0 0 10px 0' }}>Controls:</h3>
-        <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys - Move</p>
-        {motionPermission === 'granted' ? (
-          <>
-            <p style={{ margin: '5px 0', color: '#4ade80' }}>📱 Tilt device - Look Around</p>
-            <button
-              onClick={() => recalibrateMotionRef.current?.()}
-              style={{
-                marginTop: '6px', padding: '4px 10px', fontSize: '12px',
-                background: 'rgba(255,255,255,0.15)', color: 'white',
-                border: '1px solid rgba(255,255,255,0.3)', borderRadius: '4px', cursor: 'pointer',
-              }}
-            >
-              ↺ Recalibrate
-            </button>
-          </>
-        ) : (
-          <>
-            <p style={{ margin: '5px 0' }}>Click Scene - Enable Mouse Look</p>
-            <p style={{ margin: '5px 0' }}>Mouse - Look Around (when active)</p>
-            <p style={{ margin: '5px 0' }}>Esc - Exit Mouse Look</p>
-          </>
-        )}
-        <p style={{ margin: '5px 0' }}>Enter - Chat</p>
-        <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
-          Walk near others to voice chat
-        </p>
-      </div>
+      <ControlsOverlay
+        motionPermission={motionPermission}
+        onRecalibrate={() => recalibrateMotionRef.current?.()}
+        onDisableMotion={disableMotion}
+        motionDebugRef={motionDebugRef}
+        showChat
+        extras={
+          <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
+            Walk near others to voice chat
+          </p>
+        }
+      />
 
       {/* iOS motion permission prompt */}
       {motionPermission === 'prompt' && (

@@ -31,7 +31,7 @@ officexr/
 │   │       ├── App.tsx
 │   │       ├── index.css
 │   │       ├── vite-env.d.ts
-│   │       ├── components/     # Avatar, OfficeScene, OfficeSelector, SettingsPanel
+│   │       ├── components/     # Avatar, RoomScene, OfficeSelector, SettingsPanel
 │   │       ├── hooks/          # useAuth (Supabase session)
 │   │       ├── lib/
 │   │       │   └── supabase.ts # Database type + Supabase web client singleton
@@ -205,7 +205,7 @@ Copy from `packages/mobile/.env.example`.
 ### Supabase Realtime
 
 All real-time features (presence, position sync, chat, proximity voice) are implemented
-using Supabase Realtime channels in `packages/core/src/components/OfficeScene.tsx` and
+using Supabase Realtime channels in `packages/core/src/components/RoomScene.tsx` and
 shared equally by web and desktop (same code). Mobile inherits this through the WebView.
 
 ### Proximity Voice Chat

@@ -167,7 +167,7 @@ officexr/
 │   ├── page.tsx                  # Main page component
 │   └── globals.css               # Global styles
 ├── components/
-│   ├── OfficeScene.tsx           # Three.js WebXR office scene
+│   ├── RoomScene.tsx           # Three.js WebXR office scene
 │   ├── Avatar.tsx                # 3D avatar creation and management
 │   └── SessionProvider.tsx       # NextAuth session provider wrapper
 ├── lib/
@@ -191,7 +191,7 @@ officexr/
 
 ## Development
 
-The main 3D scene logic is in `components/OfficeScene.tsx`, which handles:
+The main 3D scene logic is in `components/RoomScene.tsx`, which handles:
 - Three.js scene initialization
 - WebXR session management
 - 3D object creation (office furniture)

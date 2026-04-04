@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import UserLobby from '@/components/UserLobby';
-import OfficeScene from '@/components/OfficeScene';
+import RoomScene from '@/components/RoomScene';
 
 export default function Home() {
   const { user } = useAuth();
@@ -10,13 +10,13 @@ export default function Home() {
   // Anonymous users always see the hardcoded global scene.
   // They cannot change environments or switch rooms.
   if (!user) {
-    return <OfficeScene officeId="global" onLeave={() => {}} />;
+    return <RoomScene officeId="global" onLeave={() => {}} />;
   }
 
   // Authenticated user inside a specific room
   if (selectedRoomId) {
     return (
-      <OfficeScene
+      <RoomScene
         officeId={selectedRoomId}
         onLeave={() => setSelectedRoomId(null)}
         onShowOfficeSelector={() => setSelectedRoomId(null)}
