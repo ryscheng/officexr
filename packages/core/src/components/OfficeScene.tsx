@@ -92,6 +92,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [motionPermission, setMotionPermission] = useState<'unavailable' | 'prompt' | 'granted' | 'denied'>('unavailable');
   const motionActiveRef = useRef(false);
   const recalibrateMotionRef = useRef<(() => void) | null>(null);
+  const joystickInputRef = useRef({ x: 0, y: 0 });
+  const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
+  const [joystickActive, setJoystickActive] = useState(false);
+  const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [createRoomName, setCreateRoomName] = useState('');
   const [createRoomLinkAccess, setCreateRoomLinkAccess] = useState(true);
@@ -950,6 +954,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (keys['a'] || keys['arrowleft']) { direction.sub(right); moved = true; }
       if (keys['d'] || keys['arrowright']) { direction.add(right); moved = true; }
 
+      // Virtual joystick input (touch devices)
+      const { x: jx, y: jy } = joystickInputRef.current;
+      if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
+        direction.addScaledVector(forward, -jy);
+        direction.addScaledVector(right, jx);
+        moved = true;
+      }
+
       if (direction.length() > 0) {
         direction.normalize();
         camera.position.add(direction.multiplyScalar(moveSpeed));
@@ -1592,6 +1604,55 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Virtual joystick — touch devices only */}
+      {isTouchDevice && (
+        <div
+          onTouchStart={e => {
+            e.preventDefault();
+            setJoystickActive(true);
+          }}
+          onTouchMove={e => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            let dx = touch.clientX - cx;
+            let dy = touch.clientY - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const maxR = 45;
+            if (dist > maxR) {
+              dx = (dx / dist) * maxR;
+              dy = (dy / dist) * maxR;
+            }
+            setJoystickKnob({ x: dx, y: dy });
+            joystickInputRef.current = { x: dx / maxR, y: dy / maxR };
+          }}
+          onTouchEnd={() => {
+            setJoystickActive(false);
+            setJoystickKnob({ x: 0, y: 0 });
+            joystickInputRef.current = { x: 0, y: 0 };
+          }}
+          style={{
+            position: 'absolute', bottom: '40px', left: '40px',
+            width: '120px', height: '120px', borderRadius: '50%',
+            background: 'rgba(255,255,255,0.12)',
+            border: '2px solid rgba(255,255,255,0.25)',
+            zIndex: 200, touchAction: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div style={{
+            width: '52px', height: '52px', borderRadius: '50%',
+            background: joystickActive ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.25)',
+            border: '2px solid rgba(255,255,255,0.5)',
+            transform: `translate(${joystickKnob.x}px, ${joystickKnob.y}px)`,
+            transition: joystickActive ? 'none' : 'transform 0.15s ease-out',
+            pointerEvents: 'none',
+          }} />
         </div>
       )}
     </div>
