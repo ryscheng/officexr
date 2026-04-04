@@ -63,6 +63,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const myPresenceRef = useRef<PresenceEntry | null>(null);
   const [userCount, setUserCount] = useState(0);
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
+  const [jitsiError, setJitsiError] = useState<string | null>(null);
+  const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPositionUpdate = useRef<number>(0);
   const [showSettings, setShowSettings] = useState(false);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
@@ -279,6 +281,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     };
   }, [chatVisible, chatInput]);
+
+  // Start a connection timeout whenever we attempt to join a Jitsi room.
+  // If onApiReady fires first it clears the timer; otherwise show an error.
+  useEffect(() => {
+    if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
+    if (!jitsiRoom) { setJitsiError(null); return; }
+
+    setJitsiError(null);
+    jitsiConnectTimeoutRef.current = setTimeout(() => {
+      setJitsiError('Could not connect to voice chat — the server may be unreachable.');
+    }, 15000);
+
+    return () => {
+      if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
+    };
+  }, [jitsiRoom]);
 
   const sendChatMessage = (message: string) => {
     if (!channelRef.current || !currentUser) return;
@@ -1232,6 +1250,29 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
+      {/* Jitsi voice chat error banner */}
+      {jitsiError && (
+        <div style={{
+          position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(185, 28, 28, 0.92)', color: 'white',
+          padding: '10px 16px', borderRadius: '8px', zIndex: 300,
+          fontFamily: 'monospace', fontSize: '13px',
+          display: 'flex', alignItems: 'center', gap: '12px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.5)', maxWidth: '90vw',
+        }}>
+          <span>⚠️ {jitsiError}</span>
+          <button
+            onClick={() => setJitsiError(null)}
+            style={{
+              background: 'none', border: 'none', color: 'white',
+              cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: 0, flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Voice proximity indicator + hidden Jitsi iframe for audio */}
       {jitsiRoom && (
         <div
@@ -1272,6 +1313,26 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               getIFrameRef={(iframeRef) => {
                 iframeRef.style.width = '1px';
                 iframeRef.style.height = '1px';
+              }}
+              onApiReady={api => {
+                // Connected — cancel the timeout and clear any previous error
+                if (jitsiConnectTimeoutRef.current) {
+                  clearTimeout(jitsiConnectTimeoutRef.current);
+                  jitsiConnectTimeoutRef.current = null;
+                }
+                setJitsiError(null);
+
+                api.on('connectionFailed', () =>
+                  setJitsiError('Voice chat connection failed. Check your network connection.'));
+
+                api.on('errorOccurred', (e: any) => {
+                  if (e?.error?.isFatal) {
+                    setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
+                  }
+                });
+
+                api.on('kickedOut', () =>
+                  setJitsiError('You were disconnected from voice chat.'));
               }}
             />
           </div>
