@@ -155,11 +155,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       setMicLevel(0);
 
       // navigator.mediaDevices is only available on secure origins (HTTPS / localhost)
-      if (!navigator.mediaDevices?.getUserMedia) {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
         setMicLevel(-1);
-        setMicError('HTTPS required for microphone access');
+        setMicError('HTTPS is required — microphone is unavailable on insecure origins');
         return;
       }
+
+      // Query the Permissions API first so we can give precise instructions.
+      // Chrome and Safari on iOS both support this; it won't throw but may not resolve.
+      let permState: PermissionState | 'unknown' = 'unknown';
+      try {
+        const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        permState = status.state;
+      } catch { /* API not available on this browser */ }
 
       let stream: MediaStream;
       try {
@@ -168,9 +176,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         setMicLevel(-1);
         const name: string = err?.name ?? '';
         if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-          setMicError('Permission denied — check browser/OS settings');
+          if (permState === 'denied') {
+            // Browser-level block (Chrome site settings). iOS Settings won't help here.
+            setMicError(
+              'Blocked in browser settings. Tap the 🔒 icon in the address bar → Site settings → Microphone → Allow'
+            );
+          } else {
+            // OS-level block or permission prompt was dismissed/denied
+            setMicError(
+              'Permission denied. Check: iOS Settings → ' +
+              (navigator.userAgent.includes('CriOS') ? 'Chrome' : 'Safari') +
+              ' → Microphone → ON. Then tap "Tap to enable" again.'
+            );
+          }
         } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-          setMicError('No microphone found');
+          setMicError('No microphone hardware found on this device');
         } else {
           setMicError(`${name || 'Error'}: ${err?.message ?? 'unknown'}`);
         }
