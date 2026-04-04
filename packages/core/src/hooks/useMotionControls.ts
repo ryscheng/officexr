@@ -27,6 +27,22 @@ function getScreenAngle(): number {
 }
 
 /**
+ * Converts device sensor axes (alpha/beta/gamma) into a scalar "raw pitch"
+ * value (degrees) whose sign convention matches Three.js camera pitch:
+ *   0   = device held upright / neutral viewing angle
+ *   neg = looking up (device top tilted away from user)
+ *   pos = looking down (device top tilted toward user)
+ *
+ * The mapping depends on screen orientation because the physical axis that
+ * controls "up/down gaze" rotates with the screen.
+ */
+function calcRawPitch(beta: number, gamma: number, screenAngle: number): number {
+  if (screenAngle === 90 || screenAngle === -270) return gamma;   // landscape-left
+  if (screenAngle === 270 || screenAngle === -90) return -gamma;  // landscape-right
+  return beta - 90; // portrait: 0° when held upright
+}
+
+/**
  * Handles device orientation (gyroscope) controls for a Three.js camera.
  * Abstracts capability detection, iOS permission prompting, and the
  * deviceorientation event listener so both RoomScene and UserLobby
@@ -88,20 +104,41 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
   useEffect(() => {
     if (motionPermission !== 'granted') return;
 
-    // ── State captured on the first (or post-recalibrate) event ─────────────
-    // Anchoring to the camera's current orientation means enabling motion never
-    // snaps the view to a direction determined by compass / gravity alone.
+    // Both yaw and pitch are driven incrementally (frame-to-frame deltas) rather
+    // than from a fixed offset.  This avoids two classes of Euler singularity:
+    //
+    //   Yaw (alpha):  near device-flat (|rawPitch| → 90°), the magnetometer
+    //     reference frame can flip, causing alpha to jump by ±180° in a single
+    //     frame while the device barely moved.  Incrementally accumulated and
+    //     scaled by cos(rawPitch) — the damping smoothly reaches zero exactly
+    //     where alpha is meaningless.
+    //
+    //   Pitch (beta/gamma):  as beta approaches 0° (device flat), the iOS
+    //     sensor fusion can snap beta between 0° and ±180° in a single frame.
+    //     An absolute formula like (beta-90) would see a ~180° pitch jump even
+    //     during a slow, steady tilt — snapping the camera from "looking up" to
+    //     "looking down" all at once.  Driving pitch incrementally prevents this.
+    //
+    // A per-frame cap (MAX_DELTA_DEG) absorbs any residual spike from either
+    // singularity.  At 60 Hz the cap allows up to 300°/s intentional rotation,
+    // which is faster than any realistic hand movement.
 
-    let prevAlpha: number | null = null;       // alpha from previous frame (incremental yaw)
-    let accYaw: number | null = null;          // accumulated camera yaw (radians)
-    let devicePitchOffset: number | null = null; // device rawPitch at anchor time
-    let cameraPitchAtStart: number | null = null; // camera pitch (x rotation) at anchor time
+    const MAX_DELTA_DEG = 5; // degrees per frame before capping
+
+    let prevAlpha: number | null = null;
+    let prevRawPitch: number | null = null;
+    let accYaw: number | null = null;
+    let accPitch: number | null = null;
+    // Lock screen angle at calibration time; re-lock after recalibrate.
+    // Avoids mid-tilt formula switches if the screen auto-rotates.
+    let lockedScreenAngle: number | null = null;
 
     const recalibrate = () => {
       prevAlpha = null;
+      prevRawPitch = null;
       accYaw = null;
-      devicePitchOffset = null;
-      cameraPitchAtStart = null;
+      accPitch = null;
+      lockedScreenAngle = null;
     };
     recalibrateMotionRef.current = recalibrate;
 
@@ -109,9 +146,7 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       const camera = cameraRef.current;
       const renderer = rendererRef.current;
       if (!camera || !renderer) return;
-      // Skip when WebXR is presenting (RoomScene) — check defensively
       if ((renderer as any).xr?.isPresenting) return;
-      // Skip when mouse pointer lock is active
       if (document.pointerLockElement === renderer.domElement) return;
       if (event.alpha === null) return;
 
@@ -119,62 +154,55 @@ export function useMotionControls({ cameraRef, rendererRef }: UseMotionControlsO
       const beta  = event.beta  ?? 90;
       const gamma = event.gamma ?? 0;
 
-      // ── Screen-orientation-aware pitch ────────────────────────────────────
-      // Use getScreenAngle() which falls back to window.orientation for iOS <
-      // 16.4 where screen.orientation is undefined.  Without the fallback the
-      // portrait formula (beta - 90) is always used, meaning that on a
-      // landscape iPad the user's natural up/down tilt moves gamma (ignored
-      // for pitch) rather than beta, making pitch completely unresponsive.
-      const screenAngle = getScreenAngle();
-      let rawPitch: number; // degrees; 0 = neutral upright, positive = tilting top toward user
-      if (screenAngle === 90 || screenAngle === -270) {
-        rawPitch = gamma;   // landscape-left
-      } else if (screenAngle === 270 || screenAngle === -90) {
-        rawPitch = -gamma;  // landscape-right
-      } else {
-        rawPitch = beta - 90; // portrait: 0° when held upright
-      }
+      // Lock screen angle on first event so a mid-session auto-rotate doesn't
+      // switch the pitch axis formula unexpectedly mid-tilt.
+      if (lockedScreenAngle === null) lockedScreenAngle = getScreenAngle();
+      const rawPitch = calcRawPitch(beta, gamma, lockedScreenAngle);
 
-      // ── Anchor on first event (or after recalibrate) ──────────────────────
+      // First event: anchor accumulators to the camera's current orientation
+      // so enabling motion never snaps the view.
       if (prevAlpha === null) {
-        prevAlpha = alpha;
-        devicePitchOffset = rawPitch;
-        cameraPitchAtStart = camera.rotation.x;
-        accYaw = camera.rotation.y;
-        return; // skip this frame; use clean offsets from the next one
+        prevAlpha     = alpha;
+        prevRawPitch  = rawPitch;
+        accYaw        = camera.rotation.y;
+        accPitch      = camera.rotation.x;
+        return; // skip this frame; deltas are zero by definition
       }
 
-      // ── Incremental yaw with gimbal-lock dampening ─────────────────────────
-      // Computing yaw from a fixed alphaOffset means that when the device
-      // approaches flat (|rawPitch| → 90°) the compass alpha reading becomes
-      // unreliable and can jump by hundreds of degrees, snapping the view to a
-      // dark/empty direction.  Instead, accumulate frame-to-frame alpha deltas
-      // and scale them by cos(rawPitch) so yaw sensitivity fades smoothly to
-      // zero as the device flattens — exactly where alpha is meaningless.
+      // ── Yaw (incremental + cosine damping) ─────────────────────────────────
       let deltaAlpha = alpha - prevAlpha;
       if (deltaAlpha >  180) deltaAlpha -= 360;
       if (deltaAlpha < -180) deltaAlpha += 360;
       prevAlpha = alpha;
 
+      const cappedDeltaAlpha = Math.max(-MAX_DELTA_DEG, Math.min(MAX_DELTA_DEG, deltaAlpha));
       const yawDamping = Math.cos(THREE.MathUtils.degToRad(rawPitch));
-      accYaw = (accYaw ?? camera.rotation.y) + THREE.MathUtils.degToRad(deltaAlpha) * yawDamping;
+      accYaw = (accYaw ?? camera.rotation.y) +
+        THREE.MathUtils.degToRad(cappedDeltaAlpha) * yawDamping;
 
-      // ── Pitch from device tilt, anchored to camera start ──────────────────
-      const pitch = (cameraPitchAtStart ?? 0) +
-        THREE.MathUtils.degToRad(rawPitch - (devicePitchOffset ?? 0));
+      // ── Pitch (incremental + cap) ───────────────────────────────────────────
+      const deltaPitch = rawPitch - (prevRawPitch ?? rawPitch);
+      prevRawPitch = rawPitch;
 
-      // Clamp to ±85° — prevents looking at pure dark sky/floor at the extremes
-      camera.rotation.set(
-        Math.max(-Math.PI * 85 / 180, Math.min(Math.PI * 85 / 180, pitch)),
-        accYaw,
-        0,
-        'YXZ',
+      const cappedDeltaPitch = Math.max(-MAX_DELTA_DEG, Math.min(MAX_DELTA_DEG, deltaPitch));
+      accPitch = Math.max(
+        -Math.PI * 85 / 180,
+        Math.min(
+          Math.PI * 85 / 180,
+          (accPitch ?? camera.rotation.x) + THREE.MathUtils.degToRad(cappedDeltaPitch),
+        ),
       );
+
+      camera.rotation.set(accPitch, accYaw, 0, 'YXZ');
     };
 
     window.addEventListener('deviceorientation', handler);
+    // Re-calibrate if the screen orientation changes so the next event
+    // re-locks to the new screen angle and re-anchors the camera.
+    window.addEventListener('orientationchange', recalibrate);
     return () => {
       window.removeEventListener('deviceorientation', handler);
+      window.removeEventListener('orientationchange', recalibrate);
       recalibrateMotionRef.current = null;
     };
   }, [motionPermission, cameraRef, rendererRef]);
