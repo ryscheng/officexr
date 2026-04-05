@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import UserLobby from '@/components/UserLobby';
 import RoomScene from '@/components/RoomScene';
 
 export default function Home() {
   const { user, loading } = useAuth();
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   if (loading) return null;
 
@@ -15,17 +15,7 @@ export default function Home() {
     return <RoomScene officeId="global" onLeave={() => {}} />;
   }
 
-  // Authenticated user inside a specific room
-  if (selectedRoomId) {
-    return (
-      <RoomScene
-        officeId={selectedRoomId}
-        onLeave={() => setSelectedRoomId(null)}
-        onShowOfficeSelector={() => setSelectedRoomId(null)}
-      />
-    );
-  }
-
-  // Authenticated user — show their personal 3D lobby
-  return <UserLobby onEnterRoom={setSelectedRoomId} />;
+  // Authenticated user — show their personal 3D lobby.
+  // Entering a room navigates to /room/:id so the URL updates.
+  return <UserLobby onEnterRoom={id => navigate(`/room/${id}`)} />;
 }
