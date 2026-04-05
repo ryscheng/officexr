@@ -1417,14 +1417,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setCreateRoomLoading(true);
     setCreateRoomError(null);
     try {
-      const { data: office, error: officeError } = await supabase
+      const officeId = crypto.randomUUID();
+      const { error: officeError } = await supabase
         .from('offices')
-        .insert({ name: createRoomName, link_access: createRoomLinkAccess })
-        .select()
-        .single();
+        .insert({ id: officeId, name: createRoomName, link_access: createRoomLinkAccess });
       if (officeError) throw officeError;
       await supabase.from('office_members').insert({
-        office_id: office.id,
+        office_id: officeId,
         user_id: user.id,
         role: 'owner',
       });
@@ -1812,6 +1811,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 if (e?.error?.isFatal) {
                   setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
                   onDisconnect('errorOccurred (fatal)');
+                } else if (e?.error?.name === 'connection.passwordRequired' || e?.error?.message?.includes('nbf')) {
+                  console.warn('[VoiceChat] JWT auth error (likely clock skew) — retrying');
+                  setJitsiError('Voice chat authentication failed (clock sync issue). Reconnecting…');
+                  onDisconnect('errorOccurred (auth)');
                 }
               });
 

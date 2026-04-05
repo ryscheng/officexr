@@ -120,19 +120,19 @@ export default function OfficeSelector({ onSelectOffice }: OfficeSelectorProps) 
     setError(null);
 
     try {
-      const { data: office, error: officeError } = await supabase
+      const officeId = crypto.randomUUID();
+      const { error: officeError } = await supabase
         .from('offices')
         .insert({
+          id: officeId,
           name: newOfficeName.trim(),
           description: newOfficeDescription.trim() || null,
-        })
-        .select()
-        .single();
+        });
 
       if (officeError) throw officeError;
 
       const { error: memberError } = await supabase.from('office_members').insert({
-        office_id: office.id,
+        office_id: officeId,
         user_id: user.id,
         role: 'owner',
       });
@@ -143,7 +143,7 @@ export default function OfficeSelector({ onSelectOffice }: OfficeSelectorProps) 
       setNewOfficeDescription('');
       setShowCreateForm(false);
       await fetchOffices();
-      onSelectOffice(office.id);
+      onSelectOffice(officeId);
     } catch (err) {
       console.error('Error creating office:', err);
       setError('Failed to create office');

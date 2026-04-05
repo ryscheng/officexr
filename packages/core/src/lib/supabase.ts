@@ -42,7 +42,7 @@ export type Database = {
           link_access: boolean;
           created_at: string;
         };
-        Insert: { name: string; description?: string | null; link_access?: boolean };
+        Insert: { id?: string; name: string; description?: string | null; link_access?: boolean };
         Update: Partial<Database['public']['Tables']['offices']['Insert']>;
         Relationships: [];
       };

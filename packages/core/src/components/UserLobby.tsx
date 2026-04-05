@@ -124,15 +124,14 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     setLoading(true);
     setError(null);
     try {
-      const { data: office, error: officeError } = await supabase
+      const officeId = crypto.randomUUID();
+      const { error: officeError } = await supabase
         .from('offices')
-        .insert({ name: newRoomName.trim(), link_access: newRoomLinkAccess })
-        .select()
-        .single();
+        .insert({ id: officeId, name: newRoomName.trim(), link_access: newRoomLinkAccess });
       if (officeError) throw officeError;
 
       const { error: memberError } = await supabase.from('office_members').insert({
-        office_id: office.id,
+        office_id: officeId,
         user_id: user.id,
         role: 'owner',
       });
