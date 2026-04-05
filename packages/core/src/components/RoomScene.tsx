@@ -146,8 +146,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [createRoomLoading, setCreateRoomLoading] = useState(false);
   const [createRoomError, setCreateRoomError] = useState<string | null>(null);
 
-  // Environment settings
-  type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
+  // Environment settings — arbitrary string; unknown values render as 'corporate'
+  type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
 
   // Load environment from the office record so all users start with the same scene
@@ -164,7 +164,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           return;
         }
         if (data?.environment) {
-          setEnvironment(data.environment as EnvironmentType);
+          setEnvironment(data.environment);
         }
       });
   }, [officeId]);
@@ -589,7 +589,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Build environment
     const buildEnvironment = () => {
-      if (environment === 'corporate') {
+      // Unknown scene names fall back to the default corporate office
+      const resolvedEnv = ['corporate', 'cabin'].includes(environment) ? environment : 'corporate';
+      if (resolvedEnv === 'corporate') {
         scene.background = new THREE.Color(0x87ceeb);
 
         const floor = new THREE.Mesh(
@@ -678,7 +680,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           scene.add(plant);
         });
 
-      } else if (environment === 'cabin') {
+      } else if (resolvedEnv === 'cabin') {
         scene.background = new THREE.Color(0x87a96b);
 
         const floor = new THREE.Mesh(
@@ -1138,8 +1140,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Broadcast: room environment changes — update scene for all connected users
     channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
-      const { environment: env } = payload as { environment: EnvironmentType };
-      if (['corporate', 'cabin', 'coffeeshop'].includes(env)) {
+      const { environment: env } = payload as { environment: string };
+      if (typeof env === 'string' && env.length > 0) {
         setEnvironment(env);
       }
     });
