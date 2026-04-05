@@ -64,6 +64,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const channelSubscribedRef = useRef(false);
+  // Pending customization updates received before the target avatar existed
+  const pendingAvatarUpdatesRef = useRef<Map<string, AvatarCustomization>>(new Map());
   const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
   const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
@@ -480,7 +483,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   }, [jitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
 
   const sendChatMessage = (message: string) => {
-    if (!channelRef.current || !currentUser) return;
+    if (!channelRef.current || !channelSubscribedRef.current || !currentUser) return;
 
     const chatMessage: ChatMessage = {
       id: `${Date.now()}-${currentUser.id}`,
@@ -494,6 +497,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       type: 'broadcast',
       event: 'chat',
       payload: { message: chatMessage },
+    }).then((result: string) => {
+      if (result !== 'ok') console.error('[Chat] Broadcast failed:', result);
     });
 
     // Add own message to local state immediately (sender doesn't receive own broadcast)
@@ -967,7 +972,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Supabase Realtime channel
     const channelName = `office:${officeId}`;
     const channel = supabase.channel(channelName, {
-      config: { presence: { key: currentUser.id } },
+      config: {
+        presence: { key: currentUser.id },
+        broadcast: { ack: false, self: false },
+      },
     });
 
     channelRef.current = channel;
@@ -982,8 +990,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           presentIds.add(presence.id);
           presenceDataRef.current.set(presence.id, presence);
           if (presence.id !== currentUser.id && !avatarsRef.current.has(presence.id)) {
-            const avatar = createAvatar(scene, presence);
+            const pending = pendingAvatarUpdatesRef.current.get(presence.id);
+            const avatar = createAvatar(scene, pending ? { ...presence, customization: pending } : presence);
             avatarsRef.current.set(presence.id, avatar);
+            if (pending) pendingAvatarUpdatesRef.current.delete(presence.id);
             const sphere = createBubbleSphere(scene);
             sphere.position.copy(avatar.position);
             bubbleSpheresRef.current.set(presence.id, sphere);
@@ -1013,8 +1023,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         const p = presence as unknown as PresenceEntry;
         presenceDataRef.current.set(p.id, p);
         if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
-          const avatar = createAvatar(scene, p);
+          const pending = pendingAvatarUpdatesRef.current.get(p.id);
+          const avatar = createAvatar(scene, pending ? { ...p, customization: pending } : p);
           avatarsRef.current.set(p.id, avatar);
+          if (pending) pendingAvatarUpdatesRef.current.delete(p.id);
           const sphere = createBubbleSphere(scene);
           sphere.position.copy(avatar.position);
           bubbleSpheresRef.current.set(p.id, sphere);
@@ -1069,6 +1081,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           customization,
         });
         avatarsRef.current.set(userId, newAvatar);
+        pendingAvatarUpdatesRef.current.delete(userId);
+      } else {
+        // Avatar not yet created (e.g., position update hasn't arrived yet).
+        // Store the customization and apply it when the avatar is created.
+        pendingAvatarUpdatesRef.current.set(userId, customization);
       }
     });
 
@@ -1081,6 +1098,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     });
 
     channel.subscribe(async (status) => {
+      channelSubscribedRef.current = status === 'SUBSCRIBED';
       if (status === 'SUBSCRIBED') {
         // On reconnect myPresenceRef already holds the latest state (position, jitsiRoom, etc.).
         // Re-use it so we don't reset position or Jitsi room on a transient disconnect.
@@ -1347,6 +1365,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       supabase.removeChannel(channel);
       channelRef.current = null;
+      channelSubscribedRef.current = false;
 
       if (localBubbleSphereRef.current) {
         scene.remove(localBubbleSphereRef.current);
@@ -1356,6 +1375,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       presenceDataRef.current.clear();
       lastSeenAt.current.clear();
       nearbyUserIdsRef.current = new Set();
+      pendingAvatarUpdatesRef.current.clear();
 
       if (vrButton?.parentNode) {
         vrButton.parentNode.removeChild(vrButton);
@@ -1389,11 +1409,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setAvatarCustomization(settings);
 
     // Broadcast avatar update to other users
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'avatar-update',
-      payload: { userId: user.id, customization: settings },
-    });
+    if (channelRef.current && channelSubscribedRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'avatar-update',
+        payload: { userId: user.id, customization: settings },
+      }).then((result: string) => {
+        if (result !== 'ok') console.error('[AvatarUpdate] Broadcast failed:', result);
+      });
+    }
   };
 
   function validateSlug(value: string): string | null {
