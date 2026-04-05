@@ -16,7 +16,7 @@ import { useMotionControls } from '@/hooks/useMotionControls';
 
 const PROXIMITY_RADIUS = 3; // Three.js units — spheres overlap when distance < PROXIMITY_RADIUS * 2
 
-type PresenceEntry = AvatarData & { jitsiRoom?: string | null };
+type PresenceEntry = AvatarData & { email?: string | null; jitsiRoom?: string | null };
 
 function createBubbleSphere(scene: THREE.Scene): THREE.Mesh {
   const geo = new THREE.SphereGeometry(PROXIMITY_RADIUS, 24, 24);
@@ -75,7 +75,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
   const jitsiRoomRef = useRef<string | null>(null);
   const myPresenceRef = useRef<PresenceEntry | null>(null);
-  const [userCount, setUserCount] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null }>>([]);
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
   const [jitsiError, setJitsiError] = useState<string | null>(null);
   const [jitsiConnected, setJitsiConnected] = useState(false);
@@ -1011,6 +1011,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     channelRef.current = channel;
 
+    const rebuildOnlineUsers = () => {
+      setOnlineUsers([...presenceDataRef.current.values()].map(p => ({
+        id: p.id,
+        name: p.name,
+        email: p.email ?? null,
+      })));
+    };
+
     // Presence: sync existing users
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState<PresenceEntry>();
@@ -1045,7 +1053,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }
       });
 
-      setUserCount(presentIds.size);
+      rebuildOnlineUsers();
     });
 
     // Presence: user joined
@@ -1061,7 +1069,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const sphere = createBubbleSphere(scene);
           sphere.position.copy(avatar.position);
           bubbleSpheresRef.current.set(p.id, sphere);
-          setUserCount((prev) => prev + 1);
+          rebuildOnlineUsers();
         }
       });
     });
@@ -1079,7 +1087,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const sphere = bubbleSpheresRef.current.get(p.id);
           if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
           presenceDataRef.current.delete(p.id);
-          setUserCount((prev) => Math.max(0, prev - 1));
+          rebuildOnlineUsers();
         }
       });
     });
@@ -1144,6 +1152,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         const presence: PresenceEntry = myPresenceRef.current ?? {
           id: currentUser.id,
           name: currentUser.name || 'User',
+          email: user?.email ?? null,
           image: user?.image || null,
           position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
           rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
@@ -1180,7 +1189,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             presenceDataRef.current.delete(id);
           }
         });
-        setUserCount(presentIds.size);
+        rebuildOnlineUsers();
       }
     });
 
@@ -1343,7 +1352,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             const staleSphere = bubbleSpheresRef.current.get(uid);
             if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
             presenceDataRef.current.delete(uid);
-            setUserCount((prev) => Math.max(0, prev - 1));
+            rebuildOnlineUsers();
           }
         });
       }
@@ -1900,7 +1909,20 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           {currentUser?.name}
           {!user && <span style={{ color: '#9ca3af', fontSize: '11px', fontWeight: 'normal' }}> (Guest)</span>}
         </p>
-        <p style={{ margin: '0 0 4px 0', fontSize: '13px' }}>Users online: {userCount}</p>
+        <p style={{ margin: '0 0 4px 0', fontSize: '13px' }}>Users online: {onlineUsers.length}</p>
+        {onlineUsers.length > 0 && (() => {
+          const nameCounts: Record<string, number> = {};
+          onlineUsers.forEach(u => { nameCounts[u.name] = (nameCounts[u.name] || 0) + 1; });
+          return (
+            <ul style={{ margin: '2px 0 4px 0', padding: '0 0 0 14px', fontSize: '12px', color: '#d1d5db' }}>
+              {onlineUsers.map(u => (
+                <li key={u.id}>
+                  {u.name}{nameCounts[u.name] > 1 && u.email ? ` (${u.email})` : ''}
+                </li>
+              ))}
+            </ul>
+          );
+        })()}
 
         {/* Microphone indicator + mute toggle — always visible */}
         <div style={{
