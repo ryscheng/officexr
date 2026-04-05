@@ -97,8 +97,10 @@ export default function SettingsPanel({
       .from('office_members')
       .select('id, user_id, role, profiles(name, email)')
       .eq('office_id', officeId)
-      .then(({ data }) => {
-        if (data) {
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Failed to fetch members:', error);
+        } else if (data) {
           setMembers((data as any[]).map(m => ({
             memberId: m.id,
             userId: m.user_id,
