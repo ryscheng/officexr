@@ -40,9 +40,10 @@ export type Database = {
           name: string;
           description: string | null;
           link_access: boolean;
+          environment: string;
           created_at: string;
         };
-        Insert: { id?: string; name: string; description?: string | null; link_access?: boolean };
+        Insert: { id?: string; name: string; description?: string | null; link_access?: boolean; environment?: string };
         Update: Partial<Database['public']['Tables']['offices']['Insert']>;
         Relationships: [];
       };

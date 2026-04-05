@@ -10,7 +10,7 @@ import {
   MARIO_PRESETS,
 } from '@/types/avatar';
 
-type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
+type EnvironmentType = string;
 
 interface RoomMember {
   memberId: string;  // office_members.id
@@ -82,6 +82,8 @@ export default function SettingsPanel({
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [removeLoadingId, setRemoveLoadingId] = useState<string | null>(null);
+  const [roleLoadingId, setRoleLoadingId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // Load access settings whenever the panel opens
   useEffect(() => {
@@ -97,8 +99,10 @@ export default function SettingsPanel({
       .from('office_members')
       .select('id, user_id, role, profiles(name, email)')
       .eq('office_id', officeId)
-      .then(({ data }) => {
-        if (data) {
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Failed to fetch members:', error);
+        } else if (data) {
           setMembers((data as any[]).map(m => ({
             memberId: m.id,
             userId: m.user_id,
@@ -126,6 +130,14 @@ export default function SettingsPanel({
     await supabase.from('office_members').delete().eq('id', memberId);
     setMembers(prev => prev.filter(m => m.memberId !== memberId));
     setRemoveLoadingId(null);
+  };
+
+  const handleChangeRole = async (memberId: string, newRole: 'admin' | 'member') => {
+    setOpenMenuId(null);
+    setRoleLoadingId(memberId);
+    await supabase.from('office_members').update({ role: newRole }).eq('id', memberId);
+    setMembers(prev => prev.map(m => m.memberId === memberId ? { ...m, role: newRole } : m));
+    setRoleLoadingId(null);
   };
 
   if (!isOpen) return null;
@@ -202,8 +214,8 @@ export default function SettingsPanel({
   const isCustomAvatar = !settings.presetId && !settings.modelUrl;
 
   return (
-    <div style={panelStyle} onClick={onClose}>
-      <div style={cardStyle} onClick={e => e.stopPropagation()}>
+    <div style={panelStyle} onClick={() => { setOpenMenuId(null); onClose(); }}>
+      <div style={cardStyle} onClick={e => { e.stopPropagation(); setOpenMenuId(null); }}>
         <h2 style={{ margin: '0 0 20px 0', fontSize: '22px', fontWeight: 'bold' }}>Settings</h2>
 
         {/* ── Access ── */}
@@ -215,7 +227,7 @@ export default function SettingsPanel({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
               <div>
                 <div style={{ fontSize: '14px', fontWeight: '500' }}>Link access</div>
-                <div style={{ fontSize: '12px', color: '#555', marginTop: '2px' }}>
+                <div style={{ fontSize: '12px', color: '#333', marginTop: '2px' }}>
                   Anyone with the room link can join
                 </div>
               </div>
@@ -238,55 +250,116 @@ export default function SettingsPanel({
             {/* Member list */}
             <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>Members</div>
             {membersLoading ? (
-              <div style={{ fontSize: '13px', color: '#555' }}>Loading…</div>
+              <div style={{ fontSize: '13px', color: '#333' }}>Loading…</div>
             ) : members.length === 0 ? (
-              <div style={{ fontSize: '13px', color: '#555' }}>No members found.</div>
+              <div style={{ fontSize: '13px', color: '#333' }}>No members found.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {members.map(m => (
-                  <div key={m.memberId} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 10px', borderRadius: '6px', background: '#f5f5f5',
-                  }}>
-                    <div style={{ overflow: 'hidden' }}>
-                      <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {m.name ?? m.email ?? m.userId}
-                        {m.userId === user?.id && (
-                          <span style={{ marginLeft: '6px', fontSize: '11px', color: '#555' }}>(you)</span>
+                {members.map(m => {
+                  const isSelf = m.userId === user?.id;
+                  const canManage = (currentUserRole === 'owner' || currentUserRole === 'admin') && !isSelf && m.role !== 'owner';
+                  const isMenuOpen = openMenuId === m.memberId;
+                  const isLoading = roleLoadingId === m.memberId || removeLoadingId === m.memberId;
+                  return (
+                    <div key={m.memberId} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '8px 10px', borderRadius: '6px', background: '#f5f5f5',
+                      position: 'relative',
+                    }}>
+                      <div style={{ overflow: 'hidden' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {m.name ?? m.email ?? m.userId}
+                          {isSelf && (
+                            <span style={{ marginLeft: '6px', fontSize: '11px', color: '#333' }}>(you)</span>
+                          )}
+                        </div>
+                        {m.name && m.email && (
+                          <div style={{ fontSize: '11px', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {m.email}
+                          </div>
                         )}
                       </div>
-                      {m.name && m.email && (
-                        <div style={{ fontSize: '11px', color: '#555', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {m.email}
-                        </div>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <span style={{
+                          fontSize: '11px', padding: '2px 8px', borderRadius: '4px', fontWeight: '500',
+                          background: m.role === 'owner' ? '#fef3c7' : m.role === 'admin' ? '#ede9fe' : '#e0f2fe',
+                          color: m.role === 'owner' ? '#92400e' : m.role === 'admin' ? '#6d28d9' : '#0369a1',
+                          textTransform: 'capitalize',
+                        }}>
+                          {m.role}
+                        </span>
+                        {canManage && (
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              onClick={() => setOpenMenuId(isMenuOpen ? null : m.memberId)}
+                              disabled={isLoading}
+                              title="Member options"
+                              style={{
+                                ...btnBase, padding: '2px 7px', fontSize: '14px', lineHeight: 1,
+                                background: '#e5e7eb', color: '#374151',
+                                opacity: isLoading ? 0.5 : 1,
+                              }}
+                            >
+                              {isLoading ? '…' : '⋯'}
+                            </button>
+                            {isMenuOpen && (
+                              <div style={{
+                                position: 'absolute', right: 0, top: '100%', marginTop: '4px',
+                                background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 10,
+                                minWidth: '150px', overflow: 'hidden',
+                              }}>
+                                {m.role === 'member' && (
+                                  <button
+                                    onClick={() => handleChangeRole(m.memberId, 'admin')}
+                                    style={{
+                                      display: 'block', width: '100%', textAlign: 'left',
+                                      padding: '8px 12px', fontSize: '13px', border: 'none',
+                                      background: 'none', cursor: 'pointer', color: '#374151',
+                                    }}
+                                    onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+                                    onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                  >
+                                    Promote to admin
+                                  </button>
+                                )}
+                                {m.role === 'admin' && (
+                                  <button
+                                    onClick={() => handleChangeRole(m.memberId, 'member')}
+                                    style={{
+                                      display: 'block', width: '100%', textAlign: 'left',
+                                      padding: '8px 12px', fontSize: '13px', border: 'none',
+                                      background: 'none', cursor: 'pointer', color: '#374151',
+                                    }}
+                                    onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+                                    onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                  >
+                                    Demote to member
+                                  </button>
+                                )}
+                                {currentUserRole === 'owner' && (
+                                  <button
+                                    onClick={() => handleRemoveMember(m.memberId, m.userId)}
+                                    style={{
+                                      display: 'block', width: '100%', textAlign: 'left',
+                                      padding: '8px 12px', fontSize: '13px', border: 'none',
+                                      background: 'none', cursor: 'pointer', color: '#dc2626',
+                                      borderTop: '1px solid #f3f4f6',
+                                    }}
+                                    onMouseEnter={e => (e.currentTarget.style.background = '#fef2f2')}
+                                    onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                  >
+                                    Remove from room
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                      <span style={{
-                        fontSize: '11px', padding: '2px 8px', borderRadius: '4px', fontWeight: '500',
-                        background: m.role === 'owner' ? '#fef3c7' : '#e0f2fe',
-                        color: m.role === 'owner' ? '#92400e' : '#0369a1',
-                        textTransform: 'capitalize',
-                      }}>
-                        {m.role}
-                      </span>
-                      {currentUserRole === 'owner' && m.userId !== user?.id && (
-                        <button
-                          onClick={() => handleRemoveMember(m.memberId, m.userId)}
-                          disabled={removeLoadingId === m.memberId}
-                          title="Remove from room"
-                          style={{
-                            ...btnBase, padding: '3px 8px', fontSize: '12px',
-                            background: '#fee2e2', color: '#dc2626',
-                            opacity: removeLoadingId === m.memberId ? 0.5 : 1,
-                          }}
-                        >
-                          {removeLoadingId === m.memberId ? '…' : 'Remove'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -301,7 +374,7 @@ export default function SettingsPanel({
                 ['corporate',  '🏢 Corporate Office',      'Modern skyscraper with city views'],
                 ['cabin',      '🏔️ Cabin in the Woods',    'Cozy cabin near a lake with fireplace'],
                 ['coffeeshop', '☕ Coffee Shop',            'Trendy third wave coffee shop'],
-              ] as const).map(([val, label, desc]) => (
+              ] as [string, string, string][]).map(([val, label, desc]) => (
                 <button
                   key={val}
                   onClick={() => onEnvironmentChange(val)}
@@ -312,7 +385,7 @@ export default function SettingsPanel({
                   }}
                 >
                   <div style={{ fontWeight: 'bold', marginBottom: '3px' }}>{label}</div>
-                  <div style={{ fontSize: '13px', opacity: 0.8 }}>{desc}</div>
+                  <div style={{ fontSize: '13px', opacity: 1 }}>{desc}</div>
                 </button>
               ))}
             </div>
@@ -405,7 +478,7 @@ export default function SettingsPanel({
                 {uploadError && (
                   <div style={{ marginTop: '8px', fontSize: '13px', color: '#e74c3c' }}>{uploadError}</div>
                 )}
-                <div style={{ marginTop: '8px', fontSize: '12px', color: '#555' }}>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#333' }}>
                   Max 20 MB · auto-scaled to avatar height · visible to all users in the room
                 </div>
               </div>

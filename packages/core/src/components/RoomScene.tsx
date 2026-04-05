@@ -16,7 +16,7 @@ import { useMotionControls } from '@/hooks/useMotionControls';
 
 const PROXIMITY_RADIUS = 3; // Three.js units — spheres overlap when distance < PROXIMITY_RADIUS * 2
 
-type PresenceEntry = AvatarData & { jitsiRoom?: string | null };
+type PresenceEntry = AvatarData & { email?: string | null; jitsiRoom?: string | null };
 
 function createBubbleSphere(scene: THREE.Scene): THREE.Mesh {
   const geo = new THREE.SphereGeometry(PROXIMITY_RADIUS, 24, 24);
@@ -64,6 +64,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const channelSubscribedRef = useRef(false);
+  // Pending customization updates received before the target avatar existed
+  const pendingAvatarUpdatesRef = useRef<Map<string, AvatarCustomization>>(new Map());
   const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
   const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
@@ -72,7 +75,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
   const jitsiRoomRef = useRef<string | null>(null);
   const myPresenceRef = useRef<PresenceEntry | null>(null);
-  const [userCount, setUserCount] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null }>>([]);
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
   const [jitsiError, setJitsiError] = useState<string | null>(null);
   const [jitsiConnected, setJitsiConnected] = useState(false);
@@ -143,17 +146,28 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [createRoomLoading, setCreateRoomLoading] = useState(false);
   const [createRoomError, setCreateRoomError] = useState<string | null>(null);
 
-  // Environment settings
-  type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
+  // Environment settings — arbitrary string; unknown values render as 'corporate'
+  type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
 
-  // Load environment preference from localStorage
+  // Load environment from the office record so all users start with the same scene
   useEffect(() => {
-    const savedEnv = localStorage.getItem('officeEnvironment') as EnvironmentType;
-    if (savedEnv && ['corporate', 'cabin', 'coffeeshop'].includes(savedEnv)) {
-      setEnvironment(savedEnv);
-    }
-  }, []);
+    if (!officeId || officeId === 'global') return;
+    supabase
+      .from('offices')
+      .select('environment')
+      .eq('id', officeId)
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[Environment] Failed to load:', error);
+          return;
+        }
+        if (data?.environment) {
+          setEnvironment(data.environment);
+        }
+      });
+  }, [officeId]);
 
   // Generate a JaaS JWT from the private key stored in env vars.
   // Regenerated whenever the current user changes (e.g. login/logout).
@@ -283,10 +297,28 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
   }, []);
 
-  // Save environment preference to localStorage
   const handleEnvironmentChange = (env: EnvironmentType) => {
     setEnvironment(env);
-    localStorage.setItem('officeEnvironment', env);
+
+    // Persist to DB — only owners/admins can update offices (enforced by RLS)
+    if (officeId && officeId !== 'global') {
+      supabase.from('offices').update({ environment: env }).eq('id', officeId)
+        .then(({ error }) => {
+        if (error) console.error('[Environment] Failed to save:', error);
+      });
+    }
+
+    // Broadcast to all currently connected users — must happen before
+    // setEnvironment triggers the scene rebuild that recreates the channel
+    if (channelRef.current && channelSubscribedRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'environment-change',
+        payload: { environment: env },
+      }).then((result: string) => {
+        if (result !== 'ok') console.error('[Environment] Broadcast failed:', result);
+      });
+    }
   };
 
 
@@ -480,7 +512,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   }, [jitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
 
   const sendChatMessage = (message: string) => {
-    if (!channelRef.current || !currentUser) return;
+    if (!channelRef.current || !channelSubscribedRef.current || !currentUser) return;
 
     const chatMessage: ChatMessage = {
       id: `${Date.now()}-${currentUser.id}`,
@@ -494,6 +526,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       type: 'broadcast',
       event: 'chat',
       payload: { message: chatMessage },
+    }).then((result: string) => {
+      if (result !== 'ok') console.error('[Chat] Broadcast failed:', result);
     });
 
     // Add own message to local state immediately (sender doesn't receive own broadcast)
@@ -553,7 +587,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Build environment
     const buildEnvironment = () => {
-      if (environment === 'corporate') {
+      // Unknown scene names fall back to the default corporate office
+      const resolvedEnv = ['corporate', 'cabin'].includes(environment) ? environment : 'corporate';
+      if (resolvedEnv === 'corporate') {
         scene.background = new THREE.Color(0x87ceeb);
 
         const floor = new THREE.Mesh(
@@ -642,7 +678,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           scene.add(plant);
         });
 
-      } else if (environment === 'cabin') {
+      } else if (resolvedEnv === 'cabin') {
         scene.background = new THREE.Color(0x87a96b);
 
         const floor = new THREE.Mesh(
@@ -967,10 +1003,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Supabase Realtime channel
     const channelName = `office:${officeId}`;
     const channel = supabase.channel(channelName, {
-      config: { presence: { key: currentUser.id } },
+      config: {
+        presence: { key: currentUser.id },
+        broadcast: { ack: false, self: false },
+      },
     });
 
     channelRef.current = channel;
+
+    const rebuildOnlineUsers = () => {
+      setOnlineUsers([...presenceDataRef.current.values()].map(p => ({
+        id: p.id,
+        name: p.name,
+        email: p.email ?? null,
+      })));
+    };
 
     // Presence: sync existing users
     channel.on('presence', { event: 'sync' }, () => {
@@ -982,8 +1029,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           presentIds.add(presence.id);
           presenceDataRef.current.set(presence.id, presence);
           if (presence.id !== currentUser.id && !avatarsRef.current.has(presence.id)) {
-            const avatar = createAvatar(scene, presence);
+            const pending = pendingAvatarUpdatesRef.current.get(presence.id);
+            const avatar = createAvatar(scene, pending ? { ...presence, customization: pending } : presence);
             avatarsRef.current.set(presence.id, avatar);
+            if (pending) pendingAvatarUpdatesRef.current.delete(presence.id);
             const sphere = createBubbleSphere(scene);
             sphere.position.copy(avatar.position);
             bubbleSpheresRef.current.set(presence.id, sphere);
@@ -1004,7 +1053,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }
       });
 
-      setUserCount(presentIds.size);
+      rebuildOnlineUsers();
     });
 
     // Presence: user joined
@@ -1013,12 +1062,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         const p = presence as unknown as PresenceEntry;
         presenceDataRef.current.set(p.id, p);
         if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
-          const avatar = createAvatar(scene, p);
+          const pending = pendingAvatarUpdatesRef.current.get(p.id);
+          const avatar = createAvatar(scene, pending ? { ...p, customization: pending } : p);
           avatarsRef.current.set(p.id, avatar);
+          if (pending) pendingAvatarUpdatesRef.current.delete(p.id);
           const sphere = createBubbleSphere(scene);
           sphere.position.copy(avatar.position);
           bubbleSpheresRef.current.set(p.id, sphere);
-          setUserCount((prev) => prev + 1);
+          rebuildOnlineUsers();
         }
       });
     });
@@ -1036,7 +1087,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const sphere = bubbleSpheresRef.current.get(p.id);
           if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
           presenceDataRef.current.delete(p.id);
-          setUserCount((prev) => Math.max(0, prev - 1));
+          rebuildOnlineUsers();
         }
       });
     });
@@ -1069,6 +1120,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           customization,
         });
         avatarsRef.current.set(userId, newAvatar);
+        pendingAvatarUpdatesRef.current.delete(userId);
+      } else {
+        // Avatar not yet created (e.g., position update hasn't arrived yet).
+        // Store the customization and apply it when the avatar is created.
+        pendingAvatarUpdatesRef.current.set(userId, customization);
       }
     });
 
@@ -1080,13 +1136,23 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     });
 
+    // Broadcast: room environment changes — update scene for all connected users
+    channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
+      const { environment: env } = payload as { environment: string };
+      if (typeof env === 'string' && env.length > 0) {
+        setEnvironment(env);
+      }
+    });
+
     channel.subscribe(async (status) => {
+      channelSubscribedRef.current = status === 'SUBSCRIBED';
       if (status === 'SUBSCRIBED') {
         // On reconnect myPresenceRef already holds the latest state (position, jitsiRoom, etc.).
         // Re-use it so we don't reset position or Jitsi room on a transient disconnect.
         const presence: PresenceEntry = myPresenceRef.current ?? {
           id: currentUser.id,
           name: currentUser.name || 'User',
+          email: user?.email ?? null,
           image: user?.image || null,
           position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
           rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
@@ -1123,7 +1189,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             presenceDataRef.current.delete(id);
           }
         });
-        setUserCount(presentIds.size);
+        rebuildOnlineUsers();
       }
     });
 
@@ -1286,7 +1352,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             const staleSphere = bubbleSpheresRef.current.get(uid);
             if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
             presenceDataRef.current.delete(uid);
-            setUserCount((prev) => Math.max(0, prev - 1));
+            rebuildOnlineUsers();
           }
         });
       }
@@ -1347,6 +1413,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       supabase.removeChannel(channel);
       channelRef.current = null;
+      channelSubscribedRef.current = false;
 
       if (localBubbleSphereRef.current) {
         scene.remove(localBubbleSphereRef.current);
@@ -1356,6 +1423,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       presenceDataRef.current.clear();
       lastSeenAt.current.clear();
       nearbyUserIdsRef.current = new Set();
+      pendingAvatarUpdatesRef.current.clear();
 
       if (vrButton?.parentNode) {
         vrButton.parentNode.removeChild(vrButton);
@@ -1389,11 +1457,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setAvatarCustomization(settings);
 
     // Broadcast avatar update to other users
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'avatar-update',
-      payload: { userId: user.id, customization: settings },
-    });
+    if (channelRef.current && channelSubscribedRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'avatar-update',
+        payload: { userId: user.id, customization: settings },
+      }).then((result: string) => {
+        if (result !== 'ok') console.error('[AvatarUpdate] Broadcast failed:', result);
+      });
+    }
   };
 
   function validateSlug(value: string): string | null {
@@ -1837,7 +1909,39 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           {currentUser?.name}
           {!user && <span style={{ color: '#9ca3af', fontSize: '11px', fontWeight: 'normal' }}> (Guest)</span>}
         </p>
-        <p style={{ margin: '0 0 4px 0', fontSize: '13px' }}>Users online: {userCount}</p>
+        <p style={{ margin: '0 0 4px 0', fontSize: '13px' }}>Users online: {onlineUsers.length}</p>
+        {onlineUsers.length > 0 && (() => {
+          const nameCounts: Record<string, number> = {};
+          onlineUsers.forEach(u => { nameCounts[u.name] = (nameCounts[u.name] || 0) + 1; });
+          return (
+            <ul style={{ margin: '2px 0 4px 0', padding: '0 0 0 14px', fontSize: '12px', color: '#d1d5db', listStyle: 'none' }}>
+              {onlineUsers.map(u => {
+                const displayName = u.name + (nameCounts[u.name] > 1 && u.email ? ` (${u.email})` : '');
+                const isSelf = u.id === currentUser?.id;
+                return (
+                  <li key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                    <span>{displayName}</span>
+                    {!isSelf && (
+                      <button
+                        title={`Wave at ${u.name}`}
+                        onClick={() => sendChatMessage(`${currentUser?.name || 'Someone'} has waved at ${u.name} 👋`)}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          padding: '0 2px', fontSize: '13px', lineHeight: 1,
+                          opacity: 0.7, flexShrink: 0,
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.7'; }}
+                      >
+                        👋
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          );
+        })()}
 
         {/* Microphone indicator + mute toggle — always visible */}
         <div style={{
@@ -1993,6 +2097,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           >
             {chatMessages.map((msg) => (
               <div key={msg.id} style={{ color: 'white', fontSize: '14px', marginBottom: '4px' }}>
+                <span style={{ color: '#6b7280', fontSize: '11px', marginRight: '6px' }}>
+                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
                 <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>{msg.userName}: </span>
                 {msg.message}
               </div>
@@ -2034,6 +2141,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         >
           {chatMessages.slice(-2).map((msg) => (
             <div key={msg.id} style={{ color: 'white', fontSize: '13px', marginBottom: '2px' }}>
+              <span style={{ color: '#6b7280', fontSize: '11px', marginRight: '6px' }}>
+                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
               <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>{msg.userName}: </span>
               {msg.message}
             </div>
@@ -2047,7 +2157,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         currentSettings={avatarCustomization}
         onSave={user ? handleSaveSettings : undefined}
         currentEnvironment={environment}
-        onEnvironmentChange={user ? handleEnvironmentChange : undefined}
+        onEnvironmentChange={(currentUserRole === 'owner' || currentUserRole === 'admin') ? handleEnvironmentChange : undefined}
         officeId={officeId !== 'global' ? officeId : undefined}
         currentUserRole={currentUserRole}
       />
