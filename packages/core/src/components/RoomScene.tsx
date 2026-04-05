@@ -116,6 +116,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [chatVisible, setChatVisible] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatVisibleRef = useRef<boolean>(false);
   const keysRef = useRef<{ [key: string]: boolean }>({});
@@ -372,6 +373,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       chatInputRef.current.focus();
     }
   }, [chatVisible]);
+
+  // Auto-scroll message list to bottom when new messages arrive (chat open)
+  useEffect(() => {
+    if (chatVisible && chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, chatVisible]);
 
   // Sync chatVisible ref and clear navigation keys when chat opens
   useEffect(() => {
@@ -1969,18 +1977,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         )}
       </div>
 
-      {/* Chat UI */}
+      {/* Chat UI — focused */}
       {chatVisible && (
         <div
           style={{
             position: 'absolute', bottom: '20px', left: '50%',
             transform: 'translateX(-50%)', width: '500px', maxWidth: '90vw',
-            background: 'rgba(0,0,0,0.8)', borderRadius: '8px',
+            background: 'rgba(0,0,0,0.75)', borderRadius: '8px',
             padding: '10px', zIndex: 200,
           }}
         >
-          <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '8px' }}>
-            {chatMessages.slice(-20).map((msg) => (
+          <div
+            ref={chatScrollRef}
+            style={{ maxHeight: '50vh', overflowY: 'auto', marginBottom: '8px' }}
+          >
+            {chatMessages.map((msg) => (
               <div key={msg.id} style={{ color: 'white', fontSize: '14px', marginBottom: '4px' }}>
                 <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>{msg.userName}: </span>
                 {msg.message}
@@ -2011,25 +2022,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
-      {/* Chat notification (recent messages, chat not open) */}
+      {/* Chat notification — unfocused, last 2 messages only */}
       {!chatVisible && chatMessages.length > 0 && (
         <div
           style={{
             position: 'absolute', bottom: '20px', left: '50%',
             transform: 'translateX(-50%)', width: '400px', maxWidth: '80vw',
-            background: 'rgba(0,0,0,0.6)', borderRadius: '8px',
+            background: 'rgba(0,0,0,0.5)', borderRadius: '8px',
             padding: '8px 12px', zIndex: 100, pointerEvents: 'none',
           }}
         >
-          {chatMessages.slice(-3).map((msg) => (
+          {chatMessages.slice(-2).map((msg) => (
             <div key={msg.id} style={{ color: 'white', fontSize: '13px', marginBottom: '2px' }}>
               <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>{msg.userName}: </span>
               {msg.message}
             </div>
           ))}
-          <div style={{ color: '#888', fontSize: '11px', marginTop: '4px' }}>
-            Press Enter to chat
-          </div>
         </div>
       )}
 
