@@ -1831,15 +1831,16 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       <div
         style={{
           position: 'absolute', top: '20px', right: '20px',
-          color: 'white', background: 'rgba(0, 0, 0, 0.7)',
-          padding: '15px', borderRadius: '8px', fontFamily: 'monospace', zIndex: 100,
+          color: 'white', background: 'rgba(0, 0, 0, 0.72)',
+          padding: '14px', borderRadius: '8px', fontFamily: 'monospace', zIndex: 100,
+          width: '240px',
         }}
       >
-        <p style={{ margin: '5px 0' }}>
-          <strong>{currentUser?.name}</strong>
-          {!user && <span style={{ color: '#888', fontSize: '12px' }}> (Guest)</span>}
+        <p style={{ margin: '0 0 6px 0', fontWeight: 'bold', fontSize: '14px' }}>
+          {currentUser?.name}
+          {!user && <span style={{ color: '#9ca3af', fontSize: '11px', fontWeight: 'normal' }}> (Guest)</span>}
         </p>
-        <p style={{ margin: '5px 0' }}>Users online: {userCount}</p>
+        <p style={{ margin: '0 0 4px 0', fontSize: '13px' }}>Users online: {userCount}</p>
 
         {/* Microphone indicator + mute toggle — always visible */}
         <div style={{
@@ -1906,7 +1907,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             </div>
           )}
         </div>
-        <p style={{ margin: '5px 0', fontSize: '12px', color: '#888' }}>
+        <p style={{ margin: '0 0 6px 0', fontSize: '11px', color: '#9ca3af' }}>
           Office: {officeId === 'global' ? 'Global' : 'Private'}
         </p>
 
@@ -1915,10 +1916,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             <button
               onClick={() => setShowCreateRoom(true)}
               style={{
-                marginTop: '10px', padding: '8px 16px',
+                marginTop: '6px', padding: '6px', fontSize: '12px',
                 background: '#7c3aed', color: 'white',
                 border: 'none', borderRadius: '4px', cursor: 'pointer',
-                fontSize: '14px', width: '100%',
+                width: '100%',
               }}
             >
               + New Room
@@ -1926,10 +1927,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             <button
               onClick={() => setShowSettings(true)}
               style={{
-                marginTop: '8px', padding: '8px 16px',
+                marginTop: '5px', padding: '6px', fontSize: '12px',
                 background: '#3498db', color: 'white',
                 border: 'none', borderRadius: '4px', cursor: 'pointer',
-                fontSize: '14px', width: '100%',
+                width: '100%',
               }}
             >
               ⚙️ Settings
@@ -1943,10 +1944,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               <button
                 onClick={onShowOfficeSelector}
                 style={{
-                  marginTop: '10px', padding: '8px 16px',
+                  marginTop: '5px', padding: '6px', fontSize: '12px',
                   background: '#8b5cf6', color: 'white',
                   border: 'none', borderRadius: '4px', cursor: 'pointer',
-                  fontSize: '14px', width: '100%',
+                  width: '100%',
                 }}
               >
                 🏠 Back to Lobby
@@ -1955,10 +1956,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             <button
               onClick={() => signOut().then(() => navigate('/login'))}
               style={{
-                marginTop: '10px', padding: '8px 16px',
-                background: '#ef4444', color: 'white',
+                marginTop: '5px', padding: '6px', fontSize: '12px',
+                background: '#dc2626', color: 'white',
                 border: 'none', borderRadius: '4px', cursor: 'pointer',
-                fontSize: '14px', width: '100%',
+                width: '100%',
               }}
             >
               Sign Out
@@ -1968,10 +1969,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           <button
             onClick={() => setShowLoginModal(true)}
             style={{
-              marginTop: '10px', padding: '8px 16px',
+              marginTop: '5px', padding: '6px', fontSize: '12px',
               background: '#22c55e', color: 'white',
               border: 'none', borderRadius: '4px', cursor: 'pointer',
-              fontSize: '14px', width: '100%',
+              width: '100%',
             }}
           >
             Sign In
