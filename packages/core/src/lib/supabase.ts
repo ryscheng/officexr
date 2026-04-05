@@ -40,9 +40,10 @@ export type Database = {
           name: string;
           description: string | null;
           link_access: boolean;
+          environment: 'corporate' | 'cabin' | 'coffeeshop';
           created_at: string;
         };
-        Insert: { id?: string; name: string; description?: string | null; link_access?: boolean };
+        Insert: { id?: string; name: string; description?: string | null; link_access?: boolean; environment?: 'corporate' | 'cabin' | 'coffeeshop' };
         Update: Partial<Database['public']['Tables']['offices']['Insert']>;
         Relationships: [];
       };
@@ -64,6 +65,10 @@ export type Database = {
       join_office_if_allowed: {
         Args: { p_office_id: string };
         Returns: 'ready' | 'denied' | 'not-found';
+      };
+      set_office_environment: {
+        Args: { p_office_id: string; p_environment: string };
+        Returns: void;
       };
     };
   };

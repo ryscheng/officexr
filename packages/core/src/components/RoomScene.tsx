@@ -150,13 +150,24 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
 
-  // Load environment preference from localStorage
+  // Load environment from the office record so all users start with the same scene
   useEffect(() => {
-    const savedEnv = localStorage.getItem('officeEnvironment') as EnvironmentType;
-    if (savedEnv && ['corporate', 'cabin', 'coffeeshop'].includes(savedEnv)) {
-      setEnvironment(savedEnv);
-    }
-  }, []);
+    if (!officeId || officeId === 'global') return;
+    supabase
+      .from('offices')
+      .select('environment')
+      .eq('id', officeId)
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[Environment] Failed to load:', error);
+          return;
+        }
+        if (data?.environment) {
+          setEnvironment(data.environment as EnvironmentType);
+        }
+      });
+  }, [officeId]);
 
   // Generate a JaaS JWT from the private key stored in env vars.
   // Regenerated whenever the current user changes (e.g. login/logout).
@@ -286,10 +297,30 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
   }, []);
 
-  // Save environment preference to localStorage
   const handleEnvironmentChange = (env: EnvironmentType) => {
     setEnvironment(env);
-    localStorage.setItem('officeEnvironment', env);
+
+    // Persist to DB so new joiners see the same scene
+    if (officeId && officeId !== 'global') {
+      supabase.rpc('set_office_environment', {
+        p_office_id: officeId,
+        p_environment: env,
+      }).then(({ error }) => {
+        if (error) console.error('[Environment] Failed to save:', error);
+      });
+    }
+
+    // Broadcast to all currently connected users — must happen before
+    // setEnvironment triggers the scene rebuild that recreates the channel
+    if (channelRef.current && channelSubscribedRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'environment-change',
+        payload: { environment: env },
+      }).then((result: string) => {
+        if (result !== 'ok') console.error('[Environment] Broadcast failed:', result);
+      });
+    }
   };
 
 
@@ -1094,6 +1125,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       const { message } = payload as { message: ChatMessage };
       if (message.userId !== currentUserRef.current?.id) {
         setChatMessages((prev) => [...prev.slice(-49), message]);
+      }
+    });
+
+    // Broadcast: room environment changes — update scene for all connected users
+    channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
+      const { environment: env } = payload as { environment: EnvironmentType };
+      if (['corporate', 'cabin', 'coffeeshop'].includes(env)) {
+        setEnvironment(env);
       }
     });
 
