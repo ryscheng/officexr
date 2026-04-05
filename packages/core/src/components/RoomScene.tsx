@@ -590,93 +590,261 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Unknown scene names fall back to the default corporate office
       const resolvedEnv = ['corporate', 'cabin'].includes(environment) ? environment : 'corporate';
       if (resolvedEnv === 'corporate') {
-        scene.background = new THREE.Color(0x87ceeb);
+        scene.background = new THREE.Color(0xadc8e0);
 
+        // ── FLOOR (light warm carpet) ──
         const floor = new THREE.Mesh(
           new THREE.PlaneGeometry(30, 30),
-          new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.1, metalness: 0.6 })
+          new THREE.MeshStandardMaterial({ color: 0xd4c9b0, roughness: 0.8 })
         );
         floor.rotation.x = -Math.PI / 2;
         floor.receiveShadow = true;
         scene.add(floor);
 
-        const glassWalls = new THREE.Mesh(
-          new THREE.BoxGeometry(30, 10, 30),
-          new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.3, metalness: 0.9, roughness: 0.1 })
-        );
-        glassWalls.position.y = 5;
-        scene.add(glassWalls);
-
-        for (let i = -15; i <= 15; i += 5) {
-          const frame = new THREE.Mesh(
-            new THREE.BoxGeometry(0.2, 10, 0.1),
-            new THREE.MeshStandardMaterial({ color: 0x333333 })
-          );
-          frame.position.set(i, 5, -15);
-          scene.add(frame);
+        // ── CEILING (white grid pattern) ──
+        const ceilCanvas = document.createElement('canvas');
+        ceilCanvas.width = 256; ceilCanvas.height = 256;
+        const cCtx = ceilCanvas.getContext('2d')!;
+        cCtx.fillStyle = '#f4f4f4';
+        cCtx.fillRect(0, 0, 256, 256);
+        cCtx.strokeStyle = '#cccccc';
+        cCtx.lineWidth = 2;
+        for (let ci = 0; ci <= 256; ci += 32) {
+          cCtx.beginPath(); cCtx.moveTo(ci, 0); cCtx.lineTo(ci, 256); cCtx.stroke();
+          cCtx.beginPath(); cCtx.moveTo(0, ci); cCtx.lineTo(256, ci); cCtx.stroke();
         }
-
-        const deskTop = new THREE.Mesh(
-          new THREE.BoxGeometry(3, 0.05, 1.5),
-          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
+        const ceilTex = new THREE.CanvasTexture(ceilCanvas);
+        ceilTex.wrapS = THREE.RepeatWrapping;
+        ceilTex.wrapT = THREE.RepeatWrapping;
+        ceilTex.repeat.set(10, 10);
+        const ceiling = new THREE.Mesh(
+          new THREE.PlaneGeometry(30, 30),
+          new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 0.9 })
         );
-        deskTop.position.set(0, 0.75, -5);
-        scene.add(deskTop);
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.y = 10;
+        scene.add(ceiling);
 
-        [-1.4, 1.4].forEach((x) => {
-          const leg = new THREE.Mesh(
-            new THREE.BoxGeometry(0.1, 0.75, 1.4),
-            new THREE.MeshStandardMaterial({ color: 0x666666 })
-          );
-          leg.position.set(x, 0.375, -5);
-          scene.add(leg);
+        // ── FLOOR-TO-CEILING GLASS WALLS WITH STEEL STUDS ──
+        const glassMat = new THREE.MeshStandardMaterial({
+          color: 0x99ccee, transparent: true, opacity: 0.18,
+          metalness: 0.1, roughness: 0.0, side: THREE.DoubleSide,
+        });
+        const steelMat = new THREE.MeshStandardMaterial({
+          color: 0x607080, metalness: 0.85, roughness: 0.2,
+        });
+        const wallH = 10;
+
+        // Four glass panels
+        const northGlass = new THREE.Mesh(new THREE.BoxGeometry(30, wallH, 0.08), glassMat);
+        northGlass.position.set(0, wallH / 2, -15); scene.add(northGlass);
+        const southGlass = new THREE.Mesh(new THREE.BoxGeometry(30, wallH, 0.08), glassMat);
+        southGlass.position.set(0, wallH / 2, 15); scene.add(southGlass);
+        const eastGlass = new THREE.Mesh(new THREE.BoxGeometry(0.08, wallH, 30), glassMat);
+        eastGlass.position.set(15, wallH / 2, 0); scene.add(eastGlass);
+        const westGlass = new THREE.Mesh(new THREE.BoxGeometry(0.08, wallH, 30), glassMat);
+        westGlass.position.set(-15, wallH / 2, 0); scene.add(westGlass);
+
+        // Steel studs along N/S walls every 3 units
+        const studGeo = new THREE.BoxGeometry(0.1, wallH, 0.1);
+        for (let sx = -15; sx <= 15; sx += 3) {
+          const sn = new THREE.Mesh(studGeo, steelMat);
+          sn.position.set(sx, wallH / 2, -15); scene.add(sn);
+          const ss = new THREE.Mesh(studGeo, steelMat);
+          ss.position.set(sx, wallH / 2, 15); scene.add(ss);
+        }
+        // Steel studs along E/W walls (skip ±15 corners already covered above)
+        const studGeoEW = new THREE.BoxGeometry(0.1, wallH, 0.1);
+        for (let sz = -12; sz <= 12; sz += 3) {
+          const se = new THREE.Mesh(studGeoEW, steelMat);
+          se.position.set(15, wallH / 2, sz); scene.add(se);
+          const sw = new THREE.Mesh(studGeoEW, steelMat);
+          sw.position.set(-15, wallH / 2, sz); scene.add(sw);
+        }
+        // Horizontal top rail
+        const trN = new THREE.Mesh(new THREE.BoxGeometry(30, 0.12, 0.12), steelMat);
+        trN.position.set(0, wallH - 0.06, -15); scene.add(trN);
+        const trS = new THREE.Mesh(new THREE.BoxGeometry(30, 0.12, 0.12), steelMat);
+        trS.position.set(0, wallH - 0.06, 15); scene.add(trS);
+        const trE = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 30), steelMat);
+        trE.position.set(15, wallH - 0.06, 0); scene.add(trE);
+        const trW = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 30), steelMat);
+        trW.position.set(-15, wallH - 0.06, 0); scene.add(trW);
+
+        // ── NYC SKYLINE (buildings visible through floor-to-ceiling windows) ──
+        // Buildings are centered at y = h/2 - 10 so they span above and below the windows,
+        // giving the impression of being on an upper floor of a skyscraper.
+        const bldMatA = new THREE.MeshStandardMaterial({ color: 0x8898aa, metalness: 0.5, roughness: 0.6 });
+        const bldMatB = new THREE.MeshStandardMaterial({ color: 0xa0aabb, metalness: 0.4, roughness: 0.5 });
+        const bldMatC = new THREE.MeshStandardMaterial({ color: 0x778899, metalness: 0.6, roughness: 0.4 });
+        const bldMats = [bldMatA, bldMatB, bldMatC];
+
+        // [x, z, width, height, depth, mat index]
+        const bldgs = [
+          // North skyline
+          [-22, -28, 8, 50, 8, 0], [-14, -24, 6, 34, 6, 1], [-5, -32, 10, 65, 10, 2],
+          [3, -26, 7, 42, 7, 0], [10, -23, 5, 28, 5, 1], [17, -30, 8, 58, 8, 2],
+          [25, -25, 7, 46, 7, 0], [-20, -38, 5, 30, 5, 1], [0, -40, 8, 44, 8, 2],
+          [14, -36, 7, 55, 7, 0], [-10, -22, 4, 38, 4, 1], [22, -35, 6, 50, 6, 2],
+          // South skyline
+          [-20, 27, 7, 48, 7, 1], [-12, 23, 5, 32, 5, 2], [-4, 30, 9, 60, 9, 0],
+          [4, 25, 6, 38, 6, 1], [12, 28, 8, 44, 8, 2], [20, 24, 5, 36, 5, 0],
+          [-16, 37, 6, 40, 6, 1], [6, 35, 7, 55, 7, 2], [26, 32, 5, 42, 5, 0],
+          // East skyline
+          [28, -20, 7, 52, 7, 0], [24, -10, 5, 38, 5, 1], [30, 1, 8, 60, 8, 2],
+          [26, 11, 6, 34, 6, 0], [28, 20, 7, 48, 7, 1], [22, -32, 5, 40, 5, 2],
+          // West skyline
+          [-28, -18, 7, 44, 7, 2], [-24, -6, 5, 30, 5, 0], [-32, 4, 9, 68, 9, 1],
+          [-26, 14, 6, 50, 6, 2], [-30, -28, 8, 42, 8, 0], [-22, 22, 5, 36, 5, 1],
+          // Corner fill
+          [28, -28, 8, 55, 8, 1], [-28, 28, 7, 46, 7, 2],
+          [28, 28, 6, 38, 6, 0], [-28, -28, 9, 62, 9, 1],
+        ];
+        bldgs.forEach(([bx, bz, bw, bh, bd, mi]) => {
+          const bld = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), bldMats[mi]);
+          bld.position.set(bx, bh / 2 - 10, bz);
+          scene.add(bld);
         });
 
-        const chairSeat = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.4, 0.4, 0.1, 32),
-          new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
+        // Street far below (visible through lower portion of windows)
+        const streetGround = new THREE.Mesh(
+          new THREE.PlaneGeometry(300, 300),
+          new THREE.MeshStandardMaterial({ color: 0x3a3a44, roughness: 0.95 })
         );
-        chairSeat.position.set(0, 0.5, -3.5);
-        scene.add(chairSeat);
+        streetGround.rotation.x = -Math.PI / 2;
+        streetGround.position.y = -30;
+        scene.add(streetGround);
 
-        const chairBack = new THREE.Mesh(
-          new THREE.BoxGeometry(0.7, 0.8, 0.1),
-          new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
-        );
-        chairBack.position.set(0, 0.9, -3.7);
-        scene.add(chairBack);
+        // ── CORNER A: 8 DESKS IN 2 ROWS OF 4 (far-left, x<0, z<0) ──
+        const deskTopMat = new THREE.MeshStandardMaterial({ color: 0xf0ece2, roughness: 0.4 });
+        const deskLegMat = new THREE.MeshStandardMaterial({ color: 0x909090, metalness: 0.7, roughness: 0.3 });
+        const monMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.4 });
+        const chairMat = new THREE.MeshStandardMaterial({ color: 0x263244, roughness: 0.7 });
 
-        const confTable = new THREE.Mesh(
-          new THREE.BoxGeometry(6, 0.08, 3),
-          new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.2, metalness: 0.5 })
-        );
-        confTable.position.set(-8, 0.75, 5);
-        scene.add(confTable);
+        const addDesk = (cx: number, cz: number) => {
+          const dH = 0.75;
+          // Desk top
+          const top = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.8), deskTopMat);
+          top.position.set(cx, dH, cz); scene.add(top);
+          // Four legs
+          [[-0.7, -0.35], [0.7, -0.35], [-0.7, 0.35], [0.7, 0.35]].forEach(([dx, dz]) => {
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, dH, 0.05), deskLegMat);
+            leg.position.set(cx + dx, dH / 2, cz + dz); scene.add(leg);
+          });
+          // Monitor (faces -z, person sits at +z side)
+          const mon = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.44, 0.04), monMat);
+          mon.position.set(cx, dH + 0.27, cz - 0.28); scene.add(mon);
+          // Chair (behind desk toward +z)
+          const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.07, 0.55), chairMat);
+          seat.position.set(cx, 0.48, cz + 0.72); scene.add(seat);
+          const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.55, 0.06), chairMat);
+          back.position.set(cx, 0.79, cz + 0.98); scene.add(back);
+        };
 
-        [[-9, 3], [-7, 3], [-9, 7], [-7, 7]].forEach(([x, z]) => {
-          const chair = new THREE.Mesh(
-            new THREE.BoxGeometry(0.5, 0.5, 0.5),
-            new THREE.MeshStandardMaterial({ color: 0x333333 })
-          );
-          chair.position.set(x, 0.5, z);
-          scene.add(chair);
+        // Row 1 at x=-13, Row 2 at x=-10.5; 4 desks each at z=-13,-11,-9,-7
+        [-13, -11, -9, -7].forEach((dz) => { addDesk(-13, dz); addDesk(-10.5, dz); });
+
+        // ── CORNER B: RESTING AREA — 2 COUCHES + COFFEE TABLE (far-right, x>0, z<0) ──
+        const sofaMat = new THREE.MeshStandardMaterial({ color: 0x7a5c4a, roughness: 0.8 });
+        const cushionMat = new THREE.MeshStandardMaterial({ color: 0x9a7060, roughness: 0.9 });
+        const ctMat = new THREE.MeshStandardMaterial({ color: 0x3a2210, roughness: 0.3 });
+
+        const addSofa = (cx: number, cz: number, backOnNorth: boolean) => {
+          const sW = 2.4;
+          const base = new THREE.Mesh(new THREE.BoxGeometry(sW, 0.45, 0.9), sofaMat);
+          base.position.set(cx, 0.225, cz); scene.add(base);
+          const cushion = new THREE.Mesh(new THREE.BoxGeometry(sW - 0.1, 0.14, 0.8), cushionMat);
+          cushion.position.set(cx, 0.52, cz); scene.add(cushion);
+          const backZ = backOnNorth ? cz - 0.38 : cz + 0.38;
+          const backrest = new THREE.Mesh(new THREE.BoxGeometry(sW, 0.65, 0.18), sofaMat);
+          backrest.position.set(cx, 0.7, backZ); scene.add(backrest);
+          [-(sW / 2 - 0.1), sW / 2 - 0.1].forEach((dx) => {
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.9), sofaMat);
+            arm.position.set(cx + dx, 0.56, cz); scene.add(arm);
+          });
+        };
+
+        addSofa(10, -12.2, true);   // back against north wall, faces south
+        addSofa(10,  -7.8, false);  // back on south side, faces north
+        // Coffee table between the two couches
+        const ctTop = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.06, 0.8), ctMat);
+        ctTop.position.set(10, 0.44, -10); scene.add(ctTop);
+        [[-0.5, -0.32], [0.5, -0.32], [-0.5, 0.32], [0.5, 0.32]].forEach(([dx, dz]) => {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 0.06), ctMat);
+          leg.position.set(10 + dx, 0.22, -10 + dz); scene.add(leg);
         });
 
-        [[5, -10], [-5, -10]].forEach(([x, z]) => {
-          const pot = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.3, 0.25, 0.6, 8),
-            new THREE.MeshStandardMaterial({ color: 0x8b4513 })
-          );
-          pot.position.set(x, 0.3, z);
-          scene.add(pot);
+        // ── CORNER C: WATER COOLER + PING PONG TABLE (near-right, x>0, z>0) ──
+        // Water cooler
+        const wcBase = new THREE.Mesh(
+          new THREE.BoxGeometry(0.38, 1.0, 0.32),
+          new THREE.MeshStandardMaterial({ color: 0xe0e0e0, metalness: 0.3, roughness: 0.4 })
+        );
+        wcBase.position.set(13.5, 0.5, 13.5); scene.add(wcBase);
+        const wcJug = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.13, 0.13, 0.38, 16),
+          new THREE.MeshStandardMaterial({ color: 0x80bbff, transparent: true, opacity: 0.75, roughness: 0.1 })
+        );
+        wcJug.position.set(13.5, 1.19, 13.5); scene.add(wcJug);
 
-          const plant = new THREE.Mesh(
-            new THREE.SphereGeometry(0.4, 8, 8),
-            new THREE.MeshStandardMaterial({ color: 0x228b22 })
-          );
-          plant.position.set(x, 0.9, z);
-          scene.add(plant);
+        // Ping pong table (regulation ~2.74 × 1.525 m, height 0.76 m)
+        const ppX = 9.5, ppZ = 11;
+        const ppTop = new THREE.Mesh(
+          new THREE.BoxGeometry(2.74, 0.05, 1.525),
+          new THREE.MeshStandardMaterial({ color: 0x1a6e1a, roughness: 0.6 })
+        );
+        ppTop.position.set(ppX, 0.76, ppZ); scene.add(ppTop);
+        // Center line
+        const ppLine = new THREE.Mesh(
+          new THREE.BoxGeometry(0.02, 0.002, 1.525),
+          new THREE.MeshStandardMaterial({ color: 0xffffff })
+        );
+        ppLine.position.set(ppX, 0.786, ppZ); scene.add(ppLine);
+        // Net
+        const ppNet = new THREE.Mesh(
+          new THREE.BoxGeometry(2.74, 0.15, 0.015),
+          new THREE.MeshStandardMaterial({ color: 0xf8f8f8, transparent: true, opacity: 0.85 })
+        );
+        ppNet.position.set(ppX, 0.835, ppZ); scene.add(ppNet);
+        // Legs
+        const ppLegM = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.5 });
+        [[-1.3, -0.71], [1.3, -0.71], [-1.3, 0.71], [1.3, 0.71]].forEach(([dx, dz]) => {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.76, 0.05), ppLegM);
+          leg.position.set(ppX + dx, 0.38, ppZ + dz); scene.add(leg);
         });
+
+        // ── CORNER D: CONFERENCE TABLE + 8 CHAIRS (near-left, x<0, z>0) ──
+        const confTMat = new THREE.MeshStandardMaterial({ color: 0x2c1f0e, roughness: 0.15 });
+        const confCMat = new THREE.MeshStandardMaterial({ color: 0x1a1f2e, roughness: 0.7 });
+        const cfX = -9, cfZ = 10;
+
+        // Table top (5 × 2.5 m)
+        const confTTop = new THREE.Mesh(new THREE.BoxGeometry(5, 0.07, 2.5), confTMat);
+        confTTop.position.set(cfX, 0.75, cfZ); scene.add(confTTop);
+        [[-1.8, -0.9], [1.8, -0.9], [-1.8, 0.9], [1.8, 0.9]].forEach(([dx, dz]) => {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.75, 0.1), confTMat);
+          leg.position.set(cfX + dx, 0.375, cfZ + dz); scene.add(leg);
+        });
+
+        // bdx/bdz = direction from seat to backrest; sideways = backrest faces Z instead of X
+        const addConfChair = (cx: number, cz: number, bdx: number, bdz: number, sideways = false) => {
+          const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.07, 0.55), confCMat);
+          seat.position.set(cx, 0.5, cz); scene.add(seat);
+          const back = new THREE.Mesh(
+            sideways ? new THREE.BoxGeometry(0.07, 0.55, 0.5) : new THREE.BoxGeometry(0.5, 0.55, 0.07),
+            confCMat
+          );
+          back.position.set(cx + bdx, 0.79, cz + bdz); scene.add(back);
+        };
+
+        // 3 chairs on south side (backs toward south, +z)
+        [cfX - 1.5, cfX, cfX + 1.5].forEach((x) => addConfChair(x, cfZ + 1.7, 0, 0.3));
+        // 3 chairs on north side (backs toward north, -z)
+        [cfX - 1.5, cfX, cfX + 1.5].forEach((x) => addConfChair(x, cfZ - 1.7, 0, -0.3));
+        // 1 chair on west end (back toward west, -x)
+        addConfChair(cfX - 2.8, cfZ, -0.3, 0, true);
+        // 1 chair on east end (back toward east, +x)
+        addConfChair(cfX + 2.8, cfZ, 0.3, 0, true);
 
       } else if (resolvedEnv === 'cabin') {
         scene.background = new THREE.Color(0x87a96b);
