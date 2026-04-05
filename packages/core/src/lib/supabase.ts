@@ -58,38 +58,14 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['office_members']['Insert']>;
         Relationships: [];
       };
-      invitations: {
-        Row: {
-          id: string;
-          office_id: string;
-          inviter_id: string;
-          email: string;
-          role: 'admin' | 'member';
-          token: string;
-          status: 'pending' | 'accepted' | 'declined' | 'expired';
-          expires_at: string;
-          created_at: string;
-        };
-        Insert: Omit<Database['public']['Tables']['invitations']['Row'], 'id' | 'created_at'>;
-        Update: Partial<Database['public']['Tables']['invitations']['Insert']>;
-        Relationships: [];
-      };
-      chat_messages: {
-        Row: {
-          id: string;
-          office_id: string;
-          user_id: string | null;
-          user_name: string | null;
-          message: string;
-          created_at: string;
-        };
-        Insert: Omit<Database['public']['Tables']['chat_messages']['Row'], 'id' | 'created_at'>;
-        Update: Partial<Database['public']['Tables']['chat_messages']['Insert']>;
-        Relationships: [];
-      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      join_office_if_allowed: {
+        Args: { p_office_id: string };
+        Returns: 'ready' | 'denied' | 'not-found';
+      };
+    };
   };
 };
 
