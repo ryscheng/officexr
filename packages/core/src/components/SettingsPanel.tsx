@@ -10,7 +10,7 @@ import {
   MARIO_PRESETS,
 } from '@/types/avatar';
 
-type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
+type EnvironmentType = string;
 
 interface RoomMember {
   memberId: string;  // office_members.id
@@ -374,7 +374,7 @@ export default function SettingsPanel({
                 ['corporate',  '🏢 Corporate Office',      'Modern skyscraper with city views'],
                 ['cabin',      '🏔️ Cabin in the Woods',    'Cozy cabin near a lake with fireplace'],
                 ['coffeeshop', '☕ Coffee Shop',            'Trendy third wave coffee shop'],
-              ] as const).map(([val, label, desc]) => (
+              ] as [string, string, string][]).map(([val, label, desc]) => (
                 <button
                   key={val}
                   onClick={() => onEnvironmentChange(val)}
