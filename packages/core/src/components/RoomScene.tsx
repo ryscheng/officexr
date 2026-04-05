@@ -1914,12 +1914,31 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const nameCounts: Record<string, number> = {};
           onlineUsers.forEach(u => { nameCounts[u.name] = (nameCounts[u.name] || 0) + 1; });
           return (
-            <ul style={{ margin: '2px 0 4px 0', padding: '0 0 0 14px', fontSize: '12px', color: '#d1d5db' }}>
-              {onlineUsers.map(u => (
-                <li key={u.id}>
-                  {u.name}{nameCounts[u.name] > 1 && u.email ? ` (${u.email})` : ''}
-                </li>
-              ))}
+            <ul style={{ margin: '2px 0 4px 0', padding: '0 0 0 14px', fontSize: '12px', color: '#d1d5db', listStyle: 'none' }}>
+              {onlineUsers.map(u => {
+                const displayName = u.name + (nameCounts[u.name] > 1 && u.email ? ` (${u.email})` : '');
+                const isSelf = u.id === currentUser?.id;
+                return (
+                  <li key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                    <span>{displayName}</span>
+                    {!isSelf && (
+                      <button
+                        title={`Wave at ${u.name}`}
+                        onClick={() => sendChatMessage(`${currentUser?.name || 'Someone'} has waved at ${u.name} 👋`)}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          padding: '0 2px', fontSize: '13px', lineHeight: 1,
+                          opacity: 0.7, flexShrink: 0,
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.7'; }}
+                      >
+                        👋
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           );
         })()}
@@ -2078,6 +2097,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           >
             {chatMessages.map((msg) => (
               <div key={msg.id} style={{ color: 'white', fontSize: '14px', marginBottom: '4px' }}>
+                <span style={{ color: '#6b7280', fontSize: '11px', marginRight: '6px' }}>
+                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
                 <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>{msg.userName}: </span>
                 {msg.message}
               </div>
@@ -2119,6 +2141,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         >
           {chatMessages.slice(-2).map((msg) => (
             <div key={msg.id} style={{ color: 'white', fontSize: '13px', marginBottom: '2px' }}>
+              <span style={{ color: '#6b7280', fontSize: '11px', marginRight: '6px' }}>
+                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
               <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>{msg.userName}: </span>
               {msg.message}
             </div>
