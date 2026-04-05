@@ -192,8 +192,126 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     scene.add(floor);
     scene.add(new THREE.GridHelper(80, 40, 0x1a2050, 0x141430));
 
-    // Portals
+    // ── Wormhole portal shaders ────────────────────────────────────────────────
+    const wormholeVertexShader = `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+
+    const wormholeFragmentShader = `
+      uniform float uTime;
+      uniform vec3 uColor;
+      varying vec2 vUv;
+
+      // Simplex-style noise
+      vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+      float snoise(vec2 v) {
+        const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+                           -0.577350269189626, 0.024390243902439);
+        vec2 i = floor(v + dot(v, C.yy));
+        vec2 x0 = v - i + dot(i, C.xx);
+        vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+        vec4 x12 = x0.xyxy + C.xxzz;
+        x12.xy -= i1;
+        i = mod289(i);
+        vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
+        vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+        m = m*m; m = m*m;
+        vec3 x_ = 2.0 * fract(p * C.www) - 1.0;
+        vec3 h = abs(x_) - 0.5;
+        vec3 ox = floor(x_ + 0.5);
+        vec3 a0 = x_ - ox;
+        m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+        vec3 g;
+        g.x = a0.x * x0.x + h.x * x0.y;
+        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+        return 130.0 * dot(m, g);
+      }
+
+      void main() {
+        vec2 center = vUv - 0.5;
+        float dist = length(center);
+        float angle = atan(center.y, center.x);
+
+        // Swirling vortex
+        float spiral = angle + dist * 8.0 - uTime * 1.5;
+        float swirl = sin(spiral * 3.0) * 0.5 + 0.5;
+
+        // Layered noise for nebula texture
+        float n1 = snoise(vec2(angle * 2.0 + uTime * 0.3, dist * 4.0 - uTime * 0.5)) * 0.5 + 0.5;
+        float n2 = snoise(vec2(angle * 4.0 - uTime * 0.7, dist * 8.0 + uTime * 0.2)) * 0.5 + 0.5;
+
+        // Radial intensity — bright center fading outward
+        float radialGlow = smoothstep(0.5, 0.0, dist);
+        float edgeFade = smoothstep(0.5, 0.42, dist);
+
+        // Event horizon ring
+        float ringDist = abs(dist - 0.42);
+        float ring = exp(-ringDist * 30.0);
+
+        // Combine effects
+        float vortex = swirl * n1 * radialGlow;
+        float nebula = n2 * radialGlow * 0.6;
+
+        // Core white-hot center
+        float core = smoothstep(0.15, 0.0, dist);
+
+        // Color mixing: deep space tones blended with portal color
+        vec3 deepSpace = vec3(0.02, 0.0, 0.08);
+        vec3 vortexColor = mix(uColor * 0.7, vec3(0.6, 0.4, 1.0), 0.3);
+        vec3 nebulaColor = mix(uColor, vec3(0.3, 0.6, 1.0), 0.5);
+        vec3 ringColor = uColor + vec3(0.3, 0.3, 0.5);
+        vec3 coreColor = vec3(1.0, 0.95, 0.98);
+
+        vec3 col = deepSpace;
+        col += vortexColor * vortex * 1.2;
+        col += nebulaColor * nebula;
+        col += ringColor * ring * 1.5;
+        col += coreColor * core * 2.0;
+
+        float alpha = edgeFade * max(max(vortex, nebula * 0.8), max(ring, core));
+        alpha = clamp(alpha + core * 0.9 + ring * 0.6, 0.0, 1.0) * edgeFade;
+
+        gl_FragColor = vec4(col, alpha);
+      }
+    `;
+
+    const rimVertexShader = `
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = wp.xyz;
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }
+    `;
+
+    const rimFragmentShader = `
+      uniform float uTime;
+      uniform vec3 uColor;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        float pulse = sin(uTime * 2.0) * 0.15 + 0.85;
+        float flicker = sin(uTime * 7.0 + vWorldPosition.y * 5.0) * 0.08;
+        vec3 col = uColor * (1.2 + flicker) * pulse;
+        col += vec3(0.2, 0.15, 0.35) * pulse;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    // ── Portals ─────────────────────────────────────────────────────────────────
     const portals: Array<{ position: THREE.Vector3; roomId: string; roomName: string }> = [];
+    const portalMaterials: THREE.ShaderMaterial[] = [];
+    const rimMaterials: THREE.ShaderMaterial[] = [];
+    const portalGroups: THREE.Group[] = [];
     const count = rooms.length;
 
     rooms.forEach((room, i) => {
@@ -202,46 +320,100 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
       const portalZ = -8;
       const portalY = 2.5;
 
+      const colorVec = new THREE.Color(color);
       const group = new THREE.Group();
       group.position.set(x, portalY, portalZ);
       scene.add(group);
 
-      // Glowing ring
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(2, 0.13, 16, 48),
+      // Swirling vortex disc
+      const vortexMat = new THREE.ShaderMaterial({
+        vertexShader: wormholeVertexShader,
+        fragmentShader: wormholeFragmentShader,
+        uniforms: {
+          uTime: { value: 0 },
+          uColor: { value: colorVec },
+        },
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      portalMaterials.push(vortexMat);
+
+      const vortexDisc = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.2, 4.2),
+        vortexMat,
+      );
+      group.add(vortexDisc);
+
+      // Outer rim ring — glowing torus with animated shader
+      const outerRimMat = new THREE.ShaderMaterial({
+        vertexShader: rimVertexShader,
+        fragmentShader: rimFragmentShader,
+        uniforms: {
+          uTime: { value: 0 },
+          uColor: { value: colorVec },
+        },
+      });
+      rimMaterials.push(outerRimMat);
+
+      const outerRim = new THREE.Mesh(
+        new THREE.TorusGeometry(2.1, 0.1, 16, 64),
+        outerRimMat,
+      );
+      group.add(outerRim);
+
+      // Inner energy ring
+      const innerRim = new THREE.Mesh(
+        new THREE.TorusGeometry(1.85, 0.04, 12, 64),
         new THREE.MeshStandardMaterial({
-          color,
+          color: 0xffffff,
           emissive: color,
-          emissiveIntensity: 0.9,
-          metalness: 0.4,
-          roughness: 0.3,
+          emissiveIntensity: 1.5,
+          transparent: true,
+          opacity: 0.5,
         })
       );
-      group.add(ring);
+      group.add(innerRim);
 
-      // Translucent backdrop plane
-      group.add(new THREE.Mesh(
-        new THREE.PlaneGeometry(3.9, 5.5),
-        new THREE.MeshStandardMaterial({
-          color,
-          emissive: color,
-          emissiveIntensity: 0.08,
-          transparent: true,
-          opacity: 0.18,
-          side: THREE.DoubleSide,
-        })
-      ));
+      // Accretion ring particles (orbiting dots)
+      const particleCount = 80;
+      const particleGeo = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      for (let p = 0; p < particleCount; p++) {
+        const a = (p / particleCount) * Math.PI * 2;
+        const r = 2.0 + (Math.random() - 0.5) * 0.4;
+        positions[p * 3]     = Math.cos(a) * r;
+        positions[p * 3 + 1] = Math.sin(a) * r;
+        positions[p * 3 + 2] = (Math.random() - 0.5) * 0.3;
+      }
+      particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-      // Point light for halo glow
-      const light = new THREE.PointLight(color, 1.8, 9);
+      const particleMat = new THREE.PointsMaterial({
+        color: color,
+        size: 0.06,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const particles = new THREE.Points(particleGeo, particleMat);
+      group.add(particles);
+
+      // Gravitational glow light
+      const light = new THREE.PointLight(color, 2.5, 12);
       group.add(light);
 
-      // Text label above the ring
+      // Subtle secondary ambient glow
+      const glowLight = new THREE.PointLight(0x6040a0, 0.8, 6);
+      glowLight.position.set(0, 0, 1);
+      group.add(glowLight);
+
+      // Text label above the wormhole
       const sprite = makeTextSprite(room.name, color);
       sprite.position.set(0, 3.3, 0);
       group.add(sprite);
 
-      // Proximity check uses eye-height position in front of portal
+      portalGroups.push(group);
       portals.push({ position: new THREE.Vector3(x, 1.6, portalZ), roomId: room.id, roomName: room.name });
     });
 
@@ -323,10 +495,23 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
 
     // ── Animation loop ────────────────────────────────────────────────────────
     const moveSpeed = 0.05;
+    const clock = new THREE.Clock();
     let rafId: number;
 
     const animate = () => {
       rafId = requestAnimationFrame(animate);
+
+      // Update wormhole shader uniforms and animate particles
+      const elapsed = clock.getElapsedTime();
+      portalMaterials.forEach(mat => { mat.uniforms.uTime.value = elapsed; });
+      rimMaterials.forEach(mat => { mat.uniforms.uTime.value = elapsed; });
+      portalGroups.forEach(group => {
+        group.children.forEach(child => {
+          if (child instanceof THREE.Points) {
+            child.rotation.z = elapsed * 0.4;
+          }
+        });
+      });
 
       const forward = new THREE.Vector3();
       const right   = new THREE.Vector3();
@@ -444,7 +629,7 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
         onEnableMotion={enableMotion}
         onDisableMotion={disableMotion}
         motionDebugRef={motionDebugRef}
-        proximityHint="Walk into a glowing portal to enter a room"
+        proximityHint="Walk into a wormhole portal to enter a room"
       />
 
       {/* iOS motion permission prompt */}
