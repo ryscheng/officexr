@@ -81,9 +81,6 @@ export default function SettingsPanel({
   const [linkAccessSaving, setLinkAccessSaving] = useState(false);
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteMessage, setInviteMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [removeLoadingId, setRemoveLoadingId] = useState<string | null>(null);
 
   // Load access settings whenever the panel opens
@@ -121,33 +118,6 @@ export default function SettingsPanel({
     await supabase.from('offices').update({ link_access: next }).eq('id', officeId);
     setLinkAccess(next);
     setLinkAccessSaving(false);
-  };
-
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!officeId || !user || !inviteEmail.trim()) return;
-    setInviteLoading(true);
-    setInviteMessage(null);
-    try {
-      const token = crypto.randomUUID();
-      const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      const { error } = await supabase.from('invitations').insert({
-        office_id: officeId,
-        inviter_id: user.id,
-        email: inviteEmail.trim().toLowerCase(),
-        role: 'member',
-        token,
-        status: 'pending',
-        expires_at: expires,
-      });
-      if (error) throw error;
-      setInviteEmail('');
-      setInviteMessage({ type: 'ok', text: `Invitation sent to ${inviteEmail.trim()}` });
-    } catch {
-      setInviteMessage({ type: 'err', text: 'Failed to send invitation.' });
-    } finally {
-      setInviteLoading(false);
-    }
   };
 
   const handleRemoveMember = async (memberId: string, memberUserId: string) => {
@@ -264,44 +234,6 @@ export default function SettingsPanel({
                 {linkAccess ? 'On' : 'Off'}
               </button>
             </div>
-
-            {/* Invite by email (owners only) */}
-            {currentUserRole === 'owner' && (
-              <form onSubmit={handleInvite} style={{ marginBottom: '18px' }}>
-                <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>Invite by email</div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="email"
-                    value={inviteEmail}
-                    onChange={e => setInviteEmail(e.target.value)}
-                    placeholder="colleague@example.com"
-                    required
-                    style={{
-                      flex: 1, padding: '8px 10px', borderRadius: '6px',
-                      border: '1px solid #ccc', fontSize: '13px',
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    disabled={inviteLoading || !inviteEmail.trim()}
-                    style={{
-                      ...btnBase, padding: '8px 14px', fontSize: '13px',
-                      background: inviteLoading ? '#aaa' : '#3b82f6', color: 'white',
-                    }}
-                  >
-                    {inviteLoading ? '…' : 'Invite'}
-                  </button>
-                </div>
-                {inviteMessage && (
-                  <div style={{
-                    marginTop: '6px', fontSize: '12px',
-                    color: inviteMessage.type === 'ok' ? '#16a34a' : '#dc2626',
-                  }}>
-                    {inviteMessage.text}
-                  </div>
-                )}
-              </form>
-            )}
 
             {/* Member list */}
             <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>Members</div>

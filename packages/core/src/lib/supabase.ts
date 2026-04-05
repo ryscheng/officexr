@@ -58,22 +58,6 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['office_members']['Insert']>;
         Relationships: [];
       };
-      invitations: {
-        Row: {
-          id: string;
-          office_id: string;
-          inviter_id: string;
-          email: string;
-          role: 'admin' | 'member';
-          token: string;
-          status: 'pending' | 'accepted' | 'declined' | 'expired';
-          expires_at: string;
-          created_at: string;
-        };
-        Insert: Omit<Database['public']['Tables']['invitations']['Row'], 'id' | 'created_at'>;
-        Update: Partial<Database['public']['Tables']['invitations']['Insert']>;
-        Relationships: [];
-      };
       chat_messages: {
         Row: {
           id: string;

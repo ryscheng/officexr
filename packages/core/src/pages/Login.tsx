@@ -187,7 +187,7 @@ export default function Login() {
           color: 'rgba(255,255,255,0.25)', textAlign: 'center', lineHeight: 1.6,
         }}>
           Guest access is limited to the public global lobby.
-          Sign in to create rooms and invite others.
+          Sign in to create and join rooms.
         </p>
       </div>
     </div>

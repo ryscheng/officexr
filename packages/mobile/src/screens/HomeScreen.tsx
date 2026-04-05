@@ -84,7 +84,7 @@ export default function HomeScreen({ navigation }: Props) {
         <ActivityIndicator color="#4285f4" style={{ marginTop: 32 }} />
       ) : offices.length === 0 ? (
         <Text style={styles.emptyText}>
-          You haven't joined any offices yet. Use the web app to create or accept invitations.
+          You haven't joined any offices yet. Use the web app to create or join an office.
         </Text>
       ) : (
         <FlatList

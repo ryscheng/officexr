@@ -35,19 +35,6 @@ create table if not exists public.office_members (
   unique (office_id, user_id)
 );
 
--- Invitations
-create table if not exists public.invitations (
-  id uuid primary key default gen_random_uuid(),
-  office_id uuid not null references public.offices on delete cascade,
-  inviter_id uuid not null references auth.users on delete cascade,
-  email text not null,
-  role text not null check (role in ('admin', 'member')),
-  token text not null unique,
-  status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'expired')),
-  expires_at timestamptz not null,
-  created_at timestamptz not null default now()
-);
-
 -- Chat messages (persistent history, up to 50 per office queried on join)
 create table if not exists public.chat_messages (
   id uuid primary key default gen_random_uuid(),
@@ -94,7 +81,6 @@ create trigger on_auth_user_created
 alter table public.profiles enable row level security;
 alter table public.offices enable row level security;
 alter table public.office_members enable row level security;
-alter table public.invitations enable row level security;
 alter table public.chat_messages enable row level security;
 
 -- Profiles: users can read any profile, only update their own
@@ -170,29 +156,6 @@ create policy "Authenticated users can insert office memberships"
   on public.office_members for insert
   to authenticated
   with check (auth.uid() = user_id);
-
--- Invitations: users can see invitations for their email
-create policy "Users can view invitations for their email"
-  on public.invitations for select
-  to authenticated
-  using (email = auth.email());
-
-create policy "Office owners/admins can create invitations"
-  on public.invitations for insert
-  to authenticated
-  with check (
-    exists (
-      select 1 from public.office_members
-      where office_members.office_id = invitations.office_id
-        and office_members.user_id = auth.uid()
-        and office_members.role in ('owner', 'admin')
-    )
-  );
-
-create policy "Users can update their own invitations"
-  on public.invitations for update
-  to authenticated
-  using (email = auth.email());
 
 -- Chat messages: readable by anyone (for global office too), insertable by authenticated users
 create policy "Chat messages are publicly readable"
