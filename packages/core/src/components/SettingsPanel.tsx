@@ -51,7 +51,7 @@ const sectionStyle: React.CSSProperties = {
 };
 
 const sectionTitle: React.CSSProperties = {
-  margin: '0 0 14px 0', fontSize: '17px', fontWeight: '600',
+  margin: '0 0 14px 0', fontSize: '17px', fontWeight: '600', color: '#111',
 };
 
 const btnBase: React.CSSProperties = {
@@ -216,7 +216,7 @@ export default function SettingsPanel({
   return (
     <div style={panelStyle} onClick={() => { setOpenMenuId(null); onClose(); }}>
       <div style={cardStyle} onClick={e => { e.stopPropagation(); setOpenMenuId(null); }}>
-        <h2 style={{ margin: '0 0 20px 0', fontSize: '22px', fontWeight: 'bold' }}>Settings</h2>
+        <h2 style={{ margin: '0 0 20px 0', fontSize: '22px', fontWeight: 'bold', color: '#111' }}>Settings</h2>
 
         {/* ── Access ── */}
         {officeId && (
@@ -226,7 +226,7 @@ export default function SettingsPanel({
             {/* Link access toggle */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: '500' }}>Link access</div>
+                <div style={{ fontSize: '14px', fontWeight: '500', color: '#111' }}>Link access</div>
                 <div style={{ fontSize: '12px', color: '#333', marginTop: '2px' }}>
                   Anyone with the room link can join
                 </div>
@@ -248,7 +248,7 @@ export default function SettingsPanel({
             </div>
 
             {/* Member list */}
-            <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>Members</div>
+            <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#111' }}>Members</div>
             {membersLoading ? (
               <div style={{ fontSize: '13px', color: '#333' }}>Loading…</div>
             ) : members.length === 0 ? (
@@ -291,7 +291,7 @@ export default function SettingsPanel({
                         {canManage && (
                           <div style={{ position: 'relative' }}>
                             <button
-                              onClick={() => setOpenMenuId(isMenuOpen ? null : m.memberId)}
+                              onClick={(e) => { e.stopPropagation(); setOpenMenuId(isMenuOpen ? null : m.memberId); }}
                               disabled={isLoading}
                               title="Member options"
                               style={{
