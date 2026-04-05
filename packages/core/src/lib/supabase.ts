@@ -58,19 +58,6 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['office_members']['Insert']>;
         Relationships: [];
       };
-      chat_messages: {
-        Row: {
-          id: string;
-          office_id: string;
-          user_id: string | null;
-          user_name: string | null;
-          message: string;
-          created_at: string;
-        };
-        Insert: Omit<Database['public']['Tables']['chat_messages']['Row'], 'id' | 'created_at'>;
-        Update: Partial<Database['public']['Tables']['chat_messages']['Insert']>;
-        Relationships: [];
-      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

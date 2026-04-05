@@ -54,6 +54,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   }
 
   const currentUser = user || anonymousUserRef.current;
+  // Keep currentUser in a ref so closures inside the Three.js useEffect always
+  // see the latest value without being listed as a dep (which would tear down and
+  // recreate the entire scene + channel on every token refresh).
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -483,16 +488,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       payload: { message: chatMessage },
     });
 
-    // Add own message to chat immediately
+    // Add own message to local state immediately (sender doesn't receive own broadcast)
     setChatMessages((prev) => [...prev.slice(-49), chatMessage]);
-
-    // Persist to Supabase for history
-    supabase.from('chat_messages').insert({
-      office_id: officeId,
-      user_id: user?.id ?? null,
-      user_name: currentUser.name,
-      message,
-    });
   };
 
   useEffect(() => {
@@ -967,28 +964,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     channelRef.current = channel;
 
-    // Load recent chat history from Supabase
-    supabase
-      .from('chat_messages')
-      .select('id, user_id, user_name, message, created_at')
-      .eq('office_id', officeId)
-      .order('created_at', { ascending: false })
-      .limit(50)
-      .then(({ data }) => {
-        if (data) {
-          const messages: ChatMessage[] = data
-            .reverse()
-            .map((row) => ({
-              id: row.id,
-              userId: row.user_id || 'unknown',
-              userName: row.user_name || 'User',
-              message: row.message,
-              timestamp: new Date(row.created_at).getTime(),
-            }));
-          setChatMessages(messages);
-        }
-      });
-
     // Presence: sync existing users
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState<PresenceEntry>();
@@ -1092,7 +1067,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Broadcast: chat messages
     channel.on('broadcast', { event: 'chat' }, ({ payload }) => {
       const { message } = payload as { message: ChatMessage };
-      if (message.userId !== currentUser.id) {
+      if (message.userId !== currentUserRef.current?.id) {
         setChatMessages((prev) => [...prev.slice(-49), message]);
       }
     });
@@ -1386,7 +1361,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
       renderer.dispose();
     };
-  }, [officeId, currentUser, environment]);
+  }, [officeId, currentUser?.id, environment]);
 
   const handleSaveSettings = async (settings: AvatarCustomization) => {
     if (!user) return;

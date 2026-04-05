@@ -35,19 +35,6 @@ create table if not exists public.office_members (
   unique (office_id, user_id)
 );
 
--- Chat messages (persistent history, up to 50 per office queried on join)
-create table if not exists public.chat_messages (
-  id uuid primary key default gen_random_uuid(),
-  office_id text not null,
-  user_id uuid references auth.users on delete set null,
-  user_name text,
-  message text not null,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists chat_messages_office_id_created_at_idx
-  on public.chat_messages (office_id, created_at desc);
-
 -- ============================================================
 -- Auto-create profile on new user signup
 -- ============================================================
@@ -81,7 +68,6 @@ create trigger on_auth_user_created
 alter table public.profiles enable row level security;
 alter table public.offices enable row level security;
 alter table public.office_members enable row level security;
-alter table public.chat_messages enable row level security;
 
 -- Profiles: users can read any profile, only update their own
 create policy "Profiles are viewable by authenticated users"
@@ -157,17 +143,3 @@ create policy "Authenticated users can insert office memberships"
   to authenticated
   with check (auth.uid() = user_id);
 
--- Chat messages: readable by anyone (for global office too), insertable by authenticated users
-create policy "Chat messages are publicly readable"
-  on public.chat_messages for select
-  using (true);
-
-create policy "Authenticated users can insert chat messages"
-  on public.chat_messages for insert
-  to authenticated
-  with check (auth.uid() = user_id);
-
-create policy "Anonymous users can insert chat messages"
-  on public.chat_messages for insert
-  to anon
-  with check (user_id is null);
