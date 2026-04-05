@@ -88,6 +88,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const micAudioCtxRef = useRef<AudioContext | null>(null);
   const startMicRef = useRef<(() => Promise<void>) | null>(null);
   const lastPositionUpdate = useRef<number>(0);
+  const lastSeenAt = useRef<Map<string, number>>(new Map());
   const [showSettings, setShowSettings] = useState(false);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
     bodyColor: '#3498db',
@@ -999,6 +1000,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           scene.remove(avatarsRef.current.get(id)!);
           avatarsRef.current.delete(id);
           avatarTargetsRef.current.delete(id);
+          lastSeenAt.current.delete(id);
           const sphere = bubbleSpheresRef.current.get(id);
           if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
           presenceDataRef.current.delete(id);
@@ -1033,6 +1035,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           scene.remove(avatar);
           avatarsRef.current.delete(p.id);
           avatarTargetsRef.current.delete(p.id);
+          lastSeenAt.current.delete(p.id);
           const sphere = bubbleSpheresRef.current.get(p.id);
           if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
           presenceDataRef.current.delete(p.id);
@@ -1053,6 +1056,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           position: new THREE.Vector3(position.x, position.y, position.z),
           rotationY: rotation.y,
         });
+        lastSeenAt.current.set(userId, Date.now());
       }
     });
 
@@ -1081,7 +1085,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        const presence: PresenceEntry = {
+        // On reconnect myPresenceRef already holds the latest state (position, jitsiRoom, etc.).
+        // Re-use it so we don't reset position or Jitsi room on a transient disconnect.
+        const presence: PresenceEntry = myPresenceRef.current ?? {
           id: currentUser.id,
           name: currentUser.name || 'User',
           image: user?.image || null,
@@ -1092,6 +1098,35 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         };
         myPresenceRef.current = presence;
         await channel.track(presence);
+
+        // Re-sync presence state to reconcile any join/leave events missed while disconnected.
+        const state = channel.presenceState<PresenceEntry>();
+        const presentIds = new Set<string>();
+        Object.values(state).forEach((presences) => {
+          presences.forEach((p) => {
+            presentIds.add(p.id);
+            presenceDataRef.current.set(p.id, p);
+            if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
+              const avatar = createAvatar(scene, p);
+              avatarsRef.current.set(p.id, avatar);
+              const sphere = createBubbleSphere(scene);
+              sphere.position.copy(avatar.position);
+              bubbleSpheresRef.current.set(p.id, sphere);
+            }
+          });
+        });
+        avatarsRef.current.forEach((_, id) => {
+          if (!presentIds.has(id)) {
+            scene.remove(avatarsRef.current.get(id)!);
+            avatarsRef.current.delete(id);
+            avatarTargetsRef.current.delete(id);
+            lastSeenAt.current.delete(id);
+            const sphere = bubbleSpheresRef.current.get(id);
+            if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
+            presenceDataRef.current.delete(id);
+          }
+        });
+        setUserCount(presentIds.size);
       }
     });
 
@@ -1128,7 +1163,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
 
     // Animation loop
+    const clock = new THREE.Clock();
+    const STALE_THRESHOLD_MS = 15_000;
+    let lastStaleCheck = 0;
+
     const animate = () => {
+      const delta = clock.getDelta(); // seconds since last frame
+      // Frame-rate-independent lerp: equivalent to 0.15 at 60 fps, consistent at any rate
+      const lerpAlpha = 1 - Math.pow(0.005, delta);
       const direction = new THREE.Vector3();
       const forward = new THREE.Vector3();
       const right = new THREE.Vector3();
@@ -1201,12 +1243,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       avatarTargetsRef.current.forEach((target, uid) => {
         const avatar = avatarsRef.current.get(uid);
         if (avatar) {
-          avatar.position.lerp(target.position, 0.15);
+          avatar.position.lerp(target.position, lerpAlpha);
           // Lerp rotation via shortest-path on Y axis
           let dy = target.rotationY - avatar.rotation.y;
           if (dy > Math.PI) dy -= Math.PI * 2;
           if (dy < -Math.PI) dy += Math.PI * 2;
-          avatar.rotation.y += dy * 0.15;
+          avatar.rotation.y += dy * lerpAlpha;
         }
       });
 
@@ -1231,6 +1273,25 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       });
       if (localBubbleSphereRef.current) {
         (localBubbleSphereRef.current.material as THREE.MeshStandardMaterial).color.setHex(activeMat);
+      }
+
+      // Periodically remove avatars for users whose position broadcasts have gone stale.
+      // This catches abrupt disconnects (crash/network drop) before Supabase fires a leave event.
+      if (now - lastStaleCheck > 5000) {
+        lastStaleCheck = now;
+        lastSeenAt.current.forEach((t, uid) => {
+          if (now - t > STALE_THRESHOLD_MS) {
+            const staleAvatar = avatarsRef.current.get(uid);
+            if (staleAvatar) scene.remove(staleAvatar);
+            avatarsRef.current.delete(uid);
+            avatarTargetsRef.current.delete(uid);
+            lastSeenAt.current.delete(uid);
+            const staleSphere = bubbleSpheresRef.current.get(uid);
+            if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
+            presenceDataRef.current.delete(uid);
+            setUserCount((prev) => Math.max(0, prev - 1));
+          }
+        });
       }
 
       // Fire proximity change handler only when the set changes
@@ -1296,6 +1357,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
       bubbleSpheresRef.current.clear();
       presenceDataRef.current.clear();
+      lastSeenAt.current.clear();
       nearbyUserIdsRef.current = new Set();
 
       if (vrButton?.parentNode) {
