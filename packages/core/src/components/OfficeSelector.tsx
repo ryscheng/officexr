@@ -143,7 +143,7 @@ export default function OfficeSelector({ onSelectOffice }: OfficeSelectorProps) 
       setNewOfficeDescription('');
       setShowCreateForm(false);
       await fetchOffices();
-      onSelectOffice(office.id);
+      onSelectOffice(officeId);
     } catch (err) {
       console.error('Error creating office:', err);
       setError('Failed to create office');
