@@ -215,7 +215,7 @@ export default function SettingsPanel({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
               <div>
                 <div style={{ fontSize: '14px', fontWeight: '500' }}>Link access</div>
-                <div style={{ fontSize: '12px', color: '#555', marginTop: '2px' }}>
+                <div style={{ fontSize: '12px', color: '#333', marginTop: '2px' }}>
                   Anyone with the room link can join
                 </div>
               </div>
@@ -238,9 +238,9 @@ export default function SettingsPanel({
             {/* Member list */}
             <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>Members</div>
             {membersLoading ? (
-              <div style={{ fontSize: '13px', color: '#555' }}>Loading…</div>
+              <div style={{ fontSize: '13px', color: '#333' }}>Loading…</div>
             ) : members.length === 0 ? (
-              <div style={{ fontSize: '13px', color: '#555' }}>No members found.</div>
+              <div style={{ fontSize: '13px', color: '#333' }}>No members found.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {members.map(m => (
@@ -252,11 +252,11 @@ export default function SettingsPanel({
                       <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {m.name ?? m.email ?? m.userId}
                         {m.userId === user?.id && (
-                          <span style={{ marginLeft: '6px', fontSize: '11px', color: '#555' }}>(you)</span>
+                          <span style={{ marginLeft: '6px', fontSize: '11px', color: '#333' }}>(you)</span>
                         )}
                       </div>
                       {m.name && m.email && (
-                        <div style={{ fontSize: '11px', color: '#555', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '11px', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {m.email}
                         </div>
                       )}
@@ -312,7 +312,7 @@ export default function SettingsPanel({
                   }}
                 >
                   <div style={{ fontWeight: 'bold', marginBottom: '3px' }}>{label}</div>
-                  <div style={{ fontSize: '13px', opacity: 0.8 }}>{desc}</div>
+                  <div style={{ fontSize: '13px', opacity: 1 }}>{desc}</div>
                 </button>
               ))}
             </div>
@@ -405,7 +405,7 @@ export default function SettingsPanel({
                 {uploadError && (
                   <div style={{ marginTop: '8px', fontSize: '13px', color: '#e74c3c' }}>{uploadError}</div>
                 )}
-                <div style={{ marginTop: '8px', fontSize: '12px', color: '#555' }}>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#333' }}>
                   Max 20 MB · auto-scaled to avatar height · visible to all users in the room
                 </div>
               </div>
