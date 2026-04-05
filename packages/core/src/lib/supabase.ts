@@ -60,7 +60,12 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      join_office_if_allowed: {
+        Args: { p_office_id: string };
+        Returns: 'ready' | 'denied' | 'not-found';
+      };
+    };
   };
 };
 

@@ -24,43 +24,8 @@ export default function RoomPage() {
 
   const checkAccess = async () => {
     if (!user || !id) return;
-
-    // Already a member of this room?
-    const { data: membership } = await supabase
-      .from('office_members')
-      .select('id')
-      .eq('office_id', id)
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (membership) {
-      setState('ready');
-      return;
-    }
-
-    // Not a member — check if the room allows link access
-    const { data: office } = await supabase
-      .from('offices')
-      .select('id, link_access')
-      .eq('id', id)
-      .maybeSingle();
-
-    if (!office) {
-      setState('not-found');
-      return;
-    }
-
-    if (office.link_access) {
-      // Auto-join as member
-      await supabase.from('office_members').insert({
-        office_id: id,
-        user_id: user.id,
-        role: 'member',
-      });
-      setState('ready');
-    } else {
-      setState('denied');
-    }
+    const { data, error } = await supabase.rpc('join_office_if_allowed', { p_office_id: id });
+    setState(error ? 'not-found' : (data ?? 'not-found'));
   };
 
   if (loading || state === 'checking') {
