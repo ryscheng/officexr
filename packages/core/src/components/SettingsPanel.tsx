@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import {
@@ -12,6 +12,14 @@ import {
 
 type EnvironmentType = 'corporate' | 'cabin' | 'coffeeshop';
 
+interface RoomMember {
+  memberId: string;  // office_members.id
+  userId: string;
+  name: string | null;
+  email: string | null;
+  role: 'owner' | 'admin' | 'member';
+}
+
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -19,6 +27,8 @@ interface SettingsPanelProps {
   onSave?: (settings: AvatarCustomization) => void;
   currentEnvironment?: EnvironmentType;
   onEnvironmentChange?: (env: EnvironmentType) => void;
+  officeId?: string;
+  currentUserRole?: 'owner' | 'admin' | 'member';
 }
 
 const panelStyle: React.CSSProperties = {
@@ -56,6 +66,8 @@ export default function SettingsPanel({
   onSave,
   currentEnvironment = 'corporate',
   onEnvironmentChange,
+  officeId,
+  currentUserRole,
 }: SettingsPanelProps) {
   const { user } = useAuth();
   const [settings, setSettings] = useState<AvatarCustomization>(currentSettings);
@@ -63,6 +75,88 @@ export default function SettingsPanel({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Access section state
+  const [linkAccess, setLinkAccess] = useState<boolean | null>(null);
+  const [linkAccessSaving, setLinkAccessSaving] = useState(false);
+  const [members, setMembers] = useState<RoomMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [removeLoadingId, setRemoveLoadingId] = useState<string | null>(null);
+
+  // Load access settings whenever the panel opens
+  useEffect(() => {
+    if (!isOpen || !officeId) return;
+
+    // Fetch link_access from offices
+    supabase.from('offices').select('link_access').eq('id', officeId).single()
+      .then(({ data }) => { if (data) setLinkAccess(data.link_access); });
+
+    // Fetch members joined with profiles
+    setMembersLoading(true);
+    supabase
+      .from('office_members')
+      .select('id, user_id, role, profiles(name, email)')
+      .eq('office_id', officeId)
+      .then(({ data }) => {
+        if (data) {
+          setMembers((data as any[]).map(m => ({
+            memberId: m.id,
+            userId: m.user_id,
+            name: m.profiles?.name ?? null,
+            email: m.profiles?.email ?? null,
+            role: m.role,
+          })));
+        }
+        setMembersLoading(false);
+      });
+  }, [isOpen, officeId]);
+
+  const handleToggleLinkAccess = async () => {
+    if (!officeId || linkAccess === null) return;
+    setLinkAccessSaving(true);
+    const next = !linkAccess;
+    await supabase.from('offices').update({ link_access: next }).eq('id', officeId);
+    setLinkAccess(next);
+    setLinkAccessSaving(false);
+  };
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!officeId || !user || !inviteEmail.trim()) return;
+    setInviteLoading(true);
+    setInviteMessage(null);
+    try {
+      const token = crypto.randomUUID();
+      const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { error } = await supabase.from('invitations').insert({
+        office_id: officeId,
+        inviter_id: user.id,
+        email: inviteEmail.trim().toLowerCase(),
+        role: 'member',
+        token,
+        status: 'pending',
+        expires_at: expires,
+      });
+      if (error) throw error;
+      setInviteEmail('');
+      setInviteMessage({ type: 'ok', text: `Invitation sent to ${inviteEmail.trim()}` });
+    } catch {
+      setInviteMessage({ type: 'err', text: 'Failed to send invitation.' });
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string, memberUserId: string) => {
+    if (!officeId || memberUserId === user?.id) return;
+    setRemoveLoadingId(memberId);
+    await supabase.from('office_members').delete().eq('id', memberId);
+    setMembers(prev => prev.filter(m => m.memberId !== memberId));
+    setRemoveLoadingId(null);
+  };
 
   if (!isOpen) return null;
 
@@ -141,6 +235,130 @@ export default function SettingsPanel({
     <div style={panelStyle} onClick={onClose}>
       <div style={cardStyle} onClick={e => e.stopPropagation()}>
         <h2 style={{ margin: '0 0 20px 0', fontSize: '22px', fontWeight: 'bold' }}>Settings</h2>
+
+        {/* ── Access ── */}
+        {officeId && (
+          <div style={sectionStyle}>
+            <h3 style={sectionTitle}>Access</h3>
+
+            {/* Link access toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '500' }}>Link access</div>
+                <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>
+                  Anyone with the room link can join
+                </div>
+              </div>
+              <button
+                onClick={handleToggleLinkAccess}
+                disabled={linkAccessSaving || currentUserRole !== 'owner' || linkAccess === null}
+                style={{
+                  ...btnBase,
+                  padding: '7px 16px', fontSize: '13px',
+                  background: linkAccess ? '#16a34a' : '#6b7280',
+                  color: 'white',
+                  opacity: (linkAccessSaving || currentUserRole !== 'owner') ? 0.6 : 1,
+                  minWidth: '80px',
+                }}
+              >
+                {linkAccess ? 'On' : 'Off'}
+              </button>
+            </div>
+
+            {/* Invite by email (owners only) */}
+            {currentUserRole === 'owner' && (
+              <form onSubmit={handleInvite} style={{ marginBottom: '18px' }}>
+                <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>Invite by email</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    placeholder="colleague@example.com"
+                    required
+                    style={{
+                      flex: 1, padding: '8px 10px', borderRadius: '6px',
+                      border: '1px solid #ccc', fontSize: '13px',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={inviteLoading || !inviteEmail.trim()}
+                    style={{
+                      ...btnBase, padding: '8px 14px', fontSize: '13px',
+                      background: inviteLoading ? '#aaa' : '#3b82f6', color: 'white',
+                    }}
+                  >
+                    {inviteLoading ? '…' : 'Invite'}
+                  </button>
+                </div>
+                {inviteMessage && (
+                  <div style={{
+                    marginTop: '6px', fontSize: '12px',
+                    color: inviteMessage.type === 'ok' ? '#16a34a' : '#dc2626',
+                  }}>
+                    {inviteMessage.text}
+                  </div>
+                )}
+              </form>
+            )}
+
+            {/* Member list */}
+            <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>Members</div>
+            {membersLoading ? (
+              <div style={{ fontSize: '13px', color: '#888' }}>Loading…</div>
+            ) : members.length === 0 ? (
+              <div style={{ fontSize: '13px', color: '#888' }}>No members found.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {members.map(m => (
+                  <div key={m.memberId} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 10px', borderRadius: '6px', background: '#f5f5f5',
+                  }}>
+                    <div style={{ overflow: 'hidden' }}>
+                      <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {m.name ?? m.email ?? m.userId}
+                        {m.userId === user?.id && (
+                          <span style={{ marginLeft: '6px', fontSize: '11px', color: '#888' }}>(you)</span>
+                        )}
+                      </div>
+                      {m.name && m.email && (
+                        <div style={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {m.email}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                      <span style={{
+                        fontSize: '11px', padding: '2px 8px', borderRadius: '4px', fontWeight: '500',
+                        background: m.role === 'owner' ? '#fef3c7' : '#e0f2fe',
+                        color: m.role === 'owner' ? '#92400e' : '#0369a1',
+                        textTransform: 'capitalize',
+                      }}>
+                        {m.role}
+                      </span>
+                      {currentUserRole === 'owner' && m.userId !== user?.id && (
+                        <button
+                          onClick={() => handleRemoveMember(m.memberId, m.userId)}
+                          disabled={removeLoadingId === m.memberId}
+                          title="Remove from room"
+                          style={{
+                            ...btnBase, padding: '3px 8px', fontSize: '12px',
+                            background: '#fee2e2', color: '#dc2626',
+                            opacity: removeLoadingId === m.memberId ? 0.5 : 1,
+                          }}
+                        >
+                          {removeLoadingId === m.memberId ? '…' : 'Remove'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Environment ── */}
         {onEnvironmentChange && (
