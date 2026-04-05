@@ -300,12 +300,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const handleEnvironmentChange = (env: EnvironmentType) => {
     setEnvironment(env);
 
-    // Persist to DB so new joiners see the same scene
+    // Persist to DB — only owners/admins can update offices (enforced by RLS)
     if (officeId && officeId !== 'global') {
-      supabase.rpc('set_office_environment', {
-        p_office_id: officeId,
-        p_environment: env,
-      }).then(({ error }) => {
+      supabase.from('offices').update({ environment: env }).eq('id', officeId)
+        .then(({ error }) => {
         if (error) console.error('[Environment] Failed to save:', error);
       });
     }
@@ -2159,7 +2157,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         currentSettings={avatarCustomization}
         onSave={user ? handleSaveSettings : undefined}
         currentEnvironment={environment}
-        onEnvironmentChange={user ? handleEnvironmentChange : undefined}
+        onEnvironmentChange={(currentUserRole === 'owner' || currentUserRole === 'admin') ? handleEnvironmentChange : undefined}
         officeId={officeId !== 'global' ? officeId : undefined}
         currentUserRole={currentUserRole}
       />

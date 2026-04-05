@@ -66,10 +66,6 @@ export type Database = {
         Args: { p_office_id: string };
         Returns: 'ready' | 'denied' | 'not-found';
       };
-      set_office_environment: {
-        Args: { p_office_id: string; p_environment: string };
-        Returns: void;
-      };
     };
   };
 };
