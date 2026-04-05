@@ -4,8 +4,10 @@ import UserLobby from '@/components/UserLobby';
 import RoomScene from '@/components/RoomScene';
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+
+  if (loading) return null;
 
   // Anonymous users always see the hardcoded global scene.
   // They cannot change environments or switch rooms.
