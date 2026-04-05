@@ -90,6 +90,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const lastPositionUpdate = useRef<number>(0);
   const lastSeenAt = useRef<Map<string, number>>(new Map());
   const [showSettings, setShowSettings] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<'owner' | 'admin' | 'member' | undefined>(undefined);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
     bodyColor: '#3498db',
     skinColor: '#ffdbac',
@@ -304,7 +305,20 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           });
         }
       });
-  }, [user]);
+
+    // Fetch this user's role in the current office
+    if (officeId && officeId !== 'global') {
+      supabase
+        .from('office_members')
+        .select('role')
+        .eq('office_id', officeId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) setCurrentUserRole(data.role as 'owner' | 'admin' | 'member');
+        });
+    }
+  }, [user, officeId]);
 
   // Keep the ref in sync and re-track presence whenever customization changes
   // (profile load or manual save) so other users see the updated avatar without
@@ -2051,6 +2065,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onSave={user ? handleSaveSettings : undefined}
         currentEnvironment={environment}
         onEnvironmentChange={user ? handleEnvironmentChange : undefined}
+        officeId={officeId !== 'global' ? officeId : undefined}
+        currentUserRole={currentUserRole}
       />
 
       {/* Login modal — overlays the scene so the world stays visible behind it */}
