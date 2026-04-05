@@ -1812,6 +1812,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 if (e?.error?.isFatal) {
                   setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
                   onDisconnect('errorOccurred (fatal)');
+                } else if (e?.error?.name === 'connection.passwordRequired' || e?.error?.message?.includes('nbf')) {
+                  console.warn('[VoiceChat] JWT auth error (likely clock skew) — retrying');
+                  setJitsiError('Voice chat authentication failed (clock sync issue). Reconnecting…');
+                  onDisconnect('errorOccurred (auth)');
                 }
               });
 

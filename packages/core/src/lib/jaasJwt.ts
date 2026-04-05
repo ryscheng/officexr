@@ -72,7 +72,7 @@ export async function generateJaaSJwt(
     aud: 'jitsi',
     iat: now,
     exp: now + ttlSeconds,
-    nbf: now - 10,
+    nbf: now - 60,
     // '*' allows joining any room under this app
     room: '*',
     sub: appId,
