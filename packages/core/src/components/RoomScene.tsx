@@ -552,6 +552,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) videoTrack.contentHint = 'detail';
     } catch (err: any) {
       if (err.name !== 'NotAllowedError') console.error('[ScreenShare] getDisplayMedia failed:', err);
       return;
@@ -2430,11 +2432,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             <video
               ref={el => {
                 if (!el) return;
-                el.srcObject = share.stream;
-                el.muted = true; // mute first so autoplay is always allowed
-                el.play()
-                  .then(() => { el.muted = isMine; }) // unmute viewer streams after play starts
-                  .catch(() => {});
+                if (el.srcObject !== share.stream) {
+                  el.srcObject = share.stream;
+                  el.muted = true; // mute first so autoplay is always allowed
+                  el.play()
+                    .then(() => { el.muted = isMine; }) // unmute viewer streams after play starts
+                    .catch(() => {});
+                }
               }}
               autoPlay playsInline
               style={{ flex: 1, width: '100%', objectFit: 'contain', background: 'black' }}
@@ -2465,11 +2469,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                   <video
                     ref={el => {
                       if (!el) return;
-                      el.srcObject = share.stream;
-                      el.muted = true;
-                      el.play()
-                        .then(() => { el.muted = isMine; })
-                        .catch(() => {});
+                      if (el.srcObject !== share.stream) {
+                        el.srcObject = share.stream;
+                        el.muted = true;
+                        el.play()
+                          .then(() => { el.muted = isMine; })
+                          .catch(() => {});
+                      }
                     }}
                     autoPlay playsInline
                     style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'contain', background: 'black' }}
