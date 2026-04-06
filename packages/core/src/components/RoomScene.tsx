@@ -16,6 +16,11 @@ import { useMotionControls } from '@/hooks/useMotionControls';
 
 const PROXIMITY_RADIUS = 3; // Three.js units — spheres overlap when distance < PROXIMITY_RADIUS * 2
 
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
 type PresenceEntry = AvatarData & { email?: string | null; jitsiRoom?: string | null; status?: 'active' | 'inactive' };
 
 function createBubbleSphere(scene: THREE.Scene): THREE.Mesh {
@@ -89,6 +94,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jitsiHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jitsiMessageListenerRef = useRef<((evt: MessageEvent) => void) | null>(null);
+
+  // Screen sharing state
+  type ScreenShare = { stream: MediaStream; name: string };
+  const [screenShares, setScreenShares] = useState<Map<string, ScreenShare>>(new Map());
+  const [activeShareId, setActiveShareId] = useState<string | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const localScreenStreamRef = useRef<MediaStream | null>(null);
+  // Keys: "sharer-{viewerId}" (on the sharer side) or "viewer-{sharerId}" (on the viewer side)
+  const screenPeerConnsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
 
   const [micMuted, setMicMuted] = useState(false);
   const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
@@ -484,6 +498,78 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       jitsiApiRef.current = null;
     }
   }, []);
+
+  // ── Screen sharing ────────────────────────────────────────────────────────────
+
+  const closeSharerPeerConns = () => {
+    screenPeerConnsRef.current.forEach((pc, key) => {
+      if (key.startsWith('sharer-')) { pc.close(); screenPeerConnsRef.current.delete(key); }
+    });
+  };
+
+  const closeViewerPeerConn = (sharerId: string) => {
+    const pc = screenPeerConnsRef.current.get(`viewer-${sharerId}`);
+    if (pc) { pc.close(); screenPeerConnsRef.current.delete(`viewer-${sharerId}`); }
+  };
+
+  const createSharerPeerConn = (viewerId: string, stream: MediaStream) => {
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    screenPeerConnsRef.current.set(`sharer-${viewerId}`, pc);
+    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    pc.onicecandidate = ({ candidate }) => {
+      if (!candidate) return;
+      channelRef.current?.send({
+        type: 'broadcast', event: 'screen-ice',
+        payload: { from: currentUserRef.current!.id, to: viewerId, candidate: candidate.toJSON() },
+      });
+    };
+    pc.createOffer().then(offer => {
+      pc.setLocalDescription(offer);
+      channelRef.current?.send({
+        type: 'broadcast', event: 'screen-offer',
+        payload: { from: currentUserRef.current!.id, to: viewerId, sdp: offer.sdp },
+      });
+    });
+  };
+
+  const startScreenShare = async () => {
+    if (!currentUserRef.current || !channelRef.current) return;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    } catch (err: any) {
+      if (err.name !== 'NotAllowedError') console.error('[ScreenShare] getDisplayMedia failed:', err);
+      return;
+    }
+    localScreenStreamRef.current = stream;
+    setIsSharing(true);
+    const myId = currentUserRef.current.id;
+    const myName = currentUserRef.current.name || 'You';
+    setScreenShares(prev => new Map(prev).set(myId, { stream, name: myName }));
+    setActiveShareId(myId);
+    // Create a peer connection for every other user currently in the room
+    presenceDataRef.current.forEach((_, userId) => {
+      if (userId !== myId) createSharerPeerConn(userId, stream);
+    });
+    // Auto-stop when the browser's built-in "Stop sharing" button is clicked
+    stream.getVideoTracks()[0]?.addEventListener('ended', stopScreenShare);
+  };
+
+  const stopScreenShare = () => {
+    localScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+    localScreenStreamRef.current = null;
+    setIsSharing(false);
+    const myId = currentUserRef.current?.id;
+    if (myId) {
+      setScreenShares(prev => { const m = new Map(prev); m.delete(myId); return m; });
+      setActiveShareId(prev => prev === myId ? null : prev);
+    }
+    closeSharerPeerConns();
+    channelRef.current?.send({
+      type: 'broadcast', event: 'screen-stop',
+      payload: { userId: myId },
+    });
+  };
 
   // Pre-warm: connect to a personal idle room as soon as the JWT is ready so
   // the Jitsi SDK bundle is downloaded and the XMPP connection is established
@@ -1394,6 +1480,60 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     });
 
+    // Broadcast: screen sharing — WebRTC signaling
+    channel.on('broadcast', { event: 'screen-offer' }, ({ payload }) => {
+      const { from, to, sdp } = payload as { from: string; to: string; sdp: string };
+      if (to !== currentUser.id) return;
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      screenPeerConnsRef.current.set(`viewer-${from}`, pc);
+      pc.onicecandidate = ({ candidate }) => {
+        if (!candidate) return;
+        channelRef.current?.send({
+          type: 'broadcast', event: 'screen-ice',
+          payload: { from: currentUser.id, to: from, candidate: candidate.toJSON() },
+        });
+      };
+      pc.ontrack = ({ streams }) => {
+        const stream = streams[0];
+        if (!stream) return;
+        const sharerName = presenceDataRef.current.get(from)?.name || 'Someone';
+        setScreenShares(prev => new Map(prev).set(from, { stream, name: sharerName }));
+        setActiveShareId(prev => prev ?? from);
+      };
+      pc.setRemoteDescription({ type: 'offer', sdp })
+        .then(() => pc.createAnswer())
+        .then(answer => {
+          pc.setLocalDescription(answer);
+          channelRef.current?.send({
+            type: 'broadcast', event: 'screen-answer',
+            payload: { from: currentUser.id, to: from, sdp: answer.sdp },
+          });
+        })
+        .catch(err => console.error('[ScreenShare] answer failed:', err));
+    });
+
+    channel.on('broadcast', { event: 'screen-answer' }, ({ payload }) => {
+      const { from, to, sdp } = payload as { from: string; to: string; sdp: string };
+      if (to !== currentUser.id) return;
+      const pc = screenPeerConnsRef.current.get(`sharer-${from}`);
+      if (pc) pc.setRemoteDescription({ type: 'answer', sdp }).catch(console.error);
+    });
+
+    channel.on('broadcast', { event: 'screen-ice' }, ({ payload }) => {
+      const { from, to, candidate } = payload as { from: string; to: string; candidate: RTCIceCandidateInit };
+      if (to !== currentUser.id) return;
+      const pc = screenPeerConnsRef.current.get(`sharer-${from}`)
+             ?? screenPeerConnsRef.current.get(`viewer-${from}`);
+      if (pc) pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
+    });
+
+    channel.on('broadcast', { event: 'screen-stop' }, ({ payload }) => {
+      const { userId } = payload as { userId: string };
+      setScreenShares(prev => { const m = new Map(prev); m.delete(userId); return m; });
+      setActiveShareId(prev => prev === userId ? null : prev);
+      closeViewerPeerConn(userId);
+    });
+
     // Broadcast: room environment changes — update scene for all connected users
     channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
       const { environment: env } = payload as { environment: string };
@@ -1751,6 +1891,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       renderer.domElement.removeEventListener('touchmove', handleTouchMove);
       renderer.domElement.removeEventListener('touchend', handleTouchEnd);
 
+      // Clean up screen sharing without broadcasting (channel is closing)
+      localScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+      localScreenStreamRef.current = null;
+      screenPeerConnsRef.current.forEach(pc => pc.close());
+      screenPeerConnsRef.current.clear();
+
       supabase.removeChannel(channel);
       channelRef.current = null;
       channelSubscribedRef.current = false;
@@ -2004,6 +2150,105 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 ))}
               </div>
             )}
+          </div>
+        );
+      })()}
+
+      {/* ── Screen share overlay ──────────────────────────────────────────── */}
+      {activeShareId && screenShares.has(activeShareId) && (() => {
+        const share = screenShares.get(activeShareId)!;
+        const isMine = activeShareId === currentUserRef.current?.id;
+        return (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 450,
+            background: 'rgba(0,0,0,0.92)',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            {/* Header bar */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '8px 14px', background: 'rgba(0,0,0,0.6)',
+              color: 'white', fontFamily: 'monospace', fontSize: '13px', flexShrink: 0,
+            }}>
+              <span>🖥 {isMine ? 'Your screen' : `${share.name}'s screen`}</span>
+              {/* Other active sharers as clickable pills */}
+              {[...screenShares.entries()]
+                .filter(([id]) => id !== activeShareId)
+                .map(([id, s]) => (
+                  <button key={id} onClick={() => setActiveShareId(id)} style={{
+                    background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '4px',
+                    color: 'white', fontSize: '12px', padding: '2px 8px', cursor: 'pointer',
+                  }}>
+                    {s.name}
+                  </button>
+                ))}
+              <button
+                onClick={() => setActiveShareId(null)}
+                title="Minimize"
+                style={{
+                  marginLeft: 'auto', background: 'rgba(255,255,255,0.1)', border: 'none',
+                  borderRadius: '4px', color: 'white', fontSize: '13px',
+                  padding: '2px 10px', cursor: 'pointer',
+                }}
+              >
+                ╌ Minimize
+              </button>
+              {isMine && (
+                <button
+                  onClick={stopScreenShare}
+                  style={{
+                    background: 'rgba(220,38,38,0.8)', border: 'none', borderRadius: '4px',
+                    color: 'white', fontSize: '12px', padding: '2px 10px', cursor: 'pointer',
+                  }}
+                >
+                  Stop sharing
+                </button>
+              )}
+            </div>
+            {/* Video */}
+            <video
+              ref={el => { if (el) { el.srcObject = share.stream; el.play().catch(() => {}); } }}
+              autoPlay playsInline muted={isMine}
+              style={{ flex: 1, width: '100%', objectFit: 'contain', background: 'black' }}
+            />
+          </div>
+        );
+      })()}
+
+      {/* Minimized screen share tiles — bottom-right when overlay is closed */}
+      {screenShares.size > 0 && activeShareId === null && (() => {
+        const tiles = [...screenShares.entries()];
+        return (
+          <div style={{
+            position: 'fixed', bottom: '12px', right: '12px',
+            display: 'flex', flexDirection: 'column', gap: '8px',
+            zIndex: 300, alignItems: 'flex-end',
+          }}>
+            {tiles.map(([id, share]) => {
+              const isMine = id === currentUserRef.current?.id;
+              return (
+                <div key={id} style={{
+                  width: '240px', background: 'rgba(0,0,0,0.85)',
+                  borderRadius: '8px', overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                  cursor: 'pointer',
+                }} onClick={() => setActiveShareId(id)}>
+                  <video
+                    ref={el => { if (el) { el.srcObject = share.stream; el.play().catch(() => {}); } }}
+                    autoPlay playsInline muted={isMine}
+                    style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'contain', background: 'black' }}
+                  />
+                  <div style={{
+                    padding: '4px 8px', color: 'white', fontSize: '11px',
+                    fontFamily: 'monospace', display: 'flex', justifyContent: 'space-between',
+                  }}>
+                    <span>🖥 {isMine ? 'Your screen' : share.name}</span>
+                    <span style={{ opacity: 0.6 }}>click to expand</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         );
       })()}
@@ -2387,6 +2632,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 <span style={{ fontSize: '11px', color: '#aaa' }}>
                   {micMuted ? 'Muted' : 'Live'}
                 </span>
+                {/* Screen share toggle — only in an active voice call */}
+                {jitsiRoom && (
+                  <button
+                    onClick={isSharing ? stopScreenShare : startScreenShare}
+                    title={isSharing ? 'Stop sharing screen' : 'Share your screen'}
+                    style={{
+                      marginLeft: 'auto',
+                      background: isSharing ? 'rgba(220,38,38,0.8)' : 'rgba(255,255,255,0.15)',
+                      border: 'none', borderRadius: '4px', cursor: 'pointer',
+                      color: 'white', fontSize: '13px', padding: '3px 8px',
+                      transition: 'background 0.2s',
+                    }}
+                  >
+                    {isSharing ? '⏹' : '🖥'}
+                  </button>
+                )}
               </>
             )}
           </div>
