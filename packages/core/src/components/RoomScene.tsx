@@ -2667,18 +2667,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                             setFollowingUserId(null);
                             return;
                           }
-                          // Teleport next to the user, then begin following
+                          // Teleport next to the user if we already have their position,
+                          // then begin following. Follow mode starts regardless so the
+                          // animation loop will track them as soon as position data arrives.
                           const target = avatarTargetsRef.current.get(u.id);
                           const cam = cameraRef.current;
-                          if (!target || !cam) return;
-                          const dir = new THREE.Vector3()
-                            .subVectors(cam.position, target.position)
-                            .setY(0)
-                            .normalize();
-                          if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
-                          const dest = target.position.clone()
-                            .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
-                          cam.position.set(dest.x, 1.6, dest.z);
+                          if (target && cam) {
+                            const dir = new THREE.Vector3()
+                              .subVectors(cam.position, target.position)
+                              .setY(0)
+                              .normalize();
+                            if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
+                            const dest = target.position.clone()
+                              .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
+                            cam.position.set(dest.x, 1.6, dest.z);
+                          }
                           setFollowingUserId(u.id);
                         }}
                         style={{
