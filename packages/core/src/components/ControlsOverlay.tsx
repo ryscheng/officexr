@@ -96,6 +96,10 @@ export default function ControlsOverlay({
         )}
       </div>
 
+      {onToggle2D && (
+        <p style={{ margin: '5px 0' }}>V — Toggle 2D / 3D</p>
+      )}
+
       {is2DMode ? (
         <>
           <p style={{ margin: '5px 0' }}>W / ↑ — North</p>

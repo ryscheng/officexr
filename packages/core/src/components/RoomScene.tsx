@@ -76,6 +76,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
+  const selfMarkerRef = useRef<THREE.Group | null>(null);
   const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
   const jitsiRoomRef = useRef<string | null>(null);
@@ -156,8 +157,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [joystickActive, setJoystickActive] = useState(false);
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
   const [is2DMode, setIs2DMode] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const is2DModeRef = useRef(false);
   is2DModeRef.current = is2DMode;
+  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
+  const followingUserIdRef = useRef<string | null>(null);
+  followingUserIdRef.current = followingUserId;
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
@@ -688,11 +693,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     cameraRef.current = camera;
 
     // Orthographic camera for 2D top-down mode
-    const ORTHO_VIEW_SIZE = 15;
+    let orthoViewSize = 15; // mutable so scroll wheel can zoom in/out
     const orthoAspect = window.innerWidth / window.innerHeight;
     const orthoCamera = new THREE.OrthographicCamera(
-      -ORTHO_VIEW_SIZE * orthoAspect, ORTHO_VIEW_SIZE * orthoAspect,
-      ORTHO_VIEW_SIZE, -ORTHO_VIEW_SIZE,
+      -orthoViewSize * orthoAspect, orthoViewSize * orthoAspect,
+      orthoViewSize, -orthoViewSize,
       0.1, 200,
     );
     orthoCamera.position.set(camera.position.x, 80, camera.position.z);
@@ -1217,6 +1222,51 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     localSphere.position.set(camera.position.x, camera.position.y, camera.position.z);
     localBubbleSphereRef.current = localSphere;
 
+    // Self marker: visible only in 2D top-down mode to show the player's own position/name
+    {
+      const selfMarker = new THREE.Group();
+
+      // Disc representing self (white so it stands out from other avatars)
+      const disc = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.3, 0.08, 16),
+        new THREE.MeshStandardMaterial({ color: 0xffffff }),
+      );
+      disc.position.y = 0.04;
+      selfMarker.add(disc);
+
+      // Small forward-arrow cone (points in -Z = north)
+      const arrow = new THREE.Mesh(
+        new THREE.ConeGeometry(0.1, 0.28, 3),
+        new THREE.MeshStandardMaterial({ color: 0xffffff }),
+      );
+      arrow.rotation.x = Math.PI / 2;
+      arrow.position.set(0, 0.1, -0.4);
+      selfMarker.add(arrow);
+
+      // 2D name label with "(You)" indicator
+      const selfCanvas = document.createElement('canvas');
+      const selfCtx = selfCanvas.getContext('2d')!;
+      selfCanvas.width = 640;
+      selfCanvas.height = 128;
+      selfCtx.fillStyle = 'rgba(255,255,255,0.92)';
+      selfCtx.fillRect(0, 0, 640, 128);
+      selfCtx.font = 'bold 56px Arial';
+      selfCtx.fillStyle = '#111111';
+      selfCtx.textAlign = 'center';
+      selfCtx.fillText(`${currentUser.name || 'You'} (You)`, 320, 88);
+      const selfSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(selfCanvas) }),
+      );
+      selfSprite.scale.set(4, 0.8, 4);
+      selfSprite.position.y = 1.8;
+      selfMarker.add(selfSprite);
+
+      selfMarker.position.set(camera.position.x, 0, camera.position.z);
+      selfMarker.visible = false; // shown only in 2D mode
+      scene.add(selfMarker);
+      selfMarkerRef.current = selfMarker;
+    }
+
     // Movement
     const moveSpeed = 0.1;
     const keys = keysRef.current;
@@ -1226,6 +1276,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (chatVisibleRef.current) {
         const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
         if (navigationKeys.includes(key)) return;
+      }
+      if (key === 'v') {
+        setIs2DMode(v => !v);
+        return;
+      }
+      if (key === '?') {
+        setShowControls(v => !v);
+        return;
       }
       keys[key] = true;
     };
@@ -1315,12 +1373,27 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       const newAspect = window.innerWidth / window.innerHeight;
-      orthoCamera.left = -ORTHO_VIEW_SIZE * newAspect;
-      orthoCamera.right = ORTHO_VIEW_SIZE * newAspect;
+      orthoCamera.left = -orthoViewSize * newAspect;
+      orthoCamera.right = orthoViewSize * newAspect;
       orthoCamera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener('resize', handleResize);
+
+    // Scroll wheel zoom for 2D mode only
+    const handleWheel = (event: WheelEvent) => {
+      if (!is2DModeRef.current) return;
+      event.preventDefault();
+      const zoomFactor = 1 + event.deltaY * 0.001;
+      orthoViewSize = Math.max(3, Math.min(40, orthoViewSize * zoomFactor));
+      const aspect = window.innerWidth / window.innerHeight;
+      orthoCamera.left = -orthoViewSize * aspect;
+      orthoCamera.right = orthoViewSize * aspect;
+      orthoCamera.top = orthoViewSize;
+      orthoCamera.bottom = -orthoViewSize;
+      orthoCamera.updateProjectionMatrix();
+    };
+    renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
 
     // Supabase Realtime channel
     const channelName = `office:${officeId}`;
@@ -1410,6 +1483,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
       leftPresences.forEach((presence) => {
         const p = presence as unknown as PresenceEntry;
+        // Stop following this user if we were
+        if (followingUserIdRef.current === p.id) setFollowingUserId(null);
         // Clean up visual avatar and sphere if they still exist
         const avatar = avatarsRef.current.get(p.id);
         if (avatar) { scene.remove(avatar); avatarsRef.current.delete(p.id); }
@@ -1439,7 +1514,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // as stale but whose Supabase presence is still active).
       if (presenceDataRef.current.has(userId)) {
         avatarTargetsRef.current.set(userId, {
-          position: new THREE.Vector3(position.x, position.y, position.z),
+          // Use y=0 (ground level) regardless of the sender's camera eye-height
+          // so remote avatars stand on the floor rather than floating in the air.
+          position: new THREE.Vector3(position.x, 0, position.z),
           rotationY: rotation.y,
         });
         lastSeenAt.current.set(userId, Date.now());
@@ -1748,9 +1825,33 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       if (direction.length() > 0) {
         direction.normalize();
+        // Any manual movement cancels follow mode
+        if (followingUserIdRef.current !== null) {
+          setFollowingUserId(null);
+        }
         camera.position.add(direction.multiplyScalar(moveSpeed));
         camera.position.x = Math.max(-14.5, Math.min(14.5, camera.position.x));
         camera.position.z = Math.max(-14.5, Math.min(14.5, camera.position.z));
+      }
+
+      // Follow mode: snap camera to stay just within proximity of the followed user
+      if (followingUserIdRef.current) {
+        const followTarget = avatarTargetsRef.current.get(followingUserIdRef.current);
+        if (followTarget) {
+          const dir = new THREE.Vector3()
+            .subVectors(camera.position, followTarget.position)
+            .setY(0)
+            .normalize();
+          if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
+          const dest = followTarget.position.clone()
+            .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
+          camera.position.set(
+            Math.max(-14.5, Math.min(14.5, dest.x)),
+            1.6,
+            Math.max(-14.5, Math.min(14.5, dest.z)),
+          );
+          moved = true; // broadcast our updated position each frame we follow
+        }
       }
 
       const now = Date.now();
@@ -1836,34 +1937,37 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         lastStaleCheck = now;
         lastSeenAt.current.forEach((t, uid) => {
           if (now - t > STALE_THRESHOLD_MS) {
+            // Stop waiting for position updates from this user either way.
+            lastSeenAt.current.delete(uid);
+
             // Check whether the user is still registered in Supabase presence.
-            // If they are, their tab is just backgrounded (rAF-driven broadcasts
-            // slowed/stopped) — remove the visual avatar to save resources but
-            // keep their tracking data so proximity/voice-chat keeps working.
             const presenceState = channel.presenceState<PresenceEntry>();
             const stillPresent = Object.values(presenceState).some(presences =>
               presences.some(p => p.id === uid)
             );
 
-            const stalePresence = presenceDataRef.current.get(uid);
-            const staleAvatar = avatarsRef.current.get(uid);
-            if (staleAvatar) scene.remove(staleAvatar);
-            avatarsRef.current.delete(uid);
-            const staleSphere = bubbleSpheresRef.current.get(uid);
-            if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
-            lastSeenAt.current.delete(uid);
-
             if (stillPresent) {
-              // Keep avatarTargetsRef and presenceDataRef so proximity detection
-              // and the online users list remain accurate.
+              // User is inactive (tab backgrounded, movements paused) but still
+              // connected. Keep the avatar frozen at its last position — it will
+              // resume moving if/when the user becomes active again.
+              // avatarTargetsRef and presenceDataRef are left intact so proximity
+              // detection and the online users list remain accurate.
             } else {
+              // User truly gone — remove avatar, sphere, and all tracking data.
+              if (followingUserIdRef.current === uid) setFollowingUserId(null);
+              const stalePresence = presenceDataRef.current.get(uid);
+              const staleAvatar = avatarsRef.current.get(uid);
+              if (staleAvatar) scene.remove(staleAvatar);
+              avatarsRef.current.delete(uid);
+              const staleSphere = bubbleSpheresRef.current.get(uid);
+              if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
               avatarTargetsRef.current.delete(uid);
               presenceDataRef.current.delete(uid);
               if (stalePresence) {
                 recentlyLeftRef.current.set(uid, { id: uid, name: stalePresence.name, email: stalePresence.email ?? null, leftAt: Date.now() });
               }
+              rebuildOnlineUsers();
             }
-            rebuildOnlineUsers();
           }
         });
       }
@@ -1877,6 +1981,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (setChanged) {
         nearbyUserIdsRef.current = newNearby;
         handleProximityChange(newNearby);
+      }
+
+      // Toggle 3D/2D name tags on all remote avatars based on current view mode
+      const in2D = is2DModeRef.current;
+      avatarsRef.current.forEach(avatar => {
+        avatar.traverse(child => {
+          if (child.userData.nameTagType === '3d') child.visible = !in2D;
+          if (child.userData.nameTagType === '2d') child.visible = in2D;
+        });
+      });
+
+      // Update self marker position and visibility in 2D mode
+      if (selfMarkerRef.current) {
+        selfMarkerRef.current.position.set(camera.position.x, 0, camera.position.z);
+        selfMarkerRef.current.visible = in2D;
       }
 
       // Sync top-down camera to player XZ position
@@ -1921,6 +2040,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       clearInterval(offlineCleanupInterval);
       renderer.domElement.removeEventListener('click', handleCanvasClick);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('wheel', handleWheel);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
@@ -1942,6 +2062,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (localBubbleSphereRef.current) {
         scene.remove(localBubbleSphereRef.current);
         localBubbleSphereRef.current = null;
+      }
+      if (selfMarkerRef.current) {
+        scene.remove(selfMarkerRef.current);
+        selfMarkerRef.current = null;
       }
       bubbleSpheresRef.current.clear();
       presenceDataRef.current.clear();
@@ -2002,22 +2126,33 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }} />
       )}
 
-      <ControlsOverlay
-        motionPermission={motionPermission}
-        motionCapable={motionCapable}
-        onRecalibrate={() => recalibrateMotionRef.current?.()}
-        onEnableMotion={enableMotion}
-        onDisableMotion={disableMotion}
-        motionDebugRef={motionDebugRef}
-        is2DMode={is2DMode}
-        onToggle2D={() => setIs2DMode(v => !v)}
-        showChat
-        extras={
-          <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
-            Walk near others to voice chat
-          </p>
-        }
-      />
+      {showControls && (
+        <ControlsOverlay
+          motionPermission={motionPermission}
+          motionCapable={motionCapable}
+          onRecalibrate={() => recalibrateMotionRef.current?.()}
+          onEnableMotion={enableMotion}
+          onDisableMotion={disableMotion}
+          motionDebugRef={motionDebugRef}
+          is2DMode={is2DMode}
+          onToggle2D={() => setIs2DMode(v => !v)}
+          showChat
+          extras={
+            <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
+              Walk near others to voice chat
+            </p>
+          }
+        />
+      )}
+
+      {/* Bottom-right hint to open the controls pane */}
+      <div style={{
+        position: 'absolute', bottom: '20px', right: '20px',
+        color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace', fontSize: '12px',
+        pointerEvents: 'none', userSelect: 'none',
+      }}>
+        ? — {showControls ? 'hide' : 'show'} controls
+      </div>
 
       {/* iOS motion permission prompt */}
       {motionPermission === 'prompt' && (
@@ -2522,33 +2657,36 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                     <span>{displayName}</span>
                     {canTeleport && (
                       <button
-                        title={`Teleport to ${u.name}`}
+                        title={followingUserId === u.id ? `Stop following ${u.name}` : `Follow ${u.name}`}
                         onClick={() => {
+                          if (followingUserId === u.id) {
+                            setFollowingUserId(null);
+                            return;
+                          }
+                          // Teleport next to the user, then begin following
                           const target = avatarTargetsRef.current.get(u.id);
                           const cam = cameraRef.current;
                           if (!target || !cam) return;
-                          // Place the player PROXIMITY_RADIUS * 0.8 units from the
-                          // target, offset toward the current camera position so the
-                          // player arrives facing the target. Stay at eye height.
                           const dir = new THREE.Vector3()
                             .subVectors(cam.position, target.position)
                             .setY(0)
                             .normalize();
-                          // Fall back to a fixed offset if we're on top of each other
                           if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
                           const dest = target.position.clone()
                             .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
                           cam.position.set(dest.x, 1.6, dest.z);
+                          setFollowingUserId(u.id);
                         }}
                         style={{
                           background: 'none', border: 'none', cursor: 'pointer',
                           padding: '0 2px', fontSize: '13px', lineHeight: 1,
-                          opacity: 0.7, flexShrink: 0,
+                          opacity: followingUserId === u.id ? 1 : 0.7, flexShrink: 0,
+                          filter: followingUserId === u.id ? 'brightness(1.8)' : 'none',
                         }}
                         onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.7'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = followingUserId === u.id ? '1' : '0.7'; }}
                       >
-                        ⤴
+                        {followingUserId === u.id ? '⊙' : '⤴'}
                       </button>
                     )}
                     {!isSelf && u.status !== 'offline' && (
