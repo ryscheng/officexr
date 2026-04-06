@@ -1295,8 +1295,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'v', '?'];
         if (navigationKeys.includes(key)) return;
       }
-      // Emoji confetti (keys 1-5)
-      if (event.key in EMOJI_MAP) {
+      // Emoji confetti (keys 1-5) — skip when typing in chat
+      if (!chatVisibleRef.current && event.key in EMOJI_MAP) {
         activeParticles.push(...spawnConfetti(scene, camera.position.clone(), event.key));
         if (channelRef.current && channelSubscribedRef.current) {
           channelRef.current.send({
