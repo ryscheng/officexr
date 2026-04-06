@@ -7,6 +7,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { JaaSMeeting } from '@jitsi/react-sdk';
 import { generateJaaSJwt } from '@/lib/jaasJwt';
 import { createAvatar, updateAvatar, AvatarData } from './Avatar';
+import { EMOJI_MAP, spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
 import { AvatarCustomization, BubblePreferences, loadBubblePrefs } from '@/types/avatar';
@@ -80,6 +81,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
   const bubblePrefsRef = useRef<BubblePreferences>(loadBubblePrefs());
+  const remoteBubblePrefsRef = useRef<Map<string, BubblePreferences>>(new Map());
   const selfMarkerRef = useRef<THREE.Group | null>(null);
   const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
@@ -1285,12 +1287,26 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Movement
     const moveSpeed = 0.1;
     const keys = keysRef.current;
+    let activeParticles: Particle[] = [];
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       if (chatVisibleRef.current) {
         const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'v', '?'];
         if (navigationKeys.includes(key)) return;
+      }
+      // Emoji confetti (keys 1-5) — skip when typing in chat
+      if (!chatVisibleRef.current && event.key in EMOJI_MAP) {
+        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), event.key));
+        if (channelRef.current && channelSubscribedRef.current) {
+          channelRef.current.send({
+            type: 'broadcast', event: 'confetti',
+            payload: {
+              userId: currentUser.id, key: event.key,
+              position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+            },
+          });
+        }
       }
       if (key === 'v') {
         setIs2DMode(v => !v);
@@ -1452,7 +1468,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             const avatar = createAvatar(scene, pending ? { ...presence, customization: pending } : presence);
             avatarsRef.current.set(presence.id, avatar);
             if (pending) pendingAvatarUpdatesRef.current.delete(presence.id);
-            const sphere = createBubbleSphere(scene, bubblePrefsRef.current.radius, hexStringToInt(bubblePrefsRef.current.idleColor));
+            const rPrefs = remoteBubblePrefsRef.current.get(presence.id);
+            const sphere = createBubbleSphere(scene, rPrefs?.radius ?? bubblePrefsRef.current.radius, rPrefs ? hexStringToInt(rPrefs.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
             sphere.position.copy(avatar.position);
             bubbleSpheresRef.current.set(presence.id, sphere);
             // Seed proximity target from presence so the user is immediately
@@ -1495,7 +1512,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const avatar = createAvatar(scene, pending ? { ...p, customization: pending } : p);
           avatarsRef.current.set(p.id, avatar);
           if (pending) pendingAvatarUpdatesRef.current.delete(p.id);
-          const sphere = createBubbleSphere(scene, bubblePrefsRef.current.radius, hexStringToInt(bubblePrefsRef.current.idleColor));
+          const rPrefs2 = remoteBubblePrefsRef.current.get(p.id);
+          const sphere = createBubbleSphere(scene, rPrefs2?.radius ?? bubblePrefsRef.current.radius, rPrefs2 ? hexStringToInt(rPrefs2.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
           sphere.position.copy(avatar.position);
           bubbleSpheresRef.current.set(p.id, sphere);
           if (p.position && !avatarTargetsRef.current.has(p.id)) {
@@ -1525,6 +1543,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         // removed by stale detection while the user was backgrounded.
         avatarTargetsRef.current.delete(p.id);
         lastSeenAt.current.delete(p.id);
+        remoteBubblePrefsRef.current.delete(p.id);
         const hadData = presenceDataRef.current.has(p.id);
         presenceDataRef.current.delete(p.id);
         if (avatar || hadData) {
@@ -1621,6 +1640,28 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       const { toUserId } = payload as { toUserId: string };
       if (toUserId === currentUser.id) {
         playWaveChime();
+      }
+    });
+
+    // Broadcast: emoji confetti from other users
+    channel.on('broadcast', { event: 'confetti' }, ({ payload }) => {
+      const { userId, key, position } = payload as { userId: string; key: string; position: { x: number; y: number; z: number } };
+      if (userId !== currentUser.id) {
+        activeParticles.push(...spawnConfetti(scene, new THREE.Vector3(position.x, position.y, position.z), key));
+      }
+    });
+
+    // Broadcast: bubble preferences from other users
+    channel.on('broadcast', { event: 'bubble-prefs' }, ({ payload }) => {
+      const { userId, prefs } = payload as { userId: string; prefs: BubblePreferences };
+      remoteBubblePrefsRef.current.set(userId, prefs);
+      const sphere = bubbleSpheresRef.current.get(userId);
+      if (sphere) {
+        sphere.geometry.dispose();
+        sphere.geometry = new THREE.SphereGeometry(prefs.radius, 24, 24);
+        if (!jitsiRoomRef.current) {
+          (sphere.material as THREE.MeshStandardMaterial).color.setHex(hexStringToInt(prefs.idleColor));
+        }
       }
     });
 
@@ -1725,6 +1766,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         myPresenceRef.current = presence;
         await channel.track(presence);
 
+        // Broadcast our bubble preferences so other users see our sphere size/color
+        channel.send({
+          type: 'broadcast', event: 'bubble-prefs',
+          payload: { userId: currentUser.id, prefs: bubblePrefsRef.current },
+        });
+
         // Re-sync presence state to reconcile any join/leave events missed while disconnected.
         const state = channel.presenceState<PresenceEntry>();
         const presentIds = new Set<string>();
@@ -1736,7 +1783,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
               const avatar = createAvatar(scene, p);
               avatarsRef.current.set(p.id, avatar);
-              const sphere = createBubbleSphere(scene, bubblePrefsRef.current.radius, hexStringToInt(bubblePrefsRef.current.idleColor));
+              const rPrefs3 = remoteBubblePrefsRef.current.get(p.id);
+              const sphere = createBubbleSphere(scene, rPrefs3?.radius ?? bubblePrefsRef.current.radius, rPrefs3 ? hexStringToInt(rPrefs3.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
               sphere.position.copy(avatar.position);
               bubbleSpheresRef.current.set(p.id, sphere);
               if (p.position && !avatarTargetsRef.current.has(p.id)) {
@@ -1875,6 +1923,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       const delta = clock.getDelta(); // seconds since last frame
       // Frame-rate-independent lerp: equivalent to 0.15 at 60 fps, consistent at any rate
       const lerpAlpha = 1 - Math.pow(0.005, delta);
+
+      // Update emoji confetti particles
+      activeParticles = updateParticles(activeParticles, delta, scene);
+
       const direction = new THREE.Vector3();
       let moved = false;
 
@@ -1991,6 +2043,25 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           if (dy > Math.PI) dy -= Math.PI * 2;
           if (dy < -Math.PI) dy += Math.PI * 2;
           avatar.rotation.y += dy * lerpAlpha;
+
+          // Make avatar eyes look toward the local camera
+          avatar.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh && child.userData.isEye) {
+              const eye = child as THREE.Mesh;
+              const { restX, restY, restZ } = eye.userData;
+              const localCamPos = avatar.worldToLocal(camera.position.clone());
+              const edx = localCamPos.x - restX;
+              const edy = localCamPos.y - restY;
+              const edz = localCamPos.z - restZ;
+              const dist = Math.sqrt(edx * edx + edy * edy + edz * edz);
+              if (dist > 0.01) {
+                const maxOffset = 0.02;
+                eye.position.x = restX + (edx / dist) * maxOffset;
+                eye.position.y = restY + (edy / dist) * maxOffset;
+                eye.position.z = restZ + Math.abs(edx / dist) * 0.005;
+              }
+            }
+          });
         }
       });
 
@@ -2016,14 +2087,17 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }
       });
 
-      // Update sphere colors: green when in same room, blue otherwise
+      // Update sphere colors: green when in voice call, per-user idle color otherwise
       const inRoom = jitsiRoomRef.current !== null;
-      const activeMat = inRoom ? 0x44ff99 : hexStringToInt(bubblePrefsRef.current.idleColor);
-      bubbleSpheresRef.current.forEach((sphere) => {
-        (sphere.material as THREE.MeshStandardMaterial).color.setHex(activeMat);
+      bubbleSpheresRef.current.forEach((sphere, uid) => {
+        const remotePrefs = remoteBubblePrefsRef.current.get(uid);
+        const idleColor = remotePrefs ? hexStringToInt(remotePrefs.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor);
+        (sphere.material as THREE.MeshStandardMaterial).color.setHex(inRoom ? 0x44ff99 : idleColor);
       });
       if (localBubbleSphereRef.current) {
-        (localBubbleSphereRef.current.material as THREE.MeshStandardMaterial).color.setHex(activeMat);
+        (localBubbleSphereRef.current.material as THREE.MeshStandardMaterial).color.setHex(
+          inRoom ? 0x44ff99 : hexStringToInt(bubblePrefsRef.current.idleColor)
+        );
       }
 
       // Periodically remove avatars for users whose position broadcasts have gone stale.
@@ -2201,16 +2275,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     bubblePrefsRef.current = prefs;
     const newRadius = prefs.radius;
     const newColor = hexStringToInt(prefs.idleColor);
-    // Rebuild all bubble sphere geometries and update idle color
-    const rebuildSphere = (sphere: THREE.Mesh) => {
-      sphere.geometry.dispose();
-      sphere.geometry = new THREE.SphereGeometry(newRadius, 24, 24);
+    // Only rebuild the local bubble sphere — remote spheres use their own prefs
+    if (localBubbleSphereRef.current) {
+      localBubbleSphereRef.current.geometry.dispose();
+      localBubbleSphereRef.current.geometry = new THREE.SphereGeometry(newRadius, 24, 24);
       if (!jitsiRoomRef.current) {
-        (sphere.material as THREE.MeshStandardMaterial).color.setHex(newColor);
+        (localBubbleSphereRef.current.material as THREE.MeshStandardMaterial).color.setHex(newColor);
       }
-    };
-    if (localBubbleSphereRef.current) rebuildSphere(localBubbleSphereRef.current);
-    bubbleSpheresRef.current.forEach(rebuildSphere);
+    }
+    // Broadcast our bubble prefs to other users
+    if (channelRef.current && channelSubscribedRef.current) {
+      channelRef.current.send({
+        type: 'broadcast', event: 'bubble-prefs',
+        payload: { userId: user?.id ?? anonymousUserRef.current?.id, prefs },
+      });
+    }
   };
 
   const handleSaveSettings = async (settings: AvatarCustomization) => {
