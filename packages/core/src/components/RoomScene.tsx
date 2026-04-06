@@ -485,32 +485,51 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   }, []);
 
-  // Reset Jitsi state when the room changes and start a safety timeout for
-  // iframe loading. The tighter XMPP-connection timeout starts in onApiReady.
+  // Pre-warm: connect to a personal idle room as soon as the JWT is ready so
+  // the Jitsi SDK bundle is downloaded and the XMPP connection is established
+  // before the user ever enters proximity range.
+  //
+  // The idle room name is keyed by the current user's own ID (the same formula
+  // used by handleProximityChange). If this user has the lexicographically
+  // lowest ID among nearby users — roughly half of all encounters — the prewarm
+  // room IS the proximity room, so voice becomes instant with zero reconnect.
+  // In other cases the SDK is already cached and only the XMPP room switch
+  // (~3–8 s) is needed instead of a cold start (~10–18 s).
+  const jitsiPrewarmRoom = jaasJwt && currentUser
+    ? `officexr-${officeId.slice(0, 8)}-${currentUser.id.slice(0, 8)}`
+    : null;
+  // The room JaaSMeeting actually connects to.
+  const activeJitsiRoom = jitsiRoom ?? jitsiPrewarmRoom;
+
+  // Reset Jitsi state when the active room changes and start a safety timeout
+  // for iframe loading. The tighter XMPP-connection timeout starts in onApiReady.
   useEffect(() => {
     // Clean up everything from the previous Jitsi session (intervals, listeners, API)
     cleanupJitsi();
 
-    if (!jitsiRoom || !jaasJwt) {
+    if (!activeJitsiRoom || !jaasJwt) {
       setJitsiError(null);
       setJitsiConnected(false);
       setRemoteAudioLevel(0);
       return;
     }
 
-    console.log('[VoiceChat] Attempting to connect — room:', jitsiRoom, 'jwt length:', jaasJwt?.length);
+    const isProximity = jitsiRoomRef.current !== null;
+    console.log('[VoiceChat] Connecting — room:', activeJitsiRoom, isProximity ? '(proximity)' : '(prewarm)', 'jwt length:', jaasJwt?.length);
     setJitsiError(null);
     setJitsiConnected(false);
-    // Safety net: if the iframe itself never loads (onApiReady never fires)
-    jitsiConnectTimeoutRef.current = setTimeout(() => {
-      console.error('[VoiceChat] Jitsi iframe never loaded after 30s. Room:', jitsiRoom);
-      setJitsiError('Voice chat failed to load. Check your network connection.');
-    }, 30000);
+    // Only surface load errors for proximity rooms; silently retry for prewarm.
+    if (isProximity) {
+      jitsiConnectTimeoutRef.current = setTimeout(() => {
+        console.error('[VoiceChat] Jitsi iframe never loaded after 30s. Room:', activeJitsiRoom);
+        setJitsiError('Voice chat failed to load. Check your network connection.');
+      }, 30000);
+    }
 
     return () => {
       cleanupJitsi();
     };
-  }, [jitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
+  }, [activeJitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
 
   const playWaveChime = () => {
     try {
@@ -1995,8 +2014,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           Positioning it fully off-screen (top:-400px) causes Chrome to suspend the
           iframe's task queue, preventing Jitsi from initiating the XMPP connection.
           The allow attribute is required for microphone access in cross-origin iframes. */}
-      {jitsiRoom && jaasJwt && (
-        <div key={jitsiRetryCount} style={{
+      {activeJitsiRoom && jaasJwt && (
+        <div key={`${jitsiRetryCount}-${activeJitsiRoom}`} style={{
           position: 'fixed', bottom: 0, right: 0,
           width: '480px', height: '270px',
           opacity: 0, pointerEvents: 'none', zIndex: -1,
@@ -2004,7 +2023,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           <JaaSMeeting
             appId={import.meta.env.VITE_JAAS_APP_ID ?? ''}
             jwt={jaasJwt}
-            roomName={jitsiRoom}
+            roomName={activeJitsiRoom}
             configOverwrite={{
               startWithAudioMuted: false,
               startWithVideoMuted: true,
@@ -2051,13 +2070,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
               if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
 
-              // Now that the iframe has loaded, replace the 30s safety-net
-              // timeout with a tighter 20s timeout for the XMPP connection.
+              // Now that the iframe has loaded, replace the 30s safety-net timeout
+              // with a tighter 20s timeout for the XMPP connection (proximity only).
               if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
-              jitsiConnectTimeoutRef.current = setTimeout(() => {
-                console.error('[VoiceChat] Connection timed out after 20s from onApiReady — videoConferenceJoined never fired. Room:', jitsiRoomRef.current);
-                setJitsiError('Could not connect to voice chat — the server may be unavailable.');
-              }, 20000);
+              if (jitsiRoomRef.current !== null) {
+                jitsiConnectTimeoutRef.current = setTimeout(() => {
+                  console.error('[VoiceChat] Connection timed out after 20s from onApiReady — videoConferenceJoined never fired. Room:', jitsiRoomRef.current);
+                  setJitsiError('Could not connect to voice chat — the server may be unavailable.');
+                }, 20000);
+              }
 
               // Decode JWT header+payload (no crypto needed) to confirm what we sent
               try {
