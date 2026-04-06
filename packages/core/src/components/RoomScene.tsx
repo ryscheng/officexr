@@ -95,6 +95,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jitsiHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jitsiMessageListenerRef = useRef<((evt: MessageEvent) => void) | null>(null);
+  const jitsiLeaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jitsiConnectionGenRef = useRef(0);
 
   // Screen sharing state
   type ScreenShare = { stream: MediaStream; name: string };
@@ -489,6 +491,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   // Thoroughly clean up all Jitsi resources (intervals, listeners, API, timeouts).
   // Called on room change, retry, and unmount to prevent leaked intervals.
   const cleanupJitsi = useCallback(() => {
+    jitsiConnectionGenRef.current++; // invalidate any in-flight callbacks from this session
     if (jitsiConnectTimeoutRef.current) {
       clearTimeout(jitsiConnectTimeoutRef.current);
       jitsiConnectTimeoutRef.current = null;
@@ -604,6 +607,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   useEffect(() => {
     // Clean up everything from the previous Jitsi session (intervals, listeners, API)
     cleanupJitsi();
+    // Capture generation AFTER cleanupJitsi incremented it — guards all async callbacks below
+    const connectionGen = jitsiConnectionGenRef.current;
 
     if (!activeJitsiRoom || !jaasJwt) {
       setJitsiError(null);
@@ -619,6 +624,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Only surface load errors for proximity rooms; silently retry for prewarm.
     if (isProximity) {
       jitsiConnectTimeoutRef.current = setTimeout(() => {
+        if (jitsiConnectionGenRef.current !== connectionGen) return; // stale — a newer connection superseded this one
         console.error('[VoiceChat] Jitsi iframe never loaded after 30s. Room:', activeJitsiRoom);
         setJitsiError('Voice chat failed to load. Check your network connection.');
       }, 30000);
@@ -1768,15 +1774,27 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Proximity-based Jitsi room coordination.
     // Also called from the position broadcast handler (above) when the tab is hidden.
     const handleProximityChange = (nearbyIds: Set<string>) => {
+      // Cancel any pending leave debounce whenever proximity state changes
+      if (jitsiLeaveDebounceRef.current) {
+        clearTimeout(jitsiLeaveDebounceRef.current);
+        jitsiLeaveDebounceRef.current = null;
+      }
+
       if (nearbyIds.size === 0) {
         if (jitsiRoomRef.current !== null) {
-          jitsiRoomRef.current = null;
-          setJitsiRoom(null);
-          if (myPresenceRef.current) {
-            const updated = { ...myPresenceRef.current, jitsiRoom: null };
-            myPresenceRef.current = updated;
-            channelRef.current?.track(updated);
-          }
+          // Debounce the leave — if the user re-enters proximity within the window,
+          // the debounce is cancelled above and no disconnect happens.
+          jitsiLeaveDebounceRef.current = setTimeout(() => {
+            jitsiLeaveDebounceRef.current = null;
+            if (jitsiRoomRef.current === null) return; // already cleared by a re-entry
+            jitsiRoomRef.current = null;
+            setJitsiRoom(null);
+            if (myPresenceRef.current) {
+              const updated = { ...myPresenceRef.current, jitsiRoom: null };
+              myPresenceRef.current = updated;
+              channelRef.current?.track(updated);
+            }
+          }, 1500);
         }
         return;
       }
@@ -2079,6 +2097,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       screenPeerConnsRef.current.clear();
       pendingIceCandidatesRef.current.clear();
 
+      // Cancel any pending Jitsi leave debounce — component is tearing down
+      if (jitsiLeaveDebounceRef.current) {
+        clearTimeout(jitsiLeaveDebounceRef.current);
+        jitsiLeaveDebounceRef.current = null;
+      }
       channel.untrack(); // explicitly signal departure — triggers immediate presence.leave for others
       supabase.removeChannel(channel);
       channelRef.current = null;
@@ -2481,6 +2504,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               observer.observe(iframeRef);
             }}
             onApiReady={api => {
+              // Capture the connection generation at the moment this callback fires.
+              // If cleanupJitsi() is called before any inner callback runs (i.e. this
+              // is a stale iframe from a superseded connection attempt), the gen will
+              // have advanced and all state-modifying callbacks below will be no-ops.
+              const myGen = jitsiConnectionGenRef.current;
               console.log('[VoiceChat] onApiReady fired — iframe JS loaded, waiting for videoConferenceJoined');
               console.log('[VoiceChat] Page state at onApiReady — visibilityState:', document.visibilityState, '| hasFocus:', document.hasFocus());
               jitsiApiRef.current = api;
@@ -2495,6 +2523,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
               if (jitsiRoomRef.current !== null) {
                 jitsiConnectTimeoutRef.current = setTimeout(() => {
+                  if (jitsiConnectionGenRef.current !== myGen) return; // stale
                   console.error('[VoiceChat] Connection timed out after 20s from onApiReady — videoConferenceJoined never fired. Room:', jitsiRoomRef.current);
                   setJitsiError('Could not connect to voice chat — the server may be unavailable.');
                 }, 20000);
@@ -2566,6 +2595,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
               // Only mark connected when actually inside the conference room
               api.addEventListener('videoConferenceJoined', () => {
+                if (jitsiConnectionGenRef.current !== myGen) return; // stale — superseded by a newer connection
                 console.log('[VoiceChat] videoConferenceJoined — connected to room:', jitsiRoomRef.current);
                 // Clear diagnostic intervals/listeners — connection succeeded
                 if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
@@ -2575,6 +2605,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               });
 
               const onDisconnect = (reason?: string) => {
+                if (jitsiConnectionGenRef.current !== myGen) return; // stale
                 console.warn('[VoiceChat] Disconnected from voice chat. Reason:', reason ?? '(unknown)');
                 if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
                 if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
@@ -2626,6 +2657,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 console.error('[VoiceChat] connectionFailed (addEventListener)');
               });
               api.on('connectionFailed', (e: any) => {
+                if (jitsiConnectionGenRef.current !== myGen) return; // stale
                 console.error('[VoiceChat] connectionFailed:', e);
                 setJitsiError('Voice chat connection failed. Check your network connection.');
                 onDisconnect('connectionFailed');
@@ -2639,6 +2671,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               });
 
               api.on('errorOccurred', (e: any) => {
+                if (jitsiConnectionGenRef.current !== myGen) return; // stale
                 console.error('[VoiceChat] errorOccurred:', e);
                 if (e?.error?.isFatal) {
                   setJitsiError('Voice chat encountered a fatal error. Try moving away and back.');
@@ -2651,6 +2684,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               });
 
               api.on('kickedOut', (e: any) => {
+                if (jitsiConnectionGenRef.current !== myGen) return; // stale
                 console.warn('[VoiceChat] kickedOut:', e);
                 setJitsiError('You were disconnected from voice chat.');
                 onDisconnect('kickedOut');
