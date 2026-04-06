@@ -267,14 +267,14 @@ export default function SettingsPanel({
                       position: 'relative',
                     }}>
                       <div style={{ overflow: 'hidden' }}>
-                        <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '500', color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {m.name ?? m.email ?? m.userId}
                           {isSelf && (
-                            <span style={{ marginLeft: '6px', fontSize: '11px', color: '#333' }}>(you)</span>
+                            <span style={{ marginLeft: '6px', fontSize: '11px', color: '#555' }}>(you)</span>
                           )}
                         </div>
                         {m.name && m.email && (
-                          <div style={{ fontSize: '11px', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div style={{ fontSize: '11px', color: '#555', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {m.email}
                           </div>
                         )}
