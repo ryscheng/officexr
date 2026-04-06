@@ -9,12 +9,11 @@ import { generateJaaSJwt } from '@/lib/jaasJwt';
 import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
-import { AvatarCustomization } from '@/types/avatar';
+import { AvatarCustomization, BubblePreferences, loadBubblePrefs } from '@/types/avatar';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut, signInWithGoogle } from '@/hooks/useAuth';
 import { useMotionControls } from '@/hooks/useMotionControls';
 
-const PROXIMITY_RADIUS = 3; // Three.js units — spheres overlap when distance < PROXIMITY_RADIUS * 2
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -23,10 +22,10 @@ const ICE_SERVERS: RTCIceServer[] = [
 
 type PresenceEntry = AvatarData & { email?: string | null; jitsiRoom?: string | null; status?: 'active' | 'inactive' };
 
-function createBubbleSphere(scene: THREE.Scene): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(PROXIMITY_RADIUS, 24, 24);
+function createBubbleSphere(scene: THREE.Scene, radius: number, color: number): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(radius, 24, 24);
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x4499ff,
+    color,
     transparent: true,
     opacity: 0.12,
     depthWrite: false,
@@ -35,6 +34,10 @@ function createBubbleSphere(scene: THREE.Scene): THREE.Mesh {
   const sphere = new THREE.Mesh(geo, mat);
   scene.add(sphere);
   return sphere;
+}
+
+function hexStringToInt(hex: string): number {
+  return parseInt(hex.replace('#', ''), 16);
 }
 
 interface OfficeSceneProps {
@@ -76,6 +79,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
+  const bubblePrefsRef = useRef<BubblePreferences>(loadBubblePrefs());
   const selfMarkerRef = useRef<THREE.Group | null>(null);
   const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
@@ -1229,7 +1233,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
 
     // Local user bubble sphere
-    const localSphere = createBubbleSphere(scene);
+    const localSphere = createBubbleSphere(scene, bubblePrefsRef.current.radius, hexStringToInt(bubblePrefsRef.current.idleColor));
     localSphere.position.set(camera.position.x, camera.position.y, camera.position.z);
     localBubbleSphereRef.current = localSphere;
 
@@ -1448,7 +1452,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             const avatar = createAvatar(scene, pending ? { ...presence, customization: pending } : presence);
             avatarsRef.current.set(presence.id, avatar);
             if (pending) pendingAvatarUpdatesRef.current.delete(presence.id);
-            const sphere = createBubbleSphere(scene);
+            const sphere = createBubbleSphere(scene, bubblePrefsRef.current.radius, hexStringToInt(bubblePrefsRef.current.idleColor));
             sphere.position.copy(avatar.position);
             bubbleSpheresRef.current.set(presence.id, sphere);
             // Seed proximity target from presence so the user is immediately
@@ -1491,7 +1495,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const avatar = createAvatar(scene, pending ? { ...p, customization: pending } : p);
           avatarsRef.current.set(p.id, avatar);
           if (pending) pendingAvatarUpdatesRef.current.delete(p.id);
-          const sphere = createBubbleSphere(scene);
+          const sphere = createBubbleSphere(scene, bubblePrefsRef.current.radius, hexStringToInt(bubblePrefsRef.current.idleColor));
           sphere.position.copy(avatar.position);
           bubbleSpheresRef.current.set(p.id, sphere);
           if (p.position && !avatarTargetsRef.current.has(p.id)) {
@@ -1567,7 +1571,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           avatarTargetsRef.current.forEach((target, uid) => {
             const dx = camPos.x - target.position.x;
             const dz = camPos.z - target.position.z;
-            if (Math.sqrt(dx * dx + dz * dz) < PROXIMITY_RADIUS * 2) {
+            if (Math.sqrt(dx * dx + dz * dz) < bubblePrefsRef.current.radius * 2) {
               newNearby.add(uid);
             }
           });
@@ -1732,7 +1736,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
               const avatar = createAvatar(scene, p);
               avatarsRef.current.set(p.id, avatar);
-              const sphere = createBubbleSphere(scene);
+              const sphere = createBubbleSphere(scene, bubblePrefsRef.current.radius, hexStringToInt(bubblePrefsRef.current.idleColor));
               sphere.position.copy(avatar.position);
               bubbleSpheresRef.current.set(p.id, sphere);
               if (p.position && !avatarTargetsRef.current.has(p.id)) {
@@ -1927,7 +1931,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             .normalize();
           if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
           const dest = followTarget.position.clone()
-            .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
+            .addScaledVector(dir, bubblePrefsRef.current.radius * 0.8);
           const destX = Math.max(-14.5, Math.min(14.5, dest.x));
           const destZ = Math.max(-14.5, Math.min(14.5, dest.z));
           // Only update and broadcast if position actually changed, to avoid
@@ -2007,14 +2011,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         // while targets are at y=0, so 3D distance would shrink effective range.
         const dx = camera.position.x - target.position.x;
         const dz = camera.position.z - target.position.z;
-        if (Math.sqrt(dx * dx + dz * dz) < PROXIMITY_RADIUS * 2) {
+        if (Math.sqrt(dx * dx + dz * dz) < bubblePrefsRef.current.radius * 2) {
           newNearby.add(uid);
         }
       });
 
       // Update sphere colors: green when in same room, blue otherwise
       const inRoom = jitsiRoomRef.current !== null;
-      const activeMat = inRoom ? 0x44ff99 : 0x4499ff;
+      const activeMat = inRoom ? 0x44ff99 : hexStringToInt(bubblePrefsRef.current.idleColor);
       bubbleSpheresRef.current.forEach((sphere) => {
         (sphere.material as THREE.MeshStandardMaterial).color.setHex(activeMat);
       });
@@ -2192,6 +2196,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       renderer.dispose();
     };
   }, [officeId, currentUser?.id, environment]);
+
+  const handleBubblePrefsChange = (prefs: BubblePreferences) => {
+    bubblePrefsRef.current = prefs;
+    const newRadius = prefs.radius;
+    const newColor = hexStringToInt(prefs.idleColor);
+    // Rebuild all bubble sphere geometries and update idle color
+    const rebuildSphere = (sphere: THREE.Mesh) => {
+      sphere.geometry.dispose();
+      sphere.geometry = new THREE.SphereGeometry(newRadius, 24, 24);
+      if (!jitsiRoomRef.current) {
+        (sphere.material as THREE.MeshStandardMaterial).color.setHex(newColor);
+      }
+    };
+    if (localBubbleSphereRef.current) rebuildSphere(localBubbleSphereRef.current);
+    bubbleSpheresRef.current.forEach(rebuildSphere);
+  };
 
   const handleSaveSettings = async (settings: AvatarCustomization) => {
     if (!user) return;
@@ -2810,7 +2830,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                               .normalize();
                             if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
                             const dest = target.position.clone()
-                              .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
+                              .addScaledVector(dir, bubblePrefsRef.current.radius * 0.8);
                             cam.position.set(dest.x, 1.6, dest.z);
                           }
                           setFollowingUserId(u.id);
@@ -3076,6 +3096,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onEnvironmentChange={(currentUserRole === 'owner' || currentUserRole === 'admin') ? handleEnvironmentChange : undefined}
         officeId={officeId !== 'global' ? officeId : undefined}
         currentUserRole={currentUserRole}
+        onBubblePrefsChange={handleBubblePrefsChange}
       />
 
       {/* Login modal — overlays the scene so the world stays visible behind it */}

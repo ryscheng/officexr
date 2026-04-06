@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import AvatarPreview from './AvatarPreview';
 import {
   AvatarCustomization,
   AVATAR_STYLES,
@@ -8,6 +9,9 @@ import {
   BODY_COLOR_PRESETS,
   SKIN_COLOR_PRESETS,
   MARIO_PRESETS,
+  BubblePreferences,
+  loadBubblePrefs,
+  saveBubblePrefs,
 } from '@/types/avatar';
 
 type EnvironmentType = string;
@@ -29,6 +33,7 @@ interface SettingsPanelProps {
   onEnvironmentChange?: (env: EnvironmentType) => void;
   officeId?: string;
   currentUserRole?: 'owner' | 'admin' | 'member';
+  onBubblePrefsChange?: (prefs: BubblePreferences) => void;
 }
 
 const panelStyle: React.CSSProperties = {
@@ -68,6 +73,7 @@ export default function SettingsPanel({
   onEnvironmentChange,
   officeId,
   currentUserRole,
+  onBubblePrefsChange,
 }: SettingsPanelProps) {
   const { user } = useAuth();
   const [settings, setSettings] = useState<AvatarCustomization>(currentSettings);
@@ -75,6 +81,7 @@ export default function SettingsPanel({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [bubblePrefs, setBubblePrefs] = useState<BubblePreferences>(loadBubblePrefs);
 
   // Access section state
   const [linkAccess, setLinkAccess] = useState<boolean | null>(null);
@@ -367,6 +374,44 @@ export default function SettingsPanel({
           </div>
         )}
 
+        {/* ── Speech Bubble ── */}
+        <div style={sectionStyle}>
+          <h3 style={sectionTitle}>Speech Bubble</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', color: '#333' }}>
+              <span style={{ minWidth: '60px' }}>Radius</span>
+              <input
+                type="range"
+                min={1} max={8} step={0.5}
+                value={bubblePrefs.radius}
+                onChange={e => {
+                  const next = { ...bubblePrefs, radius: parseFloat(e.target.value) };
+                  setBubblePrefs(next);
+                  saveBubblePrefs(next);
+                  onBubblePrefsChange?.(next);
+                }}
+                style={{ flex: 1 }}
+              />
+              <span style={{ minWidth: '30px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{bubblePrefs.radius}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', color: '#333' }}>
+              <span style={{ minWidth: '60px' }}>Color</span>
+              <input
+                type="color"
+                value={bubblePrefs.idleColor}
+                onChange={e => {
+                  const next = { ...bubblePrefs, idleColor: e.target.value };
+                  setBubblePrefs(next);
+                  saveBubblePrefs(next);
+                  onBubblePrefsChange?.(next);
+                }}
+                style={{ width: '40px', height: '32px', border: 'none', cursor: 'pointer', borderRadius: '4px' }}
+              />
+              <span style={{ fontSize: '12px', color: '#888' }}>{bubblePrefs.idleColor}</span>
+            </label>
+          </div>
+        </div>
+
         {/* ── Environment ── */}
         {onEnvironmentChange && (
           <div style={sectionStyle}>
@@ -397,6 +442,11 @@ export default function SettingsPanel({
         {/* ── Avatar (authenticated users only) ── */}
         {onSave && (
           <>
+            {/* Avatar preview */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+              <AvatarPreview customization={settings} />
+            </div>
+
             {/* Character presets */}
             <div style={sectionStyle}>
               <h3 style={sectionTitle}>Choose Character</h3>

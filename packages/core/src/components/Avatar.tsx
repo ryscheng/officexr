@@ -74,6 +74,7 @@ function buildGeometricAvatar(group: THREE.Group, customization: AvatarCustomiza
   [-0.06, 0.06].forEach(x => {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), eyeMat);
     eye.position.set(x, 0.98, 0.12);
+    eye.userData = { isEye: true, restX: x, restY: 0.98, restZ: 0.12 };
     group.add(eye);
   });
 
@@ -155,6 +156,7 @@ function buildMarioLuigi(group: THREE.Group, capHex: number, overallsHex: number
   [-0.07, 0.07].forEach(x => {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), eyeMat);
     eye.position.set(x, 1.03, 0.15);
+    eye.userData = { isEye: true, restX: x, restY: 1.03, restZ: 0.15 };
     group.add(eye);
   });
 
@@ -199,6 +201,7 @@ function buildToad(group: THREE.Group, skinColor: string) {
   [-0.06, 0.06].forEach(x => {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), eyeMat);
     eye.position.set(x, 0.85, 0.13);
+    eye.userData = { isEye: true, restX: x, restY: 0.85, restZ: 0.13 };
     group.add(eye);
   });
 
@@ -239,6 +242,7 @@ function buildPeach(group: THREE.Group, skinColor: string) {
   [-0.065, 0.065].forEach(x => {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), eyeMat);
     eye.position.set(x, 1.19, 0.15);
+    eye.userData = { isEye: true, restX: x, restY: 1.19, restZ: 0.15 };
     group.add(eye);
   });
 
@@ -290,6 +294,7 @@ function buildBowser(group: THREE.Group) {
   [-0.11, 0.11].forEach(x => {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), eyeMat);
     eye.position.set(x, 1.08, 0.17);
+    eye.userData = { isEye: true, restX: x, restY: 1.08, restZ: 0.17 };
     group.add(eye);
   });
 
@@ -320,6 +325,7 @@ function buildWario(group: THREE.Group, skinColor: string) {
   [-0.08, 0.08].forEach(x => {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 8), eyeMat);
     eye.position.set(x, 1.05, 0.18);
+    eye.userData = { isEye: true, restX: x, restY: 1.05, restZ: 0.18 };
     group.add(eye);
   });
 
@@ -432,6 +438,18 @@ export function updateAvatar(
 ) {
   avatar.position.lerp(new THREE.Vector3(position.x, 0, position.z), 0.1);
   avatar.rotation.y = rotation.y;
+}
+
+export function buildAvatarForPreview(customization: AvatarCustomization): { group: THREE.Group; eyes: THREE.Mesh[] } {
+  const group = new THREE.Group();
+  buildAvatarGeometry(group, customization);
+  const eyes: THREE.Mesh[] = [];
+  group.traverse(child => {
+    if ((child as THREE.Mesh).isMesh && child.userData.isEye) {
+      eyes.push(child as THREE.Mesh);
+    }
+  });
+  return { group, eyes };
 }
 
 function getColorHexFromId(id: string): string {
