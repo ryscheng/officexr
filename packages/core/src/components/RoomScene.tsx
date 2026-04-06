@@ -10,6 +10,8 @@ import { createAvatar, updateAvatar, AvatarData } from './Avatar';
 import { EMOJI_MAP, spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
+import NetworkDebugPanel, { SignalIcon } from './NetworkDebugPanel';
+import { useNetworkStats } from '@/hooks/useNetworkStats';
 import { AvatarCustomization, BubblePreferences, loadBubblePrefs } from '@/types/avatar';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut, signInWithGoogle } from '@/hooks/useAuth';
@@ -167,13 +169,39 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
   const [joystickActive, setJoystickActive] = useState(false);
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
+  // Network stats for debug panel
+  const networkStats = useNetworkStats(
+    channelRef,
+    channelSubscribedRef,
+    currentUser?.id,
+    onlineUsers,
+    showDebugPanel,
+  );
+  const recordPositionUpdateRef = useRef(networkStats.recordPositionUpdate);
+  recordPositionUpdateRef.current = networkStats.recordPositionUpdate;
   const [is2DMode, setIs2DMode] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const is2DModeRef = useRef(false);
   is2DModeRef.current = is2DMode;
+  type CameraMode = 'first-person' | 'third-person-behind' | 'third-person-front';
+  const [cameraMode, setCameraMode] = useState<CameraMode>('first-person');
+  const cameraModeRef = useRef<CameraMode>('first-person');
+  cameraModeRef.current = cameraMode;
+  const localAvatarRef = useRef<THREE.Group | null>(null);
+  // In third-person the player position is tracked separately from camera position
+  const playerPositionRef = useRef(new THREE.Vector3(0, 0, 5));
+  const playerYawRef = useRef(0);
   const [followingUserId, setFollowingUserId] = useState<string | null>(null);
   const followingUserIdRef = useRef<string | null>(null);
   followingUserIdRef.current = followingUserId;
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  // Trigger renderer resize when debug panel toggles
+  useEffect(() => {
+    // Small delay to let flex layout settle before measuring
+    const timer = setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+    return () => clearTimeout(timer);
+  }, [showDebugPanel]);
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
@@ -1284,6 +1312,23 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       selfMarkerRef.current = selfMarker;
     }
 
+    // Local avatar for third-person view — hidden in first-person
+    {
+      const localAvatarData: AvatarData = {
+        id: currentUser.id,
+        name: currentUser.name || 'You',
+        position: { x: camera.position.x, y: 0, z: camera.position.z },
+        rotation: { x: 0, y: 0, z: 0 },
+        customization: avatarCustomizationRef.current,
+      };
+      const localAvatar = createAvatar(scene, localAvatarData);
+      localAvatar.visible = false;
+      localAvatarRef.current = localAvatar;
+    }
+
+    // Initialize player position from camera
+    playerPositionRef.current.set(camera.position.x, 0, camera.position.z);
+
     // Movement
     const moveSpeed = 0.1;
     const keys = keysRef.current;
@@ -1307,6 +1352,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             },
           });
         }
+      }
+      if (key === 'c' && !chatVisibleRef.current) {
+        setCameraMode(prev => {
+          const modes: CameraMode[] = ['first-person', 'third-person-behind', 'third-person-front'];
+          const next = modes[(modes.indexOf(prev) + 1) % modes.length];
+          cameraModeRef.current = next;
+          // When returning to first-person, snap camera to player position
+          if (next === 'first-person' && cameraRef.current) {
+            const pp = playerPositionRef.current;
+            cameraRef.current.position.set(pp.x, 1.6, pp.z);
+            cameraRef.current.rotation.set(cameraPitch, cameraYaw, 0, 'YXZ');
+          }
+          return next;
+        });
+        return;
       }
       if (key === 'v') {
         setIs2DMode(v => !v);
@@ -1401,13 +1461,16 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     renderer.domElement.addEventListener('touchend', handleTouchEnd);
 
     const handleResize = () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      const container = containerRef.current;
+      const w = container ? container.clientWidth : window.innerWidth;
+      const h = container ? container.clientHeight : window.innerHeight;
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      const newAspect = window.innerWidth / window.innerHeight;
+      const newAspect = w / h;
       orthoCamera.left = -orthoViewSize * newAspect;
       orthoCamera.right = orthoViewSize * newAspect;
       orthoCamera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(w, h);
     };
     window.addEventListener('resize', handleResize);
 
@@ -1560,6 +1623,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         position: { x: number; y: number; z: number };
         rotation: { x: number; y: number; z: number };
       };
+      // Record position update for network stats tracking
+      recordPositionUpdateRef.current(userId);
       // Accept updates from any known user (incl. those whose avatar was removed
       // as stale but whose Supabase presence is still active).
       if (presenceDataRef.current.has(userId)) {
@@ -1830,21 +1895,28 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const positionHeartbeatInterval = setInterval(() => {
       if (!channelRef.current || !channelSubscribedRef.current || !cameraRef.current) return;
       const cam = cameraRef.current;
+      const isTP = cameraModeRef.current !== 'first-person';
+      const hbPos = isTP
+        ? { x: playerPositionRef.current.x, y: 1.6, z: playerPositionRef.current.z }
+        : { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+      const hbRot = isTP
+        ? { x: 0, y: playerYawRef.current, z: 0 }
+        : { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z };
       channelRef.current.send({
         type: 'broadcast',
         event: 'position',
         payload: {
           userId: currentUser.id,
-          position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
-          rotation: { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z },
+          position: hbPos,
+          rotation: hbRot,
         },
       });
       lastPositionUpdate.current = Date.now();
       if (myPresenceRef.current) {
         myPresenceRef.current = {
           ...myPresenceRef.current,
-          position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
-          rotation: { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z },
+          position: hbPos,
+          rotation: hbRot,
         };
         // Periodically sync position to Supabase presence so reconnecting
         // users and new joiners see an accurate initial avatar position.
@@ -1943,13 +2015,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           moved = true;
         }
       } else {
-        // 3D mode: movement relative to camera facing direction
-        const forward = new THREE.Vector3();
-        const right = new THREE.Vector3();
-        camera.getWorldDirection(forward);
-        forward.y = 0;
-        forward.normalize();
-        right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
+        // 3D mode: movement relative to player facing direction (yaw)
+        // In first-person, yaw comes from camera. In third-person, yaw is tracked separately.
+        const isThirdPerson = cameraModeRef.current !== 'first-person';
+        const yaw = isThirdPerson ? playerYawRef.current : cameraYaw;
+        const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+        const right = new THREE.Vector3(forward.z, 0, -forward.x);
         if (keys['w'] || keys['arrowup'])    { direction.add(forward); moved = true; }
         if (keys['s'] || keys['arrowdown'])  { direction.sub(forward); moved = true; }
         if (keys['a'] || keys['arrowleft'])  { direction.sub(right); moved = true; }
@@ -1968,17 +2039,26 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         if (followingUserIdRef.current !== null) {
           setFollowingUserId(null);
         }
-        camera.position.add(direction.multiplyScalar(moveSpeed));
-        camera.position.x = Math.max(-14.5, Math.min(14.5, camera.position.x));
-        camera.position.z = Math.max(-14.5, Math.min(14.5, camera.position.z));
+        const step = direction.multiplyScalar(moveSpeed);
+        if (cameraModeRef.current === 'first-person') {
+          camera.position.add(step);
+          camera.position.x = Math.max(-14.5, Math.min(14.5, camera.position.x));
+          camera.position.z = Math.max(-14.5, Math.min(14.5, camera.position.z));
+        } else {
+          playerPositionRef.current.add(step);
+          playerPositionRef.current.x = Math.max(-14.5, Math.min(14.5, playerPositionRef.current.x));
+          playerPositionRef.current.z = Math.max(-14.5, Math.min(14.5, playerPositionRef.current.z));
+        }
       }
 
       // Follow mode: snap camera to stay just within proximity of the followed user
       if (followingUserIdRef.current) {
         const followTarget = avatarTargetsRef.current.get(followingUserIdRef.current);
         if (followTarget) {
+          const playerPos = cameraModeRef.current === 'first-person'
+            ? camera.position : playerPositionRef.current;
           const dir = new THREE.Vector3()
-            .subVectors(camera.position, followTarget.position)
+            .subVectors(playerPos, followTarget.position)
             .setY(0)
             .normalize();
           if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
@@ -1986,16 +2066,64 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             .addScaledVector(dir, bubblePrefsRef.current.radius * 0.8);
           const destX = Math.max(-14.5, Math.min(14.5, dest.x));
           const destZ = Math.max(-14.5, Math.min(14.5, dest.z));
-          // Only update and broadcast if position actually changed, to avoid
-          // floating-point noise from making the follower's avatar vibrate.
-          const fdx = camera.position.x - destX;
-          const fdz = camera.position.z - destZ;
+          const fdx = playerPos.x - destX;
+          const fdz = playerPos.z - destZ;
           if (fdx * fdx + fdz * fdz > 0.0001) {
-            camera.position.set(destX, 1.6, destZ);
+            if (cameraModeRef.current === 'first-person') {
+              camera.position.set(destX, 1.6, destZ);
+            } else {
+              playerPositionRef.current.set(destX, 0, destZ);
+            }
             moved = true;
           }
         }
       }
+
+      // Third-person camera: position camera relative to the player avatar
+      const isThirdPerson = cameraModeRef.current !== 'first-person';
+      const localAvatar = localAvatarRef.current;
+      if (isThirdPerson && localAvatar) {
+        // Update player yaw from mouse movement
+        playerYawRef.current = cameraYaw;
+        const pPos = playerPositionRef.current;
+        // Position and rotate the local avatar
+        localAvatar.visible = true;
+        localAvatar.position.set(pPos.x, 0, pPos.z);
+        localAvatar.rotation.y = playerYawRef.current;
+
+        const camDist = 3.5;
+        const camHeight = 2.2;
+        const yaw = playerYawRef.current;
+        if (cameraModeRef.current === 'third-person-behind') {
+          // Camera behind: offset in the opposite direction the avatar faces
+          camera.position.set(
+            pPos.x + Math.sin(yaw) * camDist,
+            camHeight,
+            pPos.z + Math.cos(yaw) * camDist,
+          );
+        } else {
+          // Camera in front: offset in the direction the avatar faces
+          camera.position.set(
+            pPos.x - Math.sin(yaw) * camDist,
+            camHeight,
+            pPos.z - Math.cos(yaw) * camDist,
+          );
+        }
+        // Look at avatar head
+        camera.lookAt(pPos.x, 1.4, pPos.z);
+      } else if (localAvatar) {
+        localAvatar.visible = false;
+        // Sync player position from camera when in first-person
+        playerPositionRef.current.set(camera.position.x, 0, camera.position.z);
+      }
+
+      // Determine broadcast position: always send player position, not camera offset
+      const broadcastPos = isThirdPerson
+        ? { x: playerPositionRef.current.x, y: 1.6, z: playerPositionRef.current.z }
+        : { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+      const broadcastRot = isThirdPerson
+        ? { x: 0, y: playerYawRef.current, z: 0 }
+        : { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z };
 
       const now = Date.now();
       // Send position when moving (60ms throttle). Stationary heartbeat is
@@ -2009,8 +2137,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           event: 'position',
           payload: {
             userId: currentUser.id,
-            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-            rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
+            position: broadcastPos,
+            rotation: broadcastRot,
           },
         });
         lastPositionUpdate.current = now;
@@ -2019,17 +2147,17 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         if (myPresenceRef.current) {
           const updatedPresence = {
             ...myPresenceRef.current,
-            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-            rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
+            position: broadcastPos,
+            rotation: broadcastRot,
           };
           myPresenceRef.current = updatedPresence;
         }
       }
 
-      // Update local bubble sphere position
+      // Update local bubble sphere position (follows player, not camera offset)
       if (localBubbleSphereRef.current) {
         localBubbleSphereRef.current.position.set(
-          camera.position.x, camera.position.y, camera.position.z
+          broadcastPos.x, broadcastPos.y, broadcastPos.z
         );
       }
 
@@ -2080,8 +2208,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         // Proximity uses last-received position, not interpolated avatar position.
         // Use horizontal (XZ) distance only — camera.y is at eye height (~1.6)
         // while targets are at y=0, so 3D distance would shrink effective range.
-        const dx = camera.position.x - target.position.x;
-        const dz = camera.position.z - target.position.z;
+        const dx = broadcastPos.x - target.position.x;
+        const dz = broadcastPos.z - target.position.z;
         if (Math.sqrt(dx * dx + dz * dz) < bubblePrefsRef.current.radius * 2) {
           newNearby.add(uid);
         }
@@ -2171,13 +2299,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       // Update self marker position and visibility in 2D mode
       if (selfMarkerRef.current) {
-        selfMarkerRef.current.position.set(camera.position.x, 0, camera.position.z);
+        selfMarkerRef.current.position.set(broadcastPos.x, 0, broadcastPos.z);
         selfMarkerRef.current.visible = in2D;
       }
 
       // Sync top-down camera to player XZ position
-      orthoCamera.position.x = camera.position.x;
-      orthoCamera.position.z = camera.position.z;
+      orthoCamera.position.x = broadcastPos.x;
+      orthoCamera.position.z = broadcastPos.z;
 
       renderer.render(scene, is2DModeRef.current ? orthoCamera : camera);
     };
@@ -2251,6 +2379,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         scene.remove(selfMarkerRef.current);
         selfMarkerRef.current = null;
       }
+      if (localAvatarRef.current) {
+        scene.remove(localAvatarRef.current);
+        localAvatarRef.current = null;
+      }
       bubbleSpheresRef.current.clear();
       presenceDataRef.current.clear();
       lastSeenAt.current.clear();
@@ -2309,6 +2441,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     setAvatarCustomization(settings);
 
+    // Update local avatar (for third-person view)
+    if (localAvatarRef.current && sceneRef.current) {
+      const oldData = localAvatarRef.current.userData as AvatarData;
+      sceneRef.current.remove(localAvatarRef.current);
+      const newLocalAvatar = createAvatar(sceneRef.current, { ...oldData, customization: settings });
+      newLocalAvatar.visible = cameraModeRef.current !== 'first-person';
+      localAvatarRef.current = newLocalAvatar;
+    }
+
     // Broadcast avatar update to other users
     if (channelRef.current && channelSubscribedRef.current) {
       channelRef.current.send({
@@ -2322,7 +2463,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   };
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100vh' }}>
+    <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
       {/* Green outline when mouse look mode is active */}
       {mouseLockActive && (
         <div style={{
@@ -2889,6 +3031,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                       }}
                     />
                     <span>{displayName}</span>
+                    {/* Signal strength indicator — only shown when connection is bad */}
+                    {!isSelf && (() => {
+                      const peerStats = networkStats.peers.get(u.id);
+                      if (peerStats && peerStats.quality !== 'good') {
+                        return <SignalIcon quality={peerStats.quality} />;
+                      }
+                      return null;
+                    })()}
                     {canTeleport && (
                       <button
                         title={followingUserId === u.id ? `Stop following ${u.name}` : `Follow ${u.name}`}
@@ -3241,6 +3391,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </div>
       )}
 
+      {/* Camera mode indicator */}
+      {cameraMode !== 'first-person' && (
+        <div style={{
+          position: 'absolute', bottom: isTouchDevice ? '180px' : '20px', left: isTouchDevice ? '40px' : '20px',
+          background: 'rgba(0,0,0,0.7)', color: 'white', padding: '6px 12px',
+          borderRadius: '6px', fontFamily: 'monospace', fontSize: '12px', zIndex: 200,
+          pointerEvents: 'none',
+        }}>
+          {cameraMode === 'third-person-behind' ? '3rd Person (Behind)' : '3rd Person (Front)'}
+          <span style={{ color: '#9ca3af', marginLeft: '8px' }}>C to cycle</span>
+        </div>
+      )}
+
       {/* Virtual joystick — touch devices only */}
       {isTouchDevice && (
         <div
@@ -3289,6 +3452,28 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           }} />
         </div>
       )}
+    </div>
+
+    {/* Debug panel toggle tab */}
+    <button
+      onClick={() => setShowDebugPanel(v => !v)}
+      style={{
+        position: 'absolute', bottom: showDebugPanel ? '220px' : '0px', left: '50%',
+        transform: 'translateX(-50%)',
+        background: '#1f2937', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.1)',
+        borderBottom: showDebugPanel ? 'none' : '1px solid rgba(255,255,255,0.1)',
+        borderRadius: showDebugPanel ? '6px 6px 0 0' : '6px 6px 0 0',
+        padding: '3px 14px', fontSize: '11px', fontFamily: 'monospace',
+        cursor: 'pointer', zIndex: 300,
+        transition: 'bottom 0.2s ease',
+      }}
+    >
+      {showDebugPanel ? 'Hide' : 'Network'}
+    </button>
+
+    {showDebugPanel && (
+      <NetworkDebugPanel stats={networkStats} onClose={() => setShowDebugPanel(false)} />
+    )}
     </div>
   );
 }
