@@ -689,11 +689,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     cameraRef.current = camera;
 
     // Orthographic camera for 2D top-down mode
-    const ORTHO_VIEW_SIZE = 15;
+    let orthoViewSize = 15; // mutable so scroll wheel can zoom in/out
     const orthoAspect = window.innerWidth / window.innerHeight;
     const orthoCamera = new THREE.OrthographicCamera(
-      -ORTHO_VIEW_SIZE * orthoAspect, ORTHO_VIEW_SIZE * orthoAspect,
-      ORTHO_VIEW_SIZE, -ORTHO_VIEW_SIZE,
+      -orthoViewSize * orthoAspect, orthoViewSize * orthoAspect,
+      orthoViewSize, -orthoViewSize,
       0.1, 200,
     );
     orthoCamera.position.set(camera.position.x, 80, camera.position.z);
@@ -1361,12 +1361,27 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       const newAspect = window.innerWidth / window.innerHeight;
-      orthoCamera.left = -ORTHO_VIEW_SIZE * newAspect;
-      orthoCamera.right = ORTHO_VIEW_SIZE * newAspect;
+      orthoCamera.left = -orthoViewSize * newAspect;
+      orthoCamera.right = orthoViewSize * newAspect;
       orthoCamera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener('resize', handleResize);
+
+    // Scroll wheel zoom for 2D mode only
+    const handleWheel = (event: WheelEvent) => {
+      if (!is2DModeRef.current) return;
+      event.preventDefault();
+      const zoomFactor = 1 + event.deltaY * 0.001;
+      orthoViewSize = Math.max(3, Math.min(40, orthoViewSize * zoomFactor));
+      const aspect = window.innerWidth / window.innerHeight;
+      orthoCamera.left = -orthoViewSize * aspect;
+      orthoCamera.right = orthoViewSize * aspect;
+      orthoCamera.top = orthoViewSize;
+      orthoCamera.bottom = -orthoViewSize;
+      orthoCamera.updateProjectionMatrix();
+    };
+    renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
 
     // Supabase Realtime channel
     const channelName = `office:${officeId}`;
@@ -1982,6 +1997,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       clearInterval(offlineCleanupInterval);
       renderer.domElement.removeEventListener('click', handleCanvasClick);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('wheel', handleWheel);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
