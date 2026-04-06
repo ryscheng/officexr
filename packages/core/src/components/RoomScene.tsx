@@ -1274,7 +1274,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       if (chatVisibleRef.current) {
-        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'v', '?'];
         if (navigationKeys.includes(key)) return;
       }
       if (key === 'v') {
