@@ -104,6 +104,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const localScreenStreamRef = useRef<MediaStream | null>(null);
   // Keys: "sharer-{viewerId}" (on the sharer side) or "viewer-{sharerId}" (on the viewer side)
   const screenPeerConnsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  // ICE candidates that arrive before setRemoteDescription completes are queued here,
+  // keyed by the remote peer's user ID, and flushed once the description is set.
+  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
 
   const [micMuted, setMicMuted] = useState(false);
   const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
@@ -1274,7 +1277,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       if (chatVisibleRef.current) {
-        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'v', '?'];
         if (navigationKeys.includes(key)) return;
       }
       if (key === 'v') {
@@ -1601,12 +1604,20 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         setActiveShareId(prev => prev ?? from);
       };
       pc.setRemoteDescription({ type: 'offer', sdp })
-        .then(() => pc.createAnswer())
+        .then(() => {
+          // Flush any ICE candidates that arrived before the remote description was set
+          const queued = pendingIceCandidatesRef.current.get(from) ?? [];
+          pendingIceCandidatesRef.current.delete(from);
+          return Promise.all([
+            pc.createAnswer(),
+            ...queued.map(c => pc.addIceCandidate(new RTCIceCandidate(c)).catch(console.error)),
+          ]);
+        })
+        .then(([answer]) => pc.setLocalDescription(answer as RTCSessionDescriptionInit).then(() => answer))
         .then(answer => {
-          pc.setLocalDescription(answer);
           channelRef.current?.send({
             type: 'broadcast', event: 'screen-answer',
-            payload: { from: currentUser.id, to: from, sdp: answer.sdp },
+            payload: { from: currentUser.id, to: from, sdp: (answer as RTCSessionDescriptionInit).sdp },
           });
         })
         .catch(err => console.error('[ScreenShare] answer failed:', err));
@@ -1624,7 +1635,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (to !== currentUser.id) return;
       const pc = screenPeerConnsRef.current.get(`sharer-${from}`)
              ?? screenPeerConnsRef.current.get(`viewer-${from}`);
-      if (pc) pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
+      if (!pc) return;
+      if (pc.remoteDescription) {
+        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
+      } else {
+        // Remote description not set yet — queue and flush in the offer/answer handler
+        const q = pendingIceCandidatesRef.current.get(from) ?? [];
+        q.push(candidate);
+        pendingIceCandidatesRef.current.set(from, q);
+      }
     });
 
     channel.on('broadcast', { event: 'screen-stop' }, ({ payload }) => {
@@ -1950,8 +1969,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               // User is inactive (tab backgrounded, movements paused) but still
               // connected. Keep the avatar frozen at its last position — it will
               // resume moving if/when the user becomes active again.
-              // avatarTargetsRef and presenceDataRef are left intact so proximity
-              // detection and the online users list remain accurate.
+              // presenceDataRef is left intact so the online users list stays accurate.
+              // However, remove from avatarTargetsRef so proximity detection no longer
+              // counts them as nearby — this prevents the voice call from staying open
+              // when the user's network dropped but Supabase hasn't fired leave yet.
+              // The position broadcast handler will re-add them when updates resume.
+              avatarTargetsRef.current.delete(uid);
             } else {
               // User truly gone — remove avatar, sphere, and all tracking data.
               if (followingUserIdRef.current === uid) setFollowingUserId(null);
@@ -2054,6 +2077,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       localScreenStreamRef.current = null;
       screenPeerConnsRef.current.forEach(pc => pc.close());
       screenPeerConnsRef.current.clear();
+      pendingIceCandidatesRef.current.clear();
 
       supabase.removeChannel(channel);
       channelRef.current = null;
@@ -2343,8 +2367,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             </div>
             {/* Video */}
             <video
-              ref={el => { if (el) { el.srcObject = share.stream; el.play().catch(() => {}); } }}
-              autoPlay playsInline muted={isMine}
+              ref={el => {
+                if (!el) return;
+                el.srcObject = share.stream;
+                el.muted = true; // mute first so autoplay is always allowed
+                el.play()
+                  .then(() => { el.muted = isMine; }) // unmute viewer streams after play starts
+                  .catch(() => {});
+              }}
+              autoPlay playsInline
               style={{ flex: 1, width: '100%', objectFit: 'contain', background: 'black' }}
             />
           </div>
@@ -2371,8 +2402,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                   cursor: 'pointer',
                 }} onClick={() => setActiveShareId(id)}>
                   <video
-                    ref={el => { if (el) { el.srcObject = share.stream; el.play().catch(() => {}); } }}
-                    autoPlay playsInline muted={isMine}
+                    ref={el => {
+                      if (!el) return;
+                      el.srcObject = share.stream;
+                      el.muted = true;
+                      el.play()
+                        .then(() => { el.muted = isMine; })
+                        .catch(() => {});
+                    }}
+                    autoPlay playsInline
                     style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'contain', background: 'black' }}
                   />
                   <div style={{
@@ -2644,7 +2682,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 const isSelf = u.id === currentUser?.id;
                 const dotColor = u.status === 'active' ? '#4ade80' : u.status === 'inactive' ? '#fbbf24' : '#f87171';
                 const dotTitle = u.status === 'active' ? 'Active' : u.status === 'inactive' ? 'Inactive' : 'Offline';
-                const canTeleport = !isSelf && u.status !== 'offline' && avatarTargetsRef.current.has(u.id);
+                const canTeleport = !isSelf && u.status !== 'offline';
                 return (
                   <li key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
                     <span
@@ -2663,18 +2701,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                             setFollowingUserId(null);
                             return;
                           }
-                          // Teleport next to the user, then begin following
+                          // Teleport next to the user if we already have their position,
+                          // then begin following. Follow mode starts regardless so the
+                          // animation loop will track them as soon as position data arrives.
                           const target = avatarTargetsRef.current.get(u.id);
                           const cam = cameraRef.current;
-                          if (!target || !cam) return;
-                          const dir = new THREE.Vector3()
-                            .subVectors(cam.position, target.position)
-                            .setY(0)
-                            .normalize();
-                          if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
-                          const dest = target.position.clone()
-                            .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
-                          cam.position.set(dest.x, 1.6, dest.z);
+                          if (target && cam) {
+                            const dir = new THREE.Vector3()
+                              .subVectors(cam.position, target.position)
+                              .setY(0)
+                              .normalize();
+                            if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
+                            const dest = target.position.clone()
+                              .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
+                            cam.position.set(dest.x, 1.6, dest.z);
+                          }
                           setFollowingUserId(u.id);
                         }}
                         style={{
