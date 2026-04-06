@@ -1449,6 +1449,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             const sphere = createBubbleSphere(scene);
             sphere.position.copy(avatar.position);
             bubbleSpheresRef.current.set(presence.id, sphere);
+            // Seed proximity target from presence so the user is immediately
+            // visible to proximity detection instead of waiting for a broadcast.
+            if (presence.position && !avatarTargetsRef.current.has(presence.id)) {
+              avatarTargetsRef.current.set(presence.id, {
+                position: new THREE.Vector3(presence.position.x, 0, presence.position.z),
+                rotationY: presence.rotation?.y ?? 0,
+              });
+              lastSeenAt.current.set(presence.id, Date.now());
+            }
           }
         });
       });
@@ -1483,6 +1492,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const sphere = createBubbleSphere(scene);
           sphere.position.copy(avatar.position);
           bubbleSpheresRef.current.set(p.id, sphere);
+          if (p.position && !avatarTargetsRef.current.has(p.id)) {
+            avatarTargetsRef.current.set(p.id, {
+              position: new THREE.Vector3(p.position.x, 0, p.position.z),
+              rotationY: p.rotation?.y ?? 0,
+            });
+            lastSeenAt.current.set(p.id, Date.now());
+          }
         }
       });
       rebuildOnlineUsers();
@@ -1536,7 +1552,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const camPos = cameraRef.current.position;
           const newNearby = new Set<string>();
           avatarTargetsRef.current.forEach((target, uid) => {
-            if (camPos.distanceTo(target.position) < PROXIMITY_RADIUS * 2) {
+            const dx = camPos.x - target.position.x;
+            const dz = camPos.z - target.position.z;
+            if (Math.sqrt(dx * dx + dz * dz) < PROXIMITY_RADIUS * 2) {
               newNearby.add(uid);
             }
           });
@@ -1704,6 +1722,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               const sphere = createBubbleSphere(scene);
               sphere.position.copy(avatar.position);
               bubbleSpheresRef.current.set(p.id, sphere);
+              if (p.position && !avatarTargetsRef.current.has(p.id)) {
+                avatarTargetsRef.current.set(p.id, {
+                  position: new THREE.Vector3(p.position.x, 0, p.position.z),
+                  rotationY: p.rotation?.y ?? 0,
+                });
+                lastSeenAt.current.set(p.id, Date.now());
+              }
             }
           });
         });
@@ -1736,6 +1761,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // when the animation loop is throttled by Chrome in a background tab.
     // The animation loop still sends immediate movement updates at 60 ms; this
     // interval covers the 3-second stationary heartbeat independently.
+    let lastPresenceTrackTime = 0;
     const positionHeartbeatInterval = setInterval(() => {
       if (!channelRef.current || !channelSubscribedRef.current || !cameraRef.current) return;
       const cam = cameraRef.current;
@@ -1755,6 +1781,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
           rotation: { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z },
         };
+        // Periodically sync position to Supabase presence so reconnecting
+        // users and new joiners see an accurate initial avatar position.
+        const trackNow = Date.now();
+        if (trackNow - lastPresenceTrackTime > 10000) {
+          lastPresenceTrackTime = trackNow;
+          channelRef.current.track(myPresenceRef.current);
+        }
       }
     }, 2000);
 
@@ -1952,8 +1985,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         if (avatar && sphere) {
           sphere.position.copy(avatar.position);
         }
-        // Proximity uses last-received position, not interpolated avatar position
-        if (camera.position.distanceTo(target.position) < PROXIMITY_RADIUS * 2) {
+        // Proximity uses last-received position, not interpolated avatar position.
+        // Use horizontal (XZ) distance only — camera.y is at eye height (~1.6)
+        // while targets are at y=0, so 3D distance would shrink effective range.
+        const dx = camera.position.x - target.position.x;
+        const dz = camera.position.z - target.position.z;
+        if (Math.sqrt(dx * dx + dz * dz) < PROXIMITY_RADIUS * 2) {
           newNearby.add(uid);
         }
       });
