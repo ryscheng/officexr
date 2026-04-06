@@ -2079,6 +2079,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       screenPeerConnsRef.current.clear();
       pendingIceCandidatesRef.current.clear();
 
+      channel.untrack(); // explicitly signal departure — triggers immediate presence.leave for others
       supabase.removeChannel(channel);
       channelRef.current = null;
       channelSubscribedRef.current = false;
