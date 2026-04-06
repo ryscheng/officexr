@@ -678,12 +678,28 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
                 marginBottom: '8px', padding: '8px 10px',
                 background: 'rgba(255,255,255,0.07)', borderRadius: '6px',
               }}>
-                <p style={{ margin: '0 0 6px 0', fontSize: '13px', fontWeight: 'bold', wordBreak: 'break-word' }}>
-                  {room.name}
-                  <span style={{ marginLeft: '6px', fontSize: '10px', color: '#9ca3af', fontWeight: 'normal' }}>
-                    {room.role}
-                  </span>
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <p style={{ margin: 0, fontSize: '13px', fontWeight: 'bold', wordBreak: 'break-word', flex: 1, minWidth: 0 }}>
+                    {room.name}
+                    <span style={{ marginLeft: '6px', fontSize: '10px', color: '#9ca3af', fontWeight: 'normal' }}>
+                      {room.role}
+                    </span>
+                  </p>
+                  <button
+                    onClick={() => onEnterRoom(room.id)}
+                    title={`Teleport to ${room.name}`}
+                    style={{
+                      flexShrink: 0, marginLeft: '6px',
+                      background: 'rgba(99,102,241,0.8)', color: 'white',
+                      border: 'none', borderRadius: '4px',
+                      padding: '2px 7px', fontSize: '14px', cursor: 'pointer', lineHeight: 1.4,
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,1)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.8)'; }}
+                  >
+                    →
+                  </button>
+                </div>
                 <div style={{ display: 'flex', gap: '5px' }}>
                   <button
                     onClick={() => handleToggleLinkAccess(room.id, room.linkAccess)}
