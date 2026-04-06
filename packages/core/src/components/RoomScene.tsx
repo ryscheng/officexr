@@ -44,12 +44,12 @@ interface OfficeSceneProps {
 }
 
 export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }: OfficeSceneProps) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  // Generate anonymous user data if not logged in
+  // Generate anonymous user data if not logged in (wait for auth to resolve first)
   const anonymousUserRef = useRef<{ id: string; name: string } | null>(null);
-  if (!user && !anonymousUserRef.current) {
+  if (!authLoading && !user && !anonymousUserRef.current) {
     const randomId = `anon-${Math.random().toString(36).substr(2, 9)}`;
     const guestNumber = Math.floor(Math.random() * 1000);
     anonymousUserRef.current = {
