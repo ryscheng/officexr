@@ -160,6 +160,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [showControls, setShowControls] = useState(false);
   const is2DModeRef = useRef(false);
   is2DModeRef.current = is2DMode;
+  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
+  const followingUserIdRef = useRef<string | null>(null);
+  followingUserIdRef.current = followingUserId;
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
@@ -1480,6 +1483,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
       leftPresences.forEach((presence) => {
         const p = presence as unknown as PresenceEntry;
+        // Stop following this user if we were
+        if (followingUserIdRef.current === p.id) setFollowingUserId(null);
         // Clean up visual avatar and sphere if they still exist
         const avatar = avatarsRef.current.get(p.id);
         if (avatar) { scene.remove(avatar); avatarsRef.current.delete(p.id); }
@@ -1820,9 +1825,33 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       if (direction.length() > 0) {
         direction.normalize();
+        // Any manual movement cancels follow mode
+        if (followingUserIdRef.current !== null) {
+          setFollowingUserId(null);
+        }
         camera.position.add(direction.multiplyScalar(moveSpeed));
         camera.position.x = Math.max(-14.5, Math.min(14.5, camera.position.x));
         camera.position.z = Math.max(-14.5, Math.min(14.5, camera.position.z));
+      }
+
+      // Follow mode: snap camera to stay just within proximity of the followed user
+      if (followingUserIdRef.current) {
+        const followTarget = avatarTargetsRef.current.get(followingUserIdRef.current);
+        if (followTarget) {
+          const dir = new THREE.Vector3()
+            .subVectors(camera.position, followTarget.position)
+            .setY(0)
+            .normalize();
+          if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
+          const dest = followTarget.position.clone()
+            .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
+          camera.position.set(
+            Math.max(-14.5, Math.min(14.5, dest.x)),
+            1.6,
+            Math.max(-14.5, Math.min(14.5, dest.z)),
+          );
+          moved = true; // broadcast our updated position each frame we follow
+        }
       }
 
       const now = Date.now();
@@ -1925,6 +1954,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               // detection and the online users list remain accurate.
             } else {
               // User truly gone — remove avatar, sphere, and all tracking data.
+              if (followingUserIdRef.current === uid) setFollowingUserId(null);
               const stalePresence = presenceDataRef.current.get(uid);
               const staleAvatar = avatarsRef.current.get(uid);
               if (staleAvatar) scene.remove(staleAvatar);
@@ -2627,33 +2657,36 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                     <span>{displayName}</span>
                     {canTeleport && (
                       <button
-                        title={`Teleport to ${u.name}`}
+                        title={followingUserId === u.id ? `Stop following ${u.name}` : `Follow ${u.name}`}
                         onClick={() => {
+                          if (followingUserId === u.id) {
+                            setFollowingUserId(null);
+                            return;
+                          }
+                          // Teleport next to the user, then begin following
                           const target = avatarTargetsRef.current.get(u.id);
                           const cam = cameraRef.current;
                           if (!target || !cam) return;
-                          // Place the player PROXIMITY_RADIUS * 0.8 units from the
-                          // target, offset toward the current camera position so the
-                          // player arrives facing the target. Stay at eye height.
                           const dir = new THREE.Vector3()
                             .subVectors(cam.position, target.position)
                             .setY(0)
                             .normalize();
-                          // Fall back to a fixed offset if we're on top of each other
                           if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
                           const dest = target.position.clone()
                             .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
                           cam.position.set(dest.x, 1.6, dest.z);
+                          setFollowingUserId(u.id);
                         }}
                         style={{
                           background: 'none', border: 'none', cursor: 'pointer',
                           padding: '0 2px', fontSize: '13px', lineHeight: 1,
-                          opacity: 0.7, flexShrink: 0,
+                          opacity: followingUserId === u.id ? 1 : 0.7, flexShrink: 0,
+                          filter: followingUserId === u.id ? 'brightness(1.8)' : 'none',
                         }}
                         onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.7'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = followingUserId === u.id ? '1' : '0.7'; }}
                       >
-                        ⤴
+                        {followingUserId === u.id ? '⊙' : '⤴'}
                       </button>
                     )}
                     {!isSelf && u.status !== 'offline' && (
