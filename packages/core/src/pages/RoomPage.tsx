@@ -58,7 +58,7 @@ export default function RoomPage() {
       <h1 style={{ margin: 0 }}>{state === 'not-found' ? 'Room Not Found' : 'Access Denied'}</h1>
       <p style={{ margin: 0, color: '#9ca3af' }}>
         {state === 'denied'
-          ? 'You do not have access to this room.'
+          ? 'You must be signed in and invited to access this room.'
           : 'This room does not exist or may have been deleted.'}
       </p>
       <button

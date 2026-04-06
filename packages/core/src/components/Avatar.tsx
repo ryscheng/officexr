@@ -376,7 +376,7 @@ function loadGLTFIntoGroup(url: string, group: THREE.Group, fallbackCustomizatio
 export function createAvatar(scene: THREE.Scene, userData: AvatarData): THREE.Group {
   const group = new THREE.Group();
   group.userData = userData;
-  group.position.set(userData.position.x, userData.position.y, userData.position.z);
+  group.position.set(userData.position.x, 0, userData.position.z);
   group.rotation.set(userData.rotation.x, userData.rotation.y, userData.rotation.z);
 
   const customization: AvatarCustomization = userData.customization ?? {
@@ -410,7 +410,7 @@ export function updateAvatar(
   position: { x: number; y: number; z: number },
   rotation: { x: number; y: number; z: number }
 ) {
-  avatar.position.lerp(new THREE.Vector3(position.x, position.y, position.z), 0.1);
+  avatar.position.lerp(new THREE.Vector3(position.x, 0, position.z), 0.1);
   avatar.rotation.y = rotation.y;
 }
 

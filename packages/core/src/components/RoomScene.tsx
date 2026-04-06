@@ -16,6 +16,11 @@ import { useMotionControls } from '@/hooks/useMotionControls';
 
 const PROXIMITY_RADIUS = 3; // Three.js units — spheres overlap when distance < PROXIMITY_RADIUS * 2
 
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
 type PresenceEntry = AvatarData & { email?: string | null; jitsiRoom?: string | null; status?: 'active' | 'inactive' };
 
 function createBubbleSphere(scene: THREE.Scene): THREE.Mesh {
@@ -89,6 +94,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jitsiHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jitsiMessageListenerRef = useRef<((evt: MessageEvent) => void) | null>(null);
+
+  // Screen sharing state
+  type ScreenShare = { stream: MediaStream; name: string };
+  const [screenShares, setScreenShares] = useState<Map<string, ScreenShare>>(new Map());
+  const [activeShareId, setActiveShareId] = useState<string | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const localScreenStreamRef = useRef<MediaStream | null>(null);
+  // Keys: "sharer-{viewerId}" (on the sharer side) or "viewer-{sharerId}" (on the viewer side)
+  const screenPeerConnsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
 
   const [micMuted, setMicMuted] = useState(false);
   const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
@@ -485,32 +499,123 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   }, []);
 
-  // Reset Jitsi state when the room changes and start a safety timeout for
-  // iframe loading. The tighter XMPP-connection timeout starts in onApiReady.
+  // ── Screen sharing ────────────────────────────────────────────────────────────
+
+  const closeSharerPeerConns = () => {
+    screenPeerConnsRef.current.forEach((pc, key) => {
+      if (key.startsWith('sharer-')) { pc.close(); screenPeerConnsRef.current.delete(key); }
+    });
+  };
+
+  const closeViewerPeerConn = (sharerId: string) => {
+    const pc = screenPeerConnsRef.current.get(`viewer-${sharerId}`);
+    if (pc) { pc.close(); screenPeerConnsRef.current.delete(`viewer-${sharerId}`); }
+  };
+
+  const createSharerPeerConn = (viewerId: string, stream: MediaStream) => {
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    screenPeerConnsRef.current.set(`sharer-${viewerId}`, pc);
+    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    pc.onicecandidate = ({ candidate }) => {
+      if (!candidate) return;
+      channelRef.current?.send({
+        type: 'broadcast', event: 'screen-ice',
+        payload: { from: currentUserRef.current!.id, to: viewerId, candidate: candidate.toJSON() },
+      });
+    };
+    pc.createOffer().then(offer => {
+      pc.setLocalDescription(offer);
+      channelRef.current?.send({
+        type: 'broadcast', event: 'screen-offer',
+        payload: { from: currentUserRef.current!.id, to: viewerId, sdp: offer.sdp },
+      });
+    });
+  };
+
+  const startScreenShare = async () => {
+    if (!currentUserRef.current || !channelRef.current) return;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    } catch (err: any) {
+      if (err.name !== 'NotAllowedError') console.error('[ScreenShare] getDisplayMedia failed:', err);
+      return;
+    }
+    localScreenStreamRef.current = stream;
+    setIsSharing(true);
+    const myId = currentUserRef.current.id;
+    const myName = currentUserRef.current.name || 'You';
+    setScreenShares(prev => new Map(prev).set(myId, { stream, name: myName }));
+    setActiveShareId(myId);
+    // Create a peer connection for every other user currently in the room
+    presenceDataRef.current.forEach((_, userId) => {
+      if (userId !== myId) createSharerPeerConn(userId, stream);
+    });
+    // Auto-stop when the browser's built-in "Stop sharing" button is clicked
+    stream.getVideoTracks()[0]?.addEventListener('ended', stopScreenShare);
+  };
+
+  const stopScreenShare = () => {
+    localScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+    localScreenStreamRef.current = null;
+    setIsSharing(false);
+    const myId = currentUserRef.current?.id;
+    if (myId) {
+      setScreenShares(prev => { const m = new Map(prev); m.delete(myId); return m; });
+      setActiveShareId(prev => prev === myId ? null : prev);
+    }
+    closeSharerPeerConns();
+    channelRef.current?.send({
+      type: 'broadcast', event: 'screen-stop',
+      payload: { userId: myId },
+    });
+  };
+
+  // Pre-warm: connect to a personal idle room as soon as the JWT is ready so
+  // the Jitsi SDK bundle is downloaded and the XMPP connection is established
+  // before the user ever enters proximity range.
+  //
+  // The idle room name is keyed by the current user's own ID (the same formula
+  // used by handleProximityChange). If this user has the lexicographically
+  // lowest ID among nearby users — roughly half of all encounters — the prewarm
+  // room IS the proximity room, so voice becomes instant with zero reconnect.
+  // In other cases the SDK is already cached and only the XMPP room switch
+  // (~3–8 s) is needed instead of a cold start (~10–18 s).
+  const jitsiPrewarmRoom = jaasJwt && currentUser
+    ? `officexr-${officeId.slice(0, 8)}-${currentUser.id.slice(0, 8)}`
+    : null;
+  // The room JaaSMeeting actually connects to.
+  const activeJitsiRoom = jitsiRoom ?? jitsiPrewarmRoom;
+
+  // Reset Jitsi state when the active room changes and start a safety timeout
+  // for iframe loading. The tighter XMPP-connection timeout starts in onApiReady.
   useEffect(() => {
     // Clean up everything from the previous Jitsi session (intervals, listeners, API)
     cleanupJitsi();
 
-    if (!jitsiRoom || !jaasJwt) {
+    if (!activeJitsiRoom || !jaasJwt) {
       setJitsiError(null);
       setJitsiConnected(false);
       setRemoteAudioLevel(0);
       return;
     }
 
-    console.log('[VoiceChat] Attempting to connect — room:', jitsiRoom, 'jwt length:', jaasJwt?.length);
+    const isProximity = jitsiRoomRef.current !== null;
+    console.log('[VoiceChat] Connecting — room:', activeJitsiRoom, isProximity ? '(proximity)' : '(prewarm)', 'jwt length:', jaasJwt?.length);
     setJitsiError(null);
     setJitsiConnected(false);
-    // Safety net: if the iframe itself never loads (onApiReady never fires)
-    jitsiConnectTimeoutRef.current = setTimeout(() => {
-      console.error('[VoiceChat] Jitsi iframe never loaded after 30s. Room:', jitsiRoom);
-      setJitsiError('Voice chat failed to load. Check your network connection.');
-    }, 30000);
+    // Only surface load errors for proximity rooms; silently retry for prewarm.
+    if (isProximity) {
+      jitsiConnectTimeoutRef.current = setTimeout(() => {
+        console.error('[VoiceChat] Jitsi iframe never loaded after 30s. Room:', activeJitsiRoom);
+        setJitsiError('Voice chat failed to load. Check your network connection.');
+      }, 30000);
+    }
 
     return () => {
       cleanupJitsi();
     };
-  }, [jitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
+  }, [activeJitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
 
   const playWaveChime = () => {
     try {
@@ -1230,6 +1335,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         presences.forEach((presence) => {
           presentIds.add(presence.id);
           presenceDataRef.current.set(presence.id, presence);
+          recentlyLeftRef.current.delete(presence.id);
           if (presence.id !== currentUser.id && !avatarsRef.current.has(presence.id)) {
             const pending = pendingAvatarUpdatesRef.current.get(presence.id);
             const avatar = createAvatar(scene, pending ? { ...presence, customization: pending } : presence);
@@ -1272,9 +1378,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const sphere = createBubbleSphere(scene);
           sphere.position.copy(avatar.position);
           bubbleSpheresRef.current.set(p.id, sphere);
-          rebuildOnlineUsers();
         }
       });
+      rebuildOnlineUsers();
     });
 
     // Presence: user left
@@ -1374,6 +1480,60 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     });
 
+    // Broadcast: screen sharing — WebRTC signaling
+    channel.on('broadcast', { event: 'screen-offer' }, ({ payload }) => {
+      const { from, to, sdp } = payload as { from: string; to: string; sdp: string };
+      if (to !== currentUser.id) return;
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      screenPeerConnsRef.current.set(`viewer-${from}`, pc);
+      pc.onicecandidate = ({ candidate }) => {
+        if (!candidate) return;
+        channelRef.current?.send({
+          type: 'broadcast', event: 'screen-ice',
+          payload: { from: currentUser.id, to: from, candidate: candidate.toJSON() },
+        });
+      };
+      pc.ontrack = ({ streams }) => {
+        const stream = streams[0];
+        if (!stream) return;
+        const sharerName = presenceDataRef.current.get(from)?.name || 'Someone';
+        setScreenShares(prev => new Map(prev).set(from, { stream, name: sharerName }));
+        setActiveShareId(prev => prev ?? from);
+      };
+      pc.setRemoteDescription({ type: 'offer', sdp })
+        .then(() => pc.createAnswer())
+        .then(answer => {
+          pc.setLocalDescription(answer);
+          channelRef.current?.send({
+            type: 'broadcast', event: 'screen-answer',
+            payload: { from: currentUser.id, to: from, sdp: answer.sdp },
+          });
+        })
+        .catch(err => console.error('[ScreenShare] answer failed:', err));
+    });
+
+    channel.on('broadcast', { event: 'screen-answer' }, ({ payload }) => {
+      const { from, to, sdp } = payload as { from: string; to: string; sdp: string };
+      if (to !== currentUser.id) return;
+      const pc = screenPeerConnsRef.current.get(`sharer-${from}`);
+      if (pc) pc.setRemoteDescription({ type: 'answer', sdp }).catch(console.error);
+    });
+
+    channel.on('broadcast', { event: 'screen-ice' }, ({ payload }) => {
+      const { from, to, candidate } = payload as { from: string; to: string; candidate: RTCIceCandidateInit };
+      if (to !== currentUser.id) return;
+      const pc = screenPeerConnsRef.current.get(`sharer-${from}`)
+             ?? screenPeerConnsRef.current.get(`viewer-${from}`);
+      if (pc) pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
+    });
+
+    channel.on('broadcast', { event: 'screen-stop' }, ({ payload }) => {
+      const { userId } = payload as { userId: string };
+      setScreenShares(prev => { const m = new Map(prev); m.delete(userId); return m; });
+      setActiveShareId(prev => prev === userId ? null : prev);
+      closeViewerPeerConn(userId);
+    });
+
     // Broadcast: room environment changes — update scene for all connected users
     channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
       const { environment: env } = payload as { environment: string };
@@ -1412,6 +1572,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           presences.forEach((p) => {
             presentIds.add(p.id);
             presenceDataRef.current.set(p.id, p);
+            recentlyLeftRef.current.delete(p.id);
             if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
               const avatar = createAvatar(scene, p);
               avatarsRef.current.set(p.id, avatar);
@@ -1554,8 +1715,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (direction.length() > 0) {
         direction.normalize();
         camera.position.add(direction.multiplyScalar(moveSpeed));
-        camera.position.x = Math.max(-9, Math.min(9, camera.position.x));
-        camera.position.z = Math.max(-9, Math.min(9, camera.position.z));
+        camera.position.x = Math.max(-14.5, Math.min(14.5, camera.position.x));
+        camera.position.z = Math.max(-14.5, Math.min(14.5, camera.position.z));
       }
 
       const now = Date.now();
@@ -1729,6 +1890,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       renderer.domElement.removeEventListener('touchstart', handleTouchStart);
       renderer.domElement.removeEventListener('touchmove', handleTouchMove);
       renderer.domElement.removeEventListener('touchend', handleTouchEnd);
+
+      // Clean up screen sharing without broadcasting (channel is closing)
+      localScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+      localScreenStreamRef.current = null;
+      screenPeerConnsRef.current.forEach(pc => pc.close());
+      screenPeerConnsRef.current.clear();
 
       supabase.removeChannel(channel);
       channelRef.current = null;
@@ -1987,14 +2154,113 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         );
       })()}
 
+      {/* ── Screen share overlay ──────────────────────────────────────────── */}
+      {activeShareId && screenShares.has(activeShareId) && (() => {
+        const share = screenShares.get(activeShareId)!;
+        const isMine = activeShareId === currentUserRef.current?.id;
+        return (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 450,
+            background: 'rgba(0,0,0,0.92)',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            {/* Header bar */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '8px 14px', background: 'rgba(0,0,0,0.6)',
+              color: 'white', fontFamily: 'monospace', fontSize: '13px', flexShrink: 0,
+            }}>
+              <span>🖥 {isMine ? 'Your screen' : `${share.name}'s screen`}</span>
+              {/* Other active sharers as clickable pills */}
+              {[...screenShares.entries()]
+                .filter(([id]) => id !== activeShareId)
+                .map(([id, s]) => (
+                  <button key={id} onClick={() => setActiveShareId(id)} style={{
+                    background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '4px',
+                    color: 'white', fontSize: '12px', padding: '2px 8px', cursor: 'pointer',
+                  }}>
+                    {s.name}
+                  </button>
+                ))}
+              <button
+                onClick={() => setActiveShareId(null)}
+                title="Minimize"
+                style={{
+                  marginLeft: 'auto', background: 'rgba(255,255,255,0.1)', border: 'none',
+                  borderRadius: '4px', color: 'white', fontSize: '13px',
+                  padding: '2px 10px', cursor: 'pointer',
+                }}
+              >
+                ╌ Minimize
+              </button>
+              {isMine && (
+                <button
+                  onClick={stopScreenShare}
+                  style={{
+                    background: 'rgba(220,38,38,0.8)', border: 'none', borderRadius: '4px',
+                    color: 'white', fontSize: '12px', padding: '2px 10px', cursor: 'pointer',
+                  }}
+                >
+                  Stop sharing
+                </button>
+              )}
+            </div>
+            {/* Video */}
+            <video
+              ref={el => { if (el) { el.srcObject = share.stream; el.play().catch(() => {}); } }}
+              autoPlay playsInline muted={isMine}
+              style={{ flex: 1, width: '100%', objectFit: 'contain', background: 'black' }}
+            />
+          </div>
+        );
+      })()}
+
+      {/* Minimized screen share tiles — bottom-right when overlay is closed */}
+      {screenShares.size > 0 && activeShareId === null && (() => {
+        const tiles = [...screenShares.entries()];
+        return (
+          <div style={{
+            position: 'fixed', bottom: '12px', right: '12px',
+            display: 'flex', flexDirection: 'column', gap: '8px',
+            zIndex: 300, alignItems: 'flex-end',
+          }}>
+            {tiles.map(([id, share]) => {
+              const isMine = id === currentUserRef.current?.id;
+              return (
+                <div key={id} style={{
+                  width: '240px', background: 'rgba(0,0,0,0.85)',
+                  borderRadius: '8px', overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                  cursor: 'pointer',
+                }} onClick={() => setActiveShareId(id)}>
+                  <video
+                    ref={el => { if (el) { el.srcObject = share.stream; el.play().catch(() => {}); } }}
+                    autoPlay playsInline muted={isMine}
+                    style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'contain', background: 'black' }}
+                  />
+                  <div style={{
+                    padding: '4px 8px', color: 'white', fontSize: '11px',
+                    fontFamily: 'monospace', display: 'flex', justifyContent: 'space-between',
+                  }}>
+                    <span>🖥 {isMine ? 'Your screen' : share.name}</span>
+                    <span style={{ opacity: 0.6 }}>click to expand</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Jitsi audio iframe — kept in-viewport (bottom-right corner) but invisible.
           opacity:0 hides it from users while keeping it "visible" to Chrome so the
           browser does NOT throttle the cross-origin iframe's JS timers.
           Positioning it fully off-screen (top:-400px) causes Chrome to suspend the
           iframe's task queue, preventing Jitsi from initiating the XMPP connection.
           The allow attribute is required for microphone access in cross-origin iframes. */}
-      {jitsiRoom && jaasJwt && (
-        <div key={jitsiRetryCount} style={{
+      {activeJitsiRoom && jaasJwt && (
+        <div key={`${jitsiRetryCount}-${activeJitsiRoom}`} style={{
           position: 'fixed', bottom: 0, right: 0,
           width: '480px', height: '270px',
           opacity: 0, pointerEvents: 'none', zIndex: -1,
@@ -2002,7 +2268,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           <JaaSMeeting
             appId={import.meta.env.VITE_JAAS_APP_ID ?? ''}
             jwt={jaasJwt}
-            roomName={jitsiRoom}
+            roomName={activeJitsiRoom}
             configOverwrite={{
               startWithAudioMuted: false,
               startWithVideoMuted: true,
@@ -2049,13 +2315,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
               if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
 
-              // Now that the iframe has loaded, replace the 30s safety-net
-              // timeout with a tighter 20s timeout for the XMPP connection.
+              // Now that the iframe has loaded, replace the 30s safety-net timeout
+              // with a tighter 20s timeout for the XMPP connection (proximity only).
               if (jitsiConnectTimeoutRef.current) clearTimeout(jitsiConnectTimeoutRef.current);
-              jitsiConnectTimeoutRef.current = setTimeout(() => {
-                console.error('[VoiceChat] Connection timed out after 20s from onApiReady — videoConferenceJoined never fired. Room:', jitsiRoomRef.current);
-                setJitsiError('Could not connect to voice chat — the server may be unavailable.');
-              }, 20000);
+              if (jitsiRoomRef.current !== null) {
+                jitsiConnectTimeoutRef.current = setTimeout(() => {
+                  console.error('[VoiceChat] Connection timed out after 20s from onApiReady — videoConferenceJoined never fired. Room:', jitsiRoomRef.current);
+                  setJitsiError('Could not connect to voice chat — the server may be unavailable.');
+                }, 20000);
+              }
 
               // Decode JWT header+payload (no crypto needed) to confirm what we sent
               try {
@@ -2239,6 +2507,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 const isSelf = u.id === currentUser?.id;
                 const dotColor = u.status === 'active' ? '#4ade80' : u.status === 'inactive' ? '#fbbf24' : '#f87171';
                 const dotTitle = u.status === 'active' ? 'Active' : u.status === 'inactive' ? 'Inactive' : 'Offline';
+                const canTeleport = !isSelf && u.status !== 'offline' && avatarTargetsRef.current.has(u.id);
                 return (
                   <li key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
                     <span
@@ -2249,6 +2518,37 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                       }}
                     />
                     <span>{displayName}</span>
+                    {canTeleport && (
+                      <button
+                        title={`Teleport to ${u.name}`}
+                        onClick={() => {
+                          const target = avatarTargetsRef.current.get(u.id);
+                          const cam = cameraRef.current;
+                          if (!target || !cam) return;
+                          // Place the player PROXIMITY_RADIUS * 0.8 units from the
+                          // target, offset toward the current camera position so the
+                          // player arrives facing the target. Stay at eye height.
+                          const dir = new THREE.Vector3()
+                            .subVectors(cam.position, target.position)
+                            .setY(0)
+                            .normalize();
+                          // Fall back to a fixed offset if we're on top of each other
+                          if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
+                          const dest = target.position.clone()
+                            .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
+                          cam.position.set(dest.x, 1.6, dest.z);
+                        }}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          padding: '0 2px', fontSize: '13px', lineHeight: 1,
+                          opacity: 0.7, flexShrink: 0,
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.7'; }}
+                      >
+                        ⤴
+                      </button>
+                    )}
                     {!isSelf && u.status !== 'offline' && (
                       <button
                         title={`Wave at ${u.name}`}
@@ -2332,6 +2632,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 <span style={{ fontSize: '11px', color: '#aaa' }}>
                   {micMuted ? 'Muted' : 'Live'}
                 </span>
+                {/* Screen share toggle — only in an active voice call */}
+                {jitsiRoom && (
+                  <button
+                    onClick={isSharing ? stopScreenShare : startScreenShare}
+                    title={isSharing ? 'Stop sharing screen' : 'Share your screen'}
+                    style={{
+                      marginLeft: 'auto',
+                      background: isSharing ? 'rgba(220,38,38,0.8)' : 'rgba(255,255,255,0.15)',
+                      border: 'none', borderRadius: '4px', cursor: 'pointer',
+                      color: 'white', fontSize: '13px', padding: '3px 8px',
+                      transition: 'background 0.2s',
+                    }}
+                  >
+                    {isSharing ? '⏹' : '🖥'}
+                  </button>
+                )}
               </>
             )}
           </div>
