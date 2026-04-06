@@ -257,6 +257,8 @@ export default function SettingsPanel({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {members.map(m => {
                   const isSelf = m.userId === user?.id;
+                  const displayName = m.name ?? (isSelf ? user?.name : null) ?? m.email ?? (isSelf ? user?.email : null) ?? m.userId;
+                  const displayEmail = m.email ?? (isSelf ? user?.email : null);
                   const canManage = (currentUserRole === 'owner' || currentUserRole === 'admin') && !isSelf && m.role !== 'owner';
                   const isMenuOpen = openMenuId === m.memberId;
                   const isLoading = roleLoadingId === m.memberId || removeLoadingId === m.memberId;
@@ -268,14 +270,14 @@ export default function SettingsPanel({
                     }}>
                       <div style={{ overflow: 'hidden' }}>
                         <div style={{ fontSize: '13px', fontWeight: '500', color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {m.name ?? m.email ?? m.userId}
+                          {displayName}
                           {isSelf && (
                             <span style={{ marginLeft: '6px', fontSize: '11px', color: '#555' }}>(you)</span>
                           )}
                         </div>
-                        {m.name && m.email && (
+                        {(m.name ?? (isSelf ? user?.name : null)) && displayEmail && (
                           <div style={{ fontSize: '11px', color: '#555', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {m.email}
+                            {displayEmail}
                           </div>
                         )}
                       </div>
