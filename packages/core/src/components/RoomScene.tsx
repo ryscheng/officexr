@@ -1500,7 +1500,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // as stale but whose Supabase presence is still active).
       if (presenceDataRef.current.has(userId)) {
         avatarTargetsRef.current.set(userId, {
-          position: new THREE.Vector3(position.x, position.y, position.z),
+          // Use y=0 (ground level) regardless of the sender's camera eye-height
+          // so remote avatars stand on the floor rather than floating in the air.
+          position: new THREE.Vector3(position.x, 0, position.z),
           rotationY: rotation.y,
         });
         lastSeenAt.current.set(userId, Date.now());
