@@ -2262,6 +2262,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 const isSelf = u.id === currentUser?.id;
                 const dotColor = u.status === 'active' ? '#4ade80' : u.status === 'inactive' ? '#fbbf24' : '#f87171';
                 const dotTitle = u.status === 'active' ? 'Active' : u.status === 'inactive' ? 'Inactive' : 'Offline';
+                const canTeleport = !isSelf && u.status !== 'offline' && avatarTargetsRef.current.has(u.id);
                 return (
                   <li key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
                     <span
@@ -2272,6 +2273,37 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                       }}
                     />
                     <span>{displayName}</span>
+                    {canTeleport && (
+                      <button
+                        title={`Teleport to ${u.name}`}
+                        onClick={() => {
+                          const target = avatarTargetsRef.current.get(u.id);
+                          const cam = cameraRef.current;
+                          if (!target || !cam) return;
+                          // Place the player PROXIMITY_RADIUS * 0.8 units from the
+                          // target, offset toward the current camera position so the
+                          // player arrives facing the target. Stay at eye height.
+                          const dir = new THREE.Vector3()
+                            .subVectors(cam.position, target.position)
+                            .setY(0)
+                            .normalize();
+                          // Fall back to a fixed offset if we're on top of each other
+                          if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
+                          const dest = target.position.clone()
+                            .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
+                          cam.position.set(dest.x, 1.6, dest.z);
+                        }}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          padding: '0 2px', fontSize: '13px', lineHeight: 1,
+                          opacity: 0.7, flexShrink: 0,
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.7'; }}
+                      >
+                        ⤴
+                      </button>
+                    )}
                     {!isSelf && u.status !== 'offline' && (
                       <button
                         title={`Wave at ${u.name}`}
