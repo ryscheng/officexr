@@ -1273,6 +1273,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
         if (navigationKeys.includes(key)) return;
       }
+      if (key === 'v') {
+        setIs2DMode(v => !v);
+        return;
+      }
       keys[key] = true;
     };
 
