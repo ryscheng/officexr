@@ -76,6 +76,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
+  const selfMarkerRef = useRef<THREE.Group | null>(null);
   const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
   const jitsiRoomRef = useRef<string | null>(null);
@@ -1217,6 +1218,51 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     localSphere.position.set(camera.position.x, camera.position.y, camera.position.z);
     localBubbleSphereRef.current = localSphere;
 
+    // Self marker: visible only in 2D top-down mode to show the player's own position/name
+    {
+      const selfMarker = new THREE.Group();
+
+      // Disc representing self (white so it stands out from other avatars)
+      const disc = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.3, 0.08, 16),
+        new THREE.MeshStandardMaterial({ color: 0xffffff }),
+      );
+      disc.position.y = 0.04;
+      selfMarker.add(disc);
+
+      // Small forward-arrow cone (points in -Z = north)
+      const arrow = new THREE.Mesh(
+        new THREE.ConeGeometry(0.1, 0.28, 3),
+        new THREE.MeshStandardMaterial({ color: 0xffffff }),
+      );
+      arrow.rotation.x = Math.PI / 2;
+      arrow.position.set(0, 0.1, -0.4);
+      selfMarker.add(arrow);
+
+      // 2D name label with "(You)" indicator
+      const selfCanvas = document.createElement('canvas');
+      const selfCtx = selfCanvas.getContext('2d')!;
+      selfCanvas.width = 640;
+      selfCanvas.height = 128;
+      selfCtx.fillStyle = 'rgba(255,255,255,0.92)';
+      selfCtx.fillRect(0, 0, 640, 128);
+      selfCtx.font = 'bold 56px Arial';
+      selfCtx.fillStyle = '#111111';
+      selfCtx.textAlign = 'center';
+      selfCtx.fillText(`${currentUser.name || 'You'} (You)`, 320, 88);
+      const selfSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(selfCanvas) }),
+      );
+      selfSprite.scale.set(4, 0.8, 4);
+      selfSprite.position.y = 1.8;
+      selfMarker.add(selfSprite);
+
+      selfMarker.position.set(camera.position.x, 0, camera.position.z);
+      selfMarker.visible = false; // shown only in 2D mode
+      scene.add(selfMarker);
+      selfMarkerRef.current = selfMarker;
+    }
+
     // Movement
     const moveSpeed = 0.1;
     const keys = keysRef.current;
@@ -1879,6 +1925,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         handleProximityChange(newNearby);
       }
 
+      // Toggle 3D/2D name tags on all remote avatars based on current view mode
+      const in2D = is2DModeRef.current;
+      avatarsRef.current.forEach(avatar => {
+        avatar.traverse(child => {
+          if (child.userData.nameTagType === '3d') child.visible = !in2D;
+          if (child.userData.nameTagType === '2d') child.visible = in2D;
+        });
+      });
+
+      // Update self marker position and visibility in 2D mode
+      if (selfMarkerRef.current) {
+        selfMarkerRef.current.position.set(camera.position.x, 0, camera.position.z);
+        selfMarkerRef.current.visible = in2D;
+      }
+
       // Sync top-down camera to player XZ position
       orthoCamera.position.x = camera.position.x;
       orthoCamera.position.z = camera.position.z;
@@ -1942,6 +2003,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (localBubbleSphereRef.current) {
         scene.remove(localBubbleSphereRef.current);
         localBubbleSphereRef.current = null;
+      }
+      if (selfMarkerRef.current) {
+        scene.remove(selfMarkerRef.current);
+        selfMarkerRef.current = null;
       }
       bubbleSpheresRef.current.clear();
       presenceDataRef.current.clear();

@@ -14,20 +14,40 @@ export interface AvatarData {
 // ─── Name tag sprite ──────────────────────────────────────────────────────────
 
 function addNameTag(group: THREE.Group, name: string, yOffset: number) {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d')!;
-  canvas.width = 256;
-  canvas.height = 64;
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
-  ctx.fillRect(0, 0, 256, 64);
-  ctx.font = 'bold 24px Arial';
-  ctx.fillStyle = 'white';
-  ctx.textAlign = 'center';
-  ctx.fillText(name || 'User', 128, 40);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-  sprite.scale.set(1, 0.25, 1);
-  sprite.position.y = yOffset;
-  group.add(sprite);
+  // 3D label — normal size, visible in perspective view
+  const canvas3d = document.createElement('canvas');
+  const ctx3d = canvas3d.getContext('2d')!;
+  canvas3d.width = 256;
+  canvas3d.height = 64;
+  ctx3d.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx3d.fillRect(0, 0, 256, 64);
+  ctx3d.font = 'bold 24px Arial';
+  ctx3d.fillStyle = 'white';
+  ctx3d.textAlign = 'center';
+  ctx3d.fillText(name || 'User', 128, 40);
+  const sprite3d = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas3d) }));
+  sprite3d.scale.set(1, 0.25, 1);
+  sprite3d.position.y = yOffset;
+  sprite3d.userData.nameTagType = '3d';
+  group.add(sprite3d);
+
+  // 2D label — larger canvas texture for top-down map readability, hidden by default
+  const canvas2d = document.createElement('canvas');
+  const ctx2d = canvas2d.getContext('2d')!;
+  canvas2d.width = 512;
+  canvas2d.height = 128;
+  ctx2d.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx2d.fillRect(0, 0, 512, 128);
+  ctx2d.font = 'bold 58px Arial';
+  ctx2d.fillStyle = 'white';
+  ctx2d.textAlign = 'center';
+  ctx2d.fillText(name || 'User', 256, 90);
+  const sprite2d = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas2d) }));
+  sprite2d.scale.set(3, 0.75, 3);
+  sprite2d.position.y = yOffset;
+  sprite2d.userData.nameTagType = '2d';
+  sprite2d.visible = false;
+  group.add(sprite2d);
 }
 
 // ─── Geometric fallback avatar ────────────────────────────────────────────────
