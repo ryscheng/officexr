@@ -2364,6 +2364,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                   remoteAudioDecayRef.current = null;
                 }
                 setRemoteAudioLevel(0);
+                if (localScreenStreamRef.current) stopScreenShare();
               };
 
               api.addEventListener('videoConferenceLeft', () => {
