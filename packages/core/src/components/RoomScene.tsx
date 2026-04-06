@@ -1540,12 +1540,23 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Accept updates from any known user (incl. those whose avatar was removed
       // as stale but whose Supabase presence is still active).
       if (presenceDataRef.current.has(userId)) {
-        avatarTargetsRef.current.set(userId, {
-          // Use y=0 (ground level) regardless of the sender's camera eye-height
-          // so remote avatars stand on the floor rather than floating in the air.
-          position: new THREE.Vector3(position.x, 0, position.z),
-          rotationY: rotation.y,
-        });
+        // Only update the interpolation target when position changed meaningfully.
+        // Heartbeat broadcasts repeat the same position every 2 s; without this
+        // guard the lerp restarts each time, causing visible micro-jitter.
+        const newPos = new THREE.Vector3(position.x, 0, position.z);
+        const existing = avatarTargetsRef.current.get(userId);
+        if (!existing || existing.position.distanceToSquared(newPos) > 0.0001
+            || Math.abs(existing.rotationY - rotation.y) > 0.01) {
+          if (!existing) {
+            // User appearing after stale deletion — snap avatar to avoid a lerp jump
+            const avatar = avatarsRef.current.get(userId);
+            if (avatar) avatar.position.copy(newPos);
+          }
+          avatarTargetsRef.current.set(userId, {
+            position: newPos,
+            rotationY: rotation.y,
+          });
+        }
         lastSeenAt.current.set(userId, Date.now());
 
         // When our animation loop is throttled (tab hidden), run a proximity
@@ -1917,12 +1928,16 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
           const dest = followTarget.position.clone()
             .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
-          camera.position.set(
-            Math.max(-14.5, Math.min(14.5, dest.x)),
-            1.6,
-            Math.max(-14.5, Math.min(14.5, dest.z)),
-          );
-          moved = true; // broadcast our updated position each frame we follow
+          const destX = Math.max(-14.5, Math.min(14.5, dest.x));
+          const destZ = Math.max(-14.5, Math.min(14.5, dest.z));
+          // Only update and broadcast if position actually changed, to avoid
+          // floating-point noise from making the follower's avatar vibrate.
+          const fdx = camera.position.x - destX;
+          const fdz = camera.position.z - destZ;
+          if (fdx * fdx + fdz * fdz > 0.0001) {
+            camera.position.set(destX, 1.6, destZ);
+            moved = true;
+          }
         }
       }
 
