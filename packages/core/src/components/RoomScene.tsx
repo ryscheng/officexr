@@ -1575,8 +1575,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (direction.length() > 0) {
         direction.normalize();
         camera.position.add(direction.multiplyScalar(moveSpeed));
-        camera.position.x = Math.max(-9, Math.min(9, camera.position.x));
-        camera.position.z = Math.max(-9, Math.min(9, camera.position.z));
+        camera.position.x = Math.max(-14.5, Math.min(14.5, camera.position.x));
+        camera.position.z = Math.max(-14.5, Math.min(14.5, camera.position.z));
       }
 
       const now = Date.now();
