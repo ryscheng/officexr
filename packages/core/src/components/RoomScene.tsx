@@ -1230,6 +1230,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         presences.forEach((presence) => {
           presentIds.add(presence.id);
           presenceDataRef.current.set(presence.id, presence);
+          recentlyLeftRef.current.delete(presence.id);
           if (presence.id !== currentUser.id && !avatarsRef.current.has(presence.id)) {
             const pending = pendingAvatarUpdatesRef.current.get(presence.id);
             const avatar = createAvatar(scene, pending ? { ...presence, customization: pending } : presence);
@@ -1272,9 +1273,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           const sphere = createBubbleSphere(scene);
           sphere.position.copy(avatar.position);
           bubbleSpheresRef.current.set(p.id, sphere);
-          rebuildOnlineUsers();
         }
       });
+      rebuildOnlineUsers();
     });
 
     // Presence: user left
@@ -1412,6 +1413,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           presences.forEach((p) => {
             presentIds.add(p.id);
             presenceDataRef.current.set(p.id, p);
+            recentlyLeftRef.current.delete(p.id);
             if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
               const avatar = createAvatar(scene, p);
               avatarsRef.current.set(p.id, avatar);
