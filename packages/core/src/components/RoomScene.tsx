@@ -44,12 +44,12 @@ interface OfficeSceneProps {
 }
 
 export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }: OfficeSceneProps) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  // Generate anonymous user data if not logged in
+  // Generate anonymous user data if not logged in (wait for auth to resolve first)
   const anonymousUserRef = useRef<{ id: string; name: string } | null>(null);
-  if (!user && !anonymousUserRef.current) {
+  if (!authLoading && !user && !anonymousUserRef.current) {
     const randomId = `anon-${Math.random().toString(36).substr(2, 9)}`;
     const guestNumber = Math.floor(Math.random() * 1000);
     anonymousUserRef.current = {
@@ -155,12 +155,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
   const [joystickActive, setJoystickActive] = useState(false);
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
-  const [showCreateRoom, setShowCreateRoom] = useState(false);
-  const [createRoomName, setCreateRoomName] = useState('');
-  const [createRoomLinkAccess, setCreateRoomLinkAccess] = useState(true);
-  const [createRoomLoading, setCreateRoomLoading] = useState(false);
-  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
-
+  const [is2DMode, setIs2DMode] = useState(false);
+  const is2DModeRef = useRef(false);
+  is2DModeRef.current = is2DMode;
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
@@ -428,6 +425,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   }, [chatMessages, chatVisible]);
 
+  // Exit pointer lock when switching to 2D mode
+  useEffect(() => {
+    if (is2DMode && document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }, [is2DMode]);
+
   // Sync chatVisible ref and clear navigation keys when chat opens
   useEffect(() => {
     chatVisibleRef.current = chatVisible;
@@ -682,6 +686,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     );
     camera.position.set(0, 1.6, 5);
     cameraRef.current = camera;
+
+    // Orthographic camera for 2D top-down mode
+    const ORTHO_VIEW_SIZE = 15;
+    const orthoAspect = window.innerWidth / window.innerHeight;
+    const orthoCamera = new THREE.OrthographicCamera(
+      -ORTHO_VIEW_SIZE * orthoAspect, ORTHO_VIEW_SIZE * orthoAspect,
+      ORTHO_VIEW_SIZE, -ORTHO_VIEW_SIZE,
+      0.1, 200,
+    );
+    orthoCamera.position.set(camera.position.x, 80, camera.position.z);
+    orthoCamera.up.set(0, 0, -1); // north (-Z) is up on screen
+    orthoCamera.lookAt(camera.position.x, 0, camera.position.z);
 
     // Renderer setup
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -1237,12 +1253,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     const handleCanvasClick = () => {
       // Don't fight device orientation with pointer lock on touch devices
-      if (!renderer.xr.isPresenting && !motionActiveRef.current) {
+      // Also skip in 2D mode — no mouse look there
+      if (!renderer.xr.isPresenting && !motionActiveRef.current && !is2DModeRef.current) {
         renderer.domElement.requestPointerLock();
       }
     };
 
     const handleMouseMove = (event: MouseEvent) => {
+      if (is2DModeRef.current) return;
       if (document.pointerLockElement === renderer.domElement && !renderer.xr.isPresenting) {
         cameraYaw   -= (event.movementX || 0) * 0.002;
         cameraPitch -= (event.movementY || 0) * 0.002;
@@ -1274,7 +1292,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     const handleTouchMove = (event: TouchEvent) => {
       // Device orientation handles look direction on mobile — skip touch drag
-      if (motionActiveRef.current) return;
+      // Also skip in 2D mode — no look controls there
+      if (motionActiveRef.current || is2DModeRef.current) return;
       if (isTouching && event.touches.length === 1) {
         const deltaX = event.touches[0].clientX - touchStartX;
         const deltaY = event.touches[0].clientY - touchStartY;
@@ -1295,6 +1314,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const handleResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
+      const newAspect = window.innerWidth / window.innerHeight;
+      orthoCamera.left = -ORTHO_VIEW_SIZE * newAspect;
+      orthoCamera.right = ORTHO_VIEW_SIZE * newAspect;
+      orthoCamera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener('resize', handleResize);
@@ -1689,27 +1712,38 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Frame-rate-independent lerp: equivalent to 0.15 at 60 fps, consistent at any rate
       const lerpAlpha = 1 - Math.pow(0.005, delta);
       const direction = new THREE.Vector3();
-      const forward = new THREE.Vector3();
-      const right = new THREE.Vector3();
-
-      camera.getWorldDirection(forward);
-      forward.y = 0;
-      forward.normalize();
-      right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
-
       let moved = false;
 
-      if (keys['w'] || keys['arrowup']) { direction.add(forward); moved = true; }
-      if (keys['s'] || keys['arrowdown']) { direction.sub(forward); moved = true; }
-      if (keys['a'] || keys['arrowleft']) { direction.sub(right); moved = true; }
-      if (keys['d'] || keys['arrowright']) { direction.add(right); moved = true; }
-
-      // Virtual joystick input (touch devices)
-      const { x: jx, y: jy } = joystickInputRef.current;
-      if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
-        direction.addScaledVector(forward, -jy);
-        direction.addScaledVector(right, jx);
-        moved = true;
+      if (is2DModeRef.current) {
+        // 2D top-down mode: WASD/arrows map to compass directions
+        if (keys['w'] || keys['arrowup'])    { direction.z -= 1; moved = true; }
+        if (keys['s'] || keys['arrowdown'])  { direction.z += 1; moved = true; }
+        if (keys['a'] || keys['arrowleft'])  { direction.x -= 1; moved = true; }
+        if (keys['d'] || keys['arrowright']) { direction.x += 1; moved = true; }
+        const { x: jx, y: jy } = joystickInputRef.current;
+        if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
+          direction.x += jx;
+          direction.z -= jy; // joystick up = north
+          moved = true;
+        }
+      } else {
+        // 3D mode: movement relative to camera facing direction
+        const forward = new THREE.Vector3();
+        const right = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        forward.y = 0;
+        forward.normalize();
+        right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
+        if (keys['w'] || keys['arrowup'])    { direction.add(forward); moved = true; }
+        if (keys['s'] || keys['arrowdown'])  { direction.sub(forward); moved = true; }
+        if (keys['a'] || keys['arrowleft'])  { direction.sub(right); moved = true; }
+        if (keys['d'] || keys['arrowright']) { direction.add(right); moved = true; }
+        const { x: jx, y: jy } = joystickInputRef.current;
+        if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
+          direction.addScaledVector(forward, -jy);
+          direction.addScaledVector(right, jx);
+          moved = true;
+        }
       }
 
       if (direction.length() > 0) {
@@ -1845,7 +1879,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         handleProximityChange(newNearby);
       }
 
-      renderer.render(scene, camera);
+      // Sync top-down camera to player XZ position
+      orthoCamera.position.x = camera.position.x;
+      orthoCamera.position.z = camera.position.z;
+
+      renderer.render(scene, is2DModeRef.current ? orthoCamera : camera);
     };
 
     renderer.setAnimationLoop(animate);
@@ -1954,45 +1992,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   };
 
-  function validateSlug(value: string): string | null {
-    if (!value) return 'Room name is required.';
-    if (value.length < 2) return 'Must be at least 2 characters.';
-    if (value.length > 50) return 'Must be 50 characters or fewer.';
-    if (!/^[a-z0-9-]+$/.test(value)) return 'Only lowercase letters, numbers, and hyphens allowed.';
-    if (value.startsWith('-') || value.endsWith('-')) return 'Cannot start or end with a hyphen.';
-    if (/--/.test(value)) return 'No consecutive hyphens allowed.';
-    return null;
-  }
-
-  const handleCreateRoom = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    const slugError = validateSlug(createRoomName);
-    if (slugError) { setCreateRoomError(slugError); return; }
-    setCreateRoomLoading(true);
-    setCreateRoomError(null);
-    try {
-      const officeId = crypto.randomUUID();
-      const { error: officeError } = await supabase
-        .from('offices')
-        .insert({ id: officeId, name: createRoomName, link_access: createRoomLinkAccess });
-      if (officeError) throw officeError;
-      await supabase.from('office_members').insert({
-        office_id: officeId,
-        user_id: user.id,
-        role: 'owner',
-      });
-      setShowCreateRoom(false);
-      setCreateRoomName('');
-      setCreateRoomLinkAccess(true);
-      onShowOfficeSelector?.();
-    } catch {
-      setCreateRoomError('Failed to create room. Please try again.');
-    } finally {
-      setCreateRoomLoading(false);
-    }
-  };
-
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100vh' }}>
       {/* Green outline when mouse look mode is active */}
@@ -2010,6 +2009,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onEnableMotion={enableMotion}
         onDisableMotion={disableMotion}
         motionDebugRef={motionDebugRef}
+        is2DMode={is2DMode}
+        onToggle2D={() => setIs2DMode(v => !v)}
         showChat
         extras={
           <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
@@ -2409,6 +2410,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                   remoteAudioDecayRef.current = null;
                 }
                 setRemoteAudioLevel(0);
+                if (localScreenStreamRef.current) stopScreenShare();
               };
 
               api.addEventListener('videoConferenceLeft', () => {
@@ -2664,30 +2666,17 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         </p>
 
         {user && (
-          <>
-            <button
-              onClick={() => setShowCreateRoom(true)}
-              style={{
-                marginTop: '6px', padding: '6px', fontSize: '12px',
-                background: '#7c3aed', color: 'white',
-                border: 'none', borderRadius: '4px', cursor: 'pointer',
-                width: '100%',
-              }}
-            >
-              + New Room
-            </button>
-            <button
-              onClick={() => setShowSettings(true)}
-              style={{
-                marginTop: '5px', padding: '6px', fontSize: '12px',
-                background: '#3498db', color: 'white',
-                border: 'none', borderRadius: '4px', cursor: 'pointer',
-                width: '100%',
-              }}
-            >
-              ⚙️ Settings
-            </button>
-          </>
+          <button
+            onClick={() => setShowSettings(true)}
+            style={{
+              marginTop: '6px', padding: '6px', fontSize: '12px',
+              background: '#3498db', color: 'white',
+              border: 'none', borderRadius: '4px', cursor: 'pointer',
+              width: '100%',
+            }}
+          >
+            ⚙️ Settings
+          </button>
         )}
 
         {user ? (
@@ -2872,114 +2861,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             <p style={{ margin: '20px 0 0 0', fontSize: '13px', color: '#9ca3af' }}>
               Or continue exploring as a guest — no sign-in required
             </p>
-          </div>
-        </div>
-      )}
-
-      {/* Create room dialog */}
-      {showCreateRoom && (
-        <div
-          onClick={() => { setShowCreateRoom(false); setCreateRoomError(null); setCreateRoomName(''); }}
-          style={{
-            position: 'absolute', inset: 0, zIndex: 500,
-            background: 'rgba(0,0,0,0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#1e1e2e', borderRadius: '12px',
-              padding: '32px', width: '380px', maxWidth: '90vw',
-              boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
-              border: '1px solid rgba(255,255,255,0.08)',
-            }}
-          >
-            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '700', color: 'white' }}>
-              Create a new room
-            </h2>
-            <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>
-              The room name becomes part of its identity — use a short, descriptive slug.
-            </p>
-
-            <form onSubmit={handleCreateRoom}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.6)', marginBottom: '6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                Room name (slug)
-              </label>
-              <input
-                value={createRoomName}
-                onChange={e => {
-                  const val = e.target.value.toLowerCase().replace(/\s+/g, '-');
-                  setCreateRoomName(val);
-                  setCreateRoomError(validateSlug(val));
-                }}
-                placeholder="my-team-room"
-                autoFocus
-                spellCheck={false}
-                style={{
-                  width: '100%', padding: '10px 12px',
-                  background: 'rgba(255,255,255,0.07)',
-                  border: `1px solid ${createRoomError && createRoomName ? '#ef4444' : 'rgba(255,255,255,0.15)'}`,
-                  borderRadius: '8px', color: 'white', fontSize: '15px',
-                  fontFamily: 'monospace', boxSizing: 'border-box', outline: 'none',
-                }}
-              />
-              <div style={{ minHeight: '20px', marginTop: '6px' }}>
-                {createRoomError && createRoomName && (
-                  <p style={{ margin: 0, fontSize: '12px', color: '#f87171' }}>{createRoomError}</p>
-                )}
-                {!createRoomError && createRoomName && (
-                  <p style={{ margin: 0, fontSize: '12px', color: '#4ade80' }}>✓ Valid room name</p>
-                )}
-              </div>
-
-              <label style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                marginTop: '16px', cursor: 'pointer', fontSize: '14px', color: 'rgba(255,255,255,0.7)',
-              }}>
-                <input
-                  type="checkbox"
-                  checked={createRoomLinkAccess}
-                  onChange={e => setCreateRoomLinkAccess(e.target.checked)}
-                  style={{ width: '15px', height: '15px' }}
-                />
-                Anyone with the link can join
-              </label>
-
-              {createRoomError && !createRoomName && (
-                <p style={{ margin: '12px 0 0 0', fontSize: '12px', color: '#f87171' }}>{createRoomError}</p>
-              )}
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '24px' }}>
-                <button
-                  type="submit"
-                  disabled={createRoomLoading || !!validateSlug(createRoomName)}
-                  style={{
-                    flex: 1, padding: '10px',
-                    background: createRoomLoading || validateSlug(createRoomName) ? '#4b3f7c' : '#7c3aed',
-                    color: 'white', border: 'none', borderRadius: '8px',
-                    cursor: createRoomLoading || validateSlug(createRoomName) ? 'not-allowed' : 'pointer',
-                    fontSize: '14px', fontWeight: '600',
-                    opacity: createRoomLoading || validateSlug(createRoomName) ? 0.6 : 1,
-                  }}
-                >
-                  {createRoomLoading ? 'Creating…' : 'Create Room'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowCreateRoom(false); setCreateRoomError(null); setCreateRoomName(''); }}
-                  style={{
-                    flex: 1, padding: '10px',
-                    background: 'rgba(255,255,255,0.07)',
-                    color: 'rgba(255,255,255,0.7)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

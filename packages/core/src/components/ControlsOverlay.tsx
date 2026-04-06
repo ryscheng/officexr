@@ -21,6 +21,10 @@ interface ControlsOverlayProps {
   extras?: ReactNode;
   /** Live sensor values from useMotionControls for the debug panel */
   motionDebugRef?: RefObject<MotionDebug | null>;
+  /** Whether the scene is in 2D top-down mode */
+  is2DMode?: boolean;
+  /** Toggle between 2D and 3D mode */
+  onToggle2D?: () => void;
 }
 
 /**
@@ -38,6 +42,8 @@ export default function ControlsOverlay({
   proximityHint,
   extras,
   motionDebugRef,
+  is2DMode = false,
+  onToggle2D,
 }: ControlsOverlayProps) {
   // Persistent debug toggle — survives page reloads
   const [showDebug, setShowDebug] = useState(
@@ -72,79 +78,106 @@ export default function ControlsOverlay({
       color: 'white', background: 'rgba(0,0,0,0.7)',
       padding: '15px', borderRadius: '8px', fontFamily: 'monospace', zIndex: 100,
     }}>
-      <h3 style={{ margin: '0 0 10px 0' }}>{title}</h3>
-      <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys — Move</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+        <h3 style={{ margin: 0 }}>{title}</h3>
+        {onToggle2D && (
+          <button
+            onClick={onToggle2D}
+            title={is2DMode ? 'Switch to 3D view' : 'Switch to 2D top-down view'}
+            style={{
+              marginLeft: '10px', padding: '3px 8px', fontSize: '11px',
+              background: is2DMode ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)',
+              color: 'white', border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            {is2DMode ? '3D' : '2D'}
+          </button>
+        )}
+      </div>
 
-      {motionPermission === 'granted' ? (
+      {is2DMode ? (
         <>
-          <p style={{ margin: '5px 0', color: '#4ade80' }}>📱 Tilt device — Look Around</p>
-          <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-            <button
-              onClick={onRecalibrate}
-              style={{
-                flex: 1, padding: '4px 8px', fontSize: '12px',
-                background: 'rgba(255,255,255,0.15)', color: 'white',
-                border: '1px solid rgba(255,255,255,0.3)', borderRadius: '4px', cursor: 'pointer',
-              }}
-            >
-              ↺ Recalibrate
-            </button>
-            <button
-              onClick={onDisableMotion}
-              style={{
-                flex: 1, padding: '4px 8px', fontSize: '12px',
-                background: 'rgba(239,68,68,0.25)', color: '#fca5a5',
-                border: '1px solid rgba(239,68,68,0.4)', borderRadius: '4px', cursor: 'pointer',
-              }}
-            >
-              ✕ Disable
-            </button>
-            <button
-              onClick={toggleDebug}
-              title="Toggle sensor debug readout"
-              style={{
-                padding: '4px 8px', fontSize: '12px',
-                background: showDebug ? 'rgba(253,230,138,0.25)' : 'rgba(255,255,255,0.08)',
-                color: showDebug ? '#fde68a' : 'rgba(255,255,255,0.5)',
-                border: `1px solid ${showDebug ? 'rgba(253,230,138,0.4)' : 'rgba(255,255,255,0.15)'}`,
-                borderRadius: '4px', cursor: 'pointer',
-              }}
-            >
-              ⚙
-            </button>
-          </div>
-
-          {/* Sensor debug panel — toggle with the ⚙ button, persists across reloads */}
-          {showDebug && dbg && (
-            <div style={{ marginTop: '8px', fontSize: '10px', color: '#fde68a', lineHeight: '1.6' }}>
-              <div>screen∠={dbg.screenAngle}°  natural={(dbg.naturalLandscape ? 'landscape' : 'portrait')}</div>
-              <div>α={dbg.alpha.toFixed(1)}°  β={dbg.beta.toFixed(1)}°  γ={dbg.gamma.toFixed(1)}°</div>
-              <div>rawPitch={dbg.rawPitch.toFixed(1)}°  Δpitch={dbg.deltaPitch.toFixed(2)}°</div>
-              <div>Δyaw={dbg.deltaAlpha.toFixed(2)}°</div>
-            </div>
-          )}
-          {showDebug && !dbg && motionPermission === 'granted' && (
-            <div style={{ marginTop: '8px', fontSize: '10px', color: '#fde68a' }}>
-              Waiting for sensor data…
-            </div>
-          )}
+          <p style={{ margin: '5px 0' }}>W / ↑ — North</p>
+          <p style={{ margin: '5px 0' }}>S / ↓ — South</p>
+          <p style={{ margin: '5px 0' }}>A / ← — West</p>
+          <p style={{ margin: '5px 0' }}>D / → — East</p>
         </>
       ) : (
         <>
-          <p style={{ margin: '5px 0' }}>Click Scene — Enable Mouse Look</p>
-          <p style={{ margin: '5px 0' }}>Mouse — Look Around (when active)</p>
-          <p style={{ margin: '5px 0' }}>Esc — Exit Mouse Look</p>
-          {motionCapable && (
-            <button
-              onClick={onEnableMotion}
-              style={{
-                marginTop: '6px', width: '100%', padding: '4px 8px', fontSize: '12px',
-                background: 'rgba(74,222,128,0.2)', color: '#4ade80',
-                border: '1px solid rgba(74,222,128,0.4)', borderRadius: '4px', cursor: 'pointer',
-              }}
-            >
-              📱 Enable Motion
-            </button>
+          <p style={{ margin: '5px 0' }}>W/A/S/D or Arrow Keys — Move</p>
+
+          {motionPermission === 'granted' ? (
+            <>
+              <p style={{ margin: '5px 0', color: '#4ade80' }}>📱 Tilt device — Look Around</p>
+              <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                <button
+                  onClick={onRecalibrate}
+                  style={{
+                    flex: 1, padding: '4px 8px', fontSize: '12px',
+                    background: 'rgba(255,255,255,0.15)', color: 'white',
+                    border: '1px solid rgba(255,255,255,0.3)', borderRadius: '4px', cursor: 'pointer',
+                  }}
+                >
+                  ↺ Recalibrate
+                </button>
+                <button
+                  onClick={onDisableMotion}
+                  style={{
+                    flex: 1, padding: '4px 8px', fontSize: '12px',
+                    background: 'rgba(239,68,68,0.25)', color: '#fca5a5',
+                    border: '1px solid rgba(239,68,68,0.4)', borderRadius: '4px', cursor: 'pointer',
+                  }}
+                >
+                  ✕ Disable
+                </button>
+                <button
+                  onClick={toggleDebug}
+                  title="Toggle sensor debug readout"
+                  style={{
+                    padding: '4px 8px', fontSize: '12px',
+                    background: showDebug ? 'rgba(253,230,138,0.25)' : 'rgba(255,255,255,0.08)',
+                    color: showDebug ? '#fde68a' : 'rgba(255,255,255,0.5)',
+                    border: `1px solid ${showDebug ? 'rgba(253,230,138,0.4)' : 'rgba(255,255,255,0.15)'}`,
+                    borderRadius: '4px', cursor: 'pointer',
+                  }}
+                >
+                  ⚙
+                </button>
+              </div>
+
+              {showDebug && dbg && (
+                <div style={{ marginTop: '8px', fontSize: '10px', color: '#fde68a', lineHeight: '1.6' }}>
+                  <div>screen∠={dbg.screenAngle}°  natural={(dbg.naturalLandscape ? 'landscape' : 'portrait')}</div>
+                  <div>α={dbg.alpha.toFixed(1)}°  β={dbg.beta.toFixed(1)}°  γ={dbg.gamma.toFixed(1)}°</div>
+                  <div>rawPitch={dbg.rawPitch.toFixed(1)}°  Δpitch={dbg.deltaPitch.toFixed(2)}°</div>
+                  <div>Δyaw={dbg.deltaAlpha.toFixed(2)}°</div>
+                </div>
+              )}
+              {showDebug && !dbg && motionPermission === 'granted' && (
+                <div style={{ marginTop: '8px', fontSize: '10px', color: '#fde68a' }}>
+                  Waiting for sensor data…
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <p style={{ margin: '5px 0' }}>Click Scene — Enable Mouse Look</p>
+              <p style={{ margin: '5px 0' }}>Mouse — Look Around (when active)</p>
+              <p style={{ margin: '5px 0' }}>Esc — Exit Mouse Look</p>
+              {motionCapable && (
+                <button
+                  onClick={onEnableMotion}
+                  style={{
+                    marginTop: '6px', width: '100%', padding: '4px 8px', fontSize: '12px',
+                    background: 'rgba(74,222,128,0.2)', color: '#4ade80',
+                    border: '1px solid rgba(74,222,128,0.4)', borderRadius: '4px', cursor: 'pointer',
+                  }}
+                >
+                  📱 Enable Motion
+                </button>
+              )}
+            </>
           )}
         </>
       )}
