@@ -2648,7 +2648,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 const isSelf = u.id === currentUser?.id;
                 const dotColor = u.status === 'active' ? '#4ade80' : u.status === 'inactive' ? '#fbbf24' : '#f87171';
                 const dotTitle = u.status === 'active' ? 'Active' : u.status === 'inactive' ? 'Inactive' : 'Offline';
-                const canTeleport = !isSelf && u.status !== 'offline' && avatarTargetsRef.current.has(u.id);
+                const canTeleport = !isSelf && u.status !== 'offline';
                 return (
                   <li key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
                     <span
