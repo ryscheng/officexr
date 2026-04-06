@@ -512,6 +512,31 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
   }, [jitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
 
+  const playWaveChime = () => {
+    try {
+      const ctx = new AudioContext();
+      // Two-note ding-dong: C5 then E5
+      const notes = [523.25, 659.25];
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        const start = ctx.currentTime + i * 0.18;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.35, start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.5);
+        osc.start(start);
+        osc.stop(start + 0.5);
+      });
+      setTimeout(() => ctx.close(), 1200);
+    } catch {
+      // AudioContext not available — silently skip
+    }
+  };
+
   const sendChatMessage = (message: string) => {
     if (!channelRef.current || !channelSubscribedRef.current || !currentUser) return;
 
@@ -1312,6 +1337,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       const { message } = payload as { message: ChatMessage };
       if (message.userId !== currentUserRef.current?.id) {
         setChatMessages((prev) => [...prev.slice(-49), message]);
+      }
+    });
+
+    // Broadcast: targeted wave — play chime only for the recipient
+    channel.on('broadcast', { event: 'wave' }, ({ payload }) => {
+      const { toUserId } = payload as { toUserId: string };
+      if (toUserId === currentUser.id) {
+        playWaveChime();
       }
     });
 
@@ -2146,7 +2179,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                     {!isSelf && u.status !== 'offline' && (
                       <button
                         title={`Wave at ${u.name}`}
-                        onClick={() => sendChatMessage(`${currentUser?.name || 'Someone'} has waved at ${u.name} 👋`)}
+                        onClick={() => {
+                          sendChatMessage(`${currentUser?.name || 'Someone'} has waved at ${u.name} 👋`);
+                          channelRef.current?.send({
+                            type: 'broadcast',
+                            event: 'wave',
+                            payload: { toUserId: u.id },
+                          });
+                        }}
                         style={{
                           background: 'none', border: 'none', cursor: 'pointer',
                           padding: '0 2px', fontSize: '13px', lineHeight: 1,
