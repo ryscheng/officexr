@@ -157,6 +157,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [joystickActive, setJoystickActive] = useState(false);
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
   const [is2DMode, setIs2DMode] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const is2DModeRef = useRef(false);
   is2DModeRef.current = is2DMode;
   // Environment settings — arbitrary string; unknown values render as 'corporate'
@@ -1277,6 +1278,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         setIs2DMode(v => !v);
         return;
       }
+      if (key === '?') {
+        setShowControls(v => !v);
+        return;
+      }
       keys[key] = true;
     };
 
@@ -2091,22 +2096,33 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }} />
       )}
 
-      <ControlsOverlay
-        motionPermission={motionPermission}
-        motionCapable={motionCapable}
-        onRecalibrate={() => recalibrateMotionRef.current?.()}
-        onEnableMotion={enableMotion}
-        onDisableMotion={disableMotion}
-        motionDebugRef={motionDebugRef}
-        is2DMode={is2DMode}
-        onToggle2D={() => setIs2DMode(v => !v)}
-        showChat
-        extras={
-          <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
-            Walk near others to voice chat
-          </p>
-        }
-      />
+      {showControls && (
+        <ControlsOverlay
+          motionPermission={motionPermission}
+          motionCapable={motionCapable}
+          onRecalibrate={() => recalibrateMotionRef.current?.()}
+          onEnableMotion={enableMotion}
+          onDisableMotion={disableMotion}
+          motionDebugRef={motionDebugRef}
+          is2DMode={is2DMode}
+          onToggle2D={() => setIs2DMode(v => !v)}
+          showChat
+          extras={
+            <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
+              Walk near others to voice chat
+            </p>
+          }
+        />
+      )}
+
+      {/* Bottom-right hint to open the controls pane */}
+      <div style={{
+        position: 'absolute', bottom: '20px', right: '20px',
+        color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace', fontSize: '12px',
+        pointerEvents: 'none', userSelect: 'none',
+      }}>
+        ? — {showControls ? 'hide' : 'show'} controls
+      </div>
 
       {/* iOS motion permission prompt */}
       {motionPermission === 'prompt' && (
