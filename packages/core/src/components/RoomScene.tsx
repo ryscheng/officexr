@@ -16,7 +16,7 @@ import { useMotionControls } from '@/hooks/useMotionControls';
 
 const PROXIMITY_RADIUS = 3; // Three.js units — spheres overlap when distance < PROXIMITY_RADIUS * 2
 
-type PresenceEntry = AvatarData & { email?: string | null; jitsiRoom?: string | null };
+type PresenceEntry = AvatarData & { email?: string | null; jitsiRoom?: string | null; status?: 'active' | 'inactive' };
 
 function createBubbleSphere(scene: THREE.Scene): THREE.Mesh {
   const geo = new THREE.SphereGeometry(PROXIMITY_RADIUS, 24, 24);
@@ -75,7 +75,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
   const jitsiRoomRef = useRef<string | null>(null);
   const myPresenceRef = useRef<PresenceEntry | null>(null);
-  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null }>>([]);
+  const recentlyLeftRef = useRef<Map<string, { id: string; name: string; email: string | null; leftAt: number }>>(new Map());
+  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null; status: 'active' | 'inactive' | 'offline' }>>([]);
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
   const [jitsiError, setJitsiError] = useState<string | null>(null);
   const [jitsiConnected, setJitsiConnected] = useState(false);
@@ -510,6 +511,31 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       cleanupJitsi();
     };
   }, [jitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
+
+  const playWaveChime = () => {
+    try {
+      const ctx = new AudioContext();
+      // Two-note ding-dong: C5 then E5
+      const notes = [523.25, 659.25];
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        const start = ctx.currentTime + i * 0.18;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.35, start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.5);
+        osc.start(start);
+        osc.stop(start + 0.5);
+      });
+      setTimeout(() => ctx.close(), 1200);
+    } catch {
+      // AudioContext not available — silently skip
+    }
+  };
 
   const sendChatMessage = (message: string) => {
     if (!channelRef.current || !channelSubscribedRef.current || !currentUser) return;
@@ -1180,11 +1206,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     channelRef.current = channel;
 
     const rebuildOnlineUsers = () => {
-      setOnlineUsers([...presenceDataRef.current.values()].map(p => ({
+      const active = [...presenceDataRef.current.values()].map(p => ({
         id: p.id,
         name: p.name,
         email: p.email ?? null,
-      })));
+        status: (p.status ?? 'active') as 'active' | 'inactive' | 'offline',
+      }));
+      const offline = [...recentlyLeftRef.current.values()].map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        status: 'offline' as const,
+      }));
+      setOnlineUsers([...active, ...offline]);
     };
 
     // Presence: sync existing users
@@ -1229,6 +1263,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       newPresences.forEach((presence) => {
         const p = presence as unknown as PresenceEntry;
         presenceDataRef.current.set(p.id, p);
+        recentlyLeftRef.current.delete(p.id);
         if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
           const pending = pendingAvatarUpdatesRef.current.get(p.id);
           const avatar = createAvatar(scene, pending ? { ...p, customization: pending } : p);
@@ -1246,15 +1281,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
       leftPresences.forEach((presence) => {
         const p = presence as unknown as PresenceEntry;
+        // Clean up visual avatar and sphere if they still exist
         const avatar = avatarsRef.current.get(p.id);
-        if (avatar) {
-          scene.remove(avatar);
-          avatarsRef.current.delete(p.id);
-          avatarTargetsRef.current.delete(p.id);
-          lastSeenAt.current.delete(p.id);
-          const sphere = bubbleSpheresRef.current.get(p.id);
-          if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
-          presenceDataRef.current.delete(p.id);
+        if (avatar) { scene.remove(avatar); avatarsRef.current.delete(p.id); }
+        const sphere = bubbleSpheresRef.current.get(p.id);
+        if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
+        // Always clean up all tracking data — the avatar may have already been
+        // removed by stale detection while the user was backgrounded.
+        avatarTargetsRef.current.delete(p.id);
+        lastSeenAt.current.delete(p.id);
+        const hadData = presenceDataRef.current.has(p.id);
+        presenceDataRef.current.delete(p.id);
+        if (avatar || hadData) {
+          recentlyLeftRef.current.set(p.id, { id: p.id, name: p.name, email: p.email ?? null, leftAt: Date.now() });
           rebuildOnlineUsers();
         }
       });
@@ -1267,12 +1306,35 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         position: { x: number; y: number; z: number };
         rotation: { x: number; y: number; z: number };
       };
-      if (avatarsRef.current.has(userId)) {
+      // Accept updates from any known user (incl. those whose avatar was removed
+      // as stale but whose Supabase presence is still active).
+      if (presenceDataRef.current.has(userId)) {
         avatarTargetsRef.current.set(userId, {
           position: new THREE.Vector3(position.x, position.y, position.z),
           rotationY: rotation.y,
         });
         lastSeenAt.current.set(userId, Date.now());
+
+        // When our animation loop is throttled (tab hidden), run a proximity
+        // check here so voice chat can start/stop while we're in the background.
+        if (document.visibilityState === 'hidden' && cameraRef.current) {
+          const camPos = cameraRef.current.position;
+          const newNearby = new Set<string>();
+          avatarTargetsRef.current.forEach((target, uid) => {
+            if (camPos.distanceTo(target.position) < PROXIMITY_RADIUS * 2) {
+              newNearby.add(uid);
+            }
+          });
+          const prevNearby = nearbyUserIdsRef.current;
+          const setChanged =
+            newNearby.size !== prevNearby.size ||
+            [...newNearby].some(id => !prevNearby.has(id)) ||
+            [...prevNearby].some(id => !newNearby.has(id));
+          if (setChanged) {
+            nearbyUserIdsRef.current = newNearby;
+            handleProximityChange(newNearby);
+          }
+        }
       }
     });
 
@@ -1304,6 +1366,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     });
 
+    // Broadcast: targeted wave — play chime only for the recipient
+    channel.on('broadcast', { event: 'wave' }, ({ payload }) => {
+      const { toUserId } = payload as { toUserId: string };
+      if (toUserId === currentUser.id) {
+        playWaveChime();
+      }
+    });
+
     // Broadcast: room environment changes — update scene for all connected users
     channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
       const { environment: env } = payload as { environment: string };
@@ -1317,16 +1387,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (status === 'SUBSCRIBED') {
         // On reconnect myPresenceRef already holds the latest state (position, jitsiRoom, etc.).
         // Re-use it so we don't reset position or Jitsi room on a transient disconnect.
-        const presence: PresenceEntry = myPresenceRef.current ?? {
-          id: currentUser.id,
-          name: currentUser.name || 'User',
-          email: user?.email ?? null,
-          image: user?.image || null,
-          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-          rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
-          customization: avatarCustomizationRef.current,
-          jitsiRoom: null,
-        };
+        // Always set status to 'active' on (re)connect — if we're subscribing, the tab is open.
+        const currentStatus = document.visibilityState === 'visible' ? 'active' : 'inactive';
+        const presence: PresenceEntry = myPresenceRef.current
+          ? { ...myPresenceRef.current, status: currentStatus }
+          : {
+              id: currentUser.id,
+              name: currentUser.name || 'User',
+              email: user?.email ?? null,
+              image: user?.image || null,
+              position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+              rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
+              customization: avatarCustomizationRef.current,
+              jitsiRoom: null,
+              status: currentStatus,
+            };
         myPresenceRef.current = presence;
         await channel.track(presence);
 
@@ -1361,7 +1436,57 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     });
 
-    // Proximity-based Jitsi room coordination
+    // Tab visibility — update presence status so other users see active/inactive indicator
+    const handleVisibilityChange = () => {
+      if (!channelRef.current || !myPresenceRef.current || !channelSubscribedRef.current) return;
+      const newStatus: 'active' | 'inactive' = document.visibilityState === 'visible' ? 'active' : 'inactive';
+      const updated = { ...myPresenceRef.current, status: newStatus };
+      myPresenceRef.current = updated;
+      channelRef.current.track(updated);
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Position heartbeat via setInterval — keeps our position broadcast alive even
+    // when the animation loop is throttled by Chrome in a background tab.
+    // The animation loop still sends immediate movement updates at 60 ms; this
+    // interval covers the 3-second stationary heartbeat independently.
+    const positionHeartbeatInterval = setInterval(() => {
+      if (!channelRef.current || !channelSubscribedRef.current || !cameraRef.current) return;
+      const cam = cameraRef.current;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'position',
+        payload: {
+          userId: currentUser.id,
+          position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+          rotation: { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z },
+        },
+      });
+      lastPositionUpdate.current = Date.now();
+      if (myPresenceRef.current) {
+        myPresenceRef.current = {
+          ...myPresenceRef.current,
+          position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+          rotation: { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z },
+        };
+      }
+    }, 2000);
+
+    // Clean up recently-left (offline) users after 15 s
+    const offlineCleanupInterval = setInterval(() => {
+      const now = Date.now();
+      let changed = false;
+      recentlyLeftRef.current.forEach((_u, id) => {
+        if (now - recentlyLeftRef.current.get(id)!.leftAt > 15000) {
+          recentlyLeftRef.current.delete(id);
+          changed = true;
+        }
+      });
+      if (changed) rebuildOnlineUsers();
+    }, 5000);
+
+    // Proximity-based Jitsi room coordination.
+    // Also called from the position broadcast handler (above) when the tab is hidden.
     const handleProximityChange = (nearbyIds: Set<string>) => {
       if (nearbyIds.size === 0) {
         if (jitsiRoomRef.current !== null) {
@@ -1434,12 +1559,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
 
       const now = Date.now();
-      // Send position when moving (60ms throttle) OR as a heartbeat every 3s
-      // so stationary users are visible for proximity detection on all clients.
-      const shouldSend = channelRef.current && (
-        (moved && now - lastPositionUpdate.current > 60) ||
-        (now - lastPositionUpdate.current > 3000)
-      );
+      // Send position when moving (60ms throttle). Stationary heartbeat is
+      // handled by positionHeartbeatInterval so it fires even when this loop
+      // is throttled in a background tab.
+      const shouldSend = channelRef.current && channelSubscribedRef.current &&
+        moved && now - lastPositionUpdate.current > 60;
       if (shouldSend) {
         channelRef.current!.send({
           type: 'broadcast',
@@ -1483,16 +1607,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }
       });
 
-      // Update remote bubble sphere positions and detect proximity
+      // Update remote bubble sphere positions and detect proximity.
+      // Use avatarTargetsRef as the source of truth for positions — this covers
+      // stale-but-present users whose visual avatar was removed but who are still
+      // connected via Supabase presence and may be in an active voice chat.
       const newNearby = new Set<string>();
-      bubbleSpheresRef.current.forEach((sphere, uid) => {
+      avatarTargetsRef.current.forEach((target, uid) => {
+        const sphere = bubbleSpheresRef.current.get(uid);
         const avatar = avatarsRef.current.get(uid);
-        if (avatar) {
+        // Update bubble sphere to follow the interpolated avatar if both exist
+        if (avatar && sphere) {
           sphere.position.copy(avatar.position);
-          // Bubble overlap when centers are within PROXIMITY_RADIUS * 2
-          if (camera.position.distanceTo(avatar.position) < PROXIMITY_RADIUS * 2) {
-            newNearby.add(uid);
-          }
+        }
+        // Proximity uses last-received position, not interpolated avatar position
+        if (camera.position.distanceTo(target.position) < PROXIMITY_RADIUS * 2) {
+          newNearby.add(uid);
         }
       });
 
@@ -1512,14 +1641,33 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         lastStaleCheck = now;
         lastSeenAt.current.forEach((t, uid) => {
           if (now - t > STALE_THRESHOLD_MS) {
+            // Check whether the user is still registered in Supabase presence.
+            // If they are, their tab is just backgrounded (rAF-driven broadcasts
+            // slowed/stopped) — remove the visual avatar to save resources but
+            // keep their tracking data so proximity/voice-chat keeps working.
+            const presenceState = channel.presenceState<PresenceEntry>();
+            const stillPresent = Object.values(presenceState).some(presences =>
+              presences.some(p => p.id === uid)
+            );
+
+            const stalePresence = presenceDataRef.current.get(uid);
             const staleAvatar = avatarsRef.current.get(uid);
             if (staleAvatar) scene.remove(staleAvatar);
             avatarsRef.current.delete(uid);
-            avatarTargetsRef.current.delete(uid);
-            lastSeenAt.current.delete(uid);
             const staleSphere = bubbleSpheresRef.current.get(uid);
             if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
-            presenceDataRef.current.delete(uid);
+            lastSeenAt.current.delete(uid);
+
+            if (stillPresent) {
+              // Keep avatarTargetsRef and presenceDataRef so proximity detection
+              // and the online users list remain accurate.
+            } else {
+              avatarTargetsRef.current.delete(uid);
+              presenceDataRef.current.delete(uid);
+              if (stalePresence) {
+                recentlyLeftRef.current.set(uid, { id: uid, name: stalePresence.name, email: stalePresence.email ?? null, leftAt: Date.now() });
+              }
+            }
             rebuildOnlineUsers();
           }
         });
@@ -1569,6 +1717,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(positionHeartbeatInterval);
+      clearInterval(offlineCleanupInterval);
       renderer.domElement.removeEventListener('click', handleCanvasClick);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
@@ -2086,13 +2237,29 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               {onlineUsers.map(u => {
                 const displayName = u.name + (nameCounts[u.name] > 1 && u.email ? ` (${u.email})` : '');
                 const isSelf = u.id === currentUser?.id;
+                const dotColor = u.status === 'active' ? '#4ade80' : u.status === 'inactive' ? '#fbbf24' : '#f87171';
+                const dotTitle = u.status === 'active' ? 'Active' : u.status === 'inactive' ? 'Inactive' : 'Offline';
                 return (
                   <li key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                    <span
+                      title={dotTitle}
+                      style={{
+                        width: '8px', height: '8px', borderRadius: '50%',
+                        background: dotColor, flexShrink: 0, display: 'inline-block',
+                      }}
+                    />
                     <span>{displayName}</span>
-                    {!isSelf && (
+                    {!isSelf && u.status !== 'offline' && (
                       <button
                         title={`Wave at ${u.name}`}
-                        onClick={() => sendChatMessage(`${currentUser?.name || 'Someone'} has waved at ${u.name} 👋`)}
+                        onClick={() => {
+                          sendChatMessage(`${currentUser?.name || 'Someone'} has waved at ${u.name} 👋`);
+                          channelRef.current?.send({
+                            type: 'broadcast',
+                            event: 'wave',
+                            payload: { toUserId: u.id },
+                          });
+                        }}
                         style={{
                           background: 'none', border: 'none', cursor: 'pointer',
                           padding: '0 2px', fontSize: '13px', lineHeight: 1,
