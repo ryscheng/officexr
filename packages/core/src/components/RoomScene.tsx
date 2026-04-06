@@ -155,6 +155,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
   const [joystickActive, setJoystickActive] = useState(false);
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  const [is2DMode, setIs2DMode] = useState(false);
+  const is2DModeRef = useRef(false);
+  is2DModeRef.current = is2DMode;
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
@@ -422,6 +425,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   }, [chatMessages, chatVisible]);
 
+  // Exit pointer lock when switching to 2D mode
+  useEffect(() => {
+    if (is2DMode && document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }, [is2DMode]);
+
   // Sync chatVisible ref and clear navigation keys when chat opens
   useEffect(() => {
     chatVisibleRef.current = chatVisible;
@@ -676,6 +686,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     );
     camera.position.set(0, 1.6, 5);
     cameraRef.current = camera;
+
+    // Orthographic camera for 2D top-down mode
+    const ORTHO_VIEW_SIZE = 15;
+    const orthoAspect = window.innerWidth / window.innerHeight;
+    const orthoCamera = new THREE.OrthographicCamera(
+      -ORTHO_VIEW_SIZE * orthoAspect, ORTHO_VIEW_SIZE * orthoAspect,
+      ORTHO_VIEW_SIZE, -ORTHO_VIEW_SIZE,
+      0.1, 200,
+    );
+    orthoCamera.position.set(camera.position.x, 80, camera.position.z);
+    orthoCamera.up.set(0, 0, -1); // north (-Z) is up on screen
+    orthoCamera.lookAt(camera.position.x, 0, camera.position.z);
 
     // Renderer setup
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -1231,12 +1253,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     const handleCanvasClick = () => {
       // Don't fight device orientation with pointer lock on touch devices
-      if (!renderer.xr.isPresenting && !motionActiveRef.current) {
+      // Also skip in 2D mode — no mouse look there
+      if (!renderer.xr.isPresenting && !motionActiveRef.current && !is2DModeRef.current) {
         renderer.domElement.requestPointerLock();
       }
     };
 
     const handleMouseMove = (event: MouseEvent) => {
+      if (is2DModeRef.current) return;
       if (document.pointerLockElement === renderer.domElement && !renderer.xr.isPresenting) {
         cameraYaw   -= (event.movementX || 0) * 0.002;
         cameraPitch -= (event.movementY || 0) * 0.002;
@@ -1268,7 +1292,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     const handleTouchMove = (event: TouchEvent) => {
       // Device orientation handles look direction on mobile — skip touch drag
-      if (motionActiveRef.current) return;
+      // Also skip in 2D mode — no look controls there
+      if (motionActiveRef.current || is2DModeRef.current) return;
       if (isTouching && event.touches.length === 1) {
         const deltaX = event.touches[0].clientX - touchStartX;
         const deltaY = event.touches[0].clientY - touchStartY;
@@ -1289,6 +1314,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const handleResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
+      const newAspect = window.innerWidth / window.innerHeight;
+      orthoCamera.left = -ORTHO_VIEW_SIZE * newAspect;
+      orthoCamera.right = ORTHO_VIEW_SIZE * newAspect;
+      orthoCamera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener('resize', handleResize);
@@ -1683,27 +1712,38 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Frame-rate-independent lerp: equivalent to 0.15 at 60 fps, consistent at any rate
       const lerpAlpha = 1 - Math.pow(0.005, delta);
       const direction = new THREE.Vector3();
-      const forward = new THREE.Vector3();
-      const right = new THREE.Vector3();
-
-      camera.getWorldDirection(forward);
-      forward.y = 0;
-      forward.normalize();
-      right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
-
       let moved = false;
 
-      if (keys['w'] || keys['arrowup']) { direction.add(forward); moved = true; }
-      if (keys['s'] || keys['arrowdown']) { direction.sub(forward); moved = true; }
-      if (keys['a'] || keys['arrowleft']) { direction.sub(right); moved = true; }
-      if (keys['d'] || keys['arrowright']) { direction.add(right); moved = true; }
-
-      // Virtual joystick input (touch devices)
-      const { x: jx, y: jy } = joystickInputRef.current;
-      if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
-        direction.addScaledVector(forward, -jy);
-        direction.addScaledVector(right, jx);
-        moved = true;
+      if (is2DModeRef.current) {
+        // 2D top-down mode: WASD/arrows map to compass directions
+        if (keys['w'] || keys['arrowup'])    { direction.z -= 1; moved = true; }
+        if (keys['s'] || keys['arrowdown'])  { direction.z += 1; moved = true; }
+        if (keys['a'] || keys['arrowleft'])  { direction.x -= 1; moved = true; }
+        if (keys['d'] || keys['arrowright']) { direction.x += 1; moved = true; }
+        const { x: jx, y: jy } = joystickInputRef.current;
+        if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
+          direction.x += jx;
+          direction.z -= jy; // joystick up = north
+          moved = true;
+        }
+      } else {
+        // 3D mode: movement relative to camera facing direction
+        const forward = new THREE.Vector3();
+        const right = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        forward.y = 0;
+        forward.normalize();
+        right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
+        if (keys['w'] || keys['arrowup'])    { direction.add(forward); moved = true; }
+        if (keys['s'] || keys['arrowdown'])  { direction.sub(forward); moved = true; }
+        if (keys['a'] || keys['arrowleft'])  { direction.sub(right); moved = true; }
+        if (keys['d'] || keys['arrowright']) { direction.add(right); moved = true; }
+        const { x: jx, y: jy } = joystickInputRef.current;
+        if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
+          direction.addScaledVector(forward, -jy);
+          direction.addScaledVector(right, jx);
+          moved = true;
+        }
       }
 
       if (direction.length() > 0) {
@@ -1839,7 +1879,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         handleProximityChange(newNearby);
       }
 
-      renderer.render(scene, camera);
+      // Sync top-down camera to player XZ position
+      orthoCamera.position.x = camera.position.x;
+      orthoCamera.position.z = camera.position.z;
+
+      renderer.render(scene, is2DModeRef.current ? orthoCamera : camera);
     };
 
     renderer.setAnimationLoop(animate);
@@ -1965,6 +2009,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onEnableMotion={enableMotion}
         onDisableMotion={disableMotion}
         motionDebugRef={motionDebugRef}
+        is2DMode={is2DMode}
+        onToggle2D={() => setIs2DMode(v => !v)}
         showChat
         extras={
           <p style={{ margin: '5px 0', color: '#60a5fa', fontSize: '11px' }}>
