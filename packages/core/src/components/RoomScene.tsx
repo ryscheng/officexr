@@ -1897,34 +1897,36 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         lastStaleCheck = now;
         lastSeenAt.current.forEach((t, uid) => {
           if (now - t > STALE_THRESHOLD_MS) {
+            // Stop waiting for position updates from this user either way.
+            lastSeenAt.current.delete(uid);
+
             // Check whether the user is still registered in Supabase presence.
-            // If they are, their tab is just backgrounded (rAF-driven broadcasts
-            // slowed/stopped) — remove the visual avatar to save resources but
-            // keep their tracking data so proximity/voice-chat keeps working.
             const presenceState = channel.presenceState<PresenceEntry>();
             const stillPresent = Object.values(presenceState).some(presences =>
               presences.some(p => p.id === uid)
             );
 
-            const stalePresence = presenceDataRef.current.get(uid);
-            const staleAvatar = avatarsRef.current.get(uid);
-            if (staleAvatar) scene.remove(staleAvatar);
-            avatarsRef.current.delete(uid);
-            const staleSphere = bubbleSpheresRef.current.get(uid);
-            if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
-            lastSeenAt.current.delete(uid);
-
             if (stillPresent) {
-              // Keep avatarTargetsRef and presenceDataRef so proximity detection
-              // and the online users list remain accurate.
+              // User is inactive (tab backgrounded, movements paused) but still
+              // connected. Keep the avatar frozen at its last position — it will
+              // resume moving if/when the user becomes active again.
+              // avatarTargetsRef and presenceDataRef are left intact so proximity
+              // detection and the online users list remain accurate.
             } else {
+              // User truly gone — remove avatar, sphere, and all tracking data.
+              const stalePresence = presenceDataRef.current.get(uid);
+              const staleAvatar = avatarsRef.current.get(uid);
+              if (staleAvatar) scene.remove(staleAvatar);
+              avatarsRef.current.delete(uid);
+              const staleSphere = bubbleSpheresRef.current.get(uid);
+              if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
               avatarTargetsRef.current.delete(uid);
               presenceDataRef.current.delete(uid);
               if (stalePresence) {
                 recentlyLeftRef.current.set(uid, { id: uid, name: stalePresence.name, email: stalePresence.email ?? null, leftAt: Date.now() });
               }
+              rebuildOnlineUsers();
             }
-            rebuildOnlineUsers();
           }
         });
       }
