@@ -1439,7 +1439,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Tab visibility — update presence status so other users see active/inactive indicator
     const handleVisibilityChange = () => {
       if (!channelRef.current || !myPresenceRef.current || !channelSubscribedRef.current) return;
-      const newStatus = document.visibilityState === 'visible' ? 'active' : 'inactive';
+      const newStatus: 'active' | 'inactive' = document.visibilityState === 'visible' ? 'active' : 'inactive';
       const updated = { ...myPresenceRef.current, status: newStatus };
       myPresenceRef.current = updated;
       channelRef.current.track(updated);
