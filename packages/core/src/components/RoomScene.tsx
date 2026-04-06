@@ -2031,7 +2031,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               // counts them as nearby — this prevents the voice call from staying open
               // when the user's network dropped but Supabase hasn't fired leave yet.
               // The position broadcast handler will re-add them when updates resume.
-              avatarTargetsRef.current.delete(uid);
+              // Exception: keep the entry if we're following this user, so the camera
+              // stays anchored at their last position and proximity/audio isn't lost.
+              if (followingUserIdRef.current !== uid) {
+                avatarTargetsRef.current.delete(uid);
+              }
             } else {
               // User truly gone — remove avatar, sphere, and all tracking data.
               if (followingUserIdRef.current === uid) setFollowingUserId(null);
