@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth, signOut } from '@/hooks/useAuth';
 import { useMotionControls } from '@/hooks/useMotionControls';
 import ControlsOverlay from '@/components/ControlsOverlay';
+import { spawnConfetti, updateParticles, EMOJI_MAP, Particle } from '@/components/EmojiConfetti';
 
 interface Room {
   id: string;
@@ -479,9 +480,15 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     renderer.domElement.addEventListener('touchmove', handleTouchMove, { passive: true });
     renderer.domElement.addEventListener('touchend', handleTouchEnd);
 
-    // ── WASD keyboard movement ────────────────────────────────────────────────
+    // ── WASD keyboard movement + emoji confetti ────────────────────────────────
     const keys: Record<string, boolean> = {};
-    const onKeyDown = (e: KeyboardEvent) => { keys[e.key.toLowerCase()] = true; };
+    let activeParticles: Particle[] = [];
+    const onKeyDown = (e: KeyboardEvent) => {
+      keys[e.key.toLowerCase()] = true;
+      if (e.key in EMOJI_MAP) {
+        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), e.key));
+      }
+    };
     const onKeyUp   = (e: KeyboardEvent) => { keys[e.key.toLowerCase()] = false; };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -498,11 +505,17 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
     const clock = new THREE.Clock();
     let rafId: number;
 
+    let lastElapsed = 0;
     const animate = () => {
       rafId = requestAnimationFrame(animate);
 
       // Update wormhole shader uniforms and animate particles
       const elapsed = clock.getElapsedTime();
+      const delta = elapsed - lastElapsed;
+      lastElapsed = elapsed;
+
+      // Update emoji confetti particles
+      activeParticles = updateParticles(activeParticles, delta, scene);
       portalMaterials.forEach(mat => { mat.uniforms.uTime.value = elapsed; });
       rimMaterials.forEach(mat => { mat.uniforms.uTime.value = elapsed; });
       portalGroups.forEach(group => {

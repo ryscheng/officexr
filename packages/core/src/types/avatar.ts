@@ -85,3 +85,25 @@ export const SKIN_COLOR_PRESETS = [
   { name: 'Tan', value: '#8d5524' },
   { name: 'Brown', value: '#6a3c2a' },
 ];
+
+// ─── Bubble preferences (local-only, stored in localStorage) ─────────────────
+
+export interface BubblePreferences {
+  radius: number;    // 1–8, default 3
+  idleColor: string; // hex string, default '#4499ff'
+}
+
+const BUBBLE_PREFS_KEY = 'officexr-bubble-prefs';
+const DEFAULT_BUBBLE_PREFS: BubblePreferences = { radius: 3, idleColor: '#4499ff' };
+
+export function loadBubblePrefs(): BubblePreferences {
+  try {
+    const raw = localStorage.getItem(BUBBLE_PREFS_KEY);
+    if (raw) return { ...DEFAULT_BUBBLE_PREFS, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { ...DEFAULT_BUBBLE_PREFS };
+}
+
+export function saveBubblePrefs(prefs: BubblePreferences): void {
+  localStorage.setItem(BUBBLE_PREFS_KEY, JSON.stringify(prefs));
+}
