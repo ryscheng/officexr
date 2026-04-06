@@ -552,6 +552,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) videoTrack.contentHint = 'detail';
     } catch (err: any) {
       if (err.name !== 'NotAllowedError') console.error('[ScreenShare] getDisplayMedia failed:', err);
       return;
@@ -1538,12 +1540,23 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Accept updates from any known user (incl. those whose avatar was removed
       // as stale but whose Supabase presence is still active).
       if (presenceDataRef.current.has(userId)) {
-        avatarTargetsRef.current.set(userId, {
-          // Use y=0 (ground level) regardless of the sender's camera eye-height
-          // so remote avatars stand on the floor rather than floating in the air.
-          position: new THREE.Vector3(position.x, 0, position.z),
-          rotationY: rotation.y,
-        });
+        // Only update the interpolation target when position changed meaningfully.
+        // Heartbeat broadcasts repeat the same position every 2 s; without this
+        // guard the lerp restarts each time, causing visible micro-jitter.
+        const newPos = new THREE.Vector3(position.x, 0, position.z);
+        const existing = avatarTargetsRef.current.get(userId);
+        if (!existing || existing.position.distanceToSquared(newPos) > 0.0001
+            || Math.abs(existing.rotationY - rotation.y) > 0.01) {
+          if (!existing) {
+            // User appearing after stale deletion — snap avatar to avoid a lerp jump
+            const avatar = avatarsRef.current.get(userId);
+            if (avatar) avatar.position.copy(newPos);
+          }
+          avatarTargetsRef.current.set(userId, {
+            position: newPos,
+            rotationY: rotation.y,
+          });
+        }
         lastSeenAt.current.set(userId, Date.now());
 
         // When our animation loop is throttled (tab hidden), run a proximity
@@ -1915,12 +1928,16 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
           const dest = followTarget.position.clone()
             .addScaledVector(dir, PROXIMITY_RADIUS * 0.8);
-          camera.position.set(
-            Math.max(-14.5, Math.min(14.5, dest.x)),
-            1.6,
-            Math.max(-14.5, Math.min(14.5, dest.z)),
-          );
-          moved = true; // broadcast our updated position each frame we follow
+          const destX = Math.max(-14.5, Math.min(14.5, dest.x));
+          const destZ = Math.max(-14.5, Math.min(14.5, dest.z));
+          // Only update and broadcast if position actually changed, to avoid
+          // floating-point noise from making the follower's avatar vibrate.
+          const fdx = camera.position.x - destX;
+          const fdz = camera.position.z - destZ;
+          if (fdx * fdx + fdz * fdz > 0.0001) {
+            camera.position.set(destX, 1.6, destZ);
+            moved = true;
+          }
         }
       }
 
@@ -2029,7 +2046,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               // counts them as nearby — this prevents the voice call from staying open
               // when the user's network dropped but Supabase hasn't fired leave yet.
               // The position broadcast handler will re-add them when updates resume.
-              avatarTargetsRef.current.delete(uid);
+              // Exception: keep the entry if we're following this user, so the camera
+              // stays anchored at their last position and proximity/audio isn't lost.
+              if (followingUserIdRef.current !== uid) {
+                avatarTargetsRef.current.delete(uid);
+              }
             } else {
               // User truly gone — remove avatar, sphere, and all tracking data.
               if (followingUserIdRef.current === uid) setFollowingUserId(null);
@@ -2430,11 +2451,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             <video
               ref={el => {
                 if (!el) return;
-                el.srcObject = share.stream;
-                el.muted = true; // mute first so autoplay is always allowed
-                el.play()
-                  .then(() => { el.muted = isMine; }) // unmute viewer streams after play starts
-                  .catch(() => {});
+                if (el.srcObject !== share.stream) {
+                  el.srcObject = share.stream;
+                  el.muted = true; // mute first so autoplay is always allowed
+                  el.play()
+                    .then(() => { el.muted = isMine; }) // unmute viewer streams after play starts
+                    .catch(() => {});
+                }
               }}
               autoPlay playsInline
               style={{ flex: 1, width: '100%', objectFit: 'contain', background: 'black' }}
@@ -2465,11 +2488,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                   <video
                     ref={el => {
                       if (!el) return;
-                      el.srcObject = share.stream;
-                      el.muted = true;
-                      el.play()
-                        .then(() => { el.muted = isMine; })
-                        .catch(() => {});
+                      if (el.srcObject !== share.stream) {
+                        el.srcObject = share.stream;
+                        el.muted = true;
+                        el.play()
+                          .then(() => { el.muted = isMine; })
+                          .catch(() => {});
+                      }
                     }}
                     autoPlay playsInline
                     style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'contain', background: 'black' }}
