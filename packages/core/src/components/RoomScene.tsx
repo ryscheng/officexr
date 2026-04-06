@@ -1950,8 +1950,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               // User is inactive (tab backgrounded, movements paused) but still
               // connected. Keep the avatar frozen at its last position — it will
               // resume moving if/when the user becomes active again.
-              // avatarTargetsRef and presenceDataRef are left intact so proximity
-              // detection and the online users list remain accurate.
+              // presenceDataRef is left intact so the online users list stays accurate.
+              // However, remove from avatarTargetsRef so proximity detection no longer
+              // counts them as nearby — this prevents the voice call from staying open
+              // when the user's network dropped but Supabase hasn't fired leave yet.
+              // The position broadcast handler will re-add them when updates resume.
+              avatarTargetsRef.current.delete(uid);
             } else {
               // User truly gone — remove avatar, sphere, and all tracking data.
               if (followingUserIdRef.current === uid) setFollowingUserId(null);
