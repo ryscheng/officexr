@@ -1281,15 +1281,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
       leftPresences.forEach((presence) => {
         const p = presence as unknown as PresenceEntry;
+        // Clean up visual avatar and sphere if they still exist
         const avatar = avatarsRef.current.get(p.id);
-        if (avatar) {
-          scene.remove(avatar);
-          avatarsRef.current.delete(p.id);
-          avatarTargetsRef.current.delete(p.id);
-          lastSeenAt.current.delete(p.id);
-          const sphere = bubbleSpheresRef.current.get(p.id);
-          if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
-          presenceDataRef.current.delete(p.id);
+        if (avatar) { scene.remove(avatar); avatarsRef.current.delete(p.id); }
+        const sphere = bubbleSpheresRef.current.get(p.id);
+        if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
+        // Always clean up all tracking data — the avatar may have already been
+        // removed by stale detection while the user was backgrounded.
+        avatarTargetsRef.current.delete(p.id);
+        lastSeenAt.current.delete(p.id);
+        const hadData = presenceDataRef.current.has(p.id);
+        presenceDataRef.current.delete(p.id);
+        if (avatar || hadData) {
           recentlyLeftRef.current.set(p.id, { id: p.id, name: p.name, email: p.email ?? null, leftAt: Date.now() });
           rebuildOnlineUsers();
         }
@@ -1303,12 +1306,35 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         position: { x: number; y: number; z: number };
         rotation: { x: number; y: number; z: number };
       };
-      if (avatarsRef.current.has(userId)) {
+      // Accept updates from any known user (incl. those whose avatar was removed
+      // as stale but whose Supabase presence is still active).
+      if (presenceDataRef.current.has(userId)) {
         avatarTargetsRef.current.set(userId, {
           position: new THREE.Vector3(position.x, position.y, position.z),
           rotationY: rotation.y,
         });
         lastSeenAt.current.set(userId, Date.now());
+
+        // When our animation loop is throttled (tab hidden), run a proximity
+        // check here so voice chat can start/stop while we're in the background.
+        if (document.visibilityState === 'hidden' && cameraRef.current) {
+          const camPos = cameraRef.current.position;
+          const newNearby = new Set<string>();
+          avatarTargetsRef.current.forEach((target, uid) => {
+            if (camPos.distanceTo(target.position) < PROXIMITY_RADIUS * 2) {
+              newNearby.add(uid);
+            }
+          });
+          const prevNearby = nearbyUserIdsRef.current;
+          const setChanged =
+            newNearby.size !== prevNearby.size ||
+            [...newNearby].some(id => !prevNearby.has(id)) ||
+            [...prevNearby].some(id => !newNearby.has(id));
+          if (setChanged) {
+            nearbyUserIdsRef.current = newNearby;
+            handleProximityChange(newNearby);
+          }
+        }
       }
     });
 
@@ -1420,6 +1446,32 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    // Position heartbeat via setInterval — keeps our position broadcast alive even
+    // when the animation loop is throttled by Chrome in a background tab.
+    // The animation loop still sends immediate movement updates at 60 ms; this
+    // interval covers the 3-second stationary heartbeat independently.
+    const positionHeartbeatInterval = setInterval(() => {
+      if (!channelRef.current || !channelSubscribedRef.current || !cameraRef.current) return;
+      const cam = cameraRef.current;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'position',
+        payload: {
+          userId: currentUser.id,
+          position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+          rotation: { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z },
+        },
+      });
+      lastPositionUpdate.current = Date.now();
+      if (myPresenceRef.current) {
+        myPresenceRef.current = {
+          ...myPresenceRef.current,
+          position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+          rotation: { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z },
+        };
+      }
+    }, 2000);
+
     // Clean up recently-left (offline) users after 15 s
     const offlineCleanupInterval = setInterval(() => {
       const now = Date.now();
@@ -1433,7 +1485,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (changed) rebuildOnlineUsers();
     }, 5000);
 
-    // Proximity-based Jitsi room coordination
+    // Proximity-based Jitsi room coordination.
+    // Also called from the position broadcast handler (above) when the tab is hidden.
     const handleProximityChange = (nearbyIds: Set<string>) => {
       if (nearbyIds.size === 0) {
         if (jitsiRoomRef.current !== null) {
@@ -1506,12 +1559,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
 
       const now = Date.now();
-      // Send position when moving (60ms throttle) OR as a heartbeat every 3s
-      // so stationary users are visible for proximity detection on all clients.
-      const shouldSend = channelRef.current && (
-        (moved && now - lastPositionUpdate.current > 60) ||
-        (now - lastPositionUpdate.current > 3000)
-      );
+      // Send position when moving (60ms throttle). Stationary heartbeat is
+      // handled by positionHeartbeatInterval so it fires even when this loop
+      // is throttled in a background tab.
+      const shouldSend = channelRef.current && channelSubscribedRef.current &&
+        moved && now - lastPositionUpdate.current > 60;
       if (shouldSend) {
         channelRef.current!.send({
           type: 'broadcast',
@@ -1555,16 +1607,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }
       });
 
-      // Update remote bubble sphere positions and detect proximity
+      // Update remote bubble sphere positions and detect proximity.
+      // Use avatarTargetsRef as the source of truth for positions — this covers
+      // stale-but-present users whose visual avatar was removed but who are still
+      // connected via Supabase presence and may be in an active voice chat.
       const newNearby = new Set<string>();
-      bubbleSpheresRef.current.forEach((sphere, uid) => {
+      avatarTargetsRef.current.forEach((target, uid) => {
+        const sphere = bubbleSpheresRef.current.get(uid);
         const avatar = avatarsRef.current.get(uid);
-        if (avatar) {
+        // Update bubble sphere to follow the interpolated avatar if both exist
+        if (avatar && sphere) {
           sphere.position.copy(avatar.position);
-          // Bubble overlap when centers are within PROXIMITY_RADIUS * 2
-          if (camera.position.distanceTo(avatar.position) < PROXIMITY_RADIUS * 2) {
-            newNearby.add(uid);
-          }
+        }
+        // Proximity uses last-received position, not interpolated avatar position
+        if (camera.position.distanceTo(target.position) < PROXIMITY_RADIUS * 2) {
+          newNearby.add(uid);
         }
       });
 
@@ -1584,17 +1641,32 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         lastStaleCheck = now;
         lastSeenAt.current.forEach((t, uid) => {
           if (now - t > STALE_THRESHOLD_MS) {
+            // Check whether the user is still registered in Supabase presence.
+            // If they are, their tab is just backgrounded (rAF-driven broadcasts
+            // slowed/stopped) — remove the visual avatar to save resources but
+            // keep their tracking data so proximity/voice-chat keeps working.
+            const presenceState = channel.presenceState<PresenceEntry>();
+            const stillPresent = Object.values(presenceState).some(presences =>
+              presences.some(p => p.id === uid)
+            );
+
             const stalePresence = presenceDataRef.current.get(uid);
             const staleAvatar = avatarsRef.current.get(uid);
             if (staleAvatar) scene.remove(staleAvatar);
             avatarsRef.current.delete(uid);
-            avatarTargetsRef.current.delete(uid);
-            lastSeenAt.current.delete(uid);
             const staleSphere = bubbleSpheresRef.current.get(uid);
             if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
-            presenceDataRef.current.delete(uid);
-            if (stalePresence) {
-              recentlyLeftRef.current.set(uid, { id: uid, name: stalePresence.name, email: stalePresence.email ?? null, leftAt: Date.now() });
+            lastSeenAt.current.delete(uid);
+
+            if (stillPresent) {
+              // Keep avatarTargetsRef and presenceDataRef so proximity detection
+              // and the online users list remain accurate.
+            } else {
+              avatarTargetsRef.current.delete(uid);
+              presenceDataRef.current.delete(uid);
+              if (stalePresence) {
+                recentlyLeftRef.current.set(uid, { id: uid, name: stalePresence.name, email: stalePresence.email ?? null, leftAt: Date.now() });
+              }
             }
             rebuildOnlineUsers();
           }
@@ -1646,6 +1718,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(positionHeartbeatInterval);
       clearInterval(offlineCleanupInterval);
       renderer.domElement.removeEventListener('click', handleCanvasClick);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
