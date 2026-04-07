@@ -170,6 +170,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [joystickActive, setJoystickActive] = useState(false);
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  // Trigger renderer resize when debug panel toggles
+  useEffect(() => {
+    const timer = setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+    return () => clearTimeout(timer);
+  }, [showDebugPanel]);
+
   // Network stats for debug panel
   const networkStats = useNetworkStats(
     channelRef,
@@ -195,13 +202,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [followingUserId, setFollowingUserId] = useState<string | null>(null);
   const followingUserIdRef = useRef<string | null>(null);
   followingUserIdRef.current = followingUserId;
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
-  // Trigger renderer resize when debug panel toggles
-  useEffect(() => {
-    // Small delay to let flex layout settle before measuring
-    const timer = setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
-    return () => clearTimeout(timer);
-  }, [showDebugPanel]);
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
