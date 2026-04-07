@@ -59,6 +59,9 @@ export function useNetworkStats(
   // Peer ping histories (mutable, synced to state periodically)
   const peerPingHistoriesRef = useRef<Map<string, number[]>>(new Map());
   const localPingHistoryRef = useRef<number[]>([]);
+  // Keep onlineUsers in a ref so the stats interval always reads the latest value
+  const onlineUsersRef = useRef(onlineUsers);
+  onlineUsersRef.current = onlineUsers;
 
   // Record a position update for a peer
   const recordPositionUpdate = useCallback((peerId: string) => {
@@ -134,7 +137,7 @@ export function useNetworkStats(
       const now = Date.now();
       const peers = new Map<string, PeerStats>();
 
-      const userMap = new Map(onlineUsers.map(u => [u.id, u.name]));
+      const userMap = new Map(onlineUsersRef.current.map(u => [u.id, u.name]));
 
       userMap.forEach((name, peerId) => {
         if (peerId === currentUserId) return;
@@ -192,9 +195,9 @@ export function useNetworkStats(
     return () => {
       clearInterval(pingInterval);
       clearInterval(statsInterval);
-      // Note: Supabase channel listeners are cleaned up when the channel is removed
     };
-  }, [enabled, currentUserId, onlineUsers, channelRef, channelSubscribedRef]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, currentUserId, channelRef, channelSubscribedRef]);
 
   return { ...stats, recordPositionUpdate: enabled ? recordPositionUpdate : noopRecord };
 }

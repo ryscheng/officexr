@@ -94,6 +94,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
   const [jitsiError, setJitsiError] = useState<string | null>(null);
   const [jitsiConnected, setJitsiConnected] = useState(false);
+  const [jitsiParticipantCount, setJitsiParticipantCount] = useState(0);
   const [jitsiRetryCount, setJitsiRetryCount] = useState(0);
   const [jaasJwt, setJaasJwt] = useState<string | null>(null);
   const [jaasJwtError, setJaasJwtError] = useState<string | null>(null);
@@ -126,6 +127,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const startMicRef = useRef<(() => Promise<void>) | null>(null);
   const lastPositionUpdate = useRef<number>(0);
   const lastSeenAt = useRef<Map<string, number>>(new Map());
+  const lastBroadcastPositionRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number; time: number }>>(new Map());
   const [showSettings, setShowSettings] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<'owner' | 'admin' | 'member' | undefined>(undefined);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
@@ -1516,6 +1518,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       setOnlineUsers([...active, ...offline]);
     };
 
+    // Use latest broadcast position (if fresh) instead of stale presence position
+    // when creating avatars from presence events. This prevents the visual glitch
+    // where an avatar briefly appears at its old/join position then teleports.
+    const freshPositionData = (p: PresenceEntry): PresenceEntry => {
+      const recent = lastBroadcastPositionRef.current.get(p.id);
+      if (recent && Date.now() - recent.time < 15000) {
+        return {
+          ...p,
+          position: { x: recent.position.x, y: p.position?.y ?? 1.6, z: recent.position.z },
+          rotation: { ...(p.rotation ?? { x: 0, y: 0, z: 0 }), y: recent.rotationY },
+        };
+      }
+      return p;
+    };
+
     // Presence: sync existing users
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState<PresenceEntry>();
@@ -1527,8 +1544,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           presenceDataRef.current.set(presence.id, presence);
           recentlyLeftRef.current.delete(presence.id);
           if (presence.id !== currentUser.id && !avatarsRef.current.has(presence.id)) {
+            const fresh = freshPositionData(presence);
             const pending = pendingAvatarUpdatesRef.current.get(presence.id);
-            const avatar = createAvatar(scene, pending ? { ...presence, customization: pending } : presence);
+            const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh);
             avatarsRef.current.set(presence.id, avatar);
             if (pending) pendingAvatarUpdatesRef.current.delete(presence.id);
             const rPrefs = remoteBubblePrefsRef.current.get(presence.id);
@@ -1537,10 +1555,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             bubbleSpheresRef.current.set(presence.id, sphere);
             // Seed proximity target from presence so the user is immediately
             // visible to proximity detection instead of waiting for a broadcast.
-            if (presence.position && !avatarTargetsRef.current.has(presence.id)) {
+            if (fresh.position && !avatarTargetsRef.current.has(presence.id)) {
               avatarTargetsRef.current.set(presence.id, {
-                position: new THREE.Vector3(presence.position.x, 0, presence.position.z),
-                rotationY: presence.rotation?.y ?? 0,
+                position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
+                rotationY: fresh.rotation?.y ?? 0,
               });
               lastSeenAt.current.set(presence.id, Date.now());
             }
@@ -1571,18 +1589,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         presenceDataRef.current.set(p.id, p);
         recentlyLeftRef.current.delete(p.id);
         if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
+          const fresh = freshPositionData(p);
           const pending = pendingAvatarUpdatesRef.current.get(p.id);
-          const avatar = createAvatar(scene, pending ? { ...p, customization: pending } : p);
+          const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh);
           avatarsRef.current.set(p.id, avatar);
           if (pending) pendingAvatarUpdatesRef.current.delete(p.id);
           const rPrefs2 = remoteBubblePrefsRef.current.get(p.id);
           const sphere = createBubbleSphere(scene, rPrefs2?.radius ?? bubblePrefsRef.current.radius, rPrefs2 ? hexStringToInt(rPrefs2.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
           sphere.position.copy(avatar.position);
           bubbleSpheresRef.current.set(p.id, sphere);
-          if (p.position && !avatarTargetsRef.current.has(p.id)) {
+          if (fresh.position && !avatarTargetsRef.current.has(p.id)) {
             avatarTargetsRef.current.set(p.id, {
-              position: new THREE.Vector3(p.position.x, 0, p.position.z),
-              rotationY: p.rotation?.y ?? 0,
+              position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
+              rotationY: fresh.rotation?.y ?? 0,
             });
             lastSeenAt.current.set(p.id, Date.now());
           }
@@ -1606,6 +1625,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         // removed by stale detection while the user was backgrounded.
         avatarTargetsRef.current.delete(p.id);
         lastSeenAt.current.delete(p.id);
+        lastBroadcastPositionRef.current.delete(p.id);
         remoteBubblePrefsRef.current.delete(p.id);
         const hadData = presenceDataRef.current.has(p.id);
         presenceDataRef.current.delete(p.id);
@@ -1646,6 +1666,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           });
         }
         lastSeenAt.current.set(userId, Date.now());
+        // Cache the latest broadcast position so presence-based avatar creation
+        // can use a fresh position instead of the stale one in Supabase presence.
+        lastBroadcastPositionRef.current.set(userId, {
+          position: newPos.clone(),
+          rotationY: rotation.y,
+          time: Date.now(),
+        });
 
         // When our animation loop is throttled (tab hidden), run a proximity
         // check here so voice chat can start/stop while we're in the background.
@@ -1846,16 +1873,17 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             presenceDataRef.current.set(p.id, p);
             recentlyLeftRef.current.delete(p.id);
             if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
-              const avatar = createAvatar(scene, p);
+              const fresh = freshPositionData(p);
+              const avatar = createAvatar(scene, fresh);
               avatarsRef.current.set(p.id, avatar);
               const rPrefs3 = remoteBubblePrefsRef.current.get(p.id);
               const sphere = createBubbleSphere(scene, rPrefs3?.radius ?? bubblePrefsRef.current.radius, rPrefs3 ? hexStringToInt(rPrefs3.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
               sphere.position.copy(avatar.position);
               bubbleSpheresRef.current.set(p.id, sphere);
-              if (p.position && !avatarTargetsRef.current.has(p.id)) {
+              if (fresh.position && !avatarTargetsRef.current.has(p.id)) {
                 avatarTargetsRef.current.set(p.id, {
-                  position: new THREE.Vector3(p.position.x, 0, p.position.z),
-                  rotationY: p.rotation?.y ?? 0,
+                  position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
+                  rotationY: fresh.rotation?.y ?? 0,
                 });
                 lastSeenAt.current.set(p.id, Date.now());
               }
@@ -2020,7 +2048,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         const isThirdPerson = cameraModeRef.current !== 'first-person';
         const yaw = isThirdPerson ? playerYawRef.current : cameraYaw;
         const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-        const right = new THREE.Vector3(forward.z, 0, -forward.x);
+        const right = new THREE.Vector3(-forward.z, 0, forward.x);
         if (keys['w'] || keys['arrowup'])    { direction.add(forward); moved = true; }
         if (keys['s'] || keys['arrowdown'])  { direction.sub(forward); moved = true; }
         if (keys['a'] || keys['arrowleft'])  { direction.sub(right); moved = true; }
@@ -2267,6 +2295,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               const staleSphere = bubbleSpheresRef.current.get(uid);
               if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
               avatarTargetsRef.current.delete(uid);
+              lastBroadcastPositionRef.current.delete(uid);
               presenceDataRef.current.delete(uid);
               if (stalePresence) {
                 recentlyLeftRef.current.set(uid, { id: uid, name: stalePresence.name, email: stalePresence.email ?? null, leftAt: Date.now() });
@@ -2597,7 +2626,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         } else if (jitsiConnected) {
           bg = 'rgba(0, 160, 90, 0.92)';   // green — active
           icon = '🟢';
-          label = `Voice active · ${nearbyUserIdsRef.current.size + 1} in range`;
+          label = `Voice active · ${jitsiParticipantCount} in call`;
         } else {
           bg = 'rgba(180, 120, 0, 0.92)';  // amber — connecting
           icon = '🟡';
@@ -2905,6 +2934,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
                 if (jitsiConnectTimeoutRef.current) { clearTimeout(jitsiConnectTimeoutRef.current); jitsiConnectTimeoutRef.current = null; }
                 setJitsiConnected(true);
+                setJitsiParticipantCount(api.getNumberOfParticipants?.() ?? 1);
               });
 
               const onDisconnect = (reason?: string) => {
@@ -2913,6 +2943,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 if (jitsiHeartbeatRef.current) { clearInterval(jitsiHeartbeatRef.current); jitsiHeartbeatRef.current = null; }
                 if (jitsiMessageListenerRef.current) { window.removeEventListener('message', jitsiMessageListenerRef.current); jitsiMessageListenerRef.current = null; }
                 setJitsiConnected(false);
+                setJitsiParticipantCount(0);
                 if (remoteAudioDecayRef.current) {
                   clearInterval(remoteAudioDecayRef.current);
                   remoteAudioDecayRef.current = null;
@@ -2930,12 +2961,16 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 onDisconnect('conferenceTerminated');
               });
 
-              // Log events that fire between window-loaded and videoConferenceJoined
+              // Track participant count for the voice banner
               api.on('participantJoined', (e: any) => {
                 console.log('[VoiceChat] participantJoined:', e);
+                if (jitsiConnectionGenRef.current !== myGen) return;
+                setJitsiParticipantCount(api.getNumberOfParticipants?.() ?? 0);
               });
               api.on('participantLeft', (e: any) => {
                 console.log('[VoiceChat] participantLeft:', e);
+                if (jitsiConnectionGenRef.current !== myGen) return;
+                setJitsiParticipantCount(api.getNumberOfParticipants?.() ?? 0);
               });
               api.on('cameraError', (e: any) => {
                 console.warn('[VoiceChat] cameraError:', e);
@@ -3030,7 +3065,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                         background: dotColor, flexShrink: 0, display: 'inline-block',
                       }}
                     />
-                    <span>{displayName}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{displayName}</span>
                     {/* Signal strength indicator — only shown when connection is bad */}
                     {!isSelf && (() => {
                       const peerStats = networkStats.peers.get(u.id);
