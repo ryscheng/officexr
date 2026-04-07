@@ -187,6 +187,7 @@ export default function ControlsOverlay({
       )}
 
       {showChat && <p style={{ margin: '5px 0' }}>Enter — Chat</p>}
+      {!is2DMode && <p style={{ margin: '5px 0' }}>C — Camera Mode (1st/3rd person)</p>}
 
       {proximityHint && (
         <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#7dd3fc' }}>
