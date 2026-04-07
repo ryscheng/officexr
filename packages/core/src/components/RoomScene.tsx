@@ -6,7 +6,7 @@ import liliensteinHdriUrl from '../assets/hdri/lilienstein_4k.exr?url';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { JaaSMeeting } from '@jitsi/react-sdk';
 import { generateJaaSJwt } from '@/lib/jaasJwt';
-import { createAvatar, updateAvatar, AvatarData } from './Avatar';
+import { createAvatar, updateAvatar, AvatarData, AvatarAnimationState, switchAnimation } from './Avatar';
 import { EMOJI_MAP, spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
@@ -79,6 +79,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   // Pending customization updates received before the target avatar existed
   const pendingAvatarUpdatesRef = useRef<Map<string, AvatarCustomization>>(new Map());
   const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
+  const avatarAnimationsRef = useRef<Map<string, AvatarAnimationState>>(new Map());
+  const localAvatarAnimationRef = useRef<AvatarAnimationState | null>(null);
+  const avatarPrevPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
   const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
@@ -1323,7 +1326,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         rotation: { x: 0, y: 0, z: 0 },
         customization: avatarCustomizationRef.current,
       };
-      const localAvatar = createAvatar(scene, localAvatarData);
+      const localAvatar = createAvatar(scene, localAvatarData, (animState) => {
+        localAvatarAnimationRef.current = animState;
+      });
       localAvatar.visible = false;
       localAvatarRef.current = localAvatar;
     }
@@ -1546,7 +1551,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           if (presence.id !== currentUser.id && !avatarsRef.current.has(presence.id)) {
             const fresh = freshPositionData(presence);
             const pending = pendingAvatarUpdatesRef.current.get(presence.id);
-            const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh);
+            const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh, (animState) => {
+              if (animState) avatarAnimationsRef.current.set(presence.id, animState);
+            });
             avatarsRef.current.set(presence.id, avatar);
             if (pending) pendingAvatarUpdatesRef.current.delete(presence.id);
             const rPrefs = remoteBubblePrefsRef.current.get(presence.id);
@@ -1569,6 +1576,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Remove avatars and spheres for users who left
       avatarsRef.current.forEach((_avatar, id) => {
         if (!presentIds.has(id)) {
+          const anim = avatarAnimationsRef.current.get(id);
+          if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(id); }
+          avatarPrevPositionsRef.current.delete(id);
           scene.remove(avatarsRef.current.get(id)!);
           avatarsRef.current.delete(id);
           avatarTargetsRef.current.delete(id);
@@ -1591,7 +1601,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
           const fresh = freshPositionData(p);
           const pending = pendingAvatarUpdatesRef.current.get(p.id);
-          const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh);
+          const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh, (animState) => {
+            if (animState) avatarAnimationsRef.current.set(p.id, animState);
+          });
           avatarsRef.current.set(p.id, avatar);
           if (pending) pendingAvatarUpdatesRef.current.delete(p.id);
           const rPrefs2 = remoteBubblePrefsRef.current.get(p.id);
@@ -1616,7 +1628,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         const p = presence as unknown as PresenceEntry;
         // Stop following this user if we were
         if (followingUserIdRef.current === p.id) setFollowingUserId(null);
-        // Clean up visual avatar and sphere if they still exist
+        // Clean up visual avatar, animation, and sphere if they still exist
+        const anim = avatarAnimationsRef.current.get(p.id);
+        if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(p.id); }
+        avatarPrevPositionsRef.current.delete(p.id);
         const avatar = avatarsRef.current.get(p.id);
         if (avatar) { scene.remove(avatar); avatarsRef.current.delete(p.id); }
         const sphere = bubbleSpheresRef.current.get(p.id);
@@ -1704,11 +1719,16 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       const { userId, customization } = payload as { userId: string; customization: AvatarCustomization };
       const existingAvatar = avatarsRef.current.get(userId);
       if (existingAvatar) {
+        const oldAnim = avatarAnimationsRef.current.get(userId);
+        if (oldAnim) { oldAnim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(userId); }
+        avatarPrevPositionsRef.current.delete(userId);
         scene.remove(existingAvatar);
         const oldData = existingAvatar.userData as AvatarData;
         const newAvatar = createAvatar(scene, {
           ...oldData,
           customization,
+        }, (animState) => {
+          if (animState) avatarAnimationsRef.current.set(userId, animState);
         });
         avatarsRef.current.set(userId, newAvatar);
         pendingAvatarUpdatesRef.current.delete(userId);
@@ -1874,7 +1894,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             recentlyLeftRef.current.delete(p.id);
             if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
               const fresh = freshPositionData(p);
-              const avatar = createAvatar(scene, fresh);
+              const avatar = createAvatar(scene, fresh, (animState) => {
+                if (animState) avatarAnimationsRef.current.set(p.id, animState);
+              });
               avatarsRef.current.set(p.id, avatar);
               const rPrefs3 = remoteBubblePrefsRef.current.get(p.id);
               const sphere = createBubbleSphere(scene, rPrefs3?.radius ?? bubblePrefsRef.current.radius, rPrefs3 ? hexStringToInt(rPrefs3.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
@@ -1892,6 +1914,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         });
         avatarsRef.current.forEach((_, id) => {
           if (!presentIds.has(id)) {
+            const anim = avatarAnimationsRef.current.get(id);
+            if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(id); }
+            avatarPrevPositionsRef.current.delete(id);
             scene.remove(avatarsRef.current.get(id)!);
             avatarsRef.current.delete(id);
             avatarTargetsRef.current.delete(id);
@@ -2107,6 +2132,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }
       }
 
+      // Switch local avatar animation based on movement
+      if (localAvatarAnimationRef.current) {
+        switchAnimation(localAvatarAnimationRef.current, moved ? 'walk' : 'idle');
+      }
+
       // Third-person camera: position camera relative to the player avatar
       const isThirdPerson = cameraModeRef.current !== 'first-person';
       const localAvatar = localAvatarRef.current;
@@ -2218,8 +2248,23 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               }
             }
           });
+
+          // Switch remote avatar animation based on movement
+          const animState = avatarAnimationsRef.current.get(uid);
+          if (animState) {
+            const prev = avatarPrevPositionsRef.current.get(uid);
+            const isMoving = prev ? avatar.position.distanceToSquared(prev) > 0.0001 : false;
+            switchAnimation(animState, isMoving ? 'walk' : 'idle');
+            avatarPrevPositionsRef.current.set(uid, avatar.position.clone());
+          }
         }
       });
+
+      // Update all animation mixers
+      avatarAnimationsRef.current.forEach((anim) => { anim.mixer.update(delta); });
+      if (localAvatarAnimationRef.current) {
+        localAvatarAnimationRef.current.mixer.update(delta);
+      }
 
       // Update remote bubble sphere positions and detect proximity.
       // Use avatarTargetsRef as the source of truth for positions — this covers
@@ -2286,8 +2331,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                 avatarTargetsRef.current.delete(uid);
               }
             } else {
-              // User truly gone — remove avatar, sphere, and all tracking data.
+              // User truly gone — remove avatar, sphere, animation, and all tracking data.
               if (followingUserIdRef.current === uid) setFollowingUserId(null);
+              const staleAnim = avatarAnimationsRef.current.get(uid);
+              if (staleAnim) { staleAnim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(uid); }
+              avatarPrevPositionsRef.current.delete(uid);
               const stalePresence = presenceDataRef.current.get(uid);
               const staleAvatar = avatarsRef.current.get(uid);
               if (staleAvatar) scene.remove(staleAvatar);
@@ -2412,6 +2460,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         scene.remove(localAvatarRef.current);
         localAvatarRef.current = null;
       }
+      // Stop all animation mixers
+      avatarAnimationsRef.current.forEach((anim) => { anim.mixer.stopAllAction(); });
+      avatarAnimationsRef.current.clear();
+      avatarPrevPositionsRef.current.clear();
+      if (localAvatarAnimationRef.current) {
+        localAvatarAnimationRef.current.mixer.stopAllAction();
+        localAvatarAnimationRef.current = null;
+      }
       bubbleSpheresRef.current.clear();
       presenceDataRef.current.clear();
       lastSeenAt.current.clear();
@@ -2472,9 +2528,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Update local avatar (for third-person view)
     if (localAvatarRef.current && sceneRef.current) {
+      if (localAvatarAnimationRef.current) {
+        localAvatarAnimationRef.current.mixer.stopAllAction();
+        localAvatarAnimationRef.current = null;
+      }
       const oldData = localAvatarRef.current.userData as AvatarData;
       sceneRef.current.remove(localAvatarRef.current);
-      const newLocalAvatar = createAvatar(sceneRef.current, { ...oldData, customization: settings });
+      const newLocalAvatar = createAvatar(sceneRef.current, { ...oldData, customization: settings }, (animState) => {
+        localAvatarAnimationRef.current = animState;
+      });
       newLocalAvatar.visible = cameraModeRef.current !== 'first-person';
       localAvatarRef.current = newLocalAvatar;
     }

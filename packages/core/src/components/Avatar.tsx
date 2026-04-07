@@ -11,6 +11,51 @@ export interface AvatarData {
   customization?: AvatarCustomization;
 }
 
+export interface AvatarAnimationState {
+  mixer: THREE.AnimationMixer;
+  actions: Map<string, THREE.AnimationAction>;
+  activeAction: THREE.AnimationAction | null;
+}
+
+// ─── Animation helpers ────────────────────────────────────────────────────────
+
+function normalizeAnimationName(name: string): string {
+  // Strip common prefixes: "mixamo.com|Walk" → "Walk", "Armature|Idle" → "Idle"
+  const parts = name.split('|');
+  const base = parts[parts.length - 1];
+  return base.replace(/^Armature\.?/i, '').replace(/^Action\.?/i, '').toLowerCase().trim();
+}
+
+function findAnimation(
+  actions: Map<string, THREE.AnimationAction>,
+  name: string,
+): THREE.AnimationAction | undefined {
+  if (actions.has(name)) return actions.get(name);
+  const lower = name.toLowerCase();
+  for (const [key, action] of actions) {
+    if (key.includes(lower)) return action;
+  }
+  return undefined;
+}
+
+export function switchAnimation(animState: AvatarAnimationState, desiredName: string): void {
+  const action = findAnimation(animState.actions, desiredName);
+
+  if (action && action === animState.activeAction) return;
+
+  if (action) {
+    if (animState.activeAction) {
+      animState.activeAction.fadeOut(0.3);
+    }
+    action.reset().fadeIn(0.3).play();
+    animState.activeAction = action;
+  } else if (desiredName === 'idle' && animState.activeAction) {
+    // No idle animation found — fade out to bind pose
+    animState.activeAction.fadeOut(0.5);
+    animState.activeAction = null;
+  }
+}
+
 // ─── Name tag sprite ──────────────────────────────────────────────────────────
 
 function addNameTag(group: THREE.Group, name: string, yOffset: number) {
@@ -377,7 +422,12 @@ function nameTagY(presetId?: string | null): number {
 
 const gltfLoader = new GLTFLoader();
 
-function loadGLTFIntoGroup(url: string, group: THREE.Group, fallbackCustomization: AvatarCustomization) {
+function loadGLTFIntoGroup(
+  url: string,
+  group: THREE.Group,
+  fallbackCustomization: AvatarCustomization,
+  onAnimationsReady?: (animState: AvatarAnimationState | null) => void,
+) {
   // Remove geometry, keep name-tag sprite
   group.children.filter(c => !(c instanceof THREE.Sprite)).forEach(c => group.remove(c));
 
@@ -391,15 +441,34 @@ function loadGLTFIntoGroup(url: string, group: THREE.Group, fallbackCustomizatio
       box.setFromObject(model);
       model.position.y = -box.min.y;
       group.add(model);
+
+      if (gltf.animations.length > 0) {
+        const mixer = new THREE.AnimationMixer(model);
+        const actions = new Map<string, THREE.AnimationAction>();
+        for (const clip of gltf.animations) {
+          const key = normalizeAnimationName(clip.name);
+          actions.set(key, mixer.clipAction(clip));
+        }
+        onAnimationsReady?.({ mixer, actions, activeAction: null });
+      } else {
+        onAnimationsReady?.(null);
+      }
     },
     undefined,
-    () => buildAvatarGeometry(group, fallbackCustomization),
+    () => {
+      buildAvatarGeometry(group, fallbackCustomization);
+      onAnimationsReady?.(null);
+    },
   );
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function createAvatar(scene: THREE.Scene, userData: AvatarData): THREE.Group {
+export function createAvatar(
+  scene: THREE.Scene,
+  userData: AvatarData,
+  onAnimationsReady?: (animState: AvatarAnimationState | null) => void,
+): THREE.Group {
   const group = new THREE.Group();
   group.userData = userData;
   group.position.set(userData.position.x, 0, userData.position.z);
@@ -421,10 +490,11 @@ export function createAvatar(scene: THREE.Scene, userData: AvatarData): THREE.Gr
     ph.position.y = 0.8;
     group.add(ph);
     addNameTag(group, userData.name, 1.4);
-    loadGLTFIntoGroup(customization.modelUrl, group, customization);
+    loadGLTFIntoGroup(customization.modelUrl, group, customization, onAnimationsReady);
   } else {
     buildAvatarGeometry(group, customization);
     addNameTag(group, userData.name, nameTagY(customization.presetId));
+    onAnimationsReady?.(null);
   }
 
   scene.add(group);
