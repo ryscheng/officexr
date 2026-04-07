@@ -2020,7 +2020,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         const isThirdPerson = cameraModeRef.current !== 'first-person';
         const yaw = isThirdPerson ? playerYawRef.current : cameraYaw;
         const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-        const right = new THREE.Vector3(forward.z, 0, -forward.x);
+        const right = new THREE.Vector3(-forward.z, 0, forward.x);
         if (keys['w'] || keys['arrowup'])    { direction.add(forward); moved = true; }
         if (keys['s'] || keys['arrowdown'])  { direction.sub(forward); moved = true; }
         if (keys['a'] || keys['arrowleft'])  { direction.sub(right); moved = true; }
@@ -3030,7 +3030,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                         background: dotColor, flexShrink: 0, display: 'inline-block',
                       }}
                     />
-                    <span>{displayName}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{displayName}</span>
                     {/* Signal strength indicator — only shown when connection is bad */}
                     {!isSelf && (() => {
                       const peerStats = networkStats.peers.get(u.id);
