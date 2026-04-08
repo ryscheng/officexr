@@ -91,7 +91,8 @@ export function useKeyboardControls({
 
   // Keep refs in sync with state
   useEffect(() => { cameraModeRef.current = cameraMode; }, [cameraMode]);
-  useEffect(() => { is2DModeRef.current = is2DMode; }, [is2DMode]);
+  // Sync is2DModeRef synchronously in render body so rAF always sees current value
+  is2DModeRef.current = is2DMode;
 
   // Exit pointer lock when switching to 2D mode
   useEffect(() => {

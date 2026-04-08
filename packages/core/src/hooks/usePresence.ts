@@ -436,7 +436,7 @@ export function usePresence({
       }
     });
     rebuildOnlineUsers();
-  }, []);
+  }, [currentUser?.id, userEmail, userImage]);
 
   const setupPresenceTimers = useCallback((): (() => void) => {
     const myId = currentUser?.id;
@@ -497,7 +497,7 @@ export function usePresence({
       clearInterval(positionHeartbeatInterval);
       clearInterval(offlineCleanupInterval);
     };
-  }, []);
+  }, [currentUser?.id]);
 
   const tickPresence = useCallback((
     delta: number,
@@ -674,7 +674,7 @@ export function usePresence({
       selfMarkerRef.current.position.set(broadcastPos.x, 0, broadcastPos.z);
       selfMarkerRef.current.visible = in2D;
     }
-  }, []);
+  }, [currentUser?.id]);
 
   const cleanupPresenceVisuals = useCallback((scene: THREE.Scene) => {
     avatarAnimationsRef.current.forEach((anim) => { anim.mixer.stopAllAction(); });

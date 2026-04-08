@@ -393,52 +393,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Supabase Realtime channel — created by useRealtimeChannel, accessed via ref
     const channel = channelRef.current;
-    if (!channel) return;
 
-    // Register presence, chat, screen sharing, and other broadcast listeners
-    registerPresenceListeners(channel, scene);
-
-    // Broadcast: chat messages — registered by useChat hook
-    registerChatListener(channel);
-
-    // Broadcast: targeted wave — play chime only for the recipient
-    channel.on('broadcast', { event: 'wave' }, ({ payload }) => {
-      const { toUserId } = payload as { toUserId: string };
-      if (toUserId === currentUser.id) {
-        playWaveChime();
-      }
-    });
-
-    // Broadcast: emoji confetti from other users
-    channel.on('broadcast', { event: 'confetti' }, ({ payload }) => {
-      const { userId, key, position } = payload as { userId: string; key: string; position: { x: number; y: number; z: number } };
-      if (userId !== currentUser.id) {
-        activeParticles.push(...spawnConfetti(scene, new THREE.Vector3(position.x, position.y, position.z), key));
-      }
-    });
-
-    // Broadcast: screen sharing — registered by useScreenSharing hook
-    registerScreenListeners(channel, currentUser.id);
-
-    // Broadcast: room environment changes — update scene for all connected users
-    channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
-      const { environment: env } = payload as { environment: string };
-      if (typeof env === 'string' && env.length > 0) {
-        setEnvironment(env);
-      }
-    });
-
-    channel.subscribe(async (status) => {
-      channelSubscribedRef.current = status === 'SUBSCRIBED';
-      if (status === 'SUBSCRIBED') {
-        await handleChannelSubscribed(channel, scene, camera);
-      }
-    });
-
-    // Set up presence timers (visibility, heartbeat, offline cleanup)
-    const cleanupPresenceTimers = setupPresenceTimers();
-
-    // Animation loop
+    // Animation loop — always start regardless of channel state
     const clock = new THREE.Clock();
 
     const animate = () => {
@@ -472,6 +428,51 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
 
     renderer.setAnimationLoop(animate);
+
+    // Register presence, chat, screen sharing, and other broadcast listeners
+    if (channel) {
+      registerPresenceListeners(channel, scene);
+
+      // Broadcast: chat messages — registered by useChat hook
+      registerChatListener(channel);
+
+      // Broadcast: targeted wave — play chime only for the recipient
+      channel.on('broadcast', { event: 'wave' }, ({ payload }) => {
+        const { toUserId } = payload as { toUserId: string };
+        if (toUserId === currentUser.id) {
+          playWaveChime();
+        }
+      });
+
+      // Broadcast: emoji confetti from other users
+      channel.on('broadcast', { event: 'confetti' }, ({ payload }) => {
+        const { userId, key, position } = payload as { userId: string; key: string; position: { x: number; y: number; z: number } };
+        if (userId !== currentUser.id) {
+          activeParticles.push(...spawnConfetti(scene, new THREE.Vector3(position.x, position.y, position.z), key));
+        }
+      });
+
+      // Broadcast: screen sharing — registered by useScreenSharing hook
+      registerScreenListeners(channel, currentUser.id);
+
+      // Broadcast: room environment changes — update scene for all connected users
+      channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
+        const { environment: env } = payload as { environment: string };
+        if (typeof env === 'string' && env.length > 0) {
+          setEnvironment(env);
+        }
+      });
+
+      channel.subscribe(async (status) => {
+        channelSubscribedRef.current = status === 'SUBSCRIBED';
+        if (status === 'SUBSCRIBED') {
+          await handleChannelSubscribed(channel, scene, camera);
+        }
+      });
+    }
+
+    // Set up presence timers (visibility, heartbeat, offline cleanup)
+    const cleanupPresenceTimers = setupPresenceTimers();
 
     return () => {
       renderer.setAnimationLoop(null);
