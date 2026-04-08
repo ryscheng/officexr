@@ -528,3 +528,72 @@ function getColorHexFromId(id: string): string {
   const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#f1c40f', '#e67e22'];
   return colors[Math.abs(hash) % colors.length];
 }
+
+// ─── 2D top-down map marker for remote avatars ──────────────────────────────
+
+/**
+ * Creates a flat circular marker with the user's initial and a direction wedge,
+ * designed to be viewed from the orthographic top-down camera. Hidden by default.
+ */
+export function create2DMarker(
+  scene: THREE.Scene,
+  userData: { id: string; name: string; customization?: AvatarCustomization },
+): THREE.Group {
+  const group = new THREE.Group();
+  group.userData.is2DMarker = true;
+
+  const bodyHex = userData.customization?.bodyColor || getColorHexFromId(userData.id);
+  const bodyColorInt = parseInt(bodyHex.replace('#', ''), 16);
+
+  // Shadow disc
+  const shadow = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.5, 0.01, 24),
+    new THREE.MeshStandardMaterial({ color: 0x000000, transparent: true, opacity: 0.15 }),
+  );
+  shadow.position.y = 0.005;
+  group.add(shadow);
+
+  // Colored circle with initial
+  const initial = (userData.name || '?').charAt(0).toUpperCase();
+  const circCanvas = document.createElement('canvas');
+  circCanvas.width = 128;
+  circCanvas.height = 128;
+  const ctx = circCanvas.getContext('2d')!;
+  // Filled circle in body color
+  ctx.beginPath();
+  ctx.arc(64, 64, 60, 0, Math.PI * 2);
+  ctx.fillStyle = bodyHex;
+  ctx.fill();
+  // White border
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+  // Initial letter
+  ctx.font = 'bold 64px Arial';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(initial, 64, 68);
+  const circTex = new THREE.CanvasTexture(circCanvas);
+  const disc = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.38, 0.38, 0.06, 24),
+    new THREE.MeshStandardMaterial({ map: circTex }),
+  );
+  disc.position.y = 0.04;
+  group.add(disc);
+
+  // Direction wedge (points in -Z = north by default, rotated to match avatar facing)
+  const wedge = new THREE.Mesh(
+    new THREE.ConeGeometry(0.1, 0.24, 3),
+    new THREE.MeshStandardMaterial({ color: bodyColorInt }),
+  );
+  wedge.rotation.x = Math.PI / 2;
+  wedge.position.set(0, 0.06, -0.52);
+  wedge.userData.isDirectionWedge = true;
+  group.add(wedge);
+
+  group.position.y = 0;
+  group.visible = false; // shown only in 2D mode
+  scene.add(group);
+  return group;
+}

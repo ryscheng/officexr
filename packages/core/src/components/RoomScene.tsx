@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { AvatarAnimationState } from './Avatar';
-import { spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
+import { spawnConfetti, updateParticles, Particle, EMOJI_MAP } from './EmojiConfetti';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
 import NetworkDebugPanel from './NetworkDebugPanel';
+import WhiteboardCanvas from './WhiteboardCanvas';
+import WhiteboardToolbar from './WhiteboardToolbar';
+import { useWhiteboard } from '@/hooks/useWhiteboard';
 import { useNetworkStats } from '@/hooks/useNetworkStats';
 import { CameraMode, EnvironmentType } from '@/types/room';
 import { supabase } from '@/lib/supabase';
@@ -164,6 +167,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     keysRef,
   });
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(15); // ortho view size, default 15
   // Motion controls — device orientation (gyroscope) shared with UserLobby
   const {
     motionPermission,
@@ -180,6 +184,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [followingUserId, setFollowingUserId] = useState<string | null>(null);
   const followingUserIdRef = useRef<string | null>(null);
   followingUserIdRef.current = followingUserId;
+
+  // Whiteboard keyboard shortcut refs (populated after useWhiteboard call)
+  const wbToggleRef = useRef<(() => void) | null>(null);
+  const wbUndoRef = useRef<(() => void) | null>(null);
 
   // Keyboard, mouse, and touch input controls
   const {
@@ -207,8 +215,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     motionActiveRef,
     followingUserIdRef,
     setFollowingUserId,
+    onWhiteboardToggle: wbToggleRef,
+    onWhiteboardUndo: wbUndoRef,
   });
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  const fireEmojiRef = useRef<((key: string) => void) | null>(null);
 
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   // Trigger renderer resize when debug panel toggles
@@ -270,6 +281,35 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     currentUserRef,
     presenceDataRef,
   });
+
+  // Collaborative whiteboard
+  const {
+    whiteboardActive,
+    setWhiteboardActive,
+    strokes: wbStrokes,
+    currentStroke: wbCurrentStroke,
+    tool: wbTool,
+    setTool: setWbTool,
+    color: wbColor,
+    setColor: setWbColor,
+    strokeWidth: wbStrokeWidth,
+    setStrokeWidth: setWbStrokeWidth,
+    beginStroke: wbBeginStroke,
+    continueStroke: wbContinueStroke,
+    endStroke: wbEndStroke,
+    undo: wbUndo,
+    clearAll: wbClearAll,
+    registerWhiteboardListeners,
+    updateFloorTexture: wbUpdateFloorTexture,
+    initWhiteboardMesh,
+  } = useWhiteboard({
+    channelRef,
+    channelSubscribedRef,
+    currentUserId: currentUser?.id,
+  });
+  // Wire whiteboard keyboard shortcut refs
+  wbToggleRef.current = () => setWhiteboardActive(!whiteboardActive);
+  wbUndoRef.current = wbUndo;
 
   // Network stats for debug panel
   const networkStats = useNetworkStats(
@@ -382,12 +422,27 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const moveSpeed = 0.1;
     let activeParticles: Particle[] = [];
 
+    // Expose emoji fire function for the emoji picker bar
+    const fireEmoji = (emojiKey: string) => {
+      activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
+      if (channelRef.current && channelSubscribedRef.current) {
+        channelRef.current.send({
+          type: 'broadcast', event: 'confetti',
+          payload: {
+            userId: currentUser.id, key: emojiKey,
+            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+          },
+        });
+      }
+    };
+    fireEmojiRef.current = fireEmoji;
+
 
     // Register keyboard, mouse, touch, and scroll input handlers
     const cleanupInputListeners = registerInputListeners(
       renderer, camera, scene, orthoCamera, orthoViewSizeRef,
       (emojiKey: string) => {
-        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey));
+        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
         if (channelRef.current && channelSubscribedRef.current) {
           channelRef.current.send({
             type: 'broadcast', event: 'confetti',
@@ -398,10 +453,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           });
         }
       },
+      (newZoom: number) => setZoomLevel(newZoom),
     );
 
     // Supabase Realtime channel — created by useRealtimeChannel, accessed via ref
     const channel = channelRef.current;
+
+    // Initialize whiteboard 3D floor mesh
+    initWhiteboardMesh(scene);
 
     // Animation loop — always start regardless of channel state
     const clock = new THREE.Clock();
@@ -412,6 +471,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       // Update emoji confetti particles
       activeParticles = updateParticles(activeParticles, delta, scene);
+
+      // Update whiteboard 3D floor texture if strokes changed
+      wbUpdateFloorTexture();
 
       // Compute player movement, camera positioning, and local avatar animation
       const followTarget = followingUserIdRef.current
@@ -429,9 +491,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Presence tick: position broadcast, avatar lerp, proximity, stale detection, etc.
       tickPresence(delta, lerpAlpha, camera, scene, channel, broadcastPos, broadcastRot, moved);
 
-      // Sync top-down camera to player XZ position
-      orthoCamera.position.x = broadcastPos.x;
-      orthoCamera.position.z = broadcastPos.z;
+      // Sync top-down camera to player XZ position with smooth easing
+      orthoCamera.position.x += (broadcastPos.x - orthoCamera.position.x) * 0.12;
+      orthoCamera.position.z += (broadcastPos.z - orthoCamera.position.z) * 0.12;
 
       renderer.render(scene, is2DModeRef.current ? orthoCamera : camera);
     };
@@ -460,12 +522,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         channel.on('broadcast', { event: 'confetti' }, ({ payload }) => {
           const { userId, key, position } = payload as { userId: string; key: string; position: { x: number; y: number; z: number } };
           if (userId !== currentUser.id) {
-            activeParticles.push(...spawnConfetti(scene, new THREE.Vector3(position.x, position.y, position.z), key));
+            activeParticles.push(...spawnConfetti(scene, new THREE.Vector3(position.x, position.y, position.z), key, is2DModeRef.current));
           }
         });
 
         // Broadcast: screen sharing — registered by useScreenSharing hook
         registerScreenListeners(channel, currentUser.id);
+
+        // Broadcast: whiteboard — registered by useWhiteboard hook
+        registerWhiteboardListeners(channel);
 
         // Broadcast: room environment changes — update scene for all connected users
         channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
@@ -730,6 +795,68 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         />
       )}
 
+      {/* 2D mode: Zoom controls + compass rose */}
+      {is2DMode && (
+        <div style={{
+          position: 'absolute', bottom: '20px', left: '20px', zIndex: 150,
+          display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center',
+        }}>
+          {/* Compass rose */}
+          <div style={{
+            width: '64px', height: '64px', position: 'relative',
+            background: 'rgba(0,0,0,0.6)', borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.2)',
+          }}>
+            {(['N', 'E', 'S', 'W'] as const).map((dir, i) => {
+              const angle = i * 90;
+              const rad = (angle - 90) * Math.PI / 180;
+              const r = 22;
+              return (
+                <span key={dir} style={{
+                  position: 'absolute',
+                  left: `${32 + Math.cos(rad) * r - 5}px`,
+                  top: `${32 + Math.sin(rad) * r - 7}px`,
+                  color: dir === 'N' ? '#f87171' : 'rgba(255,255,255,0.7)',
+                  fontSize: '11px', fontWeight: dir === 'N' ? 'bold' : 'normal',
+                  fontFamily: 'monospace',
+                }}>
+                  {dir}
+                </span>
+              );
+            })}
+          </div>
+          {/* Zoom controls */}
+          <div style={{
+            background: 'rgba(0,0,0,0.6)', borderRadius: '8px',
+            padding: '6px 8px', display: 'flex', alignItems: 'center', gap: '6px',
+            border: '1px solid rgba(255,255,255,0.15)',
+          }}>
+            <button
+              onClick={() => (window as any).__officexr_applyZoom?.(orthoViewSizeRef.current * 1.3)}
+              style={{
+                background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '4px',
+                color: 'white', cursor: 'pointer', width: '24px', height: '24px',
+                fontSize: '16px', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >-</button>
+            <span style={{
+              color: 'white', fontFamily: 'monospace', fontSize: '11px',
+              minWidth: '40px', textAlign: 'center',
+            }}>
+              {Math.round((15 / zoomLevel) * 100)}%
+            </span>
+            <button
+              onClick={() => (window as any).__officexr_applyZoom?.(orthoViewSizeRef.current * 0.7)}
+              style={{
+                background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '4px',
+                color: 'white', cursor: 'pointer', width: '24px', height: '24px',
+                fontSize: '16px', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >+</button>
+          </div>
+        </div>
+      )}
+
       {/* Bottom-right hint to open the controls pane */}
       <div style={{
         position: 'absolute', bottom: '20px', right: '20px',
@@ -751,6 +878,37 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           onDismiss={() => setJitsiError(null)}
         />
       )}
+
+      {/* Whiteboard toolbar — always visible (toggle button), tools expand when active */}
+      <WhiteboardToolbar
+        active={whiteboardActive}
+        onToggle={() => setWhiteboardActive(!whiteboardActive)}
+        tool={wbTool}
+        onToolChange={setWbTool}
+        color={wbColor}
+        onColorChange={setWbColor}
+        strokeWidth={wbStrokeWidth}
+        onStrokeWidthChange={setWbStrokeWidth}
+        onUndo={wbUndo}
+        onClear={wbClearAll}
+        strokeCount={wbStrokes.length}
+      />
+
+      {/* Whiteboard canvas overlay — renders strokes in 2D mode, handles drawing input */}
+      <WhiteboardCanvas
+        active={whiteboardActive}
+        is2DMode={is2DMode}
+        strokes={wbStrokes}
+        currentStroke={wbCurrentStroke}
+        tool={wbTool}
+        color={wbColor}
+        strokeWidth={wbStrokeWidth}
+        orthoCamera={orthoCameraRef.current}
+        containerRef={containerRef}
+        onBeginStroke={wbBeginStroke}
+        onContinueStroke={wbContinueStroke}
+        onEndStroke={wbEndStroke}
+      />
 
       <VoiceChatStatus
         jitsiRoom={jitsiRoom}
@@ -843,6 +1001,32 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       {showLoginModal && (
         <LoginModal onClose={() => setShowLoginModal(false)} />
       )}
+
+      {/* Emoji picker bar */}
+      <div style={{
+        position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)',
+        display: 'flex', gap: '6px', zIndex: 150,
+        background: 'rgba(0,0,0,0.55)', borderRadius: '12px',
+        padding: '6px 12px', border: '1px solid rgba(255,255,255,0.12)',
+      }}>
+        {Object.entries(EMOJI_MAP).map(([key, emoji]) => (
+          <button
+            key={key}
+            title={`Press ${key}`}
+            onClick={() => fireEmojiRef.current?.(key)}
+            style={{
+              background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px',
+              cursor: 'pointer', fontSize: '22px', width: '40px', height: '40px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.2)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)'; }}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
 
       <CameraModeIndicator cameraMode={cameraMode} isTouchDevice={isTouchDevice} />
 

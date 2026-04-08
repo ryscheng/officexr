@@ -127,6 +127,13 @@ export function useSceneSetup({
       buildEnvironment(scene, environment);
     }
 
+    // ── Subtle grid overlay for 2D top-down mode ──
+    const gridHelper = new THREE.GridHelper(30, 30, 0x999999, 0xdddddd);
+    gridHelper.position.y = 0.02;
+    const gridMats = Array.isArray(gridHelper.material) ? gridHelper.material : [gridHelper.material];
+    gridMats.forEach(m => { m.transparent = true; m.opacity = 0.3; m.depthWrite = false; });
+    scene.add(gridHelper);
+
     // Local user bubble sphere
     const localSphere = createBubbleSphere(scene, bubblePrefsRef.current.radius, hexStringToInt(bubblePrefsRef.current.idleColor));
     localSphere.position.set(camera.position.x, camera.position.y, camera.position.z);
@@ -135,40 +142,90 @@ export function useSceneSetup({
     // Self marker: visible only in 2D top-down mode to show the player's own position/name
     {
       const selfMarker = new THREE.Group();
+      const bodyHex = avatarCustomizationRef.current.bodyColor || '#3498db';
+      const bodyColorInt = parseInt(bodyHex.replace('#', ''), 16);
 
-      // Disc representing self (white so it stands out from other avatars)
+      // Shadow disc (subtle dark circle beneath)
+      const shadow = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.55, 0.55, 0.01, 32),
+        new THREE.MeshStandardMaterial({ color: 0x000000, transparent: true, opacity: 0.2 }),
+      );
+      shadow.position.y = 0.005;
+      selfMarker.add(shadow);
+
+      // Outer ring (avatar body color)
+      const outerRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.42, 0.07, 8, 32),
+        new THREE.MeshStandardMaterial({ color: bodyColorInt, emissive: bodyColorInt, emissiveIntensity: 0.3 }),
+      );
+      outerRing.rotation.x = -Math.PI / 2;
+      outerRing.position.y = 0.06;
+      selfMarker.add(outerRing);
+
+      // Inner filled disc (white with avatar initial)
+      const initial = (currentUser.name || 'Y').charAt(0).toUpperCase();
+      const discCanvas = document.createElement('canvas');
+      discCanvas.width = 128;
+      discCanvas.height = 128;
+      const dCtx = discCanvas.getContext('2d')!;
+      // White circle fill
+      dCtx.beginPath();
+      dCtx.arc(64, 64, 60, 0, Math.PI * 2);
+      dCtx.fillStyle = '#ffffff';
+      dCtx.fill();
+      // Initial letter
+      dCtx.font = 'bold 72px Arial';
+      dCtx.fillStyle = bodyHex;
+      dCtx.textAlign = 'center';
+      dCtx.textBaseline = 'middle';
+      dCtx.fillText(initial, 64, 68);
+      const discTex = new THREE.CanvasTexture(discCanvas);
       const disc = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.3, 0.3, 0.08, 16),
-        new THREE.MeshStandardMaterial({ color: 0xffffff }),
+        new THREE.CylinderGeometry(0.35, 0.35, 0.08, 32),
+        new THREE.MeshStandardMaterial({ map: discTex, roughness: 0.5 }),
       );
       disc.position.y = 0.04;
       selfMarker.add(disc);
 
-      // Small forward-arrow cone (points in -Z = north)
-      const arrow = new THREE.Mesh(
-        new THREE.ConeGeometry(0.1, 0.28, 3),
-        new THREE.MeshStandardMaterial({ color: 0xffffff }),
+      // Directional chevron pointing north (-Z) — more visible than a tiny cone
+      const chevronShape = new THREE.Shape();
+      chevronShape.moveTo(0, -0.22);
+      chevronShape.lineTo(-0.14, 0.06);
+      chevronShape.lineTo(0, -0.06);
+      chevronShape.lineTo(0.14, 0.06);
+      chevronShape.closePath();
+      const chevronGeo = new THREE.ExtrudeGeometry(chevronShape, { depth: 0.04, bevelEnabled: false });
+      const chevron = new THREE.Mesh(
+        chevronGeo,
+        new THREE.MeshStandardMaterial({ color: bodyColorInt }),
       );
-      arrow.rotation.x = Math.PI / 2;
-      arrow.position.set(0, 0.1, -0.4);
-      selfMarker.add(arrow);
+      chevron.rotation.x = -Math.PI / 2;
+      chevron.position.set(0, 0.08, -0.58);
+      selfMarker.add(chevron);
 
-      // 2D name label with "(You)" indicator
+      // Name label with rounded-rect background
       const selfCanvas = document.createElement('canvas');
       const selfCtx = selfCanvas.getContext('2d')!;
-      selfCanvas.width = 640;
-      selfCanvas.height = 128;
-      selfCtx.fillStyle = 'rgba(255,255,255,0.92)';
-      selfCtx.fillRect(0, 0, 640, 128);
-      selfCtx.font = 'bold 56px Arial';
-      selfCtx.fillStyle = '#111111';
+      selfCanvas.width = 512;
+      selfCanvas.height = 96;
+      // Rounded-rect background
+      const pad = 12;
+      const rr = 16;
+      selfCtx.fillStyle = 'rgba(0,0,0,0.7)';
+      selfCtx.beginPath();
+      selfCtx.roundRect(pad, pad, selfCanvas.width - pad * 2, selfCanvas.height - pad * 2, rr);
+      selfCtx.fill();
+      // Text
+      selfCtx.font = 'bold 40px Arial';
+      selfCtx.fillStyle = '#ffffff';
       selfCtx.textAlign = 'center';
-      selfCtx.fillText(`${currentUser.name || 'You'} (You)`, 320, 88);
+      selfCtx.textBaseline = 'middle';
+      selfCtx.fillText(`${currentUser.name || 'You'} (You)`, selfCanvas.width / 2, selfCanvas.height / 2);
       const selfSprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(selfCanvas) }),
+        new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(selfCanvas), depthTest: false }),
       );
-      selfSprite.scale.set(4, 0.8, 4);
-      selfSprite.position.y = 1.8;
+      selfSprite.scale.set(3.5, 0.65, 1);
+      selfSprite.position.y = 2.0;
       selfMarker.add(selfSprite);
 
       selfMarker.position.set(camera.position.x, 0, camera.position.z);
