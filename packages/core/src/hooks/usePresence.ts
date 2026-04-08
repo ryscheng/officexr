@@ -47,7 +47,7 @@ export interface PresenceHandle {
     lerpAlpha: number,
     camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
-    channel: RealtimeChannel,
+    channel: RealtimeChannel | null,
     broadcastPos: { x: number; y: number; z: number },
     broadcastRot: { x: number; y: number; z: number },
     moved: boolean,
@@ -513,7 +513,7 @@ export function usePresence({
     lerpAlpha: number,
     camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
-    channel: RealtimeChannel,
+    channel: RealtimeChannel | null,
     broadcastPos: { x: number; y: number; z: number },
     broadcastRot: { x: number; y: number; z: number },
     moved: boolean,
@@ -626,7 +626,7 @@ export function usePresence({
         if (now - t > STALE_THRESHOLD_MS) {
           lastSeenAt.current.delete(uid);
 
-          const presenceState = channel.presenceState<PresenceEntry>();
+          const presenceState = channel?.presenceState<PresenceEntry>() ?? {};
           const stillPresent = Object.values(presenceState).some(presences =>
             presences.some(p => p.id === uid)
           );
