@@ -440,44 +440,52 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Register presence, chat, screen sharing, and other broadcast listeners
     if (channel) {
-      registerPresenceListeners(channel, scene);
+      if (!channelSubscribedRef.current) {
+        // First-time subscription — register all handlers once. Re-registering on
+        // environment changes would create duplicate handlers on the same channel.
+        registerPresenceListeners(channel, sceneRef);
 
-      // Broadcast: chat messages — registered by useChat hook
-      registerChatListener(channel);
+        // Broadcast: chat messages — registered by useChat hook
+        registerChatListener(channel);
 
-      // Broadcast: targeted wave — play chime only for the recipient
-      channel.on('broadcast', { event: 'wave' }, ({ payload }) => {
-        const { toUserId } = payload as { toUserId: string };
-        if (toUserId === currentUser.id) {
-          playWaveChime();
-        }
-      });
+        // Broadcast: targeted wave — play chime only for the recipient
+        channel.on('broadcast', { event: 'wave' }, ({ payload }) => {
+          const { toUserId } = payload as { toUserId: string };
+          if (toUserId === currentUser.id) {
+            playWaveChime();
+          }
+        });
 
-      // Broadcast: emoji confetti from other users
-      channel.on('broadcast', { event: 'confetti' }, ({ payload }) => {
-        const { userId, key, position } = payload as { userId: string; key: string; position: { x: number; y: number; z: number } };
-        if (userId !== currentUser.id) {
-          activeParticles.push(...spawnConfetti(scene, new THREE.Vector3(position.x, position.y, position.z), key));
-        }
-      });
+        // Broadcast: emoji confetti from other users
+        channel.on('broadcast', { event: 'confetti' }, ({ payload }) => {
+          const { userId, key, position } = payload as { userId: string; key: string; position: { x: number; y: number; z: number } };
+          if (userId !== currentUser.id) {
+            activeParticles.push(...spawnConfetti(scene, new THREE.Vector3(position.x, position.y, position.z), key));
+          }
+        });
 
-      // Broadcast: screen sharing — registered by useScreenSharing hook
-      registerScreenListeners(channel, currentUser.id);
+        // Broadcast: screen sharing — registered by useScreenSharing hook
+        registerScreenListeners(channel, currentUser.id);
 
-      // Broadcast: room environment changes — update scene for all connected users
-      channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
-        const { environment: env } = payload as { environment: string };
-        if (typeof env === 'string' && env.length > 0) {
-          setEnvironment(env);
-        }
-      });
+        // Broadcast: room environment changes — update scene for all connected users
+        channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
+          const { environment: env } = payload as { environment: string };
+          if (typeof env === 'string' && env.length > 0) {
+            setEnvironment(env);
+          }
+        });
 
-      channel.subscribe(async (status) => {
-        channelSubscribedRef.current = status === 'SUBSCRIBED';
-        if (status === 'SUBSCRIBED') {
-          await handleChannelSubscribed(channel, scene, camera);
-        }
-      });
+        channel.subscribe(async (status) => {
+          channelSubscribedRef.current = status === 'SUBSCRIBED';
+          if (status === 'SUBSCRIBED') {
+            await handleChannelSubscribed(channel, scene, camera);
+          }
+        });
+      } else {
+        // Already subscribed — effect re-ran due to environment change.
+        // Scene was rebuilt and avatars were cleared. Re-sync presence with the new scene.
+        void handleChannelSubscribed(channel, scene, camera);
+      }
     }
 
     // Set up presence timers (visibility, heartbeat, offline cleanup)

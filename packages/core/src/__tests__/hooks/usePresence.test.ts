@@ -89,7 +89,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         // Simulate sync with 2 users
         mockChannel.presenceState.mockReturnValue({
@@ -108,7 +108,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         mockChannel.presenceState.mockReturnValue({
           'user-1': [{ id: 'user-1', name: 'Test User', position: { x: 0, y: 1.6, z: 0 }, rotation: { x: 0, y: 0, z: 0 } }],
@@ -122,7 +122,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         // First sync - user-2 present
         mockChannel.presenceState.mockReturnValue({
@@ -141,7 +141,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         mockChannel.presenceState.mockReturnValue({
           'user-2': [{ id: 'user-2', name: 'User 2', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
@@ -155,7 +155,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         mockChannel.presenceState.mockReturnValue({
           'user-2': [{ id: 'user-2', name: 'User 2', status: 'active', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
@@ -172,7 +172,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         act(() => mockChannel.__fire('presence', 'join', {
           newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
@@ -185,7 +185,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         act(() => mockChannel.__fire('presence', 'join', {
           newPresences: [{ id: 'user-1', name: 'Test User' }],
@@ -198,7 +198,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         act(() => mockChannel.__fire('presence', 'join', {
           newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
@@ -211,7 +211,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         act(() => mockChannel.__fire('presence', 'join', {
           newPresences: [{ id: 'user-2', name: 'User 2', status: 'active', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
@@ -226,7 +226,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         // First join
         act(() => mockChannel.__fire('presence', 'join', {
@@ -250,7 +250,7 @@ describe('usePresence', () => {
         });
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         act(() => mockChannel.__fire('presence', 'join', {
           newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
@@ -265,7 +265,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
         act(() => mockChannel.__fire('presence', 'join', {
           newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
         }));
@@ -282,7 +282,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
         act(() => mockChannel.__fire('presence', 'join', {
           newPresences: [{ id: 'user-2', name: 'User 2', status: 'active', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
         }));
@@ -300,7 +300,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
         // First add user
         result.current.presenceDataRef.current.set('user-2', { id: 'user-2', name: 'User 2' } as any);
 
@@ -319,7 +319,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         act(() => mockChannel.__fire('broadcast', 'position', {
           payload: { userId: 'unknown', position: { x: 5, y: 1.6, z: 3 }, rotation: { x: 0, y: 0, z: 0 } },
@@ -335,7 +335,7 @@ describe('usePresence', () => {
         });
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
         result.current.presenceDataRef.current.set('user-2', { id: 'user-2', name: 'User 2' } as any);
 
         act(() => mockChannel.__fire('broadcast', 'position', {
@@ -351,7 +351,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         act(() => mockChannel.__fire('broadcast', 'avatar-update', {
           payload: { userId: 'user-2', customization: { bodyColor: '#ff0000', skinColor: '#ffdbac', style: 'default', accessories: [] } },
@@ -364,7 +364,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
         // Join first
         act(() => mockChannel.__fire('presence', 'join', {
           newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
@@ -385,7 +385,7 @@ describe('usePresence', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
-        act(() => result.current.registerPresenceListeners(mockChannel, scene));
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
 
         act(() => mockChannel.__fire('broadcast', 'bubble-prefs', {
           payload: { userId: 'user-2', prefs: { radius: 5, idleColor: '#ff0000' } },
@@ -531,7 +531,7 @@ describe('usePresence', () => {
       const camera = new THREE.PerspectiveCamera();
 
       // Register listeners and add a user
-      act(() => result.current.registerPresenceListeners(mockChannel, scene));
+      act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
       result.current.presenceDataRef.current.set('user-2', { id: 'user-2', name: 'User 2' } as any);
 
       // Set a nearby target (within radius * 2)
@@ -556,7 +556,7 @@ describe('usePresence', () => {
       const { result, mockChannel } = renderUsePresence();
       const scene = new THREE.Scene();
 
-      act(() => result.current.registerPresenceListeners(mockChannel, scene));
+      act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
       act(() => mockChannel.__fire('presence', 'join', {
         newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
       }));
@@ -572,7 +572,7 @@ describe('usePresence', () => {
       const { result, mockChannel } = renderUsePresence();
       const scene = new THREE.Scene();
 
-      act(() => result.current.registerPresenceListeners(mockChannel, scene));
+      act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
       act(() => mockChannel.__fire('presence', 'join', {
         newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
       }));
@@ -585,7 +585,7 @@ describe('usePresence', () => {
       const { result, mockChannel } = renderUsePresence();
       const scene = new THREE.Scene();
 
-      act(() => result.current.registerPresenceListeners(mockChannel, scene));
+      act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
       act(() => mockChannel.__fire('presence', 'join', {
         newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 1, y: 1.6, z: 1 }, rotation: { x: 0, y: 0, z: 0 } }],
       }));
