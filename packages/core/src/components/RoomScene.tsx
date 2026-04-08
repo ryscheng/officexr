@@ -19,12 +19,9 @@ import { useMotionControls } from '@/hooks/useMotionControls';
 import { useRealtimeChannel } from '@/hooks/useRealtimeChannel';
 import { useChat } from '@/hooks/useChat';
 import { useAvatarCustomization } from '@/hooks/useAvatarCustomization';
+import { useScreenSharing } from '@/hooks/useScreenSharing';
 
 
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-];
 
 function createBubbleSphere(scene: THREE.Scene, radius: number, color: number): THREE.Mesh {
   const geo = new THREE.SphereGeometry(radius, 24, 24);
@@ -113,16 +110,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const jitsiLeaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jitsiConnectionGenRef = useRef(0);
 
-  // Screen sharing state
-  const [screenShares, setScreenShares] = useState<Map<string, ScreenShare>>(new Map());
-  const [activeShareId, setActiveShareId] = useState<string | null>(null);
-  const [isSharing, setIsSharing] = useState(false);
-  const localScreenStreamRef = useRef<MediaStream | null>(null);
-  // Keys: "sharer-{viewerId}" (on the sharer side) or "viewer-{sharerId}" (on the viewer side)
-  const screenPeerConnsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  // ICE candidates that arrive before setRemoteDescription completes are queued here,
-  // keyed by the remote peer's user ID, and flushed once the description is set.
-  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  // Screen sharing
+  const {
+    screenShares,
+    activeShareId,
+    setActiveShareId,
+    isSharing,
+    startScreenShare,
+    stopScreenShare,
+    registerScreenListeners,
+    cleanupPeerConnections,
+  } = useScreenSharing({
+    channelRef,
+    currentUserRef,
+    presenceDataRef,
+  });
 
   const [micMuted, setMicMuted] = useState(false);
   const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
@@ -456,79 +458,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   }, []);
 
-  // ── Screen sharing ────────────────────────────────────────────────────────────
-
-  const closeSharerPeerConns = () => {
-    screenPeerConnsRef.current.forEach((pc, key) => {
-      if (key.startsWith('sharer-')) { pc.close(); screenPeerConnsRef.current.delete(key); }
-    });
-  };
-
-  const closeViewerPeerConn = (sharerId: string) => {
-    const pc = screenPeerConnsRef.current.get(`viewer-${sharerId}`);
-    if (pc) { pc.close(); screenPeerConnsRef.current.delete(`viewer-${sharerId}`); }
-  };
-
-  const createSharerPeerConn = (viewerId: string, stream: MediaStream) => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    screenPeerConnsRef.current.set(`sharer-${viewerId}`, pc);
-    stream.getTracks().forEach(track => pc.addTrack(track, stream));
-    pc.onicecandidate = ({ candidate }) => {
-      if (!candidate) return;
-      channelRef.current?.send({
-        type: 'broadcast', event: 'screen-ice',
-        payload: { from: currentUserRef.current!.id, to: viewerId, candidate: candidate.toJSON() },
-      });
-    };
-    pc.createOffer().then(offer => {
-      pc.setLocalDescription(offer);
-      channelRef.current?.send({
-        type: 'broadcast', event: 'screen-offer',
-        payload: { from: currentUserRef.current!.id, to: viewerId, sdp: offer.sdp },
-      });
-    });
-  };
-
-  const startScreenShare = async () => {
-    if (!currentUserRef.current || !channelRef.current) return;
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) videoTrack.contentHint = 'detail';
-    } catch (err: any) {
-      if (err.name !== 'NotAllowedError') console.error('[ScreenShare] getDisplayMedia failed:', err);
-      return;
-    }
-    localScreenStreamRef.current = stream;
-    setIsSharing(true);
-    const myId = currentUserRef.current.id;
-    const myName = currentUserRef.current.name || 'You';
-    setScreenShares(prev => new Map(prev).set(myId, { stream, name: myName }));
-    setActiveShareId(myId);
-    // Create a peer connection for every other user currently in the room
-    presenceDataRef.current.forEach((_, userId) => {
-      if (userId !== myId) createSharerPeerConn(userId, stream);
-    });
-    // Auto-stop when the browser's built-in "Stop sharing" button is clicked
-    stream.getVideoTracks()[0]?.addEventListener('ended', stopScreenShare);
-  };
-
-  const stopScreenShare = () => {
-    localScreenStreamRef.current?.getTracks().forEach(t => t.stop());
-    localScreenStreamRef.current = null;
-    setIsSharing(false);
-    const myId = currentUserRef.current?.id;
-    if (myId) {
-      setScreenShares(prev => { const m = new Map(prev); m.delete(myId); return m; });
-      setActiveShareId(prev => prev === myId ? null : prev);
-    }
-    closeSharerPeerConns();
-    channelRef.current?.send({
-      type: 'broadcast', event: 'screen-stop',
-      payload: { userId: myId },
-    });
-  };
+  // Screen sharing functions are provided by useScreenSharing
 
   // Pre-warm: connect to a personal idle room as soon as the JWT is ready so
   // the Jitsi SDK bundle is downloaded and the XMPP connection is established
@@ -1646,75 +1576,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     });
 
-    // Broadcast: screen sharing — WebRTC signaling
-    channel.on('broadcast', { event: 'screen-offer' }, ({ payload }) => {
-      const { from, to, sdp } = payload as { from: string; to: string; sdp: string };
-      if (to !== currentUser.id) return;
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-      screenPeerConnsRef.current.set(`viewer-${from}`, pc);
-      pc.onicecandidate = ({ candidate }) => {
-        if (!candidate) return;
-        channelRef.current?.send({
-          type: 'broadcast', event: 'screen-ice',
-          payload: { from: currentUser.id, to: from, candidate: candidate.toJSON() },
-        });
-      };
-      pc.ontrack = ({ streams }) => {
-        const stream = streams[0];
-        if (!stream) return;
-        const sharerName = presenceDataRef.current.get(from)?.name || 'Someone';
-        setScreenShares(prev => new Map(prev).set(from, { stream, name: sharerName }));
-        setActiveShareId(prev => prev ?? from);
-      };
-      pc.setRemoteDescription({ type: 'offer', sdp })
-        .then(() => {
-          // Flush any ICE candidates that arrived before the remote description was set
-          const queued = pendingIceCandidatesRef.current.get(from) ?? [];
-          pendingIceCandidatesRef.current.delete(from);
-          return Promise.all([
-            pc.createAnswer(),
-            ...queued.map(c => pc.addIceCandidate(new RTCIceCandidate(c)).catch(console.error)),
-          ]);
-        })
-        .then(([answer]) => pc.setLocalDescription(answer as RTCSessionDescriptionInit).then(() => answer))
-        .then(answer => {
-          channelRef.current?.send({
-            type: 'broadcast', event: 'screen-answer',
-            payload: { from: currentUser.id, to: from, sdp: (answer as RTCSessionDescriptionInit).sdp },
-          });
-        })
-        .catch(err => console.error('[ScreenShare] answer failed:', err));
-    });
-
-    channel.on('broadcast', { event: 'screen-answer' }, ({ payload }) => {
-      const { from, to, sdp } = payload as { from: string; to: string; sdp: string };
-      if (to !== currentUser.id) return;
-      const pc = screenPeerConnsRef.current.get(`sharer-${from}`);
-      if (pc) pc.setRemoteDescription({ type: 'answer', sdp }).catch(console.error);
-    });
-
-    channel.on('broadcast', { event: 'screen-ice' }, ({ payload }) => {
-      const { from, to, candidate } = payload as { from: string; to: string; candidate: RTCIceCandidateInit };
-      if (to !== currentUser.id) return;
-      const pc = screenPeerConnsRef.current.get(`sharer-${from}`)
-             ?? screenPeerConnsRef.current.get(`viewer-${from}`);
-      if (!pc) return;
-      if (pc.remoteDescription) {
-        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
-      } else {
-        // Remote description not set yet — queue and flush in the offer/answer handler
-        const q = pendingIceCandidatesRef.current.get(from) ?? [];
-        q.push(candidate);
-        pendingIceCandidatesRef.current.set(from, q);
-      }
-    });
-
-    channel.on('broadcast', { event: 'screen-stop' }, ({ payload }) => {
-      const { userId } = payload as { userId: string };
-      setScreenShares(prev => { const m = new Map(prev); m.delete(userId); return m; });
-      setActiveShareId(prev => prev === userId ? null : prev);
-      closeViewerPeerConn(userId);
-    });
+    // Broadcast: screen sharing — registered by useScreenSharing hook
+    registerScreenListeners(channel, currentUser.id);
 
     // Broadcast: room environment changes — update scene for all connected users
     channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
@@ -2301,11 +2164,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       renderer.domElement.removeEventListener('touchend', handleTouchEnd);
 
       // Clean up screen sharing without broadcasting (channel is closing)
-      localScreenStreamRef.current?.getTracks().forEach(t => t.stop());
-      localScreenStreamRef.current = null;
-      screenPeerConnsRef.current.forEach(pc => pc.close());
-      screenPeerConnsRef.current.clear();
-      pendingIceCandidatesRef.current.clear();
+      cleanupPeerConnections();
 
       // Cancel any pending Jitsi leave debounce — component is tearing down
       if (jitsiLeaveDebounceRef.current) {
@@ -2814,7 +2673,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                   remoteAudioDecayRef.current = null;
                 }
                 setRemoteAudioLevel(0);
-                if (localScreenStreamRef.current) stopScreenShare();
+                stopScreenShare();
               };
 
               api.addEventListener('videoConferenceLeft', () => {
