@@ -293,8 +293,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       });
   }, [officeId]);
 
-  // JWT generation and mic monitoring are handled by useJitsi
-
   const handleEnvironmentChange = (env: EnvironmentType) => {
     setEnvironment(env);
 
@@ -319,16 +317,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   };
 
-
-  // Avatar customization loading, saving, and presence tracking handled by useAvatarCustomization
-
-  // Chat effects are handled by useChat hook
-
-  // Exit pointer lock when switching to 2D mode is handled by useKeyboardControls
-
-  // handleMuteToggle and cleanupJitsi are provided by useJitsi
-
-  // Jitsi prewarm, room management, and cleanup are handled by useJitsi
 
   // Three.js scene, renderer, camera, environment, local avatar, and resize handling
   const { orthoCameraRef, orthoViewSizeRef } = useSceneSetup({
@@ -507,8 +495,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       cleanupPresenceVisuals(scene);
     };
   }, [officeId, currentUser?.id, environment]);
-
-  // handleBubblePrefsChange and handleSaveSettings are provided by useAvatarCustomization
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100vh' }}>
