@@ -188,6 +188,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   // Whiteboard keyboard shortcut refs (populated after useWhiteboard call)
   const wbToggleRef = useRef<(() => void) | null>(null);
   const wbUndoRef = useRef<(() => void) | null>(null);
+  // Track whether we were in 2D mode before the whiteboard forced it on
+  const was2DBeforeWhiteboardRef = useRef(false);
 
   // Keyboard, mouse, and touch input controls
   const {
@@ -308,7 +310,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     currentUserId: currentUser?.id,
   });
   // Wire whiteboard keyboard shortcut refs
-  wbToggleRef.current = () => setWhiteboardActive(!whiteboardActive);
+  const toggleWhiteboard = () => {
+    const nextActive = !whiteboardActive;
+    setWhiteboardActive(nextActive);
+    if (nextActive) {
+      // Remember current 2D state and switch to 2D so the canvas is visible
+      was2DBeforeWhiteboardRef.current = is2DMode;
+      if (!is2DMode) setIs2DMode(true);
+    } else if (!was2DBeforeWhiteboardRef.current) {
+      // Restore previous view mode when deactivating
+      setIs2DMode(false);
+    }
+  };
+  wbToggleRef.current = toggleWhiteboard;
   wbUndoRef.current = wbUndo;
 
   // Network stats for debug panel
@@ -882,7 +896,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       {/* Whiteboard toolbar — always visible (toggle button), tools expand when active */}
       <WhiteboardToolbar
         active={whiteboardActive}
-        onToggle={() => setWhiteboardActive(!whiteboardActive)}
+        onToggle={toggleWhiteboard}
         tool={wbTool}
         onToolChange={setWbTool}
         color={wbColor}
