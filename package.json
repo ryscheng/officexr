@@ -14,6 +14,7 @@
     "dist:desktop:all": "pnpm --filter @officexr/web run build && pnpm --filter @officexr/desktop run dist:all",
     "dev:mobile": "pnpm --filter @officexr/mobile run start",
     "build:mobile:ios": "pnpm --filter @officexr/mobile run build:ios",
-    "build:mobile:android": "pnpm --filter @officexr/mobile run build:android"
+    "build:mobile:android": "pnpm --filter @officexr/mobile run build:android",
+    "test": "pnpm --filter @officexr/core run test"
   }
 }
