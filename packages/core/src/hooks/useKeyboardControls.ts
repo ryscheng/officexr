@@ -349,7 +349,7 @@ export function useKeyboardControls({
       const pPos = playerPositionRef.current;
       localAvatar.visible = true;
       localAvatar.position.set(pPos.x, 0, pPos.z);
-      localAvatar.rotation.y = playerYawRef.current;
+      localAvatar.rotation.y = playerYawRef.current + Math.PI;
 
       const camDist = 3.5;
       const camHeight = 2.2;

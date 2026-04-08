@@ -16,7 +16,7 @@ export default function CameraModeIndicator({ cameraMode, isTouchDevice }: Camer
       borderRadius: '6px', fontFamily: 'monospace', fontSize: '12px', zIndex: 200,
       pointerEvents: 'none',
     }}>
-      {cameraMode === 'third-person-behind' ? '3rd Person (Behind)' : '3rd Person (Front)'}
+      {cameraMode === 'third-person-behind' ? '3rd Person (Front)' : '3rd Person (Behind)'}
       <span style={{ color: '#9ca3af', marginLeft: '8px' }}>C to cycle</span>
     </div>
   );
