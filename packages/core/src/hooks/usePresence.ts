@@ -36,7 +36,7 @@ export interface PresenceHandle {
   pendingAvatarUpdatesRef: React.MutableRefObject<Map<string, AvatarCustomization>>;
   lastPositionUpdate: React.MutableRefObject<number>;
   /** Register presence and broadcast listeners on a channel. Call before subscribing. */
-  registerPresenceListeners: (channel: RealtimeChannel, scene: THREE.Scene) => void;
+  registerPresenceListeners: (channel: RealtimeChannel, sceneRef: React.MutableRefObject<THREE.Scene | null>) => void;
   /** Called when the channel status becomes SUBSCRIBED. Tracks presence and re-syncs. */
   handleChannelSubscribed: (channel: RealtimeChannel, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => Promise<void>;
   /** Set up heartbeat, visibility, and offline cleanup timers. Returns cleanup fn. */
@@ -47,7 +47,7 @@ export interface PresenceHandle {
     lerpAlpha: number,
     camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
-    channel: RealtimeChannel,
+    channel: RealtimeChannel | null,
     broadcastPos: { x: number; y: number; z: number },
     broadcastRot: { x: number; y: number; z: number },
     moved: boolean,
@@ -120,6 +120,10 @@ export function usePresence({
   const pendingAvatarUpdatesRef = useRef<Map<string, AvatarCustomization>>(new Map());
   const lastPositionUpdate = useRef<number>(0);
 
+  // Always-current user ID for presence handlers (avoids stale closure with [] deps)
+  const currentUserIdRef = useRef(currentUser?.id);
+  currentUserIdRef.current = currentUser?.id;
+
   // Stale detection state (closure-captured by tickPresence)
   const lastStaleCheckRef = useRef(0);
   const STALE_THRESHOLD_MS = 15_000;
@@ -140,7 +144,7 @@ export function usePresence({
     setOnlineUsers([...active, ...offline]);
   }, []);
 
-  const registerPresenceListeners = useCallback((channel: RealtimeChannel, scene: THREE.Scene) => {
+  const registerPresenceListeners = useCallback((channel: RealtimeChannel, sceneRef: React.MutableRefObject<THREE.Scene | null>) => {
     // Use latest broadcast position when creating avatars to avoid teleport glitches
     const freshPositionData = (p: PresenceEntry): PresenceEntry => {
       const recent = lastBroadcastPositionRef.current.get(p.id);
@@ -155,6 +159,8 @@ export function usePresence({
     };
 
     const createAvatarAndSphere = (presence: PresenceEntry) => {
+      const scene = sceneRef.current;
+      if (!scene) return;
       const fresh = freshPositionData(presence);
       const pending = pendingAvatarUpdatesRef.current.get(presence.id);
       const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh, (animState) => {
@@ -180,16 +186,17 @@ export function usePresence({
     };
 
     const removeAvatarAndSphere = (id: string) => {
+      const scene = sceneRef.current;
       const anim = avatarAnimationsRef.current.get(id);
       if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(id); }
       avatarPrevPositionsRef.current.delete(id);
       const avatar = avatarsRef.current.get(id);
-      if (avatar) scene.remove(avatar);
+      if (avatar && scene) scene.remove(avatar);
       avatarsRef.current.delete(id);
       avatarTargetsRef.current.delete(id);
       lastSeenAt.current.delete(id);
       const sphere = bubbleSpheresRef.current.get(id);
-      if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
+      if (sphere && scene) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
       presenceDataRef.current.delete(id);
     };
 
@@ -197,7 +204,7 @@ export function usePresence({
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState<PresenceEntry>();
       const presentIds = new Set<string>();
-      const myId = currentUser?.id;
+      const myId = currentUserIdRef.current;
 
       Object.values(state).forEach((presences) => {
         presences.forEach((presence) => {
@@ -222,7 +229,7 @@ export function usePresence({
 
     // Presence: user joined
     channel.on('presence', { event: 'join' }, ({ newPresences }) => {
-      const myId = currentUser?.id;
+      const myId = currentUserIdRef.current;
       newPresences.forEach((presence) => {
         const p = presence as unknown as PresenceEntry;
         presenceDataRef.current.set(p.id, p);
@@ -236,6 +243,7 @@ export function usePresence({
 
     // Presence: user left
     channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
+      const scene = sceneRef.current;
       leftPresences.forEach((presence) => {
         const p = presence as unknown as PresenceEntry;
         if (followingUserIdRef.current === p.id) setFollowingUserId(null);
@@ -243,9 +251,9 @@ export function usePresence({
         if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(p.id); }
         avatarPrevPositionsRef.current.delete(p.id);
         const avatar = avatarsRef.current.get(p.id);
-        if (avatar) { scene.remove(avatar); avatarsRef.current.delete(p.id); }
+        if (avatar) { if (scene) scene.remove(avatar); avatarsRef.current.delete(p.id); }
         const sphere = bubbleSpheresRef.current.get(p.id);
-        if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
+        if (sphere) { if (scene) scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
         avatarTargetsRef.current.delete(p.id);
         lastSeenAt.current.delete(p.id);
         lastBroadcastPositionRef.current.delete(p.id);
@@ -314,9 +322,10 @@ export function usePresence({
 
     // Broadcast: avatar customization updates
     channel.on('broadcast', { event: 'avatar-update' }, ({ payload }) => {
+      const scene = sceneRef.current;
       const { userId, customization } = payload as { userId: string; customization: AvatarCustomization };
       const existingAvatar = avatarsRef.current.get(userId);
-      if (existingAvatar) {
+      if (existingAvatar && scene) {
         const oldAnim = avatarAnimationsRef.current.get(userId);
         if (oldAnim) { oldAnim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(userId); }
         avatarPrevPositionsRef.current.delete(userId);
@@ -330,7 +339,7 @@ export function usePresence({
         });
         avatarsRef.current.set(userId, newAvatar);
         pendingAvatarUpdatesRef.current.delete(userId);
-      } else {
+      } else if (!existingAvatar) {
         pendingAvatarUpdatesRef.current.set(userId, customization);
       }
     });
@@ -436,7 +445,7 @@ export function usePresence({
       }
     });
     rebuildOnlineUsers();
-  }, []);
+  }, [currentUser?.id, userEmail, userImage]);
 
   const setupPresenceTimers = useCallback((): (() => void) => {
     const myId = currentUser?.id;
@@ -497,14 +506,14 @@ export function usePresence({
       clearInterval(positionHeartbeatInterval);
       clearInterval(offlineCleanupInterval);
     };
-  }, []);
+  }, [currentUser?.id]);
 
   const tickPresence = useCallback((
     delta: number,
     lerpAlpha: number,
     camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
-    channel: RealtimeChannel,
+    channel: RealtimeChannel | null,
     broadcastPos: { x: number; y: number; z: number },
     broadcastRot: { x: number; y: number; z: number },
     moved: boolean,
@@ -617,7 +626,7 @@ export function usePresence({
         if (now - t > STALE_THRESHOLD_MS) {
           lastSeenAt.current.delete(uid);
 
-          const presenceState = channel.presenceState<PresenceEntry>();
+          const presenceState = channel?.presenceState<PresenceEntry>() ?? {};
           const stillPresent = Object.values(presenceState).some(presences =>
             presences.some(p => p.id === uid)
           );
@@ -674,7 +683,7 @@ export function usePresence({
       selfMarkerRef.current.position.set(broadcastPos.x, 0, broadcastPos.z);
       selfMarkerRef.current.visible = in2D;
     }
-  }, []);
+  }, [currentUser?.id]);
 
   const cleanupPresenceVisuals = useCallback((scene: THREE.Scene) => {
     avatarAnimationsRef.current.forEach((anim) => { anim.mixer.stopAllAction(); });
