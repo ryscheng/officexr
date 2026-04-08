@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import liliensteinHdriUrl from '../assets/hdri/lilienstein_4k.exr?url';
-import { RealtimeChannel } from '@supabase/supabase-js';
 import { JaaSMeeting } from '@jitsi/react-sdk';
 import { generateJaaSJwt } from '@/lib/jaasJwt';
 import { createAvatar, updateAvatar, AvatarData, AvatarAnimationState, switchAnimation } from './Avatar';
@@ -13,17 +12,19 @@ import ControlsOverlay from './ControlsOverlay';
 import NetworkDebugPanel, { SignalIcon } from './NetworkDebugPanel';
 import { useNetworkStats } from '@/hooks/useNetworkStats';
 import { AvatarCustomization, BubblePreferences, loadBubblePrefs } from '@/types/avatar';
+import { PresenceEntry, CameraMode, EnvironmentType, ChatMessage, ScreenShare } from '@/types/room';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut, signInWithGoogle } from '@/hooks/useAuth';
 import { useMotionControls } from '@/hooks/useMotionControls';
+import { useRealtimeChannel } from '@/hooks/useRealtimeChannel';
+import { useChat } from '@/hooks/useChat';
+import { useAvatarCustomization } from '@/hooks/useAvatarCustomization';
 
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
-
-type PresenceEntry = AvatarData & { email?: string | null; jitsiRoom?: string | null; status?: 'active' | 'inactive' };
 
 function createBubbleSphere(scene: THREE.Scene, radius: number, color: number): THREE.Mesh {
   const geo = new THREE.SphereGeometry(radius, 24, 24);
@@ -74,24 +75,26 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const channelRef = useRef<RealtimeChannel | null>(null);
-  const channelSubscribedRef = useRef(false);
+  const {
+    channelRef,
+    channelSubscribedRef,
+    myPresenceRef: channelMyPresenceRef,
+    send: channelSend,
+    track: channelTrack,
+  } = useRealtimeChannel({ officeId, userId: currentUser?.id });
   // Pending customization updates received before the target avatar existed
   const pendingAvatarUpdatesRef = useRef<Map<string, AvatarCustomization>>(new Map());
   const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
   const avatarAnimationsRef = useRef<Map<string, AvatarAnimationState>>(new Map());
-  const localAvatarAnimationRef = useRef<AvatarAnimationState | null>(null);
   const avatarPrevPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
   const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
-  const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
-  const bubblePrefsRef = useRef<BubblePreferences>(loadBubblePrefs());
   const remoteBubblePrefsRef = useRef<Map<string, BubblePreferences>>(new Map());
   const selfMarkerRef = useRef<THREE.Group | null>(null);
   const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
   const jitsiRoomRef = useRef<string | null>(null);
-  const myPresenceRef = useRef<PresenceEntry | null>(null);
+  const myPresenceRef = channelMyPresenceRef;
   const recentlyLeftRef = useRef<Map<string, { id: string; name: string; email: string | null; leftAt: number }>>(new Map());
   const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null; status: 'active' | 'inactive' | 'offline' }>>([]);
   const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
@@ -111,7 +114,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const jitsiConnectionGenRef = useRef(0);
 
   // Screen sharing state
-  type ScreenShare = { stream: MediaStream; name: string };
   const [screenShares, setScreenShares] = useState<Map<string, ScreenShare>>(new Map());
   const [activeShareId, setActiveShareId] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
@@ -131,32 +133,58 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const lastPositionUpdate = useRef<number>(0);
   const lastSeenAt = useRef<Map<string, number>>(new Map());
   const lastBroadcastPositionRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number; time: number }>>(new Map());
-  const [showSettings, setShowSettings] = useState(false);
-  const [currentUserRole, setCurrentUserRole] = useState<'owner' | 'admin' | 'member' | undefined>(undefined);
-  const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
-    bodyColor: '#3498db',
-    skinColor: '#ffdbac',
-    style: 'default',
-    accessories: [],
-  });
-  const avatarCustomizationRef = useRef(avatarCustomization);
+  const localAvatarRef = useRef<THREE.Group | null>(null);
+  const localAvatarAnimationRef = useRef<AvatarAnimationState | null>(null);
+  const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
+  const cameraModeRef = useRef<CameraMode>('first-person');
 
-  // Chat state
-  interface ChatMessage {
-    id: string;
-    userId: string;
-    userName: string;
-    message: string;
-    timestamp: number;
-  }
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatVisible, setChatVisible] = useState(false);
-  const [chatInput, setChatInput] = useState('');
-  const chatInputRef = useRef<HTMLInputElement>(null);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const chatVisibleRef = useRef<boolean>(false);
+  // Avatar customization hook
+  const {
+    avatarCustomization,
+    avatarCustomizationRef,
+    currentUserRole,
+    handleSaveSettings,
+    handleBubblePrefsChange,
+    bubblePrefsRef,
+    showSettings,
+    setShowSettings,
+  } = useAvatarCustomization({
+    user,
+    anonymousUserRef,
+    officeId,
+    channelRef,
+    channelSubscribedRef,
+    myPresenceRef,
+    sceneRef,
+    localAvatarRef,
+    localAvatarAnimationRef,
+    localBubbleSphereRef,
+    cameraModeRef,
+    jitsiRoomRef,
+  });
+
   const keysRef = useRef<{ [key: string]: boolean }>({});
+
+  // Chat
+  const {
+    chatMessages,
+    chatVisible,
+    setChatVisible,
+    chatInput,
+    setChatInput,
+    chatInputRef,
+    chatScrollRef,
+    chatVisibleRef,
+    sendChatMessage,
+    registerChatListener,
+  } = useChat({
+    channelRef,
+    channelSubscribedRef,
+    currentUser,
+    currentUserRef,
+    showSettings: showSettings,
+    keysRef,
+  });
   const [mouseLockActive, setMouseLockActive] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   // Motion controls — device orientation (gyroscope) shared with UserLobby
@@ -196,11 +224,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const [showControls, setShowControls] = useState(false);
   const is2DModeRef = useRef(false);
   is2DModeRef.current = is2DMode;
-  type CameraMode = 'first-person' | 'third-person-behind' | 'third-person-front';
   const [cameraMode, setCameraMode] = useState<CameraMode>('first-person');
-  const cameraModeRef = useRef<CameraMode>('first-person');
   cameraModeRef.current = cameraMode;
-  const localAvatarRef = useRef<THREE.Group | null>(null);
   // In third-person the player position is tracked separately from camera position
   const playerPositionRef = useRef(new THREE.Vector3(0, 0, 5));
   const playerYawRef = useRef(0);
@@ -208,7 +233,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const followingUserIdRef = useRef<string | null>(null);
   followingUserIdRef.current = followingUserId;
   // Environment settings — arbitrary string; unknown values render as 'corporate'
-  type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
 
   // Load environment from the office record so all users start with the same scene
@@ -383,96 +407,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   };
 
 
-  // Load avatar customization from Supabase
-  useEffect(() => {
-    if (!user) return;
+  // Avatar customization loading, saving, and presence tracking handled by useAvatarCustomization
 
-    supabase
-      .from('profiles')
-      .select('avatar_body_color, avatar_skin_color, avatar_style, avatar_accessories, avatar_preset_id, avatar_model_url')
-      .eq('id', user.id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setAvatarCustomization({
-            bodyColor: data.avatar_body_color || '#3498db',
-            skinColor: data.avatar_skin_color || '#ffdbac',
-            style: (data.avatar_style as AvatarCustomization['style']) || 'default',
-            accessories: data.avatar_accessories || [],
-            presetId: data.avatar_preset_id || null,
-            modelUrl: data.avatar_model_url || null,
-          });
-        }
-      });
-
-    // Fetch this user's role in the current office
-    if (officeId && officeId !== 'global') {
-      supabase
-        .from('office_members')
-        .select('role')
-        .eq('office_id', officeId)
-        .eq('user_id', user.id)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) setCurrentUserRole(data.role as 'owner' | 'admin' | 'member');
-        });
-    }
-  }, [user, officeId]);
-
-  // Keep the ref in sync and re-track presence whenever customization changes
-  // (profile load or manual save) so other users see the updated avatar without
-  // tearing down the entire realtime channel.
-  useEffect(() => {
-    avatarCustomizationRef.current = avatarCustomization;
-    const channel = channelRef.current;
-    if (!channel || !myPresenceRef.current) return;
-    const updated = { ...myPresenceRef.current, customization: avatarCustomization };
-    myPresenceRef.current = updated;
-    channel.track(updated);
-  }, [avatarCustomization]);
-
-  // Handle chat visibility and Enter key
-  useEffect(() => {
-    const handleChatKey = (event: KeyboardEvent) => {
-      if (showSettings) return;
-      if (event.target === chatInputRef.current) return;
-
-      if (event.key === 'Enter') {
-        event.preventDefault();
-
-        if (!chatVisible) {
-          setChatVisible(true);
-          setTimeout(() => chatInputRef.current?.focus(), 50);
-        } else if (chatInput.trim() === '') {
-          setChatVisible(false);
-        } else {
-          sendChatMessage(chatInput.trim());
-          setChatInput('');
-        }
-      } else if (event.key === 'Escape' && chatVisible) {
-        event.preventDefault();
-        setChatVisible(false);
-        setChatInput('');
-      }
-    };
-
-    window.addEventListener('keydown', handleChatKey);
-    return () => window.removeEventListener('keydown', handleChatKey);
-  }, [chatVisible, chatInput, showSettings]);
-
-  // Focus chat input when chat becomes visible
-  useEffect(() => {
-    if (chatVisible && chatInputRef.current) {
-      chatInputRef.current.focus();
-    }
-  }, [chatVisible]);
-
-  // Auto-scroll message list to bottom when new messages arrive (chat open)
-  useEffect(() => {
-    if (chatVisible && chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
-  }, [chatMessages, chatVisible]);
+  // Chat effects are handled by useChat hook
 
   // Exit pointer lock when switching to 2D mode
   useEffect(() => {
@@ -481,40 +418,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   }, [is2DMode]);
 
-  // Sync chatVisible ref and clear navigation keys when chat opens
-  useEffect(() => {
-    chatVisibleRef.current = chatVisible;
-
-    if (chatVisible) {
-      const keys = keysRef.current;
-      keys['w'] = false;
-      keys['a'] = false;
-      keys['s'] = false;
-      keys['d'] = false;
-      keys['arrowup'] = false;
-      keys['arrowdown'] = false;
-      keys['arrowleft'] = false;
-      keys['arrowright'] = false;
-    }
-  }, [chatVisible]);
-
-  // Auto-hide chat after inactivity
-  useEffect(() => {
-    if (chatVisible && chatInput === '') {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
-      hideTimerRef.current = setTimeout(() => {
-        setChatVisible(false);
-      }, 10000);
-    }
-
-    return () => {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
-    };
-  }, [chatVisible, chatInput]);
 
   // Track a mute toggle function in a ref so onApiReady (inside the Three.js
   // useEffect closure) can always call the latest version.
@@ -701,28 +604,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   };
 
-  const sendChatMessage = (message: string) => {
-    if (!channelRef.current || !channelSubscribedRef.current || !currentUser) return;
-
-    const chatMessage: ChatMessage = {
-      id: `${Date.now()}-${currentUser.id}`,
-      userId: currentUser.id,
-      userName: currentUser.name || 'User',
-      message,
-      timestamp: Date.now(),
-    };
-
-    channelRef.current.send({
-      type: 'broadcast',
-      event: 'chat',
-      payload: { message: chatMessage },
-    }).then((result: string) => {
-      if (result !== 'ok') console.error('[Chat] Broadcast failed:', result);
-    });
-
-    // Add own message to local state immediately (sender doesn't receive own broadcast)
-    setChatMessages((prev) => [...prev.slice(-49), chatMessage]);
-  };
 
   useEffect(() => {
     if (!containerRef.current || !currentUser) return;
@@ -1496,16 +1377,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
     renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
 
-    // Supabase Realtime channel
-    const channelName = `office:${officeId}`;
-    const channel = supabase.channel(channelName, {
-      config: {
-        presence: { key: currentUser.id },
-        broadcast: { ack: false, self: false },
-      },
-    });
-
-    channelRef.current = channel;
+    // Supabase Realtime channel — created by useRealtimeChannel, accessed via ref
+    const channel = channelRef.current;
+    if (!channel) return;
 
     const rebuildOnlineUsers = () => {
       const active = [...presenceDataRef.current.values()].map(p => ({
@@ -1739,13 +1613,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     });
 
-    // Broadcast: chat messages
-    channel.on('broadcast', { event: 'chat' }, ({ payload }) => {
-      const { message } = payload as { message: ChatMessage };
-      if (message.userId !== currentUserRef.current?.id) {
-        setChatMessages((prev) => [...prev.slice(-49), message]);
-      }
-    });
+    // Broadcast: chat messages — registered by useChat hook
+    registerChatListener(channel);
 
     // Broadcast: targeted wave — play chime only for the recipient
     channel.on('broadcast', { event: 'wave' }, ({ payload }) => {
@@ -2443,10 +2312,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         clearTimeout(jitsiLeaveDebounceRef.current);
         jitsiLeaveDebounceRef.current = null;
       }
-      channel.untrack(); // explicitly signal departure — triggers immediate presence.leave for others
-      supabase.removeChannel(channel);
-      channelRef.current = null;
-      channelSubscribedRef.current = false;
+      // Channel cleanup (untrack + removeChannel) is handled by useRealtimeChannel
 
       if (localBubbleSphereRef.current) {
         scene.remove(localBubbleSphereRef.current);
@@ -2488,70 +2354,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     };
   }, [officeId, currentUser?.id, environment]);
 
-  const handleBubblePrefsChange = (prefs: BubblePreferences) => {
-    bubblePrefsRef.current = prefs;
-    const newRadius = prefs.radius;
-    const newColor = hexStringToInt(prefs.idleColor);
-    // Only rebuild the local bubble sphere — remote spheres use their own prefs
-    if (localBubbleSphereRef.current) {
-      localBubbleSphereRef.current.geometry.dispose();
-      localBubbleSphereRef.current.geometry = new THREE.SphereGeometry(newRadius, 24, 24);
-      if (!jitsiRoomRef.current) {
-        (localBubbleSphereRef.current.material as THREE.MeshStandardMaterial).color.setHex(newColor);
-      }
-    }
-    // Broadcast our bubble prefs to other users
-    if (channelRef.current && channelSubscribedRef.current) {
-      channelRef.current.send({
-        type: 'broadcast', event: 'bubble-prefs',
-        payload: { userId: user?.id ?? anonymousUserRef.current?.id, prefs },
-      });
-    }
-  };
-
-  const handleSaveSettings = async (settings: AvatarCustomization) => {
-    if (!user) return;
-
-    const { error } = await supabase.from('profiles').upsert({
-      id: user.id,
-      avatar_body_color: settings.bodyColor,
-      avatar_skin_color: settings.skinColor,
-      avatar_style: settings.style,
-      avatar_accessories: settings.accessories,
-      avatar_preset_id: settings.presetId ?? null,
-      avatar_model_url: settings.modelUrl ?? null,
-    });
-
-    if (error) throw new Error('Failed to save settings');
-
-    setAvatarCustomization(settings);
-
-    // Update local avatar (for third-person view)
-    if (localAvatarRef.current && sceneRef.current) {
-      if (localAvatarAnimationRef.current) {
-        localAvatarAnimationRef.current.mixer.stopAllAction();
-        localAvatarAnimationRef.current = null;
-      }
-      const oldData = localAvatarRef.current.userData as AvatarData;
-      sceneRef.current.remove(localAvatarRef.current);
-      const newLocalAvatar = createAvatar(sceneRef.current, { ...oldData, customization: settings }, (animState) => {
-        localAvatarAnimationRef.current = animState;
-      });
-      newLocalAvatar.visible = cameraModeRef.current !== 'first-person';
-      localAvatarRef.current = newLocalAvatar;
-    }
-
-    // Broadcast avatar update to other users
-    if (channelRef.current && channelSubscribedRef.current) {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'avatar-update',
-        payload: { userId: user.id, customization: settings },
-      }).then((result: string) => {
-        if (result !== 'ok') console.error('[AvatarUpdate] Broadcast failed:', result);
-      });
-    }
-  };
+  // handleBubblePrefsChange and handleSaveSettings are provided by useAvatarCustomization
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100vh' }}>
