@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { PresenceEntry, CameraMode } from '@/types/room';
 import { AvatarCustomization, BubblePreferences } from '@/types/avatar';
-import { createAvatar, AvatarData, AvatarAnimationState, switchAnimation } from '@/components/Avatar';
+import { createAvatar, create2DMarker, AvatarData, AvatarAnimationState, switchAnimation } from '@/components/Avatar';
 
 export function createBubbleSphere(scene: THREE.Scene, radius: number, color: number): THREE.Mesh {
   const geo = new THREE.SphereGeometry(radius, 24, 24);
@@ -112,6 +112,7 @@ export function usePresence({
   const avatarPrevPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
   const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
   const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
+  const markers2DRef = useRef<Map<string, THREE.Group>>(new Map());
   const remoteBubblePrefsRef = useRef<Map<string, BubblePreferences>>(new Map());
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
   const recentlyLeftRef = useRef<Map<string, { id: string; name: string; email: string | null; leftAt: number }>>(new Map());
@@ -176,6 +177,14 @@ export function usePresence({
       );
       sphere.position.copy(avatar.position);
       bubbleSpheresRef.current.set(presence.id, sphere);
+      // 2D top-down map marker
+      const marker2D = create2DMarker(scene, {
+        id: presence.id,
+        name: presence.name,
+        customization: (pending ?? fresh.customization) as AvatarCustomization | undefined,
+      });
+      marker2D.position.set(avatar.position.x, 0, avatar.position.z);
+      markers2DRef.current.set(presence.id, marker2D);
       if (fresh.position && !avatarTargetsRef.current.has(presence.id)) {
         avatarTargetsRef.current.set(presence.id, {
           position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
@@ -197,6 +206,8 @@ export function usePresence({
       lastSeenAt.current.delete(id);
       const sphere = bubbleSpheresRef.current.get(id);
       if (sphere && scene) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
+      const marker2D = markers2DRef.current.get(id);
+      if (marker2D && scene) { scene.remove(marker2D); markers2DRef.current.delete(id); }
       presenceDataRef.current.delete(id);
     };
 
@@ -591,13 +602,19 @@ export function usePresence({
       localAvatarAnimationRef.current.mixer.update(delta);
     }
 
-    // Update remote bubble sphere positions and detect proximity
+    // Update remote bubble sphere and 2D marker positions, detect proximity
     const newNearby = new Set<string>();
     avatarTargetsRef.current.forEach((target, uid) => {
       const sphere = bubbleSpheresRef.current.get(uid);
       const avatar = avatarsRef.current.get(uid);
       if (avatar && sphere) {
         sphere.position.copy(avatar.position);
+      }
+      // Sync 2D marker to avatar position and rotation
+      const marker2D = markers2DRef.current.get(uid);
+      if (marker2D && avatar) {
+        marker2D.position.set(avatar.position.x, 0, avatar.position.z);
+        marker2D.rotation.y = avatar.rotation.y;
       }
       const dx = broadcastPos.x - target.position.x;
       const dz = broadcastPos.z - target.position.z;
@@ -646,6 +663,8 @@ export function usePresence({
             avatarsRef.current.delete(uid);
             const staleSphere = bubbleSpheresRef.current.get(uid);
             if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
+            const staleMarker2D = markers2DRef.current.get(uid);
+            if (staleMarker2D) { scene.remove(staleMarker2D); markers2DRef.current.delete(uid); }
             avatarTargetsRef.current.delete(uid);
             lastBroadcastPositionRef.current.delete(uid);
             presenceDataRef.current.delete(uid);
@@ -669,7 +688,7 @@ export function usePresence({
       handleProximityChange(newNearby);
     }
 
-    // Toggle 3D/2D name tags on remote avatars
+    // Toggle 3D/2D name tags and 2D markers on remote avatars
     const in2D = is2DModeRef.current;
     avatarsRef.current.forEach(avatar => {
       avatar.traverse(child => {
@@ -677,6 +696,7 @@ export function usePresence({
         if (child.userData.nameTagType === '2d') child.visible = in2D;
       });
     });
+    markers2DRef.current.forEach(marker => { marker.visible = in2D; });
 
     // Update self marker position and visibility
     if (selfMarkerRef.current) {
@@ -694,6 +714,8 @@ export function usePresence({
     avatarTargetsRef.current.clear();
     bubbleSpheresRef.current.forEach((sphere) => scene.remove(sphere));
     bubbleSpheresRef.current.clear();
+    markers2DRef.current.forEach((marker) => scene.remove(marker));
+    markers2DRef.current.clear();
     presenceDataRef.current.clear();
     lastSeenAt.current.clear();
     nearbyUserIdsRef.current = new Set();

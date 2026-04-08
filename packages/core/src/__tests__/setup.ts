@@ -172,8 +172,20 @@ vi.mock('three', () => {
     }),
     Sprite: vi.fn().mockImplementation(MockSprite),
     SpriteMaterial: vi.fn().mockImplementation(MockSpriteMaterial),
-    Raycaster: vi.fn().mockImplementation(function() { return { setFromCamera: vi.fn(), intersectObjects: vi.fn().mockReturnValue([]) }; }),
+    Raycaster: vi.fn().mockImplementation(function() { return { setFromCamera: vi.fn(), intersectObjects: vi.fn().mockReturnValue([]), ray: { intersectPlane: vi.fn().mockReturnValue(null) } }; }),
     Vector2: vi.fn().mockImplementation(function(x: number, y: number) { return { x: x ?? 0, y: y ?? 0 }; }),
+    Plane: vi.fn().mockImplementation(function() { return {}; }),
+    TorusGeometry: vi.fn().mockImplementation(MockGeo),
+    ExtrudeGeometry: vi.fn().mockImplementation(MockGeo),
+    Shape: vi.fn().mockImplementation(function() { return { moveTo: vi.fn(), lineTo: vi.fn(), closePath: vi.fn() }; }),
+    GridHelper: vi.fn().mockImplementation(function() {
+      return {
+        position: inlineMockVector3(),
+        material: { transparent: false, opacity: 1, depthWrite: true },
+      };
+    }),
+    Clock: vi.fn().mockImplementation(function() { return { getDelta: vi.fn().mockReturnValue(0.016) }; }),
+    AnimationMixer: vi.fn().mockImplementation(function() { return { update: vi.fn(), stopAllAction: vi.fn() }; }),
   };
 });
 
@@ -198,6 +210,9 @@ vi.mock('@/components/Avatar', () => ({
       activeAction: 'idle',
     });
     return group;
+  }),
+  create2DMarker: vi.fn((_scene: any, _data: any) => {
+    return inlineMockGroup();
   }),
   switchAnimation: vi.fn(),
   updateAvatar: vi.fn(),
@@ -273,9 +288,11 @@ vi.spyOn(document, 'createElement').mockImplementation((tag: string, options?: a
   if (tag === 'canvas') {
     (el as any).getContext = vi.fn(() => ({
       fillStyle: '', strokeStyle: '', font: '', textAlign: '', textBaseline: '',
+      lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', globalCompositeOperation: 'source-over',
       fillRect: vi.fn(), strokeRect: vi.fn(), clearRect: vi.fn(),
       fillText: vi.fn(), strokeText: vi.fn(), measureText: vi.fn(() => ({ width: 10 })),
       beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), arc: vi.fn(), closePath: vi.fn(),
+      roundRect: vi.fn(),
       fill: vi.fn(), stroke: vi.fn(), save: vi.fn(), restore: vi.fn(),
       translate: vi.fn(), rotate: vi.fn(), scale: vi.fn(),
       drawImage: vi.fn(), createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),

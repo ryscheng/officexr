@@ -36,6 +36,7 @@ export interface KeyboardControlsHandle {
     orthoCamera: THREE.OrthographicCamera,
     orthoViewSizeRef: { current: number },
     onEmojiKey: (key: string) => void,
+    onZoomChange?: (zoomLevel: number) => void,
   ) => () => void;
   /**
    * Compute player movement for this frame. Call from the animation loop.
@@ -63,6 +64,8 @@ interface UseKeyboardControlsOptions {
   motionActiveRef: React.MutableRefObject<boolean>;
   followingUserIdRef: React.MutableRefObject<string | null>;
   setFollowingUserId: (id: string | null) => void;
+  onWhiteboardToggle?: React.MutableRefObject<(() => void) | null>;
+  onWhiteboardUndo?: React.MutableRefObject<(() => void) | null>;
 }
 
 export function useKeyboardControls({
@@ -72,6 +75,8 @@ export function useKeyboardControls({
   motionActiveRef,
   followingUserIdRef,
   setFollowingUserId,
+  onWhiteboardToggle,
+  onWhiteboardUndo,
 }: UseKeyboardControlsOptions): KeyboardControlsHandle {
   // UI state
   const [cameraMode, setCameraMode] = useState<CameraMode>('first-person');
@@ -88,6 +93,8 @@ export function useKeyboardControls({
   const cameraYawRef = useRef(0);
   const playerPositionRef = useRef(new THREE.Vector3(0, 0, 5));
   const playerYawRef = useRef(0);
+  const clickMoveTargetRef = useRef<THREE.Vector3 | null>(null);
+  const clickIndicatorRef = useRef<THREE.Mesh | null>(null);
 
   // Keep refs in sync with state
   useEffect(() => { cameraModeRef.current = cameraMode; }, [cameraMode]);
@@ -108,6 +115,7 @@ export function useKeyboardControls({
     orthoCamera: THREE.OrthographicCamera,
     orthoViewSizeRef: { current: number },
     onEmojiKey: (key: string) => void,
+    onZoomChange?: (zoomLevel: number) => void,
   ): (() => void) => {
     const keys = keysRef.current;
 
@@ -146,6 +154,14 @@ export function useKeyboardControls({
         setShowControls(v => !v);
         return;
       }
+      if (key === 'b' && !chatVisibleRef.current) {
+        onWhiteboardToggle?.current?.();
+        return;
+      }
+      if (key === 'z' && (event.ctrlKey || event.metaKey) && !chatVisibleRef.current) {
+        onWhiteboardUndo?.current?.();
+        return;
+      }
       keys[key] = true;
     };
 
@@ -159,8 +175,42 @@ export function useKeyboardControls({
     };
 
     // Mouse control mode (desktop) — click to lock pointer, Escape to release.
-    const handleCanvasClick = () => {
-      if (!renderer.xr.isPresenting && !motionActiveRef.current && !is2DModeRef.current) {
+    // In 2D mode, click-to-move: raycast to ground plane.
+    const raycaster = new THREE.Raycaster();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+    const handleCanvasClick = (event: MouseEvent) => {
+      if (is2DModeRef.current) {
+        // Click-to-move in 2D mode
+        const rect = renderer.domElement.getBoundingClientRect();
+        const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), orthoCamera);
+        const intersection = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
+          // Clamp to bounds
+          intersection.x = Math.max(-14.5, Math.min(14.5, intersection.x));
+          intersection.z = Math.max(-14.5, Math.min(14.5, intersection.z));
+          clickMoveTargetRef.current = intersection;
+          // Show click indicator
+          if (!clickIndicatorRef.current) {
+            const ring = new THREE.Mesh(
+              new THREE.RingGeometry(0.2, 0.35, 24),
+              new THREE.MeshBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.8, side: THREE.DoubleSide }),
+            );
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.y = 0.05;
+            _scene.add(ring);
+            clickIndicatorRef.current = ring;
+          }
+          clickIndicatorRef.current.position.set(intersection.x, 0.05, intersection.z);
+          clickIndicatorRef.current.visible = true;
+          (clickIndicatorRef.current.material as THREE.MeshBasicMaterial).opacity = 0.8;
+          clickIndicatorRef.current.scale.set(1, 1, 1);
+        }
+        return;
+      }
+      if (!renderer.xr.isPresenting && !motionActiveRef.current) {
         renderer.domElement.requestPointerLock();
       }
     };
@@ -208,17 +258,24 @@ export function useKeyboardControls({
     const handleTouchEnd = () => { isTouching = false; };
 
     // Scroll wheel zoom for 2D mode only
-    const handleWheel = (event: WheelEvent) => {
-      if (!is2DModeRef.current) return;
-      event.preventDefault();
-      const zoomFactor = 1 + event.deltaY * 0.001;
-      orthoViewSizeRef.current = Math.max(3, Math.min(40, orthoViewSizeRef.current * zoomFactor));
+    const applyZoom = (newSize: number) => {
+      orthoViewSizeRef.current = Math.max(3, Math.min(40, newSize));
       const aspect = window.innerWidth / window.innerHeight;
       orthoCamera.left = -orthoViewSizeRef.current * aspect;
       orthoCamera.right = orthoViewSizeRef.current * aspect;
       orthoCamera.top = orthoViewSizeRef.current;
       orthoCamera.bottom = -orthoViewSizeRef.current;
       orthoCamera.updateProjectionMatrix();
+      onZoomChange?.(orthoViewSizeRef.current);
+    };
+    // Expose zoom function for external buttons
+    (window as any).__officexr_applyZoom = applyZoom;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!is2DModeRef.current) return;
+      event.preventDefault();
+      const zoomFactor = 1 + event.deltaY * 0.001;
+      applyZoom(orthoViewSizeRef.current * zoomFactor);
     };
 
     // Register all listeners
@@ -262,15 +319,44 @@ export function useKeyboardControls({
 
     if (is2DModeRef.current) {
       // 2D top-down mode: WASD/arrows map to compass directions
-      if (keys['w'] || keys['arrowup'])    { direction.z -= 1; moved = true; }
-      if (keys['s'] || keys['arrowdown'])  { direction.z += 1; moved = true; }
-      if (keys['a'] || keys['arrowleft'])  { direction.x -= 1; moved = true; }
-      if (keys['d'] || keys['arrowright']) { direction.x += 1; moved = true; }
+      let manualInput = false;
+      if (keys['w'] || keys['arrowup'])    { direction.z -= 1; moved = true; manualInput = true; }
+      if (keys['s'] || keys['arrowdown'])  { direction.z += 1; moved = true; manualInput = true; }
+      if (keys['a'] || keys['arrowleft'])  { direction.x -= 1; moved = true; manualInput = true; }
+      if (keys['d'] || keys['arrowright']) { direction.x += 1; moved = true; manualInput = true; }
       const { x: jx, y: jy } = joystickInputRef.current;
       if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
         direction.x += jx;
         direction.z -= jy; // joystick up = north
         moved = true;
+        manualInput = true;
+      }
+      // Cancel click-to-move on manual input
+      if (manualInput) clickMoveTargetRef.current = null;
+      // Click-to-move: smoothly navigate toward the clicked target
+      if (!manualInput && clickMoveTargetRef.current) {
+        const playerPos = cameraModeRef.current === 'first-person'
+          ? camera.position : playerPositionRef.current;
+        const dx = clickMoveTargetRef.current.x - playerPos.x;
+        const dz = clickMoveTargetRef.current.z - playerPos.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < 0.15) {
+          // Arrived at destination
+          clickMoveTargetRef.current = null;
+        } else {
+          direction.x = dx / dist;
+          direction.z = dz / dist;
+          moved = true;
+        }
+      }
+      // Animate click indicator (fade out + expand)
+      if (clickIndicatorRef.current) {
+        if (!clickMoveTargetRef.current) {
+          const mat = clickIndicatorRef.current.material as THREE.MeshBasicMaterial;
+          mat.opacity -= 0.03;
+          clickIndicatorRef.current.scale.multiplyScalar(1.02);
+          if (mat.opacity <= 0) clickIndicatorRef.current.visible = false;
+        }
       }
     } else {
       // 3D mode: movement relative to player facing direction (yaw)
