@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import liliensteinHdriUrl from '../assets/hdri/lilienstein_4k.exr?url';
 import { JaaSMeeting } from '@jitsi/react-sdk';
-import { createAvatar, updateAvatar, AvatarData, AvatarAnimationState, switchAnimation } from './Avatar';
+import { createAvatar, AvatarData, AvatarAnimationState } from './Avatar';
 import { spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
 import NetworkDebugPanel, { SignalIcon } from './NetworkDebugPanel';
 import { useNetworkStats } from '@/hooks/useNetworkStats';
-import { AvatarCustomization, BubblePreferences, loadBubblePrefs } from '@/types/avatar';
-import { PresenceEntry, CameraMode, EnvironmentType, ChatMessage, ScreenShare } from '@/types/room';
+import { CameraMode, EnvironmentType } from '@/types/room';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut, signInWithGoogle } from '@/hooks/useAuth';
 import { useMotionControls } from '@/hooks/useMotionControls';
@@ -21,26 +20,7 @@ import { useAvatarCustomization } from '@/hooks/useAvatarCustomization';
 import { useScreenSharing } from '@/hooks/useScreenSharing';
 import { useJitsi } from '@/hooks/useJitsi';
 import { useKeyboardControls } from '@/hooks/useKeyboardControls';
-
-
-
-function createBubbleSphere(scene: THREE.Scene, radius: number, color: number): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(radius, 24, 24);
-  const mat = new THREE.MeshStandardMaterial({
-    color,
-    transparent: true,
-    opacity: 0.12,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const sphere = new THREE.Mesh(geo, mat);
-  scene.add(sphere);
-  return sphere;
-}
-
-function hexStringToInt(hex: string): number {
-  return parseInt(hex.replace('#', ''), 16);
-}
+import { usePresence, createBubbleSphere, hexStringToInt } from '@/hooks/usePresence';
 
 interface OfficeSceneProps {
   officeId: string;
@@ -80,36 +60,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     send: channelSend,
     track: channelTrack,
   } = useRealtimeChannel({ officeId, userId: currentUser?.id });
-  // Pending customization updates received before the target avatar existed
-  const pendingAvatarUpdatesRef = useRef<Map<string, AvatarCustomization>>(new Map());
-  const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
-  const avatarAnimationsRef = useRef<Map<string, AvatarAnimationState>>(new Map());
-  const avatarPrevPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
-  const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
-  const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
-  const remoteBubblePrefsRef = useRef<Map<string, BubblePreferences>>(new Map());
-  const selfMarkerRef = useRef<THREE.Group | null>(null);
-  const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
-  const nearbyUserIdsRef = useRef<Set<string>>(new Set());
   const myPresenceRef = channelMyPresenceRef;
-  const recentlyLeftRef = useRef<Map<string, { id: string; name: string; email: string | null; leftAt: number }>>(new Map());
-  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null; status: 'active' | 'inactive' | 'offline' }>>([]);
-
-  // Screen sharing
-  const {
-    screenShares,
-    activeShareId,
-    setActiveShareId,
-    isSharing,
-    startScreenShare,
-    stopScreenShare,
-    registerScreenListeners,
-    cleanupPeerConnections,
-  } = useScreenSharing({
-    channelRef,
-    currentUserRef,
-    presenceDataRef,
-  });
+  const selfMarkerRef = useRef<THREE.Group | null>(null);
+  const localAvatarRef = useRef<THREE.Group | null>(null);
+  const localAvatarAnimationRef = useRef<AvatarAnimationState | null>(null);
+  const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
+  const cameraModeRef = useRef<CameraMode>('first-person');
 
   // Jitsi voice chat and microphone
   const {
@@ -151,13 +107,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     channelSubscribedRef,
     myPresenceRef,
   });
-  const lastPositionUpdate = useRef<number>(0);
-  const lastSeenAt = useRef<Map<string, number>>(new Map());
-  const lastBroadcastPositionRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number; time: number }>>(new Map());
-  const localAvatarRef = useRef<THREE.Group | null>(null);
-  const localAvatarAnimationRef = useRef<AvatarAnimationState | null>(null);
-  const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
-  const cameraModeRef = useRef<CameraMode>('first-person');
 
   // Avatar customization hook
   const {
@@ -260,6 +209,60 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     return () => clearTimeout(timer);
   }, [showDebugPanel]);
 
+  // Network stats — needs a temporary ref for recordPositionUpdate since usePresence uses it
+  const recordPositionUpdateRef = useRef<(userId: string) => void>(() => {});
+
+  // Presence and position management
+  const {
+    onlineUsers,
+    presenceDataRef,
+    avatarTargetsRef,
+    lastPositionUpdate,
+    registerPresenceListeners,
+    handleChannelSubscribed,
+    setupPresenceTimers,
+    tickPresence,
+    cleanupPresenceVisuals,
+  } = usePresence({
+    currentUser,
+    userEmail: user?.email,
+    userImage: user?.image,
+    channelRef,
+    channelSubscribedRef,
+    myPresenceRef,
+    cameraRef,
+    cameraModeRef,
+    playerPositionRef,
+    playerYawRef,
+    localAvatarAnimationRef,
+    localBubbleSphereRef,
+    selfMarkerRef,
+    avatarCustomizationRef,
+    bubblePrefsRef,
+    jitsiRoomRef,
+    is2DModeRef,
+    followingUserIdRef,
+    setFollowingUserId,
+    handleProximityChange,
+    recordPositionUpdateRef,
+  });
+
+  // Screen sharing
+  const {
+    screenShares,
+    activeShareId,
+    setActiveShareId,
+    isSharing,
+    startScreenShare,
+    stopScreenShare,
+    registerScreenListeners,
+    cleanupPeerConnections,
+  } = useScreenSharing({
+    channelRef,
+    currentUserRef,
+    presenceDataRef,
+  });
+
   // Network stats for debug panel
   const networkStats = useNetworkStats(
     channelRef,
@@ -268,7 +271,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     onlineUsers,
     showDebugPanel,
   );
-  const recordPositionUpdateRef = useRef(networkStats.recordPositionUpdate);
   recordPositionUpdateRef.current = networkStats.recordPositionUpdate;
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
@@ -1007,237 +1009,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const channel = channelRef.current;
     if (!channel) return;
 
-    const rebuildOnlineUsers = () => {
-      const active = [...presenceDataRef.current.values()].map(p => ({
-        id: p.id,
-        name: p.name,
-        email: p.email ?? null,
-        status: (p.status ?? 'active') as 'active' | 'inactive' | 'offline',
-      }));
-      const offline = [...recentlyLeftRef.current.values()].map(u => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        status: 'offline' as const,
-      }));
-      setOnlineUsers([...active, ...offline]);
-    };
-
-    // Use latest broadcast position (if fresh) instead of stale presence position
-    // when creating avatars from presence events. This prevents the visual glitch
-    // where an avatar briefly appears at its old/join position then teleports.
-    const freshPositionData = (p: PresenceEntry): PresenceEntry => {
-      const recent = lastBroadcastPositionRef.current.get(p.id);
-      if (recent && Date.now() - recent.time < 15000) {
-        return {
-          ...p,
-          position: { x: recent.position.x, y: p.position?.y ?? 1.6, z: recent.position.z },
-          rotation: { ...(p.rotation ?? { x: 0, y: 0, z: 0 }), y: recent.rotationY },
-        };
-      }
-      return p;
-    };
-
-    // Presence: sync existing users
-    channel.on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState<PresenceEntry>();
-      const presentIds = new Set<string>();
-
-      Object.values(state).forEach((presences) => {
-        presences.forEach((presence) => {
-          presentIds.add(presence.id);
-          presenceDataRef.current.set(presence.id, presence);
-          recentlyLeftRef.current.delete(presence.id);
-          if (presence.id !== currentUser.id && !avatarsRef.current.has(presence.id)) {
-            const fresh = freshPositionData(presence);
-            const pending = pendingAvatarUpdatesRef.current.get(presence.id);
-            const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh, (animState) => {
-              if (animState) avatarAnimationsRef.current.set(presence.id, animState);
-            });
-            avatarsRef.current.set(presence.id, avatar);
-            if (pending) pendingAvatarUpdatesRef.current.delete(presence.id);
-            const rPrefs = remoteBubblePrefsRef.current.get(presence.id);
-            const sphere = createBubbleSphere(scene, rPrefs?.radius ?? bubblePrefsRef.current.radius, rPrefs ? hexStringToInt(rPrefs.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
-            sphere.position.copy(avatar.position);
-            bubbleSpheresRef.current.set(presence.id, sphere);
-            // Seed proximity target from presence so the user is immediately
-            // visible to proximity detection instead of waiting for a broadcast.
-            if (fresh.position && !avatarTargetsRef.current.has(presence.id)) {
-              avatarTargetsRef.current.set(presence.id, {
-                position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
-                rotationY: fresh.rotation?.y ?? 0,
-              });
-              lastSeenAt.current.set(presence.id, Date.now());
-            }
-          }
-        });
-      });
-
-      // Remove avatars and spheres for users who left
-      avatarsRef.current.forEach((_avatar, id) => {
-        if (!presentIds.has(id)) {
-          const anim = avatarAnimationsRef.current.get(id);
-          if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(id); }
-          avatarPrevPositionsRef.current.delete(id);
-          scene.remove(avatarsRef.current.get(id)!);
-          avatarsRef.current.delete(id);
-          avatarTargetsRef.current.delete(id);
-          lastSeenAt.current.delete(id);
-          const sphere = bubbleSpheresRef.current.get(id);
-          if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
-          presenceDataRef.current.delete(id);
-        }
-      });
-
-      rebuildOnlineUsers();
-    });
-
-    // Presence: user joined
-    channel.on('presence', { event: 'join' }, ({ newPresences }) => {
-      newPresences.forEach((presence) => {
-        const p = presence as unknown as PresenceEntry;
-        presenceDataRef.current.set(p.id, p);
-        recentlyLeftRef.current.delete(p.id);
-        if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
-          const fresh = freshPositionData(p);
-          const pending = pendingAvatarUpdatesRef.current.get(p.id);
-          const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh, (animState) => {
-            if (animState) avatarAnimationsRef.current.set(p.id, animState);
-          });
-          avatarsRef.current.set(p.id, avatar);
-          if (pending) pendingAvatarUpdatesRef.current.delete(p.id);
-          const rPrefs2 = remoteBubblePrefsRef.current.get(p.id);
-          const sphere = createBubbleSphere(scene, rPrefs2?.radius ?? bubblePrefsRef.current.radius, rPrefs2 ? hexStringToInt(rPrefs2.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
-          sphere.position.copy(avatar.position);
-          bubbleSpheresRef.current.set(p.id, sphere);
-          if (fresh.position && !avatarTargetsRef.current.has(p.id)) {
-            avatarTargetsRef.current.set(p.id, {
-              position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
-              rotationY: fresh.rotation?.y ?? 0,
-            });
-            lastSeenAt.current.set(p.id, Date.now());
-          }
-        }
-      });
-      rebuildOnlineUsers();
-    });
-
-    // Presence: user left
-    channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
-      leftPresences.forEach((presence) => {
-        const p = presence as unknown as PresenceEntry;
-        // Stop following this user if we were
-        if (followingUserIdRef.current === p.id) setFollowingUserId(null);
-        // Clean up visual avatar, animation, and sphere if they still exist
-        const anim = avatarAnimationsRef.current.get(p.id);
-        if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(p.id); }
-        avatarPrevPositionsRef.current.delete(p.id);
-        const avatar = avatarsRef.current.get(p.id);
-        if (avatar) { scene.remove(avatar); avatarsRef.current.delete(p.id); }
-        const sphere = bubbleSpheresRef.current.get(p.id);
-        if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
-        // Always clean up all tracking data — the avatar may have already been
-        // removed by stale detection while the user was backgrounded.
-        avatarTargetsRef.current.delete(p.id);
-        lastSeenAt.current.delete(p.id);
-        lastBroadcastPositionRef.current.delete(p.id);
-        remoteBubblePrefsRef.current.delete(p.id);
-        const hadData = presenceDataRef.current.has(p.id);
-        presenceDataRef.current.delete(p.id);
-        if (avatar || hadData) {
-          recentlyLeftRef.current.set(p.id, { id: p.id, name: p.name, email: p.email ?? null, leftAt: Date.now() });
-          rebuildOnlineUsers();
-        }
-      });
-    });
-
-    // Broadcast: position updates — store as interpolation targets, smoothed each frame
-    channel.on('broadcast', { event: 'position' }, ({ payload }) => {
-      const { userId, position, rotation } = payload as {
-        userId: string;
-        position: { x: number; y: number; z: number };
-        rotation: { x: number; y: number; z: number };
-      };
-      // Record position update for network stats tracking
-      recordPositionUpdateRef.current(userId);
-      // Accept updates from any known user (incl. those whose avatar was removed
-      // as stale but whose Supabase presence is still active).
-      if (presenceDataRef.current.has(userId)) {
-        // Only update the interpolation target when position changed meaningfully.
-        // Heartbeat broadcasts repeat the same position every 2 s; without this
-        // guard the lerp restarts each time, causing visible micro-jitter.
-        const newPos = new THREE.Vector3(position.x, 0, position.z);
-        const existing = avatarTargetsRef.current.get(userId);
-        if (!existing || existing.position.distanceToSquared(newPos) > 0.0001
-            || Math.abs(existing.rotationY - rotation.y) > 0.01) {
-          if (!existing) {
-            // User appearing after stale deletion — snap avatar to avoid a lerp jump
-            const avatar = avatarsRef.current.get(userId);
-            if (avatar) avatar.position.copy(newPos);
-          }
-          avatarTargetsRef.current.set(userId, {
-            position: newPos,
-            rotationY: rotation.y,
-          });
-        }
-        lastSeenAt.current.set(userId, Date.now());
-        // Cache the latest broadcast position so presence-based avatar creation
-        // can use a fresh position instead of the stale one in Supabase presence.
-        lastBroadcastPositionRef.current.set(userId, {
-          position: newPos.clone(),
-          rotationY: rotation.y,
-          time: Date.now(),
-        });
-
-        // When our animation loop is throttled (tab hidden), run a proximity
-        // check here so voice chat can start/stop while we're in the background.
-        if (document.visibilityState === 'hidden' && cameraRef.current) {
-          const camPos = cameraRef.current.position;
-          const newNearby = new Set<string>();
-          avatarTargetsRef.current.forEach((target, uid) => {
-            const dx = camPos.x - target.position.x;
-            const dz = camPos.z - target.position.z;
-            if (Math.sqrt(dx * dx + dz * dz) < bubblePrefsRef.current.radius * 2) {
-              newNearby.add(uid);
-            }
-          });
-          const prevNearby = nearbyUserIdsRef.current;
-          const setChanged =
-            newNearby.size !== prevNearby.size ||
-            [...newNearby].some(id => !prevNearby.has(id)) ||
-            [...prevNearby].some(id => !newNearby.has(id));
-          if (setChanged) {
-            nearbyUserIdsRef.current = newNearby;
-            handleProximityChange(newNearby);
-          }
-        }
-      }
-    });
-
-    // Broadcast: avatar customization updates
-    channel.on('broadcast', { event: 'avatar-update' }, ({ payload }) => {
-      const { userId, customization } = payload as { userId: string; customization: AvatarCustomization };
-      const existingAvatar = avatarsRef.current.get(userId);
-      if (existingAvatar) {
-        const oldAnim = avatarAnimationsRef.current.get(userId);
-        if (oldAnim) { oldAnim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(userId); }
-        avatarPrevPositionsRef.current.delete(userId);
-        scene.remove(existingAvatar);
-        const oldData = existingAvatar.userData as AvatarData;
-        const newAvatar = createAvatar(scene, {
-          ...oldData,
-          customization,
-        }, (animState) => {
-          if (animState) avatarAnimationsRef.current.set(userId, animState);
-        });
-        avatarsRef.current.set(userId, newAvatar);
-        pendingAvatarUpdatesRef.current.delete(userId);
-      } else {
-        // Avatar not yet created (e.g., position update hasn't arrived yet).
-        // Store the customization and apply it when the avatar is created.
-        pendingAvatarUpdatesRef.current.set(userId, customization);
-      }
-    });
+    // Register presence, chat, screen sharing, and other broadcast listeners
+    registerPresenceListeners(channel, scene);
 
     // Broadcast: chat messages — registered by useChat hook
     registerChatListener(channel);
@@ -1258,20 +1031,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     });
 
-    // Broadcast: bubble preferences from other users
-    channel.on('broadcast', { event: 'bubble-prefs' }, ({ payload }) => {
-      const { userId, prefs } = payload as { userId: string; prefs: BubblePreferences };
-      remoteBubblePrefsRef.current.set(userId, prefs);
-      const sphere = bubbleSpheresRef.current.get(userId);
-      if (sphere) {
-        sphere.geometry.dispose();
-        sphere.geometry = new THREE.SphereGeometry(prefs.radius, 24, 24);
-        if (!jitsiRoomRef.current) {
-          (sphere.material as THREE.MeshStandardMaterial).color.setHex(hexStringToInt(prefs.idleColor));
-        }
-      }
-    });
-
     // Broadcast: screen sharing — registered by useScreenSharing hook
     registerScreenListeners(channel, currentUser.id);
 
@@ -1286,154 +1045,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     channel.subscribe(async (status) => {
       channelSubscribedRef.current = status === 'SUBSCRIBED';
       if (status === 'SUBSCRIBED') {
-        // On reconnect myPresenceRef already holds the latest state (position, jitsiRoom, etc.).
-        // Re-use it so we don't reset position or Jitsi room on a transient disconnect.
-        // Always set status to 'active' on (re)connect — if we're subscribing, the tab is open.
-        const currentStatus = document.visibilityState === 'visible' ? 'active' : 'inactive';
-        const presence: PresenceEntry = myPresenceRef.current
-          ? { ...myPresenceRef.current, status: currentStatus }
-          : {
-              id: currentUser.id,
-              name: currentUser.name || 'User',
-              email: user?.email ?? null,
-              image: user?.image || null,
-              position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-              rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
-              customization: avatarCustomizationRef.current,
-              jitsiRoom: null,
-              status: currentStatus,
-            };
-        myPresenceRef.current = presence;
-        await channel.track(presence);
-
-        // Broadcast our bubble preferences so other users see our sphere size/color
-        channel.send({
-          type: 'broadcast', event: 'bubble-prefs',
-          payload: { userId: currentUser.id, prefs: bubblePrefsRef.current },
-        });
-
-        // Re-sync presence state to reconcile any join/leave events missed while disconnected.
-        const state = channel.presenceState<PresenceEntry>();
-        const presentIds = new Set<string>();
-        Object.values(state).forEach((presences) => {
-          presences.forEach((p) => {
-            presentIds.add(p.id);
-            presenceDataRef.current.set(p.id, p);
-            recentlyLeftRef.current.delete(p.id);
-            if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
-              const fresh = freshPositionData(p);
-              const avatar = createAvatar(scene, fresh, (animState) => {
-                if (animState) avatarAnimationsRef.current.set(p.id, animState);
-              });
-              avatarsRef.current.set(p.id, avatar);
-              const rPrefs3 = remoteBubblePrefsRef.current.get(p.id);
-              const sphere = createBubbleSphere(scene, rPrefs3?.radius ?? bubblePrefsRef.current.radius, rPrefs3 ? hexStringToInt(rPrefs3.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
-              sphere.position.copy(avatar.position);
-              bubbleSpheresRef.current.set(p.id, sphere);
-              if (fresh.position && !avatarTargetsRef.current.has(p.id)) {
-                avatarTargetsRef.current.set(p.id, {
-                  position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
-                  rotationY: fresh.rotation?.y ?? 0,
-                });
-                lastSeenAt.current.set(p.id, Date.now());
-              }
-            }
-          });
-        });
-        avatarsRef.current.forEach((_, id) => {
-          if (!presentIds.has(id)) {
-            const anim = avatarAnimationsRef.current.get(id);
-            if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(id); }
-            avatarPrevPositionsRef.current.delete(id);
-            scene.remove(avatarsRef.current.get(id)!);
-            avatarsRef.current.delete(id);
-            avatarTargetsRef.current.delete(id);
-            lastSeenAt.current.delete(id);
-            const sphere = bubbleSpheresRef.current.get(id);
-            if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
-            presenceDataRef.current.delete(id);
-          }
-        });
-        rebuildOnlineUsers();
+        await handleChannelSubscribed(channel, scene, camera);
       }
     });
 
-    // Tab visibility — update presence status so other users see active/inactive indicator
-    const handleVisibilityChange = () => {
-      if (!channelRef.current || !myPresenceRef.current || !channelSubscribedRef.current) return;
-      const newStatus: 'active' | 'inactive' = document.visibilityState === 'visible' ? 'active' : 'inactive';
-      const updated = { ...myPresenceRef.current, status: newStatus };
-      myPresenceRef.current = updated;
-      channelRef.current.track(updated);
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Position heartbeat via setInterval — keeps our position broadcast alive even
-    // when the animation loop is throttled by Chrome in a background tab.
-    // The animation loop still sends immediate movement updates at 60 ms; this
-    // interval covers the 3-second stationary heartbeat independently.
-    let lastPresenceTrackTime = 0;
-    const positionHeartbeatInterval = setInterval(() => {
-      if (!channelRef.current || !channelSubscribedRef.current || !cameraRef.current) return;
-      const cam = cameraRef.current;
-      const isTP = cameraModeRef.current !== 'first-person';
-      const hbPos = isTP
-        ? { x: playerPositionRef.current.x, y: 1.6, z: playerPositionRef.current.z }
-        : { x: cam.position.x, y: cam.position.y, z: cam.position.z };
-      const hbRot = isTP
-        ? { x: 0, y: playerYawRef.current, z: 0 }
-        : { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z };
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'position',
-        payload: {
-          userId: currentUser.id,
-          position: hbPos,
-          rotation: hbRot,
-        },
-      });
-      lastPositionUpdate.current = Date.now();
-      if (myPresenceRef.current) {
-        myPresenceRef.current = {
-          ...myPresenceRef.current,
-          position: hbPos,
-          rotation: hbRot,
-        };
-        // Periodically sync position to Supabase presence so reconnecting
-        // users and new joiners see an accurate initial avatar position.
-        const trackNow = Date.now();
-        if (trackNow - lastPresenceTrackTime > 10000) {
-          lastPresenceTrackTime = trackNow;
-          channelRef.current.track(myPresenceRef.current);
-        }
-      }
-    }, 2000);
-
-    // Clean up recently-left (offline) users after 15 s
-    const offlineCleanupInterval = setInterval(() => {
-      const now = Date.now();
-      let changed = false;
-      recentlyLeftRef.current.forEach((_u, id) => {
-        if (now - recentlyLeftRef.current.get(id)!.leftAt > 15000) {
-          recentlyLeftRef.current.delete(id);
-          changed = true;
-        }
-      });
-      if (changed) rebuildOnlineUsers();
-    }, 5000);
-
-    // Proximity-based Jitsi room coordination.
-    // Also called from the position broadcast handler (above) when the tab is hidden.
-    // handleProximityChange is provided by useJitsi
+    // Set up presence timers (visibility, heartbeat, offline cleanup)
+    const cleanupPresenceTimers = setupPresenceTimers();
 
     // Animation loop
     const clock = new THREE.Clock();
-    const STALE_THRESHOLD_MS = 15_000;
-    let lastStaleCheck = 0;
 
     const animate = () => {
-      const delta = clock.getDelta(); // seconds since last frame
-      // Frame-rate-independent lerp: equivalent to 0.15 at 60 fps, consistent at any rate
+      const delta = clock.getDelta();
       const lerpAlpha = 1 - Math.pow(0.005, delta);
 
       // Update emoji confetti particles
@@ -1452,202 +1075,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         moveSpeed,
       );
 
-      const now = Date.now();
-      // Send position when moving (60ms throttle). Stationary heartbeat is
-      // handled by positionHeartbeatInterval so it fires even when this loop
-      // is throttled in a background tab.
-      const shouldSend = channelRef.current && channelSubscribedRef.current &&
-        moved && now - lastPositionUpdate.current > 60;
-      if (shouldSend) {
-        channelRef.current!.send({
-          type: 'broadcast',
-          event: 'position',
-          payload: {
-            userId: currentUser.id,
-            position: broadcastPos,
-            rotation: broadcastRot,
-          },
-        });
-        lastPositionUpdate.current = now;
-        // Keep presence position fresh so users who join mid-session see the right
-        // initial avatar position and can correctly evaluate proximity.
-        if (myPresenceRef.current) {
-          const updatedPresence = {
-            ...myPresenceRef.current,
-            position: broadcastPos,
-            rotation: broadcastRot,
-          };
-          myPresenceRef.current = updatedPresence;
-        }
-      }
-
-      // Update local bubble sphere position (follows player, not camera offset)
-      if (localBubbleSphereRef.current) {
-        localBubbleSphereRef.current.position.set(
-          broadcastPos.x, broadcastPos.y, broadcastPos.z
-        );
-      }
-
-      // Smoothly interpolate remote avatars toward their latest received positions
-      avatarTargetsRef.current.forEach((target, uid) => {
-        const avatar = avatarsRef.current.get(uid);
-        if (avatar) {
-          avatar.position.lerp(target.position, lerpAlpha);
-          // Lerp rotation via shortest-path on Y axis
-          let dy = target.rotationY - avatar.rotation.y;
-          if (dy > Math.PI) dy -= Math.PI * 2;
-          if (dy < -Math.PI) dy += Math.PI * 2;
-          avatar.rotation.y += dy * lerpAlpha;
-
-          // Make avatar eyes look toward the local camera
-          avatar.traverse((child) => {
-            if ((child as THREE.Mesh).isMesh && child.userData.isEye) {
-              const eye = child as THREE.Mesh;
-              const { restX, restY, restZ } = eye.userData;
-              const localCamPos = avatar.worldToLocal(camera.position.clone());
-              const edx = localCamPos.x - restX;
-              const edy = localCamPos.y - restY;
-              const edz = localCamPos.z - restZ;
-              const dist = Math.sqrt(edx * edx + edy * edy + edz * edz);
-              if (dist > 0.01) {
-                const maxOffset = 0.02;
-                eye.position.x = restX + (edx / dist) * maxOffset;
-                eye.position.y = restY + (edy / dist) * maxOffset;
-                eye.position.z = restZ + Math.abs(edx / dist) * 0.005;
-              }
-            }
-          });
-
-          // Switch remote avatar animation based on movement
-          const animState = avatarAnimationsRef.current.get(uid);
-          if (animState) {
-            const prev = avatarPrevPositionsRef.current.get(uid);
-            const isMoving = prev ? avatar.position.distanceToSquared(prev) > 0.0001 : false;
-            switchAnimation(animState, isMoving ? 'walk' : 'idle');
-            avatarPrevPositionsRef.current.set(uid, avatar.position.clone());
-          }
-        }
-      });
-
-      // Update all animation mixers
-      avatarAnimationsRef.current.forEach((anim) => { anim.mixer.update(delta); });
-      if (localAvatarAnimationRef.current) {
-        localAvatarAnimationRef.current.mixer.update(delta);
-      }
-
-      // Update remote bubble sphere positions and detect proximity.
-      // Use avatarTargetsRef as the source of truth for positions — this covers
-      // stale-but-present users whose visual avatar was removed but who are still
-      // connected via Supabase presence and may be in an active voice chat.
-      const newNearby = new Set<string>();
-      avatarTargetsRef.current.forEach((target, uid) => {
-        const sphere = bubbleSpheresRef.current.get(uid);
-        const avatar = avatarsRef.current.get(uid);
-        // Update bubble sphere to follow the interpolated avatar if both exist
-        if (avatar && sphere) {
-          sphere.position.copy(avatar.position);
-        }
-        // Proximity uses last-received position, not interpolated avatar position.
-        // Use horizontal (XZ) distance only — camera.y is at eye height (~1.6)
-        // while targets are at y=0, so 3D distance would shrink effective range.
-        const dx = broadcastPos.x - target.position.x;
-        const dz = broadcastPos.z - target.position.z;
-        if (Math.sqrt(dx * dx + dz * dz) < bubblePrefsRef.current.radius * 2) {
-          newNearby.add(uid);
-        }
-      });
-
-      // Update sphere colors: green when in voice call, per-user idle color otherwise
-      const inRoom = jitsiRoomRef.current !== null;
-      bubbleSpheresRef.current.forEach((sphere, uid) => {
-        const remotePrefs = remoteBubblePrefsRef.current.get(uid);
-        const idleColor = remotePrefs ? hexStringToInt(remotePrefs.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor);
-        (sphere.material as THREE.MeshStandardMaterial).color.setHex(inRoom ? 0x44ff99 : idleColor);
-      });
-      if (localBubbleSphereRef.current) {
-        (localBubbleSphereRef.current.material as THREE.MeshStandardMaterial).color.setHex(
-          inRoom ? 0x44ff99 : hexStringToInt(bubblePrefsRef.current.idleColor)
-        );
-      }
-
-      // Periodically remove avatars for users whose position broadcasts have gone stale.
-      // This catches abrupt disconnects (crash/network drop) before Supabase fires a leave event.
-      if (now - lastStaleCheck > 5000) {
-        lastStaleCheck = now;
-        lastSeenAt.current.forEach((t, uid) => {
-          if (now - t > STALE_THRESHOLD_MS) {
-            // Stop waiting for position updates from this user either way.
-            lastSeenAt.current.delete(uid);
-
-            // Check whether the user is still registered in Supabase presence.
-            const presenceState = channel.presenceState<PresenceEntry>();
-            const stillPresent = Object.values(presenceState).some(presences =>
-              presences.some(p => p.id === uid)
-            );
-
-            if (stillPresent) {
-              // User is inactive (tab backgrounded, movements paused) but still
-              // connected. Keep the avatar frozen at its last position — it will
-              // resume moving if/when the user becomes active again.
-              // presenceDataRef is left intact so the online users list stays accurate.
-              // However, remove from avatarTargetsRef so proximity detection no longer
-              // counts them as nearby — this prevents the voice call from staying open
-              // when the user's network dropped but Supabase hasn't fired leave yet.
-              // The position broadcast handler will re-add them when updates resume.
-              // Exception: keep the entry if we're following this user, so the camera
-              // stays anchored at their last position and proximity/audio isn't lost.
-              if (followingUserIdRef.current !== uid) {
-                avatarTargetsRef.current.delete(uid);
-              }
-            } else {
-              // User truly gone — remove avatar, sphere, animation, and all tracking data.
-              if (followingUserIdRef.current === uid) setFollowingUserId(null);
-              const staleAnim = avatarAnimationsRef.current.get(uid);
-              if (staleAnim) { staleAnim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(uid); }
-              avatarPrevPositionsRef.current.delete(uid);
-              const stalePresence = presenceDataRef.current.get(uid);
-              const staleAvatar = avatarsRef.current.get(uid);
-              if (staleAvatar) scene.remove(staleAvatar);
-              avatarsRef.current.delete(uid);
-              const staleSphere = bubbleSpheresRef.current.get(uid);
-              if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
-              avatarTargetsRef.current.delete(uid);
-              lastBroadcastPositionRef.current.delete(uid);
-              presenceDataRef.current.delete(uid);
-              if (stalePresence) {
-                recentlyLeftRef.current.set(uid, { id: uid, name: stalePresence.name, email: stalePresence.email ?? null, leftAt: Date.now() });
-              }
-              rebuildOnlineUsers();
-            }
-          }
-        });
-      }
-
-      // Fire proximity change handler only when the set changes
-      const prevNearby = nearbyUserIdsRef.current;
-      const setChanged =
-        newNearby.size !== prevNearby.size ||
-        [...newNearby].some(id => !prevNearby.has(id)) ||
-        [...prevNearby].some(id => !newNearby.has(id));
-      if (setChanged) {
-        nearbyUserIdsRef.current = newNearby;
-        handleProximityChange(newNearby);
-      }
-
-      // Toggle 3D/2D name tags on all remote avatars based on current view mode
-      const in2D = is2DModeRef.current;
-      avatarsRef.current.forEach(avatar => {
-        avatar.traverse(child => {
-          if (child.userData.nameTagType === '3d') child.visible = !in2D;
-          if (child.userData.nameTagType === '2d') child.visible = in2D;
-        });
-      });
-
-      // Update self marker position and visibility in 2D mode
-      if (selfMarkerRef.current) {
-        selfMarkerRef.current.position.set(broadcastPos.x, 0, broadcastPos.z);
-        selfMarkerRef.current.visible = in2D;
-      }
+      // Presence tick: position broadcast, avatar lerp, proximity, stale detection, etc.
+      tickPresence(delta, lerpAlpha, camera, scene, channel, broadcastPos, broadcastRot, moved);
 
       // Sync top-down camera to player XZ position
       orthoCamera.position.x = broadcastPos.x;
@@ -1685,9 +1114,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     return () => {
       cleanupInputListeners();
       window.removeEventListener('resize', handleResize);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(positionHeartbeatInterval);
-      clearInterval(offlineCleanupInterval);
+
+      // Clean up presence timers (visibility, heartbeat, offline cleanup)
+      cleanupPresenceTimers();
 
       // Clean up screen sharing without broadcasting (channel is closing)
       cleanupPeerConnections();
@@ -1699,6 +1128,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
       // Channel cleanup (untrack + removeChannel) is handled by useRealtimeChannel
 
+      // Clean up local avatar, bubble sphere, and self marker
       if (localBubbleSphereRef.current) {
         scene.remove(localBubbleSphereRef.current);
         localBubbleSphereRef.current = null;
@@ -1711,19 +1141,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         scene.remove(localAvatarRef.current);
         localAvatarRef.current = null;
       }
-      // Stop all animation mixers
-      avatarAnimationsRef.current.forEach((anim) => { anim.mixer.stopAllAction(); });
-      avatarAnimationsRef.current.clear();
-      avatarPrevPositionsRef.current.clear();
       if (localAvatarAnimationRef.current) {
         localAvatarAnimationRef.current.mixer.stopAllAction();
         localAvatarAnimationRef.current = null;
       }
-      bubbleSpheresRef.current.clear();
-      presenceDataRef.current.clear();
-      lastSeenAt.current.clear();
-      nearbyUserIdsRef.current = new Set();
-      pendingAvatarUpdatesRef.current.clear();
+
+      // Clean up remote presence visuals (avatars, bubble spheres, etc.)
+      cleanupPresenceVisuals(scene);
 
       if (vrButton?.parentNode) {
         vrButton.parentNode.removeChild(vrButton);
