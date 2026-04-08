@@ -22,5 +22,6 @@
     }
   },
   "include": ["../core/src", "vite.config.ts"],
+  "exclude": ["../core/src/__tests__/**", "../core/src/**/*.test.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
