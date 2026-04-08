@@ -275,7 +275,11 @@ export function useKeyboardControls({
     } else {
       // 3D mode: movement relative to player facing direction (yaw)
       const isThirdPerson = cameraModeRef.current !== 'first-person';
-      const yaw = isThirdPerson ? playerYawRef.current : cameraYawRef.current;
+      // In front view the camera faces the player, so movement directions are flipped
+      const isFrontView = cameraModeRef.current === 'third-person-front';
+      const yaw = isThirdPerson
+        ? (isFrontView ? playerYawRef.current + Math.PI : playerYawRef.current)
+        : cameraYawRef.current;
       const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
       const right = new THREE.Vector3(-forward.z, 0, forward.x);
       if (keys['w'] || keys['arrowup'])    { direction.add(forward); moved = true; }
