@@ -1,47 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
-import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
-import liliensteinHdriUrl from '../assets/hdri/lilienstein_4k.exr?url';
-import { RealtimeChannel } from '@supabase/supabase-js';
 import { JaaSMeeting } from '@jitsi/react-sdk';
-import { generateJaaSJwt } from '@/lib/jaasJwt';
-import { createAvatar, updateAvatar, AvatarData, AvatarAnimationState, switchAnimation } from './Avatar';
-import { EMOJI_MAP, spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
+import { AvatarAnimationState } from './Avatar';
+import { spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
 import NetworkDebugPanel, { SignalIcon } from './NetworkDebugPanel';
 import { useNetworkStats } from '@/hooks/useNetworkStats';
-import { AvatarCustomization, BubblePreferences, loadBubblePrefs } from '@/types/avatar';
+import { CameraMode, EnvironmentType } from '@/types/room';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut, signInWithGoogle } from '@/hooks/useAuth';
 import { useMotionControls } from '@/hooks/useMotionControls';
-
-
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-];
-
-type PresenceEntry = AvatarData & { email?: string | null; jitsiRoom?: string | null; status?: 'active' | 'inactive' };
-
-function createBubbleSphere(scene: THREE.Scene, radius: number, color: number): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(radius, 24, 24);
-  const mat = new THREE.MeshStandardMaterial({
-    color,
-    transparent: true,
-    opacity: 0.12,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const sphere = new THREE.Mesh(geo, mat);
-  scene.add(sphere);
-  return sphere;
-}
-
-function hexStringToInt(hex: string): number {
-  return parseInt(hex.replace('#', ''), 16);
-}
+import { useRealtimeChannel } from '@/hooks/useRealtimeChannel';
+import { useChat } from '@/hooks/useChat';
+import { useAvatarCustomization } from '@/hooks/useAvatarCustomization';
+import { useScreenSharing } from '@/hooks/useScreenSharing';
+import { useJitsi } from '@/hooks/useJitsi';
+import { useKeyboardControls } from '@/hooks/useKeyboardControls';
+import { usePresence } from '@/hooks/usePresence';
+import { useSceneSetup } from '@/hooks/useSceneSetup';
 
 interface OfficeSceneProps {
   officeId: string;
@@ -74,90 +52,108 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const channelRef = useRef<RealtimeChannel | null>(null);
-  const channelSubscribedRef = useRef(false);
-  // Pending customization updates received before the target avatar existed
-  const pendingAvatarUpdatesRef = useRef<Map<string, AvatarCustomization>>(new Map());
-  const avatarsRef = useRef<Map<string, THREE.Group>>(new Map());
-  const avatarAnimationsRef = useRef<Map<string, AvatarAnimationState>>(new Map());
-  const localAvatarAnimationRef = useRef<AvatarAnimationState | null>(null);
-  const avatarPrevPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
-  const avatarTargetsRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number }>>(new Map());
-  const bubbleSpheresRef = useRef<Map<string, THREE.Mesh>>(new Map());
-  const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
-  const bubblePrefsRef = useRef<BubblePreferences>(loadBubblePrefs());
-  const remoteBubblePrefsRef = useRef<Map<string, BubblePreferences>>(new Map());
+  const {
+    channelRef,
+    channelSubscribedRef,
+    myPresenceRef: channelMyPresenceRef,
+    send: channelSend,
+    track: channelTrack,
+  } = useRealtimeChannel({ officeId, userId: currentUser?.id });
+  const myPresenceRef = channelMyPresenceRef;
   const selfMarkerRef = useRef<THREE.Group | null>(null);
-  const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
-  const nearbyUserIdsRef = useRef<Set<string>>(new Set());
-  const jitsiRoomRef = useRef<string | null>(null);
-  const myPresenceRef = useRef<PresenceEntry | null>(null);
-  const recentlyLeftRef = useRef<Map<string, { id: string; name: string; email: string | null; leftAt: number }>>(new Map());
-  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null; status: 'active' | 'inactive' | 'offline' }>>([]);
-  const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
-  const [jitsiError, setJitsiError] = useState<string | null>(null);
-  const [jitsiConnected, setJitsiConnected] = useState(false);
-  const [jitsiParticipantCount, setJitsiParticipantCount] = useState(0);
-  const [jitsiRetryCount, setJitsiRetryCount] = useState(0);
-  const [jaasJwt, setJaasJwt] = useState<string | null>(null);
-  const [jaasJwtError, setJaasJwtError] = useState<string | null>(null);
-  const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
-  const jitsiApiRef = useRef<any>(null);
-  const remoteAudioDecayRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const jitsiHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const jitsiMessageListenerRef = useRef<((evt: MessageEvent) => void) | null>(null);
-  const jitsiLeaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const jitsiConnectionGenRef = useRef(0);
+  const localAvatarRef = useRef<THREE.Group | null>(null);
+  const localAvatarAnimationRef = useRef<AvatarAnimationState | null>(null);
+  const localBubbleSphereRef = useRef<THREE.Mesh | null>(null);
+  const cameraModeRef = useRef<CameraMode>('first-person');
 
-  // Screen sharing state
-  type ScreenShare = { stream: MediaStream; name: string };
-  const [screenShares, setScreenShares] = useState<Map<string, ScreenShare>>(new Map());
-  const [activeShareId, setActiveShareId] = useState<string | null>(null);
-  const [isSharing, setIsSharing] = useState(false);
-  const localScreenStreamRef = useRef<MediaStream | null>(null);
-  // Keys: "sharer-{viewerId}" (on the sharer side) or "viewer-{sharerId}" (on the viewer side)
-  const screenPeerConnsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  // ICE candidates that arrive before setRemoteDescription completes are queued here,
-  // keyed by the remote peer's user ID, and flushed once the description is set.
-  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
-
-  const [micMuted, setMicMuted] = useState(false);
-  const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
-  const [micError, setMicError] = useState<string | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const micAudioCtxRef = useRef<AudioContext | null>(null);
-  const startMicRef = useRef<(() => Promise<void>) | null>(null);
-  const lastPositionUpdate = useRef<number>(0);
-  const lastSeenAt = useRef<Map<string, number>>(new Map());
-  const lastBroadcastPositionRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number; time: number }>>(new Map());
-  const [showSettings, setShowSettings] = useState(false);
-  const [currentUserRole, setCurrentUserRole] = useState<'owner' | 'admin' | 'member' | undefined>(undefined);
-  const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>({
-    bodyColor: '#3498db',
-    skinColor: '#ffdbac',
-    style: 'default',
-    accessories: [],
+  // Jitsi voice chat and microphone
+  const {
+    jitsiRoom,
+    jitsiConnected,
+    jitsiParticipantCount,
+    jitsiError,
+    setJitsiError,
+    jitsiRetryCount,
+    setJitsiRetryCount,
+    remoteAudioLevel,
+    micMuted,
+    micLevel,
+    micError,
+    handleMuteToggle,
+    startMicRef,
+    activeJitsiRoom,
+    jaasJwt,
+    jaasJwtError,
+    jitsiRoomRef,
+    jitsiApiRef,
+    jitsiConnectionGenRef,
+    jitsiConnectTimeoutRef,
+    jitsiHeartbeatRef,
+    jitsiMessageListenerRef,
+    jitsiLeaveDebounceRef,
+    remoteAudioDecayRef,
+    micStreamRef,
+    setJitsiConnected,
+    setJitsiParticipantCount,
+    setRemoteAudioLevel,
+    handleProximityChange,
+    cleanupJitsi,
+  } = useJitsi({
+    officeId,
+    currentUser,
+    userEmail: user?.email,
+    channelRef,
+    channelSubscribedRef,
+    myPresenceRef,
   });
-  const avatarCustomizationRef = useRef(avatarCustomization);
 
-  // Chat state
-  interface ChatMessage {
-    id: string;
-    userId: string;
-    userName: string;
-    message: string;
-    timestamp: number;
-  }
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatVisible, setChatVisible] = useState(false);
-  const [chatInput, setChatInput] = useState('');
-  const chatInputRef = useRef<HTMLInputElement>(null);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const chatVisibleRef = useRef<boolean>(false);
+  // Avatar customization hook
+  const {
+    avatarCustomization,
+    avatarCustomizationRef,
+    currentUserRole,
+    handleSaveSettings,
+    handleBubblePrefsChange,
+    bubblePrefsRef,
+    showSettings,
+    setShowSettings,
+  } = useAvatarCustomization({
+    user,
+    anonymousUserRef,
+    officeId,
+    channelRef,
+    channelSubscribedRef,
+    myPresenceRef,
+    sceneRef,
+    localAvatarRef,
+    localAvatarAnimationRef,
+    localBubbleSphereRef,
+    cameraModeRef,
+    jitsiRoomRef,
+  });
+
   const keysRef = useRef<{ [key: string]: boolean }>({});
-  const [mouseLockActive, setMouseLockActive] = useState(false);
+
+  // Chat
+  const {
+    chatMessages,
+    chatVisible,
+    setChatVisible,
+    chatInput,
+    setChatInput,
+    chatInputRef,
+    chatScrollRef,
+    chatVisibleRef,
+    sendChatMessage,
+    registerChatListener,
+  } = useChat({
+    channelRef,
+    channelSubscribedRef,
+    currentUser,
+    currentUserRef,
+    showSettings: showSettings,
+    keysRef,
+  });
   const [showLoginModal, setShowLoginModal] = useState(false);
   // Motion controls — device orientation (gyroscope) shared with UserLobby
   const {
@@ -170,9 +166,39 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     enableMotion,
     disableMotion,
   } = useMotionControls({ cameraRef, rendererRef });
-  const joystickInputRef = useRef({ x: 0, y: 0 });
-  const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
-  const [joystickActive, setJoystickActive] = useState(false);
+
+  // Follow state
+  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
+  const followingUserIdRef = useRef<string | null>(null);
+  followingUserIdRef.current = followingUserId;
+
+  // Keyboard, mouse, and touch input controls
+  const {
+    cameraMode,
+    setCameraMode,
+    is2DMode,
+    setIs2DMode,
+    is2DModeRef,
+    showControls,
+    setShowControls,
+    mouseLockActive,
+    joystickKnob,
+    setJoystickKnob,
+    joystickActive,
+    setJoystickActive,
+    joystickInputRef,
+    playerPositionRef,
+    playerYawRef,
+    registerInputListeners,
+    computeMovement,
+  } = useKeyboardControls({
+    keysRef,
+    cameraModeRef,
+    chatVisibleRef,
+    motionActiveRef,
+    followingUserIdRef,
+    setFollowingUserId,
+  });
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -182,6 +208,60 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     return () => clearTimeout(timer);
   }, [showDebugPanel]);
 
+  // Network stats — needs a temporary ref for recordPositionUpdate since usePresence uses it
+  const recordPositionUpdateRef = useRef<(userId: string) => void>(() => {});
+
+  // Presence and position management
+  const {
+    onlineUsers,
+    presenceDataRef,
+    avatarTargetsRef,
+    lastPositionUpdate,
+    registerPresenceListeners,
+    handleChannelSubscribed,
+    setupPresenceTimers,
+    tickPresence,
+    cleanupPresenceVisuals,
+  } = usePresence({
+    currentUser,
+    userEmail: user?.email,
+    userImage: user?.image,
+    channelRef,
+    channelSubscribedRef,
+    myPresenceRef,
+    cameraRef,
+    cameraModeRef,
+    playerPositionRef,
+    playerYawRef,
+    localAvatarAnimationRef,
+    localBubbleSphereRef,
+    selfMarkerRef,
+    avatarCustomizationRef,
+    bubblePrefsRef,
+    jitsiRoomRef,
+    is2DModeRef,
+    followingUserIdRef,
+    setFollowingUserId,
+    handleProximityChange,
+    recordPositionUpdateRef,
+  });
+
+  // Screen sharing
+  const {
+    screenShares,
+    activeShareId,
+    setActiveShareId,
+    isSharing,
+    startScreenShare,
+    stopScreenShare,
+    registerScreenListeners,
+    cleanupPeerConnections,
+  } = useScreenSharing({
+    channelRef,
+    currentUserRef,
+    presenceDataRef,
+  });
+
   // Network stats for debug panel
   const networkStats = useNetworkStats(
     channelRef,
@@ -190,25 +270,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     onlineUsers,
     showDebugPanel,
   );
-  const recordPositionUpdateRef = useRef(networkStats.recordPositionUpdate);
   recordPositionUpdateRef.current = networkStats.recordPositionUpdate;
-  const [is2DMode, setIs2DMode] = useState(false);
-  const [showControls, setShowControls] = useState(false);
-  const is2DModeRef = useRef(false);
-  is2DModeRef.current = is2DMode;
-  type CameraMode = 'first-person' | 'third-person-behind' | 'third-person-front';
-  const [cameraMode, setCameraMode] = useState<CameraMode>('first-person');
-  const cameraModeRef = useRef<CameraMode>('first-person');
-  cameraModeRef.current = cameraMode;
-  const localAvatarRef = useRef<THREE.Group | null>(null);
-  // In third-person the player position is tracked separately from camera position
-  const playerPositionRef = useRef(new THREE.Vector3(0, 0, 5));
-  const playerYawRef = useRef(0);
-  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
-  const followingUserIdRef = useRef<string | null>(null);
-  followingUserIdRef.current = followingUserId;
   // Environment settings — arbitrary string; unknown values render as 'corporate'
-  type EnvironmentType = string;
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
 
   // Load environment from the office record so all users start with the same scene
@@ -229,134 +292,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }
       });
   }, [officeId]);
-
-  // Generate a JaaS JWT from the private key stored in env vars.
-  // Regenerated whenever the current user changes (e.g. login/logout).
-  // TTL is 1 week; the token is generated client-side via Web Crypto (RS256).
-  useEffect(() => {
-    const appId      = import.meta.env.VITE_JAAS_APP_ID      as string | undefined;
-    const apiKeyId   = import.meta.env.VITE_JAAS_API_KEY_ID  as string | undefined;
-    const privateKeyB64 = import.meta.env.VITE_JAAS_PRIVATE_KEY as string | undefined;
-    const privateKey = privateKeyB64 ? atob(privateKeyB64) : undefined;
-
-    if (!appId || !apiKeyId || !privateKey || !currentUser) {
-      setJaasJwt(null);
-      setJaasJwtError(null);
-      return;
-    }
-
-    setJaasJwtError(null);
-    generateJaaSJwt(appId, apiKeyId, privateKey, {
-      id:    currentUser.id,
-      name:  currentUser.name || 'User',
-      email: user?.email ?? '',
-    }).then(jwt => {
-      setJaasJwt(jwt);
-      setJaasJwtError(null);
-    }).catch(err => {
-      console.error('JaaS JWT generation failed:', err);
-      setJaasJwt(null);
-      setJaasJwtError(String(err?.message ?? err));
-    });
-  }, [currentUser?.id, currentUser?.name, user?.email]);
-
-  // Continuously monitor the local microphone so the mic indicator always reflects
-  // real audio input, independent of any Jitsi connection.
-  useEffect(() => {
-    let animFrameId: number;
-
-    const startMic = async () => {
-      // Tear down any prior session before retrying
-      cancelAnimationFrame(animFrameId);
-      micStreamRef.current?.getTracks().forEach(t => t.stop());
-      micStreamRef.current = null;
-      await micAudioCtxRef.current?.close();
-      micAudioCtxRef.current = null;
-
-      setMicError(null);
-      setMicLevel(0);
-
-      // navigator.mediaDevices is only available on secure origins (HTTPS / localhost)
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-        setMicLevel(-1);
-        setMicError('HTTPS is required — microphone is unavailable on insecure origins');
-        return;
-      }
-
-      // Query the Permissions API first so we can give precise instructions.
-      // Chrome and Safari on iOS both support this; it won't throw but may not resolve.
-      let permState: PermissionState | 'unknown' = 'unknown';
-      try {
-        const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-        permState = status.state;
-      } catch { /* API not available on this browser */ }
-
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      } catch (err: any) {
-        setMicLevel(-1);
-        const name: string = err?.name ?? '';
-        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-          if (permState === 'denied') {
-            // Browser-level block (Chrome site settings). iOS Settings won't help here.
-            setMicError(
-              'Blocked in browser settings. Tap the 🔒 icon in the address bar → Site settings → Microphone → Allow'
-            );
-          } else {
-            // OS-level block or permission prompt was dismissed/denied
-            setMicError(
-              'Permission denied. Check: iOS Settings → ' +
-              (navigator.userAgent.includes('CriOS') ? 'Chrome' : 'Safari') +
-              ' → Microphone → ON. Then tap "Tap to enable" again.'
-            );
-          }
-        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-          setMicError('No microphone hardware found on this device');
-        } else {
-          setMicError(`${name || 'Error'}: ${err?.message ?? 'unknown'}`);
-        }
-        return;
-      }
-
-      micStreamRef.current = stream;
-
-      // iOS/Safari creates AudioContext in 'suspended' state.
-      // Calling resume() here works when startMic() is invoked from a user gesture
-      // (e.g. the retry button). The auto-attempt on mount may still leave it
-      // suspended on iOS — the user tapping the retry button fixes that.
-      const audioCtx = new AudioContext();
-      micAudioCtxRef.current = audioCtx;
-      try { await audioCtx.resume(); } catch { /* best-effort */ }
-
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      audioCtx.createMediaStreamSource(stream).connect(analyser);
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-
-      const tick = () => {
-        if (audioCtx.state === 'running') {
-          analyser.getByteFrequencyData(buf);
-          const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length) / 128;
-          setMicLevel(rms);
-        }
-        animFrameId = requestAnimationFrame(tick);
-      };
-      tick();
-    };
-
-    // Store so the retry button can call startMic() from within a user gesture
-    startMicRef.current = startMic;
-
-    // Auto-attempt on mount — works on desktop and modern Android/iOS in most cases
-    startMic();
-
-    return () => {
-      cancelAnimationFrame(animFrameId);
-      micStreamRef.current?.getTracks().forEach(t => t.stop());
-      micAudioCtxRef.current?.close();
-    };
-  }, []);
 
   const handleEnvironmentChange = (env: EnvironmentType) => {
     setEnvironment(env);
@@ -383,298 +318,23 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   };
 
 
-  // Load avatar customization from Supabase
-  useEffect(() => {
-    if (!user) return;
-
-    supabase
-      .from('profiles')
-      .select('avatar_body_color, avatar_skin_color, avatar_style, avatar_accessories, avatar_preset_id, avatar_model_url')
-      .eq('id', user.id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setAvatarCustomization({
-            bodyColor: data.avatar_body_color || '#3498db',
-            skinColor: data.avatar_skin_color || '#ffdbac',
-            style: (data.avatar_style as AvatarCustomization['style']) || 'default',
-            accessories: data.avatar_accessories || [],
-            presetId: data.avatar_preset_id || null,
-            modelUrl: data.avatar_model_url || null,
-          });
-        }
-      });
-
-    // Fetch this user's role in the current office
-    if (officeId && officeId !== 'global') {
-      supabase
-        .from('office_members')
-        .select('role')
-        .eq('office_id', officeId)
-        .eq('user_id', user.id)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) setCurrentUserRole(data.role as 'owner' | 'admin' | 'member');
-        });
-    }
-  }, [user, officeId]);
-
-  // Keep the ref in sync and re-track presence whenever customization changes
-  // (profile load or manual save) so other users see the updated avatar without
-  // tearing down the entire realtime channel.
-  useEffect(() => {
-    avatarCustomizationRef.current = avatarCustomization;
-    const channel = channelRef.current;
-    if (!channel || !myPresenceRef.current) return;
-    const updated = { ...myPresenceRef.current, customization: avatarCustomization };
-    myPresenceRef.current = updated;
-    channel.track(updated);
-  }, [avatarCustomization]);
-
-  // Handle chat visibility and Enter key
-  useEffect(() => {
-    const handleChatKey = (event: KeyboardEvent) => {
-      if (showSettings) return;
-      if (event.target === chatInputRef.current) return;
-
-      if (event.key === 'Enter') {
-        event.preventDefault();
-
-        if (!chatVisible) {
-          setChatVisible(true);
-          setTimeout(() => chatInputRef.current?.focus(), 50);
-        } else if (chatInput.trim() === '') {
-          setChatVisible(false);
-        } else {
-          sendChatMessage(chatInput.trim());
-          setChatInput('');
-        }
-      } else if (event.key === 'Escape' && chatVisible) {
-        event.preventDefault();
-        setChatVisible(false);
-        setChatInput('');
-      }
-    };
-
-    window.addEventListener('keydown', handleChatKey);
-    return () => window.removeEventListener('keydown', handleChatKey);
-  }, [chatVisible, chatInput, showSettings]);
-
-  // Focus chat input when chat becomes visible
-  useEffect(() => {
-    if (chatVisible && chatInputRef.current) {
-      chatInputRef.current.focus();
-    }
-  }, [chatVisible]);
-
-  // Auto-scroll message list to bottom when new messages arrive (chat open)
-  useEffect(() => {
-    if (chatVisible && chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
-  }, [chatMessages, chatVisible]);
-
-  // Exit pointer lock when switching to 2D mode
-  useEffect(() => {
-    if (is2DMode && document.pointerLockElement) {
-      document.exitPointerLock();
-    }
-  }, [is2DMode]);
-
-  // Sync chatVisible ref and clear navigation keys when chat opens
-  useEffect(() => {
-    chatVisibleRef.current = chatVisible;
-
-    if (chatVisible) {
-      const keys = keysRef.current;
-      keys['w'] = false;
-      keys['a'] = false;
-      keys['s'] = false;
-      keys['d'] = false;
-      keys['arrowup'] = false;
-      keys['arrowdown'] = false;
-      keys['arrowleft'] = false;
-      keys['arrowright'] = false;
-    }
-  }, [chatVisible]);
-
-  // Auto-hide chat after inactivity
-  useEffect(() => {
-    if (chatVisible && chatInput === '') {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
-      hideTimerRef.current = setTimeout(() => {
-        setChatVisible(false);
-      }, 10000);
-    }
-
-    return () => {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
-    };
-  }, [chatVisible, chatInput]);
-
-  // Track a mute toggle function in a ref so onApiReady (inside the Three.js
-  // useEffect closure) can always call the latest version.
-  const handleMuteToggle = () => {
-    const newMuted = !micMuted;
-    setMicMuted(newMuted);
-    // Silence the local stream so the mic indicator reflects mute state
-    micStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
-    // Mirror in Jitsi if a session is active
-    jitsiApiRef.current?.executeCommand('toggleAudio');
-  };
-
-  // Thoroughly clean up all Jitsi resources (intervals, listeners, API, timeouts).
-  // Called on room change, retry, and unmount to prevent leaked intervals.
-  const cleanupJitsi = useCallback(() => {
-    jitsiConnectionGenRef.current++; // invalidate any in-flight callbacks from this session
-    if (jitsiConnectTimeoutRef.current) {
-      clearTimeout(jitsiConnectTimeoutRef.current);
-      jitsiConnectTimeoutRef.current = null;
-    }
-    if (jitsiHeartbeatRef.current) {
-      clearInterval(jitsiHeartbeatRef.current);
-      jitsiHeartbeatRef.current = null;
-    }
-    if (jitsiMessageListenerRef.current) {
-      window.removeEventListener('message', jitsiMessageListenerRef.current);
-      jitsiMessageListenerRef.current = null;
-    }
-    if (remoteAudioDecayRef.current) {
-      clearInterval(remoteAudioDecayRef.current);
-      remoteAudioDecayRef.current = null;
-    }
-    if (jitsiApiRef.current) {
-      try { jitsiApiRef.current.dispose(); } catch { /* already disposed */ }
-      jitsiApiRef.current = null;
-    }
-  }, []);
-
-  // ── Screen sharing ────────────────────────────────────────────────────────────
-
-  const closeSharerPeerConns = () => {
-    screenPeerConnsRef.current.forEach((pc, key) => {
-      if (key.startsWith('sharer-')) { pc.close(); screenPeerConnsRef.current.delete(key); }
-    });
-  };
-
-  const closeViewerPeerConn = (sharerId: string) => {
-    const pc = screenPeerConnsRef.current.get(`viewer-${sharerId}`);
-    if (pc) { pc.close(); screenPeerConnsRef.current.delete(`viewer-${sharerId}`); }
-  };
-
-  const createSharerPeerConn = (viewerId: string, stream: MediaStream) => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    screenPeerConnsRef.current.set(`sharer-${viewerId}`, pc);
-    stream.getTracks().forEach(track => pc.addTrack(track, stream));
-    pc.onicecandidate = ({ candidate }) => {
-      if (!candidate) return;
-      channelRef.current?.send({
-        type: 'broadcast', event: 'screen-ice',
-        payload: { from: currentUserRef.current!.id, to: viewerId, candidate: candidate.toJSON() },
-      });
-    };
-    pc.createOffer().then(offer => {
-      pc.setLocalDescription(offer);
-      channelRef.current?.send({
-        type: 'broadcast', event: 'screen-offer',
-        payload: { from: currentUserRef.current!.id, to: viewerId, sdp: offer.sdp },
-      });
-    });
-  };
-
-  const startScreenShare = async () => {
-    if (!currentUserRef.current || !channelRef.current) return;
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) videoTrack.contentHint = 'detail';
-    } catch (err: any) {
-      if (err.name !== 'NotAllowedError') console.error('[ScreenShare] getDisplayMedia failed:', err);
-      return;
-    }
-    localScreenStreamRef.current = stream;
-    setIsSharing(true);
-    const myId = currentUserRef.current.id;
-    const myName = currentUserRef.current.name || 'You';
-    setScreenShares(prev => new Map(prev).set(myId, { stream, name: myName }));
-    setActiveShareId(myId);
-    // Create a peer connection for every other user currently in the room
-    presenceDataRef.current.forEach((_, userId) => {
-      if (userId !== myId) createSharerPeerConn(userId, stream);
-    });
-    // Auto-stop when the browser's built-in "Stop sharing" button is clicked
-    stream.getVideoTracks()[0]?.addEventListener('ended', stopScreenShare);
-  };
-
-  const stopScreenShare = () => {
-    localScreenStreamRef.current?.getTracks().forEach(t => t.stop());
-    localScreenStreamRef.current = null;
-    setIsSharing(false);
-    const myId = currentUserRef.current?.id;
-    if (myId) {
-      setScreenShares(prev => { const m = new Map(prev); m.delete(myId); return m; });
-      setActiveShareId(prev => prev === myId ? null : prev);
-    }
-    closeSharerPeerConns();
-    channelRef.current?.send({
-      type: 'broadcast', event: 'screen-stop',
-      payload: { userId: myId },
-    });
-  };
-
-  // Pre-warm: connect to a personal idle room as soon as the JWT is ready so
-  // the Jitsi SDK bundle is downloaded and the XMPP connection is established
-  // before the user ever enters proximity range.
-  //
-  // The idle room name is keyed by the current user's own ID (the same formula
-  // used by handleProximityChange). If this user has the lexicographically
-  // lowest ID among nearby users — roughly half of all encounters — the prewarm
-  // room IS the proximity room, so voice becomes instant with zero reconnect.
-  // In other cases the SDK is already cached and only the XMPP room switch
-  // (~3–8 s) is needed instead of a cold start (~10–18 s).
-  const jitsiPrewarmRoom = jaasJwt && currentUser
-    ? `officexr-${officeId.slice(0, 8)}-${currentUser.id.slice(0, 8)}`
-    : null;
-  // The room JaaSMeeting actually connects to.
-  const activeJitsiRoom = jitsiRoom ?? jitsiPrewarmRoom;
-
-  // Reset Jitsi state when the active room changes and start a safety timeout
-  // for iframe loading. The tighter XMPP-connection timeout starts in onApiReady.
-  useEffect(() => {
-    // Clean up everything from the previous Jitsi session (intervals, listeners, API)
-    cleanupJitsi();
-    // Capture generation AFTER cleanupJitsi incremented it — guards all async callbacks below
-    const connectionGen = jitsiConnectionGenRef.current;
-
-    if (!activeJitsiRoom || !jaasJwt) {
-      setJitsiError(null);
-      setJitsiConnected(false);
-      setRemoteAudioLevel(0);
-      return;
-    }
-
-    const isProximity = jitsiRoomRef.current !== null;
-    console.log('[VoiceChat] Connecting — room:', activeJitsiRoom, isProximity ? '(proximity)' : '(prewarm)', 'jwt length:', jaasJwt?.length);
-    setJitsiError(null);
-    setJitsiConnected(false);
-    // Only surface load errors for proximity rooms; silently retry for prewarm.
-    if (isProximity) {
-      jitsiConnectTimeoutRef.current = setTimeout(() => {
-        if (jitsiConnectionGenRef.current !== connectionGen) return; // stale — a newer connection superseded this one
-        console.error('[VoiceChat] Jitsi iframe never loaded after 30s. Room:', activeJitsiRoom);
-        setJitsiError('Voice chat failed to load. Check your network connection.');
-      }, 30000);
-    }
-
-    return () => {
-      cleanupJitsi();
-    };
-  }, [activeJitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
+  // Three.js scene, renderer, camera, environment, local avatar, and resize handling
+  const { orthoCameraRef, orthoViewSizeRef } = useSceneSetup({
+    containerRef,
+    officeId,
+    environment,
+    currentUser,
+    sceneRef,
+    rendererRef,
+    cameraRef,
+    localAvatarRef,
+    localAvatarAnimationRef,
+    localBubbleSphereRef,
+    selfMarkerRef,
+    avatarCustomizationRef,
+    bubblePrefsRef,
+    playerPositionRef,
+  });
 
   const playWaveChime = () => {
     try {
@@ -701,1051 +361,45 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
   };
 
-  const sendChatMessage = (message: string) => {
-    if (!channelRef.current || !channelSubscribedRef.current || !currentUser) return;
-
-    const chatMessage: ChatMessage = {
-      id: `${Date.now()}-${currentUser.id}`,
-      userId: currentUser.id,
-      userName: currentUser.name || 'User',
-      message,
-      timestamp: Date.now(),
-    };
-
-    channelRef.current.send({
-      type: 'broadcast',
-      event: 'chat',
-      payload: { message: chatMessage },
-    }).then((result: string) => {
-      if (result !== 'ok') console.error('[Chat] Broadcast failed:', result);
-    });
-
-    // Add own message to local state immediately (sender doesn't receive own broadcast)
-    setChatMessages((prev) => [...prev.slice(-49), chatMessage]);
-  };
 
   useEffect(() => {
-    if (!containerRef.current || !currentUser) return;
-
-    // Scene setup
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb);
-    sceneRef.current = scene;
-
-    // Camera setup
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-    camera.position.set(0, 1.6, 5);
-    cameraRef.current = camera;
-
-    // Orthographic camera for 2D top-down mode
-    let orthoViewSize = 15; // mutable so scroll wheel can zoom in/out
-    const orthoAspect = window.innerWidth / window.innerHeight;
-    const orthoCamera = new THREE.OrthographicCamera(
-      -orthoViewSize * orthoAspect, orthoViewSize * orthoAspect,
-      orthoViewSize, -orthoViewSize,
-      0.1, 200,
-    );
-    orthoCamera.position.set(camera.position.x, 80, camera.position.z);
-    orthoCamera.up.set(0, 0, -1); // north (-Z) is up on screen
-    orthoCamera.lookAt(camera.position.x, 0, camera.position.z);
-
-    // Renderer setup
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    if (navigator.xr) {
-      renderer.xr.enabled = true;
-    }
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
-    rendererRef.current = renderer;
-    containerRef.current.appendChild(renderer.domElement);
-
-    // Load HDRI skybox for the global lobby
-    let hdriTexture: THREE.DataTexture | null = null;
-    if (officeId === 'global') {
-      const exrLoader = new EXRLoader();
-      exrLoader.load(liliensteinHdriUrl, (texture) => {
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        scene.background = texture;
-        scene.environment = texture;
-        hdriTexture = texture;
-      });
-    }
-
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(5, 10, 5);
-    directionalLight.castShadow = true;
-    scene.add(directionalLight);
-
-    // Build environment
-    const buildEnvironment = () => {
-      // Unknown scene names fall back to the default corporate office
-      const resolvedEnv = ['corporate', 'cabin'].includes(environment) ? environment : 'corporate';
-      if (resolvedEnv === 'corporate') {
-        scene.background = new THREE.Color(0xadc8e0);
-
-        // ── FLOOR (light warm carpet) ──
-        const floor = new THREE.Mesh(
-          new THREE.PlaneGeometry(30, 30),
-          new THREE.MeshStandardMaterial({ color: 0xd4c9b0, roughness: 0.8 })
-        );
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        scene.add(floor);
-
-        // ── CEILING (white grid pattern) ──
-        const ceilCanvas = document.createElement('canvas');
-        ceilCanvas.width = 256; ceilCanvas.height = 256;
-        const cCtx = ceilCanvas.getContext('2d')!;
-        cCtx.fillStyle = '#f4f4f4';
-        cCtx.fillRect(0, 0, 256, 256);
-        cCtx.strokeStyle = '#cccccc';
-        cCtx.lineWidth = 2;
-        for (let ci = 0; ci <= 256; ci += 32) {
-          cCtx.beginPath(); cCtx.moveTo(ci, 0); cCtx.lineTo(ci, 256); cCtx.stroke();
-          cCtx.beginPath(); cCtx.moveTo(0, ci); cCtx.lineTo(256, ci); cCtx.stroke();
-        }
-        const ceilTex = new THREE.CanvasTexture(ceilCanvas);
-        ceilTex.wrapS = THREE.RepeatWrapping;
-        ceilTex.wrapT = THREE.RepeatWrapping;
-        ceilTex.repeat.set(10, 10);
-        const ceiling = new THREE.Mesh(
-          new THREE.PlaneGeometry(30, 30),
-          new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 0.9 })
-        );
-        ceiling.rotation.x = Math.PI / 2;
-        ceiling.position.y = 10;
-        scene.add(ceiling);
-
-        // ── FLOOR-TO-CEILING GLASS WALLS WITH STEEL STUDS ──
-        const glassMat = new THREE.MeshStandardMaterial({
-          color: 0x99ccee, transparent: true, opacity: 0.18,
-          metalness: 0.1, roughness: 0.0, side: THREE.DoubleSide,
-        });
-        const steelMat = new THREE.MeshStandardMaterial({
-          color: 0x607080, metalness: 0.85, roughness: 0.2,
-        });
-        const wallH = 10;
-
-        // Four glass panels
-        const northGlass = new THREE.Mesh(new THREE.BoxGeometry(30, wallH, 0.08), glassMat);
-        northGlass.position.set(0, wallH / 2, -15); scene.add(northGlass);
-        const southGlass = new THREE.Mesh(new THREE.BoxGeometry(30, wallH, 0.08), glassMat);
-        southGlass.position.set(0, wallH / 2, 15); scene.add(southGlass);
-        const eastGlass = new THREE.Mesh(new THREE.BoxGeometry(0.08, wallH, 30), glassMat);
-        eastGlass.position.set(15, wallH / 2, 0); scene.add(eastGlass);
-        const westGlass = new THREE.Mesh(new THREE.BoxGeometry(0.08, wallH, 30), glassMat);
-        westGlass.position.set(-15, wallH / 2, 0); scene.add(westGlass);
-
-        // Steel studs along N/S walls every 3 units
-        const studGeo = new THREE.BoxGeometry(0.1, wallH, 0.1);
-        for (let sx = -15; sx <= 15; sx += 3) {
-          const sn = new THREE.Mesh(studGeo, steelMat);
-          sn.position.set(sx, wallH / 2, -15); scene.add(sn);
-          const ss = new THREE.Mesh(studGeo, steelMat);
-          ss.position.set(sx, wallH / 2, 15); scene.add(ss);
-        }
-        // Steel studs along E/W walls (skip ±15 corners already covered above)
-        const studGeoEW = new THREE.BoxGeometry(0.1, wallH, 0.1);
-        for (let sz = -12; sz <= 12; sz += 3) {
-          const se = new THREE.Mesh(studGeoEW, steelMat);
-          se.position.set(15, wallH / 2, sz); scene.add(se);
-          const sw = new THREE.Mesh(studGeoEW, steelMat);
-          sw.position.set(-15, wallH / 2, sz); scene.add(sw);
-        }
-        // Horizontal top rail
-        const trN = new THREE.Mesh(new THREE.BoxGeometry(30, 0.12, 0.12), steelMat);
-        trN.position.set(0, wallH - 0.06, -15); scene.add(trN);
-        const trS = new THREE.Mesh(new THREE.BoxGeometry(30, 0.12, 0.12), steelMat);
-        trS.position.set(0, wallH - 0.06, 15); scene.add(trS);
-        const trE = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 30), steelMat);
-        trE.position.set(15, wallH - 0.06, 0); scene.add(trE);
-        const trW = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 30), steelMat);
-        trW.position.set(-15, wallH - 0.06, 0); scene.add(trW);
-
-        // ── NYC SKYLINE (buildings visible through floor-to-ceiling windows) ──
-        // Buildings are centered at y = h/2 - 10 so they span above and below the windows,
-        // giving the impression of being on an upper floor of a skyscraper.
-        const bldMatA = new THREE.MeshStandardMaterial({ color: 0x8898aa, metalness: 0.5, roughness: 0.6 });
-        const bldMatB = new THREE.MeshStandardMaterial({ color: 0xa0aabb, metalness: 0.4, roughness: 0.5 });
-        const bldMatC = new THREE.MeshStandardMaterial({ color: 0x778899, metalness: 0.6, roughness: 0.4 });
-        const bldMats = [bldMatA, bldMatB, bldMatC];
-
-        // [x, z, width, height, depth, mat index]
-        const bldgs = [
-          // North skyline
-          [-22, -28, 8, 50, 8, 0], [-14, -24, 6, 34, 6, 1], [-5, -32, 10, 65, 10, 2],
-          [3, -26, 7, 42, 7, 0], [10, -23, 5, 28, 5, 1], [17, -30, 8, 58, 8, 2],
-          [25, -25, 7, 46, 7, 0], [-20, -38, 5, 30, 5, 1], [0, -40, 8, 44, 8, 2],
-          [14, -36, 7, 55, 7, 0], [-10, -22, 4, 38, 4, 1], [22, -35, 6, 50, 6, 2],
-          // South skyline
-          [-20, 27, 7, 48, 7, 1], [-12, 23, 5, 32, 5, 2], [-4, 30, 9, 60, 9, 0],
-          [4, 25, 6, 38, 6, 1], [12, 28, 8, 44, 8, 2], [20, 24, 5, 36, 5, 0],
-          [-16, 37, 6, 40, 6, 1], [6, 35, 7, 55, 7, 2], [26, 32, 5, 42, 5, 0],
-          // East skyline
-          [28, -20, 7, 52, 7, 0], [24, -10, 5, 38, 5, 1], [30, 1, 8, 60, 8, 2],
-          [26, 11, 6, 34, 6, 0], [28, 20, 7, 48, 7, 1], [22, -32, 5, 40, 5, 2],
-          // West skyline
-          [-28, -18, 7, 44, 7, 2], [-24, -6, 5, 30, 5, 0], [-32, 4, 9, 68, 9, 1],
-          [-26, 14, 6, 50, 6, 2], [-30, -28, 8, 42, 8, 0], [-22, 22, 5, 36, 5, 1],
-          // Corner fill
-          [28, -28, 8, 55, 8, 1], [-28, 28, 7, 46, 7, 2],
-          [28, 28, 6, 38, 6, 0], [-28, -28, 9, 62, 9, 1],
-        ];
-        bldgs.forEach(([bx, bz, bw, bh, bd, mi]) => {
-          const bld = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), bldMats[mi]);
-          bld.position.set(bx, bh / 2 - 10, bz);
-          scene.add(bld);
-        });
-
-        // Street far below (visible through lower portion of windows)
-        const streetGround = new THREE.Mesh(
-          new THREE.PlaneGeometry(300, 300),
-          new THREE.MeshStandardMaterial({ color: 0x3a3a44, roughness: 0.95 })
-        );
-        streetGround.rotation.x = -Math.PI / 2;
-        streetGround.position.y = -30;
-        scene.add(streetGround);
-
-        // ── CORNER A: 8 DESKS IN 2 ROWS OF 4 (far-left, x<0, z<0) ──
-        const deskTopMat = new THREE.MeshStandardMaterial({ color: 0xf0ece2, roughness: 0.4 });
-        const deskLegMat = new THREE.MeshStandardMaterial({ color: 0x909090, metalness: 0.7, roughness: 0.3 });
-        const monMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.4 });
-        const chairMat = new THREE.MeshStandardMaterial({ color: 0x263244, roughness: 0.7 });
-
-        const addDesk = (cx: number, cz: number) => {
-          const dH = 0.75;
-          // Desk top
-          const top = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.8), deskTopMat);
-          top.position.set(cx, dH, cz); scene.add(top);
-          // Four legs
-          [[-0.7, -0.35], [0.7, -0.35], [-0.7, 0.35], [0.7, 0.35]].forEach(([dx, dz]) => {
-            const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, dH, 0.05), deskLegMat);
-            leg.position.set(cx + dx, dH / 2, cz + dz); scene.add(leg);
-          });
-          // Monitor (faces -z, person sits at +z side)
-          const mon = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.44, 0.04), monMat);
-          mon.position.set(cx, dH + 0.27, cz - 0.28); scene.add(mon);
-          // Chair (behind desk toward +z)
-          const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.07, 0.55), chairMat);
-          seat.position.set(cx, 0.48, cz + 0.72); scene.add(seat);
-          const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.55, 0.06), chairMat);
-          back.position.set(cx, 0.79, cz + 0.98); scene.add(back);
-        };
-
-        // Row 1 at x=-13, Row 2 at x=-10.5; 4 desks each at z=-13,-11,-9,-7
-        [-13, -11, -9, -7].forEach((dz) => { addDesk(-13, dz); addDesk(-10.5, dz); });
-
-        // ── CORNER B: RESTING AREA — 2 COUCHES + COFFEE TABLE (far-right, x>0, z<0) ──
-        const sofaMat = new THREE.MeshStandardMaterial({ color: 0x7a5c4a, roughness: 0.8 });
-        const cushionMat = new THREE.MeshStandardMaterial({ color: 0x9a7060, roughness: 0.9 });
-        const ctMat = new THREE.MeshStandardMaterial({ color: 0x3a2210, roughness: 0.3 });
-
-        const addSofa = (cx: number, cz: number, backOnNorth: boolean) => {
-          const sW = 2.4;
-          const base = new THREE.Mesh(new THREE.BoxGeometry(sW, 0.45, 0.9), sofaMat);
-          base.position.set(cx, 0.225, cz); scene.add(base);
-          const cushion = new THREE.Mesh(new THREE.BoxGeometry(sW - 0.1, 0.14, 0.8), cushionMat);
-          cushion.position.set(cx, 0.52, cz); scene.add(cushion);
-          const backZ = backOnNorth ? cz - 0.38 : cz + 0.38;
-          const backrest = new THREE.Mesh(new THREE.BoxGeometry(sW, 0.65, 0.18), sofaMat);
-          backrest.position.set(cx, 0.7, backZ); scene.add(backrest);
-          [-(sW / 2 - 0.1), sW / 2 - 0.1].forEach((dx) => {
-            const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.9), sofaMat);
-            arm.position.set(cx + dx, 0.56, cz); scene.add(arm);
-          });
-        };
-
-        addSofa(10, -12.2, true);   // back against north wall, faces south
-        addSofa(10,  -7.8, false);  // back on south side, faces north
-        // Coffee table between the two couches
-        const ctTop = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.06, 0.8), ctMat);
-        ctTop.position.set(10, 0.44, -10); scene.add(ctTop);
-        [[-0.5, -0.32], [0.5, -0.32], [-0.5, 0.32], [0.5, 0.32]].forEach(([dx, dz]) => {
-          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 0.06), ctMat);
-          leg.position.set(10 + dx, 0.22, -10 + dz); scene.add(leg);
-        });
-
-        // ── CORNER C: WATER COOLER + PING PONG TABLE (near-right, x>0, z>0) ──
-        // Water cooler
-        const wcBase = new THREE.Mesh(
-          new THREE.BoxGeometry(0.38, 1.0, 0.32),
-          new THREE.MeshStandardMaterial({ color: 0xe0e0e0, metalness: 0.3, roughness: 0.4 })
-        );
-        wcBase.position.set(13.5, 0.5, 13.5); scene.add(wcBase);
-        const wcJug = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.13, 0.13, 0.38, 16),
-          new THREE.MeshStandardMaterial({ color: 0x80bbff, transparent: true, opacity: 0.75, roughness: 0.1 })
-        );
-        wcJug.position.set(13.5, 1.19, 13.5); scene.add(wcJug);
-
-        // Ping pong table (regulation ~2.74 × 1.525 m, height 0.76 m)
-        const ppX = 9.5, ppZ = 11;
-        const ppTop = new THREE.Mesh(
-          new THREE.BoxGeometry(2.74, 0.05, 1.525),
-          new THREE.MeshStandardMaterial({ color: 0x1a6e1a, roughness: 0.6 })
-        );
-        ppTop.position.set(ppX, 0.76, ppZ); scene.add(ppTop);
-        // Center line
-        const ppLine = new THREE.Mesh(
-          new THREE.BoxGeometry(0.02, 0.002, 1.525),
-          new THREE.MeshStandardMaterial({ color: 0xffffff })
-        );
-        ppLine.position.set(ppX, 0.786, ppZ); scene.add(ppLine);
-        // Net
-        const ppNet = new THREE.Mesh(
-          new THREE.BoxGeometry(2.74, 0.15, 0.015),
-          new THREE.MeshStandardMaterial({ color: 0xf8f8f8, transparent: true, opacity: 0.85 })
-        );
-        ppNet.position.set(ppX, 0.835, ppZ); scene.add(ppNet);
-        // Legs
-        const ppLegM = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.5 });
-        [[-1.3, -0.71], [1.3, -0.71], [-1.3, 0.71], [1.3, 0.71]].forEach(([dx, dz]) => {
-          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.76, 0.05), ppLegM);
-          leg.position.set(ppX + dx, 0.38, ppZ + dz); scene.add(leg);
-        });
-
-        // ── CORNER D: CONFERENCE TABLE + 8 CHAIRS (near-left, x<0, z>0) ──
-        const confTMat = new THREE.MeshStandardMaterial({ color: 0x2c1f0e, roughness: 0.15 });
-        const confCMat = new THREE.MeshStandardMaterial({ color: 0x1a1f2e, roughness: 0.7 });
-        const cfX = -9, cfZ = 10;
-
-        // Table top (5 × 2.5 m)
-        const confTTop = new THREE.Mesh(new THREE.BoxGeometry(5, 0.07, 2.5), confTMat);
-        confTTop.position.set(cfX, 0.75, cfZ); scene.add(confTTop);
-        [[-1.8, -0.9], [1.8, -0.9], [-1.8, 0.9], [1.8, 0.9]].forEach(([dx, dz]) => {
-          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.75, 0.1), confTMat);
-          leg.position.set(cfX + dx, 0.375, cfZ + dz); scene.add(leg);
-        });
-
-        // bdx/bdz = direction from seat to backrest; sideways = backrest faces Z instead of X
-        const addConfChair = (cx: number, cz: number, bdx: number, bdz: number, sideways = false) => {
-          const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.07, 0.55), confCMat);
-          seat.position.set(cx, 0.5, cz); scene.add(seat);
-          const back = new THREE.Mesh(
-            sideways ? new THREE.BoxGeometry(0.07, 0.55, 0.5) : new THREE.BoxGeometry(0.5, 0.55, 0.07),
-            confCMat
-          );
-          back.position.set(cx + bdx, 0.79, cz + bdz); scene.add(back);
-        };
-
-        // 3 chairs on south side (backs toward south, +z)
-        [cfX - 1.5, cfX, cfX + 1.5].forEach((x) => addConfChair(x, cfZ + 1.7, 0, 0.3));
-        // 3 chairs on north side (backs toward north, -z)
-        [cfX - 1.5, cfX, cfX + 1.5].forEach((x) => addConfChair(x, cfZ - 1.7, 0, -0.3));
-        // 1 chair on west end (back toward west, -x)
-        addConfChair(cfX - 2.8, cfZ, -0.3, 0, true);
-        // 1 chair on east end (back toward east, +x)
-        addConfChair(cfX + 2.8, cfZ, 0.3, 0, true);
-
-      } else if (resolvedEnv === 'cabin') {
-        scene.background = new THREE.Color(0x87a96b);
-
-        const floor = new THREE.Mesh(
-          new THREE.PlaneGeometry(25, 25),
-          new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.9 })
-        );
-        floor.rotation.x = -Math.PI / 2;
-        scene.add(floor);
-
-        const wallMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.8 });
-        [-12.5, 12.5].forEach((x) => {
-          const wall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 6, 25), wallMat);
-          wall.position.set(x, 3, 0);
-          scene.add(wall);
-        });
-        [-12.5, 12.5].forEach((z) => {
-          const wall = new THREE.Mesh(new THREE.BoxGeometry(25, 6, 0.5), wallMat);
-          wall.position.set(0, 3, z);
-          scene.add(wall);
-        });
-
-        const ceiling = new THREE.Mesh(
-          new THREE.PlaneGeometry(25, 25),
-          new THREE.MeshStandardMaterial({ color: 0x654321 })
-        );
-        ceiling.rotation.x = Math.PI / 2;
-        ceiling.position.y = 6;
-        scene.add(ceiling);
-
-        const fireplace = new THREE.Mesh(
-          new THREE.BoxGeometry(3, 3, 1),
-          new THREE.MeshStandardMaterial({ color: 0x696969 })
-        );
-        fireplace.position.set(0, 1.5, -12);
-        scene.add(fireplace);
-
-        const fire = new THREE.Mesh(
-          new THREE.BoxGeometry(1, 0.8, 0.5),
-          new THREE.MeshStandardMaterial({ color: 0xff4500, emissive: 0xff4500, emissiveIntensity: 1 })
-        );
-        fire.position.set(0, 0.8, -11.5);
-        scene.add(fire);
-
-        const desk = new THREE.Mesh(
-          new THREE.BoxGeometry(2.5, 0.15, 1.2),
-          new THREE.MeshStandardMaterial({ color: 0x8b4513 })
-        );
-        desk.position.set(-8, 0.75, -5);
-        scene.add(desk);
-
-        const chair = new THREE.Mesh(
-          new THREE.BoxGeometry(0.6, 0.6, 0.6),
-          new THREE.MeshStandardMaterial({ color: 0x654321 })
-        );
-        chair.position.set(-8, 0.5, -3.5);
-        scene.add(chair);
-
-        const shelf = new THREE.Mesh(
-          new THREE.BoxGeometry(2, 4, 0.4),
-          new THREE.MeshStandardMaterial({ color: 0x8b4513 })
-        );
-        shelf.position.set(10, 2, -10);
-        scene.add(shelf);
-
-        for (let i = 0; i < 3; i++) {
-          for (let j = 0; j < 5; j++) {
-            const book = new THREE.Mesh(
-              new THREE.BoxGeometry(0.15, 0.3, 0.2),
-              new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff })
-            );
-            book.position.set(9.8 + j * 0.3 - 0.6, 0.5 + i * 1.2, -10);
-            scene.add(book);
-          }
-        }
-
-        const rug = new THREE.Mesh(
-          new THREE.PlaneGeometry(6, 4),
-          new THREE.MeshStandardMaterial({ color: 0x8b0000 })
-        );
-        rug.rotation.x = -Math.PI / 2;
-        rug.position.set(0, 0.01, 0);
-        scene.add(rug);
-
-        const win = new THREE.Mesh(
-          new THREE.PlaneGeometry(4, 2.5),
-          new THREE.MeshStandardMaterial({ color: 0x87ceeb, transparent: true, opacity: 0.7 })
-        );
-        win.position.set(0, 3, 12.4);
-        scene.add(win);
-
-      } else {
-        // Coffee shop
-        scene.background = new THREE.Color(0xf5deb3);
-
-        const floor = new THREE.Mesh(
-          new THREE.PlaneGeometry(30, 30),
-          new THREE.MeshStandardMaterial({ color: 0xdeb887, roughness: 0.8 })
-        );
-        floor.rotation.x = -Math.PI / 2;
-        scene.add(floor);
-
-        const brickWall = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9 });
-        const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 8, 0.3), brickWall);
-        backWall.position.set(0, 4, -15);
-        scene.add(backWall);
-        [-15, 15].forEach((x) => {
-          const wall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 8, 30), brickWall);
-          wall.position.set(x, 4, 0);
-          scene.add(wall);
-        });
-
-        const counter = new THREE.Mesh(
-          new THREE.BoxGeometry(8, 1, 1.5),
-          new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.3 })
-        );
-        counter.position.set(-8, 0.5, -10);
-        scene.add(counter);
-
-        const machine = new THREE.Mesh(
-          new THREE.BoxGeometry(1, 1, 0.8),
-          new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.8 })
-        );
-        machine.position.set(-10, 1.5, -10);
-        scene.add(machine);
-
-        [[-5, 0], [5, 0], [0, 8]].forEach(([x, z]) => {
-          const tableTop = new THREE.Mesh(
-            new THREE.CylinderGeometry(1, 1, 0.05, 32),
-            new THREE.MeshStandardMaterial({ color: 0x654321 })
-          );
-          tableTop.position.set(x, 0.75, z);
-          scene.add(tableTop);
-
-          const tableLeg = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.1, 0.15, 0.75, 16),
-            new THREE.MeshStandardMaterial({ color: 0x3a3a3a })
-          );
-          tableLeg.position.set(x, 0.375, z);
-          scene.add(tableLeg);
-        });
-
-        [[-5, -1.5], [-5, 1.5], [5, -1.5], [5, 1.5], [-1.5, 8], [1.5, 8]].forEach(([x, z]) => {
-          const chairSeat = new THREE.Mesh(
-            new THREE.BoxGeometry(0.5, 0.1, 0.5),
-            new THREE.MeshStandardMaterial({ color: 0x654321 })
-          );
-          chairSeat.position.set(x, 0.5, z);
-          scene.add(chairSeat);
-
-          const chairBack = new THREE.Mesh(
-            new THREE.BoxGeometry(0.5, 0.6, 0.1),
-            new THREE.MeshStandardMaterial({ color: 0x654321 })
-          );
-          chairBack.position.set(x, 0.8, z - 0.2);
-          scene.add(chairBack);
-        });
-
-        [[8, -8], [-8, 8]].forEach(([x, z]) => {
-          const chain = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.02, 0.02, 2, 8),
-            new THREE.MeshStandardMaterial({ color: 0x666666 })
-          );
-          chain.position.set(x, 6, z);
-          scene.add(chain);
-
-          const planter = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.3, 0.2, 0.4, 16),
-            new THREE.MeshStandardMaterial({ color: 0x8b4513 })
-          );
-          planter.position.set(x, 5, z);
-          scene.add(planter);
-
-          const leaves = new THREE.Mesh(
-            new THREE.SphereGeometry(0.5, 8, 8),
-            new THREE.MeshStandardMaterial({ color: 0x228b22 })
-          );
-          leaves.position.set(x, 5.3, z);
-          scene.add(leaves);
-        });
-
-        const chalkboard = new THREE.Mesh(
-          new THREE.PlaneGeometry(4, 2),
-          new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
-        );
-        chalkboard.position.set(0, 4, -14.8);
-        scene.add(chalkboard);
-
-        [[-5, 0], [5, 0], [0, 8]].forEach(([x, z]) => {
-          const cord = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.01, 0.01, 2, 8),
-            new THREE.MeshStandardMaterial({ color: 0x333333 })
-          );
-          cord.position.set(x, 6.5, z);
-          scene.add(cord);
-
-          const bulb = new THREE.Mesh(
-            new THREE.SphereGeometry(0.2, 16, 16),
-            new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffaa00, emissiveIntensity: 0.8 })
-          );
-          bulb.position.set(x, 5.5, z);
-          scene.add(bulb);
-        });
-      }
-    };
-
-    if (officeId === 'global') {
-      // For the global lobby use the HDRI skybox — just add a ground plane so avatars have something to stand on
-      const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(200, 200),
-        new THREE.MeshStandardMaterial({ color: 0x4a7c59, roughness: 1, metalness: 0 })
-      );
-      ground.rotation.x = -Math.PI / 2;
-      ground.receiveShadow = true;
-      scene.add(ground);
-    } else {
-      buildEnvironment();
-    }
-
-    // Local user bubble sphere
-    const localSphere = createBubbleSphere(scene, bubblePrefsRef.current.radius, hexStringToInt(bubblePrefsRef.current.idleColor));
-    localSphere.position.set(camera.position.x, camera.position.y, camera.position.z);
-    localBubbleSphereRef.current = localSphere;
-
-    // Self marker: visible only in 2D top-down mode to show the player's own position/name
-    {
-      const selfMarker = new THREE.Group();
-
-      // Disc representing self (white so it stands out from other avatars)
-      const disc = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.3, 0.3, 0.08, 16),
-        new THREE.MeshStandardMaterial({ color: 0xffffff }),
-      );
-      disc.position.y = 0.04;
-      selfMarker.add(disc);
-
-      // Small forward-arrow cone (points in -Z = north)
-      const arrow = new THREE.Mesh(
-        new THREE.ConeGeometry(0.1, 0.28, 3),
-        new THREE.MeshStandardMaterial({ color: 0xffffff }),
-      );
-      arrow.rotation.x = Math.PI / 2;
-      arrow.position.set(0, 0.1, -0.4);
-      selfMarker.add(arrow);
-
-      // 2D name label with "(You)" indicator
-      const selfCanvas = document.createElement('canvas');
-      const selfCtx = selfCanvas.getContext('2d')!;
-      selfCanvas.width = 640;
-      selfCanvas.height = 128;
-      selfCtx.fillStyle = 'rgba(255,255,255,0.92)';
-      selfCtx.fillRect(0, 0, 640, 128);
-      selfCtx.font = 'bold 56px Arial';
-      selfCtx.fillStyle = '#111111';
-      selfCtx.textAlign = 'center';
-      selfCtx.fillText(`${currentUser.name || 'You'} (You)`, 320, 88);
-      const selfSprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(selfCanvas) }),
-      );
-      selfSprite.scale.set(4, 0.8, 4);
-      selfSprite.position.y = 1.8;
-      selfMarker.add(selfSprite);
-
-      selfMarker.position.set(camera.position.x, 0, camera.position.z);
-      selfMarker.visible = false; // shown only in 2D mode
-      scene.add(selfMarker);
-      selfMarkerRef.current = selfMarker;
-    }
-
-    // Local avatar for third-person view — hidden in first-person
-    {
-      const localAvatarData: AvatarData = {
-        id: currentUser.id,
-        name: currentUser.name || 'You',
-        position: { x: camera.position.x, y: 0, z: camera.position.z },
-        rotation: { x: 0, y: 0, z: 0 },
-        customization: avatarCustomizationRef.current,
-      };
-      const localAvatar = createAvatar(scene, localAvatarData, (animState) => {
-        localAvatarAnimationRef.current = animState;
-      });
-      localAvatar.visible = false;
-      localAvatarRef.current = localAvatar;
-    }
-
-    // Initialize player position from camera
-    playerPositionRef.current.set(camera.position.x, 0, camera.position.z);
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    const renderer = rendererRef.current;
+    const orthoCamera = orthoCameraRef.current;
+    if (!scene || !camera || !renderer || !orthoCamera || !currentUser) return;
 
     // Movement
     const moveSpeed = 0.1;
-    const keys = keysRef.current;
     let activeParticles: Particle[] = [];
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (chatVisibleRef.current) {
-        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'v', '?'];
-        if (navigationKeys.includes(key)) return;
-      }
-      // Emoji confetti (keys 1-5) — skip when typing in chat
-      if (!chatVisibleRef.current && event.key in EMOJI_MAP) {
-        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), event.key));
+
+    // Register keyboard, mouse, touch, and scroll input handlers
+    const cleanupInputListeners = registerInputListeners(
+      renderer, camera, scene, orthoCamera, orthoViewSizeRef,
+      (emojiKey: string) => {
+        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey));
         if (channelRef.current && channelSubscribedRef.current) {
           channelRef.current.send({
             type: 'broadcast', event: 'confetti',
             payload: {
-              userId: currentUser.id, key: event.key,
+              userId: currentUser.id, key: emojiKey,
               position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
             },
           });
         }
-      }
-      if (key === 'c' && !chatVisibleRef.current) {
-        setCameraMode(prev => {
-          const modes: CameraMode[] = ['first-person', 'third-person-behind', 'third-person-front'];
-          const next = modes[(modes.indexOf(prev) + 1) % modes.length];
-          cameraModeRef.current = next;
-          // When returning to first-person, snap camera to player position
-          if (next === 'first-person' && cameraRef.current) {
-            const pp = playerPositionRef.current;
-            cameraRef.current.position.set(pp.x, 1.6, pp.z);
-            cameraRef.current.rotation.set(cameraPitch, cameraYaw, 0, 'YXZ');
-          }
-          return next;
-        });
-        return;
-      }
-      if (key === 'v') {
-        setIs2DMode(v => !v);
-        return;
-      }
-      if (key === '?') {
-        setShowControls(v => !v);
-        return;
-      }
-      keys[key] = true;
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (chatVisibleRef.current) {
-        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
-        if (navigationKeys.includes(key)) return;
-      }
-      keys[key] = false;
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    // Mouse control mode (desktop) — click to lock pointer, Escape to release.
-    // When WebXR is presenting, the XR session drives head orientation; mouse lock is inactive.
-    //
-    // Track pitch and yaw independently and reconstruct the rotation each frame
-    // using 'YXZ' order so roll is always zero (standard FPS camera technique).
-    let cameraPitch = 0; // radians — vertical look (X axis)
-    let cameraYaw = 0;   // radians — horizontal look (Y axis)
-    camera.rotation.order = 'YXZ';
-
-    const handleCanvasClick = () => {
-      // Don't fight device orientation with pointer lock on touch devices
-      // Also skip in 2D mode — no mouse look there
-      if (!renderer.xr.isPresenting && !motionActiveRef.current && !is2DModeRef.current) {
-        renderer.domElement.requestPointerLock();
-      }
-    };
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (is2DModeRef.current) return;
-      if (document.pointerLockElement === renderer.domElement && !renderer.xr.isPresenting) {
-        cameraYaw   -= (event.movementX || 0) * 0.002;
-        cameraPitch -= (event.movementY || 0) * 0.002;
-        cameraPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraPitch));
-        camera.rotation.set(cameraPitch, cameraYaw, 0, 'YXZ');
-      }
-    };
-
-    const handlePointerLockChange = () => {
-      setMouseLockActive(document.pointerLockElement === renderer.domElement);
-    };
-
-    renderer.domElement.addEventListener('click', handleCanvasClick);
-    renderer.domElement.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('pointerlockchange', handlePointerLockChange);
-
-    // Touch controls
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let isTouching = false;
-
-    const handleTouchStart = (event: TouchEvent) => {
-      if (event.touches.length === 1) {
-        isTouching = true;
-        touchStartX = event.touches[0].clientX;
-        touchStartY = event.touches[0].clientY;
-      }
-    };
-
-    const handleTouchMove = (event: TouchEvent) => {
-      // Device orientation handles look direction on mobile — skip touch drag
-      // Also skip in 2D mode — no look controls there
-      if (motionActiveRef.current || is2DModeRef.current) return;
-      if (isTouching && event.touches.length === 1) {
-        const deltaX = event.touches[0].clientX - touchStartX;
-        const deltaY = event.touches[0].clientY - touchStartY;
-        camera.rotation.y -= deltaX * 0.002;
-        camera.rotation.x -= deltaY * 0.002;
-        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
-        touchStartX = event.touches[0].clientX;
-        touchStartY = event.touches[0].clientY;
-      }
-    };
-
-    const handleTouchEnd = () => { isTouching = false; };
-
-    renderer.domElement.addEventListener('touchstart', handleTouchStart, { passive: true });
-    renderer.domElement.addEventListener('touchmove', handleTouchMove, { passive: true });
-    renderer.domElement.addEventListener('touchend', handleTouchEnd);
-
-    const handleResize = () => {
-      const container = containerRef.current;
-      const w = container ? container.clientWidth : window.innerWidth;
-      const h = container ? container.clientHeight : window.innerHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      const newAspect = w / h;
-      orthoCamera.left = -orthoViewSize * newAspect;
-      orthoCamera.right = orthoViewSize * newAspect;
-      orthoCamera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-    };
-    window.addEventListener('resize', handleResize);
-
-    // Scroll wheel zoom for 2D mode only
-    const handleWheel = (event: WheelEvent) => {
-      if (!is2DModeRef.current) return;
-      event.preventDefault();
-      const zoomFactor = 1 + event.deltaY * 0.001;
-      orthoViewSize = Math.max(3, Math.min(40, orthoViewSize * zoomFactor));
-      const aspect = window.innerWidth / window.innerHeight;
-      orthoCamera.left = -orthoViewSize * aspect;
-      orthoCamera.right = orthoViewSize * aspect;
-      orthoCamera.top = orthoViewSize;
-      orthoCamera.bottom = -orthoViewSize;
-      orthoCamera.updateProjectionMatrix();
-    };
-    renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
-
-    // Supabase Realtime channel
-    const channelName = `office:${officeId}`;
-    const channel = supabase.channel(channelName, {
-      config: {
-        presence: { key: currentUser.id },
-        broadcast: { ack: false, self: false },
       },
-    });
+    );
 
-    channelRef.current = channel;
+    // Supabase Realtime channel — created by useRealtimeChannel, accessed via ref
+    const channel = channelRef.current;
+    if (!channel) return;
 
-    const rebuildOnlineUsers = () => {
-      const active = [...presenceDataRef.current.values()].map(p => ({
-        id: p.id,
-        name: p.name,
-        email: p.email ?? null,
-        status: (p.status ?? 'active') as 'active' | 'inactive' | 'offline',
-      }));
-      const offline = [...recentlyLeftRef.current.values()].map(u => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        status: 'offline' as const,
-      }));
-      setOnlineUsers([...active, ...offline]);
-    };
+    // Register presence, chat, screen sharing, and other broadcast listeners
+    registerPresenceListeners(channel, scene);
 
-    // Use latest broadcast position (if fresh) instead of stale presence position
-    // when creating avatars from presence events. This prevents the visual glitch
-    // where an avatar briefly appears at its old/join position then teleports.
-    const freshPositionData = (p: PresenceEntry): PresenceEntry => {
-      const recent = lastBroadcastPositionRef.current.get(p.id);
-      if (recent && Date.now() - recent.time < 15000) {
-        return {
-          ...p,
-          position: { x: recent.position.x, y: p.position?.y ?? 1.6, z: recent.position.z },
-          rotation: { ...(p.rotation ?? { x: 0, y: 0, z: 0 }), y: recent.rotationY },
-        };
-      }
-      return p;
-    };
-
-    // Presence: sync existing users
-    channel.on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState<PresenceEntry>();
-      const presentIds = new Set<string>();
-
-      Object.values(state).forEach((presences) => {
-        presences.forEach((presence) => {
-          presentIds.add(presence.id);
-          presenceDataRef.current.set(presence.id, presence);
-          recentlyLeftRef.current.delete(presence.id);
-          if (presence.id !== currentUser.id && !avatarsRef.current.has(presence.id)) {
-            const fresh = freshPositionData(presence);
-            const pending = pendingAvatarUpdatesRef.current.get(presence.id);
-            const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh, (animState) => {
-              if (animState) avatarAnimationsRef.current.set(presence.id, animState);
-            });
-            avatarsRef.current.set(presence.id, avatar);
-            if (pending) pendingAvatarUpdatesRef.current.delete(presence.id);
-            const rPrefs = remoteBubblePrefsRef.current.get(presence.id);
-            const sphere = createBubbleSphere(scene, rPrefs?.radius ?? bubblePrefsRef.current.radius, rPrefs ? hexStringToInt(rPrefs.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
-            sphere.position.copy(avatar.position);
-            bubbleSpheresRef.current.set(presence.id, sphere);
-            // Seed proximity target from presence so the user is immediately
-            // visible to proximity detection instead of waiting for a broadcast.
-            if (fresh.position && !avatarTargetsRef.current.has(presence.id)) {
-              avatarTargetsRef.current.set(presence.id, {
-                position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
-                rotationY: fresh.rotation?.y ?? 0,
-              });
-              lastSeenAt.current.set(presence.id, Date.now());
-            }
-          }
-        });
-      });
-
-      // Remove avatars and spheres for users who left
-      avatarsRef.current.forEach((_avatar, id) => {
-        if (!presentIds.has(id)) {
-          const anim = avatarAnimationsRef.current.get(id);
-          if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(id); }
-          avatarPrevPositionsRef.current.delete(id);
-          scene.remove(avatarsRef.current.get(id)!);
-          avatarsRef.current.delete(id);
-          avatarTargetsRef.current.delete(id);
-          lastSeenAt.current.delete(id);
-          const sphere = bubbleSpheresRef.current.get(id);
-          if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
-          presenceDataRef.current.delete(id);
-        }
-      });
-
-      rebuildOnlineUsers();
-    });
-
-    // Presence: user joined
-    channel.on('presence', { event: 'join' }, ({ newPresences }) => {
-      newPresences.forEach((presence) => {
-        const p = presence as unknown as PresenceEntry;
-        presenceDataRef.current.set(p.id, p);
-        recentlyLeftRef.current.delete(p.id);
-        if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
-          const fresh = freshPositionData(p);
-          const pending = pendingAvatarUpdatesRef.current.get(p.id);
-          const avatar = createAvatar(scene, pending ? { ...fresh, customization: pending } : fresh, (animState) => {
-            if (animState) avatarAnimationsRef.current.set(p.id, animState);
-          });
-          avatarsRef.current.set(p.id, avatar);
-          if (pending) pendingAvatarUpdatesRef.current.delete(p.id);
-          const rPrefs2 = remoteBubblePrefsRef.current.get(p.id);
-          const sphere = createBubbleSphere(scene, rPrefs2?.radius ?? bubblePrefsRef.current.radius, rPrefs2 ? hexStringToInt(rPrefs2.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
-          sphere.position.copy(avatar.position);
-          bubbleSpheresRef.current.set(p.id, sphere);
-          if (fresh.position && !avatarTargetsRef.current.has(p.id)) {
-            avatarTargetsRef.current.set(p.id, {
-              position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
-              rotationY: fresh.rotation?.y ?? 0,
-            });
-            lastSeenAt.current.set(p.id, Date.now());
-          }
-        }
-      });
-      rebuildOnlineUsers();
-    });
-
-    // Presence: user left
-    channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
-      leftPresences.forEach((presence) => {
-        const p = presence as unknown as PresenceEntry;
-        // Stop following this user if we were
-        if (followingUserIdRef.current === p.id) setFollowingUserId(null);
-        // Clean up visual avatar, animation, and sphere if they still exist
-        const anim = avatarAnimationsRef.current.get(p.id);
-        if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(p.id); }
-        avatarPrevPositionsRef.current.delete(p.id);
-        const avatar = avatarsRef.current.get(p.id);
-        if (avatar) { scene.remove(avatar); avatarsRef.current.delete(p.id); }
-        const sphere = bubbleSpheresRef.current.get(p.id);
-        if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(p.id); }
-        // Always clean up all tracking data — the avatar may have already been
-        // removed by stale detection while the user was backgrounded.
-        avatarTargetsRef.current.delete(p.id);
-        lastSeenAt.current.delete(p.id);
-        lastBroadcastPositionRef.current.delete(p.id);
-        remoteBubblePrefsRef.current.delete(p.id);
-        const hadData = presenceDataRef.current.has(p.id);
-        presenceDataRef.current.delete(p.id);
-        if (avatar || hadData) {
-          recentlyLeftRef.current.set(p.id, { id: p.id, name: p.name, email: p.email ?? null, leftAt: Date.now() });
-          rebuildOnlineUsers();
-        }
-      });
-    });
-
-    // Broadcast: position updates — store as interpolation targets, smoothed each frame
-    channel.on('broadcast', { event: 'position' }, ({ payload }) => {
-      const { userId, position, rotation } = payload as {
-        userId: string;
-        position: { x: number; y: number; z: number };
-        rotation: { x: number; y: number; z: number };
-      };
-      // Record position update for network stats tracking
-      recordPositionUpdateRef.current(userId);
-      // Accept updates from any known user (incl. those whose avatar was removed
-      // as stale but whose Supabase presence is still active).
-      if (presenceDataRef.current.has(userId)) {
-        // Only update the interpolation target when position changed meaningfully.
-        // Heartbeat broadcasts repeat the same position every 2 s; without this
-        // guard the lerp restarts each time, causing visible micro-jitter.
-        const newPos = new THREE.Vector3(position.x, 0, position.z);
-        const existing = avatarTargetsRef.current.get(userId);
-        if (!existing || existing.position.distanceToSquared(newPos) > 0.0001
-            || Math.abs(existing.rotationY - rotation.y) > 0.01) {
-          if (!existing) {
-            // User appearing after stale deletion — snap avatar to avoid a lerp jump
-            const avatar = avatarsRef.current.get(userId);
-            if (avatar) avatar.position.copy(newPos);
-          }
-          avatarTargetsRef.current.set(userId, {
-            position: newPos,
-            rotationY: rotation.y,
-          });
-        }
-        lastSeenAt.current.set(userId, Date.now());
-        // Cache the latest broadcast position so presence-based avatar creation
-        // can use a fresh position instead of the stale one in Supabase presence.
-        lastBroadcastPositionRef.current.set(userId, {
-          position: newPos.clone(),
-          rotationY: rotation.y,
-          time: Date.now(),
-        });
-
-        // When our animation loop is throttled (tab hidden), run a proximity
-        // check here so voice chat can start/stop while we're in the background.
-        if (document.visibilityState === 'hidden' && cameraRef.current) {
-          const camPos = cameraRef.current.position;
-          const newNearby = new Set<string>();
-          avatarTargetsRef.current.forEach((target, uid) => {
-            const dx = camPos.x - target.position.x;
-            const dz = camPos.z - target.position.z;
-            if (Math.sqrt(dx * dx + dz * dz) < bubblePrefsRef.current.radius * 2) {
-              newNearby.add(uid);
-            }
-          });
-          const prevNearby = nearbyUserIdsRef.current;
-          const setChanged =
-            newNearby.size !== prevNearby.size ||
-            [...newNearby].some(id => !prevNearby.has(id)) ||
-            [...prevNearby].some(id => !newNearby.has(id));
-          if (setChanged) {
-            nearbyUserIdsRef.current = newNearby;
-            handleProximityChange(newNearby);
-          }
-        }
-      }
-    });
-
-    // Broadcast: avatar customization updates
-    channel.on('broadcast', { event: 'avatar-update' }, ({ payload }) => {
-      const { userId, customization } = payload as { userId: string; customization: AvatarCustomization };
-      const existingAvatar = avatarsRef.current.get(userId);
-      if (existingAvatar) {
-        const oldAnim = avatarAnimationsRef.current.get(userId);
-        if (oldAnim) { oldAnim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(userId); }
-        avatarPrevPositionsRef.current.delete(userId);
-        scene.remove(existingAvatar);
-        const oldData = existingAvatar.userData as AvatarData;
-        const newAvatar = createAvatar(scene, {
-          ...oldData,
-          customization,
-        }, (animState) => {
-          if (animState) avatarAnimationsRef.current.set(userId, animState);
-        });
-        avatarsRef.current.set(userId, newAvatar);
-        pendingAvatarUpdatesRef.current.delete(userId);
-      } else {
-        // Avatar not yet created (e.g., position update hasn't arrived yet).
-        // Store the customization and apply it when the avatar is created.
-        pendingAvatarUpdatesRef.current.set(userId, customization);
-      }
-    });
-
-    // Broadcast: chat messages
-    channel.on('broadcast', { event: 'chat' }, ({ payload }) => {
-      const { message } = payload as { message: ChatMessage };
-      if (message.userId !== currentUserRef.current?.id) {
-        setChatMessages((prev) => [...prev.slice(-49), message]);
-      }
-    });
+    // Broadcast: chat messages — registered by useChat hook
+    registerChatListener(channel);
 
     // Broadcast: targeted wave — play chime only for the recipient
     channel.on('broadcast', { event: 'wave' }, ({ payload }) => {
@@ -1763,89 +417,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       }
     });
 
-    // Broadcast: bubble preferences from other users
-    channel.on('broadcast', { event: 'bubble-prefs' }, ({ payload }) => {
-      const { userId, prefs } = payload as { userId: string; prefs: BubblePreferences };
-      remoteBubblePrefsRef.current.set(userId, prefs);
-      const sphere = bubbleSpheresRef.current.get(userId);
-      if (sphere) {
-        sphere.geometry.dispose();
-        sphere.geometry = new THREE.SphereGeometry(prefs.radius, 24, 24);
-        if (!jitsiRoomRef.current) {
-          (sphere.material as THREE.MeshStandardMaterial).color.setHex(hexStringToInt(prefs.idleColor));
-        }
-      }
-    });
-
-    // Broadcast: screen sharing — WebRTC signaling
-    channel.on('broadcast', { event: 'screen-offer' }, ({ payload }) => {
-      const { from, to, sdp } = payload as { from: string; to: string; sdp: string };
-      if (to !== currentUser.id) return;
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-      screenPeerConnsRef.current.set(`viewer-${from}`, pc);
-      pc.onicecandidate = ({ candidate }) => {
-        if (!candidate) return;
-        channelRef.current?.send({
-          type: 'broadcast', event: 'screen-ice',
-          payload: { from: currentUser.id, to: from, candidate: candidate.toJSON() },
-        });
-      };
-      pc.ontrack = ({ streams }) => {
-        const stream = streams[0];
-        if (!stream) return;
-        const sharerName = presenceDataRef.current.get(from)?.name || 'Someone';
-        setScreenShares(prev => new Map(prev).set(from, { stream, name: sharerName }));
-        setActiveShareId(prev => prev ?? from);
-      };
-      pc.setRemoteDescription({ type: 'offer', sdp })
-        .then(() => {
-          // Flush any ICE candidates that arrived before the remote description was set
-          const queued = pendingIceCandidatesRef.current.get(from) ?? [];
-          pendingIceCandidatesRef.current.delete(from);
-          return Promise.all([
-            pc.createAnswer(),
-            ...queued.map(c => pc.addIceCandidate(new RTCIceCandidate(c)).catch(console.error)),
-          ]);
-        })
-        .then(([answer]) => pc.setLocalDescription(answer as RTCSessionDescriptionInit).then(() => answer))
-        .then(answer => {
-          channelRef.current?.send({
-            type: 'broadcast', event: 'screen-answer',
-            payload: { from: currentUser.id, to: from, sdp: (answer as RTCSessionDescriptionInit).sdp },
-          });
-        })
-        .catch(err => console.error('[ScreenShare] answer failed:', err));
-    });
-
-    channel.on('broadcast', { event: 'screen-answer' }, ({ payload }) => {
-      const { from, to, sdp } = payload as { from: string; to: string; sdp: string };
-      if (to !== currentUser.id) return;
-      const pc = screenPeerConnsRef.current.get(`sharer-${from}`);
-      if (pc) pc.setRemoteDescription({ type: 'answer', sdp }).catch(console.error);
-    });
-
-    channel.on('broadcast', { event: 'screen-ice' }, ({ payload }) => {
-      const { from, to, candidate } = payload as { from: string; to: string; candidate: RTCIceCandidateInit };
-      if (to !== currentUser.id) return;
-      const pc = screenPeerConnsRef.current.get(`sharer-${from}`)
-             ?? screenPeerConnsRef.current.get(`viewer-${from}`);
-      if (!pc) return;
-      if (pc.remoteDescription) {
-        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
-      } else {
-        // Remote description not set yet — queue and flush in the offer/answer handler
-        const q = pendingIceCandidatesRef.current.get(from) ?? [];
-        q.push(candidate);
-        pendingIceCandidatesRef.current.set(from, q);
-      }
-    });
-
-    channel.on('broadcast', { event: 'screen-stop' }, ({ payload }) => {
-      const { userId } = payload as { userId: string };
-      setScreenShares(prev => { const m = new Map(prev); m.delete(userId); return m; });
-      setActiveShareId(prev => prev === userId ? null : prev);
-      closeViewerPeerConn(userId);
-    });
+    // Broadcast: screen sharing — registered by useScreenSharing hook
+    registerScreenListeners(channel, currentUser.id);
 
     // Broadcast: room environment changes — update scene for all connected users
     channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
@@ -1858,527 +431,38 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     channel.subscribe(async (status) => {
       channelSubscribedRef.current = status === 'SUBSCRIBED';
       if (status === 'SUBSCRIBED') {
-        // On reconnect myPresenceRef already holds the latest state (position, jitsiRoom, etc.).
-        // Re-use it so we don't reset position or Jitsi room on a transient disconnect.
-        // Always set status to 'active' on (re)connect — if we're subscribing, the tab is open.
-        const currentStatus = document.visibilityState === 'visible' ? 'active' : 'inactive';
-        const presence: PresenceEntry = myPresenceRef.current
-          ? { ...myPresenceRef.current, status: currentStatus }
-          : {
-              id: currentUser.id,
-              name: currentUser.name || 'User',
-              email: user?.email ?? null,
-              image: user?.image || null,
-              position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-              rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z },
-              customization: avatarCustomizationRef.current,
-              jitsiRoom: null,
-              status: currentStatus,
-            };
-        myPresenceRef.current = presence;
-        await channel.track(presence);
-
-        // Broadcast our bubble preferences so other users see our sphere size/color
-        channel.send({
-          type: 'broadcast', event: 'bubble-prefs',
-          payload: { userId: currentUser.id, prefs: bubblePrefsRef.current },
-        });
-
-        // Re-sync presence state to reconcile any join/leave events missed while disconnected.
-        const state = channel.presenceState<PresenceEntry>();
-        const presentIds = new Set<string>();
-        Object.values(state).forEach((presences) => {
-          presences.forEach((p) => {
-            presentIds.add(p.id);
-            presenceDataRef.current.set(p.id, p);
-            recentlyLeftRef.current.delete(p.id);
-            if (p.id !== currentUser.id && !avatarsRef.current.has(p.id)) {
-              const fresh = freshPositionData(p);
-              const avatar = createAvatar(scene, fresh, (animState) => {
-                if (animState) avatarAnimationsRef.current.set(p.id, animState);
-              });
-              avatarsRef.current.set(p.id, avatar);
-              const rPrefs3 = remoteBubblePrefsRef.current.get(p.id);
-              const sphere = createBubbleSphere(scene, rPrefs3?.radius ?? bubblePrefsRef.current.radius, rPrefs3 ? hexStringToInt(rPrefs3.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor));
-              sphere.position.copy(avatar.position);
-              bubbleSpheresRef.current.set(p.id, sphere);
-              if (fresh.position && !avatarTargetsRef.current.has(p.id)) {
-                avatarTargetsRef.current.set(p.id, {
-                  position: new THREE.Vector3(fresh.position.x, 0, fresh.position.z),
-                  rotationY: fresh.rotation?.y ?? 0,
-                });
-                lastSeenAt.current.set(p.id, Date.now());
-              }
-            }
-          });
-        });
-        avatarsRef.current.forEach((_, id) => {
-          if (!presentIds.has(id)) {
-            const anim = avatarAnimationsRef.current.get(id);
-            if (anim) { anim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(id); }
-            avatarPrevPositionsRef.current.delete(id);
-            scene.remove(avatarsRef.current.get(id)!);
-            avatarsRef.current.delete(id);
-            avatarTargetsRef.current.delete(id);
-            lastSeenAt.current.delete(id);
-            const sphere = bubbleSpheresRef.current.get(id);
-            if (sphere) { scene.remove(sphere); bubbleSpheresRef.current.delete(id); }
-            presenceDataRef.current.delete(id);
-          }
-        });
-        rebuildOnlineUsers();
+        await handleChannelSubscribed(channel, scene, camera);
       }
     });
 
-    // Tab visibility — update presence status so other users see active/inactive indicator
-    const handleVisibilityChange = () => {
-      if (!channelRef.current || !myPresenceRef.current || !channelSubscribedRef.current) return;
-      const newStatus: 'active' | 'inactive' = document.visibilityState === 'visible' ? 'active' : 'inactive';
-      const updated = { ...myPresenceRef.current, status: newStatus };
-      myPresenceRef.current = updated;
-      channelRef.current.track(updated);
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Position heartbeat via setInterval — keeps our position broadcast alive even
-    // when the animation loop is throttled by Chrome in a background tab.
-    // The animation loop still sends immediate movement updates at 60 ms; this
-    // interval covers the 3-second stationary heartbeat independently.
-    let lastPresenceTrackTime = 0;
-    const positionHeartbeatInterval = setInterval(() => {
-      if (!channelRef.current || !channelSubscribedRef.current || !cameraRef.current) return;
-      const cam = cameraRef.current;
-      const isTP = cameraModeRef.current !== 'first-person';
-      const hbPos = isTP
-        ? { x: playerPositionRef.current.x, y: 1.6, z: playerPositionRef.current.z }
-        : { x: cam.position.x, y: cam.position.y, z: cam.position.z };
-      const hbRot = isTP
-        ? { x: 0, y: playerYawRef.current, z: 0 }
-        : { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z };
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'position',
-        payload: {
-          userId: currentUser.id,
-          position: hbPos,
-          rotation: hbRot,
-        },
-      });
-      lastPositionUpdate.current = Date.now();
-      if (myPresenceRef.current) {
-        myPresenceRef.current = {
-          ...myPresenceRef.current,
-          position: hbPos,
-          rotation: hbRot,
-        };
-        // Periodically sync position to Supabase presence so reconnecting
-        // users and new joiners see an accurate initial avatar position.
-        const trackNow = Date.now();
-        if (trackNow - lastPresenceTrackTime > 10000) {
-          lastPresenceTrackTime = trackNow;
-          channelRef.current.track(myPresenceRef.current);
-        }
-      }
-    }, 2000);
-
-    // Clean up recently-left (offline) users after 15 s
-    const offlineCleanupInterval = setInterval(() => {
-      const now = Date.now();
-      let changed = false;
-      recentlyLeftRef.current.forEach((_u, id) => {
-        if (now - recentlyLeftRef.current.get(id)!.leftAt > 15000) {
-          recentlyLeftRef.current.delete(id);
-          changed = true;
-        }
-      });
-      if (changed) rebuildOnlineUsers();
-    }, 5000);
-
-    // Proximity-based Jitsi room coordination.
-    // Also called from the position broadcast handler (above) when the tab is hidden.
-    const handleProximityChange = (nearbyIds: Set<string>) => {
-      // Cancel any pending leave debounce whenever proximity state changes
-      if (jitsiLeaveDebounceRef.current) {
-        clearTimeout(jitsiLeaveDebounceRef.current);
-        jitsiLeaveDebounceRef.current = null;
-      }
-
-      if (nearbyIds.size === 0) {
-        if (jitsiRoomRef.current !== null) {
-          // Debounce the leave — if the user re-enters proximity within the window,
-          // the debounce is cancelled above and no disconnect happens.
-          jitsiLeaveDebounceRef.current = setTimeout(() => {
-            jitsiLeaveDebounceRef.current = null;
-            if (jitsiRoomRef.current === null) return; // already cleared by a re-entry
-            jitsiRoomRef.current = null;
-            setJitsiRoom(null);
-            if (myPresenceRef.current) {
-              const updated = { ...myPresenceRef.current, jitsiRoom: null };
-              myPresenceRef.current = updated;
-              channelRef.current?.track(updated);
-            }
-          }, 1500);
-        }
-        return;
-      }
-
-      // Deterministic room name: both sides independently compute the same
-      // name using the lexicographically smallest user ID in the group.
-      // This avoids the race condition where adopting another user's
-      // existing room via presence causes room-name flipping.
-      const seed = [currentUser.id, ...nearbyIds].sort()[0];
-      const roomToJoin = `officexr-${officeId.slice(0, 8)}-${seed.slice(0, 8)}`;
-      if (roomToJoin !== jitsiRoomRef.current) {
-        jitsiRoomRef.current = roomToJoin;
-        setJitsiRoom(roomToJoin);
-        if (myPresenceRef.current) {
-          const updated = { ...myPresenceRef.current, jitsiRoom: roomToJoin };
-          myPresenceRef.current = updated;
-          channelRef.current?.track(updated);
-        }
-      }
-    };
+    // Set up presence timers (visibility, heartbeat, offline cleanup)
+    const cleanupPresenceTimers = setupPresenceTimers();
 
     // Animation loop
     const clock = new THREE.Clock();
-    const STALE_THRESHOLD_MS = 15_000;
-    let lastStaleCheck = 0;
 
     const animate = () => {
-      const delta = clock.getDelta(); // seconds since last frame
-      // Frame-rate-independent lerp: equivalent to 0.15 at 60 fps, consistent at any rate
+      const delta = clock.getDelta();
       const lerpAlpha = 1 - Math.pow(0.005, delta);
 
       // Update emoji confetti particles
       activeParticles = updateParticles(activeParticles, delta, scene);
 
-      const direction = new THREE.Vector3();
-      let moved = false;
+      // Compute player movement, camera positioning, and local avatar animation
+      const followTarget = followingUserIdRef.current
+        ? avatarTargetsRef.current.get(followingUserIdRef.current)
+        : undefined;
+      const { moved, broadcastPos, broadcastRot } = computeMovement(
+        camera,
+        localAvatarRef.current,
+        localAvatarAnimationRef.current,
+        followTarget,
+        bubblePrefsRef.current.radius,
+        moveSpeed,
+      );
 
-      if (is2DModeRef.current) {
-        // 2D top-down mode: WASD/arrows map to compass directions
-        if (keys['w'] || keys['arrowup'])    { direction.z -= 1; moved = true; }
-        if (keys['s'] || keys['arrowdown'])  { direction.z += 1; moved = true; }
-        if (keys['a'] || keys['arrowleft'])  { direction.x -= 1; moved = true; }
-        if (keys['d'] || keys['arrowright']) { direction.x += 1; moved = true; }
-        const { x: jx, y: jy } = joystickInputRef.current;
-        if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
-          direction.x += jx;
-          direction.z -= jy; // joystick up = north
-          moved = true;
-        }
-      } else {
-        // 3D mode: movement relative to player facing direction (yaw)
-        // In first-person, yaw comes from camera. In third-person, yaw is tracked separately.
-        const isThirdPerson = cameraModeRef.current !== 'first-person';
-        const yaw = isThirdPerson ? playerYawRef.current : cameraYaw;
-        const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-        const right = new THREE.Vector3(-forward.z, 0, forward.x);
-        if (keys['w'] || keys['arrowup'])    { direction.add(forward); moved = true; }
-        if (keys['s'] || keys['arrowdown'])  { direction.sub(forward); moved = true; }
-        if (keys['a'] || keys['arrowleft'])  { direction.sub(right); moved = true; }
-        if (keys['d'] || keys['arrowright']) { direction.add(right); moved = true; }
-        const { x: jx, y: jy } = joystickInputRef.current;
-        if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
-          direction.addScaledVector(forward, -jy);
-          direction.addScaledVector(right, jx);
-          moved = true;
-        }
-      }
-
-      if (direction.length() > 0) {
-        direction.normalize();
-        // Any manual movement cancels follow mode
-        if (followingUserIdRef.current !== null) {
-          setFollowingUserId(null);
-        }
-        const step = direction.multiplyScalar(moveSpeed);
-        if (cameraModeRef.current === 'first-person') {
-          camera.position.add(step);
-          camera.position.x = Math.max(-14.5, Math.min(14.5, camera.position.x));
-          camera.position.z = Math.max(-14.5, Math.min(14.5, camera.position.z));
-        } else {
-          playerPositionRef.current.add(step);
-          playerPositionRef.current.x = Math.max(-14.5, Math.min(14.5, playerPositionRef.current.x));
-          playerPositionRef.current.z = Math.max(-14.5, Math.min(14.5, playerPositionRef.current.z));
-        }
-      }
-
-      // Follow mode: snap camera to stay just within proximity of the followed user
-      if (followingUserIdRef.current) {
-        const followTarget = avatarTargetsRef.current.get(followingUserIdRef.current);
-        if (followTarget) {
-          const playerPos = cameraModeRef.current === 'first-person'
-            ? camera.position : playerPositionRef.current;
-          const dir = new THREE.Vector3()
-            .subVectors(playerPos, followTarget.position)
-            .setY(0)
-            .normalize();
-          if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
-          const dest = followTarget.position.clone()
-            .addScaledVector(dir, bubblePrefsRef.current.radius * 0.8);
-          const destX = Math.max(-14.5, Math.min(14.5, dest.x));
-          const destZ = Math.max(-14.5, Math.min(14.5, dest.z));
-          const fdx = playerPos.x - destX;
-          const fdz = playerPos.z - destZ;
-          if (fdx * fdx + fdz * fdz > 0.0001) {
-            if (cameraModeRef.current === 'first-person') {
-              camera.position.set(destX, 1.6, destZ);
-            } else {
-              playerPositionRef.current.set(destX, 0, destZ);
-            }
-            moved = true;
-          }
-        }
-      }
-
-      // Switch local avatar animation based on movement
-      if (localAvatarAnimationRef.current) {
-        switchAnimation(localAvatarAnimationRef.current, moved ? 'walk' : 'idle');
-      }
-
-      // Third-person camera: position camera relative to the player avatar
-      const isThirdPerson = cameraModeRef.current !== 'first-person';
-      const localAvatar = localAvatarRef.current;
-      if (isThirdPerson && localAvatar) {
-        // Update player yaw from mouse movement
-        playerYawRef.current = cameraYaw;
-        const pPos = playerPositionRef.current;
-        // Position and rotate the local avatar
-        localAvatar.visible = true;
-        localAvatar.position.set(pPos.x, 0, pPos.z);
-        localAvatar.rotation.y = playerYawRef.current;
-
-        const camDist = 3.5;
-        const camHeight = 2.2;
-        const yaw = playerYawRef.current;
-        if (cameraModeRef.current === 'third-person-behind') {
-          // Camera behind: offset in the opposite direction the avatar faces
-          camera.position.set(
-            pPos.x + Math.sin(yaw) * camDist,
-            camHeight,
-            pPos.z + Math.cos(yaw) * camDist,
-          );
-        } else {
-          // Camera in front: offset in the direction the avatar faces
-          camera.position.set(
-            pPos.x - Math.sin(yaw) * camDist,
-            camHeight,
-            pPos.z - Math.cos(yaw) * camDist,
-          );
-        }
-        // Look at avatar head
-        camera.lookAt(pPos.x, 1.4, pPos.z);
-      } else if (localAvatar) {
-        localAvatar.visible = false;
-        // Sync player position from camera when in first-person
-        playerPositionRef.current.set(camera.position.x, 0, camera.position.z);
-      }
-
-      // Determine broadcast position: always send player position, not camera offset
-      const broadcastPos = isThirdPerson
-        ? { x: playerPositionRef.current.x, y: 1.6, z: playerPositionRef.current.z }
-        : { x: camera.position.x, y: camera.position.y, z: camera.position.z };
-      const broadcastRot = isThirdPerson
-        ? { x: 0, y: playerYawRef.current, z: 0 }
-        : { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z };
-
-      const now = Date.now();
-      // Send position when moving (60ms throttle). Stationary heartbeat is
-      // handled by positionHeartbeatInterval so it fires even when this loop
-      // is throttled in a background tab.
-      const shouldSend = channelRef.current && channelSubscribedRef.current &&
-        moved && now - lastPositionUpdate.current > 60;
-      if (shouldSend) {
-        channelRef.current!.send({
-          type: 'broadcast',
-          event: 'position',
-          payload: {
-            userId: currentUser.id,
-            position: broadcastPos,
-            rotation: broadcastRot,
-          },
-        });
-        lastPositionUpdate.current = now;
-        // Keep presence position fresh so users who join mid-session see the right
-        // initial avatar position and can correctly evaluate proximity.
-        if (myPresenceRef.current) {
-          const updatedPresence = {
-            ...myPresenceRef.current,
-            position: broadcastPos,
-            rotation: broadcastRot,
-          };
-          myPresenceRef.current = updatedPresence;
-        }
-      }
-
-      // Update local bubble sphere position (follows player, not camera offset)
-      if (localBubbleSphereRef.current) {
-        localBubbleSphereRef.current.position.set(
-          broadcastPos.x, broadcastPos.y, broadcastPos.z
-        );
-      }
-
-      // Smoothly interpolate remote avatars toward their latest received positions
-      avatarTargetsRef.current.forEach((target, uid) => {
-        const avatar = avatarsRef.current.get(uid);
-        if (avatar) {
-          avatar.position.lerp(target.position, lerpAlpha);
-          // Lerp rotation via shortest-path on Y axis
-          let dy = target.rotationY - avatar.rotation.y;
-          if (dy > Math.PI) dy -= Math.PI * 2;
-          if (dy < -Math.PI) dy += Math.PI * 2;
-          avatar.rotation.y += dy * lerpAlpha;
-
-          // Make avatar eyes look toward the local camera
-          avatar.traverse((child) => {
-            if ((child as THREE.Mesh).isMesh && child.userData.isEye) {
-              const eye = child as THREE.Mesh;
-              const { restX, restY, restZ } = eye.userData;
-              const localCamPos = avatar.worldToLocal(camera.position.clone());
-              const edx = localCamPos.x - restX;
-              const edy = localCamPos.y - restY;
-              const edz = localCamPos.z - restZ;
-              const dist = Math.sqrt(edx * edx + edy * edy + edz * edz);
-              if (dist > 0.01) {
-                const maxOffset = 0.02;
-                eye.position.x = restX + (edx / dist) * maxOffset;
-                eye.position.y = restY + (edy / dist) * maxOffset;
-                eye.position.z = restZ + Math.abs(edx / dist) * 0.005;
-              }
-            }
-          });
-
-          // Switch remote avatar animation based on movement
-          const animState = avatarAnimationsRef.current.get(uid);
-          if (animState) {
-            const prev = avatarPrevPositionsRef.current.get(uid);
-            const isMoving = prev ? avatar.position.distanceToSquared(prev) > 0.0001 : false;
-            switchAnimation(animState, isMoving ? 'walk' : 'idle');
-            avatarPrevPositionsRef.current.set(uid, avatar.position.clone());
-          }
-        }
-      });
-
-      // Update all animation mixers
-      avatarAnimationsRef.current.forEach((anim) => { anim.mixer.update(delta); });
-      if (localAvatarAnimationRef.current) {
-        localAvatarAnimationRef.current.mixer.update(delta);
-      }
-
-      // Update remote bubble sphere positions and detect proximity.
-      // Use avatarTargetsRef as the source of truth for positions — this covers
-      // stale-but-present users whose visual avatar was removed but who are still
-      // connected via Supabase presence and may be in an active voice chat.
-      const newNearby = new Set<string>();
-      avatarTargetsRef.current.forEach((target, uid) => {
-        const sphere = bubbleSpheresRef.current.get(uid);
-        const avatar = avatarsRef.current.get(uid);
-        // Update bubble sphere to follow the interpolated avatar if both exist
-        if (avatar && sphere) {
-          sphere.position.copy(avatar.position);
-        }
-        // Proximity uses last-received position, not interpolated avatar position.
-        // Use horizontal (XZ) distance only — camera.y is at eye height (~1.6)
-        // while targets are at y=0, so 3D distance would shrink effective range.
-        const dx = broadcastPos.x - target.position.x;
-        const dz = broadcastPos.z - target.position.z;
-        if (Math.sqrt(dx * dx + dz * dz) < bubblePrefsRef.current.radius * 2) {
-          newNearby.add(uid);
-        }
-      });
-
-      // Update sphere colors: green when in voice call, per-user idle color otherwise
-      const inRoom = jitsiRoomRef.current !== null;
-      bubbleSpheresRef.current.forEach((sphere, uid) => {
-        const remotePrefs = remoteBubblePrefsRef.current.get(uid);
-        const idleColor = remotePrefs ? hexStringToInt(remotePrefs.idleColor) : hexStringToInt(bubblePrefsRef.current.idleColor);
-        (sphere.material as THREE.MeshStandardMaterial).color.setHex(inRoom ? 0x44ff99 : idleColor);
-      });
-      if (localBubbleSphereRef.current) {
-        (localBubbleSphereRef.current.material as THREE.MeshStandardMaterial).color.setHex(
-          inRoom ? 0x44ff99 : hexStringToInt(bubblePrefsRef.current.idleColor)
-        );
-      }
-
-      // Periodically remove avatars for users whose position broadcasts have gone stale.
-      // This catches abrupt disconnects (crash/network drop) before Supabase fires a leave event.
-      if (now - lastStaleCheck > 5000) {
-        lastStaleCheck = now;
-        lastSeenAt.current.forEach((t, uid) => {
-          if (now - t > STALE_THRESHOLD_MS) {
-            // Stop waiting for position updates from this user either way.
-            lastSeenAt.current.delete(uid);
-
-            // Check whether the user is still registered in Supabase presence.
-            const presenceState = channel.presenceState<PresenceEntry>();
-            const stillPresent = Object.values(presenceState).some(presences =>
-              presences.some(p => p.id === uid)
-            );
-
-            if (stillPresent) {
-              // User is inactive (tab backgrounded, movements paused) but still
-              // connected. Keep the avatar frozen at its last position — it will
-              // resume moving if/when the user becomes active again.
-              // presenceDataRef is left intact so the online users list stays accurate.
-              // However, remove from avatarTargetsRef so proximity detection no longer
-              // counts them as nearby — this prevents the voice call from staying open
-              // when the user's network dropped but Supabase hasn't fired leave yet.
-              // The position broadcast handler will re-add them when updates resume.
-              // Exception: keep the entry if we're following this user, so the camera
-              // stays anchored at their last position and proximity/audio isn't lost.
-              if (followingUserIdRef.current !== uid) {
-                avatarTargetsRef.current.delete(uid);
-              }
-            } else {
-              // User truly gone — remove avatar, sphere, animation, and all tracking data.
-              if (followingUserIdRef.current === uid) setFollowingUserId(null);
-              const staleAnim = avatarAnimationsRef.current.get(uid);
-              if (staleAnim) { staleAnim.mixer.stopAllAction(); avatarAnimationsRef.current.delete(uid); }
-              avatarPrevPositionsRef.current.delete(uid);
-              const stalePresence = presenceDataRef.current.get(uid);
-              const staleAvatar = avatarsRef.current.get(uid);
-              if (staleAvatar) scene.remove(staleAvatar);
-              avatarsRef.current.delete(uid);
-              const staleSphere = bubbleSpheresRef.current.get(uid);
-              if (staleSphere) { scene.remove(staleSphere); bubbleSpheresRef.current.delete(uid); }
-              avatarTargetsRef.current.delete(uid);
-              lastBroadcastPositionRef.current.delete(uid);
-              presenceDataRef.current.delete(uid);
-              if (stalePresence) {
-                recentlyLeftRef.current.set(uid, { id: uid, name: stalePresence.name, email: stalePresence.email ?? null, leftAt: Date.now() });
-              }
-              rebuildOnlineUsers();
-            }
-          }
-        });
-      }
-
-      // Fire proximity change handler only when the set changes
-      const prevNearby = nearbyUserIdsRef.current;
-      const setChanged =
-        newNearby.size !== prevNearby.size ||
-        [...newNearby].some(id => !prevNearby.has(id)) ||
-        [...prevNearby].some(id => !newNearby.has(id));
-      if (setChanged) {
-        nearbyUserIdsRef.current = newNearby;
-        handleProximityChange(newNearby);
-      }
-
-      // Toggle 3D/2D name tags on all remote avatars based on current view mode
-      const in2D = is2DModeRef.current;
-      avatarsRef.current.forEach(avatar => {
-        avatar.traverse(child => {
-          if (child.userData.nameTagType === '3d') child.visible = !in2D;
-          if (child.userData.nameTagType === '2d') child.visible = in2D;
-        });
-      });
-
-      // Update self marker position and visibility in 2D mode
-      if (selfMarkerRef.current) {
-        selfMarkerRef.current.position.set(broadcastPos.x, 0, broadcastPos.z);
-        selfMarkerRef.current.visible = in2D;
-      }
+      // Presence tick: position broadcast, avatar lerp, proximity, stale detection, etc.
+      tickPresence(delta, lerpAlpha, camera, scene, channel, broadcastPos, broadcastRot, moved);
 
       // Sync top-down camera to player XZ position
       orthoCamera.position.x = broadcastPos.x;
@@ -2389,169 +473,28 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     renderer.setAnimationLoop(animate);
 
-    // VR button
-    let vrButton: HTMLButtonElement | null = null;
-    if (navigator.xr) {
-      navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
-        if (!supported) return;
-        const button = document.createElement('button');
-        button.style.cssText = 'position:absolute;bottom:20px;left:50%;transform:translateX(-50%);padding:12px 24px;border:none;border-radius:4px;background:#1a73e8;color:white;font-size:16px;cursor:pointer;z-index:999;';
-        button.textContent = 'ENTER VR';
-        button.onclick = () => {
-          if (renderer.xr.isPresenting) {
-            renderer.xr.getSession()?.end();
-          } else {
-            renderer.domElement.requestFullscreen?.();
-            navigator.xr
-              ?.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] })
-              .then((session) => renderer.xr.setSession(session))
-              .catch(() => alert('WebXR not supported or VR device not connected'));
-          }
-        };
-        document.body.appendChild(button);
-        vrButton = button;
-      });
-    }
-
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('resize', handleResize);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(positionHeartbeatInterval);
-      clearInterval(offlineCleanupInterval);
-      renderer.domElement.removeEventListener('click', handleCanvasClick);
-      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
-      renderer.domElement.removeEventListener('wheel', handleWheel);
-      document.removeEventListener('pointerlockchange', handlePointerLockChange);
-      if (document.pointerLockElement === renderer.domElement) {
-        document.exitPointerLock();
-      }
-      renderer.domElement.removeEventListener('touchstart', handleTouchStart);
-      renderer.domElement.removeEventListener('touchmove', handleTouchMove);
-      renderer.domElement.removeEventListener('touchend', handleTouchEnd);
+      renderer.setAnimationLoop(null);
+      cleanupInputListeners();
+
+      // Clean up presence timers (visibility, heartbeat, offline cleanup)
+      cleanupPresenceTimers();
 
       // Clean up screen sharing without broadcasting (channel is closing)
-      localScreenStreamRef.current?.getTracks().forEach(t => t.stop());
-      localScreenStreamRef.current = null;
-      screenPeerConnsRef.current.forEach(pc => pc.close());
-      screenPeerConnsRef.current.clear();
-      pendingIceCandidatesRef.current.clear();
+      cleanupPeerConnections();
 
       // Cancel any pending Jitsi leave debounce — component is tearing down
       if (jitsiLeaveDebounceRef.current) {
         clearTimeout(jitsiLeaveDebounceRef.current);
         jitsiLeaveDebounceRef.current = null;
       }
-      channel.untrack(); // explicitly signal departure — triggers immediate presence.leave for others
-      supabase.removeChannel(channel);
-      channelRef.current = null;
-      channelSubscribedRef.current = false;
+      // Channel cleanup (untrack + removeChannel) is handled by useRealtimeChannel
+      // Scene/renderer/avatar/VR cleanup is handled by useSceneSetup
 
-      if (localBubbleSphereRef.current) {
-        scene.remove(localBubbleSphereRef.current);
-        localBubbleSphereRef.current = null;
-      }
-      if (selfMarkerRef.current) {
-        scene.remove(selfMarkerRef.current);
-        selfMarkerRef.current = null;
-      }
-      if (localAvatarRef.current) {
-        scene.remove(localAvatarRef.current);
-        localAvatarRef.current = null;
-      }
-      // Stop all animation mixers
-      avatarAnimationsRef.current.forEach((anim) => { anim.mixer.stopAllAction(); });
-      avatarAnimationsRef.current.clear();
-      avatarPrevPositionsRef.current.clear();
-      if (localAvatarAnimationRef.current) {
-        localAvatarAnimationRef.current.mixer.stopAllAction();
-        localAvatarAnimationRef.current = null;
-      }
-      bubbleSpheresRef.current.clear();
-      presenceDataRef.current.clear();
-      lastSeenAt.current.clear();
-      nearbyUserIdsRef.current = new Set();
-      pendingAvatarUpdatesRef.current.clear();
-
-      if (vrButton?.parentNode) {
-        vrButton.parentNode.removeChild(vrButton);
-      }
-      if (containerRef.current && renderer.domElement.parentNode) {
-        containerRef.current.removeChild(renderer.domElement);
-      }
-      if (hdriTexture) {
-        hdriTexture.dispose();
-        hdriTexture = null;
-      }
-      renderer.dispose();
+      // Clean up remote presence visuals (avatars, bubble spheres, etc.)
+      cleanupPresenceVisuals(scene);
     };
   }, [officeId, currentUser?.id, environment]);
-
-  const handleBubblePrefsChange = (prefs: BubblePreferences) => {
-    bubblePrefsRef.current = prefs;
-    const newRadius = prefs.radius;
-    const newColor = hexStringToInt(prefs.idleColor);
-    // Only rebuild the local bubble sphere — remote spheres use their own prefs
-    if (localBubbleSphereRef.current) {
-      localBubbleSphereRef.current.geometry.dispose();
-      localBubbleSphereRef.current.geometry = new THREE.SphereGeometry(newRadius, 24, 24);
-      if (!jitsiRoomRef.current) {
-        (localBubbleSphereRef.current.material as THREE.MeshStandardMaterial).color.setHex(newColor);
-      }
-    }
-    // Broadcast our bubble prefs to other users
-    if (channelRef.current && channelSubscribedRef.current) {
-      channelRef.current.send({
-        type: 'broadcast', event: 'bubble-prefs',
-        payload: { userId: user?.id ?? anonymousUserRef.current?.id, prefs },
-      });
-    }
-  };
-
-  const handleSaveSettings = async (settings: AvatarCustomization) => {
-    if (!user) return;
-
-    const { error } = await supabase.from('profiles').upsert({
-      id: user.id,
-      avatar_body_color: settings.bodyColor,
-      avatar_skin_color: settings.skinColor,
-      avatar_style: settings.style,
-      avatar_accessories: settings.accessories,
-      avatar_preset_id: settings.presetId ?? null,
-      avatar_model_url: settings.modelUrl ?? null,
-    });
-
-    if (error) throw new Error('Failed to save settings');
-
-    setAvatarCustomization(settings);
-
-    // Update local avatar (for third-person view)
-    if (localAvatarRef.current && sceneRef.current) {
-      if (localAvatarAnimationRef.current) {
-        localAvatarAnimationRef.current.mixer.stopAllAction();
-        localAvatarAnimationRef.current = null;
-      }
-      const oldData = localAvatarRef.current.userData as AvatarData;
-      sceneRef.current.remove(localAvatarRef.current);
-      const newLocalAvatar = createAvatar(sceneRef.current, { ...oldData, customization: settings }, (animState) => {
-        localAvatarAnimationRef.current = animState;
-      });
-      newLocalAvatar.visible = cameraModeRef.current !== 'first-person';
-      localAvatarRef.current = newLocalAvatar;
-    }
-
-    // Broadcast avatar update to other users
-    if (channelRef.current && channelSubscribedRef.current) {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'avatar-update',
-        payload: { userId: user.id, customization: settings },
-      }).then((result: string) => {
-        if (result !== 'ok') console.error('[AvatarUpdate] Broadcast failed:', result);
-      });
-    }
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100vh' }}>
@@ -3011,7 +954,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
                   remoteAudioDecayRef.current = null;
                 }
                 setRemoteAudioLevel(0);
-                if (localScreenStreamRef.current) stopScreenShare();
+                stopScreenShare();
               };
 
               api.addEventListener('videoConferenceLeft', () => {

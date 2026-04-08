@@ -17,13 +17,21 @@
     "three": "^0.182.0",
     "uuid": "^13.0.0"
   },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.182.0",
     "@types/uuid": "^10.0.0",
+    "jsdom": "^29.0.2",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vite": "^6.3.2"
+    "vite": "^6.3.2",
+    "vitest": "^4.1.3"
   }
 }

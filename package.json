@@ -2,6 +2,7 @@
   "name": "officexr-workspace",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "pnpm --filter @officexr/web run dev",
     "build": "pnpm --filter @officexr/web run build",
@@ -14,6 +15,7 @@
     "dist:desktop:all": "pnpm --filter @officexr/web run build && pnpm --filter @officexr/desktop run dist:all",
     "dev:mobile": "pnpm --filter @officexr/mobile run start",
     "build:mobile:ios": "pnpm --filter @officexr/mobile run build:ios",
-    "build:mobile:android": "pnpm --filter @officexr/mobile run build:android"
+    "build:mobile:android": "pnpm --filter @officexr/mobile run build:android",
+    "test": "pnpm --filter @officexr/core run test"
   }
 }
