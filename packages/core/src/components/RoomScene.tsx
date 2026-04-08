@@ -5,7 +5,7 @@ import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import liliensteinHdriUrl from '../assets/hdri/lilienstein_4k.exr?url';
 import { JaaSMeeting } from '@jitsi/react-sdk';
 import { createAvatar, updateAvatar, AvatarData, AvatarAnimationState, switchAnimation } from './Avatar';
-import { EMOJI_MAP, spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
+import { spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
 import SettingsPanel from './SettingsPanel';
 import ControlsOverlay from './ControlsOverlay';
 import NetworkDebugPanel, { SignalIcon } from './NetworkDebugPanel';
@@ -20,6 +20,7 @@ import { useChat } from '@/hooks/useChat';
 import { useAvatarCustomization } from '@/hooks/useAvatarCustomization';
 import { useScreenSharing } from '@/hooks/useScreenSharing';
 import { useJitsi } from '@/hooks/useJitsi';
+import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 
 
 
@@ -205,7 +206,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     showSettings: showSettings,
     keysRef,
   });
-  const [mouseLockActive, setMouseLockActive] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   // Motion controls — device orientation (gyroscope) shared with UserLobby
   const {
@@ -218,9 +218,39 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     enableMotion,
     disableMotion,
   } = useMotionControls({ cameraRef, rendererRef });
-  const joystickInputRef = useRef({ x: 0, y: 0 });
-  const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
-  const [joystickActive, setJoystickActive] = useState(false);
+
+  // Follow state
+  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
+  const followingUserIdRef = useRef<string | null>(null);
+  followingUserIdRef.current = followingUserId;
+
+  // Keyboard, mouse, and touch input controls
+  const {
+    cameraMode,
+    setCameraMode,
+    is2DMode,
+    setIs2DMode,
+    is2DModeRef,
+    showControls,
+    setShowControls,
+    mouseLockActive,
+    joystickKnob,
+    setJoystickKnob,
+    joystickActive,
+    setJoystickActive,
+    joystickInputRef,
+    playerPositionRef,
+    playerYawRef,
+    registerInputListeners,
+    computeMovement,
+  } = useKeyboardControls({
+    keysRef,
+    cameraModeRef,
+    chatVisibleRef,
+    motionActiveRef,
+    followingUserIdRef,
+    setFollowingUserId,
+  });
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -240,18 +270,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   );
   const recordPositionUpdateRef = useRef(networkStats.recordPositionUpdate);
   recordPositionUpdateRef.current = networkStats.recordPositionUpdate;
-  const [is2DMode, setIs2DMode] = useState(false);
-  const [showControls, setShowControls] = useState(false);
-  const is2DModeRef = useRef(false);
-  is2DModeRef.current = is2DMode;
-  const [cameraMode, setCameraMode] = useState<CameraMode>('first-person');
-  cameraModeRef.current = cameraMode;
-  // In third-person the player position is tracked separately from camera position
-  const playerPositionRef = useRef(new THREE.Vector3(0, 0, 5));
-  const playerYawRef = useRef(0);
-  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
-  const followingUserIdRef = useRef<string | null>(null);
-  followingUserIdRef.current = followingUserId;
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
 
@@ -305,13 +323,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
   // Chat effects are handled by useChat hook
 
-  // Exit pointer lock when switching to 2D mode
-  useEffect(() => {
-    if (is2DMode && document.pointerLockElement) {
-      document.exitPointerLock();
-    }
-  }, [is2DMode]);
-
+  // Exit pointer lock when switching to 2D mode is handled by useKeyboardControls
 
   // handleMuteToggle and cleanupJitsi are provided by useJitsi
 
@@ -957,134 +969,25 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Movement
     const moveSpeed = 0.1;
-    const keys = keysRef.current;
     let activeParticles: Particle[] = [];
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (chatVisibleRef.current) {
-        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'v', '?'];
-        if (navigationKeys.includes(key)) return;
-      }
-      // Emoji confetti (keys 1-5) — skip when typing in chat
-      if (!chatVisibleRef.current && event.key in EMOJI_MAP) {
-        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), event.key));
+    // Register keyboard, mouse, touch, and scroll input handlers
+    const orthoViewSizeRef = { current: orthoViewSize };
+    const cleanupInputListeners = registerInputListeners(
+      renderer, camera, scene, orthoCamera, orthoViewSizeRef,
+      (emojiKey: string) => {
+        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey));
         if (channelRef.current && channelSubscribedRef.current) {
           channelRef.current.send({
             type: 'broadcast', event: 'confetti',
             payload: {
-              userId: currentUser.id, key: event.key,
+              userId: currentUser.id, key: emojiKey,
               position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
             },
           });
         }
-      }
-      if (key === 'c' && !chatVisibleRef.current) {
-        setCameraMode(prev => {
-          const modes: CameraMode[] = ['first-person', 'third-person-behind', 'third-person-front'];
-          const next = modes[(modes.indexOf(prev) + 1) % modes.length];
-          cameraModeRef.current = next;
-          // When returning to first-person, snap camera to player position
-          if (next === 'first-person' && cameraRef.current) {
-            const pp = playerPositionRef.current;
-            cameraRef.current.position.set(pp.x, 1.6, pp.z);
-            cameraRef.current.rotation.set(cameraPitch, cameraYaw, 0, 'YXZ');
-          }
-          return next;
-        });
-        return;
-      }
-      if (key === 'v') {
-        setIs2DMode(v => !v);
-        return;
-      }
-      if (key === '?') {
-        setShowControls(v => !v);
-        return;
-      }
-      keys[key] = true;
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (chatVisibleRef.current) {
-        const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
-        if (navigationKeys.includes(key)) return;
-      }
-      keys[key] = false;
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    // Mouse control mode (desktop) — click to lock pointer, Escape to release.
-    // When WebXR is presenting, the XR session drives head orientation; mouse lock is inactive.
-    //
-    // Track pitch and yaw independently and reconstruct the rotation each frame
-    // using 'YXZ' order so roll is always zero (standard FPS camera technique).
-    let cameraPitch = 0; // radians — vertical look (X axis)
-    let cameraYaw = 0;   // radians — horizontal look (Y axis)
-    camera.rotation.order = 'YXZ';
-
-    const handleCanvasClick = () => {
-      // Don't fight device orientation with pointer lock on touch devices
-      // Also skip in 2D mode — no mouse look there
-      if (!renderer.xr.isPresenting && !motionActiveRef.current && !is2DModeRef.current) {
-        renderer.domElement.requestPointerLock();
-      }
-    };
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (is2DModeRef.current) return;
-      if (document.pointerLockElement === renderer.domElement && !renderer.xr.isPresenting) {
-        cameraYaw   -= (event.movementX || 0) * 0.002;
-        cameraPitch -= (event.movementY || 0) * 0.002;
-        cameraPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraPitch));
-        camera.rotation.set(cameraPitch, cameraYaw, 0, 'YXZ');
-      }
-    };
-
-    const handlePointerLockChange = () => {
-      setMouseLockActive(document.pointerLockElement === renderer.domElement);
-    };
-
-    renderer.domElement.addEventListener('click', handleCanvasClick);
-    renderer.domElement.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('pointerlockchange', handlePointerLockChange);
-
-    // Touch controls
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let isTouching = false;
-
-    const handleTouchStart = (event: TouchEvent) => {
-      if (event.touches.length === 1) {
-        isTouching = true;
-        touchStartX = event.touches[0].clientX;
-        touchStartY = event.touches[0].clientY;
-      }
-    };
-
-    const handleTouchMove = (event: TouchEvent) => {
-      // Device orientation handles look direction on mobile — skip touch drag
-      // Also skip in 2D mode — no look controls there
-      if (motionActiveRef.current || is2DModeRef.current) return;
-      if (isTouching && event.touches.length === 1) {
-        const deltaX = event.touches[0].clientX - touchStartX;
-        const deltaY = event.touches[0].clientY - touchStartY;
-        camera.rotation.y -= deltaX * 0.002;
-        camera.rotation.x -= deltaY * 0.002;
-        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
-        touchStartX = event.touches[0].clientX;
-        touchStartY = event.touches[0].clientY;
-      }
-    };
-
-    const handleTouchEnd = () => { isTouching = false; };
-
-    renderer.domElement.addEventListener('touchstart', handleTouchStart, { passive: true });
-    renderer.domElement.addEventListener('touchmove', handleTouchMove, { passive: true });
-    renderer.domElement.addEventListener('touchend', handleTouchEnd);
+      },
+    );
 
     const handleResize = () => {
       const container = containerRef.current;
@@ -1093,27 +996,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       const newAspect = w / h;
-      orthoCamera.left = -orthoViewSize * newAspect;
-      orthoCamera.right = orthoViewSize * newAspect;
+      orthoCamera.left = -orthoViewSizeRef.current * newAspect;
+      orthoCamera.right = orthoViewSizeRef.current * newAspect;
       orthoCamera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
     window.addEventListener('resize', handleResize);
-
-    // Scroll wheel zoom for 2D mode only
-    const handleWheel = (event: WheelEvent) => {
-      if (!is2DModeRef.current) return;
-      event.preventDefault();
-      const zoomFactor = 1 + event.deltaY * 0.001;
-      orthoViewSize = Math.max(3, Math.min(40, orthoViewSize * zoomFactor));
-      const aspect = window.innerWidth / window.innerHeight;
-      orthoCamera.left = -orthoViewSize * aspect;
-      orthoCamera.right = orthoViewSize * aspect;
-      orthoCamera.top = orthoViewSize;
-      orthoCamera.bottom = -orthoViewSize;
-      orthoCamera.updateProjectionMatrix();
-    };
-    renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
 
     // Supabase Realtime channel — created by useRealtimeChannel, accessed via ref
     const channel = channelRef.current;
@@ -1551,136 +1439,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Update emoji confetti particles
       activeParticles = updateParticles(activeParticles, delta, scene);
 
-      const direction = new THREE.Vector3();
-      let moved = false;
-
-      if (is2DModeRef.current) {
-        // 2D top-down mode: WASD/arrows map to compass directions
-        if (keys['w'] || keys['arrowup'])    { direction.z -= 1; moved = true; }
-        if (keys['s'] || keys['arrowdown'])  { direction.z += 1; moved = true; }
-        if (keys['a'] || keys['arrowleft'])  { direction.x -= 1; moved = true; }
-        if (keys['d'] || keys['arrowright']) { direction.x += 1; moved = true; }
-        const { x: jx, y: jy } = joystickInputRef.current;
-        if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
-          direction.x += jx;
-          direction.z -= jy; // joystick up = north
-          moved = true;
-        }
-      } else {
-        // 3D mode: movement relative to player facing direction (yaw)
-        // In first-person, yaw comes from camera. In third-person, yaw is tracked separately.
-        const isThirdPerson = cameraModeRef.current !== 'first-person';
-        const yaw = isThirdPerson ? playerYawRef.current : cameraYaw;
-        const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-        const right = new THREE.Vector3(-forward.z, 0, forward.x);
-        if (keys['w'] || keys['arrowup'])    { direction.add(forward); moved = true; }
-        if (keys['s'] || keys['arrowdown'])  { direction.sub(forward); moved = true; }
-        if (keys['a'] || keys['arrowleft'])  { direction.sub(right); moved = true; }
-        if (keys['d'] || keys['arrowright']) { direction.add(right); moved = true; }
-        const { x: jx, y: jy } = joystickInputRef.current;
-        if (Math.abs(jx) > 0.05 || Math.abs(jy) > 0.05) {
-          direction.addScaledVector(forward, -jy);
-          direction.addScaledVector(right, jx);
-          moved = true;
-        }
-      }
-
-      if (direction.length() > 0) {
-        direction.normalize();
-        // Any manual movement cancels follow mode
-        if (followingUserIdRef.current !== null) {
-          setFollowingUserId(null);
-        }
-        const step = direction.multiplyScalar(moveSpeed);
-        if (cameraModeRef.current === 'first-person') {
-          camera.position.add(step);
-          camera.position.x = Math.max(-14.5, Math.min(14.5, camera.position.x));
-          camera.position.z = Math.max(-14.5, Math.min(14.5, camera.position.z));
-        } else {
-          playerPositionRef.current.add(step);
-          playerPositionRef.current.x = Math.max(-14.5, Math.min(14.5, playerPositionRef.current.x));
-          playerPositionRef.current.z = Math.max(-14.5, Math.min(14.5, playerPositionRef.current.z));
-        }
-      }
-
-      // Follow mode: snap camera to stay just within proximity of the followed user
-      if (followingUserIdRef.current) {
-        const followTarget = avatarTargetsRef.current.get(followingUserIdRef.current);
-        if (followTarget) {
-          const playerPos = cameraModeRef.current === 'first-person'
-            ? camera.position : playerPositionRef.current;
-          const dir = new THREE.Vector3()
-            .subVectors(playerPos, followTarget.position)
-            .setY(0)
-            .normalize();
-          if (dir.lengthSq() < 0.0001) dir.set(1, 0, 0);
-          const dest = followTarget.position.clone()
-            .addScaledVector(dir, bubblePrefsRef.current.radius * 0.8);
-          const destX = Math.max(-14.5, Math.min(14.5, dest.x));
-          const destZ = Math.max(-14.5, Math.min(14.5, dest.z));
-          const fdx = playerPos.x - destX;
-          const fdz = playerPos.z - destZ;
-          if (fdx * fdx + fdz * fdz > 0.0001) {
-            if (cameraModeRef.current === 'first-person') {
-              camera.position.set(destX, 1.6, destZ);
-            } else {
-              playerPositionRef.current.set(destX, 0, destZ);
-            }
-            moved = true;
-          }
-        }
-      }
-
-      // Switch local avatar animation based on movement
-      if (localAvatarAnimationRef.current) {
-        switchAnimation(localAvatarAnimationRef.current, moved ? 'walk' : 'idle');
-      }
-
-      // Third-person camera: position camera relative to the player avatar
-      const isThirdPerson = cameraModeRef.current !== 'first-person';
-      const localAvatar = localAvatarRef.current;
-      if (isThirdPerson && localAvatar) {
-        // Update player yaw from mouse movement
-        playerYawRef.current = cameraYaw;
-        const pPos = playerPositionRef.current;
-        // Position and rotate the local avatar
-        localAvatar.visible = true;
-        localAvatar.position.set(pPos.x, 0, pPos.z);
-        localAvatar.rotation.y = playerYawRef.current;
-
-        const camDist = 3.5;
-        const camHeight = 2.2;
-        const yaw = playerYawRef.current;
-        if (cameraModeRef.current === 'third-person-behind') {
-          // Camera behind: offset in the opposite direction the avatar faces
-          camera.position.set(
-            pPos.x + Math.sin(yaw) * camDist,
-            camHeight,
-            pPos.z + Math.cos(yaw) * camDist,
-          );
-        } else {
-          // Camera in front: offset in the direction the avatar faces
-          camera.position.set(
-            pPos.x - Math.sin(yaw) * camDist,
-            camHeight,
-            pPos.z - Math.cos(yaw) * camDist,
-          );
-        }
-        // Look at avatar head
-        camera.lookAt(pPos.x, 1.4, pPos.z);
-      } else if (localAvatar) {
-        localAvatar.visible = false;
-        // Sync player position from camera when in first-person
-        playerPositionRef.current.set(camera.position.x, 0, camera.position.z);
-      }
-
-      // Determine broadcast position: always send player position, not camera offset
-      const broadcastPos = isThirdPerson
-        ? { x: playerPositionRef.current.x, y: 1.6, z: playerPositionRef.current.z }
-        : { x: camera.position.x, y: camera.position.y, z: camera.position.z };
-      const broadcastRot = isThirdPerson
-        ? { x: 0, y: playerYawRef.current, z: 0 }
-        : { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z };
+      // Compute player movement, camera positioning, and local avatar animation
+      const followTarget = followingUserIdRef.current
+        ? avatarTargetsRef.current.get(followingUserIdRef.current)
+        : undefined;
+      const { moved, broadcastPos, broadcastRot } = computeMovement(
+        camera,
+        localAvatarRef.current,
+        localAvatarAnimationRef.current,
+        followTarget,
+        bubblePrefsRef.current.radius,
+        moveSpeed,
+      );
 
       const now = Date.now();
       // Send position when moving (60ms throttle). Stationary heartbeat is
@@ -1913,22 +1683,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     }
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      cleanupInputListeners();
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(positionHeartbeatInterval);
       clearInterval(offlineCleanupInterval);
-      renderer.domElement.removeEventListener('click', handleCanvasClick);
-      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
-      renderer.domElement.removeEventListener('wheel', handleWheel);
-      document.removeEventListener('pointerlockchange', handlePointerLockChange);
-      if (document.pointerLockElement === renderer.domElement) {
-        document.exitPointerLock();
-      }
-      renderer.domElement.removeEventListener('touchstart', handleTouchStart);
-      renderer.domElement.removeEventListener('touchmove', handleTouchMove);
-      renderer.domElement.removeEventListener('touchend', handleTouchEnd);
 
       // Clean up screen sharing without broadcasting (channel is closing)
       cleanupPeerConnections();
