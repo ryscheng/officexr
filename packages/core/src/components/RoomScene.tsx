@@ -4,7 +4,6 @@ import * as THREE from 'three';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import liliensteinHdriUrl from '../assets/hdri/lilienstein_4k.exr?url';
 import { JaaSMeeting } from '@jitsi/react-sdk';
-import { generateJaaSJwt } from '@/lib/jaasJwt';
 import { createAvatar, updateAvatar, AvatarData, AvatarAnimationState, switchAnimation } from './Avatar';
 import { EMOJI_MAP, spawnConfetti, updateParticles, Particle } from './EmojiConfetti';
 import SettingsPanel from './SettingsPanel';
@@ -20,6 +19,7 @@ import { useRealtimeChannel } from '@/hooks/useRealtimeChannel';
 import { useChat } from '@/hooks/useChat';
 import { useAvatarCustomization } from '@/hooks/useAvatarCustomization';
 import { useScreenSharing } from '@/hooks/useScreenSharing';
+import { useJitsi } from '@/hooks/useJitsi';
 
 
 
@@ -90,25 +90,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const selfMarkerRef = useRef<THREE.Group | null>(null);
   const presenceDataRef = useRef<Map<string, PresenceEntry>>(new Map());
   const nearbyUserIdsRef = useRef<Set<string>>(new Set());
-  const jitsiRoomRef = useRef<string | null>(null);
   const myPresenceRef = channelMyPresenceRef;
   const recentlyLeftRef = useRef<Map<string, { id: string; name: string; email: string | null; leftAt: number }>>(new Map());
   const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null; status: 'active' | 'inactive' | 'offline' }>>([]);
-  const [jitsiRoom, setJitsiRoom] = useState<string | null>(null);
-  const [jitsiError, setJitsiError] = useState<string | null>(null);
-  const [jitsiConnected, setJitsiConnected] = useState(false);
-  const [jitsiParticipantCount, setJitsiParticipantCount] = useState(0);
-  const [jitsiRetryCount, setJitsiRetryCount] = useState(0);
-  const [jaasJwt, setJaasJwt] = useState<string | null>(null);
-  const [jaasJwtError, setJaasJwtError] = useState<string | null>(null);
-  const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
-  const jitsiApiRef = useRef<any>(null);
-  const remoteAudioDecayRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const jitsiConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const jitsiHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const jitsiMessageListenerRef = useRef<((evt: MessageEvent) => void) | null>(null);
-  const jitsiLeaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const jitsiConnectionGenRef = useRef(0);
 
   // Screen sharing
   const {
@@ -126,12 +110,46 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     presenceDataRef,
   });
 
-  const [micMuted, setMicMuted] = useState(false);
-  const [micLevel, setMicLevel] = useState<number>(0); // 0–1; –1 = failed
-  const [micError, setMicError] = useState<string | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const micAudioCtxRef = useRef<AudioContext | null>(null);
-  const startMicRef = useRef<(() => Promise<void>) | null>(null);
+  // Jitsi voice chat and microphone
+  const {
+    jitsiRoom,
+    jitsiConnected,
+    jitsiParticipantCount,
+    jitsiError,
+    setJitsiError,
+    jitsiRetryCount,
+    setJitsiRetryCount,
+    remoteAudioLevel,
+    micMuted,
+    micLevel,
+    micError,
+    handleMuteToggle,
+    startMicRef,
+    activeJitsiRoom,
+    jaasJwt,
+    jaasJwtError,
+    jitsiRoomRef,
+    jitsiApiRef,
+    jitsiConnectionGenRef,
+    jitsiConnectTimeoutRef,
+    jitsiHeartbeatRef,
+    jitsiMessageListenerRef,
+    jitsiLeaveDebounceRef,
+    remoteAudioDecayRef,
+    micStreamRef,
+    setJitsiConnected,
+    setJitsiParticipantCount,
+    setRemoteAudioLevel,
+    handleProximityChange,
+    cleanupJitsi,
+  } = useJitsi({
+    officeId,
+    currentUser,
+    userEmail: user?.email,
+    channelRef,
+    channelSubscribedRef,
+    myPresenceRef,
+  });
   const lastPositionUpdate = useRef<number>(0);
   const lastSeenAt = useRef<Map<string, number>>(new Map());
   const lastBroadcastPositionRef = useRef<Map<string, { position: THREE.Vector3; rotationY: number; time: number }>>(new Map());
@@ -256,133 +274,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       });
   }, [officeId]);
 
-  // Generate a JaaS JWT from the private key stored in env vars.
-  // Regenerated whenever the current user changes (e.g. login/logout).
-  // TTL is 1 week; the token is generated client-side via Web Crypto (RS256).
-  useEffect(() => {
-    const appId      = import.meta.env.VITE_JAAS_APP_ID      as string | undefined;
-    const apiKeyId   = import.meta.env.VITE_JAAS_API_KEY_ID  as string | undefined;
-    const privateKeyB64 = import.meta.env.VITE_JAAS_PRIVATE_KEY as string | undefined;
-    const privateKey = privateKeyB64 ? atob(privateKeyB64) : undefined;
-
-    if (!appId || !apiKeyId || !privateKey || !currentUser) {
-      setJaasJwt(null);
-      setJaasJwtError(null);
-      return;
-    }
-
-    setJaasJwtError(null);
-    generateJaaSJwt(appId, apiKeyId, privateKey, {
-      id:    currentUser.id,
-      name:  currentUser.name || 'User',
-      email: user?.email ?? '',
-    }).then(jwt => {
-      setJaasJwt(jwt);
-      setJaasJwtError(null);
-    }).catch(err => {
-      console.error('JaaS JWT generation failed:', err);
-      setJaasJwt(null);
-      setJaasJwtError(String(err?.message ?? err));
-    });
-  }, [currentUser?.id, currentUser?.name, user?.email]);
-
-  // Continuously monitor the local microphone so the mic indicator always reflects
-  // real audio input, independent of any Jitsi connection.
-  useEffect(() => {
-    let animFrameId: number;
-
-    const startMic = async () => {
-      // Tear down any prior session before retrying
-      cancelAnimationFrame(animFrameId);
-      micStreamRef.current?.getTracks().forEach(t => t.stop());
-      micStreamRef.current = null;
-      await micAudioCtxRef.current?.close();
-      micAudioCtxRef.current = null;
-
-      setMicError(null);
-      setMicLevel(0);
-
-      // navigator.mediaDevices is only available on secure origins (HTTPS / localhost)
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-        setMicLevel(-1);
-        setMicError('HTTPS is required — microphone is unavailable on insecure origins');
-        return;
-      }
-
-      // Query the Permissions API first so we can give precise instructions.
-      // Chrome and Safari on iOS both support this; it won't throw but may not resolve.
-      let permState: PermissionState | 'unknown' = 'unknown';
-      try {
-        const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-        permState = status.state;
-      } catch { /* API not available on this browser */ }
-
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      } catch (err: any) {
-        setMicLevel(-1);
-        const name: string = err?.name ?? '';
-        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-          if (permState === 'denied') {
-            // Browser-level block (Chrome site settings). iOS Settings won't help here.
-            setMicError(
-              'Blocked in browser settings. Tap the 🔒 icon in the address bar → Site settings → Microphone → Allow'
-            );
-          } else {
-            // OS-level block or permission prompt was dismissed/denied
-            setMicError(
-              'Permission denied. Check: iOS Settings → ' +
-              (navigator.userAgent.includes('CriOS') ? 'Chrome' : 'Safari') +
-              ' → Microphone → ON. Then tap "Tap to enable" again.'
-            );
-          }
-        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-          setMicError('No microphone hardware found on this device');
-        } else {
-          setMicError(`${name || 'Error'}: ${err?.message ?? 'unknown'}`);
-        }
-        return;
-      }
-
-      micStreamRef.current = stream;
-
-      // iOS/Safari creates AudioContext in 'suspended' state.
-      // Calling resume() here works when startMic() is invoked from a user gesture
-      // (e.g. the retry button). The auto-attempt on mount may still leave it
-      // suspended on iOS — the user tapping the retry button fixes that.
-      const audioCtx = new AudioContext();
-      micAudioCtxRef.current = audioCtx;
-      try { await audioCtx.resume(); } catch { /* best-effort */ }
-
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      audioCtx.createMediaStreamSource(stream).connect(analyser);
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-
-      const tick = () => {
-        if (audioCtx.state === 'running') {
-          analyser.getByteFrequencyData(buf);
-          const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length) / 128;
-          setMicLevel(rms);
-        }
-        animFrameId = requestAnimationFrame(tick);
-      };
-      tick();
-    };
-
-    // Store so the retry button can call startMic() from within a user gesture
-    startMicRef.current = startMic;
-
-    // Auto-attempt on mount — works on desktop and modern Android/iOS in most cases
-    startMic();
-
-    return () => {
-      cancelAnimationFrame(animFrameId);
-      micStreamRef.current?.getTracks().forEach(t => t.stop());
-      micAudioCtxRef.current?.close();
-    };
-  }, []);
+  // JWT generation and mic monitoring are handled by useJitsi
 
   const handleEnvironmentChange = (env: EnvironmentType) => {
     setEnvironment(env);
@@ -421,93 +313,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   }, [is2DMode]);
 
 
-  // Track a mute toggle function in a ref so onApiReady (inside the Three.js
-  // useEffect closure) can always call the latest version.
-  const handleMuteToggle = () => {
-    const newMuted = !micMuted;
-    setMicMuted(newMuted);
-    // Silence the local stream so the mic indicator reflects mute state
-    micStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
-    // Mirror in Jitsi if a session is active
-    jitsiApiRef.current?.executeCommand('toggleAudio');
-  };
+  // handleMuteToggle and cleanupJitsi are provided by useJitsi
 
-  // Thoroughly clean up all Jitsi resources (intervals, listeners, API, timeouts).
-  // Called on room change, retry, and unmount to prevent leaked intervals.
-  const cleanupJitsi = useCallback(() => {
-    jitsiConnectionGenRef.current++; // invalidate any in-flight callbacks from this session
-    if (jitsiConnectTimeoutRef.current) {
-      clearTimeout(jitsiConnectTimeoutRef.current);
-      jitsiConnectTimeoutRef.current = null;
-    }
-    if (jitsiHeartbeatRef.current) {
-      clearInterval(jitsiHeartbeatRef.current);
-      jitsiHeartbeatRef.current = null;
-    }
-    if (jitsiMessageListenerRef.current) {
-      window.removeEventListener('message', jitsiMessageListenerRef.current);
-      jitsiMessageListenerRef.current = null;
-    }
-    if (remoteAudioDecayRef.current) {
-      clearInterval(remoteAudioDecayRef.current);
-      remoteAudioDecayRef.current = null;
-    }
-    if (jitsiApiRef.current) {
-      try { jitsiApiRef.current.dispose(); } catch { /* already disposed */ }
-      jitsiApiRef.current = null;
-    }
-  }, []);
-
-  // Screen sharing functions are provided by useScreenSharing
-
-  // Pre-warm: connect to a personal idle room as soon as the JWT is ready so
-  // the Jitsi SDK bundle is downloaded and the XMPP connection is established
-  // before the user ever enters proximity range.
-  //
-  // The idle room name is keyed by the current user's own ID (the same formula
-  // used by handleProximityChange). If this user has the lexicographically
-  // lowest ID among nearby users — roughly half of all encounters — the prewarm
-  // room IS the proximity room, so voice becomes instant with zero reconnect.
-  // In other cases the SDK is already cached and only the XMPP room switch
-  // (~3–8 s) is needed instead of a cold start (~10–18 s).
-  const jitsiPrewarmRoom = jaasJwt && currentUser
-    ? `officexr-${officeId.slice(0, 8)}-${currentUser.id.slice(0, 8)}`
-    : null;
-  // The room JaaSMeeting actually connects to.
-  const activeJitsiRoom = jitsiRoom ?? jitsiPrewarmRoom;
-
-  // Reset Jitsi state when the active room changes and start a safety timeout
-  // for iframe loading. The tighter XMPP-connection timeout starts in onApiReady.
-  useEffect(() => {
-    // Clean up everything from the previous Jitsi session (intervals, listeners, API)
-    cleanupJitsi();
-    // Capture generation AFTER cleanupJitsi incremented it — guards all async callbacks below
-    const connectionGen = jitsiConnectionGenRef.current;
-
-    if (!activeJitsiRoom || !jaasJwt) {
-      setJitsiError(null);
-      setJitsiConnected(false);
-      setRemoteAudioLevel(0);
-      return;
-    }
-
-    const isProximity = jitsiRoomRef.current !== null;
-    console.log('[VoiceChat] Connecting — room:', activeJitsiRoom, isProximity ? '(proximity)' : '(prewarm)', 'jwt length:', jaasJwt?.length);
-    setJitsiError(null);
-    setJitsiConnected(false);
-    // Only surface load errors for proximity rooms; silently retry for prewarm.
-    if (isProximity) {
-      jitsiConnectTimeoutRef.current = setTimeout(() => {
-        if (jitsiConnectionGenRef.current !== connectionGen) return; // stale — a newer connection superseded this one
-        console.error('[VoiceChat] Jitsi iframe never loaded after 30s. Room:', activeJitsiRoom);
-        setJitsiError('Voice chat failed to load. Check your network connection.');
-      }, 30000);
-    }
-
-    return () => {
-      cleanupJitsi();
-    };
-  }, [activeJitsiRoom, jaasJwt, jitsiRetryCount, cleanupJitsi]);
+  // Jitsi prewarm, room management, and cleanup are handled by useJitsi
 
   const playWaveChime = () => {
     try {
@@ -1728,48 +1536,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Proximity-based Jitsi room coordination.
     // Also called from the position broadcast handler (above) when the tab is hidden.
-    const handleProximityChange = (nearbyIds: Set<string>) => {
-      // Cancel any pending leave debounce whenever proximity state changes
-      if (jitsiLeaveDebounceRef.current) {
-        clearTimeout(jitsiLeaveDebounceRef.current);
-        jitsiLeaveDebounceRef.current = null;
-      }
-
-      if (nearbyIds.size === 0) {
-        if (jitsiRoomRef.current !== null) {
-          // Debounce the leave — if the user re-enters proximity within the window,
-          // the debounce is cancelled above and no disconnect happens.
-          jitsiLeaveDebounceRef.current = setTimeout(() => {
-            jitsiLeaveDebounceRef.current = null;
-            if (jitsiRoomRef.current === null) return; // already cleared by a re-entry
-            jitsiRoomRef.current = null;
-            setJitsiRoom(null);
-            if (myPresenceRef.current) {
-              const updated = { ...myPresenceRef.current, jitsiRoom: null };
-              myPresenceRef.current = updated;
-              channelRef.current?.track(updated);
-            }
-          }, 1500);
-        }
-        return;
-      }
-
-      // Deterministic room name: both sides independently compute the same
-      // name using the lexicographically smallest user ID in the group.
-      // This avoids the race condition where adopting another user's
-      // existing room via presence causes room-name flipping.
-      const seed = [currentUser.id, ...nearbyIds].sort()[0];
-      const roomToJoin = `officexr-${officeId.slice(0, 8)}-${seed.slice(0, 8)}`;
-      if (roomToJoin !== jitsiRoomRef.current) {
-        jitsiRoomRef.current = roomToJoin;
-        setJitsiRoom(roomToJoin);
-        if (myPresenceRef.current) {
-          const updated = { ...myPresenceRef.current, jitsiRoom: roomToJoin };
-          myPresenceRef.current = updated;
-          channelRef.current?.track(updated);
-        }
-      }
-    };
+    // handleProximityChange is provided by useJitsi
 
     // Animation loop
     const clock = new THREE.Clock();
