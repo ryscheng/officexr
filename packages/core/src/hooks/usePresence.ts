@@ -286,8 +286,19 @@ export function usePresence({
         rotation: { x: number; y: number; z: number };
       };
       recordPositionUpdateRef.current(userId);
+
+      // Always cache position data, even for users not yet in presenceData.
+      // This prevents a race where broadcasts arrive before the 'join' event,
+      // so freshPositionData() can use the latest position when the avatar is created.
+      const newPos = new THREE.Vector3(position.x, 0, position.z);
+      lastSeenAt.current.set(userId, Date.now());
+      lastBroadcastPositionRef.current.set(userId, {
+        position: newPos.clone(),
+        rotationY: rotation.y,
+        time: Date.now(),
+      });
+
       if (presenceDataRef.current.has(userId)) {
-        const newPos = new THREE.Vector3(position.x, 0, position.z);
         const existing = avatarTargetsRef.current.get(userId);
         if (!existing || existing.position.distanceToSquared(newPos) > 0.0001
             || Math.abs(existing.rotationY - rotation.y) > 0.01) {
@@ -300,12 +311,6 @@ export function usePresence({
             rotationY: rotation.y,
           });
         }
-        lastSeenAt.current.set(userId, Date.now());
-        lastBroadcastPositionRef.current.set(userId, {
-          position: newPos.clone(),
-          rotationY: rotation.y,
-          time: Date.now(),
-        });
 
         // When tab is hidden, run proximity check here
         if (document.visibilityState === 'hidden' && cameraRef.current) {
