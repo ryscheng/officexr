@@ -92,6 +92,14 @@ export default function SettingsPanel({
   const [roleLoadingId, setRoleLoadingId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  // Room skins state
+  const [roomSkins, setRoomSkins] = useState<{ id: string; name: string; model_url: string; uploaded_by: string | null }[]>([]);
+  const [skinUploading, setSkinUploading] = useState(false);
+  const [skinUploadError, setSkinUploadError] = useState<string | null>(null);
+  const [skinName, setSkinName] = useState('');
+  const [showSkinUpload, setShowSkinUpload] = useState(false);
+  const roomSkinFileInputRef = useRef<HTMLInputElement>(null);
+
   // Load access settings whenever the panel opens
   useEffect(() => {
     if (!isOpen || !officeId) return;
@@ -99,6 +107,13 @@ export default function SettingsPanel({
     // Fetch link_access from offices
     supabase.from('offices').select('link_access').eq('id', officeId).single()
       .then(({ data }) => { if (data) setLinkAccess(data.link_access); });
+
+    // Fetch room skins
+    supabase
+      .from('office_skins')
+      .select('id, name, model_url, uploaded_by')
+      .eq('office_id', officeId)
+      .then(({ data }) => { if (data) setRoomSkins(data); });
 
     // Fetch members joined with profiles
     setMembersLoading(true);
@@ -145,6 +160,76 @@ export default function SettingsPanel({
     await supabase.from('office_members').update({ role: newRole }).eq('id', memberId);
     setMembers(prev => prev.map(m => m.memberId === memberId ? { ...m, role: newRole } : m));
     setRoleLoadingId(null);
+  };
+
+  const handleRoomSkinUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user || !officeId) return;
+
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext !== 'glb' && ext !== 'gltf') {
+      setSkinUploadError('Only .glb and .gltf files are supported.');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setSkinUploadError('File must be under 20 MB.');
+      return;
+    }
+    if (!skinName.trim()) {
+      setSkinUploadError('Please enter a name for this skin.');
+      return;
+    }
+
+    setSkinUploadError(null);
+    setSkinUploading(true);
+    try {
+      const fileId = crypto.randomUUID();
+      const path = `${officeId}/${fileId}.${ext}`;
+      const { data: storageData, error: storageError } = await supabase.storage
+        .from('room-skins')
+        .upload(path, file, { upsert: false, contentType: 'model/gltf-binary' });
+
+      if (storageError) throw storageError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('room-skins')
+        .getPublicUrl(storageData.path);
+
+      const { data: skinData, error: dbError } = await supabase
+        .from('office_skins')
+        .insert({ office_id: officeId, name: skinName.trim(), model_url: publicUrl, uploaded_by: user.id })
+        .select('id, name, model_url, uploaded_by')
+        .single();
+
+      if (dbError) throw dbError;
+
+      setRoomSkins(prev => [...prev, skinData]);
+      setSkinName('');
+      setShowSkinUpload(false);
+    } catch (err) {
+      console.error(err);
+      setSkinUploadError('Upload failed. Please try again.');
+    } finally {
+      setSkinUploading(false);
+      if (roomSkinFileInputRef.current) roomSkinFileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteRoomSkin = async (skinId: string, modelUrl: string) => {
+    if (!officeId) return;
+    // Extract storage path from the public URL: everything after /room-skins/
+    const marker = '/room-skins/';
+    const idx = modelUrl.indexOf(marker);
+    if (idx !== -1) {
+      const storagePath = modelUrl.slice(idx + marker.length);
+      await supabase.storage.from('room-skins').remove([storagePath]);
+    }
+    await supabase.from('office_skins').delete().eq('id', skinId);
+    setRoomSkins(prev => prev.filter(s => s.id !== skinId));
+    // If the deleted skin was the active model, clear it
+    if (settings.modelUrl === modelUrl) {
+      setSettings(prev => ({ ...prev, modelUrl: null }));
+    }
   };
 
   if (!isOpen) return null;
@@ -451,6 +536,115 @@ export default function SettingsPanel({
             <div style={sectionStyle}>
               <h3 style={sectionTitle}>Choose Character</h3>
 
+              {/* ── Room skins ── */}
+              {officeId && (
+                <div style={{ marginBottom: '18px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
+                    Room Characters
+                  </div>
+
+                  {roomSkins.length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
+                      {roomSkins.map(skin => {
+                        const isActive = settings.modelUrl === skin.model_url;
+                        const canDelete = skin.uploaded_by === user?.id || currentUserRole === 'owner' || currentUserRole === 'admin';
+                        return (
+                          <div key={skin.id} style={{ position: 'relative' }}>
+                            <button
+                              onClick={() => setSettings(prev => ({ ...prev, presetId: null, modelUrl: skin.model_url }))}
+                              style={{
+                                ...btnBase, padding: '10px 6px', width: '100%',
+                                backgroundColor: isActive ? '#3498db' : '#f5f5f5',
+                                color: isActive ? 'white' : '#333',
+                                border: `2px solid ${isActive ? '#2980b9' : 'transparent'}`,
+                                fontSize: '12px',
+                              }}
+                            >
+                              <div style={{ fontSize: '20px', marginBottom: '4px' }}>🧍</div>
+                              <div style={{ fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{skin.name}</div>
+                            </button>
+                            {canDelete && (
+                              <button
+                                onClick={() => handleDeleteRoomSkin(skin.id, skin.model_url)}
+                                title="Delete skin"
+                                style={{
+                                  position: 'absolute', top: '2px', right: '2px',
+                                  border: 'none', borderRadius: '4px', cursor: 'pointer',
+                                  background: 'rgba(220,38,38,0.85)', color: 'white',
+                                  fontSize: '10px', padding: '1px 4px', lineHeight: 1.4,
+                                }}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Add skin toggle */}
+                  {!showSkinUpload ? (
+                    <button
+                      onClick={() => { setShowSkinUpload(true); setSkinUploadError(null); }}
+                      style={{ ...btnBase, padding: '7px 14px', fontSize: '13px', background: '#e0e0e0', color: '#333' }}
+                    >
+                      + Add room skin
+                    </button>
+                  ) : (
+                    <div style={{ padding: '12px', borderRadius: '8px', border: '1px solid #e0e0e0', background: '#fafafa' }}>
+                      <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>Upload Room Skin (.glb / .gltf)</div>
+                      <input
+                        type="text"
+                        placeholder="Skin name…"
+                        value={skinName}
+                        onChange={e => setSkinName(e.target.value)}
+                        style={{
+                          display: 'block', width: '100%', marginBottom: '8px',
+                          padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc',
+                          fontSize: '13px', boxSizing: 'border-box',
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => roomSkinFileInputRef.current?.click()}
+                          disabled={skinUploading}
+                          style={{
+                            ...btnBase, padding: '7px 14px', fontSize: '13px',
+                            background: skinUploading ? '#aaa' : '#555', color: 'white',
+                          }}
+                        >
+                          {skinUploading ? 'Uploading…' : '📁 Choose file'}
+                        </button>
+                        <button
+                          onClick={() => { setShowSkinUpload(false); setSkinName(''); setSkinUploadError(null); }}
+                          style={{ ...btnBase, padding: '7px 14px', fontSize: '13px', background: '#e0e0e0', color: '#333' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <input
+                        ref={roomSkinFileInputRef}
+                        type="file"
+                        accept=".glb,.gltf"
+                        style={{ display: 'none' }}
+                        onChange={handleRoomSkinUpload}
+                      />
+                      {skinUploadError && (
+                        <div style={{ marginTop: '6px', fontSize: '12px', color: '#e74c3c' }}>{skinUploadError}</div>
+                      )}
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#888' }}>
+                        Max 20 MB · visible to all room members
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Built-in presets ── */}
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
+                Built-in Characters
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '14px' }}>
                 {MARIO_PRESETS.map(preset => (
                   <button
