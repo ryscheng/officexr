@@ -54,9 +54,44 @@ export type Database = {
           user_id: string;
           role: 'owner' | 'admin' | 'member';
           created_at: string;
+          avatar_body_color: string | null;
+          avatar_skin_color: string | null;
+          avatar_style: string | null;
+          avatar_accessories: string[] | null;
+          avatar_preset_id: string | null;
+          avatar_model_url: string | null;
         };
-        Insert: Omit<Database['public']['Tables']['office_members']['Row'], 'id' | 'created_at'>;
+        Insert: {
+          office_id: string;
+          user_id: string;
+          role: 'owner' | 'admin' | 'member';
+          avatar_body_color?: string | null;
+          avatar_skin_color?: string | null;
+          avatar_style?: string | null;
+          avatar_accessories?: string[] | null;
+          avatar_preset_id?: string | null;
+          avatar_model_url?: string | null;
+        };
         Update: Partial<Database['public']['Tables']['office_members']['Insert']>;
+        Relationships: [];
+      };
+      office_skins: {
+        Row: {
+          id: string;
+          office_id: string;
+          name: string;
+          model_url: string;
+          uploaded_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          office_id: string;
+          name: string;
+          model_url: string;
+          uploaded_by?: string | null;
+        };
+        Update: Partial<Database['public']['Tables']['office_skins']['Insert']>;
         Relationships: [];
       };
     };

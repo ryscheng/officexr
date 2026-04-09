@@ -38,6 +38,7 @@ function mockQueryBuilder(resolvedValue: { data: any; error: any }) {
     single: vi.fn().mockResolvedValue(resolvedValue),
     maybeSingle: vi.fn().mockResolvedValue(resolvedValue),
     upsert: vi.fn().mockResolvedValue(resolvedValue),
+    update: vi.fn().mockReturnThis(),
     then: vi.fn((cb: Function) => Promise.resolve(resolvedValue).then(cb)),
   };
   return builder;
@@ -79,12 +80,13 @@ describe('useAvatarCustomization', () => {
       expect(supabase.from).not.toHaveBeenCalled();
     });
 
-    it('queries profiles table for avatar data on mount', () => {
+    it('queries profiles table for avatar data on mount (global context)', () => {
       const profilesBuilder = mockQueryBuilder({ data: null, error: null });
       vi.mocked(supabase.from).mockReturnValue(profilesBuilder);
 
       renderUseAvatarCustomization({
         user: { id: 'user-1', name: 'Alice' },
+        officeId: 'global',
       });
 
       expect(supabase.from).toHaveBeenCalledWith('profiles');
@@ -143,7 +145,9 @@ describe('useAvatarCustomization', () => {
       });
 
       expect(supabase.from).toHaveBeenCalledWith('office_members');
-      expect(membersBuilder.select).toHaveBeenCalledWith('role');
+      expect(membersBuilder.select).toHaveBeenCalledWith(
+        'role, avatar_body_color, avatar_skin_color, avatar_style, avatar_accessories, avatar_preset_id, avatar_model_url',
+      );
       expect(membersBuilder.eq).toHaveBeenCalledWith('office_id', 'office-42');
       expect(membersBuilder.eq).toHaveBeenCalledWith('user_id', 'user-1');
     });
@@ -367,12 +371,13 @@ describe('useAvatarCustomization', () => {
       expect(supabase.from).not.toHaveBeenCalled();
     });
 
-    it('upserts to profiles table with correct mapped fields', async () => {
+    it('upserts to profiles table with correct mapped fields (global context)', async () => {
       const upsertBuilder = mockQueryBuilder({ data: null, error: null });
       vi.mocked(supabase.from).mockReturnValue(upsertBuilder);
 
       const { result } = renderUseAvatarCustomization({
         user: { id: 'user-1', name: 'Alice' },
+        officeId: 'global',
       });
 
       const settings = {
