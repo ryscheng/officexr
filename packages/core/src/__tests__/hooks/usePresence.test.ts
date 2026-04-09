@@ -315,7 +315,7 @@ describe('usePresence', () => {
         expect(target!.rotationY).toBe(1.5);
       });
 
-      it('ignores position for unknown userId', () => {
+      it('does not set avatarTargets for unknown userId', () => {
         const { result, mockChannel } = renderUsePresence();
         const scene = new THREE.Scene();
 
@@ -326,6 +326,61 @@ describe('usePresence', () => {
         }));
 
         expect(result.current.avatarTargetsRef.current.has('unknown')).toBe(false);
+      });
+
+      it('caches broadcast position for unknown userId so join event uses it', () => {
+        const { result, mockChannel } = renderUsePresence();
+        const scene = new THREE.Scene();
+
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
+
+        // Broadcast arrives BEFORE the join event (race condition)
+        act(() => mockChannel.__fire('broadcast', 'position', {
+          payload: { userId: 'user-2', position: { x: 10, y: 1.6, z: 20 }, rotation: { x: 0, y: 2.0, z: 0 } },
+        }));
+
+        // No avatar target yet (user not in presenceData)
+        expect(result.current.avatarTargetsRef.current.has('user-2')).toBe(false);
+
+        // Now the join event arrives with a stale position
+        act(() => mockChannel.__fire('presence', 'join', {
+          newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 0, y: 1.6, z: 0 }, rotation: { x: 0, y: 0, z: 0 } }],
+        }));
+
+        // Avatar should be created using the cached broadcast position, not the stale join position
+        expect(result.current.avatarsRef.current.has('user-2')).toBe(true);
+        const target = result.current.avatarTargetsRef.current.get('user-2');
+        expect(target).toBeDefined();
+        expect(target!.position.x).toBe(10);
+        expect(target!.position.z).toBe(20);
+        expect(target!.rotationY).toBe(2.0);
+      });
+
+      it('race condition: simultaneous join uses broadcast position over presence position', () => {
+        const { result, mockChannel } = renderUsePresence();
+        const scene = new THREE.Scene();
+
+        act(() => result.current.registerPresenceListeners(mockChannel, { current: scene }));
+
+        // Multiple broadcasts arrive before join
+        act(() => mockChannel.__fire('broadcast', 'position', {
+          payload: { userId: 'user-2', position: { x: 5, y: 1.6, z: 5 }, rotation: { x: 0, y: 1.0, z: 0 } },
+        }));
+        act(() => mockChannel.__fire('broadcast', 'position', {
+          payload: { userId: 'user-2', position: { x: 8, y: 1.6, z: 12 }, rotation: { x: 0, y: 1.5, z: 0 } },
+        }));
+
+        // Join event with old position
+        act(() => mockChannel.__fire('presence', 'join', {
+          newPresences: [{ id: 'user-2', name: 'User 2', position: { x: 0, y: 1.6, z: 0 }, rotation: { x: 0, y: 0, z: 0 } }],
+        }));
+
+        // Should use the LATEST broadcast position (x:8, z:12), not the join position
+        const target = result.current.avatarTargetsRef.current.get('user-2');
+        expect(target).toBeDefined();
+        expect(target!.position.x).toBe(8);
+        expect(target!.position.z).toBe(12);
+        expect(target!.rotationY).toBe(1.5);
       });
 
       it('calls recordPositionUpdateRef', () => {

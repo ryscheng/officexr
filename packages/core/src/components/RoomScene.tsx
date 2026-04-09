@@ -540,12 +540,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           }
         });
 
-        channel.subscribe(async (status) => {
+        const handleChannelStatus = async (status: string) => {
           channelSubscribedRef.current = status === 'SUBSCRIBED';
           if (status === 'SUBSCRIBED') {
             await handleChannelSubscribed(channel, scene, camera);
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            // Re-subscribe after a delay. The Supabase client manages the
+            // underlying WebSocket; we just need to retry the channel subscription.
+            setTimeout(() => {
+              if (channelRef.current === channel) {
+                channel.subscribe(handleChannelStatus);
+              }
+            }, 2000);
           }
-        });
+        };
+        channel.subscribe(handleChannelStatus);
       } else {
         // Already subscribed — effect re-ran due to environment change.
         // Scene was rebuilt and avatars were cleared. Re-sync presence with the new scene.
