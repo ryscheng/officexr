@@ -82,12 +82,12 @@ export function useAvatarCustomization({
             // If any room-specific avatar field is set, use it; otherwise fall
             // through to the global profile below.
             if (
-              data.avatar_body_color !== null ||
-              data.avatar_skin_color !== null ||
-              data.avatar_style !== null ||
-              data.avatar_accessories !== null ||
-              data.avatar_preset_id !== null ||
-              data.avatar_model_url !== null
+              data.avatar_body_color != null ||
+              data.avatar_skin_color != null ||
+              data.avatar_style != null ||
+              data.avatar_accessories != null ||
+              data.avatar_preset_id != null ||
+              data.avatar_model_url != null
             ) {
               setAvatarCustomization({
                 bodyColor: data.avatar_body_color ?? '#3498db',
