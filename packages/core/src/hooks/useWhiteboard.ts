@@ -119,6 +119,7 @@ export function useWhiteboard({
   const [strokeWidth, setStrokeWidth] = useState(5);
 
   const strokesRef = useRef<WhiteboardStroke[]>([]);
+  const currentStrokeRef = useRef<WhiteboardPoint[]>([]);
   const localStrokeIdsRef = useRef<string[]>([]);
   const texDirtyRef = useRef(false);
 
@@ -135,38 +136,44 @@ export function useWhiteboard({
   }, []);
 
   const beginStroke = useCallback((point: WhiteboardPoint) => {
+    currentStrokeRef.current = [point];
     setCurrentStroke([point]);
+    texDirtyRef.current = true;
   }, []);
 
   const continueStroke = useCallback((point: WhiteboardPoint) => {
-    setCurrentStroke(prev => [...prev, point]);
+    currentStrokeRef.current = [...currentStrokeRef.current, point];
+    setCurrentStroke(currentStrokeRef.current);
+    texDirtyRef.current = true;
   }, []);
 
   const endStroke = useCallback(() => {
-    setCurrentStroke(prev => {
-      if (prev.length < 2) return [];
-      const stroke: WhiteboardStroke = {
-        id: `${currentUserId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        userId: currentUserId || 'unknown',
-        points: prev,
-        color: tool === 'eraser' ? '#000000' : color,
-        width: strokeWidth,
-        tool,
-        timestamp: Date.now(),
-      };
-      const newStrokes = [...strokesRef.current, stroke];
-      updateStrokesState(newStrokes);
-      localStrokeIdsRef.current.push(stroke.id);
-      // Broadcast
-      if (channelRef.current && channelSubscribedRef.current) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'whiteboard-stroke',
-          payload: stroke,
-        });
-      }
-      return [];
-    });
+    const pts = currentStrokeRef.current;
+    currentStrokeRef.current = [];
+    setCurrentStroke([]);
+
+    if (pts.length < 2) return;
+
+    const stroke: WhiteboardStroke = {
+      id: `${currentUserId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      userId: currentUserId || 'unknown',
+      points: pts,
+      color: tool === 'eraser' ? '#000000' : color,
+      width: strokeWidth,
+      tool,
+      timestamp: Date.now(),
+    };
+    const newStrokes = [...strokesRef.current, stroke];
+    updateStrokesState(newStrokes);
+    localStrokeIdsRef.current.push(stroke.id);
+    // Broadcast
+    if (channelRef.current && channelSubscribedRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'whiteboard-stroke',
+        payload: stroke,
+      });
+    }
   }, [currentUserId, tool, color, strokeWidth, channelRef, channelSubscribedRef, updateStrokesState]);
 
   const undo = useCallback(() => {
@@ -252,9 +259,14 @@ export function useWhiteboard({
     const ctx = wbCtxRef.current;
     const tex = wbTextureRef.current;
     if (!ctx || !tex) return;
-    renderStrokesToCanvas(ctx, strokesRef.current);
+    // Render completed strokes, then overlay the in-progress stroke on top.
+    const preview = currentStrokeRef.current;
+    const previewStroke: WhiteboardStroke | null = preview.length >= 2
+      ? { id: '__preview__', userId: '', points: preview, color, width: strokeWidth, tool, timestamp: 0 }
+      : null;
+    renderStrokesToCanvas(ctx, previewStroke ? [...strokesRef.current, previewStroke] : strokesRef.current);
     tex.needsUpdate = true;
-  }, []);
+  }, [color, strokeWidth, tool]);
 
   return {
     whiteboardActive,

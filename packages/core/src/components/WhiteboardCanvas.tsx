@@ -133,16 +133,24 @@ export default function WhiteboardCanvas({
     }
   }, [strokes, currentStroke, orthoCamera, containerRef, worldToScreen, tool, color, strokeWidth]);
 
-  // Animation frame loop for rendering
+  // Keep a stable ref to renderCanvas so the animation loop never needs to restart.
+  // Without this, the loop would cancel+restart on every mouse move (because
+  // renderCanvas depends on currentStroke which changes every pointer event),
+  // causing the RAF to be cancelled before it fires and the stroke to only
+  // appear after the mouse stops moving.
+  const renderCanvasRef = useRef(renderCanvas);
+  useEffect(() => { renderCanvasRef.current = renderCanvas; });
+
+  // Animation frame loop for rendering — only restarts when is2DMode changes.
   useEffect(() => {
     if (!is2DMode) return;
     const tick = () => {
-      renderCanvas();
+      renderCanvasRef.current();
       animFrameRef.current = requestAnimationFrame(tick);
     };
     animFrameRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [is2DMode, renderCanvas]);
+  }, [is2DMode]);
 
   // Pointer event handlers
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
