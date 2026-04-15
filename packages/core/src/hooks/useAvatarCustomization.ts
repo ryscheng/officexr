@@ -178,21 +178,34 @@ export function useAvatarCustomization({
     const inRoom = officeId && officeId !== 'global';
 
     if (inRoom) {
-      // Save avatar as a per-room preference on office_members.
-      const { error } = await supabase
-        .from('office_members')
-        .update({
+      // Persist in office_members (room-specific, includes room skin) AND profiles
+      // (global baseline) so the customization survives re-entry to this room as
+      // well as entry to other rooms.
+      const [{ error: memberError }, { error: profileError }] = await Promise.all([
+        supabase
+          .from('office_members')
+          .update({
+            avatar_body_color: settings.bodyColor,
+            avatar_skin_color: settings.skinColor,
+            avatar_style: settings.style,
+            avatar_accessories: settings.accessories,
+            avatar_preset_id: settings.presetId ?? null,
+            avatar_model_url: settings.modelUrl ?? null,
+          })
+          .eq('office_id', officeId)
+          .eq('user_id', user.id),
+        supabase.from('profiles').upsert({
+          id: user.id,
           avatar_body_color: settings.bodyColor,
           avatar_skin_color: settings.skinColor,
           avatar_style: settings.style,
           avatar_accessories: settings.accessories,
           avatar_preset_id: settings.presetId ?? null,
           avatar_model_url: settings.modelUrl ?? null,
-        })
-        .eq('office_id', officeId)
-        .eq('user_id', user.id);
+        }),
+      ]);
 
-      if (error) throw new Error('Failed to save settings');
+      if (memberError || profileError) throw new Error('Failed to save settings');
     } else {
       // Global/lobby context — save to profiles.
       const { error } = await supabase.from('profiles').upsert({
@@ -235,7 +248,7 @@ export function useAvatarCustomization({
         if (result !== 'ok') console.error('[AvatarUpdate] Broadcast failed:', result);
       });
     }
-  }, [user?.id]);
+  }, [user?.id, officeId]);
 
   return {
     avatarCustomization,
