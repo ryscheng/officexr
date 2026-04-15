@@ -141,9 +141,32 @@ export function useAvatarCustomization({
     }
   }, [user, officeId]);
 
-  // Keep the ref in sync and re-track presence whenever customization changes
+  // Keep the ref in sync, rebuild the local 3D avatar, and re-track presence
+  // whenever the customization changes.  This effect fires both when the DB
+  // query resolves on page load (the scene is already built but the avatar
+  // still shows the default) and when the user explicitly saves settings.
   useEffect(() => {
     avatarCustomizationRef.current = avatarCustomization;
+
+    // Rebuild the local avatar so the 3D scene reflects the latest customization.
+    // Guard: if the scene isn't initialised yet (e.g. on the very first render)
+    // useSceneSetup will create the avatar with the ref value instead.
+    if (localAvatarRef.current && sceneRef.current) {
+      if (localAvatarAnimationRef.current) {
+        localAvatarAnimationRef.current.mixer.stopAllAction();
+        localAvatarAnimationRef.current = null;
+      }
+      const oldData = localAvatarRef.current.userData as AvatarData;
+      sceneRef.current.remove(localAvatarRef.current);
+      const newLocalAvatar = createAvatar(
+        sceneRef.current,
+        { ...oldData, customization: avatarCustomization },
+        (animState) => { localAvatarAnimationRef.current = animState; },
+      );
+      newLocalAvatar.visible = cameraModeRef.current !== 'first-person';
+      localAvatarRef.current = newLocalAvatar;
+    }
+
     const channel = channelRef.current;
     if (!channel || !myPresenceRef.current) return;
     const updated = { ...myPresenceRef.current, customization: avatarCustomization };
@@ -221,22 +244,9 @@ export function useAvatarCustomization({
       if (error) throw new Error('Failed to save settings');
     }
 
+    // Updating state triggers the useEffect([avatarCustomization]) above,
+    // which rebuilds the local 3D avatar and re-tracks presence.
     setAvatarCustomization(settings);
-
-    // Update local avatar (for third-person view)
-    if (localAvatarRef.current && sceneRef.current) {
-      if (localAvatarAnimationRef.current) {
-        localAvatarAnimationRef.current.mixer.stopAllAction();
-        localAvatarAnimationRef.current = null;
-      }
-      const oldData = localAvatarRef.current.userData as AvatarData;
-      sceneRef.current.remove(localAvatarRef.current);
-      const newLocalAvatar = createAvatar(sceneRef.current, { ...oldData, customization: settings }, (animState) => {
-        localAvatarAnimationRef.current = animState;
-      });
-      newLocalAvatar.visible = cameraModeRef.current !== 'first-person';
-      localAvatarRef.current = newLocalAvatar;
-    }
 
     // Broadcast avatar update to other users
     if (channelRef.current && channelSubscribedRef.current) {
