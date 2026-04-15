@@ -5,7 +5,7 @@ interface MotionPermissionBannerProps {
 export default function MotionPermissionBanner({ onEnable }: MotionPermissionBannerProps) {
   return (
     <div style={{
-      position: 'absolute', bottom: '30px', left: '50%',
+      position: 'absolute', bottom: '90px', left: '50%',
       transform: 'translateX(-50%)', zIndex: 200,
       background: 'rgba(0,0,0,0.85)', color: 'white',
       padding: '14px 20px', borderRadius: '10px',

@@ -42,7 +42,7 @@ export default function VirtualJoystick({
         joystickInputRef.current = { x: 0, y: 0 };
       }}
       style={{
-        position: 'absolute', bottom: '40px', left: '40px',
+        position: 'absolute', bottom: '100px', left: '40px',
         width: '120px', height: '120px', borderRadius: '50%',
         background: 'rgba(255,255,255,0.12)',
         border: '2px solid rgba(255,255,255,0.25)',
