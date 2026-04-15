@@ -512,6 +512,20 @@ export function updateAvatar(
 
 export function buildAvatarForPreview(customization: AvatarCustomization): { group: THREE.Group; eyes: THREE.Mesh[] } {
   const group = new THREE.Group();
+
+  if (customization.modelUrl) {
+    // Show a placeholder sphere while the GLTF loads asynchronously
+    const ph = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 8, 8),
+      new THREE.MeshStandardMaterial({ color: customization.bodyColor, transparent: true, opacity: 0.5 }),
+    );
+    ph.position.y = 0.8;
+    group.add(ph);
+    loadGLTFIntoGroup(customization.modelUrl, group, customization);
+    // GLTF models don't have the procedural eye meshes
+    return { group, eyes: [] };
+  }
+
   buildAvatarGeometry(group, customization);
   const eyes: THREE.Mesh[] = [];
   group.traverse(child => {

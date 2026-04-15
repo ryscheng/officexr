@@ -177,6 +177,8 @@ export function useJitsi({
           analyser.getByteFrequencyData(buf);
           const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length) / 128;
           setMicLevel(rms);
+        } else {
+          setMicLevel(0);
         }
         animFrameId = requestAnimationFrame(tick);
       };
@@ -196,8 +198,16 @@ export function useJitsi({
   const handleMuteToggle = useCallback(() => {
     setMicMuted(prev => {
       const newMuted = !prev;
-      micStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
       jitsiApiRef.current?.executeCommand('toggleAudio');
+      if (newMuted) {
+        // Stop tracks to release the hardware mic, preventing echo in other audio apps
+        micStreamRef.current?.getTracks().forEach(t => t.stop());
+        micStreamRef.current = null;
+        micAudioCtxRef.current?.suspend();
+      } else {
+        // Re-acquire the mic when unmuting
+        startMicRef.current?.();
+      }
       return newMuted;
     });
   }, []);

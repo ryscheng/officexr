@@ -648,7 +648,7 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
       {/* iOS motion permission prompt */}
       {motionPermission === 'prompt' && (
         <div style={{
-          position: 'absolute', bottom: '30px', left: '50%',
+          position: 'absolute', bottom: '90px', left: '50%',
           transform: 'translateX(-50%)', zIndex: 200,
           background: 'rgba(0,0,0,0.85)', color: 'white',
           padding: '14px 20px', borderRadius: '10px',
@@ -865,7 +865,7 @@ export default function UserLobby({ onEnterRoom }: UserLobbyProps) {
             joystickInputRef.current = { x: 0, y: 0 };
           }}
           style={{
-            position: 'absolute', bottom: '40px', left: '60px',
+            position: 'absolute', bottom: '100px', left: '60px',
             width: '100px', height: '100px', borderRadius: '50%',
             background: 'rgba(255,255,255,0.1)',
             border: '2px solid rgba(255,255,255,0.3)',
