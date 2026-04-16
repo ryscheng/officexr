@@ -450,7 +450,7 @@ export function useKeyboardControls({
       const sinP = Math.sin(pitch);
       camera.position.set(
         pPos.x + side * Math.sin(yaw) * camDist * cosP,
-        centerY + sinP * camDist,
+        centerY - sinP * camDist,
         pPos.z + side * Math.cos(yaw) * camDist * cosP,
       );
       // lookAt is safe here: pitch is preserved in camera.position, not rotation.x
