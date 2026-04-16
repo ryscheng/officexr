@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react';
 import { ChatMessage } from '@/types/room';
 
 interface ChatPanelProps {
@@ -25,11 +26,29 @@ export default function ChatPanel({
   chatScrollRef,
   chatInputRef,
 }: ChatPanelProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const hasMessages = messages.length > 0;
   const hasAbove = visible || hasMessages;
 
+  // Keep a stable ref to onClose so the mousedown handler never goes stale.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Close and blur when the user clicks outside the chat panel.
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        chatInputRef.current?.blur();
+        onCloseRef.current();
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [chatInputRef]);
+
   return (
     <div
+      ref={containerRef}
       style={{
         position: 'absolute', bottom: '20px', left: '50%',
         transform: 'translateX(-50%)', width: '500px', maxWidth: '90vw',
@@ -93,6 +112,7 @@ export default function ChatPanel({
             e.stopPropagation();
             onSend(input.trim());
           } else if (e.key === 'Escape') {
+            e.currentTarget.blur();
             onClose();
           }
         }}
