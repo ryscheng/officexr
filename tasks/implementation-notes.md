@@ -1,35 +1,27 @@
-# Implementation Notes
+# Implementation Notes — Pitch + Shooting Fix (Third-Person View)
 
-## Changes Made
+## Changes
 
-### `packages/core/src/components/Avatar.tsx`
-Two targeted changes:
+### useKeyboardControls.ts
+Replaced fixed-height, pitch-agnostic camera placement with spherical orbit. Camera position is now derived from `(yaw, pitch)` using `cos(pitch)` to shrink the horizontal radius and `sin(pitch)` to raise/lower height. `lookAt` after repositioning is intentional and correct — pitch is encoded geometrically in `camera.position`, so the rotation built by `lookAt` preserves the user's pitch each frame instead of discarding it.
 
-1. **`switchAnimation` (lines 41-63):** Added a `walk → idle` fallback. When 'walk' is requested but no walk clip exists in the GLB, the function now tries 'idle' instead of doing nothing. Prevents T-pose when a GLB has some clips but is missing the walk animation.
+Removed `camHeight = 2.2`. At `pitch = 0` the camera now sits at `y = 1.4` (eye-level with avatar) vs. old `y = 2.2`. This is a feel shift — a one-line baseline pitch offset (`effectivePitch = pitch + 0.23`) can restore the old default angle if playtesters prefer it.
 
-2. **`loadGLTFIntoGroup` (lines 457-461):** Added `console.warn` in the `gltf.animations.length === 0` branch. The warning includes the model URL and a re-export instruction so the issue is self-diagnosable without source diving.
+### useShooting.ts
+Added `CameraMode` export type. `fireBullet` now accepts `cameraMode`, `playerYaw`, `playerPosition`. In `third-person-front`, direction is `(-sin(yaw), 0, -cos(yaw))` (avatar facing) and origin is the avatar torso — bypassing the backward-facing camera. All other modes use `camera.getWorldDirection` and `camera.position` unchanged.
 
-### `packages/core/src/__tests__/hooks/Avatar.test.ts`
-New test file covering:
-- `switchAnimation` walk→idle fallback (3 new cases)
-- `switchAnimation` normal walk/idle cycling (4 cases — regression guard)
-- `loadGLTFIntoGroup` emits `console.warn` when `animations.length === 0`
-- `loadGLTFIntoGroup` does NOT warn when animations are present
-
-### `packages/core/src/__tests__/setup.ts`
-Three additive mock additions needed to test Avatar:
-- `rotation.set` on `inlineMockGroup` (createAvatar calls group.rotation.set)
-- `Box3` THREE export (loadGLTFIntoGroup uses new THREE.Box3())
-- `clipAction` on AnimationMixer mock (needed for animation-clips-present test path)
+### RoomScene.tsx
+Updated the single `fireBullet` call site to pass the three new params from refs already in scope.
 
 ## Key Decisions
 
-**walk → idle fallback:** When 'walk' is missing, playing idle is semantically the least-bad option. Playing "any first available clip" was rejected (could play a death animation). T-posing while walking is worse UX than idle-while-walking.
+- **Spherical orbit over separate aim vector**: Encoding pitch in camera position is simpler than an `aimDirectionRef`. The geometry is self-consistent: wherever the camera is positioned, `lookAt` produces the correct rotation pointing back at the avatar.
 
-**console.warn in loadGLTFIntoGroup:** This is the actionable location — it includes the URL so developers can identify which asset needs re-export. Adding a second warn inside switchAnimation (WeakSet-gated) was skipped as extra complexity with minimal extra diagnostic value.
+- **Flat direction in third-person-front**: `y = 0` (no pitch) matches the user's stated preference — "shoot in avatar's facing direction". Signature already accepts pitch if that changes.
 
-**vi.hoisted() pattern for test:** Module-level `const gltfLoader = new GLTFLoader()` runs once at import time. Mocking GLTFLoader after import has no effect on the cached instance. The `vi.hoisted()` + `lastLoaderRef` pattern captures the instance created during module initialization.
+- **No clamp tightening for third-person**: Left the existing `[-π/2, π/2]` clamp in place. At extreme pitches the camera orbits to directly above/below the avatar, which is usable. Can tighten to `[-π/3, π/3]` if clipping is reported.
 
-## Verification
-- 231/231 tests pass (`pnpm test`)
-- Production build succeeds (`pnpm build`)
+## Test Coverage
+- 5 new tests in `useKeyboardControls.test.ts`: pitch survives `computeMovement`, constant orbit radius, world direction matches camera→avatar vector, behind-vs-front hemisphere, yaw regression.
+- 8 new tests in `useShooting.test.ts`: front-view direction + origin, behind-view + first-person regressions, `getWorldDirection` call-vs-no-call assertions.
+- Full suite: 244/244 pass.

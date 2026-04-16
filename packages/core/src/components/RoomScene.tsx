@@ -470,7 +470,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (event.button !== 0) return;
       if (is2DModeRef.current) return;
       if (document.pointerLockElement !== renderer.domElement) return;
-      fireBullet(camera, scene, avatarsRef.current);
+      fireBullet(
+        camera,
+        scene,
+        avatarsRef.current,
+        cameraModeRef.current,
+        playerYawRef.current,
+        playerPositionRef.current,
+      );
     };
     renderer.domElement.addEventListener('mousedown', handleShootMouseDown);
 
