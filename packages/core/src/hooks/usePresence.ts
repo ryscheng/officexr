@@ -127,6 +127,8 @@ export function usePresence({
 
   // Stale detection state (closure-captured by tickPresence)
   const lastStaleCheckRef = useRef(0);
+  // Track previous jitsiRoom state to detect prewarm re-entry and force proximity re-check
+  const prevJitsiRoomRef = useRef<string | null>(jitsiRoomRef.current);
   const STALE_THRESHOLD_MS = 15_000;
 
   const rebuildOnlineUsers = useCallback(() => {
@@ -536,6 +538,17 @@ export function usePresence({
   ) => {
     const myId = currentUser?.id;
     const now = Date.now();
+
+    // When jitsiRoom transitions from proximity → prewarm (null), reset nearbyUserIdsRef so
+    // the proximity delta-check fires on the next frame even if the nearby set hasn't changed.
+    // Without this, handleProximityChange({B_id}) is never called after a leave+rejoin because
+    // nearbyUserIdsRef.current still holds the old set and setChanged stays false.
+    const wasInRoom = prevJitsiRoomRef.current !== null;
+    const isInRoom = jitsiRoomRef.current !== null;
+    if (wasInRoom && !isInRoom) {
+      nearbyUserIdsRef.current = new Set();
+    }
+    prevJitsiRoomRef.current = jitsiRoomRef.current;
 
     // Send position when moving (60ms throttle)
     const shouldSend = channelRef.current && channelSubscribedRef.current &&

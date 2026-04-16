@@ -122,6 +122,7 @@ export function useChat({
       clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
+    setChatVisible(true);
   }, []);
 
   const onChatInputBlur = useCallback(() => {

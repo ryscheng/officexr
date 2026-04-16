@@ -909,21 +909,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onJitsiDismiss={() => setJitsiError(null)}
       />
 
-      {/* Whiteboard toolbar — always visible (toggle button), tools expand when active */}
-      <WhiteboardToolbar
-        active={whiteboardActive}
-        onToggle={() => setWhiteboardActive(!whiteboardActive)}
-        tool={wbTool}
-        onToolChange={setWbTool}
-        color={wbColor}
-        onColorChange={setWbColor}
-        strokeWidth={wbStrokeWidth}
-        onStrokeWidthChange={setWbStrokeWidth}
-        onUndo={wbUndo}
-        onClear={wbClearAll}
-        strokeCount={wbStrokes.length}
-      />
-
       {/* Whiteboard canvas overlay — renders strokes in 2D mode, handles drawing input */}
       <WhiteboardCanvas
         active={whiteboardActive}
@@ -1025,30 +1010,48 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         <LoginModal onClose={() => setShowLoginModal(false)} />
       )}
 
-      {/* Emoji picker bar */}
+      {/* Bottom toolbar — whiteboard controls + emoji picker */}
       <div style={{
         position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)',
-        display: 'flex', gap: '6px', zIndex: 150,
-        background: 'rgba(0,0,0,0.55)', borderRadius: '12px',
-        padding: '6px 12px', border: '1px solid rgba(255,255,255,0.12)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+        zIndex: 160,
       }}>
-        {Object.entries(EMOJI_MAP).map(([key, emoji]) => (
-          <button
-            key={key}
-            title={`Press ${key}`}
-            onClick={() => fireEmojiRef.current?.(key)}
-            style={{
-              background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px',
-              cursor: 'pointer', fontSize: '22px', width: '40px', height: '40px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.2)'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)'; }}
-          >
-            {emoji}
-          </button>
-        ))}
+        <WhiteboardToolbar
+          active={whiteboardActive}
+          onToggle={() => setWhiteboardActive(!whiteboardActive)}
+          tool={wbTool}
+          onToolChange={setWbTool}
+          color={wbColor}
+          onColorChange={setWbColor}
+          strokeWidth={wbStrokeWidth}
+          onStrokeWidthChange={setWbStrokeWidth}
+          onUndo={wbUndo}
+          onClear={wbClearAll}
+          strokeCount={wbStrokes.length}
+        />
+        <div style={{
+          display: 'flex', gap: '6px',
+          background: 'rgba(0,0,0,0.55)', borderRadius: '12px',
+          padding: '6px 12px', border: '1px solid rgba(255,255,255,0.12)',
+        }}>
+          {Object.entries(EMOJI_MAP).map(([key, emoji]) => (
+            <button
+              key={key}
+              title={`Press ${key}`}
+              onClick={() => fireEmojiRef.current?.(key)}
+              style={{
+                background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px',
+                cursor: 'pointer', fontSize: '22px', width: '40px', height: '40px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.2)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)'; }}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
       </div>
 
       <CameraModeIndicator cameraMode={cameraMode} isTouchDevice={isTouchDevice} />
