@@ -35,8 +35,7 @@ export default function WhiteboardToolbar({
 }: WhiteboardToolbarProps) {
   return (
     <div style={{
-      position: 'absolute', top: '70px', left: '50%', transform: 'translateX(-50%)',
-      zIndex: 160, display: 'flex', alignItems: 'center', gap: '8px',
+      display: 'flex', alignItems: 'center', gap: '8px',
       fontFamily: 'monospace',
     }}>
       {/* Toggle button — always visible */}
