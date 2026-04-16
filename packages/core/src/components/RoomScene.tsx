@@ -32,6 +32,7 @@ import UserPanel from './room/UserPanel';
 import ChatPanel from './room/ChatPanel';
 import LoginModal from './room/LoginModal';
 import CameraModeIndicator from './room/CameraModeIndicator';
+import Crosshair from './room/Crosshair';
 import VirtualJoystick from './room/VirtualJoystick';
 
 interface OfficeSceneProps {
@@ -813,30 +814,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         }} />
       )}
 
-      {/* Crosshair — shown whenever pointer is locked (mouse control mode) */}
-      {mouseLockActive && !is2DMode && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          pointerEvents: 'none',
-          zIndex: 100,
-        }}>
-          <svg width="32" height="32" viewBox="-16 -16 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Top arm */}
-            <line x1="0" y1="-14" x2="0" y2="-5" stroke="white" strokeWidth="1.5" strokeOpacity="0.85"/>
-            {/* Bottom arm */}
-            <line x1="0" y1="5"   x2="0" y2="14"  stroke="white" strokeWidth="1.5" strokeOpacity="0.85"/>
-            {/* Left arm */}
-            <line x1="-14" y1="0" x2="-5" y2="0"  stroke="white" strokeWidth="1.5" strokeOpacity="0.85"/>
-            {/* Right arm */}
-            <line x1="5"  y1="0"  x2="14" y2="0"  stroke="white" strokeWidth="1.5" strokeOpacity="0.85"/>
-            {/* Center dot */}
-            <circle cx="0" cy="0" r="1.5" fill="white" fillOpacity="0.9"/>
-          </svg>
-        </div>
-      )}
+      <Crosshair visible={mouseLockActive && !is2DMode} />
 
       {showControls && (
         <ControlsOverlay
