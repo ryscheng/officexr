@@ -27,12 +27,12 @@ describe('useRealtimeChannel', () => {
       expect(supabase.channel).toHaveBeenCalledWith('office:office-1', expect.any(Object));
     });
 
-    it('configures channel with presence key = userId and broadcast ack=false self=false', () => {
+    it('configures channel with presence key = userId and broadcast ack=true self=false', () => {
       renderHook(() => useRealtimeChannel({ officeId: 'office-1', userId: 'user-1' }));
       expect(supabase.channel).toHaveBeenCalledWith('office:office-1', {
         config: {
           presence: { key: 'user-1' },
-          broadcast: { ack: false, self: false },
+          broadcast: { ack: true, self: false },
         },
       });
     });

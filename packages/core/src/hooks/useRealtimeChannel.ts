@@ -39,7 +39,7 @@ export function useRealtimeChannel({ officeId, userId }: UseRealtimeChannelOptio
     const channel = supabase.channel(channelName, {
       config: {
         presence: { key: userId },
-        broadcast: { ack: false, self: false },
+        broadcast: { ack: true, self: false },
       },
     });
 
@@ -56,7 +56,10 @@ export function useRealtimeChannel({ officeId, userId }: UseRealtimeChannelOptio
 
   const send = useCallback((event: string, payload: Record<string, unknown>) => {
     if (!channelRef.current || !channelSubscribedRef.current) return;
-    channelRef.current.send({ type: 'broadcast', event, payload });
+    channelRef.current.send({ type: 'broadcast', event, payload })
+      .then((result: string) => {
+        if (result !== 'ok') console.error(`[Broadcast] ${event} failed:`, result);
+      });
   }, []);
 
   const track = useCallback((data: PresenceEntry) => {

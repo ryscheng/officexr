@@ -23,9 +23,8 @@ import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 import { usePresence } from '@/hooks/usePresence';
 import { useSceneSetup } from '@/hooks/useSceneSetup';
 import { useShooting } from '@/hooks/useShooting';
-import JitsiErrorBanner from './room/JitsiErrorBanner';
+import ConnectionStatusBanner from './room/ConnectionStatusBanner';
 import MotionPermissionBanner from './room/MotionPermissionBanner';
-import VoiceChatStatus from './room/VoiceChatStatus';
 import { ScreenShareOverlay, ScreenShareTiles } from './room/ScreenShare';
 import JitsiMeetingContainer from './room/JitsiMeetingContainer';
 import UserPanel from './room/UserPanel';
@@ -159,6 +158,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     chatScrollRef,
     chatVisibleRef,
     sendChatMessage,
+    onChatInputFocus,
+    onChatInputBlur,
     registerChatListener,
   } = useChat({
     channelRef,
@@ -224,6 +225,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const fireEmojiRef = useRef<((key: string) => void) | null>(null);
 
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [realtimeRetryAt, setRealtimeRetryAt] = useState<number | null>(null);
   // Trigger renderer resize when debug panel toggles
   useEffect(() => {
     const timer = setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
@@ -358,15 +360,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Broadcast to all currently connected users — must happen before
     // setEnvironment triggers the scene rebuild that recreates the channel
-    if (channelRef.current && channelSubscribedRef.current) {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'environment-change',
-        payload: { environment: env },
-      }).then((result: string) => {
-        if (result !== 'ok') console.error('[Environment] Broadcast failed:', result);
-      });
-    }
+    channelSend('environment-change', { environment: env });
   };
 
 
@@ -430,15 +424,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Expose emoji fire function for the emoji picker bar
     const fireEmoji = (emojiKey: string) => {
       activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
-      if (channelRef.current && channelSubscribedRef.current) {
-        channelRef.current.send({
-          type: 'broadcast', event: 'confetti',
-          payload: {
-            userId: currentUser.id, key: emojiKey,
-            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-          },
-        });
-      }
+      channelSend('confetti', {
+        userId: currentUser.id, key: emojiKey,
+        position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+      });
     };
     fireEmojiRef.current = fireEmoji;
 
@@ -448,15 +437,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       renderer, camera, scene, orthoCamera, orthoViewSizeRef,
       (emojiKey: string) => {
         activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
-        if (channelRef.current && channelSubscribedRef.current) {
-          channelRef.current.send({
-            type: 'broadcast', event: 'confetti',
-            payload: {
-              userId: currentUser.id, key: emojiKey,
-              position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-            },
-          });
-        }
+        channelSend('confetti', {
+          userId: currentUser.id, key: emojiKey,
+          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+        });
       },
       (newZoom: number) => setZoomLevel(newZoom),
     );
@@ -564,18 +548,24 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           }
         });
 
+        let retryCount = 0;
         const handleChannelStatus = async (status: string) => {
           channelSubscribedRef.current = status === 'SUBSCRIBED';
           if (status === 'SUBSCRIBED') {
+            retryCount = 0;
+            setRealtimeRetryAt(null);
             await handleChannelSubscribed(channel, scene, camera);
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            // Re-subscribe after a delay. The Supabase client manages the
-            // underlying WebSocket; we just need to retry the channel subscription.
+            // Re-subscribe with exponential backoff (2s, 4s, 8s … capped at 30s).
+            const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
+            retryCount++;
+            console.warn(`[Channel] ${status} — retrying in ${delay}ms (attempt ${retryCount})`);
+            setRealtimeRetryAt(Date.now() + delay);
             setTimeout(() => {
               if (channelRef.current === channel) {
                 channel.subscribe(handleChannelStatus);
               }
-            }, 2000);
+            }, delay);
           }
         };
         channel.subscribe(handleChannelStatus);
@@ -632,11 +622,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   };
 
   const sendWave = (toUserId: string, chatMessage: string) => {
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'wave',
-      payload: { toUserId },
-    });
+    channelSend('wave', { toUserId });
     sendChatMessage(chatMessage);
   };
 
@@ -910,14 +896,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         <MotionPermissionBanner onEnable={handleRequestMotionPermission} />
       )}
 
-      {jitsiError && (
-        <JitsiErrorBanner
-          error={jitsiError}
-          jitsiRoom={jitsiRoom}
-          onRetry={handleJitsiRetry}
-          onDismiss={() => setJitsiError(null)}
-        />
-      )}
+      <ConnectionStatusBanner
+        realtimeRetryAt={realtimeRetryAt}
+        jitsiRoom={jitsiRoom}
+        jitsiConnected={jitsiConnected}
+        jitsiParticipantCount={jitsiParticipantCount}
+        remoteAudioLevel={remoteAudioLevel}
+        jaasJwt={jaasJwt}
+        jaasJwtError={jaasJwtError}
+        jitsiError={jitsiError}
+        onJitsiRetry={handleJitsiRetry}
+        onJitsiDismiss={() => setJitsiError(null)}
+      />
 
       {/* Whiteboard toolbar — always visible (toggle button), tools expand when active */}
       <WhiteboardToolbar
@@ -948,15 +938,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onBeginStroke={wbBeginStroke}
         onContinueStroke={wbContinueStroke}
         onEndStroke={wbEndStroke}
-      />
-
-      <VoiceChatStatus
-        jitsiRoom={jitsiRoom}
-        jitsiConnected={jitsiConnected}
-        jitsiParticipantCount={jitsiParticipantCount}
-        remoteAudioLevel={remoteAudioLevel}
-        jaasJwt={jaasJwt}
-        jaasJwtError={jaasJwtError}
       />
 
       {activeShareId && screenShares.has(activeShareId) && (
@@ -1022,6 +1003,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onInputChange={setChatInput}
         onSend={(msg) => { sendChatMessage(msg); setChatInput(''); }}
         onClose={() => { setChatVisible(false); setChatInput(''); }}
+        onInputFocus={onChatInputFocus}
+        onInputBlur={onChatInputBlur}
         chatScrollRef={chatScrollRef}
         chatInputRef={chatInputRef}
       />
