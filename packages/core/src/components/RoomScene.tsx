@@ -1000,7 +1000,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onlineUsers={onlineUsers}
         followingUserId={followingUserId}
         networkStats={networkStats}
-        cameraMode={cameraMode}
         micLevel={micLevel}
         micError={micError}
         micMuted={micMuted}
