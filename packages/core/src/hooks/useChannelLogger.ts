@@ -88,15 +88,23 @@ export function useChannelLogger(
   const registeredChannelRef = useRef<RealtimeChannel | null>(null);
   const onlineUsersRef = useRef(onlineUsers);
   onlineUsersRef.current = onlineUsers;
+  // Ref so handlers always see the latest enabled value without needing re-registration
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
 
   useEffect(() => {
-    if (!enabled || !channelRef.current || !channelSubscribedRef.current || !currentUserId) return;
+    // Register handlers as soon as the channel and userId are available, without
+    // waiting for `enabled` or subscription status. Supabase forbids adding presence
+    // callbacks after subscribe(), so we must attach them before subscribe() is called
+    // (which happens in a later effect). State updates are gated on enabledRef.current.
+    if (!channelRef.current || !currentUserId) return;
     if (registeredChannelRef.current === channelRef.current) return;
     registeredChannelRef.current = channelRef.current;
 
     const channel = channelRef.current;
 
     const handleBroadcast = (event: string) => ({ payload }: { payload: any }) => {
+      if (!enabledRef.current) return;
       const senderId = getSenderId(event, payload);
       if (senderId === currentUserId) return;
 
@@ -128,6 +136,7 @@ export function useChannelLogger(
     }
 
     channel.on('presence', { event: 'join' }, ({ newPresences }: { newPresences: any[] }) => {
+      if (!enabledRef.current) return;
       const timestamp = Date.now();
       for (const p of (newPresences ?? [])) {
         const id = String(++counterRef.current);
@@ -143,6 +152,7 @@ export function useChannelLogger(
     });
 
     channel.on('presence', { event: 'leave' }, ({ leftPresences }: { leftPresences: any[] }) => {
+      if (!enabledRef.current) return;
       const timestamp = Date.now();
       for (const p of (leftPresences ?? [])) {
         const id = String(++counterRef.current);
@@ -157,7 +167,7 @@ export function useChannelLogger(
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, currentUserId, channelRef, channelSubscribedRef]);
+  }, [currentUserId, channelRef, channelSubscribedRef]);
 
   if (!enabled) return { log: [], lastSeenByUser: new Map() };
   return { log, lastSeenByUser };

@@ -39,7 +39,13 @@ function findAnimation(
 }
 
 export function switchAnimation(animState: AvatarAnimationState, desiredName: string): void {
-  const action = findAnimation(animState.actions, desiredName);
+  let action = findAnimation(animState.actions, desiredName);
+
+  // Fallback: if the requested 'walk' clip is absent, play 'idle' instead so
+  // the avatar doesn't freeze in its bind pose (T-pose).
+  if (!action && desiredName === 'walk') {
+    action = findAnimation(animState.actions, 'idle');
+  }
 
   if (action && action === animState.activeAction) return;
 
@@ -451,6 +457,9 @@ function loadGLTFIntoGroup(
         }
         onAnimationsReady?.({ mixer, actions, activeAction: null });
       } else {
+        console.warn(
+          `[Avatar] GLTF loaded from ${url} has no animation clips — avatar will render in bind pose. Re-export the GLB with Walk/Idle clips.`,
+        );
         onAnimationsReady?.(null);
       }
     },

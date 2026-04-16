@@ -438,22 +438,23 @@ export function useKeyboardControls({
       localAvatar.rotation.y = playerYawRef.current + Math.PI;
 
       const camDist = 3.5;
-      const camHeight = 2.2;
       const yaw = playerYawRef.current;
-      if (cameraModeRef.current === 'third-person-behind') {
-        camera.position.set(
-          pPos.x + Math.sin(yaw) * camDist,
-          camHeight,
-          pPos.z + Math.cos(yaw) * camDist,
-        );
-      } else {
-        camera.position.set(
-          pPos.x - Math.sin(yaw) * camDist,
-          camHeight,
-          pPos.z - Math.cos(yaw) * camDist,
-        );
-      }
-      camera.lookAt(pPos.x, 1.4, pPos.z);
+      const pitch = cameraPitchRef.current;
+      const centerY = 1.4;
+      // side=1 puts the camera behind the avatar; side=-1 puts it in front
+      const side = cameraModeRef.current === 'third-person-behind' ? 1 : -1;
+
+      // Spherical orbit: camera position derived from (yaw, pitch) so that pitch
+      // is encoded geometrically rather than discarded by lookAt.
+      const cosP = Math.cos(pitch);
+      const sinP = Math.sin(pitch);
+      camera.position.set(
+        pPos.x + side * Math.sin(yaw) * camDist * cosP,
+        centerY + sinP * camDist,
+        pPos.z + side * Math.cos(yaw) * camDist * cosP,
+      );
+      // lookAt is safe here: pitch is preserved in camera.position, not rotation.x
+      camera.lookAt(pPos.x, centerY, pPos.z);
     } else if (localAvatar) {
       localAvatar.visible = false;
       playerPositionRef.current.set(camera.position.x, 0, camera.position.z);
