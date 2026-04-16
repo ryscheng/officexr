@@ -1012,8 +1012,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       {/* Bottom toolbar — whiteboard controls + emoji picker */}
       <div style={{
-        position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+        position: 'absolute', bottom: '16px', left: '16px',
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px',
         zIndex: 160,
       }}>
         <WhiteboardToolbar
