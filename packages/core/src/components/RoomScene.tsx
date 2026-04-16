@@ -159,6 +159,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     chatScrollRef,
     chatVisibleRef,
     sendChatMessage,
+    onChatInputFocus,
+    onChatInputBlur,
     registerChatListener,
   } = useChat({
     channelRef,
@@ -1022,6 +1024,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onInputChange={setChatInput}
         onSend={(msg) => { sendChatMessage(msg); setChatInput(''); }}
         onClose={() => { setChatVisible(false); setChatInput(''); }}
+        onInputFocus={onChatInputFocus}
+        onInputBlur={onChatInputBlur}
         chatScrollRef={chatScrollRef}
         chatInputRef={chatInputRef}
       />

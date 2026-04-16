@@ -7,6 +7,8 @@ interface ChatPanelProps {
   onInputChange: (v: string) => void;
   onSend: (msg: string) => void;
   onClose: () => void;
+  onInputFocus: () => void;
+  onInputBlur: () => void;
   chatScrollRef: React.RefObject<HTMLDivElement | null>;
   chatInputRef: React.RefObject<HTMLInputElement | null>;
 }
@@ -18,6 +20,8 @@ export default function ChatPanel({
   onInputChange,
   onSend,
   onClose,
+  onInputFocus,
+  onInputBlur,
   chatScrollRef,
   chatInputRef,
 }: ChatPanelProps) {
@@ -49,6 +53,8 @@ export default function ChatPanel({
           ref={chatInputRef}
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
+          onFocus={onInputFocus}
+          onBlur={onInputBlur}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && input.trim()) {
               e.stopPropagation();

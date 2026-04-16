@@ -12,6 +12,8 @@ export interface ChatHandle {
   chatScrollRef: React.MutableRefObject<HTMLDivElement | null>;
   chatVisibleRef: React.MutableRefObject<boolean>;
   sendChatMessage: (message: string) => void;
+  onChatInputFocus: () => void;
+  onChatInputBlur: () => void;
   /** Register the chat broadcast listener on a channel. Call inside the main scene useEffect. */
   registerChatListener: (channel: RealtimeChannel) => void;
 }
@@ -40,6 +42,7 @@ export function useChat({
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatVisibleRef = useRef<boolean>(false);
+  const chatInputFocusedRef = useRef<boolean>(false);
 
   // Handle chat visibility and Enter key
   useEffect(() => {
@@ -101,23 +104,32 @@ export function useChat({
     }
   }, [chatVisible]);
 
-  // Auto-hide chat after inactivity
+  // Auto-hide chat after inactivity (paused while input is focused)
   useEffect(() => {
-    if (chatVisible && chatInput === '') {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
-      hideTimerRef.current = setTimeout(() => {
-        setChatVisible(false);
-      }, 10000);
+    if (chatVisible && chatInput === '' && !chatInputFocusedRef.current) {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = setTimeout(() => setChatVisible(false), 10000);
     }
 
     return () => {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
   }, [chatVisible, chatInput]);
+
+  const onChatInputFocus = useCallback(() => {
+    chatInputFocusedRef.current = true;
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const onChatInputBlur = useCallback(() => {
+    chatInputFocusedRef.current = false;
+    if (chatVisibleRef.current && !chatInputRef.current?.value) {
+      hideTimerRef.current = setTimeout(() => setChatVisible(false), 10000);
+    }
+  }, []);
 
   const sendChatMessage = useCallback((message: string) => {
     if (!channelRef.current || !channelSubscribedRef.current || !currentUser) return;
@@ -161,6 +173,8 @@ export function useChat({
     chatScrollRef,
     chatVisibleRef,
     sendChatMessage,
+    onChatInputFocus,
+    onChatInputBlur,
     registerChatListener,
   };
 }
