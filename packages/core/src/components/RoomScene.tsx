@@ -360,15 +360,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Broadcast to all currently connected users — must happen before
     // setEnvironment triggers the scene rebuild that recreates the channel
-    if (channelRef.current && channelSubscribedRef.current) {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'environment-change',
-        payload: { environment: env },
-      }).then((result: string) => {
-        if (result !== 'ok') console.error('[Environment] Broadcast failed:', result);
-      });
-    }
+    channelSend('environment-change', { environment: env });
   };
 
 
@@ -432,15 +424,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Expose emoji fire function for the emoji picker bar
     const fireEmoji = (emojiKey: string) => {
       activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
-      if (channelRef.current && channelSubscribedRef.current) {
-        channelRef.current.send({
-          type: 'broadcast', event: 'confetti',
-          payload: {
-            userId: currentUser.id, key: emojiKey,
-            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-          },
-        });
-      }
+      channelSend('confetti', {
+        userId: currentUser.id, key: emojiKey,
+        position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+      });
     };
     fireEmojiRef.current = fireEmoji;
 
@@ -450,15 +437,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       renderer, camera, scene, orthoCamera, orthoViewSizeRef,
       (emojiKey: string) => {
         activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
-        if (channelRef.current && channelSubscribedRef.current) {
-          channelRef.current.send({
-            type: 'broadcast', event: 'confetti',
-            payload: {
-              userId: currentUser.id, key: emojiKey,
-              position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-            },
-          });
-        }
+        channelSend('confetti', {
+          userId: currentUser.id, key: emojiKey,
+          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+        });
       },
       (newZoom: number) => setZoomLevel(newZoom),
     );
@@ -566,18 +548,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           }
         });
 
+        let retryCount = 0;
         const handleChannelStatus = async (status: string) => {
           channelSubscribedRef.current = status === 'SUBSCRIBED';
           if (status === 'SUBSCRIBED') {
+            retryCount = 0;
             await handleChannelSubscribed(channel, scene, camera);
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            // Re-subscribe after a delay. The Supabase client manages the
-            // underlying WebSocket; we just need to retry the channel subscription.
+            // Re-subscribe with exponential backoff (2s, 4s, 8s … capped at 30s).
+            const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
+            retryCount++;
+            console.warn(`[Channel] ${status} — retrying in ${delay}ms (attempt ${retryCount})`);
             setTimeout(() => {
               if (channelRef.current === channel) {
                 channel.subscribe(handleChannelStatus);
               }
-            }, 2000);
+            }, delay);
           }
         };
         channel.subscribe(handleChannelStatus);
@@ -634,11 +620,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   };
 
   const sendWave = (toUserId: string, chatMessage: string) => {
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'wave',
-      payload: { toUserId },
-    });
+    channelSend('wave', { toUserId });
     sendChatMessage(chatMessage);
   };
 
