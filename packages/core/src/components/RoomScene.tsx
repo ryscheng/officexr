@@ -22,6 +22,7 @@ import { useJitsi } from '@/hooks/useJitsi';
 import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 import { usePresence } from '@/hooks/usePresence';
 import { useSceneSetup } from '@/hooks/useSceneSetup';
+import { useShooting } from '@/hooks/useShooting';
 import JitsiErrorBanner from './room/JitsiErrorBanner';
 import MotionPermissionBanner from './room/MotionPermissionBanner';
 import VoiceChatStatus from './room/VoiceChatStatus';
@@ -235,6 +236,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const {
     onlineUsers,
     presenceDataRef,
+    avatarsRef,
     avatarTargetsRef,
     lastPositionUpdate,
     registerPresenceListeners,
@@ -385,6 +387,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     playerPositionRef,
   });
 
+  const { fireBullet, updateBullets } = useShooting();
+
   const playWaveChime = () => {
     try {
       const ctx = new AudioContext();
@@ -456,6 +460,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       (newZoom: number) => setZoomLevel(newZoom),
     );
 
+    // Shooting: left-click while pointer is locked fires a bullet
+    const handleShootMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      if (is2DModeRef.current) return;
+      if (document.pointerLockElement !== renderer.domElement) return;
+      fireBullet(camera, scene, avatarsRef.current);
+    };
+    renderer.domElement.addEventListener('mousedown', handleShootMouseDown);
+
     // Supabase Realtime channel — created by useRealtimeChannel, accessed via ref
     const channel = channelRef.current;
 
@@ -465,12 +478,32 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Animation loop — always start regardless of channel state
     const clock = new THREE.Clock();
 
+    // Called when a bullet hits a remote avatar — trigger a wave
+    const handleAvatarHit = (avatarId: string) => {
+      const presence = presenceDataRef.current.get(avatarId);
+      const toUserName = presence?.name || 'someone';
+      // Play wave chime locally so the shooter gets audio feedback
+      playWaveChime();
+      // Broadcast the wave to the hit player (they'll hear the chime)
+      if (channelRef.current && channelSubscribedRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'wave',
+          payload: { toUserId: avatarId },
+        });
+      }
+      sendChatMessage(`${currentUser.name || 'Someone'} hit ${toUserName} with a sparkle bullet! ✨`);
+    };
+
     const animate = () => {
       const delta = clock.getDelta();
       const lerpAlpha = 1 - Math.pow(0.005, delta);
 
       // Update emoji confetti particles
       activeParticles = updateParticles(activeParticles, delta, scene);
+
+      // Update bullet positions and sparkle trails
+      updateBullets(delta, scene, handleAvatarHit);
 
       // Update whiteboard 3D floor texture if strokes changed
       wbUpdateFloorTexture();
@@ -568,6 +601,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     return () => {
       renderer.setAnimationLoop(null);
       cleanupInputListeners();
+      renderer.domElement.removeEventListener('mousedown', handleShootMouseDown);
 
       // Clean up presence timers (visibility, heartbeat, offline cleanup)
       cleanupPresenceTimers();
@@ -783,6 +817,31 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 50,
           boxShadow: 'inset 0 0 0 4px #00ff00',
         }} />
+      )}
+
+      {/* Crosshair — shown whenever pointer is locked (mouse control mode) */}
+      {mouseLockActive && !is2DMode && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          pointerEvents: 'none',
+          zIndex: 100,
+        }}>
+          <svg width="32" height="32" viewBox="-16 -16 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Top arm */}
+            <line x1="0" y1="-14" x2="0" y2="-5" stroke="white" strokeWidth="1.5" strokeOpacity="0.85"/>
+            {/* Bottom arm */}
+            <line x1="0" y1="5"   x2="0" y2="14"  stroke="white" strokeWidth="1.5" strokeOpacity="0.85"/>
+            {/* Left arm */}
+            <line x1="-14" y1="0" x2="-5" y2="0"  stroke="white" strokeWidth="1.5" strokeOpacity="0.85"/>
+            {/* Right arm */}
+            <line x1="5"  y1="0"  x2="14" y2="0"  stroke="white" strokeWidth="1.5" strokeOpacity="0.85"/>
+            {/* Center dot */}
+            <circle cx="0" cy="0" r="1.5" fill="white" fillOpacity="0.9"/>
+          </svg>
+        </div>
       )}
 
       {showControls && (
