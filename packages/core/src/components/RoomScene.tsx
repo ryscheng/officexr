@@ -25,6 +25,7 @@ import { useSceneSetup } from '@/hooks/useSceneSetup';
 import { useShooting } from '@/hooks/useShooting';
 import JitsiErrorBanner from './room/JitsiErrorBanner';
 import MotionPermissionBanner from './room/MotionPermissionBanner';
+import RealtimeStatusBanner from './room/RealtimeStatusBanner';
 import VoiceChatStatus from './room/VoiceChatStatus';
 import { ScreenShareOverlay, ScreenShareTiles } from './room/ScreenShare';
 import JitsiMeetingContainer from './room/JitsiMeetingContainer';
@@ -226,6 +227,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const fireEmojiRef = useRef<((key: string) => void) | null>(null);
 
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [realtimeRetryAt, setRealtimeRetryAt] = useState<number | null>(null);
   // Trigger renderer resize when debug panel toggles
   useEffect(() => {
     const timer = setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
@@ -553,12 +555,14 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           channelSubscribedRef.current = status === 'SUBSCRIBED';
           if (status === 'SUBSCRIBED') {
             retryCount = 0;
+            setRealtimeRetryAt(null);
             await handleChannelSubscribed(channel, scene, camera);
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             // Re-subscribe with exponential backoff (2s, 4s, 8s … capped at 30s).
             const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
             retryCount++;
             console.warn(`[Channel] ${status} — retrying in ${delay}ms (attempt ${retryCount})`);
+            setRealtimeRetryAt(Date.now() + delay);
             setTimeout(() => {
               if (channelRef.current === channel) {
                 channel.subscribe(handleChannelStatus);
@@ -892,6 +896,10 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       {motionPermission === 'prompt' && (
         <MotionPermissionBanner onEnable={handleRequestMotionPermission} />
+      )}
+
+      {realtimeRetryAt !== null && (
+        <RealtimeStatusBanner retryAt={realtimeRetryAt} />
       )}
 
       {jitsiError && (
