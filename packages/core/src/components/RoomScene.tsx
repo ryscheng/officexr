@@ -10,6 +10,8 @@ import WhiteboardCanvas from './WhiteboardCanvas';
 import WhiteboardToolbar from './WhiteboardToolbar';
 import { useWhiteboard } from '@/hooks/useWhiteboard';
 import { useNetworkStats } from '@/hooks/useNetworkStats';
+import { useChannelLogger } from '@/hooks/useChannelLogger';
+import { PANEL_HEIGHT } from './NetworkDebugPanel';
 import { CameraMode, EnvironmentType } from '@/types/room';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut } from '@/hooks/useAuth';
@@ -325,6 +327,24 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     showDebugPanel,
   );
   recordPositionUpdateRef.current = networkStats.recordPositionUpdate;
+
+  // Channel message logger for debug panel
+  const { log: channelLog, lastSeenByUser } = useChannelLogger(
+    channelRef,
+    channelSubscribedRef,
+    currentUser?.id,
+    onlineUsers,
+    showDebugPanel,
+  );
+
+  // Per-user Jitsi room derived from presence data (re-derived each render when onlineUsers changes)
+  const jitsiUsers = onlineUsers
+    .filter(u => u.id !== currentUser?.id)
+    .map(u => ({
+      id: u.id,
+      name: u.name,
+      jitsiRoom: presenceDataRef.current.get(u.id)?.jitsiRoom ?? null,
+    }));
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
 
@@ -1073,7 +1093,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     <button
       onClick={() => setShowDebugPanel(v => !v)}
       style={{
-        position: 'absolute', bottom: showDebugPanel ? '220px' : '0px', left: '50%',
+        position: 'absolute', bottom: showDebugPanel ? `${PANEL_HEIGHT}px` : '0px', left: '50%',
         transform: 'translateX(-50%)',
         background: '#1f2937', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.1)',
         borderBottom: showDebugPanel ? 'none' : '1px solid rgba(255,255,255,0.1)',
@@ -1087,7 +1107,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     </button>
 
     {showDebugPanel && (
-      <NetworkDebugPanel stats={networkStats} onClose={() => setShowDebugPanel(false)} />
+      <NetworkDebugPanel
+        stats={networkStats}
+        realtimeRetryAt={realtimeRetryAt}
+        channelLog={channelLog}
+        lastSeenByUser={lastSeenByUser}
+        jitsiRoom={jitsiRoom}
+        jitsiConnected={jitsiConnected}
+        jitsiParticipantCount={jitsiParticipantCount}
+        jitsiError={jitsiError}
+        remoteAudioLevel={remoteAudioLevel}
+        micMuted={micMuted}
+        micLevel={micLevel}
+        micError={micError}
+        jitsiUsers={jitsiUsers}
+        onClose={() => setShowDebugPanel(false)}
+      />
     )}
     </div>
   );
