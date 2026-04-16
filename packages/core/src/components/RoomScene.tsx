@@ -23,10 +23,8 @@ import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 import { usePresence } from '@/hooks/usePresence';
 import { useSceneSetup } from '@/hooks/useSceneSetup';
 import { useShooting } from '@/hooks/useShooting';
-import JitsiErrorBanner from './room/JitsiErrorBanner';
+import ConnectionStatusBanner from './room/ConnectionStatusBanner';
 import MotionPermissionBanner from './room/MotionPermissionBanner';
-import RealtimeStatusBanner from './room/RealtimeStatusBanner';
-import VoiceChatStatus from './room/VoiceChatStatus';
 import { ScreenShareOverlay, ScreenShareTiles } from './room/ScreenShare';
 import JitsiMeetingContainer from './room/JitsiMeetingContainer';
 import UserPanel from './room/UserPanel';
@@ -898,18 +896,18 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         <MotionPermissionBanner onEnable={handleRequestMotionPermission} />
       )}
 
-      {realtimeRetryAt !== null && (
-        <RealtimeStatusBanner retryAt={realtimeRetryAt} />
-      )}
-
-      {jitsiError && (
-        <JitsiErrorBanner
-          error={jitsiError}
-          jitsiRoom={jitsiRoom}
-          onRetry={handleJitsiRetry}
-          onDismiss={() => setJitsiError(null)}
-        />
-      )}
+      <ConnectionStatusBanner
+        realtimeRetryAt={realtimeRetryAt}
+        jitsiRoom={jitsiRoom}
+        jitsiConnected={jitsiConnected}
+        jitsiParticipantCount={jitsiParticipantCount}
+        remoteAudioLevel={remoteAudioLevel}
+        jaasJwt={jaasJwt}
+        jaasJwtError={jaasJwtError}
+        jitsiError={jitsiError}
+        onJitsiRetry={handleJitsiRetry}
+        onJitsiDismiss={() => setJitsiError(null)}
+      />
 
       {/* Whiteboard toolbar — always visible (toggle button), tools expand when active */}
       <WhiteboardToolbar
@@ -940,15 +938,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onBeginStroke={wbBeginStroke}
         onContinueStroke={wbContinueStroke}
         onEndStroke={wbEndStroke}
-      />
-
-      <VoiceChatStatus
-        jitsiRoom={jitsiRoom}
-        jitsiConnected={jitsiConnected}
-        jitsiParticipantCount={jitsiParticipantCount}
-        remoteAudioLevel={remoteAudioLevel}
-        jaasJwt={jaasJwt}
-        jaasJwtError={jaasJwtError}
       />
 
       {activeShareId && screenShares.has(activeShareId) && (
