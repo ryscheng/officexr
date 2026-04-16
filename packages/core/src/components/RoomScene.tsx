@@ -480,19 +480,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Called when a bullet hits a remote avatar — trigger a wave
     const handleAvatarHit = (avatarId: string) => {
-      const presence = presenceDataRef.current.get(avatarId);
-      const toUserName = presence?.name || 'someone';
-      // Play wave chime locally so the shooter gets audio feedback
-      playWaveChime();
-      // Broadcast the wave to the hit player (they'll hear the chime)
-      if (channelRef.current && channelSubscribedRef.current) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'wave',
-          payload: { toUserId: avatarId },
-        });
-      }
-      sendChatMessage(`${currentUser.name || 'Someone'} hit ${toUserName} with a sparkle bullet! ✨`);
+      const toUserName = presenceDataRef.current.get(avatarId)?.name || 'someone';
+      playWaveChime(); // local chime as shooter feedback
+      sendWave(avatarId, `${currentUser.name || 'Someone'} hit ${toUserName} with a sparkle bullet! ✨`);
     };
 
     const animate = () => {
@@ -640,13 +630,17 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setFollowingUserId(userId);
   };
 
-  const handleWaveAt = (toUserId: string, toUserName: string) => {
-    sendChatMessage(`${currentUser?.name || 'Someone'} has waved at ${toUserName} 👋`);
+  const sendWave = (toUserId: string, chatMessage: string) => {
     channelRef.current?.send({
       type: 'broadcast',
       event: 'wave',
       payload: { toUserId },
     });
+    sendChatMessage(chatMessage);
+  };
+
+  const handleWaveAt = (toUserId: string, toUserName: string) => {
+    sendWave(toUserId, `${currentUser?.name || 'Someone'} has waved at ${toUserName} 👋`);
   };
 
   const handleJitsiRetry = () => {
