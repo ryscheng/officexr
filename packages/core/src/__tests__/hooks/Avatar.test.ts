@@ -22,15 +22,31 @@ vi.unmock('@/components/Avatar');
 
 // GLTFLoader is not mocked globally — mock it here so loadGLTFIntoGroup is
 // exercisable without a real HTTP fetch.
+//
+// We store the last created loader instance in `lastLoaderRef.current` so tests
+// can inspect or invoke the `load` callback that Avatar.tsx registered.
+// This avoids the module-caching problem: Avatar.tsx's `gltfLoader` singleton
+// is created once at module init time (from the mock below), and later
+// `mockImplementation` calls on the constructor don't affect the already-
+// constructed singleton.
+//
+// `vi.hoisted` runs before the vi.mock factory (which is itself hoisted), so
+// the variable is in scope when the factory executes.
+const { lastLoaderRef } = vi.hoisted(() => {
+  const lastLoaderRef = { current: { load: (() => {}) as ReturnType<typeof vi.fn> } };
+  return { lastLoaderRef };
+});
+
 vi.mock('three/addons/loaders/GLTFLoader.js', () => ({
   GLTFLoader: vi.fn().mockImplementation(function () {
-    return { load: vi.fn() };
+    const instance = { load: vi.fn() };
+    lastLoaderRef.current = instance;
+    return instance;
   }),
 }));
 
-import { switchAnimation } from '@/components/Avatar';
+import { switchAnimation, createAvatar } from '@/components/Avatar';
 import type { AvatarAnimationState } from '@/components/Avatar';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal AvatarAnimationState without relying on THREE mocks
@@ -156,18 +172,8 @@ describe('loadGLTFIntoGroup — no animation clips', () => {
   it('emits console.warn when GLTF has no animation clips', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    // Arrange: configure GLTFLoader.load to call onLoad with an empty animation array
-    const loaderInstance = { load: vi.fn() };
-    (GLTFLoader as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      () => loaderInstance,
-    );
-
-    // Re-import Avatar so it picks up the new GLTFLoader mock instance.
-    // Because vi.unmock is in effect for this file, we get the real Avatar code.
-    // We use a dynamic import to create a fresh module reference.
-    const { createAvatar } = await import('@/components/Avatar');
-
     // Minimal THREE.Scene stub — just needs scene.add
+    // (Box3 is already mocked in setup.ts with setFromObject/min/max)
     const scene = { add: vi.fn(), remove: vi.fn() } as any;
     const customization = {
       modelUrl: 'https://example.com/skin.glb',
@@ -187,8 +193,12 @@ describe('loadGLTFIntoGroup — no animation clips', () => {
     const onAnimationsReady = vi.fn();
     createAvatar(scene, userData, onAnimationsReady);
 
-    // Simulate the GLTFLoader calling onLoad with a GLTF that has no animations
-    const [_url, onLoad] = loaderInstance.load.mock.calls[0];
+    // Capture the onLoad callback that loadGLTFIntoGroup registered with the
+    // module-level gltfLoader singleton (created when Avatar.tsx was first imported).
+    // `lastLoaderRef.current` was populated by the GLTFLoader mock at that time.
+    expect(lastLoaderRef.current.load).toHaveBeenCalled();
+    const [_url, onLoad] = lastLoaderRef.current.load.mock.calls[0];
+
     const mockGltf = {
       scene: {
         // minimal THREE.Object3D stub for scaling logic
@@ -197,14 +207,6 @@ describe('loadGLTFIntoGroup — no animation clips', () => {
       },
       animations: [],
     };
-
-    // Also stub THREE.Box3 used inside loadGLTFIntoGroup
-    const { Box3 } = await import('three');
-    (Box3 as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-      setFromObject: vi.fn().mockReturnThis(),
-      min: { y: 0 },
-      max: { y: 1 },
-    }));
 
     onLoad(mockGltf);
 
@@ -223,12 +225,7 @@ describe('loadGLTFIntoGroup — no animation clips', () => {
   it('does NOT warn when GLTF has animation clips', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const loaderInstance = { load: vi.fn() };
-    (GLTFLoader as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      () => loaderInstance,
-    );
-
-    const { createAvatar } = await import('@/components/Avatar');
+    // AnimationMixer and Box3 are already mocked in setup.ts.
 
     const scene = { add: vi.fn(), remove: vi.fn() } as any;
     const customization = {
@@ -249,19 +246,8 @@ describe('loadGLTFIntoGroup — no animation clips', () => {
     const onAnimationsReady = vi.fn();
     createAvatar(scene, userData, onAnimationsReady);
 
-    const [_url, onLoad] = loaderInstance.load.mock.calls[0];
-
-    // Stub AnimationMixer for the animation branch
-    const { AnimationMixer, Box3 } = await import('three');
-    const mockMixerInstance = { update: vi.fn(), clipAction: vi.fn().mockReturnValue({}) };
-    (AnimationMixer as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      () => mockMixerInstance,
-    );
-    (Box3 as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-      setFromObject: vi.fn().mockReturnThis(),
-      min: { y: 0 },
-      max: { y: 1 },
-    }));
+    expect(lastLoaderRef.current.load).toHaveBeenCalled();
+    const [_url, onLoad] = lastLoaderRef.current.load.mock.calls[0];
 
     const mockGltf = {
       scene: {
