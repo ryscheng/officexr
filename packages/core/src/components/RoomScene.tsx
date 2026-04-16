@@ -483,7 +483,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const handleAvatarHit = (avatarId: string) => {
       const toUserName = presenceDataRef.current.get(avatarId)?.name || 'someone';
       playWaveChime(); // local chime as shooter feedback
-      sendWave(avatarId, `${currentUser.name || 'Someone'} hit ${toUserName} with a sparkle bullet! ✨`);
+      sendWave(avatarId, `${currentUser.name || 'Someone'} hit ${toUserName} with a sparkle! ✨`);
     };
 
     const animate = () => {
