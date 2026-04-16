@@ -32,7 +32,6 @@ import JitsiMeetingContainer from './room/JitsiMeetingContainer';
 import UserPanel from './room/UserPanel';
 import ChatPanel from './room/ChatPanel';
 import LoginModal from './room/LoginModal';
-import CameraModeIndicator from './room/CameraModeIndicator';
 import Crosshair from './room/Crosshair';
 import VirtualJoystick from './room/VirtualJoystick';
 
@@ -992,6 +991,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onlineUsers={onlineUsers}
         followingUserId={followingUserId}
         networkStats={networkStats}
+        cameraMode={cameraMode}
         micLevel={micLevel}
         micError={micError}
         micMuted={micMuted}
@@ -1082,8 +1082,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           ))}
         </div>
       </div>
-
-      <CameraModeIndicator cameraMode={cameraMode} isTouchDevice={isTouchDevice} />
 
       {isTouchDevice && (
         <VirtualJoystick
