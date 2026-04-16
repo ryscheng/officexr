@@ -11,6 +11,8 @@ interface ConnectionStatusBannerProps {
   jaasJwt: string | null;
   jaasJwtError: string | null;
   jitsiError: string | null;
+  micLevel: number;
+  micError: string | null;
   onJitsiRetry: () => void;
   onJitsiDismiss: () => void;
 }
@@ -24,6 +26,7 @@ export default function ConnectionStatusBanner({
   jaasJwt,
   jaasJwtError,
   jitsiError,
+  micLevel,
   onJitsiRetry,
   onJitsiDismiss,
 }: ConnectionStatusBannerProps) {
@@ -67,23 +70,33 @@ export default function ConnectionStatusBanner({
     voiceIsError = true;
   } else if (jaasJwtError) {
     voiceIcon = '❌';
-    voiceLabel = `Voice credential error: ${jaasJwtError}`;
+    voiceLabel = jitsiRoom
+      ? 'Nearby — voice credential error'
+      : `Voice credential error: ${jaasJwtError}`;
     voiceIsError = true;
   } else if (!jaasConfigured) {
     voiceIcon = '⚙️';
-    voiceLabel = `Voice not configured — missing: ${missing.join(', ')}`;
+    voiceLabel = jitsiRoom
+      ? `Nearby — voice not configured`
+      : `Voice not configured — missing: ${missing.join(', ')}`;
   } else if (!jaasJwt) {
     voiceIcon = '⏳';
-    voiceLabel = 'Voice initializing…';
+    voiceLabel = jitsiRoom ? 'Nearby — voice initializing…' : 'Voice initializing…';
   } else if (!jitsiRoom) {
     voiceIcon = '🔇';
     voiceLabel = 'Walk near others to voice chat';
   } else if (jitsiConnected) {
-    voiceIcon = '🟢';
-    voiceLabel = `Voice · ${jitsiParticipantCount} in call`;
+    if (micLevel < 0) {
+      voiceIcon = '🎤';
+      voiceLabel = 'In call — enable mic to speak';
+      voiceIsError = true;
+    } else {
+      voiceIcon = '🟢';
+      voiceLabel = `Voice · ${jitsiParticipantCount} in call`;
+    }
   } else {
-    voiceIcon = '🟡';
-    voiceLabel = 'Voice connecting…';
+    voiceIcon = '📞';
+    voiceLabel = 'Nearby — connecting voice…';
   }
 
   return (

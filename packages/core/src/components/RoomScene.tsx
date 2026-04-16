@@ -905,6 +905,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         jaasJwt={jaasJwt}
         jaasJwtError={jaasJwtError}
         jitsiError={jitsiError}
+        micLevel={micLevel}
+        micError={micError}
         onJitsiRetry={handleJitsiRetry}
         onJitsiDismiss={() => setJitsiError(null)}
       />
