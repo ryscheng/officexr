@@ -34,6 +34,11 @@ import LoginModal from './room/LoginModal';
 import CameraModeIndicator from './room/CameraModeIndicator';
 import Crosshair from './room/Crosshair';
 import VirtualJoystick from './room/VirtualJoystick';
+import { useLootBox } from '@/hooks/useLootBox';
+import LootBox from './room/LootBox';
+import InventoryPanel from './room/InventoryPanel';
+import { spawnLootBoxEffect, LootBoxEffect3D } from './LootBoxEffect';
+import { LOOT_ITEMS, RARITY_CONFIG } from '@/data/lootBoxItems';
 
 interface OfficeSceneProps {
   officeId: string;
@@ -390,6 +395,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
   const { fireBullet, updateBullets } = useShooting();
 
+  // Loot box system
+  const lootBox = useLootBox();
+  const [showLootBox, setShowLootBox] = useState(false);
+  const [showInventory, setShowInventory] = useState(false);
+  const activeLootEffectsRef = useRef<LootBoxEffect3D[]>([]);
+
   const playWaveChime = () => {
     try {
       const ctx = new AudioContext();
@@ -496,6 +507,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Update bullet positions and sparkle trails
       updateBullets(delta, scene, handleAvatarHit);
 
+      // Update active loot box overhead effects
+      activeLootEffectsRef.current = activeLootEffectsRef.current.filter(
+        effect => effect.update(delta)
+      );
+
       // Update whiteboard 3D floor texture if strokes changed
       wbUpdateFloorTexture();
 
@@ -556,6 +572,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         // Broadcast: whiteboard — registered by useWhiteboard hook
         registerWhiteboardListeners(channel);
 
+        // Broadcast: loot box opening — show overhead effect for other users
+        channel.on('broadcast', { event: 'lootbox-open' }, ({ payload }) => {
+          const { userId, itemId, position } = payload as {
+            userId: string; itemId: string;
+            position: { x: number; y: number; z: number };
+          };
+          if (userId !== currentUser.id) {
+            const item = LOOT_ITEMS.find(i => i.id === itemId);
+            if (item) {
+              const pos = new THREE.Vector3(position.x, position.y, position.z);
+              const effect = spawnLootBoxEffect(scene, pos, item);
+              activeLootEffectsRef.current.push(effect);
+            }
+          }
+        });
+
         // Broadcast: room environment changes — update scene for all connected users
         channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
           const { environment: env } = payload as { environment: string };
@@ -614,6 +646,26 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   }, [officeId, currentUser?.id, environment]);
 
   // ── Callbacks passed to child components ──────────────────────────────────
+
+  const handleOpenLootBox = () => {
+    const rolledItem = lootBox.openBox();
+    if (rolledItem) {
+      // Broadcast to other players so they see the overhead effect
+      const cam = cameraRef.current;
+      const scene = sceneRef.current;
+      if (channelRef.current && channelSubscribedRef.current && cam && scene && currentUser) {
+        const pos = { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+        channelRef.current.send({
+          type: 'broadcast', event: 'lootbox-open',
+          payload: { userId: currentUser.id, itemId: rolledItem.id, position: pos },
+        });
+        // Also spawn the overhead effect locally above our own head
+        const effect = spawnLootBoxEffect(scene, new THREE.Vector3(pos.x, pos.y, pos.z), rolledItem);
+        activeLootEffectsRef.current.push(effect);
+      }
+    }
+    return !!rolledItem;
+  };
 
   const handleFollowUser = (userId: string) => {
     const target = avatarTargetsRef.current.get(userId);
@@ -1042,12 +1094,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         <LoginModal onClose={() => setShowLoginModal(false)} />
       )}
 
-      {/* Emoji picker bar */}
+      {/* Emoji picker bar + Loot Box button */}
       <div style={{
         position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)',
         display: 'flex', gap: '6px', zIndex: 150,
         background: 'rgba(0,0,0,0.55)', borderRadius: '12px',
         padding: '6px 12px', border: '1px solid rgba(255,255,255,0.12)',
+        alignItems: 'center',
       }}>
         {Object.entries(EMOJI_MAP).map(([key, emoji]) => (
           <button
@@ -1066,7 +1119,64 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             {emoji}
           </button>
         ))}
+        {/* Divider */}
+        <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.15)' }} />
+        {/* Loot Box button */}
+        <button
+          title="Open AI Loot Box"
+          onClick={() => setShowLootBox(true)}
+          style={{
+            background: lootBox.cooldownRemaining <= 0
+              ? 'linear-gradient(135deg, rgba(139,92,246,0.3), rgba(109,40,217,0.3))'
+              : 'rgba(255,255,255,0.05)',
+            border: lootBox.cooldownRemaining <= 0
+              ? '1px solid rgba(139,92,246,0.5)'
+              : '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px',
+            cursor: 'pointer', fontSize: '22px',
+            width: '40px', height: '40px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.3s',
+            position: 'relative',
+            animation: lootBox.cooldownRemaining <= 0 ? 'lootbox-pulse 2s infinite' : 'none',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139,92,246,0.5), rgba(109,40,217,0.5))';
+            e.currentTarget.style.boxShadow = '0 0 12px rgba(139,92,246,0.4)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = lootBox.cooldownRemaining <= 0
+              ? 'linear-gradient(135deg, rgba(139,92,246,0.3), rgba(109,40,217,0.3))'
+              : 'rgba(255,255,255,0.05)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+        >
+          📦
+        </button>
       </div>
+
+      {/* Loot Box panel */}
+      <LootBox
+        visible={showLootBox}
+        onClose={() => setShowLootBox(false)}
+        spinStrip={lootBox.spinStrip}
+        wonItem={lootBox.wonItem}
+        isSpinning={lootBox.isSpinning}
+        cooldownRemaining={lootBox.cooldownRemaining}
+        onOpenBox={handleOpenLootBox}
+        onFinalizeSpin={lootBox.finalizeSpin}
+        onDismissResult={lootBox.dismissResult}
+        onShowInventory={() => { setShowLootBox(false); setShowInventory(true); }}
+        inventoryCount={lootBox.inventory.length}
+      />
+
+      {/* Inventory panel */}
+      <InventoryPanel
+        visible={showInventory}
+        onClose={() => setShowInventory(false)}
+        inventory={lootBox.inventory}
+        onDiscard={lootBox.discardItem}
+      />
 
       <CameraModeIndicator cameraMode={cameraMode} isTouchDevice={isTouchDevice} />
 
