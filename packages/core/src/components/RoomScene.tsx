@@ -22,6 +22,7 @@ import { useJitsi } from '@/hooks/useJitsi';
 import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 import { usePresence } from '@/hooks/usePresence';
 import { useSceneSetup } from '@/hooks/useSceneSetup';
+import { useShooting } from '@/hooks/useShooting';
 import JitsiErrorBanner from './room/JitsiErrorBanner';
 import MotionPermissionBanner from './room/MotionPermissionBanner';
 import VoiceChatStatus from './room/VoiceChatStatus';
@@ -31,6 +32,7 @@ import UserPanel from './room/UserPanel';
 import ChatPanel from './room/ChatPanel';
 import LoginModal from './room/LoginModal';
 import CameraModeIndicator from './room/CameraModeIndicator';
+import Crosshair from './room/Crosshair';
 import VirtualJoystick from './room/VirtualJoystick';
 
 interface OfficeSceneProps {
@@ -235,6 +237,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const {
     onlineUsers,
     presenceDataRef,
+    avatarsRef,
     avatarTargetsRef,
     lastPositionUpdate,
     registerPresenceListeners,
@@ -385,6 +388,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     playerPositionRef,
   });
 
+  const { fireBullet, updateBullets } = useShooting();
+
   const playWaveChime = () => {
     try {
       const ctx = new AudioContext();
@@ -456,6 +461,15 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       (newZoom: number) => setZoomLevel(newZoom),
     );
 
+    // Shooting: left-click while pointer is locked fires a bullet
+    const handleShootMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      if (is2DModeRef.current) return;
+      if (document.pointerLockElement !== renderer.domElement) return;
+      fireBullet(camera, scene, avatarsRef.current);
+    };
+    renderer.domElement.addEventListener('mousedown', handleShootMouseDown);
+
     // Supabase Realtime channel — created by useRealtimeChannel, accessed via ref
     const channel = channelRef.current;
 
@@ -465,12 +479,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Animation loop — always start regardless of channel state
     const clock = new THREE.Clock();
 
+    // Called when a bullet hits a remote avatar — trigger a wave
+    const handleAvatarHit = (avatarId: string) => {
+      const toUserName = presenceDataRef.current.get(avatarId)?.name || 'someone';
+      playWaveChime(); // local chime as shooter feedback
+      sendWave(avatarId, `${currentUser.name || 'Someone'} hit ${toUserName} with a sparkle! ✨`);
+    };
+
     const animate = () => {
       const delta = clock.getDelta();
       const lerpAlpha = 1 - Math.pow(0.005, delta);
 
       // Update emoji confetti particles
       activeParticles = updateParticles(activeParticles, delta, scene);
+
+      // Update bullet positions and sparkle trails
+      updateBullets(delta, scene, handleAvatarHit);
 
       // Update whiteboard 3D floor texture if strokes changed
       wbUpdateFloorTexture();
@@ -568,6 +592,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     return () => {
       renderer.setAnimationLoop(null);
       cleanupInputListeners();
+      renderer.domElement.removeEventListener('mousedown', handleShootMouseDown);
 
       // Clean up presence timers (visibility, heartbeat, offline cleanup)
       cleanupPresenceTimers();
@@ -606,13 +631,17 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setFollowingUserId(userId);
   };
 
-  const handleWaveAt = (toUserId: string, toUserName: string) => {
-    sendChatMessage(`${currentUser?.name || 'Someone'} has waved at ${toUserName} 👋`);
+  const sendWave = (toUserId: string, chatMessage: string) => {
     channelRef.current?.send({
       type: 'broadcast',
       event: 'wave',
       payload: { toUserId },
     });
+    sendChatMessage(chatMessage);
+  };
+
+  const handleWaveAt = (toUserId: string, toUserName: string) => {
+    sendWave(toUserId, `${currentUser?.name || 'Someone'} has waved at ${toUserName} 👋`);
   };
 
   const handleJitsiRetry = () => {
@@ -784,6 +813,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           boxShadow: 'inset 0 0 0 4px #00ff00',
         }} />
       )}
+
+      <Crosshair visible={mouseLockActive && !is2DMode} />
 
       {showControls && (
         <ControlsOverlay
