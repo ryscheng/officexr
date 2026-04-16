@@ -133,27 +133,31 @@ export function useChat({
   }, []);
 
   const sendChatMessage = useCallback((message: string) => {
-    if (!channelRef.current || !channelSubscribedRef.current || !currentUser) return;
+    const user = currentUserRef.current;
+    if (!user) return;
 
     const chatMessage: ChatMessage = {
-      id: `${Date.now()}-${currentUser.id}`,
-      userId: currentUser.id,
-      userName: currentUser.name || 'User',
+      id: `${Date.now()}-${user.id}`,
+      userId: user.id,
+      userName: user.name || 'User',
       message,
       timestamp: Date.now(),
     };
 
-    channelRef.current.send({
-      type: 'broadcast',
-      event: 'chat',
-      payload: { message: chatMessage },
-    }).then((result: string) => {
-      if (result !== 'ok') console.error('[Chat] Broadcast failed:', result);
-    });
-
-    // Add own message to local state immediately (sender doesn't receive own broadcast)
+    // Always show own message locally immediately
     setChatMessages((prev) => [...prev.slice(-49), chatMessage]);
-  }, [currentUser?.id, currentUser?.name]);
+
+    // Broadcast to others when channel is ready
+    if (channelRef.current && channelSubscribedRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'chat',
+        payload: { message: chatMessage },
+      }).then((result: string) => {
+        if (result !== 'ok') console.error('[Chat] Broadcast failed:', result);
+      });
+    }
+  }, []);
 
   const registerChatListener = useCallback((channel: RealtimeChannel) => {
     channel.on('broadcast', { event: 'chat' }, ({ payload }) => {
