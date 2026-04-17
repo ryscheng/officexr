@@ -35,6 +35,15 @@ export default function ZombieHUD({
         WAVE {wave}
       </div>
 
+      {/* Q-to-quit hint — bottom center */}
+      <div style={{
+        position: 'absolute', bottom: 60, left: '50%', transform: 'translateX(-50%)',
+        color: 'rgba(255,100,100,0.55)', fontFamily: 'monospace', fontSize: 11,
+        zIndex: 200,
+      }}>
+        [Q] quit game
+      </div>
+
       {/* Kill counter — top right */}
       <div style={{
         position: 'absolute', top: 16, right: 20,

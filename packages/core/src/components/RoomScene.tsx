@@ -342,6 +342,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     isLocalPlayerDeadRef,
     triggerZombieMode,
     onZombieHit,
+    forceQuitZombie,
     registerZombieListeners,
     updateZombies,
   } = useZombieGame({
@@ -359,6 +360,16 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     pauseProximityDetectionRef,
   });
   const isZombieMode = zombiePhase !== 'inactive';
+
+  // Q key quits zombie mode for everyone
+  useEffect(() => {
+    if (!isZombieMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key === 'q' || e.key === 'Q') && !chatVisibleRef.current) forceQuitZombie();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isZombieMode, forceQuitZombie]);
 
   // Network stats for debug panel
   const networkStats = useNetworkStats(

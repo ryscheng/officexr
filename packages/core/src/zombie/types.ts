@@ -22,6 +22,7 @@ export interface ZombieGameHandle {
   isLocalPlayerDeadRef: React.MutableRefObject<boolean>;
   triggerZombieMode: () => void;
   onZombieHit: (zombieId: string) => void;
+  forceQuitZombie: () => void;
   registerZombieListeners: (channel: RealtimeChannel) => void;
   updateZombies: (delta: number, scene: THREE.Scene) => void;
 }
