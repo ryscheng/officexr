@@ -89,8 +89,8 @@ export function restoreAvatarOpacity(avatar: THREE.Group): void {
 export function applyZombieSceneEffects(scene: THREE.Scene): void {
   scene.userData.zombieSavedBackground = (scene.background as THREE.Color | null)?.clone() ?? null;
   scene.userData.zombieSavedFog = scene.fog;
-  scene.background = new THREE.Color(0x050505);
-  scene.fog = new THREE.FogExp2(0x0a0a0a, 0.045);
+  scene.background = new THREE.Color(0x1a0a0a);
+  scene.fog = new THREE.FogExp2(0x1a0a0a, 0.025);
 
   scene.traverse((obj: THREE.Object3D) => {
     if (
@@ -102,15 +102,15 @@ export function applyZombieSceneEffects(scene: THREE.Scene): void {
       if (obj instanceof THREE.HemisphereLight) {
         obj.userData.zombieSavedSkyColor = obj.color.clone();
         obj.userData.zombieSavedGroundColor = obj.groundColor.clone();
-        obj.color.set(0x1a0505);
-        obj.groundColor.set(0x0a0000);
+        obj.color.set(0x3d1010);
+        obj.groundColor.set(0x1a0808);
       } else {
         obj.userData.zombieSavedColor = (obj as THREE.DirectionalLight | THREE.AmbientLight).color.clone();
         (obj as THREE.DirectionalLight | THREE.AmbientLight).color.set(
-          obj instanceof THREE.AmbientLight ? 0x330000 : 0x550000,
+          obj instanceof THREE.AmbientLight ? 0x661111 : 0x882222,
         );
       }
-      obj.intensity *= 0.18;
+      obj.intensity *= 0.42;
     }
   });
 }

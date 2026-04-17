@@ -1117,7 +1117,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           totalKills={zombieKills}
           playerHealths={zombieHealths}
           deadPlayers={zombieDeadPlayers}
-          localUserId={currentUser?.id ?? null}
+          localUser={currentUser}
           onlineUsers={onlineUsers}
         />
       )}
