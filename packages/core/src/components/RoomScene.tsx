@@ -34,6 +34,11 @@ import ChatPanel from './room/ChatPanel';
 import LoginModal from './room/LoginModal';
 import Crosshair from './room/Crosshair';
 import VirtualJoystick from './room/VirtualJoystick';
+import { useLootBox } from '@/hooks/useLootBox';
+import LootBox from './room/LootBox';
+import InventoryPanel from './room/InventoryPanel';
+import { spawnLootBoxEffect, LootBoxEffect3D } from './LootBoxEffect';
+import { LOOT_ITEMS } from '@/data/lootBoxItems';
 import { useZombieGame } from '@/zombie/useZombieGame';
 import ZombieHUD from '@/zombie/ZombieHUD';
 import ZombieOverlay from '@/zombie/ZombieOverlay';
@@ -457,6 +462,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
   const { fireBullet, updateBullets } = useShooting();
 
+  // Loot box system
+  const lootBox = useLootBox();
+  const [showLootBox, setShowLootBox] = useState(false);
+  const [showInventory, setShowInventory] = useState(false);
+  const activeLootEffectsRef = useRef<LootBoxEffect3D[]>([]);
+
   const playWaveChime = () => {
     try {
       const ctx = new AudioContext();
@@ -576,6 +587,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       // Update bullet positions and sparkle trails
       updateBullets(delta, scene, handleAvatarHit);
 
+      // Update active loot box overhead effects
+      activeLootEffectsRef.current = activeLootEffectsRef.current.filter(
+        effect => effect.update(delta)
+      );
+
       // Update zombie AI, movement, and player damage (noop when game inactive)
       updateZombies(delta, scene);
 
@@ -638,6 +654,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
         // Broadcast: whiteboard — registered by useWhiteboard hook
         registerWhiteboardListeners(channel);
+
+        // Broadcast: loot box opening — show overhead effect for other users
+        channel.on('broadcast', { event: 'lootbox-open' }, ({ payload }) => {
+          const { userId, itemId, position } = payload as {
+            userId: string; itemId: string;
+            position: { x: number; y: number; z: number };
+          };
+          if (userId !== currentUser.id) {
+            const item = LOOT_ITEMS.find(i => i.id === itemId);
+            if (item) {
+              const pos = new THREE.Vector3(position.x, position.y, position.z);
+              const effect = spawnLootBoxEffect(scene, pos, item);
+              activeLootEffectsRef.current.push(effect);
+            }
+          }
+        });
 
         // Broadcast: zombie game mode events
         registerZombieListeners(channel);
@@ -706,6 +738,26 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   }, [officeId, currentUser?.id, environment]);
 
   // ── Callbacks passed to child components ──────────────────────────────────
+
+  const handleOpenLootBox = () => {
+    const rolledItem = lootBox.openBox();
+    if (rolledItem) {
+      // Broadcast to other players so they see the overhead effect
+      const cam = cameraRef.current;
+      const scene = sceneRef.current;
+      if (channelRef.current && channelSubscribedRef.current && cam && scene && currentUser) {
+        const pos = { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+        channelRef.current.send({
+          type: 'broadcast', event: 'lootbox-open',
+          payload: { userId: currentUser.id, itemId: rolledItem.id, position: pos },
+        });
+        // Also spawn the overhead effect locally above our own head
+        const effect = spawnLootBoxEffect(scene, new THREE.Vector3(pos.x, pos.y, pos.z), rolledItem);
+        activeLootEffectsRef.current.push(effect);
+      }
+    }
+    return !!rolledItem;
+  };
 
   const handleFollowUser = (userId: string) => {
     const target = avatarTargetsRef.current.get(userId);
@@ -1154,7 +1206,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         <LoginModal onClose={() => setShowLoginModal(false)} />
       )}
 
-      {/* Bottom toolbar — whiteboard controls + emoji picker */}
+      {/* Bottom toolbar — whiteboard controls + emoji picker + loot box */}
       <div style={{
         position: 'absolute', bottom: '16px', left: '16px',
         display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px',
@@ -1195,8 +1247,46 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
               {emoji}
             </button>
           ))}
+          <button
+            title="AI Loot Box"
+            onClick={() => setShowLootBox(true)}
+            style={{
+              background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px',
+              cursor: 'pointer', fontSize: '22px', width: '40px', height: '40px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.2)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)'; }}
+          >
+            📦
+          </button>
         </div>
       </div>
+
+      {/* Loot Box panel */}
+      <LootBox
+        visible={showLootBox}
+        onClose={() => setShowLootBox(false)}
+        spinStrip={lootBox.spinStrip}
+        wonItem={lootBox.wonItem}
+        isSpinning={lootBox.isSpinning}
+        cooldownRemaining={lootBox.cooldownRemaining}
+        onOpenBox={handleOpenLootBox}
+        onFinalizeSpin={lootBox.finalizeSpin}
+        onDismissResult={lootBox.dismissResult}
+        onShowInventory={() => { setShowLootBox(false); setShowInventory(true); }}
+        inventoryCount={lootBox.inventory.length}
+      />
+
+      {/* Inventory panel */}
+      <InventoryPanel
+        visible={showInventory}
+        onClose={() => setShowInventory(false)}
+        inventory={lootBox.inventory}
+        onDiscard={lootBox.discardItem}
+      />
+
 
       {isTouchDevice && (
         <VirtualJoystick
