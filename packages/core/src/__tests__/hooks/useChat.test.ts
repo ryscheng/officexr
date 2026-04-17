@@ -272,7 +272,7 @@ describe('useChat', () => {
   // ── sendChatMessage() ────────────────────────────────────────────────────
 
   describe('sendChatMessage()', () => {
-    it('no-ops when channel is null', () => {
+    it('adds message locally but skips broadcast when channel is null', () => {
       const channelRef = { current: null };
       const { result } = renderUseChat({ channelRef });
 
@@ -280,11 +280,12 @@ describe('useChat', () => {
         result.current.sendChatMessage('hello');
       });
 
-      // No message appended
-      expect(result.current.chatMessages).toEqual([]);
+      // Optimistic local display — message appears even without a channel
+      expect(result.current.chatMessages).toHaveLength(1);
+      expect(result.current.chatMessages[0].message).toBe('hello');
     });
 
-    it('no-ops when channelSubscribedRef is false', () => {
+    it('adds message locally but skips broadcast when channelSubscribedRef is false', () => {
       const channelSubscribedRef = { current: false };
       const mockChannel = createMockChannel();
       const channelRef = { current: mockChannel };
@@ -294,14 +295,19 @@ describe('useChat', () => {
         result.current.sendChatMessage('hello');
       });
 
-      expect(result.current.chatMessages).toEqual([]);
+      expect(result.current.chatMessages).toHaveLength(1);
+      expect(result.current.chatMessages[0].message).toBe('hello');
       expect(mockChannel.send).not.toHaveBeenCalled();
     });
 
-    it('no-ops when currentUser is null', () => {
+    it('no-ops entirely when currentUserRef is null', () => {
       const mockChannel = createMockChannel();
       const channelRef = { current: mockChannel };
-      const { result } = renderUseChat({ channelRef, currentUser: null });
+      const { result } = renderUseChat({
+        channelRef,
+        currentUser: null,
+        currentUserRef: { current: null },
+      });
 
       act(() => {
         result.current.sendChatMessage('hello');

@@ -591,6 +591,114 @@ describe('useKeyboardControls', () => {
     });
   });
 
+  // ── computeMovement() – third-person camera orbit ────────────────────────
+  describe('computeMovement() - third-person camera orbit', () => {
+    // Helper: render hook configured for third-person mode
+    function setupThirdPerson(mode: 'third-person-behind' | 'third-person-front') {
+      const opts = createDefaultOptions({ cameraModeRef: { current: mode } });
+      const { result } = renderUseKeyboardControls(opts);
+      const camera = createCamera();
+      const avatar = createLocalAvatar();
+      // Seed pitch via the ref exposed by the hook
+      result.current.cameraPitchRef.current = 0;
+      result.current.cameraYawRef.current = 0;
+      // The useEffect that syncs cameraModeRef.current = cameraMode runs after render
+      // and would reset the ref to 'first-person'. Override it directly on the
+      // returned ref so computeMovement sees the correct mode.
+      result.current.cameraModeRef.current = mode;
+      return { result, camera, avatar };
+    }
+
+    it('third-person-behind: camera.position.y encodes pitch (not fixed height)', () => {
+      const { result, camera, avatar } = setupThirdPerson('third-person-behind');
+      const pitch = 0.5; // ~28.6 degrees up
+      result.current.cameraPitchRef.current = pitch;
+
+      result.current.computeMovement(camera, avatar, null, undefined, 3, 0.15);
+
+      // Spherical orbit: y = centerY - sin(pitch) * camDist = 1.4 - sin(0.5)*3.5 ≈ -0.278
+      // (negative sinP so mouse-up moves camera below avatar, matching 1st-person look-up)
+      const expectedY = 1.4 - Math.sin(pitch) * 3.5;
+      expect(camera.position.y).toBeCloseTo(expectedY, 5);
+      // Old code would have set y = 2.2 (camHeight constant)
+      expect(camera.position.y).not.toBeCloseTo(2.2, 1);
+    });
+
+    it('third-person-behind: camera sits on sphere of radius 3.5 around avatar center', () => {
+      const { result, camera, avatar } = setupThirdPerson('third-person-behind');
+      result.current.cameraPitchRef.current = 0.4;
+      result.current.cameraYawRef.current = 0.8;
+
+      result.current.computeMovement(camera, avatar, null, undefined, 3, 0.15);
+
+      const pPos = result.current.playerPositionRef.current;
+      const dx = camera.position.x - pPos.x;
+      const dy = camera.position.y - 1.4; // centerY
+      const dz = camera.position.z - pPos.z;
+      const radius = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      expect(radius).toBeCloseTo(3.5, 4);
+    });
+
+    it('third-person-front: camera.position.y encodes pitch (mirrored side)', () => {
+      const { result, camera, avatar } = setupThirdPerson('third-person-front');
+      const pitch = 0.5;
+      result.current.cameraPitchRef.current = pitch;
+
+      result.current.computeMovement(camera, avatar, null, undefined, 3, 0.15);
+
+      const expectedY = 1.4 - Math.sin(pitch) * 3.5;
+      expect(camera.position.y).toBeCloseTo(expectedY, 5);
+    });
+
+    it('third-person-front: camera sits on sphere of radius 3.5 around avatar center', () => {
+      const { result, camera, avatar } = setupThirdPerson('third-person-front');
+      result.current.cameraPitchRef.current = -0.3;
+      result.current.cameraYawRef.current = 1.2;
+
+      result.current.computeMovement(camera, avatar, null, undefined, 3, 0.15);
+
+      const pPos = result.current.playerPositionRef.current;
+      const dx = camera.position.x - pPos.x;
+      const dy = camera.position.y - 1.4;
+      const dz = camera.position.z - pPos.z;
+      const radius = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      expect(radius).toBeCloseTo(3.5, 4);
+    });
+
+    it('third-person-behind and front produce opposite horizontal offsets for same yaw', () => {
+      // With yaw=0 and pitch=0:
+      //  behind: camera at (pPos.x + sin(0)*3.5, 1.4, pPos.z + cos(0)*3.5) = (pPos.x, 1.4, pPos.z+3.5)
+      //  front:  camera at (pPos.x - sin(0)*3.5, 1.4, pPos.z - cos(0)*3.5) = (pPos.x, 1.4, pPos.z-3.5)
+      const optsBehind = createDefaultOptions({ cameraModeRef: { current: 'third-person-behind' } });
+      const { result: resBehind } = renderUseKeyboardControls(optsBehind);
+      const camBehind = createCamera();
+      const avatarBehind = createLocalAvatar();
+      resBehind.current.cameraPitchRef.current = 0;
+      resBehind.current.cameraYawRef.current = 0;
+      // Override after useEffect resets to 'first-person'
+      resBehind.current.cameraModeRef.current = 'third-person-behind';
+      resBehind.current.computeMovement(camBehind, avatarBehind, null, undefined, 3, 0.15);
+
+      const optsFront = createDefaultOptions({ cameraModeRef: { current: 'third-person-front' } });
+      const { result: resFront } = renderUseKeyboardControls(optsFront);
+      const camFront = createCamera();
+      const avatarFront = createLocalAvatar();
+      resFront.current.cameraPitchRef.current = 0;
+      resFront.current.cameraYawRef.current = 0;
+      // Override after useEffect resets to 'first-person'
+      resFront.current.cameraModeRef.current = 'third-person-front';
+      resFront.current.computeMovement(camFront, avatarFront, null, undefined, 3, 0.15);
+
+      // Behind camera z should be opposite sign from front camera z (relative to player)
+      const pPosBehind = resBehind.current.playerPositionRef.current;
+      const pPosFront = resFront.current.playerPositionRef.current;
+      const dzBehind = camBehind.position.z - pPosBehind.z;
+      const dzFront = camFront.position.z - pPosFront.z;
+      // One is positive and the other negative (opposite sides)
+      expect(dzBehind * dzFront).toBeLessThan(0);
+    });
+  });
+
   // ── cleanup ──────────────────────────────────────────────────────────────
   describe('cleanup', () => {
     it('removes all event listeners on cleanup', () => {
@@ -615,12 +723,12 @@ describe('useKeyboardControls', () => {
       expect(windowRemoveSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
       expect(windowRemoveSpy).toHaveBeenCalledWith('keyup', expect.any(Function));
 
-      // Document listeners: pointerlockchange
+      // Document listeners: pointerlockchange, mousemove
       expect(documentRemoveSpy).toHaveBeenCalledWith('pointerlockchange', expect.any(Function));
+      expect(documentRemoveSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
 
-      // Canvas listeners: click, mousemove, touchstart, touchmove, touchend, wheel
+      // Canvas listeners: click, touchstart, touchmove, touchend, wheel
       expect(canvasRemoveSpy).toHaveBeenCalledWith('click', expect.any(Function));
-      expect(canvasRemoveSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
       expect(canvasRemoveSpy).toHaveBeenCalledWith('touchstart', expect.any(Function));
       expect(canvasRemoveSpy).toHaveBeenCalledWith('touchmove', expect.any(Function));
       expect(canvasRemoveSpy).toHaveBeenCalledWith('touchend', expect.any(Function));

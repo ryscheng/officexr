@@ -51,9 +51,11 @@ function inlineMockVector3(x = 0, y = 0, z = 0) {
 function inlineMockGroup(userData: any = {}) {
   const s: any = { x: 1, y: 1, z: 1 };
   s.set = vi.fn((nx: number, ny: number, nz: number) => { s.x = nx; s.y = ny; s.z = nz; return s; });
+  const rot: any = { x: 0, y: 0, z: 0, order: 'XYZ' };
+  rot.set = vi.fn((rx: number, ry: number, rz: number) => { rot.x = rx; rot.y = ry; rot.z = rz; return rot; });
   return {
     position: inlineMockVector3(),
-    rotation: { x: 0, y: 0, z: 0, order: 'XYZ' },
+    rotation: rot,
     scale: s,
     visible: true,
     userData,
@@ -185,7 +187,14 @@ vi.mock('three', () => {
       };
     }),
     Clock: vi.fn().mockImplementation(function() { return { getDelta: vi.fn().mockReturnValue(0.016) }; }),
-    AnimationMixer: vi.fn().mockImplementation(function() { return { update: vi.fn(), stopAllAction: vi.fn() }; }),
+    AnimationMixer: vi.fn().mockImplementation(function() { return { update: vi.fn(), stopAllAction: vi.fn(), clipAction: vi.fn().mockReturnValue({}) }; }),
+    Box3: vi.fn().mockImplementation(function() {
+      return {
+        setFromObject: vi.fn().mockReturnThis(),
+        min: { y: 0 },
+        max: { y: 1 },
+      };
+    }),
   };
 });
 

@@ -10,6 +10,8 @@ import WhiteboardCanvas from './WhiteboardCanvas';
 import WhiteboardToolbar from './WhiteboardToolbar';
 import { useWhiteboard } from '@/hooks/useWhiteboard';
 import { useNetworkStats } from '@/hooks/useNetworkStats';
+import { useChannelLogger } from '@/hooks/useChannelLogger';
+import { PANEL_HEIGHT } from './NetworkDebugPanel';
 import { CameraMode, EnvironmentType } from '@/types/room';
 import { supabase } from '@/lib/supabase';
 import { useAuth, signOut } from '@/hooks/useAuth';
@@ -23,22 +25,23 @@ import { useKeyboardControls } from '@/hooks/useKeyboardControls';
 import { usePresence } from '@/hooks/usePresence';
 import { useSceneSetup } from '@/hooks/useSceneSetup';
 import { useShooting } from '@/hooks/useShooting';
-import JitsiErrorBanner from './room/JitsiErrorBanner';
+import ConnectionStatusBanner from './room/ConnectionStatusBanner';
 import MotionPermissionBanner from './room/MotionPermissionBanner';
-import VoiceChatStatus from './room/VoiceChatStatus';
 import { ScreenShareOverlay, ScreenShareTiles } from './room/ScreenShare';
 import JitsiMeetingContainer from './room/JitsiMeetingContainer';
 import UserPanel from './room/UserPanel';
 import ChatPanel from './room/ChatPanel';
 import LoginModal from './room/LoginModal';
-import CameraModeIndicator from './room/CameraModeIndicator';
 import Crosshair from './room/Crosshair';
 import VirtualJoystick from './room/VirtualJoystick';
 import { useLootBox } from '@/hooks/useLootBox';
 import LootBox from './room/LootBox';
 import InventoryPanel from './room/InventoryPanel';
 import { spawnLootBoxEffect, LootBoxEffect3D } from './LootBoxEffect';
-import { LOOT_ITEMS, RARITY_CONFIG } from '@/data/lootBoxItems';
+import { LOOT_ITEMS } from '@/data/lootBoxItems';
+import { useZombieGame } from '@/zombie/useZombieGame';
+import ZombieHUD from '@/zombie/ZombieHUD';
+import ZombieOverlay from '@/zombie/ZombieOverlay';
 
 interface OfficeSceneProps {
   officeId: string;
@@ -164,6 +167,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     chatScrollRef,
     chatVisibleRef,
     sendChatMessage,
+    onChatInputFocus,
+    onChatInputBlur,
     registerChatListener,
   } = useChat({
     channelRef,
@@ -172,6 +177,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     currentUserRef,
     showSettings: showSettings,
     keysRef,
+    onTriggerMessage: (msg) => {
+      if (msg === 'ZOMBIE!' && zombiePhase === 'inactive') {
+        triggerZombieMode();
+        return true;
+      }
+      return false;
+    },
   });
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(15); // ortho view size, default 15
@@ -229,6 +241,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   const fireEmojiRef = useRef<((key: string) => void) | null>(null);
 
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [realtimeRetryAt, setRealtimeRetryAt] = useState<number | null>(null);
   // Trigger renderer resize when debug panel toggles
   useEffect(() => {
     const timer = setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
@@ -237,6 +250,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
   // Network stats — needs a temporary ref for recordPositionUpdate since usePresence uses it
   const recordPositionUpdateRef = useRef<(userId: string) => void>(() => {});
+
+  // Zombie game mode — suppress proximity-based Jitsi changes while active
+  const pauseProximityDetectionRef = useRef(false);
 
   // Presence and position management
   const {
@@ -272,6 +288,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setFollowingUserId,
     handleProximityChange,
     recordPositionUpdateRef,
+    pauseProximityDetectionRef,
   });
 
   // Screen sharing
@@ -319,6 +336,46 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   wbToggleRef.current = () => setWhiteboardActive(!whiteboardActive);
   wbUndoRef.current = wbUndo;
 
+  // Zombie survival game mode
+  const {
+    phase: zombiePhase,
+    wave: zombieWave,
+    totalKills: zombieKills,
+    playerHealths: zombieHealths,
+    deadPlayers: zombieDeadPlayers,
+    zombieMeshesRef,
+    isLocalPlayerDeadRef,
+    triggerZombieMode,
+    onZombieHit,
+    forceQuitZombie,
+    registerZombieListeners,
+    updateZombies,
+  } = useZombieGame({
+    currentUser,
+    channelRef,
+    channelSubscribedRef,
+    sceneRef,
+    playerPositionRef,
+    cameraRef,
+    cameraModeRef,
+    presenceDataRef,
+    avatarsRef,
+    onlineUsers,
+    handleProximityChange,
+    pauseProximityDetectionRef,
+  });
+  const isZombieMode = zombiePhase !== 'inactive';
+
+  // Q key quits zombie mode for everyone
+  useEffect(() => {
+    if (!isZombieMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key === 'q' || e.key === 'Q') && !chatVisibleRef.current) forceQuitZombie();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isZombieMode, forceQuitZombie]);
+
   // Network stats for debug panel
   const networkStats = useNetworkStats(
     channelRef,
@@ -328,6 +385,24 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     showDebugPanel,
   );
   recordPositionUpdateRef.current = networkStats.recordPositionUpdate;
+
+  // Channel message logger for debug panel
+  const { log: channelLog, lastSeenByUser } = useChannelLogger(
+    channelRef,
+    channelSubscribedRef,
+    currentUser?.id,
+    onlineUsers,
+    showDebugPanel,
+  );
+
+  // Per-user Jitsi room derived from presence data (re-derived each render when onlineUsers changes)
+  const jitsiUsers = onlineUsers
+    .filter(u => u.id !== currentUser?.id)
+    .map(u => ({
+      id: u.id,
+      name: u.name,
+      jitsiRoom: presenceDataRef.current.get(u.id)?.jitsiRoom ?? null,
+    }));
   // Environment settings — arbitrary string; unknown values render as 'corporate'
   const [environment, setEnvironment] = useState<EnvironmentType>('corporate');
 
@@ -363,15 +438,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
     // Broadcast to all currently connected users — must happen before
     // setEnvironment triggers the scene rebuild that recreates the channel
-    if (channelRef.current && channelSubscribedRef.current) {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'environment-change',
-        payload: { environment: env },
-      }).then((result: string) => {
-        if (result !== 'ok') console.error('[Environment] Broadcast failed:', result);
-      });
-    }
+    channelSend('environment-change', { environment: env });
   };
 
 
@@ -438,18 +505,21 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const moveSpeed = 0.1;
     let activeParticles: Particle[] = [];
 
+    // Avatar head position — used as confetti origin so emojis appear from the
+    // player's head rather than the orbit camera in third-person modes.
+    const getHeadPosition = () =>
+      cameraModeRef.current !== 'first-person'
+        ? new THREE.Vector3(playerPositionRef.current.x, 1.6, playerPositionRef.current.z)
+        : camera.position.clone();
+
     // Expose emoji fire function for the emoji picker bar
     const fireEmoji = (emojiKey: string) => {
-      activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
-      if (channelRef.current && channelSubscribedRef.current) {
-        channelRef.current.send({
-          type: 'broadcast', event: 'confetti',
-          payload: {
-            userId: currentUser.id, key: emojiKey,
-            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-          },
-        });
-      }
+      const origin = getHeadPosition();
+      activeParticles.push(...spawnConfetti(scene, origin, emojiKey, is2DModeRef.current));
+      channelSend('confetti', {
+        userId: currentUser.id, key: emojiKey,
+        position: { x: origin.x, y: origin.y, z: origin.z },
+      });
     };
     fireEmojiRef.current = fireEmoji;
 
@@ -458,16 +528,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const cleanupInputListeners = registerInputListeners(
       renderer, camera, scene, orthoCamera, orthoViewSizeRef,
       (emojiKey: string) => {
-        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
-        if (channelRef.current && channelSubscribedRef.current) {
-          channelRef.current.send({
-            type: 'broadcast', event: 'confetti',
-            payload: {
-              userId: currentUser.id, key: emojiKey,
-              position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-            },
-          });
-        }
+        const origin = getHeadPosition();
+        activeParticles.push(...spawnConfetti(scene, origin, emojiKey, is2DModeRef.current));
+        channelSend('confetti', {
+          userId: currentUser.id, key: emojiKey,
+          position: { x: origin.x, y: origin.y, z: origin.z },
+        });
       },
       (newZoom: number) => setZoomLevel(newZoom),
     );
@@ -477,7 +543,17 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (event.button !== 0) return;
       if (is2DModeRef.current) return;
       if (document.pointerLockElement !== renderer.domElement) return;
-      fireBullet(camera, scene, avatarsRef.current);
+      if (isLocalPlayerDeadRef.current) return; // ghosts can't shoot
+      // Merge regular avatars and zombie meshes as bullet targets
+      const allTargets = new Map([...avatarsRef.current, ...zombieMeshesRef.current]);
+      fireBullet(
+        camera,
+        scene,
+        allTargets,
+        cameraModeRef.current,
+        playerYawRef.current,
+        playerPositionRef.current,
+      );
     };
     renderer.domElement.addEventListener('mousedown', handleShootMouseDown);
 
@@ -490,8 +566,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Animation loop — always start regardless of channel state
     const clock = new THREE.Clock();
 
-    // Called when a bullet hits a remote avatar — trigger a wave
+    // Called when a bullet hits a remote avatar or zombie
     const handleAvatarHit = (avatarId: string) => {
+      if (avatarId.startsWith('zombie-')) {
+        onZombieHit(avatarId);
+        return;
+      }
       const toUserName = presenceDataRef.current.get(avatarId)?.name || 'someone';
       playWaveChime(); // local chime as shooter feedback
       sendWave(avatarId, `${currentUser.name || 'Someone'} hit ${toUserName} with a sparkle! ✨`);
@@ -511,6 +591,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       activeLootEffectsRef.current = activeLootEffectsRef.current.filter(
         effect => effect.update(delta)
       );
+
+      // Update zombie AI, movement, and player damage (noop when game inactive)
+      updateZombies(delta, scene);
 
       // Update whiteboard 3D floor texture if strokes changed
       wbUpdateFloorTexture();
@@ -588,6 +671,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           }
         });
 
+        // Broadcast: zombie game mode events
+        registerZombieListeners(channel);
+
         // Broadcast: room environment changes — update scene for all connected users
         channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
           const { environment: env } = payload as { environment: string };
@@ -596,18 +682,24 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           }
         });
 
+        let retryCount = 0;
         const handleChannelStatus = async (status: string) => {
           channelSubscribedRef.current = status === 'SUBSCRIBED';
           if (status === 'SUBSCRIBED') {
+            retryCount = 0;
+            setRealtimeRetryAt(null);
             await handleChannelSubscribed(channel, scene, camera);
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            // Re-subscribe after a delay. The Supabase client manages the
-            // underlying WebSocket; we just need to retry the channel subscription.
+            // Re-subscribe with exponential backoff (2s, 4s, 8s … capped at 30s).
+            const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
+            retryCount++;
+            console.warn(`[Channel] ${status} — retrying in ${delay}ms (attempt ${retryCount})`);
+            setRealtimeRetryAt(Date.now() + delay);
             setTimeout(() => {
               if (channelRef.current === channel) {
                 channel.subscribe(handleChannelStatus);
               }
-            }, 2000);
+            }, delay);
           }
         };
         channel.subscribe(handleChannelStatus);
@@ -684,11 +776,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   };
 
   const sendWave = (toUserId: string, chatMessage: string) => {
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'wave',
-      payload: { toUserId },
-    });
+    channelSend('wave', { toUserId });
     sendChatMessage(chatMessage);
   };
 
@@ -962,28 +1050,19 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         <MotionPermissionBanner onEnable={handleRequestMotionPermission} />
       )}
 
-      {jitsiError && (
-        <JitsiErrorBanner
-          error={jitsiError}
-          jitsiRoom={jitsiRoom}
-          onRetry={handleJitsiRetry}
-          onDismiss={() => setJitsiError(null)}
-        />
-      )}
-
-      {/* Whiteboard toolbar — always visible (toggle button), tools expand when active */}
-      <WhiteboardToolbar
-        active={whiteboardActive}
-        onToggle={() => setWhiteboardActive(!whiteboardActive)}
-        tool={wbTool}
-        onToolChange={setWbTool}
-        color={wbColor}
-        onColorChange={setWbColor}
-        strokeWidth={wbStrokeWidth}
-        onStrokeWidthChange={setWbStrokeWidth}
-        onUndo={wbUndo}
-        onClear={wbClearAll}
-        strokeCount={wbStrokes.length}
+      <ConnectionStatusBanner
+        realtimeRetryAt={realtimeRetryAt}
+        jitsiRoom={jitsiRoom}
+        jitsiConnected={jitsiConnected}
+        jitsiParticipantCount={jitsiParticipantCount}
+        remoteAudioLevel={remoteAudioLevel}
+        jaasJwt={jaasJwt}
+        jaasJwtError={jaasJwtError}
+        jitsiError={jitsiError}
+        micLevel={micLevel}
+        micError={micError}
+        onJitsiRetry={handleJitsiRetry}
+        onJitsiDismiss={() => setJitsiError(null)}
       />
 
       {/* Whiteboard canvas overlay — renders strokes in 2D mode, handles drawing input */}
@@ -1000,15 +1079,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onBeginStroke={wbBeginStroke}
         onContinueStroke={wbContinueStroke}
         onEndStroke={wbEndStroke}
-      />
-
-      <VoiceChatStatus
-        jitsiRoom={jitsiRoom}
-        jitsiConnected={jitsiConnected}
-        jitsiParticipantCount={jitsiParticipantCount}
-        remoteAudioLevel={remoteAudioLevel}
-        jaasJwt={jaasJwt}
-        jaasJwtError={jaasJwtError}
       />
 
       {activeShareId && screenShares.has(activeShareId) && (
@@ -1067,16 +1137,58 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onSignOut={() => signOut().then(() => navigate('/login'))}
       />
 
-      <ChatPanel
-        visible={chatVisible}
-        messages={chatMessages}
-        input={chatInput}
-        onInputChange={setChatInput}
-        onSend={(msg) => { sendChatMessage(msg); setChatInput(''); }}
-        onClose={() => { setChatVisible(false); setChatInput(''); }}
-        chatScrollRef={chatScrollRef}
-        chatInputRef={chatInputRef}
+      {/* Chat hidden during zombie mode — replace with zombie HUD */}
+      {!isZombieMode && (
+        <ChatPanel
+          visible={chatVisible}
+          messages={chatMessages}
+          input={chatInput}
+          onInputChange={setChatInput}
+          onSend={(msg) => {
+            if (msg.trim() === 'ZOMBIE!' && zombiePhase === 'inactive') {
+              triggerZombieMode();
+              setChatVisible(false);
+              chatInputRef.current?.blur();
+            } else {
+              sendChatMessage(msg);
+            }
+            setChatInput('');
+          }}
+          onClose={() => { setChatVisible(false); setChatInput(''); }}
+          onInputFocus={onChatInputFocus}
+          onInputBlur={onChatInputBlur}
+          chatScrollRef={chatScrollRef}
+          chatInputRef={chatInputRef}
+        />
+      )}
+
+      {/* Zombie game HUD — only visible during active game */}
+      {isZombieMode && (
+        <ZombieHUD
+          wave={zombieWave}
+          totalKills={zombieKills}
+          playerHealths={zombieHealths}
+          deadPlayers={zombieDeadPlayers}
+          localUser={currentUser}
+          onlineUsers={onlineUsers}
+        />
+      )}
+
+      {/* Zombie wave announcements + game over overlay */}
+      <ZombieOverlay
+        phase={zombiePhase}
+        wave={zombieWave}
+        totalKills={zombieKills}
       />
+
+      {/* Ghost vignette for dead local player */}
+      {isZombieMode && zombieDeadPlayers.has(currentUser?.id ?? '') && (
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 190,
+          background: 'radial-gradient(ellipse at center, transparent 40%, rgba(200,220,255,0.35) 100%)',
+          boxShadow: 'inset 0 0 80px rgba(150,200,255,0.4)',
+        }} />
+      )}
 
       <SettingsPanel
         isOpen={showSettings}
@@ -1094,19 +1206,50 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         <LoginModal onClose={() => setShowLoginModal(false)} />
       )}
 
-      {/* Emoji picker bar + Loot Box button */}
+      {/* Bottom toolbar — whiteboard controls + emoji picker + loot box */}
       <div style={{
-        position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)',
-        display: 'flex', gap: '6px', zIndex: 150,
-        background: 'rgba(0,0,0,0.55)', borderRadius: '12px',
-        padding: '6px 12px', border: '1px solid rgba(255,255,255,0.12)',
-        alignItems: 'center',
+        position: 'absolute', bottom: '16px', left: '16px',
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px',
+        zIndex: 160,
       }}>
-        {Object.entries(EMOJI_MAP).map(([key, emoji]) => (
+        <WhiteboardToolbar
+          active={whiteboardActive}
+          onToggle={() => setWhiteboardActive(!whiteboardActive)}
+          tool={wbTool}
+          onToolChange={setWbTool}
+          color={wbColor}
+          onColorChange={setWbColor}
+          strokeWidth={wbStrokeWidth}
+          onStrokeWidthChange={setWbStrokeWidth}
+          onUndo={wbUndo}
+          onClear={wbClearAll}
+          strokeCount={wbStrokes.length}
+        />
+        <div style={{
+          display: 'flex', gap: '6px',
+          background: 'rgba(0,0,0,0.55)', borderRadius: '12px',
+          padding: '6px 12px', border: '1px solid rgba(255,255,255,0.12)',
+        }}>
+          {Object.entries(EMOJI_MAP).map(([key, emoji]) => (
+            <button
+              key={key}
+              title={`Press ${key}`}
+              onClick={() => fireEmojiRef.current?.(key)}
+              style={{
+                background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px',
+                cursor: 'pointer', fontSize: '22px', width: '40px', height: '40px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.2)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)'; }}
+            >
+              {emoji}
+            </button>
+          ))}
           <button
-            key={key}
-            title={`Press ${key}`}
-            onClick={() => fireEmojiRef.current?.(key)}
+            title="AI Loot Box"
+            onClick={() => setShowLootBox(true)}
             style={{
               background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px',
               cursor: 'pointer', fontSize: '22px', width: '40px', height: '40px',
@@ -1116,43 +1259,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.2)'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)'; }}
           >
-            {emoji}
+            📦
           </button>
-        ))}
-        {/* Divider */}
-        <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.15)' }} />
-        {/* Loot Box button */}
-        <button
-          title="Open AI Loot Box"
-          onClick={() => setShowLootBox(true)}
-          style={{
-            background: lootBox.cooldownRemaining <= 0
-              ? 'linear-gradient(135deg, rgba(139,92,246,0.3), rgba(109,40,217,0.3))'
-              : 'rgba(255,255,255,0.05)',
-            border: lootBox.cooldownRemaining <= 0
-              ? '1px solid rgba(139,92,246,0.5)'
-              : '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '8px',
-            cursor: 'pointer', fontSize: '22px',
-            width: '40px', height: '40px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.3s',
-            position: 'relative',
-            animation: lootBox.cooldownRemaining <= 0 ? 'lootbox-pulse 2s infinite' : 'none',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139,92,246,0.5), rgba(109,40,217,0.5))';
-            e.currentTarget.style.boxShadow = '0 0 12px rgba(139,92,246,0.4)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = lootBox.cooldownRemaining <= 0
-              ? 'linear-gradient(135deg, rgba(139,92,246,0.3), rgba(109,40,217,0.3))'
-              : 'rgba(255,255,255,0.05)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          📦
-        </button>
+        </div>
       </div>
 
       {/* Loot Box panel */}
@@ -1178,7 +1287,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onDiscard={lootBox.discardItem}
       />
 
-      <CameraModeIndicator cameraMode={cameraMode} isTouchDevice={isTouchDevice} />
 
       {isTouchDevice && (
         <VirtualJoystick
@@ -1195,7 +1303,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     <button
       onClick={() => setShowDebugPanel(v => !v)}
       style={{
-        position: 'absolute', bottom: showDebugPanel ? '220px' : '0px', left: '50%',
+        position: 'absolute', bottom: showDebugPanel ? `${PANEL_HEIGHT}px` : '0px', left: '50%',
         transform: 'translateX(-50%)',
         background: '#1f2937', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.1)',
         borderBottom: showDebugPanel ? 'none' : '1px solid rgba(255,255,255,0.1)',
@@ -1209,7 +1317,22 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     </button>
 
     {showDebugPanel && (
-      <NetworkDebugPanel stats={networkStats} onClose={() => setShowDebugPanel(false)} />
+      <NetworkDebugPanel
+        stats={networkStats}
+        realtimeRetryAt={realtimeRetryAt}
+        channelLog={channelLog}
+        lastSeenByUser={lastSeenByUser}
+        jitsiRoom={jitsiRoom}
+        jitsiConnected={jitsiConnected}
+        jitsiParticipantCount={jitsiParticipantCount}
+        jitsiError={jitsiError}
+        remoteAudioLevel={remoteAudioLevel}
+        micMuted={micMuted}
+        micLevel={micLevel}
+        micError={micError}
+        jitsiUsers={jitsiUsers}
+        onClose={() => setShowDebugPanel(false)}
+      />
     )}
     </div>
   );

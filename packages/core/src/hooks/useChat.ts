@@ -12,6 +12,8 @@ export interface ChatHandle {
   chatScrollRef: React.MutableRefObject<HTMLDivElement | null>;
   chatVisibleRef: React.MutableRefObject<boolean>;
   sendChatMessage: (message: string) => void;
+  onChatInputFocus: () => void;
+  onChatInputBlur: () => void;
   /** Register the chat broadcast listener on a channel. Call inside the main scene useEffect. */
   registerChatListener: (channel: RealtimeChannel) => void;
 }
@@ -23,6 +25,8 @@ interface UseChatOptions {
   currentUserRef: React.MutableRefObject<{ id: string; name: string | null } | null>;
   showSettings: boolean;
   keysRef: React.MutableRefObject<{ [key: string]: boolean }>;
+  /** Called before a message is sent. Return true to consume the message (prevent normal send). */
+  onTriggerMessage?: (msg: string) => boolean;
 }
 
 export function useChat({
@@ -32,6 +36,7 @@ export function useChat({
   currentUserRef,
   showSettings,
   keysRef,
+  onTriggerMessage,
 }: UseChatOptions): ChatHandle {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatVisible, setChatVisible] = useState(false);
@@ -40,6 +45,7 @@ export function useChat({
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatVisibleRef = useRef<boolean>(false);
+  const chatInputFocusedRef = useRef<boolean>(false);
 
   // Handle chat visibility and Enter key
   useEffect(() => {
@@ -56,8 +62,14 @@ export function useChat({
         } else if (chatInput.trim() === '') {
           setChatVisible(false);
         } else {
-          sendChatMessage(chatInput.trim());
-          setChatInput('');
+          const msg = chatInput.trim();
+          if (onTriggerMessage?.(msg)) {
+            setChatInput('');
+            setChatVisible(false);
+          } else {
+            sendChatMessage(msg);
+            setChatInput('');
+          }
         }
       } else if (event.key === 'Escape' && chatVisible) {
         event.preventDefault();
@@ -101,46 +113,60 @@ export function useChat({
     }
   }, [chatVisible]);
 
-  // Auto-hide chat after inactivity
+  // Auto-hide chat after inactivity (paused while input is focused)
   useEffect(() => {
-    if (chatVisible && chatInput === '') {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
-      hideTimerRef.current = setTimeout(() => {
-        setChatVisible(false);
-      }, 10000);
+    if (chatVisible && chatInput === '' && !chatInputFocusedRef.current) {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = setTimeout(() => setChatVisible(false), 10000);
     }
 
     return () => {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
   }, [chatVisible, chatInput]);
 
+  const onChatInputFocus = useCallback(() => {
+    chatInputFocusedRef.current = true;
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    setChatVisible(true);
+  }, []);
+
+  const onChatInputBlur = useCallback(() => {
+    chatInputFocusedRef.current = false;
+    if (chatVisibleRef.current && !chatInputRef.current?.value) {
+      hideTimerRef.current = setTimeout(() => setChatVisible(false), 10000);
+    }
+  }, []);
+
   const sendChatMessage = useCallback((message: string) => {
-    if (!channelRef.current || !channelSubscribedRef.current || !currentUser) return;
+    const user = currentUserRef.current;
+    if (!user) return;
 
     const chatMessage: ChatMessage = {
-      id: `${Date.now()}-${currentUser.id}`,
-      userId: currentUser.id,
-      userName: currentUser.name || 'User',
+      id: `${Date.now()}-${user.id}`,
+      userId: user.id,
+      userName: user.name || 'User',
       message,
       timestamp: Date.now(),
     };
 
-    channelRef.current.send({
-      type: 'broadcast',
-      event: 'chat',
-      payload: { message: chatMessage },
-    }).then((result: string) => {
-      if (result !== 'ok') console.error('[Chat] Broadcast failed:', result);
-    });
-
-    // Add own message to local state immediately (sender doesn't receive own broadcast)
+    // Always show own message locally immediately
     setChatMessages((prev) => [...prev.slice(-49), chatMessage]);
-  }, [currentUser?.id, currentUser?.name]);
+
+    // Broadcast to others when channel is ready
+    if (channelRef.current && channelSubscribedRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'chat',
+        payload: { message: chatMessage },
+      }).then((result: string) => {
+        if (result !== 'ok') console.error('[Chat] Broadcast failed:', result);
+      });
+    }
+  }, []);
 
   const registerChatListener = useCallback((channel: RealtimeChannel) => {
     channel.on('broadcast', { event: 'chat' }, ({ payload }) => {
@@ -161,6 +187,8 @@ export function useChat({
     chatScrollRef,
     chatVisibleRef,
     sendChatMessage,
+    onChatInputFocus,
+    onChatInputBlur,
     registerChatListener,
   };
 }

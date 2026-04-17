@@ -78,6 +78,8 @@ interface UsePresenceOptions {
   setFollowingUserId: (id: string | null) => void;
   handleProximityChange: (nearbyIds: Set<string>) => void;
   recordPositionUpdateRef: React.MutableRefObject<(userId: string) => void>;
+  /** When true, proximity-based Jitsi room changes are suppressed (used by zombie game mode). */
+  pauseProximityDetectionRef?: React.MutableRefObject<boolean>;
 }
 
 export function usePresence({
@@ -102,6 +104,7 @@ export function usePresence({
   setFollowingUserId,
   handleProximityChange,
   recordPositionUpdateRef,
+  pauseProximityDetectionRef,
 }: UsePresenceOptions): PresenceHandle {
   const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null; status: 'active' | 'inactive' | 'offline' }>>([]);
 
@@ -127,6 +130,8 @@ export function usePresence({
 
   // Stale detection state (closure-captured by tickPresence)
   const lastStaleCheckRef = useRef(0);
+  // Track previous jitsiRoom state to detect prewarm re-entry and force proximity re-check
+  const prevJitsiRoomRef = useRef<string | null>(jitsiRoomRef.current);
   const STALE_THRESHOLD_MS = 15_000;
 
   const rebuildOnlineUsers = useCallback(() => {
@@ -476,8 +481,11 @@ export function usePresence({
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Position heartbeat — keeps position broadcast alive even in background tabs
-    let lastPresenceTrackTime = 0;
+    // Position heartbeat — keeps position broadcast alive even in background tabs.
+    // We only use broadcast (not presence track) for position updates because calling
+    // channel.track() with changed position data causes Supabase to emit a
+    // presence_diff with leave (old state) + join (new state) for the same user,
+    // producing spurious join/leave events every ~12 s even when alone in the room.
     const positionHeartbeatInterval = setInterval(() => {
       if (!channelRef.current || !channelSubscribedRef.current || !cameraRef.current || !myId) return;
       const cam = cameraRef.current;
@@ -496,11 +504,6 @@ export function usePresence({
       lastPositionUpdate.current = Date.now();
       if (myPresenceRef.current) {
         myPresenceRef.current = { ...myPresenceRef.current, position: hbPos, rotation: hbRot };
-        const trackNow = Date.now();
-        if (trackNow - lastPresenceTrackTime > 10000) {
-          lastPresenceTrackTime = trackNow;
-          channelRef.current.track(myPresenceRef.current);
-        }
       }
     }, 2000);
 
@@ -536,6 +539,17 @@ export function usePresence({
   ) => {
     const myId = currentUser?.id;
     const now = Date.now();
+
+    // When jitsiRoom transitions from proximity → prewarm (null), reset nearbyUserIdsRef so
+    // the proximity delta-check fires on the next frame even if the nearby set hasn't changed.
+    // Without this, handleProximityChange({B_id}) is never called after a leave+rejoin because
+    // nearbyUserIdsRef.current still holds the old set and setChanged stays false.
+    const wasInRoom = prevJitsiRoomRef.current !== null;
+    const isInRoom = jitsiRoomRef.current !== null;
+    if (wasInRoom && !isInRoom) {
+      nearbyUserIdsRef.current = new Set();
+    }
+    prevJitsiRoomRef.current = jitsiRoomRef.current;
 
     // Send position when moving (60ms throttle)
     const shouldSend = channelRef.current && channelSubscribedRef.current &&
@@ -682,15 +696,17 @@ export function usePresence({
       });
     }
 
-    // Fire proximity change handler only when the set changes
-    const prevNearby = nearbyUserIdsRef.current;
-    const setChanged =
-      newNearby.size !== prevNearby.size ||
-      [...newNearby].some(id => !prevNearby.has(id)) ||
-      [...prevNearby].some(id => !newNearby.has(id));
-    if (setChanged) {
-      nearbyUserIdsRef.current = newNearby;
-      handleProximityChange(newNearby);
+    // Fire proximity change handler only when the set changes (suppressed during zombie mode)
+    if (!pauseProximityDetectionRef?.current) {
+      const prevNearby = nearbyUserIdsRef.current;
+      const setChanged =
+        newNearby.size !== prevNearby.size ||
+        [...newNearby].some(id => !prevNearby.has(id)) ||
+        [...prevNearby].some(id => !newNearby.has(id));
+      if (setChanged) {
+        nearbyUserIdsRef.current = newNearby;
+        handleProximityChange(newNearby);
+      }
     }
 
     // Toggle 3D/2D name tags and 2D markers on remote avatars

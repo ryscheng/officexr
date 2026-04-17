@@ -122,11 +122,24 @@ export function useKeyboardControls({
     // Track pitch and yaw independently — standard FPS camera technique
     camera.rotation.order = 'YXZ';
 
+    // Make the canvas focusable so it can hold keyboard focus while pointer lock is
+    // active. Without this, pressing letter keys (WASD) when nothing interactive has
+    // focus triggers browser features such as Firefox's type-ahead find, which steal
+    // keyboard focus → the page loses focus → pointer lock exits → mouse look breaks.
+    // Arrow keys are unaffected because they don't trigger those browser features.
+    renderer.domElement.tabIndex = -1;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       if (chatVisibleRef.current) {
         const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'v', '?'];
         if (navigationKeys.includes(key)) return;
+      }
+      // Prevent default browser scroll/navigation for movement keys so they don't
+      // inadvertently scroll the page and release pointer lock.
+      const movementKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+      if (movementKeys.includes(key) && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
       }
       // Emoji confetti (keys 1-5) — skip when typing in chat
       if (!chatVisibleRef.current && event.key in EMOJI_MAP) {
@@ -212,6 +225,7 @@ export function useKeyboardControls({
       }
       if (!renderer.xr.isPresenting && !motionActiveRef.current) {
         renderer.domElement.requestPointerLock();
+        renderer.domElement.focus();
       }
     };
 
@@ -226,7 +240,11 @@ export function useKeyboardControls({
     };
 
     const handlePointerLockChange = () => {
-      setMouseLockActive(document.pointerLockElement === renderer.domElement);
+      const isLocked = document.pointerLockElement === renderer.domElement;
+      setMouseLockActive(isLocked);
+      if (isLocked) {
+        renderer.domElement.focus();
+      }
     };
 
     // Touch controls
@@ -282,7 +300,9 @@ export function useKeyboardControls({
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     renderer.domElement.addEventListener('click', handleCanvasClick);
-    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    // Use document-level mousemove so pointer-lock events are caught regardless of
+    // which element the browser dispatches them to (behaviour varies across browsers).
+    document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
     renderer.domElement.addEventListener('touchstart', handleTouchStart, { passive: true });
     renderer.domElement.addEventListener('touchmove', handleTouchMove, { passive: true });
@@ -293,7 +313,7 @@ export function useKeyboardControls({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       renderer.domElement.removeEventListener('click', handleCanvasClick);
-      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
@@ -438,22 +458,23 @@ export function useKeyboardControls({
       localAvatar.rotation.y = playerYawRef.current + Math.PI;
 
       const camDist = 3.5;
-      const camHeight = 2.2;
       const yaw = playerYawRef.current;
-      if (cameraModeRef.current === 'third-person-behind') {
-        camera.position.set(
-          pPos.x + Math.sin(yaw) * camDist,
-          camHeight,
-          pPos.z + Math.cos(yaw) * camDist,
-        );
-      } else {
-        camera.position.set(
-          pPos.x - Math.sin(yaw) * camDist,
-          camHeight,
-          pPos.z - Math.cos(yaw) * camDist,
-        );
-      }
-      camera.lookAt(pPos.x, 1.4, pPos.z);
+      const pitch = cameraPitchRef.current;
+      const centerY = 1.4;
+      // side=1 puts the camera behind the avatar; side=-1 puts it in front
+      const side = cameraModeRef.current === 'third-person-behind' ? 1 : -1;
+
+      // Spherical orbit: camera position derived from (yaw, pitch) so that pitch
+      // is encoded geometrically rather than discarded by lookAt.
+      const cosP = Math.cos(pitch);
+      const sinP = Math.sin(pitch);
+      camera.position.set(
+        pPos.x + side * Math.sin(yaw) * camDist * cosP,
+        centerY - sinP * camDist,
+        pPos.z + side * Math.cos(yaw) * camDist * cosP,
+      );
+      // lookAt is safe here: pitch is preserved in camera.position, not rotation.x
+      camera.lookAt(pPos.x, centerY, pPos.z);
     } else if (localAvatar) {
       localAvatar.visible = false;
       playerPositionRef.current.set(camera.position.x, 0, camera.position.z);

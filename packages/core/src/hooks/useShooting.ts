@@ -19,16 +19,25 @@ interface Bullet {
   trailTimer: number;
 }
 
+export type CameraMode = 'first-person' | 'third-person-behind' | 'third-person-front';
+
 export interface ShootingHandle {
   /**
    * Fire a bullet from the camera in the gaze direction.
    * Performs an immediate raycast to find the first hard surface (or avatar) and
    * animates the bullet to that impact point.
+   *
+   * In third-person-front mode, bullets are fired along the avatar's facing
+   * direction from the avatar's torso rather than from the camera (which in that
+   * mode is looking back at the player).
    */
   fireBullet: (
     camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
     avatars: Map<string, THREE.Group>,
+    cameraMode: CameraMode,
+    playerYaw: number,
+    playerPosition: THREE.Vector3,
   ) => void;
   /**
    * Per-frame update: move active bullets, spawn/age sparkle trail particles,
@@ -80,9 +89,23 @@ export function useShooting(): ShootingHandle {
     camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
     avatars: Map<string, THREE.Group>,
+    cameraMode: CameraMode,
+    playerYaw: number,
+    playerPosition: THREE.Vector3,
   ) => {
     const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
+    let origin: THREE.Vector3;
+
+    if (cameraMode === 'third-person-front') {
+      // Camera looks back at the player in this mode, so camera.getWorldDirection
+      // would point into the avatar. Fire along the avatar's facing direction instead.
+      dir.set(-Math.sin(playerYaw), 0, -Math.cos(playerYaw));
+      origin = new THREE.Vector3(playerPosition.x, 1.4, playerPosition.z);
+    } else {
+      // first-person and third-person-behind: camera's world direction is correct
+      camera.getWorldDirection(dir);
+      origin = camera.position.clone();
+    }
 
     // Identify all avatar meshes so they can be checked separately
     const avatarMeshSet = new Set<THREE.Object3D>();
@@ -101,8 +124,8 @@ export function useShooting(): ShootingHandle {
       envObjects.push(child);
     });
 
-    // Raycast: start just in front of camera, max range 100 units
-    const rc = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0.5, 100);
+    // Raycast: start just in front of origin, max range 100 units
+    const rc = new THREE.Raycaster(origin.clone(), dir.clone(), 0.5, 100);
 
     const envHits = rc.intersectObjects(envObjects, false);
     let maxDist = 50;
@@ -127,7 +150,7 @@ export function useShooting(): ShootingHandle {
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     );
     // Position at the raycaster near plane (0.5 units ahead)
-    bulletMesh.position.copy(camera.position).addScaledVector(dir, 0.5);
+    bulletMesh.position.copy(origin).addScaledVector(dir, 0.5);
     scene.add(bulletMesh);
 
     bulletsRef.current.push({

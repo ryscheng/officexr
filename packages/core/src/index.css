@@ -25,8 +25,3 @@ body {
   padding: 0;
   overflow: hidden;
 }
-
-@keyframes lootbox-pulse {
-  0%, 100% { box-shadow: 0 0 4px rgba(139,92,246,0.2); }
-  50% { box-shadow: 0 0 12px rgba(139,92,246,0.5); }
-}
