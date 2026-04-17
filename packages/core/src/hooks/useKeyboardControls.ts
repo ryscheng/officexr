@@ -122,6 +122,13 @@ export function useKeyboardControls({
     // Track pitch and yaw independently — standard FPS camera technique
     camera.rotation.order = 'YXZ';
 
+    // Make the canvas focusable so it can hold keyboard focus while pointer lock is
+    // active. Without this, pressing letter keys (WASD) when nothing interactive has
+    // focus triggers browser features such as Firefox's type-ahead find, which steal
+    // keyboard focus → the page loses focus → pointer lock exits → mouse look breaks.
+    // Arrow keys are unaffected because they don't trigger those browser features.
+    renderer.domElement.tabIndex = -1;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       if (chatVisibleRef.current) {
@@ -218,6 +225,7 @@ export function useKeyboardControls({
       }
       if (!renderer.xr.isPresenting && !motionActiveRef.current) {
         renderer.domElement.requestPointerLock();
+        renderer.domElement.focus();
       }
     };
 
@@ -232,7 +240,11 @@ export function useKeyboardControls({
     };
 
     const handlePointerLockChange = () => {
-      setMouseLockActive(document.pointerLockElement === renderer.domElement);
+      const isLocked = document.pointerLockElement === renderer.domElement;
+      setMouseLockActive(isLocked);
+      if (isLocked) {
+        renderer.domElement.focus();
+      }
     };
 
     // Touch controls
