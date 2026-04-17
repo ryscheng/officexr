@@ -1095,6 +1095,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
           onSend={(msg) => {
             if (msg.trim() === 'ZOMBIE!' && zombiePhase === 'inactive') {
               triggerZombieMode();
+              setChatVisible(false);
+              chatInputRef.current?.blur();
             } else {
               sendChatMessage(msg);
             }
