@@ -440,12 +440,20 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const moveSpeed = 0.1;
     let activeParticles: Particle[] = [];
 
+    // Avatar head position — used as confetti origin so emojis appear from the
+    // player's head rather than the orbit camera in third-person modes.
+    const getHeadPosition = () =>
+      cameraModeRef.current !== 'first-person'
+        ? new THREE.Vector3(playerPositionRef.current.x, 1.6, playerPositionRef.current.z)
+        : camera.position.clone();
+
     // Expose emoji fire function for the emoji picker bar
     const fireEmoji = (emojiKey: string) => {
-      activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
+      const origin = getHeadPosition();
+      activeParticles.push(...spawnConfetti(scene, origin, emojiKey, is2DModeRef.current));
       channelSend('confetti', {
         userId: currentUser.id, key: emojiKey,
-        position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+        position: { x: origin.x, y: origin.y, z: origin.z },
       });
     };
     fireEmojiRef.current = fireEmoji;
@@ -455,10 +463,11 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     const cleanupInputListeners = registerInputListeners(
       renderer, camera, scene, orthoCamera, orthoViewSizeRef,
       (emojiKey: string) => {
-        activeParticles.push(...spawnConfetti(scene, camera.position.clone(), emojiKey, is2DModeRef.current));
+        const origin = getHeadPosition();
+        activeParticles.push(...spawnConfetti(scene, origin, emojiKey, is2DModeRef.current));
         channelSend('confetti', {
           userId: currentUser.id, key: emojiKey,
-          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+          position: { x: origin.x, y: origin.y, z: origin.z },
         });
       },
       (newZoom: number) => setZoomLevel(newZoom),
@@ -991,7 +1000,6 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onlineUsers={onlineUsers}
         followingUserId={followingUserId}
         networkStats={networkStats}
-        cameraMode={cameraMode}
         micLevel={micLevel}
         micError={micError}
         micMuted={micMuted}

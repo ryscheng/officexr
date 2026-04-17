@@ -616,8 +616,9 @@ describe('useKeyboardControls', () => {
 
       result.current.computeMovement(camera, avatar, null, undefined, 3, 0.15);
 
-      // Spherical orbit: y = centerY + sin(pitch) * camDist = 1.4 + sin(0.5)*3.5 ≈ 3.08
-      const expectedY = 1.4 + Math.sin(pitch) * 3.5;
+      // Spherical orbit: y = centerY - sin(pitch) * camDist = 1.4 - sin(0.5)*3.5 ≈ -0.278
+      // (negative sinP so mouse-up moves camera below avatar, matching 1st-person look-up)
+      const expectedY = 1.4 - Math.sin(pitch) * 3.5;
       expect(camera.position.y).toBeCloseTo(expectedY, 5);
       // Old code would have set y = 2.2 (camHeight constant)
       expect(camera.position.y).not.toBeCloseTo(2.2, 1);
@@ -645,7 +646,7 @@ describe('useKeyboardControls', () => {
 
       result.current.computeMovement(camera, avatar, null, undefined, 3, 0.15);
 
-      const expectedY = 1.4 + Math.sin(pitch) * 3.5;
+      const expectedY = 1.4 - Math.sin(pitch) * 3.5;
       expect(camera.position.y).toBeCloseTo(expectedY, 5);
     });
 
@@ -722,12 +723,12 @@ describe('useKeyboardControls', () => {
       expect(windowRemoveSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
       expect(windowRemoveSpy).toHaveBeenCalledWith('keyup', expect.any(Function));
 
-      // Document listeners: pointerlockchange
+      // Document listeners: pointerlockchange, mousemove
       expect(documentRemoveSpy).toHaveBeenCalledWith('pointerlockchange', expect.any(Function));
+      expect(documentRemoveSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
 
-      // Canvas listeners: click, mousemove, touchstart, touchmove, touchend, wheel
+      // Canvas listeners: click, touchstart, touchmove, touchend, wheel
       expect(canvasRemoveSpy).toHaveBeenCalledWith('click', expect.any(Function));
-      expect(canvasRemoveSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
       expect(canvasRemoveSpy).toHaveBeenCalledWith('touchstart', expect.any(Function));
       expect(canvasRemoveSpy).toHaveBeenCalledWith('touchmove', expect.any(Function));
       expect(canvasRemoveSpy).toHaveBeenCalledWith('touchend', expect.any(Function));

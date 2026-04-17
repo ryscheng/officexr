@@ -1,7 +1,6 @@
 import { AuthUser } from '@/hooks/useAuth';
 import { NetworkStats } from '@/hooks/useNetworkStats';
 import { SignalIcon } from '../NetworkDebugPanel';
-import { CameraMode } from '@/types/room';
 
 interface OnlineUser {
   id: string;
@@ -17,7 +16,6 @@ interface UserPanelProps {
   onlineUsers: OnlineUser[];
   followingUserId: string | null;
   networkStats: NetworkStats;
-  cameraMode: CameraMode;
   micLevel: number;
   micError: string | null;
   micMuted: boolean;
@@ -43,7 +41,6 @@ export default function UserPanel({
   onlineUsers,
   followingUserId,
   networkStats,
-  cameraMode,
   micLevel,
   micError,
   micMuted,
@@ -80,13 +77,6 @@ export default function UserPanel({
       </p>
       <p style={{ margin: '0 0 4px 0', fontSize: '13px' }}>Users online: {onlineUsers.length}</p>
 
-      {/* Camera mode */}
-      {cameraMode !== 'first-person' && (
-        <p style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#9ca3af' }}>
-          {cameraMode === 'third-person-behind' ? '3rd Person (Front)' : '3rd Person (Behind)'}
-          <span style={{ marginLeft: '6px' }}>· C to cycle</span>
-        </p>
-      )}
 
       {/* Online users list */}
       {onlineUsers.length > 0 && (

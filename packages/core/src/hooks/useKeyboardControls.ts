@@ -128,6 +128,12 @@ export function useKeyboardControls({
         const navigationKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'v', '?'];
         if (navigationKeys.includes(key)) return;
       }
+      // Prevent default browser scroll/navigation for movement keys so they don't
+      // inadvertently scroll the page and release pointer lock.
+      const movementKeys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+      if (movementKeys.includes(key) && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+      }
       // Emoji confetti (keys 1-5) — skip when typing in chat
       if (!chatVisibleRef.current && event.key in EMOJI_MAP) {
         onEmojiKey(event.key);
@@ -282,7 +288,9 @@ export function useKeyboardControls({
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     renderer.domElement.addEventListener('click', handleCanvasClick);
-    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    // Use document-level mousemove so pointer-lock events are caught regardless of
+    // which element the browser dispatches them to (behaviour varies across browsers).
+    document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
     renderer.domElement.addEventListener('touchstart', handleTouchStart, { passive: true });
     renderer.domElement.addEventListener('touchmove', handleTouchMove, { passive: true });
@@ -293,7 +301,7 @@ export function useKeyboardControls({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       renderer.domElement.removeEventListener('click', handleCanvasClick);
-      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
@@ -450,7 +458,7 @@ export function useKeyboardControls({
       const sinP = Math.sin(pitch);
       camera.position.set(
         pPos.x + side * Math.sin(yaw) * camDist * cosP,
-        centerY + sinP * camDist,
+        centerY - sinP * camDist,
         pPos.z + side * Math.cos(yaw) * camDist * cosP,
       );
       // lookAt is safe here: pitch is preserved in camera.position, not rotation.x
