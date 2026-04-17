@@ -478,8 +478,11 @@ export function usePresence({
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Position heartbeat — keeps position broadcast alive even in background tabs
-    let lastPresenceTrackTime = 0;
+    // Position heartbeat — keeps position broadcast alive even in background tabs.
+    // We only use broadcast (not presence track) for position updates because calling
+    // channel.track() with changed position data causes Supabase to emit a
+    // presence_diff with leave (old state) + join (new state) for the same user,
+    // producing spurious join/leave events every ~12 s even when alone in the room.
     const positionHeartbeatInterval = setInterval(() => {
       if (!channelRef.current || !channelSubscribedRef.current || !cameraRef.current || !myId) return;
       const cam = cameraRef.current;
@@ -498,11 +501,6 @@ export function usePresence({
       lastPositionUpdate.current = Date.now();
       if (myPresenceRef.current) {
         myPresenceRef.current = { ...myPresenceRef.current, position: hbPos, rotation: hbRot };
-        const trackNow = Date.now();
-        if (trackNow - lastPresenceTrackTime > 10000) {
-          lastPresenceTrackTime = trackNow;
-          channelRef.current.track(myPresenceRef.current);
-        }
       }
     }, 2000);
 
