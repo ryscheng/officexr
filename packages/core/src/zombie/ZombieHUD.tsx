@@ -23,25 +23,23 @@ export default function ZombieHUD({
 
   return (
     <div style={{ pointerEvents: 'none', userSelect: 'none' }}>
-      {/* Wave indicator — top center */}
+      {/* Wave indicator + quit hint — bottom center */}
       <div style={{
-        position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
-        background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,80,80,0.5)',
-        borderRadius: 8, padding: '6px 20px', color: '#ff6060',
-        fontFamily: 'monospace', fontSize: 18, fontWeight: 'bold',
-        textShadow: '0 0 12px #ff0000',
+        position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
         zIndex: 200,
       }}>
-        WAVE {wave}
-      </div>
-
-      {/* Q-to-quit hint — bottom center */}
-      <div style={{
-        position: 'absolute', bottom: 60, left: '50%', transform: 'translateX(-50%)',
-        color: 'rgba(255,100,100,0.55)', fontFamily: 'monospace', fontSize: 11,
-        zIndex: 200,
-      }}>
-        [Q] quit game
+        <div style={{
+          background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,80,80,0.5)',
+          borderRadius: 8, padding: '6px 20px', color: '#ff6060',
+          fontFamily: 'monospace', fontSize: 18, fontWeight: 'bold',
+          textShadow: '0 0 12px #ff0000',
+        }}>
+          WAVE {wave}
+        </div>
+        <div style={{ color: 'rgba(255,100,100,0.55)', fontFamily: 'monospace', fontSize: 11 }}>
+          [Q] quit game
+        </div>
       </div>
 
       {/* Kill counter — top right */}
