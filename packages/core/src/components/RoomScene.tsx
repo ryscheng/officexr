@@ -350,6 +350,8 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     channelSubscribedRef,
     sceneRef,
     playerPositionRef,
+    cameraRef,
+    cameraModeRef,
     presenceDataRef,
     avatarsRef,
     onlineUsers,

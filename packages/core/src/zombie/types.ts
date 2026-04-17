@@ -32,6 +32,8 @@ export interface UseZombieGameOptions {
   channelSubscribedRef: React.MutableRefObject<boolean>;
   sceneRef: React.MutableRefObject<THREE.Scene | null>;
   playerPositionRef: React.MutableRefObject<THREE.Vector3>;
+  cameraRef: React.MutableRefObject<THREE.PerspectiveCamera | null>;
+  cameraModeRef: React.MutableRefObject<string>;
   presenceDataRef: React.MutableRefObject<Map<string, PresenceEntry>>;
   avatarsRef: React.MutableRefObject<Map<string, THREE.Group>>;
   onlineUsers: Array<{ id: string; name: string }>;

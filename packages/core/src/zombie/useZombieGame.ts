@@ -29,6 +29,8 @@ export function useZombieGame({
   channelSubscribedRef,
   sceneRef,
   playerPositionRef,
+  cameraRef,
+  cameraModeRef,
   presenceDataRef,
   avatarsRef,
   onlineUsers,
@@ -291,6 +293,16 @@ export function useZombieGame({
     const speed = zombieSpeedForWave(waveRef.current);
     const myId = currentUser?.id;
 
+    // Returns the correct world-space XZ position of the local player.
+    // In first-person mode the avatar position lives on the camera; in
+    // third-person modes it lives on playerPositionRef.
+    const getLocalPos = (): { x: number; z: number } => {
+      if (cameraModeRef.current === 'first-person' && cameraRef.current) {
+        return { x: cameraRef.current.position.x, z: cameraRef.current.position.z };
+      }
+      return { x: playerPositionRef.current.x, z: playerPositionRef.current.z };
+    };
+
     // Find closest living player to a zombie position
     const closestLivingPlayerPos = (zx: number, zz: number): { x: number; z: number } | null => {
       let best: { x: number; z: number } | null = null;
@@ -298,12 +310,12 @@ export function useZombieGame({
 
       // Check local player
       if (myId && !deadPlayersRef.current.has(myId)) {
-        const lp = playerPositionRef.current;
+        const lp = getLocalPos();
         const d = Math.hypot(lp.x - zx, lp.z - zz);
-        if (d < bestDist) { bestDist = d; best = { x: lp.x, z: lp.z }; }
+        if (d < bestDist) { bestDist = d; best = lp; }
       }
 
-      // Check remote players
+      // Check remote players (presence data contains only real users, not zombies)
       for (const [uid, entry] of presenceDataRef.current) {
         if (deadPlayersRef.current.has(uid)) continue;
         const pos = entry.position;
@@ -339,9 +351,9 @@ export function useZombieGame({
     // Check damage to local player
     if (myId && !isLocalPlayerDeadRef.current) {
       let touchingZombie = false;
+      const lp = getLocalPos();
       for (const entity of zombieEntitiesRef.current.values()) {
         if (entity.hp <= 0) continue;
-        const lp = playerPositionRef.current;
         if (Math.hypot(lp.x - entity.x, lp.z - entity.z) < ZOMBIE_HIT_RADIUS) {
           touchingZombie = true;
           break;
