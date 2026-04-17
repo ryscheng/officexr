@@ -25,6 +25,8 @@ interface UseChatOptions {
   currentUserRef: React.MutableRefObject<{ id: string; name: string | null } | null>;
   showSettings: boolean;
   keysRef: React.MutableRefObject<{ [key: string]: boolean }>;
+  /** Called before a message is sent. Return true to consume the message (prevent normal send). */
+  onTriggerMessage?: (msg: string) => boolean;
 }
 
 export function useChat({
@@ -34,6 +36,7 @@ export function useChat({
   currentUserRef,
   showSettings,
   keysRef,
+  onTriggerMessage,
 }: UseChatOptions): ChatHandle {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatVisible, setChatVisible] = useState(false);
@@ -59,8 +62,14 @@ export function useChat({
         } else if (chatInput.trim() === '') {
           setChatVisible(false);
         } else {
-          sendChatMessage(chatInput.trim());
-          setChatInput('');
+          const msg = chatInput.trim();
+          if (onTriggerMessage?.(msg)) {
+            setChatInput('');
+            setChatVisible(false);
+          } else {
+            sendChatMessage(msg);
+            setChatInput('');
+          }
         }
       } else if (event.key === 'Escape' && chatVisible) {
         event.preventDefault();

@@ -78,6 +78,8 @@ interface UsePresenceOptions {
   setFollowingUserId: (id: string | null) => void;
   handleProximityChange: (nearbyIds: Set<string>) => void;
   recordPositionUpdateRef: React.MutableRefObject<(userId: string) => void>;
+  /** When true, proximity-based Jitsi room changes are suppressed (used by zombie game mode). */
+  pauseProximityDetectionRef?: React.MutableRefObject<boolean>;
 }
 
 export function usePresence({
@@ -102,6 +104,7 @@ export function usePresence({
   setFollowingUserId,
   handleProximityChange,
   recordPositionUpdateRef,
+  pauseProximityDetectionRef,
 }: UsePresenceOptions): PresenceHandle {
   const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; email: string | null; status: 'active' | 'inactive' | 'offline' }>>([]);
 
@@ -693,15 +696,17 @@ export function usePresence({
       });
     }
 
-    // Fire proximity change handler only when the set changes
-    const prevNearby = nearbyUserIdsRef.current;
-    const setChanged =
-      newNearby.size !== prevNearby.size ||
-      [...newNearby].some(id => !prevNearby.has(id)) ||
-      [...prevNearby].some(id => !newNearby.has(id));
-    if (setChanged) {
-      nearbyUserIdsRef.current = newNearby;
-      handleProximityChange(newNearby);
+    // Fire proximity change handler only when the set changes (suppressed during zombie mode)
+    if (!pauseProximityDetectionRef?.current) {
+      const prevNearby = nearbyUserIdsRef.current;
+      const setChanged =
+        newNearby.size !== prevNearby.size ||
+        [...newNearby].some(id => !prevNearby.has(id)) ||
+        [...prevNearby].some(id => !newNearby.has(id));
+      if (setChanged) {
+        nearbyUserIdsRef.current = newNearby;
+        handleProximityChange(newNearby);
+      }
     }
 
     // Toggle 3D/2D name tags and 2D markers on remote avatars

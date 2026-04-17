@@ -34,6 +34,9 @@ import ChatPanel from './room/ChatPanel';
 import LoginModal from './room/LoginModal';
 import Crosshair from './room/Crosshair';
 import VirtualJoystick from './room/VirtualJoystick';
+import { useZombieGame } from '@/zombie/useZombieGame';
+import ZombieHUD from '@/zombie/ZombieHUD';
+import ZombieOverlay from '@/zombie/ZombieOverlay';
 
 interface OfficeSceneProps {
   officeId: string;
@@ -169,6 +172,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     currentUserRef,
     showSettings: showSettings,
     keysRef,
+    onTriggerMessage: (msg) => {
+      if (msg === 'ZOMBIE!' && zombiePhase === 'inactive') {
+        triggerZombieMode();
+        return true;
+      }
+      return false;
+    },
   });
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(15); // ortho view size, default 15
@@ -236,6 +246,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   // Network stats — needs a temporary ref for recordPositionUpdate since usePresence uses it
   const recordPositionUpdateRef = useRef<(userId: string) => void>(() => {});
 
+  // Zombie game mode — suppress proximity-based Jitsi changes while active
+  const pauseProximityDetectionRef = useRef(false);
+
   // Presence and position management
   const {
     onlineUsers,
@@ -270,6 +283,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     setFollowingUserId,
     handleProximityChange,
     recordPositionUpdateRef,
+    pauseProximityDetectionRef,
   });
 
   // Screen sharing
@@ -316,6 +330,46 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
   // Wire whiteboard keyboard shortcut refs
   wbToggleRef.current = () => setWhiteboardActive(!whiteboardActive);
   wbUndoRef.current = wbUndo;
+
+  // Zombie survival game mode
+  const {
+    phase: zombiePhase,
+    wave: zombieWave,
+    totalKills: zombieKills,
+    playerHealths: zombieHealths,
+    deadPlayers: zombieDeadPlayers,
+    zombieMeshesRef,
+    isLocalPlayerDeadRef,
+    triggerZombieMode,
+    onZombieHit,
+    forceQuitZombie,
+    registerZombieListeners,
+    updateZombies,
+  } = useZombieGame({
+    currentUser,
+    channelRef,
+    channelSubscribedRef,
+    sceneRef,
+    playerPositionRef,
+    cameraRef,
+    cameraModeRef,
+    presenceDataRef,
+    avatarsRef,
+    onlineUsers,
+    handleProximityChange,
+    pauseProximityDetectionRef,
+  });
+  const isZombieMode = zombiePhase !== 'inactive';
+
+  // Q key quits zombie mode for everyone
+  useEffect(() => {
+    if (!isZombieMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key === 'q' || e.key === 'Q') && !chatVisibleRef.current) forceQuitZombie();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isZombieMode, forceQuitZombie]);
 
   // Network stats for debug panel
   const networkStats = useNetworkStats(
@@ -478,10 +532,13 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
       if (event.button !== 0) return;
       if (is2DModeRef.current) return;
       if (document.pointerLockElement !== renderer.domElement) return;
+      if (isLocalPlayerDeadRef.current) return; // ghosts can't shoot
+      // Merge regular avatars and zombie meshes as bullet targets
+      const allTargets = new Map([...avatarsRef.current, ...zombieMeshesRef.current]);
       fireBullet(
         camera,
         scene,
-        avatarsRef.current,
+        allTargets,
         cameraModeRef.current,
         playerYawRef.current,
         playerPositionRef.current,
@@ -498,8 +555,12 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
     // Animation loop — always start regardless of channel state
     const clock = new THREE.Clock();
 
-    // Called when a bullet hits a remote avatar — trigger a wave
+    // Called when a bullet hits a remote avatar or zombie
     const handleAvatarHit = (avatarId: string) => {
+      if (avatarId.startsWith('zombie-')) {
+        onZombieHit(avatarId);
+        return;
+      }
       const toUserName = presenceDataRef.current.get(avatarId)?.name || 'someone';
       playWaveChime(); // local chime as shooter feedback
       sendWave(avatarId, `${currentUser.name || 'Someone'} hit ${toUserName} with a sparkle! ✨`);
@@ -514,6 +575,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
       // Update bullet positions and sparkle trails
       updateBullets(delta, scene, handleAvatarHit);
+
+      // Update zombie AI, movement, and player damage (noop when game inactive)
+      updateZombies(delta, scene);
 
       // Update whiteboard 3D floor texture if strokes changed
       wbUpdateFloorTexture();
@@ -574,6 +638,9 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
 
         // Broadcast: whiteboard — registered by useWhiteboard hook
         registerWhiteboardListeners(channel);
+
+        // Broadcast: zombie game mode events
+        registerZombieListeners(channel);
 
         // Broadcast: room environment changes — update scene for all connected users
         channel.on('broadcast', { event: 'environment-change' }, ({ payload }) => {
@@ -1018,18 +1085,58 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         onSignOut={() => signOut().then(() => navigate('/login'))}
       />
 
-      <ChatPanel
-        visible={chatVisible}
-        messages={chatMessages}
-        input={chatInput}
-        onInputChange={setChatInput}
-        onSend={(msg) => { sendChatMessage(msg); setChatInput(''); }}
-        onClose={() => { setChatVisible(false); setChatInput(''); }}
-        onInputFocus={onChatInputFocus}
-        onInputBlur={onChatInputBlur}
-        chatScrollRef={chatScrollRef}
-        chatInputRef={chatInputRef}
+      {/* Chat hidden during zombie mode — replace with zombie HUD */}
+      {!isZombieMode && (
+        <ChatPanel
+          visible={chatVisible}
+          messages={chatMessages}
+          input={chatInput}
+          onInputChange={setChatInput}
+          onSend={(msg) => {
+            if (msg.trim() === 'ZOMBIE!' && zombiePhase === 'inactive') {
+              triggerZombieMode();
+              setChatVisible(false);
+              chatInputRef.current?.blur();
+            } else {
+              sendChatMessage(msg);
+            }
+            setChatInput('');
+          }}
+          onClose={() => { setChatVisible(false); setChatInput(''); }}
+          onInputFocus={onChatInputFocus}
+          onInputBlur={onChatInputBlur}
+          chatScrollRef={chatScrollRef}
+          chatInputRef={chatInputRef}
+        />
+      )}
+
+      {/* Zombie game HUD — only visible during active game */}
+      {isZombieMode && (
+        <ZombieHUD
+          wave={zombieWave}
+          totalKills={zombieKills}
+          playerHealths={zombieHealths}
+          deadPlayers={zombieDeadPlayers}
+          localUserId={currentUser?.id ?? null}
+          onlineUsers={onlineUsers}
+        />
+      )}
+
+      {/* Zombie wave announcements + game over overlay */}
+      <ZombieOverlay
+        phase={zombiePhase}
+        wave={zombieWave}
+        totalKills={zombieKills}
       />
+
+      {/* Ghost vignette for dead local player */}
+      {isZombieMode && zombieDeadPlayers.has(currentUser?.id ?? '') && (
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 190,
+          background: 'radial-gradient(ellipse at center, transparent 40%, rgba(200,220,255,0.35) 100%)',
+          boxShadow: 'inset 0 0 80px rgba(150,200,255,0.4)',
+        }} />
+      )}
 
       <SettingsPanel
         isOpen={showSettings}
