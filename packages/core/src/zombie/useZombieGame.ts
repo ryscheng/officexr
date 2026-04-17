@@ -437,18 +437,19 @@ export function useZombieGame({
     const speed = zombieSpeedForWave(waveRef.current);
     const myId = currentUser?.id;
 
-    // Returns XZ position of the closest living player to a given zombie location
+    // Returns XZ position of the closest living game participant to a given zombie location
     const closestLivingPlayerPos = (zx: number, zz: number): { x: number; z: number } | null => {
       let best: { x: number; z: number } | null = null;
       let bestDist = Infinity;
 
-      if (myId && !deadPlayersRef.current.has(myId)) {
+      if (myId && allPlayerIdsRef.current.includes(myId) && !deadPlayersRef.current.has(myId)) {
         const lp = getLocalPos();
         const d = Math.hypot(lp.x - zx, lp.z - zz);
         if (d < bestDist) { bestDist = d; best = lp; }
       }
 
       for (const [uid, entry] of presenceDataRef.current) {
+        if (!allPlayerIdsRef.current.includes(uid)) continue;
         if (deadPlayersRef.current.has(uid)) continue;
         const pos = entry.position;
         const d = Math.hypot(pos.x - zx, pos.z - zz);

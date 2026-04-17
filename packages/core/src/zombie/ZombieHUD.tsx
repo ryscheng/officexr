@@ -6,7 +6,7 @@ interface Props {
   totalKills: number;
   playerHealths: Map<string, number>;
   deadPlayers: Set<string>;
-  localUserId: string | null;
+  localUser: { id: string; name: string | null } | null;
   onlineUsers: Array<{ id: string; name: string }>;
 }
 
@@ -15,11 +15,17 @@ export default function ZombieHUD({
   totalKills,
   playerHealths,
   deadPlayers,
-  localUserId,
+  localUser,
   onlineUsers,
 }: Props) {
-  // Combine local user with online users for display
-  const allPlayers = onlineUsers.filter(u => playerHealths.has(u.id));
+  const localUserId = localUser?.id ?? null;
+  // Local user first, then remote players — only include those registered in the game
+  const allPlayers: Array<{ id: string; name: string }> = [
+    ...(localUser && playerHealths.has(localUser.id)
+      ? [{ id: localUser.id, name: localUser.name ?? localUser.id }]
+      : []),
+    ...onlineUsers.filter(u => u.id !== localUserId && playerHealths.has(u.id)),
+  ];
 
   return (
     <div style={{ pointerEvents: 'none', userSelect: 'none' }}>
