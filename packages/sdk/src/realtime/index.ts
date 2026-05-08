@@ -1,2 +1,1 @@
-// placeholder — populated in subsequent tasks
-export {};
+export * from './protocol.ts';
