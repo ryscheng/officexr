@@ -46,3 +46,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase CLI temp + branch state
+supabase/.temp/
+supabase/.branches/
+tools/supabase-test/supabase/.temp/
+tools/supabase-test/supabase/.branches/

@@ -72,6 +72,9 @@ importers:
         specifier: workspace:*
         version: link:../sdk
     devDependencies:
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.19.15
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -167,6 +170,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.49.4
+        version: 2.101.1
       zod:
         specifier: ^3.23.8
         version: 3.25.76

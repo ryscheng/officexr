@@ -16,6 +16,7 @@
     "@officexr/sdk": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^22.7.5",
     "typescript": "^5",
     "vitest": "^4.1.3"
   }
