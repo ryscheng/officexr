@@ -1,2 +1,2 @@
-// placeholder — populated in subsequent tasks
-export {};
+export * from './types.ts';
+export * from './memory.ts';
