@@ -224,55 +224,6 @@ flowchart LR
     class PC,Remote peer
 ```
 
-### 4. Data Layer (Supabase schema)
-
-Persistence is a small Postgres schema with row-level security; access to a room is gated by the `join_office_if_allowed` RPC, which is what `RoomPage` calls before mounting the 3D scene.
-
-```mermaid
-erDiagram
-    profiles ||--o{ office_members : "user_id"
-    offices ||--o{ office_members : "office_id"
-    offices ||--o{ office_skins : "office_id"
-    profiles ||--o{ office_skins : "uploaded_by"
-
-    profiles {
-        uuid id PK
-        text name
-        text email
-        text avatar_url
-        text avatar_body_color
-        text avatar_skin_color
-        text avatar_style
-        text_array avatar_accessories
-        text avatar_preset_id
-        text avatar_model_url
-    }
-    offices {
-        uuid id PK
-        text name
-        text description
-        bool link_access
-        text environment
-    }
-    office_members {
-        uuid id PK
-        uuid office_id FK
-        uuid user_id FK
-        text role "owner | admin | member"
-        text avatar_body_color "per-room override"
-        text avatar_model_url "per-room override"
-    }
-    office_skins {
-        uuid id PK
-        uuid office_id FK
-        text name
-        text model_url
-        uuid uploaded_by FK
-    }
-```
-
-SQL migrations live in `supabase/migrations/` and are applied automatically on push to `main` by `.github/workflows/supabase-migrations.yml`.
-
 ## Project Structure
 
 ```
