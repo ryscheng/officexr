@@ -1,0 +1,160 @@
+import { describe, it, expect } from 'vitest';
+import {
+  PROTOCOL,
+  validateNetEvent,
+  versionMismatch,
+  type NetEvent,
+} from '../../realtime/protocol.ts';
+
+describe('PROTOCOL table', () => {
+  const SAMPLE_EVENTS: NetEvent[] = [
+    {
+      kind: 'presence:position',
+      v: 1,
+      actorId: 'alice',
+      seq: 1,
+      t: 0,
+      pos: { x: 0, y: 0, z: 0 },
+      vel: { x: 0, y: 0, z: 0 },
+      yaw: 0,
+    },
+    { kind: 'chat:message', v: 1, actorId: 'a', seq: 1, t: 0, text: 'hi' },
+    { kind: 'avatar:update', v: 1, actorId: 'a', seq: 1, t: 0, avatar: { model: 'gnome' } },
+    {
+      kind: 'whiteboard:stroke',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      stroke: {
+        id: 's',
+        authorId: 'a',
+        points: [{ x: 0, y: 0 }],
+        color: '#000',
+        width: 1,
+        t: 0,
+      },
+    },
+    {
+      kind: 'shot:hit',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      targetId: 'b',
+      dmg: 10,
+    },
+    {
+      kind: 'zombie:state',
+      v: 1,
+      actorId: 'host',
+      seq: 1,
+      t: 0,
+      state: {
+        phase: 'wave',
+        wave: 1,
+        totalKills: 0,
+        hostId: 'host',
+        entities: {},
+        playerHealths: {},
+      },
+    },
+    { kind: 'snapshot:request', v: 1, actorId: 'a', seq: 1, t: 0 },
+    {
+      kind: 'snapshot:offer',
+      v: 1,
+      actorId: 'leader',
+      seq: 1,
+      t: 0,
+      target: 'a',
+      state: {
+        selfId: 'leader',
+        officeId: 'r',
+        players: {},
+        proximity: {},
+        chat: [],
+        whiteboard: { strokes: [], cleared: 0 },
+        zombies: {
+          phase: 'idle',
+          wave: 0,
+          totalKills: 0,
+          hostId: null,
+          entities: {},
+          playerHealths: {},
+        },
+        inventory: [],
+        screenShares: {},
+        realtime: { status: 'live', snapshotTarget: null, versionWarnings: {} },
+        runtime: { tickRate: 60, lastTick: 0, protocolVersion: 1 },
+      },
+      seqTable: { leader: 5 },
+    },
+  ];
+
+  it('every NetEvent kind has an entry in PROTOCOL with v + schema + authority', () => {
+    const sampleKinds = new Set(SAMPLE_EVENTS.map((e) => e.kind));
+    const protocolKinds = new Set(Object.keys(PROTOCOL));
+    // every kind we have a sample for must be in PROTOCOL
+    for (const k of sampleKinds) {
+      expect(PROTOCOL[k as keyof typeof PROTOCOL]).toBeDefined();
+    }
+    // every kind in PROTOCOL must have all three fields
+    for (const [kind, def] of Object.entries(PROTOCOL)) {
+      expect(def.v).toBeGreaterThan(0);
+      expect(def.schema).toBeDefined();
+      expect(def.authority).toMatch(/^(local|host)$/);
+      expect(protocolKinds.has(kind)).toBe(true);
+    }
+  });
+
+  it('validateNetEvent accepts valid envelope-bearing events', () => {
+    for (const e of SAMPLE_EVENTS) {
+      const r = validateNetEvent(e);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.event.kind).toBe(e.kind);
+    }
+  });
+
+  it('validateNetEvent rejects unknown kinds', () => {
+    const bad = { kind: 'totally-made-up', v: 1, actorId: 'a', seq: 1, t: 0 };
+    const r = validateNetEvent(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('unknown-kind');
+  });
+
+  it('validateNetEvent rejects missing envelope fields', () => {
+    const bad = { kind: 'chat:message', v: 1, text: 'hi' };
+    const r = validateNetEvent(bad);
+    expect(r.ok).toBe(false);
+  });
+
+  it('validateNetEvent rejects malformed payloads', () => {
+    const bad = { kind: 'chat:message', v: 1, actorId: 'a', seq: 1, t: 0, text: 42 };
+    const r = validateNetEvent(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+
+  it('versionMismatch detects mismatch', () => {
+    expect(
+      versionMismatch({
+        kind: 'chat:message',
+        v: 999,
+        actorId: 'a',
+        seq: 1,
+        t: 0,
+        text: 'hi',
+      } as unknown as NetEvent),
+    ).toBe(true);
+    expect(
+      versionMismatch({
+        kind: 'chat:message',
+        v: 1,
+        actorId: 'a',
+        seq: 1,
+        t: 0,
+        text: 'hi',
+      }),
+    ).toBe(false);
+  });
+});

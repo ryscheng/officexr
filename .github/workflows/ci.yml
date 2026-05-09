@@ -20,11 +20,28 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (sdk + core-refactor)
+        run: pnpm typecheck
 
       - name: Build
         run: pnpm build
 
+      - name: Start Supabase (test instance)
+        working-directory: tools/supabase-test
+        run: |
+          supabase start --exclude edge-runtime,storage-api,imgproxy,mailpit,vector,logflare,supavisor,studio,postgres-meta
+
       - name: Test
         run: pnpm test
+
+      - name: Stop Supabase
+        if: always()
+        working-directory: tools/supabase-test
+        run: supabase stop

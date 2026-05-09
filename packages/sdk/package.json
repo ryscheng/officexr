@@ -1,0 +1,28 @@
+{
+  "name": "@officexr/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./game-state": "./src/game-state/index.ts",
+    "./realtime": "./src/realtime/index.ts",
+    "./data": "./src/data/index.ts",
+    "./test-harness": "./src/test-harness/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "zod": "^3.23.8",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "typescript": "^5",
+    "vitest": "^4.1.3"
+  }
+}
