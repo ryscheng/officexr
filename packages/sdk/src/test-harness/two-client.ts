@@ -63,19 +63,25 @@ export function createMultiClientHarness(opts?: {
   const clock = new FakeClock(0);
   const clients = new Map<PlayerId, ClientHandle>();
 
+  // Per-client snapshot of the previous tick's state, so tick() can pass a
+  // real `prev` to rules. Kept here (not on the client) so add() can seed it
+  // at the moment the client is created.
+  const lastTickState = new Map<PlayerId, ReturnType<Store['getState']>>();
+
   async function add(id: PlayerId, addOpts?: { seedSelf?: boolean }): Promise<ClientHandle> {
     const seedSelf = addOpts?.seedSelf ?? true;
     const store = createStore({ selfId: id, officeId });
-    const actions = createActions(store);
+    const bus = createBus();
+    const actions = createActions(store, bus);
     if (seedSelf) {
       actions.upsertPlayer({ id, name: id });
     }
-    const bus = createBus();
     const channel = new InMemoryChannel(hub, id);
     const rules = createRuleRegistry();
     rules.addRule(proximityRule);
     const detachProximity = attachProximityReducer(store, bus);
     const sync = new SyncEngine({ store, actions, bus, channel, clock });
+    lastTickState.set(id, store.getState());
     const handshake = new SnapshotHandshake({
       selfId: id,
       store,
@@ -112,11 +118,21 @@ export function createMultiClientHarness(opts?: {
     c.detachProximity();
     c.channel.close();
     clients.delete(id);
+    lastTickState.delete(id);
   }
 
   function tick(): void {
+    const now = clock.now();
     for (const c of clients.values()) {
-      c.rules.tick(c.store.getState(), c.store.getState(), c.bus);
+      c.actions.tick(now);
+      const current = c.store.getState();
+      const prev = lastTickState.get(c.id) ?? current;
+      c.rules.tick(current, prev, c.bus);
+      // Capture post-rules state so that mutations applied by reducers
+      // (which run synchronously off bus events emitted by rules) are
+      // visible as `prev` on the next tick. Reading store.getState() again
+      // here is the difference.
+      lastTickState.set(c.id, c.store.getState());
     }
   }
 

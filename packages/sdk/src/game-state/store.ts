@@ -1,13 +1,28 @@
+import { createStore as createZustandStore } from 'zustand/vanilla';
+import { subscribeWithSelector } from 'zustand/middleware';
 import type { OfficeState, PlayerId } from './types.ts';
 
+/**
+ * Headless store interface — small enough that the renderer, HUD, and sync
+ * engine can depend on it without importing zustand directly. The
+ * implementation uses zustand/vanilla under the hood (no React coupling)
+ * with the subscribeWithSelector middleware so per-slice subscribers only
+ * fire when their selected slice actually changes.
+ */
 export interface Store {
   getState(): OfficeState;
   setState(updater: (s: OfficeState) => Partial<OfficeState>): void;
+  /**
+   * Selector subscription — listener is invoked only when the selected
+   * slice changes (Object.is equality by default; pass a custom comparator
+   * for shallow equality on objects/arrays).
+   */
   subscribe<T>(
     selector: (s: OfficeState) => T,
     listener: (next: T, prev: T) => void,
     equals?: (a: T, b: T) => boolean,
   ): () => void;
+  /** Listener invoked on every setState with (next, prev). */
   subscribeAll(listener: (next: OfficeState, prev: OfficeState) => void): () => void;
 }
 
@@ -38,49 +53,23 @@ export function createInitialOfficeState(opts: {
 }
 
 export function createStore(opts: { selfId: PlayerId; officeId: string }): Store {
-  let state: OfficeState = createInitialOfficeState(opts);
-  type AnyListener = (next: OfficeState, prev: OfficeState) => void;
-  const allListeners = new Set<AnyListener>();
+  const z = createZustandStore<OfficeState>()(
+    subscribeWithSelector(() => createInitialOfficeState(opts)),
+  );
 
   return {
-    getState: () => state,
-
+    getState: () => z.getState(),
     setState(updater) {
-      const prev = state;
-      const patch = updater(state);
-      // Shallow merge; nested data is updater's responsibility.
-      state = { ...state, ...patch };
-      // Snapshot listeners so unsubscribe-during-emit is safe.
-      for (const listener of [...allListeners]) {
-        try {
-          listener(state, prev);
-        } catch (err) {
-          console.error('[store] listener threw:', err);
-        }
-      }
+      z.setState((s) => updater(s));
     },
-
-    subscribe(selector, listener, equals = Object.is) {
-      let lastValue = selector(state);
-      const wrapped: AnyListener = (next, prev) => {
-        const nextValue = selector(next);
-        if (!equals(nextValue, lastValue)) {
-          const prevValue = lastValue;
-          lastValue = nextValue;
-          listener(nextValue, prevValue);
-        }
-      };
-      allListeners.add(wrapped);
-      return () => {
-        allListeners.delete(wrapped);
-      };
+    subscribe(selector, listener, equals) {
+      // zustand/vanilla's subscribeWithSelector signature:
+      //   subscribe(selector, listener, options?)
+      return z.subscribe(selector, listener, equals ? { equalityFn: equals } : undefined);
     },
-
     subscribeAll(listener) {
-      allListeners.add(listener);
-      return () => {
-        allListeners.delete(listener);
-      };
+      // Subscribing without a selector fires on every setState with (state, prev).
+      return z.subscribe(listener);
     },
   };
 }

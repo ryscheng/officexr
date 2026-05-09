@@ -359,13 +359,9 @@ export class SyncEngine {
         this.actions.upsertPlayer({ id: event.actorId, avatar: event.avatar });
         return;
       case 'shot:hit':
+        // applyHit emits combat:hit (and combat:killed if HP hits 0)
+        // through the actions' bus binding.
         this.actions.applyHit(event.targetId, event.dmg, event.actorId);
-        this.bus.emit({
-          kind: 'combat:hit',
-          targetId: event.targetId,
-          dmg: event.dmg,
-          byId: event.actorId,
-        });
         return;
       case 'zombie:state':
         this.actions.applyZombieState(event.state);

@@ -1,3 +1,4 @@
+import type { Bus } from './bus.ts';
 import type { Store } from './store.ts';
 import type {
   ChatMessage,
@@ -39,6 +40,9 @@ export interface Actions {
   // realtime status helpers
   setRealtimeStatus(status: RealtimeStatus): void;
   recordVersionWarning(eventKind: string, t: number): boolean;
+
+  /** Advance the runtime tick clock; called by the frame loop / harness. */
+  tick(now: number): void;
 }
 
 const DEFAULT_PLAYER: Omit<PlayerState, 'id'> = {
@@ -53,7 +57,13 @@ const DEFAULT_PLAYER: Omit<PlayerState, 'id'> = {
   status: 'active',
 };
 
-export function createActions(store: Store): Actions {
+/**
+ * Optional Bus is supplied so actions that have a state-change-→-event
+ * counterpart (combat:hit, inventory:added/removed) can emit on creation
+ * without a separate rule. Pass `bus = createBus()` (or skip) if the caller
+ * doesn't care about emissions (e.g. a unit test that asserts state only).
+ */
+export function createActions(store: Store, bus?: Bus): Actions {
   function patchSelf(patch: Partial<PlayerState>): void {
     store.setState((s) => {
       const me = s.players[s.selfId];
@@ -94,10 +104,12 @@ export function createActions(store: Store): Actions {
     },
 
     applyHit(targetId, dmg, byId) {
+      let killed = false;
       store.setState((s) => {
         const target = s.players[targetId];
         if (!target) return {};
         const hp = Math.max(0, target.hp - dmg);
+        if (hp === 0 && !target.isDead) killed = true;
         return {
           players: {
             ...s.players,
@@ -105,17 +117,24 @@ export function createActions(store: Store): Actions {
           },
         };
       });
-      void byId; // recorded by callers if needed; emitted via combat:hit
+      bus?.emit({ kind: 'combat:hit', targetId, dmg, byId });
+      if (killed) bus?.emit({ kind: 'combat:killed', targetId, byId });
     },
 
     addInventoryItem(item) {
       store.setState((s) => ({ inventory: [...s.inventory, item] }));
+      bus?.emit({ kind: 'inventory:added', item });
     },
 
     removeInventoryItem(itemId) {
-      store.setState((s) => ({
-        inventory: s.inventory.filter((i) => i.id !== itemId && i.itemId !== itemId),
-      }));
+      let removed = false;
+      store.setState((s) => {
+        const before = s.inventory.length;
+        const after = s.inventory.filter((i) => i.id !== itemId);
+        if (after.length !== before) removed = true;
+        return { inventory: after };
+      });
+      if (removed) bus?.emit({ kind: 'inventory:removed', itemId });
     },
 
     applyRemotePosition(playerId, pos, vel, yaw, tRecv) {
@@ -174,6 +193,12 @@ export function createActions(store: Store): Actions {
         };
       });
       return firstTime;
+    },
+
+    tick(now) {
+      store.setState((s) => ({
+        runtime: { ...s.runtime, lastTick: now },
+      }));
     },
   };
 }

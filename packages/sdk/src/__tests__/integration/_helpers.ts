@@ -84,9 +84,9 @@ export async function createLiveHarness(opts?: {
   async function add(id: PlayerId): Promise<LiveClient> {
     const supabase = makeSupabase();
     const store = createStore({ selfId: id, officeId });
-    const actions = createActions(store);
-    actions.upsertPlayer({ id, name: id });
     const bus = createBus();
+    const actions = createActions(store, bus);
+    actions.upsertPlayer({ id, name: id });
     const channel = new SupabaseChannel({ supabase, officeId, userId: id });
     const rules = createRuleRegistry();
     rules.addRule(proximityRule);

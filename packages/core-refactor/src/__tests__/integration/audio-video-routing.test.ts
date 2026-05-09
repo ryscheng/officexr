@@ -25,13 +25,6 @@ function attachComm(client: ClientHandle): CommNode {
   return { client, voice, comm };
 }
 
-function tickRules(nodes: CommNode[]): void {
-  for (const n of nodes) {
-    const prev = n.client.store.getState();
-    n.client.rules.tick(n.client.store.getState(), prev, n.client.bus);
-  }
-}
-
 describe('integration: audio-video routing', () => {
   it('two clients walking into shared bubble both join the same lex-min room', async () => {
     const h = createMultiClientHarness();
@@ -42,7 +35,7 @@ describe('integration: audio-video routing', () => {
     const nodes = [attachComm(A), attachComm(B)];
 
     // Both at origin → they're already inside each other's bubble
-    tickRules(nodes);
+    h.tick();
 
     // Both adapters should now be in the same lex-min room
     expect(nodes[0].voice.getCurrentRoom()).toBe('room-alice');
@@ -58,7 +51,7 @@ describe('integration: audio-video routing', () => {
     h.ensureMutualPresence();
     const nodes = [attachComm(A), attachComm(B)];
 
-    tickRules(nodes);
+    h.tick();
     expect(nodes[0].voice.getCurrentRoom()).toBe('room-alice');
 
     // Move alice far away
@@ -70,7 +63,7 @@ describe('integration: audio-video routing', () => {
     // B needs to know about A's new position; sync engine handles it.
     h.flush();
     // Tick rules on both clients
-    tickRules(nodes);
+    h.tick();
 
     expect(nodes[0].voice.getCurrentRoom()).toBeNull();
     expect(nodes[1].voice.getCurrentRoom()).toBeNull();
@@ -83,7 +76,7 @@ describe('integration: audio-video routing', () => {
     const C = await h.add('charlie');
     h.ensureMutualPresence();
     const nodes = [attachComm(A), attachComm(B), attachComm(C)];
-    tickRules(nodes);
+    h.tick();
     for (const n of nodes) {
       expect(n.voice.getCurrentRoom()).toBe('room-alice');
     }

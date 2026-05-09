@@ -15,11 +15,11 @@ function setup(opts: { selfId: string; remoteId: string }) {
   const hub = createInMemoryChannelHub();
 
   const store = createStore({ selfId: opts.selfId, officeId: 'r' });
-  const actions = createActions(store);
+  const bus = createBus();
+  const actions = createActions(store, bus);
   actions.upsertPlayer({ id: opts.selfId, name: opts.selfId });
   actions.upsertPlayer({ id: opts.remoteId, name: opts.remoteId });
 
-  const bus = createBus();
   const channel = new InMemoryChannel(hub, opts.selfId);
   const remote = new InMemoryChannel(hub, opts.remoteId);
   const clock = new FakeClock(0);
