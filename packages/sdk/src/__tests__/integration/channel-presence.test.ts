@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { createLiveHarness, type LiveHarness } from './_helpers.ts';
+import { createLiveHarness, isSupabaseAvailable, type LiveHarness } from './_helpers.ts';
+
+const supabaseUp = await isSupabaseAvailable();
 
 let harness: LiveHarness;
 
@@ -7,7 +9,7 @@ afterEach(async () => {
   await harness?.cleanup();
 });
 
-describe('live: SupabaseChannel presence', () => {
+describe.skipIf(!supabaseUp)('integration: SupabaseChannel presence', () => {
   it('two clients see each other join and leave', async () => {
     harness = await createLiveHarness();
     const A = await harness.add('alice');

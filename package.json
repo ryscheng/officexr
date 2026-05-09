@@ -19,7 +19,6 @@
     "test": "pnpm --filter @officexr/core --filter @officexr/sdk --filter @officexr/core-refactor run test",
     "test:sdk": "pnpm --filter @officexr/sdk run test",
     "test:core-refactor": "pnpm --filter @officexr/core-refactor run test",
-    "test:live": "pnpm --filter @officexr/sdk run test:live",
     "typecheck": "pnpm --filter @officexr/sdk --filter @officexr/core-refactor run typecheck",
     "supabase:test:start": "cd tools/supabase-test && npx supabase start --exclude edge-runtime,storage-api,imgproxy,mailpit,vector,logflare,supavisor,studio,postgres-meta",
     "supabase:test:stop": "cd tools/supabase-test && npx supabase stop"

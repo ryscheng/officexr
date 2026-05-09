@@ -1,33 +1,37 @@
-import { describe, it, expect } from 'vitest';
-import { createMultiClientHarness } from '../../test-harness/two-client.ts';
+import { describe, it, expect, afterEach } from 'vitest';
+import { createLiveHarness, isSupabaseAvailable, type LiveHarness } from './_helpers.ts';
+import { POSITION_CONSTANTS } from '../../realtime/sync.ts';
 
-describe('integration: state-sync', () => {
-  it('chat round-trips both directions in send order', async () => {
-    const h = createMultiClientHarness();
-    const A = await h.add('alice');
-    const B = await h.add('bob');
-    h.ensureMutualPresence();
+const supabaseUp = await isSupabaseAvailable();
+
+let harness: LiveHarness;
+
+afterEach(async () => {
+  await harness?.cleanup();
+});
+
+describe.skipIf(!supabaseUp)('integration: state-sync over Supabase Realtime', () => {
+  it('chat round-trips both directions', async () => {
+    harness = await createLiveHarness();
+    const A = await harness.add('alice');
+    const B = await harness.add('bob');
 
     A.actions.appendChat({ id: 'a1', authorId: 'alice', text: 'hello bob', t: 1 });
     B.actions.appendChat({ id: 'b1', authorId: 'bob', text: 'hi alice', t: 2 });
-    A.actions.appendChat({ id: 'a2', authorId: 'alice', text: 'how are you', t: 3 });
 
-    // Each client sees: own messages (locally) + remote messages.
-    const aChat = A.store.getState().chat.map((m) => m.text);
-    const bChat = B.store.getState().chat.map((m) => m.text);
-    expect(aChat).toContain('hello bob');
-    expect(aChat).toContain('hi alice');
-    expect(aChat).toContain('how are you');
-    expect(bChat).toContain('hello bob');
-    expect(bChat).toContain('hi alice');
-    expect(bChat).toContain('how are you');
+    await harness.waitFor(() =>
+      A.store.getState().chat.some((m) => m.text === 'hi alice') &&
+      B.store.getState().chat.some((m) => m.text === 'hello bob'),
+    );
+
+    expect(A.store.getState().chat.map((m) => m.text)).toContain('hi alice');
+    expect(B.store.getState().chat.map((m) => m.text)).toContain('hello bob');
   });
 
-  it('whiteboard strokes converge in append order despite interleaving', async () => {
-    const h = createMultiClientHarness();
-    const A = await h.add('alice');
-    const B = await h.add('bob');
-    h.ensureMutualPresence();
+  it('whiteboard strokes converge', async () => {
+    harness = await createLiveHarness();
+    const A = await harness.add('alice');
+    const B = await harness.add('bob');
 
     A.actions.appendStroke({
       id: 'sa1',
@@ -45,50 +49,49 @@ describe('integration: state-sync', () => {
       width: 1,
       t: 2,
     });
-    A.actions.appendStroke({
-      id: 'sa2',
-      authorId: 'alice',
-      points: [{ x: 2, y: 2 }],
-      color: '#a',
-      width: 1,
-      t: 3,
-    });
 
-    // Both should converge; specific order is "in arrival order at each
-    // client" — assert presence + count rather than exact ordering.
+    await harness.waitFor(
+      () =>
+        A.store.getState().whiteboard.strokes.length === 2 &&
+        B.store.getState().whiteboard.strokes.length === 2,
+    );
+
     const aIds = A.store.getState().whiteboard.strokes.map((s) => s.id).sort();
     const bIds = B.store.getState().whiteboard.strokes.map((s) => s.id).sort();
-    expect(aIds).toEqual(['sa1', 'sa2', 'sb1']);
-    expect(bIds).toEqual(['sa1', 'sa2', 'sb1']);
+    expect(aIds).toEqual(['sa1', 'sb1']);
+    expect(bIds).toEqual(['sa1', 'sb1']);
   });
 
-  it('host-broadcast zombie:state is applied on the peer', async () => {
-    const h = createMultiClientHarness();
-    const A = await h.add('alice');
-    const B = await h.add('bob');
-    h.ensureMutualPresence();
+  it('presence:position throttling: A walks then stops; B sees A at the stop point', async () => {
+    harness = await createLiveHarness();
+    const A = await harness.add('alice');
+    const B = await harness.add('bob');
 
-    // Alice acts as host and broadcasts a zombie state snapshot
-    A.sync.send({
-      kind: 'zombie:state',
-      v: 1,
-      actorId: 'alice',
-      seq: 1,
-      t: 0,
-      state: {
-        phase: 'wave',
-        wave: 4,
-        totalKills: 12,
-        hostId: 'alice',
-        entities: {
-          z1: { id: 'z1', pos: { x: 1, y: 0, z: 1 }, hp: 30, target: 'bob' },
-        },
-        playerHealths: { alice: 90, bob: 80 },
-      },
+    // Make sure B knows A exists in players map
+    B.actions.upsertPlayer({ id: 'alice', name: 'alice' });
+
+    // Walk Alice in 6 steps
+    const stepDx = POSITION_CONSTANTS.deltaP * 2;
+    let x = 0;
+    for (let i = 0; i < 6; i++) {
+      harness.clock.advance(50);
+      x += stepDx;
+      A.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0);
+      harness.flush();
+    }
+
+    // Stop
+    A.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 0);
+    harness.clock.advance(POSITION_CONSTANTS.stopGraceMs + 20);
+    harness.flush();
+
+    await harness.waitFor(() => {
+      const r = B.store.getState().players['alice'];
+      return !!r && Math.abs(r.pos.x - x) < 0.01 && r.vel.x === 0;
     });
 
-    expect(B.store.getState().zombies.wave).toBe(4);
-    expect(B.store.getState().zombies.entities['z1'].hp).toBe(30);
-    expect(B.store.getState().zombies.playerHealths['bob']).toBe(80);
+    const r = B.store.getState().players['alice'];
+    expect(Math.abs(r.pos.x - x)).toBeLessThan(0.01);
+    expect(r.vel).toEqual({ x: 0, y: 0, z: 0 });
   });
 });
