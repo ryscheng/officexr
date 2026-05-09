@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type {
   AvatarData,
-  BubblePrefs,
   PlayerId,
   Stroke,
   Vec3,
@@ -36,11 +35,6 @@ const ZStroke: z.ZodType<Stroke> = z.object({
   t: z.number(),
 });
 
-const ZBubblePrefs: z.ZodType<BubblePrefs> = z.object({
-  radius: z.number(),
-  visible: z.boolean(),
-});
-
 const ZZombieEntity = z.object({
   id: z.string(),
   pos: ZVec3,
@@ -57,9 +51,74 @@ const ZZombieState: z.ZodType<ZombieState> = z.object({
   playerHealths: z.record(z.string(), z.number()),
 });
 
-// SerializedOfficeState — reuses runtime shape; we accept any JSON object
-// here and trust applySnapshot to layer it onto the local store.
-const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.any();
+const ZPlayerState = z.object({
+  id: z.string(),
+  name: z.string(),
+  pos: ZVec3,
+  vel: ZVec3,
+  yaw: z.number(),
+  hp: z.number(),
+  isDead: z.boolean(),
+  avatar: ZAvatarData,
+  jitsiRoom: z.string().nullable(),
+  status: z.enum(['active', 'inactive']),
+});
+
+const ZChatMessageObj = z.object({
+  id: z.string(),
+  authorId: z.string(),
+  text: z.string(),
+  t: z.number(),
+});
+
+const ZInventoryItem = z.object({
+  id: z.string(),
+  itemId: z.string(),
+  qty: z.number(),
+  acquiredAt: z.number(),
+});
+
+const ZWhiteboardState = z.object({
+  strokes: z.array(ZStroke),
+  cleared: z.number(),
+});
+
+const ZRealtimeState = z.object({
+  status: z.enum(['connecting', 'live', 'reconnecting', 'snapshot-pending']),
+  snapshotTarget: z.string().nullable(),
+  versionWarnings: z.record(z.string(), z.number()),
+});
+
+const ZScreenShareSignal = z.object({
+  ownerId: z.string(),
+  stream: z.null(),
+  signalState: z.enum(['idle', 'offering', 'answering', 'connected', 'error']),
+});
+
+const ZRuntime = z.object({
+  tickRate: z.number(),
+  lastTick: z.number(),
+  protocolVersion: z.number(),
+});
+
+/**
+ * Real shape validation for snapshot:offer.state. Closes the trust-boundary
+ * hole previously left by `z.any()` — a malformed snapshot can no longer
+ * write garbage into local state via applySnapshot.
+ */
+const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
+  selfId: z.string(),
+  officeId: z.string(),
+  players: z.record(z.string(), ZPlayerState),
+  proximity: z.record(z.string(), z.array(z.string())),
+  chat: z.array(ZChatMessageObj),
+  whiteboard: ZWhiteboardState,
+  zombies: ZZombieState,
+  inventory: z.array(ZInventoryItem),
+  screenShares: z.record(z.string(), ZScreenShareSignal),
+  realtime: ZRealtimeState,
+  runtime: ZRuntime,
+});
 
 // --- Per-kind payload schemas (without envelope) ---
 
@@ -67,18 +126,8 @@ const ZPresencePosition = z.object({ pos: ZVec3, vel: ZVec3, yaw: z.number() });
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData });
 const ZChatMessage = z.object({ text: z.string() });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
-const ZWhiteboardClear = z.object({ epoch: z.number() });
-const ZWhiteboardUndo = z.object({ strokeId: z.string() });
 const ZShotHit = z.object({ targetId: z.string(), dmg: z.number() });
-const ZLootOpen = z.object({ itemId: z.string() });
 const ZZombieStatePayload = z.object({ state: ZZombieState });
-const ZScreenOffer = z.object({ targetId: z.string(), sdp: z.string() });
-const ZScreenAnswer = z.object({ targetId: z.string(), sdp: z.string() });
-const ZScreenIce = z.object({ targetId: z.string(), candidate: z.unknown() });
-const ZScreenStop = z.object({});
-const ZBubblePrefsPayload = z.object({ prefs: ZBubblePrefs });
-const ZNetPing = z.object({ nonce: z.string() });
-const ZNetPong = z.object({ nonce: z.string() });
 const ZSnapshotRequest = z.object({});
 const ZSnapshotOffer = z.object({
   target: z.string(),
@@ -87,6 +136,12 @@ const ZSnapshotOffer = z.object({
 });
 
 // --- NetEvent tagged union ---
+//
+// Only kinds with a real consumer in the engine are listed here. The spec
+// (refactor-plan/03) lists more (whiteboard:clear/undo, screen:*, bubble:*,
+// net:*, loot:open). They will be re-added as the corresponding subsystems
+// are wired; until then keeping them out of the protocol prevents peers
+// from sending events the receiver silently drops.
 
 type WithEnvelope<K extends string, V extends number, P = {}> = Envelope & { kind: K; v: V } & P;
 
@@ -95,18 +150,8 @@ export type NetEvent =
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData }>
   | WithEnvelope<'chat:message', 1, { text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>
-  | WithEnvelope<'whiteboard:clear', 1, { epoch: number }>
-  | WithEnvelope<'whiteboard:undo', 1, { strokeId: string }>
   | WithEnvelope<'shot:hit', 1, { targetId: PlayerId; dmg: number }>
-  | WithEnvelope<'loot:open', 1, { itemId: string }>
   | WithEnvelope<'zombie:state', 1, { state: ZombieState }>
-  | WithEnvelope<'screen:offer', 1, { targetId: PlayerId; sdp: string }>
-  | WithEnvelope<'screen:answer', 1, { targetId: PlayerId; sdp: string }>
-  | WithEnvelope<'screen:ice', 1, { targetId: PlayerId; candidate: unknown }>
-  | WithEnvelope<'screen:stop', 1>
-  | WithEnvelope<'bubble:prefs', 1, { prefs: BubblePrefs }>
-  | WithEnvelope<'net:ping', 1, { nonce: string }>
-  | WithEnvelope<'net:pong', 1, { nonce: string }>
   | WithEnvelope<'snapshot:request', 1>
   | WithEnvelope<
       'snapshot:offer',
@@ -131,18 +176,8 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'avatar:update': { v: 1, schema: ZAvatarUpdate, authority: 'local' },
   'chat:message': { v: 1, schema: ZChatMessage, authority: 'local' },
   'whiteboard:stroke': { v: 1, schema: ZWhiteboardStroke, authority: 'local' },
-  'whiteboard:clear': { v: 1, schema: ZWhiteboardClear, authority: 'local' },
-  'whiteboard:undo': { v: 1, schema: ZWhiteboardUndo, authority: 'local' },
   'shot:hit': { v: 1, schema: ZShotHit, authority: 'local' },
-  'loot:open': { v: 1, schema: ZLootOpen, authority: 'local' },
   'zombie:state': { v: 1, schema: ZZombieStatePayload, authority: 'host' },
-  'screen:offer': { v: 1, schema: ZScreenOffer, authority: 'local' },
-  'screen:answer': { v: 1, schema: ZScreenAnswer, authority: 'local' },
-  'screen:ice': { v: 1, schema: ZScreenIce, authority: 'local' },
-  'screen:stop': { v: 1, schema: ZScreenStop, authority: 'local' },
-  'bubble:prefs': { v: 1, schema: ZBubblePrefsPayload, authority: 'local' },
-  'net:ping': { v: 1, schema: ZNetPing, authority: 'local' },
-  'net:pong': { v: 1, schema: ZNetPong, authority: 'local' },
   'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local' },
   'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local' },
 };

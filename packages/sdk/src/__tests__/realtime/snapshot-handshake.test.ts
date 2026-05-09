@@ -112,32 +112,79 @@ describe('SnapshotHandshake — applying a snapshot', () => {
     const leader = setupClient(hub, 'alice');
     const newcomer = setupClient(hub, 'newcomer');
     await leader.start();
+    leader.handshake.start();
+
+    // Leader broadcasts three chat messages BEFORE newcomer joins. These
+    // messages are reflected in the leader's local state and will be in the
+    // shipped snapshot. The leader's outbound seq table will have alice=3.
+    leader.actions.appendChat({ id: 'm1', authorId: 'alice', text: 'pre-1', t: 0 });
+    leader.actions.appendChat({ id: 'm2', authorId: 'alice', text: 'pre-2', t: 1 });
+    leader.actions.appendChat({ id: 'm3', authorId: 'alice', text: 'pre-3', t: 2 });
+
+    await newcomer.start();
+    newcomer.handshake.start();
+
+    const requestPromise = newcomer.handshake.requestSnapshot();
+
+    // Replay all three pre-snapshot messages "live" during the snapshot
+    // window. Each has a seq that's covered by the snapshot's seqTable
+    // (alice=3), so all three must be deduped — exactly one copy of each
+    // text should land in the newcomer's chat (from the snapshot itself).
+    for (const [seq, text] of [
+      [1, 'pre-1'],
+      [2, 'pre-2'],
+      [3, 'pre-3'],
+    ] as const) {
+      await leader.channel.send({
+        kind: 'chat:message',
+        v: 1,
+        actorId: 'alice',
+        seq,
+        t: 0,
+        text,
+      });
+    }
+
+    await requestPromise;
+    await flush();
+
+    const counts = new Map<string, number>();
+    for (const m of newcomer.store.getState().chat) {
+      counts.set(m.text, (counts.get(m.text) ?? 0) + 1);
+    }
+    expect(counts.get('pre-1')).toBe(1);
+    expect(counts.get('pre-2')).toBe(1);
+    expect(counts.get('pre-3')).toBe(1);
+  });
+
+  it('applies live events with seq beyond the snapshot seqTable', async () => {
+    const hub = createInMemoryChannelHub();
+    const leader = setupClient(hub, 'alice');
+    const newcomer = setupClient(hub, 'newcomer');
+    await leader.start();
+    leader.handshake.start();
     leader.actions.appendChat({ id: 'm1', authorId: 'alice', text: 'in-snapshot', t: 0 });
 
     await newcomer.start();
-    leader.handshake.start();
     newcomer.handshake.start();
 
-    // Broadcast a duplicate of an already-applied event from leader
-    // BEFORE newcomer requests snapshot. Newcomer should queue & dedupe it.
     const requestPromise = newcomer.handshake.requestSnapshot();
-    // The leader's outgoing chat, broadcasted earlier, has actorId=alice seq=1.
-    // Replay seq=1 again to simulate an arrival during the snapshot window.
+    // A live event with seq beyond what's in the snapshot — must not be
+    // dropped.
     await leader.channel.send({
       kind: 'chat:message',
       v: 1,
       actorId: 'alice',
-      seq: 1,
+      seq: 999,
       t: 0,
-      text: 'in-snapshot',
+      text: 'live-after-snapshot',
     });
 
     await requestPromise;
     await flush();
-    const inSnapshotMsgs = newcomer.store
-      .getState()
-      .chat.filter((m) => m.text === 'in-snapshot');
-    expect(inSnapshotMsgs).toHaveLength(1);
+    const texts = newcomer.store.getState().chat.map((m) => m.text);
+    expect(texts).toContain('in-snapshot');
+    expect(texts).toContain('live-after-snapshot');
   });
 });
 

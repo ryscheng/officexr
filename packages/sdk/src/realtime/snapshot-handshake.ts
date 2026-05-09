@@ -32,7 +32,7 @@ interface HandshakeOpts {
 interface PendingRequest {
   attempt: number;
   startedAtMs: number;
-  resolve: () => void;
+  resolvers: Array<() => void>;
 }
 
 export class SnapshotHandshake {
@@ -49,8 +49,8 @@ export class SnapshotHandshake {
 
   private pending: PendingRequest | null = null;
   private snapshotApplied = false;
-  private queue: NetEvent[] = [];
-  private nextSnapshotSeq = 1; // for our own snapshot:* sends
+  /** Per-actor next-seq counter for our own snapshot:* envelope traffic. */
+  private nextSnapshotSeq = 1;
 
   constructor(opts: HandshakeOpts) {
     this.selfId = opts.selfId;
@@ -77,31 +77,29 @@ export class SnapshotHandshake {
   /**
    * Issued by a newly-joined client to request a snapshot from the
    * lex-min leader. Resolves once the snapshot is applied (or after
-   * SNAPSHOT_MAX_RETRIES timeouts have elapsed). During the window,
-   * inbound NetEvents are queued; tickTimers() must be called by the
-   * harness/clock owner to drive timeouts under FakeClock.
+   * SNAPSHOT_MAX_RETRIES timeouts have elapsed).
+   *
+   * During the window, the SyncEngine is paused so that live broadcasts
+   * arriving mid-handshake are buffered and applied (subject to dedup
+   * against the snapshot's seqTable) only after the snapshot lands.
+   *
+   * tickTimers() must be called by the harness/clock owner to drive
+   * timeouts under FakeClock.
    */
   requestSnapshot(): Promise<void> {
     if (this.pending) {
-      return new Promise<void>((r) => {
-        const old = this.pending!;
-        this.pending = {
-          ...old,
-          resolve: () => {
-            old.resolve();
-            r();
-          },
-        };
+      return new Promise<void>((resolve) => {
+        this.pending!.resolvers.push(resolve);
       });
     }
     this.actions.setRealtimeStatus('snapshot-pending');
     this.snapshotApplied = false;
-    this.queue = [];
+    this.sync.pauseInbound();
     return new Promise<void>((resolve) => {
       this.pending = {
         attempt: 1,
         startedAtMs: this.clock.now(),
-        resolve,
+        resolvers: [resolve],
       };
       this.broadcastRequest();
     });
@@ -146,10 +144,9 @@ export class SnapshotHandshake {
         this.maybeApplyOffer(event);
         return;
       default:
-        // queue events received during the snapshot window
-        if (this.pending && !this.snapshotApplied) {
-          this.queue.push(event);
-        }
+        // SyncEngine handles (and during the snapshot window, buffers) all
+        // other inbound events.
+        return;
     }
   }
 
@@ -158,15 +155,17 @@ export class SnapshotHandshake {
     const leader = electLeader(present, event.actorId);
     if (leader !== this.selfId) return;
 
-    // Build seqTable from this client's known outbound state:
-    // for now we have no tracked map of outbound seq across all clients
-    // (we only track per-actor inbound seqs internally to SyncEngine).
-    // Build it from the player set — a per-actor seq=0 is safe (snapshot
-    // captures all events up to "now").
-    const state = this.store.getState();
-    const seqTable: Record<PlayerId, number> = {};
-    for (const id of Object.keys(state.players)) seqTable[id] = 0;
-    seqTable[this.selfId] = this.nextSnapshotSeq - 1;
+    // The seqTable is "what's already covered by this snapshot". For:
+    //   - self: the highest seq of any NetEvent we've broadcast
+    //     (sync.lastOutboundSeq()) — anything ≤ that is in our state and
+    //     therefore in the snapshot we're shipping.
+    //   - every other actor: the highest seq of theirs we've applied
+    //     (read from the shared inbound seq table).
+    const inboundSnapshot = this.sync.getInboundSeqTable().snapshot();
+    const seqTable: Record<PlayerId, number> = {
+      ...inboundSnapshot,
+      [this.selfId]: this.sync.lastOutboundSeq(),
+    };
 
     void this.channel.send({
       kind: 'snapshot:offer',
@@ -187,25 +186,16 @@ export class SnapshotHandshake {
 
     // Apply snapshot (preserving selfId/officeId).
     this.store.setState((s) => {
-      // mutate in place via target then return the patch
       const target = { ...s };
       applySnapshot(target, event.state);
       return target;
     });
 
-    // Seed the inbound dedup table so already-known events are dropped on drain.
-    this.sync.seedSeqTable(event.seqTable);
+    // Seed the shared inbound seq table so already-known events from the
+    // snapshot window are deduped on drain.
+    this.sync.getInboundSeqTable().seed(event.seqTable);
 
     this.snapshotApplied = true;
-
-    // Drain queued events through the sync engine. Stale ones (seq <= seqTable
-    // for that actor) are deduped automatically.
-    const queued = this.queue;
-    this.queue = [];
-    for (const e of queued) {
-      this.sync.applyInbound(e);
-    }
-
     this.finish();
   }
 
@@ -213,6 +203,10 @@ export class SnapshotHandshake {
     const p = this.pending;
     this.pending = null;
     this.actions.setRealtimeStatus('live');
-    p?.resolve();
+    // Resume inbound: any events buffered during the window now flow into
+    // the engine and are deduped against the seeded seqTable.
+    this.sync.resumeInbound();
+    if (!p) return;
+    for (const resolve of p.resolvers) resolve();
   }
 }

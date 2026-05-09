@@ -10,6 +10,7 @@ import {
   type NetEvent,
 } from './protocol.ts';
 import type { Clock } from '../test-harness/time.ts';
+import { InboundSeqTable } from './inbound-seq-table.ts';
 
 export const POSITION_CONSTANTS = {
   deltaP: 0.05, // m
@@ -38,6 +39,8 @@ interface SyncEngineOpts {
   bus: Bus;
   channel: Channel;
   clock: Clock;
+  /** Optional shared seq table so other modules (e.g. SnapshotHandshake) can read/seed it. */
+  inboundSeqs?: InboundSeqTable;
 }
 
 export class SyncEngine {
@@ -69,9 +72,13 @@ export class SyncEngine {
   private lastChatLen = 0;
   private lastStrokeCount = 0;
 
-  // inbound dedupe
-  private inboundSeq = new Map<PlayerId, number>();
+  // inbound dedupe (shared collaborator so SnapshotHandshake can seed it)
+  private inboundSeqs: InboundSeqTable;
   private versionWarnedKinds = new Set<string>();
+
+  // pause/buffer flag for the snapshot window
+  private paused = false;
+  private pausedQueue: NetEvent[] = [];
 
   constructor(opts: SyncEngineOpts) {
     this.store = opts.store;
@@ -79,6 +86,34 @@ export class SyncEngine {
     this.bus = opts.bus;
     this.channel = opts.channel;
     this.clock = opts.clock;
+    this.inboundSeqs = opts.inboundSeqs ?? new InboundSeqTable();
+  }
+
+  /** The shared inbound seq table (so SnapshotHandshake can read/seed it). */
+  getInboundSeqTable(): InboundSeqTable {
+    return this.inboundSeqs;
+  }
+
+  /** Highest outbound seq we've emitted from self. 0 if we've sent nothing. */
+  lastOutboundSeq(): number {
+    return this.nextSeq - 1;
+  }
+
+  /**
+   * Buffer inbound events instead of applying them. Used by SnapshotHandshake
+   * during the snapshot window so that live broadcasts arriving mid-handshake
+   * are not applied before the snapshot has been laid down.
+   */
+  pauseInbound(): void {
+    this.paused = true;
+  }
+
+  /** Apply any buffered events (after snapshot has been applied + seqs seeded). */
+  resumeInbound(): void {
+    this.paused = false;
+    const drain = this.pausedQueue;
+    this.pausedQueue = [];
+    for (const event of drain) this.dispatchInbound(event);
   }
 
   start(): void {
@@ -259,34 +294,41 @@ export class SyncEngine {
       return;
     }
 
-    if (this.isDuplicate(event.actorId, event.seq)) return;
-    this.markSeen(event.actorId, event.seq);
+    // snapshot:* are owned by SnapshotHandshake; the engine must not apply
+    // or buffer them. They flow to handshake's own channel subscription.
+    if (event.kind === 'snapshot:request' || event.kind === 'snapshot:offer') return;
 
+    if (this.paused) {
+      this.pausedQueue.push(event);
+      return;
+    }
+
+    this.dispatchInbound(event);
+  }
+
+  /** Apply a (validated, non-snapshot) event subject to dedup. */
+  private dispatchInbound(event: NetEvent): void {
+    if (this.inboundSeqs.isDuplicate(event.actorId, event.seq)) return;
+    this.inboundSeqs.markSeen(event.actorId, event.seq);
+    this.maybeAuthorityWarn(event);
     this.applyToStore(event);
   }
 
-  /** Public for the snapshot-handshake module to apply queued events. */
-  applyInbound(event: NetEvent): void {
-    this.onInbound(event);
-  }
-
-  /** Snapshot apply needs to seed the seq table without re-applying. */
-  seedSeqTable(table: Record<PlayerId, number>): void {
-    for (const [actorId, seq] of Object.entries(table)) {
-      const current = this.inboundSeq.get(actorId) ?? 0;
-      if (seq > current) this.inboundSeq.set(actorId, seq);
+  /**
+   * Authority lint per refactor-plan/03 §"Authority and host handover":
+   * a `zombie:state` arriving from a non-host actor is logged but still
+   * applied (dropping it amplifies partition disagreement; visibility
+   * is enough).
+   */
+  private maybeAuthorityWarn(event: NetEvent): void {
+    const def = PROTOCOL[event.kind];
+    if (!def || def.authority !== 'host') return;
+    const expectedHost = this.store.getState().zombies.hostId;
+    if (expectedHost && event.actorId !== expectedHost) {
+      console.warn(
+        `[sync] ${event.kind} from non-host actor ${event.actorId}; current host is ${expectedHost}`,
+      );
     }
-  }
-
-  private isDuplicate(actorId: PlayerId, seq: number): boolean {
-    const last = this.inboundSeq.get(actorId);
-    if (last === undefined) return false;
-    return seq <= last;
-  }
-
-  private markSeen(actorId: PlayerId, seq: number): void {
-    const last = this.inboundSeq.get(actorId) ?? 0;
-    if (seq > last) this.inboundSeq.set(actorId, seq);
   }
 
   private applyToStore(event: NetEvent): void {
@@ -299,7 +341,7 @@ export class SyncEngine {
           event.yaw,
           this.clock.now(),
         );
-        break;
+        return;
       case 'chat:message': {
         const msg: ChatMessage = {
           id: `${event.actorId}:${event.seq}`,
@@ -308,16 +350,14 @@ export class SyncEngine {
           t: event.t,
         };
         this.actions.applyRemoteChat(msg);
-        break;
+        return;
       }
       case 'whiteboard:stroke':
         this.actions.applyRemoteStroke(event.stroke);
-        // bump our own count so we don't echo it back
-        this.lastStrokeCount = this.store.getState().whiteboard.strokes.length;
-        break;
+        return;
       case 'avatar:update':
         this.actions.upsertPlayer({ id: event.actorId, avatar: event.avatar });
-        break;
+        return;
       case 'shot:hit':
         this.actions.applyHit(event.targetId, event.dmg, event.actorId);
         this.bus.emit({
@@ -326,29 +366,18 @@ export class SyncEngine {
           dmg: event.dmg,
           byId: event.actorId,
         });
-        break;
+        return;
       case 'zombie:state':
         this.actions.applyZombieState(event.state);
-        break;
-      case 'screen:offer':
-      case 'screen:answer':
-      case 'screen:ice':
-      case 'screen:stop':
-        // Screen-share signaling is forwarded to the bus for the
-        // Communication subsystem to handle. The store's screenShares slice
-        // is updated by Communication after the WebRTC peer is set up.
-        break;
-      case 'bubble:prefs':
-      case 'net:ping':
-      case 'net:pong':
-      case 'whiteboard:clear':
-      case 'whiteboard:undo':
-      case 'loot:open':
+        return;
       case 'snapshot:request':
       case 'snapshot:offer':
-        // These are handled by other modules (snapshot-handshake) or are
-        // intentionally observed but not yet applied to the store.
-        break;
+        // owned by SnapshotHandshake; never reaches here (filtered in onInbound)
+        return;
     }
+    // Exhaustiveness check — adding a new NetEvent kind without a case here
+    // is a compile-time error.
+    const _exhaustive: never = event;
+    void _exhaustive;
   }
 }
