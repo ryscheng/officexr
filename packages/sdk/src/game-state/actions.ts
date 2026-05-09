@@ -104,10 +104,12 @@ export function createActions(store: Store, bus?: Bus): Actions {
     },
 
     applyHit(targetId, dmg, byId) {
+      let landed = false;
       let killed = false;
       store.setState((s) => {
         const target = s.players[targetId];
         if (!target) return {};
+        landed = true;
         const hp = Math.max(0, target.hp - dmg);
         if (hp === 0 && !target.isDead) killed = true;
         return {
@@ -117,6 +119,9 @@ export function createActions(store: Store, bus?: Bus): Actions {
           },
         };
       });
+      // Don't emit combat events if the target didn't exist — a hit on a
+      // ghost is not an event observers should react to.
+      if (!landed) return;
       bus?.emit({ kind: 'combat:hit', targetId, dmg, byId });
       if (killed) bus?.emit({ kind: 'combat:killed', targetId, byId });
     },

@@ -57,19 +57,34 @@ export function createStore(opts: { selfId: PlayerId; officeId: string }): Store
     subscribeWithSelector(() => createInitialOfficeState(opts)),
   );
 
+  // zustand/vanilla iterates listeners with a plain forEach — if one throws,
+  // later listeners don't fire. Wrap every subscriber in a try/catch at the
+  // facade boundary so one badly-behaved consumer (e.g. a HUD selector
+  // crashing on a stale slice) can't tear down the sync engine or the bus.
+  function isolated<A extends unknown[]>(fn: (...args: A) => void): (...args: A) => void {
+    return (...args: A) => {
+      try {
+        fn(...args);
+      } catch (err) {
+        console.error('[store] subscriber threw:', err);
+      }
+    };
+  }
+
   return {
     getState: () => z.getState(),
     setState(updater) {
       z.setState((s) => updater(s));
     },
     subscribe(selector, listener, equals) {
-      // zustand/vanilla's subscribeWithSelector signature:
-      //   subscribe(selector, listener, options?)
-      return z.subscribe(selector, listener, equals ? { equalityFn: equals } : undefined);
+      return z.subscribe(
+        selector,
+        isolated(listener as (...args: unknown[]) => void) as typeof listener,
+        equals ? { equalityFn: equals } : undefined,
+      );
     },
     subscribeAll(listener) {
-      // Subscribing without a selector fires on every setState with (state, prev).
-      return z.subscribe(listener);
+      return z.subscribe(isolated(listener as (...args: unknown[]) => void) as typeof listener);
     },
   };
 }

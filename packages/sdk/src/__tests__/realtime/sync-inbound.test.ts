@@ -170,6 +170,83 @@ describe('SyncEngine inbound', () => {
     expect(hits).toHaveLength(1);
   });
 
+  it('warns when a host-authoritative event arrives from a non-host actor', async () => {
+    const ctx = setup({ selfId: 'me', remoteId: 'imposter' });
+    // Designate a known host that ISN'T the imposter.
+    ctx.actions.applyZombieState({
+      phase: 'wave',
+      wave: 1,
+      totalKills: 0,
+      hostId: 'real-host',
+      entities: {},
+      playerHealths: {},
+    });
+    await ctx.start();
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await ctx.remote.send({
+        kind: 'zombie:state',
+        v: 1,
+        actorId: 'imposter',
+        seq: 1,
+        t: 0,
+        state: {
+          phase: 'wave',
+          wave: 99,
+          totalKills: 0,
+          hostId: 'imposter',
+          entities: {},
+          playerHealths: {},
+        },
+      });
+      // The lint logs but does NOT drop — the state is still applied.
+      expect(ctx.store.getState().zombies.wave).toBe(99);
+      expect(warnSpy).toHaveBeenCalled();
+      const msg = warnSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(msg).toContain('zombie:state');
+      expect(msg).toContain('imposter');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('does not warn when the host-authoritative event matches the current host', async () => {
+    const ctx = setup({ selfId: 'me', remoteId: 'real-host' });
+    ctx.actions.applyZombieState({
+      phase: 'wave',
+      wave: 1,
+      totalKills: 0,
+      hostId: 'real-host',
+      entities: {},
+      playerHealths: {},
+    });
+    await ctx.start();
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await ctx.remote.send({
+        kind: 'zombie:state',
+        v: 1,
+        actorId: 'real-host',
+        seq: 1,
+        t: 0,
+        state: {
+          phase: 'wave',
+          wave: 2,
+          totalKills: 0,
+          hostId: 'real-host',
+          entities: {},
+          playerHealths: {},
+        },
+      });
+      expect(ctx.store.getState().zombies.wave).toBe(2);
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('applies whiteboard:stroke without re-broadcasting (no echo)', async () => {
     const ctx = setup({ selfId: 'me', remoteId: 'other' });
     await ctx.start();

@@ -184,19 +184,22 @@ export class SnapshotHandshake {
     if (this.snapshotApplied) return;
     if (!this.pending) return;
 
-    // Apply snapshot (preserving selfId/officeId).
-    this.store.setState((s) => {
-      const target = { ...s };
-      applySnapshot(target, event.state);
-      return target;
-    });
-
-    // Seed the shared inbound seq table so already-known events from the
-    // snapshot window are deduped on drain.
-    this.sync.getInboundSeqTable().seed(event.seqTable);
-
-    this.snapshotApplied = true;
-    this.finish();
+    // Wrap apply + seed in try/finally so finish() always runs. Otherwise a
+    // throwing applySnapshot would leave SyncEngine paused with an unbounded
+    // queue and the room permanently in 'snapshot-pending'.
+    try {
+      this.store.setState((s) => {
+        const target = { ...s };
+        applySnapshot(target, event.state);
+        return target;
+      });
+      this.sync.getInboundSeqTable().seed(event.seqTable);
+      this.snapshotApplied = true;
+    } catch (err) {
+      console.error('[snapshot-handshake] applySnapshot failed:', err);
+    } finally {
+      this.finish();
+    }
   }
 
   private finish(): void {

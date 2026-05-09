@@ -277,6 +277,17 @@ export class SyncEngine {
   }
 
   // --- Inbound ----------------------------------------------------
+  //
+  // Stage order (load-bearing):
+  //   1. envelope + payload validation (drops malformed events)
+  //   2. version mismatch (warns once per kind, drops the event)
+  //   3. snapshot:* short-circuit (handshake owns those)
+  //   4. pause check (snapshot window buffers everything else)
+  //   5. dispatch → dedup → authority lint → apply
+  //
+  // Reordering any of these has subtle consequences (e.g. running pause
+  // before validation buffers garbage; running dedup before pause makes
+  // the snapshot's seqTable seeding race with the queue drain).
 
   private onInbound(raw: NetEvent | unknown): void {
     const validation = validateNetEvent(raw);

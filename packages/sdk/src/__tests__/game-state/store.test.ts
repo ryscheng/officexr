@@ -72,6 +72,42 @@ describe('store', () => {
     }));
     expect(fn).toHaveBeenCalledTimes(1);
   });
+
+  it('a throwing subscribeAll listener does not stop later listeners from firing', () => {
+    const store = createStore({ selfId: 'me', officeId: 'r' });
+    const after = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    store.subscribeAll(() => {
+      throw new Error('boom');
+    });
+    store.subscribeAll(after);
+    store.setState((s) => ({
+      chat: [...s.chat, { id: 'a', authorId: 'me', text: '1', t: 0 }],
+    }));
+    expect(after).toHaveBeenCalledTimes(1);
+    consoleSpy.mockRestore();
+  });
+
+  it('a throwing selector subscriber does not stop other selector subscribers', () => {
+    const store = createStore({ selfId: 'me', officeId: 'r' });
+    const after = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    store.subscribe(
+      (s) => s.chat.length,
+      () => {
+        throw new Error('boom');
+      },
+    );
+    store.subscribe(
+      (s) => s.chat.length,
+      after,
+    );
+    store.setState((s) => ({
+      chat: [...s.chat, { id: 'a', authorId: 'me', text: '1', t: 0 }],
+    }));
+    expect(after).toHaveBeenCalledTimes(1);
+    consoleSpy.mockRestore();
+  });
 });
 
 describe('actions', () => {
