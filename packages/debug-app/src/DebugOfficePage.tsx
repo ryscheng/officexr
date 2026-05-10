@@ -162,18 +162,32 @@ export function DebugOfficePage() {
         const dt = now - lastTime;
         lastTime = now;
 
-        // WASD movement
+        // WASD movement, camera-relative
         const selfState = store.getState().players[SELF_ID];
         if (selfState) {
           const speed = 3; // m/s
-          let { x, y, z } = selfState.pos;
           const move = speed * dt / 1000;
-          if (keysDown.has('w') || keysDown.has('arrowup')) z -= move;
-          if (keysDown.has('s') || keysDown.has('arrowdown')) z += move;
-          if (keysDown.has('a') || keysDown.has('arrowleft')) x -= move;
-          if (keysDown.has('d') || keysDown.has('arrowright')) x += move;
-          if (x !== selfState.pos.x || z !== selfState.pos.z) {
-            actions.setSelfPosition({ x, y, z }, { x: 0, y: 0, z: 0 }, 0);
+          const fwd = (keysDown.has('w') || keysDown.has('arrowup') ? 1 : 0)
+                    - (keysDown.has('s') || keysDown.has('arrowdown') ? 1 : 0);
+          const strafe = (keysDown.has('d') || keysDown.has('arrowright') ? 1 : 0)
+                       - (keysDown.has('a') || keysDown.has('arrowleft') ? 1 : 0);
+          if (fwd !== 0 || strafe !== 0) {
+            const yaw = renderer.getYaw();
+            // Camera looks toward the player from +offset; player-forward is opposite of camera-offset XZ.
+            const forwardX = -Math.sin(yaw);
+            const forwardZ = -Math.cos(yaw);
+            const rightX = Math.cos(yaw);
+            const rightZ = -Math.sin(yaw);
+            let dx = forwardX * fwd + rightX * strafe;
+            let dz = forwardZ * fwd + rightZ * strafe;
+            const len = Math.hypot(dx, dz);
+            if (len > 0) {
+              dx = (dx / len) * move;
+              dz = (dz / len) * move;
+              const x = selfState.pos.x + dx;
+              const z = selfState.pos.z + dz;
+              actions.setSelfPosition({ x, y: selfState.pos.y, z }, { x: 0, y: 0, z: 0 }, 0);
+            }
           }
         }
 
@@ -215,8 +229,23 @@ export function DebugOfficePage() {
   }, []);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div
+        style={{
+          position: 'fixed',
+          top: 12,
+          left: 12,
+          padding: '6px 10px',
+          background: 'rgba(0,0,0,0.55)',
+          color: '#fff',
+          font: '12px system-ui, sans-serif',
+          borderRadius: 4,
+          pointerEvents: 'none',
+        }}
+      >
+        Click to look · WASD to move · Esc to release mouse
+      </div>
       <BotControlPanel botDriver={botDriver} />
     </div>
   );
