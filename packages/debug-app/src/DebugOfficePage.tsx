@@ -22,7 +22,6 @@ import { createStack, Communication } from '@officexr/core-refactor';
 import { Scene } from './renderer/Scene.tsx';
 import { CAMERA_MODES, type CameraMode } from './renderer/config.ts';
 import { BotDriver } from './bot/BotDriver.ts';
-import { BotControlPanel } from './bot/BotControlPanel.tsx';
 
 const SELF_ID = 'local-player';
 const BOT_ID = 'bot-001';
@@ -39,7 +38,7 @@ interface SceneServices {
 
 export function DebugOfficePage() {
   const [services, setServices] = useState<SceneServices | null>(null);
-  const [cameraMode, setCameraMode] = useState<CameraMode>('first-person');
+  const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
 
   // Alt+P cycles through camera modes.
   useEffect(() => {
@@ -204,7 +203,6 @@ export function DebugOfficePage() {
       )}
       <Hud cameraMode={cameraMode} />
       <Leva collapsed={false} />
-      <BotControlPanel botDriver={services?.bot ?? null} />
     </div>
   );
 }

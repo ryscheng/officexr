@@ -19,7 +19,14 @@ interface AdventurerProps {
   walking: boolean;
   /** If true, hide the body so first-person view doesn't see itself. */
   invisible?: boolean;
+  /** Time-scale multiplier for the idle clip (1 = authored speed). */
+  idleSpeed?: number;
+  /** Time-scale multiplier for the walking clip. */
+  walkSpeed?: number;
 }
+
+const IDLE_CLIP = 'Idle_A';
+const WALK_CLIP = 'Walking_C';
 
 /**
  * Renders one Adventurer GLB with idle/walk animations applied. The position
@@ -27,7 +34,10 @@ interface AdventurerProps {
  * per-frame React re-renders).
  */
 export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
-  function Adventurer({ character, walking, invisible }, ref) {
+  function Adventurer(
+    { character, walking, invisible, idleSpeed = 1, walkSpeed = 1 },
+    ref,
+  ) {
     const url = `/models/characters/${character}.glb`;
     const character_gltf = useGLTF(url);
     const general = useGLTF(ANIM_GENERAL);
@@ -49,13 +59,22 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     const { actions } = useAnimations(clips, innerRef);
 
     useEffect(() => {
-      const target = walking ? actions['Walking_C'] : actions['Idle_A'];
+      const target = walking ? actions[WALK_CLIP] : actions[IDLE_CLIP];
       if (!target) return;
       target.reset().fadeIn(0.2).play();
       return () => {
         target.fadeOut(0.2);
       };
     }, [walking, actions]);
+
+    // Apply timeScale to the clips. Done in a separate effect so dragging the
+    // Leva slider doesn't restart the animation.
+    useEffect(() => {
+      const idle = actions[IDLE_CLIP];
+      const walk = actions[WALK_CLIP];
+      if (idle) idle.timeScale = idleSpeed;
+      if (walk) walk.timeScale = walkSpeed;
+    }, [actions, idleSpeed, walkSpeed]);
 
     useEffect(() => {
       scene.visible = !invisible;

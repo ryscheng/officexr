@@ -8,6 +8,7 @@ import type {
   RealtimeStatus,
   Stroke,
   Vec3,
+  WorldSettings,
   ZombieState,
 } from './types.ts';
 
@@ -20,6 +21,9 @@ export interface Actions {
   applyHit(targetId: PlayerId, dmg: number, byId: PlayerId): void;
   addInventoryItem(item: InventoryItem): void;
   removeInventoryItem(itemId: string): void;
+  /** Update one or more world-level settings. Triggers a `world:settings`
+   * broadcast for peers to mirror. */
+  setWorldSettings(patch: Partial<WorldSettings>): void;
 
   // remote applications (called by sync engine)
   applyRemotePosition(
@@ -32,6 +36,7 @@ export interface Actions {
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
   applyZombieState(z: ZombieState): void;
+  applyRemoteWorldSettings(settings: WorldSettings): void;
 
   // membership
   upsertPlayer(p: Partial<PlayerState> & { id: PlayerId }): void;
@@ -91,6 +96,12 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     setMyJitsiRoom(roomId) {
       patchSelf({ jitsiRoom: roomId });
+    },
+
+    setWorldSettings(patch) {
+      store.setState((s) => ({
+        worldSettings: { ...s.worldSettings, ...patch },
+      }));
     },
 
     appendChat(msg) {
@@ -158,6 +169,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     applyZombieState(z) {
       store.setState(() => ({ zombies: z }));
+    },
+
+    applyRemoteWorldSettings(settings) {
+      store.setState(() => ({ worldSettings: { ...settings } }));
     },
 
     upsertPlayer(p) {

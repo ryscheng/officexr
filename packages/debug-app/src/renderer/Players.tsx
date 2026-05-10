@@ -13,11 +13,36 @@ interface PlayersProps {
   selfPosRef: React.MutableRefObject<THREE.Vector3>;
 }
 
-/** Max angular velocity for the smooth-turn animation, rad/s. */
-const TURN_SPEED = 8;
 /** Offset added to player.yaw when rotating the avatar — adjust if the GLB's
  * default facing differs from -Z. KayKit Adventurers point at +Z by default. */
 const AVATAR_YAW_OFFSET = Math.PI;
+
+/** Cap on extrapolation time (s). If updates stop arriving, the projected
+ * position freezes here instead of running away with stale velocity. */
+const EXTRAPOLATION_CAP_S = 0.1;
+
+/**
+ * Compute the rendered XYZ for a player, extrapolated from the last received
+ * position using the broadcast velocity. For the local player (tRecv === undefined)
+ * this is a no-op — the local store is updated every frame, so pos is fresh.
+ */
+export function extrapolatePos(
+  player: { pos: { x: number; y: number; z: number }; vel: { x: number; y: number; z: number }; tRecv?: number },
+  nowMs: number,
+  out: THREE.Vector3,
+): THREE.Vector3 {
+  if (player.tRecv === undefined) {
+    out.set(player.pos.x, player.pos.y, player.pos.z);
+    return out;
+  }
+  const elapsed = Math.min(EXTRAPOLATION_CAP_S, (nowMs - player.tRecv) / 1000);
+  out.set(
+    player.pos.x + player.vel.x * elapsed,
+    player.pos.y + player.vel.y * elapsed,
+    player.pos.z + player.vel.z * elapsed,
+  );
+  return out;
+}
 
 interface PlayerEntry {
   id: string;
@@ -49,6 +74,19 @@ export function Players({
   cameraMode,
   selfPosRef,
 }: PlayersProps) {
+  // Read movement/animation params from the broadcast world state. Any peer
+  // (the local player here) that calls actions.setWorldSettings updates the
+  // store; the SyncEngine keeps it in sync across clients.
+  const [worldSettings, setWorldSettings] = useState(
+    () => store.getState().worldSettings,
+  );
+  useEffect(() => {
+    return store.subscribe(
+      (s) => s.worldSettings,
+      (next) => setWorldSettings(next),
+    );
+  }, [store]);
+  const { idleAnimSpeed, walkAnimSpeed, turnSpeed } = worldSettings;
   const initialState = useMemo(() => store.getState(), [store]);
   const [players, setPlayers] = useState<PlayerEntry[]>(() =>
     Object.keys(initialState.players).map((id) => ({
@@ -82,46 +120,52 @@ export function Players({
 
   const groupRefs = useRef<Map<string, THREE.Group>>(new Map());
   const walkingState = useRef<Map<string, boolean>>(new Map());
-  const lastPos = useRef<Map<string, THREE.Vector3>>(new Map());
   const currentYaw = useRef<Map<string, number>>(new Map());
   const [walkingByPlayer, setWalkingByPlayer] = useState<
     Record<string, boolean>
   >({});
 
+  const tmpVec = useMemo(() => new THREE.Vector3(), []);
+
   useFrame((_, dt) => {
     const state = store.getState();
+    const now = performance.now();
     let walkingChanged = false;
     const nextWalking: Record<string, boolean> = {};
 
     for (const [id, player] of Object.entries(state.players)) {
       const grp = groupRefs.current.get(id);
       if (!grp) continue;
-      grp.position.set(player.pos.x, player.pos.y, player.pos.z);
+      // Extrapolate non-self players forward by their broadcast velocity to
+      // smooth between rate-limited network updates (30 Hz broadcast →
+      // 60 Hz render).
+      const renderPos = extrapolatePos(player, now, tmpVec);
+      grp.position.copy(renderPos);
 
       // Smoothly turn the avatar toward its stored yaw (= movement direction).
       // Camera mouse-look does not affect this — character only rotates when
       // the player actually moves.
       const targetYaw = (player.yaw ?? 0) + AVATAR_YAW_OFFSET;
       const prev = currentYaw.current.get(id) ?? targetYaw;
-      grp.rotation.y = stepTowardAngle(prev, targetYaw, TURN_SPEED * dt);
+      grp.rotation.y = stepTowardAngle(prev, targetYaw, turnSpeed * dt);
       currentYaw.current.set(id, grp.rotation.y);
 
-      // Detect movement to switch idle/walk anim.
-      const last = lastPos.current.get(id);
-      const cur = new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z);
-      let speed = 0;
-      if (last) {
-        speed = cur.distanceTo(last) / Math.max(dt, 1 / 240);
-      }
-      lastPos.current.set(id, cur);
-      const isWalking = speed > WALK_THRESHOLD;
+      // `vel` is the authoritative movement-intent state, written by the
+      // local player (SceneFrame) and the bot (BotDriver), and re-applied
+      // for remote players via applyRemotePosition. Using its magnitude
+      // means animation works the same way for everyone.
+      const v = player.vel;
+      const speedSq = v.x * v.x + v.z * v.z;
+      const isWalking = speedSq > WALK_THRESHOLD * WALK_THRESHOLD;
       nextWalking[id] = isWalking;
       if (walkingState.current.get(id) !== isWalking) {
         walkingState.current.set(id, isWalking);
         walkingChanged = true;
       }
 
-      if (id === selfId) selfPosRef.current.copy(cur);
+      if (id === selfId) {
+        selfPosRef.current.copy(renderPos);
+      }
     }
 
     if (walkingChanged) setWalkingByPlayer(nextWalking);
@@ -139,6 +183,8 @@ export function Players({
           character={p.character}
           walking={walkingByPlayer[p.id] ?? false}
           invisible={p.id === selfId && cameraMode === 'first-person'}
+          idleSpeed={idleAnimSpeed}
+          walkSpeed={walkAnimSpeed}
         />
       ))}
     </>

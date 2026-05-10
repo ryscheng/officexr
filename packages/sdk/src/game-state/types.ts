@@ -90,6 +90,31 @@ export type BubblePrefs = {
   visible: boolean;
 };
 
+/**
+ * World-level movement & animation tunables. These live in OfficeState so
+ * they can be broadcast to every client and used uniformly by the local
+ * player, AI/bots, and any other agent — there's no "client-private"
+ * version. Updating them via `setWorldSettings` triggers a `world:settings`
+ * broadcast that peers apply to their stores via `applyRemoteWorldSettings`.
+ */
+export type WorldSettings = {
+  /** Character walking speed in world units per second. */
+  playerSpeed: number;
+  /** AnimationAction.timeScale for the walk clip (1 = authored). */
+  walkAnimSpeed: number;
+  /** AnimationAction.timeScale for the idle clip. */
+  idleAnimSpeed: number;
+  /** Maximum angular velocity for the smooth-turn animation, in rad/s. */
+  turnSpeed: number;
+};
+
+export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
+  playerSpeed: 3,
+  walkAnimSpeed: 1,
+  idleAnimSpeed: 1,
+  turnSpeed: 16,
+};
+
 export type OfficeState = {
   selfId: PlayerId;
   officeId: string;
@@ -106,6 +131,7 @@ export type OfficeState = {
     lastTick: number;
     protocolVersion: number;
   };
+  worldSettings: WorldSettings;
 };
 
 export type GameEvent =

@@ -1,7 +1,13 @@
 import type { Actions } from '../game-state/actions.ts';
 import type { Bus } from '../game-state/bus.ts';
 import type { Store } from '../game-state/store.ts';
-import type { ChatMessage, OfficeState, PlayerId, Vec3 } from '../game-state/types.ts';
+import type {
+  ChatMessage,
+  OfficeState,
+  PlayerId,
+  Vec3,
+  WorldSettings,
+} from '../game-state/types.ts';
 import type { Channel } from './channel.ts';
 import {
   PROTOCOL,
@@ -71,6 +77,8 @@ export class SyncEngine {
   // emit the new entries.
   private lastChatLen = 0;
   private lastStrokeCount = 0;
+  /** Last broadcast worldSettings — kept as a JSON string for cheap equality. */
+  private lastWorldSettingsJson = '';
 
   // inbound dedupe (shared collaborator so SnapshotHandshake can seed it)
   private inboundSeqs: InboundSeqTable;
@@ -124,6 +132,7 @@ export class SyncEngine {
     const initial = this.store.getState();
     this.lastChatLen = initial.chat.length;
     this.lastStrokeCount = initial.whiteboard.strokes.length;
+    this.lastWorldSettingsJson = JSON.stringify(initial.worldSettings);
     const me = initial.players[initial.selfId];
     if (me) {
       this.lastSentPos = { ...me.pos };
@@ -180,6 +189,21 @@ export class SyncEngine {
         }
       }
       this.lastStrokeCount = nextStrokes.length;
+    }
+
+    // worldSettings: broadcast on any change. Cheap shallow-JSON equality is
+    // fine — the struct is tiny and rarely mutates.
+    const nextWS = JSON.stringify(next.worldSettings);
+    if (nextWS !== this.lastWorldSettingsJson) {
+      this.lastWorldSettingsJson = nextWS;
+      this.broadcast({
+        kind: 'world:settings',
+        v: 1,
+        actorId: next.selfId,
+        seq: this.takeSeq(),
+        t: this.clock.now(),
+        settings: { ...next.worldSettings },
+      });
     }
 
     // position: throttled
@@ -376,6 +400,11 @@ export class SyncEngine {
         return;
       case 'zombie:state':
         this.actions.applyZombieState(event.state);
+        return;
+      case 'world:settings':
+        // Avoid an outbound echo of the inbound event we're about to apply.
+        this.lastWorldSettingsJson = JSON.stringify(event.settings);
+        this.actions.applyRemoteWorldSettings(event.settings);
         return;
       case 'snapshot:request':
       case 'snapshot:offer':

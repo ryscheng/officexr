@@ -4,6 +4,7 @@ import type {
   PlayerId,
   Stroke,
   Vec3,
+  WorldSettings,
   ZombieState,
 } from '../game-state/types.ts';
 import type { SerializedOfficeState } from '../game-state/snapshot.ts';
@@ -101,6 +102,13 @@ const ZRuntime = z.object({
   protocolVersion: z.number(),
 });
 
+const ZWorldSettings: z.ZodType<WorldSettings> = z.object({
+  playerSpeed: z.number(),
+  walkAnimSpeed: z.number(),
+  idleAnimSpeed: z.number(),
+  turnSpeed: z.number(),
+});
+
 /**
  * Real shape validation for snapshot:offer.state. Closes the trust-boundary
  * hole previously left by `z.any()` — a malformed snapshot can no longer
@@ -118,6 +126,7 @@ const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
   screenShares: z.record(z.string(), ZScreenShareSignal),
   realtime: ZRealtimeState,
   runtime: ZRuntime,
+  worldSettings: ZWorldSettings,
 });
 
 // --- Per-kind payload schemas (without envelope) ---
@@ -129,6 +138,7 @@ const ZWhiteboardStroke = z.object({ stroke: ZStroke });
 const ZShotHit = z.object({ targetId: z.string(), dmg: z.number() });
 const ZZombieStatePayload = z.object({ state: ZZombieState });
 const ZSnapshotRequest = z.object({});
+const ZWorldSettingsPayload = z.object({ settings: ZWorldSettings });
 const ZSnapshotOffer = z.object({
   target: z.string(),
   state: ZSerializedOfficeState,
@@ -157,7 +167,8 @@ export type NetEvent =
       'snapshot:offer',
       1,
       { target: PlayerId; state: SerializedOfficeState; seqTable: Record<PlayerId, number> }
-    >;
+    >
+  | WithEnvelope<'world:settings', 1, { settings: WorldSettings }>;
 
 export type NetEventKind = NetEvent['kind'];
 
@@ -180,6 +191,7 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'zombie:state': { v: 1, schema: ZZombieStatePayload, authority: 'host' },
   'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local' },
   'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local' },
+  'world:settings': { v: 1, schema: ZWorldSettingsPayload, authority: 'local' },
 };
 
 // --- Validation ---

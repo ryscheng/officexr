@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
-import { EYE_HEIGHT, type CameraMode } from './config.ts';
+import { CHAR_HEIGHT_M, EYE_HEIGHT, type CameraMode } from './config.ts';
 
 const PITCH_MIN = -1.3;
 const PITCH_MAX = 1.3;
@@ -18,8 +18,18 @@ interface CameraRigProps {
   /** Fixed-camera params, updated live from the debug panel. */
   fixed: {
     azimuthDeg: number;
-    elevationDeg: number;
-    distance: number;
+    /** Camera pitch in degrees (negative = looking down). */
+    pitchDeg: number;
+    /** Camera Y offset above the character. */
+    height: number;
+    /** Screen-fraction bounds. The actual meter distances are derived each
+     * frame from these plus FOV and height — so the leash auto-adjusts when
+     * the user changes any of those. */
+    maxOnScreenFrac: number;
+    minOnScreenFrac: number;
+    /** Lateral half-width as a fraction of the view's half-width at the far
+     * depth. Translates to world units inside the rig. */
+    lateralFrac: number;
     fov: number;
   };
 }
@@ -83,6 +93,14 @@ export function CameraRig({
 
   const target = useRef(new THREE.Vector3());
 
+  // True when fixed-mode just became active and the camera position needs to
+  // snap to a sensible starting point relative to the character.
+  const fixedNeedsInit = useRef(false);
+
+  useEffect(() => {
+    if (mode === 'fixed') fixedNeedsInit.current = true;
+  }, [mode]);
+
   useFrame(() => {
     const pos = playerPosRef.current;
     if (!pos) return;
@@ -107,16 +125,96 @@ export function CameraRig({
       );
       camera.lookAt(head);
     } else {
-      // fixed
+      // Fixed-orientation leash camera.
+      //   - Orientation comes ONLY from azimuth + pitch — never tracks the
+      //     character. The camera does not rotate as the player moves.
+      //   - Y is locked at character.y + height (no bobbing).
+      //   - XZ position is moved only when XZ distance to the character
+      //     leaves [minDistance, maxDistance]. Within bounds the camera
+      //     stays put while the character wanders.
       const az = THREE.MathUtils.degToRad(fixed.azimuthDeg);
-      const el = THREE.MathUtils.degToRad(fixed.elevationDeg);
-      const horiz = fixed.distance * Math.cos(el);
-      const y = fixed.distance * Math.sin(el);
-      // Compass: 0 = N (-Z), 90 = E (+X), 180 = S (+Z), 270 = W (-X)
-      const x = Math.sin(az) * horiz;
-      const z = -Math.cos(az) * horiz;
-      camera.position.set(x, y, z);
-      camera.lookAt(pos.x, pos.y, pos.z);
+      const pitch = THREE.MathUtils.degToRad(fixed.pitchDeg);
+
+      // Derive leash distances from screen fractions. The character should
+      // occupy ~maxOnScreenFrac of the screen at the near bound, dwindling
+      // to ~minOnScreenFrac at the far bound.
+      //   screenFrac ≈ charHeight / (2 · distance3D · tan(fov/2))
+      //   ⇒ distance3D = charHeight / (2 · frac · tan(fov/2))
+      // Then project to XZ depth using the camera's height above the
+      // character's center: depth = sqrt(distance3D² − heightOffset²).
+      const fovRad = THREE.MathUtils.degToRad(fixed.fov);
+      const tanHalfFov = Math.tan(fovRad / 2);
+      const heightOffset = Math.max(0, fixed.height - CHAR_HEIGHT_M / 2);
+      const safeMaxFrac = Math.max(0.005, fixed.maxOnScreenFrac);
+      const safeMinFrac = Math.max(0.001, fixed.minOnScreenFrac);
+      const dNear3D = CHAR_HEIGHT_M / (2 * safeMaxFrac * tanHalfFov);
+      const dFar3D = CHAR_HEIGHT_M / (2 * safeMinFrac * tanHalfFov);
+      const minDistance = Math.sqrt(
+        Math.max(0.01, dNear3D * dNear3D - heightOffset * heightOffset),
+      );
+      const maxDistance = Math.max(
+        minDistance + 0.5,
+        Math.sqrt(
+          Math.max(0.01, dFar3D * dFar3D - heightOffset * heightOffset),
+        ),
+      );
+      const maxLateral = fixed.lateralFrac * maxDistance * tanHalfFov;
+
+      // Initialize position on entry into fixed mode so the character is
+      // visible at the default leash distance.
+      if (fixedNeedsInit.current) {
+        fixedNeedsInit.current = false;
+        const initialDist = (minDistance + maxDistance) / 2;
+        camera.position.set(
+          pos.x + Math.sin(az) * initialDist,
+          pos.y + fixed.height,
+          pos.z - Math.cos(az) * initialDist,
+        );
+      }
+
+      // Lock Y to the character's height each frame.
+      camera.position.y = pos.y + fixed.height;
+
+      // Decompose the (camera → character) XZ vector into a depth component
+      // along the camera's forward axis and a lateral component along the
+      // camera's right axis. The two leashes are independent: depth is
+      // clamped to [minDistance, maxDistance], lateral to ±maxLateral.
+      const forwardX = -Math.sin(az);
+      const forwardZ = Math.cos(az);
+      const rightX = -Math.cos(az);
+      const rightZ = -Math.sin(az);
+
+      const rx = pos.x - camera.position.x;
+      const rz = pos.z - camera.position.z;
+      const parallel = rx * forwardX + rz * forwardZ;
+      const perp = rx * rightX + rz * rightZ;
+
+      const clampedParallel = Math.max(
+        minDistance,
+        Math.min(maxDistance, parallel),
+      );
+      const clampedPerp = Math.max(
+        -maxLateral,
+        Math.min(maxLateral, perp),
+      );
+      const depthCorrection = parallel - clampedParallel;
+      const lateralCorrection = perp - clampedPerp;
+
+      camera.position.x +=
+        forwardX * depthCorrection + rightX * lateralCorrection;
+      camera.position.z +=
+        forwardZ * depthCorrection + rightZ * lateralCorrection;
+
+      // Camera looks toward (azimuth + 180°), tilted by pitch. The look
+      // target is camera.position + forward, so orientation is independent
+      // of the character's position.
+      const lookYaw = az + Math.PI;
+      const cosP = Math.cos(pitch);
+      camera.lookAt(
+        camera.position.x + Math.sin(lookYaw) * cosP,
+        camera.position.y + Math.sin(pitch),
+        camera.position.z - Math.cos(lookYaw) * cosP,
+      );
     }
   });
 

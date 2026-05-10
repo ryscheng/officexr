@@ -86,8 +86,27 @@ describe('PROTOCOL table', () => {
         screenShares: {},
         realtime: { status: 'live', snapshotTarget: null, versionWarnings: {} },
         runtime: { tickRate: 60, lastTick: 0, protocolVersion: 1 },
+        worldSettings: {
+          playerSpeed: 3,
+          walkAnimSpeed: 1,
+          idleAnimSpeed: 1,
+          turnSpeed: 16,
+        },
       },
       seqTable: { leader: 5 },
+    },
+    {
+      kind: 'world:settings',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      settings: {
+        playerSpeed: 4,
+        walkAnimSpeed: 1.2,
+        idleAnimSpeed: 0.8,
+        turnSpeed: 20,
+      },
     },
   ];
 

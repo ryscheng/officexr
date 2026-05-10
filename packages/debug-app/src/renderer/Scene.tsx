@@ -1,9 +1,8 @@
-import React, { Suspense, useMemo, useRef } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
-import { useControls } from 'leva';
-import { BUBBLE_RADIUS } from '@officexr/sdk';
+import { useControls, button } from 'leva';
 import type {
   Actions,
   Bus,
@@ -17,11 +16,17 @@ import { Floor } from './Floor.tsx';
 import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { SceneFrame } from './SceneFrame.tsx';
+import { ProximityGlow } from './ProximityGlow.tsx';
 import {
   FIXED_CAMERA_DEFAULTS,
   WORLD,
   type CameraMode,
 } from './config.ts';
+import {
+  exportLevaConfig,
+  resetLevaConfig,
+  useLevaPersistence,
+} from './levaPersistence.ts';
 
 interface SceneProps {
   store: Store;
@@ -36,7 +41,87 @@ interface SceneProps {
 }
 
 export function Scene(props: SceneProps) {
-  const { store, selfId, cameraMode } = props;
+  const { store, actions, selfId, cameraMode, bot } = props;
+
+  useLevaPersistence();
+
+  // Bot mode buttons — replaces the standalone BotControlPanel.
+  useControls('Bot', {
+    Stay: button(() => bot.setMode('idle')),
+    'Walk to me': button(() => bot.setMode('walk-to-local')),
+    'Walk away': button(() => bot.setMode('walk-away')),
+  });
+
+  // Animation playback speed knobs. timeScale=1 plays the clip at its
+  // authored speed; <1 slows down, >1 speeds up.
+  const proximity = useControls('Proximity', {
+    outerRadius: {
+      value: 6,
+      min: 1,
+      max: 20,
+      step: 0.1,
+      label: 'outer radius (m)',
+    },
+    innerRadius: {
+      value: 3,
+      min: 0.5,
+      max: 20,
+      step: 0.1,
+      label: 'inner radius (m)',
+    },
+    discRadius: {
+      value: 1.6,
+      min: 0.2,
+      max: 5,
+      step: 0.05,
+      label: 'disc radius (m)',
+    },
+    pulseSpeed: {
+      value: 0.8,
+      min: 0.05,
+      max: 4,
+      step: 0.05,
+      label: 'pulse (Hz)',
+    },
+    intensity: { value: 1.0, min: 0, max: 3, step: 0.05 },
+    color: '#ffd24a',
+  });
+
+  const animation = useControls('Animation', {
+    idleSpeed: { value: 1, min: 0.1, max: 3, step: 0.05 },
+    walkSpeed: { value: 1, min: 0.1, max: 10, step: 0.05 },
+    turnSpeed: {
+      value: 16,
+      min: 1,
+      max: 60,
+      step: 0.5,
+      label: 'turn speed (rad/s)',
+    },
+    playerSpeed: {
+      value: 3,
+      min: 0.5,
+      max: 15,
+      step: 0.1,
+      label: 'walk speed (m/s)',
+    },
+  });
+
+  // Mirror the Animation panel into world state so peers (e.g. the bot)
+  // observe the same movement & animation parameters via their own stores.
+  useEffect(() => {
+    actions.setWorldSettings({
+      playerSpeed: animation.playerSpeed,
+      walkAnimSpeed: animation.walkSpeed,
+      idleAnimSpeed: animation.idleSpeed,
+      turnSpeed: animation.turnSpeed,
+    });
+  }, [
+    actions,
+    animation.playerSpeed,
+    animation.walkSpeed,
+    animation.idleSpeed,
+    animation.turnSpeed,
+  ]);
 
   // Leva debug panel — fixed camera + world tweakables.
   const fixed = useControls(
@@ -49,18 +134,40 @@ export function Scene(props: SceneProps) {
         step: 0.5,
         label: 'azimuth (°)',
       },
-      elevationDeg: {
-        value: FIXED_CAMERA_DEFAULTS.elevationDeg,
-        min: 0,
+      pitchDeg: {
+        value: FIXED_CAMERA_DEFAULTS.pitchDeg,
+        min: -89,
         max: 89,
         step: 0.5,
-        label: 'elevation (°)',
+        label: 'pitch (°)',
       },
-      distance: {
-        value: FIXED_CAMERA_DEFAULTS.distance,
-        min: 5,
-        max: 300,
-        step: 1,
+      height: {
+        value: FIXED_CAMERA_DEFAULTS.height,
+        min: 0,
+        max: 200,
+        step: 0.5,
+        label: 'height (Y)',
+      },
+      maxOnScreenFrac: {
+        value: FIXED_CAMERA_DEFAULTS.maxOnScreenFrac,
+        min: 0.05,
+        max: 0.6,
+        step: 0.005,
+        label: 'near (screen %)',
+      },
+      minOnScreenFrac: {
+        value: FIXED_CAMERA_DEFAULTS.minOnScreenFrac,
+        min: 0.01,
+        max: 0.3,
+        step: 0.005,
+        label: 'far (screen %)',
+      },
+      lateralFrac: {
+        value: FIXED_CAMERA_DEFAULTS.lateralFrac,
+        min: 0,
+        max: 1,
+        step: 0.01,
+        label: 'lateral (frac)',
       },
       fov: {
         value: FIXED_CAMERA_DEFAULTS.fov,
@@ -68,9 +175,21 @@ export function Scene(props: SceneProps) {
         max: 110,
         step: 1,
       },
+      movementYawOffsetDeg: {
+        value: 0,
+        min: -180,
+        max: 180,
+        step: 0.5,
+        label: 'WASD offset (°)',
+      },
     },
     { collapsed: false },
   );
+
+  useControls('Settings', {
+    'Export JSON': button(() => exportLevaConfig()),
+    'Reset to defaults': button(() => resetLevaConfig()),
+  });
 
   const world = useControls('World', {
     gridSize: {
@@ -91,11 +210,22 @@ export function Scene(props: SceneProps) {
   const fixedCam = useMemo(
     () => ({
       azimuthDeg: fixed.azimuthDeg,
-      elevationDeg: fixed.elevationDeg,
-      distance: fixed.distance,
+      pitchDeg: fixed.pitchDeg,
+      height: fixed.height,
+      maxOnScreenFrac: fixed.maxOnScreenFrac,
+      minOnScreenFrac: fixed.minOnScreenFrac,
+      lateralFrac: fixed.lateralFrac,
       fov: fixed.fov,
     }),
-    [fixed.azimuthDeg, fixed.elevationDeg, fixed.distance, fixed.fov],
+    [
+      fixed.azimuthDeg,
+      fixed.pitchDeg,
+      fixed.height,
+      fixed.maxOnScreenFrac,
+      fixed.minOnScreenFrac,
+      fixed.lateralFrac,
+      fixed.fov,
+    ],
   );
 
   return (
@@ -118,7 +248,15 @@ export function Scene(props: SceneProps) {
           selfPosRef={selfPosRef}
         />
 
-        <ProximityBubble store={store} selfId={selfId} />
+        <ProximityGlow
+          store={store}
+          outerRadius={proximity.outerRadius}
+          innerRadius={proximity.innerRadius}
+          discRadius={proximity.discRadius}
+          pulseSpeed={proximity.pulseSpeed}
+          intensity={proximity.intensity}
+          color={proximity.color}
+        />
 
         <CameraRig
           mode={cameraMode}
@@ -139,6 +277,7 @@ export function Scene(props: SceneProps) {
           selfId={props.selfId}
           cameraMode={cameraMode}
           fixedAzimuthDeg={fixed.azimuthDeg}
+          fixedMovementYawOffsetDeg={fixed.movementYawOffsetDeg}
           yawRef={yawRef}
         />
       </Suspense>
@@ -146,32 +285,4 @@ export function Scene(props: SceneProps) {
   );
 }
 
-/** Wireframe sphere centered on the local player showing proximity radius. */
-function ProximityBubble({
-  store,
-  selfId,
-}: {
-  store: Store;
-  selfId: string;
-}) {
-  const ref = useRef<THREE.Mesh>(null);
-  useFrame(() => {
-    const self = store.getState().players[selfId];
-    if (ref.current && self) {
-      ref.current.position.set(self.pos.x, self.pos.y, self.pos.z);
-    }
-  });
-
-  return (
-    <mesh ref={ref}>
-      <sphereGeometry args={[BUBBLE_RADIUS, 16, 16]} />
-      <meshBasicMaterial
-        color={0x44aaff}
-        wireframe
-        transparent
-        opacity={0.25}
-      />
-    </mesh>
-  );
-}
 

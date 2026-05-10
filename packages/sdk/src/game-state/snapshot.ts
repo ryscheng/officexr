@@ -37,6 +37,7 @@ export function serializeOfficeState(state: OfficeState): SerializedOfficeState 
     screenShares,
     realtime: state.realtime,
     runtime: state.runtime,
+    worldSettings: state.worldSettings,
   };
 }
 
@@ -76,6 +77,7 @@ export function applySnapshot(target: OfficeState, snap: SerializedOfficeState):
 
   target.realtime = { ...snap.realtime };
   target.runtime = { ...snap.runtime };
+  target.worldSettings = { ...snap.worldSettings };
   target.selfId = selfId;
   target.officeId = officeId;
 }

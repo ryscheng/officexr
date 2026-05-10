@@ -36,6 +36,9 @@ export class BotDriver {
 
   private mode: BotMode = 'idle';
   private stopped = false;
+  /** Tracks the moving → idle transition so we clear `vel` exactly once
+   * when the bot stops. */
+  private wasMoving = false;
 
   // Bot client internals — set during start()
   private botStore: ReturnType<typeof createStore> | null = null;
@@ -109,34 +112,46 @@ export class BotDriver {
   }
 
   tick(dt: number): void {
-    if (this.stopped || !this.botActions || !this.botSync || !this.botHandshake) return;
-
-    if (this.mode === 'idle') return;
+    if (this.stopped || !this.botActions || !this.botSync || !this.botHandshake)
+      return;
 
     const botPos = this.getBotPos();
-    const localPos = this.localPlayerPosGetter();
 
+    if (this.mode === 'idle') {
+      // On the moving → idle transition, broadcast a single zero-velocity
+      // update so the local-player renderer and remote peers see the stop.
+      if (this.wasMoving) {
+        const me = this.botStore!.getState().players[this.botId];
+        const yaw = me?.yaw ?? 0;
+        this.botActions.setSelfPosition(botPos, { x: 0, y: 0, z: 0 }, yaw);
+        this.botSync.flushPosition();
+        this.wasMoving = false;
+      }
+      this.botHandshake.tickTimers();
+      return;
+    }
+
+    const localPos = this.localPlayerPosGetter();
     const dx = localPos.x - botPos.x;
     const dz = localPos.z - botPos.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
-
-    if (dist < 0.001) return; // already at same position
+    if (dist < 0.001) return;
 
     const dirX = dx / dist;
     const dirZ = dz / dist;
+    // Sign chooses approach vs retreat; magnitude is the broadcast world
+    // speed — the bot reads its own store's worldSettings, which the
+    // SyncEngine keeps in sync with peers via `world:settings` events.
+    const sign = this.mode === 'walk-to-local' ? 1 : -1;
+    const speed =
+      this.botStore?.getState().worldSettings.playerSpeed ?? this.speed;
+    const moveDX = dirX * speed * sign * (dt / 1000);
+    const moveDZ = dirZ * speed * sign * (dt / 1000);
 
-    let newX: number;
-    let newZ: number;
+    let newX = botPos.x + moveDX;
+    let newZ = botPos.z + moveDZ;
 
-    if (this.mode === 'walk-to-local') {
-      newX = botPos.x + dirX * this.speed * (dt / 1000);
-      newZ = botPos.z + dirZ * this.speed * (dt / 1000);
-    } else {
-      // walk-away: move in opposite direction
-      newX = botPos.x - dirX * this.speed * (dt / 1000);
-      newZ = botPos.z - dirZ * this.speed * (dt / 1000);
-
-      // Clamp to maxDistance from origin
+    if (this.mode === 'walk-away') {
       const distFromOrigin = Math.sqrt(newX * newX + newZ * newZ);
       if (distFromOrigin > MAX_DISTANCE) {
         const scale = MAX_DISTANCE / distFromOrigin;
@@ -146,10 +161,27 @@ export class BotDriver {
     }
 
     const newPos: Vec3 = { x: newX, y: botPos.y, z: newZ };
-    const vel: Vec3 = { x: 0, y: 0, z: 0 };
-    this.botActions.setSelfPosition(newPos, vel, 0);
+    // Authoritative vel = direction × speed. The wire protocol re-derives
+    // vel from position deltas anyway, but writing it here makes the local
+    // store match remote stores so the renderer can read player.vel as a
+    // single source of truth for "is this player moving".
+    const actualDX = newX - botPos.x;
+    const actualDZ = newZ - botPos.z;
+    const stepLen = Math.hypot(actualDX, actualDZ);
+    const vel: Vec3 =
+      stepLen > 0
+        ? {
+            x: (actualDX / stepLen) * speed,
+            y: 0,
+            z: (actualDZ / stepLen) * speed,
+          }
+        : { x: 0, y: 0, z: 0 };
+    // Bot faces its movement direction. Same yaw convention as SceneFrame.
+    const yaw = Math.atan2(-actualDX, -actualDZ);
+    this.botActions.setSelfPosition(newPos, vel, yaw);
     this.botSync.flushPosition();
     this.botHandshake.tickTimers();
+    this.wasMoving = true;
   }
 
   setMode(mode: BotMode): void {
