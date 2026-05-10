@@ -1,3 +1,5 @@
+import { DebugOfficePage } from './DebugOfficePage.tsx';
+
 export default function App() {
-  return <h1>OfficeXR Debug</h1>;
+  return <DebugOfficePage />;
 }
