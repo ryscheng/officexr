@@ -105,10 +105,14 @@ const ZRuntime = z.object({
 
 const ZWorldSettings: z.ZodType<WorldSettings> = z.object({
   playerSpeed: z.number(),
+  runSpeedMultiplier: z.number(),
   walkAnimSpeed: z.number(),
+  runAnimSpeed: z.number(),
   idleAnimSpeed: z.number(),
   turnSpeed: z.number(),
   charRadius: z.number(),
+  proximityRadius: z.number(),
+  proximityOuterRadius: z.number(),
   bumpEasingMs: z.number(),
   movementBlockThreshold: z.number(),
 });

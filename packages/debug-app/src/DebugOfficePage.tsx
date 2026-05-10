@@ -7,7 +7,8 @@ import {
   createRuleRegistry,
   attachProximityReducer,
   collisionBumpRule,
-  proximityRule,
+  proximityInnerRule,
+  proximityOuterRule,
   serializeOfficeState,
   SyncEngine,
   SnapshotHandshake,
@@ -22,10 +23,9 @@ import type {
 import { createStack, Communication } from '@officexr/core-refactor';
 import { Scene } from './renderer/Scene.tsx';
 import { CAMERA_MODES, type CameraMode } from './renderer/config.ts';
-import { BotDriver } from './bot/BotDriver.ts';
+import { BotPool } from './bot/BotPool.ts';
 
 const SELF_ID = 'local-player';
-const BOT_ID = 'bot-001';
 
 interface SceneServices {
   store: Store;
@@ -34,7 +34,7 @@ interface SceneServices {
   bus: Bus;
   sync: SyncEngine;
   handshake: SnapshotHandshake;
-  bot: BotDriver;
+  bots: BotPool;
 }
 
 export function DebugOfficePage() {
@@ -95,7 +95,8 @@ export function DebugOfficePage() {
       });
 
       const rules = createRuleRegistry();
-      rules.addRule(proximityRule);
+      rules.addRule(proximityOuterRule);
+      rules.addRule(proximityInnerRule);
       rules.addRule(collisionBumpRule);
       attachProximityReducer(store, bus);
 
@@ -124,12 +125,10 @@ export function DebugOfficePage() {
         voice: voiceAdapter,
       });
 
-      const bot = new BotDriver({
+      const bots = new BotPool({
         hub,
         localPlayerPosGetter: () =>
           store.getState().players[SELF_ID]?.pos ?? { x: 0, y: 0, z: 0 },
-        botId: BOT_ID,
-        startPos: { x: 4, y: 0, z: 0 },
       });
 
       await channel.subscribe();
@@ -137,30 +136,30 @@ export function DebugOfficePage() {
       sync.start();
       handshake.start();
       comm.start();
-      await bot.start();
+      // Spawn 1 bot by default — Leva slider in the Bot folder lets users
+      // grow / shrink this. Bots announce themselves via their own
+      // SyncEngine.start() spawn broadcast; applyRemotePosition upserts
+      // them into the local store on receipt.
+      await bots.setCount(1);
 
       if (aborted) {
         comm.stop();
         sync.stop();
         handshake.stop();
-        bot.stop();
+        bots.stop();
         channel.close();
         audio.pause();
         audio.src = '';
         return;
       }
 
-      // The bot announces its spawn pose via SyncEngine.start() (initial
-      // presence:position broadcast); applyRemotePosition upserts the bot
-      // into the local store on receipt. No manual upsert needed here.
-
-      setServices({ store, actions, rules, bus, sync, handshake, bot });
+      setServices({ store, actions, rules, bus, sync, handshake, bots });
 
       cleanup = () => {
         comm.stop();
         sync.stop();
         handshake.stop();
-        bot.stop();
+        bots.stop();
         channel.close();
         audio.pause();
         audio.src = '';
@@ -194,7 +193,7 @@ export function DebugOfficePage() {
           bus={services.bus}
           sync={services.sync}
           handshake={services.handshake}
-          bot={services.bot}
+          bots={services.bots}
           selfId={SELF_ID}
           cameraMode={cameraMode}
         />

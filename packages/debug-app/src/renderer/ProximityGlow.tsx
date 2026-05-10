@@ -7,30 +7,42 @@ import React, {
 } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import type { OfficeState, Store } from '@officexr/sdk';
+import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { extrapolatePos } from './Players.tsx';
+
+/**
+ * One of the four proximity event states a peer can be in *from self's
+ * point of view*. The visual glow's colour and pulse mode are derived
+ * from this — `entered` is steady, the others pulse.
+ *
+ *   entering : peer crossed our outer cylinder INWARD, hasn't reached inner yet
+ *   entered  : peer is inside our inner cylinder (talking range; voice on)
+ *   exiting  : peer was inside our inner cylinder, has now stepped back out
+ *              into the outer band (voice still on — hysteresis)
+ */
+type PairState = 'entering' | 'entered' | 'exiting';
 
 interface ProximityGlowProps {
   store: Store;
-  /** XZ distance under which the glow appears (pulsing) on BOTH characters. */
-  outerRadius: number;
-  /** XZ distance under which characters are considered "in proximity" — the
-   * glow stops pulsing and becomes a steady, full-intensity light. */
-  innerRadius: number;
-  /** Visual size of the disc on the ground (independent of outerRadius). */
+  bus: Bus;
+  selfId: PlayerId;
+  /** Visual size of the disc on the ground. */
   discRadius: number;
-  /** Pulses per second. 1.0 = one full bright→dim cycle each second. */
+  /** Pulses per second while pulsing. */
   pulseSpeed: number;
-  /** CSS color string. */
-  color: string;
-  /** Peak alpha at the bright phase of the pulse. */
+  /** Peak alpha at the bright phase of the pulse / steady. */
   intensity: number;
+  /** CSS colour for the entering state (peer in outer band, no contact yet). */
+  enteringColor: string;
+  /** CSS colour for the entered state (peer inside inner; voice on). */
+  enteredColor: string;
+  /** CSS colour for the exiting state (peer left inner, still in outer; voice still on). */
+  exitingColor: string;
 }
 
 /**
- * Procedural radial-gradient texture, used as the glow disc's `map`.
- * Module-scoped so every instance shares one texture (cheap to create,
- * cheap to keep around).
+ * Procedural radial-gradient texture used as the glow disc's `map`.
+ * Module-scoped so every instance shares one texture.
  */
 const radialTexture = (() => {
   const size = 256;
@@ -45,8 +57,6 @@ const radialTexture = (() => {
     size / 2,
     size / 2,
   );
-  // White center → transparent edge. Color comes from material.color so the
-  // texture is reusable across hue choices.
   grad.addColorStop(0, 'rgba(255,255,255,1)');
   grad.addColorStop(0.5, 'rgba(255,255,255,0.4)');
   grad.addColorStop(1, 'rgba(255,255,255,0)');
@@ -64,21 +74,27 @@ interface DiscRegistration {
 }
 
 /**
- * Renders a soft, pulsing disc on the ground beneath each player when ANY
- * other player is within `outerRadius` (XZ).
+ * Pulsing disc on the ground beneath each player. Visibility, colour, and
+ * pulse mode are all driven by the SDK's proximity events on the bus —
+ * the renderer doesn't compute distance bands itself, so it stays in sync
+ * with whatever the broadcast world settings are doing.
  *
- * Uses MeshBasicMaterial + a radial-gradient texture instead of a custom
- * shader — battle-tested path that avoids the `transparent`/AdditiveBlending
- * gotcha and gets correct color out of the box.
+ *   self's disc      uses the *strongest* state across all of self's pairs
+ *                    (entered > exiting > entering).
+ *   other peer X     uses self's pair state with X — proximity is symmetric
+ *                    on the local view, so X's disc colour matches self's.
+ *   anyone with no pair state currently → no glow.
  */
 export function ProximityGlow({
   store,
-  outerRadius,
-  innerRadius,
+  bus,
+  selfId,
   discRadius,
   pulseSpeed,
-  color,
   intensity,
+  enteringColor,
+  enteredColor,
+  exitingColor,
 }: ProximityGlowProps) {
   const initialIds = useMemo(
     () => Object.keys(store.getState().players),
@@ -95,9 +111,39 @@ export function ProximityGlow({
     });
   }, [store]);
 
+  // Per-pair state for self — a peer enters this map on `entering` (or
+  // `entered` if they crossed both cylinders in one frame) and is removed
+  // on `exited`. State priority on overlapping events: entered ranks above
+  // exiting, both rank above entering.
+  const pairStates = useRef<Map<PlayerId, PairState>>(new Map());
+  useEffect(() => {
+    const offEntering = bus.on('proximity:entering', ({ otherId }) => {
+      // Don't downgrade an already-entered pair back to 'entering'.
+      if (pairStates.current.get(otherId) === 'entered') return;
+      pairStates.current.set(otherId, 'entering');
+    });
+    const offEntered = bus.on('proximity:entered', ({ otherId }) => {
+      pairStates.current.set(otherId, 'entered');
+    });
+    const offExiting = bus.on('proximity:exiting', ({ otherId }) => {
+      pairStates.current.set(otherId, 'exiting');
+    });
+    const offExited = bus.on('proximity:exited', ({ otherId }) => {
+      pairStates.current.delete(otherId);
+    });
+    return () => {
+      offEntering();
+      offEntered();
+      offExiting();
+      offExited();
+    };
+  }, [bus]);
+
   const registry = useRef<Map<string, DiscRegistration>>(new Map());
   const currentI = useRef<Map<string, number>>(new Map());
-  const glowColor = useMemo(() => new THREE.Color(color), [color]);
+  const enteringC = useMemo(() => new THREE.Color(enteringColor), [enteringColor]);
+  const enteredC = useMemo(() => new THREE.Color(enteredColor), [enteredColor]);
+  const exitingC = useMemo(() => new THREE.Color(exitingColor), [exitingColor]);
 
   const register = useCallback(
     (id: string, entry: DiscRegistration | null) => {
@@ -107,64 +153,56 @@ export function ProximityGlow({
     [],
   );
 
-  // Scratch vectors reused per-frame to avoid allocation churn.
-  const tmpA = useMemo(() => new THREE.Vector3(), []);
-  const tmpB = useMemo(() => new THREE.Vector3(), []);
-  const renderedPositions = useRef<Map<string, THREE.Vector3>>(new Map());
+  const tmpVec = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((state, dt) => {
     const t = state.clock.getElapsedTime();
     const now = performance.now();
     const pulse = 0.5 + 0.5 * Math.sin(t * pulseSpeed * Math.PI * 2);
     const players = store.getState().players;
-    const entries = Object.entries(players);
-    const outer2 = outerRadius * outerRadius;
-    const inner2 = innerRadius * innerRadius;
 
-    // First pass: compute extrapolated positions so they match what Players
-    // is actually rendering. Otherwise the disc lags behind a remote avatar.
-    renderedPositions.current.clear();
-    for (const [id, p] of entries) {
-      const v = new THREE.Vector3();
-      extrapolatePos(p, now, v);
-      renderedPositions.current.set(id, v);
+    // Self's strongest current pair state.
+    let selfState: PairState | null = null;
+    for (const s of pairStates.current.values()) {
+      if (s === 'entered') {
+        selfState = 'entered';
+        break;
+      }
+      if (s === 'exiting' && selfState !== 'entering') {
+        selfState = 'exiting';
+      } else if (s === 'entering' && selfState === null) {
+        selfState = 'entering';
+      }
     }
 
-    for (const [id, p] of entries) {
-      const myPos = renderedPositions.current.get(id) ?? tmpA;
-      // Two-tier sensor:
-      //   inProximity (within innerRadius) → glow is constant at full intensity
-      //   approaching  (within outerRadius)  → glow pulses
-      //   else                               → no glow
-      let inProximity = false;
-      let approaching = false;
-      for (const [otherId] of entries) {
-        if (otherId === id) continue;
-        const otherPos = renderedPositions.current.get(otherId) ?? tmpB;
-        const ddx = myPos.x - otherPos.x;
-        const ddz = myPos.z - otherPos.z;
-        const d2 = ddx * ddx + ddz * ddz;
-        if (d2 <= inner2) {
-          inProximity = true;
-          break;
-        }
-        if (d2 <= outer2) approaching = true;
-      }
+    for (const [id, p] of Object.entries(players)) {
+      const reg = registry.current.get(id);
+      if (!reg) continue;
 
-      const target = inProximity
-        ? intensity
-        : approaching
-          ? intensity * pulse
-          : 0;
+      // Position the disc under the player's rendered (extrapolated) pos.
+      const renderPos = extrapolatePos(p, now, tmpVec);
+      reg.mesh.position.set(renderPos.x, p.pos.y + 0.02, renderPos.z);
+
+      // Decide this disc's state.
+      const discState: PairState | null =
+        id === selfId ? selfState : (pairStates.current.get(id) ?? null);
+
+      const isSteady = discState === 'entered';
+      const isPulsing = discState === 'entering' || discState === 'exiting';
+      const target =
+        isSteady ? intensity : isPulsing ? intensity * pulse : 0;
       const prev = currentI.current.get(id) ?? 0;
       const next = prev + (target - prev) * Math.min(1, 6 * dt);
       currentI.current.set(id, next);
-
-      const reg = registry.current.get(id);
-      if (!reg) continue;
-      reg.mesh.position.set(myPos.x, p.pos.y + 0.02, myPos.z);
       reg.material.opacity = next;
-      reg.material.color.copy(glowColor);
+
+      const targetColor =
+        discState === 'entered'
+          ? enteredC
+          : discState === 'exiting'
+            ? exitingC
+            : enteringC;
+      reg.material.color.copy(targetColor);
     }
   });
 
@@ -204,9 +242,6 @@ function GlowDisc({ id, radius, register }: GlowDiscProps) {
       ref={meshRef}
       rotation={[-Math.PI / 2, 0, 0]}
       renderOrder={2}
-      // The disc sits just above the floor; depth-test stays on so the
-      // character's body occludes its own glow if you crouch into it,
-      // but we don't write depth so additive overlap is clean.
     >
       <circleGeometry args={[radius, 64]} />
       <meshBasicMaterial

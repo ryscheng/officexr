@@ -11,7 +11,7 @@ import type {
   SyncEngine,
   SnapshotHandshake,
 } from '@officexr/sdk';
-import type { BotDriver } from '../bot/BotDriver.ts';
+import type { BotPool } from '../bot/BotPool.ts';
 import { Floor } from './Floor.tsx';
 import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
@@ -35,39 +35,55 @@ interface SceneProps {
   bus: Bus;
   sync: SyncEngine;
   handshake: SnapshotHandshake;
-  bot: BotDriver;
+  bots: BotPool;
   selfId: string;
   cameraMode: CameraMode;
 }
 
 export function Scene(props: SceneProps) {
-  const { store, actions, selfId, cameraMode, bot } = props;
+  const { store, actions, selfId, cameraMode, bots } = props;
 
   useLevaPersistence();
 
-  // Bot mode buttons — replaces the standalone BotControlPanel.
-  useControls('Bot', {
-    Stay: button(() => bot.setMode('idle')),
-    'Walk to me': button(() => bot.setMode('walk-to-local')),
-    'Walk away': button(() => bot.setMode('walk-away')),
+  // Bot pool — `count` slider grows / shrinks the live BotPool; mode
+  // buttons fan out to every bot (and become the default for newly-spawned
+  // bots until another mode is chosen).
+  const botCfg = useControls('Bot', {
+    count: {
+      value: 1,
+      min: 0,
+      max: 10,
+      step: 1,
+      label: 'count',
+    },
+    Stay: button(() => bots.setMode('idle')),
+    'Walk to me': button(() => bots.setMode('walk-to-local')),
+    'Walk away': button(() => bots.setMode('walk-away')),
+    Wander: button(() => bots.setMode('wander')),
+    Patrol: button(() => bots.setMode('patrol')),
+    Orbit: button(() => bots.setMode('orbit')),
   });
+
+  useEffect(() => {
+    void bots.setCount(botCfg.count);
+  }, [bots, botCfg.count]);
 
   // Animation playback speed knobs. timeScale=1 plays the clip at its
   // authored speed; <1 slows down, >1 speeds up.
   const proximity = useControls('Proximity', {
-    outerRadius: {
-      value: 6,
-      min: 1,
-      max: 20,
-      step: 0.1,
-      label: 'outer radius (m)',
-    },
-    innerRadius: {
+    sensorRadius: {
       value: 3,
       min: 0.5,
       max: 20,
       step: 0.1,
       label: 'inner radius (m)',
+    },
+    outerRadius: {
+      value: 6,
+      min: 1,
+      max: 30,
+      step: 0.1,
+      label: 'outer radius (m)',
     },
     discRadius: {
       value: 1.6,
@@ -84,12 +100,21 @@ export function Scene(props: SceneProps) {
       label: 'pulse (Hz)',
     },
     intensity: { value: 1.0, min: 0, max: 3, step: 0.05 },
-    color: '#ffd24a',
+    enteringColor: { value: '#ffd24a', label: 'entering colour' },
+    enteredColor: { value: '#7be67b', label: 'entered colour' },
+    exitingColor: { value: '#ff8c42', label: 'exiting colour' },
   });
 
   const animation = useControls('Animation', {
     idleSpeed: { value: 1, min: 0.1, max: 3, step: 0.05 },
     walkSpeed: { value: 1, min: 0.1, max: 10, step: 0.05 },
+    runSpeed: {
+      value: 1,
+      min: 0.1,
+      max: 10,
+      step: 0.05,
+      label: 'run anim speed',
+    },
     turnSpeed: {
       value: 16,
       min: 1,
@@ -104,6 +129,13 @@ export function Scene(props: SceneProps) {
       step: 0.1,
       label: 'walk speed (m/s)',
     },
+    runMultiplier: {
+      value: 2,
+      min: 1,
+      max: 6,
+      step: 0.1,
+      label: 'run × walk',
+    },
     movementBlockThreshold: {
       value: 0.9,
       min: 0,
@@ -113,23 +145,34 @@ export function Scene(props: SceneProps) {
     },
   });
 
-  // Mirror the Animation panel into world state so peers (e.g. the bot)
-  // observe the same movement & animation parameters via their own stores.
+  // Mirror the Animation + Proximity panels into world state so peers
+  // (e.g. the bot) observe the same movement, animation, and proximity
+  // parameters via their own stores. Both proximity radii are broadcast —
+  // the inner cylinder fires entered/exiting (steady glow + voice ON);
+  // the outer cylinder fires entering/exited (pulsing glow + voice OFF).
   useEffect(() => {
     actions.setWorldSettings({
       playerSpeed: animation.playerSpeed,
+      runSpeedMultiplier: animation.runMultiplier,
       walkAnimSpeed: animation.walkSpeed,
+      runAnimSpeed: animation.runSpeed,
       idleAnimSpeed: animation.idleSpeed,
       turnSpeed: animation.turnSpeed,
       movementBlockThreshold: animation.movementBlockThreshold,
+      proximityRadius: proximity.sensorRadius,
+      proximityOuterRadius: proximity.outerRadius,
     });
   }, [
     actions,
     animation.playerSpeed,
+    animation.runMultiplier,
     animation.walkSpeed,
+    animation.runSpeed,
     animation.idleSpeed,
     animation.turnSpeed,
     animation.movementBlockThreshold,
+    proximity.sensorRadius,
+    proximity.outerRadius,
   ]);
 
   // Leva debug panel — fixed camera + world tweakables.
@@ -269,12 +312,14 @@ export function Scene(props: SceneProps) {
 
         <ProximityGlow
           store={store}
-          outerRadius={proximity.outerRadius}
-          innerRadius={proximity.innerRadius}
+          bus={props.bus}
+          selfId={selfId}
           discRadius={proximity.discRadius}
           pulseSpeed={proximity.pulseSpeed}
           intensity={proximity.intensity}
-          color={proximity.color}
+          enteringColor={proximity.enteringColor}
+          enteredColor={proximity.enteredColor}
+          exitingColor={proximity.exitingColor}
         />
 
         <CameraRig
@@ -292,7 +337,7 @@ export function Scene(props: SceneProps) {
           bus={props.bus}
           sync={props.sync}
           handshake={props.handshake}
-          bot={props.bot}
+          bots={props.bots}
           selfId={props.selfId}
           cameraMode={cameraMode}
           fixedAzimuthDeg={fixed.azimuthDeg}

@@ -9,7 +9,7 @@ import type {
   Bus,
 } from '@officexr/sdk';
 import { getCollisionWorld, resolveMovement } from '@officexr/sdk';
-import type { BotDriver } from '../bot/BotDriver.ts';
+import type { BotPool } from '../bot/BotPool.ts';
 import type { CameraMode } from './config.ts';
 
 interface SceneFrameProps {
@@ -19,7 +19,7 @@ interface SceneFrameProps {
   bus: Bus;
   sync: SyncEngine;
   handshake: SnapshotHandshake;
-  bot: BotDriver;
+  bots: BotPool;
   cameraMode: CameraMode;
   fixedAzimuthDeg: number;
   /** Manual fine-tune for fixed-mode WASD direction (degrees). Added to the
@@ -48,7 +48,7 @@ export function SceneFrame({
   bus,
   sync,
   handshake,
-  bot,
+  bots,
   cameraMode,
   fixedAzimuthDeg,
   fixedMovementYawOffsetDeg,
@@ -132,8 +132,16 @@ export function SceneFrame({
     const self = stateSnapshot.players[selfId];
     // Speed and collision params live in world state — read them each frame
     // so settings changes from any peer take effect immediately.
-    const { playerSpeed, charRadius, movementBlockThreshold } =
-      stateSnapshot.worldSettings;
+    const {
+      playerSpeed: baseSpeed,
+      runSpeedMultiplier,
+      charRadius,
+      movementBlockThreshold,
+    } = stateSnapshot.worldSettings;
+    // Hold Shift to run. The keydown handler adds e.key.toLowerCase(), so
+    // both Left/Right Shift end up as the same 'shift' entry.
+    const isRunning = keys.has('shift');
+    const playerSpeed = isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed;
     const collisionWorld = getCollisionWorld(stateSnapshot.worldMap);
     if (self) {
       const fwd =
@@ -240,10 +248,10 @@ export function SceneFrame({
     }
 
     actions.tick(now);
-    // bot.tick is invoked BEFORE rules.tick so the rule pass sees the latest
-    // positions from both sides — rising-edge bump detection (collisionBumpRule)
-    // requires both participants' moves to be settled into the store.
-    bot.tick(dt);
+    // bots tick BEFORE rules.tick so the rule pass sees the latest positions
+    // from every active bot — the bump rule's rising-edge detection needs
+    // every participant's move settled into the store first.
+    bots.tick(dt);
     const current = store.getState();
     rules.tick(current, prevState.current, bus);
     prevState.current = store.getState();

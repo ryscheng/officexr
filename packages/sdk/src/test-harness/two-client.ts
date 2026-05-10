@@ -2,7 +2,10 @@ import { createStore, type Store } from '../game-state/store.ts';
 import { createActions, type Actions } from '../game-state/actions.ts';
 import { createBus, type Bus } from '../game-state/bus.ts';
 import { createRuleRegistry, type RuleRegistry } from '../game-state/rules.ts';
-import { proximityRule } from '../game-state/rules/proximity.ts';
+import {
+  proximityInnerRule,
+  proximityOuterRule,
+} from '../game-state/rules/proximity.ts';
 import { attachProximityReducer } from '../game-state/reducers/proximity.ts';
 import { SyncEngine } from '../realtime/sync.ts';
 import {
@@ -78,7 +81,8 @@ export function createMultiClientHarness(opts?: {
     }
     const channel = new InMemoryChannel(hub, id);
     const rules = createRuleRegistry();
-    rules.addRule(proximityRule);
+    rules.addRule(proximityOuterRule);
+    rules.addRule(proximityInnerRule);
     const detachProximity = attachProximityReducer(store, bus);
     const sync = new SyncEngine({ store, actions, bus, channel, clock });
     lastTickState.set(id, store.getState());

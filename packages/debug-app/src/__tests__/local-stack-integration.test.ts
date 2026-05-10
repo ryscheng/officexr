@@ -5,7 +5,8 @@ import {
   createBus,
   createRuleRegistry,
   attachProximityReducer,
-  proximityRule,
+  proximityInnerRule,
+  proximityOuterRule,
   BUBBLE_RADIUS,
   serializeOfficeState,
   SyncEngine,
@@ -51,7 +52,8 @@ describe('local-stack integration', () => {
     });
 
     localRules = createRuleRegistry();
-    localRules.addRule(proximityRule);
+    localRules.addRule(proximityOuterRule);
+    localRules.addRule(proximityInnerRule);
     attachProximityReducer(localStore, localBus);
 
     const { channel, voiceAdapter } = createStack({
@@ -220,7 +222,10 @@ describe('local-stack integration', () => {
       const dist = Math.sqrt(
         (botPos.x - localPos.x) ** 2 + (botPos.z - localPos.z) ** 2
       );
-      if (dist > BUBBLE_RADIUS) break;
+      // `proximity:exited` (which drives Communication's room leave) only
+      // fires once the body fully clears the OUTER sensor (default 6 m) +
+      // body radius + slack. Run until the bot is comfortably past that.
+      if (dist > 7) break;
     }
 
     // Let communication leave room

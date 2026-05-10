@@ -15,14 +15,17 @@ for (const c of CHARACTERS) {
 
 interface AdventurerProps {
   character: CharacterName;
-  /** True when the player is moving — switches to walk animation. */
-  walking: boolean;
+  /** Which clip to loop. 'idle' = Idle_A, 'walking' = Walking_C, 'running'
+   * = Running_A. The Adventurer cross-fades between them. */
+  motion: 'idle' | 'walking' | 'running';
   /** If true, hide the body so first-person view doesn't see itself. */
   invisible?: boolean;
   /** Time-scale multiplier for the idle clip (1 = authored speed). */
   idleSpeed?: number;
   /** Time-scale multiplier for the walking clip. */
   walkSpeed?: number;
+  /** Time-scale multiplier for the run clip. */
+  runSpeed?: number;
   /** Monotonic counter — every increment plays the Hit_A reaction clip
    * once, blended over the current idle/walk loop. */
   bumpCounter?: number;
@@ -30,9 +33,20 @@ interface AdventurerProps {
 
 const IDLE_CLIP = 'Idle_A';
 const WALK_CLIP = 'Walking_C';
+const RUN_CLIP = 'Running_A';
 const HIT_CLIP = 'Hit_A';
 /** Faster than authored so the bump reads as a quick recoil, not a flinch. */
 const HIT_TIME_SCALE = 1.6;
+
+function clipForMotion(
+  motion: AdventurerProps['motion'],
+): typeof IDLE_CLIP | typeof WALK_CLIP | typeof RUN_CLIP {
+  return motion === 'running'
+    ? RUN_CLIP
+    : motion === 'walking'
+      ? WALK_CLIP
+      : IDLE_CLIP;
+}
 
 /**
  * Renders one Adventurer GLB with idle/walk animations applied. The position
@@ -43,10 +57,11 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
   function Adventurer(
     {
       character,
-      walking,
+      motion,
       invisible,
       idleSpeed = 1,
       walkSpeed = 1,
+      runSpeed = 1,
       bumpCounter = 0,
     },
     ref,
@@ -72,22 +87,24 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     const { actions } = useAnimations(clips, innerRef);
 
     useEffect(() => {
-      const target = walking ? actions[WALK_CLIP] : actions[IDLE_CLIP];
+      const target = actions[clipForMotion(motion)];
       if (!target) return;
       target.reset().fadeIn(0.2).play();
       return () => {
         target.fadeOut(0.2);
       };
-    }, [walking, actions]);
+    }, [motion, actions]);
 
     // Apply timeScale to the clips. Done in a separate effect so dragging the
     // Leva slider doesn't restart the animation.
     useEffect(() => {
       const idle = actions[IDLE_CLIP];
       const walk = actions[WALK_CLIP];
+      const run = actions[RUN_CLIP];
       if (idle) idle.timeScale = idleSpeed;
       if (walk) walk.timeScale = walkSpeed;
-    }, [actions, idleSpeed, walkSpeed]);
+      if (run) run.timeScale = runSpeed;
+    }, [actions, idleSpeed, walkSpeed, runSpeed]);
 
     useEffect(() => {
       scene.visible = !invisible;

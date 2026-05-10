@@ -1,38 +1,76 @@
-import type { Rule } from '../rules.ts';
-import { PlayerGrid } from '../../spatial/player-grid.ts';
+import type { EventRule } from '../rules.ts';
+import {
+  CHARACTER_BODY,
+  CHARACTER_PROXIMITY_INNER,
+  CHARACTER_PROXIMITY_OUTER,
+} from '../../collision/materials.ts';
 
+/** Default inner proximity radius. The actual radius lives at
+ * `state.worldSettings.proximityRadius` (broadcast & live-tuned); this
+ * constant matches what `DEFAULT_WORLD_SETTINGS` ships. */
 export const BUBBLE_RADIUS = 3;
 
-export const proximityRule: Rule = (state, prev, bus) => {
-  const self = state.players[state.selfId];
-  if (!self) return;
-
-  const prevSet = prev.proximity[state.selfId] ?? new Set<string>();
-  const nextIds = new Set<string>();
-
-  // Spatial hash sized at the proximity radius so a query touches at most a
-  // 3×3 block of cells — independent of total player count.
-  const grid = PlayerGrid.fromPlayers(state.players, BUBBLE_RADIUS);
-  const r2 = BUBBLE_RADIUS * BUBBLE_RADIUS;
-  grid.forEachInRadius(self.pos.x, self.pos.z, BUBBLE_RADIUS, (id) => {
-    if (id === state.selfId) return;
-    const other = state.players[id];
-    if (!other || other.status === 'inactive') return;
-    const dx = self.pos.x - other.pos.x;
-    const dz = self.pos.z - other.pos.z;
-    if (dx * dx + dz * dz < r2) nextIds.add(id);
-  });
-
-  for (const id of nextIds) {
-    if (prevSet.has(id)) {
-      bus.emit({ kind: 'proximity:entered', otherId: id });
+/**
+ * Two-tier proximity sensor with hysteresis. Each character carries an
+ * inner and an outer cylinder; the four `proximity:*` events map to the
+ * four boundary crossings:
+ *
+ *      outside  ──entering──>  outer band  ──entered──>  inner
+ *                              (pulse)        (steady, voice on)
+ *
+ *      inner    ──exiting───>  outer band  ──exited───>  outside
+ *                              (pulse, voice stays)        (voice off)
+ *
+ * - **OUTER cylinder** crossings produce `entering` / `exited`. They drive
+ *   the visual approach band and the voice-room *leave* (hysteresis: voice
+ *   stays through the inner-OUT crossing and only drops when the body
+ *   fully clears the outer band).
+ * - **INNER cylinder** crossings produce `entered` / `exiting`. `entered`
+ *   joins the voice room; `exiting` is currently a visual-only "still
+ *   talking, drifted out of the tight zone" signal.
+ */
+export const proximityOuterRule: EventRule = {
+  kind: 'event',
+  pair: [CHARACTER_BODY, CHARACTER_PROXIMITY_OUTER],
+  on: ['collision:entered', 'collision:exited'],
+  fn: (event, state, bus) => {
+    const sensor =
+      event.a.material === CHARACTER_PROXIMITY_OUTER ? event.a : event.b;
+    const body = event.a.material === CHARACTER_BODY ? event.a : event.b;
+    if (sensor.ownerId !== state.selfId) return;
+    if (!body.ownerId || body.ownerId === state.selfId) return;
+    if (event.kind === 'collision:entered') {
+      bus.emit({ kind: 'proximity:entering', otherId: body.ownerId });
     } else {
-      bus.emit({ kind: 'proximity:entering', otherId: id });
+      bus.emit({ kind: 'proximity:exited', otherId: body.ownerId });
     }
-  }
-  for (const id of prevSet) {
-    if (!nextIds.has(id)) {
-      bus.emit({ kind: 'proximity:exiting', otherId: id });
-    }
-  }
+  },
 };
+
+export const proximityInnerRule: EventRule = {
+  kind: 'event',
+  pair: [CHARACTER_BODY, CHARACTER_PROXIMITY_INNER],
+  on: ['collision:entered', 'collision:exited'],
+  fn: (event, state, bus) => {
+    const sensor =
+      event.a.material === CHARACTER_PROXIMITY_INNER ? event.a : event.b;
+    const body = event.a.material === CHARACTER_BODY ? event.a : event.b;
+    if (sensor.ownerId !== state.selfId) return;
+    if (!body.ownerId || body.ownerId === state.selfId) return;
+    if (event.kind === 'collision:entered') {
+      bus.emit({ kind: 'proximity:entered', otherId: body.ownerId });
+    } else {
+      bus.emit({ kind: 'proximity:exiting', otherId: body.ownerId });
+    }
+  },
+};
+
+/** Convenience tuple — apps that want both bound at once just spread this. */
+export const proximityRules: readonly EventRule[] = [
+  proximityOuterRule,
+  proximityInnerRule,
+];
+
+/** @deprecated kept for one release as an alias of `proximityOuterRule`
+ *  while existing call sites migrate to the named pair above. */
+export const proximityRule = proximityOuterRule;

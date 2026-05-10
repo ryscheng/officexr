@@ -11,7 +11,6 @@ import {
   InMemoryChannel,
 } from '@officexr/sdk';
 import type { Vec3 } from '@officexr/sdk';
-import { FakeClock } from '@officexr/sdk/test-harness';
 import type { Clock } from '@officexr/sdk/test-harness';
 
 export interface BotDriverOptions {
@@ -21,9 +20,43 @@ export interface BotDriverOptions {
   speed?: number;
   startPos?: Vec3;
   clock?: Clock;
+  /** Initial traversal mode. Defaults to 'idle'. */
+  mode?: BotMode;
 }
 
-type BotMode = 'idle' | 'walk-to-local' | 'walk-away';
+export type BotMode =
+  | 'idle'
+  | 'walk-to-local'
+  | 'walk-away'
+  /** Random walk: pick a unit direction, hold for ~1–3 s, repeat. Pivots
+   * early on a hard block so wandering bots don't grind against walls. */
+  | 'wander'
+  /** Patrol four corners of an inset square in a fixed loop. */
+  | 'patrol'
+  /** Orbit the local player at a fixed radius. */
+  | 'orbit';
+
+const ALL_MODES: readonly BotMode[] = [
+  'idle',
+  'walk-to-local',
+  'walk-away',
+  'wander',
+  'patrol',
+  'orbit',
+];
+
+interface ModeState {
+  /** Current direction the wander mode is heading (unit vector). */
+  wanderDir: { x: number; z: number };
+  /** Wall-clock time at which wander picks a new direction. */
+  wanderUntilMs: number;
+  /** Index into the patrol waypoint loop. */
+  patrolIdx: number;
+  /** Cached waypoints (computed lazily from world map size). */
+  patrolWaypoints: Array<{ x: number; z: number }> | null;
+  /** Current angle around the local player for orbit mode (radians). */
+  orbitAngle: number;
+}
 
 export class BotDriver {
   readonly botId: string;
@@ -34,13 +67,17 @@ export class BotDriver {
   private startPos: Vec3;
   private clock: Clock;
 
-  private mode: BotMode = 'idle';
+  private mode: BotMode;
   private stopped = false;
-  /** Tracks the moving → idle transition so we clear `vel` exactly once
-   * when the bot stops. */
   private wasMoving = false;
+  private modeState: ModeState = {
+    wanderDir: { x: 1, z: 0 },
+    wanderUntilMs: 0,
+    patrolIdx: 0,
+    patrolWaypoints: null,
+    orbitAngle: 0,
+  };
 
-  // Bot client internals — set during start()
   private botStore: ReturnType<typeof createStore> | null = null;
   private botActions: ReturnType<typeof createActions> | null = null;
   private botChannel: InMemoryChannel | null = null;
@@ -54,6 +91,7 @@ export class BotDriver {
     this.speed = opts.speed ?? 1.5;
     this.startPos = opts.startPos ?? { x: 10, y: 0, z: 0 };
     this.clock = opts.clock ?? { now: () => performance.now() };
+    this.mode = opts.mode ?? 'idle';
   }
 
   async start(): Promise<void> {
@@ -64,10 +102,9 @@ export class BotDriver {
     const botBus = createBus();
     const botActions = createActions(botStore, botBus);
 
-    // Seed bot player at startPos
     botActions.upsertPlayer({
       id: botId,
-      name: 'Bot',
+      name: this.botId,
       pos: { ...this.startPos },
       vel: { x: 0, y: 0, z: 0 },
       yaw: 0,
@@ -116,12 +153,17 @@ export class BotDriver {
       return;
 
     const botPos = this.getBotPos();
+    const botState = this.botStore!.getState();
+    const { playerSpeed, charRadius, movementBlockThreshold } =
+      botState.worldSettings;
+    const speed = playerSpeed ?? this.speed;
 
-    if (this.mode === 'idle') {
-      // On the moving → idle transition, broadcast a single zero-velocity
-      // update so the local-player renderer and remote peers see the stop.
+    // 1) Decide a unit-length intent direction in XZ from the current mode.
+    //    Idle returns null and we short-circuit to the rest-broadcast branch.
+    const intent = this.computeIntent(botPos, botState, dt);
+    if (!intent) {
       if (this.wasMoving) {
-        const me = this.botStore!.getState().players[this.botId];
+        const me = botState.players[this.botId];
         const yaw = me?.yaw ?? 0;
         this.botActions.setSelfPosition(botPos, { x: 0, y: 0, z: 0 }, yaw);
         this.botSync.flushPosition();
@@ -131,26 +173,10 @@ export class BotDriver {
       return;
     }
 
-    const localPos = this.localPlayerPosGetter();
-    const dx = localPos.x - botPos.x;
-    const dz = localPos.z - botPos.z;
-    const dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist < 0.001) return;
+    const moveDX = intent.x * speed * (dt / 1000);
+    const moveDZ = intent.z * speed * (dt / 1000);
 
-    const dirX = dx / dist;
-    const dirZ = dz / dist;
-    const sign = this.mode === 'walk-to-local' ? 1 : -1;
-    const botState = this.botStore!.getState();
-    const { playerSpeed, charRadius, movementBlockThreshold } =
-      botState.worldSettings;
-    const speed = playerSpeed ?? this.speed;
-    const moveDX = dirX * speed * sign * (dt / 1000);
-    const moveDZ = dirZ * speed * sign * (dt / 1000);
-
-    // Other characters come from the bot's own store — the SDK upserts
-    // peers via applyRemotePosition the moment their first presence:position
-    // arrives, so the local player materialises here without any
-    // debug-side workaround.
+    // 2) Run the same collision/bounds resolver the local player uses.
     const others: Array<{ id: string; pos: Vec3; radius: number }> = [];
     for (const [id, p] of Object.entries(botState.players)) {
       if (id === this.botId) continue;
@@ -169,20 +195,22 @@ export class BotDriver {
       others,
     });
 
-    // Progress along the intent vector. Same gating as SceneFrame: snap to
-    // zero when blocked beyond threshold so the bot doesn't slide while its
-    // walk anim has already settled to idle; otherwise scale vel by progress.
-    const intentDX = intentTo.x - botPos.x;
-    const intentDZ = intentTo.z - botPos.z;
-    const intentLenSq = intentDX * intentDX + intentDZ * intentDZ;
+    // 3) Progress gating + write state, identical to SceneFrame's local path.
+    const intentLenSq = moveDX * moveDX + moveDZ * moveDZ;
     let progress = 1;
     if (intentLenSq > 1e-12) {
       const actualDX = result.pos.x - botPos.x;
       const actualDZ = result.pos.z - botPos.z;
-      const dot = actualDX * intentDX + actualDZ * intentDZ;
+      const dot = actualDX * moveDX + actualDZ * moveDZ;
       progress = Math.max(0, Math.min(1, dot / intentLenSq));
     }
     const minProgress = 1 - movementBlockThreshold;
+
+    // Wander pivots early when it hits a wall — otherwise it would lock
+    // its current direction against an obstacle for the full hold window.
+    if (this.mode === 'wander' && progress < minProgress) {
+      this.pickWanderDirection(0);
+    }
 
     let newPos: Vec3;
     let vel: Vec3;
@@ -195,15 +223,13 @@ export class BotDriver {
       yaw = botState.players[this.botId]?.yaw ?? 0;
     } else {
       newPos = result.pos;
-      // Walk-direction unit vector × speed × progress. The renderer reads
-      // |vel| to decide idle/walk and to scale the walk-animation rate.
       vel = {
-        x: dirX * sign * speed * progress,
+        x: intent.x * speed * progress,
         y: 0,
-        z: dirZ * sign * speed * progress,
+        z: intent.z * speed * progress,
       };
       moved = true;
-      yaw = Math.atan2(-dirX * sign, -dirZ * sign);
+      yaw = Math.atan2(-intent.x, -intent.z);
     }
     this.botActions.setSelfPosition(newPos, vel, yaw);
     this.botSync.flushPosition();
@@ -212,7 +238,21 @@ export class BotDriver {
   }
 
   setMode(mode: BotMode): void {
+    if (mode === this.mode) return;
     this.mode = mode;
+    // Reset per-mode timers so the new mode picks up immediately.
+    if (mode === 'wander') this.pickWanderDirection(0);
+    if (mode === 'patrol') this.modeState.patrolWaypoints = null;
+    if (mode === 'orbit') {
+      // Seed orbit angle from the current bot→local heading so we don't
+      // teleport along the orbit circle on mode entry.
+      const local = this.localPlayerPosGetter();
+      const botPos = this.getBotPos();
+      this.modeState.orbitAngle = Math.atan2(
+        botPos.z - local.z,
+        botPos.x - local.x,
+      );
+    }
   }
 
   getBotPos(): Vec3 {
@@ -221,4 +261,111 @@ export class BotDriver {
     const player = state.players[this.botId];
     return player?.pos ?? { ...this.startPos };
   }
+
+  // --- Mode strategies --------------------------------------------------
+  //
+  // Each one returns a unit-length intent vector in XZ — or null to mean
+  // "no movement, settle to idle". Modes never write state directly; the
+  // common resolver+broadcast block at the bottom of tick() does that.
+
+  private computeIntent(
+    botPos: Vec3,
+    state: ReturnType<NonNullable<typeof this.botStore>['getState']>,
+    _dt: number,
+  ): { x: number; z: number } | null {
+    switch (this.mode) {
+      case 'idle':
+        return null;
+      case 'walk-to-local':
+      case 'walk-away':
+        return this.intentTowardLocal(
+          botPos,
+          this.mode === 'walk-to-local' ? 1 : -1,
+        );
+      case 'wander':
+        return this.intentWander();
+      case 'patrol':
+        return this.intentPatrol(botPos, state);
+      case 'orbit':
+        return this.intentOrbit(botPos);
+      default:
+        return null;
+    }
+  }
+
+  private intentTowardLocal(
+    botPos: Vec3,
+    sign: 1 | -1,
+  ): { x: number; z: number } | null {
+    const local = this.localPlayerPosGetter();
+    const dx = local.x - botPos.x;
+    const dz = local.z - botPos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 1e-3) return null;
+    return { x: (dx / dist) * sign, z: (dz / dist) * sign };
+  }
+
+  private intentWander(): { x: number; z: number } {
+    if (this.clock.now() >= this.modeState.wanderUntilMs) {
+      this.pickWanderDirection(0);
+    }
+    return this.modeState.wanderDir;
+  }
+
+  /** Pick a fresh random wander direction and a hold window. `bias` rotates
+   * away from the current direction so a re-pick after a wall hit doesn't
+   * pick the same direction. */
+  private pickWanderDirection(bias: number): void {
+    const angle = Math.random() * Math.PI * 2 + bias;
+    this.modeState.wanderDir = { x: Math.cos(angle), z: Math.sin(angle) };
+    // 1.0–3.0 s hold window before the next direction change.
+    this.modeState.wanderUntilMs = this.clock.now() + 1000 + Math.random() * 2000;
+  }
+
+  private intentPatrol(
+    botPos: Vec3,
+    state: ReturnType<NonNullable<typeof this.botStore>['getState']>,
+  ): { x: number; z: number } | null {
+    if (!this.modeState.patrolWaypoints) {
+      // Inset square from the map's half-extent. Bot loops these.
+      const half = (state.worldMap.gridSize * state.worldMap.cubeSize) / 2;
+      const inset = Math.max(2, half * 0.6);
+      this.modeState.patrolWaypoints = [
+        { x: +inset, z: +inset },
+        { x: +inset, z: -inset },
+        { x: -inset, z: -inset },
+        { x: -inset, z: +inset },
+      ];
+      this.modeState.patrolIdx = 0;
+    }
+    const waypoints = this.modeState.patrolWaypoints!;
+    const target = waypoints[this.modeState.patrolIdx]!;
+    const dx = target.x - botPos.x;
+    const dz = target.z - botPos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.6) {
+      this.modeState.patrolIdx =
+        (this.modeState.patrolIdx + 1) % waypoints.length;
+      return this.intentPatrol(botPos, state); // tail-call to next leg
+    }
+    return { x: dx / dist, z: dz / dist };
+  }
+
+  /** Walk along the tangent of a circle around the local player. The
+   * circle's radius is the current bot↔local distance, so the bot doesn't
+   * snap to a fixed orbit radius — it just keeps that distance and circles. */
+  private intentOrbit(botPos: Vec3): { x: number; z: number } {
+    const local = this.localPlayerPosGetter();
+    const dx = botPos.x - local.x;
+    const dz = botPos.z - local.z;
+    const r = Math.hypot(dx, dz);
+    if (r < 1e-3) {
+      // On top of the player — kick out in +X.
+      return { x: 1, z: 0 };
+    }
+    // Tangent direction (90° CCW from the radius vector, normalised).
+    return { x: -dz / r, z: dx / r };
+  }
 }
+
+export const BOT_MODES = ALL_MODES;

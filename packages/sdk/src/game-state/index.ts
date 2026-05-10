@@ -4,6 +4,12 @@ export * from './store.ts';
 export * from './actions.ts';
 export * from './rules.ts';
 export * from './snapshot.ts';
-export { proximityRule, BUBBLE_RADIUS } from './rules/proximity.ts';
+export {
+  proximityRule,
+  proximityInnerRule,
+  proximityOuterRule,
+  proximityRules,
+  BUBBLE_RADIUS,
+} from './rules/proximity.ts';
 export { collisionBumpRule } from './rules/collision-bump.ts';
 export { attachProximityReducer } from './reducers/proximity.ts';

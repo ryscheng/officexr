@@ -81,7 +81,11 @@ describe('SyncEngine outbound — presence:position', () => {
       0,
     );
     ctx.sync.flushPosition();
-    const pkts = ctx.sent.filter((e) => e.kind === 'presence:position');
+    // Skip the initial spawn announcement (broadcast on start) — we're
+    // measuring movement-driven packets here.
+    const pkts = ctx.sent
+      .filter((e) => e.kind === 'presence:position')
+      .slice(1);
     expect(pkts).toHaveLength(1);
   });
 

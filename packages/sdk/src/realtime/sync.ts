@@ -156,7 +156,9 @@ export class SyncEngine {
         vel: { ...ZERO_V },
         yaw: me.yaw,
       });
-      this.lastSentTMs = this.clock.now();
+      // Leave lastSentTMs at -Infinity so the next real movement isn't
+      // rate-capped by `aboveCeiling`. The throttle protects against burst
+      // *user* moves, not the one-time spawn announcement.
     }
     this.offStore = this.store.subscribeAll((next, prev) => this.onStoreChange(next, prev));
     this.offChannel = this.channel.on((event) => this.onInbound(event));

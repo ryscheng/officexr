@@ -100,14 +100,29 @@ export type BubblePrefs = {
 export type WorldSettings = {
   /** Character walking speed in world units per second. */
   playerSpeed: number;
+  /** Run speed = playerSpeed × runSpeedMultiplier. Used when the local
+   * player holds Shift while moving; can be tuned live via Leva. */
+  runSpeedMultiplier: number;
   /** AnimationAction.timeScale for the walk clip (1 = authored). */
   walkAnimSpeed: number;
+  /** AnimationAction.timeScale for the run clip. */
+  runAnimSpeed: number;
   /** AnimationAction.timeScale for the idle clip. */
   idleAnimSpeed: number;
   /** Maximum angular velocity for the smooth-turn animation, in rad/s. */
   turnSpeed: number;
   /** Collision radius of every character in world units. */
   charRadius: number;
+  /** Inner proximity sensor radius — the "actually in speaking range"
+   * boundary. Crossing INWARD fires `proximity:entered` (voice joins);
+   * crossing OUTWARD fires `proximity:exiting` (voice stays — hysteresis
+   * to {@link proximityOuterRadius}). */
+  proximityRadius: number;
+  /** Outer proximity sensor radius — the "approaching" boundary. Must be
+   * ≥ proximityRadius. Crossing INWARD fires `proximity:entering` (visual
+   * glow appears); crossing OUTWARD fires `proximity:exited` (voice
+   * leaves, glow gone). */
+  proximityOuterRadius: number;
   /** Visual bump-back duration when two characters collide, in ms. */
   bumpEasingMs: number;
   /**
@@ -121,10 +136,14 @@ export type WorldSettings = {
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   playerSpeed: 3,
+  runSpeedMultiplier: 2,
   walkAnimSpeed: 1,
+  runAnimSpeed: 1,
   idleAnimSpeed: 1,
   turnSpeed: 16,
   charRadius: 0.4,
+  proximityRadius: 3,
+  proximityOuterRadius: 6,
   bumpEasingMs: 180,
   movementBlockThreshold: 0.9,
 };

@@ -21,6 +21,10 @@ interface BumpState {
   normal: { x: number; z: number };
 }
 
+/** What animation tier a character is currently in. Derived per-frame from
+ * |player.vel| against the broadcast walk and run speeds. */
+type MotionState = 'idle' | 'walking' | 'running';
+
 /** Offset added to player.yaw when rotating the avatar — adjust if the GLB's
  * default facing differs from -Z. KayKit Adventurers point at +Z by default. */
 const AVATAR_YAW_OFFSET = Math.PI;
@@ -95,8 +99,15 @@ export function Players({
       (next) => setWorldSettings(next),
     );
   }, [store]);
-  const { idleAnimSpeed, walkAnimSpeed, turnSpeed, playerSpeed } =
-    worldSettings;
+  const {
+    idleAnimSpeed,
+    walkAnimSpeed,
+    runAnimSpeed,
+    turnSpeed,
+    playerSpeed,
+    runSpeedMultiplier,
+  } = worldSettings;
+  const runSpeed = playerSpeed * runSpeedMultiplier;
   const initialState = useMemo(() => store.getState(), [store]);
   const [players, setPlayers] = useState<PlayerEntry[]>(() =>
     Object.keys(initialState.players).map((id) => ({
@@ -129,10 +140,13 @@ export function Players({
   }, [store]);
 
   const groupRefs = useRef<Map<string, THREE.Group>>(new Map());
-  const walkingState = useRef<Map<string, boolean>>(new Map());
+  // Per-player motion state: 'idle' | 'walking' | 'running'. Mutually
+  // exclusive — running implies fast enough that we should swap to the
+  // run clip; walking means moving but below the run threshold.
+  const motionState = useRef<Map<string, MotionState>>(new Map());
   const currentYaw = useRef<Map<string, number>>(new Map());
-  const [walkingByPlayer, setWalkingByPlayer] = useState<
-    Record<string, boolean>
+  const [motionByPlayer, setMotionByPlayer] = useState<
+    Record<string, MotionState>
   >({});
   // animScale is |vel|/playerSpeed quantised to 0.1 so the Adventurer's
   // walk timeScale prop only re-renders ~10 times across full→stopped, not
@@ -169,10 +183,16 @@ export function Players({
   useFrame((_, dt) => {
     const state = store.getState();
     const now = performance.now();
-    let walkingChanged = false;
-    const nextWalking: Record<string, boolean> = {};
+    let motionChanged = false;
+    const nextMotion: Record<string, MotionState> = {};
     let animScaleChanged = false;
     const nextAnimScales: Record<string, number> = {};
+    // Threshold separating walk-tier from run-tier velocity: midpoint of
+    // playerSpeed and runSpeed. A character partially-blocked while running
+    // (e.g. 50% progress at 6 m/s = 3 m/s) drops back into walk tier — that
+    // matches the actual ground speed and looks right.
+    const runThreshold = (playerSpeed + runSpeed) / 2;
+    const runThresholdSq = runThreshold * runThreshold;
 
     for (const [id, player] of Object.entries(state.players)) {
       const grp = groupRefs.current.get(id);
@@ -224,19 +244,25 @@ export function Players({
       // means animation works the same way for everyone.
       const v = player.vel;
       const speedSq = v.x * v.x + v.z * v.z;
-      const isWalking = speedSq > WALK_THRESHOLD * WALK_THRESHOLD;
-      nextWalking[id] = isWalking;
-      if (walkingState.current.get(id) !== isWalking) {
-        walkingState.current.set(id, isWalking);
-        walkingChanged = true;
+      const motion: MotionState =
+        speedSq <= WALK_THRESHOLD * WALK_THRESHOLD
+          ? 'idle'
+          : speedSq >= runThresholdSq
+            ? 'running'
+            : 'walking';
+      nextMotion[id] = motion;
+      if (motionState.current.get(id) !== motion) {
+        motionState.current.set(id, motion);
+        motionChanged = true;
       }
 
-      // Walk-anim rate scales with actual speed: a partially-blocked
-      // character at 30% progress has |vel| = 30% of playerSpeed, so the
-      // walk clip plays at 30% time-scale and footsteps stay aligned.
-      // Quantise to 0.1 to bound prop-driven re-renders.
+      // Anim-rate scales with actual speed in the current tier so the
+      // footsteps stay aligned with the ground. Walk tier divides by
+      // playerSpeed; run tier divides by runSpeed. Quantise to 0.1 to bound
+      // prop-driven re-renders.
       const speed = Math.sqrt(speedSq);
-      const ratio = playerSpeed > 0 ? speed / playerSpeed : 0;
+      const denom = motion === 'running' ? runSpeed : playerSpeed;
+      const ratio = denom > 0 ? speed / denom : 0;
       const quantised = Math.round(Math.max(0, Math.min(1, ratio)) * 10) / 10;
       if (animScaleQuant.current.get(id) !== quantised) {
         animScaleQuant.current.set(id, quantised);
@@ -249,7 +275,7 @@ export function Players({
       }
     }
 
-    if (walkingChanged) setWalkingByPlayer(nextWalking);
+    if (motionChanged) setMotionByPlayer(nextMotion);
     if (animScaleChanged) setAnimScaleByPlayer(nextAnimScales);
   });
 
@@ -263,10 +289,11 @@ export function Players({
             else groupRefs.current.delete(p.id);
           }}
           character={p.character}
-          walking={walkingByPlayer[p.id] ?? false}
+          motion={motionByPlayer[p.id] ?? 'idle'}
           invisible={p.id === selfId && cameraMode === 'first-person'}
           idleSpeed={idleAnimSpeed}
           walkSpeed={walkAnimSpeed * (animScaleByPlayer[p.id] ?? 1)}
+          runSpeed={runAnimSpeed * (animScaleByPlayer[p.id] ?? 1)}
           bumpCounter={bumpCounters[p.id] ?? 0}
         />
       ))}

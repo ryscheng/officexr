@@ -4,36 +4,41 @@ import { createStore } from '../../game-state/store.ts';
 import { attachProximityReducer } from '../../game-state/reducers/proximity.ts';
 
 describe('proximity reducer', () => {
-  it('proximity:entering adds otherId to self set', () => {
+  it('proximity:entered adds otherId to self set', () => {
     const store = createStore({ selfId: 'me', officeId: 'r' });
     const bus = createBus();
     attachProximityReducer(store, bus);
-    bus.emit({ kind: 'proximity:entering', otherId: 'other' });
+    bus.emit({ kind: 'proximity:entered', otherId: 'other' });
     expect(store.getState().proximity.me).toBeInstanceOf(Set);
     expect(store.getState().proximity.me.has('other')).toBe(true);
   });
 
-  it('proximity:exiting removes otherId from self set', () => {
+  it('proximity:exited removes otherId from self set', () => {
     const store = createStore({ selfId: 'me', officeId: 'r' });
     const bus = createBus();
     attachProximityReducer(store, bus);
-    bus.emit({ kind: 'proximity:entering', otherId: 'a' });
-    bus.emit({ kind: 'proximity:entering', otherId: 'b' });
-    bus.emit({ kind: 'proximity:exiting', otherId: 'a' });
+    bus.emit({ kind: 'proximity:entered', otherId: 'a' });
+    bus.emit({ kind: 'proximity:entered', otherId: 'b' });
+    bus.emit({ kind: 'proximity:exited', otherId: 'a' });
     const set = store.getState().proximity.me;
     expect(set.has('a')).toBe(false);
     expect(set.has('b')).toBe(true);
   });
 
-  it('emits proximity:exited after the set has been updated', () => {
+  it('hysteresis: entering/exiting do not mutate the proximity set', () => {
+    // The visual approach band is intentionally NOT tracked here — only
+    // entered (inner-IN) and exited (outer-OUT) drive membership.
     const store = createStore({ selfId: 'me', officeId: 'r' });
     const bus = createBus();
     attachProximityReducer(store, bus);
-    const exited: string[] = [];
-    bus.on('proximity:exited', (e) => exited.push(e.otherId));
     bus.emit({ kind: 'proximity:entering', otherId: 'x' });
+    expect(store.getState().proximity.me?.has('x') ?? false).toBe(false);
+    bus.emit({ kind: 'proximity:entered', otherId: 'x' });
+    expect(store.getState().proximity.me.has('x')).toBe(true);
     bus.emit({ kind: 'proximity:exiting', otherId: 'x' });
-    expect(exited).toEqual(['x']);
-    expect(store.getState().proximity.me?.has('x')).toBe(false);
+    // still in voice — wider berth
+    expect(store.getState().proximity.me.has('x')).toBe(true);
+    bus.emit({ kind: 'proximity:exited', otherId: 'x' });
+    expect(store.getState().proximity.me.has('x')).toBe(false);
   });
 });
