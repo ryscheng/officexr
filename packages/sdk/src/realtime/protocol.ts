@@ -4,6 +4,7 @@ import type {
   PlayerId,
   Stroke,
   Vec3,
+  WorldMap,
   WorldSettings,
   ZombieState,
 } from '../game-state/types.ts';
@@ -107,6 +108,23 @@ const ZWorldSettings: z.ZodType<WorldSettings> = z.object({
   walkAnimSpeed: z.number(),
   idleAnimSpeed: z.number(),
   turnSpeed: z.number(),
+  charRadius: z.number(),
+  bumpEasingMs: z.number(),
+  movementBlockThreshold: z.number(),
+});
+
+const ZCubeKind = z.object({ id: z.string(), walkable: z.boolean() });
+const ZWorldMap: z.ZodType<WorldMap> = z.object({
+  gridSize: z.number().int().positive(),
+  cubeSize: z.number().positive(),
+  origin: z.object({ x: z.number(), z: z.number() }),
+  layers: z.array(
+    z.object({
+      kind: z.string(),
+      cells: z.array(z.object({ i: z.number().int(), j: z.number().int() })),
+    }),
+  ),
+  kinds: z.record(z.string(), ZCubeKind),
 });
 
 /**
@@ -127,6 +145,7 @@ const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
   realtime: ZRealtimeState,
   runtime: ZRuntime,
   worldSettings: ZWorldSettings,
+  worldMap: ZWorldMap,
 });
 
 // --- Per-kind payload schemas (without envelope) ---
@@ -139,6 +158,7 @@ const ZShotHit = z.object({ targetId: z.string(), dmg: z.number() });
 const ZZombieStatePayload = z.object({ state: ZZombieState });
 const ZSnapshotRequest = z.object({});
 const ZWorldSettingsPayload = z.object({ settings: ZWorldSettings });
+const ZWorldMapPayload = z.object({ map: ZWorldMap });
 const ZSnapshotOffer = z.object({
   target: z.string(),
   state: ZSerializedOfficeState,
@@ -168,7 +188,8 @@ export type NetEvent =
       1,
       { target: PlayerId; state: SerializedOfficeState; seqTable: Record<PlayerId, number> }
     >
-  | WithEnvelope<'world:settings', 1, { settings: WorldSettings }>;
+  | WithEnvelope<'world:settings', 1, { settings: WorldSettings }>
+  | WithEnvelope<'world:map', 1, { map: WorldMap }>;
 
 export type NetEventKind = NetEvent['kind'];
 
@@ -192,6 +213,7 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local' },
   'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local' },
   'world:settings': { v: 1, schema: ZWorldSettingsPayload, authority: 'local' },
+  'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local' },
 };
 
 // --- Validation ---

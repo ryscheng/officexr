@@ -1,16 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import type { OfficeState, Store } from '@officexr/sdk';
+import type { Bus, OfficeState, Store } from '@officexr/sdk';
 import { Adventurer } from './Adventurer.tsx';
 import { CHARACTERS, type CameraMode, type CharacterName } from './config.ts';
 
 interface PlayersProps {
   store: Store;
+  bus: Bus;
   selfId: string;
   cameraMode: CameraMode;
   /** Mutated each frame so the camera rig reads the latest local position. */
   selfPosRef: React.MutableRefObject<THREE.Vector3>;
+}
+
+interface BumpState {
+  /** ms since unix-epoch-ish timestamp when the bump was registered. */
+  startMs: number;
+  /** Push direction (away from the other character). */
+  normal: { x: number; z: number };
 }
 
 /** Offset added to player.yaw when rotating the avatar — adjust if the GLB's
@@ -70,6 +78,7 @@ function stepTowardAngle(from: number, to: number, maxStep: number): number {
  */
 export function Players({
   store,
+  bus,
   selfId,
   cameraMode,
   selfPosRef,
@@ -86,7 +95,8 @@ export function Players({
       (next) => setWorldSettings(next),
     );
   }, [store]);
-  const { idleAnimSpeed, walkAnimSpeed, turnSpeed } = worldSettings;
+  const { idleAnimSpeed, walkAnimSpeed, turnSpeed, playerSpeed } =
+    worldSettings;
   const initialState = useMemo(() => store.getState(), [store]);
   const [players, setPlayers] = useState<PlayerEntry[]>(() =>
     Object.keys(initialState.players).map((id) => ({
@@ -124,6 +134,35 @@ export function Players({
   const [walkingByPlayer, setWalkingByPlayer] = useState<
     Record<string, boolean>
   >({});
+  // animScale is |vel|/playerSpeed quantised to 0.1 so the Adventurer's
+  // walk timeScale prop only re-renders ~10 times across full→stopped, not
+  // every frame. The driver below tracks the *current* quantised value per
+  // player and only calls setState when it crosses a step.
+  const [animScaleByPlayer, setAnimScaleByPlayer] = useState<
+    Record<string, number>
+  >({});
+  const animScaleQuant = useRef<Map<string, number>>(new Map());
+
+  // Active bumps: SceneFrame's per-frame edge detector emits a pair of
+  // collision:char-bump events when two characters cross into contact. Each
+  // event drives both (a) the decaying additive XZ offset below, and (b) a
+  // bump counter that triggers the Hit_A one-shot animation in Adventurer.
+  const bumps = useRef<Map<string, BumpState>>(new Map());
+  const [bumpCounters, setBumpCounters] = useState<Record<string, number>>(
+    {},
+  );
+  useEffect(() => {
+    return bus.on('collision:char-bump', (evt) => {
+      bumps.current.set(evt.selfId, {
+        startMs: performance.now(),
+        normal: evt.normal,
+      });
+      setBumpCounters((prev) => ({
+        ...prev,
+        [evt.selfId]: (prev[evt.selfId] ?? 0) + 1,
+      }));
+    });
+  }, [bus]);
 
   const tmpVec = useMemo(() => new THREE.Vector3(), []);
 
@@ -132,6 +171,8 @@ export function Players({
     const now = performance.now();
     let walkingChanged = false;
     const nextWalking: Record<string, boolean> = {};
+    let animScaleChanged = false;
+    const nextAnimScales: Record<string, number> = {};
 
     for (const [id, player] of Object.entries(state.players)) {
       const grp = groupRefs.current.get(id);
@@ -140,7 +181,34 @@ export function Players({
       // smooth between rate-limited network updates (30 Hz broadcast →
       // 60 Hz render).
       const renderPos = extrapolatePos(player, now, tmpVec);
-      grp.position.copy(renderPos);
+      // Apply char-bump easing if active. Damped-oscillator envelope —
+      //   offset(t) = kick · e^(-decay·t) · cos(2π·freq·t)
+      // gives a sharp push out at t=0, a small spring back through neutral,
+      // and settle. Kick magnitude is the *peak*; the cos modulation flips
+      // sign during the cycle, which is what produces the "bump-back" feel.
+      const bump = bumps.current.get(id);
+      let bumpX = 0;
+      let bumpZ = 0;
+      if (bump) {
+        const elapsed = now - bump.startMs;
+        const dur = worldSettings.bumpEasingMs;
+        if (elapsed >= dur) {
+          bumps.current.delete(id);
+        } else {
+          const t = elapsed / dur; // 0..1 across bumpEasingMs
+          const decay = Math.exp(-3.2 * t);
+          const wave = Math.cos(2 * Math.PI * 1.1 * t);
+          const env = decay * wave;
+          const kick = 0.16; // metres at peak
+          bumpX = bump.normal.x * env * kick;
+          bumpZ = bump.normal.z * env * kick;
+        }
+      }
+      grp.position.set(
+        renderPos.x + bumpX,
+        renderPos.y,
+        renderPos.z + bumpZ,
+      );
 
       // Smoothly turn the avatar toward its stored yaw (= movement direction).
       // Camera mouse-look does not affect this — character only rotates when
@@ -163,12 +231,26 @@ export function Players({
         walkingChanged = true;
       }
 
+      // Walk-anim rate scales with actual speed: a partially-blocked
+      // character at 30% progress has |vel| = 30% of playerSpeed, so the
+      // walk clip plays at 30% time-scale and footsteps stay aligned.
+      // Quantise to 0.1 to bound prop-driven re-renders.
+      const speed = Math.sqrt(speedSq);
+      const ratio = playerSpeed > 0 ? speed / playerSpeed : 0;
+      const quantised = Math.round(Math.max(0, Math.min(1, ratio)) * 10) / 10;
+      if (animScaleQuant.current.get(id) !== quantised) {
+        animScaleQuant.current.set(id, quantised);
+        animScaleChanged = true;
+      }
+      nextAnimScales[id] = quantised;
+
       if (id === selfId) {
         selfPosRef.current.copy(renderPos);
       }
     }
 
     if (walkingChanged) setWalkingByPlayer(nextWalking);
+    if (animScaleChanged) setAnimScaleByPlayer(nextAnimScales);
   });
 
   return (
@@ -184,7 +266,8 @@ export function Players({
           walking={walkingByPlayer[p.id] ?? false}
           invisible={p.id === selfId && cameraMode === 'first-person'}
           idleSpeed={idleAnimSpeed}
-          walkSpeed={walkAnimSpeed}
+          walkSpeed={walkAnimSpeed * (animScaleByPlayer[p.id] ?? 1)}
+          bumpCounter={bumpCounters[p.id] ?? 0}
         />
       ))}
     </>

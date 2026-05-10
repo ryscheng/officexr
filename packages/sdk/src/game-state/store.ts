@@ -1,6 +1,6 @@
 import { createStore as createZustandStore } from 'zustand/vanilla';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { DEFAULT_WORLD_SETTINGS } from './types.ts';
+import { DEFAULT_WORLD_MAP, DEFAULT_WORLD_SETTINGS } from './types.ts';
 import type { OfficeState, PlayerId } from './types.ts';
 
 /**
@@ -51,6 +51,22 @@ export function createInitialOfficeState(opts: {
     realtime: { status: 'connecting', snapshotTarget: null, versionWarnings: {} },
     runtime: { tickRate: 60, lastTick: 0, protocolVersion: 1 },
     worldSettings: { ...DEFAULT_WORLD_SETTINGS },
+    worldMap: cloneWorldMap(DEFAULT_WORLD_MAP),
+  };
+}
+
+function cloneWorldMap(m: typeof DEFAULT_WORLD_MAP): typeof DEFAULT_WORLD_MAP {
+  return {
+    gridSize: m.gridSize,
+    cubeSize: m.cubeSize,
+    origin: { ...m.origin },
+    layers: m.layers.map((l) => ({
+      kind: l.kind,
+      cells: l.cells.map((c) => ({ i: c.i, j: c.j })),
+    })),
+    kinds: Object.fromEntries(
+      Object.entries(m.kinds).map(([id, k]) => [id, { ...k }]),
+    ),
   };
 }
 

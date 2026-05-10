@@ -2,6 +2,8 @@ import {
   createStore,
   createActions,
   createBus,
+  getCollisionWorld,
+  resolveMovement,
   serializeOfficeState,
   SyncEngine,
   SnapshotHandshake,
@@ -22,8 +24,6 @@ export interface BotDriverOptions {
 }
 
 type BotMode = 'idle' | 'walk-to-local' | 'walk-away';
-
-const MAX_DISTANCE = 20;
 
 export class BotDriver {
   readonly botId: string;
@@ -139,49 +139,76 @@ export class BotDriver {
 
     const dirX = dx / dist;
     const dirZ = dz / dist;
-    // Sign chooses approach vs retreat; magnitude is the broadcast world
-    // speed — the bot reads its own store's worldSettings, which the
-    // SyncEngine keeps in sync with peers via `world:settings` events.
     const sign = this.mode === 'walk-to-local' ? 1 : -1;
-    const speed =
-      this.botStore?.getState().worldSettings.playerSpeed ?? this.speed;
+    const botState = this.botStore!.getState();
+    const { playerSpeed, charRadius, movementBlockThreshold } =
+      botState.worldSettings;
+    const speed = playerSpeed ?? this.speed;
     const moveDX = dirX * speed * sign * (dt / 1000);
     const moveDZ = dirZ * speed * sign * (dt / 1000);
 
-    let newX = botPos.x + moveDX;
-    let newZ = botPos.z + moveDZ;
-
-    if (this.mode === 'walk-away') {
-      const distFromOrigin = Math.sqrt(newX * newX + newZ * newZ);
-      if (distFromOrigin > MAX_DISTANCE) {
-        const scale = MAX_DISTANCE / distFromOrigin;
-        newX *= scale;
-        newZ *= scale;
-      }
+    // Other characters come from the bot's own store — the SDK upserts
+    // peers via applyRemotePosition the moment their first presence:position
+    // arrives, so the local player materialises here without any
+    // debug-side workaround.
+    const others: Array<{ id: string; pos: Vec3; radius: number }> = [];
+    for (const [id, p] of Object.entries(botState.players)) {
+      if (id === this.botId) continue;
+      others.push({ id, pos: p.pos, radius: charRadius });
     }
+    const intentTo: Vec3 = {
+      x: botPos.x + moveDX,
+      y: botPos.y,
+      z: botPos.z + moveDZ,
+    };
+    const result = resolveMovement({
+      from: botPos,
+      to: intentTo,
+      charRadius,
+      world: getCollisionWorld(botState.worldMap),
+      others,
+    });
 
-    const newPos: Vec3 = { x: newX, y: botPos.y, z: newZ };
-    // Authoritative vel = direction × speed. The wire protocol re-derives
-    // vel from position deltas anyway, but writing it here makes the local
-    // store match remote stores so the renderer can read player.vel as a
-    // single source of truth for "is this player moving".
-    const actualDX = newX - botPos.x;
-    const actualDZ = newZ - botPos.z;
-    const stepLen = Math.hypot(actualDX, actualDZ);
-    const vel: Vec3 =
-      stepLen > 0
-        ? {
-            x: (actualDX / stepLen) * speed,
-            y: 0,
-            z: (actualDZ / stepLen) * speed,
-          }
-        : { x: 0, y: 0, z: 0 };
-    // Bot faces its movement direction. Same yaw convention as SceneFrame.
-    const yaw = Math.atan2(-actualDX, -actualDZ);
+    // Progress along the intent vector. Same gating as SceneFrame: snap to
+    // zero when blocked beyond threshold so the bot doesn't slide while its
+    // walk anim has already settled to idle; otherwise scale vel by progress.
+    const intentDX = intentTo.x - botPos.x;
+    const intentDZ = intentTo.z - botPos.z;
+    const intentLenSq = intentDX * intentDX + intentDZ * intentDZ;
+    let progress = 1;
+    if (intentLenSq > 1e-12) {
+      const actualDX = result.pos.x - botPos.x;
+      const actualDZ = result.pos.z - botPos.z;
+      const dot = actualDX * intentDX + actualDZ * intentDZ;
+      progress = Math.max(0, Math.min(1, dot / intentLenSq));
+    }
+    const minProgress = 1 - movementBlockThreshold;
+
+    let newPos: Vec3;
+    let vel: Vec3;
+    let moved: boolean;
+    let yaw: number;
+    if (progress < minProgress) {
+      newPos = botPos;
+      vel = { x: 0, y: 0, z: 0 };
+      moved = false;
+      yaw = botState.players[this.botId]?.yaw ?? 0;
+    } else {
+      newPos = result.pos;
+      // Walk-direction unit vector × speed × progress. The renderer reads
+      // |vel| to decide idle/walk and to scale the walk-animation rate.
+      vel = {
+        x: dirX * sign * speed * progress,
+        y: 0,
+        z: dirZ * sign * speed * progress,
+      };
+      moved = true;
+      yaw = Math.atan2(-dirX * sign, -dirZ * sign);
+    }
     this.botActions.setSelfPosition(newPos, vel, yaw);
     this.botSync.flushPosition();
     this.botHandshake.tickTimers();
-    this.wasMoving = true;
+    this.wasMoving = moved;
   }
 
   setMode(mode: BotMode): void {

@@ -23,10 +23,16 @@ interface AdventurerProps {
   idleSpeed?: number;
   /** Time-scale multiplier for the walking clip. */
   walkSpeed?: number;
+  /** Monotonic counter — every increment plays the Hit_A reaction clip
+   * once, blended over the current idle/walk loop. */
+  bumpCounter?: number;
 }
 
 const IDLE_CLIP = 'Idle_A';
 const WALK_CLIP = 'Walking_C';
+const HIT_CLIP = 'Hit_A';
+/** Faster than authored so the bump reads as a quick recoil, not a flinch. */
+const HIT_TIME_SCALE = 1.6;
 
 /**
  * Renders one Adventurer GLB with idle/walk animations applied. The position
@@ -35,7 +41,14 @@ const WALK_CLIP = 'Walking_C';
  */
 export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
   function Adventurer(
-    { character, walking, invisible, idleSpeed = 1, walkSpeed = 1 },
+    {
+      character,
+      walking,
+      invisible,
+      idleSpeed = 1,
+      walkSpeed = 1,
+      bumpCounter = 0,
+    },
     ref,
   ) {
     const url = `/models/characters/${character}.glb`;
@@ -79,6 +92,32 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     useEffect(() => {
       scene.visible = !invisible;
     }, [scene, invisible]);
+
+    // Play the Hit_A clip as a one-shot whenever bumpCounter ticks. The
+    // underlying idle/walk action is left running; Hit blends in on top
+    // for the duration of its clip and is faded back out near the end so
+    // the loop seamlessly takes over again.
+    const lastBumpRef = useRef(0);
+    useEffect(() => {
+      if (bumpCounter === 0 || bumpCounter === lastBumpRef.current) return;
+      lastBumpRef.current = bumpCounter;
+      const hit = actions[HIT_CLIP];
+      if (!hit) return;
+      hit.reset();
+      hit.setLoop(THREE.LoopOnce, 1);
+      hit.clampWhenFinished = true;
+      hit.timeScale = HIT_TIME_SCALE;
+      hit.fadeIn(0.05).play();
+      const durMs = (hit.getClip().duration / HIT_TIME_SCALE) * 1000;
+      const fadeOutAt = Math.max(0, durMs - 120);
+      const fadeId = setTimeout(() => hit.fadeOut(0.18), fadeOutAt);
+      return () => {
+        clearTimeout(fadeId);
+        // If a fresh bump arrives mid-clip, snap-stop so the next play()
+        // starts cleanly.
+        hit.stop();
+      };
+    }, [bumpCounter, actions]);
 
     return (
       <group ref={ref}>

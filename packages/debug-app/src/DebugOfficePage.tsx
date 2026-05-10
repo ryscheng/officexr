@@ -6,6 +6,7 @@ import {
   createBus,
   createRuleRegistry,
   attachProximityReducer,
+  collisionBumpRule,
   proximityRule,
   serializeOfficeState,
   SyncEngine,
@@ -95,6 +96,7 @@ export function DebugOfficePage() {
 
       const rules = createRuleRegistry();
       rules.addRule(proximityRule);
+      rules.addRule(collisionBumpRule);
       attachProximityReducer(store, bus);
 
       const sync = new SyncEngine({
@@ -148,13 +150,9 @@ export function DebugOfficePage() {
         return;
       }
 
-      actions.upsertPlayer({
-        id: BOT_ID,
-        name: 'Bot',
-        pos: { x: 4, y: 0, z: 0 },
-        vel: { x: 0, y: 0, z: 0 },
-        yaw: 0,
-      });
+      // The bot announces its spawn pose via SyncEngine.start() (initial
+      // presence:position broadcast); applyRemotePosition upserts the bot
+      // into the local store on receipt. No manual upsert needed here.
 
       setServices({ store, actions, rules, bus, sync, handshake, bot });
 

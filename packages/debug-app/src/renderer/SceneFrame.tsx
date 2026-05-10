@@ -8,6 +8,7 @@ import type {
   SnapshotHandshake,
   Bus,
 } from '@officexr/sdk';
+import { getCollisionWorld, resolveMovement } from '@officexr/sdk';
 import type { BotDriver } from '../bot/BotDriver.ts';
 import type { CameraMode } from './config.ts';
 
@@ -62,18 +63,39 @@ export function SceneFrame({
     const isInsideLeva = (el: EventTarget | null): boolean =>
       el instanceof Element && !!el.closest('#leva__root');
 
+    // Leva sliders use pointer events without taking keyboard focus, so the
+    // e.target / activeElement checks alone don't catch the "user is dragging
+    // a slider" case. We also track whether the pointer is currently over
+    // the leva panel and treat that as "leva is being interacted with".
+    let pointerOverLeva = false;
+    const onPointerMove = (e: PointerEvent) => {
+      pointerOverLeva = isInsideLeva(e.target);
+    };
+
+    const isLevaActive = (eventTarget: EventTarget | null): boolean => {
+      if (isInsideLeva(eventTarget)) return true;
+      if (pointerOverLeva) return true;
+      const active = document.activeElement;
+      if (active && active !== document.body && isInsideLeva(active)) {
+        return true;
+      }
+      return false;
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
-      // While a Leva input has focus, let the panel consume the keystroke.
-      if (isInsideLeva(e.target)) return;
+      if (isLevaActive(e.target)) {
+        // Drop anything we still think is held — keyup might never fire if
+        // leva swallows it — and let the panel consume the keystroke.
+        keysDown.current.clear();
+        return;
+      }
       if (ARROW_KEYS.has(e.key)) e.preventDefault();
       keysDown.current.add(e.key.toLowerCase());
     };
     // Always release on keyup, regardless of focus, so a key can't get stuck
-    // if focus moves into Leva mid-press.
+    // if focus moved into Leva mid-press.
     const onKeyUp = (e: KeyboardEvent) =>
       keysDown.current.delete(e.key.toLowerCase());
-    // When Leva gains focus, drop any keys we already consider held — those
-    // keys' eventual keyups may target the Leva input and never reach us.
     const onFocusIn = (e: FocusEvent) => {
       if (isInsideLeva(e.target)) keysDown.current.clear();
     };
@@ -87,11 +109,13 @@ export function SceneFrame({
       }
     };
 
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     document.addEventListener('focusin', onFocusIn);
     document.addEventListener('mousedown', onMouseDown);
     return () => {
+      window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       document.removeEventListener('focusin', onFocusIn);
@@ -106,9 +130,11 @@ export function SceneFrame({
 
     const stateSnapshot = store.getState();
     const self = stateSnapshot.players[selfId];
-    // playerSpeed lives in world state — read it each frame so settings
-    // changes from any peer take effect immediately.
-    const playerSpeed = stateSnapshot.worldSettings.playerSpeed;
+    // Speed and collision params live in world state — read them each frame
+    // so settings changes from any peer take effect immediately.
+    const { playerSpeed, charRadius, movementBlockThreshold } =
+      stateSnapshot.worldSettings;
+    const collisionWorld = getCollisionWorld(stateSnapshot.worldMap);
     if (self) {
       const fwd =
         (keys.has('w') || keys.has('arrowup') ? 1 : 0) -
@@ -139,21 +165,69 @@ export function SceneFrame({
           dx /= len;
           dz /= len;
           const move = (playerSpeed * dt) / 1000;
-          // Character faces the direction it's moving. atan2(-dx, -dz) yields
-          // the yaw whose forward = (dx, dz). vel is the authoritative
-          // movement-intent state — written here so the renderer can read it
-          // for animation, and re-broadcast unchanged to remote peers.
           const movementYaw = Math.atan2(-dx, -dz);
-          actions.setSelfPosition(
-            {
-              x: self.pos.x + dx * move,
-              y: self.pos.y,
-              z: self.pos.z + dz * move,
-            },
-            { x: dx * playerSpeed, y: 0, z: dz * playerSpeed },
-            movementYaw,
-          );
-          isMoving = true;
+          // Resolve against obstacles, the map edge, and other characters.
+          // The bot is just another character to us here — same primitives,
+          // same world data (broadcast world:map keeps both stores aligned).
+          const others: Array<{
+            id: string;
+            pos: { x: number; y: number; z: number };
+            radius: number;
+          }> = [];
+          for (const [id, p] of Object.entries(stateSnapshot.players)) {
+            if (id === selfId) continue;
+            others.push({ id, pos: p.pos, radius: charRadius });
+          }
+          const intentTo = {
+            x: self.pos.x + dx * move,
+            y: self.pos.y,
+            z: self.pos.z + dz * move,
+          };
+          const result = resolveMovement({
+            from: self.pos,
+            to: intentTo,
+            charRadius,
+            world: collisionWorld,
+            others,
+          });
+          // Progress = how much of the requested vector survived the resolve,
+          // measured as projection of (resolved - from) onto the normalised
+          // intent. 1 = unblocked, 0 = fully blocked, slide-only motion gets
+          // a low score because it's perpendicular to intent.
+          const intentDX = intentTo.x - self.pos.x;
+          const intentDZ = intentTo.z - self.pos.z;
+          const intentLenSq = intentDX * intentDX + intentDZ * intentDZ;
+          let progress = 1;
+          if (intentLenSq > 1e-12) {
+            const actualDX = result.pos.x - self.pos.x;
+            const actualDZ = result.pos.z - self.pos.z;
+            const dot = actualDX * intentDX + actualDZ * intentDZ;
+            progress = Math.max(0, Math.min(1, dot / intentLenSq));
+          }
+          const minProgress = 1 - movementBlockThreshold;
+          if (progress < minProgress) {
+            // Mostly blocked — snap to zero so the avatar doesn't slide
+            // sideways while the walk animation has already settled to idle.
+            actions.setSelfPosition(
+              self.pos,
+              { x: 0, y: 0, z: 0 },
+              movementYaw,
+            );
+            isMoving = false;
+          } else {
+            // Scale vel by progress so the renderer animates at a rate that
+            // matches the actual ground speed.
+            actions.setSelfPosition(
+              result.pos,
+              {
+                x: dx * playerSpeed * progress,
+                y: 0,
+                z: dz * playerSpeed * progress,
+              },
+              movementYaw,
+            );
+            isMoving = true;
+          }
         }
       }
       // On the moving → idle transition, clear vel exactly once so the
@@ -166,12 +240,15 @@ export function SceneFrame({
     }
 
     actions.tick(now);
+    // bot.tick is invoked BEFORE rules.tick so the rule pass sees the latest
+    // positions from both sides — rising-edge bump detection (collisionBumpRule)
+    // requires both participants' moves to be settled into the store.
+    bot.tick(dt);
     const current = store.getState();
     rules.tick(current, prevState.current, bus);
     prevState.current = store.getState();
     sync.flushPosition();
     handshake.tickTimers();
-    bot.tick(dt);
   });
 
   return null;

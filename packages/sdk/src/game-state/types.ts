@@ -106,6 +106,17 @@ export type WorldSettings = {
   idleAnimSpeed: number;
   /** Maximum angular velocity for the smooth-turn animation, in rad/s. */
   turnSpeed: number;
+  /** Collision radius of every character in world units. */
+  charRadius: number;
+  /** Visual bump-back duration when two characters collide, in ms. */
+  bumpEasingMs: number;
+  /**
+   * Fraction of the intent vector that must be blocked before movement is
+   * snapped to zero (instead of letting the character slide along the wall
+   * at reduced speed). 0 = always slide, 1 = any contact halts movement.
+   * Default 0.9: slide while you can make at least 10% progress.
+   */
+  movementBlockThreshold: number;
 };
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
@@ -113,6 +124,46 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   walkAnimSpeed: 1,
   idleAnimSpeed: 1,
   turnSpeed: 16,
+  charRadius: 0.4,
+  bumpEasingMs: 180,
+  movementBlockThreshold: 0.9,
+};
+
+/**
+ * Static map data: a square grid of cube cells, each tagged with a kind id.
+ * Connected cells of the same kind form one collision group (computed at
+ * use-time by the collision module — never broadcast). Kinds carry a
+ * `walkable` flag; only non-walkable kinds become obstacles.
+ *
+ * Layout is run-encoded by kind to keep the wire payload compact when most
+ * cells are walkable: each layer lists the (i, j) cells of one kind.
+ */
+export type CubeKindId = string;
+export type CubeKind = { id: CubeKindId; walkable: boolean };
+export type CubeKindRegistry = Record<CubeKindId, CubeKind>;
+export type WorldMapLayer = {
+  kind: CubeKindId;
+  cells: Array<{ i: number; j: number }>;
+};
+export type WorldMap = {
+  /** Cells per side (square grid). */
+  gridSize: number;
+  /** World units per cell. */
+  cubeSize: number;
+  /** World-space center of cell (0, 0). Defaults to the origin. */
+  origin: { x: number; z: number };
+  layers: WorldMapLayer[];
+  kinds: CubeKindRegistry;
+};
+
+export const DEFAULT_WORLD_MAP: WorldMap = {
+  gridSize: 50,
+  cubeSize: 2,
+  origin: { x: 0, z: 0 },
+  layers: [],
+  kinds: {
+    floor: { id: 'floor', walkable: true },
+  },
 };
 
 export type OfficeState = {
@@ -132,6 +183,7 @@ export type OfficeState = {
     protocolVersion: number;
   };
   worldSettings: WorldSettings;
+  worldMap: WorldMap;
 };
 
 export type GameEvent =
@@ -150,6 +202,15 @@ export type GameEvent =
   | { kind: 'inventory:removed'; itemId: string }
   | { kind: 'voice:room-changed'; roomId: string | null }
   | { kind: 'realtime:version-warning'; eventKind: string }
-  | { kind: 'realtime:status-changed'; status: RealtimeStatus };
+  | { kind: 'realtime:status-changed'; status: RealtimeStatus }
+  // Cosmetic-only collision signal: emitted when a local move was blocked by
+  // another character. Renderers listen and play a small bump-back easing.
+  // Never affects state — `pos` is already resolved before this fires.
+  | {
+      kind: 'collision:char-bump';
+      selfId: PlayerId;
+      otherId: PlayerId;
+      normal: { x: number; z: number };
+    };
 
 export type GameEventKind = GameEvent['kind'];

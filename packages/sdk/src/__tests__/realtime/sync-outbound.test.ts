@@ -53,15 +53,22 @@ function setupOne(opts: { selfId: string }) {
 }
 
 describe('SyncEngine outbound — presence:position', () => {
-  it('does not send when self has not moved', async () => {
+  it('emits exactly one initial spawn packet, then nothing while idle', async () => {
     const ctx = setupOne({ selfId: 'me' });
     await ctx.start();
-    // no mutations
+    // start() announces the spawn pose so peers can materialise the actor;
+    // afterwards a stationary self should not produce more packets.
     ctx.sync.flushPosition();
     ctx.clock.advance(60_000); // a sim-minute
     ctx.sync.flushPosition();
     const positionPackets = ctx.sent.filter((e) => e.kind === 'presence:position');
-    expect(positionPackets).toHaveLength(0);
+    expect(positionPackets).toHaveLength(1);
+    const initial = positionPackets[0] as Extract<
+      NetEvent,
+      { kind: 'presence:position' }
+    >;
+    expect(initial.vel).toEqual({ x: 0, y: 0, z: 0 });
+    expect(initial.actorId).toBe('me');
   });
 
   it('sends a packet when self crosses the position delta threshold', async () => {
@@ -115,10 +122,14 @@ describe('SyncEngine outbound — presence:position', () => {
     );
     ctx.clock.advance(POSITION_CONSTANTS.stopGraceMs + 10);
     ctx.sync.flushPosition();
-    const pkts = ctx.sent.filter((e) => e.kind === 'presence:position');
+    // Skip the initial spawn announcement at the start of stream — we're
+    // measuring the stop-detection emission only.
+    const pkts = ctx.sent
+      .filter((e) => e.kind === 'presence:position')
+      .slice(1);
     const lastPkt = pkts[pkts.length - 1] as Extract<NetEvent, { kind: 'presence:position' }>;
     expect(lastPkt.vel).toEqual({ x: 0, y: 0, z: 0 });
-    // only one stop packet
+    // only one stop packet (excluding the spawn baseline)
     const stops = pkts.filter((p) => {
       const pp = p as Extract<NetEvent, { kind: 'presence:position' }>;
       return pp.vel.x === 0 && pp.vel.y === 0 && pp.vel.z === 0;

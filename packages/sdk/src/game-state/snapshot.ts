@@ -38,6 +38,7 @@ export function serializeOfficeState(state: OfficeState): SerializedOfficeState 
     realtime: state.realtime,
     runtime: state.runtime,
     worldSettings: state.worldSettings,
+    worldMap: state.worldMap,
   };
 }
 
@@ -78,6 +79,18 @@ export function applySnapshot(target: OfficeState, snap: SerializedOfficeState):
   target.realtime = { ...snap.realtime };
   target.runtime = { ...snap.runtime };
   target.worldSettings = { ...snap.worldSettings };
+  target.worldMap = {
+    gridSize: snap.worldMap.gridSize,
+    cubeSize: snap.worldMap.cubeSize,
+    origin: { ...snap.worldMap.origin },
+    layers: snap.worldMap.layers.map((l) => ({
+      kind: l.kind,
+      cells: l.cells.map((c) => ({ i: c.i, j: c.j })),
+    })),
+    kinds: Object.fromEntries(
+      Object.entries(snap.worldMap.kinds).map(([id, k]) => [id, { ...k }]),
+    ),
+  };
   target.selfId = selfId;
   target.officeId = officeId;
 }

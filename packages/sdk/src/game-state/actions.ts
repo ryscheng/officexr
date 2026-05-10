@@ -8,6 +8,7 @@ import type {
   RealtimeStatus,
   Stroke,
   Vec3,
+  WorldMap,
   WorldSettings,
   ZombieState,
 } from './types.ts';
@@ -24,6 +25,8 @@ export interface Actions {
   /** Update one or more world-level settings. Triggers a `world:settings`
    * broadcast for peers to mirror. */
   setWorldSettings(patch: Partial<WorldSettings>): void;
+  /** Replace the world map. Triggers a `world:map` broadcast. */
+  setWorldMap(map: WorldMap): void;
 
   // remote applications (called by sync engine)
   applyRemotePosition(
@@ -37,6 +40,7 @@ export interface Actions {
   applyRemoteStroke(stroke: Stroke): void;
   applyZombieState(z: ZombieState): void;
   applyRemoteWorldSettings(settings: WorldSettings): void;
+  applyRemoteWorldMap(map: WorldMap): void;
 
   // membership
   upsertPlayer(p: Partial<PlayerState> & { id: PlayerId }): void;
@@ -61,6 +65,24 @@ const DEFAULT_PLAYER: Omit<PlayerState, 'id'> = {
   jitsiRoom: null,
   status: 'active',
 };
+
+/** Deep-clone a WorldMap so callers/peers share no mutable references with
+ * the store (the collision-world cache keys on map identity, so an in-place
+ * mutation would silently keep stale derived data). */
+function cloneWorldMap(m: WorldMap): WorldMap {
+  return {
+    gridSize: m.gridSize,
+    cubeSize: m.cubeSize,
+    origin: { ...m.origin },
+    layers: m.layers.map((l) => ({
+      kind: l.kind,
+      cells: l.cells.map((c) => ({ i: c.i, j: c.j })),
+    })),
+    kinds: Object.fromEntries(
+      Object.entries(m.kinds).map(([id, k]) => [id, { ...k }]),
+    ),
+  };
+}
 
 /**
  * Optional Bus is supplied so actions that have a state-change-→-event
@@ -102,6 +124,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
       store.setState((s) => ({
         worldSettings: { ...s.worldSettings, ...patch },
       }));
+    },
+
+    setWorldMap(map) {
+      store.setState(() => ({ worldMap: cloneWorldMap(map) }));
     },
 
     appendChat(msg) {
@@ -154,7 +180,18 @@ export function createActions(store: Store, bus?: Bus): Actions {
     },
 
     applyRemotePosition(playerId, pos, vel, yaw, tRecv) {
-      patchPlayer(playerId, { pos, vel, yaw, tRecv });
+      // A position broadcast is implicit "this peer is here, with this state".
+      // Upsert-on-missing so peers that join without a snapshot handshake
+      // still materialise into the receiver's office. The DEFAULT_PLAYER
+      // template provides sensible defaults for fields not on the wire
+      // (name, hp, avatar, status); pos/vel/yaw/tRecv come from the event.
+      store.setState((s) => {
+        const existing = s.players[playerId];
+        const next: PlayerState = existing
+          ? { ...existing, pos, vel, yaw, tRecv }
+          : { ...DEFAULT_PLAYER, id: playerId, pos, vel, yaw, tRecv };
+        return { players: { ...s.players, [playerId]: next } };
+      });
     },
 
     applyRemoteChat(msg) {
@@ -173,6 +210,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     applyRemoteWorldSettings(settings) {
       store.setState(() => ({ worldSettings: { ...settings } }));
+    },
+
+    applyRemoteWorldMap(map) {
+      store.setState(() => ({ worldMap: cloneWorldMap(map) }));
     },
 
     upsertPlayer(p) {

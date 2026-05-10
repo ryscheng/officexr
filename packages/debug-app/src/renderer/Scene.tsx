@@ -104,6 +104,13 @@ export function Scene(props: SceneProps) {
       step: 0.1,
       label: 'walk speed (m/s)',
     },
+    movementBlockThreshold: {
+      value: 0.9,
+      min: 0,
+      max: 1,
+      step: 0.01,
+      label: 'block threshold',
+    },
   });
 
   // Mirror the Animation panel into world state so peers (e.g. the bot)
@@ -114,6 +121,7 @@ export function Scene(props: SceneProps) {
       walkAnimSpeed: animation.walkSpeed,
       idleAnimSpeed: animation.idleSpeed,
       turnSpeed: animation.turnSpeed,
+      movementBlockThreshold: animation.movementBlockThreshold,
     });
   }, [
     actions,
@@ -121,6 +129,7 @@ export function Scene(props: SceneProps) {
     animation.walkSpeed,
     animation.idleSpeed,
     animation.turnSpeed,
+    animation.movementBlockThreshold,
   ]);
 
   // Leva debug panel — fixed camera + world tweakables.
@@ -202,6 +211,15 @@ export function Scene(props: SceneProps) {
     stoneLayers: { value: WORLD.stoneLayers, min: 0, max: 5, step: 1 },
   });
 
+  // Mirror the World floor size into the SDK's broadcast world map. The
+  // map's gridSize feeds collision (map-edge clamp + cell partition); peers
+  // receive `world:map` via SyncEngine and stay in sync.
+  useEffect(() => {
+    const current = store.getState().worldMap;
+    if (current.gridSize === world.gridSize) return;
+    actions.setWorldMap({ ...current, gridSize: world.gridSize });
+  }, [actions, store, world.gridSize]);
+
   // Refs shared between movement code and the camera rig.
   const yawRef = useRef(0);
   const pitchRef = useRef(-0.25);
@@ -243,6 +261,7 @@ export function Scene(props: SceneProps) {
 
         <Players
           store={store}
+          bus={props.bus}
           selfId={selfId}
           cameraMode={cameraMode}
           selfPosRef={selfPosRef}

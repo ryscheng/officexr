@@ -6,7 +6,6 @@ import type {
   OfficeState,
   PlayerId,
   Vec3,
-  WorldSettings,
 } from '../game-state/types.ts';
 import type { Channel } from './channel.ts';
 import {
@@ -79,6 +78,9 @@ export class SyncEngine {
   private lastStrokeCount = 0;
   /** Last broadcast worldSettings — kept as a JSON string for cheap equality. */
   private lastWorldSettingsJson = '';
+  /** Last broadcast worldMap (JSON-string). Map mutations are infrequent
+   * compared to position/chat, so the stringify cost is acceptable. */
+  private lastWorldMapJson = '';
 
   // inbound dedupe (shared collaborator so SnapshotHandshake can seed it)
   private inboundSeqs: InboundSeqTable;
@@ -133,11 +135,28 @@ export class SyncEngine {
     this.lastChatLen = initial.chat.length;
     this.lastStrokeCount = initial.whiteboard.strokes.length;
     this.lastWorldSettingsJson = JSON.stringify(initial.worldSettings);
+    this.lastWorldMapJson = JSON.stringify(initial.worldMap);
     const me = initial.players[initial.selfId];
     if (me) {
       this.lastSentPos = { ...me.pos };
       this.lastSentYaw = me.yaw;
       this.hasInitialPosition = true;
+      // Announce ourselves to any peers already on the channel. Receivers
+      // upsert-on-missing in applyRemotePosition, so this single broadcast
+      // is what makes a stationary new peer visible to everyone else
+      // without any extra membership protocol. Vel is zero — this is a
+      // spawn pose, not a movement update.
+      this.broadcast({
+        kind: 'presence:position',
+        v: 1,
+        actorId: initial.selfId,
+        seq: this.takeSeq(),
+        t: this.clock.now(),
+        pos: { ...me.pos },
+        vel: { ...ZERO_V },
+        yaw: me.yaw,
+      });
+      this.lastSentTMs = this.clock.now();
     }
     this.offStore = this.store.subscribeAll((next, prev) => this.onStoreChange(next, prev));
     this.offChannel = this.channel.on((event) => this.onInbound(event));
@@ -203,6 +222,22 @@ export class SyncEngine {
         seq: this.takeSeq(),
         t: this.clock.now(),
         settings: { ...next.worldSettings },
+      });
+    }
+
+    // worldMap: broadcast on any change. Same JSON-equality dedupe; the map
+    // changes far less often than positions, so the stringify cost is
+    // bounded.
+    const nextWM = JSON.stringify(next.worldMap);
+    if (nextWM !== this.lastWorldMapJson) {
+      this.lastWorldMapJson = nextWM;
+      this.broadcast({
+        kind: 'world:map',
+        v: 1,
+        actorId: next.selfId,
+        seq: this.takeSeq(),
+        t: this.clock.now(),
+        map: next.worldMap,
       });
     }
 
@@ -405,6 +440,10 @@ export class SyncEngine {
         // Avoid an outbound echo of the inbound event we're about to apply.
         this.lastWorldSettingsJson = JSON.stringify(event.settings);
         this.actions.applyRemoteWorldSettings(event.settings);
+        return;
+      case 'world:map':
+        this.lastWorldMapJson = JSON.stringify(event.map);
+        this.actions.applyRemoteWorldMap(event.map);
         return;
       case 'snapshot:request':
       case 'snapshot:offer':
