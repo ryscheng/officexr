@@ -192,7 +192,17 @@ export function Players({
     // (e.g. 50% progress at 6 m/s = 3 m/s) drops back into walk tier — that
     // matches the actual ground speed and looks right.
     const runThreshold = (playerSpeed + runSpeed) / 2;
-    const runThresholdSq = runThreshold * runThreshold;
+    // Hysteresis bands prevent state flicker when |vel| hovers near a
+    // threshold (which is exactly what happens when bots wedge against
+    // each other). Each transition uses a different bound:
+    //   idle → walking when |vel| > WALK_THRESHOLD * 1.5
+    //   walking → idle when |vel| < WALK_THRESHOLD
+    //   walking → running when |vel| > runThreshold * 1.05
+    //   running → walking when |vel| < runThreshold * 0.95
+    const WALK_ENTER_SQ = (WALK_THRESHOLD * 1.5) * (WALK_THRESHOLD * 1.5);
+    const WALK_EXIT_SQ = WALK_THRESHOLD * WALK_THRESHOLD;
+    const RUN_ENTER_SQ = (runThreshold * 1.05) * (runThreshold * 1.05);
+    const RUN_EXIT_SQ = (runThreshold * 0.95) * (runThreshold * 0.95);
 
     for (const [id, player] of Object.entries(state.players)) {
       const grp = groupRefs.current.get(id);
@@ -244,14 +254,24 @@ export function Players({
       // means animation works the same way for everyone.
       const v = player.vel;
       const speedSq = v.x * v.x + v.z * v.z;
-      const motion: MotionState =
-        speedSq <= WALK_THRESHOLD * WALK_THRESHOLD
-          ? 'idle'
-          : speedSq >= runThresholdSq
-            ? 'running'
-            : 'walking';
+      const previous = motionState.current.get(id) ?? 'idle';
+      let motion: MotionState = previous;
+      // State machine with hysteresis — only transition when |vel|² crosses
+      // the *enter* threshold for a different state, never on jitter near
+      // the *exit* boundary of the current one.
+      if (previous === 'idle') {
+        if (speedSq >= RUN_ENTER_SQ) motion = 'running';
+        else if (speedSq >= WALK_ENTER_SQ) motion = 'walking';
+      } else if (previous === 'walking') {
+        if (speedSq >= RUN_ENTER_SQ) motion = 'running';
+        else if (speedSq <= WALK_EXIT_SQ) motion = 'idle';
+      } else {
+        // running
+        if (speedSq <= WALK_EXIT_SQ) motion = 'idle';
+        else if (speedSq <= RUN_EXIT_SQ) motion = 'walking';
+      }
       nextMotion[id] = motion;
-      if (motionState.current.get(id) !== motion) {
+      if (previous !== motion) {
         motionState.current.set(id, motion);
         motionChanged = true;
       }

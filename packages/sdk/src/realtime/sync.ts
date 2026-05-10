@@ -162,6 +162,15 @@ export class SyncEngine {
     }
     this.offStore = this.store.subscribeAll((next, prev) => this.onStoreChange(next, prev));
     this.offChannel = this.channel.on((event) => this.onInbound(event));
+    // When a peer's channel disconnects, the hub fires presence-leave for
+    // their id. We mirror that into a removePlayer so the local store
+    // doesn't keep a ghost player record for someone who's gone.
+    this.offPresence = this.channel.onPresenceChange((_joined, left) => {
+      for (const id of left) {
+        if (id === initial.selfId) continue; // never remove self
+        this.actions.removePlayer(id);
+      }
+    });
   }
 
   stop(): void {

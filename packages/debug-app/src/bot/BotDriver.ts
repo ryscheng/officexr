@@ -22,6 +22,10 @@ export interface BotDriverOptions {
   clock?: Clock;
   /** Initial traversal mode. Defaults to 'idle'. */
   mode?: BotMode;
+  /** Per-bot phase offset for modes that would otherwise have every bot
+   * doing exactly the same thing (patrol starts at the same waypoint;
+   * orbit at the same angle). Pool typically passes the bot's index. */
+  phaseIndex?: number;
 }
 
 export type BotMode =
@@ -44,6 +48,23 @@ const ALL_MODES: readonly BotMode[] = [
   'patrol',
   'orbit',
 ];
+
+/** Match the renderer's extrapolation cap so the resolver and the visible
+ * avatar agree on where a peer "is" right now. */
+const EXTRAPOLATION_CAP_S = 0.1;
+
+function extrapolatePeerPos(
+  player: { pos: Vec3; vel: Vec3; tRecv?: number },
+  nowMs: number,
+): Vec3 {
+  if (player.tRecv === undefined) return { ...player.pos };
+  const elapsed = Math.min(EXTRAPOLATION_CAP_S, (nowMs - player.tRecv) / 1000);
+  return {
+    x: player.pos.x + player.vel.x * elapsed,
+    y: player.pos.y + player.vel.y * elapsed,
+    z: player.pos.z + player.vel.z * elapsed,
+  };
+}
 
 interface ModeState {
   /** Current direction the wander mode is heading (unit vector). */
@@ -70,6 +91,7 @@ export class BotDriver {
   private mode: BotMode;
   private stopped = false;
   private wasMoving = false;
+  private readonly phaseIndex: number;
   private modeState: ModeState = {
     wanderDir: { x: 1, z: 0 },
     wanderUntilMs: 0,
@@ -92,6 +114,10 @@ export class BotDriver {
     this.startPos = opts.startPos ?? { x: 10, y: 0, z: 0 };
     this.clock = opts.clock ?? { now: () => performance.now() };
     this.mode = opts.mode ?? 'idle';
+    this.phaseIndex = opts.phaseIndex ?? 0;
+    this.modeState.patrolIdx = this.phaseIndex;
+    // Spread orbit angles so multiple bots don't sit on the same arc spot.
+    this.modeState.orbitAngle = (this.phaseIndex * 0.71) * Math.PI;
   }
 
   async start(): Promise<void> {
@@ -177,10 +203,20 @@ export class BotDriver {
     const moveDZ = intent.z * speed * (dt / 1000);
 
     // 2) Run the same collision/bounds resolver the local player uses.
+    //    Peers are extrapolated forward from their last broadcast using the
+    //    same `pos + vel × (now − tRecv)` smoothing the renderer applies.
+    //    Without this, two bots that broadcast at 30 Hz but tick at 60 Hz
+    //    each see the other 1–2 frames stale, which produces a push-and-
+    //    push-back oscillation when they're in contact.
+    const nowMs = this.clock.now();
     const others: Array<{ id: string; pos: Vec3; radius: number }> = [];
     for (const [id, p] of Object.entries(botState.players)) {
       if (id === this.botId) continue;
-      others.push({ id, pos: p.pos, radius: charRadius });
+      others.push({
+        id,
+        pos: extrapolatePeerPos(p, nowMs),
+        radius: charRadius,
+      });
     }
     const intentTo: Vec3 = {
       x: botPos.x + moveDX,

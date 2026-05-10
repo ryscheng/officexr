@@ -36,6 +36,12 @@ export function createInMemoryChannelHub(): Hub {
       }
     },
     detach(client) {
+      // Identity-check: if a *different* channel with the same userId has
+      // since overwritten the entry (e.g. React strict-mode double-mount
+      // re-creates the local channel between attach and the detach the
+      // first effect's cleanup eventually runs), don't evict the live one.
+      const stored = clients.get(client.userId);
+      if (stored !== client) return;
       const wasPresent = presence.has(client.userId);
       clients.delete(client.userId);
       presence.delete(client.userId);
