@@ -74,6 +74,20 @@ export function useStackSwitcher(
   useEffect(() => {
     stackRef.current = stack;
   }, [stack]);
+  /** Ref-mirrors of `local` and `audio` so the callbacks below can
+   * read them without listing them in their dep arrays — listing them
+   * would flip the callback's identity once during bootstrap (when
+   * both go from null → object refs), which in turn re-fires the
+   * count-mirror `useEffect` in `BotPanel` and causes a redundant
+   * `bots.setCount(1)` on the freshly-built stack. */
+  const localRef = useRef<PersistentLocalState | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    localRef.current = local;
+  }, [local]);
+  useEffect(() => {
+    audioRef.current = audio;
+  }, [audio]);
 
   // Bootstrap: build the initial in-memory stack once we have a
   // persistent local-player bundle to attach it to.
@@ -108,13 +122,18 @@ export function useStackSwitcher(
     };
   }, [local, audio]);
 
+  // Deps are deliberately `[wsThreshold]` only. `local`/`audio` are
+  // read through refs so the callback identity stays stable across
+  // the bootstrap state-set — see the ref-mirrors above.
   const onBotCountChange = useCallback(
     (count: number) => {
       targetCountRef.current = Math.max(0, Math.floor(count));
       transitionChain.current = transitionChain.current
         .then(async () => {
           const current = stackRef.current;
-          if (!current || !local || !audio) return;
+          const localNow = localRef.current;
+          const audioNow = audioRef.current;
+          if (!current || !localNow || !audioNow) return;
           const target = targetCountRef.current;
 
           const wantsWs = target >= wsThreshold;
@@ -141,7 +160,7 @@ export function useStackSwitcher(
             }
             setErrorBanner(null);
             await current.teardown();
-            const next = await buildWsStack({ local, audio, url: cfg.url });
+            const next = await buildWsStack({ local: localNow, audio: audioNow, url: cfg.url });
             setStack(next);
             // Tell the server how many bots to spawn.
             next.botControl?.publish({ type: 'set-count', count: target });
@@ -165,7 +184,7 @@ export function useStackSwitcher(
           // before we tear down the ws channel locally.
           current.botControl?.publish({ type: 'set-count', count: 0 });
           await current.teardown();
-          const next = await buildInMemoryStack({ local, audio });
+          const next = await buildInMemoryStack({ local: localNow, audio: audioNow });
           next.bots.setMode(targetModeRef.current);
           await next.bots.setCount(target);
           setStack(next);
@@ -174,7 +193,7 @@ export function useStackSwitcher(
           console.error('[debug-app] mode transition failed:', err);
         });
     },
-    [local, audio, wsThreshold],
+    [wsThreshold],
   );
 
   const onBotModeChange = useCallback((mode: BotMode) => {

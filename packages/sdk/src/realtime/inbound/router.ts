@@ -116,13 +116,24 @@ export class InboundRouter {
     this.dispatchInbound(event);
   }
 
-  /** Apply a (validated, non-snapshot) event subject to dedup. */
+  /** Apply a (validated, non-snapshot) event subject to dedup.
+   *
+   * Ordering is load-bearing: `onApplied` runs BEFORE
+   * `applyNetEventToStore`. The hook updates the SyncEngine's outbound
+   * anti-echo markers (e.g. `lastWorldSettingsJson`), and
+   * `applyNetEventToStore` calls `store.setState`, which synchronously
+   * fires `subscribeAll → StateDiffBroadcaster.onStoreChange`. If the
+   * marker hasn't been updated yet, that diff comparison finds the new
+   * value vs the stale marker and re-broadcasts the just-received
+   * event — a cascade in a multi-peer mesh. Setting the marker first
+   * makes the synchronous diff see "no change" and stay quiet.
+   */
   private dispatchInbound(event: NetEvent): void {
     if (this.inboundSeqs.isDuplicate(event.actorId, event.seq)) return;
     this.inboundSeqs.markSeen(event.actorId, event.seq);
     this.maybeAuthorityWarn(event);
-    applyNetEventToStore(this.actions, event, this.clock);
     this.onApplied?.(event);
+    applyNetEventToStore(this.actions, event, this.clock);
   }
 
   /**

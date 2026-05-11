@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createStore } from '../../game-state/store.ts';
 import { createActions } from '../../game-state/actions.ts';
 import { createBus } from '../../game-state/bus.ts';
@@ -245,6 +245,70 @@ describe('SyncEngine inbound', () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  it('applies remote world:settings without re-broadcasting (no echo)', async () => {
+    // Regression: an earlier refactor reordered `applyNetEventToStore`
+    // and the anti-echo marker update so the marker landed AFTER the
+    // store mutation. That made `subscribeAll → StateDiffBroadcaster`
+    // see a "changed" worldSettings and fan the just-received event
+    // back out — a cascade in a multi-peer mesh.
+    const ctx = setup({ selfId: 'me', remoteId: 'other' });
+    await ctx.start();
+    const observer = new InMemoryChannel(ctx.hub, '__obs__');
+    await observer.subscribe();
+    const sent: NetEvent[] = [];
+    observer.on((e) => sent.push(e));
+
+    // The inbound event MUST differ from the local store's current
+    // worldSettings — otherwise the diff would naturally not fire and
+    // the test would pass for the wrong reason.
+    const initial = ctx.store.getState().worldSettings;
+    const changed = { ...initial, playerSpeed: initial.playerSpeed + 1.5 };
+    await ctx.remote.send({
+      kind: 'world:settings',
+      v: 1,
+      actorId: 'other',
+      seq: 1,
+      t: 0,
+      settings: changed,
+    });
+
+    expect(ctx.store.getState().worldSettings.playerSpeed).toBe(
+      changed.playerSpeed,
+    );
+    const echos = sent.filter(
+      (e) => e.kind === 'world:settings' && e.actorId === 'me',
+    );
+    expect(echos).toHaveLength(0);
+  });
+
+  it('applies remote world:map without re-broadcasting (no echo)', async () => {
+    // Same regression shape as world:settings, but for the WorldMap
+    // anti-echo marker.
+    const ctx = setup({ selfId: 'me', remoteId: 'other' });
+    await ctx.start();
+    const observer = new InMemoryChannel(ctx.hub, '__obs__');
+    await observer.subscribe();
+    const sent: NetEvent[] = [];
+    observer.on((e) => sent.push(e));
+
+    const initial = ctx.store.getState().worldMap;
+    const changed = { ...initial, gridSize: initial.gridSize + 4 };
+    await ctx.remote.send({
+      kind: 'world:map',
+      v: 1,
+      actorId: 'other',
+      seq: 1,
+      t: 0,
+      map: changed,
+    });
+
+    expect(ctx.store.getState().worldMap.gridSize).toBe(changed.gridSize);
+    const echos = sent.filter(
+      (e) => e.kind === 'world:map' && e.actorId === 'me',
+    );
+    expect(echos).toHaveLength(0);
   });
 
   it('applies whiteboard:stroke without re-broadcasting (no echo)', async () => {

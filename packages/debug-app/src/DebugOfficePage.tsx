@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Leva } from 'leva';
 import { Scene } from './renderer/Scene.tsx';
 import { SidePanel } from './ui/SidePanel.tsx';
@@ -17,7 +17,6 @@ type AppMode = 'in-memory' | 'ws';
 export function DebugOfficePage() {
   const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
   const [local, setLocal] = useState<PersistentLocalState | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
 
   // Alt+P cycles through camera modes.
@@ -41,7 +40,6 @@ export function DebugOfficePage() {
     const a = new Audio('/elevator-music.mp3');
     a.loop = true;
     a.volume = 0.4;
-    audioRef.current = a;
     setAudio(a);
 
     const lp = createPersistentLocalState({

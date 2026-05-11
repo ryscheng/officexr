@@ -104,17 +104,22 @@ export function Scene(props: SceneProps) {
   // mirrors the user's input into `actions.setWorldSettings` /
   // `setWorldMap` as appropriate. Scene only reads the returned values
   // for scene-graph wiring; broadcast happens inside each panel.
+  //
+  // Order matters: Leva renders folders top-to-bottom in the order
+  // their `useControls` calls run. Keep the in-world / gameplay knobs
+  // up top (Bot, Animation, Proximity, Lighting, Background), then
+  // camera/world setup, then the import/export Settings panel last.
   useBotPanel({
     onBotCountChange: props.onBotCountChange,
     onBotModeChange: props.onBotModeChange,
   });
-  const proximity = useProximityPanel(actions);
   useAnimationPanel(actions);
+  const proximity = useProximityPanel(actions);
   const lighting = useLightingPanel(actions);
   const background = useBackgroundPanel();
   const fixed = useFixedCameraPanel();
-  useSettingsPanel();
   const world = useWorldPanel(store, actions);
+  useSettingsPanel();
 
   // After Scene mounts (and the panel `useEffect`s above have flushed
   // their initial values into the store), force-broadcast the current
