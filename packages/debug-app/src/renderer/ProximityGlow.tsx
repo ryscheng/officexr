@@ -22,6 +22,8 @@ interface ProximityGlowProps {
   /** Visual size of the per-player disc on the ground (shown for
    * `entering` and `exiting` states only). */
   discRadius: number;
+  /** Outer radius of the per-player disc on the ground. */
+  outerRadius: number;
   /** Pulses per second while pulsing. */
   pulseSpeed: number;
   /** Peak alpha at the bright phase of the pulse / steady. */
@@ -96,18 +98,6 @@ interface DiscRegistration {
   material: THREE.MeshBasicMaterial;
 }
 
-/** Per-frame live state of a MeetingArea — published by ProximityGlow
- * via a ref, consumed by MeetingAreaFx imperatively each frame. */
-interface AreaLive {
-  centerX: number;
-  centerY: number;
-  centerZ: number;
-  /** Eased radius in world metres. */
-  radius: number;
-  /** Eased opacity in [0, 1]. */
-  opacity: number;
-}
-
 /**
  * Conversation glow + approach sparkles, driven by the position-based
  * `PairTracker` (see `./proximity/pairTracker.ts`).
@@ -136,6 +126,7 @@ export function ProximityGlow({
   bus,
   selfId,
   discRadius,
+  outerRadius,
   pulseSpeed,
   intensity,
   enteringColor,
@@ -195,11 +186,17 @@ export function ProximityGlow({
     [],
   );
 
-  // Per-area live state, updated each frame from the tracker. Each
-  // MeetingAreaFx instance subscribes via its own useFrame and reads
-  // straight from its assigned ref — no React re-renders when the
-  // centre / radius / opacity drifts.
-  const areaLiveRefs = useRef<Map<string, React.MutableRefObject<AreaLive>>>(
+  // Per-area Three.js handles, registered by each MeetingAreaFx
+  // instance via callbacks. ProximityGlow's `useFrame` (this one)
+  // drives all per-frame updates on these refs directly — that
+  // pattern survives React StrictMode's mount-unmount-remount cycle
+  // cleanly (R3F's per-component `useFrame` re-registration was
+  // flaky after the strict-mode bounce, leaving area discs stuck at
+  // opacity 0 / radius 1 / origin position).
+  const areaGroupRefs = useRef<Map<string, THREE.Group>>(new Map());
+  const areaDiscRefs = useRef<Map<string, THREE.Mesh>>(new Map());
+  const areaMatRefs = useRef<Map<string, THREE.MeshBasicMaterial>>(new Map());
+  const areaRadiusOuts = useRef<Map<string, React.MutableRefObject<number>>>(
     new Map(),
   );
   /** Smoothed radius per area for visual continuity across frames. */
@@ -289,10 +286,11 @@ export function ProximityGlow({
       reg.material.color.copy(targetColor);
     }
 
-    // MeetingArea live state: centroid / eased radius / opacity. The
-    // MeetingAreaFx component reads its assigned ref each frame to
-    // imperatively position its disc + perimeter sparkles without
-    // triggering React re-renders.
+    // MeetingArea per-frame imperative updates. We position the group
+    // at the area centroid, scale the disc to the eased radius,
+    // ramp the material opacity, and publish the live radius into
+    // the area's radiusRef so its `<BubbleParticles>` ring tracks
+    // the dynamic annulus.
     const seenIds = new Set<string>();
     const y = (selfPlayer?.pos.y ?? 0) + 0.15;
     for (const area of out.areas) {
@@ -309,18 +307,15 @@ export function ProximityGlow({
       const easedOp =
         curOp + (intensity * 0.85 - curOp) * Math.min(1, 6 * dt);
       areaOpacity.current.set(area.id, easedOp);
-      // Push into the per-area live ref (or create it on first sight
-      // — MeetingAreaFx looks the same ref up via its `id` prop).
-      let liveRef = areaLiveRefs.current.get(area.id);
-      if (!liveRef) {
-        liveRef = { current: { centerX: 0, centerZ: 0, centerY: 0, radius: 0, opacity: 0 } };
-        areaLiveRefs.current.set(area.id, liveRef);
-      }
-      liveRef.current.centerX = area.center.x;
-      liveRef.current.centerZ = area.center.z;
-      liveRef.current.centerY = y;
-      liveRef.current.radius = easedR;
-      liveRef.current.opacity = easedOp;
+      // Apply transforms to the registered Three.js handles.
+      const grp = areaGroupRefs.current.get(area.id);
+      const disc = areaDiscRefs.current.get(area.id);
+      const mat = areaMatRefs.current.get(area.id);
+      const rRef = areaRadiusOuts.current.get(area.id);
+      if (grp) grp.position.set(area.center.x, y, area.center.z);
+      if (disc) disc.scale.set(easedR, easedR, 1);
+      if (mat) mat.opacity = easedOp;
+      if (rRef) rRef.current = easedR;
     }
     // Forget per-area state for areas that no longer exist.
     for (const id of [...areaRadiusEased.current.keys()]) {
@@ -328,9 +323,6 @@ export function ProximityGlow({
     }
     for (const id of [...areaOpacity.current.keys()]) {
       if (!seenIds.has(id)) areaOpacity.current.delete(id);
-    }
-    for (const id of [...areaLiveRefs.current.keys()]) {
-      if (!seenIds.has(id)) areaLiveRefs.current.delete(id);
     }
 
     // Reconcile the React-rendered list of areas with the tracker's
@@ -356,6 +348,8 @@ export function ProximityGlow({
           version={sparklingVersion}
           enteringColor={enteringColor}
           sparkleSizeMul={sparkleSizeMul}
+          borderInset={meetingBorderInset}
+          borderOutset={meetingBorderOutset}
           sparkleSpeed={sparkleSpeed}
           sparkleFloatHeight={sparkleFloatHeight}
           store={store}
@@ -372,7 +366,22 @@ export function ProximityGlow({
           sparkleSpeed={sparkleSpeed}
           sparkleFloatHeight={sparkleFloatHeight}
           sparkleSizeMul={sparkleSizeMul}
-          getLive={() => areaLiveRefs.current.get(a.id) ?? null}
+          registerGroup={(g) => {
+            if (g) areaGroupRefs.current.set(a.id, g);
+            else areaGroupRefs.current.delete(a.id);
+          }}
+          registerMesh={(m) => {
+            if (m) areaDiscRefs.current.set(a.id, m);
+            else areaDiscRefs.current.delete(a.id);
+          }}
+          registerMat={(m) => {
+            if (m) areaMatRefs.current.set(a.id, m);
+            else areaMatRefs.current.delete(a.id);
+          }}
+          registerRadiusRef={(r) => {
+            if (r) areaRadiusOuts.current.set(a.id, r);
+            else areaRadiusOuts.current.delete(a.id);
+          }}
         />
       ))}
     </>
@@ -385,6 +394,10 @@ interface PlayerProximityFxProps {
   register: (id: string, entry: DiscRegistration | null) => void;
   sparkling: boolean;
   version: number;
+    /** Distance (m) the bubble annulus extends *inside* the area edge. */
+  borderInset: number;
+  /** Distance (m) the bubble annulus extends *outside* the area edge. */
+  borderOutset: number;
   enteringColor: string;
   /** Combined Leva × camera-mode size multiplier for the approach
    * bubbles. */
@@ -404,14 +417,14 @@ function PlayerProximityFx({
   radius,
   register,
   sparkling,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  version,
   enteringColor,
   sparkleSizeMul,
   sparkleSpeed,
   sparkleFloatHeight,
   store,
   playerId,
+  borderInset,
+  borderOutset,
 }: PlayerProximityFxProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const matRef = useRef<THREE.MeshBasicMaterial>(null);
@@ -458,7 +471,7 @@ function PlayerProximityFx({
       <group ref={groupRef}>
         {sparkling && (
           <BubbleParticles
-            count={32}
+            count={120}
             color={enteringColor}
             sizeMul={sparkleSizeMul}
             speedMul={sparkleSpeed}
@@ -466,6 +479,8 @@ function PlayerProximityFx({
             layout="disc"
             innerRadius={0}
             outerRadius={radius}
+            innerOffset={borderInset}
+            outerOffset={borderOutset}
           />
         )}
       </group>
@@ -487,10 +502,18 @@ interface MeetingAreaFxProps {
   /** Combined Leva × camera-mode size multiplier for the perimeter
    * bubbles. */
   sparkleSizeMul: number;
-  /** Looks up the live state ref for this area, or returns `null`
-   * if the area no longer exists (e.g. between dissolution and the
-   * next React reconciliation). Called every frame. */
-  getLive: () => React.MutableRefObject<AreaLive> | null;
+  /** Callbacks ProximityGlow uses to register each area's three3
+   * THREE.js handles (group + disc mesh + disc material). PG's own
+   * `useFrame` drives the position / scale / opacity each frame —
+   * doing it that way (instead of MeetingAreaFx owning its own
+   * `useFrame`) sidesteps a R3F + React StrictMode interaction
+   * where the per-component frame callback doesn't re-register after
+   * the mount-unmount-remount cycle. The parent `<ProximityGlow>`
+   * mounts once and its `useFrame` is stable. */
+  registerGroup: (g: THREE.Group | null) => void;
+  registerMesh: (m: THREE.Mesh | null) => void;
+  registerMat: (m: THREE.MeshBasicMaterial | null) => void;
+  registerRadiusRef: (ref: React.MutableRefObject<number> | null) => void;
 }
 
 /**
@@ -510,7 +533,10 @@ function MeetingAreaFx({
   sparkleSpeed,
   sparkleFloatHeight,
   sparkleSizeMul,
-  getLive,
+  registerGroup,
+  registerMesh,
+  registerMat,
+  registerRadiusRef,
 }: MeetingAreaFxProps) {
   const groupRef = useRef<THREE.Group>(null);
   const discRef = useRef<THREE.Mesh>(null);
@@ -521,25 +547,18 @@ function MeetingAreaFx({
   // dynamically-sized annulus.
   const radiusRef = useRef(1);
 
-  useFrame(() => {
-    const liveRef = getLive();
-    if (!liveRef) return;
-    const live = liveRef.current;
-
-    if (groupRef.current) {
-      groupRef.current.position.set(live.centerX, live.centerY, live.centerZ);
-    }
-    // Disc: unit-circle geometry in XY plane, rotated -π/2 on X to
-    // lie on the floor. Scaling pre-rotation X and Y gives an XZ
-    // disc with the correct radius.
-    if (discRef.current) {
-      discRef.current.scale.set(live.radius, live.radius, 1);
-    }
-    if (matRef.current) {
-      matRef.current.opacity = live.opacity;
-    }
-    radiusRef.current = live.radius;
-  });
+  useEffect(() => {
+    registerGroup(groupRef.current);
+    registerMesh(discRef.current);
+    registerMat(matRef.current);
+    registerRadiusRef(radiusRef);
+    return () => {
+      registerGroup(null);
+      registerMesh(null);
+      registerMat(null);
+      registerRadiusRef(null);
+    };
+  }, [registerGroup, registerMesh, registerMat, registerRadiusRef]);
 
   return (
     <group ref={groupRef}>
@@ -677,8 +696,9 @@ function BubbleParticles({
     let innerR: number;
     let outerR: number;
     if (layout === 'disc') {
-      innerR = innerRadius ?? 0;
       outerR = outerRadius ?? 1;
+      innerR = Math.max(0.01, outerR - innerOffset); // clamp to non-negative
+      outerR = outerR + Math.max(0, outerOffset); // clamp to non-negative
     } else {
       const live = radiusRef ? radiusRef.current : 1;
       innerR = Math.max(0.01, live - innerOffset);

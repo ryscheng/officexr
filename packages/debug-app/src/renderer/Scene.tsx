@@ -696,6 +696,7 @@ export function Scene(props: SceneProps) {
           bus={props.bus}
           selfId={selfId}
           discRadius={proximity.discRadius}
+          outerRadius={proximity.outerRadius}
           pulseSpeed={proximity.pulseSpeed}
           intensity={proximity.intensity}
           enteringColor={proximity.enteringColor}
