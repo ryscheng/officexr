@@ -9,15 +9,18 @@ import {
 } from '@officexr/sdk';
 import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldSettings } from '@officexr/sdk';
 import type { Clock } from '@officexr/sdk/test-harness';
-import {
-  BODY_GROUPS,
-  WALL_GROUPS,
-  INNER_SENSOR_GROUPS,
-  OUTER_SENSOR_GROUPS,
-  type ColliderTag,
-} from '../physics/groups.ts';
-import { worldMapToWalls } from '../physics/worldMapToWalls.ts';
 import { routeContactEvent } from '../physics/bridge.ts';
+import { BotPhysicsWorld } from './BotPhysicsWorld.ts';
+import {
+  ALL_MODES,
+  BOT_MODE_STRATEGIES,
+  type BotMode,
+  type BotModeContext,
+  type ModeState,
+} from './modes/index.ts';
+
+export type { BotMode } from './modes/index.ts';
+export const BOT_MODES = ALL_MODES;
 
 export interface BotDriverOptions {
   /** Factory that mints a fresh Channel for this bot's SDK client. The
@@ -27,8 +30,7 @@ export interface BotDriverOptions {
   /** PlayerId of the local (human) player whose position the bot homes
    * toward in the `walk-to-local` / `orbit` modes. The bot reads this from
    * its own SDK store, which receives the local player's broadcasts via
-   * the same channel — this is what removes the renderer-side closure
-   * dependency the previous `localPlayerPosGetter` had. */
+   * the same channel. */
   localPlayerId: PlayerId;
   botId?: string;
   speed?: number;
@@ -54,69 +56,20 @@ export interface BotDriverOptions {
   externalBus?: Bus;
 }
 
-export type BotMode =
-  | 'idle'
-  | 'walk-to-local'
-  | 'walk-away'
-  /** Random walk: pick a unit direction, hold for ~1–3 s, repeat. Pivots
-   * early on a hard block so wandering bots don't grind against walls. */
-  | 'wander'
-  /** Patrol four corners of an inset square in a fixed loop. */
-  | 'patrol'
-  /** Orbit the local player at a fixed radius. */
-  | 'orbit';
-
-const ALL_MODES: readonly BotMode[] = [
-  'idle',
-  'walk-to-local',
-  'walk-away',
-  'wander',
-  'patrol',
-  'orbit',
-];
-
-/** Match the renderer's extrapolation cap so the resolver and the visible
- * avatar agree on where a peer "is" right now. */
-const EXTRAPOLATION_CAP_S = 0.1;
-
-function extrapolatePeerPos(
-  player: { pos: Vec3; vel: Vec3; tRecv?: number },
-  nowMs: number,
-): Vec3 {
-  if (player.tRecv === undefined) return { ...player.pos };
-  const elapsed = Math.min(EXTRAPOLATION_CAP_S, (nowMs - player.tRecv) / 1000);
-  return {
-    x: player.pos.x + player.vel.x * elapsed,
-    y: player.pos.y + player.vel.y * elapsed,
-    z: player.pos.z + player.vel.z * elapsed,
-  };
-}
-
-interface ModeState {
-  /** Current direction the wander mode is heading (unit vector). */
-  wanderDir: { x: number; z: number };
-  /** Wall-clock time at which wander picks a new direction. */
-  wanderUntilMs: number;
-  /** Index into the patrol waypoint loop. */
-  patrolIdx: number;
-  /** Cached waypoints (computed lazily from world map size). */
-  patrolWaypoints: Array<{ x: number; z: number }> | null;
-  /** Current angle around the local player for orbit mode (radians). */
-  orbitAngle: number;
-}
-
-/** Local-y the bot collider sits at (matches the browser-side BODY_Y in
- * Players.tsx so all bodies are at the same elevation). */
-const BODY_Y = 0.9;
-
-/** Per-peer kinematic mirror body the bot maintains in its own Rapier
- * world. Their positions are kept in sync with the SDK store's last
- * extrapolated peer positions every tick. */
-interface PeerMirror {
-  body: RAPIER.RigidBody;
-  collider: RAPIER.Collider;
-}
-
+/**
+ * Bot agent: one SDK client (`Store` + `SyncEngine` + `SnapshotHandshake`
+ * + `Channel`) running an autonomous traversal strategy from
+ * `./modes/`. Movement is resolved against a private Rapier world
+ * encapsulated in {@link BotPhysicsWorld}; everything else is pure
+ * SDK plumbing.
+ *
+ * The driver itself owns:
+ *   - SDK plumbing (store, actions, bus, channel, sync, handshake);
+ *   - the current {@link BotMode} + {@link ModeState} scratch;
+ *   - the tick orchestration (ask strategy for intent → ask physics
+ *     world to step → broadcast new pose → step world + drain
+ *     sensor events → flush sync).
+ */
 export class BotDriver {
   readonly botId: string;
 
@@ -146,33 +99,8 @@ export class BotDriver {
   private botHandshake: SnapshotHandshake | null = null;
   private readonly initialWorld: BotDriverOptions['initialWorld'];
 
-  // Per-bot Rapier world — replaces the previous SDK `resolveMovement`.
-  // Each bot's world contains: static walls around the floor edge, its
-  // own kinematic body + body/inner/outer-sensor colliders, a
-  // KinematicCharacterController for movement resolution, and a set of
-  // kinematic mirror bodies for every peer the bot knows about (kept
-  // in sync from the SDK store each tick).
-  private world: RAPIER.World | null = null;
-  private body: RAPIER.RigidBody | null = null;
-  private bodyCollider: RAPIER.Collider | null = null;
-  private controller: RAPIER.KinematicCharacterController | null = null;
-  private wallBodies: RAPIER.RigidBody[] = [];
-  private wallsForGridSize: number | null = null;
-  private peerMirrors = new Map<PlayerId, PeerMirror>();
-  private tagByHandle = new Map<number, ColliderTag>();
-  /** Pairs of (selfCollider.handle, otherCollider.handle) that were
-   * intersecting at the end of the previous step. Diff against the
-   * current step's pairs to emit started/ended sensor events. */
-  private prevIntersections = new Set<string>();
-  /** Player IDs whose bodies the bot's character controller was bumping
-   * into on the previous frame, for edge-triggering `collision:char-bump`. */
-  private bumpingPeers = new Set<PlayerId>();
+  private physics: BotPhysicsWorld | null = null;
   private readonly externalBus?: Bus;
-  /** Mapping from peer-mirror collider handle → playerId, so the
-   * character controller's collision list can be translated into a
-   * peer ID for the bump event. The body collider handle for `this`
-   * bot is filtered out separately. */
-  private peerByColliderHandle = new Map<number, PlayerId>();
 
   constructor(opts: BotDriverOptions) {
     this.createChannel = opts.createChannel;
@@ -224,72 +152,14 @@ export class BotDriver {
       yaw: 0,
     });
 
-    // --- Rapier world ----------------------------------------------
-    // Gravity is zero — characters are kinematic and Y-locked, identical
-    // to the browser-side `<Physics gravity={[0,0,0]}>`. The world is
-    // disposed (with RAPIER.World.free) in `stop()` to release the
-    // associated wasm memory.
     const state = botStore.getState();
-    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
-    this.world = world;
-    this.syncWalls(state.worldMap);
-
-    // The bot's own body — kinematic, ball-shaped at torso height,
-    // tagged for the bridge.
-    const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-      this.startPos.x,
-      this.startPos.y,
-      this.startPos.z,
-    );
-    const body = world.createRigidBody(bodyDesc);
-    const charRadius = state.worldSettings.charRadius;
-    // `ActiveCollisionTypes.ALL` — without this, Rapier's default
-    // (DEFAULT = 15) skips kinematic↔kinematic contact / intersection
-    // detection. Every character body in this scene is kinematic, so
-    // bot-vs-bot and bot-vs-(local player mirror) intersections would
-    // never fire and the bridge would emit no proximity events.
-    const ACTIVE_TYPES = RAPIER.ActiveCollisionTypes.ALL;
-    const colDesc = RAPIER.ColliderDesc.ball(charRadius)
-      .setTranslation(0, BODY_Y, 0)
-      .setCollisionGroups(BODY_GROUPS)
-      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
-      .setActiveCollisionTypes(ACTIVE_TYPES);
-    const bodyCol = world.createCollider(colDesc, body);
-    this.tagByHandle.set(bodyCol.handle, { kind: 'body', ownerId: botId });
-
-    const innerDesc = RAPIER.ColliderDesc.ball(state.worldSettings.proximityRadius)
-      .setTranslation(0, BODY_Y, 0)
-      .setSensor(true)
-      .setCollisionGroups(INNER_SENSOR_GROUPS)
-      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
-      .setActiveCollisionTypes(ACTIVE_TYPES);
-    const innerCol = world.createCollider(innerDesc, body);
-    this.tagByHandle.set(innerCol.handle, {
-      kind: 'inner-sensor',
-      ownerId: botId,
+    this.physics = new BotPhysicsWorld({
+      selfId: botId,
+      startPos: this.startPos,
+      worldSettings: state.worldSettings,
     });
+    this.physics.syncWalls(state.worldMap);
 
-    const outerDesc = RAPIER.ColliderDesc.ball(
-      state.worldSettings.proximityOuterRadius,
-    )
-      .setTranslation(0, BODY_Y, 0)
-      .setSensor(true)
-      .setCollisionGroups(OUTER_SENSOR_GROUPS)
-      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
-      .setActiveCollisionTypes(ACTIVE_TYPES);
-    const outerCol = world.createCollider(outerDesc, body);
-    this.tagByHandle.set(outerCol.handle, {
-      kind: 'outer-sensor',
-      ownerId: botId,
-    });
-
-    this.body = body;
-    this.bodyCollider = bodyCol;
-    this.controller = world.createCharacterController(0.01);
-    this.controller.setApplyImpulsesToDynamicBodies(false);
-    this.controller.setSlideEnabled(true);
-
-    // --- SDK plumbing (unchanged) ----------------------------------
     const botChannel = this.createChannel(botId);
     const botSync = new SyncEngine({
       store: botStore,
@@ -320,6 +190,10 @@ export class BotDriver {
     this.botChannel = botChannel;
     this.botSync = botSync;
     this.botHandshake = botHandshake;
+
+    // Run any onEnter hook the initial mode declared so timers /
+    // angles are seeded before the first tick.
+    this.invokeOnEnter();
   }
 
   stop(): void {
@@ -327,17 +201,8 @@ export class BotDriver {
     this.botSync?.stop();
     this.botHandshake?.stop();
     this.botChannel?.close();
-    if (this.world) {
-      this.world.free();
-      this.world = null;
-    }
-    this.body = null;
-    this.bodyCollider = null;
-    this.controller = null;
-    this.wallBodies = [];
-    this.peerMirrors.clear();
-    this.tagByHandle.clear();
-    this.prevIntersections.clear();
+    this.physics?.dispose();
+    this.physics = null;
   }
 
   tick(dt: number): void {
@@ -346,25 +211,31 @@ export class BotDriver {
       !this.botActions ||
       !this.botSync ||
       !this.botHandshake ||
-      !this.world ||
-      !this.body ||
-      !this.bodyCollider ||
-      !this.controller ||
-      !this.botBus
+      !this.botBus ||
+      !this.physics ||
+      !this.botStore
     )
       return;
 
-    const botState = this.botStore!.getState();
+    const botState = this.botStore.getState();
     const { playerSpeed, movementBlockThreshold } = botState.worldSettings;
     const speed = playerSpeed ?? this.speed;
 
-    // Keep static walls in sync with the (rarely-changing) gridSize.
-    this.syncWalls(botState.worldMap);
-    // Keep peer mirror bodies in sync with their last-known positions.
-    this.syncPeers(botState.players);
+    // Keep static walls + peer mirrors in sync with the latest state.
+    this.physics.syncWalls(botState.worldMap);
+    this.physics.syncPeers(botState.players, this.clock.now(), botState.worldSettings.charRadius);
 
     const botPos = this.getBotPos();
-    const intent = this.computeIntent(botPos, botState, dt);
+    const ctx: BotModeContext = {
+      botPos,
+      localPlayerPos: this.getLocalPlayerPos(),
+      state: botState,
+      clock: this.clock,
+      modeState: this.modeState,
+    };
+    const strategy = BOT_MODE_STRATEGIES[this.mode];
+    const intent = strategy.computeIntent(ctx);
+
     if (!intent) {
       if (this.wasMoving) {
         const me = botState.players[this.botId];
@@ -375,8 +246,8 @@ export class BotDriver {
       // Still step the world + drain events so sensor enter/exit edges
       // fire while the bot stands still (e.g. a peer walking into the
       // bot's proximity ring).
-      this.world.step();
-      this.drainSensorEvents();
+      this.physics.stepWorld();
+      this.flushEvents();
       this.botSync.flushPosition();
       this.botHandshake.tickTimers();
       return;
@@ -385,64 +256,50 @@ export class BotDriver {
     const moveDX = intent.x * speed * (dt / 1000);
     const moveDZ = intent.z * speed * (dt / 1000);
 
-    // Rapier's character controller — replaces the old resolveMovement.
-    // It walks the body's collider against the world (walls + peer
-    // mirrors) and returns the corrected delta, sliding along contacts.
-    // EXCLUDE_SENSORS keeps the bot from physically bumping into other
-    // characters' invisible proximity spheres (the sensor=true flag
-    // only suppresses the dynamics solver, not the query pipeline that
-    // the character controller uses).
-    this.controller.computeColliderMovement(
-      this.bodyCollider,
-      { x: moveDX, y: 0, z: moveDZ },
-      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-    );
-    const corrected = this.controller.computedMovement();
-    this.emitControllerBumps();
+    const stepResult = this.physics.step({ x: moveDX, z: moveDZ });
+    this.emitControllerBumps(stepResult.bumps);
 
-    // Progress = how much of the intent survived. Same gating as the
-    // old code — below `minProgress`, snap to zero so wander pivots.
-    const intentLenSq = moveDX * moveDX + moveDZ * moveDZ;
-    const correctedLenSq = corrected.x * corrected.x + corrected.z * corrected.z;
-    let progress = 1;
-    if (intentLenSq > 1e-12) {
-      progress = Math.max(0, Math.min(1, Math.sqrt(correctedLenSq / intentLenSq)));
-    }
     const minProgress = 1 - movementBlockThreshold;
 
-    if (this.mode === 'wander' && progress < minProgress) {
-      this.pickWanderDirection(0);
+    // Wander pivots early on a hard block so the bot doesn't grind
+    // into walls. Other modes are happy to stand still until conditions
+    // change.
+    if (this.mode === 'wander' && stepResult.progress < minProgress) {
+      // Re-seed the wander direction. Calling `onEnter` again is the
+      // strategy-respecting way; passing bias=0 since we don't track
+      // the failed direction here.
+      strategy.onEnter?.(ctx);
     }
 
     let newPos: Vec3;
     let vel: Vec3;
     let moved: boolean;
     let yaw: number;
-    if (progress < minProgress) {
+    if (stepResult.progress < minProgress) {
       newPos = botPos;
       vel = { x: 0, y: 0, z: 0 };
       moved = false;
       yaw = botState.players[this.botId]?.yaw ?? 0;
     } else {
-      const t = this.body.translation();
-      newPos = { x: t.x + corrected.x, y: botPos.y, z: t.z + corrected.z };
-      this.body.setNextKinematicTranslation({
-        x: newPos.x,
-        y: t.y, // keep y stable; collider local y handles torso height
-        z: newPos.z,
-      });
+      const t = this.physics.translation();
+      newPos = {
+        x: t.x + stepResult.corrected.x,
+        y: botPos.y,
+        z: t.z + stepResult.corrected.z,
+      };
+      this.physics.applyTranslation(newPos);
       vel = {
-        x: intent.x * speed * progress,
+        x: intent.x * speed * stepResult.progress,
         y: 0,
-        z: intent.z * speed * progress,
+        z: intent.z * speed * stepResult.progress,
       };
       moved = true;
       yaw = Math.atan2(-intent.x, -intent.z);
     }
 
     this.botActions.setSelfPosition(newPos, vel, yaw);
-    this.world.step();
-    this.drainSensorEvents();
+    this.physics.stepWorld();
+    this.flushEvents();
     this.botSync.flushPosition();
     this.botHandshake.tickTimers();
     this.wasMoving = moved;
@@ -451,19 +308,7 @@ export class BotDriver {
   setMode(mode: BotMode): void {
     if (mode === this.mode) return;
     this.mode = mode;
-    // Reset per-mode timers so the new mode picks up immediately.
-    if (mode === 'wander') this.pickWanderDirection(0);
-    if (mode === 'patrol') this.modeState.patrolWaypoints = null;
-    if (mode === 'orbit') {
-      // Seed orbit angle from the current bot→local heading so we don't
-      // teleport along the orbit circle on mode entry.
-      const local = this.getLocalPlayerPos();
-      const botPos = this.getBotPos();
-      this.modeState.orbitAngle = Math.atan2(
-        botPos.z - local.z,
-        botPos.x - local.x,
-      );
-    }
+    this.invokeOnEnter();
   }
 
   getBotPos(): Vec3 {
@@ -483,295 +328,64 @@ export class BotDriver {
     return state.players[this.localPlayerId]?.pos ?? { x: 0, y: 0, z: 0 };
   }
 
-  // --- Rapier world maintenance -----------------------------------
-
-  /** Rebuild perimeter wall colliders when `worldMap.gridSize`
-   * changes. No-op on subsequent ticks if the size is the same. */
-  private syncWalls(worldMap: WorldMap): void {
-    if (!this.world) return;
-    if (this.wallsForGridSize === worldMap.gridSize) return;
-    // Drop old wall bodies (also drops their colliders).
-    for (const b of this.wallBodies) this.world.removeRigidBody(b);
-    this.wallBodies = [];
-    const walls = worldMapToWalls(worldMap);
-    for (const w of walls) {
-      const desc = RAPIER.RigidBodyDesc.fixed().setTranslation(
-        w.center.x,
-        w.center.y,
-        w.center.z,
-      );
-      const body = this.world.createRigidBody(desc);
-      const cdesc = RAPIER.ColliderDesc.cuboid(
-        w.halfExtents.x,
-        w.halfExtents.y,
-        w.halfExtents.z,
-      ).setCollisionGroups(WALL_GROUPS);
-      this.world.createCollider(cdesc, body);
-      this.wallBodies.push(body);
-    }
-    this.wallsForGridSize = worldMap.gridSize;
+  /** Run the active strategy's onEnter hook with a freshly-built
+   * context. Idempotent — modes use this to reset timers / angles. */
+  private invokeOnEnter(): void {
+    const strategy = BOT_MODE_STRATEGIES[this.mode];
+    if (!strategy.onEnter || !this.botStore) return;
+    const state = this.botStore.getState();
+    const ctx: BotModeContext = {
+      botPos: this.getBotPos(),
+      localPlayerPos: this.getLocalPlayerPos(),
+      state,
+      clock: this.clock,
+      modeState: this.modeState,
+    };
+    strategy.onEnter(ctx);
   }
 
-  /** Create / update / remove per-peer kinematic mirror bodies so the
-   * character controller can resolve bot-vs-bot and bot-vs-local
-   * collisions inside the bot's own Rapier world. */
-  private syncPeers(players: Record<PlayerId, { pos: Vec3; vel: Vec3; tRecv?: number }>): void {
-    if (!this.world || !this.botStore) return;
-    const nowMs = this.clock.now();
-    const charRadius = this.botStore.getState().worldSettings.charRadius;
-    const seen = new Set<PlayerId>();
-
-    for (const [id, p] of Object.entries(players)) {
-      if (id === this.botId) continue;
-      seen.add(id as PlayerId);
-      const ePos = extrapolatePeerPos(p, nowMs);
-      let mirror = this.peerMirrors.get(id as PlayerId);
-      if (!mirror) {
-        const bdesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-          ePos.x,
-          ePos.y,
-          ePos.z,
-        );
-        const mb = this.world.createRigidBody(bdesc);
-        const cdesc = RAPIER.ColliderDesc.ball(charRadius)
-          .setTranslation(0, BODY_Y, 0)
-          .setCollisionGroups(BODY_GROUPS)
-          .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
-          .setActiveCollisionTypes(RAPIER.ActiveCollisionTypes.ALL);
-        const mc = this.world.createCollider(cdesc, mb);
-        this.tagByHandle.set(mc.handle, { kind: 'body', ownerId: id });
-        this.peerByColliderHandle.set(mc.handle, id as PlayerId);
-        mirror = { body: mb, collider: mc };
-        this.peerMirrors.set(id as PlayerId, mirror);
-      } else {
-        mirror.body.setNextKinematicTranslation({
-          x: ePos.x,
-          y: ePos.y,
-          z: ePos.z,
-        });
-      }
-    }
-
-    // Remove mirrors for peers that left.
-    for (const [id, mirror] of this.peerMirrors) {
-      if (seen.has(id)) continue;
-      this.tagByHandle.delete(mirror.collider.handle);
-      this.peerByColliderHandle.delete(mirror.collider.handle);
-      this.world.removeRigidBody(mirror.body);
-      this.peerMirrors.delete(id);
-      // Forget any bump-state for a peer that left so a new
-      // same-named peer would re-trigger the bump on first contact.
-      this.bumpingPeers.delete(id);
-    }
-  }
-
-  /** Edge-trigger `collision:char-bump` events for every peer the
-   * character controller's last `computeColliderMovement` reported a
-   * collision against. Mirrors `SceneFrame`'s self-side detection
-   * inside the bot's own Rapier world: the controller slides the bot
-   * around obstacles using the query pipeline, so the contact pipeline
-   * never fires `onCollisionEnter` for these slides — we have to read
-   * the controller's collision list and synthesise the bus event
-   * ourselves. Emits bilaterally so both the bot's avatar (on the
-   * private bot bus) and the OTHER character's avatar (on the
-   * `externalBus` — typically the local renderer's bus, when present)
-   * play their bump animation. */
-  private emitControllerBumps(): void {
-    if (!this.controller || !this.botBus) return;
-    const next = new Set<PlayerId>();
-    const n = this.controller.numComputedCollisions();
-    for (let i = 0; i < n; i++) {
-      const coll = this.controller.computedCollision(i);
-      if (!coll || !coll.collider) continue;
-      const otherId = this.peerByColliderHandle.get(coll.collider.handle);
-      if (!otherId) continue; // wall or unknown
-      next.add(otherId);
-      if (this.bumpingPeers.has(otherId)) continue;
-      const nrm = coll.normal1;
-      // Bump on the bot's own bus — for the bot's local-state
-      // bookkeeping (e.g. any future bot-side bump animation).
+  /** Edge-trigger bilateral `collision:char-bump` events for every peer
+   * the controller pushed against this step. Mirrors `SceneFrame`'s
+   * self-side detection inside the bot's own Rapier world. Emits on
+   * the bot's private bus AND, when present, on the external bus so
+   * the user's browser plays the bump on both characters when a bot
+   * walks into the local player. */
+  private emitControllerBumps(
+    bumps: Array<{ otherId: PlayerId; normal: { x: number; z: number } }>,
+  ): void {
+    if (!this.botBus) return;
+    for (const { otherId, normal } of bumps) {
       this.botBus.emit({
         kind: 'collision:char-bump',
         selfId: this.botId,
         otherId,
-        normal: { x: nrm.x, z: nrm.z },
+        normal,
       });
-      // Bump on the external (local renderer's) bus so the user's
-      // browser plays the bump on both characters.
       if (this.externalBus) {
         this.externalBus.emit({
           kind: 'collision:char-bump',
           selfId: this.botId,
           otherId,
-          normal: { x: nrm.x, z: nrm.z },
+          normal,
         });
         this.externalBus.emit({
           kind: 'collision:char-bump',
           selfId: otherId,
           otherId: this.botId,
-          normal: { x: -nrm.x, z: -nrm.z },
+          normal: { x: -normal.x, z: -normal.z },
         });
       }
     }
-    this.bumpingPeers = next;
   }
 
-  /** Walk the world's intersection / contact state and emit any
-   * started / ended pair events into the bot's bus. Mirrors the
-   * browser-side `Players` onCollisionEnter / onIntersectionEnter
-   * handlers — same event names so any downstream listener works for
-   * both sides. */
-  private drainSensorEvents(): void {
-    if (!this.world || !this.botBus || !this.bodyCollider) return;
-    const selfId = this.botId;
+  /** Route every sensor / body contact edge the physics world
+   * surfaced this step through the bridge so they land on the bot's
+   * bus with the same event names the browser side emits. */
+  private flushEvents(): void {
+    if (!this.physics || !this.botBus) return;
     const emit = this.botBus.emit;
-
-    // Body-vs-body contact events (entered only — Rapier exposes the
-    // current contact pairs, we diff against last frame). We don't
-    // emit "exited" body events because the bus event we bridge to
-    // (`collision:char-bump`) is start-only.
-    this.world.contactPairsWith(this.bodyCollider, (other) => {
-      const a = this.tagByHandle.get(this.bodyCollider!.handle);
-      const b = this.tagByHandle.get(other.handle);
-      if (a && b) routeContactEvent(emit, selfId, a, b, true);
-    });
-
-    // Sensor pairs (inner + outer). Diff against the previous-step
-    // set to emit started/ended.
-    const next = new Set<string>();
-    const checkSensor = (sensorCollider: RAPIER.Collider) => {
-      this.world!.intersectionPairsWith(sensorCollider, (other) => {
-        const key = `${sensorCollider.handle}:${other.handle}`;
-        next.add(key);
-        if (!this.prevIntersections.has(key)) {
-          const a = this.tagByHandle.get(sensorCollider.handle);
-          const b = this.tagByHandle.get(other.handle);
-          if (a && b) routeContactEvent(emit, selfId, a, b, true);
-        }
-      });
-    };
-    // Iterate the bot's own sensors only.
-    if (this.body) {
-      for (let i = 0; i < this.body.numColliders(); i++) {
-        const c = this.body.collider(i);
-        if (c.isSensor()) checkSensor(c);
-      }
+    for (const ev of this.physics.drainSensorEvents()) {
+      routeContactEvent(emit, this.botId, ev.a, ev.b, ev.started);
     }
-    // Emit ended events for pairs that disappeared.
-    for (const key of this.prevIntersections) {
-      if (next.has(key)) continue;
-      const [hA, hB] = key.split(':').map(Number);
-      const a = this.tagByHandle.get(hA);
-      const b = this.tagByHandle.get(hB);
-      if (a && b) routeContactEvent(emit, selfId, a, b, false);
-    }
-    this.prevIntersections = next;
-  }
-
-  // --- Mode strategies --------------------------------------------------
-  //
-  // Each one returns a unit-length intent vector in XZ — or null to mean
-  // "no movement, settle to idle". Modes never write state directly; the
-  // common resolver+broadcast block at the bottom of tick() does that.
-
-  private computeIntent(
-    botPos: Vec3,
-    state: ReturnType<NonNullable<typeof this.botStore>['getState']>,
-    _dt: number,
-  ): { x: number; z: number } | null {
-    switch (this.mode) {
-      case 'idle':
-        return null;
-      case 'walk-to-local':
-      case 'walk-away':
-        return this.intentTowardLocal(
-          botPos,
-          this.mode === 'walk-to-local' ? 1 : -1,
-        );
-      case 'wander':
-        return this.intentWander();
-      case 'patrol':
-        return this.intentPatrol(botPos, state);
-      case 'orbit':
-        return this.intentOrbit(botPos);
-      default:
-        return null;
-    }
-  }
-
-  private intentTowardLocal(
-    botPos: Vec3,
-    sign: 1 | -1,
-  ): { x: number; z: number } | null {
-    const local = this.getLocalPlayerPos();
-    const dx = local.x - botPos.x;
-    const dz = local.z - botPos.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < 1e-3) return null;
-    return { x: (dx / dist) * sign, z: (dz / dist) * sign };
-  }
-
-  private intentWander(): { x: number; z: number } {
-    if (this.clock.now() >= this.modeState.wanderUntilMs) {
-      this.pickWanderDirection(0);
-    }
-    return this.modeState.wanderDir;
-  }
-
-  /** Pick a fresh random wander direction and a hold window. `bias` rotates
-   * away from the current direction so a re-pick after a wall hit doesn't
-   * pick the same direction. */
-  private pickWanderDirection(bias: number): void {
-    const angle = Math.random() * Math.PI * 2 + bias;
-    this.modeState.wanderDir = { x: Math.cos(angle), z: Math.sin(angle) };
-    // 1.0–3.0 s hold window before the next direction change.
-    this.modeState.wanderUntilMs = this.clock.now() + 1000 + Math.random() * 2000;
-  }
-
-  private intentPatrol(
-    botPos: Vec3,
-    state: ReturnType<NonNullable<typeof this.botStore>['getState']>,
-  ): { x: number; z: number } | null {
-    if (!this.modeState.patrolWaypoints) {
-      // Inset square from the map's half-extent. Bot loops these.
-      const half = (state.worldMap.gridSize * state.worldMap.cubeSize) / 2;
-      const inset = Math.max(2, half * 0.6);
-      this.modeState.patrolWaypoints = [
-        { x: +inset, z: +inset },
-        { x: +inset, z: -inset },
-        { x: -inset, z: -inset },
-        { x: -inset, z: +inset },
-      ];
-      this.modeState.patrolIdx = 0;
-    }
-    const waypoints = this.modeState.patrolWaypoints!;
-    const target = waypoints[this.modeState.patrolIdx]!;
-    const dx = target.x - botPos.x;
-    const dz = target.z - botPos.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < 0.6) {
-      this.modeState.patrolIdx =
-        (this.modeState.patrolIdx + 1) % waypoints.length;
-      return this.intentPatrol(botPos, state); // tail-call to next leg
-    }
-    return { x: dx / dist, z: dz / dist };
-  }
-
-  /** Walk along the tangent of a circle around the local player. The
-   * circle's radius is the current bot↔local distance, so the bot doesn't
-   * snap to a fixed orbit radius — it just keeps that distance and circles. */
-  private intentOrbit(botPos: Vec3): { x: number; z: number } {
-    const local = this.getLocalPlayerPos();
-    const dx = botPos.x - local.x;
-    const dz = botPos.z - local.z;
-    const r = Math.hypot(dx, dz);
-    if (r < 1e-3) {
-      // On top of the player — kick out in +X.
-      return { x: 1, z: 0 };
-    }
-    // Tangent direction (90° CCW from the radius vector, normalised).
-    return { x: -dz / r, z: dx / r };
   }
 }
-
-export const BOT_MODES = ALL_MODES;

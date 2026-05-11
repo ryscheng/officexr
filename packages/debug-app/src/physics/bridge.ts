@@ -9,9 +9,9 @@ type Vec2 = { x: number; z: number };
  *
  * Proximity sensor events (`proximity:entering / entered / exiting /
  * exited`) are NOT emitted here any more — those are now driven by the
- * MeetingArea-aware position tracker in
- * `renderer/proximity/pairTracker.ts`, which is the single source of
- * truth for conversation lifecycle. The Rapier inner/outer-sensor
+ * MeetingArea-aware `PairTracker` exported from `@officexr/sdk`
+ * (`packages/sdk/src/spatial/pair-tracker.ts`), which is the single
+ * source of truth for conversation lifecycle. The Rapier inner/outer-sensor
  * BallColliders in `Players.tsx` still exist (they're cheap) but
  * nothing routes their events through this bridge.
  */

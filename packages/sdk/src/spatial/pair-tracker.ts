@@ -1,4 +1,5 @@
-import type { Bus, PlayerId, PlayerState } from '@officexr/sdk';
+import type { Bus } from '../game-state/bus.ts';
+import type { PlayerId, PlayerState } from '../game-state/types.ts';
 
 /** State of a pair of characters with respect to each other. */
 export type PairState = 'entering' | 'entered' | 'exiting';

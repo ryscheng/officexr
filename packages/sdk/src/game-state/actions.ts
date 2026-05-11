@@ -12,6 +12,7 @@ import type {
   WorldSettings,
   ZombieState,
 } from './types.ts';
+import { cloneWorldMap } from './world-map.ts';
 
 export interface Actions {
   // local intents
@@ -65,24 +66,6 @@ const DEFAULT_PLAYER: Omit<PlayerState, 'id'> = {
   jitsiRoom: null,
   status: 'active',
 };
-
-/** Deep-clone a WorldMap so callers/peers share no mutable references with
- * the store (the collision-world cache keys on map identity, so an in-place
- * mutation would silently keep stale derived data). */
-function cloneWorldMap(m: WorldMap): WorldMap {
-  return {
-    gridSize: m.gridSize,
-    cubeSize: m.cubeSize,
-    origin: { ...m.origin },
-    layers: m.layers.map((l) => ({
-      kind: l.kind,
-      cells: l.cells.map((c) => ({ i: c.i, j: c.j })),
-    })),
-    kinds: Object.fromEntries(
-      Object.entries(m.kinds).map(([id, k]) => [id, { ...k }]),
-    ),
-  };
-}
 
 /**
  * Optional Bus is supplied so actions that have a state-change-→-event

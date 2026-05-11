@@ -5,7 +5,6 @@ import { Sphere } from '@react-three/drei';
 import { Physics, type RapierRigidBody } from '@react-three/rapier';
 import { GradientBackground } from './GradientBackground.tsx';
 import { FloorColliders } from './FloorColliders.tsx';
-import { useControls, button } from 'leva';
 import type {
   Actions,
   Bus,
@@ -21,17 +20,16 @@ import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
-import {
-  CUBE_SIZE,
-  FIXED_CAMERA_DEFAULTS,
-  WORLD,
-  type CameraMode,
-} from './config.ts';
-import {
-  exportLevaConfig,
-  resetLevaConfig,
-  useLevaPersistence,
-} from './levaPersistence.ts';
+import { CUBE_SIZE, type CameraMode } from './config.ts';
+import { useLevaPersistence } from './levaPersistence.ts';
+import { useAnimationPanel } from './panels/AnimationPanel.ts';
+import { useProximityPanel } from './panels/ProximityPanel.ts';
+import { useLightingPanel } from './panels/LightingPanel.ts';
+import { useBackgroundPanel } from './panels/BackgroundPanel.ts';
+import { useBotPanel } from './panels/BotPanel.ts';
+import { useFixedCameraPanel } from './panels/FixedCameraPanel.ts';
+import { useWorldPanel } from './panels/WorldPanel.ts';
+import { useSettingsPanel } from './panels/SettingsPanel.ts';
 
 /**
  * Each frame, anchor the sun (directional light + its target + the
@@ -98,386 +96,27 @@ interface SceneProps {
 }
 
 export function Scene(props: SceneProps) {
-  const { store, actions, selfId, cameraMode, onBotCountChange, onBotModeChange } = props;
+  const { store, actions, selfId, cameraMode, sync } = props;
 
   useLevaPersistence();
 
-  // Bot pool — `count` slider grows / shrinks the live BotPool; mode
-  // buttons fan out to every bot (and become the default for newly-spawned
-  // bots until another mode is chosen). The page intercepts both via the
-  // `onBotCountChange` / `onBotModeChange` props because count >= 2 may
-  // require flipping the realtime backend.
-  const botCfg = useControls('Bot', {
-    count: {
-      value: 1,
-      min: 0,
-      max: 10,
-      step: 1,
-      label: 'count',
-    },
-    Stay: button(() => onBotModeChange('idle')),
-    'Walk to me': button(() => onBotModeChange('walk-to-local')),
-    'Walk away': button(() => onBotModeChange('walk-away')),
-    Wander: button(() => onBotModeChange('wander')),
-    Patrol: button(() => onBotModeChange('patrol')),
-    Orbit: button(() => onBotModeChange('orbit')),
+  // Mount Leva panels. Each panel owns its own `useControls(...)` and
+  // mirrors the user's input into `actions.setWorldSettings` /
+  // `setWorldMap` as appropriate. Scene only reads the returned values
+  // for scene-graph wiring; broadcast happens inside each panel.
+  useBotPanel({
+    onBotCountChange: props.onBotCountChange,
+    onBotModeChange: props.onBotModeChange,
   });
+  const proximity = useProximityPanel(actions);
+  useAnimationPanel(actions);
+  const lighting = useLightingPanel(actions);
+  const background = useBackgroundPanel();
+  const fixed = useFixedCameraPanel();
+  useSettingsPanel();
+  const world = useWorldPanel(store, actions);
 
-  useEffect(() => {
-    onBotCountChange(botCfg.count);
-  }, [onBotCountChange, botCfg.count]);
-
-  // Animation playback speed knobs. timeScale=1 plays the clip at its
-  // authored speed; <1 slows down, >1 speeds up.
-  const proximity = useControls('Proximity', {
-    sensorRadius: {
-      value: 3,
-      min: 0.5,
-      max: 20,
-      step: 0.1,
-      label: 'inner radius (m)',
-    },
-    outerRadius: {
-      value: 6,
-      min: 1,
-      max: 30,
-      step: 0.1,
-      label: 'outer radius (m)',
-    },
-    enterDebounceMs: {
-      value: 500,
-      min: 0,
-      max: 2000,
-      step: 10,
-      label: 'enter delay (ms)',
-    },
-    discRadius: {
-      value: 1.6,
-      min: 0.2,
-      max: 5,
-      step: 0.05,
-      label: 'disc radius (m)',
-    },
-    pulseSpeed: {
-      value: 0.8,
-      min: 0.05,
-      max: 4,
-      step: 0.05,
-      label: 'pulse (Hz)',
-    },
-    intensity: { value: 1.0, min: 0, max: 3, step: 0.05 },
-    enteringColor: { value: '#ffd24a', label: 'entering colour' },
-    enteredColor: { value: '#7be67b', label: 'entered colour' },
-    exitingColor: { value: '#ff8c42', label: 'exiting colour' },
-    meetingBorderInset: {
-      value: 0.05,
-      min: 0,
-      max: 2,
-      step: 0.01,
-      label: 'border inset (m)',
-    },
-    meetingBorderOutset: {
-      value: 0.05,
-      min: 0,
-      max: 2,
-      step: 0.01,
-      label: 'border outset (m)',
-    },
-    sparkleSpeed: {
-      value: 1.5,
-      min: 0,
-      max: 8,
-      step: 0.1,
-      label: 'bubble rise speed',
-    },
-    sparkleFloatHeight: {
-      value: 1.5,
-      min: 0.1,
-      max: 6,
-      step: 0.1,
-      label: 'bubble rise height (m)',
-    },
-    conversationDistance: {
-      value: 7,
-      min: 2,
-      max: 30,
-      step: 0.25,
-      label: 'convo cam dist (m)',
-    },
-    conversationHeight: {
-      value: 5,
-      min: 1,
-      max: 30,
-      step: 0.25,
-      label: 'convo cam height (m)',
-    },
-    sparkleSize: {
-      value: 1,
-      min: 0.2,
-      max: 10,
-      step: 0.1,
-      label: 'sparkle size ×',
-    },
-  });
-
-  const animation = useControls('Animation', {
-    idleSpeed: { value: 1, min: 0.1, max: 3, step: 0.05 },
-    walkSpeed: { value: 1, min: 0.1, max: 10, step: 0.05 },
-    runSpeed: {
-      value: 1,
-      min: 0.1,
-      max: 10,
-      step: 0.05,
-      label: 'run anim speed',
-    },
-    turnSpeed: {
-      value: 16,
-      min: 1,
-      max: 60,
-      step: 0.5,
-      label: 'turn speed (rad/s)',
-    },
-    playerSpeed: {
-      value: 3,
-      min: 0.5,
-      max: 15,
-      step: 0.1,
-      label: 'walk speed (m/s)',
-    },
-    runMultiplier: {
-      value: 2,
-      min: 1,
-      max: 6,
-      step: 0.1,
-      label: 'run × walk',
-    },
-    movementBlockThreshold: {
-      value: 0.9,
-      min: 0,
-      max: 1,
-      step: 0.01,
-      label: 'block threshold',
-    },
-  });
-
-  // Sun-like directional light. `sunPosition`, `sunIntensity` and
-  // `ambientIntensity` mirror into broadcast worldSettings so peers see
-  // the same time-of-day. The remaining knobs (colour, shadow params)
-  // are purely visual — kept local to this Leva panel so a designer
-  // can tune without pushing them onto every peer.
-  const lighting = useControls('Lighting', {
-    sunPosition: { value: [20, 40, 20], label: 'sun position' },
-    sunColor: { value: '#ffffff', label: 'sun colour' },
-    sunIntensity: { value: 1.4, min: 0, max: 3, step: 0.05, label: 'sun intensity' },
-    ambientIntensity: { value: 0.15, min: 0, max: 1, step: 0.01, label: 'ambient fill' },
-    castShadow: { value: true, label: 'cast shadow' },
-    /** Half-size (m) of the shadow camera frustum, centred on the
-     * local player. The shadow camera follows the player so this is
-     * an upper bound on how far from the player we render shadows —
-     * regardless of how big the map is. Auto-clamped to the floor's
-     * half-diagonal so small floors don't waste shadow-map texels on
-     * empty space. Bigger value = shadows visible further away, but
-     * each shadow-map texel covers more world units (blockier). */
-    shadowRange: {
-      value: 40,
-      min: 5,
-      max: 200,
-      step: 1,
-      label: 'shadow range (m)',
-    },
-    shadowMapSize: {
-      value: 2048,
-      options: { '512': 512, '1024': 1024, '2048': 2048, '4096': 4096 },
-      label: 'shadow res',
-    },
-    shadowBias: {
-      value: -0.0005,
-      min: -0.002,
-      max: 0.002,
-      step: 0.0001,
-      label: 'shadow bias',
-    },
-    shadowNormalBias: {
-      value: 0.02,
-      min: 0,
-      max: 0.1,
-      step: 0.001,
-      label: 'shadow nbias',
-    },
-    // Optional secondary light co-located with the directional sun, to
-    // fake the look of a visible "star" — a localised hotspot or radial
-    // glow on top of the real (parallel-ray) sunlight. The directional
-    // light is always emitted; this just adds extra illumination near
-    // the sun's position. Defaults to `none` so it stays opt-in.
-    auxLightType: {
-      value: 'none' as 'none' | 'spot' | 'point',
-      options: ['none', 'spot', 'point'] as const,
-      label: 'aux light',
-    },
-    auxIntensity: { value: 1, min: 0, max: 10, step: 0.1, label: 'aux intensity' },
-    /** Spot/point falloff distance (0 = infinite range). */
-    auxDistance: { value: 0, min: 0, max: 500, step: 5, label: 'aux distance' },
-    /** Spot light cone half-angle (radians). */
-    auxAngle: { value: Math.PI / 6, min: 0.1, max: Math.PI / 2, step: 0.01, label: 'spot angle' },
-    /** Spot light edge softness. */
-    auxPenumbra: { value: 0.2, min: 0, max: 1, step: 0.01, label: 'spot penumbra' },
-    /** Distance falloff exponent (physical = 2). */
-    auxDecay: { value: 2, min: 0, max: 4, step: 0.1, label: 'falloff decay' },
-    /** Visible "sun" — an emissive sphere placed at sunPosition so
-     * the user sees a star/disc in the sky aligned with the shadow
-     * direction. Renders as a self-lit sphere via emissive material
-     * so it stays bright regardless of how much ambient or sun light
-     * hits it. */
-    showSunDisc: { value: true, label: 'sun disc' },
-    sunDiscRadius: { value: 3, min: 0.2, max: 30, step: 0.1, label: 'disc radius' },
-    sunDiscIntensity: { value: 2, min: 0, max: 10, step: 0.1, label: 'disc glow' },
-  });
-
-  // Background gradient. Renders behind everything via a giant inverted
-  // sphere with a vertex-interpolated colour gradient — Leva controls
-  // the top / bottom colours so we can go from a daylit sky to deep
-  // space without code changes. Local-only; not broadcast.
-  const background = useControls('Background', {
-    topColor: { value: '#02030a', label: 'top colour' },
-    bottomColor: { value: '#1a1238', label: 'bottom colour' },
-  });
-
-  // Mirror Animation + Proximity + Lighting panels into world state so
-  // peers (e.g. the bot) observe the same parameters via their own
-  // stores. Both proximity radii are broadcast — the inner cylinder
-  // fires entered/exiting (steady glow + voice ON); the outer cylinder
-  // fires entering/exited (pulsing glow + voice OFF). Lighting fields
-  // live in WorldSettings too so every connected client renders the
-  // same time-of-day.
-  useEffect(() => {
-    const [sx, sy, sz] = lighting.sunPosition;
-    actions.setWorldSettings({
-      playerSpeed: animation.playerSpeed,
-      runSpeedMultiplier: animation.runMultiplier,
-      walkAnimSpeed: animation.walkSpeed,
-      runAnimSpeed: animation.runSpeed,
-      idleAnimSpeed: animation.idleSpeed,
-      turnSpeed: animation.turnSpeed,
-      movementBlockThreshold: animation.movementBlockThreshold,
-      proximityRadius: proximity.sensorRadius,
-      proximityOuterRadius: proximity.outerRadius,
-      proximityEnterDebounceMs: proximity.enterDebounceMs,
-      conversationCameraDistance: proximity.conversationDistance,
-      conversationCameraHeight: proximity.conversationHeight,
-      sunPositionX: sx,
-      sunPositionY: sy,
-      sunPositionZ: sz,
-      sunIntensity: lighting.sunIntensity,
-      ambientIntensity: lighting.ambientIntensity,
-    });
-  }, [
-    actions,
-    animation.playerSpeed,
-    animation.runMultiplier,
-    animation.walkSpeed,
-    animation.runSpeed,
-    animation.idleSpeed,
-    animation.turnSpeed,
-    animation.movementBlockThreshold,
-    proximity.sensorRadius,
-    proximity.outerRadius,
-    proximity.enterDebounceMs,
-    proximity.conversationDistance,
-    proximity.conversationHeight,
-    lighting.sunPosition,
-    lighting.sunIntensity,
-    lighting.ambientIntensity,
-  ]);
-
-  // Leva debug panel — fixed camera + world tweakables.
-  const fixed = useControls(
-    'Fixed camera',
-    {
-      azimuthDeg: {
-        value: FIXED_CAMERA_DEFAULTS.azimuthDeg,
-        min: 0,
-        max: 360,
-        step: 0.5,
-        label: 'azimuth (°)',
-      },
-      pitchDeg: {
-        value: FIXED_CAMERA_DEFAULTS.pitchDeg,
-        min: -89,
-        max: 89,
-        step: 0.5,
-        label: 'pitch (°)',
-      },
-      height: {
-        value: FIXED_CAMERA_DEFAULTS.height,
-        min: 0,
-        max: 200,
-        step: 0.5,
-        label: 'height (Y)',
-      },
-      maxOnScreenFrac: {
-        value: FIXED_CAMERA_DEFAULTS.maxOnScreenFrac,
-        min: 0.05,
-        max: 0.6,
-        step: 0.005,
-        label: 'near (screen %)',
-      },
-      minOnScreenFrac: {
-        value: FIXED_CAMERA_DEFAULTS.minOnScreenFrac,
-        min: 0.01,
-        max: 0.3,
-        step: 0.005,
-        label: 'far (screen %)',
-      },
-      lateralFrac: {
-        value: FIXED_CAMERA_DEFAULTS.lateralFrac,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        label: 'lateral (frac)',
-      },
-      fov: {
-        value: FIXED_CAMERA_DEFAULTS.fov,
-        min: 20,
-        max: 110,
-        step: 1,
-      },
-      movementYawOffsetDeg: {
-        value: 0,
-        min: -180,
-        max: 180,
-        step: 0.5,
-        label: 'WASD offset (°)',
-      },
-    },
-    { collapsed: false },
-  );
-
-  useControls('Settings', {
-    'Export JSON': button(() => exportLevaConfig()),
-    'Reset to defaults': button(() => resetLevaConfig()),
-  });
-
-  const world = useControls('World', {
-    gridSize: {
-      value: WORLD.gridSize,
-      min: 4,
-      max: 100,
-      step: 2,
-      label: 'floor size',
-    },
-    stoneLayers: { value: WORLD.stoneLayers, min: 0, max: 5, step: 1 },
-  });
-
-  // Mirror the World floor size into the SDK's broadcast world map. The
-  // map's gridSize feeds collision (map-edge clamp + cell partition); peers
-  // receive `world:map` via SyncEngine and stay in sync.
-  useEffect(() => {
-    const current = store.getState().worldMap;
-    if (current.gridSize === world.gridSize) return;
-    actions.setWorldMap({ ...current, gridSize: world.gridSize });
-  }, [actions, store, world.gridSize]);
-
-  // After Scene mounts (and the Leva-driven useEffects above have flushed
+  // After Scene mounts (and the panel `useEffect`s above have flushed
   // their initial values into the store), force-broadcast the current
   // world state. The regular `onStoreChange` diff path only fires when
   // values *change* — without this, a bot spawned with default world
@@ -485,8 +124,8 @@ export function Scene(props: SceneProps) {
   // Leva config happens to match the SDK defaults. Fires once per
   // channel-stack swap via the `sync` dependency.
   useEffect(() => {
-    props.sync.broadcastWorldState();
-  }, [props.sync]);
+    sync.broadcastWorldState();
+  }, [sync]);
 
   // Refs shared between movement code and the camera rig.
   const yawRef = useRef(0);
@@ -742,5 +381,3 @@ export function Scene(props: SceneProps) {
     </Canvas>
   );
 }
-
-

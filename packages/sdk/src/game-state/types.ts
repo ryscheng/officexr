@@ -91,13 +91,9 @@ export type BubblePrefs = {
 };
 
 /**
- * World-level movement & animation tunables. These live in OfficeState so
- * they can be broadcast to every client and used uniformly by the local
- * player, AI/bots, and any other agent — there's no "client-private"
- * version. Updating them via `setWorldSettings` triggers a `world:settings`
- * broadcast that peers apply to their stores via `applyRemoteWorldSettings`.
+ * Character movement + skeletal-animation tunables.
  */
-export type WorldSettings = {
+export type AnimationSettings = {
   /** Character walking speed in world units per second. */
   playerSpeed: number;
   /** Run speed = playerSpeed × runSpeedMultiplier. Used when the local
@@ -111,8 +107,13 @@ export type WorldSettings = {
   idleAnimSpeed: number;
   /** Maximum angular velocity for the smooth-turn animation, in rad/s. */
   turnSpeed: number;
-  /** Collision radius of every character in world units. */
-  charRadius: number;
+};
+
+/**
+ * Proximity-ring geometry + debounce. Drives MeetingArea admission and
+ * voice room derivation.
+ */
+export type ProximitySettings = {
   /** Inner proximity sensor radius — the "actually in speaking range"
    * boundary. Crossing INWARD fires `proximity:entered` (voice joins);
    * crossing OUTWARD fires `proximity:exiting` (voice stays — hysteresis
@@ -123,13 +124,34 @@ export type WorldSettings = {
    * glow appears); crossing OUTWARD fires `proximity:exited` (voice
    * leaves, glow gone). */
   proximityOuterRadius: number;
-  /** Visual bump-back duration when two characters collide, in ms. */
-  bumpEasingMs: number;
   /** Hold time before a pair's inner-ring overlap is promoted to
    * `proximity:entered` (admission to a MeetingArea). Prevents flickery
    * conversations triggered by a momentary brush-past. Default 500 ms;
    * tunable live from the Leva Proximity panel. */
   proximityEnterDebounceMs: number;
+};
+
+/**
+ * Body-collision tuning.
+ */
+export type CollisionSettings = {
+  /** Collision radius of every character in world units. */
+  charRadius: number;
+  /** Visual bump-back duration when two characters collide, in ms. */
+  bumpEasingMs: number;
+  /**
+   * Fraction of the intent vector that must be blocked before movement is
+   * snapped to zero (instead of letting the character slide along the wall
+   * at reduced speed). 0 = always slide, 1 = any contact halts movement.
+   * Default 0.9: slide while you can make at least 10% progress.
+   */
+  movementBlockThreshold: number;
+};
+
+/**
+ * Camera framing tuning specific to the auto-engaged conversation view.
+ */
+export type ConversationCameraSettings = {
   /** Horizontal distance (world m) from the MeetingArea centroid at
    * which the camera frames the conversation view. Bigger = more
    * zoomed out; smaller = closer / tighter framing. Same knob is
@@ -140,13 +162,13 @@ export type WorldSettings = {
    * `conversationCameraDistance` this determines both the offset
    * length and the pitch angle of the conversation framing. */
   conversationCameraHeight: number;
-  /**
-   * Fraction of the intent vector that must be blocked before movement is
-   * snapped to zero (instead of letting the character slide along the wall
-   * at reduced speed). 0 = always slide, 1 = any contact halts movement.
-   * Default 0.9: slide while you can make at least 10% progress.
-   */
-  movementBlockThreshold: number;
+};
+
+/**
+ * Scene lighting / time-of-day. Sun position is broadcast so peers see
+ * the same shadows.
+ */
+export type LightingSettings = {
   /** World-space position of the sun-like directional light. Drives both
    * the shadow-casting light direction and the visible sun disc in the
    * sky. Broadcast so peers see the same time-of-day. */
@@ -158,6 +180,25 @@ export type WorldSettings = {
   /** Low ambient fill so shadow-side faces aren't pitch black. */
   ambientIntensity: number;
 };
+
+/**
+ * World-level movement & animation tunables. These live in OfficeState so
+ * they can be broadcast to every client and used uniformly by the local
+ * player, AI/bots, and any other agent — there's no "client-private"
+ * version. Updating them via `setWorldSettings` triggers a `world:settings`
+ * broadcast that peers apply to their stores via `applyRemoteWorldSettings`.
+ *
+ * Composed as the intersection of focused sub-types (Animation,
+ * Proximity, Collision, ConversationCamera, Lighting) so consumers can
+ * declare narrower signatures (e.g. a movement function asks for
+ * `AnimationSettings & CollisionSettings`) without taking the whole bag.
+ * Wire format stays a flat object literal.
+ */
+export type WorldSettings = AnimationSettings &
+  ProximitySettings &
+  CollisionSettings &
+  ConversationCameraSettings &
+  LightingSettings;
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   playerSpeed: 3,
