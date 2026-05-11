@@ -1,14 +1,11 @@
 import {
   attachProximityReducer,
-  collisionBumpRule,
   createActions,
   createBus,
   createInMemoryChannelHub,
   createRuleRegistry,
   createStore,
   InMemoryChannel,
-  proximityInnerRule,
-  proximityOuterRule,
   serializeOfficeState,
   SnapshotHandshake,
   SyncEngine,
@@ -75,9 +72,9 @@ export function createPersistentLocalState(opts: {
     yaw: 0,
   });
   const rules = createRuleRegistry();
-  rules.addRule(proximityOuterRule);
-  rules.addRule(proximityInnerRule);
-  rules.addRule(collisionBumpRule);
+  // Proximity + bump events are emitted directly by the Rapier
+  // collision/sensor bridges (`packages/debug-app/src/physics/bridge.ts`)
+  // — no SDK collision-pass rules needed any more.
   attachProximityReducer(store, bus);
   return { selfId: opts.selfId, officeId: opts.officeId, store, actions, bus, rules };
 }
@@ -151,6 +148,11 @@ export async function buildInMemoryStack(
         worldMap: state.worldMap,
       };
     },
+    // In-browser bots can forward their controller-detected
+    // `collision:char-bump` events onto the local bus so the renderer
+    // plays the bump animation when a bot walks into the local
+    // player.
+    localBus: local.bus,
   });
 
   await channel.subscribe();

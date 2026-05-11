@@ -3,7 +3,6 @@ import { createStore, type Store } from '../../game-state/store.ts';
 import { createActions, type Actions } from '../../game-state/actions.ts';
 import { createBus, type Bus } from '../../game-state/bus.ts';
 import { createRuleRegistry, type RuleRegistry } from '../../game-state/rules.ts';
-import { proximityRule } from '../../game-state/rules/proximity.ts';
 import { attachProximityReducer } from '../../game-state/reducers/proximity.ts';
 import { SyncEngine } from '../../realtime/sync.ts';
 import { SnapshotHandshake } from '../../realtime/snapshot-handshake.ts';
@@ -77,8 +76,11 @@ export async function createLiveHarness(opts?: {
     const actions = createActions(store, bus);
     actions.upsertPlayer({ id, name: id });
     const channel = new SupabaseChannel({ supabase, officeId, userId: id });
+    // Collision rules are no more — the Rapier bridge in the debug-app
+    // emits proximity / bump events directly. Live-harness consumers
+    // that exercise proximity behaviour should emit bus events
+    // manually.
     const rules = createRuleRegistry();
-    rules.addRule(proximityRule);
     const detachProximity = attachProximityReducer(store, bus);
     const sync = new SyncEngine({ store, actions, bus, channel, clock });
     const handshake = new SnapshotHandshake({

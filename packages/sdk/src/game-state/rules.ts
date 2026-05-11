@@ -1,15 +1,6 @@
 import type { Bus } from './bus.ts';
 import type { OfficeState } from './types.ts';
 import { PlayerGrid } from '../spatial/player-grid.ts';
-import {
-  DEFAULT_COLLISION_MATRIX,
-  type CollisionMatrix,
-  type MaterialId,
-} from '../collision/materials.ts';
-import {
-  runCollisionPass,
-  type CollisionEvent,
-} from '../collision/pass.ts';
 
 /**
  * Per-tick context shared across rules. Today this is just a memoised
@@ -37,45 +28,17 @@ export interface TickRule {
   ) => void;
 }
 
-/**
- * Event rules respond to {@link CollisionEvent}s produced by the per-tick
- * collision pass. The pass runs deterministically over broadcast state, so
- * event rules behave identically on every peer that sees the same `state`
- * + `prev`.
- */
-export interface EventRule {
-  kind: 'event';
-  /** Material pair filter. The rule fires only for events whose
-   * `(a.material, b.material)` matches (in either order). Omit to receive
-   * every event. */
-  pair?: [MaterialId, MaterialId];
-  /** Event-kind filter. Omit to receive both `entered` and `exited`. */
-  on?: ReadonlyArray<CollisionEvent['kind']>;
-  fn: (event: CollisionEvent, state: OfficeState, bus: Bus) => void;
-}
-
-export type Rule = TickRule | EventRule;
+export type Rule = TickRule;
 
 export interface RuleRegistry {
   /** Register a rule. Returns an unsubscribe handle. */
   addRule(rule: Rule): () => void;
-  /** Advance one tick: build the shared {@link TickContext}, run the
-   * collision pass, dispatch events to event rules, then invoke each tick
-   * rule whose frequency divides the counter. */
+  /** Advance one tick: build the shared {@link TickContext}, then invoke
+   * each tick rule whose frequency divides the counter. */
   tick(state: OfficeState, prev: OfficeState, bus: Bus): void;
 }
 
-export interface RuleRegistryOptions {
-  /** Collision matrix used by the per-tick collision pass. Defaults to
-   * {@link DEFAULT_COLLISION_MATRIX}. Apps that introduce new materials
-   * pass an extended matrix here. */
-  matrix?: CollisionMatrix;
-}
-
-export function createRuleRegistry(
-  options: RuleRegistryOptions = {},
-): RuleRegistry {
-  const matrix = options.matrix ?? DEFAULT_COLLISION_MATRIX;
+export function createRuleRegistry(): RuleRegistry {
   const rules: Rule[] = [];
   let tickCount = 0;
 
@@ -90,38 +53,18 @@ export function createRuleRegistry(
     tick(state, prev, bus) {
       tickCount++;
       const ctx = makeTickContext(state);
-      const events = runCollisionPass(state, prev, matrix);
 
       for (const rule of rules.slice()) {
         try {
-          if (rule.kind === 'tick') {
-            const freq = rule.frequency ?? 1;
-            if (freq > 1 && tickCount % freq !== 0) continue;
-            rule.fn(state, prev, bus, ctx);
-          } else {
-            // event rule — dispatch only matching events
-            for (const event of events) {
-              if (rule.on && !rule.on.includes(event.kind)) continue;
-              if (rule.pair && !pairMatches(event, rule.pair)) continue;
-              rule.fn(event, state, bus);
-            }
-          }
+          const freq = rule.frequency ?? 1;
+          if (freq > 1 && tickCount % freq !== 0) continue;
+          rule.fn(state, prev, bus, ctx);
         } catch (err) {
           console.error('[rules] rule threw during tick:', err);
         }
       }
     },
   };
-}
-
-function pairMatches(
-  event: CollisionEvent,
-  pair: [MaterialId, MaterialId],
-): boolean {
-  const [m1, m2] = pair;
-  const a = event.a.material;
-  const b = event.b.material;
-  return (a === m1 && b === m2) || (a === m2 && b === m1);
 }
 
 function makeTickContext(state: OfficeState): TickContext {

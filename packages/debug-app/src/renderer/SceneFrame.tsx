@@ -1,5 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import {
+  useRapier,
+  type RapierRigidBody,
+} from '@react-three/rapier';
+import RAPIER from '@dimforge/rapier3d-compat';
 import type {
   Actions,
   Store,
@@ -8,7 +13,6 @@ import type {
   SnapshotHandshake,
   Bus,
 } from '@officexr/sdk';
-import { getCollisionWorld, resolveMovement } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import type { CameraMode } from './config.ts';
 
@@ -22,12 +26,12 @@ interface SceneFrameProps {
   bots: BotPool;
   cameraMode: CameraMode;
   fixedAzimuthDeg: number;
-  /** Manual fine-tune for fixed-mode WASD direction (degrees). Added to the
-   * derived camera yaw so the user can compensate if the world axes don't
-   * line up with what they expect to be "up the screen". */
+  /** Manual fine-tune for fixed-mode WASD direction (degrees). */
   fixedMovementYawOffsetDeg: number;
   yawRef: React.MutableRefObject<number>;
   selfId: string;
+  /** Set by `Players` when the self avatar's RigidBody mounts. */
+  selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
 }
 
 const ARROW_KEYS = new Set([
@@ -38,8 +42,18 @@ const ARROW_KEYS = new Set([
 ]);
 
 /**
- * Owns the per-frame loop: WASD movement, world tick, rule evaluation,
- * sync flushing, bot updates. Mounted once inside <Canvas>.
+ * Owns the per-frame loop: WASD movement (via Rapier's
+ * `KinematicCharacterController`), world tick, rule evaluation, sync
+ * flushing, bot updates. Mounted once inside `<Canvas>`, downstream of
+ * `<Physics>`.
+ *
+ * The character controller is the load-bearing replacement for the old
+ * `resolveMovement`. It walks the self body's collider against every
+ * other collider in the Rapier world (other players, walls, future
+ * obstacles) and yields a "corrected" movement vector that slides
+ * along contacts and stops at solid geometry. We feed that result
+ * back into `actions.setSelfPosition` so the store + broadcast stay
+ * consistent with where the body actually ended up.
  */
 export function SceneFrame({
   store,
@@ -54,19 +68,42 @@ export function SceneFrame({
   fixedMovementYawOffsetDeg,
   yawRef,
   selfId,
+  selfBodyRef,
 }: SceneFrameProps) {
   const keysDown = React.useRef<Set<string>>(new Set());
   const prevState = React.useRef(store.getState());
   const wasMoving = React.useRef(false);
 
+  const { world } = useRapier();
+
+  // The character controller is created lazily on first frame instead
+  // of in a useMemo. `<Physics>` proxies the underlying Rapier World
+  // through a getter that lazily instantiates `new RAPIER.World(...)`
+  // on first property access. During render, calling
+  // `world.createCharacterController(...)` would trigger that lazy
+  // init — but the proxy and the controller live for the
+  // *worldProxy's* lifetime, which can outlast individual Physics
+  // re-renders (StrictMode double-mount, HMR, Leva-driven option
+  // changes that change `gravity` / `numSolverIterations` etc and
+  // rebuild Physics' inner context). A controller created against a
+  // freed/reset world later resolves to `undefined` when
+  // `computeColliderMovement` is called, which is the white-screen
+  // bug we hit on first WASD press. Re-acquiring the controller from
+  // the live world inside useFrame makes this resilient.
+  const controllerRef = useRef<RAPIER.KinematicCharacterController | null>(
+    null,
+  );
+  const controllerWorldRef = useRef<unknown>(null);
+  // PlayerIds whose bodies the local character was bumping into on the
+  // previous frame. Used to edge-trigger `collision:char-bump` — Rapier
+  // reports a collision every frame two characters are in contact, but
+  // we only want one bump event per touch.
+  const bumpingPeersRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const isInsideLeva = (el: EventTarget | null): boolean =>
       el instanceof Element && !!el.closest('#leva__root');
 
-    // Leva sliders use pointer events without taking keyboard focus, so the
-    // e.target / activeElement checks alone don't catch the "user is dragging
-    // a slider" case. We also track whether the pointer is currently over
-    // the leva panel and treat that as "leva is being interacted with".
     let pointerOverLeva = false;
     const onPointerMove = (e: PointerEvent) => {
       pointerOverLeva = isInsideLeva(e.target);
@@ -84,23 +121,17 @@ export function SceneFrame({
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (isLevaActive(e.target)) {
-        // Drop anything we still think is held — keyup might never fire if
-        // leva swallows it — and let the panel consume the keystroke.
         keysDown.current.clear();
         return;
       }
       if (ARROW_KEYS.has(e.key)) e.preventDefault();
       keysDown.current.add(e.key.toLowerCase());
     };
-    // Always release on keyup, regardless of focus, so a key can't get stuck
-    // if focus moved into Leva mid-press.
     const onKeyUp = (e: KeyboardEvent) =>
       keysDown.current.delete(e.key.toLowerCase());
     const onFocusIn = (e: FocusEvent) => {
       if (isInsideLeva(e.target)) keysDown.current.clear();
     };
-    // Click outside the panel returns focus to the document so WASD works
-    // again without the user having to tab away.
     const onMouseDown = (e: MouseEvent) => {
       if (isInsideLeva(e.target)) return;
       const active = document.activeElement;
@@ -130,20 +161,21 @@ export function SceneFrame({
 
     const stateSnapshot = store.getState();
     const self = stateSnapshot.players[selfId];
-    // Speed and collision params live in world state — read them each frame
-    // so settings changes from any peer take effect immediately.
+    const body = selfBodyRef.current;
     const {
       playerSpeed: baseSpeed,
       runSpeedMultiplier,
-      charRadius,
       movementBlockThreshold,
     } = stateSnapshot.worldSettings;
-    // Hold Shift to run. The keydown handler adds e.key.toLowerCase(), so
-    // both Left/Right Shift end up as the same 'shift' entry.
     const isRunning = keys.has('shift');
     const playerSpeed = isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed;
-    const collisionWorld = getCollisionWorld(stateSnapshot.worldMap);
-    if (self) {
+    // movementBlockThreshold = "fraction of intent that must be
+    // *blocked* to count as 'fully stopped'". So if 90% (default) of
+    // intent is blocked, we want progress < 0.1 to snap velocity and
+    // animation to zero.
+    const minProgress = 1 - movementBlockThreshold;
+
+    if (self && body) {
       const fwd =
         (keys.has('w') || keys.has('arrowup') ? 1 : 0) -
         (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
@@ -152,10 +184,6 @@ export function SceneFrame({
         (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
       let isMoving = false;
       if (fwd !== 0 || strafe !== 0) {
-        // Movement is always camera-relative. The fixed-camera placement is
-        // position=(sin(az), -cos(az)), giving forward=(-sin(az), +cos(az)).
-        // The mouse-look formula below assumes forward=(-sin(yaw), -cos(yaw)),
-        // so we map fixed azimuth → yaw via yaw = π − az to align them.
         const cameraYaw =
           cameraMode === 'fixed'
             ? Math.PI -
@@ -174,73 +202,140 @@ export function SceneFrame({
           dz /= len;
           const move = (playerSpeed * dt) / 1000;
           const movementYaw = Math.atan2(-dx, -dz);
-          // Resolve against obstacles, the map edge, and other characters.
-          // The bot is just another character to us here — same primitives,
-          // same world data (broadcast world:map keeps both stores aligned).
-          const others: Array<{
-            id: string;
-            pos: { x: number; y: number; z: number };
-            radius: number;
-          }> = [];
-          for (const [id, p] of Object.entries(stateSnapshot.players)) {
-            if (id === selfId) continue;
-            others.push({ id, pos: p.pos, radius: charRadius });
+
+          // Find the body's primary collider — Rapier's controller
+          // works on a single collider, and we registered three
+          // (body + 2 sensors). The first non-sensor collider IS the
+          // body collider; sensors don't push, so we want the body.
+          let bodyCollider = null;
+          for (let i = 0; i < body.numColliders(); i++) {
+            const c = body.collider(i);
+            if (!c.isSensor()) {
+              bodyCollider = c;
+              break;
+            }
           }
-          const intentTo = {
-            x: self.pos.x + dx * move,
-            y: self.pos.y,
-            z: self.pos.z + dz * move,
-          };
-          const result = resolveMovement({
-            from: self.pos,
-            to: intentTo,
-            charRadius,
-            world: collisionWorld,
-            others,
-          });
-          // Progress = how much of the requested vector survived the resolve,
-          // measured as projection of (resolved - from) onto the normalised
-          // intent. 1 = unblocked, 0 = fully blocked, slide-only motion gets
-          // a low score because it's perpendicular to intent.
-          const intentDX = intentTo.x - self.pos.x;
-          const intentDZ = intentTo.z - self.pos.z;
-          const intentLenSq = intentDX * intentDX + intentDZ * intentDZ;
-          let progress = 1;
-          if (intentLenSq > 1e-12) {
-            const actualDX = result.pos.x - self.pos.x;
-            const actualDZ = result.pos.z - self.pos.z;
-            const dot = actualDX * intentDX + actualDZ * intentDZ;
-            progress = Math.max(0, Math.min(1, dot / intentLenSq));
-          }
-          const minProgress = 1 - movementBlockThreshold;
-          if (progress < minProgress) {
-            // Mostly blocked — snap to zero so the avatar doesn't slide
-            // sideways while the walk animation has already settled to idle.
-            actions.setSelfPosition(
-              self.pos,
-              { x: 0, y: 0, z: 0 },
-              movementYaw,
+          if (bodyCollider) {
+            // Lazily create or refresh the character controller. If
+            // the world proxy has swapped its underlying World (e.g.
+            // Physics rebuilt after a Leva change), reattach.
+            if (
+              !controllerRef.current ||
+              controllerWorldRef.current !== world
+            ) {
+              const c = world.createCharacterController(0.01);
+              c.setApplyImpulsesToDynamicBodies(false);
+              c.setSlideEnabled(true);
+              controllerRef.current = c;
+              controllerWorldRef.current = world;
+            }
+            const controller = controllerRef.current;
+            if (!controller) return;
+            // EXCLUDE_SENSORS: the proximity rings (inner/outer) are
+            // sensors. Without this flag the character controller
+            // treats them as solid geometry — the local player would
+            // physically bump into the *invisible* proximity sphere
+            // around every other character. Rapier's `sensor: true`
+            // only disables the dynamics solver's penetration push;
+            // movement resolution uses the query pipeline, which needs
+            // this flag to skip sensors.
+            controller.computeColliderMovement(
+              bodyCollider,
+              { x: dx * move, y: 0, z: dz * move },
+              RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
             );
-            isMoving = false;
-          } else {
-            // Scale vel by progress so the renderer animates at a rate that
-            // matches the actual ground speed.
-            actions.setSelfPosition(
-              result.pos,
-              {
-                x: dx * playerSpeed * progress,
-                y: 0,
-                z: dz * playerSpeed * progress,
-              },
-              movementYaw,
-            );
-            isMoving = true;
+            const corrected = controller.computedMovement();
+
+            // Edge-trigger bilateral `collision:char-bump` events for
+            // every peer character we're newly touching. The Rapier
+            // character controller resolves movement via the query
+            // pipeline (it *slides* rather than collides), so the
+            // contact pipeline never fires `onCollisionEnter` for the
+            // bodies it walked the character past. We walk the
+            // controller's own collision list and convert any contact
+            // with another player's RigidBody into a bump event.
+            const touchedThisFrame = new Set<string>();
+            const n = controller.numComputedCollisions();
+            for (let i = 0; i < n; i++) {
+              const coll = controller.computedCollision(i);
+              if (!coll || !coll.collider) continue;
+              const otherRb = coll.collider.parent();
+              if (!otherRb) continue;
+              const otherUd = otherRb.userData as
+                | { playerId?: string }
+                | undefined;
+              const otherId = otherUd?.playerId;
+              if (!otherId || otherId === selfId) continue;
+              touchedThisFrame.add(otherId);
+              if (!bumpingPeersRef.current.has(otherId)) {
+                // `normal1` points OUT of the obstacle in world space.
+                // For self that's the direction we get pushed; for the
+                // other character it's the reverse.
+                const nrm = coll.normal1;
+                bus.emit({
+                  kind: 'collision:char-bump',
+                  selfId,
+                  otherId,
+                  normal: { x: nrm.x, z: nrm.z },
+                });
+                bus.emit({
+                  kind: 'collision:char-bump',
+                  selfId: otherId,
+                  otherId: selfId,
+                  normal: { x: -nrm.x, z: -nrm.z },
+                });
+              }
+            }
+            bumpingPeersRef.current = touchedThisFrame;
+
+            // `movementBlockThreshold` from worldSettings controls
+            // when we treat "blocked enough" as fully stopped —
+            // preserving the original behaviour where pushing into a
+            // wall snaps the walking animation back to idle instead of
+            // looping forever at zero ground speed.
+            //
+            // We compute `progress` BEFORE applying any movement to
+            // the rigid body so we can short-circuit the
+            // `setNextKinematicTranslation` call as well — otherwise
+            // even a fully-blocked character would creep forward by
+            // the controller's residual corrected delta each frame.
+            // "Blocked above the threshold" means *no* forward
+            // progress in this direction, full stop.
+            const correctedLen = Math.hypot(corrected.x, corrected.z);
+            const intentLen = Math.hypot(dx * move, dz * move);
+            const progress =
+              intentLen > 1e-9 ? Math.min(1, correctedLen / intentLen) : 0;
+            if (progress < minProgress) {
+              actions.setSelfPosition(
+                self.pos,
+                { x: 0, y: 0, z: 0 },
+                movementYaw,
+              );
+              isMoving = false;
+            } else {
+              const t = body.translation();
+              const newPos = {
+                x: t.x + corrected.x,
+                y: self.pos.y,
+                z: t.z + corrected.z,
+              };
+              body.setNextKinematicTranslation(newPos);
+              actions.setSelfPosition(
+                newPos,
+                {
+                  x: dx * playerSpeed * progress,
+                  y: 0,
+                  z: dz * playerSpeed * progress,
+                },
+                movementYaw,
+              );
+              isMoving = true;
+            }
           }
         }
       }
-      // On the moving → idle transition, clear vel exactly once so the
-      // renderer (and remote peers) see the stop without us calling
-      // setSelfPosition every frame at rest.
+      // On the moving → idle transition, zero out the velocity once so
+      // the renderer (and remote peers) see the stop.
       if (!isMoving && wasMoving.current) {
         actions.setSelfPosition(self.pos, { x: 0, y: 0, z: 0 }, self.yaw);
       }
@@ -248,9 +343,6 @@ export function SceneFrame({
     }
 
     actions.tick(now);
-    // bots tick BEFORE rules.tick so the rule pass sees the latest positions
-    // from every active bot — the bump rule's rising-edge detection needs
-    // every participant's move settled into the store first.
     bots.tick(dt);
     const current = store.getState();
     rules.tick(current, prevState.current, bus);

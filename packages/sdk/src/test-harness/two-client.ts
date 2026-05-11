@@ -2,10 +2,6 @@ import { createStore, type Store } from '../game-state/store.ts';
 import { createActions, type Actions } from '../game-state/actions.ts';
 import { createBus, type Bus } from '../game-state/bus.ts';
 import { createRuleRegistry, type RuleRegistry } from '../game-state/rules.ts';
-import {
-  proximityInnerRule,
-  proximityOuterRule,
-} from '../game-state/rules/proximity.ts';
 import { attachProximityReducer } from '../game-state/reducers/proximity.ts';
 import { SyncEngine } from '../realtime/sync.ts';
 import {
@@ -80,9 +76,10 @@ export function createMultiClientHarness(opts?: {
       actions.upsertPlayer({ id, name: id });
     }
     const channel = new InMemoryChannel(hub, id);
+    // No collision rules — proximity events are emitted directly from
+    // the Rapier sensor bridge in the debug-app. Tests that need
+    // proximity events should emit them on `bus` themselves.
     const rules = createRuleRegistry();
-    rules.addRule(proximityOuterRule);
-    rules.addRule(proximityInnerRule);
     const detachProximity = attachProximityReducer(store, bus);
     const sync = new SyncEngine({ store, actions, bus, channel, clock });
     lastTickState.set(id, store.getState());

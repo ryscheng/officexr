@@ -17,10 +17,17 @@
  *   BOT_MODE              initial mode, default 'wander'
  */
 
+import RAPIER from '@dimforge/rapier3d-compat';
 import { BotServer } from './bot-server.ts';
 import type { BotMode } from './BotDriver.ts';
 
 async function main(): Promise<void> {
+  // Bootstrap Rapier's wasm before constructing any physics world.
+  // `@dimforge/rapier3d-compat` exposes the runtime through a single
+  // async init — everything else (RAPIER.World, KinematicCharacterController,
+  // etc.) errors if called before this resolves.
+  await RAPIER.init();
+
   const port = Number(process.env.REALTIME_PORT ?? 8787);
   const path = process.env.REALTIME_PATH ?? '/ws';
   const officeId = process.env.OFFICE_ID ?? 'debug-office';

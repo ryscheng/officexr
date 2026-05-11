@@ -15,6 +15,22 @@ interface CameraRigProps {
   /** Mutable yaw shared with movement code so WASD is camera-relative. */
   yawRef: React.MutableRefObject<number>;
   pitchRef: React.MutableRefObject<number>;
+  /** Set by `ProximityGlow` each frame to the local player's
+   * MeetingArea centroid when in a conversation, or `null` otherwise.
+   * When non-null, the rig blends in a "conversation view": elevated
+   * 3rd-person framing in FP/3P modes, tighter centred leash in
+   * fixed mode. The transition is damped (~0.35s τ). */
+  conversationFocusRef: React.MutableRefObject<
+    { x: number; y: number; z: number } | null
+  >;
+  /** Horizontal distance (m) from the conversation focus at which the
+   * conversation camera sits. Bigger = more zoomed out. Same value
+   * is used by all three camera modes for consistency. */
+  conversationDistance: number;
+  /** Vertical height (m) of the conversation camera above the focus.
+   * Combined with `conversationDistance` this implicitly sets the
+   * pitch angle of the conversation view via atan(h/d). */
+  conversationHeight: number;
   /** Fixed-camera params, updated live from the debug panel. */
   fixed: {
     azimuthDeg: number;
@@ -45,6 +61,9 @@ export function CameraRig({
   playerPosRef,
   yawRef,
   pitchRef,
+  conversationFocusRef,
+  conversationDistance,
+  conversationHeight,
   fixed,
 }: CameraRigProps) {
   const { camera, gl } = useThree();
@@ -93,6 +112,14 @@ export function CameraRig({
 
   const target = useRef(new THREE.Vector3());
 
+  // Conversation-view blend state. `convoMix` damps toward 1 while the
+  // local player is in a MeetingArea, toward 0 otherwise. The cached
+  // focus survives one extra frame after the local player leaves so the
+  // damp toward 0 has a valid position to interpolate FROM. Without
+  // this we'd snap the camera the moment focus went null.
+  const convoMix = useRef(0);
+  const lastFocus = useRef(new THREE.Vector3());
+
   // True when fixed-mode just became active and the camera position needs to
   // snap to a sensible starting point relative to the character.
   const fixedNeedsInit = useRef(false);
@@ -101,11 +128,36 @@ export function CameraRig({
     if (mode === 'fixed') fixedNeedsInit.current = true;
   }, [mode]);
 
-  useFrame(() => {
+  useFrame((_, dtSec) => {
     const pos = playerPosRef.current;
     if (!pos) return;
     const yaw = yawRef.current;
     const pitch = pitchRef.current;
+
+    // Damp the conversation-view blend value toward 1 when the local
+    // player is in a MeetingArea, otherwise toward 0. τ ≈ 0.35 s.
+    const focus = conversationFocusRef.current;
+    if (focus) lastFocus.current.set(focus.x, focus.y, focus.z);
+    const targetMix = focus ? 1 : 0;
+    convoMix.current = THREE.MathUtils.damp(
+      convoMix.current,
+      targetMix,
+      1 / 0.35,
+      dtSec,
+    );
+    const mix = convoMix.current;
+    const useFocus = lastFocus.current; // safe to read even when focus===null
+
+    // Derive an FP/3P conversation-pose radius + pitch from the
+    // user-tunable horizontal distance + height. r is the spherical
+    // radius of the camera around the focus; convoPitchDown is how
+    // far below horizontal the camera looks (in radians). Both are
+    // shared by FP/3P modes and used inside the lerp below.
+    const convoR = Math.hypot(conversationDistance, conversationHeight);
+    const convoPitchDown = Math.atan2(
+      conversationHeight,
+      Math.max(0.01, conversationDistance),
+    );
 
     if (mode === 'first-person') {
       camera.position.set(pos.x, pos.y + EYE_HEIGHT, pos.z);
@@ -115,6 +167,22 @@ export function CameraRig({
         pos.z - Math.cos(yaw) * Math.cos(pitch),
       );
       camera.lookAt(target.current);
+
+      if (mix > 0.001) {
+        // Compute a conversation-target camera position: elevated 3rd
+        // person centred on the focus, preserving the user's yaw.
+        // Lerp BETWEEN first-person and this conversation target by
+        // `mix`.
+        const convoPos = computeElevatedThirdPerson(
+          useFocus,
+          yaw,
+          convoR,
+          -convoPitchDown,
+        );
+        camera.position.lerp(convoPos, mix);
+        target.current.lerp(useFocus, mix);
+        camera.lookAt(target.current);
+      }
     } else if (mode === 'third-person') {
       const r = THIRD_PERSON_RADIUS;
       const head = target.current.set(pos.x, pos.y + EYE_HEIGHT, pos.z);
@@ -124,6 +192,18 @@ export function CameraRig({
         head.z + Math.cos(yaw) * Math.cos(pitch) * r,
       );
       camera.lookAt(head);
+
+      if (mix > 0.001) {
+        const convoPos = computeElevatedThirdPerson(
+          useFocus,
+          yaw,
+          convoR,
+          -convoPitchDown,
+        );
+        camera.position.lerp(convoPos, mix);
+        target.current.lerp(useFocus, mix);
+        camera.lookAt(target.current);
+      }
     } else {
       // Fixed-orientation leash camera.
       //   - Orientation comes ONLY from azimuth + pitch — never tracks the
@@ -175,7 +255,7 @@ export function CameraRig({
       // Lock Y to the character's height each frame.
       camera.position.y = pos.y + fixed.height;
 
-      // Decompose the (camera → character) XZ vector into a depth component
+      // Decompose the (camera → player) XZ vector into a depth component
       // along the camera's forward axis and a lateral component along the
       // camera's right axis. The two leashes are independent: depth is
       // clamped to [minDistance, maxDistance], lateral to ±maxLateral.
@@ -205,18 +285,87 @@ export function CameraRig({
       camera.position.z +=
         forwardZ * depthCorrection + rightZ * lateralCorrection;
 
-      // Camera looks toward (azimuth + 180°), tilted by pitch. The look
-      // target is camera.position + forward, so orientation is independent
-      // of the character's position.
+      // Normal-mode lookAt direction: camera looks toward (azimuth +
+      // 180°), tilted by pitch. The look target is camera.position +
+      // forward, so orientation is independent of the character's
+      // position.
       const lookYaw = az + Math.PI;
       const cosP = Math.cos(pitch);
-      camera.lookAt(
-        camera.position.x + Math.sin(lookYaw) * cosP,
-        camera.position.y + Math.sin(pitch),
-        camera.position.z - Math.cos(lookYaw) * cosP,
-      );
+      const normalLookX = camera.position.x + Math.sin(lookYaw) * cosP;
+      const normalLookY = camera.position.y + Math.sin(pitch);
+      const normalLookZ = camera.position.z - Math.cos(lookYaw) * cosP;
+
+      if (mix > 0.001) {
+        // Conversation framing: preserve the user's azimuth (= where
+        // the camera "comes from") and pitch, but place the camera at
+        // a closer offset from the FOCUS instead of from the player,
+        // and aim it at the focus directly so the participants are
+        // centred on screen.
+        //
+        // The conversation camera sits at (focus + offset), where
+        // offset = -forward * conversationDistance + up *
+        // conversationHeight. This is essentially the same geometry
+        // as the normal fixed camera, but anchored on the
+        // MeetingArea centroid and at a shorter (Leva-tunable)
+        // distance for zoom-in. `forward` points from camera toward
+        // target, so the camera goes "behind" the focus along the
+        // azimuth direction.
+        const convoPosX = useFocus.x - forwardX * conversationDistance;
+        const convoPosY = useFocus.y + conversationHeight;
+        const convoPosZ = useFocus.z - forwardZ * conversationDistance;
+
+        // LookAt the focus, slightly raised so we're aiming at chest
+        // height rather than at the ground.
+        const convoLookX = useFocus.x;
+        const convoLookY = useFocus.y + CHAR_HEIGHT_M / 2;
+        const convoLookZ = useFocus.z;
+
+        // Blend camera position and look point.
+        camera.position.x = THREE.MathUtils.lerp(
+          camera.position.x,
+          convoPosX,
+          mix,
+        );
+        camera.position.y = THREE.MathUtils.lerp(
+          camera.position.y,
+          convoPosY,
+          mix,
+        );
+        camera.position.z = THREE.MathUtils.lerp(
+          camera.position.z,
+          convoPosZ,
+          mix,
+        );
+        camera.lookAt(
+          THREE.MathUtils.lerp(normalLookX, convoLookX, mix),
+          THREE.MathUtils.lerp(normalLookY, convoLookY, mix),
+          THREE.MathUtils.lerp(normalLookZ, convoLookZ, mix),
+        );
+      } else {
+        camera.lookAt(normalLookX, normalLookY, normalLookZ);
+      }
     }
   });
 
   return null;
+}
+
+/** Conversation-view camera target: an elevated 3rd-person frame
+ * centred on `focus`. `yaw` is the user's current look yaw (so the
+ * conversation view rotates with them in FP/3P modes); pitch tilts
+ * the camera down, and `r` controls how far the camera sits from the
+ * focus point. Returns a fresh Vector3 each call. */
+const _convoVec = new THREE.Vector3();
+function computeElevatedThirdPerson(
+  focus: { x: number; y: number; z: number },
+  yaw: number,
+  r: number,
+  pitch: number,
+): THREE.Vector3 {
+  const cosP = Math.cos(pitch);
+  return _convoVec.set(
+    focus.x + Math.sin(yaw) * cosP * r,
+    focus.y + Math.sin(-pitch) * r,
+    focus.z + Math.cos(yaw) * cosP * r,
+  );
 }

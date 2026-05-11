@@ -6,5 +6,6 @@ export default defineConfig({
     globals: true,
     include: ['src/**/*.test.ts'],
     passWithNoTests: true,
+    setupFiles: ['./src/__tests__/setup-rapier.ts'],
   },
 });

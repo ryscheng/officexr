@@ -125,6 +125,21 @@ export type WorldSettings = {
   proximityOuterRadius: number;
   /** Visual bump-back duration when two characters collide, in ms. */
   bumpEasingMs: number;
+  /** Hold time before a pair's inner-ring overlap is promoted to
+   * `proximity:entered` (admission to a MeetingArea). Prevents flickery
+   * conversations triggered by a momentary brush-past. Default 500 ms;
+   * tunable live from the Leva Proximity panel. */
+  proximityEnterDebounceMs: number;
+  /** Horizontal distance (world m) from the MeetingArea centroid at
+   * which the camera frames the conversation view. Bigger = more
+   * zoomed out; smaller = closer / tighter framing. Same knob is
+   * used by all camera modes (fixed/FP/3P) for consistency. */
+  conversationCameraDistance: number;
+  /** Vertical height (world m) of the camera above the MeetingArea
+   * centroid in the conversation view. Combined with
+   * `conversationCameraDistance` this determines both the offset
+   * length and the pitch angle of the conversation framing. */
+  conversationCameraHeight: number;
   /**
    * Fraction of the intent vector that must be blocked before movement is
    * snapped to zero (instead of letting the character slide along the wall
@@ -132,6 +147,16 @@ export type WorldSettings = {
    * Default 0.9: slide while you can make at least 10% progress.
    */
   movementBlockThreshold: number;
+  /** World-space position of the sun-like directional light. Drives both
+   * the shadow-casting light direction and the visible sun disc in the
+   * sky. Broadcast so peers see the same time-of-day. */
+  sunPositionX: number;
+  sunPositionY: number;
+  sunPositionZ: number;
+  /** Intensity of the sun-like directional light. */
+  sunIntensity: number;
+  /** Low ambient fill so shadow-side faces aren't pitch black. */
+  ambientIntensity: number;
 };
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
@@ -145,7 +170,15 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   proximityRadius: 3,
   proximityOuterRadius: 6,
   bumpEasingMs: 180,
+  proximityEnterDebounceMs: 500,
+  conversationCameraDistance: 7,
+  conversationCameraHeight: 5,
   movementBlockThreshold: 0.9,
+  sunPositionX: 20,
+  sunPositionY: 40,
+  sunPositionZ: 20,
+  sunIntensity: 1.4,
+  ambientIntensity: 0.15,
 };
 
 /**

@@ -41,7 +41,9 @@ export function Floor({
 
   useEffect(() => {
     if (!surfaceRef.current) return;
-    fillGrid(surfaceRef.current, gridSize, [-CUBE_SIZE / 2]);
+    // Blue cube model is a clean 96-vertex box (bbox exactly ±1) with
+    // shallow bevels — a small overlap is enough to bury the seams.
+    fillGrid(surfaceRef.current, gridSize, [-CUBE_SIZE / 2], 1.1);
   }, [gridSize]);
 
   useEffect(() => {
@@ -50,7 +52,13 @@ export function Floor({
     for (let layer = 1; layer <= stoneLayers; layer++) {
       ys.push(-CUBE_SIZE / 2 - layer * CUBE_SIZE);
     }
-    fillGrid(stoneRef.current, gridSize, ys);
+    // Stone is a 1708-vertex rocky model — its surface has real
+    // concavities that leave visible holes between neighbours at the
+    // smaller blue scale. Push the overlap up so the rocky bumps from
+    // each cube hide each other's gaps. Slightly Z-fighting tops in
+    // the overlap region is invisible because both instances render
+    // the same noisy material.
+    fillGrid(stoneRef.current, gridSize, ys, 1.2);
   }, [gridSize, stoneLayers]);
 
   return (
@@ -91,13 +99,33 @@ function extractMaterial(scene: THREE.Object3D): THREE.Material {
 /**
  * Fill an InstancedMesh with a square grid of `gridSize × gridSize` cubes,
  * repeated at each y in `ys`. Centered on origin.
+ *
+ * Each cube is scaled by `overlapScale` (≥ 1) so adjacent cubes overlap
+ * slightly. KayKit BlockBits cubes have beveled / rocky corners — at
+ * native size, two neighbouring cubes leave a small V-shaped groove
+ * between their edges that catches the sun and reads as a grid line
+ * on the floor (or, for rockier models like stone, lets the sky leak
+ * through visible cracks). Scaling each instance up pushes the
+ * outer geometry past its natural cell boundary so it buries the
+ * neighbour's groove and the contiguous region reads as one cohesive
+ * surface. The overlap region is small enough that any Z-fighting
+ * between identical instances is invisible, and collision / other
+ * code paths still see a `gridSize × CUBE_SIZE` footprint because
+ * they don't read instance scale.
+ *
+ * Pass a larger `overlapScale` for noisier models (e.g. stone) and a
+ * smaller one for clean-beveled models (e.g. the blue surface block).
  */
 function fillGrid(
   inst: THREE.InstancedMesh,
   gridSize: number,
   ys: number[],
+  overlapScale: number,
 ): void {
   const m = new THREE.Matrix4();
+  const pos = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  const scale = new THREE.Vector3(overlapScale, overlapScale, overlapScale);
   const half = (gridSize - 1) / 2;
   let idx = 0;
   for (const y of ys) {
@@ -105,7 +133,8 @@ function fillGrid(
       for (let j = 0; j < gridSize; j++) {
         const x = (i - half) * CUBE_SIZE;
         const z = (j - half) * CUBE_SIZE;
-        m.makeTranslation(x, y, z);
+        pos.set(x, y, z);
+        m.compose(pos, quat, scale);
         inst.setMatrixAt(idx++, m);
       }
     }

@@ -1,9 +1,26 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import {
+  RigidBody,
+  BallCollider,
+  type RapierRigidBody,
+  type RapierCollider,
+  type CollisionEnterPayload,
+  type IntersectionEnterPayload,
+  type IntersectionExitPayload,
+} from '@react-three/rapier';
+import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
 import type { Bus, OfficeState, Store } from '@officexr/sdk';
 import { Adventurer } from './Adventurer.tsx';
 import { CHARACTERS, type CameraMode, type CharacterName } from './config.ts';
+import {
+  BODY_GROUPS,
+  INNER_SENSOR_GROUPS,
+  OUTER_SENSOR_GROUPS,
+  type ColliderTag,
+} from '../physics/groups.ts';
+import { routeContactEvent } from '../physics/bridge.ts';
 
 interface PlayersProps {
   store: Store;
@@ -12,6 +29,9 @@ interface PlayersProps {
   cameraMode: CameraMode;
   /** Mutated each frame so the camera rig reads the latest local position. */
   selfPosRef: React.MutableRefObject<THREE.Vector3>;
+  /** Set when the self player's RigidBody mounts so SceneFrame can drive it
+   * via a KinematicCharacterController. */
+  selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
 }
 
 interface BumpState {
@@ -76,9 +96,17 @@ function stepTowardAngle(from: number, to: number, maxStep: number): number {
 }
 
 /**
- * Renders one Adventurer per player in the store. Subscribes to the store
- * for membership changes (player added/removed) but updates positions/yaws
- * via mutable refs inside useFrame to avoid per-frame re-renders.
+ * Renders one Adventurer per player, each wrapped in a Rapier
+ * `RigidBody` (kinematic-position) with three colliders: a body ball
+ * for character-vs-character + character-vs-wall, and two sensor
+ * balls for the inner/outer proximity rings. Peer rigid bodies are
+ * driven each frame from the store (`setNextKinematicTranslation`);
+ * the SELF rigid body is driven by the `KinematicCharacterController`
+ * in SceneFrame via `selfBodyRef`.
+ *
+ * Visual offsets (bump easing, smooth yaw turn) are applied to an
+ * inner `<group>` that's a CHILD of the rigid body — so they don't
+ * displace the physics body / sensors, only the rendered avatar.
  */
 export function Players({
   store,
@@ -86,6 +114,7 @@ export function Players({
   selfId,
   cameraMode,
   selfPosRef,
+  selfBodyRef,
 }: PlayersProps) {
   // Read movement/animation params from the broadcast world state. Any peer
   // (the local player here) that calls actions.setWorldSettings updates the
@@ -106,6 +135,9 @@ export function Players({
     turnSpeed,
     playerSpeed,
     runSpeedMultiplier,
+    charRadius,
+    proximityRadius,
+    proximityOuterRadius,
   } = worldSettings;
   const runSpeed = playerSpeed * runSpeedMultiplier;
   const initialState = useMemo(() => store.getState(), [store]);
@@ -139,28 +171,26 @@ export function Players({
     return unsubscribe;
   }, [store]);
 
+  // Per-player rigid body refs — peers driven from store each frame; self is
+  // wired through `selfBodyRef` and driven by the character controller.
+  const bodyRefs = useRef<Map<string, RapierRigidBody>>(new Map());
+  // Map from Rapier collider handle → ColliderTag. Rapier's `Collider`
+  // type doesn't have a `userData` slot we can set, so we keep the
+  // body/sensor labels here and look them up by handle inside the
+  // collision-event handlers.
+  const tagByHandle = useRef<Map<number, ColliderTag>>(new Map());
+  // Inner <group> per player — visual yaw + bump offset live here.
   const groupRefs = useRef<Map<string, THREE.Group>>(new Map());
-  // Per-player motion state: 'idle' | 'walking' | 'running'. Mutually
-  // exclusive — running implies fast enough that we should swap to the
-  // run clip; walking means moving but below the run threshold.
   const motionState = useRef<Map<string, MotionState>>(new Map());
   const currentYaw = useRef<Map<string, number>>(new Map());
   const [motionByPlayer, setMotionByPlayer] = useState<
     Record<string, MotionState>
   >({});
-  // animScale is |vel|/playerSpeed quantised to 0.1 so the Adventurer's
-  // walk timeScale prop only re-renders ~10 times across full→stopped, not
-  // every frame. The driver below tracks the *current* quantised value per
-  // player and only calls setState when it crosses a step.
   const [animScaleByPlayer, setAnimScaleByPlayer] = useState<
     Record<string, number>
   >({});
   const animScaleQuant = useRef<Map<string, number>>(new Map());
 
-  // Active bumps: SceneFrame's per-frame edge detector emits a pair of
-  // collision:char-bump events when two characters cross into contact. Each
-  // event drives both (a) the decaying additive XZ offset below, and (b) a
-  // bump counter that triggers the Hit_A one-shot animation in Adventurer.
   const bumps = useRef<Map<string, BumpState>>(new Map());
   const [bumpCounters, setBumpCounters] = useState<Record<string, number>>(
     {},
@@ -180,6 +210,58 @@ export function Players({
 
   const tmpVec = useMemo(() => new THREE.Vector3(), []);
 
+  // --- Rapier → bus event bridge -----------------------------------
+  //
+  // The body/sensor colliders on every player carry `userData`
+  // tagging them as 'body' / 'inner-sensor' / 'outer-sensor' plus the
+  // owning playerId. Rapier fires onCollisionEnter and
+  // onIntersectionEnter/Exit handlers with both sides of the pair —
+  // we route them through `routeContactEvent` to emit the SDK bus
+  // events (`proximity:*`, `collision:char-bump`) that the rest of
+  // the app already consumes.
+  const lookupTag = (c: RapierCollider | null | undefined): ColliderTag | null =>
+    c ? tagByHandle.current.get(c.handle) ?? null : null;
+
+  const handleCollisionEnter = useMemo(
+    () => (payload: CollisionEnterPayload) => {
+      const a = lookupTag(payload.target.collider);
+      const b = lookupTag(payload.other.collider);
+      if (!a || !b) return;
+      // The first manifold's normal points from `other` to `target`,
+      // so we pass it as the A→B normal for the bridge.
+      let normal: { x: number; z: number } | undefined;
+      const m = payload.manifold;
+      if (m) {
+        const n = m.normal();
+        normal = { x: n.x, z: n.z };
+      }
+      routeContactEvent(bus.emit, selfId, a, b, true, normal);
+    },
+    // lookupTag closes over the ref so it's stable across renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bus, selfId],
+  );
+  const handleIntersectionEnter = useMemo(
+    () => (payload: IntersectionEnterPayload) => {
+      const a = lookupTag(payload.target.collider);
+      const b = lookupTag(payload.other.collider);
+      if (!a || !b) return;
+      routeContactEvent(bus.emit, selfId, a, b, true);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bus, selfId],
+  );
+  const handleIntersectionExit = useMemo(
+    () => (payload: IntersectionExitPayload) => {
+      const a = lookupTag(payload.target.collider);
+      const b = lookupTag(payload.other.collider);
+      if (!a || !b) return;
+      routeContactEvent(bus.emit, selfId, a, b, false);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bus, selfId],
+  );
+
   useFrame((_, dt) => {
     const state = store.getState();
     const now = performance.now();
@@ -187,18 +269,7 @@ export function Players({
     const nextMotion: Record<string, MotionState> = {};
     let animScaleChanged = false;
     const nextAnimScales: Record<string, number> = {};
-    // Threshold separating walk-tier from run-tier velocity: midpoint of
-    // playerSpeed and runSpeed. A character partially-blocked while running
-    // (e.g. 50% progress at 6 m/s = 3 m/s) drops back into walk tier — that
-    // matches the actual ground speed and looks right.
     const runThreshold = (playerSpeed + runSpeed) / 2;
-    // Hysteresis bands prevent state flicker when |vel| hovers near a
-    // threshold (which is exactly what happens when bots wedge against
-    // each other). Each transition uses a different bound:
-    //   idle → walking when |vel| > WALK_THRESHOLD * 1.5
-    //   walking → idle when |vel| < WALK_THRESHOLD
-    //   walking → running when |vel| > runThreshold * 1.05
-    //   running → walking when |vel| < runThreshold * 0.95
     const WALK_ENTER_SQ = (WALK_THRESHOLD * 1.5) * (WALK_THRESHOLD * 1.5);
     const WALK_EXIT_SQ = WALK_THRESHOLD * WALK_THRESHOLD;
     const RUN_ENTER_SQ = (runThreshold * 1.05) * (runThreshold * 1.05);
@@ -206,16 +277,29 @@ export function Players({
 
     for (const [id, player] of Object.entries(state.players)) {
       const grp = groupRefs.current.get(id);
-      if (!grp) continue;
+      const body = bodyRefs.current.get(id);
+      if (!grp || !body) continue;
+
       // Extrapolate non-self players forward by their broadcast velocity to
       // smooth between rate-limited network updates (30 Hz broadcast →
       // 60 Hz render).
       const renderPos = extrapolatePos(player, now, tmpVec);
-      // Apply char-bump easing if active. Damped-oscillator envelope —
-      //   offset(t) = kick · e^(-decay·t) · cos(2π·freq·t)
-      // gives a sharp push out at t=0, a small spring back through neutral,
-      // and settle. Kick magnitude is the *peak*; the cos modulation flips
-      // sign during the cycle, which is what produces the "bump-back" feel.
+
+      // Drive peer rigid bodies from the store. The SELF rigid body is
+      // driven elsewhere by the character controller — skip it here so
+      // we don't fight the controller for the body's position. The
+      // rigid body origin sits at the character's *foot* position (y=0
+      // matches the broadcast `pos`); the ball colliders are lifted to
+      // torso height in local space below.
+      if (id !== selfId) {
+        body.setNextKinematicTranslation({
+          x: renderPos.x,
+          y: renderPos.y,
+          z: renderPos.z,
+        });
+      }
+
+      // Bump easing — visual-only offset on the inner group.
       const bump = bumps.current.get(id);
       let bumpX = 0;
       let bumpZ = 0;
@@ -225,40 +309,29 @@ export function Players({
         if (elapsed >= dur) {
           bumps.current.delete(id);
         } else {
-          const t = elapsed / dur; // 0..1 across bumpEasingMs
+          const t = elapsed / dur;
           const decay = Math.exp(-3.2 * t);
           const wave = Math.cos(2 * Math.PI * 1.1 * t);
           const env = decay * wave;
-          const kick = 0.16; // metres at peak
+          const kick = 0.16;
           bumpX = bump.normal.x * env * kick;
           bumpZ = bump.normal.z * env * kick;
         }
       }
-      grp.position.set(
-        renderPos.x + bumpX,
-        renderPos.y,
-        renderPos.z + bumpZ,
-      );
+      // Inner group is positioned RELATIVE to the rigid body. The rigid
+      // body sits at the character's foot, so the visual group stays
+      // at y=0 locally — bump is purely a horizontal jolt.
+      grp.position.set(bumpX, 0, bumpZ);
 
-      // Smoothly turn the avatar toward its stored yaw (= movement direction).
-      // Camera mouse-look does not affect this — character only rotates when
-      // the player actually moves.
       const targetYaw = (player.yaw ?? 0) + AVATAR_YAW_OFFSET;
       const prev = currentYaw.current.get(id) ?? targetYaw;
       grp.rotation.y = stepTowardAngle(prev, targetYaw, turnSpeed * dt);
       currentYaw.current.set(id, grp.rotation.y);
 
-      // `vel` is the authoritative movement-intent state, written by the
-      // local player (SceneFrame) and the bot (BotDriver), and re-applied
-      // for remote players via applyRemotePosition. Using its magnitude
-      // means animation works the same way for everyone.
       const v = player.vel;
       const speedSq = v.x * v.x + v.z * v.z;
       const previous = motionState.current.get(id) ?? 'idle';
       let motion: MotionState = previous;
-      // State machine with hysteresis — only transition when |vel|² crosses
-      // the *enter* threshold for a different state, never on jitter near
-      // the *exit* boundary of the current one.
       if (previous === 'idle') {
         if (speedSq >= RUN_ENTER_SQ) motion = 'running';
         else if (speedSq >= WALK_ENTER_SQ) motion = 'walking';
@@ -266,7 +339,6 @@ export function Players({
         if (speedSq >= RUN_ENTER_SQ) motion = 'running';
         else if (speedSq <= WALK_EXIT_SQ) motion = 'idle';
       } else {
-        // running
         if (speedSq <= WALK_EXIT_SQ) motion = 'idle';
         else if (speedSq <= RUN_EXIT_SQ) motion = 'walking';
       }
@@ -276,10 +348,6 @@ export function Players({
         motionChanged = true;
       }
 
-      // Anim-rate scales with actual speed in the current tier so the
-      // footsteps stay aligned with the ground. Walk tier divides by
-      // playerSpeed; run tier divides by runSpeed. Quantise to 0.1 to bound
-      // prop-driven re-renders.
       const speed = Math.sqrt(speedSq);
       const denom = motion === 'running' ? runSpeed : playerSpeed;
       const ratio = denom > 0 ? speed / denom : 0;
@@ -299,24 +367,125 @@ export function Players({
     if (animScaleChanged) setAnimScaleByPlayer(nextAnimScales);
   });
 
+  // The body collider centre is at the rigid-body origin, lifted ~0.9 m so
+  // the ball is roughly torso-height. Sensors share that centre.
+  const BODY_Y = 0.9;
+
+  // Every character body in this scene is a kinematic-position rigid
+  // body. Rapier's default `ActiveCollisionTypes.DEFAULT` only enables
+  // contact / intersection detection between (dynamic↔dynamic,
+  // dynamic↔kinematic, dynamic↔fixed) pairs — it deliberately
+  // EXCLUDES kinematic↔kinematic. So with the defaults, two
+  // characters never generate intersection events for each other (no
+  // proximity glow, no body-vs-body bump). `ALL` enables every pair
+  // type so our kinematic-vs-kinematic body↔sensor and
+  // body↔body intersections actually fire.
+  const ACTIVE_TYPES = ActiveCollisionTypes.ALL;
+
   return (
     <>
-      {players.map((p) => (
-        <Adventurer
-          key={p.id}
-          ref={(g: THREE.Group | null) => {
-            if (g) groupRefs.current.set(p.id, g);
-            else groupRefs.current.delete(p.id);
-          }}
-          character={p.character}
-          motion={motionByPlayer[p.id] ?? 'idle'}
-          invisible={p.id === selfId && cameraMode === 'first-person'}
-          idleSpeed={idleAnimSpeed}
-          walkSpeed={walkAnimSpeed * (animScaleByPlayer[p.id] ?? 1)}
-          runSpeed={runAnimSpeed * (animScaleByPlayer[p.id] ?? 1)}
-          bumpCounter={bumpCounters[p.id] ?? 0}
-        />
-      ))}
+      {players.map((p) => {
+        const isSelf = p.id === selfId;
+        const bodyTag: ColliderTag = { kind: 'body', ownerId: p.id };
+        const innerTag: ColliderTag = { kind: 'inner-sensor', ownerId: p.id };
+        const outerTag: ColliderTag = { kind: 'outer-sensor', ownerId: p.id };
+        // Seed the rigid body at the player's *current* broadcast
+        // position, not the React/Three default of (0,0,0). Without
+        // this, every RB spawns at the origin and every body/sensor
+        // pair overlaps for one frame before `setNextKinematicTranslation`
+        // teleports them to their broadcast positions. Rapier
+        // dutifully fires `started=true` for every pair on frame 1
+        // (every peer "entered" the local player's proximity ring), so
+        // the ProximityGlow lights up every disc; on frame 2 four
+        // exit events fire in an undefined order — if
+        // `proximity:exited` (outer-end) is processed before
+        // `proximity:exiting` (inner-end), the latter re-introduces the
+        // peer to `pairStates` with state="exiting" and the glow stays
+        // on permanently. Spawning at the actual position avoids the
+        // phantom frame-1 overlap entirely.
+        // Read store directly: `initialState` is frozen at first
+        // mount; new peers join after that and need their *current*
+        // broadcast position, not the (0,0,0) default.
+        const currentPlayer = store.getState().players[p.id];
+        const spawn = currentPlayer?.pos ?? { x: 0, y: 0, z: 0 };
+        return (
+          <RigidBody
+            key={p.id}
+            type="kinematicPosition"
+            colliders={false}
+            position={[spawn.x, spawn.y, spawn.z]}
+            // playerId on userData lets `SceneFrame` recognise which
+            // peer's body the character controller bumped into (the
+            // controller resolves movement via the query pipeline so
+            // the contact pipeline never fires collision events for
+            // these slides — we have to look at the controller's own
+            // collision list and map back to a peer ID).
+            userData={{ playerId: p.id }}
+            ref={(b: RapierRigidBody | null) => {
+              if (b) {
+                bodyRefs.current.set(p.id, b);
+                if (isSelf) selfBodyRef.current = b;
+              } else {
+                bodyRefs.current.delete(p.id);
+                if (isSelf) selfBodyRef.current = null;
+              }
+            }}
+            // Only the local player needs event callbacks — those drive the
+            // SDK bus events the rest of the app consumes. Peers' colliders
+            // exist so the self body can detect them, but they don't need
+            // to emit anything themselves.
+            onCollisionEnter={isSelf ? handleCollisionEnter : undefined}
+            onIntersectionEnter={isSelf ? handleIntersectionEnter : undefined}
+            onIntersectionExit={isSelf ? handleIntersectionExit : undefined}
+          >
+            <BallCollider
+              args={[charRadius]}
+              position={[0, BODY_Y, 0]}
+              collisionGroups={BODY_GROUPS}
+              activeCollisionTypes={ACTIVE_TYPES}
+              ref={(c: RapierCollider | null) => {
+                if (c) tagByHandle.current.set(c.handle, bodyTag);
+              }}
+            />
+            <BallCollider
+              args={[proximityRadius]}
+              position={[0, BODY_Y, 0]}
+              sensor
+              collisionGroups={INNER_SENSOR_GROUPS}
+              activeCollisionTypes={ACTIVE_TYPES}
+              ref={(c: RapierCollider | null) => {
+                if (c) tagByHandle.current.set(c.handle, innerTag);
+              }}
+            />
+            <BallCollider
+              args={[proximityOuterRadius]}
+              position={[0, BODY_Y, 0]}
+              sensor
+              collisionGroups={OUTER_SENSOR_GROUPS}
+              activeCollisionTypes={ACTIVE_TYPES}
+              ref={(c: RapierCollider | null) => {
+                if (c) tagByHandle.current.set(c.handle, outerTag);
+              }}
+            />
+            <group
+              ref={(g: THREE.Group | null) => {
+                if (g) groupRefs.current.set(p.id, g);
+                else groupRefs.current.delete(p.id);
+              }}
+            >
+              <Adventurer
+                character={p.character}
+                motion={motionByPlayer[p.id] ?? 'idle'}
+                invisible={isSelf && cameraMode === 'first-person'}
+                idleSpeed={idleAnimSpeed}
+                walkSpeed={walkAnimSpeed * (animScaleByPlayer[p.id] ?? 1)}
+                runSpeed={runAnimSpeed * (animScaleByPlayer[p.id] ?? 1)}
+                bumpCounter={bumpCounters[p.id] ?? 0}
+              />
+            </group>
+          </RigidBody>
+        );
+      })}
     </>
   );
 }

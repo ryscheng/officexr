@@ -1,4 +1,4 @@
-import type { Channel, PlayerId, Vec3, WorldMap, WorldSettings } from '@officexr/sdk';
+import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldSettings } from '@officexr/sdk';
 import { BotDriver, type BotMode } from './BotDriver.ts';
 
 interface BotPoolOptions {
@@ -17,6 +17,17 @@ interface BotPoolOptions {
     worldSettings?: WorldSettings;
     worldMap?: WorldMap;
   };
+  /** When a bot's character controller detects a body-vs-body contact
+   * inside its own Rapier world (e.g. bot walked into the local player),
+   * the resulting `collision:char-bump` event only fires on the bot's
+   * private bus — the local renderer's `Players.tsx` subscribes to a
+   * *different* bus and would never see it, so the visual bump
+   * animation wouldn't play. If a `localBus` is provided, each bot
+   * will forward bump events involving the local player onto it,
+   * giving us symmetric visuals regardless of which character
+   * initiates the collision. Only relevant for in-browser bots; the
+   * Node CLI's BotPool doesn't have a local bus to plumb. */
+  localBus?: Bus;
 }
 
 /**
@@ -31,6 +42,7 @@ export class BotPool {
   private readonly createChannel: (botId: PlayerId) => Channel;
   private readonly localPlayerId: PlayerId;
   private readonly getInitialWorld?: BotPoolOptions['getInitialWorld'];
+  private readonly localBus?: Bus;
   private bots: BotDriver[] = [];
   private currentMode: BotMode = 'idle';
   /** Latest target count; the serialised loop below converges to this. */
@@ -46,6 +58,7 @@ export class BotPool {
     this.createChannel = opts.createChannel;
     this.localPlayerId = opts.localPlayerId;
     this.getInitialWorld = opts.getInitialWorld;
+    this.localBus = opts.localBus;
   }
 
   /** Reach `n` active bots. New bots inherit the pool's current mode and
@@ -77,6 +90,7 @@ export class BotPool {
               mode: this.currentMode,
               phaseIndex: idx,
               initialWorld: this.getInitialWorld?.(),
+              externalBus: this.localBus,
             });
             this.bots.push(bot);
             await bot.start();

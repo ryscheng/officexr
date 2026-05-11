@@ -73,10 +73,21 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
 
     // Each Adventurer instance must own its own scene graph — useGLTF caches
     // a single scene per URL, and SkeletonUtils.clone preserves the skin.
-    const scene = useMemo(
-      () => cloneSkinned(character_gltf.scene),
-      [character_gltf.scene],
-    );
+    // While we're at it, enable shadow casting on every mesh in the
+    // hierarchy so the sun's directionalLight bakes a silhouette onto
+    // the floor (which has `receiveShadow`). `receiveShadow` is also on
+    // so characters cast onto each other.
+    const scene = useMemo(() => {
+      const s = cloneSkinned(character_gltf.scene);
+      s.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) {
+          m.castShadow = true;
+          m.receiveShadow = true;
+        }
+      });
+      return s;
+    }, [character_gltf.scene]);
 
     const clips = useMemo(
       () => [...general.animations, ...movement.animations],
@@ -106,8 +117,27 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       if (run) run.timeScale = runSpeed;
     }, [actions, idleSpeed, walkSpeed, runSpeed]);
 
+    // First-person mode: the camera sits at the self avatar's eye
+    // level, so the head mesh would obstruct the view (and we'd see
+    // the inside of the skull). Instead of hiding the whole model
+    // (which also kills its shadow), find the head bone and collapse
+    // it to a point — body, hands and feet stay visible and keep
+    // casting shadows, but the head's geometry disappears. KayKit
+    // characters name the head bone `head` (lowercase) consistently
+    // across models; we match any bone or mesh whose name contains
+    // "head" to stay robust to renames.
     useEffect(() => {
-      scene.visible = !invisible;
+      const targets: THREE.Object3D[] = [];
+      scene.traverse((o) => {
+        if (/head/i.test(o.name)) targets.push(o);
+      });
+      for (const t of targets) {
+        if (invisible) t.scale.setScalar(0);
+        else t.scale.setScalar(1);
+      }
+      // Keep the rest of the scene visible — its shadow still falls
+      // on the floor regardless of camera mode.
+      scene.visible = true;
     }, [scene, invisible]);
 
     // Play the Hit_A clip as a one-shot whenever bumpCounter ticks. The

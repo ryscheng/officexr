@@ -11,11 +11,13 @@
     "bots:start": "tsx src/bot/bots-cli.ts"
   },
   "dependencies": {
+    "@dimforge/rapier3d-compat": "0.19.2",
     "@officexr/core-refactor": "workspace:*",
     "@officexr/realtime-server": "workspace:*",
     "@officexr/sdk": "workspace:*",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
+    "@react-three/rapier": "^2.2.0",
     "leva": "^0.10.1",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

@@ -114,7 +114,15 @@ const ZWorldSettings: z.ZodType<WorldSettings> = z.object({
   proximityRadius: z.number(),
   proximityOuterRadius: z.number(),
   bumpEasingMs: z.number(),
+  proximityEnterDebounceMs: z.number(),
+  conversationCameraDistance: z.number(),
+  conversationCameraHeight: z.number(),
   movementBlockThreshold: z.number(),
+  sunPositionX: z.number(),
+  sunPositionY: z.number(),
+  sunPositionZ: z.number(),
+  sunIntensity: z.number(),
+  ambientIntensity: z.number(),
 });
 
 const ZCubeKind = z.object({ id: z.string(), walkable: z.boolean() });
