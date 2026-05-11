@@ -8,8 +8,11 @@ import type {
   RealtimeStatus,
   Stroke,
   Vec3,
+  WorldMap,
+  WorldSettings,
   ZombieState,
 } from './types.ts';
+import { cloneWorldMap } from './world-map.ts';
 
 export interface Actions {
   // local intents
@@ -20,6 +23,11 @@ export interface Actions {
   applyHit(targetId: PlayerId, dmg: number, byId: PlayerId): void;
   addInventoryItem(item: InventoryItem): void;
   removeInventoryItem(itemId: string): void;
+  /** Update one or more world-level settings. Triggers a `world:settings`
+   * broadcast for peers to mirror. */
+  setWorldSettings(patch: Partial<WorldSettings>): void;
+  /** Replace the world map. Triggers a `world:map` broadcast. */
+  setWorldMap(map: WorldMap): void;
 
   // remote applications (called by sync engine)
   applyRemotePosition(
@@ -32,6 +40,8 @@ export interface Actions {
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
   applyZombieState(z: ZombieState): void;
+  applyRemoteWorldSettings(settings: WorldSettings): void;
+  applyRemoteWorldMap(map: WorldMap): void;
 
   // membership
   upsertPlayer(p: Partial<PlayerState> & { id: PlayerId }): void;
@@ -93,6 +103,16 @@ export function createActions(store: Store, bus?: Bus): Actions {
       patchSelf({ jitsiRoom: roomId });
     },
 
+    setWorldSettings(patch) {
+      store.setState((s) => ({
+        worldSettings: { ...s.worldSettings, ...patch },
+      }));
+    },
+
+    setWorldMap(map) {
+      store.setState(() => ({ worldMap: cloneWorldMap(map) }));
+    },
+
     appendChat(msg) {
       store.setState((s) => ({ chat: [...s.chat, msg] }));
     },
@@ -143,7 +163,18 @@ export function createActions(store: Store, bus?: Bus): Actions {
     },
 
     applyRemotePosition(playerId, pos, vel, yaw, tRecv) {
-      patchPlayer(playerId, { pos, vel, yaw, tRecv });
+      // A position broadcast is implicit "this peer is here, with this state".
+      // Upsert-on-missing so peers that join without a snapshot handshake
+      // still materialise into the receiver's office. The DEFAULT_PLAYER
+      // template provides sensible defaults for fields not on the wire
+      // (name, hp, avatar, status); pos/vel/yaw/tRecv come from the event.
+      store.setState((s) => {
+        const existing = s.players[playerId];
+        const next: PlayerState = existing
+          ? { ...existing, pos, vel, yaw, tRecv }
+          : { ...DEFAULT_PLAYER, id: playerId, pos, vel, yaw, tRecv };
+        return { players: { ...s.players, [playerId]: next } };
+      });
     },
 
     applyRemoteChat(msg) {
@@ -158,6 +189,14 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     applyZombieState(z) {
       store.setState(() => ({ zombies: z }));
+    },
+
+    applyRemoteWorldSettings(settings) {
+      store.setState(() => ({ worldSettings: { ...settings } }));
+    },
+
+    applyRemoteWorldMap(map) {
+      store.setState(() => ({ worldMap: cloneWorldMap(map) }));
     },
 
     upsertPlayer(p) {

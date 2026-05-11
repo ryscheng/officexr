@@ -16,11 +16,15 @@
     "dev:mobile": "pnpm --filter @officexr/mobile run start",
     "build:mobile:ios": "pnpm --filter @officexr/mobile run build:ios",
     "build:mobile:android": "pnpm --filter @officexr/mobile run build:android",
-    "test": "pnpm --filter @officexr/core --filter @officexr/sdk --filter @officexr/core-refactor run test",
+    "test": "pnpm --filter @officexr/core --filter @officexr/sdk --filter @officexr/core-refactor --filter @officexr/realtime-server run test",
     "test:sdk": "pnpm --filter @officexr/sdk run test",
     "test:core-refactor": "pnpm --filter @officexr/core-refactor run test",
-    "typecheck": "pnpm --filter @officexr/sdk --filter @officexr/core-refactor run typecheck",
-    "supabase:test:start": "cd tools/supabase-test && npx supabase start --exclude edge-runtime,storage-api,imgproxy,mailpit,vector,logflare,supavisor,studio,postgres-meta",
-    "supabase:test:stop": "cd tools/supabase-test && npx supabase stop"
+    "test:realtime-server": "pnpm --filter @officexr/realtime-server run test",
+    "typecheck": "pnpm --filter @officexr/sdk --filter @officexr/core-refactor --filter @officexr/realtime-server run typecheck",
+    "supabase:test:start": "cd tools/supabase-test && npx supabase start --exclude edge-runtime,storage-api,imgproxy,mailpit,vector,logflare,supavisor,studio,postgres-meta && cd ../.. && bash tools/supabase-test/upgrade-realtime.sh",
+    "supabase:test:stop": "cd tools/supabase-test && npx supabase stop",
+    "supabase:test:upgrade-realtime": "bash tools/supabase-test/upgrade-realtime.sh",
+    "bots:start": "pnpm --filter @officexr/debug-app run bots:start",
+    "dev:debug-app": "pnpm --filter @officexr/debug-app run dev"
   }
 }

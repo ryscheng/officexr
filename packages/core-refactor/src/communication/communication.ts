@@ -14,15 +14,15 @@ interface CommunicationOpts {
  * Headless Communication subsystem. The application-layer bridge between
  * GameState's proximity events and the Voice/Media adapters. It:
  *
- * - subscribes to proximity:entering / proximity:exiting / proximity:exited
- *   on the bus,
+ * - subscribes to `proximity:entered` (peer crossed the *inner* sensor →
+ *   join the voice room) and `proximity:exited` (peer fully cleared the
+ *   *outer* sensor → leave the voice room).
+ *   The intermediate `proximity:entering` / `proximity:exiting` events
+ *   are visual-only — they intentionally don't toggle voice, giving users
+ *   a wider berth to talk while drifting between the bands.
  * - tracks the current set of nearby peers,
  * - asks the voice adapter to join the lex-min derived room,
- * - mirrors the chosen room into state.players[selfId].jitsiRoom (so
- *   remote peers can see what room we're in via presence:position broadcast).
- *
- * This file imports nothing from `three` and nothing from `renderer/`,
- * preserving the isolation invariant.
+ * - mirrors the chosen room into state.players[selfId].jitsiRoom.
  */
 export class Communication {
   private readonly selfId: PlayerId;
@@ -33,8 +33,7 @@ export class Communication {
 
   private nearby = new Set<PlayerId>();
   private currentRoom: string | null = null;
-  private offEntering: (() => void) | null = null;
-  private offExiting: (() => void) | null = null;
+  private offEntered: (() => void) | null = null;
   private offExited: (() => void) | null = null;
   private started = false;
 
@@ -49,12 +48,8 @@ export class Communication {
   start(): void {
     if (this.started) return;
     this.started = true;
-    this.offEntering = this.bus.on('proximity:entering', ({ otherId }) => {
+    this.offEntered = this.bus.on('proximity:entered', ({ otherId }) => {
       this.nearby.add(otherId);
-      void this.recompute();
-    });
-    this.offExiting = this.bus.on('proximity:exiting', ({ otherId }) => {
-      this.nearby.delete(otherId);
       void this.recompute();
     });
     this.offExited = this.bus.on('proximity:exited', ({ otherId }) => {
@@ -72,8 +67,7 @@ export class Communication {
 
   stop(): void {
     if (!this.started) return;
-    this.offEntering?.();
-    this.offExiting?.();
+    this.offEntered?.();
     this.offExited?.();
     this.started = false;
     void this.voice.leaveRoom();

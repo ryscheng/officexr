@@ -4,6 +4,8 @@ import type {
   PlayerId,
   Stroke,
   Vec3,
+  WorldMap,
+  WorldSettings,
   ZombieState,
 } from '../game-state/types.ts';
 import type { SerializedOfficeState } from '../game-state/snapshot.ts';
@@ -101,6 +103,42 @@ const ZRuntime = z.object({
   protocolVersion: z.number(),
 });
 
+const ZWorldSettings: z.ZodType<WorldSettings> = z.object({
+  playerSpeed: z.number(),
+  runSpeedMultiplier: z.number(),
+  walkAnimSpeed: z.number(),
+  runAnimSpeed: z.number(),
+  idleAnimSpeed: z.number(),
+  turnSpeed: z.number(),
+  charRadius: z.number(),
+  proximityRadius: z.number(),
+  proximityOuterRadius: z.number(),
+  bumpEasingMs: z.number(),
+  proximityEnterDebounceMs: z.number(),
+  conversationCameraDistance: z.number(),
+  conversationCameraHeight: z.number(),
+  movementBlockThreshold: z.number(),
+  sunPositionX: z.number(),
+  sunPositionY: z.number(),
+  sunPositionZ: z.number(),
+  sunIntensity: z.number(),
+  ambientIntensity: z.number(),
+});
+
+const ZCubeKind = z.object({ id: z.string(), walkable: z.boolean() });
+const ZWorldMap: z.ZodType<WorldMap> = z.object({
+  gridSize: z.number().int().positive(),
+  cubeSize: z.number().positive(),
+  origin: z.object({ x: z.number(), z: z.number() }),
+  layers: z.array(
+    z.object({
+      kind: z.string(),
+      cells: z.array(z.object({ i: z.number().int(), j: z.number().int() })),
+    }),
+  ),
+  kinds: z.record(z.string(), ZCubeKind),
+});
+
 /**
  * Real shape validation for snapshot:offer.state. Closes the trust-boundary
  * hole previously left by `z.any()` — a malformed snapshot can no longer
@@ -118,6 +156,8 @@ const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
   screenShares: z.record(z.string(), ZScreenShareSignal),
   realtime: ZRealtimeState,
   runtime: ZRuntime,
+  worldSettings: ZWorldSettings,
+  worldMap: ZWorldMap,
 });
 
 // --- Per-kind payload schemas (without envelope) ---
@@ -129,6 +169,8 @@ const ZWhiteboardStroke = z.object({ stroke: ZStroke });
 const ZShotHit = z.object({ targetId: z.string(), dmg: z.number() });
 const ZZombieStatePayload = z.object({ state: ZZombieState });
 const ZSnapshotRequest = z.object({});
+const ZWorldSettingsPayload = z.object({ settings: ZWorldSettings });
+const ZWorldMapPayload = z.object({ map: ZWorldMap });
 const ZSnapshotOffer = z.object({
   target: z.string(),
   state: ZSerializedOfficeState,
@@ -157,7 +199,9 @@ export type NetEvent =
       'snapshot:offer',
       1,
       { target: PlayerId; state: SerializedOfficeState; seqTable: Record<PlayerId, number> }
-    >;
+    >
+  | WithEnvelope<'world:settings', 1, { settings: WorldSettings }>
+  | WithEnvelope<'world:map', 1, { map: WorldMap }>;
 
 export type NetEventKind = NetEvent['kind'];
 
@@ -180,6 +224,8 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'zombie:state': { v: 1, schema: ZZombieStatePayload, authority: 'host' },
   'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local' },
   'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local' },
+  'world:settings': { v: 1, schema: ZWorldSettingsPayload, authority: 'local' },
+  'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local' },
 };
 
 // --- Validation ---

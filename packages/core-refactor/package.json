@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@officexr/sdk": "workspace:*"
+    "@officexr/realtime-server": "workspace:*",
+    "@officexr/sdk": "workspace:*",
+    "@supabase/supabase-js": "^2.49.4"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",

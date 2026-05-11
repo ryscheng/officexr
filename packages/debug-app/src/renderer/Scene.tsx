@@ -1,0 +1,388 @@
+import React, { Suspense, useEffect, useMemo, useRef } from 'react';
+import * as THREE from 'three';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { Sphere } from '@react-three/drei';
+import { Physics, type RapierRigidBody } from '@react-three/rapier';
+import { GradientBackground } from './GradientBackground.tsx';
+import { FloorColliders } from './FloorColliders.tsx';
+import type {
+  Actions,
+  Bus,
+  RuleRegistry,
+  Store,
+  SyncEngine,
+  SnapshotHandshake,
+} from '@officexr/sdk';
+import type { BotPool } from '../bot/BotPool.ts';
+import type { BotMode } from '../bot/BotDriver.ts';
+import { Floor } from './Floor.tsx';
+import { Players } from './Players.tsx';
+import { CameraRig } from './CameraRig.tsx';
+import { SceneFrame } from './SceneFrame.tsx';
+import { ProximityGlow } from './ProximityGlow.tsx';
+import { CUBE_SIZE, type CameraMode } from './config.ts';
+import { useLevaPersistence } from './levaPersistence.ts';
+import { useAnimationPanel } from './panels/AnimationPanel.ts';
+import { useProximityPanel } from './panels/ProximityPanel.ts';
+import { useLightingPanel } from './panels/LightingPanel.ts';
+import { useBackgroundPanel } from './panels/BackgroundPanel.ts';
+import { useBotPanel } from './panels/BotPanel.ts';
+import { useFixedCameraPanel } from './panels/FixedCameraPanel.ts';
+import { useWorldPanel } from './panels/WorldPanel.ts';
+import { useSettingsPanel } from './panels/SettingsPanel.ts';
+
+/**
+ * Each frame, anchor the sun (directional light + its target + the
+ * visible emissive sphere) to the local player's render position
+ * plus the user-set sun offset. The sun's *direction* (offset from
+ * player) stays constant — it's only translated — so it still reads
+ * as the same sun in the sky regardless of where the player walks.
+ *
+ * This is the load-bearing piece for "shadows that stay sharp on big
+ * maps": the directional light's orthographic shadow camera now
+ * covers a fixed `shadowRange` around the player, so shadow-map
+ * texels stay small (sharp shadows) even when `gridSize` is huge.
+ */
+function SunFollower(props: {
+  lightRef: React.RefObject<THREE.DirectionalLight | null>;
+  lightTargetRef: React.RefObject<THREE.Object3D | null>;
+  sunDiscRef: React.RefObject<THREE.Object3D | null>;
+  sunOffset: [number, number, number];
+  selfPosRef: React.RefObject<THREE.Vector3>;
+}) {
+  useFrame(() => {
+    const player = props.selfPosRef.current;
+    if (!player) return;
+    const [ox, oy, oz] = props.sunOffset;
+    const light = props.lightRef.current;
+    const target = props.lightTargetRef.current;
+    if (light && target) {
+      // Bind the movable target to the light (idempotent — three.js
+      // reads `light.target.matrixWorld` for the view direction).
+      if (light.target !== target) light.target = target;
+      light.position.set(player.x + ox, player.y + oy, player.z + oz);
+      target.position.copy(player);
+      target.updateMatrixWorld();
+    }
+    if (props.sunDiscRef.current) {
+      props.sunDiscRef.current.position.set(
+        player.x + ox,
+        player.y + oy,
+        player.z + oz,
+      );
+    }
+  });
+  return null;
+}
+
+interface SceneProps {
+  store: Store;
+  actions: Actions;
+  rules: RuleRegistry;
+  bus: Bus;
+  sync: SyncEngine;
+  handshake: SnapshotHandshake;
+  bots: BotPool;
+  selfId: string;
+  cameraMode: CameraMode;
+  /** Page-level handler for the Leva bot-count control. The page
+   * decides whether to apply the count to the in-browser pool or
+   * promote to Supabase mode and forward to the Node CLI. */
+  onBotCountChange: (count: number) => void;
+  /** Page-level handler for the Leva bot-mode buttons. Mirrors
+   * `onBotCountChange` so mode toggles propagate to whichever pool
+   * (in-browser or CLI) is currently authoritative. */
+  onBotModeChange: (mode: BotMode) => void;
+}
+
+export function Scene(props: SceneProps) {
+  const { store, actions, selfId, cameraMode, sync } = props;
+
+  useLevaPersistence();
+
+  // Mount Leva panels. Each panel owns its own `useControls(...)` and
+  // mirrors the user's input into `actions.setWorldSettings` /
+  // `setWorldMap` as appropriate. Scene only reads the returned values
+  // for scene-graph wiring; broadcast happens inside each panel.
+  //
+  // Order matters: Leva renders folders top-to-bottom in the order
+  // their `useControls` calls run. Keep the in-world / gameplay knobs
+  // up top (Bot, Animation, Proximity, Lighting, Background), then
+  // camera/world setup, then the import/export Settings panel last.
+  useBotPanel({
+    onBotCountChange: props.onBotCountChange,
+    onBotModeChange: props.onBotModeChange,
+  });
+  useAnimationPanel(actions);
+  const proximity = useProximityPanel(actions);
+  const lighting = useLightingPanel(actions);
+  const background = useBackgroundPanel();
+  const fixed = useFixedCameraPanel();
+  const world = useWorldPanel(store, actions);
+  useSettingsPanel();
+
+  // After Scene mounts (and the panel `useEffect`s above have flushed
+  // their initial values into the store), force-broadcast the current
+  // world state. The regular `onStoreChange` diff path only fires when
+  // values *change* — without this, a bot spawned with default world
+  // settings would never receive the canonical values if the user's
+  // Leva config happens to match the SDK defaults. Fires once per
+  // channel-stack swap via the `sync` dependency.
+  useEffect(() => {
+    sync.broadcastWorldState();
+  }, [sync]);
+
+  // Refs shared between movement code and the camera rig.
+  const yawRef = useRef(0);
+  const pitchRef = useRef(-0.25);
+  const selfPosRef = useRef(new THREE.Vector3());
+
+  // Refs the SunFollower drives each frame so the directional light
+  // (and its visible sun disc) tracks the local player.
+  const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const sunLightTargetRef = useRef<THREE.Object3D | null>(null);
+  const sunDiscRef = useRef<THREE.Object3D | null>(null);
+
+  // Set by `Players` when the self avatar's `RigidBody` mounts; SceneFrame
+  // reads it each frame to drive the `KinematicCharacterController`.
+  const selfBodyRef = useRef<RapierRigidBody | null>(null);
+
+  // Updated each frame by `ProximityGlow`'s tracker: the local player's
+  // current MeetingArea centroid (lifted to local-player y), or `null`
+  // when not in a conversation. `CameraRig` reads it to drive the
+  // damped conversation-view blend.
+  const conversationFocusRef = useRef<
+    { x: number; y: number; z: number } | null
+  >(null);
+
+  const fixedCam = useMemo(
+    () => ({
+      azimuthDeg: fixed.azimuthDeg,
+      pitchDeg: fixed.pitchDeg,
+      height: fixed.height,
+      maxOnScreenFrac: fixed.maxOnScreenFrac,
+      minOnScreenFrac: fixed.minOnScreenFrac,
+      lateralFrac: fixed.lateralFrac,
+      fov: fixed.fov,
+    }),
+    [
+      fixed.azimuthDeg,
+      fixed.pitchDeg,
+      fixed.height,
+      fixed.maxOnScreenFrac,
+      fixed.minOnScreenFrac,
+      fixed.lateralFrac,
+      fixed.fov,
+    ],
+  );
+
+  // Orthographic shadow camera. We deliberately do NOT size this to
+  // the whole floor any more — for very large maps that would either
+  // (a) require an enormous shadow map to keep texels small, or (b)
+  // produce blocky shadows because each texel covers metres of world
+  // space. Instead the shadow camera follows the local player (see
+  // `SunFollower` below) and covers a fixed-ish `shadowRange` half-
+  // width around them; anything farther than that doesn't render
+  // shadows.
+  //
+  // The clamp to the floor's half-diagonal handles tiny floors so we
+  // don't waste shadow-map texels on empty space outside the map.
+  //
+  // The `far` plane still needs to span from the sun to the far edge
+  // of the shadow region, hence `|sunPos| + radius + margin` — too
+  // small and floor near the player falls behind the shadow camera.
+  const shadowCam = useMemo(() => {
+    const [sx, sy, sz] = lighting.sunPosition;
+    const halfExtent = (world.gridSize * CUBE_SIZE) / 2;
+    const floorDiagHalf = halfExtent * Math.SQRT2 + 5;
+    const radius = Math.min(lighting.shadowRange, floorDiagHalf);
+    const sunMag = Math.hypot(sx, sy, sz);
+    const far = sunMag + radius + 20;
+    return { radius, far };
+  }, [lighting.sunPosition, lighting.shadowRange, world.gridSize]);
+
+  return (
+    <Canvas
+      shadows={{ type: THREE.PCFShadowMap }}
+      camera={{ position: [0, 1.6, 0], fov: 75, near: 0.1, far: 2000 }}
+      style={{ width: '100%', height: '100%', display: 'block' }}
+    >
+      <Suspense fallback={null}>
+        {/*
+          <Physics> wraps everything that needs Rapier — characters,
+          floor walls, the per-frame movement loop. Gravity is zero
+          because our characters are kinematic and never fall.
+          `timeStep="vary"` lets Rapier sub-step at the real frame
+          delta; characters are kinematic anyway so determinism isn't
+          critical here.
+        */}
+        <Physics gravity={[0, 0, 0]} timeStep="vary">
+        <FloorColliders gridSize={world.gridSize} />
+        {/* Sun-like single light source. The Leva `sunPosition` drives
+            both the shadow-casting directional light and the visible
+            sun disc in the sky so they stay aligned.
+
+            For fill we use `hemisphereLight` instead of `ambientLight`:
+            a flat ambient washed every surface identically and made
+            each beveled cube top read with the same intensity as its
+            sides, which (combined with the directional sun's hard
+            shadows on the bevels) drew a visible grid line between
+            cubes. The hemisphere light fills sky-tinted from above and
+            ground-tinted from below, which matches the directional sun
+            naturally and lets cube tops dominate while bevel sides
+            stay subtly darker — the surface reads as one cohesive
+            floor instead of a checkerboard of tiles. The Leva
+            `ambient fill` control drives its intensity. */}
+        <hemisphereLight
+          args={['#aedcff', '#3a2f24', lighting.ambientIntensity]}
+        />
+        {/* The sun: always emitted. Parallel rays + orthographic shadow
+            camera. The shadow camera follows the local player via
+            `SunFollower` below (its `target` and the light's
+            `position` are mutated each frame) so its frustum stays
+            tight around whoever is moving — that's how shadow-map
+            texels stay small (and shadows stay sharp) on big maps
+            without exploding shadow-map memory. */}
+        <directionalLight
+          ref={sunLightRef}
+          position={lighting.sunPosition}
+          color={lighting.sunColor}
+          intensity={lighting.sunIntensity}
+          castShadow={lighting.castShadow}
+          shadow-mapSize-width={lighting.shadowMapSize}
+          shadow-mapSize-height={lighting.shadowMapSize}
+          shadow-camera-near={1}
+          shadow-camera-far={shadowCam.far}
+          shadow-camera-left={-shadowCam.radius}
+          shadow-camera-right={shadowCam.radius}
+          shadow-camera-top={shadowCam.radius}
+          shadow-camera-bottom={-shadowCam.radius}
+          shadow-bias={lighting.shadowBias}
+          shadow-normalBias={lighting.shadowNormalBias}
+        />
+        {/* Movable target the directionalLight points at — also moved
+            each frame by SunFollower so the light's view direction
+            stays constant relative to the player. Three.js needs the
+            target's matrixWorld to be up to date; updateMatrixWorld
+            is called inside the follower. */}
+        <object3D ref={sunLightTargetRef} />
+        {/* Visible sun disc — an emissive sphere placed at the same
+            position as the directional light, so you actually see a
+            star where the shadows are coming from. Renders bright
+            regardless of lighting via emissive. */}
+        {lighting.showSunDisc && (
+          <Sphere
+            ref={sunDiscRef as unknown as React.Ref<THREE.Mesh>}
+            args={[lighting.sunDiscRadius, 32, 16]}
+            position={lighting.sunPosition}
+          >
+            <meshStandardMaterial
+              color={lighting.sunColor}
+              emissive={lighting.sunColor}
+              emissiveIntensity={lighting.sunDiscIntensity}
+              toneMapped={false}
+            />
+          </Sphere>
+        )}
+        <SunFollower
+          lightRef={sunLightRef}
+          lightTargetRef={sunLightTargetRef}
+          sunDiscRef={sunDiscRef}
+          sunOffset={lighting.sunPosition as [number, number, number]}
+          selfPosRef={selfPosRef}
+        />
+        {/* Optional secondary light co-located with the sun, to fake
+            the look of a visible "star" radiating from the sun's
+            position. The directional light above already does the
+            global parallel-ray lighting; this adds a localised
+            hotspot. Shadow casting is deliberately off here — only
+            the directional drives shadows so we don't double-up
+            shadow passes (the secondary's shadows would be subtly
+            offset and produce visible doubling). */}
+        {lighting.auxLightType === 'spot' && (
+          <spotLight
+            position={lighting.sunPosition}
+            color={lighting.sunColor}
+            intensity={lighting.auxIntensity}
+            distance={lighting.auxDistance}
+            angle={lighting.auxAngle}
+            penumbra={lighting.auxPenumbra}
+            decay={lighting.auxDecay}
+          />
+        )}
+        {lighting.auxLightType === 'point' && (
+          <pointLight
+            position={lighting.sunPosition}
+            color={lighting.sunColor}
+            intensity={lighting.auxIntensity}
+            distance={lighting.auxDistance}
+            decay={lighting.auxDecay}
+          />
+        )}
+        <GradientBackground
+          topColor={background.topColor}
+          bottomColor={background.bottomColor}
+        />
+
+        <Floor gridSize={world.gridSize} stoneLayers={world.stoneLayers} />
+
+        <Players
+          store={store}
+          bus={props.bus}
+          selfId={selfId}
+          cameraMode={cameraMode}
+          selfPosRef={selfPosRef}
+          selfBodyRef={selfBodyRef}
+        />
+
+        <ProximityGlow
+          store={store}
+          bus={props.bus}
+          selfId={selfId}
+          discRadius={proximity.discRadius}
+          outerRadius={proximity.outerRadius}
+          pulseSpeed={proximity.pulseSpeed}
+          intensity={proximity.intensity}
+          enteringColor={proximity.enteringColor}
+          enteredColor={proximity.enteredColor}
+          exitingColor={proximity.exitingColor}
+          meetingBorderInset={proximity.meetingBorderInset}
+          meetingBorderOutset={proximity.meetingBorderOutset}
+          sparkleSpeed={proximity.sparkleSpeed}
+          sparkleFloatHeight={proximity.sparkleFloatHeight}
+          sparkleSize={proximity.sparkleSize}
+          cameraMode={cameraMode}
+          conversationFocusRef={conversationFocusRef}
+        />
+
+        <CameraRig
+          mode={cameraMode}
+          playerPosRef={selfPosRef}
+          yawRef={yawRef}
+          pitchRef={pitchRef}
+          conversationFocusRef={conversationFocusRef}
+          conversationDistance={proximity.conversationDistance}
+          conversationHeight={proximity.conversationHeight}
+          fixed={fixedCam}
+        />
+
+        <SceneFrame
+          store={props.store}
+          actions={props.actions}
+          rules={props.rules}
+          bus={props.bus}
+          sync={props.sync}
+          handshake={props.handshake}
+          bots={props.bots}
+          selfId={props.selfId}
+          cameraMode={cameraMode}
+          fixedAzimuthDeg={fixed.azimuthDeg}
+          fixedMovementYawOffsetDeg={fixed.movementYawOffsetDeg}
+          yawRef={yawRef}
+          selfBodyRef={selfBodyRef}
+        />
+        </Physics>
+      </Suspense>
+    </Canvas>
+  );
+}

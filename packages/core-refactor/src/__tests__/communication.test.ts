@@ -36,7 +36,7 @@ describe('Communication', () => {
   });
 
   it('joins lex-min room when a peer enters proximity', () => {
-    ctx.bus.emit({ kind: 'proximity:entering', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
     const joinCalls = ctx.voice.calls.filter((c) => c.type === 'joinRoom');
     expect(joinCalls).toHaveLength(1);
     expect(joinCalls[0].type === 'joinRoom' && joinCalls[0].roomId).toBe('room-alice');
@@ -44,24 +44,24 @@ describe('Communication', () => {
   });
 
   it('leaves the room when the last peer exits', () => {
-    ctx.bus.emit({ kind: 'proximity:entering', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
     ctx.voice.clearCalls();
-    ctx.bus.emit({ kind: 'proximity:exiting', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:exited', otherId: 'bob' });
     const lastJoin = [...ctx.voice.calls].reverse().find((c) => c.type === 'joinRoom');
     expect(lastJoin && lastJoin.type === 'joinRoom' && lastJoin.roomId).toBeNull();
     expect(ctx.store.getState().players['alice'].jitsiRoom).toBeNull();
   });
 
   it('switches to a smaller lex-min when a smaller-id peer arrives', () => {
-    ctx.bus.emit({ kind: 'proximity:entering', otherId: 'charlie' });
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'charlie' });
     expect(ctx.comm.getCurrentRoom()).toBe('room-alice');
-    ctx.bus.emit({ kind: 'proximity:entering', otherId: 'aaron' });
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'aaron' });
     expect(ctx.comm.getCurrentRoom()).toBe('room-aaron');
     expect(ctx.store.getState().players['alice'].jitsiRoom).toBe('room-aaron');
   });
 
   it('does not call joinRoom when proximity:entered fires for an already-known peer', () => {
-    ctx.bus.emit({ kind: 'proximity:entering', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
     ctx.voice.clearCalls();
     // simulating a steady-state tick where the rule re-emits "entered"
     // for an already-tracked peer should not cause new adapter calls.
@@ -71,8 +71,8 @@ describe('Communication', () => {
   it('emits voice:room-changed on the bus when the room changes', () => {
     const events: Array<string | null> = [];
     ctx.bus.on('voice:room-changed', (e) => events.push(e.roomId));
-    ctx.bus.emit({ kind: 'proximity:entering', otherId: 'bob' });
-    ctx.bus.emit({ kind: 'proximity:exiting', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:exited', otherId: 'bob' });
     expect(events).toEqual(['room-alice', null]);
   });
 
@@ -83,7 +83,7 @@ describe('Communication', () => {
     const bus = createBus();
     attachProximityReducer(store, bus);
     // Simulate proximity already populated before Communication starts
-    bus.emit({ kind: 'proximity:entering', otherId: 'bob' });
+    bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
     const voice = new MockVoiceAdapter();
     const comm = new Communication({ selfId: 'alice', store, actions, bus, voice });
     comm.start();
@@ -92,7 +92,7 @@ describe('Communication', () => {
   });
 
   it('stop() leaves the current room and clears state', async () => {
-    ctx.bus.emit({ kind: 'proximity:entering', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
     ctx.comm.stop();
     // wait a microtask for the leaveRoom promise
     await new Promise((r) => setTimeout(r, 0));
