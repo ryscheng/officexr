@@ -8,6 +8,7 @@ import { attachProximityReducer } from '../../game-state/reducers/proximity.ts';
 import { SyncEngine } from '../../realtime/sync.ts';
 import { SnapshotHandshake } from '../../realtime/snapshot-handshake.ts';
 import { SupabaseChannel } from '../../realtime/supabase-channel.ts';
+import { isSupabaseAvailable as probeSupabase } from '../../realtime/health.ts';
 import { serializeOfficeState } from '../../game-state/snapshot.ts';
 import { FakeClock } from '../../test-harness/time.ts';
 import type { PlayerId } from '../../game-state/types.ts';
@@ -18,24 +19,12 @@ const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
 /**
- * Probes the configured Supabase instance. Returns true if the API
- * responds. Used as a `describe.skipIf` predicate so integration tests
- * skip silently when Supabase isn't running (fast local dev), and run
- * when it is (CI or after `pnpm supabase:test:start`).
+ * Test-harness convenience wrapper that probes the env-configured Supabase
+ * instance. The probe itself lives in `realtime/health.ts` so the browser
+ * promotion path can use it too.
  */
-export async function isSupabaseAvailable(timeoutMs = 1500): Promise<boolean> {
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
-      signal: ctrl.signal,
-      headers: { apikey: SUPABASE_ANON_KEY },
-    });
-    clearTimeout(timer);
-    return res.ok || res.status === 401 || res.status === 404;
-  } catch {
-    return false;
-  }
+export function isSupabaseAvailable(timeoutMs = 1500): Promise<boolean> {
+  return probeSupabase(SUPABASE_URL, SUPABASE_ANON_KEY, timeoutMs);
 }
 
 export function makeSupabase(): SupabaseClient {

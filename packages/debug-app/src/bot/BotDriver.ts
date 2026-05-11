@@ -7,15 +7,21 @@ import {
   serializeOfficeState,
   SyncEngine,
   SnapshotHandshake,
-  createInMemoryChannelHub,
-  InMemoryChannel,
 } from '@officexr/sdk';
-import type { Vec3 } from '@officexr/sdk';
+import type { Channel, PlayerId, Vec3, WorldMap, WorldSettings } from '@officexr/sdk';
 import type { Clock } from '@officexr/sdk/test-harness';
 
 export interface BotDriverOptions {
-  hub: ReturnType<typeof createInMemoryChannelHub>;
-  localPlayerPosGetter: () => Vec3;
+  /** Factory that mints a fresh Channel for this bot's SDK client. The
+   * pool injects this so the same BotDriver runs unchanged in both the
+   * in-browser InMemoryChannel and the Node CLI's SupabaseChannel modes. */
+  createChannel: (botId: PlayerId) => Channel;
+  /** PlayerId of the local (human) player whose position the bot homes
+   * toward in the `walk-to-local` / `orbit` modes. The bot reads this from
+   * its own SDK store, which receives the local player's broadcasts via
+   * the same channel — this is what removes the renderer-side closure
+   * dependency the previous `localPlayerPosGetter` had. */
+  localPlayerId: PlayerId;
   botId?: string;
   speed?: number;
   startPos?: Vec3;
@@ -26,6 +32,17 @@ export interface BotDriverOptions {
    * doing exactly the same thing (patrol starts at the same waypoint;
    * orbit at the same angle). Pool typically passes the bot's index. */
   phaseIndex?: number;
+  /** Optional snapshot of the authoritative world state to seed the
+   * bot's SDK store before it subscribes. Lets a bot spawned *after*
+   * the human player has tweaked Leva inherit the current values
+   * (e.g. a smaller `worldMap.gridSize`) instead of starting on SDK
+   * defaults — without this, the bot's collision uses a different
+   * floor extent than the renderer and the bot walks past the visible
+   * edge. */
+  initialWorld?: {
+    worldSettings?: WorldSettings;
+    worldMap?: WorldMap;
+  };
 }
 
 export type BotMode =
@@ -82,8 +99,8 @@ interface ModeState {
 export class BotDriver {
   readonly botId: string;
 
-  private hub: ReturnType<typeof createInMemoryChannelHub>;
-  private localPlayerPosGetter: () => Vec3;
+  private createChannel: (botId: PlayerId) => Channel;
+  private localPlayerId: PlayerId;
   private speed: number;
   private startPos: Vec3;
   private clock: Clock;
@@ -102,19 +119,21 @@ export class BotDriver {
 
   private botStore: ReturnType<typeof createStore> | null = null;
   private botActions: ReturnType<typeof createActions> | null = null;
-  private botChannel: InMemoryChannel | null = null;
+  private botChannel: Channel | null = null;
   private botSync: SyncEngine | null = null;
   private botHandshake: SnapshotHandshake | null = null;
+  private readonly initialWorld: BotDriverOptions['initialWorld'];
 
   constructor(opts: BotDriverOptions) {
-    this.hub = opts.hub;
-    this.localPlayerPosGetter = opts.localPlayerPosGetter;
+    this.createChannel = opts.createChannel;
+    this.localPlayerId = opts.localPlayerId;
     this.botId = opts.botId ?? 'bot-001';
     this.speed = opts.speed ?? 1.5;
     this.startPos = opts.startPos ?? { x: 10, y: 0, z: 0 };
     this.clock = opts.clock ?? { now: () => performance.now() };
     this.mode = opts.mode ?? 'idle';
     this.phaseIndex = opts.phaseIndex ?? 0;
+    this.initialWorld = opts.initialWorld;
     this.modeState.patrolIdx = this.phaseIndex;
     // Spread orbit angles so multiple bots don't sit on the same arc spot.
     this.modeState.orbitAngle = (this.phaseIndex * 0.71) * Math.PI;
@@ -128,6 +147,18 @@ export class BotDriver {
     const botBus = createBus();
     const botActions = createActions(botStore, botBus);
 
+    // Seed authoritative world state BEFORE upsertPlayer so SyncEngine's
+    // start-time `lastWorldSettingsJson` baseline captures the *real*
+    // current values (not SDK defaults). Without this, a bot spawned
+    // after the human player has tweaked Leva would collide against a
+    // different floor extent than the renderer is showing.
+    if (this.initialWorld?.worldSettings) {
+      botActions.setWorldSettings(this.initialWorld.worldSettings);
+    }
+    if (this.initialWorld?.worldMap) {
+      botActions.setWorldMap(this.initialWorld.worldMap);
+    }
+
     botActions.upsertPlayer({
       id: botId,
       name: this.botId,
@@ -136,7 +167,7 @@ export class BotDriver {
       yaw: 0,
     });
 
-    const botChannel = new InMemoryChannel(this.hub, botId);
+    const botChannel = this.createChannel(botId);
     const botSync = new SyncEngine({
       store: botStore,
       actions: botActions,
@@ -282,7 +313,7 @@ export class BotDriver {
     if (mode === 'orbit') {
       // Seed orbit angle from the current bot→local heading so we don't
       // teleport along the orbit circle on mode entry.
-      const local = this.localPlayerPosGetter();
+      const local = this.getLocalPlayerPos();
       const botPos = this.getBotPos();
       this.modeState.orbitAngle = Math.atan2(
         botPos.z - local.z,
@@ -296,6 +327,16 @@ export class BotDriver {
     const state = this.botStore.getState();
     const player = state.players[this.botId];
     return player?.pos ?? { ...this.startPos };
+  }
+
+  /** Latest broadcast position of the local (human) player from this bot's
+   * own SDK store. Returns origin if the local player hasn't broadcast yet
+   * (e.g. CLI started before the browser connects) so mode strategies stay
+   * defined; the bot will pivot once the local player broadcasts. */
+  private getLocalPlayerPos(): Vec3 {
+    if (!this.botStore) return { x: 0, y: 0, z: 0 };
+    const state = this.botStore.getState();
+    return state.players[this.localPlayerId]?.pos ?? { x: 0, y: 0, z: 0 };
   }
 
   // --- Mode strategies --------------------------------------------------
@@ -333,7 +374,7 @@ export class BotDriver {
     botPos: Vec3,
     sign: 1 | -1,
   ): { x: number; z: number } | null {
-    const local = this.localPlayerPosGetter();
+    const local = this.getLocalPlayerPos();
     const dx = local.x - botPos.x;
     const dz = local.z - botPos.z;
     const dist = Math.hypot(dx, dz);
@@ -391,7 +432,7 @@ export class BotDriver {
    * circle's radius is the current bot↔local distance, so the bot doesn't
    * snap to a fixed orbit radius — it just keeps that distance and circles. */
   private intentOrbit(botPos: Vec3): { x: number; z: number } {
-    const local = this.localPlayerPosGetter();
+    const local = this.getLocalPlayerPos();
     const dx = botPos.x - local.x;
     const dz = botPos.z - local.z;
     const r = Math.hypot(dx, dz);

@@ -289,21 +289,31 @@ export class SyncEngine {
             z: ((me.pos.z - this.lastSentPos.z) * 1000) / dt,
           }
         : { ...me.vel };
-      this.broadcast({
-        kind: 'presence:position',
-        v: 1,
+      // Snapshot the event payload + update outbound bookkeeping BEFORE
+      // broadcasting. With an in-memory hub, broadcast() synchronously
+      // delivers to other peers, which triggers their onInbound →
+      // applyRemotePosition → onStoreChange → flushPosition chain. If
+      // that other peer has been moving autonomously (e.g. another bot
+      // in the same Node process), its flushPosition broadcasts back,
+      // which re-enters *this* flushPosition synchronously. If we
+      // hadn't updated lastSentPos yet, the re-entrant call would see
+      // the same `dPos` and broadcast again — infinite recursion.
+      const event = {
+        kind: 'presence:position' as const,
+        v: 1 as const,
         actorId: state.selfId,
         seq: this.takeSeq(),
         t: now,
         pos: { ...me.pos },
         vel,
         yaw: me.yaw,
-      });
+      };
       this.lastSentPos = { ...me.pos };
       this.lastSentYaw = me.yaw;
       this.lastSentTMs = now;
       this.wasMoving = true;
       this.pendingStopCheckSinceMs = null;
+      this.broadcast(event);
       return;
     }
 
@@ -314,21 +324,24 @@ export class SyncEngine {
       }
       const sinceQuiet = now - this.pendingStopCheckSinceMs;
       if (sinceQuiet >= POSITION_CONSTANTS.stopGraceMs) {
-        this.broadcast({
-          kind: 'presence:position',
-          v: 1,
+        // Same ordering as above: update bookkeeping before broadcast
+        // so re-entrant flushPosition sees the new lastSent state.
+        const event = {
+          kind: 'presence:position' as const,
+          v: 1 as const,
           actorId: state.selfId,
           seq: this.takeSeq(),
           t: now,
           pos: { ...me.pos },
           vel: { ...ZERO_V },
           yaw: me.yaw,
-        });
+        };
         this.lastSentPos = { ...me.pos };
         this.lastSentYaw = me.yaw;
         this.lastSentTMs = now;
         this.wasMoving = false;
         this.pendingStopCheckSinceMs = null;
+        this.broadcast(event);
       }
     }
   }
@@ -336,6 +349,43 @@ export class SyncEngine {
   /** Manually broadcast a typed event (e.g. for screen-share signaling). */
   send(event: NetEvent): void {
     this.broadcast(event);
+  }
+
+  /**
+   * Unconditionally broadcast the current `worldSettings` and `worldMap`
+   * from this peer's store. The regular `onStoreChange` diff path only
+   * broadcasts when the values *change* — but on first connect we want
+   * to publish the canonical state even if it happens to equal the SDK
+   * defaults, so a later-joining peer (e.g. a bot spawned in the
+   * realtime-server's process) picks it up. Updates the anti-echo JSON
+   * markers so the next `onStoreChange` doesn't re-broadcast the same
+   * payload.
+   *
+   * Call this once after `start()` from the source-of-truth peer (the
+   * debug-app browser, which owns the Leva-driven settings).
+   */
+  broadcastWorldState(): void {
+    const state = this.store.getState();
+    const wsJson = JSON.stringify(state.worldSettings);
+    const wmJson = JSON.stringify(state.worldMap);
+    this.lastWorldSettingsJson = wsJson;
+    this.lastWorldMapJson = wmJson;
+    this.broadcast({
+      kind: 'world:settings',
+      v: 1,
+      actorId: state.selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      settings: { ...state.worldSettings },
+    });
+    this.broadcast({
+      kind: 'world:map',
+      v: 1,
+      actorId: state.selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      map: state.worldMap,
+    });
   }
 
   private broadcast(event: NetEvent): void {
@@ -413,57 +463,75 @@ export class SyncEngine {
   }
 
   private applyToStore(event: NetEvent): void {
-    switch (event.kind) {
-      case 'presence:position':
-        this.actions.applyRemotePosition(
-          event.actorId,
-          event.pos,
-          event.vel,
-          event.yaw,
-          this.clock.now(),
-        );
-        return;
-      case 'chat:message': {
-        const msg: ChatMessage = {
-          id: `${event.actorId}:${event.seq}`,
-          authorId: event.actorId,
-          text: event.text,
-          t: event.t,
-        };
-        this.actions.applyRemoteChat(msg);
-        return;
-      }
-      case 'whiteboard:stroke':
-        this.actions.applyRemoteStroke(event.stroke);
-        return;
-      case 'avatar:update':
-        this.actions.upsertPlayer({ id: event.actorId, avatar: event.avatar });
-        return;
-      case 'shot:hit':
-        // applyHit emits combat:hit (and combat:killed if HP hits 0)
-        // through the actions' bus binding.
-        this.actions.applyHit(event.targetId, event.dmg, event.actorId);
-        return;
-      case 'zombie:state':
-        this.actions.applyZombieState(event.state);
-        return;
-      case 'world:settings':
-        // Avoid an outbound echo of the inbound event we're about to apply.
-        this.lastWorldSettingsJson = JSON.stringify(event.settings);
-        this.actions.applyRemoteWorldSettings(event.settings);
-        return;
-      case 'world:map':
-        this.lastWorldMapJson = JSON.stringify(event.map);
-        this.actions.applyRemoteWorldMap(event.map);
-        return;
-      case 'snapshot:request':
-      case 'snapshot:offer':
-        // owned by SnapshotHandshake; never reaches here (filtered in onInbound)
-        return;
+    // Update anti-echo bookkeeping for fields we'd otherwise re-broadcast
+    // on the next tick. Server-side consumers don't need this and use
+    // `applyNetEventToStore` directly.
+    if (event.kind === 'world:settings') {
+      this.lastWorldSettingsJson = JSON.stringify(event.settings);
+    } else if (event.kind === 'world:map') {
+      this.lastWorldMapJson = JSON.stringify(event.map);
     }
-    // Exhaustiveness check — adding a new NetEvent kind without a case here
-    // is a compile-time error.
-    const _exhaustive: never = event;
-    void _exhaustive;
+    applyNetEventToStore(this.actions, event, this.clock);
   }
+}
+
+/**
+ * Apply a single validated, non-snapshot NetEvent to a Store via its
+ * Actions. The SyncEngine uses this internally; the realtime server uses
+ * it to keep its authoritative store in sync with everything that flows
+ * over the hub. Does *not* touch anti-echo state — callers that also
+ * broadcast outbound events must track that separately.
+ */
+export function applyNetEventToStore(
+  actions: Actions,
+  event: NetEvent,
+  clock: Clock,
+): void {
+  switch (event.kind) {
+    case 'presence:position':
+      actions.applyRemotePosition(
+        event.actorId,
+        event.pos,
+        event.vel,
+        event.yaw,
+        clock.now(),
+      );
+      return;
+    case 'chat:message': {
+      const msg: ChatMessage = {
+        id: `${event.actorId}:${event.seq}`,
+        authorId: event.actorId,
+        text: event.text,
+        t: event.t,
+      };
+      actions.applyRemoteChat(msg);
+      return;
+    }
+    case 'whiteboard:stroke':
+      actions.applyRemoteStroke(event.stroke);
+      return;
+    case 'avatar:update':
+      actions.upsertPlayer({ id: event.actorId, avatar: event.avatar });
+      return;
+    case 'shot:hit':
+      actions.applyHit(event.targetId, event.dmg, event.actorId);
+      return;
+    case 'zombie:state':
+      actions.applyZombieState(event.state);
+      return;
+    case 'world:settings':
+      actions.applyRemoteWorldSettings(event.settings);
+      return;
+    case 'world:map':
+      actions.applyRemoteWorldMap(event.map);
+      return;
+    case 'snapshot:request':
+    case 'snapshot:offer':
+      // owned by SnapshotHandshake; callers should filter these out.
+      return;
+  }
+  // Exhaustiveness check — adding a new NetEvent kind without a case here
+  // is a compile-time error.
+  const _exhaustive: never = event;
+  void _exhaustive;
 }

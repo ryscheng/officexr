@@ -12,6 +12,7 @@ import type {
   SnapshotHandshake,
 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
+import type { BotMode } from '../bot/BotDriver.ts';
 import { Floor } from './Floor.tsx';
 import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
@@ -38,16 +39,26 @@ interface SceneProps {
   bots: BotPool;
   selfId: string;
   cameraMode: CameraMode;
+  /** Page-level handler for the Leva bot-count control. The page
+   * decides whether to apply the count to the in-browser pool or
+   * promote to Supabase mode and forward to the Node CLI. */
+  onBotCountChange: (count: number) => void;
+  /** Page-level handler for the Leva bot-mode buttons. Mirrors
+   * `onBotCountChange` so mode toggles propagate to whichever pool
+   * (in-browser or CLI) is currently authoritative. */
+  onBotModeChange: (mode: BotMode) => void;
 }
 
 export function Scene(props: SceneProps) {
-  const { store, actions, selfId, cameraMode, bots } = props;
+  const { store, actions, selfId, cameraMode, onBotCountChange, onBotModeChange } = props;
 
   useLevaPersistence();
 
   // Bot pool — `count` slider grows / shrinks the live BotPool; mode
   // buttons fan out to every bot (and become the default for newly-spawned
-  // bots until another mode is chosen).
+  // bots until another mode is chosen). The page intercepts both via the
+  // `onBotCountChange` / `onBotModeChange` props because count >= 2 may
+  // require flipping the realtime backend.
   const botCfg = useControls('Bot', {
     count: {
       value: 1,
@@ -56,17 +67,17 @@ export function Scene(props: SceneProps) {
       step: 1,
       label: 'count',
     },
-    Stay: button(() => bots.setMode('idle')),
-    'Walk to me': button(() => bots.setMode('walk-to-local')),
-    'Walk away': button(() => bots.setMode('walk-away')),
-    Wander: button(() => bots.setMode('wander')),
-    Patrol: button(() => bots.setMode('patrol')),
-    Orbit: button(() => bots.setMode('orbit')),
+    Stay: button(() => onBotModeChange('idle')),
+    'Walk to me': button(() => onBotModeChange('walk-to-local')),
+    'Walk away': button(() => onBotModeChange('walk-away')),
+    Wander: button(() => onBotModeChange('wander')),
+    Patrol: button(() => onBotModeChange('patrol')),
+    Orbit: button(() => onBotModeChange('orbit')),
   });
 
   useEffect(() => {
-    void bots.setCount(botCfg.count);
-  }, [bots, botCfg.count]);
+    onBotCountChange(botCfg.count);
+  }, [onBotCountChange, botCfg.count]);
 
   // Animation playback speed knobs. timeScale=1 plays the clip at its
   // authored speed; <1 slows down, >1 speeds up.
@@ -262,6 +273,17 @@ export function Scene(props: SceneProps) {
     if (current.gridSize === world.gridSize) return;
     actions.setWorldMap({ ...current, gridSize: world.gridSize });
   }, [actions, store, world.gridSize]);
+
+  // After Scene mounts (and the Leva-driven useEffects above have flushed
+  // their initial values into the store), force-broadcast the current
+  // world state. The regular `onStoreChange` diff path only fires when
+  // values *change* — without this, a bot spawned with default world
+  // settings would never receive the canonical values if the user's
+  // Leva config happens to match the SDK defaults. Fires once per
+  // channel-stack swap via the `sync` dependency.
+  useEffect(() => {
+    props.sync.broadcastWorldState();
+  }, [props.sync]);
 
   // Refs shared between movement code and the camera rig.
   const yawRef = useRef(0);

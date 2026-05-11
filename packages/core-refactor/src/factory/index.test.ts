@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { createInMemoryChannelHub, InMemoryChannel } from '@officexr/sdk';
+import {
+  createInMemoryChannelHub,
+  InMemoryChannel,
+  SupabaseChannel,
+} from '@officexr/sdk';
+import { createClient } from '@supabase/supabase-js';
 import { createStack } from './index.ts';
 
 describe('createStack', () => {
@@ -20,14 +25,18 @@ describe('createStack', () => {
     expect(typeof stack.voiceAdapter.dispose).toBe('function');
   });
 
-  it('supabase mode voiceAdapter throws on joinRoom', async () => {
-    const stack = createStack({ mode: 'supabase' });
-    await expect(stack.voiceAdapter.joinRoom('x')).rejects.toThrow('not implemented');
-  });
-
-  it('supabase mode channel is defined', () => {
-    const stack = createStack({ mode: 'supabase' });
-    expect(stack.channel).toBeDefined();
-    expect(stack.channel).not.toBeNull();
+  it('supabase mode returns SupabaseChannel and a working VoiceAdapter', () => {
+    // Constructing a Supabase client doesn't open any sockets — that
+    // happens on `channel.subscribe()`. So this is a pure object-shape
+    // assertion and runs without any infra.
+    const supabase = createClient('http://127.0.0.1:54321', 'test-anon-key');
+    const stack = createStack({
+      mode: 'supabase',
+      supabase,
+      officeId: 'office-test',
+      selfId: 'alice',
+    });
+    expect(stack.channel).toBeInstanceOf(SupabaseChannel);
+    expect(typeof stack.voiceAdapter.joinRoom).toBe('function');
   });
 });

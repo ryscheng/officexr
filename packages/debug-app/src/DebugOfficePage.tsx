@@ -1,50 +1,55 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Leva } from 'leva';
-import {
-  createStore,
-  createActions,
-  createBus,
-  createRuleRegistry,
-  attachProximityReducer,
-  collisionBumpRule,
-  proximityInnerRule,
-  proximityOuterRule,
-  serializeOfficeState,
-  SyncEngine,
-  SnapshotHandshake,
-  createInMemoryChannelHub,
-} from '@officexr/sdk';
-import type {
-  Actions,
-  Bus,
-  RuleRegistry,
-  Store,
-} from '@officexr/sdk';
-import { createStack, Communication } from '@officexr/core-refactor';
 import { Scene } from './renderer/Scene.tsx';
 import { CAMERA_MODES, type CameraMode } from './renderer/config.ts';
-import { BotPool } from './bot/BotPool.ts';
+import {
+  buildInMemoryStack,
+  buildWsStack,
+  createPersistentLocalState,
+  type ChannelStack,
+  type PersistentLocalState,
+} from './realtime/services.ts';
+import {
+  browserRealtimeConfig,
+  isRealtimeServerAvailable,
+} from './realtime/realtime-config.ts';
+import type { BotMode } from './bot/BotDriver.ts';
 
 const SELF_ID = 'local-player';
+const OFFICE_ID = 'debug-office';
+/** ≥ this many bots forces the ws-server path (each bot is a real peer
+ * in the Node `bots:start` process); below it the in-browser
+ * InMemoryChannel pool runs a single bot with zero infra. */
+const WS_THRESHOLD = 2;
 
-interface SceneServices {
-  store: Store;
-  actions: Actions;
-  rules: RuleRegistry;
-  bus: Bus;
-  sync: SyncEngine;
-  handshake: SnapshotHandshake;
-  bots: BotPool;
-}
+type AppMode = 'in-memory' | 'ws';
 
 export function DebugOfficePage() {
-  const [services, setServices] = useState<SceneServices | null>(null);
+  const [stack, setStack] = useState<ChannelStack | null>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
+
+  /** Persistent local-player bundle. Built once on mount, survives
+   * every promotion/demotion. Held in a ref because we mutate the
+   * channel stack around it without wanting to retrigger this effect. */
+  const localRef = useRef<PersistentLocalState | null>(null);
+  /** Audio element for proximity-driven elevator music. Lives across
+   * stack swaps so re-promoting doesn't reset playback position. */
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  /** Latest target bot count requested by the user. The promotion
+   * promise reads this so a rapid slider drag converges to the most
+   * recent value rather than each intermediate one. */
+  const targetCountRef = useRef<number>(1);
+  /** Latest mode chosen via Leva buttons. Replays into the new pool
+   * after a stack swap. */
+  const targetModeRef = useRef<BotMode>('idle');
+  /** Serialise stack swaps + count applies so a drag-storm in Leva
+   * doesn't interleave teardowns and rebuilds. */
+  const transitionChain = useRef<Promise<void>>(Promise.resolve());
 
   // Alt+P cycles through camera modes.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Use e.code (physical key) — on macOS Alt/Option+P produces 'π' for e.key.
       if (e.altKey && e.code === 'KeyP') {
         e.preventDefault();
         setCameraMode((current) => {
@@ -57,124 +62,145 @@ export function DebugOfficePage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Bootstrap: persistent local state + initial in-memory stack with 1 bot.
   useEffect(() => {
-    let cleanup: (() => void) | null = null;
     let aborted = false;
+    let teardown: (() => Promise<void>) | null = null;
 
     async function bootstrap() {
       const audio = new Audio('/elevator-music.mp3');
       audio.loop = true;
       audio.volume = 0.4;
+      audioRef.current = audio;
 
-      const hub = createInMemoryChannelHub();
-      const { channel, voiceAdapter } = createStack({
-        mode: 'local',
-        hub,
+      const local = createPersistentLocalState({
         selfId: SELF_ID,
-        onRoomJoined: () => {
-          audio.play().catch((err) => {
-            console.warn('[debug-app] audio autoplay blocked:', err);
-          });
-        },
-        onRoomLeft: () => {
-          audio.pause();
-          audio.currentTime = 0;
-        },
+        officeId: OFFICE_ID,
       });
+      localRef.current = local;
+      // Expose the store on window for ad-hoc inspection from the
+      // browser console / a Playwright probe. Dev-only; harmless in
+      // production but unnecessary.
+      (window as unknown as { __OFFICE_STORE__: typeof local.store }).__OFFICE_STORE__ = local.store;
 
-      const store = createStore({ selfId: SELF_ID, officeId: 'debug-office' });
-      const bus = createBus();
-      const actions = createActions(store, bus);
-
-      actions.upsertPlayer({
-        id: SELF_ID,
-        name: 'You',
-        pos: { x: 0, y: 0, z: 0 },
-        vel: { x: 0, y: 0, z: 0 },
-        yaw: 0,
-      });
-
-      const rules = createRuleRegistry();
-      rules.addRule(proximityOuterRule);
-      rules.addRule(proximityInnerRule);
-      rules.addRule(collisionBumpRule);
-      attachProximityReducer(store, bus);
-
-      const sync = new SyncEngine({
-        store,
-        actions,
-        bus,
-        channel,
-        clock: { now: () => performance.now() },
-      });
-      const handshake = new SnapshotHandshake({
-        selfId: SELF_ID,
-        store,
-        actions,
-        sync,
-        channel,
-        clock: { now: () => performance.now() },
-        serialize: () => serializeOfficeState(store.getState()),
-      });
-
-      const comm = new Communication({
-        selfId: SELF_ID,
-        store,
-        actions,
-        bus,
-        voice: voiceAdapter,
-      });
-
-      const bots = new BotPool({
-        hub,
-        localPlayerPosGetter: () =>
-          store.getState().players[SELF_ID]?.pos ?? { x: 0, y: 0, z: 0 },
-      });
-
-      await channel.subscribe();
-      channel.trackPresence({});
-      sync.start();
-      handshake.start();
-      comm.start();
-      // Spawn 1 bot by default — Leva slider in the Bot folder lets users
-      // grow / shrink this. Bots announce themselves via their own
-      // SyncEngine.start() spawn broadcast; applyRemotePosition upserts
-      // them into the local store on receipt.
-      await bots.setCount(1);
-
+      const initial = await buildInMemoryStack({ local, audio });
       if (aborted) {
-        comm.stop();
-        sync.stop();
-        handshake.stop();
-        bots.stop();
-        channel.close();
-        audio.pause();
-        audio.src = '';
+        await initial.teardown();
         return;
       }
-
-      setServices({ store, actions, rules, bus, sync, handshake, bots });
-
-      cleanup = () => {
-        comm.stop();
-        sync.stop();
-        handshake.stop();
-        bots.stop();
-        channel.close();
-        audio.pause();
-        audio.src = '';
+      await initial.bots.setCount(targetCountRef.current);
+      setStack(initial);
+      teardown = async () => {
+        await initial.teardown();
       };
     }
 
-    bootstrap().catch((err) => {
+    void bootstrap().catch((err) => {
       console.error('[debug-app] bootstrap error:', err);
     });
 
     return () => {
       aborted = true;
-      cleanup?.();
+      if (teardown) {
+        void teardown();
+        teardown = null;
+      }
     };
   }, []);
+
+  /**
+   * Drive the bot count. Promotes / demotes between in-memory and ws
+   * modes as needed, and forwards the count to whichever pool is
+   * authoritative.
+   *
+   * Wrapped in `transitionChain` so concurrent calls (rapid Leva drags)
+   * serialise behind one another and converge on the latest target.
+   */
+  const onBotCountChange = useCallback((count: number) => {
+    targetCountRef.current = Math.max(0, Math.floor(count));
+    transitionChain.current = transitionChain.current.then(async () => {
+      const current = stackRef.current;
+      const local = localRef.current;
+      const audio = audioRef.current;
+      if (!current || !local || !audio) return;
+      const target = targetCountRef.current;
+
+      const wantsWs = target >= WS_THRESHOLD;
+      const isWs = current.mode === 'ws';
+
+      if (!wantsWs && !isWs) {
+        // 0/1 in in-memory → just resize the in-browser pool.
+        await current.bots.setCount(target);
+        return;
+      }
+
+      if (wantsWs && !isWs) {
+        // Promote.
+        const cfg = browserRealtimeConfig();
+        const ok = await isRealtimeServerAvailable(cfg.healthUrl, 1500);
+        if (!ok) {
+          setErrorBanner(
+            'Realtime server not reachable — run `pnpm bots:start` to use ≥ 2 bots.',
+          );
+          // Snap the target back to 1 so subsequent edits don't keep retrying.
+          targetCountRef.current = 1;
+          await current.bots.setCount(1);
+          return;
+        }
+        setErrorBanner(null);
+        await current.teardown();
+        const next = await buildWsStack({ local, audio, url: cfg.url });
+        setStack(next);
+        // Tell the server how many bots to spawn.
+        next.botControl?.publish({ type: 'set-count', count: target });
+        if (targetModeRef.current !== 'idle') {
+          next.botControl?.publish({
+            type: 'set-mode',
+            mode: targetModeRef.current,
+          });
+        }
+        return;
+      }
+
+      if (wantsWs && isWs) {
+        // Already ws — just forward to the server.
+        current.botControl?.publish({ type: 'set-count', count: target });
+        return;
+      }
+
+      // Demote: ws → in-memory.
+      // Tell server to drain its pool first so the bots disappear
+      // before we tear down the ws channel locally.
+      current.botControl?.publish({ type: 'set-count', count: 0 });
+      await current.teardown();
+      const next = await buildInMemoryStack({ local, audio });
+      next.bots.setMode(targetModeRef.current);
+      await next.bots.setCount(target);
+      setStack(next);
+    }).catch((err) => {
+      console.error('[debug-app] mode transition failed:', err);
+    });
+  }, []);
+
+  /** Apply a bot mode to whichever pool is authoritative. In ws mode
+   * that means publishing to the server; in in-memory mode it means
+   * calling `setMode` on the in-browser pool directly. */
+  const onBotModeChange = useCallback((mode: BotMode) => {
+    targetModeRef.current = mode;
+    const current = stackRef.current;
+    if (!current) return;
+    current.bots.setMode(mode);
+    if (current.mode === 'ws') {
+      current.botControl?.publish({ type: 'set-mode', mode });
+    }
+  }, []);
+
+  // Keep a ref-mirror of `stack` so the callbacks above can read the
+  // latest stack without being recreated on each setStack.
+  const stackRef = useRef<ChannelStack | null>(null);
+  useEffect(() => {
+    stackRef.current = stack;
+  }, [stack]);
 
   return (
     <div
@@ -185,26 +211,31 @@ export function DebugOfficePage() {
         overflow: 'hidden',
       }}
     >
-      {services && (
+      {stack && localRef.current && (
         <Scene
-          store={services.store}
-          actions={services.actions}
-          rules={services.rules}
-          bus={services.bus}
-          sync={services.sync}
-          handshake={services.handshake}
-          bots={services.bots}
+          store={localRef.current.store}
+          actions={localRef.current.actions}
+          rules={localRef.current.rules}
+          bus={localRef.current.bus}
+          sync={stack.sync}
+          handshake={stack.handshake}
+          bots={stack.bots}
           selfId={SELF_ID}
           cameraMode={cameraMode}
+          onBotCountChange={onBotCountChange}
+          onBotModeChange={onBotModeChange}
         />
       )}
-      <Hud cameraMode={cameraMode} />
+      <Hud cameraMode={cameraMode} mode={stack?.mode ?? 'in-memory'} />
+      {errorBanner && (
+        <ErrorBanner message={errorBanner} onDismiss={() => setErrorBanner(null)} />
+      )}
       <Leva collapsed={false} />
     </div>
   );
 }
 
-function Hud({ cameraMode }: { cameraMode: CameraMode }) {
+function Hud({ cameraMode, mode }: { cameraMode: CameraMode; mode: AppMode }) {
   return (
     <div
       style={{
@@ -220,8 +251,38 @@ function Hud({ cameraMode }: { cameraMode: CameraMode }) {
         whiteSpace: 'pre-line',
       }}
     >
-      {`Camera: ${cameraMode} (Alt+P to cycle)
+      {`Camera: ${cameraMode} (Alt+P to cycle) · Realtime: ${mode}
 WASD to move · Click to look · Esc to release mouse`}
+    </div>
+  );
+}
+
+function ErrorBanner({
+  message,
+  onDismiss,
+}: {
+  message: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: 12,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        padding: '8px 14px',
+        background: 'rgba(180, 50, 50, 0.92)',
+        color: '#fff',
+        font: '12px system-ui, sans-serif',
+        borderRadius: 6,
+        cursor: 'pointer',
+        maxWidth: '90vw',
+      }}
+      onClick={onDismiss}
+      title="click to dismiss"
+    >
+      {message}
     </div>
   );
 }

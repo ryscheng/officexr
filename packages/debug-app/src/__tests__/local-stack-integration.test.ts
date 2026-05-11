@@ -99,8 +99,8 @@ describe('local-stack integration', () => {
 
     // --- Bot client ---
     botDriver = new BotDriver({
-      hub,
-      localPlayerPosGetter: () => localStore.getState().players[SELF_ID]?.pos ?? { x: 0, y: 0, z: 0 },
+      createChannel: (botId) => new InMemoryChannel(hub, botId),
+      localPlayerId: SELF_ID,
       botId: BOT_ID,
       startPos: { x: 10, y: 0, z: 0 },
       clock,

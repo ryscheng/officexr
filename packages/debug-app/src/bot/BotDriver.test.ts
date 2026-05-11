@@ -18,8 +18,8 @@ describe('BotDriver', () => {
     hub = createInMemoryChannelHub();
     clock = new FakeClock(0);
     bot = new BotDriver({
-      hub,
-      localPlayerPosGetter: () => LOCAL_POS,
+      createChannel: (botId) => new InMemoryChannel(hub, botId),
+      localPlayerId: 'local-player',
       startPos: START_POS,
       clock,
     });
@@ -68,10 +68,9 @@ describe('BotDriver', () => {
     hub = createInMemoryChannelHub();
     clock = new FakeClock(0);
     const startNear = { x: 2, y: 0, z: 0 };
-    let localPos = { x: 0, y: 0, z: 0 };
     bot = new BotDriver({
-      hub,
-      localPlayerPosGetter: () => localPos,
+      createChannel: (botId) => new InMemoryChannel(hub, botId),
+      localPlayerId: 'local-player',
       startPos: startNear,
       clock,
     });

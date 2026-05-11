@@ -1,10 +1,22 @@
-import type { Vec3 } from '@officexr/sdk';
-import type { createInMemoryChannelHub } from '@officexr/sdk';
+import type { Channel, PlayerId, Vec3, WorldMap, WorldSettings } from '@officexr/sdk';
 import { BotDriver, type BotMode } from './BotDriver.ts';
 
 interface BotPoolOptions {
-  hub: ReturnType<typeof createInMemoryChannelHub>;
-  localPlayerPosGetter: () => Vec3;
+  /** Channel factory passed through to each new BotDriver. The pool
+   * doesn't care whether channels are InMemory (one shared hub) or
+   * Supabase (separate realtime subscriptions) — only the factory does. */
+  createChannel: (botId: PlayerId) => Channel;
+  /** PlayerId of the local human player. Bots use it to home toward the
+   * player in `walk-to-local` / `orbit` modes. */
+  localPlayerId: PlayerId;
+  /** Optional getter for the authoritative world state to seed each
+   * new bot's SDK store with. Called at bot-spawn time so bots that
+   * join *after* the human player has tweaked Leva inherit the
+   * current values instead of SDK defaults. */
+  getInitialWorld?: () => {
+    worldSettings?: WorldSettings;
+    worldMap?: WorldMap;
+  };
 }
 
 /**
@@ -16,8 +28,9 @@ interface BotPoolOptions {
  * `channel.close()`.
  */
 export class BotPool {
-  private readonly hub: BotPoolOptions['hub'];
-  private readonly localPlayerPosGetter: () => Vec3;
+  private readonly createChannel: (botId: PlayerId) => Channel;
+  private readonly localPlayerId: PlayerId;
+  private readonly getInitialWorld?: BotPoolOptions['getInitialWorld'];
   private bots: BotDriver[] = [];
   private currentMode: BotMode = 'idle';
   /** Latest target count; the serialised loop below converges to this. */
@@ -30,8 +43,9 @@ export class BotPool {
   private stopped = false;
 
   constructor(opts: BotPoolOptions) {
-    this.hub = opts.hub;
-    this.localPlayerPosGetter = opts.localPlayerPosGetter;
+    this.createChannel = opts.createChannel;
+    this.localPlayerId = opts.localPlayerId;
+    this.getInitialWorld = opts.getInitialWorld;
   }
 
   /** Reach `n` active bots. New bots inherit the pool's current mode and
@@ -56,12 +70,13 @@ export class BotPool {
           if (this.bots.length < this.targetCount) {
             const idx = this.bots.length;
             const bot = new BotDriver({
-              hub: this.hub,
-              localPlayerPosGetter: this.localPlayerPosGetter,
+              createChannel: this.createChannel,
+              localPlayerId: this.localPlayerId,
               botId: botIdFor(idx),
               startPos: spawnPosition(idx),
               mode: this.currentMode,
               phaseIndex: idx,
+              initialWorld: this.getInitialWorld?.(),
             });
             this.bots.push(bot);
             await bot.start();

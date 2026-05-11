@@ -4,3 +4,4 @@ export * from './sync.ts';
 export * from './snapshot-handshake.ts';
 export * from './supabase-channel.ts';
 export * from './inbound-seq-table.ts';
+export * from './health.ts';

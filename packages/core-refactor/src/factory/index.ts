@@ -1,8 +1,13 @@
 import type { Channel } from '@officexr/sdk';
-import { createInMemoryChannelHub, InMemoryChannel } from '@officexr/sdk';
+import {
+  createInMemoryChannelHub,
+  InMemoryChannel,
+  SupabaseChannel,
+} from '@officexr/sdk';
+import { WsChannel } from '@officexr/realtime-server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { VoiceAdapter } from '../communication/types.ts';
 import { LocalVoiceAdapter } from '../adapters/local-voice-adapter.ts';
-import { SupabaseVoiceAdapter } from '../adapters/supabase-voice-adapter.ts';
 
 export interface LocalStackConfig {
   mode: 'local';
@@ -16,33 +21,44 @@ export interface LocalStackConfig {
 
 export interface SupabaseStackConfig {
   mode: 'supabase';
-  // fields can be added later; stub throws regardless
+  /** Pre-built Supabase client. The caller owns its lifetime — createStack
+   * does not call removeAllChannels on it. */
+  supabase: SupabaseClient;
+  officeId: string;
+  selfId: string;
+  /** Voice callbacks. The debug-app's elevator-music is proximity-driven
+   * and routes through these — `LocalVoiceAdapter` is used in both modes
+   * because the audio is browser-side and doesn't need a real voice
+   * room. A future real `SupabaseVoiceAdapter` can be wired in here. */
+  onRoomJoined?: (roomId: string) => void;
+  onRoomLeft?: () => void;
 }
 
-export type StackConfig = LocalStackConfig | SupabaseStackConfig;
+export interface WsStackConfig {
+  mode: 'ws';
+  /** Full WebSocket URL (e.g. `ws://host:8787/ws` or, when going
+   * through the Vite dev-server proxy, `${origin}/ws`). */
+  url: string;
+  selfId: string;
+  /** Voice callbacks. Same proximity-driven `LocalVoiceAdapter` as the
+   * `local` mode — the elevator audio is browser-side and doesn't need
+   * a real voice room. */
+  onRoomJoined?: (roomId: string) => void;
+  onRoomLeft?: () => void;
+}
+
+export type StackConfig = LocalStackConfig | SupabaseStackConfig | WsStackConfig;
+
+/** Type-narrow helper: in `ws` mode the returned channel is a {@link
+ * WsChannel}, useful when callers need `sendCustom` for app-level
+ * protocol extensions. */
+export interface WsStack extends Stack {
+  channel: WsChannel;
+}
 
 export interface Stack {
   channel: Channel;
   voiceAdapter: VoiceAdapter;
-}
-
-/**
- * A stub no-op channel used for the supabase mode until real channel wiring is added.
- */
-class NoopChannel implements Channel {
-  async subscribe(): Promise<void> {}
-  async send(): Promise<void> {}
-  on(): () => void {
-    return () => {};
-  }
-  trackPresence(): void {}
-  onPresenceChange(): () => void {
-    return () => {};
-  }
-  listPresent(): string[] {
-    return [];
-  }
-  close(): void {}
 }
 
 export function createStack(config: StackConfig): Stack {
@@ -57,8 +73,24 @@ export function createStack(config: StackConfig): Stack {
   }
 
   if (config.mode === 'supabase') {
-    const channel = new NoopChannel();
-    const voiceAdapter = new SupabaseVoiceAdapter();
+    const channel = new SupabaseChannel({
+      supabase: config.supabase,
+      officeId: config.officeId,
+      userId: config.selfId,
+    });
+    const voiceAdapter = new LocalVoiceAdapter({
+      onRoomJoined: config.onRoomJoined,
+      onRoomLeft: config.onRoomLeft,
+    });
+    return { channel, voiceAdapter };
+  }
+
+  if (config.mode === 'ws') {
+    const channel = new WsChannel({ url: config.url, userId: config.selfId });
+    const voiceAdapter = new LocalVoiceAdapter({
+      onRoomJoined: config.onRoomJoined,
+      onRoomLeft: config.onRoomLeft,
+    });
     return { channel, voiceAdapter };
   }
 

@@ -1,11 +1,11 @@
 {
-  "name": "@officexr/core-refactor",
+  "name": "@officexr/realtime-server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./communication": "./src/communication/index.ts"
+    "./server": "./src/server.ts"
   },
   "scripts": {
     "test": "vitest run",
@@ -13,12 +13,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@officexr/realtime-server": "workspace:*",
     "@officexr/sdk": "workspace:*",
-    "@supabase/supabase-js": "^2.49.4"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
+    "@types/ws": "^8.5.13",
     "typescript": "^5",
     "vitest": "^4.1.3"
   }
