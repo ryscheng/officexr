@@ -4,13 +4,19 @@ import { fileURLToPath } from 'node:url';
 import type { Plugin, ViteDevServer } from 'vite';
 import type { Connect } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+// Import directly from source modules instead of the scenes barrel.
+// The barrel transitively pulls in cube-catalog.ts, which does a JSON
+// import — that's fine for Vite's browser bundle (Vite handles it) but
+// trips Node's strict ESM loader when this file is loaded as part of
+// the Vite config. Bypassing the barrel keeps the Node-side import
+// graph free of any `.json` modules.
 import { isValidSceneName } from './src/scenes/storage.ts';
 import {
-  deserializeMap,
   deserializeScene,
-  type MapDocumentV1,
   type SerializedScene,
-} from './src/scenes/index.ts';
+} from './src/scenes/serialize.ts';
+import { deserializeMap } from './src/scenes/serialize.ts';
+import type { MapDocumentV1 } from './src/scenes/map-document.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOMS_DIR = path.resolve(HERE, 'rooms');

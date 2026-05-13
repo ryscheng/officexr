@@ -1,5 +1,8 @@
 import { useEffect, useReducer } from 'react';
-import defaultCatalogJson from '../../cube-kinds.default.json';
+// Node's strict ESM loader requires the `with { type: 'json' }`
+// attribute for JSON modules. Vite, esbuild, and TypeScript 5.3+ all
+// pass it through unchanged for browser bundles.
+import defaultCatalogJson from '../../cube-kinds.default.json' with { type: 'json' };
 import {
   validateCubeKindCatalog,
   type CubeKindCatalogV1,
