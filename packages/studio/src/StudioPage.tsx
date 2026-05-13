@@ -1,34 +1,54 @@
-import React, { useState } from 'react';
-import { Header, type StudioMode } from './ui/Header.tsx';
+import React, { useEffect, useState } from 'react';
+import { Header, isStudioMode, type StudioMode } from './ui/Header.tsx';
 import { DebugApp } from './modes/debug/DebugApp.tsx';
-import { ScenesApp } from './modes/scenes/ScenesApp.tsx';
-import { CharactersApp } from './modes/characters/CharactersApp.tsx';
+import { RoomApp } from './modes/room/RoomApp.tsx';
+import { CharacterApp } from './modes/character/CharacterApp.tsx';
+import { MapApp } from './modes/map/MapApp.tsx';
+import { ObjectApp } from './modes/object/ObjectApp.tsx';
+
+const DEFAULT_MODE: StudioMode = 'map';
 
 /**
  * Top-level studio shell. Renders the persistent header and the
- * currently-selected mode app below it. Each mode is a SEPARATE
- * application:
+ * currently-selected mode app below it.
  *
- *   - DebugApp: multiplayer scene with the SDK store, bots, and
- *     network protocol. The original behavior, used to debug
- *     gameplay + network.
- *   - ScenesApp: standalone CAD-like scene editor. Saves command-list
- *     scenes to disk via SceneStorage. No SDK / WebSocket.
- *   - CharactersApp: standalone character previewer + tuning bench.
- *     Saves per-model tuning to disk via CharacterStorage. No SDK /
- *     WebSocket.
+ *   - MapApp:       compose rooms into a world (Tasks 12-14 wire the canvas).
+ *   - RoomApp:      build a room from objects — the renamed Scenes editor.
+ *   - ObjectApp:    view + tune the catalog (Task 11 wires the editor).
+ *   - CharacterApp: standalone character previewer + tuning bench.
+ *   - DebugApp:     multiplayer scene with the SDK store, bots, network.
  *
- * Debug consumes the editors' on-disk output: when it loads a scene
- * or character config, it pushes the result into its store and the
- * existing world:objects / world:characters NetEvents broadcast it
- * to peers + bots.
+ * The active mode is mirrored into `location.hash` so a designer can
+ * bookmark `studio#room` or hard-refresh without losing their tab.
  *
  * Mounting one mode unmounts the others. Switching tabs disposes the
  * previous app's state (its store, channel, animations) so we don't
  * pay for what isn't on screen.
  */
 export function StudioPage() {
-  const [studioMode, setStudioMode] = useState<StudioMode>('scenes');
+  const [studioMode, setStudioMode] = useState<StudioMode>(() =>
+    readHashMode() ?? DEFAULT_MODE,
+  );
+
+  // Mirror mode → hash so links survive a hard reload.
+  useEffect(() => {
+    const next = `#${studioMode}`;
+    if (window.location.hash !== next) {
+      window.history.replaceState(null, '', next);
+    }
+  }, [studioMode]);
+
+  // Mirror hash → mode so back/forward + manual hash edits work.
+  useEffect(() => {
+    const handler = () => {
+      const fromHash = readHashMode();
+      if (fromHash && fromHash !== studioMode) {
+        setStudioMode(fromHash);
+      }
+    };
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, [studioMode]);
 
   return (
     <div
@@ -43,9 +63,17 @@ export function StudioPage() {
       }}
     >
       <Header active={studioMode} onChange={setStudioMode} />
-      {studioMode === 'scenes' && <ScenesApp />}
-      {studioMode === 'characters' && <CharactersApp />}
+      {studioMode === 'map' && <MapApp />}
+      {studioMode === 'room' && <RoomApp />}
+      {studioMode === 'object' && <ObjectApp />}
+      {studioMode === 'character' && <CharacterApp />}
       {studioMode === 'debug' && <DebugApp />}
     </div>
   );
+}
+
+function readHashMode(): StudioMode | null {
+  if (typeof window === 'undefined') return null;
+  const fromHash = window.location.hash.replace(/^#/, '');
+  return isStudioMode(fromHash) ? fromHash : null;
 }

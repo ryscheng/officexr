@@ -1,16 +1,25 @@
 import React from 'react';
 
-export type StudioMode = 'scenes' | 'characters' | 'debug';
+export type StudioMode = 'map' | 'room' | 'object' | 'character' | 'debug';
 
 export const STUDIO_MODES: ReadonlyArray<{
   mode: StudioMode;
   label: string;
   description: string;
 }> = [
-  { mode: 'scenes', label: 'Scenes', description: 'Build maps interactively' },
-  { mode: 'characters', label: 'Characters', description: 'Preview models + per-character tuning' },
+  { mode: 'map', label: 'Map', description: 'Compose rooms into a world' },
+  { mode: 'room', label: 'Room', description: 'Build a room from objects' },
+  { mode: 'object', label: 'Object', description: 'View + tune the non-character catalog' },
+  { mode: 'character', label: 'Character', description: 'Preview models + per-character tuning' },
   { mode: 'debug', label: 'Debug', description: 'Test gameplay + network protocol' },
 ];
+
+export function isStudioMode(value: unknown): value is StudioMode {
+  return (
+    typeof value === 'string' &&
+    STUDIO_MODES.some((m) => m.mode === value)
+  );
+}
 
 interface HeaderProps {
   active: StudioMode;
@@ -18,9 +27,9 @@ interface HeaderProps {
 }
 
 /**
- * Top-of-page header. "OFFICEXR STUDIO" title on the left, three
- * mode tabs on the right. Each mode mounts a completely separate
- * application below; the header is the only chrome they share.
+ * Top-of-page header. "OFFICEXR STUDIO" title on the left, mode tabs
+ * on the right. Each mode mounts a completely separate application
+ * below; the header is the only chrome they share.
  */
 export function Header({ active, onChange }: HeaderProps) {
   return (
