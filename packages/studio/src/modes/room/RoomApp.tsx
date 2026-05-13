@@ -6,19 +6,22 @@ import { CommandHistory } from './CommandHistory.tsx';
 import { ObjectPalette } from './ObjectPalette.tsx';
 import { SceneEditorCanvas } from './SceneEditorCanvas.tsx';
 import { Toolbar } from './Toolbar.tsx';
-import { useSceneDocument } from './useSceneDocument.ts';
-import { useSceneInspector } from './useSceneInspector.ts';
+import { useRoomDocument } from './useRoomDocument.ts';
+import { useRoomInspector } from './useRoomInspector.ts';
 import type { Tool } from './tools.ts';
 
 /**
- * Standalone Scenes editor application. Owns its own R3F canvas, its
- * own document state, and its own free-fly camera. Persists the
- * working document via SceneStorage (filesystem in dev). Has no SDK
- * store, no SyncEngine, no WebSocket — Debug mode is what consumes
- * authored scenes by loading them from disk.
+ * Standalone Room editor application (renamed from `ScenesApp` in
+ * Task 5 of the studio multi-editor restructure; the document /
+ * inspector hooks moved to `useRoomDocument` / `useRoomInspector` in
+ * Task 6 when the multi-select + groups model landed). Owns its own
+ * R3F canvas, document state, and free-fly camera. Persists the
+ * working document via `RoomStorage` (Vite middleware at `/api/rooms`
+ * in dev, localStorage otherwise). Has no SDK store, no SyncEngine,
+ * no WebSocket — Debug mode is what consumes authored rooms.
  */
-export function ScenesApp() {
-  const sceneDoc = useSceneDocument();
+export function RoomApp() {
+  const roomDoc = useRoomDocument();
   const [tool, setTool] = useState<Tool>('select');
   const [stagedKindId, setStagedKindId] = useState<string | null>(null);
 
@@ -34,15 +37,33 @@ export function ScenesApp() {
   const handlePlace = useCallback(
     (position: [number, number, number]) => {
       if (!stagedKindId) return;
-      sceneDoc.placeCube(stagedKindId, position);
+      roomDoc.placeCube(stagedKindId, position);
       setTool('select');
     },
-    [stagedKindId, sceneDoc],
+    [stagedKindId, roomDoc],
   );
 
-  // Inspector controls (Leva). useSceneInspector mounts the panels
+  // Click on a cube — plain replaces, Ctrl/Cmd toggles, group members
+  // are selected atomically by the hook.
+  const handleSelectInstance = useCallback(
+    (commandId: string, modKey: boolean) => {
+      if (modKey) roomDoc.toggleFromClick(commandId);
+      else roomDoc.pickFromClick(commandId);
+    },
+    [roomDoc],
+  );
+
+  const handleHistoryClick = useCallback(
+    (commandId: string, modKey: boolean) => {
+      if (modKey) roomDoc.toggleFromClick(commandId);
+      else roomDoc.pickFromClick(commandId);
+    },
+    [roomDoc],
+  );
+
+  // Inspector controls (Leva). useRoomInspector mounts the panels
   // for the active selection; we don't render anything visible here.
-  useSceneInspector(sceneDoc);
+  useRoomInspector(roomDoc);
 
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
@@ -59,15 +80,19 @@ export function ScenesApp() {
         }}
       >
         <SceneEditorCanvas
-          compiled={sceneDoc.compiled}
-          selection={sceneDoc.selection}
+          compiled={roomDoc.compiled}
+          selection={roomDoc.selection}
           tool={tool}
           stagedKindId={stagedKindId}
           onPlaceAt={handlePlace}
-          onSelectInstance={sceneDoc.setSelection}
-          onClickEmpty={() => sceneDoc.setSelection(null)}
+          onSelectInstance={handleSelectInstance}
+          onClickEmpty={roomDoc.clearSelection}
         />
-        <ScenesHud sceneName={sceneDoc.sceneName} tool={tool} />
+        <RoomHud
+          roomName={roomDoc.roomName}
+          tool={tool}
+          selectionSize={roomDoc.selection.size}
+        />
         <Toolbar
           active={tool}
           stagedKindId={stagedKindId}
@@ -77,17 +102,28 @@ export function ScenesApp() {
       <SidePanel>
         <Leva fill flat titleBar={{ drag: false }} />
         <CommandHistory
-          commands={sceneDoc.doc.commands}
-          selection={sceneDoc.selection}
-          onSelect={sceneDoc.setSelection}
-          onDelete={sceneDoc.deleteCommand}
+          commands={roomDoc.doc.commands}
+          selection={roomDoc.selection}
+          commandToGroup={roomDoc.lookup.commandToGroup}
+          onSelect={handleHistoryClick}
+          onDelete={roomDoc.deleteCommand}
         />
       </SidePanel>
     </div>
   );
 }
 
-function ScenesHud(props: { sceneName: string; tool: Tool }) {
+function RoomHud(props: {
+  roomName: string;
+  tool: Tool;
+  selectionSize: number;
+}) {
+  const selLabel =
+    props.selectionSize === 0
+      ? '—'
+      : props.selectionSize === 1
+        ? '1 cmd'
+        : `${props.selectionSize} cmds`;
   return (
     <div
       style={{
@@ -103,8 +139,8 @@ function ScenesHud(props: { sceneName: string; tool: Tool }) {
         whiteSpace: 'pre-line',
       }}
     >
-      {`Scene: ${props.sceneName} · Tool: ${props.tool}
-WASD/QE to fly · right-drag to look · scroll to dolly`}
+      {`Room: ${props.roomName} · Tool: ${props.tool} · Selection: ${selLabel}
+WASD/QE to fly · right-drag to look · scroll to dolly · Ctrl/Cmd-click to multi-select`}
     </div>
   );
 }

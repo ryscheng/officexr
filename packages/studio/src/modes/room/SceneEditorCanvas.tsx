@@ -14,9 +14,10 @@ import type { Tool } from './tools.ts';
 interface SceneEditorCanvasProps {
   /** The compiled scene snapshot to render. */
   compiled: WorldObjects;
-  /** Currently-selected source command id; the matching cubes get a
+  /** Currently-selected source command ids (multi-select). Every
+   * instance whose `sourceCommandId` is in this set gets the
    * highlight tint so the user can see what they're editing. */
-  selection: string | null;
+  selection: ReadonlySet<string>;
   /** Active editor tool — determines what a left-click does. */
   tool: Tool;
   /** Cube kind staged for the Add tool. */
@@ -25,9 +26,10 @@ interface SceneEditorCanvasProps {
    * places a cube of the staged kind at the picked floor position.
    * Coords are integer voxels. */
   onPlaceAt: (position: [number, number, number]) => void;
-  /** Click on an existing cube with the Select tool active — selects
-   * its source command. */
-  onSelectInstance: (commandId: string) => void;
+  /** Click on an existing cube with the Select tool active. `modKey`
+   * is true when Ctrl or Cmd was held — caller maps that to toggle
+   * vs. replace semantics. */
+  onSelectInstance: (commandId: string, modKey: boolean) => void;
   /** Click on EMPTY floor with the Select tool — deselects. The
    * canvas only knows that the click missed every cube; the parent
    * decides whether that means "deselect" or some other action. */
@@ -226,9 +228,9 @@ function forwardVector(yaw: number, pitch: number): THREE.Vector3 {
 interface CubesLayerProps {
   instances: ObjectInstance[];
   cubeSize: number;
-  selection: string | null;
+  selection: ReadonlySet<string>;
   tool: Tool;
-  onSelectInstance: (commandId: string) => void;
+  onSelectInstance: (commandId: string, modKey: boolean) => void;
 }
 
 function CubesLayer(props: CubesLayerProps) {
@@ -266,9 +268,9 @@ interface KindGroupProps {
   kind: CubeKindDef;
   instances: ObjectInstance[];
   cubeSize: number;
-  selection: string | null;
+  selection: ReadonlySet<string>;
   tool: Tool;
-  onSelectInstance: (commandId: string) => void;
+  onSelectInstance: (commandId: string, modKey: boolean) => void;
 }
 
 function KindGroup({
@@ -307,7 +309,7 @@ function KindGroup({
       );
       m.compose(p, q, new THREE.Vector3(baseScale, baseScale, baseScale));
       mesh.setMatrixAt(i, m);
-      const isSelected = selection === inst.sourceCommandId;
+      const isSelected = selection.has(inst.sourceCommandId);
       mesh.setColorAt(i, isSelected ? sel : tint);
     }
     mesh.count = instances.length;
@@ -331,6 +333,7 @@ function KindGroup({
     // left-drag shouldn't fire select on release.
     const startX = e.clientX;
     const startY = e.clientY;
+    const modKey = e.ctrlKey || e.metaKey;
     let moved = false;
     const onMove = (m: PointerEvent) => {
       if (
@@ -344,7 +347,7 @@ function KindGroup({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       if (moved || u.button !== 0) return;
-      onSelectInstance(inst.sourceCommandId);
+      onSelectInstance(inst.sourceCommandId, modKey);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);

@@ -3,26 +3,33 @@ import type { SceneCommand } from '@officexr/world/scenes';
 
 interface CommandHistoryProps {
   commands: SceneCommand[];
-  selection: string | null;
-  onSelect: (commandId: string | null) => void;
+  selection: ReadonlySet<string>;
+  /** `(id, modKey)` — Ctrl/Cmd toggles, plain replaces. The
+   * inspector can read modKey off the React event but the history
+   * list does it via the passed flag so its keyboard story stays
+   * consistent. */
+  onSelect: (commandId: string, modKey: boolean) => void;
   onDelete: (commandId: string) => void;
+  /** Map of commandId → groupId so the history can badge group
+   * members. */
+  commandToGroup: ReadonlyMap<string, string>;
 }
 
 /**
- * Linear history list for the Scenes editor's right panel. Click a
- * row to focus that command in the inspector (Leva). The selection
- * state is owned by `useSceneDocument`, so this list is pure
- * presentation.
+ * Linear history list for the Room editor's right panel. Click a row
+ * to focus that command in the inspector (Leva). Ctrl/Cmd-click
+ * toggles multi-select. Group membership shows as a small chip.
  *
- * Lives below the Leva panel rather than inside it so its layout
- * stays compact (Leva's auto-fold UX adds chrome we don't need for
- * a flat selectable list).
+ * Selection state is owned by `useRoomDocument`, so this list is pure
+ * presentation. Lives below the Leva panel rather than inside it so
+ * its layout stays compact.
  */
 export function CommandHistory({
   commands,
   selection,
   onSelect,
   onDelete,
+  commandToGroup,
 }: CommandHistoryProps) {
   return (
     <div
@@ -59,7 +66,8 @@ export function CommandHistory({
           }}
         >
           {commands.map((c, i) => {
-            const isSelected = selection === c.id;
+            const isSelected = selection.has(c.id);
+            const groupId = commandToGroup.get(c.id);
             return (
               <li
                 key={c.id}
@@ -71,7 +79,9 @@ export function CommandHistory({
               >
                 <button
                   type="button"
-                  onClick={() => onSelect(c.id)}
+                  onClick={(e) =>
+                    onSelect(c.id, e.ctrlKey || e.metaKey)
+                  }
                   style={{
                     flex: 1,
                     textAlign: 'left',
@@ -89,6 +99,7 @@ export function CommandHistory({
                   title={c.id}
                 >
                   {String(i + 1).padStart(2, '0')}. {commandLabel(c)}
+                  {groupId ? <GroupBadge id={groupId} /> : null}
                 </button>
                 <button
                   type="button"
@@ -112,6 +123,27 @@ export function CommandHistory({
         </ol>
       )}
     </div>
+  );
+}
+
+function GroupBadge({ id }: { id: string }) {
+  // Show only the short suffix so the chip stays readable. The
+  // tooltip carries the full id for hovers.
+  const short = id.split('-').slice(0, 2).join('-');
+  return (
+    <span
+      title={`group ${id}`}
+      style={{
+        marginLeft: 6,
+        padding: '0 4px',
+        borderRadius: 2,
+        background: '#374151',
+        color: '#e5e7eb',
+        font: '10px monospace',
+      }}
+    >
+      {short}
+    </span>
   );
 }
 

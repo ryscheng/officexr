@@ -2,9 +2,15 @@ import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type {
   CubeFace,
   PlaceCubeCommand,
+  RoomDocument,
   SceneCommand,
   SceneDocument,
 } from './commands.ts';
+
+/** Minimum shape `compileScene` actually consumes: a command list.
+ * Both `SceneDocument` (v2) and `RoomDocument` (v3) satisfy this, so
+ * a single signature covers both. */
+type CompileInput = SceneDocument | RoomDocument | { commands: SceneCommand[] };
 
 /**
  * Pure replay of a `SceneDocument`'s command list into a flat list of
@@ -31,7 +37,7 @@ import type {
  *     wins (the earlier instance is dropped from the global set).
  */
 export function compileScene(
-  doc: SceneDocument,
+  doc: CompileInput,
   cubeSize: number,
 ): WorldObjects {
   const byCommand = new Map<string, ObjectInstance[]>();
@@ -175,7 +181,7 @@ function signOf(face: CubeFace): 1 | -1 {
  * for the editor's "select all instances by command" workflow.
  */
 export function commandBounds(
-  doc: SceneDocument,
+  doc: CompileInput,
   commandId: string,
   cubeSize: number,
 ): { min: [number, number, number]; max: [number, number, number]; count: number } | null {

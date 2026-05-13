@@ -16,7 +16,7 @@ import { useCharacterControls } from './useCharacterControls.ts';
  *
  * No SDK store, no SyncEngine — this is purely a previewer.
  */
-export function CharactersApp() {
+export function CharacterApp() {
   const ctrl = useCharacterControls();
 
   return (
@@ -38,7 +38,7 @@ export function CharactersApp() {
           walkSpeed={ctrl.walkAnimSpeed}
           runSpeed={ctrl.runAnimSpeed}
         />
-        <CharactersHud
+        <CharacterHud
           character={ctrl.character}
           previewState={ctrl.previewState}
           inControl={ctrl.inControl}
@@ -51,7 +51,7 @@ export function CharactersApp() {
   );
 }
 
-function CharactersHud(props: {
+function CharacterHud(props: {
   character: string;
   previewState: string;
   inControl: boolean;
