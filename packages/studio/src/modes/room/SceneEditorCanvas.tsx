@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
@@ -10,6 +10,12 @@ import {
 import { EndlessGrid } from '@officexr/world/renderer';
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { Tool } from './tools.ts';
+import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
+import { snapToVoxel, type SnapHit } from './roomSnap.ts';
+import {
+  extractGeometryFromGltf,
+  extractMaterialFromGltf,
+} from '@officexr/world/renderer';
 
 interface SceneEditorCanvasProps {
   /** The compiled scene snapshot to render. */
@@ -56,6 +62,39 @@ interface SceneEditorCanvasProps {
  *     new cube at that voxel.
  */
 export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
+  // Hover target drives the Add/Tile ghost preview. Updated on
+  // pointermove by both the cube layer and the floor picker; cleared
+  // when the cursor leaves either.
+  const [hover, setHover] = useState<SnapHit | null>(null);
+  const handleHoverChange = useCallback(
+    (next: SnapHit | null) => setHover(next),
+    [],
+  );
+
+  const cubeSize = props.compiled.cubeSize;
+
+  // Compute the ghost specs the GhostLayer should render this frame.
+  // Today the Add tool emits one solid ghost at the snap target;
+  // Tasks 8-9 extend this list with Delete (pulse) + Tile (multiple
+  // solids).
+  const ghosts = useMemo<GhostSpec[]>(() => {
+    if (props.tool !== 'add' || !props.stagedKindId || !hover) return [];
+    const voxel = snapToVoxel(hover, cubeSize);
+    return [{ mode: 'solid', kindId: props.stagedKindId, voxel }];
+  }, [props.tool, props.stagedKindId, hover, cubeSize]);
+
+  // Map an Add-tool click to a placement. Reads from the freshly-
+  // computed snap hit rather than the stale `hover` state so a click
+  // on a cube face uses the cube's normal, not the last floor hover.
+  const handleAddClick = useCallback(
+    (hit: SnapHit) => {
+      if (props.tool !== 'add' || !props.stagedKindId) return;
+      const voxel = snapToVoxel(hit, cubeSize);
+      props.onPlaceAt(voxel);
+    },
+    [props, cubeSize],
+  );
+
   return (
     <Canvas
       camera={{
@@ -78,6 +117,8 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         selection={props.selection}
         tool={props.tool}
         onSelectInstance={props.onSelectInstance}
+        onHoverCube={handleHoverChange}
+        onAddClick={handleAddClick}
       />
       <FloorPicker
         cubeSize={props.compiled.cubeSize}
@@ -85,7 +126,9 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         stagedKindId={props.stagedKindId}
         onPlaceAt={props.onPlaceAt}
         onClickEmpty={props.onClickEmpty}
+        onHoverFloor={handleHoverChange}
       />
+      <GhostLayer ghosts={ghosts} cubeSize={cubeSize} />
     </Canvas>
   );
 }
@@ -231,6 +274,12 @@ interface CubesLayerProps {
   selection: ReadonlySet<string>;
   tool: Tool;
   onSelectInstance: (commandId: string, modKey: boolean) => void;
+  /** Called on pointermove over a cube. Caller uses the SnapHit
+   * to drive the Add/Tile ghost preview. `null` clears. */
+  onHoverCube: (hit: SnapHit | null) => void;
+  /** Add-tool click on a cube face — caller snaps to the adjacent
+   * voxel via `snapToVoxel`. */
+  onAddClick: (hit: SnapHit) => void;
 }
 
 function CubesLayer(props: CubesLayerProps) {
@@ -258,6 +307,8 @@ function CubesLayer(props: CubesLayerProps) {
           selection={props.selection}
           tool={props.tool}
           onSelectInstance={props.onSelectInstance}
+          onHoverCube={props.onHoverCube}
+          onAddClick={props.onAddClick}
         />
       ))}
     </>
@@ -271,6 +322,8 @@ interface KindGroupProps {
   selection: ReadonlySet<string>;
   tool: Tool;
   onSelectInstance: (commandId: string, modKey: boolean) => void;
+  onHoverCube: (hit: SnapHit | null) => void;
+  onAddClick: (hit: SnapHit) => void;
 }
 
 function KindGroup({
@@ -280,11 +333,13 @@ function KindGroup({
   selection,
   tool,
   onSelectInstance,
+  onHoverCube,
+  onAddClick,
 }: KindGroupProps) {
   const gltf = useGLTF(kind.gltfPath);
-  const geom = useMemo(() => extractGeometry(gltf.scene), [gltf.scene]);
+  const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
   const mat = useMemo(() => {
-    const m = (extractMaterial(gltf.scene) as THREE.MeshStandardMaterial).clone();
+    const m = (extractMaterialFromGltf(gltf.scene) as THREE.MeshStandardMaterial).clone();
     return m;
   }, [gltf.scene]);
 
@@ -319,21 +374,30 @@ function KindGroup({
   }, [instances, cubeSize, selection]);
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    // Only respond to LEFT-click for the Select tool. Right-click is
-    // owned by the free-fly camera; the Add tool ignores cube hits
-    // (you can't stack new cubes on existing ones via clicks).
+    // Only respond to LEFT-click. Right-click is owned by the free-fly
+    // camera; middle is ignored.
     if (e.button !== 0) return;
-    if (tool !== 'select') return;
+    if (tool !== 'select' && tool !== 'add') return;
     e.stopPropagation();
     const instanceIdx = e.instanceId;
     if (instanceIdx === undefined) return;
     const inst = instances[instanceIdx];
     if (!inst) return;
     // Track drag distance — even with right-click camera, a misfire
-    // left-drag shouldn't fire select on release.
+    // left-drag shouldn't fire the click action on release.
     const startX = e.clientX;
     const startY = e.clientY;
     const modKey = e.ctrlKey || e.metaKey;
+    // Capture the hit info up-front: faceNormal is on the
+    // pointer-DOWN event, not pointer-UP.
+    const normal = e.face?.normal;
+    const cubeHit: SnapHit | null = normal
+      ? {
+          kind: 'cube',
+          cubePosition: inst.position,
+          faceNormal: [normal.x, normal.y, normal.z],
+        }
+      : null;
     let moved = false;
     const onMove = (m: PointerEvent) => {
       if (
@@ -347,10 +411,34 @@ function KindGroup({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       if (moved || u.button !== 0) return;
-      onSelectInstance(inst.sourceCommandId, modKey);
+      if (tool === 'select') {
+        onSelectInstance(inst.sourceCommandId, modKey);
+      } else if (tool === 'add' && cubeHit) {
+        onAddClick(cubeHit);
+      }
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+  };
+
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (tool !== 'add') return;
+    const instanceIdx = e.instanceId;
+    if (instanceIdx === undefined) return;
+    const inst = instances[instanceIdx];
+    if (!inst) return;
+    const n = e.face?.normal;
+    if (!n) return;
+    // R3F fires pointermove on every raycast intersection front-to-back.
+    // Without this stop the floor's handler runs next and overwrites
+    // our CubeHit with a y=0 FloorHit, putting the Add ghost on the
+    // floor under the cube instead of on its face.
+    e.stopPropagation();
+    onHoverCube({
+      kind: 'cube',
+      cubePosition: inst.position,
+      faceNormal: [n.x, n.y, n.z],
+    });
   };
 
   return (
@@ -360,28 +448,10 @@ function KindGroup({
       castShadow={false}
       receiveShadow={false}
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
       userData={{ kindId: kind.id, isObjectInstanceMesh: true }}
     />
   );
-}
-
-function extractGeometry(scene: THREE.Object3D): THREE.BufferGeometry {
-  let geom: THREE.BufferGeometry | null = null;
-  scene.traverse((o) => {
-    if (!geom && (o as THREE.Mesh).isMesh) geom = (o as THREE.Mesh).geometry;
-  });
-  if (!geom) throw new Error('No mesh geometry in cube GLTF');
-  return geom;
-}
-
-function extractMaterial(scene: THREE.Object3D): THREE.Material {
-  let mat: THREE.Material | null = null;
-  scene.traverse((o) => {
-    if (!mat && (o as THREE.Mesh).isMesh)
-      mat = (o as THREE.Mesh).material as THREE.Material;
-  });
-  if (!mat) throw new Error('No mesh material in cube GLTF');
-  return mat;
 }
 
 // --- Floor picker (place-on-empty when Add tool is active) ------
@@ -392,6 +462,9 @@ interface FloorPickerProps {
   stagedKindId: string | null;
   onPlaceAt: (position: [number, number, number]) => void;
   onClickEmpty: () => void;
+  /** Called on pointermove over the floor with a SnapHit so the
+   * parent can drive the Add/Tile ghost preview. */
+  onHoverFloor: (hit: SnapHit | null) => void;
 }
 
 function FloorPicker({
@@ -400,13 +473,13 @@ function FloorPicker({
   stagedKindId,
   onPlaceAt,
   onClickEmpty,
+  onHoverFloor,
 }: FloorPickerProps) {
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    // Only respond to LEFT-click. Right-click is owned by the
-    // free-fly camera; middle is ignored.
     if (e.button !== 0) return;
     const startX = e.clientX;
     const startY = e.clientY;
+    const point = { x: e.point.x, y: e.point.y, z: e.point.z };
     let moved = false;
     const onMove = (m: PointerEvent) => {
       if (
@@ -420,14 +493,12 @@ function FloorPicker({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       if (moved || u.button !== 0) return;
-      // Tool-specific dispatch:
-      //   - add: snap to a voxel cell, ask the parent to place.
-      //   - select: empty-click means deselect (parent decides).
       if (tool === 'add' && stagedKindId) {
-        const point = e.point;
-        const i = Math.round(point.x / cubeSize);
-        const j = Math.round(point.z / cubeSize);
-        onPlaceAt([i, 0, j]);
+        const voxel = snapToVoxel(
+          { kind: 'floor', point },
+          cubeSize,
+        );
+        onPlaceAt(voxel);
       } else if (tool === 'select') {
         onClickEmpty();
       }
@@ -435,11 +506,26 @@ function FloorPicker({
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   };
+
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (tool !== 'add') return;
+    onHoverFloor({
+      kind: 'floor',
+      point: { x: e.point.x, y: e.point.y, z: e.point.z },
+    });
+  };
+
+  const handlePointerOut = () => {
+    if (tool === 'add') onHoverFloor(null);
+  };
+
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, 0, 0]}
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerOut={handlePointerOut}
       // Behind the cubes (renderOrder lower) and invisible-but-pickable.
       renderOrder={-2}
     >
