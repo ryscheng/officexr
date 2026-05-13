@@ -16,5 +16,11 @@
     "esModuleInterop": true,
     "types": ["@react-three/fiber", "node"]
   },
-  "include": ["src", "vite-plugin-scene-storage.ts", "vite-plugin-bots.ts"]
+  "include": [
+    "src",
+    "vite-plugin-storage.ts",
+    "vite-plugin-scene-storage.ts",
+    "vite-plugin-bots.ts",
+    "scripts"
+  ]
 }

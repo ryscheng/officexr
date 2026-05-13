@@ -10,6 +10,7 @@
     "./bot": "./src/bot/index.ts",
     "./characters": "./src/characters/index.ts",
     "./scenes": "./src/scenes/index.ts",
+    "./vite-plugin-storage": "./vite-plugin-storage.ts",
     "./vite-plugin-scene-storage": "./vite-plugin-scene-storage.ts",
     "./vite-plugin-bots": "./vite-plugin-bots.ts"
   },

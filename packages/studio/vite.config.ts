@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import sceneStorage from '@officexr/world/vite-plugin-scene-storage';
+import studioStorage from '@officexr/world/vite-plugin-storage';
 import bots from '@officexr/world/vite-plugin-bots';
 
 /**
@@ -20,10 +20,13 @@ const REALTIME_TARGET =
 export default defineConfig({
   plugins: [
     react(),
-    // Mounts GET/PUT/DELETE /api/scenes/:name backed by
-    // packages/world/scenes/. Studio's Scene mode uses
-    // FilesystemSceneStorage which talks to this endpoint.
-    sceneStorage(),
+    // Mounts the studio's authoring REST surface:
+    //   /api/rooms      → packages/world/rooms/      (FilesystemRoomStorage)
+    //   /api/maps       → packages/world/maps/       (FilesystemMapStorage)
+    //   /api/cube-kinds → packages/world/cube-kinds.json (Object editor catalog; Task 3)
+    //   /api/scenes     → packages/world/scenes/     (legacy back-compat for the
+    //                                                 existing Scenes editor until Task 5)
+    studioStorage(),
     // Spawns the Node bot CLI as a child process for the lifetime of
     // the dev server, so `pnpm dev:studio` is one-command. If you'd
     // rather run `pnpm bots:start` yourself in a second terminal, the

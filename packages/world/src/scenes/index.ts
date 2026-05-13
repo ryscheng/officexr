@@ -60,3 +60,15 @@ export {
 } from './cube-kinds.ts';
 export { FilesystemSceneStorage } from './filesystem-storage.ts';
 export { LocalStorageSceneStorage } from './localstorage-storage.ts';
+export {
+  type RoomStorage,
+  type RoomSummary,
+  FilesystemRoomStorage,
+} from './filesystem-room-storage.ts';
+export { LocalStorageRoomStorage } from './localstorage-room-storage.ts';
+export {
+  type MapStorage,
+  type MapSummary,
+  FilesystemMapStorage,
+} from './filesystem-map-storage.ts';
+export { LocalStorageMapStorage } from './localstorage-map-storage.ts';
