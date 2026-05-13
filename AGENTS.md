@@ -240,6 +240,28 @@ room membership on every presence `sync` event.
 3. Import in mobile as `@officexr/core` (resolved by Babel's `module-resolver`).
 4. Import in web using the `@/` alias (resolved by Vite to `packages/core/src`).
 
+## Studio Asset Packs
+
+The studio's Object editor + Room editor catalog references three KayKit FREE
+packs (Furniture, Prototype, Restaurant) hosted on Cloudflare R2. The `.gltf`
+binaries are gitignored — the matching catalog entries in
+`packages/world/cube-kinds.json` ARE committed. After cloning, populate the
+binaries locally:
+
+```bash
+pnpm asset-packs:install        # idempotent; add --force to redownload
+```
+
+This downloads the three zip files, unzips them into
+`packages/studio/public/models/{furniture,prototype,restaurant}/`, enumerates
+the `.gltf` files, and appends any not-yet-known entries to
+`cube-kinds.json`. Re-running with no new packs is a no-op.
+
+If you skip the install step, the catalog still loads but
+`useGLTF(...)` will 404 on any furniture / prototype / restaurant kind your
+scene references. The original 12 KayKit BlockBits ship in-repo so the
+default Scenes / Debug paths work without the install step.
+
 ## Database Migrations
 
 SQL migrations live in `supabase/migrations/`. Apply with:

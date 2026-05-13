@@ -27,6 +27,7 @@
     "supabase:test:stop": "cd tools/supabase-test && npx supabase stop",
     "supabase:test:upgrade-realtime": "bash tools/supabase-test/upgrade-realtime.sh",
     "bots:start": "pnpm --filter @officexr/world run bots:start",
-    "dev:studio": "pnpm --filter @officexr/studio run dev"
+    "dev:studio": "pnpm --filter @officexr/studio run dev",
+    "asset-packs:install": "pnpm --filter @officexr/world run asset-packs:install"
   }
 }

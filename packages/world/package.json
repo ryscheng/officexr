@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "bots:start": "tsx src/bot/bots-cli.ts",
-    "migrate:scenes-to-rooms": "tsx scripts/migrate-scenes-to-rooms.ts"
+    "migrate:scenes-to-rooms": "tsx scripts/migrate-scenes-to-rooms.ts",
+    "asset-packs:install": "tsx scripts/download-asset-packs.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.2",

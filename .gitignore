@@ -52,3 +52,10 @@ supabase/.temp/
 supabase/.branches/
 tools/supabase-test/supabase/.temp/
 tools/supabase-test/supabase/.branches/
+
+# KayKit asset packs — downloaded by `pnpm asset-packs:install`.
+# The matching catalog entries in packages/world/cube-kinds.json ARE
+# committed; only the .gltf/.bin/.png binaries are gitignored.
+packages/studio/public/models/furniture/
+packages/studio/public/models/prototype/
+packages/studio/public/models/restaurant/
