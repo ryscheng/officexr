@@ -2,7 +2,7 @@ import React from 'react';
 import { Leva } from 'leva';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
-import { listKinds } from '@officexr/world';
+import { useCubeCatalog } from '@officexr/world';
 
 /**
  * Object editor — view + tune every non-character model in the
@@ -10,9 +10,19 @@ import { listKinds } from '@officexr/world';
  * so devs can confirm the catalog (committed `cube-kinds.json` + the
  * post-install pack entries) hydrates correctly. The 3D preview +
  * per-kind Leva editor + auto-save arrive in Task 11.
+ *
+ * Uses the reactive `useCubeCatalog()` hook (not the sync `listKinds()`
+ * snapshot) because:
+ *   1. First-call to the hook triggers `bootstrapCatalog()` which
+ *      fetches `/api/cube-kinds` — devs who haven't visited a route
+ *      that uses the hook yet wouldn't see their installed asset
+ *      packs.
+ *   2. Subscribing to the catalog re-renders this view when bootstrap
+ *      completes asynchronously (or when the future Object-editor
+ *      mutators replace the catalog in-place).
  */
 export function ObjectApp() {
-  const kinds = listKinds();
+  const kinds = useCubeCatalog();
   const byCategory = new Map<string, number>();
   for (const k of kinds) {
     byCategory.set(k.category, (byCategory.get(k.category) ?? 0) + 1);

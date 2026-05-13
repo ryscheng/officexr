@@ -29,5 +29,8 @@
     "bots:start": "pnpm --filter @officexr/world run bots:start",
     "dev:studio": "pnpm --filter @officexr/studio run dev",
     "asset-packs:install": "pnpm --filter @officexr/world run asset-packs:install"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1"
   }
 }
