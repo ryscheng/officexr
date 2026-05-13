@@ -58,6 +58,24 @@ export {
   getCubeKind,
   type CubeKindDef,
 } from './cube-kinds.ts';
+export {
+  type CubeKindEntry,
+  type CubeKindCatalogV1,
+  type CubeKindCategory,
+  CUBE_KIND_CATEGORIES,
+  CUBE_KIND_DEFAULTS,
+  validateCubeKindCatalog,
+} from './cube-kinds-schema.ts';
+export {
+  bootstrapCatalog,
+  getCatalog,
+  getKind,
+  listKinds,
+  replaceCatalog,
+  resetCatalogToDefault,
+  subscribeCatalog,
+  useCubeCatalog,
+} from './cube-catalog.ts';
 export { FilesystemSceneStorage } from './filesystem-storage.ts';
 export { LocalStorageSceneStorage } from './localstorage-storage.ts';
 export {

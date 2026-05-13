@@ -2,11 +2,19 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
-import { CUBE_KINDS, getCubeKind, type CubeKindDef } from '../scenes/cube-kinds.ts';
+import { useCubeCatalog } from '../scenes/cube-catalog.ts';
+import type { CubeKindEntry } from '../scenes/cube-kinds-schema.ts';
+import { CUBE_KINDS, getCubeKind } from '../scenes/cube-kinds.ts';
+import {
+  buildMaterialForKind,
+  extractGeometryFromGltf,
+  extractMaterialFromGltf,
+} from './cube-material.ts';
 
-// Preload every kind in the curated registry. The studio loads with a
-// known palette, so blocking here is fine and the first scene paint
-// renders without a flash.
+// Preload every kind in the bundled-default registry at module load so
+// the first scene paint renders without a flash. Kinds added later via
+// catalog hydration (Task 4's asset packs) are preloaded lazily inside
+// `KindInstanceGroup` via `useGLTF` itself, which caches by URL.
 for (const kind of CUBE_KINDS) {
   useGLTF.preload(kind.gltfPath);
 }
@@ -22,6 +30,10 @@ interface ObjectInstancesProps {
  * changes (the studio's Scenes mode pushes a new snapshot whenever
  * commands edit; gameplay broadcast applies snapshots from peers).
  *
+ * Subscribes to the live cube catalog so per-kind material overrides
+ * (tint, opacity, roughness, metalness, emissive) and the per-kind
+ * default scale propagate from the Object editor.
+ *
  * Coords: each instance's `position` is integer voxel space; world
  * position = `position * cubeSize`.
  */
@@ -35,6 +47,8 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
       (next) => setSnapshot(next),
     );
   }, [store]);
+
+  const kinds = useCubeCatalog();
 
   // Group instances by kind so each kind gets one InstancedMesh.
   const byKind = useMemo(() => {
@@ -50,12 +64,9 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
     return m;
   }, [snapshot]);
 
-  // Render one group per kind in registry order so React keys stay
-  // stable when the snapshot changes (kinds present in `byKind` are
-  // preserved; absent kinds render zero instances which costs nothing).
   return (
     <>
-      {CUBE_KINDS.map((kind) => (
+      {kinds.map((kind) => (
         <KindInstanceGroup
           key={kind.id}
           kind={kind}
@@ -68,15 +79,37 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
 }
 
 interface KindInstanceGroupProps {
-  kind: CubeKindDef;
+  kind: CubeKindEntry;
   instances: ObjectInstance[];
   cubeSize: number;
 }
 
+// KayKit BlockBits cubes have beveled corners — a slight overlap hides
+// the seams between adjacent instances, matching Floor.tsx. Kept as a
+// per-renderer constant so the catalog-side `kind.scale` stays a clean
+// "1 = no change" semantic.
+const SEAM_OVERLAP = 1.05;
+
 function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps) {
   const gltf = useGLTF(kind.gltfPath);
-  const geom = useMemo(() => extractGeometry(gltf.scene), [gltf.scene]);
-  const mat = useMemo(() => extractMaterial(gltf.scene), [gltf.scene]);
+  const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
+  // Clone the GLTF material per kind so per-kind override edits are
+  // isolated from any other <ObjectInstances> mount sharing the same
+  // GLTF asset. The clone happens once per kind material-override
+  // signature; in-place mutation of an existing clone is avoided so
+  // React's effect doesn't fight the renderer's frame loop.
+  const mat = useMemo(
+    () => buildMaterialForKind(extractMaterialFromGltf(gltf.scene), kind),
+    [
+      gltf.scene,
+      kind.tint,
+      kind.opacity,
+      kind.roughness,
+      kind.metalness,
+      kind.emissive,
+      kind.emissiveIntensity,
+    ],
+  );
 
   const meshRef = useRef<THREE.InstancedMesh>(null);
   // Allocate at least 1 instance so InstancedMesh isn't constructed
@@ -90,10 +123,8 @@ function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
     const quat = new THREE.Quaternion();
-    // KayKit BlockBits cubes have beveled corners — a slight overlap
-    // hides the seams between adjacent instances, matching Floor.tsx.
-    const overlap = 1.05;
-    const scale = new THREE.Vector3(overlap, overlap, overlap);
+    const s = SEAM_OVERLAP * kind.scale;
+    const scale = new THREE.Vector3(s, s, s);
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];
       pos.set(
@@ -107,7 +138,13 @@ function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps
     mesh.count = instances.length;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [instances, cubeSize]);
+    // `mat` is in the deps because changing material re-memoizes the
+    // `args` tuple below, which forces R3F to construct a fresh
+    // InstancedMesh — `meshRef.current` then points at a new mesh with
+    // uninitialized matrices. Re-running this effect refills them so a
+    // live tint/opacity edit from the Object editor doesn't scramble
+    // cube positions.
+  }, [instances, cubeSize, kind.scale, mat]);
 
   // userData lets the editor's R3F overlay raycast and identify which
   // kind / instance was hit. The caller can read `intersection.object.userData.kindId`
@@ -121,25 +158,6 @@ function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps
       userData={{ kindId: kind.id, isObjectInstanceMesh: true }}
     />
   );
-}
-
-function extractGeometry(scene: THREE.Object3D): THREE.BufferGeometry {
-  let geom: THREE.BufferGeometry | null = null;
-  scene.traverse((o) => {
-    if (!geom && (o as THREE.Mesh).isMesh) geom = (o as THREE.Mesh).geometry;
-  });
-  if (!geom) throw new Error('No mesh geometry in cube GLTF');
-  return geom;
-}
-
-function extractMaterial(scene: THREE.Object3D): THREE.Material {
-  let mat: THREE.Material | null = null;
-  scene.traverse((o) => {
-    if (!mat && (o as THREE.Mesh).isMesh)
-      mat = (o as THREE.Mesh).material as THREE.Material;
-  });
-  if (!mat) throw new Error('No mesh material in cube GLTF');
-  return mat;
 }
 
 /** Convenience accessor for editor code that needs to look up a kind
