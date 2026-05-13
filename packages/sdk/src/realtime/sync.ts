@@ -183,15 +183,19 @@ export class SyncEngine {
 
   /**
    * Anti-echo: after the InboundRouter applies a remote
-   * `world:settings` or `world:map`, tell the outbound StateDiff
-   * collaborator that this value was just received so its next
-   * `onStoreChange` diff doesn't re-broadcast it.
+   * `world:settings` / `world:map` / `world:characters`, tell the
+   * outbound StateDiff collaborator that this value was just received
+   * so its next `onStoreChange` diff doesn't re-broadcast it.
    */
   private onInboundApplied(event: NetEvent): void {
     if (event.kind === 'world:settings') {
       this.stateDiff.markWorldSettings(event.settings);
     } else if (event.kind === 'world:map') {
       this.stateDiff.markWorldMap(event.map);
+    } else if (event.kind === 'world:characters') {
+      this.stateDiff.markCharacterConfigs(event.configs);
+    } else if (event.kind === 'world:objects') {
+      this.stateDiff.markWorldObjects(event.objects);
     }
   }
 

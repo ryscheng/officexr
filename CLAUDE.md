@@ -12,7 +12,7 @@ about *how* code in it should be written. Keep it short.
 
 Default to writing code that respects the five SOLID principles. They're
 not aspirational rules — they're the baseline the existing
-`@officexr/sdk` + `debug-app` split is built around, and the
+`@officexr/sdk` + `@officexr/world` + `@officexr/studio` split is built around, and the
 `refactor-plan/` work is explicitly aimed at restoring them where the
 old `RoomScene.tsx` god component eroded them.
 
@@ -40,13 +40,14 @@ old `RoomScene.tsx` god component eroded them.
   that only needs movement tunables can ask for `AnimationSettings &
   CollisionSettings` instead of the whole bag.
 - **Dependency Inversion.** High-level modules don't depend on
-  low-level details. `@officexr/sdk` knows nothing about `three` or
-  `react`; the renderer + HUD depend on the SDK, never the reverse.
+  low-level details. `@officexr/sdk` and `@officexr/core-refactor` know
+  nothing about `three` or `react`; `@officexr/world` (renderer +
+  physics + bots) depends on the SDK, never the reverse.
   This is enforced by greps that should stay clean:
 
   ```bash
-  grep -rn "from 'three'" packages/sdk packages/realtime-server
-  grep -rn "from 'react'" packages/sdk packages/realtime-server
+  grep -rn "from 'three'" packages/sdk packages/realtime-server packages/core-refactor
+  grep -rn "from 'react'" packages/sdk packages/realtime-server packages/core-refactor
   ```
 
   Both must return zero matches.

@@ -283,6 +283,73 @@ describe('SyncEngine inbound', () => {
     expect(echos).toHaveLength(0);
   });
 
+  it('applies remote world:objects without re-broadcasting (no echo)', async () => {
+    // Same regression shape as world:settings, but for the new
+    // worldObjects broadcast slot (compiled scene snapshots).
+    const ctx = setup({ selfId: 'me', remoteId: 'other' });
+    await ctx.start();
+    const observer = new InMemoryChannel(ctx.hub, '__obs__');
+    await observer.subscribe();
+    const sent: NetEvent[] = [];
+    observer.on((e) => sent.push(e));
+
+    const incoming = {
+      cubeSize: 2,
+      instances: [
+        {
+          id: 'cmd-1:0,0,0',
+          sourceCommandId: 'cmd-1',
+          kindId: 'colored_block_blue',
+          position: [0, 0, 0] as [number, number, number],
+        },
+      ],
+    };
+    await ctx.remote.send({
+      kind: 'world:objects',
+      v: 1,
+      actorId: 'other',
+      seq: 1,
+      t: 0,
+      objects: incoming,
+    });
+
+    expect(ctx.store.getState().worldObjects).toEqual(incoming);
+    const echos = sent.filter(
+      (e) => e.kind === 'world:objects' && e.actorId === 'me',
+    );
+    expect(echos).toHaveLength(0);
+  });
+
+  it('applies remote world:characters without re-broadcasting (no echo)', async () => {
+    // Same regression shape as world:settings, but for the new
+    // characterConfigs broadcast slot.
+    const ctx = setup({ selfId: 'me', remoteId: 'other' });
+    await ctx.start();
+    const observer = new InMemoryChannel(ctx.hub, '__obs__');
+    await observer.subscribe();
+    const sent: NetEvent[] = [];
+    observer.on((e) => sent.push(e));
+
+    const incoming = {
+      Mage: { speedMultiplier: 0.5 },
+      Knight: { charRadius: 0.55 },
+    };
+    await ctx.remote.send({
+      kind: 'world:characters',
+      v: 1,
+      actorId: 'other',
+      seq: 1,
+      t: 0,
+      configs: incoming,
+    });
+
+    expect(ctx.store.getState().characterConfigs).toEqual(incoming);
+    const echos = sent.filter(
+      (e) => e.kind === 'world:characters' && e.actorId === 'me',
+    );
+    expect(echos).toHaveLength(0);
+  });
+
   it('applies remote world:map without re-broadcasting (no echo)', async () => {
     // Same regression shape as world:settings, but for the WorldMap
     // anti-echo marker.

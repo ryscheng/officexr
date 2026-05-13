@@ -179,4 +179,34 @@ describe('SyncEngine outbound — send-on-mutation kinds', () => {
     });
     expect(ctx.sent.find((e) => e.kind === 'whiteboard:stroke')).toBeDefined();
   });
+
+  it('world:characters sends on setCharacterConfig mutation', () => {
+    ctx.actions.setCharacterConfig('Mage', { speedMultiplier: 0.7 });
+    const evt = ctx.sent.find((e) => e.kind === 'world:characters');
+    expect(evt).toBeDefined();
+    if (evt && evt.kind === 'world:characters') {
+      expect(evt.configs.Mage).toEqual({ speedMultiplier: 0.7 });
+    }
+  });
+
+  it('world:objects sends on setWorldObjects mutation', () => {
+    ctx.actions.setWorldObjects({
+      cubeSize: 2,
+      instances: [
+        {
+          id: 'i1',
+          sourceCommandId: 'c1',
+          kindId: 'colored_block_blue',
+          position: [1, 0, 2],
+        },
+      ],
+    });
+    const evt = ctx.sent.find((e) => e.kind === 'world:objects');
+    expect(evt).toBeDefined();
+    if (evt && evt.kind === 'world:objects') {
+      expect(evt.objects.instances).toHaveLength(1);
+      expect(evt.objects.instances[0].kindId).toBe('colored_block_blue');
+      expect(evt.objects.instances[0].position).toEqual([1, 0, 2]);
+    }
+  });
 });

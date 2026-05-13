@@ -22,6 +22,29 @@ The order is constrained by three things:
    first migration target — same recommendation ARCHITECTURE.md
    already makes.
 
+## Studio split addendum
+
+Steps 1, 2, 5, and 6 landed (in shape if not in scope) via the
+`@officexr/studio` split before the production-`web` migration began:
+
+- **Step 1** (carve `@officexr/sdk`): `packages/sdk/` exists with
+  game-state + realtime + spatial + data modules.
+- **Step 2** (define `OfficeState` types and store skeleton): done;
+  `OfficeState` includes `worldSettings`, `worldMap`, and
+  `characterConfigs` (added by the studio split).
+- **Step 5** (extract `communication/` subtree): communication lives
+  in `@officexr/core-refactor` (NOT `@officexr/app` as named in the
+  earlier draft). Headless, no `three`, no `react`.
+- **Step 6** (define `NetEvent` protocol): typed PROTOCOL table exists
+  in `packages/sdk/src/realtime/protocol.ts`. `world:characters` was
+  added by the studio split as the third broadcast-on-change slot
+  alongside `world:settings` and `world:map`.
+
+`packages/web/` and `packages/core/` were intentionally **not touched**
+by the studio split. The remaining migration steps (4 — pull THREE out
+of `usePresence`; 9 — shrink `RoomScene`; 10 — mobile parity) all
+operate on the `core/` codepath and remain TODO.
+
 ## The eleven steps
 
 ```mermaid
@@ -125,7 +148,7 @@ Refactor:
 - Position computation, proximity computation, jitsi-room derivation
   → pure functions that read/write `OfficeState`.
 - Bubble-sphere creation, avatar group lerp, scene additions →
-  move into `app/renderer/` reconcilers.
+  move into `@officexr/world/renderer/` reconcilers.
 - Add `proximityRule` per [02-game-state](./02-game-state.md) §
   *Worked example: proximity*.
 - The remaining `usePresence` shell becomes a thin selector wrapper
@@ -135,11 +158,11 @@ Other hooks that import THREE (`useShooting`, `useWhiteboard`,
 `useSceneSetup`, `useScreenSharing`, `useNetworkStats`,
 `useChannelLogger`, `useZombieGame`, `useMotionControls`,
 `useKeyboardControls`) get the same treatment in this step. By the
-end, only files in `app/renderer/` import from `three`.
+end, only files in `@officexr/world/renderer/` import from `three`.
 
 **Exit criteria:**
 - `git grep "from 'three'"` returns matches only inside
-  `packages/app/src/renderer/**`.
+  `packages/world/src/renderer/**`.
 - ESLint rule `no-restricted-imports` for `three` outside
   `renderer/**` is in CI.
 - Voice still works during proximity transitions (manual smoke).
@@ -148,7 +171,7 @@ end, only files in `app/renderer/` import from `three`.
 
 > Resolves **O5** partially. Locks the isolation invariant.
 
-- New folder `packages/app/src/communication/`.
+- New folder `packages/core-refactor/src/communication/`.
 - Move `useJitsi` body into a `<Communication>` component +
   internal hooks. The Jitsi iframe, JWT generation, mic monitor,
   screen-share signaling, and audio decay timers all move here.
@@ -159,7 +182,8 @@ end, only files in `app/renderer/` import from `three`.
   `RoomScene` (still a god component, but now with three siblings
   instead of one giant blob).
 - Wrap each sibling in its own `<ErrorBoundary>`.
-- `lib/jaasJwt.ts` moves to `app/communication/jaasJwt.ts`.
+- `lib/jaasJwt.ts` moves to `@officexr/core-refactor`'s communication
+  subsystem (`packages/core-refactor/src/communication/jaasJwt.ts`).
 
 **Exit criteria:**
 - Manual test: throw a synthetic error inside `WorldRenderer`

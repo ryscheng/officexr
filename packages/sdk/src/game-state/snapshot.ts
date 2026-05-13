@@ -39,6 +39,8 @@ export function serializeOfficeState(state: OfficeState): SerializedOfficeState 
     runtime: state.runtime,
     worldSettings: state.worldSettings,
     worldMap: state.worldMap,
+    characterConfigs: state.characterConfigs,
+    worldObjects: state.worldObjects,
   };
 }
 
@@ -79,6 +81,19 @@ export function applySnapshot(target: OfficeState, snap: SerializedOfficeState):
   target.realtime = { ...snap.realtime };
   target.runtime = { ...snap.runtime };
   target.worldSettings = { ...snap.worldSettings };
+  target.characterConfigs = {};
+  for (const [id, cfg] of Object.entries(snap.characterConfigs ?? {})) {
+    target.characterConfigs[id] = { ...cfg };
+  }
+  target.worldObjects = {
+    cubeSize: snap.worldObjects?.cubeSize ?? 2,
+    instances: (snap.worldObjects?.instances ?? []).map((i) => ({
+      id: i.id,
+      sourceCommandId: i.sourceCommandId,
+      kindId: i.kindId,
+      position: [...i.position] as [number, number, number],
+    })),
+  };
   target.worldMap = {
     gridSize: snap.worldMap.gridSize,
     cubeSize: snap.worldMap.cubeSize,

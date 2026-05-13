@@ -232,7 +232,25 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
  * cells are walkable: each layer lists the (i, j) cells of one kind.
  */
 export type CubeKindId = string;
-export type CubeKind = { id: CubeKindId; walkable: boolean };
+/**
+ * Optional rendering hints for a CubeKind. The renderer reads these when
+ * painting the floor; absence falls back to per-renderer defaults
+ * (today: blue for floor, grey for unknown). Kept loose on purpose —
+ * either a flat color, a GLB asset reference, or both. The SDK stays
+ * headless: it never imports a renderer or asset loader.
+ */
+export type CubeKindAppearance = {
+  /** CSS hex color, e.g. "#3b82f6". */
+  color?: string;
+  /** Path to a GLB/GLTF asset (rendered as a tiled instance per cell)
+   * if the cell warrants more than a flat-colored block. */
+  modelUrl?: string;
+};
+export type CubeKind = {
+  id: CubeKindId;
+  walkable: boolean;
+  appearance?: CubeKindAppearance;
+};
 export type CubeKindRegistry = Record<CubeKindId, CubeKind>;
 export type WorldMapLayer = {
   kind: CubeKindId;
@@ -259,6 +277,99 @@ export const DEFAULT_WORLD_MAP: WorldMap = {
   },
 };
 
+/**
+ * Per-character override for movement-related tunables. Every field is
+ * optional: a present field replaces the world-level default for that
+ * character model only; an absent field inherits the corresponding
+ * `WorldSettings` value. This is the model layer for tuning Mages
+ * faster than Knights, etc.
+ */
+export type CharacterMovementOverrides = {
+  /** Multiplier on `WorldSettings.playerSpeed` for this model. 1 = no
+   * change. Resolved as `worldSettings.playerSpeed * speedMultiplier`. */
+  speedMultiplier?: number;
+  /** Override for `WorldSettings.runSpeedMultiplier` (the Shift-to-run
+   * factor). Multiplicative on top of `speedMultiplier`. */
+  runSpeedMultiplier?: number;
+  /** Override for `WorldSettings.turnSpeed` (rad/s). */
+  turnSpeed?: number;
+};
+
+export type CharacterCollisionOverrides = {
+  /** Override for `WorldSettings.charRadius` (world units). */
+  charRadius?: number;
+  /** Override for `WorldSettings.bumpEasingMs`. */
+  bumpEasingMs?: number;
+};
+
+export type CharacterAnimationOverrides = {
+  /** Override for `WorldSettings.walkAnimSpeed`. */
+  walkAnimSpeed?: number;
+  /** Override for `WorldSettings.runAnimSpeed`. */
+  runAnimSpeed?: number;
+  /** Override for `WorldSettings.idleAnimSpeed`. */
+  idleAnimSpeed?: number;
+};
+
+/**
+ * Per-character config keyed off `AvatarData.model`. Composed as the
+ * intersection of focused override sub-types so a caller can ask for
+ * a narrow slice (e.g. movement only) without taking the whole bag.
+ *
+ * Held in `OfficeState.characterConfigs[modelId]`. Broadcast via the
+ * `world:characters` NetEvent — every peer (including bots) sees the
+ * same per-character tuning.
+ */
+export type CharacterConfig = CharacterMovementOverrides &
+  CharacterCollisionOverrides &
+  CharacterAnimationOverrides;
+
+/** Map from model id (e.g. "Barbarian", "Mage") → per-character config. */
+export type CharacterConfigs = Record<string, CharacterConfig>;
+
+/**
+ * One placed cube in an authored scene. The compiled output of a
+ * `SceneDocument` (see `@officexr/world/scenes/commands.ts`) is a flat
+ * list of these instances. The renderer reads them as-is and groups
+ * them into per-kind `<InstancedMesh>`es; collision builds AABBs from
+ * `position` + `cubeSize` (the `cubeSize` lives on `WorldObjects`, not
+ * per-instance, so a scene can't accidentally mix scales).
+ *
+ * `position` is in INTEGER VOXEL COORDS (not world units). Multiply by
+ * `WorldObjects.cubeSize` to get world space. `id` is unique per
+ * instance and stable across recompiles for the same source command +
+ * voxel position. `sourceCommandId` is the editor's hook back into
+ * the command list — selecting an instance highlights its source
+ * command in the inspector.
+ */
+export type ObjectInstance = {
+  id: string;
+  sourceCommandId: string;
+  kindId: string;
+  position: [number, number, number];
+};
+
+/**
+ * The compiled, broadcast-ready form of a scene's placed cubes.
+ * Lives on `OfficeState.worldObjects`. The studio's Scenes mode owns
+ * the canonical command list and pushes the recompiled snapshot here
+ * via `actions.setWorldObjects(...)`. The `world:objects` NetEvent
+ * mirrors the same shape across peers.
+ *
+ * `cubeSize` is captured here (not just in `WorldMap`) so a scene
+ * authored with a different scale renders correctly even when no
+ * legacy WorldMap is loaded.
+ */
+export type WorldObjects = {
+  cubeSize: number;
+  instances: ObjectInstance[];
+};
+
+export const DEFAULT_WORLD_OBJECTS: WorldObjects = {
+  cubeSize: 2,
+  instances: [],
+};
+
 export type OfficeState = {
   selfId: PlayerId;
   officeId: string;
@@ -277,6 +388,19 @@ export type OfficeState = {
   };
   worldSettings: WorldSettings;
   worldMap: WorldMap;
+  /**
+   * Per-character tuning overrides keyed by `AvatarData.model`. An empty
+   * record means "every character uses the worldSettings defaults".
+   * Broadcast via the `world:characters` NetEvent.
+   */
+  characterConfigs: CharacterConfigs;
+  /**
+   * Compiled, instance-level scene objects (cubes today; future shapes
+   * later). Populated by the studio's Scenes mode from a CAD-style
+   * command list (`SceneDocument` in `@officexr/world/scenes`).
+   * Broadcast via the `world:objects` NetEvent.
+   */
+  worldObjects: WorldObjects;
 };
 
 export type GameEvent =

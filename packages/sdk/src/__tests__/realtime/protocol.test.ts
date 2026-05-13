@@ -114,6 +114,8 @@ describe('PROTOCOL table', () => {
           layers: [],
           kinds: { floor: { id: 'floor', walkable: true } },
         },
+        characterConfigs: {},
+        worldObjects: { cubeSize: 2, instances: [] },
       },
       seqTable: { leader: 5 },
     },
@@ -158,8 +160,37 @@ describe('PROTOCOL table', () => {
         layers: [{ kind: 'wall', cells: [{ i: 0, j: 0 }] }],
         kinds: {
           floor: { id: 'floor', walkable: true },
-          wall: { id: 'wall', walkable: false },
+          wall: { id: 'wall', walkable: false, appearance: { color: '#888' } },
         },
+      },
+    },
+    {
+      kind: 'world:characters',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      configs: {
+        Mage: { speedMultiplier: 0.7, walkAnimSpeed: 0.9 },
+        Knight: { charRadius: 0.5 },
+      },
+    },
+    {
+      kind: 'world:objects',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      objects: {
+        cubeSize: 2,
+        instances: [
+          {
+            id: 'i:cmd1:0,0,0',
+            sourceCommandId: 'cmd1',
+            kindId: 'colored_block_blue',
+            position: [0, 0, 0],
+          },
+        ],
       },
     },
   ];

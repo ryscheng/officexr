@@ -53,6 +53,12 @@ export function applyNetEventToStore(
     case 'world:map':
       actions.applyRemoteWorldMap(event.map);
       return;
+    case 'world:characters':
+      actions.applyRemoteCharacterConfigs(event.configs);
+      return;
+    case 'world:objects':
+      actions.applyRemoteWorldObjects(event.objects);
+      return;
     case 'snapshot:request':
     case 'snapshot:offer':
       // owned by SnapshotHandshake; callers should filter these out.

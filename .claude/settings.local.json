@@ -1,6 +1,12 @@
 {
   "permissions": {
-    "allow": [],
+    "allow": [
+      "Bash(pnpm --filter @officexr/sdk exec tsc --noEmit)",
+      "Bash(pnpm --filter @officexr/sdk test)",
+      "Bash(pnpm --filter @officexr/world exec tsc --noEmit)",
+      "Bash(pnpm --filter @officexr/studio exec tsc --noEmit)",
+      "Bash(pnpm --filter @officexr/world test)"
+    ],
     "deny": []
   }
 }

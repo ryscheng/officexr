@@ -47,10 +47,10 @@ flowchart TB
         Mobile["@officexr/mobile"]
     end
 
-    subgraph App["Application Layer (@officexr/app)"]
-        HUD["hud/<br/>React components<br/>– ChatPanel<br/>– UserPanel<br/>– AvatarSettings<br/>– AudioControls<br/>– InventoryPanel"]
-        Renderer["renderer/<br/>WorldRenderer<br/>– owns all THREE.*<br/>– reconciles from<br/>  OfficeState"]
-        Comms["communication/<br/>Audio + Video<br/>– JaaS iframe<br/>– mic monitor<br/>– screen share<br/>– no THREE"]
+    subgraph App["Application Layer"]
+        World["@officexr/world<br/>renderer/ + physics/ + bot/<br/>characters/ + scenes/<br/>– owns all THREE.*<br/>– reconciles from<br/>  OfficeState"]
+        HUD["hud/<br/>React components<br/>– ChatPanel<br/>– UserPanel<br/>– AvatarSettings<br/>– AudioControls<br/>– InventoryPanel<br/>(future: extracted from core)"]
+        Comms["@officexr/core-refactor<br/>communication/<br/>– JaaS iframe<br/>– mic monitor<br/>– screen share<br/>– no THREE"]
     end
 
     subgraph SDK["@officexr/sdk (no React, no THREE)"]
@@ -71,7 +71,7 @@ flowchart TB
     Mobile -. "shares SDK only;<br/>brings own renderer/HUD" .-> SDK
 
     HUD --> GS
-    Renderer --> GS
+    World --> GS
     Comms --> GS
 
     GS <--> RTL
@@ -88,7 +88,7 @@ flowchart TB
     classDef sdk fill:#312e81,stroke:#a78bfa,color:#ede9fe
     classDef svc fill:#064e3b,stroke:#34d399,color:#d1fae5
     class Web,Desktop,Mobile shell
-    class HUD,Renderer,Comms app
+    class HUD,World,Comms app
     class GS,RTL,Data sdk
     class SBAuth,SBDB,SBRT,JaaS svc
 ```
@@ -100,10 +100,20 @@ The current `@officexr/core` is split in two:
 | Package | Contents | Allowed deps |
 |---------|----------|--------------|
 | `@officexr/sdk` | GameState store, event bus, realtime protocol, supabase client, typed RPCs | No React. No `three`. Plain TS + `@supabase/supabase-js` + `zod` (or `valibot`). |
-| `@officexr/app` | HUD components, WorldRenderer, Communication subsystem, page routing | React, `three`, depends on `@officexr/sdk`. |
-| `@officexr/web` | Vite shell | depends on `@officexr/app` |
+| `@officexr/core-refactor` | Communication subsystem (voice / Jitsi), stack factory | React optional. No `three`. Depends on `@officexr/sdk`. |
+| `@officexr/world` | Renderer, physics, bots, character registry, scene serialization | React, `three`, `@react-three/fiber`, `@react-three/rapier`. Depends on `@officexr/sdk`. |
+| `@officexr/studio` | Authoring app — Debug / Character / Scene mode shells over `@officexr/world`'s renderer | React. Depends on `@officexr/world` + `@officexr/sdk` + `@officexr/core-refactor`. |
+| `@officexr/web` | Vite shell (production app) | Currently depends on `@officexr/core` (legacy). Will eventually swap to depend on `@officexr/world` + future HUD package. |
 | `@officexr/desktop` | Electron shell | loads built `@officexr/web` |
 | `@officexr/mobile` | Expo / React Native | depends on `@officexr/sdk` only — owns its own UI/renderer |
+
+> **Naming note.** Earlier drafts of this plan used `@officexr/app` for
+> the renderer + HUD + communication bundle. That single package has
+> since been split: `@officexr/core-refactor` owns the communication
+> subsystem, and `@officexr/world` owns the renderer + physics + scenes
+> + character registry. There is no `@officexr/app` package; references
+> to it in older docs map to `@officexr/world` (renderer) or
+> `@officexr/core-refactor` (communication) accordingly.
 
 This addresses **O9** (cross-platform duplication): `@officexr/sdk` is
 the single home for auth, the realtime protocol, GameState, and DB
@@ -118,7 +128,8 @@ into one. `useAuth` lives once.
   and that's an Edge Function, not a long-running service.
 - **JaaS remains voice/video.** The web client keeps minting its own
   RS256 JWT via `lib/jaasJwt.ts`. That module moves under
-  `@officexr/app/communication/` since it's a client concern, not SDK.
+  `@officexr/core-refactor`'s communication subsystem since it's a
+  client concern, not SDK.
 - **Three.js remains the renderer.** It just stops leaking into hook
   signatures.
 - **The pnpm monorepo + three-shell layout stays.** Only the
@@ -139,6 +150,45 @@ into one. `useAuth` lives once.
   receive site. See [03-realtime-layer](./03-realtime-layer.md).
 - **`localStorage` shrinks to user preferences only.** Inventory and
   cooldowns move to Postgres. See [04-persistent-data-layer](./04-persistent-data-layer.md).
+
+## Studio split (landed ahead of web migration)
+
+The `@officexr/studio` authoring tool (formerly `@officexr/debug-app`)
+shipped before the full `core` → `world`/`HUD` migration was complete.
+It exists as the proving ground for the headless SDK + headless
+communication + renderer split, and as a place for creators to author
+worlds, characters, and scenes that the production `web` will later
+consume.
+
+What landed:
+
+- **`@officexr/world`** (new) holds the renderer (`renderer/`),
+  physics (`physics/`), bots (`bot/`), character registry
+  (`characters/`), and scene serialization (`scenes/`). All
+  `import * as THREE` for the studio path lives here.
+- **`@officexr/studio`** (renamed from `debug-app`) is a thin shell
+  that mounts `@officexr/world`'s renderer plus three mode surfaces:
+  Debug (existing Leva panels), Character (per-model tuning that
+  broadcasts via the new `world:characters` `NetEvent`), and Scene
+  (interactive map editor that mutates `WorldMap.layers` and persists
+  via a generic `SceneStorage` interface — filesystem-backed in dev).
+- **SDK extensions:** `OfficeState.characterConfigs`, the
+  `world:characters` NetEvent + PROTOCOL entry, and a richer `CubeKind`
+  (optional `appearance`) — all generally useful, not studio-specific.
+
+What is **not** done as a result of the studio split:
+
+- `packages/web/` is **untouched**. It still depends on
+  `packages/core/`'s legacy `RoomScene.tsx` god component, its own
+  `Avatar.tsx`, its own `useJitsi`, etc.
+- The `core` → `world` migration of the production renderer is the
+  next layer of this work. When it lands, `web` swaps from
+  `@officexr/core` to `@officexr/world` (renderer) plus a future
+  HUD package extracted from `core/components/`. The studio path
+  proves the seams.
+- HUD components (Chat, User, Inventory, etc.) still live only in
+  `core/`. A future `@officexr/hud` (or `@officexr/world/hud`)
+  extraction is in scope for the `web` migration, not for studio.
 
 ## Reading order
 

@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import type {
   AvatarData,
+  CharacterConfigs,
   PlayerId,
   Stroke,
   Vec3,
   WorldMap,
+  WorldObjects,
   WorldSettings,
   ZombieState,
 } from '../game-state/types.ts';
@@ -125,7 +127,15 @@ const ZWorldSettings: z.ZodType<WorldSettings> = z.object({
   ambientIntensity: z.number(),
 });
 
-const ZCubeKind = z.object({ id: z.string(), walkable: z.boolean() });
+const ZCubeAppearance = z.object({
+  color: z.string().optional(),
+  modelUrl: z.string().optional(),
+});
+const ZCubeKind = z.object({
+  id: z.string(),
+  walkable: z.boolean(),
+  appearance: ZCubeAppearance.optional(),
+});
 const ZWorldMap: z.ZodType<WorldMap> = z.object({
   gridSize: z.number().int().positive(),
   cubeSize: z.number().positive(),
@@ -137,6 +147,34 @@ const ZWorldMap: z.ZodType<WorldMap> = z.object({
     }),
   ),
   kinds: z.record(z.string(), ZCubeKind),
+});
+
+const ZCharacterConfig = z.object({
+  speedMultiplier: z.number().optional(),
+  runSpeedMultiplier: z.number().optional(),
+  turnSpeed: z.number().optional(),
+  charRadius: z.number().optional(),
+  bumpEasingMs: z.number().optional(),
+  walkAnimSpeed: z.number().optional(),
+  runAnimSpeed: z.number().optional(),
+  idleAnimSpeed: z.number().optional(),
+});
+
+const ZCharacterConfigs: z.ZodType<CharacterConfigs> = z.record(
+  z.string(),
+  ZCharacterConfig,
+);
+
+const ZObjectInstance = z.object({
+  id: z.string(),
+  sourceCommandId: z.string(),
+  kindId: z.string(),
+  position: z.tuple([z.number(), z.number(), z.number()]),
+});
+
+const ZWorldObjects: z.ZodType<WorldObjects> = z.object({
+  cubeSize: z.number().positive(),
+  instances: z.array(ZObjectInstance),
 });
 
 /**
@@ -158,6 +196,8 @@ const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
   runtime: ZRuntime,
   worldSettings: ZWorldSettings,
   worldMap: ZWorldMap,
+  characterConfigs: ZCharacterConfigs,
+  worldObjects: ZWorldObjects,
 });
 
 // --- Per-kind payload schemas (without envelope) ---
@@ -171,6 +211,8 @@ const ZZombieStatePayload = z.object({ state: ZZombieState });
 const ZSnapshotRequest = z.object({});
 const ZWorldSettingsPayload = z.object({ settings: ZWorldSettings });
 const ZWorldMapPayload = z.object({ map: ZWorldMap });
+const ZWorldCharactersPayload = z.object({ configs: ZCharacterConfigs });
+const ZWorldObjectsPayload = z.object({ objects: ZWorldObjects });
 const ZSnapshotOffer = z.object({
   target: z.string(),
   state: ZSerializedOfficeState,
@@ -201,7 +243,9 @@ export type NetEvent =
       { target: PlayerId; state: SerializedOfficeState; seqTable: Record<PlayerId, number> }
     >
   | WithEnvelope<'world:settings', 1, { settings: WorldSettings }>
-  | WithEnvelope<'world:map', 1, { map: WorldMap }>;
+  | WithEnvelope<'world:map', 1, { map: WorldMap }>
+  | WithEnvelope<'world:characters', 1, { configs: CharacterConfigs }>
+  | WithEnvelope<'world:objects', 1, { objects: WorldObjects }>;
 
 export type NetEventKind = NetEvent['kind'];
 
@@ -226,6 +270,8 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local' },
   'world:settings': { v: 1, schema: ZWorldSettingsPayload, authority: 'local' },
   'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local' },
+  'world:characters': { v: 1, schema: ZWorldCharactersPayload, authority: 'local' },
+  'world:objects': { v: 1, schema: ZWorldObjectsPayload, authority: 'local' },
 };
 
 // --- Validation ---
