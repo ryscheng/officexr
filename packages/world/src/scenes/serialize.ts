@@ -2,9 +2,12 @@ import type { CharacterConfigs, Vec3, WorldMap } from '@officexr/sdk';
 import {
   emptyDocument,
   newPlaceCube,
+  type RoomDocument,
+  type RoomGroup,
   type SceneCommand,
   type SceneDocument,
 } from './commands.ts';
+import type { MapDocumentV1 } from './map-document.ts';
 
 /**
  * On-disk shape: a discriminated union over `schemaVersion`.
@@ -44,7 +47,24 @@ export type SerializedSceneV2 = {
   characterConfigs?: CharacterConfigs;
 };
 
-export type SerializedScene = SerializedSceneV1 | SerializedSceneV2;
+/**
+ * v3 — the new Room document. Spawn points and character configs have
+ * been promoted out of the room and onto the parent `MapDocumentV1`.
+ * Groups are now first-class document state.
+ */
+export type SerializedRoomV3 = {
+  schemaVersion: 3;
+  name: string;
+  title?: string;
+  updatedAt?: number;
+  commands: SceneCommand[];
+  groups: Record<string, RoomGroup>;
+};
+
+export type SerializedScene =
+  | SerializedSceneV1
+  | SerializedSceneV2
+  | SerializedRoomV3;
 
 // --- v2 (default) helpers --------------------------------------
 
@@ -65,6 +85,26 @@ export function serializeScene(input: SerializeV2Input): SerializedSceneV2 {
     commands: input.commands,
     spawnPoints: input.spawnPoints,
     characterConfigs: input.characterConfigs,
+  };
+}
+
+// --- v3 (Room) helpers -----------------------------------------
+
+export interface SerializeRoomInput {
+  name: string;
+  title?: string;
+  commands: SceneCommand[];
+  groups?: Record<string, RoomGroup>;
+}
+
+export function serializeRoom(input: SerializeRoomInput): SerializedRoomV3 {
+  return {
+    schemaVersion: 3,
+    name: input.name,
+    title: input.title,
+    updatedAt: Date.now(),
+    commands: input.commands,
+    groups: input.groups ?? {},
   };
 }
 
@@ -119,6 +159,14 @@ export function deserializeScene(raw: unknown): SerializedScene {
         throw new Error('scene v2: missing `commands` array');
       }
       return obj as unknown as SerializedSceneV2;
+    case 3:
+      if (!Array.isArray(obj.commands)) {
+        throw new Error('room v3: missing `commands` array');
+      }
+      if (!obj.groups || typeof obj.groups !== 'object') {
+        throw new Error('room v3: missing `groups` object');
+      }
+      return obj as unknown as SerializedRoomV3;
     default:
       throw new Error(
         `scene: unsupported schemaVersion ${String(obj.schemaVersion)}`,
@@ -147,6 +195,18 @@ export function migrateToV2(scene: SerializedScene): SceneDocument {
       commands: scene.commands,
     };
   }
+  if (scene.schemaVersion === 3) {
+    // v3 → v2 is a structural downgrade: drop the `groups` field. The
+    // Scenes (v2) editor doesn't know about groups, so we just lose
+    // that metadata; the underlying command list is identical.
+    return {
+      schemaVersion: 2,
+      name: scene.name,
+      title: scene.title,
+      updatedAt: scene.updatedAt,
+      commands: scene.commands,
+    };
+  }
   const doc = emptyDocument(scene.name, scene.title);
   doc.updatedAt = scene.updatedAt;
   for (const layer of scene.worldMap.layers) {
@@ -158,3 +218,105 @@ export function migrateToV2(scene: SerializedScene): SceneDocument {
   }
   return doc;
 }
+
+/**
+ * Promote any deserialized scene to a v3 `RoomDocument` the new Room
+ * editor can work on.
+ *
+ * - v3 inputs pass through unchanged.
+ * - v2 inputs drop `spawnPoints` and `characterConfigs` (those now
+ *   live on the parent `MapDocumentV1`) and gain an empty `groups`
+ *   map.
+ * - v1 inputs are first migrated to v2 (`migrateToV2`) and then to
+ *   v3, so any old `worldMap` cell grid produces a clean v3 doc.
+ *
+ * Note: shares the input's `commands` array and `groups` object by
+ * reference (mirrors the existing `migrateToV2` convention). Callers
+ * that intend to mutate the result must clone first.
+ */
+export function migrateToV3(scene: SerializedScene): RoomDocument {
+  if (scene.schemaVersion === 3) {
+    return {
+      schemaVersion: 3,
+      name: scene.name,
+      title: scene.title,
+      updatedAt: scene.updatedAt,
+      commands: scene.commands,
+      groups: scene.groups,
+    };
+  }
+  if (scene.schemaVersion === 2) {
+    return {
+      schemaVersion: 3,
+      name: scene.name,
+      title: scene.title,
+      updatedAt: scene.updatedAt,
+      commands: scene.commands,
+      groups: {},
+    };
+  }
+  // v1 path: migrate up through v2 so the cell-grid → placeCube emit
+  // logic stays in one place.
+  const v2 = migrateToV2(scene);
+  return {
+    schemaVersion: 3,
+    name: v2.name,
+    title: v2.title,
+    updatedAt: v2.updatedAt,
+    commands: v2.commands,
+    groups: {},
+  };
+}
+
+// --- Map (v1) helpers ------------------------------------------
+
+export interface SerializeMapInput {
+  name: string;
+  title?: string;
+  rooms: MapDocumentV1['rooms'];
+  spawnPoints: MapDocumentV1['spawnPoints'];
+  environment: MapDocumentV1['environment'];
+}
+
+export function serializeMap(input: SerializeMapInput): MapDocumentV1 {
+  return {
+    schemaVersion: 1,
+    name: input.name,
+    title: input.title,
+    updatedAt: Date.now(),
+    rooms: input.rooms,
+    spawnPoints: input.spawnPoints,
+    environment: input.environment,
+  };
+}
+
+/**
+ * Validate + parse a map document. Throws on shape errors so the
+ * loader can surface the failure (corrupt file / wrong version) to
+ * the user instead of silently rendering an empty world.
+ */
+export function deserializeMap(raw: unknown): MapDocumentV1 {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('map: not an object');
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.name !== 'string') {
+    throw new Error('map: missing string `name`');
+  }
+  if (obj.schemaVersion !== 1) {
+    throw new Error(
+      `map: unsupported schemaVersion ${String(obj.schemaVersion)}`,
+    );
+  }
+  if (!Array.isArray(obj.rooms)) {
+    throw new Error('map v1: missing `rooms` array');
+  }
+  if (!Array.isArray(obj.spawnPoints)) {
+    throw new Error('map v1: missing `spawnPoints` array');
+  }
+  if (!obj.environment || typeof obj.environment !== 'object') {
+    throw new Error('map v1: missing `environment` object');
+  }
+  return obj as unknown as MapDocumentV1;
+}
+

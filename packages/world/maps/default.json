@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "name": "default",
+  "title": "Default Map",
+  "updatedAt": 1778616231590,
+  "rooms": [
+    {
+      "id": "room-1",
+      "roomName": "default-v2",
+      "position": [0, 0, 0]
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "spawn-1",
+      "label": "origin",
+      "position": [0, 0, 0]
+    }
+  ],
+  "environment": {
+    "sun": {
+      "positionX": 20,
+      "positionY": 40,
+      "positionZ": 20,
+      "color": "#ffffff",
+      "intensity": 1.4
+    },
+    "sky": null,
+    "stars": null,
+    "hdri": null,
+    "ambientIntensity": 0.15
+  }
+}

@@ -55,6 +55,11 @@ export type SceneCommand = PlaceCubeCommand | ExtrudeCommand;
  * Versioned authoring document. `schemaVersion: 2` is the new
  * command-list format; v1 files (legacy `WorldMap` cell grids)
  * round-trip through `migrateV1ToV2` in `serialize.ts`.
+ *
+ * @deprecated Prefer `RoomDocument` (v3) for new code. `SceneDocument`
+ * is kept as a type alias for v2 docs so the existing Scenes editor
+ * keeps compiling during the studio multi-editor restructure; it will
+ * be removed once every caller has migrated.
  */
 export interface SceneDocument {
   schemaVersion: 2;
@@ -62,6 +67,47 @@ export interface SceneDocument {
   title?: string;
   updatedAt?: number;
   commands: SceneCommand[];
+}
+
+/**
+ * Grouping of commands in a `RoomDocument`. Groups are a
+ * selection/lifecycle concern: a group's children are deleted together
+ * by the Delete tool and selected together by the Select tool. They
+ * are NOT a compile concern — `compileScene` does not look at groups.
+ *
+ * v1 invariant: each `commandId` belongs to at most one group.
+ * Nesting is not supported in v1.
+ *
+ * Invariant: `id` must equal the `Record<string, RoomGroup>` key that
+ * stores this group. Carrying the id inline is intentional so a group
+ * passed around by reference (e.g. into the inspector) still knows its
+ * own identity; the duplication is checked when the Room editor's
+ * mutators write to the document.
+ */
+export interface RoomGroup {
+  id: string;
+  commandIds: string[];
+  label?: string;
+}
+
+/**
+ * Versioned authoring document for one Room.
+ *
+ * - **v3** (this) is the command-list room produced by the new Room
+ *   editor. It drops the `spawnPoints` and `characterConfigs` slots
+ *   that lived on v2 — those now belong on the parent `MapDocumentV1`.
+ * - **v2** is the historical command-list "scene" — see `SceneDocument`.
+ * - **v1** is the legacy cell-grid WorldMap.
+ *
+ * The on-disk wire form is `SerializedRoomV3` in `serialize.ts`.
+ */
+export interface RoomDocument {
+  schemaVersion: 3;
+  name: string;
+  title?: string;
+  updatedAt?: number;
+  commands: SceneCommand[];
+  groups: Record<string, RoomGroup>;
 }
 
 let nextCmdId = 1;
@@ -106,5 +152,16 @@ export function emptyDocument(name: string, title?: string): SceneDocument {
     title,
     updatedAt: Date.now(),
     commands: [],
+  };
+}
+
+export function emptyRoomDocument(name: string, title?: string): RoomDocument {
+  return {
+    schemaVersion: 3,
+    name,
+    title,
+    updatedAt: Date.now(),
+    commands: [],
+    groups: {},
   };
 }
