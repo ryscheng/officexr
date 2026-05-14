@@ -29,6 +29,8 @@
     "bots:start": "pnpm --filter @officexr/world run bots:start",
     "dev:studio": "pnpm --filter @officexr/studio run dev",
     "asset-packs:install": "pnpm --filter @officexr/world run asset-packs:install",
+    "state:backup": "pnpm --filter @officexr/world run state:backup",
+    "state:reset": "pnpm --filter @officexr/world run state:reset",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui"

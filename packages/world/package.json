@@ -19,7 +19,9 @@
     "test": "vitest run",
     "bots:start": "tsx src/bot/bots-cli.ts",
     "migrate:scenes-to-rooms": "tsx scripts/migrate-scenes-to-rooms.ts",
-    "asset-packs:install": "tsx scripts/download-asset-packs.ts"
+    "asset-packs:install": "tsx scripts/download-asset-packs.ts",
+    "state:backup": "tsx scripts/state-backup.ts",
+    "state:reset": "tsx scripts/state-reset.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.2",

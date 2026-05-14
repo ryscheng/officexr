@@ -30,6 +30,9 @@ vite.config.d.ts
 .DS_Store
 *.pem
 
+# studio state backups (tarballs produced by `pnpm state:backup`)
+/backups/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
