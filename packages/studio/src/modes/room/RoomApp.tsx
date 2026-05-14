@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Leva } from 'leva';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { CommandHistory } from './CommandHistory.tsx';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.tsx';
+import { InspectorPanel } from './InspectorPanel.tsx';
 import { ObjectPalette } from './ObjectPalette.tsx';
 import { RoomPicker } from './RoomPicker.tsx';
 import { SceneEditorCanvas } from './SceneEditorCanvas.tsx';
 import { Toolbar } from './Toolbar.tsx';
 import { useRoomDocument } from './useRoomDocument.ts';
-import { useRoomInspector } from './useRoomInspector.ts';
 import { selectionIsExactlyOneGroup } from './room-selection.ts';
 import type { Tool } from './tools.ts';
 
@@ -234,9 +233,7 @@ export function RoomApp() {
     [roomDoc],
   );
 
-  // Inspector controls (Leva). useRoomInspector mounts the panels
-  // for the active selection; we don't render anything visible here.
-  useRoomInspector(roomDoc);
+  // InspectorPanel is rendered directly in <SidePanel> below.
 
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
@@ -289,14 +286,20 @@ export function RoomApp() {
         <ExportButton />
       </main>
       <SidePanel>
-        <Leva fill flat titleBar={{ drag: false }} />
-        <CommandHistory
-          commands={roomDoc.doc.commands}
-          selection={roomDoc.selection}
-          commandToGroup={roomDoc.lookup.commandToGroup}
-          onSelect={handleHistoryClick}
-          onDelete={roomDoc.deleteCommand}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <InspectorPanel roomDoc={roomDoc} />
+          </div>
+          <div style={{ flex: '0 0 auto', maxHeight: '45%', overflowY: 'auto' }}>
+            <CommandHistory
+              commands={roomDoc.doc.commands}
+              selection={roomDoc.selection}
+              commandToGroup={roomDoc.lookup.commandToGroup}
+              onSelect={handleHistoryClick}
+              onDelete={roomDoc.deleteCommand}
+            />
+          </div>
+        </div>
       </SidePanel>
       {contextMenu && (
         <ContextMenu
