@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Scene, CAMERA_MODES, type CameraMode } from '@officexr/world/renderer';
 import { SidePanel } from '../../ui/SidePanel.tsx';
+import { WorldPanels } from '../../panels/world/WorldPanels.tsx';
+import { useStudioSettings } from '../../panels/world/useStudioSettings.ts';
 import {
   createPersistentLocalState,
   type PersistentLocalState,
@@ -75,6 +77,12 @@ export function DebugApp() {
     bots: stack?.mode === 'in-memory' ? stack.bots : null,
   });
 
+  // The renderer-tweaker bag. Studio owns the React state (persisted
+  // to localStorage) and passes the current value into <Scene>; the
+  // editing UI lives in <WorldPanels> rendered in the SidePanel
+  // below.
+  const studioSettings = useStudioSettings();
+
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
       <main
@@ -101,8 +109,7 @@ export function DebugApp() {
             bots={stack.bots}
             selfId={SELF_ID}
             cameraMode={cameraMode}
-            onBotCountChange={onBotCountChange}
-            onBotModeChange={onBotModeChange}
+            viewConfig={studioSettings.viewConfig}
           />
         )}
         <Hud cameraMode={cameraMode} mode={stack?.mode ?? 'in-memory'} />
@@ -111,7 +118,20 @@ export function DebugApp() {
         )}
       </main>
       <SidePanel>
-        <MapPickerPanel picker={picker} />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: '0 0 auto' }}>
+            <MapPickerPanel picker={picker} />
+          </div>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <WorldPanels
+              settings={studioSettings}
+              store={local?.store ?? null}
+              actions={local?.actions ?? null}
+              onBotCountChange={onBotCountChange}
+              onBotModeChange={onBotModeChange}
+            />
+          </div>
+        </div>
       </SidePanel>
     </div>
   );

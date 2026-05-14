@@ -41,42 +41,15 @@ export {
   type CharacterName,
 } from './config.ts';
 
-export {
-  useLevaPersistence,
-  exportLevaConfig,
-  resetLevaConfig,
-} from './levaPersistence.ts';
-
-// Per-panel hooks. Studio's DebugMode mounts these unchanged; future
-// modes can mount a subset.
-export {
-  useAnimationPanel,
-  type AnimationPanelValues,
-} from './panels/AnimationPanel.ts';
-export {
-  useProximityPanel,
-  type ProximityPanelValues,
-} from './panels/ProximityPanel.ts';
-export {
-  useLightingPanel,
-  type AuxLightType,
-  type LightingPanelValues,
-} from './panels/LightingPanel.ts';
-export {
-  useBackgroundPanel,
-  type BackgroundPanelValues,
-} from './panels/BackgroundPanel.ts';
-export {
-  useBotPanel,
-  type BotPanelOptions,
-  type BotPanelValues,
-} from './panels/BotPanel.ts';
-export {
-  useFixedCameraPanel,
-  type FixedCameraPanelValues,
-} from './panels/FixedCameraPanel.ts';
-export {
-  useWorldPanel,
-  type WorldPanelValues,
-} from './panels/WorldPanel.ts';
-export { useSettingsPanel } from './panels/SettingsPanel.ts';
+// ViewConfig: the renderer-tweaker bag Scene takes. Editing UI for
+// these fields lives in the studio package
+// (`packages/studio/src/panels/world/`) — world stays panel-UI-free.
+export type {
+  AuxLightType,
+  ViewConfig,
+  ProximityViewConfig,
+  LightingViewConfig,
+  BackgroundViewConfig,
+  FixedCameraViewConfig,
+  WorldRendererViewConfig,
+} from './viewConfig.ts';

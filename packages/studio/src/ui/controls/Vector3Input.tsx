@@ -3,11 +3,11 @@ import React from 'react';
 import { Field } from './Field.tsx';
 import { NumberInput } from './NumberInput.tsx';
 
-type Vec3 = readonly [number, number, number];
+type Vec3 = [number, number, number];
 
 interface Vector3InputProps {
   label: React.ReactNode;
-  value: Vec3;
+  value: Readonly<Vec3>;
   onChange: (next: Vec3) => void;
   step?: number;
   min?: number;

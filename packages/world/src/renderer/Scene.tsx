@@ -14,22 +14,13 @@ import type {
   SnapshotHandshake,
 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
-import type { BotMode } from '../bot/BotDriver.ts';
 import { Floor } from './Floor.tsx';
 import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
 import { CUBE_SIZE, type CameraMode } from './config.ts';
-import { useLevaPersistence } from './levaPersistence.ts';
-import { useAnimationPanel } from './panels/AnimationPanel.ts';
-import { useProximityPanel } from './panels/ProximityPanel.ts';
-import { useLightingPanel } from './panels/LightingPanel.ts';
-import { useBackgroundPanel } from './panels/BackgroundPanel.ts';
-import { useBotPanel } from './panels/BotPanel.ts';
-import { useFixedCameraPanel } from './panels/FixedCameraPanel.ts';
-import { useWorldPanel } from './panels/WorldPanel.ts';
-import { useSettingsPanel } from './panels/SettingsPanel.ts';
+import type { ViewConfig } from './viewConfig.ts';
 
 /**
  * Each frame, anchor the sun (directional light + its target + the
@@ -85,49 +76,25 @@ interface SceneProps {
   bots: BotPool;
   selfId: string;
   cameraMode: CameraMode;
-  /** Page-level handler for the Leva bot-count control. The page
-   * decides whether to apply the count to the in-browser pool or
-   * promote to Supabase mode and forward to the Node CLI. */
-  onBotCountChange: (count: number) => void;
-  /** Page-level handler for the Leva bot-mode buttons. Mirrors
-   * `onBotCountChange` so mode toggles propagate to whichever pool
-   * (in-browser or CLI) is currently authoritative. */
-  onBotModeChange: (mode: BotMode) => void;
+  /** Renderer-tweaker bag. Studio owns the React state for these
+   * fields and renders the editing UI in its SidePanel; Scene reads
+   * them here to drive the scene graph. Previously these values
+   * came from 8 Leva hooks called inside Scene; the new flow is
+   * fully controlled — see `packages/studio/src/panels/world/`
+   * for the editor. */
+  viewConfig: ViewConfig;
 }
 
 export function Scene(props: SceneProps) {
-  const { store, actions, selfId, cameraMode, sync } = props;
+  const { store, selfId, cameraMode, sync, viewConfig } = props;
+  const { proximity, lighting, background, fixedCamera, world } = viewConfig;
 
-  useLevaPersistence();
-
-  // Mount Leva panels. Each panel owns its own `useControls(...)` and
-  // mirrors the user's input into `actions.setWorldSettings` /
-  // `setWorldMap` as appropriate. Scene only reads the returned values
-  // for scene-graph wiring; broadcast happens inside each panel.
-  //
-  // Order matters: Leva renders folders top-to-bottom in the order
-  // their `useControls` calls run. Keep the in-world / gameplay knobs
-  // up top (Bot, Animation, Proximity, Lighting, Background), then
-  // camera/world setup, then the import/export Settings panel last.
-  useBotPanel({
-    onBotCountChange: props.onBotCountChange,
-    onBotModeChange: props.onBotModeChange,
-  });
-  useAnimationPanel(actions);
-  const proximity = useProximityPanel(actions);
-  const lighting = useLightingPanel(actions);
-  const background = useBackgroundPanel();
-  const fixed = useFixedCameraPanel();
-  const world = useWorldPanel(store, actions);
-  useSettingsPanel();
-
-  // After Scene mounts (and the panel `useEffect`s above have flushed
-  // their initial values into the store), force-broadcast the current
-  // world state. The regular `onStoreChange` diff path only fires when
-  // values *change* — without this, a bot spawned with default world
-  // settings would never receive the canonical values if the user's
-  // Leva config happens to match the SDK defaults. Fires once per
-  // channel-stack swap via the `sync` dependency.
+  // After Scene mounts, force-broadcast the current world state.
+  // The regular `onStoreChange` diff path only fires when values
+  // *change* — without this, a bot spawned with default world
+  // settings would never receive the canonical values if the
+  // studio's persisted config happens to match the SDK defaults.
+  // Fires once per channel-stack swap via the `sync` dependency.
   useEffect(() => {
     sync.broadcastWorldState();
   }, [sync]);
@@ -157,22 +124,22 @@ export function Scene(props: SceneProps) {
 
   const fixedCam = useMemo(
     () => ({
-      azimuthDeg: fixed.azimuthDeg,
-      pitchDeg: fixed.pitchDeg,
-      height: fixed.height,
-      maxOnScreenFrac: fixed.maxOnScreenFrac,
-      minOnScreenFrac: fixed.minOnScreenFrac,
-      lateralFrac: fixed.lateralFrac,
-      fov: fixed.fov,
+      azimuthDeg: fixedCamera.azimuthDeg,
+      pitchDeg: fixedCamera.pitchDeg,
+      height: fixedCamera.height,
+      maxOnScreenFrac: fixedCamera.maxOnScreenFrac,
+      minOnScreenFrac: fixedCamera.minOnScreenFrac,
+      lateralFrac: fixedCamera.lateralFrac,
+      fov: fixedCamera.fov,
     }),
     [
-      fixed.azimuthDeg,
-      fixed.pitchDeg,
-      fixed.height,
-      fixed.maxOnScreenFrac,
-      fixed.minOnScreenFrac,
-      fixed.lateralFrac,
-      fixed.fov,
+      fixedCamera.azimuthDeg,
+      fixedCamera.pitchDeg,
+      fixedCamera.height,
+      fixedCamera.maxOnScreenFrac,
+      fixedCamera.minOnScreenFrac,
+      fixedCamera.lateralFrac,
+      fixedCamera.fov,
     ],
   );
 
@@ -376,8 +343,8 @@ export function Scene(props: SceneProps) {
           bots={props.bots}
           selfId={props.selfId}
           cameraMode={cameraMode}
-          fixedAzimuthDeg={fixed.azimuthDeg}
-          fixedMovementYawOffsetDeg={fixed.movementYawOffsetDeg}
+          fixedAzimuthDeg={fixedCamera.azimuthDeg}
+          fixedMovementYawOffsetDeg={fixedCamera.movementYawOffsetDeg}
           yawRef={yawRef}
           selfBodyRef={selfBodyRef}
         />
