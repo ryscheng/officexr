@@ -56,3 +56,20 @@ test('Add-spawn tool toggle button is wired up', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Add spawn/ })).toBeVisible();
 });
 
+test('EnvironmentPanel renders Lighting / Sky / Stars / HDRI sections', async ({
+  page,
+}) => {
+  await goToMode(page, 'map');
+  await waitForCanvasReady(page);
+
+  // The new EnvironmentPanel replaces the Leva tree in the side
+  // panel. Each <Section> renders its title as an uppercase chip.
+  await expect(page.getByText('Lighting', { exact: true })).toBeVisible();
+  await expect(page.getByText('Sky', { exact: true })).toBeVisible();
+  await expect(page.getByText('Stars', { exact: true })).toBeVisible();
+  await expect(page.getByText('HDRI', { exact: true })).toBeVisible();
+
+  // The "ambient" Field row should always be visible (it's inside
+  // the always-open Lighting section).
+  await expect(page.getByText('ambient', { exact: true })).toBeVisible();
+});
