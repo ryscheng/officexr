@@ -15,8 +15,11 @@ import {
  *   - `pulse`: 25%–75% transparent oscillation. Used by the Delete
  *     tool to denote "click will delete this". The PulseDriver
  *     mounts only when at least one pulse-mode ghost exists.
+ *   - `selected`: 25% opaque, saturated swatch color. Used by the
+ *     Select tool's per-instance overlay so selected cubes read as
+ *     clearly highlighted in addition to the per-cluster wireframe.
  */
-export type GhostMode = 'solid' | 'pulse';
+export type GhostMode = 'solid' | 'pulse' | 'selected';
 
 export interface GhostSpec {
   mode: GhostMode;
@@ -100,6 +103,19 @@ function GhostMeshForGroup({
 
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
   const mat = useMemo(() => {
+    if (mode === 'selected') {
+      // Unlit + saturated swatch + 75% transparent. Replaces the
+      // GLTF's PBR material so the selection reads as a flat,
+      // vivid colour regardless of the scene's lighting.
+      return new THREE.MeshBasicMaterial({
+        color: kind ? kind.swatch : '#fde68a',
+        transparent: true,
+        opacity: 0.25,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+    }
     const base = (extractMaterialFromGltf(gltf.scene) as THREE.MeshStandardMaterial).clone();
     base.transparent = true;
     // Solid ghosts use a constant 0.5; pulse ghosts get overwritten
@@ -108,7 +124,7 @@ function GhostMeshForGroup({
     base.depthWrite = false;
     base.side = THREE.DoubleSide;
     return base;
-  }, [gltf.scene]);
+  }, [gltf.scene, mode, kind]);
 
   const meshRef = useRef<THREE.InstancedMesh>(null);
 

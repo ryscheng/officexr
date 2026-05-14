@@ -11,6 +11,7 @@ import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
 import { snapToVoxel, type SnapHit } from './roomSnap.ts';
+import { clusterTouchingVoxels, type Vec3 as VoxelVec3 } from './voxelCluster.ts';
 
 type Vec3 = [number, number, number];
 
@@ -271,15 +272,29 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const cubeSize = props.compiled.cubeSize;
 
   // Compute the ghost specs the GhostLayer should render this frame.
-  //   Add tool: one SOLID ghost at the snap target (pre-placement).
-  //   Delete tool: one PULSE ghost per cube in the hovered command's
-  //   group (or just the hovered command if it's not in a group).
-  //   Tile tool: depends on the active stage (idle/placed/x-extruded/
-  //   z-extruded). See the TileState comment for the spec.
+  // Always includes a 'selected' ghost overlay for each selected
+  // instance (rendered as a saturated, 75%-transparent overlay so the
+  // selection reads at a glance — see also <SelectionOutline> for the
+  // per-cluster wireframes). Tool-specific previews layer on top:
+  //   Add: one SOLID ghost at the snap target.
+  //   Delete: one PULSE ghost per cube in the hovered command's group.
+  //   Tile: ghosts depending on stage (idle/placed/x-extruded/z-extruded).
   const ghosts = useMemo<GhostSpec[]>(() => {
+    const out: GhostSpec[] = [];
+    // Selection ghost overlay — rendered for every tool.
+    if (props.selection.size > 0) {
+      for (const inst of props.compiled.instances) {
+        if (!props.selection.has(inst.sourceCommandId)) continue;
+        out.push({
+          mode: 'selected',
+          kindId: inst.kindId,
+          voxel: [inst.position[0], inst.position[1], inst.position[2]],
+        });
+      }
+    }
     if (props.tool === 'add' && props.stagedKindId && hover) {
       const voxel = snapToVoxel(hover, cubeSize);
-      return [{ mode: 'solid', kindId: props.stagedKindId, voxel }];
+      out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
     }
     if (props.tool === 'delete' && hoverCommandId) {
       const groupId = props.commandToGroup.get(hoverCommandId);
@@ -287,7 +302,6 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         ? props.groupMembers.get(groupId) ?? [hoverCommandId]
         : [hoverCommandId];
       const targets = new Set(targetCommandIds);
-      const out: GhostSpec[] = [];
       for (const inst of props.compiled.instances) {
         if (!targets.has(inst.sourceCommandId)) continue;
         out.push({
@@ -296,10 +310,8 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           voxel: [inst.position[0], inst.position[1], inst.position[2]],
         });
       }
-      return out;
     }
     if (props.tool === 'tile') {
-      const out: GhostSpec[] = [];
       if (tileState.stage === 'idle' && props.stagedKindId && hover) {
         const voxel = snapToVoxel(hover, cubeSize);
         out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
@@ -321,12 +333,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           out.push({ mode: 'solid', kindId: tileState.kindId, voxel: v });
         }
       }
-      return out;
     }
-    return [];
+    return out;
   }, [
     props.tool,
     props.stagedKindId,
+    props.selection,
     hover,
     hoverCommandId,
     cubeSize,
@@ -644,35 +656,53 @@ interface SelectionOutlineProps {
 }
 
 /**
- * Renders a wireframe box around the AABB of all selected instances
- * (a single command, a group's children, or a multi-select). Replaces
- * the per-instance yellow tint that used to indicate selection — a
- * box around the outer edges is easier to read at a glance,
- * especially for groups.
- *
- * The padding adds a tiny margin so the wireframe sits OUTSIDE the
- * cubes rather than co-planar with them (which would z-fight).
+ * Renders one wireframe AABB per face-connected cluster of selected
+ * voxels. Picking two disjoint cubes from a 2×4 box used to produce
+ * a SINGLE wireframe spanning the entire box, which read as "I have
+ * selected everything" — confusing. Clustering by face-adjacency
+ * (see `clusterTouchingVoxels`) keeps disjoint selections visually
+ * disjoint and only merges adjacent cubes into a single hull.
  */
 function SelectionOutline({ instances, cubeSize, selection }: SelectionOutlineProps) {
-  const bounds = useMemo(() => {
-    if (selection.size === 0) return null;
-    let minX = Infinity;
-    let minY = Infinity;
-    let minZ = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let maxZ = -Infinity;
-    let any = false;
+  const clusters = useMemo(() => {
+    if (selection.size === 0) return [];
+    const voxels: VoxelVec3[] = [];
     for (const inst of instances) {
       if (!selection.has(inst.sourceCommandId)) continue;
-      any = true;
-      const wx = inst.position[0] * cubeSize;
-      const wy = inst.position[1] * cubeSize;
-      const wz = inst.position[2] * cubeSize;
-      // Each cube occupies a `cubeSize`-wide voxel centered at
-      // (wx, wy + cubeSize/2, wz). With a SEAM_OVERLAP of 1.05 the
-      // visible extent is slightly wider; round outward.
-      const half = (cubeSize * 1.05) / 2;
+      voxels.push([inst.position[0], inst.position[1], inst.position[2]]);
+    }
+    return clusterTouchingVoxels(voxels);
+  }, [instances, cubeSize, selection]);
+
+  if (clusters.length === 0) return null;
+
+  return (
+    <>
+      {clusters.map((cluster, idx) => (
+        <ClusterOutline
+          key={idx}
+          cluster={cluster}
+          cubeSize={cubeSize}
+        />
+      ))}
+    </>
+  );
+}
+
+interface ClusterOutlineProps {
+  cluster: VoxelVec3[];
+  cubeSize: number;
+}
+
+function ClusterOutline({ cluster, cubeSize }: ClusterOutlineProps) {
+  const bounds = useMemo(() => {
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    const half = (cubeSize * 1.05) / 2;
+    for (const v of cluster) {
+      const wx = v[0] * cubeSize;
+      const wy = v[1] * cubeSize;
+      const wz = v[2] * cubeSize;
       if (wx - half < minX) minX = wx - half;
       if (wy < minY) minY = wy;
       if (wz - half < minZ) minZ = wz - half;
@@ -680,23 +710,22 @@ function SelectionOutline({ instances, cubeSize, selection }: SelectionOutlinePr
       if (wy + cubeSize > maxY) maxY = wy + cubeSize;
       if (wz + half > maxZ) maxZ = wz + half;
     }
-    if (!any) return null;
     const pad = 0.08;
-    const sizeX = maxX - minX + pad * 2;
-    const sizeY = maxY - minY + pad * 2;
-    const sizeZ = maxZ - minZ + pad * 2;
-    const center = new THREE.Vector3(
-      (minX + maxX) / 2,
-      (minY + maxY) / 2,
-      (minZ + maxZ) / 2,
-    );
-    return { center, sizeX, sizeY, sizeZ };
-  }, [instances, cubeSize, selection]);
+    return {
+      center: new THREE.Vector3(
+        (minX + maxX) / 2,
+        (minY + maxY) / 2,
+        (minZ + maxZ) / 2,
+      ),
+      sizeX: maxX - minX + pad * 2,
+      sizeY: maxY - minY + pad * 2,
+      sizeZ: maxZ - minZ + pad * 2,
+    };
+  }, [cluster, cubeSize]);
 
-  if (!bounds) return null;
   // `<edgesGeometry>` returns only the 12 cube edges; `<boxGeometry>`
   // + wireframe draws every triangle edge (including the X across
-  // each face), which reads as noise on a selection indicator.
+  // each face), which reads as noise.
   return (
     <lineSegments position={bounds.center} renderOrder={2}>
       <edgesGeometry
@@ -875,9 +904,20 @@ interface CubesLayerProps {
 }
 
 function CubesLayer(props: CubesLayerProps) {
+  // Group instances by kind for one InstancedMesh per kind. Selected
+  // instances are filtered out — they get rendered separately in the
+  // GhostLayer as 'selected'-mode saturated overlays so they read
+  // distinctly. Picking still works because clicks come back via
+  // both the opaque cube path AND (separately) the GhostLayer can
+  // forward right-clicks; today, picking a SELECTED cube to deselect
+  // it goes through empty-floor click or Ctrl/Cmd-click on a sibling
+  // cube. This is a deliberate simplification — losing the ability
+  // to direct-click a selected cube costs less than the visual
+  // double-render did.
   const byKind = useMemo(() => {
     const m = new Map<string, ObjectInstance[]>();
     for (const inst of props.instances) {
+      if (props.selection.has(inst.sourceCommandId)) continue;
       let arr = m.get(inst.kindId);
       if (!arr) {
         arr = [];
@@ -886,7 +926,7 @@ function CubesLayer(props: CubesLayerProps) {
       arr.push(inst);
     }
     return m;
-  }, [props.instances]);
+  }, [props.instances, props.selection]);
 
   return (
     <>
