@@ -456,15 +456,32 @@ export function CameraRig({
       const safeMinFrac = Math.max(0.001, fixed.minOnScreenFrac);
       const dNear3D = CHAR_HEIGHT_M / (2 * safeMaxFrac * tanHalfFov);
       const dFar3D = CHAR_HEIGHT_M / (2 * safeMinFrac * tanHalfFov);
-      const minDistance = Math.sqrt(
-        Math.max(0.01, dNear3D * dNear3D - heightOffset * heightOffset),
-      );
-      const maxDistance = Math.max(
-        minDistance + 0.5,
-        Math.sqrt(
-          Math.max(0.01, dFar3D * dFar3D - heightOffset * heightOffset),
-        ),
-      );
+
+      // The XZ distance the camera should sit at, derived from the
+      // 3D distance + the camera's height above the character. When
+      // `heightOffset >= dNear3D`, the requested screen-fraction is
+      // geometrically impossible at this height (the camera can't
+      // physically get closer than `heightOffset` in 3D), so the
+      // formula falls back to a pitch-based XZ that keeps the
+      // character along the camera's look direction. Without this
+      // fallback the leash clamps the camera to XZ=1m from the
+      // player, which puts the character at ~87° below the look
+      // direction — far outside the FOV.
+      const pitchRad = Math.abs(THREE.MathUtils.degToRad(fixed.pitchDeg));
+      const tanPitch = Math.tan(pitchRad);
+      const pitchAlignedXZ =
+        tanPitch > 0.01 ? heightOffset / tanPitch : heightOffset;
+
+      const minXZ =
+        dNear3D > heightOffset
+          ? Math.sqrt(dNear3D * dNear3D - heightOffset * heightOffset)
+          : pitchAlignedXZ * 0.6;
+      const maxXZ =
+        dFar3D > heightOffset
+          ? Math.sqrt(dFar3D * dFar3D - heightOffset * heightOffset)
+          : pitchAlignedXZ * 1.6;
+      const minDistance = Math.max(0.1, minXZ);
+      const maxDistance = Math.max(minDistance + 0.5, maxXZ);
       const maxLateral = fixed.lateralFrac * maxDistance * tanHalfFov;
 
       // Initialize position on entry into fixed mode so the character is

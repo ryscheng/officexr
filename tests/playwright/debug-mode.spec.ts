@@ -1,14 +1,19 @@
 /**
  * Debug mode regressions. The Debug page mounts the full multiplayer
  * Scene with the SDK store, bots, and physics — it's the heaviest tree
- * in the studio. Any silent break here is invisible to unit tests.
+ * in the studio.
  *
- * Approach: probe the SDK store directly via `window.__OFFICE_STORE__`
- * (set by DebugApp) + the rendered DOM via `evaluate`. We deliberately
- * avoid Playwright's `screenshot` / `boundingBox` here — they wait on
- * font load + framebuffer state and tend to hang on the Debug page
- * during boot (Rapier wasm + Physics + bot pool saturate the main
- * thread for several seconds).
+ * Pins:
+ *   - Canvas mounts with positive dimensions.
+ *   - SDK store mirror on `window` has the local player + a bot.
+ *
+ * Pixel-level checks (e.g. "character meshes visible") were attempted
+ * but `page.evaluate` + WebGL readPixels chains hang against the Debug
+ * page — the Rapier+Physics+bot-pool boot saturates the main thread
+ * and GPU stalls compound. Visual regressions like the "leash math
+ * pushed the character out of frame" bug were diagnosed by checking
+ * in screenshots manually. If we get a flakier-but-cheap visual check
+ * working, add it back here.
  */
 
 import { expect, test } from '@playwright/test';
@@ -21,20 +26,19 @@ test('Debug mode mounts a canvas, the SDK store has both the local player and a 
 
   await goToMode(page, 'debug');
 
-  // Poll the page state until both the canvas and the SDK store are
-  // populated. Avoids Playwright auto-actions that wait for fonts.
   let attempts = 0;
-  let state: {
+  type State = {
     canvasW: number;
     canvasH: number;
     hasStore: boolean;
     selfId: string | null;
     playerCount: number;
-  } | null = null;
+  };
+  let state: State | null = null;
   while (attempts < 30) {
     attempts++;
     // eslint-disable-next-line no-await-in-loop
-    state = await page.evaluate(() => {
+    state = (await page.evaluate(() => {
       const c = document.querySelector('canvas');
       type Store = { getState: () => { selfId?: string; players?: object } };
       const store = (window as unknown as { __OFFICE_STORE__?: Store })
@@ -47,7 +51,7 @@ test('Debug mode mounts a canvas, the SDK store has both the local player and a 
         selfId: s?.selfId ?? null,
         playerCount: Object.keys(s?.players ?? {}).length,
       };
-    });
+    })) as State;
     if (
       state.canvasW > 100 &&
       state.canvasH > 100 &&
