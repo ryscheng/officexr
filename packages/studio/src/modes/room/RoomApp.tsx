@@ -83,6 +83,8 @@ export function RoomApp() {
         if (stagedKindId) setTool('add');
       } else if (k === 'x') {
         setTool('delete');
+      } else if (k === 't') {
+        if (stagedKindId) setTool('tile');
       }
     };
     window.addEventListener('keydown', onKey);
@@ -142,6 +144,9 @@ export function RoomApp() {
           onPlaceAt={handlePlace}
           onSelectInstance={handleSelectInstance}
           onDeleteCommand={roomDoc.deleteCommand}
+          onPlaceMany={roomDoc.placeMany}
+          onCreateGroup={roomDoc.groupCommands}
+          onSetTool={setTool}
           onClickEmpty={roomDoc.clearSelection}
         />
         <RoomHud

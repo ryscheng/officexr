@@ -74,17 +74,24 @@ test('RoomPicker exposes a select + new-room input', async ({ page }) => {
   ).toBeVisible();
 });
 
-test('Delete tool button is visible in the toolbar', async ({ page }) => {
+test('Toolbar shows all four tools — Tile is gated on a staged kind', async ({
+  page,
+}) => {
   await goToMode(page, 'room');
   await waitForCanvasReady(page, 1200);
   const toolbar = page.locator('div[role="toolbar"]');
   const buttons = await toolbar.locator('button').all();
-  // Now four tools: Select / Add / Delete / Tile.
   expect(buttons.length).toBe(4);
-  // Delete (3rd) should be enabled (no staged-kind requirement).
+  // Select + Delete are always enabled.
+  await expect(buttons[0]).toBeEnabled();
   await expect(buttons[2]).toBeEnabled();
-  // Tile (4th) should be disabled — "coming soon".
+  // Add (1) + Tile (3) need a staged kind first.
+  await expect(buttons[1]).toBeDisabled();
   await expect(buttons[3]).toBeDisabled();
+  // Stage a kind → both become enabled.
+  await page.click('button[title="Blue block"]');
+  await expect(buttons[1]).toBeEnabled();
+  await expect(buttons[3]).toBeEnabled();
 });
 
 test('Add tool ghost preview renders a blue ghost cube under the cursor', async ({

@@ -50,8 +50,8 @@ export const TOOLS: ReadonlyArray<{
   {
     tool: 'tile',
     label: 'Tile',
-    description: 'Place a rectangular tile of cubes — coming in Task 9.',
+    description:
+      'Place a rectangular tile of cubes. Click 1: origin. Click 2: X row. Click 3: Z grid. Click 4: Y stack. Esc to stop.',
     shortcut: 'T',
-    comingSoon: true,
   },
 ];

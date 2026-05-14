@@ -11,6 +11,109 @@ import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
 import { snapToVoxel, type SnapHit } from './roomSnap.ts';
+
+type Vec3 = [number, number, number];
+
+/**
+ * Tile tool state machine. Spec from the PRD:
+ *
+ *   - idle:        before click 1 — show 1 solid ghost under cursor.
+ *   - placed:      click 1 placed origin; hovering shows ghosts
+ *                  along ±x from origin sized by mouse delta.
+ *   - x-extruded:  click 2 committed the X row + grouped them;
+ *                  hovering shows the X row replicated along ±z.
+ *   - z-extruded:  click 3 committed the X*Z slab + grew the group;
+ *                  hovering shows the slab replicated along ±y.
+ *
+ * Click 4 commits the Y stack and returns to Select. Esc commits
+ * whatever's-real-so-far (nothing extra — every click already
+ * committed something) and returns to Select.
+ *
+ * `groupId` is null until click 2 (no point grouping a singleton);
+ * after that it accumulates every subsequent click's commands.
+ */
+type TileState =
+  | { stage: 'idle' }
+  | {
+      stage: 'placed';
+      origin: Vec3;
+      kindId: string;
+      originCommandId: string;
+    }
+  | {
+      stage: 'x-extruded';
+      origin: Vec3;
+      kindId: string;
+      groupId: string;
+      xRow: readonly Vec3[];
+    }
+  | {
+      stage: 'z-extruded';
+      origin: Vec3;
+      kindId: string;
+      groupId: string;
+      xzGrid: readonly Vec3[];
+    };
+
+/** Generate the X-row preview voxels for the placed stage. Excludes
+ * the origin (which is already a real cube). */
+function tileXRow(origin: Vec3, hover: SnapHit | null, cubeSize: number): Vec3[] {
+  if (!hover) return [];
+  const v = snapToVoxel(hover, cubeSize);
+  const dx = v[0] - origin[0];
+  if (dx === 0) return [];
+  const sign = Math.sign(dx);
+  const count = Math.abs(dx);
+  const out: Vec3[] = [];
+  for (let i = 1; i <= count; i++) {
+    out.push([origin[0] + sign * i, origin[1], origin[2]]);
+  }
+  return out;
+}
+
+/** Replicate the X row along ±z for the x-extruded stage's preview. */
+function tileZReplicas(
+  origin: Vec3,
+  xRow: readonly Vec3[],
+  hover: SnapHit | null,
+  cubeSize: number,
+): Vec3[] {
+  if (!hover) return [];
+  const v = snapToVoxel(hover, cubeSize);
+  const dz = v[2] - origin[2];
+  if (dz === 0) return [];
+  const sign = Math.sign(dz);
+  const count = Math.abs(dz);
+  // Replicate origin + xRow, since the entire X row including origin
+  // is what shifts in z.
+  const fullRow: Vec3[] = [origin, ...xRow];
+  const out: Vec3[] = [];
+  for (let i = 1; i <= count; i++) {
+    for (const p of fullRow) {
+      out.push([p[0], p[1], p[2] + sign * i]);
+    }
+  }
+  return out;
+}
+
+/** Replicate the XZ slab along ±y for the z-extruded stage's preview.
+ * Y direction is derived from the cursor's vertical movement off the
+ * origin's screen position — see `yVoxelDelta`. */
+function tileYReplicas(
+  xzGrid: readonly Vec3[],
+  yDelta: number,
+): Vec3[] {
+  if (yDelta === 0) return [];
+  const sign = Math.sign(yDelta);
+  const count = Math.abs(yDelta);
+  const out: Vec3[] = [];
+  for (let i = 1; i <= count; i++) {
+    for (const p of xzGrid) {
+      out.push([p[0], p[1] + sign * i, p[2]]);
+    }
+  }
+  return out;
+}
 import {
   extractGeometryFromGltf,
   extractMaterialFromGltf,
@@ -48,10 +151,25 @@ interface SceneEditorCanvasProps {
   /** Click on an existing cube with the Delete tool active. Deletes
    * the command (cascading through the group if any). */
   onDeleteCommand: (commandId: string) => void;
+  /** Tile-tool placement: batch-create N cubes at the given voxel
+   * positions, optionally adding them all to the same group. Returns
+   * the new commandIds. */
+  onPlaceMany: (
+    kindId: string,
+    positions: ReadonlyArray<[number, number, number]>,
+    groupId?: string | null,
+  ) => string[];
+  /** Tile-tool group creation. Called after click 2 once we have ≥2
+   * cubes to bundle. Returns the new groupId. */
+  onCreateGroup: (commandIds: Iterable<string>) => string | null;
   /** Click on EMPTY floor with the Select tool — deselects. The
    * canvas only knows that the click missed every cube; the parent
    * decides whether that means "deselect" or some other action. */
   onClickEmpty: () => void;
+  /** Tool-state external setter. Tile tool returns to Select on
+   * click 4 / Esc; the canvas owns the tile state machine but the
+   * `tool` lives in the parent. */
+  onSetTool: (tool: Tool) => void;
 }
 
 /**
@@ -82,6 +200,56 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   // produced.
   const [hoverCommandId, setHoverCommandId] = useState<string | null>(null);
 
+  // Tile-tool state machine. Discriminated union over the four
+  // stages — see the comment at TileState's definition for the spec.
+  const [tileState, setTileState] = useState<TileState>({ stage: 'idle' });
+
+  // Reset the tile state whenever the tool changes away from Tile so
+  // a half-completed gesture doesn't leak across tool switches.
+  useEffect(() => {
+    if (props.tool !== 'tile') setTileState({ stage: 'idle' });
+  }, [props.tool]);
+
+  // Screen-Y anchor for the Tile tool's stage-4 (z-extruded) y-delta
+  // picker. After click 3 we capture the current cursor screen Y;
+  // each ~28 pixels of vertical movement above/below it counts as 1
+  // voxel up/down. Tracked in a ref + state pair so the ghosts
+  // re-render but the listener doesn't re-bind every frame.
+  const yAnchorRef = useRef<number | null>(null);
+  const [yDelta, setYDelta] = useState<number>(0);
+  useEffect(() => {
+    if (tileState.stage !== 'z-extruded') {
+      yAnchorRef.current = null;
+      setYDelta(0);
+      return;
+    }
+    const PIXELS_PER_VOXEL = 28;
+    const onMove = (e: MouseEvent) => {
+      if (yAnchorRef.current === null) yAnchorRef.current = e.clientY;
+      const dy = yAnchorRef.current - e.clientY; // up on screen → +y voxels
+      setYDelta(Math.round(dy / PIXELS_PER_VOXEL));
+    };
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, [tileState.stage]);
+
+  // Esc commits-real-and-exits at any stage. Listening at window level
+  // here keeps the tile state in the canvas's hands — RoomApp's Esc
+  // handler only resets the active tool + selection, and the effect
+  // above clears tile state when the tool flips away.
+  useEffect(() => {
+    if (props.tool !== 'tile') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      setTileState({ stage: 'idle' });
+      props.onSetTool('select');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [props]);
+
   const handleHoverChange = useCallback(
     (next: SnapHit | null) => setHover(next),
     [],
@@ -97,14 +265,14 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   //   Add tool: one SOLID ghost at the snap target (pre-placement).
   //   Delete tool: one PULSE ghost per cube in the hovered command's
   //   group (or just the hovered command if it's not in a group).
-  //   Tile tool: not yet — Task 9.
+  //   Tile tool: depends on the active stage (idle/placed/x-extruded/
+  //   z-extruded). See the TileState comment for the spec.
   const ghosts = useMemo<GhostSpec[]>(() => {
     if (props.tool === 'add' && props.stagedKindId && hover) {
       const voxel = snapToVoxel(hover, cubeSize);
       return [{ mode: 'solid', kindId: props.stagedKindId, voxel }];
     }
     if (props.tool === 'delete' && hoverCommandId) {
-      // Expand to the group's full membership.
       const groupId = props.commandToGroup.get(hoverCommandId);
       const targetCommandIds = groupId
         ? props.groupMembers.get(groupId) ?? [hoverCommandId]
@@ -121,6 +289,31 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       }
       return out;
     }
+    if (props.tool === 'tile') {
+      const out: GhostSpec[] = [];
+      if (tileState.stage === 'idle' && props.stagedKindId && hover) {
+        const voxel = snapToVoxel(hover, cubeSize);
+        out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
+      } else if (tileState.stage === 'placed') {
+        for (const v of tileXRow(tileState.origin, hover, cubeSize)) {
+          out.push({ mode: 'solid', kindId: tileState.kindId, voxel: v });
+        }
+      } else if (tileState.stage === 'x-extruded') {
+        for (const v of tileZReplicas(
+          tileState.origin,
+          tileState.xRow,
+          hover,
+          cubeSize,
+        )) {
+          out.push({ mode: 'solid', kindId: tileState.kindId, voxel: v });
+        }
+      } else if (tileState.stage === 'z-extruded') {
+        for (const v of tileYReplicas(tileState.xzGrid, yDelta)) {
+          out.push({ mode: 'solid', kindId: tileState.kindId, voxel: v });
+        }
+      }
+      return out;
+    }
     return [];
   }, [
     props.tool,
@@ -131,6 +324,8 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     props.commandToGroup,
     props.groupMembers,
     props.compiled.instances,
+    tileState,
+    yDelta,
   ]);
 
   // Map an Add-tool click to a placement. Reads from the freshly-
@@ -154,6 +349,87 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       setHoverCommandId(null);
     },
     [props],
+  );
+
+  // Tile-tool click dispatcher. Drives the 4-stage state machine
+  // forward. Every click commits the cubes that were being previewed
+  // as ghosts, then advances to the next stage. Click 4 commits the
+  // Y stack and returns to Select.
+  const handleTileClick = useCallback(
+    (hit: SnapHit) => {
+      if (props.tool !== 'tile' || !props.stagedKindId) return;
+      const stagedKindId = props.stagedKindId;
+      if (tileState.stage === 'idle') {
+        // Click 1: place the origin cube.
+        const voxel = snapToVoxel(hit, cubeSize);
+        const ids = props.onPlaceMany(stagedKindId, [voxel]);
+        if (ids.length === 0) return;
+        setTileState({
+          stage: 'placed',
+          origin: voxel,
+          kindId: stagedKindId,
+          originCommandId: ids[0],
+        });
+        return;
+      }
+      if (tileState.stage === 'placed') {
+        // Click 2: commit the X row (if any) + create the group.
+        const xRow = tileXRow(tileState.origin, hit, cubeSize);
+        if (xRow.length > 0) {
+          const newIds = props.onPlaceMany(stagedKindId, xRow);
+          const groupId = props.onCreateGroup([
+            tileState.originCommandId,
+            ...newIds,
+          ]);
+          if (groupId) {
+            setTileState({
+              stage: 'x-extruded',
+              origin: tileState.origin,
+              kindId: tileState.kindId,
+              groupId,
+              xRow,
+            });
+            return;
+          }
+        }
+        // Empty X row → stay in `placed` (the user can move and click
+        // again, or Esc out with just the origin placed).
+        return;
+      }
+      if (tileState.stage === 'x-extruded') {
+        // Click 3: commit Z replicas, extending the group.
+        const zReplicas = tileZReplicas(
+          tileState.origin,
+          tileState.xRow,
+          hit,
+          cubeSize,
+        );
+        if (zReplicas.length > 0) {
+          props.onPlaceMany(stagedKindId, zReplicas, tileState.groupId);
+          // The slab is now origin + xRow + zReplicas.
+          const xzGrid = [tileState.origin, ...tileState.xRow, ...zReplicas];
+          setTileState({
+            stage: 'z-extruded',
+            origin: tileState.origin,
+            kindId: tileState.kindId,
+            groupId: tileState.groupId,
+            xzGrid,
+          });
+        }
+        return;
+      }
+      if (tileState.stage === 'z-extruded') {
+        // Click 4: commit Y replicas, extending the group, then exit.
+        const yReplicas = tileYReplicas(tileState.xzGrid, yDelta);
+        if (yReplicas.length > 0) {
+          props.onPlaceMany(stagedKindId, yReplicas, tileState.groupId);
+        }
+        setTileState({ stage: 'idle' });
+        props.onSetTool('select');
+        return;
+      }
+    },
+    [props, tileState, cubeSize, yDelta],
   );
 
   return (
@@ -182,6 +458,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         onHoverCommand={handleHoverCommand}
         onAddClick={handleAddClick}
         onDeleteClick={handleDeleteClick}
+        onTileClick={handleTileClick}
       />
       <FloorPicker
         cubeSize={props.compiled.cubeSize}
@@ -191,6 +468,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         onPlaceAt={props.onPlaceAt}
         onClickEmpty={props.onClickEmpty}
         onHoverFloor={handleHoverChange}
+        onTileClick={handleTileClick}
       />
       <GhostLayer ghosts={ghosts} cubeSize={cubeSize} />
       <SelectionOutline
@@ -437,6 +715,8 @@ interface CubesLayerProps {
   /** Delete-tool click — caller deletes the command (cascading
    * through groups). */
   onDeleteClick: (commandId: string) => void;
+  /** Tile-tool click — caller advances the tile state machine. */
+  onTileClick: (hit: SnapHit) => void;
 }
 
 function CubesLayer(props: CubesLayerProps) {
@@ -468,6 +748,7 @@ function CubesLayer(props: CubesLayerProps) {
           onHoverCommand={props.onHoverCommand}
           onAddClick={props.onAddClick}
           onDeleteClick={props.onDeleteClick}
+          onTileClick={props.onTileClick}
         />
       ))}
     </>
@@ -485,6 +766,7 @@ interface KindGroupProps {
   onHoverCommand: (commandId: string | null) => void;
   onAddClick: (hit: SnapHit) => void;
   onDeleteClick: (commandId: string) => void;
+  onTileClick: (hit: SnapHit) => void;
 }
 
 function KindGroup({
@@ -498,6 +780,7 @@ function KindGroup({
   onHoverCommand,
   onAddClick,
   onDeleteClick,
+  onTileClick,
 }: KindGroupProps) {
   const gltf = useGLTF(kind.gltfPath);
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
@@ -538,7 +821,13 @@ function KindGroup({
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     // Only respond to LEFT-click. Right-click is owned by the camera.
     if (e.button !== 0) return;
-    if (tool !== 'select' && tool !== 'add' && tool !== 'delete') return;
+    if (
+      tool !== 'select' &&
+      tool !== 'add' &&
+      tool !== 'delete' &&
+      tool !== 'tile'
+    )
+      return;
     e.stopPropagation();
     const instanceIdx = e.instanceId;
     if (instanceIdx === undefined) return;
@@ -574,6 +863,8 @@ function KindGroup({
         onAddClick(cubeHit);
       } else if (tool === 'delete') {
         onDeleteClick(inst.sourceCommandId);
+      } else if (tool === 'tile' && cubeHit) {
+        onTileClick(cubeHit);
       }
     };
     window.addEventListener('pointermove', onMove);
@@ -581,7 +872,7 @@ function KindGroup({
   };
 
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
-    if (tool !== 'add' && tool !== 'delete') return;
+    if (tool !== 'add' && tool !== 'delete' && tool !== 'tile') return;
     const instanceIdx = e.instanceId;
     if (instanceIdx === undefined) return;
     const inst = instances[instanceIdx];
@@ -589,7 +880,7 @@ function KindGroup({
     // R3F fires pointermove on every raycast intersection front-to-back.
     // Stop here so the floor's handler doesn't overwrite our cube state.
     e.stopPropagation();
-    if (tool === 'add') {
+    if (tool === 'add' || tool === 'tile') {
       const n = e.face?.normal;
       if (!n) return;
       onHoverCube({
@@ -635,6 +926,9 @@ interface FloorPickerProps {
   /** Called on pointermove over the floor with a SnapHit so the
    * parent can drive the Add/Tile ghost preview. */
   onHoverFloor: (hit: SnapHit | null) => void;
+  /** Tile-tool click on empty floor — caller advances the tile
+   * state machine. */
+  onTileClick: (hit: SnapHit) => void;
 }
 
 function FloorPicker({
@@ -645,6 +939,7 @@ function FloorPicker({
   onPlaceAt,
   onClickEmpty,
   onHoverFloor,
+  onTileClick,
 }: FloorPickerProps) {
   // Snap the floor hit at the current build height instead of always
   // y=0. Floor hits give XZ; the build height fills the Y so the
@@ -676,6 +971,20 @@ function FloorPicker({
       if (moved || u.button !== 0) return;
       if (tool === 'add' && stagedKindId) {
         onPlaceAt(snapFloor(point));
+      } else if (tool === 'tile' && stagedKindId) {
+        // Build a synthetic FloorHit with the build-height baked into
+        // the point's y so downstream `snapToVoxel` picks the right
+        // voxel; the tile state machine then uses `snapToVoxel` on
+        // this hit.
+        const voxel = snapFloor(point);
+        onTileClick({
+          kind: 'floor',
+          point: {
+            x: voxel[0] * cubeSize,
+            y: voxel[1] * cubeSize,
+            z: voxel[2] * cubeSize,
+          },
+        });
       } else if (tool === 'select') {
         onClickEmpty();
       }
@@ -690,7 +999,7 @@ function FloorPicker({
   // point so any subsequent `snapToVoxel` call on this hit produces
   // the right voxel.
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
-    if (tool !== 'add') return;
+    if (tool !== 'add' && tool !== 'tile') return;
     // We pass the FloorHit through but force the y to the build
     // height's world equivalent. The parent canvas's `snapToVoxel`
     // computes (round(x/cubeSize), 0, round(z/cubeSize)); we override
@@ -713,7 +1022,7 @@ function FloorPicker({
   };
 
   const handlePointerOut = () => {
-    if (tool === 'add') onHoverFloor(null);
+    if (tool === 'add' || tool === 'tile') onHoverFloor(null);
   };
 
   // Picker plane sits at `buildHeight` (in voxel units) + a tiny
