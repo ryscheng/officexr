@@ -24,6 +24,13 @@ export function RoomApp() {
   const roomDoc = useRoomDocument();
   const [tool, setTool] = useState<Tool>('select');
   const [stagedKindId, setStagedKindId] = useState<string | null>(null);
+  // Current build height (integer voxel y). The Add tool's floor
+  // picker sits at this y; Q lowers it, E raises it. The visible
+  // EndlessGrid stays at world y=0 as a reference plane — the build
+  // height is independent of it so the user can place cubes below
+  // y=0 (negative voxels) by pressing Q, or stack high in the sky by
+  // pressing E.
+  const [buildHeight, setBuildHeight] = useState<number>(0);
 
   // Picking a kind in the palette implies "I want to place this".
   // Switch to Add automatically; un-pick reverts to Select.
@@ -44,15 +51,30 @@ export function RoomApp() {
     [stagedKindId, roomDoc],
   );
 
-  // Esc returns to Select tool no matter where the focus is — mirrors
-  // the user spec: "Esc automatically returns to select tool".
+  // Keyboard shortcuts.
+  //   Esc returns to Select + clears selection (per spec: "Esc
+  //     automatically returns to select tool").
+  //   Q / E shift the Add tool's build height down / up by one voxel.
+  //     The grid plane is a visual reference only — Q/E let the user
+  //     place cubes below or above it without needing an existing
+  //     cube to snap off.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-      setTool('select');
-      roomDoc.clearSelection();
+      if (e.key === 'Escape') {
+        setTool('select');
+        roomDoc.clearSelection();
+        return;
+      }
+      // Don't hijack Q/E when a modifier is held — those are reserved
+      // for future shortcuts like Ctrl+Z.
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.key === 'q' || e.key === 'Q') {
+        setBuildHeight((y) => y - 1);
+      } else if (e.key === 'e' || e.key === 'E') {
+        setBuildHeight((y) => y + 1);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -99,6 +121,7 @@ export function RoomApp() {
           selection={roomDoc.selection}
           tool={tool}
           stagedKindId={stagedKindId}
+          buildHeight={buildHeight}
           onPlaceAt={handlePlace}
           onSelectInstance={handleSelectInstance}
           onClickEmpty={roomDoc.clearSelection}
@@ -107,6 +130,7 @@ export function RoomApp() {
           roomName={roomDoc.roomName}
           tool={tool}
           selectionSize={roomDoc.selection.size}
+          buildHeight={buildHeight}
         />
         <Toolbar
           active={tool}
@@ -132,6 +156,7 @@ function RoomHud(props: {
   roomName: string;
   tool: Tool;
   selectionSize: number;
+  buildHeight: number;
 }) {
   const selLabel =
     props.selectionSize === 0
@@ -154,8 +179,8 @@ function RoomHud(props: {
         whiteSpace: 'pre-line',
       }}
     >
-      {`Room: ${props.roomName} · Tool: ${props.tool} · Selection: ${selLabel}
-WASD/QE to fly · right-drag to look · scroll to dolly · Ctrl/Cmd-click to multi-select`}
+      {`Room: ${props.roomName} · Tool: ${props.tool} · Selection: ${selLabel} · Build y: ${props.buildHeight}
+right-drag to orbit · scroll to zoom · Q/E to lower/raise build height · Ctrl/Cmd-click to multi-select`}
     </div>
   );
 }

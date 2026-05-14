@@ -27,6 +27,11 @@ interface SceneEditorCanvasProps {
   tool: Tool;
   /** Cube kind staged for the Add tool. */
   stagedKindId: string | null;
+  /** Integer voxel y the Add-tool floor picker sits at. The grid
+   * plane at world y=0 is a visual reference; this can be any int
+   * (positive or negative) so users can place cubes anywhere along
+   * the y axis. */
+  buildHeight: number;
   /** Click on an empty cell (no cube hit) with the Add tool active —
    * places a cube of the staged kind at the picked floor position.
    * Coords are integer voxels. */
@@ -123,6 +128,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         cubeSize={props.compiled.cubeSize}
         tool={props.tool}
         stagedKindId={props.stagedKindId}
+        buildHeight={props.buildHeight}
         onPlaceAt={props.onPlaceAt}
         onClickEmpty={props.onClickEmpty}
         onHoverFloor={handleHoverChange}
@@ -543,6 +549,10 @@ interface FloorPickerProps {
   cubeSize: number;
   tool: Tool;
   stagedKindId: string | null;
+  /** Integer voxel y the picker plane sits at. Q/E shift it in
+   * `RoomApp`; the EndlessGrid stays at world y=0 as a visual
+   * reference but cube placement is free to happen at any y. */
+  buildHeight: number;
   onPlaceAt: (position: [number, number, number]) => void;
   onClickEmpty: () => void;
   /** Called on pointermove over the floor with a SnapHit so the
@@ -554,10 +564,21 @@ function FloorPicker({
   cubeSize,
   tool,
   stagedKindId,
+  buildHeight,
   onPlaceAt,
   onClickEmpty,
   onHoverFloor,
 }: FloorPickerProps) {
+  // Snap the floor hit at the current build height instead of always
+  // y=0. Floor hits give XZ; the build height fills the Y so the
+  // picker isn't a hard floor — Q/E in RoomApp let the user place
+  // cubes below the grid (y<0) or above it (y>0).
+  const snapFloor = (point: { x: number; y: number; z: number }): [number, number, number] => {
+    const v = snapToVoxel({ kind: 'floor', point }, cubeSize);
+    v[1] = buildHeight;
+    return v;
+  };
+
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (e.button !== 0) return;
     const startX = e.clientX;
@@ -577,11 +598,7 @@ function FloorPicker({
       window.removeEventListener('pointerup', onUp);
       if (moved || u.button !== 0) return;
       if (tool === 'add' && stagedKindId) {
-        const voxel = snapToVoxel(
-          { kind: 'floor', point },
-          cubeSize,
-        );
-        onPlaceAt(voxel);
+        onPlaceAt(snapFloor(point));
       } else if (tool === 'select') {
         onClickEmpty();
       }
@@ -590,11 +607,31 @@ function FloorPicker({
     window.addEventListener('pointerup', onUp);
   };
 
+  // The hover SnapHit carries the build height directly (rather than
+  // letting the upstream snap re-snap to y=0). We forge a
+  // FloorHit-like shape but with the picker's world y baked into the
+  // point so any subsequent `snapToVoxel` call on this hit produces
+  // the right voxel.
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (tool !== 'add') return;
+    // We pass the FloorHit through but force the y to the build
+    // height's world equivalent. The parent canvas's `snapToVoxel`
+    // computes (round(x/cubeSize), 0, round(z/cubeSize)); we override
+    // the y in `snapFloor` above for clicks, and the hover SnapHit
+    // is only used to draw the ghost — the ghost layer reads voxel
+    // coords post-snap, so we pre-snap here and re-emit.
+    const voxel = snapFloor({
+      x: e.point.x,
+      y: e.point.y,
+      z: e.point.z,
+    });
     onHoverFloor({
       kind: 'floor',
-      point: { x: e.point.x, y: e.point.y, z: e.point.z },
+      point: {
+        x: voxel[0] * cubeSize,
+        y: voxel[1] * cubeSize,
+        z: voxel[2] * cubeSize,
+      },
     });
   };
 
@@ -602,16 +639,16 @@ function FloorPicker({
     if (tool === 'add') onHoverFloor(null);
   };
 
-  // y=0.01 instead of y=0 so the picker sits visually ON the grid
-  // but is technically CLOSER to the camera. R3F's raycaster returns
-  // hits sorted by distance, and the EndlessGrid at y=0 is the same
-  // plane; placing the picker an epsilon above means it's the first
-  // hit and reliably receives onPointerMove (otherwise R3F can pick
-  // the EndlessGrid first and we never see the pointer events).
+  // Picker plane sits at `buildHeight` (in voxel units) + a tiny
+  // epsilon above so R3F's raycaster prefers it over the EndlessGrid
+  // mesh whenever they overlap (the grid is at world y=0). When
+  // buildHeight != 0 the picker is well above/below the grid and
+  // there's no overlap; the epsilon only matters at y=0.
+  const pickerWorldY = buildHeight * cubeSize + 0.01;
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, 0.01, 0]}
+      position={[0, pickerWorldY, 0]}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerOut={handlePointerOut}
