@@ -1,9 +1,8 @@
 import React from 'react';
-import { Leva } from 'leva';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
+import { KindEditorPanel } from './KindEditorPanel.tsx';
 import { KindList } from './KindList.tsx';
-import { useKindEditor } from './KindEditor.ts';
 import { ObjectPreviewCanvas } from './ObjectPreviewCanvas.tsx';
 import { useObjectCatalog } from './useObjectCatalog.ts';
 
@@ -13,15 +12,15 @@ import { useObjectCatalog } from './useObjectCatalog.ts';
  *   - Main:       ObjectPreviewCanvas — single rotating instance of
  *                 the selected kind with live material override
  *                 application.
- *   - SidePanel:  Leva controls for the selected kind. Edits hit
- *                 the in-memory catalog synchronously (so the
- *                 preview + Room editor's palette + ObjectInstances
- *                 renderer update live) and round-trip to
- *                 /api/cube-kinds with a 500ms debounce.
+ *   - SidePanel:  KindEditorPanel (label, category, swatch, walkable,
+ *                 scale, and material overrides). Edits hit the
+ *                 in-memory catalog synchronously (so the preview +
+ *                 Room editor's palette + ObjectInstances renderer
+ *                 update live) and round-trip to /api/cube-kinds with
+ *                 a 500ms debounce.
  */
 export function ObjectApp() {
   const catalog = useObjectCatalog();
-  useKindEditor({ kind: catalog.selectedKind, applyPatch: catalog.applyPatch });
 
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
@@ -45,7 +44,10 @@ export function ObjectApp() {
         <PreviewHud kind={catalog.selectedKind ? catalog.selectedKind.id : null} />
       </main>
       <SidePanel>
-        <Leva fill flat titleBar={{ drag: false }} />
+        <KindEditorPanel
+          kind={catalog.selectedKind}
+          applyPatch={catalog.applyPatch}
+        />
       </SidePanel>
     </div>
   );

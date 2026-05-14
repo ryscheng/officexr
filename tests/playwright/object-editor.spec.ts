@@ -61,7 +61,7 @@ test('Object editor sums category row counts to the catalog total', async ({
   expect(sum, 'category row counts sum to API total').toBe(expectedTotal);
 });
 
-test('Object editor renders a preview canvas and Leva kind controls', async ({
+test('Object editor renders a preview canvas and the kind controls panel', async ({
   page,
 }) => {
   await goToMode(page, 'object');
@@ -69,24 +69,30 @@ test('Object editor renders a preview canvas and Leva kind controls', async ({
   // The preview canvas is the only <canvas> on the page.
   await expect(page.locator('canvas')).toBeVisible();
 
-  // Leva renders into the SidePanel when `<Leva fill flat>` is used.
-  // The KindEditor hook registers a "Kind" folder; verify its
-  // standard fields are visible. Field labels are rendered as
-  // <label> elements by Leva.
+  // KindEditorPanel uses our control kit; each Field renders a
+  // <label> with the field name. Verify the standard rows are
+  // present.
   await expect(page.getByText('label', { exact: true })).toBeVisible();
   await expect(page.getByText('scale', { exact: true })).toBeVisible();
   await expect(page.getByText('walkable', { exact: true })).toBeVisible();
+  await expect(page.getByText('category', { exact: true })).toBeVisible();
+  // The "Kind" section header from <Section>.
+  await expect(page.getByText('Kind', { exact: true })).toBeVisible();
 });
 
 test('Switching kinds does NOT clobber the new kind with previous kind values', async ({
   page,
   request,
 }) => {
-  // Regression: prior to the KindEditorMount key-remount fix, Leva's
-  // useControls store retained the previous kind's slider values
-  // across the `[kind.id]` dep change and fired onChange with those
-  // stale values on the next mount — which patched the newly-
-  // selected kind in the catalog with the previous kind's settings.
+  // Regression canary, retained across the Leva → shadcn migration.
+  // With Leva, switching kindA → kindB fired onChange with kindA's
+  // stale cached value against kindB's handler, clobbering B's
+  // catalog entry. The shadcn-based KindEditorPanel is fully
+  // controlled (no module-level Leva store), so the bug class is
+  // structurally impossible — but we keep the assertion so any
+  // future regression that re-introduces an uncontrolled control
+  // gets caught at the data-invariant level (catalog reads back
+  // unchanged after a kind switch with no user typing).
 
   // Pick two distinct kinds from the catalog to switch between.
   const apiResp = await request.get('http://localhost:5174/api/cube-kinds');
