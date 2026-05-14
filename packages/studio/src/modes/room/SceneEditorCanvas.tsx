@@ -11,7 +11,7 @@ import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
 import { snapToVoxel, type SnapHit } from './roomSnap.ts';
-import { clusterTouchingVoxels, type Vec3 as VoxelVec3 } from './voxelCluster.ts';
+import { outlineEdgePositions, type Vec3 as VoxelVec3 } from './selectionOutline.ts';
 
 type Vec3 = [number, number, number];
 
@@ -648,83 +648,35 @@ interface SelectionOutlineProps {
 }
 
 /**
- * Renders one wireframe AABB per face-connected cluster of selected
- * voxels. Picking two disjoint cubes from a 2×4 box used to produce
- * a SINGLE wireframe spanning the entire box, which read as "I have
- * selected everything" — confusing. Clustering by face-adjacency
- * (see `clusterTouchingVoxels`) keeps disjoint selections visually
- * disjoint and only merges adjacent cubes into a single hull.
+ * Renders a wireframe that traces the actual silhouette of the
+ * selection — exterior-face edges of every selected voxel, deduped
+ * where two cubes share a face's perimeter. An L-shape selection
+ * outlines an L (with the inner corner visible) rather than a
+ * rectangle that includes empty space. Disjoint cubes naturally
+ * produce disjoint outlines because they share no faces.
+ *
+ * Edges sit on exact voxel boundaries so dedup is precise; the
+ * material uses `depthTest: false` so the wireframe stays visible
+ * even when coplanar with the cube surface.
  */
 function SelectionOutline({ instances, cubeSize, selection }: SelectionOutlineProps) {
-  const clusters = useMemo(() => {
-    if (selection.size === 0) return [];
+  const geometry = useMemo(() => {
+    if (selection.size === 0) return null;
     const voxels: VoxelVec3[] = [];
     for (const inst of instances) {
       if (!selection.has(inst.sourceCommandId)) continue;
       voxels.push([inst.position[0], inst.position[1], inst.position[2]]);
     }
-    return clusterTouchingVoxels(voxels);
+    const positions = outlineEdgePositions(voxels, cubeSize);
+    if (positions.length === 0) return null;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return geom;
   }, [instances, cubeSize, selection]);
 
-  if (clusters.length === 0) return null;
-
+  if (!geometry) return null;
   return (
-    <>
-      {clusters.map((cluster, idx) => (
-        <ClusterOutline
-          key={idx}
-          cluster={cluster}
-          cubeSize={cubeSize}
-        />
-      ))}
-    </>
-  );
-}
-
-interface ClusterOutlineProps {
-  cluster: VoxelVec3[];
-  cubeSize: number;
-}
-
-function ClusterOutline({ cluster, cubeSize }: ClusterOutlineProps) {
-  const bounds = useMemo(() => {
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    const half = (cubeSize * 1.05) / 2;
-    for (const v of cluster) {
-      const wx = v[0] * cubeSize;
-      const wy = v[1] * cubeSize;
-      const wz = v[2] * cubeSize;
-      if (wx - half < minX) minX = wx - half;
-      if (wy < minY) minY = wy;
-      if (wz - half < minZ) minZ = wz - half;
-      if (wx + half > maxX) maxX = wx + half;
-      if (wy + cubeSize > maxY) maxY = wy + cubeSize;
-      if (wz + half > maxZ) maxZ = wz + half;
-    }
-    const pad = 0.08;
-    return {
-      center: new THREE.Vector3(
-        (minX + maxX) / 2,
-        (minY + maxY) / 2,
-        (minZ + maxZ) / 2,
-      ),
-      sizeX: maxX - minX + pad * 2,
-      sizeY: maxY - minY + pad * 2,
-      sizeZ: maxZ - minZ + pad * 2,
-    };
-  }, [cluster, cubeSize]);
-
-  // `<edgesGeometry>` returns only the 12 cube edges; `<boxGeometry>`
-  // + wireframe draws every triangle edge (including the X across
-  // each face), which reads as noise.
-  return (
-    <lineSegments position={bounds.center} renderOrder={2}>
-      <edgesGeometry
-        args={[
-          new THREE.BoxGeometry(bounds.sizeX, bounds.sizeY, bounds.sizeZ),
-        ]}
-      />
+    <lineSegments renderOrder={2} geometry={geometry}>
       <lineBasicMaterial
         color="#fde68a"
         transparent
