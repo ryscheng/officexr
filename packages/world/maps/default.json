@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "default",
   "title": "Default Map",
-  "updatedAt": 1778744811893,
+  "updatedAt": 1778791500340,
   "rooms": [
     {
       "id": "room-1",
@@ -16,12 +16,11 @@
   ],
   "spawnPoints": [
     {
-      "id": "spawn-1",
-      "label": "origin",
+      "id": "spawn-1-j5fu",
       "position": [
+        4.797520348603996,
         0,
-        0,
-        0
+        13.069225398361233
       ]
     }
   ],
