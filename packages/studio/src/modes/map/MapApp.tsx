@@ -7,6 +7,7 @@ import { MapPicker } from './MapPicker.tsx';
 import { RoomPalette } from './RoomPalette.tsx';
 import { RoomInstanceList } from './RoomInstanceList.tsx';
 import { SpawnList } from './SpawnList.tsx';
+import { useEnvironmentPanel } from './useEnvironmentPanel.ts';
 import { useMapDocument } from './useMapDocument.ts';
 import { useMapRoomLibrary } from './useMapRoomLibrary.ts';
 
@@ -30,6 +31,11 @@ export function MapApp() {
   }, [map.doc.rooms]);
   const library = useMapRoomLibrary(referenced);
   const [spawnToolActive, setSpawnToolActive] = useState(false);
+  useEnvironmentPanel({
+    mapName: map.mapName,
+    environment: map.doc.environment,
+    setEnvironment: map.setEnvironment,
+  });
 
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>

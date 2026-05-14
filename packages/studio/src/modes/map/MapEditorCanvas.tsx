@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei';
+import { Environment, Sky, Stars, useGLTF } from '@react-three/drei';
 import {
   compileScene,
   useCubeCatalog,
@@ -66,6 +66,7 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
         color={props.doc.environment.sun.color}
         intensity={props.doc.environment.sun.intensity}
       />
+      <EnvironmentLayer environment={props.doc.environment} />
       <EndlessGrid />
       <FloorPicker
         onPlaceSpawn={props.onPlaceSpawn}
@@ -87,6 +88,66 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
       />
       <FlyCamera />
     </Canvas>
+  );
+}
+
+// --- Environment (drei Sky + Stars + Environment HDRI) ----------
+
+interface EnvironmentLayerProps {
+  environment: import('@officexr/world/scenes').MapEnvironment;
+}
+
+/**
+ * Conditionally mounts drei's Sky / Stars / Environment based on the
+ * map's `MapEnvironment` block. Each section is independent — a map
+ * can have Stars without Sky and HDRI without either.
+ *
+ * The Environment preset name is round-tripped through `hdri.url`;
+ * `environment-presets.ts` is the source of truth for the allowed
+ * preset slugs. `'none'` is the explicit "no preset" sentinel and
+ * collapses to `hdri = null` in the document, so it never reaches
+ * this component.
+ */
+function EnvironmentLayer({ environment }: EnvironmentLayerProps) {
+  const { sky, stars, hdri } = environment;
+  // drei's <Sky> wants a sunPosition vector — derive from
+  // inclination/azimuth so the user's sliders matter even when the
+  // sun is shadow-cast from the same direction by `directionalLight`
+  // above. We DELIBERATELY don't try to keep these locked together —
+  // the user might want a dramatic backlight where the sun-shadow
+  // direction and the sky's bright spot disagree.
+  return (
+    <>
+      {sky?.enabled ? (
+        <Sky
+          turbidity={sky.turbidity}
+          rayleigh={sky.rayleigh}
+          inclination={sky.inclination}
+          azimuth={sky.azimuth}
+        />
+      ) : null}
+      {stars?.enabled ? (
+        <Stars
+          radius={stars.radius}
+          depth={stars.depth}
+          count={stars.count}
+          factor={stars.factor}
+          saturation={stars.saturation}
+          fade={stars.fade}
+        />
+      ) : null}
+      {hdri ? (
+        <Environment
+          // The doc stash the preset name in `url` (see
+          // `environment-presets.ts` for the rationale). When the
+          // schema grows to support uploaded HDRs, switch to
+          // `files={hdri.url}` when it looks like a URL.
+          preset={hdri.url as any}
+          environmentIntensity={hdri.intensity}
+          background={hdri.background}
+        />
+      ) : null}
+    </>
   );
 }
 
