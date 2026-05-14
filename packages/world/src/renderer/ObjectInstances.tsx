@@ -49,28 +49,47 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
   }, [store]);
 
   const kinds = useCubeCatalog();
+  const kindById = useMemo(() => {
+    const m = new Map<string, CubeKindEntry>();
+    for (const k of kinds) m.set(k.id, k);
+    return m;
+  }, [kinds]);
 
   // Group instances by kind so each kind gets one InstancedMesh.
-  const byKind = useMemo(() => {
-    const m = new Map<string, ObjectInstance[]>();
+  // Only kinds that actually have at least one instance produce a
+  // `<KindInstanceGroup>` — every group triggers `useGLTF(...)` which
+  // suspends until the GLTF resolves. Rendering one group per
+  // catalog entry instead means a 281-kind catalog (post-`pnpm
+  // asset-packs:install`) attempts to load all 281 GLTFs at mount,
+  // which hangs the Debug scene until they ALL complete. Filtering
+  // to the actually-used kinds keeps mount work proportional to the
+  // scene's content.
+  const usedKinds = useMemo(() => {
+    const byKind = new Map<string, ObjectInstance[]>();
     for (const inst of snapshot.instances) {
-      let arr = m.get(inst.kindId);
+      let arr = byKind.get(inst.kindId);
       if (!arr) {
         arr = [];
-        m.set(inst.kindId, arr);
+        byKind.set(inst.kindId, arr);
       }
       arr.push(inst);
     }
-    return m;
-  }, [snapshot]);
+    const out: Array<{ kind: CubeKindEntry; instances: ObjectInstance[] }> = [];
+    for (const [kindId, instances] of byKind) {
+      const kind = kindById.get(kindId);
+      if (!kind) continue;
+      out.push({ kind, instances });
+    }
+    return out;
+  }, [snapshot, kindById]);
 
   return (
     <>
-      {kinds.map((kind) => (
+      {usedKinds.map(({ kind, instances }) => (
         <KindInstanceGroup
           key={kind.id}
           kind={kind}
-          instances={byKind.get(kind.id) ?? []}
+          instances={instances}
           cubeSize={snapshot.cubeSize}
         />
       ))}

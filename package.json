@@ -28,9 +28,12 @@
     "supabase:test:upgrade-realtime": "bash tools/supabase-test/upgrade-realtime.sh",
     "bots:start": "pnpm --filter @officexr/world run bots:start",
     "dev:studio": "pnpm --filter @officexr/studio run dev",
-    "asset-packs:install": "pnpm --filter @officexr/world run asset-packs:install"
+    "asset-packs:install": "pnpm --filter @officexr/world run asset-packs:install",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
   },
   "devDependencies": {
-    "playwright": "^1.59.1"
+    "@playwright/test": "^1.60.0"
   }
 }

@@ -59,3 +59,5 @@ tools/supabase-test/supabase/.branches/
 packages/studio/public/models/furniture/
 packages/studio/public/models/prototype/
 packages/studio/public/models/restaurant/
+test-results/
+playwright-report/
