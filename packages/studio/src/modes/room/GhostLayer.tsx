@@ -110,7 +110,7 @@ function GhostMeshForGroup({
       return new THREE.MeshBasicMaterial({
         color: kind ? kind.swatch : '#fde68a',
         transparent: true,
-        opacity: 0.25,
+        opacity: 0.80,
         depthWrite: false,
         side: THREE.DoubleSide,
         toneMapped: false,
