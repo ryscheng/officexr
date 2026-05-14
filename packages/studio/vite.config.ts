@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import studioStorage from '@officexr/world/vite-plugin-storage';
 import bots from '@officexr/world/vite-plugin-bots';
 
@@ -20,6 +21,7 @@ const REALTIME_TARGET =
 export default defineConfig({
   plugins: [
     react(),
+    tailwindcss(),
     // Mounts the studio's authoring REST surface:
     //   /api/rooms      → packages/world/rooms/      (FilesystemRoomStorage)
     //   /api/maps       → packages/world/maps/       (FilesystemMapStorage)
