@@ -4,6 +4,7 @@ import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { CommandHistory } from './CommandHistory.tsx';
 import { ObjectPalette } from './ObjectPalette.tsx';
+import { RoomPicker } from './RoomPicker.tsx';
 import { SceneEditorCanvas } from './SceneEditorCanvas.tsx';
 import { Toolbar } from './Toolbar.tsx';
 import { useRoomDocument } from './useRoomDocument.ts';
@@ -67,18 +68,26 @@ export function RoomApp() {
         roomDoc.clearSelection();
         return;
       }
-      // Don't hijack Q/E when a modifier is held — those are reserved
-      // for future shortcuts like Ctrl+Z.
+      // Don't hijack letters when a modifier is held — those are
+      // reserved for future shortcuts like Ctrl+Z / Ctrl+G.
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-      if (e.key === 'q' || e.key === 'Q') {
+      const k = e.key.toLowerCase();
+      if (k === 'q') {
         setBuildHeight((y) => y - 1);
-      } else if (e.key === 'e' || e.key === 'E') {
+      } else if (k === 'e') {
         setBuildHeight((y) => y + 1);
+      } else if (k === 'v') {
+        setTool('select');
+      } else if (k === 'b') {
+        // Add tool needs a staged kind to do anything useful.
+        if (stagedKindId) setTool('add');
+      } else if (k === 'x') {
+        setTool('delete');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [roomDoc]);
+  }, [roomDoc, stagedKindId]);
 
   // Click on a cube — plain replaces, Ctrl/Cmd toggles, group members
   // are selected atomically by the hook.
@@ -105,6 +114,12 @@ export function RoomApp() {
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
       <LeftPanel>
+        <RoomPicker
+          current={roomDoc.roomName}
+          listRooms={roomDoc.listRooms}
+          loadRoom={roomDoc.loadRoom}
+          newRoom={roomDoc.newRoom}
+        />
         <ObjectPalette staged={stagedKindId} onStage={handleStage} />
       </LeftPanel>
       <main
@@ -122,8 +137,11 @@ export function RoomApp() {
           tool={tool}
           stagedKindId={stagedKindId}
           buildHeight={buildHeight}
+          commandToGroup={roomDoc.lookup.commandToGroup}
+          groupMembers={roomDoc.lookup.groupMembers}
           onPlaceAt={handlePlace}
           onSelectInstance={handleSelectInstance}
+          onDeleteCommand={roomDoc.deleteCommand}
           onClickEmpty={roomDoc.clearSelection}
         />
         <RoomHud

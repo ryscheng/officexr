@@ -32,6 +32,11 @@ interface SceneEditorCanvasProps {
    * (positive or negative) so users can place cubes anywhere along
    * the y axis. */
   buildHeight: number;
+  /** Lookup tables for selection / delete cascade — maps each
+   * commandId to its group (if any) so the Delete tool's pulse
+   * ghosts cover every group member. */
+  commandToGroup: ReadonlyMap<string, string>;
+  groupMembers: ReadonlyMap<string, readonly string[]>;
   /** Click on an empty cell (no cube hit) with the Add tool active —
    * places a cube of the staged kind at the picked floor position.
    * Coords are integer voxels. */
@@ -40,6 +45,9 @@ interface SceneEditorCanvasProps {
    * is true when Ctrl or Cmd was held — caller maps that to toggle
    * vs. replace semantics. */
   onSelectInstance: (commandId: string, modKey: boolean) => void;
+  /** Click on an existing cube with the Delete tool active. Deletes
+   * the command (cascading through the group if any). */
+  onDeleteCommand: (commandId: string) => void;
   /** Click on EMPTY floor with the Select tool — deselects. The
    * canvas only knows that the click missed every cube; the parent
    * decides whether that means "deselect" or some other action. */
@@ -66,26 +74,64 @@ interface SceneEditorCanvasProps {
  *     new cube at that voxel.
  */
 export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
-  // Hover target drives the Add/Tile ghost preview. Updated on
-  // pointermove by both the cube layer and the floor picker; cleared
-  // when the cursor leaves either.
+  // Add/Tile snap target — populated by pointermove on floor or cube.
   const [hover, setHover] = useState<SnapHit | null>(null);
+  // Delete hover — populated by pointermove on a cube when the
+  // Delete tool is active. Carries the sourceCommandId so we can
+  // emit pulse ghosts for every instance the command (or its group)
+  // produced.
+  const [hoverCommandId, setHoverCommandId] = useState<string | null>(null);
+
   const handleHoverChange = useCallback(
     (next: SnapHit | null) => setHover(next),
+    [],
+  );
+  const handleHoverCommand = useCallback(
+    (commandId: string | null) => setHoverCommandId(commandId),
     [],
   );
 
   const cubeSize = props.compiled.cubeSize;
 
   // Compute the ghost specs the GhostLayer should render this frame.
-  // Today the Add tool emits one solid ghost at the snap target;
-  // Tasks 8-9 extend this list with Delete (pulse) + Tile (multiple
-  // solids).
+  //   Add tool: one SOLID ghost at the snap target (pre-placement).
+  //   Delete tool: one PULSE ghost per cube in the hovered command's
+  //   group (or just the hovered command if it's not in a group).
+  //   Tile tool: not yet — Task 9.
   const ghosts = useMemo<GhostSpec[]>(() => {
-    if (props.tool !== 'add' || !props.stagedKindId || !hover) return [];
-    const voxel = snapToVoxel(hover, cubeSize);
-    return [{ mode: 'solid', kindId: props.stagedKindId, voxel }];
-  }, [props.tool, props.stagedKindId, hover, cubeSize]);
+    if (props.tool === 'add' && props.stagedKindId && hover) {
+      const voxel = snapToVoxel(hover, cubeSize);
+      return [{ mode: 'solid', kindId: props.stagedKindId, voxel }];
+    }
+    if (props.tool === 'delete' && hoverCommandId) {
+      // Expand to the group's full membership.
+      const groupId = props.commandToGroup.get(hoverCommandId);
+      const targetCommandIds = groupId
+        ? props.groupMembers.get(groupId) ?? [hoverCommandId]
+        : [hoverCommandId];
+      const targets = new Set(targetCommandIds);
+      const out: GhostSpec[] = [];
+      for (const inst of props.compiled.instances) {
+        if (!targets.has(inst.sourceCommandId)) continue;
+        out.push({
+          mode: 'pulse',
+          kindId: inst.kindId,
+          voxel: [inst.position[0], inst.position[1], inst.position[2]],
+        });
+      }
+      return out;
+    }
+    return [];
+  }, [
+    props.tool,
+    props.stagedKindId,
+    hover,
+    hoverCommandId,
+    cubeSize,
+    props.commandToGroup,
+    props.groupMembers,
+    props.compiled.instances,
+  ]);
 
   // Map an Add-tool click to a placement. Reads from the freshly-
   // computed snap hit rather than the stale `hover` state so a click
@@ -97,6 +143,17 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       props.onPlaceAt(voxel);
     },
     [props, cubeSize],
+  );
+
+  // Delete-tool click on a cube routes to the parent's delete (which
+  // cascades through groups via useRoomDocument.deleteCommand).
+  const handleDeleteClick = useCallback(
+    (commandId: string) => {
+      if (props.tool !== 'delete') return;
+      props.onDeleteCommand(commandId);
+      setHoverCommandId(null);
+    },
+    [props],
   );
 
   return (
@@ -122,7 +179,9 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         tool={props.tool}
         onSelectInstance={props.onSelectInstance}
         onHoverCube={handleHoverChange}
+        onHoverCommand={handleHoverCommand}
         onAddClick={handleAddClick}
+        onDeleteClick={handleDeleteClick}
       />
       <FloorPicker
         cubeSize={props.compiled.cubeSize}
@@ -364,12 +423,20 @@ interface CubesLayerProps {
   selection: ReadonlySet<string>;
   tool: Tool;
   onSelectInstance: (commandId: string, modKey: boolean) => void;
-  /** Called on pointermove over a cube. Caller uses the SnapHit
-   * to drive the Add/Tile ghost preview. `null` clears. */
+  /** Called on pointermove over a cube. Caller uses the SnapHit to
+   * drive the Add/Tile ghost preview (snap target = cube face's
+   * adjacent voxel). `null` clears. */
   onHoverCube: (hit: SnapHit | null) => void;
+  /** Called on pointermove over a cube with the cube's sourceCommandId
+   * so the Delete tool can expand to the whole group and emit pulse
+   * ghosts. `null` clears. */
+  onHoverCommand: (commandId: string | null) => void;
   /** Add-tool click on a cube face — caller snaps to the adjacent
    * voxel via `snapToVoxel`. */
   onAddClick: (hit: SnapHit) => void;
+  /** Delete-tool click — caller deletes the command (cascading
+   * through groups). */
+  onDeleteClick: (commandId: string) => void;
 }
 
 function CubesLayer(props: CubesLayerProps) {
@@ -398,7 +465,9 @@ function CubesLayer(props: CubesLayerProps) {
           tool={props.tool}
           onSelectInstance={props.onSelectInstance}
           onHoverCube={props.onHoverCube}
+          onHoverCommand={props.onHoverCommand}
           onAddClick={props.onAddClick}
+          onDeleteClick={props.onDeleteClick}
         />
       ))}
     </>
@@ -413,7 +482,9 @@ interface KindGroupProps {
   tool: Tool;
   onSelectInstance: (commandId: string, modKey: boolean) => void;
   onHoverCube: (hit: SnapHit | null) => void;
+  onHoverCommand: (commandId: string | null) => void;
   onAddClick: (hit: SnapHit) => void;
+  onDeleteClick: (commandId: string) => void;
 }
 
 function KindGroup({
@@ -424,7 +495,9 @@ function KindGroup({
   tool,
   onSelectInstance,
   onHoverCube,
+  onHoverCommand,
   onAddClick,
+  onDeleteClick,
 }: KindGroupProps) {
   const gltf = useGLTF(kind.gltfPath);
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
@@ -463,22 +536,17 @@ function KindGroup({
   }, [instances, cubeSize]);
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    // Only respond to LEFT-click. Right-click is owned by the free-fly
-    // camera; middle is ignored.
+    // Only respond to LEFT-click. Right-click is owned by the camera.
     if (e.button !== 0) return;
-    if (tool !== 'select' && tool !== 'add') return;
+    if (tool !== 'select' && tool !== 'add' && tool !== 'delete') return;
     e.stopPropagation();
     const instanceIdx = e.instanceId;
     if (instanceIdx === undefined) return;
     const inst = instances[instanceIdx];
     if (!inst) return;
-    // Track drag distance — even with right-click camera, a misfire
-    // left-drag shouldn't fire the click action on release.
     const startX = e.clientX;
     const startY = e.clientY;
     const modKey = e.ctrlKey || e.metaKey;
-    // Capture the hit info up-front: faceNormal is on the
-    // pointer-DOWN event, not pointer-UP.
     const normal = e.face?.normal;
     const cubeHit: SnapHit | null = normal
       ? {
@@ -504,6 +572,8 @@ function KindGroup({
         onSelectInstance(inst.sourceCommandId, modKey);
       } else if (tool === 'add' && cubeHit) {
         onAddClick(cubeHit);
+      } else if (tool === 'delete') {
+        onDeleteClick(inst.sourceCommandId);
       }
     };
     window.addEventListener('pointermove', onMove);
@@ -511,23 +581,29 @@ function KindGroup({
   };
 
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
-    if (tool !== 'add') return;
+    if (tool !== 'add' && tool !== 'delete') return;
     const instanceIdx = e.instanceId;
     if (instanceIdx === undefined) return;
     const inst = instances[instanceIdx];
     if (!inst) return;
-    const n = e.face?.normal;
-    if (!n) return;
     // R3F fires pointermove on every raycast intersection front-to-back.
-    // Without this stop the floor's handler runs next and overwrites
-    // our CubeHit with a y=0 FloorHit, putting the Add ghost on the
-    // floor under the cube instead of on its face.
+    // Stop here so the floor's handler doesn't overwrite our cube state.
     e.stopPropagation();
-    onHoverCube({
-      kind: 'cube',
-      cubePosition: inst.position,
-      faceNormal: [n.x, n.y, n.z],
-    });
+    if (tool === 'add') {
+      const n = e.face?.normal;
+      if (!n) return;
+      onHoverCube({
+        kind: 'cube',
+        cubePosition: inst.position,
+        faceNormal: [n.x, n.y, n.z],
+      });
+    } else {
+      onHoverCommand(inst.sourceCommandId);
+    }
+  };
+
+  const handlePointerOut = () => {
+    if (tool === 'delete') onHoverCommand(null);
   };
 
   return (
@@ -538,6 +614,7 @@ function KindGroup({
       receiveShadow={false}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
+      onPointerOut={handlePointerOut}
       userData={{ kindId: kind.id, isObjectInstanceMesh: true }}
     />
   );

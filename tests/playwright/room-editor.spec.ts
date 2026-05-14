@@ -63,6 +63,30 @@ test('clicking a palette swatch activates the Add tool', async ({ page }) => {
   expect(addBg, 'Add button should be visibly active after staging').not.toBe(selectBg);
 });
 
+test('RoomPicker exposes a select + new-room input', async ({ page }) => {
+  await goToMode(page, 'room');
+  await waitForCanvasReady(page, 1200);
+  // The RoomPicker is the first widget in the left panel: a `<select>`
+  // with the current room + a "+ New room…" button.
+  await expect(page.locator('select').first()).toBeVisible();
+  await expect(
+    page.locator('button', { hasText: 'New room' }),
+  ).toBeVisible();
+});
+
+test('Delete tool button is visible in the toolbar', async ({ page }) => {
+  await goToMode(page, 'room');
+  await waitForCanvasReady(page, 1200);
+  const toolbar = page.locator('div[role="toolbar"]');
+  const buttons = await toolbar.locator('button').all();
+  // Now four tools: Select / Add / Delete / Tile.
+  expect(buttons.length).toBe(4);
+  // Delete (3rd) should be enabled (no staged-kind requirement).
+  await expect(buttons[2]).toBeEnabled();
+  // Tile (4th) should be disabled — "coming soon".
+  await expect(buttons[3]).toBeDisabled();
+});
+
 test('Add tool ghost preview renders a blue ghost cube under the cursor', async ({
   page,
 }) => {
