@@ -4,7 +4,6 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei';
 import {
   CUBE_KINDS,
-  FREE_FLY_DEFAULTS,
   type CubeKindDef,
 } from '@officexr/world';
 import { EndlessGrid } from '@officexr/world/renderer';
@@ -98,10 +97,10 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   return (
     <Canvas
       camera={{
-        position: FREE_FLY_DEFAULTS.position,
-        fov: FREE_FLY_DEFAULTS.fov,
+        position: [0, 8, 14],
+        fov: 45,
         near: 0.1,
-        far: 2000,
+        far: 500,
       }}
       style={{ width: '100%', height: '100%', display: 'block' }}
       shadows={false}
@@ -110,7 +109,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       <directionalLight position={[20, 40, 20]} intensity={1.2} />
       <color attach="background" args={['#0a0a0a']} />
       <EndlessGrid />
-      <FreeFlyCamera />
+      <OrbitCamera compiled={props.compiled} />
       <CubesLayer
         instances={props.compiled.instances}
         cubeSize={props.compiled.cubeSize}
@@ -129,52 +128,161 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         onHoverFloor={handleHoverChange}
       />
       <GhostLayer ghosts={ghosts} cubeSize={cubeSize} />
+      <SelectionOutline
+        instances={props.compiled.instances}
+        cubeSize={props.compiled.cubeSize}
+        selection={props.selection}
+      />
     </Canvas>
   );
 }
 
-// --- Free-fly camera (canvas-local) -----------------------------
+// --- Selection outline (wireframe AABB) -------------------------
 
-function FreeFlyCamera() {
+interface SelectionOutlineProps {
+  instances: ObjectInstance[];
+  cubeSize: number;
+  selection: ReadonlySet<string>;
+}
+
+/**
+ * Renders a wireframe box around the AABB of all selected instances
+ * (a single command, a group's children, or a multi-select). Replaces
+ * the per-instance yellow tint that used to indicate selection — a
+ * box around the outer edges is easier to read at a glance,
+ * especially for groups.
+ *
+ * The padding adds a tiny margin so the wireframe sits OUTSIDE the
+ * cubes rather than co-planar with them (which would z-fight).
+ */
+function SelectionOutline({ instances, cubeSize, selection }: SelectionOutlineProps) {
+  const bounds = useMemo(() => {
+    if (selection.size === 0) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+    let any = false;
+    for (const inst of instances) {
+      if (!selection.has(inst.sourceCommandId)) continue;
+      any = true;
+      const wx = inst.position[0] * cubeSize;
+      const wy = inst.position[1] * cubeSize;
+      const wz = inst.position[2] * cubeSize;
+      // Each cube occupies a `cubeSize`-wide voxel centered at
+      // (wx, wy + cubeSize/2, wz). With a SEAM_OVERLAP of 1.05 the
+      // visible extent is slightly wider; round outward.
+      const half = (cubeSize * 1.05) / 2;
+      if (wx - half < minX) minX = wx - half;
+      if (wy < minY) minY = wy;
+      if (wz - half < minZ) minZ = wz - half;
+      if (wx + half > maxX) maxX = wx + half;
+      if (wy + cubeSize > maxY) maxY = wy + cubeSize;
+      if (wz + half > maxZ) maxZ = wz + half;
+    }
+    if (!any) return null;
+    const pad = 0.08;
+    const sizeX = maxX - minX + pad * 2;
+    const sizeY = maxY - minY + pad * 2;
+    const sizeZ = maxZ - minZ + pad * 2;
+    const center = new THREE.Vector3(
+      (minX + maxX) / 2,
+      (minY + maxY) / 2,
+      (minZ + maxZ) / 2,
+    );
+    return { center, sizeX, sizeY, sizeZ };
+  }, [instances, cubeSize, selection]);
+
+  if (!bounds) return null;
+  // `<edgesGeometry>` returns only the 12 cube edges; `<boxGeometry>`
+  // + wireframe draws every triangle edge (including the X across
+  // each face), which reads as noise on a selection indicator.
+  return (
+    <lineSegments position={bounds.center} renderOrder={2}>
+      <edgesGeometry
+        args={[
+          new THREE.BoxGeometry(bounds.sizeX, bounds.sizeY, bounds.sizeZ),
+        ]}
+      />
+      <lineBasicMaterial
+        color="#fde68a"
+        transparent
+        opacity={0.95}
+        depthTest={false}
+      />
+    </lineSegments>
+  );
+}
+
+// --- Orbit camera (canvas-local) --------------------------------
+
+interface OrbitCameraProps {
+  /** The compiled room. Used to derive a sensible orbit target —
+   * the AABB center of the room's instances. Rooms are bounded
+   * spaces; the camera should always be looking AT the room rather
+   * than at empty grid. */
+  compiled: WorldObjects;
+}
+
+/**
+ * Orbit camera for the Room editor: right-drag rotates around the
+ * room's centroid, scroll dollies in/out, no WASD fly. Mirrors the
+ * Character editor's controls — rooms are small bounded spaces, the
+ * fly-around UX of the old Scene editor was overkill.
+ *
+ * Spec: "Room is meant to be a much smaller space and we'd rotate
+ * the entire room like we do the character."
+ */
+function OrbitCamera({ compiled }: OrbitCameraProps) {
   const { camera, gl } = useThree();
   const persp = camera as THREE.PerspectiveCamera;
 
-  const keys = useRef(new Set<string>());
-  const pos = useRef(new THREE.Vector3(...FREE_FLY_DEFAULTS.position));
-  const yaw = useRef(FREE_FLY_DEFAULTS.yaw);
-  const pitch = useRef(FREE_FLY_DEFAULTS.pitch);
-  const drag = useRef<{
-    active: boolean;
-    moved: boolean;
-    lastX: number;
-    lastY: number;
-    orbitAnchor: THREE.Vector3 | null;
-  }>({ active: false, moved: false, lastX: 0, lastY: 0, orbitAnchor: null });
+  // Orbit state. Azimuth/elevation/distance are the canonical spherical
+  // coords; the target is the room's center.
+  const orbit = useRef({
+    azimuth: -0.55,
+    elevation: 0.45,
+    distance: 16,
+  });
+  const drag = useRef({ active: false, lastX: 0, lastY: 0 });
+
+  // Recompute the room center from the compiled instances so the camera
+  // looks at the room's actual mass, not just the world origin. Empty
+  // rooms fall back to origin so the camera looks at where the first
+  // cube would land.
+  const target = useMemo(() => {
+    if (compiled.instances.length === 0) {
+      return new THREE.Vector3(0, 1, 0);
+    }
+    const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+    const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+    for (const inst of compiled.instances) {
+      const [x, y, z] = inst.position;
+      const wx = x * compiled.cubeSize;
+      const wy = y * compiled.cubeSize + compiled.cubeSize / 2;
+      const wz = z * compiled.cubeSize;
+      if (wx < min.x) min.x = wx;
+      if (wy < min.y) min.y = wy;
+      if (wz < min.z) min.z = wz;
+      if (wx > max.x) max.x = wx;
+      if (wy > max.y) max.y = wy;
+      if (wz > max.z) max.z = wz;
+    }
+    return new THREE.Vector3()
+      .addVectors(min, max)
+      .multiplyScalar(0.5);
+  }, [compiled]);
 
   useEffect(() => {
     const canvas = gl.domElement;
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-      keys.current.add(e.code.toLowerCase());
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      keys.current.delete(e.code.toLowerCase());
-    };
-
     const onPointerDown = (e: PointerEvent) => {
-      // Right-click drag = camera rotate. Left-click is reserved for
-      // tool actions (select / add / extrude) which are handled by
-      // R3F's own pointer-event system on the meshes themselves.
+      // Right-click drag = orbit. Left-click is for tool actions and
+      // is handled by R3F's pointer-event system on meshes.
       if (e.button !== 2) return;
-      drag.current = {
-        active: true,
-        moved: false,
-        lastX: e.clientX,
-        lastY: e.clientY,
-        orbitAnchor: null,
-      };
+      drag.current = { active: true, lastX: e.clientX, lastY: e.clientY };
     };
     const onPointerMove = (e: PointerEvent) => {
       const d = drag.current;
@@ -183,87 +291,63 @@ function FreeFlyCamera() {
       const dy = e.clientY - d.lastY;
       d.lastX = e.clientX;
       d.lastY = e.clientY;
-      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) d.moved = true;
-      const sens = FREE_FLY_DEFAULTS.rotateSensitivity;
-      yaw.current -= dx * sens;
-      pitch.current = THREE.MathUtils.clamp(
-        pitch.current - dy * sens,
-        -1.4,
-        1.4,
+      const sens = 0.005;
+      orbit.current.azimuth -= dx * sens;
+      // Clamp elevation so the camera doesn't flip over the top or
+      // duck below the floor.
+      orbit.current.elevation = THREE.MathUtils.clamp(
+        orbit.current.elevation - dy * sens,
+        -0.05,
+        Math.PI / 2 - 0.05,
       );
     };
     const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 2) return;
       drag.current.active = false;
     };
-    // Suppress the browser context menu so right-click drag feels
-    // native instead of summoning the OS menu mid-rotate.
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
-
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const fwd = forwardVector(yaw.current, pitch.current);
-      const step =
-        -Math.sign(e.deltaY) *
-        FREE_FLY_DEFAULTS.dollySensitivity *
-        Math.min(8, Math.max(1, Math.abs(e.deltaY) / 50));
-      pos.current.addScaledVector(fwd, step);
+      const factor = Math.exp(e.deltaY * 0.001);
+      orbit.current.distance = THREE.MathUtils.clamp(
+        orbit.current.distance * factor,
+        2,
+        80,
+      );
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
     canvas.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('contextmenu', onContextMenu);
     return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
       canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('contextmenu', onContextMenu);
-      keys.current.clear();
       drag.current.active = false;
     };
   }, [gl]);
 
-  useFrame((_, dtSec) => {
-    const k = keys.current;
-    const speedBase = FREE_FLY_DEFAULTS.moveSpeed;
-    const speed =
-      speedBase *
-      (k.has('shiftleft') || k.has('shiftright')
-        ? FREE_FLY_DEFAULTS.shiftMultiplier
-        : 1);
-    const step = speed * dtSec;
-    const fwd = forwardVector(yaw.current, pitch.current);
-    const right = new THREE.Vector3(Math.cos(yaw.current), 0, -Math.sin(yaw.current));
-    if (k.has('keyw')) pos.current.addScaledVector(fwd, step);
-    if (k.has('keys')) pos.current.addScaledVector(fwd, -step);
-    if (k.has('keyd')) pos.current.addScaledVector(right, step);
-    if (k.has('keya')) pos.current.addScaledVector(right, -step);
-    if (k.has('keye') || k.has('space')) pos.current.y += step;
-    if (k.has('keyq') || k.has('controlleft') || k.has('controlright'))
-      pos.current.y -= step;
-    persp.position.copy(pos.current);
-    const target = new THREE.Vector3()
-      .copy(pos.current)
-      .add(forwardVector(yaw.current, pitch.current));
+  useFrame(() => {
+    const { azimuth, elevation, distance } = orbit.current;
+    const cosE = Math.cos(elevation);
+    const sinE = Math.sin(elevation);
+    const cosA = Math.cos(azimuth);
+    const sinA = Math.sin(azimuth);
+    // Spherical → cartesian with target as the origin. azimuth is
+    // around +y; elevation 0 is horizon, π/2 is straight overhead.
+    persp.position.set(
+      target.x + distance * cosE * sinA,
+      target.y + distance * sinE,
+      target.z + distance * cosE * cosA,
+    );
     persp.lookAt(target);
   });
 
   return null;
-}
-
-function forwardVector(yaw: number, pitch: number): THREE.Vector3 {
-  return new THREE.Vector3(
-    -Math.sin(yaw) * Math.cos(pitch),
-    Math.sin(pitch),
-    -Math.cos(yaw) * Math.cos(pitch),
-  );
 }
 
 // --- Cubes layer (one InstancedMesh per kind, with picking) ------
@@ -353,8 +437,7 @@ function KindGroup({
     const p = new THREE.Vector3();
     const q = new THREE.Quaternion();
     const baseScale = 1.05;
-    const tint = new THREE.Color(1, 1, 1);
-    const sel = new THREE.Color('#fde68a');
+    const s = new THREE.Vector3(baseScale, baseScale, baseScale);
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];
       p.set(
@@ -362,16 +445,16 @@ function KindGroup({
         inst.position[1] * cubeSize + cubeSize / 2,
         inst.position[2] * cubeSize,
       );
-      m.compose(p, q, new THREE.Vector3(baseScale, baseScale, baseScale));
+      m.compose(p, q, s);
       mesh.setMatrixAt(i, m);
-      const isSelected = selection.has(inst.sourceCommandId);
-      mesh.setColorAt(i, isSelected ? sel : tint);
     }
     mesh.count = instances.length;
     mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [instances, cubeSize, selection]);
+    // Per-instance color tinting for selection state was removed in
+    // favor of a separate <SelectionOutline> wireframe AABB rendered
+    // around all selected instances — see SceneEditorCanvas.tsx.
+  }, [instances, cubeSize]);
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     // Only respond to LEFT-click. Right-click is owned by the free-fly
@@ -519,14 +602,19 @@ function FloorPicker({
     if (tool === 'add') onHoverFloor(null);
   };
 
+  // y=0.01 instead of y=0 so the picker sits visually ON the grid
+  // but is technically CLOSER to the camera. R3F's raycaster returns
+  // hits sorted by distance, and the EndlessGrid at y=0 is the same
+  // plane; placing the picker an epsilon above means it's the first
+  // hit and reliably receives onPointerMove (otherwise R3F can pick
+  // the EndlessGrid first and we never see the pointer events).
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, 0, 0]}
+      position={[0, 0.01, 0]}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerOut={handlePointerOut}
-      // Behind the cubes (renderOrder lower) and invisible-but-pickable.
       renderOrder={-2}
     >
       <planeGeometry args={[400, 400]} />

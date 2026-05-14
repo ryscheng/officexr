@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Leva } from 'leva';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
@@ -32,16 +32,31 @@ export function RoomApp() {
     setTool(kindId ? 'add' : 'select');
   }, []);
 
-  // Place via the Add tool, then revert to Select so a stray click
-  // doesn't keep dropping cubes (single-shot semantic).
+  // Place via the Add tool. Tool stays Add so the user can keep
+  // dropping cubes — Esc (or clicking Select in the toolbar) ends
+  // the streak. Multi-shot placement matches the user's mental model
+  // of "I'm placing a row of cubes."
   const handlePlace = useCallback(
     (position: [number, number, number]) => {
       if (!stagedKindId) return;
       roomDoc.placeCube(stagedKindId, position);
-      setTool('select');
     },
     [stagedKindId, roomDoc],
   );
+
+  // Esc returns to Select tool no matter where the focus is — mirrors
+  // the user spec: "Esc automatically returns to select tool".
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      setTool('select');
+      roomDoc.clearSelection();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [roomDoc]);
 
   // Click on a cube — plain replaces, Ctrl/Cmd toggles, group members
   // are selected atomically by the hook.

@@ -77,7 +77,6 @@ export function GhostLayer({ ghosts, cubeSize }: GhostLayerProps) {
 }
 
 const SEAM_OVERLAP = 1.05;
-const GHOST_RAYCAST_LAYER = 31;
 
 interface GhostMeshForGroupProps {
   mode: GhostMode;
@@ -116,9 +115,13 @@ function GhostMeshForGroup({
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-    // Opt out of the default raycast layer (0). The snap raycaster
-    // enables only layer 0; this mesh becomes invisible to it.
-    mesh.layers.set(GHOST_RAYCAST_LAYER);
+    // Make the mesh non-pickable so the snap raycaster never snaps to
+    // its own ghost preview. We do NOT use `mesh.layers.set(N)` for
+    // this because that would also opt the mesh OUT of rendering —
+    // the camera only renders meshes on the layers it has enabled
+    // (default layer 0). A no-op `raycast` keeps the mesh visible
+    // while making it transparent to picking.
+    mesh.raycast = () => {};
     const m = new THREE.Matrix4();
     const p = new THREE.Vector3();
     const q = new THREE.Quaternion();
