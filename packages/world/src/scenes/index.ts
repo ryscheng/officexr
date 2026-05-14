@@ -71,6 +71,7 @@ export {
   getCatalog,
   getKind,
   listKinds,
+  patchKind,
   replaceCatalog,
   resetCatalogToDefault,
   subscribeCatalog,
@@ -90,3 +91,7 @@ export {
   FilesystemMapStorage,
 } from './filesystem-map-storage.ts';
 export { LocalStorageMapStorage } from './localstorage-map-storage.ts';
+export {
+  type CatalogStorage,
+  FilesystemCatalogStorage,
+} from './filesystem-catalog-storage.ts';

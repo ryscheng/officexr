@@ -1,0 +1,2 @@
+- [SOLID package boundaries](project_solid_boundaries.md) — grep rules for DIP enforcement across sdk/world/realtime-server/core-refactor.
+- [Studio 15-task restructure](project_studio_restructure.md) — in-flight branch ravenac95/officexr-studio, plan in ~/.claude/plans/we-are-creating-the-zany-bear.md.

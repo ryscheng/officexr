@@ -57,6 +57,23 @@ export function replaceCatalog(next: CubeKindCatalogV1): void {
   for (const l of listeners) l();
 }
 
+/** Patch a single kind's fields in-place. Used by the Object editor
+ * to apply a Leva slider tweak without rewriting the entire catalog
+ * each time. Returns the new catalog so callers (the studio's
+ * auto-save) can persist it. */
+export function patchKind(
+  id: string,
+  partial: Partial<CubeKindEntry>,
+): CubeKindCatalogV1 {
+  const next: CubeKindCatalogV1 = {
+    ...current,
+    updatedAt: Date.now(),
+    kinds: current.kinds.map((k) => (k.id === id ? { ...k, ...partial } : k)),
+  };
+  replaceCatalog(next);
+  return next;
+}
+
 /** Reset to the bundled default. Used by tests and the Object editor's
  * "reset" button. Does NOT touch the server-side catalog file. */
 export function resetCatalogToDefault(): void {
