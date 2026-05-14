@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Leva } from 'leva';
 import { Scene, CAMERA_MODES, type CameraMode } from '@officexr/world/renderer';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import {
@@ -7,6 +6,7 @@ import {
   type PersistentLocalState,
 } from '../../realtime/services.ts';
 import { useStackSwitcher } from '../../realtime/useStackSwitcher.ts';
+import { MapPickerPanel } from './MapPickerPanel.tsx';
 import { useMapPicker } from './useMapPicker.ts';
 
 const SELF_ID = 'local-player';
@@ -67,10 +67,10 @@ export function DebugApp() {
   const { stack, errorBanner, dismissError, onBotCountChange, onBotModeChange } =
     useStackSwitcher({ local, audio });
 
-  // Add the "Map" Leva folder. The picker pushes the compiled map's
-  // ObjectInstances into the SDK store and teleports the local player
-  // + bot pool to the map's spawn points.
-  useMapPicker({
+  // Headless Map-picker state. The paired MapPickerPanel below
+  // consumes this to render the dropdown + buttons; the hook itself
+  // owns the load/teleport/respawn side effects.
+  const picker = useMapPicker({
     actions: local?.actions ?? null,
     bots: stack?.mode === 'in-memory' ? stack.bots : null,
   });
@@ -111,7 +111,7 @@ export function DebugApp() {
         )}
       </main>
       <SidePanel>
-        <Leva fill flat titleBar={{ drag: false }} />
+        <MapPickerPanel picker={picker} />
       </SidePanel>
     </div>
   );

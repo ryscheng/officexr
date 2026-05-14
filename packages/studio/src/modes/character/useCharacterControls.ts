@@ -1,9 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { button, folder, useControls } from 'leva';
-import {
-  CHARACTERS,
-  type CharacterName,
-} from '@officexr/world';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CHARACTERS, type CharacterName } from '@officexr/world';
 import type { AnimationState } from '@officexr/world/renderer';
 import type { CharacterConfig, CharacterConfigs } from '@officexr/sdk';
 import { CharacterStorage } from './character-storage.ts';
@@ -17,31 +13,60 @@ const STATES: ReadonlyArray<AnimationState> = [
   'throwing',
 ];
 
+export interface CharacterTuning {
+  speedMultiplier: number;
+  runSpeedMultiplier: number;
+  charRadius: number;
+  walkAnimSpeed: number;
+  runAnimSpeed: number;
+  idleAnimSpeed: number;
+}
+
 export interface CharacterEditorState {
   character: CharacterName;
   previewState: AnimationState;
   inControl: boolean;
-  /** Resolved per-character animation speeds for the active model. */
+  /** The full tuning surface for the current character. */
+  tuning: CharacterTuning;
+  /** Resolved per-character animation speeds for the active model
+   * (current-tuning-or-saved-or-default). Same fields the canvas
+   * consumes today. */
   idleAnimSpeed: number;
   walkAnimSpeed: number;
   runAnimSpeed: number;
+  /** Setters the panel wires to controls. */
+  setCharacter: (next: CharacterName) => void;
+  setPreviewState: (next: AnimationState) => void;
+  setInControl: (next: boolean) => void;
+  setTuningField: <K extends keyof CharacterTuning>(
+    key: K,
+    value: CharacterTuning[K],
+  ) => void;
+  states: ReadonlyArray<AnimationState>;
 }
 
+const TUNING_DEFAULTS: CharacterTuning = {
+  speedMultiplier: 1,
+  runSpeedMultiplier: 0,
+  charRadius: 0,
+  walkAnimSpeed: 1,
+  runAnimSpeed: 1,
+  idleAnimSpeed: 1,
+};
+
 /**
- * Mounts the Characters editor's right-panel Leva controls and
- * returns the resolved editor state. Owns:
+ * Plain state hook for the Characters editor. No Leva. Owns:
  *
- *   - Character selector (dropdown).
- *   - Animation state buttons (one Leva button per state) — each
- *     button updates `previewState`.
- *   - "Take control" toggle — when on, WASD drives the character
- *     and `previewState` is ignored (motion drives the clip).
- *   - Tuning folder — per-character speed / collision / animation
- *     overrides. Persists to localStorage; Debug mode reads from
- *     the same key on startup and broadcasts via world:characters.
+ *   - which character is selected
+ *   - the preview animation state ("show me running")
+ *   - the "take control (WASD)" toggle
+ *   - per-character tuning (speed/radius/anim-speeds)
  *
- * Storage is reused across character switches: switching models
- * loads that model's saved tuning into the Leva folder.
+ * Tuning persists to localStorage per character via `CharacterStorage`.
+ * When the character switches, the hook loads that character's saved
+ * tuning into local state. When a tuning field is edited, the hook
+ * patches storage. The "transient extrude count"-style ref dance the
+ * old Leva hook used is gone — fully controlled state replaces it.
  */
 export function useCharacterControls(): CharacterEditorState {
   const storage = useMemo(() => new CharacterStorage(), []);
@@ -51,182 +76,89 @@ export function useCharacterControls(): CharacterEditorState {
   const [inControl, setInControl] = useState(false);
 
   const cfg = configs[character] ?? {};
-
-  // Top-level Character + Mode controls.
-  useControls(
-    'Character',
-    {
-      model: {
-        value: character,
-        options: CHARACTERS as unknown as string[],
-        onChange: (v: string) => setCharacter(v as CharacterName),
-        transient: true,
-      },
-      'Take control (WASD)': {
-        value: inControl,
-        onChange: (v: boolean) => setInControl(v),
-        transient: true,
-      },
-    },
-    [character, inControl],
+  // The displayed tuning is local state (so a slider drag is fluid)
+  // mirrored back into storage on commit.
+  const [tuning, setTuning] = useState<CharacterTuning>(() =>
+    tuningFromConfig(cfg),
   );
 
-  // Animation-state buttons. Each one fires onClick → setPreviewState.
-  // Disabled (visually unhighlighted) while in control, since motion
-  // drives the clip then.
-  useControls(
-    'Animation',
-    () => {
-      const entries: Record<string, ReturnType<typeof button>> = {};
-      for (const state of STATES) {
-        const label = state[0].toUpperCase() + state.slice(1);
-        const marker = previewState === state && !inControl ? '● ' : '  ';
-        entries[`${marker}${label}`] = button(() => {
-          setPreviewState(state);
-          // Bringing back from "in control" mode also turns control off
-          // so the picked state actually shows.
-          if (inControl) setInControl(false);
-        });
-      }
-      return entries;
-    },
-    [previewState, inControl],
-  );
-
-  // Tuning folder. useControls with a schema function returns [values, set, get].
-  // We need the `set` handle to imperatively push values when character changes
-  // because Leva's addData(..., override=true) updates settings (min/max/step)
-  // but intentionally excludes the value field, so deps-based reinit doesn't
-  // reset slider positions.
-  const [tuningValues, setTuning] = useControls(
-    'Tuning',
-    () => ({
-      _: folder(
-        {
-          speedMultiplier: {
-            value: cfg.speedMultiplier ?? 1,
-            min: 0.1,
-            max: 3,
-            step: 0.05,
-            label: 'speed × (vs world)',
-          },
-          runSpeedMultiplier: {
-            value: cfg.runSpeedMultiplier ?? 0,
-            min: 0,
-            max: 6,
-            step: 0.1,
-            label: 'run × (0 = inherit)',
-          },
-          charRadius: {
-            value: cfg.charRadius ?? 0,
-            min: 0,
-            max: 1.5,
-            step: 0.01,
-            label: 'radius (0 = inherit)',
-          },
-          walkAnimSpeed: {
-            value: cfg.walkAnimSpeed ?? 1,
-            min: 0.1,
-            max: 3,
-            step: 0.05,
-          },
-          runAnimSpeed: {
-            value: cfg.runAnimSpeed ?? 1,
-            min: 0.1,
-            max: 3,
-            step: 0.05,
-          },
-          idleAnimSpeed: {
-            value: cfg.idleAnimSpeed ?? 1,
-            min: 0.1,
-            max: 3,
-            step: 0.05,
-          },
-        },
-        { collapsed: true },
-      ),
-    }),
-    [character],
-  ) as unknown as [
-    {
-      speedMultiplier?: number;
-      runSpeedMultiplier?: number;
-      charRadius?: number;
-      walkAnimSpeed?: number;
-      runAnimSpeed?: number;
-      idleAnimSpeed?: number;
-    },
-    (v: Record<string, number | undefined>) => void,
-  ];
-
-  // Guard: skip the persistence effect's first fire after a character switch.
-  // Without this, the effect would run with the *old* tuning values and the
-  // new character key, overwriting the new character's saved config.
+  // When the user picks a different character, load that one's
+  // saved tuning into local state. `isSyncingRef` gates the
+  // mirror-to-storage effect so the load doesn't get re-saved.
   const isSyncingRef = useRef(false);
-
-  // When character changes, push that character's saved config into Leva.
-  // Must run before the persistence effect sees the changed tuningValues.
   useEffect(() => {
     const newCfg = configs[character] ?? {};
     isSyncingRef.current = true;
-    setTuning({
-      speedMultiplier: newCfg.speedMultiplier ?? 1,
-      runSpeedMultiplier: newCfg.runSpeedMultiplier ?? 0,
-      charRadius: newCfg.charRadius ?? 0,
-      walkAnimSpeed: newCfg.walkAnimSpeed ?? 1,
-      runAnimSpeed: newCfg.runAnimSpeed ?? 1,
-      idleAnimSpeed: newCfg.idleAnimSpeed ?? 1,
-    });
+    setTuning(tuningFromConfig(newCfg));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [character]);
 
-  // Mirror Tuning → storage. `character` is intentionally absent from the
-  // deps: we only want to save when a slider actually changes, not when the
-  // character switches (that's handled by the sync effect above).
+  // Mirror tuning → storage. `character` is intentionally absent
+  // from the deps: we only persist when a tuning slider changes,
+  // not when the character switches (that path is the load effect
+  // above, which sets `isSyncingRef = true`).
   useEffect(() => {
     if (isSyncingRef.current) {
       isSyncingRef.current = false;
       return;
     }
     const patch: Partial<CharacterConfig> = {};
-    if (tuningValues.speedMultiplier != null && tuningValues.speedMultiplier !== 1) {
-      patch.speedMultiplier = tuningValues.speedMultiplier;
-    } else if (tuningValues.speedMultiplier === 1 && cfg.speedMultiplier != null) {
-      patch.speedMultiplier = undefined;
-    }
-    if (tuningValues.runSpeedMultiplier != null) {
-      patch.runSpeedMultiplier =
-        tuningValues.runSpeedMultiplier === 0
-          ? undefined
-          : tuningValues.runSpeedMultiplier;
-    }
-    if (tuningValues.charRadius != null) {
-      patch.charRadius =
-        tuningValues.charRadius === 0 ? undefined : tuningValues.charRadius;
-    }
-    if (tuningValues.walkAnimSpeed != null) patch.walkAnimSpeed = tuningValues.walkAnimSpeed;
-    if (tuningValues.runAnimSpeed != null) patch.runAnimSpeed = tuningValues.runAnimSpeed;
-    if (tuningValues.idleAnimSpeed != null) patch.idleAnimSpeed = tuningValues.idleAnimSpeed;
-    if (Object.keys(patch).length === 0) return;
+    // speedMultiplier=1 means "no override".
+    patch.speedMultiplier =
+      tuning.speedMultiplier === 1 ? undefined : tuning.speedMultiplier;
+    // runSpeedMultiplier=0 → "inherit", charRadius=0 → "inherit".
+    patch.runSpeedMultiplier =
+      tuning.runSpeedMultiplier === 0 ? undefined : tuning.runSpeedMultiplier;
+    patch.charRadius =
+      tuning.charRadius === 0 ? undefined : tuning.charRadius;
+    patch.walkAnimSpeed = tuning.walkAnimSpeed;
+    patch.runAnimSpeed = tuning.runAnimSpeed;
+    patch.idleAnimSpeed = tuning.idleAnimSpeed;
     setConfigs(storage.patch(character, patch));
-    // cfg captured via closure is current-render cfg; `character` read here is
-    // always the character that owns the slider that just changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    tuningValues.speedMultiplier,
-    tuningValues.runSpeedMultiplier,
-    tuningValues.charRadius,
-    tuningValues.walkAnimSpeed,
-    tuningValues.runAnimSpeed,
-    tuningValues.idleAnimSpeed,
+    tuning.speedMultiplier,
+    tuning.runSpeedMultiplier,
+    tuning.charRadius,
+    tuning.walkAnimSpeed,
+    tuning.runAnimSpeed,
+    tuning.idleAnimSpeed,
   ]);
+
+  const setTuningField = useCallback(
+    <K extends keyof CharacterTuning>(key: K, value: CharacterTuning[K]) => {
+      setTuning((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
 
   return {
     character,
     previewState,
     inControl,
-    idleAnimSpeed: tuningValues.idleAnimSpeed ?? cfg.idleAnimSpeed ?? 1,
-    walkAnimSpeed: tuningValues.walkAnimSpeed ?? cfg.walkAnimSpeed ?? 1,
-    runAnimSpeed: tuningValues.runAnimSpeed ?? cfg.runAnimSpeed ?? 1,
+    tuning,
+    idleAnimSpeed: tuning.idleAnimSpeed,
+    walkAnimSpeed: tuning.walkAnimSpeed,
+    runAnimSpeed: tuning.runAnimSpeed,
+    setCharacter,
+    setPreviewState: (next) => {
+      setPreviewState(next);
+      if (inControl) setInControl(false);
+    },
+    setInControl,
+    setTuningField,
+    states: STATES,
+  };
+}
+
+function tuningFromConfig(cfg: CharacterConfig): CharacterTuning {
+  return {
+    speedMultiplier: cfg.speedMultiplier ?? TUNING_DEFAULTS.speedMultiplier,
+    runSpeedMultiplier:
+      cfg.runSpeedMultiplier ?? TUNING_DEFAULTS.runSpeedMultiplier,
+    charRadius: cfg.charRadius ?? TUNING_DEFAULTS.charRadius,
+    walkAnimSpeed: cfg.walkAnimSpeed ?? TUNING_DEFAULTS.walkAnimSpeed,
+    runAnimSpeed: cfg.runAnimSpeed ?? TUNING_DEFAULTS.runAnimSpeed,
+    idleAnimSpeed: cfg.idleAnimSpeed ?? TUNING_DEFAULTS.idleAnimSpeed,
   };
 }

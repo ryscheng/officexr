@@ -1,18 +1,19 @@
 import React from 'react';
-import { Leva } from 'leva';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { CharacterEditorCanvas } from './CharacterEditorCanvas.tsx';
+import { CharacterPanel } from './CharacterPanel.tsx';
 import { useCharacterControls } from './useCharacterControls.ts';
 
 /**
  * Standalone Characters editor application. Mounts its own canvas
  * with one Adventurer + endless grid + an orbit/follow camera.
  *
- * The right panel hosts a Leva store with three folders: Character
- * (model + take-control toggle), Animation (state buttons), Tuning
- * (per-character speed / collision / animation overrides). Tuning
- * persists to localStorage so Debug mode can pick it up at startup
- * and broadcast via the world:characters NetEvent.
+ * The right panel hosts the shadcn-based `CharacterPanel` with three
+ * sections: Character (model + take-control toggle), Animation
+ * (state buttons), Tuning (per-character speed / collision / anim
+ * overrides). Tuning persists to localStorage so Debug mode can
+ * pick it up at startup and broadcast via the world:characters
+ * NetEvent.
  *
  * No SDK store, no SyncEngine — this is purely a previewer.
  */
@@ -45,7 +46,7 @@ export function CharacterApp() {
         />
       </main>
       <SidePanel>
-        <Leva fill flat titleBar={{ drag: false }} />
+        <CharacterPanel ctrl={ctrl} />
       </SidePanel>
     </div>
   );

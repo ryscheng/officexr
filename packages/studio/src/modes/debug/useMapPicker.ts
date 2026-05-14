@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useControls, button } from 'leva';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Actions } from '@officexr/sdk';
 import type { BotPool } from '@officexr/world/bot';
 import {
@@ -8,7 +7,6 @@ import {
   LocalStorageMapStorage,
   LocalStorageRoomStorage,
   compileMap,
-  emptyMapDocument,
   type MapDocumentV1,
   type RoomDocument,
   type SpawnPoint,
@@ -24,32 +22,43 @@ interface UseMapPickerOpts {
   actions: Actions | null;
   /** The in-browser bot pool (in-memory mode only). Null while the
    * stack is still bootstrapping or in WS mode (where the Node bots
-   * CLI owns its own pool — see TODO note below for that case). */
+   * CLI owns its own pool). */
   bots: BotPool | null;
 }
 
+export interface MapPickerState {
+  /** All map names served by `/api/maps`, sorted alphabetically. */
+  maps: readonly string[];
+  /** The map currently selected by the dropdown. */
+  selected: string;
+  /** Pick a different map; loads it, pushes WorldObjects, teleports
+   *  the local player, and respawns bots. */
+  choose: (name: string) => void;
+  /** Re-apply the current map (re-load + re-teleport + bot respawn). */
+  reset: () => void;
+  /** Re-fetch the list from /api/maps. */
+  reloadList: () => void;
+}
+
 /**
- * Adds a "Map" panel to the right-hand Leva panel in Debug Mode.
- * Exposes:
- *   - A `name` dropdown of every map in `/api/maps` (re-fetched via
- *     the Reload button).
- *   - A "Load" button that compiles the selected map + pushes it into
- *     the SDK store via `actions.setWorldObjects(...)`. Also teleports
- *     the local player to the first spawn point.
- *   - A "Reset & respawn" button that re-applies the same map AND
- *     warps every in-browser bot to one of the spawns (cycling modulo
- *     spawn count).
+ * Headless state hook for the Debug-mode Map picker. No Leva. The
+ * paired UI component (`MapPickerPanel`) consumes this state to
+ * render a select + two buttons.
  *
- * Persists the last-selected map in `localStorage` so a reload brings
- * the user back to the same map without re-picking.
+ * Behaviour on mount:
+ *   1. Fetch the `/api/maps` listing.
+ *   2. Load the persisted last-selected map (or `default`).
+ *   3. Push its compiled WorldObjects to the SDK store, teleport the
+ *      local player to the first spawn, and respawn bots.
  *
- * WS-mode TODO: when the Node bots CLI owns the pool, we'd need to
- * publish a `bot:respawn` event over the realtime-server's
- * control channel. Out of scope for v1 — the in-memory pool is
- * Debug's primary playtest path.
+ * Persists the last-selected map to localStorage so a page reload
+ * returns to the same map.
+ *
+ * WS-mode TODO: in WS mode the bots run in the Node CLI and the
+ * in-browser pool is null. A `bot:respawn` event over the realtime
+ * server's control channel would close the gap — out of scope.
  */
-export function useMapPicker({ actions, bots }: UseMapPickerOpts): void {
-  // Stable storage clients across renders.
+export function useMapPicker({ actions, bots }: UseMapPickerOpts): MapPickerState {
   const storage = useMemo(() => {
     try {
       return {
@@ -64,6 +73,9 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): void {
     }
   }, []);
 
+  // Keep the latest actions/bots in refs so the load/teleport
+  // callbacks don't get recreated every time a parent rerenders
+  // for an unrelated reason.
   const actionsRef = useRef(actions);
   useEffect(() => {
     actionsRef.current = actions;
@@ -73,11 +85,6 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): void {
     botsRef.current = bots;
   }, [bots]);
 
-  // Fetch the map list once on mount + on demand. Stored in a ref so
-  // the Leva panel can read it synchronously without re-rendering on
-  // every list change. The dropdown is rebuilt by re-calling
-  // `useControls` with a fresh `options` block via the `mapKey` dep.
-  const mapsRef = useRef<string[]>([]);
   const initialName = useMemo(() => {
     try {
       return globalThis.localStorage?.getItem(LAST_MAP_KEY) ?? 'default';
@@ -85,20 +92,17 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): void {
       return 'default';
     }
   }, []);
-  const selectedRef = useRef<string>(initialName);
 
-  // Re-key Leva's schema when the maps list changes so the dropdown
-  // options update. Without this, Leva caches the options object's
-  // identity and a fresh fetch's new map names wouldn't appear.
-  const mapsListVersionRef = useRef(0);
+  const [maps, setMaps] = useState<string[]>([initialName]);
+  const [selected, setSelected] = useState<string>(initialName);
 
   const loadMap = useCallback(
-    async (name: string): Promise<{ map: MapDocumentV1; spawns: SpawnPoint[] } | null> => {
+    async (
+      name: string,
+    ): Promise<{ map: MapDocumentV1; spawns: SpawnPoint[] } | null> => {
       try {
         const map = await storage.maps.load(name);
         if (!map) return null;
-        // Fetch every referenced room concurrently; missing ones are
-        // skipped (compileMap will warn for each).
         const refSet = new Set<string>();
         for (const ri of map.rooms) refSet.add(ri.roomName);
         const roomEntries = await Promise.all(
@@ -116,11 +120,9 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): void {
         for (const e of roomEntries) {
           if (e) rooms.set(e[0], e[1]);
         }
-
         const a = actionsRef.current;
         if (a) {
-          const compiled = compileMap(map, rooms, CUBE_SIZE);
-          a.setWorldObjects(compiled);
+          a.setWorldObjects(compileMap(map, rooms, CUBE_SIZE));
         }
         return { map, spawns: map.spawnPoints };
       } catch (err) {
@@ -133,21 +135,15 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): void {
 
   const teleportLocal = useCallback((spawns: readonly SpawnPoint[]) => {
     const a = actionsRef.current;
-    if (!a) return;
-    const target = spawns[0];
-    if (!target) return;
-    a.setSelfPosition(
-      { x: target.position[0], y: target.position[1], z: target.position[2] },
-      { x: 0, y: 0, z: 0 },
-      0,
-    );
+    if (!a || spawns.length === 0) return;
+    const t = spawns[0].position;
+    a.setSelfPosition({ x: t[0], y: t[1], z: t[2] }, { x: 0, y: 0, z: 0 }, 0);
   }, []);
 
   const respawnBots = useCallback((spawns: readonly SpawnPoint[]) => {
     const pool = botsRef.current;
     if (!pool) return;
     if (spawns.length === 0) {
-      // No spawns defined — fall back to perimeter ring inside BotPool.
       pool.respawnAll([]);
       return;
     }
@@ -156,25 +152,27 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): void {
     );
   }, []);
 
-  const reload = useCallback(async () => {
+  const reloadList = useCallback(async () => {
     try {
       const list = await storage.maps.list();
-      mapsRef.current = list.map((m) => m.name).sort();
+      const names = list.map((m) => m.name).sort();
+      // Always keep the selected name visible even if storage doesn't
+      // know about it yet (just-created map).
+      if (!names.includes(selected)) names.push(selected);
+      setMaps(names);
     } catch (err) {
       console.warn('[map-picker] list failed:', err);
-      mapsRef.current = [];
+      setMaps([selected]);
     }
-    mapsListVersionRef.current += 1;
-  }, [storage]);
+  }, [storage, selected]);
 
+  // Bootstrap: fetch list, load persisted map, teleport + respawn.
   useEffect(() => {
-    // Bootstrap: fetch list, then load the persisted map if it exists.
     let cancelled = false;
     void (async () => {
-      await reload();
+      await reloadList();
       if (cancelled) return;
-      const name = selectedRef.current;
-      const result = await loadMap(name);
+      const result = await loadMap(initialName);
       if (cancelled) return;
       if (result) {
         teleportLocal(result.spawns);
@@ -185,69 +183,36 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): void {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reload]);
+  }, []);
 
-  // Stable callbacks for the Leva buttons.
-  const onChoose = useCallback(
-    async (name: string) => {
-      selectedRef.current = name;
+  const choose = useCallback(
+    (name: string) => {
+      setSelected(name);
       try {
         globalThis.localStorage?.setItem(LAST_MAP_KEY, name);
       } catch {
         // ignore.
       }
-      const result = await loadMap(name);
-      if (result) {
-        teleportLocal(result.spawns);
-        respawnBots(result.spawns);
-      }
+      void (async () => {
+        const result = await loadMap(name);
+        if (result) {
+          teleportLocal(result.spawns);
+          respawnBots(result.spawns);
+        }
+      })();
     },
     [loadMap, teleportLocal, respawnBots],
   );
 
-  const onReset = useCallback(async () => {
-    const result = await loadMap(selectedRef.current);
-    if (result) {
-      teleportLocal(result.spawns);
-      respawnBots(result.spawns);
-    }
-  }, [loadMap, teleportLocal, respawnBots]);
+  const reset = useCallback(() => {
+    void (async () => {
+      const result = await loadMap(selected);
+      if (result) {
+        teleportLocal(result.spawns);
+        respawnBots(result.spawns);
+      }
+    })();
+  }, [selected, loadMap, teleportLocal, respawnBots]);
 
-  const onReload = useCallback(async () => {
-    await reload();
-  }, [reload]);
-
-  // Re-key on the list-version so the dropdown reflects fresh fetches.
-  const keyForLeva = `${mapsListVersionRef.current}:${initialName}`;
-  useControls(
-    'Map',
-    () => {
-      const names = mapsRef.current.length > 0 ? mapsRef.current : [initialName];
-      const options = Object.fromEntries(names.map((n) => [n, n]));
-      // Always include the persisted name so the dropdown can default
-      // to it even before the list resolves.
-      if (!options[initialName]) options[initialName] = initialName;
-      return {
-        name: {
-          value: selectedRef.current,
-          options,
-          onChange: (v: string) => {
-            void onChoose(v);
-          },
-        },
-        Reload: button(() => {
-          void onReload();
-        }),
-        'Reset & respawn': button(() => {
-          void onReset();
-        }),
-      } as unknown as Record<string, never>;
-    },
-    [keyForLeva],
-  );
-
-  // Keep the unused emptyMapDocument import alive for the future
-  // "create new map from Debug" workflow without forcing tsc to
-  // complain about it now.
-  void emptyMapDocument;
+  return { maps, selected, choose, reset, reloadList };
 }
