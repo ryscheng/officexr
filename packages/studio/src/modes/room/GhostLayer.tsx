@@ -15,11 +15,8 @@ import {
  *   - `pulse`: 25%–75% transparent oscillation. Used by the Delete
  *     tool to denote "click will delete this". The PulseDriver
  *     mounts only when at least one pulse-mode ghost exists.
- *   - `selected`: 25% opaque, saturated swatch color. Used by the
- *     Select tool's per-instance overlay so selected cubes read as
- *     clearly highlighted in addition to the per-cluster wireframe.
  */
-export type GhostMode = 'solid' | 'pulse' | 'selected';
+export type GhostMode = 'solid' | 'pulse';
 
 export interface GhostSpec {
   mode: GhostMode;
@@ -38,7 +35,7 @@ interface GhostLayerProps {
  * so the cloned-transparent material isolates from the opaque
  * material the renderer uses elsewhere.
  *
- * Ghost meshes opt out of the snap raycaster via `mesh.layers.set(31)`
+ * Ghost meshes opt out of the snap raycaster via a no-op `raycast`
  * so the Add/Tile tools never snap to their own ghost preview.
  */
 export function GhostLayer({ ghosts, cubeSize }: GhostLayerProps) {
@@ -103,19 +100,6 @@ function GhostMeshForGroup({
 
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
   const mat = useMemo(() => {
-    if (mode === 'selected') {
-      // Unlit + saturated swatch + 75% transparent. Replaces the
-      // GLTF's PBR material so the selection reads as a flat,
-      // vivid colour regardless of the scene's lighting.
-      return new THREE.MeshBasicMaterial({
-        color: kind ? kind.swatch : '#fde68a',
-        transparent: true,
-        opacity: 0.80,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        toneMapped: false,
-      });
-    }
     const base = (extractMaterialFromGltf(gltf.scene) as THREE.MeshStandardMaterial).clone();
     base.transparent = true;
     // Solid ghosts use a constant 0.5; pulse ghosts get overwritten
@@ -124,7 +108,7 @@ function GhostMeshForGroup({
     base.depthWrite = false;
     base.side = THREE.DoubleSide;
     return base;
-  }, [gltf.scene, mode, kind]);
+  }, [gltf.scene]);
 
   const meshRef = useRef<THREE.InstancedMesh>(null);
 

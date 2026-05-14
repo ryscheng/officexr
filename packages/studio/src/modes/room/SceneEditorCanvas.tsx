@@ -272,26 +272,14 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const cubeSize = props.compiled.cubeSize;
 
   // Compute the ghost specs the GhostLayer should render this frame.
-  // Always includes a 'selected' ghost overlay for each selected
-  // instance (rendered as a saturated, 75%-transparent overlay so the
-  // selection reads at a glance — see also <SelectionOutline> for the
-  // per-cluster wireframes). Tool-specific previews layer on top:
+  // Selection no longer emits a ghost overlay — the per-cluster
+  // wireframe in <SelectionOutline> is the sole selection indicator.
+  // Tool-specific previews:
   //   Add: one SOLID ghost at the snap target.
   //   Delete: one PULSE ghost per cube in the hovered command's group.
   //   Tile: ghosts depending on stage (idle/placed/x-extruded/z-extruded).
   const ghosts = useMemo<GhostSpec[]>(() => {
     const out: GhostSpec[] = [];
-    // Selection ghost overlay — rendered for every tool.
-    if (props.selection.size > 0) {
-      for (const inst of props.compiled.instances) {
-        if (!props.selection.has(inst.sourceCommandId)) continue;
-        out.push({
-          mode: 'selected',
-          kindId: inst.kindId,
-          voxel: [inst.position[0], inst.position[1], inst.position[2]],
-        });
-      }
-    }
     if (props.tool === 'add' && props.stagedKindId && hover) {
       const voxel = snapToVoxel(hover, cubeSize);
       out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
@@ -338,7 +326,6 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   }, [
     props.tool,
     props.stagedKindId,
-    props.selection,
     hover,
     hoverCommandId,
     cubeSize,
@@ -978,20 +965,13 @@ interface CubesLayerProps {
 }
 
 function CubesLayer(props: CubesLayerProps) {
-  // Group instances by kind for one InstancedMesh per kind. Selected
-  // instances are filtered out — they get rendered separately in the
-  // GhostLayer as 'selected'-mode saturated overlays so they read
-  // distinctly. Picking still works because clicks come back via
-  // both the opaque cube path AND (separately) the GhostLayer can
-  // forward right-clicks; today, picking a SELECTED cube to deselect
-  // it goes through empty-floor click or Ctrl/Cmd-click on a sibling
-  // cube. This is a deliberate simplification — losing the ability
-  // to direct-click a selected cube costs less than the visual
-  // double-render did.
+  // Group instances by kind for one InstancedMesh per kind. ALL
+  // instances render here — including selected ones, which keep
+  // their normal opaque material; the per-cluster <SelectionOutline>
+  // wireframe is the only selection indicator.
   const byKind = useMemo(() => {
     const m = new Map<string, ObjectInstance[]>();
     for (const inst of props.instances) {
-      if (props.selection.has(inst.sourceCommandId)) continue;
       let arr = m.get(inst.kindId);
       if (!arr) {
         arr = [];
@@ -1000,7 +980,7 @@ function CubesLayer(props: CubesLayerProps) {
       arr.push(inst);
     }
     return m;
-  }, [props.instances, props.selection]);
+  }, [props.instances]);
 
   return (
     <>
