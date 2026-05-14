@@ -323,6 +323,31 @@ export class BotDriver {
     this.invokeOnEnter();
   }
 
+  /** Teleport the bot to a fresh position. Re-applies into the
+   * physics body AND the SDK store + broadcast position so peers
+   * observe a discrete jump rather than seeing the bot walk there
+   * through any walls.
+   *
+   * Used by `BotPool.respawnAll` when the Debug Map picker loads a
+   * new map — every bot warps to a chosen spawn point so the
+   * cohort starts the new scene at known locations. */
+  setPosition(pos: Vec3): void {
+    if (this.stopped) return;
+    if (!this.botActions || !this.physics) {
+      // Not started yet — record the new start so when start()
+      // runs later it places the bot here.
+      this.startPos = { ...pos };
+      return;
+    }
+    this.physics.applyTranslation({ ...pos });
+    const yaw = this.botStore?.getState().players[this.botId]?.yaw ?? 0;
+    this.botActions.setSelfPosition({ ...pos }, { x: 0, y: 0, z: 0 }, yaw);
+    // Reset any strategy-state that's stale w.r.t. the new location
+    // (e.g. wander direction picked from the old position).
+    this.wasMoving = false;
+    this.invokeOnEnter();
+  }
+
   getBotPos(): Vec3 {
     if (!this.botStore) return { ...this.startPos };
     const state = this.botStore.getState();

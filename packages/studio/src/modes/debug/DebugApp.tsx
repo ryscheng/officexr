@@ -7,6 +7,7 @@ import {
   type PersistentLocalState,
 } from '../../realtime/services.ts';
 import { useStackSwitcher } from '../../realtime/useStackSwitcher.ts';
+import { useMapPicker } from './useMapPicker.ts';
 
 const SELF_ID = 'local-player';
 const OFFICE_ID = 'studio-office';
@@ -65,6 +66,14 @@ export function DebugApp() {
 
   const { stack, errorBanner, dismissError, onBotCountChange, onBotModeChange } =
     useStackSwitcher({ local, audio });
+
+  // Add the "Map" Leva folder. The picker pushes the compiled map's
+  // ObjectInstances into the SDK store and teleports the local player
+  // + bot pool to the map's spawn points.
+  useMapPicker({
+    actions: local?.actions ?? null,
+    bots: stack?.mode === 'in-memory' ? stack.bots : null,
+  });
 
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>

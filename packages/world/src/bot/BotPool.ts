@@ -142,6 +142,27 @@ export class BotPool {
   list(): readonly BotDriver[] {
     return this.bots;
   }
+
+  /**
+   * Teleport every bot to a position from `spawns`. Bots cycle through
+   * the spawn array modulo its length so N bots and M spawn points (any
+   * N, M) always have an answer. With zero spawns, falls back to the
+   * default perimeter ring so the cohort still scatters instead of
+   * stacking at origin.
+   *
+   * Used by the Debug Map picker (`useMapPicker`) when the author
+   * switches maps or clicks "Reset & respawn" — every bot warps to a
+   * known location on the new map so playtesting starts from a
+   * defined state.
+   */
+  respawnAll(spawns: readonly Vec3[]): void {
+    if (this.stopped) return;
+    if (this.bots.length === 0) return;
+    for (let i = 0; i < this.bots.length; i++) {
+      const target = spawns.length > 0 ? spawns[i % spawns.length] : spawnPosition(i);
+      this.bots[i].setPosition({ ...target });
+    }
+  }
 }
 
 function botIdFor(idx: number): string {
