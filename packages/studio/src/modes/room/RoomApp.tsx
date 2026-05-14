@@ -286,6 +286,7 @@ export function RoomApp() {
           stagedKindId={stagedKindId}
           onChange={setTool}
         />
+        <ExportButton />
       </main>
       <SidePanel>
         <Leva fill flat titleBar={{ drag: false }} />
@@ -306,6 +307,35 @@ export function RoomApp() {
         />
       )}
     </div>
+  );
+}
+
+function ExportButton() {
+  // Stub button — exposes the future "Export GLB" workflow described
+  // in `export-room.ts`. Disabled so the user can see the surface
+  // without anything happening on click; a follow-up will wire it to
+  // a real GLTFExporter once we settle on the per-kind material
+  // baking strategy.
+  return (
+    <button
+      type="button"
+      disabled
+      title="Export this room as a single optimized .glb (coming soon)"
+      style={{
+        position: 'absolute',
+        right: 12,
+        top: 12,
+        padding: '6px 10px',
+        background: '#1e293b',
+        border: '1px solid #334155',
+        color: '#94a3b8',
+        font: '12px system-ui, sans-serif',
+        borderRadius: 4,
+        cursor: 'not-allowed',
+      }}
+    >
+      Export GLB
+    </button>
   );
 }
 

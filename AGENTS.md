@@ -240,6 +240,30 @@ room membership on every presence `sync` event.
 3. Import in mobile as `@officexr/core` (resolved by Babel's `module-resolver`).
 4. Import in web using the `@/` alias (resolved by Vite to `packages/core/src`).
 
+## Studio Editors (5 modes)
+
+The studio (`@officexr/studio`) at `pnpm --filter @officexr/studio dev` is
+restructured into five purpose-built modes, each a separate App under
+`packages/studio/src/modes/<name>/`:
+
+| Mode      | Hash      | Purpose                                                  |
+|-----------|-----------|----------------------------------------------------------|
+| Map       | `#map`    | Compose Rooms into a world — placement, rotation, spawn points, environment (sun/sky/stars/HDRI) |
+| Room      | `#room`   | Author a single Room: Select / Add / Delete / Tile tools, multi-select + groups, point-and-click cube placement |
+| Object    | `#object` | Tune every cube kind: label, swatch, walkable, scale, tint, opacity, roughness, metalness, emissive |
+| Character | `#character` | Character previewer + per-model tuning                |
+| Debug     | `#debug`  | Playtest: pick a map, bots spawn at the map's spawn points, Reset & respawn warps everyone |
+
+Storage endpoints (Vite middleware):
+- `/api/rooms/:name` — RoomDocument JSON
+- `/api/maps/:name` — MapDocumentV1 JSON
+- `/api/cube-kinds` — single-doc catalog GET/PUT
+
+Files on disk:
+- `packages/world/rooms/*.json`
+- `packages/world/maps/*.json` (`default.json` is the seed)
+- `packages/world/cube-kinds.json` (+ `cube-kinds.default.json` fallback)
+
 ## Studio Asset Packs
 
 The studio's Object editor + Room editor catalog references three KayKit FREE
