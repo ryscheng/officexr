@@ -71,3 +71,4 @@ test('Debug mode mounts a canvas, the SDK store has both the local player and a 
   expect(state!.selfId, 'local player id').toBe('local-player');
   expect(state!.playerCount, 'player count (self + at least one bot)').toBeGreaterThan(1);
 });
+

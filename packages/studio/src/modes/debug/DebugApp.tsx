@@ -10,6 +10,7 @@ import {
 import { useStackSwitcher } from '../../realtime/useStackSwitcher.ts';
 import { MapPickerPanel } from './MapPickerPanel.tsx';
 import { useMapPicker } from './useMapPicker.ts';
+import { useWorldFocus } from './useWorldFocus.ts';
 
 const SELF_ID = 'local-player';
 const OFFICE_ID = 'studio-office';
@@ -83,6 +84,12 @@ export function DebugApp() {
   // below.
   const studioSettings = useStudioSettings();
 
+  // True iff the 3D canvas currently "owns" keyboard input. Clicking
+  // anywhere inside a `[data-studio-panel]` ancestor (the
+  // <SidePanel>) releases focus; clicking the canvas reclaims it.
+  // The HUD's <FocusIndicator> below surfaces the state visually.
+  const worldFocused = useWorldFocus();
+
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
       <main
@@ -110,9 +117,11 @@ export function DebugApp() {
             selfId={SELF_ID}
             cameraMode={cameraMode}
             viewConfig={studioSettings.viewConfig}
+            worldFocused={worldFocused}
           />
         )}
         <Hud cameraMode={cameraMode} mode={stack?.mode ?? 'in-memory'} />
+        <FocusIndicator focused={worldFocused} />
         {errorBanner && (
           <ErrorBanner message={errorBanner} onDismiss={dismissError} />
         )}
@@ -133,6 +142,60 @@ export function DebugApp() {
           </div>
         </div>
       </SidePanel>
+    </div>
+  );
+}
+
+/**
+ * Top-right chip showing whether the 3D canvas owns keyboard input.
+ *   - Focused: green dot + "Controls active".
+ *   - Blurred: amber dot + "Click world to control" prompt; the
+ *     whole chip pulses gently so it draws the eye when the user
+ *     starts typing and nothing happens.
+ *
+ * The chip itself is pointer-events: none so clicking ON it doesn't
+ * register as a "focus the world" mousedown — the user has to click
+ * the canvas behind it.
+ */
+function FocusIndicator({ focused }: { focused: boolean }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        padding: '6px 10px',
+        background: focused ? 'rgba(0,0,0,0.55)' : 'rgba(146, 64, 14, 0.85)',
+        color: '#fff',
+        font: '12px system-ui, sans-serif',
+        borderRadius: 4,
+        pointerEvents: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        animation: focused ? undefined : 'officexr-focus-pulse 1.6s ease-in-out infinite',
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          display: 'inline-block',
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: focused ? '#22c55e' : '#fbbf24',
+          boxShadow: focused
+            ? '0 0 6px #22c55e'
+            : '0 0 6px #fbbf24',
+        }}
+      />
+      {focused ? 'Controls active' : 'Click world to control'}
+      <style>{`
+        @keyframes officexr-focus-pulse {
+          0%, 100% { opacity: 0.85; }
+          50% { opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }

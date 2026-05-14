@@ -12,16 +12,21 @@ interface SidePanelProps {
 
 /**
  * Fixed-width vertical panel on the right of the viewport that hosts
- * Leva (or anything else) without overlaying the 3D canvas. The
- * `<Leva fill />` prop family makes Leva adopt this container's box
- * and drop its draggable chrome — but Leva still mounts the
- * `#leva__root` element inside it, so the existing
- * `el.closest('#leva__root')` checks in SceneFrame continue to work
- * for "is the user typing into Leva?" gates.
+ * the shadcn-based control panels without overlaying the 3D canvas.
+ *
+ * The `data-studio-panel` attribute is load-bearing for keyboard
+ * focus: `useWorldFocus` (and any callsite gating on "is the user
+ * interacting with the side panel?") uses `el.closest('[data-studio-
+ * panel]')` to decide whether a mousedown/focusin should release
+ * keyboard control from the in-world character. The attribute is
+ * therefore part of the public contract — keep it on the outermost
+ * element this component renders so a descendant click/focus walks
+ * up and finds it.
  */
 export function SidePanel({ children }: SidePanelProps) {
   return (
     <aside
+      data-studio-panel="true"
       style={{
         width: SIDE_PANEL_WIDTH,
         flex: '0 0 auto',
@@ -36,11 +41,6 @@ export function SidePanel({ children }: SidePanelProps) {
         borderLeft: '1px solid #2a2f36',
       }}
     >
-      {/* The scroll container is a child rather than the aside itself
-          so Leva's `fill` mode (which sets height: 100% on its own
-          container) doesn't compete with the parent's overflow rule.
-          Anything taller than the panel scrolls here, including
-          Leva's full panel tree when its many folders are open. */}
       <div
         style={{
           flex: 1,

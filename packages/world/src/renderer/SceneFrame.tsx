@@ -33,6 +33,11 @@ interface SceneFrameProps {
   selfId: string;
   /** Set by `Players` when the self avatar's RigidBody mounts. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
+  /** When false, keyboard input is released from the in-world
+   * character: keydown is ignored, and any held keys are cleared
+   * so the character stops mid-stride. Toggled by the studio's
+   * `useWorldFocus` hook based on side-panel interaction. */
+  worldFocused: boolean;
 }
 
 const ARROW_KEYS = new Set([
@@ -70,8 +75,21 @@ export function SceneFrame({
   yawRef,
   selfId,
   selfBodyRef,
+  worldFocused,
 }: SceneFrameProps) {
   const keysDown = React.useRef<Set<string>>(new Set());
+  // Mirror the React-prop focus state into a ref so the imperative
+  // keydown listener (registered once in useEffect below) always
+  // reads the live value without re-binding when focus changes.
+  const focusedRef = React.useRef(worldFocused);
+  useEffect(() => {
+    focusedRef.current = worldFocused;
+    // Drop any held keys when focus is released so a key still
+    // depressed at panel-click time doesn't lock the character into
+    // a permanent walk loop. (Real keyup events stop firing while
+    // an input has focus.)
+    if (!worldFocused) keysDown.current.clear();
+  }, [worldFocused]);
   const prevState = React.useRef(store.getState());
   const wasMoving = React.useRef(false);
 
@@ -102,27 +120,23 @@ export function SceneFrame({
   const bumpingPeersRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const isInsideLeva = (el: EventTarget | null): boolean =>
-      el instanceof Element && !!el.closest('#leva__root');
-
-    let pointerOverLeva = false;
-    const onPointerMove = (e: PointerEvent) => {
-      pointerOverLeva = isInsideLeva(e.target);
-    };
-
-    const isLevaActive = (eventTarget: EventTarget | null): boolean => {
-      if (isInsideLeva(eventTarget)) return true;
-      if (pointerOverLeva) return true;
-      const active = document.activeElement;
-      if (active && active !== document.body && isInsideLeva(active)) {
-        return true;
-      }
-      return false;
-    };
-
+    // Gate on the React-managed `worldFocused` flag (mirrored into
+    // focusedRef above so this once-bound listener reads the live
+    // value). The studio's `useWorldFocus` hook flips it on
+    // mousedown / focusin against a `[data-studio-panel]` ancestor;
+    // when false, keydowns are dropped (and held keys cleared) so
+    // interacting with the right-hand control panel doesn't
+    // accidentally walk the character.
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isLevaActive(e.target)) {
-        keysDown.current.clear();
+      if (!focusedRef.current) return;
+      // Also defend against keys typed into a focused <input> that
+      // happens to be outside any panel — the world should never
+      // capture keystrokes a real text field is consuming.
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+      ) {
         return;
       }
       if (ARROW_KEYS.has(e.key)) e.preventDefault();
@@ -130,28 +144,12 @@ export function SceneFrame({
     };
     const onKeyUp = (e: KeyboardEvent) =>
       keysDown.current.delete(e.key.toLowerCase());
-    const onFocusIn = (e: FocusEvent) => {
-      if (isInsideLeva(e.target)) keysDown.current.clear();
-    };
-    const onMouseDown = (e: MouseEvent) => {
-      if (isInsideLeva(e.target)) return;
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && isInsideLeva(active)) {
-        active.blur();
-      }
-    };
 
-    window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    document.addEventListener('focusin', onFocusIn);
-    document.addEventListener('mousedown', onMouseDown);
     return () => {
-      window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      document.removeEventListener('focusin', onFocusIn);
-      document.removeEventListener('mousedown', onMouseDown);
     };
   }, []);
 

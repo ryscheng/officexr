@@ -83,11 +83,19 @@ interface SceneProps {
    * fully controlled — see `packages/studio/src/panels/world/`
    * for the editor. */
   viewConfig: ViewConfig;
+  /** When false, keyboard input is released from the in-world
+   * character so the user can interact with the side panel without
+   * accidentally walking. Studio's `useWorldFocus` hook tracks this
+   * via mousedown / focusin against `[data-studio-panel]`. Default
+   * true preserves the historical behaviour for any caller that
+   * doesn't wire a focus tracker. */
+  worldFocused?: boolean;
 }
 
 export function Scene(props: SceneProps) {
   const { store, selfId, cameraMode, sync, viewConfig } = props;
   const { proximity, lighting, background, fixedCamera, world } = viewConfig;
+  const worldFocused = props.worldFocused ?? true;
 
   // After Scene mounts, force-broadcast the current world state.
   // The regular `onStoreChange` diff path only fires when values
@@ -347,6 +355,7 @@ export function Scene(props: SceneProps) {
           fixedMovementYawOffsetDeg={fixedCamera.movementYawOffsetDeg}
           yawRef={yawRef}
           selfBodyRef={selfBodyRef}
+          worldFocused={worldFocused}
         />
         </Physics>
       </Suspense>

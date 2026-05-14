@@ -15,6 +15,7 @@ export function LeftPanel({ children }: LeftPanelProps) {
   if (!children) return null;
   return (
     <aside
+      data-studio-panel="true"
       style={{
         width: LEFT_PANEL_WIDTH,
         flexShrink: 0,
