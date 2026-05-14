@@ -170,6 +170,15 @@ interface SceneEditorCanvasProps {
    * click 4 / Esc; the canvas owns the tile state machine but the
    * `tool` lives in the parent. */
   onSetTool: (tool: Tool) => void;
+  /** Right-click without drag — opens the context menu. The canvas
+   * supplies the cube's sourceCommandId if a cube was hit, else null.
+   * The parent decides menu visibility + items based on selection
+   * state. */
+  onContextMenuRequest: (
+    commandId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
 }
 
 /**
@@ -476,8 +485,154 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         cubeSize={props.compiled.cubeSize}
         selection={props.selection}
       />
+      <ContextMenuListener
+        instances={props.compiled.instances}
+        cubeSize={props.compiled.cubeSize}
+        onRequest={props.onContextMenuRequest}
+      />
     </Canvas>
   );
+}
+
+// --- Right-click context menu listener -------------------------
+
+interface ContextMenuListenerProps {
+  instances: ObjectInstance[];
+  cubeSize: number;
+  onRequest: (
+    commandId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
+}
+
+/**
+ * Captures right-click events on the canvas and translates them into
+ * context-menu requests. Distinguishes a bare right-click (open
+ * menu) from a right-click-drag (orbit camera) by tracking the
+ * pointer movement between pointerdown and pointerup; >4px ⇒ drag.
+ *
+ * Hit-tests via the active R3F raycaster + camera against a synthetic
+ * BoxGeometry mesh per instance. We don't have direct access to the
+ * InstancedMesh refs from this scope, so we approximate by
+ * intersecting voxel AABBs analytically — exact enough for picking
+ * 1×1×1 cubes on a grid.
+ */
+function ContextMenuListener({
+  instances,
+  cubeSize,
+  onRequest,
+}: ContextMenuListenerProps) {
+  const { gl, camera, raycaster, pointer } = useThree();
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    let downX = 0;
+    let downY = 0;
+    let dragged = false;
+
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 2) return;
+      downX = e.clientX;
+      downY = e.clientY;
+      dragged = false;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!(e.buttons & 2)) return;
+      if (
+        Math.abs(e.clientX - downX) > 4 ||
+        Math.abs(e.clientY - downY) > 4
+      ) {
+        dragged = true;
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      if (e.button !== 2) return;
+      if (dragged) return;
+      // No drag → context-menu intent. Translate the click to NDC and
+      // raycast against an analytic voxel AABB per instance to find
+      // the cube under the cursor (if any).
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+      // Re-use R3F's raycaster + camera with the synthetic pointer.
+      const savedX = pointer.x;
+      const savedY = pointer.y;
+      pointer.x = nx;
+      pointer.y = ny;
+      raycaster.setFromCamera(pointer, camera);
+      // Restore the pointer so R3F's normal event loop isn't confused.
+      pointer.x = savedX;
+      pointer.y = savedY;
+
+      let bestT = Infinity;
+      let bestId: string | null = null;
+      const half = cubeSize / 2;
+      const overlap = (cubeSize * 1.05) / 2;
+      for (const inst of instances) {
+        const cx = inst.position[0] * cubeSize;
+        const cy = inst.position[1] * cubeSize + cubeSize / 2;
+        const cz = inst.position[2] * cubeSize;
+        const t = rayHitAabb(
+          raycaster.ray.origin,
+          raycaster.ray.direction,
+          [cx - overlap, cy - half, cz - overlap],
+          [cx + overlap, cy + half, cz + overlap],
+        );
+        if (t !== null && t < bestT) {
+          bestT = t;
+          bestId = inst.sourceCommandId;
+        }
+      }
+
+      onRequest(bestId, e.clientX, e.clientY);
+    };
+
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerup', onUp);
+    return () => {
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerup', onUp);
+    };
+  }, [gl, camera, raycaster, pointer, instances, cubeSize, onRequest]);
+
+  return null;
+}
+
+/** Ray vs axis-aligned bounding box. Returns the smaller positive t
+ * at which the ray enters the box, or null if it misses or hits only
+ * behind the ray origin. Slab method — fast and dependency-free. */
+function rayHitAabb(
+  origin: THREE.Vector3,
+  dir: THREE.Vector3,
+  min: [number, number, number],
+  max: [number, number, number],
+): number | null {
+  let tMin = -Infinity;
+  let tMax = Infinity;
+  const o = [origin.x, origin.y, origin.z];
+  const d = [dir.x, dir.y, dir.z];
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(d[i]) < 1e-9) {
+      if (o[i] < min[i] || o[i] > max[i]) return null;
+      continue;
+    }
+    const invD = 1 / d[i];
+    let t1 = (min[i] - o[i]) * invD;
+    let t2 = (max[i] - o[i]) * invD;
+    if (t1 > t2) {
+      const tmp = t1;
+      t1 = t2;
+      t2 = tmp;
+    }
+    if (t1 > tMin) tMin = t1;
+    if (t2 < tMax) tMax = t2;
+    if (tMin > tMax) return null;
+  }
+  if (tMax < 0) return null;
+  return tMin > 0 ? tMin : tMax;
 }
 
 // --- Selection outline (wireframe AABB) -------------------------

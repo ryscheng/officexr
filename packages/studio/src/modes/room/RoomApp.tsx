@@ -3,12 +3,14 @@ import { Leva } from 'leva';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { CommandHistory } from './CommandHistory.tsx';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu.tsx';
 import { ObjectPalette } from './ObjectPalette.tsx';
 import { RoomPicker } from './RoomPicker.tsx';
 import { SceneEditorCanvas } from './SceneEditorCanvas.tsx';
 import { Toolbar } from './Toolbar.tsx';
 import { useRoomDocument } from './useRoomDocument.ts';
 import { useRoomInspector } from './useRoomInspector.ts';
+import { selectionIsExactlyOneGroup } from './room-selection.ts';
 import type { Tool } from './tools.ts';
 
 /**
@@ -68,9 +70,37 @@ export function RoomApp() {
         roomDoc.clearSelection();
         return;
       }
-      // Don't hijack letters when a modifier is held — those are
-      // reserved for future shortcuts like Ctrl+Z / Ctrl+G.
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      // Ctrl/Cmd shortcuts FIRST — they overlap with the bare letter
+      // shortcuts below.
+      if (e.ctrlKey || e.metaKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'g' && e.shiftKey) {
+          e.preventDefault();
+          const exact = selectionIsExactlyOneGroup(
+            roomDoc.selection,
+            roomDoc.lookup.groupMembers,
+          );
+          if (exact) roomDoc.ungroupCommands(exact);
+          return;
+        }
+        if (k === 'g') {
+          e.preventDefault();
+          if (roomDoc.selection.size >= 2) {
+            roomDoc.groupCommands(roomDoc.selection);
+          }
+          return;
+        }
+        return;
+      }
+      // Delete / Backspace removes the current selection.
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (roomDoc.selection.size > 0) {
+          e.preventDefault();
+          roomDoc.deleteSelection();
+        }
+        return;
+      }
+      if (e.altKey || e.shiftKey) return;
       const k = e.key.toLowerCase();
       if (k === 'q') {
         setBuildHeight((y) => y - 1);
@@ -90,6 +120,101 @@ export function RoomApp() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [roomDoc, stagedKindId]);
+
+  // Context menu open/closed state. `null` = closed.
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+  } | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  // Right-click intent from the canvas. Decides what to do based on
+  // (commandId hit, current selection):
+  //   - cube hit AND in selection → keep selection, build menu
+  //   - cube hit AND NOT in selection → replace selection with that
+  //     cube (or its group), build menu
+  //   - no cube hit AND selection non-empty → build menu using
+  //     current selection
+  //   - no cube hit AND selection empty → ignore (right-drag camera
+  //     uses the same gesture; we never want to surprise the user
+  //     with an empty menu over blank floor)
+  const handleContextMenuRequest = useCallback(
+    (commandId: string | null, screenX: number, screenY: number) => {
+      let selectionForMenu: ReadonlySet<string>;
+      if (commandId !== null) {
+        if (roomDoc.selection.has(commandId)) {
+          selectionForMenu = roomDoc.selection;
+        } else {
+          // Promote the right-clicked cube (or its whole group) to
+          // selection. pickFromClick handles the group expansion.
+          roomDoc.pickFromClick(commandId);
+          // Build the new effective selection for the menu — the
+          // pickFromClick state-update is async w.r.t. this callback
+          // body, so compute what it WOULD be from the lookup.
+          const g = roomDoc.lookup.commandToGroup.get(commandId);
+          if (g) {
+            const members = roomDoc.lookup.groupMembers.get(g) ?? [commandId];
+            selectionForMenu = new Set(members);
+          } else {
+            selectionForMenu = new Set([commandId]);
+          }
+        }
+      } else {
+        if (roomDoc.selection.size === 0) return;
+        selectionForMenu = roomDoc.selection;
+      }
+
+      const items: ContextMenuItem[] = [];
+      // Group: 2+ commands selected AND none is in a group already.
+      const noneGrouped = Array.from(selectionForMenu).every(
+        (id) => !roomDoc.lookup.commandToGroup.has(id),
+      );
+      if (selectionForMenu.size >= 2 && noneGrouped) {
+        items.push({
+          id: 'group',
+          label: 'Group',
+          shortcut: 'Ctrl+G',
+          onActivate: () => {
+            roomDoc.groupCommands(selectionForMenu);
+          },
+        });
+      }
+      // Ungroup: selection is exactly the membership of some group.
+      const exactGroupId = selectionIsExactlyOneGroup(
+        selectionForMenu,
+        roomDoc.lookup.groupMembers,
+      );
+      if (exactGroupId) {
+        items.push({
+          id: 'ungroup',
+          label: 'Ungroup',
+          shortcut: 'Ctrl+Shift+G',
+          onActivate: () => {
+            roomDoc.ungroupCommands(exactGroupId);
+          },
+        });
+      }
+      items.push({
+        id: 'delete',
+        label: 'Delete',
+        shortcut: 'Del',
+        danger: true,
+        onActivate: () => {
+          if (commandId !== null && !roomDoc.selection.has(commandId)) {
+            // We promoted to selection above; deleteSelection uses
+            // the freshly-set selection on the next tick.
+            roomDoc.deleteCommand(commandId);
+          } else {
+            roomDoc.deleteSelection();
+          }
+        },
+      });
+
+      setContextMenu({ x: screenX, y: screenY, items });
+    },
+    [roomDoc],
+  );
 
   // Click on a cube — plain replaces, Ctrl/Cmd toggles, group members
   // are selected atomically by the hook.
@@ -148,6 +273,7 @@ export function RoomApp() {
           onCreateGroup={roomDoc.groupCommands}
           onSetTool={setTool}
           onClickEmpty={roomDoc.clearSelection}
+          onContextMenuRequest={handleContextMenuRequest}
         />
         <RoomHud
           roomName={roomDoc.roomName}
@@ -171,6 +297,14 @@ export function RoomApp() {
           onDelete={roomDoc.deleteCommand}
         />
       </SidePanel>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={closeContextMenu}
+        />
+      )}
     </div>
   );
 }
