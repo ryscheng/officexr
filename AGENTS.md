@@ -264,6 +264,38 @@ Files on disk:
 - `packages/world/maps/*.json` (`default.json` is the seed)
 - `packages/world/cube-kinds.json` (+ `cube-kinds.default.json` fallback)
 
+### Studio control kit
+
+Every panel uses an in-house control kit at
+`packages/studio/src/ui/controls/` built on shadcn-style wrappers
+around Radix primitives (slider, select, switch, collapsible, popover,
+tooltip, label) plus `react-colorful` for color pickers. The base
+shadcn components live at `packages/studio/src/components/ui/`.
+Styling is Tailwind v4 (configured via `@tailwindcss/vite`); tokens
+match the dark studio palette and are declared in
+`packages/studio/src/styles/globals.css`.
+
+Key controls:
+- `<NumberInput>` — slider + draggable scrubber + click-to-type
+  (drag-to-scrub uses `useDragScrub`; shift = ×10, alt = ×0.1).
+- `<ColorInput>` — `react-colorful` HexColorPicker in a Popover.
+- `<Vector3Input>` — three scrubbers side-by-side.
+- `<NullableField>` — checkbox + slotted control for `tint`/
+  `roughness`/`metalness`/`emissive` "use X" pairs.
+- `<Section>` — Radix Collapsible with an optional enable-toggle.
+
+Every value is fully controlled — there is no module-level store
+backing any of the panels. The previous Leva-based stack has been
+removed entirely; `pnpm --filter @officexr/studio lint:leva-free`
+runs four greps and fails CI if any Leva references leak back in.
+
+The world renderer's 8 dev-tweaker panels (Bot, Animation,
+Proximity, Lighting, Background, FixedCamera, World, Settings) live
+at `packages/studio/src/panels/world/`. They edit a `ViewConfig`
+bag persisted to `localStorage` via `useStudioSettings`; Debug Mode
+passes the bag into `<Scene>` as a `viewConfig` prop so the
+renderer stays UI-free.
+
 ## Studio Asset Packs
 
 The studio's Object editor + Room editor catalog references three KayKit FREE

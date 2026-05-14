@@ -8,6 +8,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "lint:leva-free": "node scripts/lint-leva-free.js",
     "bots:start": "pnpm --filter @officexr/world bots:start"
   },
   "dependencies": {
@@ -30,7 +31,6 @@
     "@react-three/rapier": "^2.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "leva": "^0.10.1",
     "lucide-react": "^0.475.0",
     "react": "^19.2.3",
     "react-colorful": "^5.7.0",

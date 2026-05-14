@@ -20,10 +20,10 @@ export interface UseStudioSettingsResult {
 }
 
 /**
- * Replaces the previous `levaPersistence.ts` whole-store roundtrip
- * with a single explicit React-state bag for the world-renderer
- * panel values. Persists to localStorage (debounced 250 ms) and
- * re-hydrates on mount.
+ * Replaces the previous whole-store roundtrip with a single
+ * explicit React-state bag for the world-renderer panel values.
+ * Persists to localStorage (debounced 250 ms) and re-hydrates on
+ * mount.
  *
  * The shape is `ViewConfig`, partitioned by panel; the panels use
  * `setSection('proximity', prev => ({...prev, discRadius: v}))` to
