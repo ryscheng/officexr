@@ -77,3 +77,63 @@ test('Object editor renders a preview canvas and Leva kind controls', async ({
   await expect(page.getByText('scale', { exact: true })).toBeVisible();
   await expect(page.getByText('walkable', { exact: true })).toBeVisible();
 });
+
+test('Switching kinds does NOT clobber the new kind with previous kind values', async ({
+  page,
+  request,
+}) => {
+  // Regression: prior to the KindEditorMount key-remount fix, Leva's
+  // useControls store retained the previous kind's slider values
+  // across the `[kind.id]` dep change and fired onChange with those
+  // stale values on the next mount — which patched the newly-
+  // selected kind in the catalog with the previous kind's settings.
+
+  // Pick two distinct kinds from the catalog to switch between.
+  const apiResp = await request.get('http://localhost:5174/api/cube-kinds');
+  const apiBody = (await apiResp.json()) as {
+    kinds: Array<{ id: string; label: string; scale: number; swatch: string }>;
+  };
+  expect(apiBody.kinds.length).toBeGreaterThanOrEqual(2);
+  // Use the first two "block" kinds (the original 12 BlockBits are
+  // always there) so the test is deterministic regardless of asset-
+  // pack installation state.
+  const kindA = apiBody.kinds[0];
+  const kindB = apiBody.kinds.find(
+    (k) => k.id !== kindA.id && k.label !== kindA.label,
+  );
+  expect(kindB, 'need a second distinct kind').toBeDefined();
+  const a = kindA;
+  const b = kindB!;
+  const aLabelBefore = a.label;
+  const bLabelBefore = b.label;
+  expect(aLabelBefore).not.toBe(bLabelBefore);
+
+  await goToMode(page, 'object');
+  // Wait for catalog hydration.
+  await expect(page.getByText(/Catalog \(\d+ kinds?\)/)).toBeVisible();
+
+  // Click kindA in the KindList to select it.
+  const aRow = page.locator('button[title="' + a.id + '"]').first();
+  await aRow.click();
+
+  // Click kindB.
+  const bRow = page.locator('button[title="' + b.id + '"]').first();
+  await bRow.click();
+
+  // Give the debounced auto-save (500ms) a chance to NOT fire a
+  // spurious PUT before we re-read the catalog from the server. If
+  // the bug were present, switching A→B would have written A's label
+  // into B's catalog entry and the auto-save would have persisted it.
+  await page.waitForTimeout(900);
+
+  const after = await request.get('http://localhost:5174/api/cube-kinds');
+  const afterBody = (await after.json()) as {
+    kinds: Array<{ id: string; label: string }>;
+  };
+  const aAfter = afterBody.kinds.find((k) => k.id === a.id);
+  const bAfter = afterBody.kinds.find((k) => k.id === b.id);
+  expect(aAfter, 'kind A still in catalog').toBeDefined();
+  expect(bAfter, 'kind B still in catalog').toBeDefined();
+  expect(aAfter!.label, "kind A's label unchanged by switching").toBe(aLabelBefore);
+  expect(bAfter!.label, "kind B's label unchanged by switching").toBe(bLabelBefore);
+});
