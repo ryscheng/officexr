@@ -337,7 +337,7 @@ function RoomHud(props: {
       }}
     >
       {`Room: ${props.roomName} · Tool: ${props.tool} · Selection: ${selLabel} · Build y: ${props.buildHeight}
-right-drag to orbit · scroll to zoom · Q/E to lower/raise build height · Ctrl/Cmd-click to multi-select`}
+right-drag orbit · middle-drag (or Shift+right-drag) pan · scroll zoom · Q/E build height · Ctrl/Cmd-click multi-select`}
     </div>
   );
 }

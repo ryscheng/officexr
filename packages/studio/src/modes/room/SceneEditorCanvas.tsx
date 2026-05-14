@@ -497,6 +497,11 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         cubeSize={props.compiled.cubeSize}
         selection={props.selection}
       />
+      <BuildHeightPlane
+        buildHeight={props.buildHeight}
+        cubeSize={props.compiled.cubeSize}
+        visible={props.tool === 'add' || props.tool === 'tile'}
+      />
       <ContextMenuListener
         instances={props.compiled.instances}
         cubeSize={props.compiled.cubeSize}
@@ -766,20 +771,25 @@ function OrbitCamera({ compiled }: OrbitCameraProps) {
   const { camera, gl } = useThree();
   const persp = camera as THREE.PerspectiveCamera;
 
-  // Orbit state. Azimuth/elevation/distance are the canonical spherical
-  // coords; the target is the room's center.
+  // Orbit state. Azimuth/elevation/distance are spherical coords
+  // around `target`. Elevation is unclamped so the user can view the
+  // scene from below as well as from above — placing cubes
+  // underneath existing ones (or in free space below the visual
+  // grid) requires being able to LOOK from below. Just a tiny
+  // epsilon below the poles to avoid the lookAt degeneracy at ±π/2.
   const orbit = useRef({
     azimuth: -0.55,
     elevation: 0.45,
     distance: 16,
   });
-  const drag = useRef({ active: false, lastX: 0, lastY: 0 });
+  const dragMode = useRef<'none' | 'orbit' | 'pan'>('none');
+  const dragLast = useRef({ x: 0, y: 0 });
 
-  // Recompute the room center from the compiled instances so the camera
-  // looks at the room's actual mass, not just the world origin. Empty
-  // rooms fall back to origin so the camera looks at where the first
-  // cube would land.
-  const target = useMemo(() => {
+  // Pannable target. Starts at the room's AABB centre; middle-drag
+  // (or Shift+right-drag) translates it in screen-aligned axes. Held
+  // in a ref so panning doesn't churn the React tree every frame.
+  const target = useRef<THREE.Vector3>(new THREE.Vector3(0, 1, 0));
+  const initialTarget = useMemo(() => {
     if (compiled.instances.length === 0) {
       return new THREE.Vector3(0, 1, 0);
     }
@@ -797,40 +807,64 @@ function OrbitCamera({ compiled }: OrbitCameraProps) {
       if (wy > max.y) max.y = wy;
       if (wz > max.z) max.z = wz;
     }
-    return new THREE.Vector3()
-      .addVectors(min, max)
-      .multiplyScalar(0.5);
+    return new THREE.Vector3().addVectors(min, max).multiplyScalar(0.5);
   }, [compiled]);
+  // Recenter when the room boots / loads (but NOT every time the
+  // user pans — `target.current` persists). The initial value is
+  // copied into `target.current` once per `initialTarget` change.
+  useEffect(() => {
+    target.current.copy(initialTarget);
+  }, [initialTarget]);
 
   useEffect(() => {
     const canvas = gl.domElement;
 
     const onPointerDown = (e: PointerEvent) => {
-      // Right-click drag = orbit. Left-click is for tool actions and
-      // is handled by R3F's pointer-event system on meshes.
-      if (e.button !== 2) return;
-      drag.current = { active: true, lastX: e.clientX, lastY: e.clientY };
+      // Middle-button OR Shift+right = pan; bare right = orbit.
+      // Left is reserved for tool actions handled elsewhere.
+      if (e.button === 1) {
+        dragMode.current = 'pan';
+      } else if (e.button === 2) {
+        dragMode.current = e.shiftKey ? 'pan' : 'orbit';
+      } else {
+        return;
+      }
+      dragLast.current = { x: e.clientX, y: e.clientY };
     };
     const onPointerMove = (e: PointerEvent) => {
-      const d = drag.current;
-      if (!d.active) return;
-      const dx = e.clientX - d.lastX;
-      const dy = e.clientY - d.lastY;
-      d.lastX = e.clientX;
-      d.lastY = e.clientY;
-      const sens = 0.005;
-      orbit.current.azimuth -= dx * sens;
-      // Clamp elevation so the camera doesn't flip over the top or
-      // duck below the floor.
-      orbit.current.elevation = THREE.MathUtils.clamp(
-        orbit.current.elevation - dy * sens,
-        -0.05,
-        Math.PI / 2 - 0.05,
-      );
+      if (dragMode.current === 'none') return;
+      const dx = e.clientX - dragLast.current.x;
+      const dy = e.clientY - dragLast.current.y;
+      dragLast.current = { x: e.clientX, y: e.clientY };
+      if (dragMode.current === 'orbit') {
+        const sens = 0.005;
+        orbit.current.azimuth -= dx * sens;
+        // Full elevation range (almost — the ±epsilon avoids the
+        // pole singularity where lookAt's up vector degenerates).
+        orbit.current.elevation = THREE.MathUtils.clamp(
+          orbit.current.elevation - dy * sens,
+          -Math.PI / 2 + 0.05,
+          Math.PI / 2 - 0.05,
+        );
+      } else {
+        // Pan: translate target perpendicular to the view direction.
+        // Speed scales with distance so it stays usable when zoomed
+        // way in or out.
+        const speed = orbit.current.distance * 0.0015;
+        const dir = new THREE.Vector3()
+          .subVectors(persp.position, target.current)
+          .normalize();
+        const right = new THREE.Vector3()
+          .crossVectors(persp.up, dir)
+          .normalize();
+        const up = new THREE.Vector3().crossVectors(dir, right).normalize();
+        target.current.addScaledVector(right, -dx * speed);
+        target.current.addScaledVector(up, dy * speed);
+      }
     };
     const onPointerUp = (e: PointerEvent) => {
-      if (e.button !== 2) return;
-      drag.current.active = false;
+      if (e.button !== 1 && e.button !== 2) return;
+      dragMode.current = 'none';
     };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     const onWheel = (e: WheelEvent) => {
@@ -839,7 +873,7 @@ function OrbitCamera({ compiled }: OrbitCameraProps) {
       orbit.current.distance = THREE.MathUtils.clamp(
         orbit.current.distance * factor,
         2,
-        80,
+        200,
       );
     };
 
@@ -854,27 +888,67 @@ function OrbitCamera({ compiled }: OrbitCameraProps) {
       window.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('contextmenu', onContextMenu);
-      drag.current.active = false;
+      dragMode.current = 'none';
     };
-  }, [gl]);
+  }, [gl, persp]);
 
   useFrame(() => {
     const { azimuth, elevation, distance } = orbit.current;
+    const t = target.current;
     const cosE = Math.cos(elevation);
     const sinE = Math.sin(elevation);
     const cosA = Math.cos(azimuth);
     const sinA = Math.sin(azimuth);
-    // Spherical → cartesian with target as the origin. azimuth is
-    // around +y; elevation 0 is horizon, π/2 is straight overhead.
     persp.position.set(
-      target.x + distance * cosE * sinA,
-      target.y + distance * sinE,
-      target.z + distance * cosE * cosA,
+      t.x + distance * cosE * sinA,
+      t.y + distance * sinE,
+      t.z + distance * cosE * cosA,
     );
-    persp.lookAt(target);
+    persp.lookAt(t);
   });
 
   return null;
+}
+
+// --- Build-height plane (visual indicator) -----------------------
+
+interface BuildHeightPlaneProps {
+  buildHeight: number;
+  cubeSize: number;
+  visible: boolean;
+}
+
+/**
+ * Faint grid-aligned plane rendered at the current build height so
+ * the user can see where the Add / Tile tools will place cubes when
+ * clicking on empty space. It's PURELY visual — picking goes through
+ * the separate invisible `FloorPicker` mesh at the same height.
+ *
+ * Hidden when neither Add nor Tile is active so the Select / Delete
+ * views aren't cluttered with a guide they're not using.
+ */
+function BuildHeightPlane({
+  buildHeight,
+  cubeSize,
+  visible,
+}: BuildHeightPlaneProps) {
+  if (!visible) return null;
+  const y = buildHeight * cubeSize;
+  // Slight tint based on build-height sign so the user can tell at a
+  // glance whether they're above or below the world's reference grid.
+  const color = buildHeight === 0 ? '#fde68a' : buildHeight > 0 ? '#86efac' : '#f9a8d4';
+  return (
+    <group position={[0, y + 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <gridHelper
+        args={[60, 30, color, color]}
+        rotation={[Math.PI / 2, 0, 0]}
+      />
+      <mesh>
+        <ringGeometry args={[0.6, 0.7, 24]} />
+        <meshBasicMaterial color={color} transparent opacity={0.6} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
 }
 
 // --- Cubes layer (one InstancedMesh per kind, with picking) ------
