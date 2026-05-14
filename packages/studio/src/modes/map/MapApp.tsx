@@ -1,25 +1,54 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Leva } from 'leva';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
+import { MapEditorCanvas } from './MapEditorCanvas.tsx';
+import { MapPicker } from './MapPicker.tsx';
+import { RoomPalette } from './RoomPalette.tsx';
+import { RoomInstanceList } from './RoomInstanceList.tsx';
+import { SpawnList } from './SpawnList.tsx';
+import { useMapDocument } from './useMapDocument.ts';
+import { useMapRoomLibrary } from './useMapRoomLibrary.ts';
 
 /**
- * Map editor — composes one or more rooms into a playable world, with
- * spawn points and an environment (sun / sky / stars / HDRI).
+ * Map editor. Composes rooms into a playable world, configures
+ * environment, and places spawn points.
  *
- * Task 5 of the studio restructure landed only the page shell so the
- * routing surface is ready. The canvas + RoomPalette + spawn UX + env
- * panel arrive in Tasks 12-14. Until then the main pane shows a
- * placeholder explaining what's coming.
+ * Layout:
+ *   - LeftPanel:  RoomPalette (saved rooms) + MapPicker (load/new).
+ *   - Main:       MapEditorCanvas (free-fly + per-room groups + spawn
+ *                 markers + selection outline).
+ *   - SidePanel:  Toolbar (spawn-tool toggle), RoomInstanceList,
+ *                 SpawnList, Leva env panel (Task 13 wires sky/stars/HDRI).
  */
 export function MapApp() {
+  const map = useMapDocument();
+  const referenced = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of map.doc.rooms) s.add(r.roomName);
+    return s;
+  }, [map.doc.rooms]);
+  const library = useMapRoomLibrary(referenced);
+  const [spawnToolActive, setSpawnToolActive] = useState(false);
+
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
       <LeftPanel>
-        <ModePlaceholderPanel
-          title="Rooms"
-          body="The room palette will list every saved Room here. Click to drop an instance onto the map canvas."
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <MapPicker
+            currentName={map.mapName}
+            onLoad={(name) => map.loadMap(name)}
+            onNew={(name) => map.newMap(name)}
+            listMaps={map.listMaps}
+          />
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <RoomPalette
+              allRoomNames={library.allRoomNames}
+              onAddRoom={(name) => map.addRoom(name)}
+              onRefresh={() => library.refreshList()}
+            />
+          </div>
+        </div>
       </LeftPanel>
       <main
         style={{
@@ -28,69 +57,103 @@ export function MapApp() {
           minWidth: 0,
           minHeight: 0,
           overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#0f172a',
         }}
       >
-        <PlaceholderBanner
-          title="Map editor"
-          body={[
-            'Compose rooms into a world, place spawn points, configure',
-            'sun / sky / stars / HDRI background. Coming in Tasks 12-14.',
-          ].join('\n')}
+        <MapEditorCanvas
+          doc={map.doc}
+          rooms={library.rooms}
+          selection={map.selection}
+          onSelect={map.setSelection}
+          onMoveRoom={map.setRoomPosition}
+          onPlaceSpawn={(pos) => {
+            map.addSpawn(pos);
+            setSpawnToolActive(false);
+          }}
+          spawnToolActive={spawnToolActive}
+        />
+        <CanvasHud
+          mapName={map.mapName}
+          spawnToolActive={spawnToolActive}
+          onToggleSpawnTool={() => setSpawnToolActive((s) => !s)}
         />
       </main>
       <SidePanel>
-        <Leva fill flat titleBar={{ drag: false }} />
-        <ModePlaceholderPanel
-          title="Inspector"
-          body="Selected room or spawn point details + the environment panel will live here."
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: '0 0 auto', maxHeight: '40%', overflowY: 'auto' }}>
+            <RoomInstanceList
+              rooms={map.doc.rooms}
+              selection={map.selection}
+              onSelect={map.setSelection}
+              onRotate={(id) => {
+                const r = map.doc.rooms.find((x) => x.id === id);
+                if (!r) return;
+                const next = (((r.rotationY ?? 0) + 1) % 4) as 0 | 1 | 2 | 3;
+                map.setRoomRotation(id, next);
+              }}
+              onRemove={map.removeRoom}
+            />
+            <SpawnList
+              spawns={map.doc.spawnPoints}
+              selection={map.selection}
+              onSelect={map.setSelection}
+              onRemove={map.removeSpawn}
+              onRename={map.setSpawnLabel}
+            />
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            <Leva fill flat titleBar={{ drag: false }} />
+          </div>
+        </div>
       </SidePanel>
     </div>
   );
 }
 
-function PlaceholderBanner({ title, body }: { title: string; body: string }) {
-  return (
-    <div
-      style={{
-        maxWidth: 480,
-        padding: 24,
-        textAlign: 'center',
-        font: '14px system-ui, sans-serif',
-        color: '#cbd5e1',
-      }}
-    >
-      <h1 style={{ marginTop: 0, color: '#fafafa', fontSize: 22 }}>{title}</h1>
-      <p style={{ whiteSpace: 'pre-line', lineHeight: 1.5 }}>{body}</p>
-    </div>
-  );
+interface CanvasHudProps {
+  mapName: string;
+  spawnToolActive: boolean;
+  onToggleSpawnTool: () => void;
 }
 
-function ModePlaceholderPanel({ title, body }: { title: string; body: string }) {
+function CanvasHud({ mapName, spawnToolActive, onToggleSpawnTool }: CanvasHudProps) {
   return (
     <div
       style={{
-        padding: '12px 14px',
+        position: 'absolute',
+        top: 12,
+        left: 12,
+        display: 'flex',
+        gap: 8,
+        alignItems: 'center',
         font: '12px system-ui, sans-serif',
-        color: '#94a3b8',
+        color: '#fafafa',
       }}
     >
-      <h2
+      <div
         style={{
-          margin: '0 0 6px',
-          fontSize: 11,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          color: '#cbd5e1',
+          padding: '6px 10px',
+          background: 'rgba(0,0,0,0.55)',
+          borderRadius: 4,
+          pointerEvents: 'none',
         }}
       >
-        {title}
-      </h2>
-      <p style={{ margin: 0, lineHeight: 1.4 }}>{body}</p>
+        Map: {mapName} · WASD pan · right-drag orbit · scroll zoom · Q/E elevate
+      </div>
+      <button
+        type="button"
+        onClick={onToggleSpawnTool}
+        style={{
+          padding: '6px 10px',
+          background: spawnToolActive ? '#0e7490' : '#1e293b',
+          border: '1px solid #334155',
+          color: '#fafafa',
+          borderRadius: 4,
+          cursor: 'pointer',
+          font: 'inherit',
+        }}
+      >
+        {spawnToolActive ? '✓ Placing spawn — click ground' : '+ Add spawn'}
+      </button>
     </div>
   );
 }

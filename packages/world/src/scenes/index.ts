@@ -52,6 +52,7 @@ export {
   compileScene,
   commandBounds,
 } from './compile.ts';
+export { compileMap } from './compile-map.ts';
 export {
   CUBE_KINDS,
   UNKNOWN_KIND_SWATCH,
