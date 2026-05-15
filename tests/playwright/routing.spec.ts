@@ -6,9 +6,9 @@
 import { expect, test } from '@playwright/test';
 import { goToMode } from './helpers.ts';
 
-test('all five mode tabs are present in the header', async ({ page }) => {
+test('all six mode tabs are present in the header', async ({ page }) => {
   await page.goto('/');
-  for (const label of ['Map', 'Room', 'Object', 'Character', 'Debug']) {
+  for (const label of ['Map', 'Room', 'Object', 'Character', 'Debug', 'Mugshot']) {
     await expect(
       page.locator(`button[role="tab"]:has-text("${label}")`),
     ).toBeVisible();
@@ -16,7 +16,7 @@ test('all five mode tabs are present in the header', async ({ page }) => {
 });
 
 test('hash deep-link opens the matching mode', async ({ page }) => {
-  for (const mode of ['map', 'room', 'object', 'character', 'debug'] as const) {
+  for (const mode of ['map', 'room', 'object', 'character', 'debug', 'mugshot'] as const) {
     await goToMode(page, mode);
   }
 });

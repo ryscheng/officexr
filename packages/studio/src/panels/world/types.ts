@@ -91,6 +91,10 @@ export interface FixedCameraSettings {
   lateralFrac: number;
   fov: number;
   movementYawOffsetDeg: number;
+  /** Optional direct XZ distance (m) from character to camera. Set
+   * by Mugshot mode for deterministic framing; absent in normal
+   * gameplay (the screen-fraction derivation handles it). */
+  distanceM?: number;
 }
 
 export interface BotSettings {

@@ -16,7 +16,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
  * The active-tab assertion below is the real "mode mounted" gate. */
 export async function goToMode(
   page: Page,
-  mode: 'map' | 'room' | 'object' | 'character' | 'debug',
+  mode: 'map' | 'room' | 'object' | 'character' | 'debug' | 'mugshot',
 ): Promise<void> {
   await page.goto(`/#${mode}`, { waitUntil: 'domcontentloaded' });
   await expect(
@@ -36,6 +36,8 @@ function modeLabel(mode: string): string {
       return 'Character';
     case 'debug':
       return 'Debug';
+    case 'mugshot':
+      return 'Mugshot';
     default:
       return mode;
   }
@@ -135,4 +137,33 @@ export function captureConsole(page: Page): () => string[] {
   page.on('console', (msg) => lines.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (err) => lines.push(`[pageerror] ${err.message}`));
   return () => lines.slice();
+}
+
+/**
+ * Compare two RGBA pixel buffers of the same size. Returns the
+ * count of pixels where the absolute channel-sum difference
+ * `|dR|+|dG|+|dB|` exceeds `threshold`. Alpha is ignored — the
+ * mugshot baselines are opaque.
+ *
+ * Used by the mugshot-baseline-compare spec to assert pixel-near-
+ * identical reproduction of a committed export.
+ */
+export function pixelDiffCount(
+  a: Uint8Array | Uint8ClampedArray,
+  b: Uint8Array | Uint8ClampedArray,
+  threshold: number,
+): number {
+  if (a.length !== b.length) {
+    throw new Error(
+      `pixelDiffCount: buffer length mismatch (${a.length} vs ${b.length})`,
+    );
+  }
+  let diffs = 0;
+  for (let i = 0; i + 2 < a.length; i += 4) {
+    const dr = Math.abs(a[i] - b[i]);
+    const dg = Math.abs(a[i + 1] - b[i + 1]);
+    const db = Math.abs(a[i + 2] - b[i + 2]);
+    if (dr + dg + db > threshold) diffs += 1;
+  }
+  return diffs;
 }

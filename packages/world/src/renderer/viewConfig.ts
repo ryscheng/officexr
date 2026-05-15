@@ -66,6 +66,11 @@ export interface FixedCameraViewConfig {
   lateralFrac: number;
   fov: number;
   movementYawOffsetDeg: number;
+  /** Optional direct XZ distance (m) from character to camera. When
+   * present, overrides the screen-fraction derivation in
+   * `CameraRig` and pins the camera at exactly this distance with
+   * zero lateral leash. */
+  distanceM?: number;
 }
 
 export interface ViewConfig {

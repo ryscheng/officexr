@@ -1,7 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import JSZip from 'jszip';
 import { Scene } from '@officexr/world/renderer';
 import { CHARACTERS } from '@officexr/world';
 import type { CharacterName } from '@officexr/world';
+import type {
+  BackgroundViewConfig,
+  LightingViewConfig,
+} from '@officexr/world/renderer';
 import {
   buildInMemoryStack,
   createPersistentLocalState,
@@ -14,11 +19,31 @@ const SELF_ID = 'mugshot-player';
 const OFFICE_ID = 'mugshot';
 const DEFAULT_CHARACTER: CharacterName = 'Barbarian';
 
+/** Default settled-on-cube body root y. The body's ball collider
+ * sits at local y=0.9 with radius 0.4; ball bottom at root+0.5;
+ * controller skin adds 0.01. So root.y=1.51 places the visible
+ * mesh just above the cube top y=2. The user can tune this via
+ * the Y slider to lift the model out of the cubes if visible feet
+ * are buried. */
+const DEFAULT_Y_OFFSET = 1.51;
+
+const DEFAULT_DISTANCE_M = 6;
+const DEFAULT_VIEWPORT_W = 512;
+const DEFAULT_VIEWPORT_H = 512;
+const DEFAULT_AZIMUTH: AzimuthDeg = 180;
+
+type AzimuthDeg = 0 | 90 | 180 | 270;
+
+const ANGLE_NAMES: Record<AzimuthDeg, 'north' | 'east' | 'south' | 'west'> = {
+  0: 'north',
+  90: 'east',
+  180: 'south',
+  270: 'west',
+};
+
 /**
  * Parse the active character from the URL hash. Supports both
- * `#mugshot` (default character) and `#mugshot/<CharacterName>` so a
- * Playwright spec or a bookmarkable link can target a specific
- * baseline without going through the picker UI.
+ * `#mugshot` (default character) and `#mugshot/<CharacterName>`.
  */
 function readCharacterFromHash(): CharacterName {
   if (typeof window === 'undefined') return DEFAULT_CHARACTER;
@@ -44,44 +69,47 @@ const MUGSHOT_CUBES: ReadonlyArray<{
   { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [1, 0, 1] },
 ];
 
-/** Fixed-camera viewConfig tuned for a mugshot framing: front-on,
- * eye-level, zoomed-out FOV, narrow leash so the framing is
- * deterministic. Shadow sun-disc is hidden — a bright disc in the
- * sky would dominate any pixel diff. */
-const MUGSHOT_VIEW_CONFIG: ViewConfig = {
-  ...DEFAULT_VIEW_CONFIG,
+/** v1 of the mugshot export manifest. Captures every rendering input
+ * the test needs to reproduce the shot pixel-identically. */
+export interface MugshotManifest {
+  schemaVersion: 1;
+  character: CharacterName;
+  yOffset: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  exportedAt: string;
   fixedCamera: {
-    ...DEFAULT_VIEW_CONFIG.fixedCamera,
-    azimuthDeg: 180,
-    pitchDeg: -8,
-    height: 1.7,
-    fov: 40,
-    maxOnScreenFrac: 0.45,
-    minOnScreenFrac: 0.4,
-    lateralFrac: 0,
-  },
-  lighting: {
-    ...DEFAULT_VIEW_CONFIG.lighting,
-    showSunDisc: false,
-  },
+    azimuthDeg: number;
+    pitchDeg: number;
+    height: number;
+    fov: number;
+    distanceM: number;
+  };
+  lighting: LightingViewConfig;
+  background: BackgroundViewConfig;
+}
+
+/** Default lighting bag for the mugshot. Same as the studio's
+ * default lighting but with the visible sun disc hidden — a bright
+ * disc in the sky would dominate any pixel diff. */
+const DEFAULT_MUGSHOT_LIGHTING: LightingViewConfig = {
+  ...DEFAULT_VIEW_CONFIG.lighting,
+  showSunDisc: false,
 };
+
+const DEFAULT_MUGSHOT_BACKGROUND: BackgroundViewConfig =
+  DEFAULT_VIEW_CONFIG.background;
 
 /**
  * Mugshot mode: a deterministic 2×2 cube scene with a paused
- * character (no animation), framed for snapshot testing of
- * "character actually stands ON surfaces, not through them". Reuses
- * the same `<Scene>` component the game uses so the rendering path
- * is bit-for-bit identical to Debug — the only behavioral switch is
- * `paused={true}`.
+ * character (no animation), tunable Y / camera angle / distance /
+ * viewport. Drives the export-for-test workflow (downloads a ZIP
+ * of 4 PNGs + manifest.json) and is the live target for the
+ * manifest-driven comparison test.
  *
- * The Playwright spec at `tests/playwright/character-on-surface.spec.ts`
- * navigates to `#mugshot/<CharacterName>` per character and asserts
- * the captured frame against a committed baseline PNG.
- *
- * For humans: a small picker in the corner cycles through the 6
- * characters by mutating the URL hash, which triggers a fresh Scene
- * mount via the `key` prop so the rigid body + character GLB
- * actually swap.
+ * Gravity is disabled on mount so the Y slider works at fine
+ * granularity (SceneFrame's auto-warp drops its 0.5 m threshold to
+ * zero when gravity is off — see SceneFrame.tsx).
  */
 export function MugshotApp() {
   const [local, setLocal] = useState<PersistentLocalState | null>(null);
@@ -89,6 +117,20 @@ export function MugshotApp() {
   const [character, setCharacter] = useState<CharacterName>(() =>
     readCharacterFromHash(),
   );
+
+  // Tunable rendering inputs.
+  const [yOffset, setYOffset] = useState(DEFAULT_Y_OFFSET);
+  const [azimuthDeg, setAzimuthDeg] = useState<AzimuthDeg>(DEFAULT_AZIMUTH);
+  const [distanceM, setDistanceM] = useState(DEFAULT_DISTANCE_M);
+  const [viewportWidth, setViewportWidth] = useState(DEFAULT_VIEWPORT_W);
+  const [viewportHeight, setViewportHeight] = useState(DEFAULT_VIEWPORT_H);
+  const [lighting, setLighting] = useState<LightingViewConfig>(
+    DEFAULT_MUGSHOT_LIGHTING,
+  );
+  const [background, setBackground] = useState<BackgroundViewConfig>(
+    DEFAULT_MUGSHOT_BACKGROUND,
+  );
+  const [exporting, setExporting] = useState(false);
 
   // Listen for hash changes so `#mugshot/Knight` etc. live-switches.
   useEffect(() => {
@@ -99,19 +141,13 @@ export function MugshotApp() {
 
   // Bootstrap: build the local-player + in-memory stack once.
   useEffect(() => {
-    // A muted Audio element satisfies buildInMemoryStack's
-    // signature without producing sound — there's no elevator music
-    // for the mugshot mode.
     const audio = new Audio();
     audio.volume = 0;
 
     const lp = createPersistentLocalState({
       selfId: SELF_ID,
       officeId: OFFICE_ID,
-      // Drop the player from y=4 onto the cube tops at y=2 — gravity
-      // (driven by `<Physics gravity=[0,-20,0]>` + the kinematic
-      // character controller in SceneFrame) settles them in ~0.5 s.
-      startPos: { x: 1, y: 4, z: 1 },
+      startPos: { x: 1, y: DEFAULT_Y_OFFSET, z: 1 },
     });
     setLocal(lp);
     (window as unknown as { __OFFICE_STORE__: typeof lp.store }).__OFFICE_STORE__ =
@@ -139,6 +175,45 @@ export function MugshotApp() {
     };
   }, []);
 
+  // Disable gravity while the Mugshot mode is mounted so the Y
+  // slider works with fine granularity. Re-enable on unmount so
+  // navigating back to Debug behaves normally. The `__OFFICE_GRAVITY__`
+  // hook is published by SceneFrame as soon as Scene mounts; we
+  // retry until it appears since Scene mounts after `stack` resolves.
+  useEffect(() => {
+    if (!stack) return;
+    let cancelled = false;
+    const tryDisable = () => {
+      const g = (
+        window as unknown as {
+          __OFFICE_GRAVITY__?: { setEnabled: (v: boolean) => void };
+        }
+      ).__OFFICE_GRAVITY__;
+      if (g) {
+        g.setEnabled(false);
+        return true;
+      }
+      return false;
+    };
+    if (!tryDisable()) {
+      const id = setInterval(() => {
+        if (cancelled || tryDisable()) clearInterval(id);
+      }, 50);
+      return () => {
+        cancelled = true;
+        clearInterval(id);
+      };
+    }
+    return () => {
+      const g = (
+        window as unknown as {
+          __OFFICE_GRAVITY__?: { setEnabled: (v: boolean) => void };
+        }
+      ).__OFFICE_GRAVITY__;
+      g?.setEnabled(true);
+    };
+  }, [stack]);
+
   // Push the cube field as soon as `local` is ready.
   useEffect(() => {
     if (!local) return;
@@ -148,9 +223,7 @@ export function MugshotApp() {
     });
   }, [local]);
 
-  // Force the rendered character via `avatar.model`. Players.tsx's
-  // `pickCharacterForPlayer` honors a valid CharacterName here and
-  // renders that GLB instead of a random pick.
+  // Force the rendered character via `avatar.model`.
   useEffect(() => {
     if (!local) return;
     local.actions.upsertPlayer({
@@ -159,6 +232,124 @@ export function MugshotApp() {
     });
   }, [local, character]);
 
+  // Push the Y offset into the SDK store every time the slider
+  // changes. SceneFrame's auto-warp (with gravity off) moves the
+  // body to match on the next frame.
+  useEffect(() => {
+    if (!local) return;
+    local.actions.setSelfPosition(
+      { x: 1, y: yOffset, z: 1 },
+      { x: 0, y: 0, z: 0 },
+      0,
+    );
+  }, [local, yOffset]);
+
+  // Build the live viewConfig from current state. Memoized so Scene
+  // doesn't re-mount on every render — only when the tunables
+  // actually change.
+  const viewConfig: ViewConfig = useMemo(
+    () => ({
+      ...DEFAULT_VIEW_CONFIG,
+      lighting,
+      background,
+      fixedCamera: {
+        ...DEFAULT_VIEW_CONFIG.fixedCamera,
+        azimuthDeg,
+        pitchDeg: -8,
+        height: 1.7,
+        fov: 40,
+        maxOnScreenFrac: 0.45,
+        minOnScreenFrac: 0.4,
+        lateralFrac: 0,
+        distanceM,
+      },
+    }),
+    [lighting, background, azimuthDeg, distanceM],
+  );
+
+  // Expose test hooks for the manifest-load / per-angle capture
+  // comparison spec. Production code never reads these.
+  useEffect(() => {
+    const win = window as unknown as {
+      __OFFICE_MUGSHOT_APPLY_MANIFEST__?: (m: MugshotManifest) => void;
+      __OFFICE_MUGSHOT_SET_AZIMUTH__?: (deg: AzimuthDeg) => void;
+    };
+    win.__OFFICE_MUGSHOT_APPLY_MANIFEST__ = (m: MugshotManifest) => {
+      setCharacter(m.character);
+      setYOffset(m.yOffset);
+      setDistanceM(m.fixedCamera.distanceM);
+      setViewportWidth(m.viewportWidth);
+      setViewportHeight(m.viewportHeight);
+      setLighting(m.lighting);
+      setBackground(m.background);
+      // Don't restore azimuthDeg from the manifest — the test driver
+      // sets it per-angle via __OFFICE_MUGSHOT_SET_AZIMUTH__.
+    };
+    win.__OFFICE_MUGSHOT_SET_AZIMUTH__ = (deg) => setAzimuthDeg(deg);
+    return () => {
+      delete win.__OFFICE_MUGSHOT_APPLY_MANIFEST__;
+      delete win.__OFFICE_MUGSHOT_SET_AZIMUTH__;
+    };
+  }, []);
+
+  const azimuthBeforeExportRef = useRef<AzimuthDeg>(DEFAULT_AZIMUTH);
+
+  const onExport = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    azimuthBeforeExportRef.current = azimuthDeg;
+    try {
+      const zip = new JSZip();
+      const angles: AzimuthDeg[] = [0, 90, 180, 270];
+      for (const angle of angles) {
+        setAzimuthDeg(angle);
+        // Two RAFs: one for React to commit the new viewConfig down
+        // to Scene → CameraRig; one for R3F to render the new frame
+        // with that camera. Without this the captured PNG is the
+        // PREVIOUS angle's frame.
+        await waitFrames(2);
+        const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+        if (!canvas) throw new Error('[mugshot] no canvas to capture');
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = dataUrl.split(',')[1] ?? '';
+        zip.file(`${ANGLE_NAMES[angle]}.png`, base64, { base64: true });
+      }
+      const manifest: MugshotManifest = {
+        schemaVersion: 1,
+        character: 'Barbarian', // export is Barbarian-only per spec
+        yOffset,
+        viewportWidth,
+        viewportHeight,
+        exportedAt: new Date().toISOString(),
+        fixedCamera: {
+          azimuthDeg,
+          pitchDeg: -8,
+          height: 1.7,
+          fov: 40,
+          distanceM,
+        },
+        lighting,
+        background,
+      };
+      zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `mugshot-Barbarian-${stamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.warn('[mugshot] export failed:', err);
+    } finally {
+      setAzimuthDeg(azimuthBeforeExportRef.current);
+      setExporting(false);
+    }
+  }, [azimuthDeg, distanceM, yOffset, viewportWidth, viewportHeight, lighting, background, exporting]);
+
   return (
     <div
       style={{
@@ -166,100 +357,275 @@ export function MugshotApp() {
         display: 'flex',
         minWidth: 0,
         minHeight: 0,
-        position: 'relative',
+        background: '#0a0a0a',
       }}
     >
       <main
         style={{
           flex: 1,
-          position: 'relative',
           minWidth: 0,
           minHeight: 0,
-          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 16,
+          overflow: 'auto',
         }}
       >
-        {stack && local && (
-          // `key={character}` forces a fresh Scene mount when the
-          // picker changes character. Players.tsx reads
-          // `state.players[id].avatar.model` ONCE at mount to choose
-          // the rendered GLB — without the remount, an
-          // already-rendered Barbarian would stay on screen even
-          // after avatar.model flips to Knight.
-          <Scene
-            key={character}
-            store={local.store}
-            actions={local.actions}
-            rules={local.rules}
-            bus={local.bus}
-            sync={stack.sync}
-            handshake={stack.handshake}
-            bots={stack.bots}
-            selfId={SELF_ID}
-            cameraMode="fixed"
-            viewConfig={MUGSHOT_VIEW_CONFIG}
-            worldFocused={false}
-            paused={true}
-            spawnPoints={[]}
-          />
-        )}
-        <CharacterPicker
-          active={character}
-          onPick={(c) => {
-            window.location.hash = `mugshot/${c}`;
+        <div
+          // Fixed-pixel canvas container. R3F sizes the WebGL backing
+          // store off this element; with `dpr={1}` the pixel buffer
+          // matches exactly so canvas.toDataURL() returns the
+          // configured viewport size.
+          style={{
+            width: viewportWidth,
+            height: viewportHeight,
+            position: 'relative',
+            border: '1px solid #262626',
+            background: '#000',
+            flexShrink: 0,
           }}
-        />
+        >
+          {stack && local && (
+            <Scene
+              key={character}
+              store={local.store}
+              actions={local.actions}
+              rules={local.rules}
+              bus={local.bus}
+              sync={stack.sync}
+              handshake={stack.handshake}
+              bots={stack.bots}
+              selfId={SELF_ID}
+              cameraMode="fixed"
+              viewConfig={viewConfig}
+              worldFocused={false}
+              paused={true}
+              spawnPoints={[]}
+              dpr={1}
+            />
+          )}
+        </div>
       </main>
+      <ControlPanel
+        character={character}
+        onCharacterChange={(c) => {
+          window.location.hash = `mugshot/${c}`;
+        }}
+        yOffset={yOffset}
+        onYOffsetChange={setYOffset}
+        azimuthDeg={azimuthDeg}
+        onAzimuthChange={setAzimuthDeg}
+        distanceM={distanceM}
+        onDistanceChange={setDistanceM}
+        viewportWidth={viewportWidth}
+        onViewportWidthChange={setViewportWidth}
+        viewportHeight={viewportHeight}
+        onViewportHeightChange={setViewportHeight}
+        onExport={onExport}
+        exporting={exporting}
+      />
     </div>
   );
 }
 
-function CharacterPicker({
-  active,
-  onPick,
-}: {
-  active: CharacterName;
-  onPick: (c: CharacterName) => void;
-}) {
+function waitFrames(n: number): Promise<void> {
+  return new Promise((resolve) => {
+    let i = 0;
+    const tick = () => {
+      i += 1;
+      if (i >= n) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+interface ControlPanelProps {
+  character: CharacterName;
+  onCharacterChange: (c: CharacterName) => void;
+  yOffset: number;
+  onYOffsetChange: (v: number) => void;
+  azimuthDeg: AzimuthDeg;
+  onAzimuthChange: (v: AzimuthDeg) => void;
+  distanceM: number;
+  onDistanceChange: (v: number) => void;
+  viewportWidth: number;
+  onViewportWidthChange: (v: number) => void;
+  viewportHeight: number;
+  onViewportHeightChange: (v: number) => void;
+  onExport: () => void;
+  exporting: boolean;
+}
+
+function ControlPanel(props: ControlPanelProps) {
   return (
-    <div
+    <aside
+      data-studio-panel
       style={{
-        position: 'absolute',
-        top: 12,
-        left: 12,
-        padding: 8,
-        background: 'rgba(0, 0, 0, 0.55)',
-        color: '#fff',
+        width: 280,
+        flexShrink: 0,
+        background: '#111',
+        borderLeft: '1px solid #262626',
+        color: '#fafafa',
         font: '12px system-ui, sans-serif',
-        borderRadius: 6,
+        padding: 16,
         display: 'flex',
         flexDirection: 'column',
-        gap: 4,
-        zIndex: 10,
+        gap: 16,
+        overflowY: 'auto',
       }}
     >
-      <div style={{ opacity: 0.7, marginBottom: 4 }}>character</div>
-      {CHARACTERS.map((c) => {
-        const isActive = c === active;
-        return (
-          <button
-            key={c}
-            type="button"
-            onClick={() => onPick(c)}
-            style={{
-              padding: '4px 10px',
-              border: 0,
-              borderRadius: 3,
-              background: isActive ? '#3b82f6' : 'transparent',
-              color: isActive ? '#fff' : '#cbd5e1',
-              cursor: 'pointer',
-              fontSize: 12,
-              textAlign: 'left',
-            }}
-          >
-            {c}
-          </button>
-        );
-      })}
+      <Section title="Character">
+        <select
+          value={props.character}
+          onChange={(e) => props.onCharacterChange(e.target.value as CharacterName)}
+          style={selectStyle}
+        >
+          {CHARACTERS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </Section>
+
+      <Section title={`Y offset · ${props.yOffset.toFixed(2)} m`}>
+        <input
+          type="range"
+          min={1.0}
+          max={5.0}
+          step={0.01}
+          value={props.yOffset}
+          onChange={(e) => props.onYOffsetChange(Number(e.target.value))}
+          style={rangeStyle}
+        />
+      </Section>
+
+      <Section title={`Camera distance · ${props.distanceM.toFixed(1)} m`}>
+        <input
+          type="range"
+          min={2}
+          max={20}
+          step={0.1}
+          value={props.distanceM}
+          onChange={(e) => props.onDistanceChange(Number(e.target.value))}
+          style={rangeStyle}
+        />
+      </Section>
+
+      <Section title="Camera angle">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+          {([0, 90, 180, 270] as AzimuthDeg[]).map((deg) => (
+            <button
+              key={deg}
+              type="button"
+              onClick={() => props.onAzimuthChange(deg)}
+              style={{
+                padding: '6px 0',
+                border: 0,
+                borderRadius: 3,
+                cursor: 'pointer',
+                background: props.azimuthDeg === deg ? '#3b82f6' : '#1f2937',
+                color: props.azimuthDeg === deg ? '#fff' : '#cbd5e1',
+                fontSize: 11,
+                fontWeight: props.azimuthDeg === deg ? 600 : 400,
+                textTransform: 'uppercase',
+              }}
+            >
+              {ANGLE_NAMES[deg][0]}
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Viewport (px)">
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input
+            type="number"
+            min={64}
+            max={2048}
+            step={1}
+            value={props.viewportWidth}
+            onChange={(e) => props.onViewportWidthChange(Number(e.target.value) || 1)}
+            style={numberStyle}
+          />
+          <span style={{ opacity: 0.6 }}>×</span>
+          <input
+            type="number"
+            min={64}
+            max={2048}
+            step={1}
+            value={props.viewportHeight}
+            onChange={(e) => props.onViewportHeightChange(Number(e.target.value) || 1)}
+            style={numberStyle}
+          />
+        </div>
+      </Section>
+
+      <div style={{ flex: 1 }} />
+
+      <button
+        type="button"
+        onClick={props.onExport}
+        disabled={props.exporting}
+        style={{
+          padding: '10px 16px',
+          border: 0,
+          borderRadius: 4,
+          background: props.exporting ? '#1f2937' : '#16a34a',
+          color: '#fff',
+          fontWeight: 600,
+          fontSize: 13,
+          cursor: props.exporting ? 'wait' : 'pointer',
+        }}
+      >
+        {props.exporting ? 'Exporting…' : 'Export for test (Barbarian)'}
+      </button>
+    </aside>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          opacity: 0.7,
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </div>
+      {children}
     </div>
   );
 }
+
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '6px 8px',
+  background: '#1f2937',
+  color: '#fafafa',
+  border: '1px solid #374151',
+  borderRadius: 3,
+  fontSize: 12,
+};
+
+const rangeStyle: React.CSSProperties = {
+  width: '100%',
+};
+
+const numberStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '4px 6px',
+  background: '#1f2937',
+  color: '#fafafa',
+  border: '1px solid #374151',
+  borderRadius: 3,
+  fontSize: 12,
+  width: 0, // let flex grow
+};

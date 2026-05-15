@@ -118,17 +118,16 @@ for (const character of CHARACTERS) {
     expect(settled.playerY).toBeLessThan(SETTLED_BODY_Y + 0.05);
     expect(Math.abs(settled.playerVelY ?? 1)).toBeLessThan(0.001);
 
-    // Pixel-diff against the committed baseline. Page-level screenshot
-    // (via `clip` from the canvas bbox would also work, but the
-    // canvas is full-viewport in mugshot mode and a full-page shot
-    // captures the picker UI deterministically too). `animations:
-    // 'disabled'` suppresses CSS animation jitter (none in this view
-    // but cheap insurance).
-    await expect(page).toHaveScreenshot(`mugshot-${character}.png`, {
+    // Pixel-diff against the committed baseline. Target just the
+    // canvas element — Mugshot mode now renders into a fixed-pixel
+    // 512×512 container, so the canvas locator captures exactly
+    // the scene render and the surrounding control panel layout
+    // can change without breaking baselines.
+    const canvas = page.locator('canvas').first();
+    await expect(canvas).toHaveScreenshot(`mugshot-${character}.png`, {
       maxDiffPixels: 200,
       threshold: 0.15,
       animations: 'disabled',
-      fullPage: false,
     });
   });
 }

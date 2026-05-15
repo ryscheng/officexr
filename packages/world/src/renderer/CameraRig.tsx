@@ -46,13 +46,20 @@ interface CameraRigProps {
     height: number;
     /** Screen-fraction bounds. The actual meter distances are derived each
      * frame from these plus FOV and height — so the leash auto-adjusts when
-     * the user changes any of those. */
+     * the user changes any of those. Ignored when `distanceM` is set. */
     maxOnScreenFrac: number;
     minOnScreenFrac: number;
     /** Lateral half-width as a fraction of the view's half-width at the far
      * depth. Translates to world units inside the rig. */
     lateralFrac: number;
     fov: number;
+    /** Optional direct XZ distance (m) from character to camera. When
+     * present, overrides the `maxOnScreenFrac` / `minOnScreenFrac`
+     * derivation: the camera is pinned at exactly this distance with
+     * zero lateral leash. Used by Mugshot mode to make the framing
+     * deterministic across machines (the screen-fraction logic is
+     * great for gameplay but makes capture-baseline tests fragile). */
+    distanceM?: number;
   };
 }
 
@@ -472,17 +479,30 @@ export function CameraRig({
       const pitchAlignedXZ =
         tanPitch > 0.01 ? heightOffset / tanPitch : heightOffset;
 
+      // Direct-distance mode: the caller has pinned the camera to a
+      // specific XZ distance, so we collapse the [min, max] leash to
+      // that single value. Lateral leash also collapses — the camera
+      // stays exactly at the configured pose regardless of where the
+      // character drifts (the character won't be drifting in Mugshot
+      // anyway, but determinism here is the whole point).
+      const directXZ = fixed.distanceM;
       const minXZ =
-        dNear3D > heightOffset
-          ? Math.sqrt(dNear3D * dNear3D - heightOffset * heightOffset)
-          : pitchAlignedXZ * 0.6;
+        directXZ !== undefined
+          ? directXZ
+          : dNear3D > heightOffset
+            ? Math.sqrt(dNear3D * dNear3D - heightOffset * heightOffset)
+            : pitchAlignedXZ * 0.6;
       const maxXZ =
-        dFar3D > heightOffset
-          ? Math.sqrt(dFar3D * dFar3D - heightOffset * heightOffset)
-          : pitchAlignedXZ * 1.6;
+        directXZ !== undefined
+          ? directXZ
+          : dFar3D > heightOffset
+            ? Math.sqrt(dFar3D * dFar3D - heightOffset * heightOffset)
+            : pitchAlignedXZ * 1.6;
       const minDistance = Math.max(0.1, minXZ);
-      const maxDistance = Math.max(minDistance + 0.5, maxXZ);
-      const maxLateral = fixed.lateralFrac * maxDistance * tanHalfFov;
+      const maxDistance =
+        directXZ !== undefined ? minDistance : Math.max(minDistance + 0.5, maxXZ);
+      const maxLateral =
+        directXZ !== undefined ? 0 : fixed.lateralFrac * maxDistance * tanHalfFov;
 
       // Initialize position on entry into fixed mode so the character is
       // visible at the default leash distance.

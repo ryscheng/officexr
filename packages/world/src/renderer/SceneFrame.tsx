@@ -250,11 +250,18 @@ export function SceneFrame({
       // Threshold of 0.5 m comfortably excludes the per-frame deltas
       // produced by gravity (~0.006 m at 60 fps) and normal walking
       // (~0.1 m / frame at 6 m/s) while catching any "real" teleport.
+      //
+      // When gravity is disabled (Mugshot mode), drop the threshold
+      // to zero so any `setSelfPosition` change — including the
+      // mugshot Y-slider's 0.01 m granularity — moves the body
+      // immediately. With gravity off there's no per-frame jitter
+      // to filter out.
       const t0 = body.translation();
       const dx0 = self.pos.x - t0.x;
       const dy0 = self.pos.y - t0.y;
       const dz0 = self.pos.z - t0.z;
-      const warped = dx0 * dx0 + dy0 * dy0 + dz0 * dz0 > 0.25;
+      const warpThresholdSq = gravityEnabledRef.current ? 0.25 : 0;
+      const warped = dx0 * dx0 + dy0 * dy0 + dz0 * dz0 > warpThresholdSq;
       if (warped) {
         body.setNextKinematicTranslation(self.pos);
         verticalVelRef.current = 0;

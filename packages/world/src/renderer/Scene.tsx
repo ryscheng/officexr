@@ -99,6 +99,12 @@ interface SceneProps {
    * its bind pose (no animation mixer activity). Used by the Mugshot
    * mode to produce deterministic snapshot tests. */
   paused?: boolean;
+  /** Forwarded to R3F `<Canvas dpr={...}>`. Default is R3F's (auto-
+   * picks `devicePixelRatio`). Set to 1 in Mugshot mode so the
+   * captured framebuffer matches the container's CSS pixel size
+   * exactly — capture baselines are deterministic regardless of
+   * the user's display DPI. */
+  dpr?: number;
 }
 
 export function Scene(props: SceneProps) {
@@ -148,6 +154,7 @@ export function Scene(props: SceneProps) {
       minOnScreenFrac: fixedCamera.minOnScreenFrac,
       lateralFrac: fixedCamera.lateralFrac,
       fov: fixedCamera.fov,
+      distanceM: fixedCamera.distanceM,
     }),
     [
       fixedCamera.azimuthDeg,
@@ -157,6 +164,7 @@ export function Scene(props: SceneProps) {
       fixedCamera.minOnScreenFrac,
       fixedCamera.lateralFrac,
       fixedCamera.fov,
+      fixedCamera.distanceM,
     ],
   );
 
@@ -185,6 +193,14 @@ export function Scene(props: SceneProps) {
       shadows={{ type: THREE.PCFShadowMap }}
       camera={{ position: [0, 1.6, 0], fov: 75, near: 0.1, far: 2000 }}
       style={{ width: '100%', height: '100%', display: 'block' }}
+      dpr={props.dpr}
+      // `preserveDrawingBuffer: true` lets `canvas.toDataURL()` read
+      // the actual rendered pixels — by default WebGL clears the
+      // back buffer after compositing and `toDataURL` returns black.
+      // The mugshot export depends on this being set; the small per-
+      // frame perf cost is acceptable since the renderer's heaviest
+      // consumers (Debug) don't use the export path.
+      gl={{ preserveDrawingBuffer: true }}
     >
       <Suspense fallback={null}>
         {/*
