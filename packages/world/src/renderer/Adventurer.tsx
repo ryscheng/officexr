@@ -146,119 +146,10 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       return s;
     }, [character_gltf.scene]);
 
-    // -----------------------------------------------------------------
-    // Per-character mesh anchor: place the model's bind-pose VISIBLE
-    // BOTTOM at the inner group's local y=0.
-    //
-    // Why this exists
-    //   The Rapier body collider is a ball at local `BODY_Y=0.9` with
-    //   radius `charRadius=0.4`, so its bottom sits at `root.y + 0.5`.
-    //   Players.tsx wraps the character in a group offset by
-    //   `BODY_Y - charRadius = 0.5` so that group's local y=0 lines up
-    //   with the ball's bottom — i.e. the point the character
-    //   controller has decided is "the floor". Our job here is to
-    //   place the model so its visible feet land exactly at THAT y=0.
-    //
-    // The critical detail: `SkinnedMesh.computeBoundingBox()`
-    //   For static `Mesh` the renderer just draws
-    //   `geometry.attributes.position` transformed by `matrixWorld`,
-    //   so `geometry.boundingBox` reflects exactly what you see.
-    //   For `SkinnedMesh` the vertex shader applies a per-vertex
-    //   weighted sum of bone transforms; the geometry's static
-    //   bounding box is in MESH-LOCAL "T-pose" space and bears no
-    //   resemblance to where the rendered vertices actually end up.
-    //   Three.js's `Box3.setFromObject()` uses
-    //   `geometry.boundingBox` for both, so calling it on a
-    //   character GLB tells you the AUTHORED extent of the mesh,
-    //   not the BIND-POSE rendered extent.
-    //
-    //   `SkinnedMesh.computeBoundingBox()` is the correct API — it
-    //   walks every vertex through the bone bind transforms
-    //   (matching exactly what the GPU does each frame) and writes
-    //   the WORLD-SPACE rendered extent to `skin.boundingBox`. We
-    //   measure with the cloned scene unparented so "world space"
-    //   here equals "scene-parent space" — which becomes
-    //   `innerRef`'s local space once the primitive mounts.
-    //
-    // The math
-    //   Let `box.min.y` be the bind-pose lowest visible point in
-    //   scene-parent space. Set `innerRef.position.y = -box.min.y`,
-    //   and the lowest visible vertex ends up at the innerRef's
-    //   parent's y=0 — the body ball's bottom — the cube surface.
-    //
-    // SOLID split
-    //   Adventurer owns the MODEL-LOCAL anchor (per-character data
-    //   derived from the rig). Players.tsx owns the PHYSICS-LOCAL
-    //   anchor (the body root → ball bottom relationship tied to
-    //   the collider, identical for every character). Together they
-    //   compose to place feet on the floor for any rig.
-    //
-    // Failure modes documented in `__OFFICE_MESH_DEBUG__`
-    //   The window-expose carries `minY` (= the measured bind-pose
-    //   minimum), `maxY` (= the bind-pose top), and `offset` (= what
-    //   we passed to innerRef). Tests + the standing-validation
-    //   probe assert these are sane; if a future GLB swap returns a
-    //   broken bbox, the diagnostic catches it before the visual.
-    // -----------------------------------------------------------------
-    const meshOffsetY = useMemo(() => {
-      scene.updateMatrixWorld(true);
-
-      const acc = new THREE.Box3();
-      acc.makeEmpty();
-      const tmp = new THREE.Box3();
-      scene.traverse((obj) => {
-        const skin = obj as THREE.SkinnedMesh;
-        if (skin.isSkinnedMesh && skin.skeleton) {
-          // Make sure bone matrices are current before computing.
-          // For a freshly-cloned scene this happens automatically
-          // via the parent scene.updateMatrixWorld above, but
-          // calling explicitly here makes the dependency explicit.
-          skin.skeleton.update();
-          skin.computeBoundingBox();
-          if (skin.boundingBox && !skin.boundingBox.isEmpty()) {
-            acc.union(skin.boundingBox);
-          }
-          return;
-        }
-        const mesh = obj as THREE.Mesh;
-        if (mesh.isMesh && mesh.geometry) {
-          if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-          if (mesh.geometry.boundingBox) {
-            tmp.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
-            acc.union(tmp);
-          }
-        }
-      });
-
-      if (acc.isEmpty() || !isFinite(acc.min.y) || !isFinite(acc.max.y)) {
-        console.warn(
-          '[Adventurer] could not measure bind-pose bbox; character may render with feet buried in the floor',
-        );
-        return 0;
-      }
-      const offset = -acc.min.y;
-      // Diagnostic window-expose for the standing-validation
-      // playwright probe and the manifest-compare spec. Production
-      // code never reads this.
-      (
-        globalThis as unknown as {
-          __OFFICE_MESH_DEBUG__?: {
-            minY: number;
-            maxY: number;
-            offset: number;
-          };
-        }
-      ).__OFFICE_MESH_DEBUG__ = {
-        minY: acc.min.y,
-        maxY: acc.max.y,
-        offset,
-      };
-      return offset;
-    }, [scene]);
-
     // Merge clips from every loaded rig. Earlier rigs win on name
     // collision (rare — Idle_A only lives in General, Walking_C only
-    // in MovementBasic, etc.).
+    // in MovementBasic, etc.). Declared BEFORE `meshOffsetY` because
+    // that useMemo samples each clip to compute per-frame extents.
     const clips = useMemo(() => {
       const seen = new Set<string>();
       const out: THREE.AnimationClip[] = [];
@@ -279,6 +170,160 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       movementAdv.animations,
       combatRanged.animations,
     ]);
+
+    // -----------------------------------------------------------------
+    // Per-character mesh anchor: place the model's LOWEST visible
+    // vertex (across every frame of every loaded animation clip) at
+    // the inner group's local y=0.
+    //
+    // Why this exists
+    //   The Rapier body collider is a ball at local `BODY_Y=0.9`
+    //   with radius `charRadius=0.4`, so its bottom sits at
+    //   `root.y + 0.5`. Players.tsx wraps the character in a group
+    //   offset by `BODY_Y - charRadius = 0.5`; the wrapper's local
+    //   y=0 sits at the ball's bottom — the surface the controller
+    //   stands on. Our job is to place the model so its visible
+    //   feet land at THAT y=0 at every moment, not just bind pose.
+    //
+    // Why per-frame (the load-bearing decision)
+    //   An idle / walk cycle moves the foot bones (breathing,
+    //   weight shift, footplant). Anchoring on bind-pose alone
+    //   means the lowest frame of the cycle dips BELOW the cube
+    //   surface — feet briefly clip through the floor. To anchor
+    //   on the worst case we sample every clip at fixed intervals,
+    //   union the per-pose bboxes, and use the minimum across
+    //   ALL samples. The character then never clips during any
+    //   animation moment. For Mugshot (paused at bind pose), the
+    //   bind-pose extent is one of the samples — its min equals or
+    //   exceeds the union min, so paused rendering is still
+    //   correctly placed.
+    //
+    // The frame trick: `SkinnedMesh.computeBoundingBox()` writes
+    //   the result in SkinnedMesh-LOCAL frame (bindMatrix and
+    //   bindMatrixInverse bracket the bone math and cancel back to
+    //   mesh-local). To get scene-local — what we need for the
+    //   innerRef offset — we apply `skin.matrixWorld` to the box.
+    //   Without this step, a non-identity ancestor transform on the
+    //   SkinnedMesh produces a stale frame mismatch that sinks the
+    //   visible character. Static meshes use the same pattern
+    //   (`geometry.boundingBox.applyMatrix4(mesh.matrixWorld)`).
+    //
+    // SOLID split
+    //   Adventurer owns the MODEL-LOCAL anchor (per-character data
+    //   from the rig + its animations). Players.tsx owns the
+    //   PHYSICS-LOCAL anchor (body root → ball bottom, identical
+    //   for every character). Together they place feet on the
+    //   floor for any rig in any pose.
+    //
+    // Diagnostics in `__OFFICE_MESH_DEBUG__`: `minY` is the union
+    //   min y; `maxY` is the union max y; `offset` is what we pass
+    //   to innerRef; `sampleCount` is the number of poses sampled
+    //   (1 bind + N clips × SAMPLES_PER_CLIP). Tests + the
+    //   standing-validation probe assert these are sane.
+    // -----------------------------------------------------------------
+    const meshOffsetY = useMemo(() => {
+      scene.updateMatrixWorld(true);
+
+      // Cache the traversal so we don't re-walk per sample.
+      const skins: THREE.SkinnedMesh[] = [];
+      const staticMeshes: THREE.Mesh[] = [];
+      scene.traverse((obj) => {
+        const skin = obj as THREE.SkinnedMesh;
+        if (skin.isSkinnedMesh && skin.skeleton) {
+          skins.push(skin);
+          return;
+        }
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh && mesh.geometry) staticMeshes.push(mesh);
+      });
+
+      const acc = new THREE.Box3();
+      acc.makeEmpty();
+      const tmp = new THREE.Box3();
+
+      const accumulateCurrentPose = (): void => {
+        scene.updateMatrixWorld(true);
+        for (const skin of skins) {
+          skin.skeleton.update();
+          skin.computeBoundingBox();
+          if (!skin.boundingBox || skin.boundingBox.isEmpty()) continue;
+          // SkinnedMesh.computeBoundingBox writes to skin.boundingBox
+          // in MESH-LOCAL frame (bindMatrix/bindMatrixInverse cancel
+          // the bone math back to mesh-local). Lift into scene-local
+          // by applying matrixWorld — the production render path
+          // does this via the shader, so we have to match.
+          tmp.copy(skin.boundingBox).applyMatrix4(skin.matrixWorld);
+          acc.union(tmp);
+        }
+        for (const mesh of staticMeshes) {
+          if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+          if (!mesh.geometry.boundingBox) continue;
+          tmp.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+          acc.union(tmp);
+        }
+      };
+
+      // 1) Bind pose — always.
+      accumulateCurrentPose();
+
+      // 2) Per-clip samples — only when the character is animated.
+      //    When `paused=true` (Mugshot's diagnostic mode) we render
+      //    the bind pose; sampling animation extremes would lift
+      //    the whole mesh above bind-pose feet, putting the
+      //    rendered character above the cube surface. For Debug
+      //    mode (animated), per-frame extents are essential so the
+      //    foot doesn't dip into the cube during an idle clip.
+      const SAMPLES_PER_CLIP = 12;
+      if (!paused && clips.length > 0) {
+        const mixer = new THREE.AnimationMixer(scene);
+        for (const clip of clips) {
+          const action = mixer.clipAction(clip);
+          action.play();
+          const duration = clip.duration;
+          for (let i = 0; i < SAMPLES_PER_CLIP; i++) {
+            const t = (i / SAMPLES_PER_CLIP) * duration;
+            mixer.setTime(t);
+            accumulateCurrentPose();
+          }
+          action.stop();
+        }
+        mixer.stopAllAction();
+        // Return the skeleton to bind pose so the rendered scene
+        // doesn't start out at the final sampled animation frame.
+        for (const skin of skins) skin.skeleton.pose();
+        scene.updateMatrixWorld(true);
+      }
+
+      if (acc.isEmpty() || !isFinite(acc.min.y) || !isFinite(acc.max.y)) {
+        console.warn(
+          '[Adventurer] could not measure mesh bbox; character may render with feet buried in the floor',
+        );
+        return 0;
+      }
+      const offset = -acc.min.y;
+      (
+        globalThis as unknown as {
+          __OFFICE_MESH_DEBUG__?: {
+            minY: number;
+            maxY: number;
+            offset: number;
+            sampleCount: number;
+          };
+        }
+      ).__OFFICE_MESH_DEBUG__ = {
+        minY: acc.min.y,
+        maxY: acc.max.y,
+        offset,
+        sampleCount: 1 + clips.length * SAMPLES_PER_CLIP,
+      };
+      return offset;
+      // `clips` is a stable useMemo derived from the loaded
+      // animation GLTFs; this useMemo recomputes once per character
+      // when the rigs finish loading. `paused` flips between bind-
+      // only and per-frame; we recompute when it changes so a
+      // Debug → Mugshot switch picks up the right offset.
+      // Acceptable mount-time cost.
+    }, [scene, clips, paused]);
 
     const innerRef = useRef<THREE.Group>(null!);
     const { actions } = useAnimations(clips, innerRef);

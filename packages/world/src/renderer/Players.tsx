@@ -341,10 +341,16 @@ export function Players({
           bumpZ = bump.normal.z * env * kick;
         }
       }
-      // Inner group is positioned RELATIVE to the rigid body. The rigid
-      // body sits at the character's foot, so the visual group stays
-      // at y=0 locally — bump is purely a horizontal jolt.
-      grp.position.set(bumpX, 0, bumpZ);
+      // Inner group is positioned RELATIVE to the rigid body. Its
+      // STATIC y-offset is `BODY_Y - charRadius` — the wrapper's
+      // local y=0 plane must coincide with the ball collider's
+      // bottom, which is where the kinematic-character controller
+      // settles contacts (NOT the rigid body root). Without this
+      // term the wrapper rides at body root y, and the mesh anchor
+      // (which expects local y=0 to be at the standing surface)
+      // renders the character sunk by `BODY_Y - charRadius` below
+      // the cube top. Bump is x/z only.
+      grp.position.set(bumpX, BODY_Y - charRadius, bumpZ);
 
       const targetYaw = (player.yaw ?? 0) + AVATAR_YAW_OFFSET;
       const prev = currentYaw.current.get(id) ?? targetYaw;
