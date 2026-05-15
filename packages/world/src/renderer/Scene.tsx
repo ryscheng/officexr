@@ -18,6 +18,7 @@ import { Floor } from './Floor.tsx';
 import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { SceneFrame } from './SceneFrame.tsx';
+import { ObjectInstances } from './ObjectInstances.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
 import { CUBE_SIZE, type CameraMode } from './config.ts';
 import type { ViewConfig } from './viewConfig.ts';
@@ -300,6 +301,16 @@ export function Scene(props: SceneProps) {
         />
 
         <Floor gridSize={world.gridSize} stoneLayers={world.stoneLayers} />
+
+        {/* Per-map cubes. Subscribes to `state.worldObjects` — the
+            picker pushes a fresh WorldObjects snapshot via
+            `actions.setWorldObjects(compileMap(...))` on every map
+            switch, and this re-renders one InstancedMesh per cube
+            kind in response. Without this mount nothing visualises
+            the picker's data, which the user noticed: the player
+            teleported between spawns but the surrounding cube field
+            stayed identical because there was no cube field at all. */}
+        <ObjectInstances store={store} />
 
         <Players
           store={store}
