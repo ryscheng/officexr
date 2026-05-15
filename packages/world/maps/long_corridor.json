@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "name": "long_corridor",
+  "updatedAt": 1778804043741,
+  "rooms": [
+    {
+      "id": "room-1-ztq1",
+      "roomName": "default-v2",
+      "position": [
+        9,
+        0,
+        -2
+      ],
+      "rotationY": 0
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "spawn-2-zzzv",
+      "position": [
+        -7.155299579148359,
+        2,
+        -0.8883522088028108
+      ]
+    }
+  ],
+  "environment": {
+    "sun": {
+      "positionX": 20,
+      "positionY": 40,
+      "positionZ": 20,
+      "color": "#ffffff",
+      "intensity": 1.4
+    },
+    "sky": null,
+    "stars": null,
+    "hdri": null,
+    "ambientIntensity": 0.15
+  }
+}
