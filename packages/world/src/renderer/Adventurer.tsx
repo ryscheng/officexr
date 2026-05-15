@@ -141,6 +141,70 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       return s;
     }, [character_gltf.scene]);
 
+    // Measure the y-coordinate of the toes bones in the model's
+    // BIND POSE (we run this before the animation mixer has a chance
+    // to advance the skeleton — useMemo runs during render; mixer
+    // updates run inside useFrame after first commit). The character
+    // mesh is positioned so toes land at the parent group's y=0;
+    // combined with the `BODY_Y - charRadius` offset in Players.tsx,
+    // toes end up exactly at the body ball's bottom — i.e. ON the
+    // cube surface the controller resolves against, not buried
+    // inside it.
+    //
+    // SOLID note: Adventurer owns the MODEL-LOCAL correction (where
+    // are the toes relative to the GLB's origin?) because that
+    // varies by character. Players.tsx owns the PHYSICS-LOCAL
+    // correction (where is the ball's bottom relative to the body
+    // root?) because that's tied to the collider, not the visual.
+    const toesOffsetY = useMemo(() => {
+      // We need the toes' y-coord in the scene's LOCAL frame, not
+      // world frame — if `scene` is already mounted (HMR re-run,
+      // StrictMode double-invoke), `getWorldPosition` would include
+      // the ancestor transforms we're about to set, leading to a
+      // feedback loop. Instead: compute `sceneWorld⁻¹ · boneWorld`
+      // explicitly so the offset is always referenced to scene root.
+      scene.updateMatrixWorld(true);
+      const sceneInverse = new THREE.Matrix4()
+        .copy(scene.matrixWorld)
+        .invert();
+      const m = new THREE.Matrix4();
+      const tmp = new THREE.Vector3();
+      const ys: number[] = [];
+      scene.traverse((node) => {
+        const lname = (node.name ?? '').toLowerCase();
+        // Match `toesl` / `toesr` (KayKit) and also common rig
+        // variants like `:LeftToes` (Mixamo) or `toes_l` (Blender).
+        // Endings only — the bone's name may carry a rig prefix
+        // like `mixamorig:`.
+        if (
+          lname === 'toesl' ||
+          lname === 'toesr' ||
+          lname.endsWith(':toesl') ||
+          lname.endsWith(':toesr') ||
+          lname.endsWith('toes_l') ||
+          lname.endsWith('toes_r') ||
+          lname.endsWith('lefttoes') ||
+          lname.endsWith('righttoes')
+        ) {
+          m.copy(sceneInverse).multiply(node.matrixWorld);
+          tmp.setFromMatrixPosition(m);
+          ys.push(tmp.y);
+        }
+      });
+      if (ys.length === 0) {
+        // No toes bone found — fall back to "model origin == feet"
+        // and rely on Players.tsx's static offset. Log once per
+        // character so a future rig swap with a different naming
+        // convention surfaces in the console.
+        console.warn(
+          '[Adventurer] no toes bone found; character may render with feet buried in the floor',
+        );
+        return 0;
+      }
+      const avg = ys.reduce((s, y) => s + y, 0) / ys.length;
+      return -avg;
+    }, [scene]);
+
     // Merge clips from every loaded rig. Earlier rigs win on name
     // collision (rare — Idle_A only lives in General, Walking_C only
     // in MovementBasic, etc.).
@@ -262,7 +326,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
 
     return (
       <group ref={ref}>
-        <group ref={innerRef}>
+        <group ref={innerRef} position-y={toesOffsetY}>
           <primitive object={scene} />
         </group>
       </group>
