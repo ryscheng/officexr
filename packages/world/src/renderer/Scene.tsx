@@ -180,13 +180,16 @@ export function Scene(props: SceneProps) {
       <Suspense fallback={null}>
         {/*
           <Physics> wraps everything that needs Rapier — characters,
-          floor walls, the per-frame movement loop. Gravity is zero
-          because our characters are kinematic and never fall.
-          `timeStep="vary"` lets Rapier sub-step at the real frame
-          delta; characters are kinematic anyway so determinism isn't
-          critical here.
+          map colliders, the per-frame movement loop. The gravity
+          vector here drives DYNAMIC bodies; the local player is a
+          kinematic body whose character controller integrates
+          gravity manually in `SceneFrame` (Rapier doesn't auto-apply
+          the world's gravity to kinematic bodies). The two values
+          should stay in sync so any future dynamic body falls at
+          the same rate the player does. `timeStep="vary"` lets
+          Rapier sub-step at the real frame delta.
         */}
-        <Physics gravity={[0, 0, 0]} timeStep="vary">
+        <Physics gravity={[0, -20, 0]} timeStep="vary">
         <MapColliders store={store} />
         {/* Sun-like single light source. The Leva `sunPosition` drives
             both the shadow-casting directional light and the visible

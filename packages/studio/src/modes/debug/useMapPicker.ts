@@ -14,6 +14,11 @@ import {
 
 const LAST_MAP_KEY = 'officexr:studio:lastMap';
 const CUBE_SIZE = 2;
+/** Default vertical offset (metres) added to a spawn point when
+ * teleporting the local player at map load. Gravity does the rest —
+ * the player falls onto the spawn instead of materialising on the
+ * floor. Override via `useMapPicker({ spawnDropHeight })`. */
+const DEFAULT_SPAWN_DROP_HEIGHT = 4;
 
 interface UseMapPickerOpts {
   /** Local player's actions surface — the picker uses this to push the
@@ -24,6 +29,12 @@ interface UseMapPickerOpts {
    * stack is still bootstrapping or in WS mode (where the Node bots
    * CLI owns its own pool). */
   bots: BotPool | null;
+  /** Metres above the spawn point to drop the local player. Gravity
+   * (driven by SceneFrame's KinematicCharacterController) carries
+   * them down onto the cube surface. Defaults to 4 m. Bots are NOT
+   * dropped — they teleport directly to the spawn (their physics
+   * world is separate). */
+  spawnDropHeight?: number;
 }
 
 export interface MapPickerState {
@@ -58,7 +69,11 @@ export interface MapPickerState {
  * in-browser pool is null. A `bot:respawn` event over the realtime
  * server's control channel would close the gap — out of scope.
  */
-export function useMapPicker({ actions, bots }: UseMapPickerOpts): MapPickerState {
+export function useMapPicker({
+  actions,
+  bots,
+  spawnDropHeight = DEFAULT_SPAWN_DROP_HEIGHT,
+}: UseMapPickerOpts): MapPickerState {
   const storage = useMemo(() => {
     try {
       return {
@@ -133,11 +148,27 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): MapPickerStat
     [storage],
   );
 
+  // Capture spawnDropHeight in a ref so changes propagate without
+  // rebinding the teleport callback (and triggering the bootstrap
+  // effect's dependency churn).
+  const dropHeightRef = useRef(spawnDropHeight);
+  useEffect(() => {
+    dropHeightRef.current = spawnDropHeight;
+  }, [spawnDropHeight]);
+
   const teleportLocal = useCallback((spawns: readonly SpawnPoint[]) => {
     const a = actionsRef.current;
     if (!a || spawns.length === 0) return;
     const t = spawns[0].position;
-    a.setSelfPosition({ x: t[0], y: t[1], z: t[2] }, { x: 0, y: 0, z: 0 }, 0);
+    // Drop from the sky: lift the spawn y by `dropHeightRef.current`
+    // metres. `SceneFrame` auto-warps the player's Rapier body to
+    // match the store position when they diverge by >0.5 m, so the
+    // body starts at sky height and gravity does the rest.
+    a.setSelfPosition(
+      { x: t[0], y: t[1] + dropHeightRef.current, z: t[2] },
+      { x: 0, y: 0, z: 0 },
+      0,
+    );
   }, []);
 
   const respawnBots = useCallback((spawns: readonly SpawnPoint[]) => {

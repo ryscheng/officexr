@@ -292,6 +292,20 @@ test('Rendered cube field actually tracks state.worldObjects (deterministic)', a
   });
   await page.waitForTimeout(1500);
 
+  // Disable gravity for the duration of this test so pinning the
+  // player to a fixed (x, y, z) actually pins them. Without this,
+  // SceneFrame integrates gravity each frame and overwrites the
+  // store pos with whatever the body fell to — the camera follows
+  // it down and the captured frames are non-deterministic. The
+  // `__OFFICE_GRAVITY__` hook is published by SceneFrame for
+  // exactly this scenario.
+  await page.evaluate(() => {
+    const g = (window as unknown as {
+      __OFFICE_GRAVITY__?: { setEnabled: (v: boolean) => void };
+    }).__OFFICE_GRAVITY__;
+    if (g) g.setEnabled(false);
+  });
+
   // Pin the local player so the fixed-camera is identical across
   // snapshots. Camera position is a pure function of player.pos +
   // (azimuth, pitch, height) — pinning pos pins camera.
