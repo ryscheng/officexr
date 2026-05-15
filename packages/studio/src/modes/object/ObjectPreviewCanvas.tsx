@@ -42,6 +42,7 @@ export function ObjectPreviewCanvas({ kind }: ObjectPreviewCanvasProps) {
 }
 
 function KindPreview({ kind }: { kind: CubeKindEntry }) {
+  const { gl } = useThree();
   const gltf = useGLTF(kind.gltfPath);
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
   // Rebuild the material whenever an override field changes so a
@@ -59,14 +60,31 @@ function KindPreview({ kind }: { kind: CubeKindEntry }) {
     ],
   );
   // Slow Y-axis spin so the user can see the cube's faces without
-  // dragging the camera. Stop the spin while the user is interacting
-  // would be nice but isn't critical.
+  // dragging the camera — but pause it while the cursor is over the
+  // canvas so the user can inspect a static frame (e.g. while
+  // comparing visuals against the physics collider top).
   const meshRef = useRef<THREE.Mesh>(null);
+  const hoveredRef = useRef(false);
+  useEffect(() => {
+    const c = gl.domElement;
+    const enter = () => {
+      hoveredRef.current = true;
+    };
+    const leave = () => {
+      hoveredRef.current = false;
+    };
+    c.addEventListener('pointerenter', enter);
+    c.addEventListener('pointerleave', leave);
+    return () => {
+      c.removeEventListener('pointerenter', enter);
+      c.removeEventListener('pointerleave', leave);
+    };
+  }, [gl]);
   useFrame((_, dt) => {
-    if (meshRef.current) meshRef.current.rotation.y += dt * 0.4;
+    if (!meshRef.current) return;
+    if (hoveredRef.current) return;
+    meshRef.current.rotation.y += dt * 0.4;
   });
-  // SEAM_OVERLAP isn't needed here — there's only one cube on screen
-  // so we don't have to hide the seam between adjacent voxels.
   const s = kind.scale;
   return (
     <mesh

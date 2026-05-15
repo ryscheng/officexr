@@ -8,6 +8,20 @@ import {
 } from '@officexr/world/renderer';
 import type { CharacterName } from '@officexr/world';
 
+export interface CharacterPartHover {
+  /** Name of the leaf node the raycast hit (usually a SkinnedMesh
+   * like "Body" or "Adventurer_Geo"). */
+  meshName: string;
+  /** Nearest bone in the skeleton — if the leaf hit is a
+   * SkinnedMesh. Bones carry the meaningful joint names
+   * ("mixamorig:LeftFoot", "Spine"), so this is what you usually
+   * actually want for debugging. */
+  boneName: string | null;
+  /** Page-space cursor position, for placing the tooltip. */
+  clientX: number;
+  clientY: number;
+}
+
 interface CharacterEditorCanvasProps {
   character: CharacterName;
   /** Animation state to preview when not in control. */
@@ -21,6 +35,10 @@ interface CharacterEditorCanvasProps {
   idleSpeed: number;
   walkSpeed: number;
   runSpeed: number;
+  /** Surfaces the mesh+bone under the cursor each frame, or null
+   * when the cursor isn't over the canvas. Used by `CharacterApp`
+   * to render a DOM tooltip. */
+  onPartHover?: (hover: CharacterPartHover | null) => void;
 }
 
 /**
@@ -161,6 +179,51 @@ function CharacterStage(props: CharacterStageProps) {
 
   const charGroupRef = useRef<THREE.Group>(null);
 
+  // --- Part-name hover (debug tooltip) ----------------------------
+  // Track cursor in NDC + page-space so each frame we can raycast
+  // against the character to find the hit mesh and its closest bone.
+  // `null` means "cursor is outside the canvas, hide tooltip".
+  const hoverPosRef = useRef<{
+    ndcX: number;
+    ndcY: number;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
+  // Mirror the onPartHover callback into a ref so the pointer
+  // listeners don't have to rebind whenever the parent passes a new
+  // function identity. The useFrame loop below also reads from this
+  // ref so the latest callback always wins.
+  const partHoverRef = useRef(props.onPartHover);
+  useEffect(() => {
+    partHoverRef.current = props.onPartHover;
+  }, [props.onPartHover]);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const onMove = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      hoverPosRef.current = {
+        ndcX: (x / rect.width) * 2 - 1,
+        ndcY: -(y / rect.height) * 2 + 1,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      };
+    };
+    const onLeave = () => {
+      hoverPosRef.current = null;
+      partHoverRef.current?.(null);
+    };
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerleave', onLeave);
+    return () => {
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerleave', onLeave);
+    };
+  }, [gl]);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const lastHoverKey = useRef<string>('');
+
   useFrame((_, dtSec) => {
     if (props.inControl) {
       // Move character by WASD (camera-relative). Camera trails.
@@ -209,6 +272,52 @@ function CharacterStage(props: CharacterStageProps) {
     if (grp) {
       grp.position.copy(charPos.current);
       grp.rotation.y = charYaw.current + Math.PI; // Adventurer faces +Z by default
+    }
+
+    // Raycast for the part-hover tooltip. Only against the
+    // character group — the EndlessGrid is a shader plane we don't
+    // want to pick up.
+    const onPartHover = partHoverRef.current;
+    if (onPartHover && hoverPosRef.current && grp) {
+      const ray = raycasterRef.current;
+      ray.setFromCamera(
+        new THREE.Vector2(hoverPosRef.current.ndcX, hoverPosRef.current.ndcY),
+        persp,
+      );
+      const hits = ray.intersectObject(grp, true);
+      const hit = hits[0];
+      if (hit && hit.object) {
+        const meshName = hit.object.name || hit.object.type;
+        let boneName: string | null = null;
+        // For SkinnedMeshes, the leaf mesh's name is usually a
+        // generic "Body" — find the closest bone in its skeleton
+        // to the hit point and surface that, since bones carry the
+        // meaningful joint names.
+        const skin = hit.object as THREE.SkinnedMesh;
+        if (skin.isSkinnedMesh && skin.skeleton) {
+          let best: { name: string; d: number } | null = null;
+          const tmp = new THREE.Vector3();
+          for (const b of skin.skeleton.bones) {
+            b.getWorldPosition(tmp);
+            const d = tmp.distanceToSquared(hit.point);
+            if (!best || d < best.d) best = { name: b.name, d };
+          }
+          boneName = best?.name ?? null;
+        }
+        const key = `${meshName}|${boneName ?? ''}|${hoverPosRef.current.clientX}|${hoverPosRef.current.clientY}`;
+        if (key !== lastHoverKey.current) {
+          lastHoverKey.current = key;
+          onPartHover({
+            meshName,
+            boneName,
+            clientX: hoverPosRef.current.clientX,
+            clientY: hoverPosRef.current.clientY,
+          });
+        }
+      } else if (lastHoverKey.current !== '__none__') {
+        lastHoverKey.current = '__none__';
+        onPartHover(null);
+      }
     }
   });
 
