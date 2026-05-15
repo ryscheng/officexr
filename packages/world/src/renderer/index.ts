@@ -10,7 +10,6 @@ export {
   type AnimationState,
 } from './Adventurer.tsx';
 export { Players } from './Players.tsx';
-export { Floor } from './Floor.tsx';
 export { FloorColliders } from './FloorColliders.tsx';
 export { GradientBackground } from './GradientBackground.tsx';
 export { ProximityGlow } from './ProximityGlow.tsx';

@@ -95,8 +95,12 @@ export interface FixedCameraSettings {
 }
 
 export interface WorldRendererSettings {
+  /** Side length (in cubes) of the invisible perimeter wall collider
+   * that bounds the playable area. The visible `<Floor>` was deleted
+   * — Map Editor maps are the only visible content. `gridSize` is
+   * kept purely for `<FloorColliders>` + shadow-camera clamping; no
+   * UI exposes it anymore. */
   gridSize: number;
-  stoneLayers: number;
 }
 
 export interface BotSettings {
@@ -170,13 +174,14 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
     movementYawOffsetDeg: 0,
   },
   world: {
-    // Floor + wall collider extent. The default platform map is
-    // 25×25 cubes; we keep one cube of margin on each side (27)
-    // so the player can stand at the edge of the platform without
+    // Invisible perimeter wall extent. The default platform map is
+    // 25×25 cubes; we keep one cube of margin on each side (27) so
+    // the player can stand at the edge of the platform without
     // intersecting the FloorColliders wall. There's no longer a
-    // panel to tweak these — maps are the source of truth.
+    // panel to tweak this — maps are the source of truth for
+    // visible content; this just bounds the playable area for
+    // physics + the shadow camera.
     gridSize: 27,
-    stoneLayers: 0,
   },
   bot: {
     count: 1,

@@ -138,9 +138,9 @@ interface KindInstanceGroupProps {
 }
 
 // KayKit BlockBits cubes have beveled corners — a slight overlap hides
-// the seams between adjacent instances, matching Floor.tsx. Kept as a
-// per-renderer constant so the catalog-side `kind.scale` stays a clean
-// "1 = no change" semantic.
+// the seams between adjacent instances. Kept as a per-renderer constant
+// so the catalog-side `kind.scale` stays a clean "1 = no change"
+// semantic.
 const SEAM_OVERLAP = 1.05;
 
 function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps) {

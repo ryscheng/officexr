@@ -1,16 +1,18 @@
 /**
  * World/scene defaults for the debug-app.
  *
- * Tweak `WORLD.gridSize` to change the floor footprint. The renderer rebuilds
- * its instanced cube buffers when this changes.
+ * `WORLD.gridSize` now only sizes the invisible perimeter wall
+ * collider (`<FloorColliders>`) and the shadow-camera clamp. The
+ * previously visible default `<Floor>` was deleted — Map Editor maps
+ * are the only source of visible cubes.
  */
 export const CUBE_SIZE = 2; // KayKit BlockBits cubes are 2×2×2 units
 
 export const WORLD = {
-  /** Floor side length in cubes (square grid). */
+  /** Playable-area side length in cubes (square). Bounds the
+   * invisible perimeter wall collider; no longer drives any visible
+   * geometry. */
   gridSize: 50,
-  /** Number of stone layers placed beneath the surface. */
-  stoneLayers: 2,
 };
 
 export const PLAYER_HEIGHT = 1.7;

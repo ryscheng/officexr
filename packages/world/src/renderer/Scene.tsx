@@ -14,7 +14,6 @@ import type {
   SnapshotHandshake,
 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
-import { Floor } from './Floor.tsx';
 import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { SceneFrame } from './SceneFrame.tsx';
@@ -300,16 +299,16 @@ export function Scene(props: SceneProps) {
           bottomColor={background.bottomColor}
         />
 
-        <Floor gridSize={world.gridSize} stoneLayers={world.stoneLayers} />
-
-        {/* Per-map cubes. Subscribes to `state.worldObjects` — the
-            picker pushes a fresh WorldObjects snapshot via
-            `actions.setWorldObjects(compileMap(...))` on every map
-            switch, and this re-renders one InstancedMesh per cube
-            kind in response. Without this mount nothing visualises
-            the picker's data, which the user noticed: the player
-            teleported between spawns but the surrounding cube field
-            stayed identical because there was no cube field at all. */}
+        {/* Per-map cubes — the ONLY visible world content. The Map
+            Editor is the source of truth; the picker pushes a fresh
+            WorldObjects snapshot via `actions.setWorldObjects(
+            compileMap(...))` on every map switch, and this
+            re-renders one InstancedMesh per cube kind in response.
+            The legacy `<Floor>` (a default 27×27 blue platform
+            rendered underneath these cubes) was removed because it
+            visually competed with map-authored content — authors saw
+            a stripe of "default" cubes peeking around the edges of
+            their own map and assumed map switching was broken. */}
         <ObjectInstances store={store} />
 
         <Players
