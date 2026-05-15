@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "name": "long_corridor",
-  "updatedAt": 1778804043741,
+  "updatedAt": 1778807518876,
   "rooms": [
     {
       "id": "room-1-ztq1",
       "roomName": "default-v2",
       "position": [
-        9,
+        1,
         0,
         -2
       ],
@@ -16,11 +16,11 @@
   ],
   "spawnPoints": [
     {
-      "id": "spawn-2-zzzv",
+      "id": "spawn-1-2hju",
       "position": [
-        -7.155299579148359,
+        -0.8379740548889023,
         2,
-        -0.8883522088028108
+        -0.5653470228400532
       ]
     }
   ],
