@@ -167,7 +167,24 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): MapPickerStat
   }, [storage, selected]);
 
   // Bootstrap: fetch list, load persisted map, teleport + respawn.
+  //
+  // Critical: gated on `actions !== null`. DebugApp creates the
+  // persistent local-player state in a separate useEffect, so on
+  // initial mount `actions = local?.actions ?? null` is null. If we
+  // bootstrap synchronously, `loadMap` reads `actionsRef.current ===
+  // null` and silently skips the `setWorldObjects` call — meaning
+  // the persisted map's cubes never reach the store, and the user
+  // sees an empty world that doesn't change when they pick another
+  // map (because their first pick just rehydrates the same nothing).
+  //
+  // The `bootstrappedRef` gate ensures the load runs exactly once
+  // per hook lifetime, even if `actions` cycles null → non-null →
+  // null → non-null during HMR / channel-stack swaps.
+  const bootstrappedRef = useRef(false);
   useEffect(() => {
+    if (!actions) return;
+    if (bootstrappedRef.current) return;
+    bootstrappedRef.current = true;
     let cancelled = false;
     void (async () => {
       await reloadList();
@@ -183,7 +200,7 @@ export function useMapPicker({ actions, bots }: UseMapPickerOpts): MapPickerStat
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [actions]);
 
   const choose = useCallback(
     (name: string) => {

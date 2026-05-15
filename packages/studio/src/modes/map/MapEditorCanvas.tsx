@@ -22,6 +22,26 @@ import type { MapSelection } from './useMapDocument.ts';
 
 const CUBE_SIZE = 2;
 
+/**
+ * Snap a raycast hit point to the nearest cube-grid Y level so a
+ * spawn marker lands on a cube top (or on the floor at y=0) instead
+ * of inside cube geometry. Cube bottoms sit on `y = k * CUBE_SIZE`
+ * for integer k, so:
+ *   - hit on a cube top (y = CUBE_SIZE) → unchanged.
+ *   - hit on the floor (y = 0)         → unchanged.
+ *   - hit on a cube side (e.g. y=1.5)  → rounded to the nearest
+ *                                        grid level (y=2 here).
+ * X/Z are passed through; the caller decides whether to further
+ * grid-snap those (spawn points are continuous in X/Z by design).
+ */
+function snapToCubeTop(hit: { x: number; y: number; z: number }): [
+  number,
+  number,
+  number,
+] {
+  return [hit.x, Math.round(hit.y / CUBE_SIZE) * CUBE_SIZE, hit.z];
+}
+
 interface MapEditorCanvasProps {
   doc: MapDocumentV1;
   rooms: ReadonlyMap<string, RoomDocument>;
@@ -80,6 +100,7 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
         onSelect={props.onSelect}
         onMove={props.onMoveRoom}
         spawnToolActive={props.spawnToolActive}
+        onPlaceSpawn={props.onPlaceSpawn}
       />
       <SpawnLayer
         spawns={props.doc.spawnPoints}
@@ -200,6 +221,11 @@ interface RoomsLayerProps {
   onSelect: (sel: MapSelection) => void;
   onMove: (id: string, position: [number, number, number]) => void;
   spawnToolActive: boolean;
+  /** Spawn-tool drop callback. Clicking a cube fires this with the
+   *  raycast hit point snapped to the nearest cube-grid Y level, so
+   *  spawn markers land on cube tops rather than embedded in their
+   *  sides. */
+  onPlaceSpawn: (position: [number, number, number]) => void;
 }
 
 function RoomsLayer(props: RoomsLayerProps) {
@@ -220,6 +246,7 @@ function RoomsLayer(props: RoomsLayerProps) {
             onSelect={() => props.onSelect({ kind: 'room', id: ri.id })}
             onMove={(pos) => props.onMove(ri.id, pos)}
             spawnToolActive={props.spawnToolActive}
+            onPlaceSpawn={props.onPlaceSpawn}
           />
         );
       })}
@@ -234,6 +261,7 @@ interface RoomInstanceMeshProps {
   onSelect: () => void;
   onMove: (position: [number, number, number]) => void;
   spawnToolActive: boolean;
+  onPlaceSpawn: (position: [number, number, number]) => void;
 }
 
 /**
@@ -263,6 +291,7 @@ function RoomInstanceMesh({
   onSelect,
   onMove,
   spawnToolActive,
+  onPlaceSpawn,
 }: RoomInstanceMeshProps) {
   const kinds = useCubeCatalog();
   const kindById = useMemo(() => {
@@ -369,8 +398,12 @@ function RoomInstanceMesh({
       <group position={groupPos}>
         <mesh
           onPointerDown={(e) => {
-            if (e.button !== 0 || spawnToolActive) return;
+            if (e.button !== 0) return;
             e.stopPropagation();
+            if (spawnToolActive) {
+              onPlaceSpawn(snapToCubeTop(e.point));
+              return;
+            }
             onSelect();
           }}
         >
@@ -391,8 +424,15 @@ function RoomInstanceMesh({
           kind={kind}
           instances={instances}
           onPointerDown={(e) => {
-            if (e.button !== 0 || spawnToolActive) return;
+            if (e.button !== 0) return;
             e.stopPropagation();
+            if (spawnToolActive) {
+              // Spawn-tool path: drop a spawn at the raycast hit
+              // point, snapped to the nearest cube-grid Y level so
+              // markers land on cube tops (not embedded in sides).
+              onPlaceSpawn(snapToCubeTop(e.point));
+              return;
+            }
             onSelect();
             // Capture the raycast hit's offset from the room anchor so
             // the room doesn't snap its centre to the cursor on drag.

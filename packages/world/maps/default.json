@@ -2,26 +2,19 @@
   "schemaVersion": 1,
   "name": "default",
   "title": "Default Map",
-  "updatedAt": 1778791500340,
+  "updatedAt": 1778800000000,
   "rooms": [
     {
       "id": "room-1",
-      "roomName": "default-v2",
-      "position": [
-        0,
-        0,
-        0
-      ]
+      "roomName": "platform",
+      "position": [0, 0, 0]
     }
   ],
   "spawnPoints": [
     {
-      "id": "spawn-1-j5fu",
-      "position": [
-        4.797520348603996,
-        0,
-        13.069225398361233
-      ]
+      "id": "spawn-center",
+      "label": "center",
+      "position": [12, 2, 12]
     }
   ],
   "environment": {

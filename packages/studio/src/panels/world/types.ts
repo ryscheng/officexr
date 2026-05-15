@@ -104,7 +104,7 @@ export interface BotSettings {
   mode: BotMode;
 }
 
-import { FIXED_CAMERA_DEFAULTS, WORLD } from '@officexr/world/renderer';
+import { FIXED_CAMERA_DEFAULTS } from '@officexr/world/renderer';
 
 /** Bundled defaults — match the previous Leva hook initial values exactly. */
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
@@ -170,8 +170,13 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
     movementYawOffsetDeg: 0,
   },
   world: {
-    gridSize: WORLD.gridSize,
-    stoneLayers: WORLD.stoneLayers,
+    // Floor + wall collider extent. The default platform map is
+    // 25×25 cubes; we keep one cube of margin on each side (27)
+    // so the player can stand at the edge of the platform without
+    // intersecting the FloorColliders wall. There's no longer a
+    // panel to tweak these — maps are the source of truth.
+    gridSize: 27,
+    stoneLayers: 0,
   },
   bot: {
     count: 1,

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import type { Actions, Store } from '@officexr/sdk';
+import type { Actions } from '@officexr/sdk';
 import type { BotMode } from '@officexr/world/bot';
 
 import { Button } from '../../components/ui/button.tsx';
@@ -17,7 +17,6 @@ import type { UseStudioSettingsResult } from './useStudioSettings.ts';
 
 interface WorldPanelsProps {
   settings: UseStudioSettingsResult;
-  store: Store | null;
   actions: Actions | null;
   /** Page-level handlers — Debug app routes bot count to in-browser
    *  pool or promotes to WS mode + the Node CLI. */
@@ -45,7 +44,6 @@ interface WorldPanelsProps {
  */
 export function WorldPanels({
   settings,
-  store,
   actions,
   onBotCountChange,
   onBotModeChange,
@@ -82,12 +80,6 @@ export function WorldPanels({
       <FixedCameraPanel
         fixedCamera={viewConfig.fixedCamera}
         setSection={setSection}
-      />
-      <WorldRendererPanel
-        world={viewConfig.world}
-        setSection={setSection}
-        store={store}
-        actions={actions}
       />
       <SettingsPanel reset={reset} exportJson={exportJson} />
     </Panel>
@@ -377,43 +369,6 @@ function FixedCameraPanel({
       <NumberInput label="lateral (frac)" value={fixedCamera.lateralFrac} min={0} max={1} step={0.01} onChange={set('lateralFrac')} />
       <NumberInput label="fov" value={fixedCamera.fov} min={20} max={110} step={1} digits={0} onChange={set('fov')} />
       <NumberInput label="WASD offset (°)" value={fixedCamera.movementYawOffsetDeg} min={-180} max={180} step={0.5} onChange={set('movementYawOffsetDeg')} />
-    </Section>
-  );
-}
-
-// --- World --------------------------------------------------------
-
-function WorldRendererPanel({
-  world,
-  setSection,
-  store,
-  actions,
-}: {
-  world: ViewConfig['world'];
-  setSection: UseStudioSettingsResult['setSection'];
-  store: Store | null;
-  actions: Actions | null;
-}) {
-  // gridSize is mirrored into worldMap so collisions / bots agree
-  // across the network. Mirrors the previous Leva hook exactly:
-  // read the current worldMap from the store, replace gridSize.
-  // No-op when the value is already current.
-  useEffect(() => {
-    if (!actions || !store) return;
-    const current = store.getState().worldMap;
-    if (current.gridSize === world.gridSize) return;
-    actions.setWorldMap({ ...current, gridSize: world.gridSize });
-  }, [actions, store, world.gridSize]);
-
-  const set =
-    <K extends keyof ViewConfig['world']>(key: K) =>
-    (value: ViewConfig['world'][K]) =>
-      setSection('world', (prev) => ({ ...prev, [key]: value }));
-
-  return (
-    <Section title="World" defaultOpen={false}>
-      <NumberInput label="floor size" value={world.gridSize} min={4} max={100} step={2} digits={0} onChange={set('gridSize')} />
-      <NumberInput label="stone layers" value={world.stoneLayers} min={0} max={5} step={1} digits={0} onChange={set('stoneLayers')} />
     </Section>
   );
 }
