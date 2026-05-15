@@ -11,6 +11,25 @@ import {
   extractMaterialFromGltf,
 } from './cube-material.ts';
 
+/**
+ * Magic-id prefix recognized by ObjectInstances to render a plain
+ * `<boxGeometry>` cube instead of resolving a catalog entry +
+ * loading a GLB. The Mugshot mode uses this for an A/B diagnostic:
+ * same colliders, same character, same camera — only the visible
+ * cube geometry differs. If feet sit on primitive boxes but sink
+ * into GLB cubes, the GLB authoring is the suspect.
+ *
+ * Production code paths (Debug, Map editor, Room editor) never
+ * emit a `__primitive_` instance — these kindIds are exclusive to
+ * the Mugshot diagnostic harness.
+ */
+const PRIMITIVE_PREFIX = '__primitive_';
+const PRIMITIVE_COLORS: Record<string, string> = {
+  __primitive_blue: '#3b6bf2',
+  __primitive_stone: '#a8a8a8',
+};
+const PRIMITIVE_FALLBACK_COLOR = '#ff00ff';
+
 // Preload every kind in the bundled-default registry at module load so
 // the first scene paint renders without a flash. Kinds added later via
 // catalog hydration (Task 4's asset packs) are preloaded lazily inside
@@ -64,15 +83,17 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
   }, [kinds]);
 
   // Group instances by kind so each kind gets one InstancedMesh.
-  // Only kinds that actually have at least one instance produce a
-  // `<KindInstanceGroup>` — every group triggers `useGLTF(...)` which
-  // suspends until the GLTF resolves. Rendering one group per
-  // catalog entry instead means a 281-kind catalog (post-`pnpm
-  // asset-packs:install`) attempts to load all 281 GLTFs at mount,
-  // which hangs the Debug scene until they ALL complete. Filtering
-  // to the actually-used kinds keeps mount work proportional to the
-  // scene's content.
-  const usedKinds = useMemo(() => {
+  // Two buckets:
+  //   - `usedKinds`: real catalog kinds (load via useGLTF).
+  //   - `usedPrimitives`: `__primitive_<color>` magic ids (plain
+  //     BoxGeometry, no GLB load). Used only by Mugshot's A/B
+  //     diagnostic; production scenes never emit these.
+  //
+  // Filtering to actually-used kinds (rather than the full
+  // catalog) keeps mount work proportional to scene content — a
+  // 281-kind catalog (post-`pnpm asset-packs:install`) would
+  // otherwise trigger 281 useGLTF suspensions on mount.
+  const { usedKinds, usedPrimitives } = useMemo(() => {
     const byKind = new Map<string, ObjectInstance[]>();
     for (const inst of snapshot.instances) {
       let arr = byKind.get(inst.kindId);
@@ -82,13 +103,26 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
       }
       arr.push(inst);
     }
-    const out: Array<{ kind: CubeKindEntry; instances: ObjectInstance[] }> = [];
+    const kinds: Array<{ kind: CubeKindEntry; instances: ObjectInstance[] }> = [];
+    const primitives: Array<{
+      kindId: string;
+      color: string;
+      instances: ObjectInstance[];
+    }> = [];
     for (const [kindId, instances] of byKind) {
+      if (kindId.startsWith(PRIMITIVE_PREFIX)) {
+        primitives.push({
+          kindId,
+          color: PRIMITIVE_COLORS[kindId] ?? PRIMITIVE_FALLBACK_COLOR,
+          instances,
+        });
+        continue;
+      }
       const kind = kindById.get(kindId);
       if (!kind) continue;
-      out.push({ kind, instances });
+      kinds.push({ kind, instances });
     }
-    return out;
+    return { usedKinds: kinds, usedPrimitives: primitives };
   }, [snapshot, kindById]);
 
   // Publish a render-marker on the window for regression tests.
@@ -107,15 +141,21 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
     };
     win.__OFFICE_OBJECT_INSTANCES__ = {
       storeCount: snapshot.instances.length,
-      perKind: usedKinds.map(({ kind, instances }) => ({
-        kindId: kind.id,
-        count: instances.length,
-      })),
+      perKind: [
+        ...usedKinds.map(({ kind, instances }) => ({
+          kindId: kind.id,
+          count: instances.length,
+        })),
+        ...usedPrimitives.map(({ kindId, instances }) => ({
+          kindId,
+          count: instances.length,
+        })),
+      ],
     };
     return () => {
       delete win.__OFFICE_OBJECT_INSTANCES__;
     };
-  }, [snapshot, usedKinds]);
+  }, [snapshot, usedKinds, usedPrimitives]);
 
   return (
     <>
@@ -123,6 +163,15 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
         <KindInstanceGroup
           key={kind.id}
           kind={kind}
+          instances={instances}
+          cubeSize={snapshot.cubeSize}
+        />
+      ))}
+      {usedPrimitives.map(({ kindId, color, instances }) => (
+        <PrimitiveInstanceGroup
+          key={kindId}
+          kindId={kindId}
+          color={color}
           instances={instances}
           cubeSize={snapshot.cubeSize}
         />
@@ -211,6 +260,82 @@ function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps
       castShadow
       receiveShadow
       userData={{ kindId: kind.id, isObjectInstanceMesh: true }}
+    />
+  );
+}
+
+interface PrimitiveInstanceGroupProps {
+  kindId: string;
+  color: string;
+  instances: ObjectInstance[];
+  cubeSize: number;
+}
+
+/**
+ * Twin of `KindInstanceGroup` for `__primitive_<color>` magic
+ * kindIds: plain `BoxGeometry` cubes at the exact world positions
+ * the per-cube colliders occupy. No useGLTF, no kind.scale, no
+ * SEAM_OVERLAP — by design, so the diagnostic isolates "what does
+ * the character render look like when the visible cube is
+ * mathematically identical to its physics collider?"
+ *
+ * We construct the geometry + material locally, which means we OWN
+ * disposal (unlike useGLTF, which manages its own asset cache).
+ */
+function PrimitiveInstanceGroup({
+  kindId,
+  color,
+  instances,
+  cubeSize,
+}: PrimitiveInstanceGroupProps) {
+  const geom = useMemo(
+    () => new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize),
+    [cubeSize],
+  );
+  const mat = useMemo(() => new THREE.MeshStandardMaterial({ color }), [color]);
+  useEffect(
+    () => () => {
+      geom.dispose();
+      mat.dispose();
+    },
+    [geom, mat],
+  );
+
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const capacity = Math.max(1, instances.length);
+
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    // Hard-coded unity scale — the diagnostic exists to isolate
+    // geometry from `kind.scale` tweaks. If someone later wants
+    // scale support here, the answer is "use the GLB path".
+    const scale = new THREE.Vector3(1, 1, 1);
+    for (let i = 0; i < instances.length; i++) {
+      const inst = instances[i];
+      pos.set(
+        inst.position[0] * cubeSize,
+        inst.position[1] * cubeSize + cubeSize / 2,
+        inst.position[2] * cubeSize,
+      );
+      m.compose(pos, quat, scale);
+      mesh.setMatrixAt(i, m);
+    }
+    mesh.count = instances.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [instances, cubeSize, mat]);
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[geom, mat, capacity]}
+      castShadow
+      receiveShadow
+      userData={{ kindId, isObjectInstanceMesh: true, isPrimitive: true }}
     />
   );
 }

@@ -55,9 +55,17 @@ function readCharacterFromHash(): CharacterName {
   return DEFAULT_CHARACTER;
 }
 
+type CubeMode = 'gltf' | 'primitive';
+
 /** The mugshot scene: a 2×2 cube square at voxel y=0, alternating
- * blue and stone. Top face is at world y=2. */
-const MUGSHOT_CUBES: ReadonlyArray<{
+ * blue and stone. Top face is at world y=2. The two layouts share
+ * INSTANCE IDs deliberately — when the user flips cubeMode, the
+ * SDK store swap to `setWorldObjects` produces the same set of
+ * inst.id values, so React-keyed reconciliation in <MapColliders>
+ * reuses the same <CuboidCollider> nodes. The colliders are
+ * literally identical between modes; only the visible mesh path
+ * differs. That's the whole point of the A/B diagnostic. */
+const GLTF_CUBES: ReadonlyArray<{
   id: string;
   sourceCommandId: string;
   kindId: string;
@@ -68,6 +76,22 @@ const MUGSHOT_CUBES: ReadonlyArray<{
   { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: 'stone', position: [0, 0, 1] },
   { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [1, 0, 1] },
 ];
+
+const PRIMITIVE_CUBES: ReadonlyArray<{
+  id: string;
+  sourceCommandId: string;
+  kindId: string;
+  position: [number, number, number];
+}> = [
+  { id: 'm-0-0', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [0, 0, 0] },
+  { id: 'm-1-0', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [1, 0, 0] },
+  { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [0, 0, 1] },
+  { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [1, 0, 1] },
+];
+
+function cubesForMode(mode: CubeMode) {
+  return mode === 'gltf' ? GLTF_CUBES : PRIMITIVE_CUBES;
+}
 
 /** v2 of the mugshot export manifest. Captures rendering inputs but
  * deliberately OMITS `yOffset` — the export always captures at the
@@ -127,6 +151,7 @@ export function MugshotApp() {
   const [yOffset, setYOffset] = useState(DEFAULT_Y_OFFSET);
   const [azimuthDeg, setAzimuthDeg] = useState<AzimuthDeg>(DEFAULT_AZIMUTH);
   const [distanceM, setDistanceM] = useState(DEFAULT_DISTANCE_M);
+  const [cubeMode, setCubeMode] = useState<CubeMode>('gltf');
   const [viewportWidth, setViewportWidth] = useState(DEFAULT_VIEWPORT_W);
   const [viewportHeight, setViewportHeight] = useState(DEFAULT_VIEWPORT_H);
   const [lighting, setLighting] = useState<LightingViewConfig>(
@@ -219,14 +244,16 @@ export function MugshotApp() {
     };
   }, [stack]);
 
-  // Push the cube field as soon as `local` is ready.
+  // Push the cube field. Re-runs on cubeMode change to swap the
+  // kindIds (instance IDs stay the same, so MapColliders' React-
+  // keyed reconciliation produces the identical collider tree).
   useEffect(() => {
     if (!local) return;
     local.actions.setWorldObjects({
       cubeSize: 2,
-      instances: MUGSHOT_CUBES.map((c) => ({ ...c })),
+      instances: cubesForMode(cubeMode).map((c) => ({ ...c })),
     });
-  }, [local]);
+  }, [local, cubeMode]);
 
   // Force the rendered character via `avatar.model`.
   useEffect(() => {
@@ -279,6 +306,7 @@ export function MugshotApp() {
       __OFFICE_MUGSHOT_APPLY_MANIFEST__?: (m: MugshotManifest) => void;
       __OFFICE_MUGSHOT_SET_AZIMUTH__?: (deg: AzimuthDeg) => void;
       __OFFICE_MUGSHOT_SET_Y_OFFSET__?: (y: number) => void;
+      __OFFICE_MUGSHOT_SET_CUBE_MODE__?: (mode: CubeMode) => void;
     };
     win.__OFFICE_MUGSHOT_APPLY_MANIFEST__ = (m: MugshotManifest) => {
       setCharacter(m.character);
@@ -298,21 +326,25 @@ export function MugshotApp() {
     };
     win.__OFFICE_MUGSHOT_SET_AZIMUTH__ = (deg) => setAzimuthDeg(deg);
     win.__OFFICE_MUGSHOT_SET_Y_OFFSET__ = (y) => setYOffset(y);
+    win.__OFFICE_MUGSHOT_SET_CUBE_MODE__ = (mode) => setCubeMode(mode);
     return () => {
       delete win.__OFFICE_MUGSHOT_APPLY_MANIFEST__;
       delete win.__OFFICE_MUGSHOT_SET_AZIMUTH__;
       delete win.__OFFICE_MUGSHOT_SET_Y_OFFSET__;
+      delete win.__OFFICE_MUGSHOT_SET_CUBE_MODE__;
     };
   }, []);
 
   const azimuthBeforeExportRef = useRef<AzimuthDeg>(DEFAULT_AZIMUTH);
   const yOffsetBeforeExportRef = useRef<number>(DEFAULT_Y_OFFSET);
+  const cubeModeBeforeExportRef = useRef<CubeMode>('gltf');
 
   const onExport = useCallback(async () => {
     if (exporting) return;
     setExporting(true);
     azimuthBeforeExportRef.current = azimuthDeg;
     yOffsetBeforeExportRef.current = yOffset;
+    cubeModeBeforeExportRef.current = cubeMode;
     try {
       // Snap Y to the system default BEFORE any capture. The export
       // must reflect what the system naturally renders — if we
@@ -327,18 +359,31 @@ export function MugshotApp() {
 
       const zip = new JSZip();
       const angles: AzimuthDeg[] = [0, 90, 180, 270];
-      for (const angle of angles) {
-        setAzimuthDeg(angle);
-        // Two RAFs: one for React to commit the new viewConfig down
-        // to Scene → CameraRig; one for R3F to render the new frame
-        // with that camera. Without this the captured PNG is the
-        // PREVIOUS angle's frame.
+      // Capture both cube modes (GLB + primitive) so the ZIP carries
+      // the full A/B diagnostic pair. The ZIP nests under `ideal/`
+      // so unzipping over `tests/playwright/mugshot-baselines/
+      // <Character>/` lands the curated subset in the right place.
+      for (const mode of ['gltf', 'primitive'] as const) {
+        setCubeMode(mode);
+        // Two RAFs for setWorldObjects → ObjectInstances rebuild.
         await waitFrames(2);
-        const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-        if (!canvas) throw new Error('[mugshot] no canvas to capture');
-        const dataUrl = canvas.toDataURL('image/png');
-        const base64 = dataUrl.split(',')[1] ?? '';
-        zip.file(`${ANGLE_NAMES[angle]}.png`, base64, { base64: true });
+        for (const angle of angles) {
+          setAzimuthDeg(angle);
+          // Two RAFs: React commits the new viewConfig down to
+          // Scene → CameraRig; R3F renders the new frame at the
+          // new camera. Without this the captured PNG is the
+          // previous angle's frame.
+          await waitFrames(2);
+          const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+          if (!canvas) throw new Error('[mugshot] no canvas to capture');
+          const dataUrl = canvas.toDataURL('image/png');
+          const base64 = dataUrl.split(',')[1] ?? '';
+          const fileName =
+            mode === 'gltf'
+              ? `${ANGLE_NAMES[angle]}.png`
+              : `primitive-${ANGLE_NAMES[angle]}.png`;
+          zip.file(`ideal/${fileName}`, base64, { base64: true });
+        }
       }
       const manifest: MugshotManifest = {
         schemaVersion: 2,
@@ -372,9 +417,20 @@ export function MugshotApp() {
     } finally {
       setAzimuthDeg(azimuthBeforeExportRef.current);
       setYOffset(yOffsetBeforeExportRef.current);
+      setCubeMode(cubeModeBeforeExportRef.current);
       setExporting(false);
     }
-  }, [azimuthDeg, distanceM, yOffset, viewportWidth, viewportHeight, lighting, background, exporting]);
+  }, [
+    azimuthDeg,
+    distanceM,
+    yOffset,
+    cubeMode,
+    viewportWidth,
+    viewportHeight,
+    lighting,
+    background,
+    exporting,
+  ]);
 
   return (
     <div
@@ -452,6 +508,8 @@ export function MugshotApp() {
         onAmbientFillChange={(v) =>
           setLighting((prev) => ({ ...prev, ambientFillIntensity: v }))
         }
+        cubeMode={cubeMode}
+        onCubeModeChange={setCubeMode}
         onExport={onExport}
         exporting={exporting}
       />
@@ -486,6 +544,8 @@ interface ControlPanelProps {
   onViewportHeightChange: (v: number) => void;
   ambientFillIntensity: number;
   onAmbientFillChange: (v: number) => void;
+  cubeMode: CubeMode;
+  onCubeModeChange: (m: CubeMode) => void;
   onExport: () => void;
   exporting: boolean;
 }
@@ -578,6 +638,31 @@ function ControlPanel(props: ControlPanelProps) {
               }}
             >
               {ANGLE_NAMES[deg][0]}
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Cubes">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4 }}>
+          {(['gltf', 'primitive'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => props.onCubeModeChange(mode)}
+              style={{
+                padding: '6px 0',
+                border: 0,
+                borderRadius: 3,
+                cursor: 'pointer',
+                background: props.cubeMode === mode ? '#3b82f6' : '#1f2937',
+                color: props.cubeMode === mode ? '#fff' : '#cbd5e1',
+                fontSize: 11,
+                fontWeight: props.cubeMode === mode ? 600 : 400,
+                textTransform: 'uppercase',
+              }}
+            >
+              {mode === 'gltf' ? 'GLB' : 'Primitive'}
             </button>
           ))}
         </div>

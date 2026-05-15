@@ -1,17 +1,17 @@
 /**
- * One-shot generator for the initial Barbarian mugshot baseline.
- * Drives the Mugshot mode through its 4 cardinal angles, captures
- * each via `canvas.toDataURL`, and writes them — plus the
- * manifest — directly to
- *   tests/playwright/mugshot-baselines/Barbarian/
+ * One-shot generator for `tests/playwright/mugshot-baselines/
+ * Barbarian/generated/`. Captures both cube modes (GLB +
+ * primitive) × four cardinal angles = 8 PNGs, plus a refreshed
+ * manifest.json at the directory root.
+ *
+ * Writes ONLY to `generated/`. The user's curated `ideal/`
+ * subdirectory is never touched — protection by directory
+ * boundary, not by env flag.
  *
  * Run explicitly:
- *   pnpm exec playwright test mugshot-baseline-generate
+ *   MUGSHOT_GENERATE=1 pnpm exec playwright test mugshot-baseline-generate
  *
- * `test.skip` keeps it out of `pnpm test:e2e` runs by default
- * (gated by env). The user runs it once to seed the baselines,
- * reviews them visually, and commits. After that, the
- * mugshot-baseline-compare spec is the regression check.
+ * `test.skip` keeps it out of `pnpm test:e2e` runs by default.
  */
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
@@ -25,123 +25,104 @@ const ANGLES = [
   { name: 'west', deg: 270 },
 ] as const;
 
-const OUT_DIR = path.join(__dirname, 'mugshot-baselines', 'Barbarian');
+type CubeMode = 'gltf' | 'primitive';
+
+const CHAR_DIR = path.join(__dirname, 'mugshot-baselines', 'Barbarian');
+const GENERATED_DIR = path.join(CHAR_DIR, 'generated');
 
 test.skip(
   process.env.MUGSHOT_GENERATE !== '1',
-  'set MUGSHOT_GENERATE=1 to regenerate the Barbarian baseline',
+  'set MUGSHOT_GENERATE=1 to regenerate generated/ baselines for Barbarian',
 );
 
-test('generate Barbarian mugshot baseline', async ({ page }) => {
-  test.setTimeout(120_000);
-  fs.mkdirSync(OUT_DIR, { recursive: true });
+test('generate Barbarian mugshot baselines (generated/ subdir)', async ({ page }) => {
+  test.setTimeout(180_000);
+  fs.mkdirSync(GENERATED_DIR, { recursive: true });
+
+  // Read the curated manifest (if one exists) so the generated/
+  // images use the same lighting / camera / viewport recipe the
+  // ideal/ baselines were captured with. That way `generated/` is
+  // "what the renderer produces TODAY against the canonical
+  // recipe" — and any drift surfaces directly when humans diff
+  // `generated/<name>.png` vs `ideal/<name>.png` in git. The
+  // generator NEVER writes the manifest — it's a curated artifact
+  // refreshed only by the in-app Export button.
+  const manifestPath = path.join(CHAR_DIR, 'manifest.json');
+  const manifest = fs.existsSync(manifestPath)
+    ? JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
+    : null;
 
   await page.goto('/#mugshot/Barbarian', { waitUntil: 'domcontentloaded' });
   await waitForCanvasReady(page, 0, 30_000);
 
-  // Wait for the manifest-load hook to be published — it's set when
-  // MugshotApp's useEffect runs, which happens after Scene mounts.
+  // Wait for all hooks to publish — SET_CUBE_MODE is the new one.
   await page.waitForFunction(
     () =>
       typeof (window as unknown as Record<string, unknown>)
-        .__OFFICE_MUGSHOT_SET_AZIMUTH__ === 'function',
+        .__OFFICE_MUGSHOT_APPLY_MANIFEST__ === 'function' &&
+      typeof (window as unknown as Record<string, unknown>)
+        .__OFFICE_MUGSHOT_SET_AZIMUTH__ === 'function' &&
+      typeof (window as unknown as Record<string, unknown>)
+        .__OFFICE_MUGSHOT_SET_CUBE_MODE__ === 'function',
     null,
     { timeout: 15_000 },
   );
 
-  // Let the Y-offset / gravity-off plumbing settle the body.
-  await page.waitForTimeout(500);
-
-  // Build the manifest from the live state. We don't have a
-  // dedicated "read state" hook so we read the relevant bits off
-  // the URL + capture the same constants MugshotApp uses for
-  // defaults. The captured `pos.y` from `__OFFICE_STORE__` is the
-  // load-bearing piece (it's what the user can tune via the slider).
-  const live = await page.evaluate(() => {
-    const store = (
-      window as unknown as {
-        __OFFICE_STORE__: {
-          getState: () => {
-            players: Record<string, { pos: { y: number } } | undefined>;
-          };
-        };
-      }
-    ).__OFFICE_STORE__;
-    return store.getState().players['mugshot-player']?.pos.y;
-  });
-
-  // Capture each angle.
-  const captured: Record<string, Buffer> = {};
-  for (const angle of ANGLES) {
-    await page.evaluate((deg) => {
-      const fn = (
+  if (manifest) {
+    await page.evaluate((m) => {
+      (
         window as unknown as {
-          __OFFICE_MUGSHOT_SET_AZIMUTH__: (deg: number) => void;
+          __OFFICE_MUGSHOT_APPLY_MANIFEST__: (m: unknown) => void;
         }
-      ).__OFFICE_MUGSHOT_SET_AZIMUTH__;
-      fn(deg);
-    }, angle.deg);
-    await page.waitForTimeout(200);
-    const dataUrl = await page.evaluate(() => {
-      const c = document.querySelector('canvas') as HTMLCanvasElement | null;
-      return c?.toDataURL('image/png') ?? null;
-    });
-    expect(dataUrl, `capture for ${angle.name} returned null`).not.toBeNull();
-    const b64 = (dataUrl as string).split(',')[1] ?? '';
-    captured[angle.name] = Buffer.from(b64, 'base64');
+      ).__OFFICE_MUGSHOT_APPLY_MANIFEST__(m);
+    }, manifest);
+    await page.waitForTimeout(400);
+  } else {
+    await page.waitForTimeout(500);
   }
 
-  // Write the manifest. Values mirror MugshotApp's defaults. Note:
-  // `yOffset` is deliberately NOT in the schema — see MugshotManifest
-  // (v2) for why. The `live` Y value is observed only to log it
-  // here; it never lands in the manifest.
-  void live;
-  const manifest = {
-    schemaVersion: 2,
-    character: 'Barbarian',
-    viewportWidth: 512,
-    viewportHeight: 512,
-    exportedAt: new Date().toISOString(),
-    fixedCamera: {
-      azimuthDeg: 180,
-      pitchDeg: -8,
-      height: 1.7,
-      fov: 40,
-      distanceM: 6,
-    },
-    lighting: {
-      sunPosition: [20, 40, 20],
-      sunColor: '#ffffff',
-      sunIntensity: 1.4,
-      ambientIntensity: 0.15,
-      castShadow: true,
-      shadowRange: 40,
-      shadowMapSize: 2048,
-      shadowBias: -0.0005,
-      shadowNormalBias: 0.02,
-      auxLightType: 'none',
-      auxIntensity: 1,
-      auxDistance: 0,
-      auxAngle: Math.PI / 6,
-      auxPenumbra: 0.2,
-      auxDecay: 2,
-      showSunDisc: false,
-      sunDiscRadius: 3,
-      sunDiscIntensity: 2,
-      ambientFillIntensity: 0,
-    },
-    background: {
-      topColor: '#02030a',
-      bottomColor: '#1a1238',
-    },
-  };
-  fs.writeFileSync(
-    path.join(OUT_DIR, 'manifest.json'),
-    JSON.stringify(manifest, null, 2),
+  for (const mode of ['gltf', 'primitive'] as const) {
+    await page.evaluate((m) => {
+      (
+        window as unknown as {
+          __OFFICE_MUGSHOT_SET_CUBE_MODE__: (m: CubeMode) => void;
+        }
+      ).__OFFICE_MUGSHOT_SET_CUBE_MODE__(m);
+    }, mode);
+    // setWorldObjects → ObjectInstances rebuild → next paint.
+    await page.waitForTimeout(300);
+
+    for (const angle of ANGLES) {
+      await page.evaluate((deg) => {
+        (
+          window as unknown as {
+            __OFFICE_MUGSHOT_SET_AZIMUTH__: (deg: number) => void;
+          }
+        ).__OFFICE_MUGSHOT_SET_AZIMUTH__(deg);
+      }, angle.deg);
+      await page.waitForTimeout(200);
+
+      const dataUrl = await page.evaluate(() => {
+        const c = document.querySelector('canvas') as HTMLCanvasElement | null;
+        return c?.toDataURL('image/png') ?? null;
+      });
+      expect(dataUrl, `capture for ${mode} ${angle.name} returned null`).not.toBeNull();
+      const buf = Buffer.from((dataUrl as string).split(',')[1] ?? '', 'base64');
+      const fileName =
+        mode === 'gltf'
+          ? `${angle.name}.png`
+          : `primitive-${angle.name}.png`;
+      fs.writeFileSync(path.join(GENERATED_DIR, fileName), buf);
+    }
+  }
+
+  console.log(`wrote 8 PNGs to ${GENERATED_DIR}`);
+  console.log(
+    manifest === null
+      ? 'no manifest.json found — generated images used in-app defaults'
+      : `applied recipe from ${manifestPath}`,
   );
-  for (const [name, buf] of Object.entries(captured)) {
-    fs.writeFileSync(path.join(OUT_DIR, `${name}.png`), buf);
-  }
-
-  console.log(`wrote Barbarian baseline to ${OUT_DIR}`);
+  console.log(
+    'ideal/ + manifest.json untouched. To update assertion targets, hand-pick from generated/ into ideal/. To update the recipe, use the in-app Export button.',
+  );
 });
