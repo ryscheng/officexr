@@ -2,7 +2,108 @@
   "schemaVersion": 3,
   "name": "default-v2",
   "title": "default-v2",
-  "updatedAt": 1778815876658,
-  "commands": [],
+  "updatedAt": 1778816837697,
+  "commands": [
+    {
+      "id": "place-1-1i1f",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -1,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-2-1idz",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -1,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "place-3-1jkn",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -1,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "place-4-1m34",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -2,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-5-1mm3",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -2,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "place-6-1mx8",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -2,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "place-7-1nej",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -1,
+        0,
+        3
+      ]
+    },
+    {
+      "id": "place-8-1nve",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -2,
+        0,
+        3
+      ]
+    },
+    {
+      "id": "place-9-1oc2",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -1,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-a-1ov5",
+      "op": "placeCube",
+      "kindId": "colored_block_blue",
+      "position": [
+        -2,
+        0,
+        4
+      ]
+    }
+  ],
   "groups": {}
 }

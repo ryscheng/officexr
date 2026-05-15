@@ -161,16 +161,33 @@ export function useRoomDocument(): {
 
   // Auto-load on mount + when room name changes.
   const lastSavedJsonRef = useRef<string>('');
+  // Load-completion gate. The auto-save effect below is gated on
+  // `loadedForRef.current === roomName` so the initial empty doc
+  // (created during render before `storage.load` resolves) is
+  // NEVER saved over the real file on disk. Without this gate, the
+  // 500ms save timer fires while load is in flight and writes the
+  // empty placeholder, then the load resolves and tries to set the
+  // doc back — but if the user navigates away mid-flight, or the
+  // save is faster than the load, the on-disk file ends up empty.
+  // (That race was clobbering hand-authored rooms during e2e runs
+  // and casual editor sessions.)
+  const loadedForRef = useRef<string | null>(null);
   useEffect(() => {
     let cancelled = false;
+    loadedForRef.current = null;
     storage
       .load(roomName)
       .then((loaded) => {
         if (cancelled) return;
         if (!loaded) {
           // Brand-new room: start with an empty doc named appropriately.
-          setDoc(emptyRoomDocument(roomName));
-          lastSavedJsonRef.current = '';
+          const blank = emptyRoomDocument(roomName);
+          setDoc(blank);
+          lastSavedJsonRef.current = JSON.stringify({
+            commands: blank.commands,
+            groups: blank.groups,
+          });
+          loadedForRef.current = roomName;
           return;
         }
         setDoc(loaded);
@@ -178,10 +195,17 @@ export function useRoomDocument(): {
           commands: loaded.commands,
           groups: loaded.groups,
         });
+        loadedForRef.current = roomName;
       })
       .catch((err) => {
         console.warn(`[room] load("${roomName}") failed:`, err);
-        setDoc(emptyRoomDocument(roomName));
+        const blank = emptyRoomDocument(roomName);
+        setDoc(blank);
+        lastSavedJsonRef.current = JSON.stringify({
+          commands: blank.commands,
+          groups: blank.groups,
+        });
+        loadedForRef.current = roomName;
       });
     try {
       globalThis.localStorage?.setItem(LAST_ROOM_KEY, roomName);
@@ -193,8 +217,10 @@ export function useRoomDocument(): {
     };
   }, [storage, roomName]);
 
-  // Auto-save on doc change (debounced).
+  // Auto-save on doc change (debounced). Gated on load completion
+  // so the initial empty placeholder never reaches storage.
   useEffect(() => {
+    if (loadedForRef.current !== roomName) return;
     const json = JSON.stringify({
       commands: doc.commands,
       groups: doc.groups,
