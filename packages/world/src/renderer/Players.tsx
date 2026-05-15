@@ -33,6 +33,11 @@ interface PlayersProps {
   /** Set when the self player's RigidBody mounts so SceneFrame can drive it
    * via a KinematicCharacterController. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
+  /** When true, every character is rendered at its bind pose with no
+   * animation mixer activity (no idle clip, no bump reactions, no
+   * timeScale updates). Used by the Mugshot mode to produce a
+   * deterministic frame for snapshot testing. */
+  paused?: boolean;
 }
 
 interface BumpState {
@@ -88,6 +93,21 @@ function pickCharacter(): CharacterName {
   return CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
 }
 
+/** Use `state.players[id].avatar.model` as the rendered character if
+ * it's a valid `CharacterName` (e.g. Mugshot mode sets it explicitly);
+ * otherwise pick at random. Lets a caller deterministically force a
+ * specific character without us having to thread a new prop through. */
+function pickCharacterForPlayer(
+  state: OfficeState,
+  id: string,
+): CharacterName {
+  const model = state.players[id]?.avatar.model;
+  if (model && (CHARACTERS as readonly string[]).includes(model)) {
+    return model as CharacterName;
+  }
+  return pickCharacter();
+}
+
 /** Rotate `from` toward `to` by at most `maxStep` radians along the shortest arc. */
 function stepTowardAngle(from: number, to: number, maxStep: number): number {
   let delta = ((to - from + Math.PI) % (Math.PI * 2)) - Math.PI;
@@ -116,6 +136,7 @@ export function Players({
   cameraMode,
   selfPosRef,
   selfBodyRef,
+  paused,
 }: PlayersProps) {
   // Read movement/animation params from the broadcast world state. Any peer
   // (the local player here) that calls actions.setWorldSettings updates the
@@ -145,7 +166,7 @@ export function Players({
   const [players, setPlayers] = useState<PlayerEntry[]>(() =>
     Object.keys(initialState.players).map((id) => ({
       id,
-      character: pickCharacter(),
+      character: pickCharacterForPlayer(initialState, id),
     })),
   );
 
@@ -164,7 +185,8 @@ export function Players({
         setPlayers((current) => {
           const byId = new Map(current.map((p) => [p.id, p]));
           return nextIds.map(
-            (id) => byId.get(id) ?? { id, character: pickCharacter() },
+            (id) =>
+              byId.get(id) ?? { id, character: pickCharacterForPlayer(next, id) },
           );
         });
       },
@@ -494,6 +516,7 @@ export function Players({
                 fallbackIdleSpeed={idleAnimSpeed}
                 fallbackWalkSpeed={walkAnimSpeed}
                 fallbackRunSpeed={runAnimSpeed}
+                paused={paused}
               />
             </group>
           </RigidBody>
@@ -524,6 +547,7 @@ function PerPlayerAdventurer(props: {
   fallbackIdleSpeed: number;
   fallbackWalkSpeed: number;
   fallbackRunSpeed: number;
+  paused?: boolean;
 }) {
   const {
     playerId,
@@ -533,6 +557,7 @@ function PerPlayerAdventurer(props: {
     animScale,
     bumpCounter,
     store,
+    paused,
   } = props;
   const [tunedSpeeds, setTunedSpeeds] = useState(() => readSpeeds(store, playerId));
   useEffect(() => {
@@ -563,6 +588,7 @@ function PerPlayerAdventurer(props: {
       walkSpeed={tunedSpeeds.walk * animScale}
       runSpeed={tunedSpeeds.run * animScale}
       bumpCounter={bumpCounter}
+      paused={paused}
     />
   );
 }

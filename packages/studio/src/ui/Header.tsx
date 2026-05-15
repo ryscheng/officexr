@@ -1,6 +1,12 @@
 import React from 'react';
 
-export type StudioMode = 'map' | 'room' | 'object' | 'character' | 'debug';
+export type StudioMode =
+  | 'map'
+  | 'room'
+  | 'object'
+  | 'character'
+  | 'debug'
+  | 'mugshot';
 
 export const STUDIO_MODES: ReadonlyArray<{
   mode: StudioMode;
@@ -12,6 +18,7 @@ export const STUDIO_MODES: ReadonlyArray<{
   { mode: 'object', label: 'Object', description: 'View + tune the non-character catalog' },
   { mode: 'character', label: 'Character', description: 'Preview models + per-character tuning' },
   { mode: 'debug', label: 'Debug', description: 'Test gameplay + network protocol' },
+  { mode: 'mugshot', label: 'Mugshot', description: 'Character placement reference shots' },
 ];
 
 export function isStudioMode(value: unknown): value is StudioMode {

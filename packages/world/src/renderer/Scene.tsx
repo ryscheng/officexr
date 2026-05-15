@@ -95,6 +95,10 @@ interface SceneProps {
    * straight to `SceneFrame`'s fall-respawn rule. Empty/undefined
    * disables respawn (the player floats in the void instead). */
   spawnPoints?: readonly Vec3[];
+  /** When true, every character rendered in this scene is frozen at
+   * its bind pose (no animation mixer activity). Used by the Mugshot
+   * mode to produce deterministic snapshot tests. */
+  paused?: boolean;
 }
 
 export function Scene(props: SceneProps) {
@@ -321,6 +325,7 @@ export function Scene(props: SceneProps) {
           cameraMode={cameraMode}
           selfPosRef={selfPosRef}
           selfBodyRef={selfBodyRef}
+          paused={props.paused}
         />
 
         <ProximityGlow

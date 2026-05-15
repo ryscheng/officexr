@@ -5,6 +5,7 @@ import { RoomApp } from './modes/room/RoomApp.tsx';
 import { CharacterApp } from './modes/character/CharacterApp.tsx';
 import { MapApp } from './modes/map/MapApp.tsx';
 import { ObjectApp } from './modes/object/ObjectApp.tsx';
+import { MugshotApp } from './modes/mugshot/MugshotApp.tsx';
 
 const DEFAULT_MODE: StudioMode = 'map';
 
@@ -30,11 +31,13 @@ export function StudioPage() {
     readHashMode() ?? DEFAULT_MODE,
   );
 
-  // Mirror mode → hash so links survive a hard reload.
+  // Mirror mode → hash so links survive a hard reload. Compare only
+  // the BASE hash (before any `/sub-route`) so `#mugshot/Barbarian`
+  // isn't clobbered back to `#mugshot` whenever this effect runs.
   useEffect(() => {
-    const next = `#${studioMode}`;
-    if (window.location.hash !== next) {
-      window.history.replaceState(null, '', next);
+    const currentBase = window.location.hash.replace(/^#/, '').split('/')[0];
+    if (currentBase !== studioMode) {
+      window.history.replaceState(null, '', `#${studioMode}`);
     }
   }, [studioMode]);
 
@@ -68,12 +71,15 @@ export function StudioPage() {
       {studioMode === 'object' && <ObjectApp />}
       {studioMode === 'character' && <CharacterApp />}
       {studioMode === 'debug' && <DebugApp />}
+      {studioMode === 'mugshot' && <MugshotApp />}
     </div>
   );
 }
 
 function readHashMode(): StudioMode | null {
   if (typeof window === 'undefined') return null;
-  const fromHash = window.location.hash.replace(/^#/, '');
+  // Strip the leading `#` AND any `/sub-route` (used by Mugshot mode
+  // to encode a character: `#mugshot/Barbarian`).
+  const fromHash = window.location.hash.replace(/^#/, '').split('/')[0];
   return isStudioMode(fromHash) ? fromHash : null;
 }

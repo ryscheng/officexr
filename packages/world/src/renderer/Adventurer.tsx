@@ -87,6 +87,10 @@ interface AdventurerProps {
   /** Monotonic counter — every increment plays the Hit_A reaction clip
    * once, blended over the current idle/walk loop. */
   bumpCounter?: number;
+  /** When true, freeze the character at its bind pose: no clip plays,
+   * no fade-in, no bump reactions. Used by the Mugshot mode to render
+   * a deterministic, animation-free shot for snapshot testing. */
+  paused?: boolean;
 }
 
 function clipForMotion(motion: AdventurerProps['motion']): string {
@@ -113,6 +117,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       walkSpeed = 1,
       runSpeed = 1,
       bumpCounter = 0,
+      paused = false,
     },
     ref,
   ) {
@@ -235,6 +240,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     }, [previewState, motion, actions]);
 
     useEffect(() => {
+      if (paused) return;
       const target = actions[activeClipName];
       if (!target) return;
       // Non-looping previews (jump/shoot/throw) clamp at the final
@@ -252,18 +258,19 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       return () => {
         target.fadeOut(0.2);
       };
-    }, [activeClipName, actions, previewState]);
+    }, [activeClipName, actions, previewState, paused]);
 
     // Apply timeScale to the clips. Done in a separate effect so dragging the
     // Leva slider doesn't restart the animation.
     useEffect(() => {
+      if (paused) return;
       const idle = actions[STATE_CLIPS.idle];
       const walk = actions[STATE_CLIPS.walking];
       const run = actions[STATE_CLIPS.running];
       if (idle) idle.timeScale = idleSpeed;
       if (walk) walk.timeScale = walkSpeed;
       if (run) run.timeScale = runSpeed;
-    }, [actions, idleSpeed, walkSpeed, runSpeed]);
+    }, [actions, idleSpeed, walkSpeed, runSpeed, paused]);
 
     // First-person mode: the camera sits at the self avatar's eye
     // level, so the head mesh would obstruct the view (and we'd see
@@ -294,6 +301,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     // the loop seamlessly takes over again.
     const lastBumpRef = useRef(0);
     useEffect(() => {
+      if (paused) return;
       if (bumpCounter === 0 || bumpCounter === lastBumpRef.current) return;
       lastBumpRef.current = bumpCounter;
       const hit = actions[STATE_CLIPS.hit];
@@ -312,7 +320,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         // starts cleanly.
         hit.stop();
       };
-    }, [bumpCounter, actions]);
+    }, [bumpCounter, actions, paused]);
 
     return (
       <group ref={ref}>
