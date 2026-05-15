@@ -278,6 +278,7 @@ export function MugshotApp() {
     const win = window as unknown as {
       __OFFICE_MUGSHOT_APPLY_MANIFEST__?: (m: MugshotManifest) => void;
       __OFFICE_MUGSHOT_SET_AZIMUTH__?: (deg: AzimuthDeg) => void;
+      __OFFICE_MUGSHOT_SET_Y_OFFSET__?: (y: number) => void;
     };
     win.__OFFICE_MUGSHOT_APPLY_MANIFEST__ = (m: MugshotManifest) => {
       setCharacter(m.character);
@@ -296,9 +297,11 @@ export function MugshotApp() {
       // sets it per-angle via __OFFICE_MUGSHOT_SET_AZIMUTH__.
     };
     win.__OFFICE_MUGSHOT_SET_AZIMUTH__ = (deg) => setAzimuthDeg(deg);
+    win.__OFFICE_MUGSHOT_SET_Y_OFFSET__ = (y) => setYOffset(y);
     return () => {
       delete win.__OFFICE_MUGSHOT_APPLY_MANIFEST__;
       delete win.__OFFICE_MUGSHOT_SET_AZIMUTH__;
+      delete win.__OFFICE_MUGSHOT_SET_Y_OFFSET__;
     };
   }, []);
 
