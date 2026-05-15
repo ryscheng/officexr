@@ -301,12 +301,16 @@ export function MugshotApp() {
 
   // Expose test hooks for the manifest-load / per-angle capture
   // comparison spec. Production code never reads these.
+  const onExportRef = useRef<typeof onExport | null>(null);
   useEffect(() => {
     const win = window as unknown as {
       __OFFICE_MUGSHOT_APPLY_MANIFEST__?: (m: MugshotManifest) => void;
       __OFFICE_MUGSHOT_SET_AZIMUTH__?: (deg: AzimuthDeg) => void;
       __OFFICE_MUGSHOT_SET_Y_OFFSET__?: (y: number) => void;
       __OFFICE_MUGSHOT_SET_CUBE_MODE__?: (mode: CubeMode) => void;
+      __OFFICE_MUGSHOT_TRIGGER_EXPORT__?: (opts?: {
+        download?: boolean;
+      }) => Promise<void>;
     };
     win.__OFFICE_MUGSHOT_APPLY_MANIFEST__ = (m: MugshotManifest) => {
       setCharacter(m.character);
@@ -327,35 +331,41 @@ export function MugshotApp() {
     win.__OFFICE_MUGSHOT_SET_AZIMUTH__ = (deg) => setAzimuthDeg(deg);
     win.__OFFICE_MUGSHOT_SET_Y_OFFSET__ = (y) => setYOffset(y);
     win.__OFFICE_MUGSHOT_SET_CUBE_MODE__ = (mode) => setCubeMode(mode);
+    // Forwards through `onExportRef` so the latest onExport closure
+    // is invoked even though this useEffect captured the original.
+    win.__OFFICE_MUGSHOT_TRIGGER_EXPORT__ = (opts) =>
+      onExportRef.current?.(opts) ?? Promise.resolve();
     return () => {
       delete win.__OFFICE_MUGSHOT_APPLY_MANIFEST__;
       delete win.__OFFICE_MUGSHOT_SET_AZIMUTH__;
       delete win.__OFFICE_MUGSHOT_SET_Y_OFFSET__;
       delete win.__OFFICE_MUGSHOT_SET_CUBE_MODE__;
+      delete win.__OFFICE_MUGSHOT_TRIGGER_EXPORT__;
     };
   }, []);
 
   const azimuthBeforeExportRef = useRef<AzimuthDeg>(DEFAULT_AZIMUTH);
-  const yOffsetBeforeExportRef = useRef<number>(DEFAULT_Y_OFFSET);
   const cubeModeBeforeExportRef = useRef<CubeMode>('gltf');
 
-  const onExport = useCallback(async () => {
+  const onExport = useCallback(async (opts?: { download?: boolean }) => {
     if (exporting) return;
     setExporting(true);
     azimuthBeforeExportRef.current = azimuthDeg;
-    yOffsetBeforeExportRef.current = yOffset;
     cubeModeBeforeExportRef.current = cubeMode;
+    // Diagnostic side-channel for the export-y-offset regression
+    // test: records the body's actual pos.y at the moment of each
+    // capture. If the export ever silently snaps Y away from the
+    // user's tuned value, the test sees the captured Ys are not
+    // what the user set and fails loudly.
+    const capturedYs: Array<{ mode: string; angle: number; y: number }> = [];
     try {
-      // Snap Y to the system default BEFORE any capture. The export
-      // must reflect what the system naturally renders — if we
-      // recorded the human's tuned Y, we'd be encoding the visual
-      // bug-around into the baseline and the test would happily
-      // reproduce the same offset shot forever. The Y slider stays
-      // up so the user can keep exploring after the export.
-      setYOffset(DEFAULT_Y_OFFSET);
-      // Two RAFs for the setSelfPosition + SceneFrame auto-warp to
-      // teleport the body.
-      await waitFrames(2);
+      // CRITICAL: do NOT snap Y to a default here. The captured
+      // PNGs MUST reflect what the user tuned in the live preview —
+      // that's the whole point of an ideal-baseline workflow.
+      // Y is decoupled from the test's assertion target by being
+      // omitted from the MANIFEST (so test-time apply uses default
+      // Y and the renderer's natural placement is the diff target),
+      // not by being scrubbed out of the captured pixels.
 
       const zip = new JSZip();
       const angles: AzimuthDeg[] = [0, 90, 180, 270];
@@ -376,6 +386,13 @@ export function MugshotApp() {
           await waitFrames(2);
           const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
           if (!canvas) throw new Error('[mugshot] no canvas to capture');
+          // Record actual body y at capture time (for the
+          // regression test; production never reads this).
+          const localStore = local?.store;
+          if (localStore) {
+            const p = localStore.getState().players[SELF_ID];
+            if (p) capturedYs.push({ mode, angle, y: p.pos.y });
+          }
           const dataUrl = canvas.toDataURL('image/png');
           const base64 = dataUrl.split(',')[1] ?? '';
           const fileName =
@@ -403,20 +420,38 @@ export function MugshotApp() {
       };
       zip.file('manifest.json', JSON.stringify(manifest, null, 2));
       const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      a.href = url;
-      a.download = `mugshot-Barbarian-${stamp}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const download = opts?.download !== false;
+      if (download) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `mugshot-Barbarian-${stamp}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      (
+        window as unknown as {
+          __OFFICE_MUGSHOT_LAST_EXPORT__?: {
+            capturedYs: Array<{ mode: string; angle: number; y: number }>;
+            blobSize: number;
+            downloaded: boolean;
+          };
+        }
+      ).__OFFICE_MUGSHOT_LAST_EXPORT__ = {
+        capturedYs,
+        blobSize: blob.size,
+        downloaded: download,
+      };
     } catch (err) {
       console.warn('[mugshot] export failed:', err);
     } finally {
+      // Restore azimuth + cubeMode. Y is intentionally NOT
+      // restored from a saved ref — we never changed it during
+      // the export, so there's nothing to restore.
       setAzimuthDeg(azimuthBeforeExportRef.current);
-      setYOffset(yOffsetBeforeExportRef.current);
       setCubeMode(cubeModeBeforeExportRef.current);
       setExporting(false);
     }
@@ -427,10 +462,18 @@ export function MugshotApp() {
     cubeMode,
     viewportWidth,
     viewportHeight,
+    local,
     lighting,
     background,
     exporting,
   ]);
+
+  // Keep the test trigger hook pointed at the latest onExport
+  // closure — the window-hook useEffect captured the version from
+  // mount time.
+  useEffect(() => {
+    onExportRef.current = onExport;
+  }, [onExport]);
 
   return (
     <div
