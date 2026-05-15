@@ -158,9 +158,16 @@ export class BotPool {
   respawnAll(spawns: readonly Vec3[]): void {
     if (this.stopped) return;
     if (this.bots.length === 0) return;
+    // Materialise the fallback ring once and push the same list to
+    // every driver so they all share the same fall-respawn answers
+    // — keeps the cohort from rebuilding the ring on every fall.
+    const effective: Vec3[] =
+      spawns.length > 0
+        ? spawns.map((s) => ({ ...s }))
+        : this.bots.map((_, i) => spawnPosition(i));
     for (let i = 0; i < this.bots.length; i++) {
-      const target = spawns.length > 0 ? spawns[i % spawns.length] : spawnPosition(i);
-      this.bots[i].setPosition({ ...target });
+      this.bots[i].setSpawnList(effective);
+      this.bots[i].setPosition({ ...effective[i % effective.length] });
     }
   }
 }

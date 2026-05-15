@@ -131,6 +131,7 @@ export function DebugApp() {
             cameraMode={cameraMode}
             viewConfig={studioSettings.viewConfig}
             worldFocused={worldFocused}
+            spawnPoints={picker.spawnPoints}
           />
         )}
         <Hud cameraMode={cameraMode} mode={stack?.mode ?? 'in-memory'} />

@@ -10,6 +10,7 @@ import {
 import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldSettings } from '@officexr/sdk';
 import type { Clock } from '@officexr/sdk/test-harness';
 import { routeContactEvent } from '../physics/bridge.ts';
+import { pickRespawnPosition, respawnThreshold } from '../physics/rules.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import { BotPhysicsWorld } from './BotPhysicsWorld.ts';
 import {
@@ -84,6 +85,11 @@ export class BotDriver {
   private stopped = false;
   private wasMoving = false;
   private readonly phaseIndex: number;
+  /** Last spawn list received via `setSpawnList` (called by
+   * `BotPool.respawnAll` on every map switch). Used by the fall-
+   * respawn check in `tick()` so the bot has somewhere to teleport
+   * back to when it walks off the cube field. */
+  private spawnList: readonly Vec3[] = [];
   private modeState: ModeState = {
     wanderDir: { x: 1, z: 0 },
     wanderUntilMs: 0,
@@ -159,7 +165,7 @@ export class BotDriver {
       startPos: this.startPos,
       worldSettings: state.worldSettings,
     });
-    this.physics.syncWalls(state.worldMap);
+    this.physics.syncCubes(state.worldObjects);
 
     const botChannel = this.createChannel(botId);
     const botSync = new SyncEngine({
@@ -233,8 +239,10 @@ export class BotDriver {
     );
     const speed = tunables.playerSpeed ?? this.speed;
 
-    // Keep static walls + peer mirrors in sync with the latest state.
-    this.physics.syncWalls(botState.worldMap);
+    // Keep cube colliders + peer mirrors in sync with the latest
+    // state. `syncCubes` no-ops when the WorldObjects fingerprint is
+    // unchanged, so this is cheap on idle ticks.
+    this.physics.syncCubes(botState.worldObjects);
     this.physics.syncPeers(botState.players, this.clock.now(), tunables.charRadius);
 
     const botPos = this.getBotPos();
@@ -248,58 +256,50 @@ export class BotDriver {
     const strategy = BOT_MODE_STRATEGIES[this.mode];
     const intent = strategy.computeIntent(ctx);
 
-    if (!intent) {
-      if (this.wasMoving) {
-        const me = botState.players[this.botId];
-        const yaw = me?.yaw ?? 0;
-        this.botActions.setSelfPosition(botPos, { x: 0, y: 0, z: 0 }, yaw);
-        this.wasMoving = false;
-      }
-      // Still step the world + drain events so sensor enter/exit edges
-      // fire while the bot stands still (e.g. a peer walking into the
-      // bot's proximity ring).
-      this.physics.stepWorld();
-      this.flushEvents();
-      this.botSync.flushPosition();
-      this.botHandshake.tickTimers();
-      return;
-    }
+    const dtSec = dt / 1000;
 
-    const moveDX = intent.x * speed * (dt / 1000);
-    const moveDZ = intent.z * speed * (dt / 1000);
+    // Always run the controller step, even when the mode is idle —
+    // otherwise gravity wouldn't apply and an "idle" bot floats
+    // wherever it last was instead of falling onto the cube field
+    // (or off it). Horizontal intent is just zeroed when the mode
+    // returns null.
+    const moveDX = intent ? intent.x * speed * dtSec : 0;
+    const moveDZ = intent ? intent.z * speed * dtSec : 0;
 
-    const stepResult = this.physics.step({ x: moveDX, z: moveDZ });
+    const stepResult = this.physics.step({ x: moveDX, z: moveDZ, dtSec });
     this.emitControllerBumps(stepResult.bumps);
 
     const minProgress = 1 - movementBlockThreshold;
 
     // Wander pivots early on a hard block so the bot doesn't grind
-    // into walls. Other modes are happy to stand still until conditions
-    // change.
-    if (this.mode === 'wander' && stepResult.progress < minProgress) {
-      // Re-seed the wander direction. Calling `onEnter` again is the
-      // strategy-respecting way; passing bias=0 since we don't track
-      // the failed direction here.
+    // into walls. Other modes are happy to stand still until
+    // conditions change.
+    if (intent && this.mode === 'wander' && stepResult.progress < minProgress) {
       strategy.onEnter?.(ctx);
     }
 
+    const t = this.physics.translation();
     let newPos: Vec3;
     let vel: Vec3;
     let moved: boolean;
     let yaw: number;
-    if (stepResult.progress < minProgress) {
-      newPos = botPos;
+    if (!intent || stepResult.progress < minProgress) {
+      // Horizontal motion blocked or unintended — keep x/z, but
+      // still apply the gravity-driven y delta.
+      newPos = {
+        x: t.x,
+        y: t.y + stepResult.corrected.y,
+        z: t.z,
+      };
       vel = { x: 0, y: 0, z: 0 };
       moved = false;
       yaw = botState.players[this.botId]?.yaw ?? 0;
     } else {
-      const t = this.physics.translation();
       newPos = {
         x: t.x + stepResult.corrected.x,
-        y: botPos.y,
+        y: t.y + stepResult.corrected.y,
         z: t.z + stepResult.corrected.z,
       };
-      this.physics.applyTranslation(newPos);
       vel = {
         x: intent.x * speed * stepResult.progress,
         y: 0,
@@ -307,6 +307,21 @@ export class BotDriver {
       };
       moved = true;
       yaw = Math.atan2(-intent.x, -intent.z);
+    }
+    this.physics.applyTranslation(newPos);
+
+    // Fall-respawn check. Bots obey the same below-the-lowest-cube
+    // rule as the local player — they're simulations of remote
+    // players, they don't get to defy game physics.
+    const threshold = respawnThreshold(botState.worldObjects);
+    if (newPos.y < threshold) {
+      const respawnPos = pickRespawnPosition(this.spawnList);
+      if (respawnPos) {
+        this.physics.teleport(respawnPos);
+        newPos = respawnPos;
+        vel = { x: 0, y: 0, z: 0 };
+        moved = false;
+      }
     }
 
     this.botActions.setSelfPosition(newPos, vel, yaw);
@@ -339,13 +354,25 @@ export class BotDriver {
       this.startPos = { ...pos };
       return;
     }
-    this.physics.applyTranslation({ ...pos });
+    // `teleport` (not `applyTranslation`) — also zeroes the bot's
+    // fall speed so an in-flight respawn doesn't keep accumulating
+    // downward velocity through the warp.
+    this.physics.teleport({ ...pos });
     const yaw = this.botStore?.getState().players[this.botId]?.yaw ?? 0;
     this.botActions.setSelfPosition({ ...pos }, { x: 0, y: 0, z: 0 }, yaw);
     // Reset any strategy-state that's stale w.r.t. the new location
     // (e.g. wander direction picked from the old position).
     this.wasMoving = false;
     this.invokeOnEnter();
+  }
+
+  /** Record the spawn list for fall-respawn. Called by
+   * `BotPool.respawnAll` so every driver knows where to teleport
+   * back to when the bot walks off the cube field and falls below
+   * `respawnThreshold(worldObjects)`. The cohort all share the same
+   * list — each bot picks one round-robin by phaseIndex. */
+  setSpawnList(spawns: readonly Vec3[]): void {
+    this.spawnList = spawns;
   }
 
   getBotPos(): Vec3 {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Actions } from '@officexr/sdk';
+import type { Actions, Vec3 } from '@officexr/sdk';
 import type { BotPool } from '@officexr/world/bot';
 import {
   FilesystemMapStorage,
@@ -42,6 +42,11 @@ export interface MapPickerState {
   maps: readonly string[];
   /** The map currently selected by the dropdown. */
   selected: string;
+  /** Spawn points for the currently-loaded map, in world coords.
+   * Surface so `<Scene>` can pass them to `SceneFrame` for the
+   * fall-respawn rule. Empty until the first map finishes loading;
+   * empty for any map that doesn't author spawns. */
+  spawnPoints: readonly Vec3[];
   /** Pick a different map; loads it, pushes WorldObjects, teleports
    *  the local player, and respawns bots. */
   choose: (name: string) => void;
@@ -110,6 +115,7 @@ export function useMapPicker({
 
   const [maps, setMaps] = useState<string[]>([initialName]);
   const [selected, setSelected] = useState<string>(initialName);
+  const [spawnPoints, setSpawnPoints] = useState<readonly Vec3[]>([]);
 
   const loadMap = useCallback(
     async (
@@ -157,6 +163,18 @@ export function useMapPicker({
   }, [spawnDropHeight]);
 
   const teleportLocal = useCallback((spawns: readonly SpawnPoint[]) => {
+    // Publish the spawn list to React state so `<Scene>` (and from
+    // there `SceneFrame`) can see it for fall-respawn. Even when
+    // the picker isn't going to actively teleport (no spawns), the
+    // empty list still needs to land here so the previous map's
+    // points don't leak into the new map's respawn rule.
+    setSpawnPoints(
+      spawns.map((s) => ({
+        x: s.position[0],
+        y: s.position[1],
+        z: s.position[2],
+      })),
+    );
     const a = actionsRef.current;
     if (!a || spawns.length === 0) return;
     const t = spawns[0].position;
@@ -262,5 +280,5 @@ export function useMapPicker({
     })();
   }, [selected, loadMap, teleportLocal, respawnBots]);
 
-  return { maps, selected, choose, reset, reloadList };
+  return { maps, selected, spawnPoints, choose, reset, reloadList };
 }

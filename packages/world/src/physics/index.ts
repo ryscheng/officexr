@@ -2,6 +2,15 @@
 // bot subsystem need lives here.
 
 export { worldMapToWalls, type WallDescriptor } from './worldMapToWalls.ts';
+export {
+  GRAVITY,
+  SPAWN_DROP_HEIGHT,
+  RESPAWN_MARGIN,
+  respawnThreshold,
+  worldObjectsToCuboids,
+  pickRespawnPosition,
+  type CuboidDescriptor,
+} from './rules.ts';
 export { routeContactEvent } from './bridge.ts';
 export {
   BODY_GROUPS,

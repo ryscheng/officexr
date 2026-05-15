@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import type { PlayerId, Vec3, WorldMap, WorldSettings } from '@officexr/sdk';
+import type { PlayerId, Vec3, WorldObjects, WorldSettings } from '@officexr/sdk';
 import {
   BODY_GROUPS,
   WALL_GROUPS,
@@ -7,7 +7,7 @@ import {
   OUTER_SENSOR_GROUPS,
   type ColliderTag,
 } from '../physics/groups.ts';
-import { worldMapToWalls } from '../physics/worldMapToWalls.ts';
+import { GRAVITY, worldObjectsToCuboids } from '../physics/rules.ts';
 
 /** Local-y the bot collider sits at (matches the browser-side BODY_Y in
  * Players.tsx so all bodies are at the same elevation). */
@@ -42,12 +42,23 @@ interface PeerMirror {
  * character controller, fraction of intent that survived contact, and
  * the list of bilateral bump events the driver should emit. */
 export interface StepResult {
-  corrected: { x: number; z: number };
-  /** Fraction of the requested move that survived collisions, [0, 1]. */
+  /** Controller-resolved delta in world space. `y` carries the
+   * gravity-integrated movement (which the controller has resolved
+   * against the cube field — non-zero when the bot is falling,
+   * ~zero when it's grounded). */
+  corrected: { x: number; y: number; z: number };
+  /** Fraction of the requested horizontal move that survived
+   * collisions, [0, 1]. Vertical motion is gravity-driven and not
+   * counted here — a bot in free fall still reports progress=1 for
+   * an unblocked horizontal step. */
   progress: number;
   /** Peers the controller pushed against this step that we weren't
    * already bumping last step (edge-triggered). */
   bumps: Array<{ otherId: PlayerId; normal: { x: number; z: number } }>;
+  /** True iff the controller resolved the bot onto solid ground
+   * this step. Drivers can use this to gate animation-state choice
+   * (no walk anim while airborne). */
+  grounded: boolean;
 }
 
 /** Result of one `drainSensorEvents()` — pairs of collider tags whose
@@ -86,8 +97,18 @@ export class BotPhysicsWorld {
   private bodyCollider: RAPIER.Collider;
   private controller: RAPIER.KinematicCharacterController;
 
-  private wallBodies: RAPIER.RigidBody[] = [];
-  private wallsForGridSize: number | null = null;
+  /** One fixed RigidBody per cube in the active map. Rebuilt by
+   * `syncCubes` whenever the WorldObjects fingerprint changes — the
+   * picker pushes a new snapshot on every map switch, and the
+   * bot's store sees that broadcast just like a peer would. */
+  private mapColliderBodies: RAPIER.RigidBody[] = [];
+  private cubesFingerprint: string | null = null;
+  /** Per-frame integrated fall speed. Accumulates `GRAVITY * dt`
+   * and resets to 0 when the controller reports the bot grounded.
+   * Kinematic bodies don't auto-react to the world gravity vector
+   * — we integrate it ourselves and pass into the controller's
+   * desired-translation, mirroring `SceneFrame`'s player loop. */
+  private verticalVel = 0;
   private peerMirrors = new Map<PlayerId, PeerMirror>();
   /** Collider handle → tag, for the bridge routing in
    * `drainSensorEvents`. */
@@ -106,9 +127,10 @@ export class BotPhysicsWorld {
 
   constructor(opts: BotPhysicsWorldOpts) {
     this.selfId = opts.selfId;
-    // Gravity is zero — characters are kinematic and Y-locked, identical
-    // to the browser-side `<Physics gravity={[0,0,0]}>`.
-    this.world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    // Gravity vector matches the browser-side `<Physics>` so the bot
+    // and the local player fall at identical rates. Kinematic bodies
+    // don't auto-apply it — see `verticalVel` integration in step().
+    this.world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
 
     const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
       opts.startPos.x,
@@ -161,6 +183,11 @@ export class BotPhysicsWorld {
     this.controller = this.world.createCharacterController(0.01);
     this.controller.setApplyImpulsesToDynamicBodies(false);
     this.controller.setSlideEnabled(true);
+    this.controller.setUp({ x: 0, y: 1, z: 0 });
+    // Match the player-side controller in SceneFrame.tsx: snap to
+    // ground when stepping between cubes at nominally the same
+    // height so the bot doesn't float for a frame across each seam.
+    this.controller.enableSnapToGround(0.3);
   }
 
   /** Current bot pose in world space. */
@@ -169,30 +196,41 @@ export class BotPhysicsWorld {
     return { x: t.x, y: t.y, z: t.z };
   }
 
-  /** Rebuild perimeter wall colliders when `worldMap.gridSize`
-   * changes. No-op on subsequent ticks if the size is the same. */
-  syncWalls(worldMap: WorldMap): void {
-    if (this.wallsForGridSize === worldMap.gridSize) return;
-    // Drop old wall bodies (also drops their colliders).
-    for (const b of this.wallBodies) this.world.removeRigidBody(b);
-    this.wallBodies = [];
-    const walls = worldMapToWalls(worldMap);
-    for (const w of walls) {
+  /**
+   * Rebuild the map's cuboid colliders from `worldObjects` (the
+   * Map Editor's authored cube field). Replaces the old perimeter-
+   * wall-only behaviour: every cube is now a real surface the bot
+   * can stand on, walk against, and fall off — matching the
+   * browser-side `<MapColliders>`.
+   *
+   * Cheap no-op when the cube layout hasn't changed: we fingerprint
+   * by instance count + cubeSize. The map-switch path always
+   * re-publishes a fresh `worldObjects` so a different layout with
+   * the same count would still be caught by the next picker push
+   * mutating the reference (and we don't try to detect that
+   * granularly — rebuilding ~hundreds of fixed colliders is cheap).
+   */
+  syncCubes(worldObjects: WorldObjects): void {
+    const fingerprint = `${worldObjects.instances.length}:${worldObjects.cubeSize}`;
+    if (this.cubesFingerprint === fingerprint) return;
+    for (const b of this.mapColliderBodies) this.world.removeRigidBody(b);
+    this.mapColliderBodies = [];
+    for (const c of worldObjectsToCuboids(worldObjects)) {
       const desc = RAPIER.RigidBodyDesc.fixed().setTranslation(
-        w.center.x,
-        w.center.y,
-        w.center.z,
+        c.center.x,
+        c.center.y,
+        c.center.z,
       );
       const body = this.world.createRigidBody(desc);
       const cdesc = RAPIER.ColliderDesc.cuboid(
-        w.halfExtents.x,
-        w.halfExtents.y,
-        w.halfExtents.z,
+        c.halfExtents.x,
+        c.halfExtents.y,
+        c.halfExtents.z,
       ).setCollisionGroups(WALL_GROUPS);
       this.world.createCollider(cdesc, body);
-      this.wallBodies.push(body);
+      this.mapColliderBodies.push(body);
     }
-    this.wallsForGridSize = worldMap.gridSize;
+    this.cubesFingerprint = fingerprint;
   }
 
   /** Create / update / remove per-peer kinematic mirror bodies so the
@@ -260,13 +298,25 @@ export class BotPhysicsWorld {
    * only suppresses the dynamics solver, not the query pipeline that
    * the character controller uses).
    */
-  step(intent: { x: number; z: number }): StepResult {
+  step(intent: { x: number; z: number; dtSec: number }): StepResult {
+    // Integrate gravity into vertical velocity, then feed the full
+    // 3D delta into the controller. Matches SceneFrame's pattern
+    // for the local player so bots fall at the same rate.
+    this.verticalVel += GRAVITY * intent.dtSec;
     this.controller.computeColliderMovement(
       this.bodyCollider,
-      { x: intent.x, y: 0, z: intent.z },
+      {
+        x: intent.x,
+        y: this.verticalVel * intent.dtSec,
+        z: intent.z,
+      },
       RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
     );
     const corrected = this.controller.computedMovement();
+
+    if (this.controller.computedGrounded()) {
+      this.verticalVel = 0;
+    }
 
     const next = new Set<PlayerId>();
     const bumps: Array<{ otherId: PlayerId; normal: { x: number; z: number } }> = [];
@@ -290,15 +340,28 @@ export class BotPhysicsWorld {
         ? Math.max(0, Math.min(1, Math.sqrt(correctedLenSq / intentLenSq)))
         : 1;
 
-    return { corrected: { x: corrected.x, z: corrected.z }, progress, bumps };
+    return {
+      corrected: { x: corrected.x, y: corrected.y, z: corrected.z },
+      progress,
+      bumps,
+      grounded: this.controller.computedGrounded(),
+    };
   }
 
-  /** Commit an absolute world-space pose to the bot's body. Caller
-   * decides Y; we pass it straight through to keep the body anchored
-   * at whatever elevation it was created with. */
+  /** Commit an absolute world-space pose to the bot's body. ALL
+   * three components are written — y is no longer pinned, since
+   * gravity drives vertical motion. */
   applyTranslation(pos: Vec3): void {
-    const t = this.body.translation();
-    this.body.setNextKinematicTranslation({ x: pos.x, y: t.y, z: pos.z });
+    this.body.setNextKinematicTranslation({ x: pos.x, y: pos.y, z: pos.z });
+  }
+
+  /** Force the body to a fresh location and zero its fall speed.
+   * Used by `BotDriver.setPosition` when the picker respawns the
+   * cohort and by the fall-respawn path so the bot doesn't keep
+   * accumulating downward velocity through the teleport. */
+  teleport(pos: Vec3): void {
+    this.body.setNextKinematicTranslation({ x: pos.x, y: pos.y, z: pos.z });
+    this.verticalVel = 0;
   }
 
   /** Advance the simulation one Rapier step. Must be called every
@@ -365,6 +428,6 @@ export class BotPhysicsWorld {
     this.tagByHandle.clear();
     this.prevIntersections.clear();
     this.bumpingPeers.clear();
-    this.wallBodies = [];
+    this.mapColliderBodies = [];
   }
 }

@@ -12,6 +12,7 @@ import type {
   Store,
   SyncEngine,
   SnapshotHandshake,
+  Vec3,
 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import { Players } from './Players.tsx';
@@ -90,6 +91,10 @@ interface SceneProps {
    * true preserves the historical behaviour for any caller that
    * doesn't wire a focus tracker. */
   worldFocused?: boolean;
+  /** Spawn points for the active map, in world coords. Forwarded
+   * straight to `SceneFrame`'s fall-respawn rule. Empty/undefined
+   * disables respawn (the player floats in the void instead). */
+  spawnPoints?: readonly Vec3[];
 }
 
 export function Scene(props: SceneProps) {
@@ -364,6 +369,7 @@ export function Scene(props: SceneProps) {
           yawRef={yawRef}
           selfBodyRef={selfBodyRef}
           worldFocused={worldFocused}
+          spawnPoints={props.spawnPoints}
         />
         </Physics>
       </Suspense>

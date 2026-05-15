@@ -12,10 +12,16 @@ import type {
   SyncEngine,
   SnapshotHandshake,
   Bus,
+  Vec3,
 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import type { CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
+import {
+  GRAVITY as GAME_GRAVITY,
+  pickRespawnPosition,
+  respawnThreshold,
+} from '../physics/rules.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -38,6 +44,12 @@ interface SceneFrameProps {
    * so the character stops mid-stride. Toggled by the studio's
    * `useWorldFocus` hook based on side-panel interaction. */
   worldFocused: boolean;
+  /** Spawn points from the active map. When the local player falls
+   * below `respawnThreshold(state.worldObjects)`, SceneFrame
+   * teleports them to one of these positions (+ SPAWN_DROP_HEIGHT
+   * y-lift so they fall onto the surface). Empty/undefined => no
+   * respawn ever (the player floats in the void instead). */
+  spawnPoints?: readonly Vec3[];
 }
 
 const ARROW_KEYS = new Set([
@@ -47,14 +59,11 @@ const ARROW_KEYS = new Set([
   'ArrowRight',
 ]);
 
-// Vertical acceleration applied each frame to the local player's
-// kinematic body via the character controller. Snappier than real
-// gravity (-9.81) so falling off a cube reads as "stepping down" not
-// "floating down". Must stay in sync with the `<Physics gravity>` set
-// in Scene.tsx for dynamic bodies — currently nothing in the world is
-// dynamic, but if anything becomes so the two should match so the
-// player and other bodies fall at the same rate.
-const GRAVITY = -20;
+// Same gravity constant the bot physics worlds use — see
+// `packages/world/src/physics/rules.ts`. Imported under an alias so
+// the per-frame closure can still refer to it as `GRAVITY` for
+// readability without colliding with anything else named `GRAVITY`.
+const GRAVITY = GAME_GRAVITY;
 
 /**
  * Owns the per-frame loop: WASD movement (via Rapier's
@@ -85,7 +94,15 @@ export function SceneFrame({
   selfId,
   selfBodyRef,
   worldFocused,
+  spawnPoints,
 }: SceneFrameProps) {
+  // Mirror the spawn list into a ref so the per-frame fall-respawn
+  // check below can read the live value without re-binding the
+  // useFrame callback when the picker pushes a new map.
+  const spawnsRef = useRef<readonly Vec3[]>(spawnPoints ?? []);
+  useEffect(() => {
+    spawnsRef.current = spawnPoints ?? [];
+  }, [spawnPoints]);
   const keysDown = React.useRef<Set<string>>(new Set());
   // Mirror the React-prop focus state into a ref so the imperative
   // keydown listener (registered once in useEffect below) always
@@ -418,11 +435,29 @@ export function SceneFrame({
         const horizBlocked = intendsMove && progress < minProgress;
 
         const t = body.translation();
-        const newPos = {
+        let newPos = {
           x: horizBlocked ? t.x : t.x + corrected.x,
           y: t.y + corrected.y,
           z: horizBlocked ? t.z : t.z + corrected.z,
         };
+
+        // Fall-respawn. Bots and the local player obey the same
+        // below-the-lowest-cube rule — bots are simulations of
+        // remote players, they don't get to defy game physics.
+        const threshold = respawnThreshold(stateSnapshot.worldObjects);
+        if (newPos.y < threshold) {
+          const r = pickRespawnPosition(spawnsRef.current);
+          if (r) {
+            newPos = r;
+            verticalVelRef.current = 0;
+            // Skip animation transitions; treat as a teleport. The
+            // body warp happens via the same auto-warp path that
+            // handles spawn-from-sky: setSelfPosition(r) updates the
+            // store, and the auto-warp at the top of the next frame
+            // moves the body to match.
+          }
+        }
+
         body.setNextKinematicTranslation(newPos);
 
         if (intendsMove && !horizBlocked) {
