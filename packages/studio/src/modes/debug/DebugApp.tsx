@@ -70,6 +70,19 @@ export function DebugApp() {
   const { stack, errorBanner, dismissError, onBotCountChange, onBotModeChange } =
     useStackSwitcher({ local, audio });
 
+  // Expose the in-browser bot pool on window for the e2e regression
+  // test. The deterministic visual test wants to silence bot
+  // animations between snapshots so the only frame-to-frame
+  // variation is the cube field. Production code never reads this.
+  useEffect(() => {
+    if (stack?.mode !== 'in-memory') return;
+    (window as unknown as { __OFFICE_BOTS__?: typeof stack.bots }).__OFFICE_BOTS__ =
+      stack.bots;
+    return () => {
+      delete (window as unknown as { __OFFICE_BOTS__?: unknown }).__OFFICE_BOTS__;
+    };
+  }, [stack]);
+
   // Headless Map-picker state. The paired MapPickerPanel below
   // consumes this to render the dropdown + buttons; the hook itself
   // owns the load/teleport/respawn side effects.

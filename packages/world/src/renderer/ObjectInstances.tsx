@@ -42,6 +42,14 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
     () => store.getState().worldObjects,
   );
   useEffect(() => {
+    // Re-read the store before installing the subscription. If a
+    // setWorldObjects landed between the lazy useState init (which
+    // ran during render) and this effect (which ran after commit),
+    // the subscription would miss it and `snapshot` would stay
+    // pinned to the empty default. The picker's bootstrap fires
+    // through this gap on first paint — the rendered cube field
+    // was permanently empty even though the store carried the map.
+    setSnapshot(store.getState().worldObjects);
     return store.subscribe(
       (s) => s.worldObjects,
       (next) => setSnapshot(next),
@@ -82,6 +90,32 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
     }
     return out;
   }, [snapshot, kindById]);
+
+  // Publish a render-marker on the window for regression tests.
+  // If <ObjectInstances> is ever again forgotten in Scene.tsx (as
+  // happened during the studio refactor), `__OFFICE_OBJECT_INSTANCES__`
+  // is undefined and the e2e test "Map switch in Debug actually
+  // renders the new cubes" fails fast with a clear message. Also
+  // exposes per-kind counts so a "mesh count out of sync with store"
+  // class of bug gets caught.
+  useEffect(() => {
+    const win = globalThis as unknown as {
+      __OFFICE_OBJECT_INSTANCES__?: {
+        storeCount: number;
+        perKind: Array<{ kindId: string; count: number }>;
+      };
+    };
+    win.__OFFICE_OBJECT_INSTANCES__ = {
+      storeCount: snapshot.instances.length,
+      perKind: usedKinds.map(({ kind, instances }) => ({
+        kindId: kind.id,
+        count: instances.length,
+      })),
+    };
+    return () => {
+      delete win.__OFFICE_OBJECT_INSTANCES__;
+    };
+  }, [snapshot, usedKinds]);
 
   return (
     <>
