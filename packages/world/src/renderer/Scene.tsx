@@ -4,7 +4,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Sphere } from '@react-three/drei';
 import { Physics, type RapierRigidBody } from '@react-three/rapier';
 import { GradientBackground } from './GradientBackground.tsx';
-import { FloorColliders } from './FloorColliders.tsx';
+import { MapColliders } from './MapColliders.tsx';
 import type {
   Actions,
   Bus,
@@ -19,7 +19,7 @@ import { CameraRig } from './CameraRig.tsx';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
-import { CUBE_SIZE, type CameraMode } from './config.ts';
+import type { CameraMode } from './config.ts';
 import type { ViewConfig } from './viewConfig.ts';
 
 /**
@@ -94,7 +94,7 @@ interface SceneProps {
 
 export function Scene(props: SceneProps) {
   const { store, selfId, cameraMode, sync, viewConfig } = props;
-  const { proximity, lighting, background, fixedCamera, world } = viewConfig;
+  const { proximity, lighting, background, fixedCamera } = viewConfig;
   const worldFocused = props.worldFocused ?? true;
 
   // After Scene mounts, force-broadcast the current world state.
@@ -160,21 +160,16 @@ export function Scene(props: SceneProps) {
   // width around them; anything farther than that doesn't render
   // shadows.
   //
-  // The clamp to the floor's half-diagonal handles tiny floors so we
-  // don't waste shadow-map texels on empty space outside the map.
-  //
   // The `far` plane still needs to span from the sun to the far edge
   // of the shadow region, hence `|sunPos| + radius + margin` — too
   // small and floor near the player falls behind the shadow camera.
   const shadowCam = useMemo(() => {
     const [sx, sy, sz] = lighting.sunPosition;
-    const halfExtent = (world.gridSize * CUBE_SIZE) / 2;
-    const floorDiagHalf = halfExtent * Math.SQRT2 + 5;
-    const radius = Math.min(lighting.shadowRange, floorDiagHalf);
+    const radius = lighting.shadowRange;
     const sunMag = Math.hypot(sx, sy, sz);
     const far = sunMag + radius + 20;
     return { radius, far };
-  }, [lighting.sunPosition, lighting.shadowRange, world.gridSize]);
+  }, [lighting.sunPosition, lighting.shadowRange]);
 
   return (
     <Canvas
@@ -192,7 +187,7 @@ export function Scene(props: SceneProps) {
           critical here.
         */}
         <Physics gravity={[0, 0, 0]} timeStep="vary">
-        <FloorColliders gridSize={world.gridSize} />
+        <MapColliders store={store} />
         {/* Sun-like single light source. The Leva `sunPosition` drives
             both the shadow-casting directional light and the visible
             sun disc in the sky so they stay aligned.

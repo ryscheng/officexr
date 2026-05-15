@@ -68,19 +68,9 @@ export interface FixedCameraViewConfig {
   movementYawOffsetDeg: number;
 }
 
-export interface WorldRendererViewConfig {
-  /** Side length (in cubes) of the invisible perimeter wall collider
-   * that bounds the playable area. Previously also drove the visible
-   * `<Floor>` platform; now only used by `<FloorColliders>` and the
-   * shadow camera clamp. Maps from the Map Editor are the source of
-   * truth for visible content. */
-  gridSize: number;
-}
-
 export interface ViewConfig {
   proximity: ProximityViewConfig;
   lighting: LightingViewConfig;
   background: BackgroundViewConfig;
   fixedCamera: FixedCameraViewConfig;
-  world: WorldRendererViewConfig;
 }

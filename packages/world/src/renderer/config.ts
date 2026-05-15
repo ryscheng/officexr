@@ -1,19 +1,9 @@
 /**
- * World/scene defaults for the debug-app.
- *
- * `WORLD.gridSize` now only sizes the invisible perimeter wall
- * collider (`<FloorColliders>`) and the shadow-camera clamp. The
- * previously visible default `<Floor>` was deleted — Map Editor maps
- * are the only source of visible cubes.
+ * Renderer constants. Map Editor maps are the only source of visible
+ * cubes; there is no longer a default-floor or playable-area concept
+ * here — `<MapColliders>` drives physics from `state.worldObjects`.
  */
 export const CUBE_SIZE = 2; // KayKit BlockBits cubes are 2×2×2 units
-
-export const WORLD = {
-  /** Playable-area side length in cubes (square). Bounds the
-   * invisible perimeter wall collider; no longer drives any visible
-   * geometry. */
-  gridSize: 50,
-};
 
 export const PLAYER_HEIGHT = 1.7;
 export const EYE_HEIGHT = 1.6;

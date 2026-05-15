@@ -10,7 +10,7 @@ export {
   type AnimationState,
 } from './Adventurer.tsx';
 export { Players } from './Players.tsx';
-export { FloorColliders } from './FloorColliders.tsx';
+export { MapColliders } from './MapColliders.tsx';
 export { GradientBackground } from './GradientBackground.tsx';
 export { ProximityGlow } from './ProximityGlow.tsx';
 export { CameraRig } from './CameraRig.tsx';
@@ -30,7 +30,6 @@ export { EndlessGrid } from './EndlessGrid.tsx';
 export {
   CAMERA_MODES,
   CUBE_SIZE,
-  WORLD,
   CHARACTERS,
   PLAYER_HEIGHT,
   FIXED_CAMERA_DEFAULTS,
@@ -50,5 +49,4 @@ export type {
   LightingViewConfig,
   BackgroundViewConfig,
   FixedCameraViewConfig,
-  WorldRendererViewConfig,
 } from './viewConfig.ts';
