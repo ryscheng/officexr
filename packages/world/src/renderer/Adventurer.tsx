@@ -141,68 +141,58 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       return s;
     }, [character_gltf.scene]);
 
-    // Measure the y-coordinate of the toes bones in the model's
-    // BIND POSE (we run this before the animation mixer has a chance
-    // to advance the skeleton — useMemo runs during render; mixer
-    // updates run inside useFrame after first commit). The character
-    // mesh is positioned so toes land at the parent group's y=0;
-    // combined with the `BODY_Y - charRadius` offset in Players.tsx,
-    // toes end up exactly at the body ball's bottom — i.e. ON the
-    // cube surface the controller resolves against, not buried
-    // inside it.
+    // Anchor the model's VISIBLE BOTTOM (= lowest vertex of the
+    // bind-pose bounding box) to the inner group's y=0. Combined
+    // with the `BODY_Y - charRadius` offset in Players.tsx, the
+    // visible bottom ends up at the body ball's bottom — i.e. ON
+    // the cube surface the controller resolves contacts against,
+    // not above it (mesh floats) or below it (mesh sinks into the
+    // floor).
     //
-    // SOLID note: Adventurer owns the MODEL-LOCAL correction (where
-    // are the toes relative to the GLB's origin?) because that
-    // varies by character. Players.tsx owns the PHYSICS-LOCAL
-    // correction (where is the ball's bottom relative to the body
-    // root?) because that's tied to the collider, not the visual.
-    const toesOffsetY = useMemo(() => {
-      // We need the toes' y-coord in the scene's LOCAL frame, not
-      // world frame — if `scene` is already mounted (HMR re-run,
-      // StrictMode double-invoke), `getWorldPosition` would include
-      // the ancestor transforms we're about to set, leading to a
-      // feedback loop. Instead: compute `sceneWorld⁻¹ · boneWorld`
-      // explicitly so the offset is always referenced to scene root.
+    // Why the bounding-box approach beats "find the toes bone":
+    // the toes BONE is the joint, but the foot MESH is skinned
+    // around it and extends below — anchoring on the bone alone
+    // still buries the visible sole by however thick the foot is.
+    // The bounding box captures the actual surface.
+    //
+    // We measure on the cloned scene before it's mounted, so its
+    // matrixWorld === its own matrix (no ancestor contamination).
+    // Box3.setFromObject reads each SkinnedMesh's BIND pose extent
+    // (not the current animated pose) by walking the geometry's
+    // bounding box through bind transforms — exactly the rest
+    // position we want.
+    //
+    // SOLID note: Adventurer owns the MODEL-LOCAL correction (how
+    // far below origin does the visible mesh extend?) because
+    // that's per-character data. Players.tsx owns the PHYSICS-LOCAL
+    // correction (body root → ball bottom) because that's tied to
+    // the collider, not the visual.
+    const meshOffsetY = useMemo(() => {
       scene.updateMatrixWorld(true);
-      const sceneInverse = new THREE.Matrix4()
-        .copy(scene.matrixWorld)
-        .invert();
-      const m = new THREE.Matrix4();
-      const tmp = new THREE.Vector3();
-      const ys: number[] = [];
-      scene.traverse((node) => {
-        const lname = (node.name ?? '').toLowerCase();
-        // Match `toesl` / `toesr` (KayKit) and also common rig
-        // variants like `:LeftToes` (Mixamo) or `toes_l` (Blender).
-        // Endings only — the bone's name may carry a rig prefix
-        // like `mixamorig:`.
-        if (
-          lname === 'toesl' ||
-          lname === 'toesr' ||
-          lname.endsWith(':toesl') ||
-          lname.endsWith(':toesr') ||
-          lname.endsWith('toes_l') ||
-          lname.endsWith('toes_r') ||
-          lname.endsWith('lefttoes') ||
-          lname.endsWith('righttoes')
-        ) {
-          m.copy(sceneInverse).multiply(node.matrixWorld);
-          tmp.setFromMatrixPosition(m);
-          ys.push(tmp.y);
-        }
-      });
-      if (ys.length === 0) {
-        // No toes bone found — fall back to "model origin == feet"
-        // and rely on Players.tsx's static offset. Log once per
-        // character so a future rig swap with a different naming
-        // convention surfaces in the console.
+      const box = new THREE.Box3().setFromObject(scene);
+      if (!isFinite(box.min.y) || !isFinite(box.max.y)) {
         console.warn(
-          '[Adventurer] no toes bone found; character may render with feet buried in the floor',
+          '[Adventurer] could not measure mesh bbox; character may render with feet buried in the floor',
         );
         return 0;
       }
-      const avg = ys.reduce((s, y) => s + y, 0) / ys.length;
-      return -avg;
+      const offset = -box.min.y;
+      // Diagnostic window-expose for the standing-validation
+      // playwright probe. Production code never reads this.
+      (
+        globalThis as unknown as {
+          __OFFICE_MESH_DEBUG__?: {
+            minY: number;
+            maxY: number;
+            offset: number;
+          };
+        }
+      ).__OFFICE_MESH_DEBUG__ = {
+        minY: box.min.y,
+        maxY: box.max.y,
+        offset,
+      };
+      return offset;
     }, [scene]);
 
     // Merge clips from every loaded rig. Earlier rigs win on name
@@ -326,7 +316,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
 
     return (
       <group ref={ref}>
-        <group ref={innerRef} position-y={toesOffsetY}>
+        <group ref={innerRef} position-y={meshOffsetY}>
           <primitive object={scene} />
         </group>
       </group>
