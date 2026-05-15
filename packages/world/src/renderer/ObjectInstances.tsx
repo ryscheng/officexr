@@ -137,12 +137,6 @@ interface KindInstanceGroupProps {
   cubeSize: number;
 }
 
-// KayKit BlockBits cubes have beveled corners — a slight overlap hides
-// the seams between adjacent instances. Kept as a per-renderer constant
-// so the catalog-side `kind.scale` stays a clean "1 = no change"
-// semantic.
-const SEAM_OVERLAP = 1.05;
-
 function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps) {
   const gltf = useGLTF(kind.gltfPath);
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
@@ -176,7 +170,15 @@ function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
     const quat = new THREE.Quaternion();
-    const s = SEAM_OVERLAP * kind.scale;
+    // Scale is exactly `kind.scale` — no seam-overlap fudge. The
+    // previous SEAM_OVERLAP=1.05 inflated each instance 5 % to hide
+    // groove lines between bevelled-edge KayKit blocks; but the
+    // visual top of a cube ended up 0.05 m higher than its physics
+    // collider (in <MapColliders>), so the character's feet rested
+    // on the collider top while visually appearing to sink slightly
+    // into the cube. Visual seams are an acceptable trade for a
+    // correctly aligned standing surface.
+    const s = kind.scale;
     const scale = new THREE.Vector3(s, s, s);
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];

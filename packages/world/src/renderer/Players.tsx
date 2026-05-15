@@ -468,7 +468,16 @@ export function Players({
                 if (c) tagByHandle.current.set(c.handle, outerTag);
               }}
             />
+            {/* Lift the visible character so its feet (model origin)
+                align with the body ball's bottom. The ball is at
+                local y=BODY_Y with radius=charRadius, so its bottom
+                is at local y=(BODY_Y - charRadius). Without this
+                offset the character renders with `root.y` at its
+                feet, but the controller resolves contacts at the
+                ball's bottom — the character would visually sink
+                ~0.5 m into whatever it's standing on. */}
             <group
+              position={[0, BODY_Y - charRadius, 0]}
               ref={(g: THREE.Group | null) => {
                 if (g) groupRefs.current.set(p.id, g);
                 else groupRefs.current.delete(p.id);
