@@ -60,6 +60,8 @@ export interface LightingSettings {
   sunPosition: [number, number, number];
   sunColor: string;
   sunIntensity: number;
+  /** Intensity of the hemisphere fill light (sky-tinted from above,
+   * ground-tinted from below). */
   ambientIntensity: number;
   castShadow: boolean;
   shadowRange: number;
@@ -75,6 +77,10 @@ export interface LightingSettings {
   showSunDisc: boolean;
   sunDiscRadius: number;
   sunDiscIntensity: number;
+  /** Additive omnidirectional ambient on top of sun + hemisphere.
+   * Mugshot exposes this so a capture session can crank visibility
+   * without affecting the artistic lighting. Optional. */
+  ambientFillIntensity?: number;
 }
 
 export interface BackgroundSettings {
@@ -152,6 +158,7 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
     showSunDisc: true,
     sunDiscRadius: 3,
     sunDiscIntensity: 2,
+    ambientFillIntensity: 0,
   },
   background: {
     topColor: '#02030a',

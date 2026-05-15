@@ -234,6 +234,12 @@ export function Scene(props: SceneProps) {
         <hemisphereLight
           args={['#aedcff', '#3a2f24', lighting.ambientIntensity]}
         />
+        {/* Optional pure ambient fill, additive on top of the
+            hemisphere. Default-off across the game (intensity 0 = no
+            contribution). Mugshot mode lets the user crank it up so
+            shadowed faces are visible in captures without skewing
+            sky/ground tinting. */}
+        <ambientLight intensity={lighting.ambientFillIntensity ?? 0} />
         {/* The sun: always emitted. Parallel rays + orthographic shadow
             camera. The shadow camera follows the local player via
             `SunFollower` below (its `target` and the light's

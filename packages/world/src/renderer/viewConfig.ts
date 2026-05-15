@@ -35,6 +35,8 @@ export interface LightingViewConfig {
   sunPosition: [number, number, number];
   sunColor: string;
   sunIntensity: number;
+  /** Intensity of the hemisphere fill light (sky-tinted from above,
+   * ground-tinted from below). Drives the natural-outdoor look. */
   ambientIntensity: number;
   castShadow: boolean;
   shadowRange: number;
@@ -50,6 +52,14 @@ export interface LightingViewConfig {
   showSunDisc: boolean;
   sunDiscRadius: number;
   sunDiscIntensity: number;
+  /** Additive omnidirectional `<ambientLight>` intensity on top of
+   * the sun + hemisphere. Distinct from `ambientIntensity` (which
+   * drives the hemisphere) — this lifts shadowed faces uniformly
+   * without changing sky/ground tint. Mugshot mode exposes this as
+   * a slider so a capture session can crank visibility up without
+   * touching the artistic lighting. Optional; undefined / 0 leaves
+   * the scene unchanged. */
+  ambientFillIntensity?: number;
 }
 
 export interface BackgroundViewConfig {

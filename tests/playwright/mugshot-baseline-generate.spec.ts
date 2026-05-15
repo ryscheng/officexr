@@ -91,13 +91,14 @@ test('generate Barbarian mugshot baseline', async ({ page }) => {
     captured[angle.name] = Buffer.from(b64, 'base64');
   }
 
-  // Write the manifest. Values mirror MugshotApp's defaults: this
-  // is the baseline-from-defaults; a human can later regenerate it
-  // via the in-app Export button with tuned settings.
+  // Write the manifest. Values mirror MugshotApp's defaults. Note:
+  // `yOffset` is deliberately NOT in the schema — see MugshotManifest
+  // (v2) for why. The `live` Y value is observed only to log it
+  // here; it never lands in the manifest.
+  void live;
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     character: 'Barbarian',
-    yOffset: live ?? 1.51,
     viewportWidth: 512,
     viewportHeight: 512,
     exportedAt: new Date().toISOString(),
@@ -127,6 +128,7 @@ test('generate Barbarian mugshot baseline', async ({ page }) => {
       showSunDisc: false,
       sunDiscRadius: 3,
       sunDiscIntensity: 2,
+      ambientFillIntensity: 0,
     },
     background: {
       topColor: '#02030a',

@@ -146,44 +146,100 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       return s;
     }, [character_gltf.scene]);
 
-    // Anchor the model's VISIBLE BOTTOM (= lowest vertex of the
-    // bind-pose bounding box) to the inner group's y=0. Combined
-    // with the `BODY_Y - charRadius` offset in Players.tsx, the
-    // visible bottom ends up at the body ball's bottom — i.e. ON
-    // the cube surface the controller resolves contacts against,
-    // not above it (mesh floats) or below it (mesh sinks into the
-    // floor).
+    // -----------------------------------------------------------------
+    // Per-character mesh anchor: place the model's bind-pose VISIBLE
+    // BOTTOM at the inner group's local y=0.
     //
-    // Why the bounding-box approach beats "find the toes bone":
-    // the toes BONE is the joint, but the foot MESH is skinned
-    // around it and extends below — anchoring on the bone alone
-    // still buries the visible sole by however thick the foot is.
-    // The bounding box captures the actual surface.
+    // Why this exists
+    //   The Rapier body collider is a ball at local `BODY_Y=0.9` with
+    //   radius `charRadius=0.4`, so its bottom sits at `root.y + 0.5`.
+    //   Players.tsx wraps the character in a group offset by
+    //   `BODY_Y - charRadius = 0.5` so that group's local y=0 lines up
+    //   with the ball's bottom — i.e. the point the character
+    //   controller has decided is "the floor". Our job here is to
+    //   place the model so its visible feet land exactly at THAT y=0.
     //
-    // We measure on the cloned scene before it's mounted, so its
-    // matrixWorld === its own matrix (no ancestor contamination).
-    // Box3.setFromObject reads each SkinnedMesh's BIND pose extent
-    // (not the current animated pose) by walking the geometry's
-    // bounding box through bind transforms — exactly the rest
-    // position we want.
+    // The critical detail: `SkinnedMesh.computeBoundingBox()`
+    //   For static `Mesh` the renderer just draws
+    //   `geometry.attributes.position` transformed by `matrixWorld`,
+    //   so `geometry.boundingBox` reflects exactly what you see.
+    //   For `SkinnedMesh` the vertex shader applies a per-vertex
+    //   weighted sum of bone transforms; the geometry's static
+    //   bounding box is in MESH-LOCAL "T-pose" space and bears no
+    //   resemblance to where the rendered vertices actually end up.
+    //   Three.js's `Box3.setFromObject()` uses
+    //   `geometry.boundingBox` for both, so calling it on a
+    //   character GLB tells you the AUTHORED extent of the mesh,
+    //   not the BIND-POSE rendered extent.
     //
-    // SOLID note: Adventurer owns the MODEL-LOCAL correction (how
-    // far below origin does the visible mesh extend?) because
-    // that's per-character data. Players.tsx owns the PHYSICS-LOCAL
-    // correction (body root → ball bottom) because that's tied to
-    // the collider, not the visual.
+    //   `SkinnedMesh.computeBoundingBox()` is the correct API — it
+    //   walks every vertex through the bone bind transforms
+    //   (matching exactly what the GPU does each frame) and writes
+    //   the WORLD-SPACE rendered extent to `skin.boundingBox`. We
+    //   measure with the cloned scene unparented so "world space"
+    //   here equals "scene-parent space" — which becomes
+    //   `innerRef`'s local space once the primitive mounts.
+    //
+    // The math
+    //   Let `box.min.y` be the bind-pose lowest visible point in
+    //   scene-parent space. Set `innerRef.position.y = -box.min.y`,
+    //   and the lowest visible vertex ends up at the innerRef's
+    //   parent's y=0 — the body ball's bottom — the cube surface.
+    //
+    // SOLID split
+    //   Adventurer owns the MODEL-LOCAL anchor (per-character data
+    //   derived from the rig). Players.tsx owns the PHYSICS-LOCAL
+    //   anchor (the body root → ball bottom relationship tied to
+    //   the collider, identical for every character). Together they
+    //   compose to place feet on the floor for any rig.
+    //
+    // Failure modes documented in `__OFFICE_MESH_DEBUG__`
+    //   The window-expose carries `minY` (= the measured bind-pose
+    //   minimum), `maxY` (= the bind-pose top), and `offset` (= what
+    //   we passed to innerRef). Tests + the standing-validation
+    //   probe assert these are sane; if a future GLB swap returns a
+    //   broken bbox, the diagnostic catches it before the visual.
+    // -----------------------------------------------------------------
     const meshOffsetY = useMemo(() => {
       scene.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(scene);
-      if (!isFinite(box.min.y) || !isFinite(box.max.y)) {
+
+      const acc = new THREE.Box3();
+      acc.makeEmpty();
+      const tmp = new THREE.Box3();
+      scene.traverse((obj) => {
+        const skin = obj as THREE.SkinnedMesh;
+        if (skin.isSkinnedMesh && skin.skeleton) {
+          // Make sure bone matrices are current before computing.
+          // For a freshly-cloned scene this happens automatically
+          // via the parent scene.updateMatrixWorld above, but
+          // calling explicitly here makes the dependency explicit.
+          skin.skeleton.update();
+          skin.computeBoundingBox();
+          if (skin.boundingBox && !skin.boundingBox.isEmpty()) {
+            acc.union(skin.boundingBox);
+          }
+          return;
+        }
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh && mesh.geometry) {
+          if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+          if (mesh.geometry.boundingBox) {
+            tmp.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+            acc.union(tmp);
+          }
+        }
+      });
+
+      if (acc.isEmpty() || !isFinite(acc.min.y) || !isFinite(acc.max.y)) {
         console.warn(
-          '[Adventurer] could not measure mesh bbox; character may render with feet buried in the floor',
+          '[Adventurer] could not measure bind-pose bbox; character may render with feet buried in the floor',
         );
         return 0;
       }
-      const offset = -box.min.y;
+      const offset = -acc.min.y;
       // Diagnostic window-expose for the standing-validation
-      // playwright probe. Production code never reads this.
+      // playwright probe and the manifest-compare spec. Production
+      // code never reads this.
       (
         globalThis as unknown as {
           __OFFICE_MESH_DEBUG__?: {
@@ -193,8 +249,8 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
           };
         }
       ).__OFFICE_MESH_DEBUG__ = {
-        minY: box.min.y,
-        maxY: box.max.y,
+        minY: acc.min.y,
+        maxY: acc.max.y,
         offset,
       };
       return offset;

@@ -69,12 +69,17 @@ const MUGSHOT_CUBES: ReadonlyArray<{
   { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [1, 0, 1] },
 ];
 
-/** v1 of the mugshot export manifest. Captures every rendering input
- * the test needs to reproduce the shot pixel-identically. */
+/** v2 of the mugshot export manifest. Captures rendering inputs but
+ * deliberately OMITS `yOffset` — the export always captures at the
+ * system's default Y, never a tuned value. If we recorded `yOffset`,
+ * the manifest-load round-trip would re-apply the same lift the
+ * human used to "fix" the rendering visually, masking the underlying
+ * placement bug. The whole point of the mugshot is that baselines
+ * show what the system NATURALLY produces; the Y slider in the UI
+ * exists only for live diagnostic exploration. */
 export interface MugshotManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   character: CharacterName;
-  yOffset: number;
   viewportWidth: number;
   viewportHeight: number;
   exportedAt: string;
@@ -276,7 +281,12 @@ export function MugshotApp() {
     };
     win.__OFFICE_MUGSHOT_APPLY_MANIFEST__ = (m: MugshotManifest) => {
       setCharacter(m.character);
-      setYOffset(m.yOffset);
+      // Force Y back to the system default — manifests don't carry
+      // yOffset (by design, see the schema comment above). If the
+      // human had tuned Y in the live preview before the test ran,
+      // this snap ensures the test reproduces exactly what the
+      // export captured: the default-Y rendering.
+      setYOffset(DEFAULT_Y_OFFSET);
       setDistanceM(m.fixedCamera.distanceM);
       setViewportWidth(m.viewportWidth);
       setViewportHeight(m.viewportHeight);
@@ -293,12 +303,25 @@ export function MugshotApp() {
   }, []);
 
   const azimuthBeforeExportRef = useRef<AzimuthDeg>(DEFAULT_AZIMUTH);
+  const yOffsetBeforeExportRef = useRef<number>(DEFAULT_Y_OFFSET);
 
   const onExport = useCallback(async () => {
     if (exporting) return;
     setExporting(true);
     azimuthBeforeExportRef.current = azimuthDeg;
+    yOffsetBeforeExportRef.current = yOffset;
     try {
+      // Snap Y to the system default BEFORE any capture. The export
+      // must reflect what the system naturally renders — if we
+      // recorded the human's tuned Y, we'd be encoding the visual
+      // bug-around into the baseline and the test would happily
+      // reproduce the same offset shot forever. The Y slider stays
+      // up so the user can keep exploring after the export.
+      setYOffset(DEFAULT_Y_OFFSET);
+      // Two RAFs for the setSelfPosition + SceneFrame auto-warp to
+      // teleport the body.
+      await waitFrames(2);
+
       const zip = new JSZip();
       const angles: AzimuthDeg[] = [0, 90, 180, 270];
       for (const angle of angles) {
@@ -315,9 +338,8 @@ export function MugshotApp() {
         zip.file(`${ANGLE_NAMES[angle]}.png`, base64, { base64: true });
       }
       const manifest: MugshotManifest = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         character: 'Barbarian', // export is Barbarian-only per spec
-        yOffset,
         viewportWidth,
         viewportHeight,
         exportedAt: new Date().toISOString(),
@@ -346,6 +368,7 @@ export function MugshotApp() {
       console.warn('[mugshot] export failed:', err);
     } finally {
       setAzimuthDeg(azimuthBeforeExportRef.current);
+      setYOffset(yOffsetBeforeExportRef.current);
       setExporting(false);
     }
   }, [azimuthDeg, distanceM, yOffset, viewportWidth, viewportHeight, lighting, background, exporting]);
@@ -422,6 +445,10 @@ export function MugshotApp() {
         onViewportWidthChange={setViewportWidth}
         viewportHeight={viewportHeight}
         onViewportHeightChange={setViewportHeight}
+        ambientFillIntensity={lighting.ambientFillIntensity ?? 0}
+        onAmbientFillChange={(v) =>
+          setLighting((prev) => ({ ...prev, ambientFillIntensity: v }))
+        }
         onExport={onExport}
         exporting={exporting}
       />
@@ -454,6 +481,8 @@ interface ControlPanelProps {
   onViewportWidthChange: (v: number) => void;
   viewportHeight: number;
   onViewportHeightChange: (v: number) => void;
+  ambientFillIntensity: number;
+  onAmbientFillChange: (v: number) => void;
   onExport: () => void;
   exporting: boolean;
 }
@@ -510,6 +539,18 @@ function ControlPanel(props: ControlPanelProps) {
           step={0.1}
           value={props.distanceM}
           onChange={(e) => props.onDistanceChange(Number(e.target.value))}
+          style={rangeStyle}
+        />
+      </Section>
+
+      <Section title={`Ambient fill · ${props.ambientFillIntensity.toFixed(2)}`}>
+        <input
+          type="range"
+          min={0}
+          max={2}
+          step={0.05}
+          value={props.ambientFillIntensity}
+          onChange={(e) => props.onAmbientFillChange(Number(e.target.value))}
           style={rangeStyle}
         />
       </Section>
