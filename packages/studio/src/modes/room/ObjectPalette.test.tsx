@@ -5,7 +5,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { groupByCategory } from './ObjectPalette.tsx';
+import { groupByCategory, filterByName } from './ObjectPalette.tsx';
 import type { CubeKindEntry } from '@officexr/world/scenes';
 
 function makeKind(
@@ -94,6 +94,44 @@ describe('groupByCategory', () => {
   });
 });
 
+// --- Pure unit tests for filterByName ---
+
+describe('filterByName', () => {
+  const kinds = [
+    makeKind('block-grass', 'block', { label: 'Grass block' }),
+    makeKind('block-stone', 'block', { label: 'Stone' }),
+    makeKind('chair-red', 'furniture', { label: 'Red chair' }),
+    makeKind('chair-blue', 'furniture', { label: 'Blue chair' }),
+  ];
+
+  it('returns all kinds for an empty query', () => {
+    expect(filterByName(kinds, '')).toHaveLength(4);
+  });
+
+  it('returns all kinds for a whitespace-only query', () => {
+    expect(filterByName(kinds, '   ')).toHaveLength(4);
+  });
+
+  it('matches label substring case-insensitively', () => {
+    const result = filterByName(kinds, 'chair');
+    expect(result.map((k) => k.id).sort()).toEqual(['chair-blue', 'chair-red']);
+  });
+
+  it('matches id substring when label does not match', () => {
+    const result = filterByName(kinds, 'stone');
+    expect(result.map((k) => k.id)).toEqual(['block-stone']);
+  });
+
+  it('returns [] when nothing matches', () => {
+    expect(filterByName(kinds, 'zzz')).toEqual([]);
+  });
+
+  it('trims surrounding whitespace before matching', () => {
+    const result = filterByName(kinds, '  grass  ');
+    expect(result.map((k) => k.id)).toEqual(['block-grass']);
+  });
+});
+
 // --- Component tests (mocking useCubeCatalog) ---
 
 // We need to mock the catalog since in test environment there's no fetch
@@ -152,5 +190,30 @@ describe('ObjectPalette component', () => {
     const buttons = container.querySelectorAll('button');
     const grassBtn = Array.from(buttons).find((b) => b.textContent?.includes('Grass'));
     expect(grassBtn?.getAttribute('data-staged')).toBe('true');
+  });
+
+  // 11. filter input narrows visible kinds
+  it('typing in the filter input hides kinds that do not match', () => {
+    const { container } = render(
+      <ObjectPalette staged={null} onStage={() => {}} />,
+    );
+    expect(container.textContent).toContain('Grass');
+    expect(container.textContent).toContain('Chair');
+
+    const filter = container.querySelector('input[type="search"]') as HTMLInputElement;
+    fireEvent.change(filter, { target: { value: 'chair' } });
+
+    expect(container.textContent).not.toContain('Grass');
+    expect(container.textContent).toContain('Chair');
+  });
+
+  // 12. empty-result message
+  it('shows an empty-state message when no kinds match the filter', () => {
+    const { container } = render(
+      <ObjectPalette staged={null} onStage={() => {}} />,
+    );
+    const filter = container.querySelector('input[type="search"]') as HTMLInputElement;
+    fireEvent.change(filter, { target: { value: 'zzz-no-match' } });
+    expect(container.textContent).toContain('No objects match');
   });
 });

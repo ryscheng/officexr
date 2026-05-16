@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useDeferredValue, useMemo, useState } from 'react';
 import {
   useCubeCatalog,
   CUBE_KIND_CATEGORIES,
@@ -67,14 +67,42 @@ export function groupByCategory(
 }
 
 /**
+ * Case-insensitive substring match against `label` and `id`. An empty
+ * (or whitespace-only) query returns the input unchanged so callers
+ * don't need to special-case it.
+ *
+ * Exported for unit testing.
+ */
+export function filterByName(
+  kinds: readonly CubeKindEntry[],
+  query: string,
+): CubeKindEntry[] {
+  const q = query.trim().toLowerCase();
+  if (q === '') return [...kinds];
+  return kinds.filter(
+    (k) =>
+      k.label.toLowerCase().includes(q) || k.id.toLowerCase().includes(q),
+  );
+}
+
+/**
  * Left-column palette of cube kinds. Reads from the live `useCubeCatalog()`
  * so it updates when the catalog changes (e.g. after Object editor edits).
  * Groups entries by category with section headers. Shows PNG thumbnails
  * (with swatch fallback). Filters out 'character' category entries.
+ *
+ * A search box at the top filters kinds by case-insensitive substring
+ * match on label or id. Matching is deferred so typing stays responsive
+ * with the 280-kind default catalog.
  */
 export function ObjectPalette({ staged, onStage }: ObjectPaletteProps) {
   const allKinds = useCubeCatalog();
-  const groups = groupByCategory(allKinds, ['character']);
+  const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
+  const groups = useMemo(
+    () => groupByCategory(filterByName(allKinds, deferredQuery), ['character']),
+    [allKinds, deferredQuery],
+  );
 
   return (
     <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -89,6 +117,29 @@ export function ObjectPalette({ staged, onStage }: ObjectPaletteProps) {
       >
         Objects
       </div>
+
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Filter…"
+        aria-label="Filter objects"
+        style={{
+          padding: '6px 8px',
+          background: '#0f0f0f',
+          color: '#fafafa',
+          border: '1px solid #262626',
+          borderRadius: 4,
+          font: '12px system-ui, sans-serif',
+          outline: 'none',
+        }}
+      />
+
+      {groups.length === 0 && query.trim() !== '' ? (
+        <p style={{ fontSize: 11, color: '#737373', paddingLeft: 2 }}>
+          No objects match “{query}”.
+        </p>
+      ) : null}
 
       {groups.map((group) => (
         <div key={group.category}>
@@ -107,9 +158,9 @@ export function ObjectPalette({ staged, onStage }: ObjectPaletteProps) {
           </div>
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: 6,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
             }}
           >
             {group.kinds.map((kind) => (
@@ -163,10 +214,10 @@ function KindButton({ kind, isStaged, onStage }: KindButtonProps) {
       {thumbnailUrl ? (
         <img
           src={thumbnailUrl}
-          width={48}
-          height={48}
-          alt={kind.label}
-          style={{ objectFit: 'contain', borderRadius: 2 }}
+          width={24}
+          height={24}
+          alt=""
+          style={{ objectFit: 'contain', borderRadius: 2, flexShrink: 0 }}
         />
       ) : (
         <span
@@ -180,7 +231,16 @@ function KindButton({ kind, isStaged, onStage }: KindButtonProps) {
           }}
         />
       )}
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          textAlign: 'left',
+        }}
+      >
         {kind.label}
       </span>
     </button>
