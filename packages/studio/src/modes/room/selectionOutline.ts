@@ -17,9 +17,9 @@
  * `[ax, ay, az, bx, by, bz, ...]` — exactly what
  * `BufferAttribute(positions, 3)` + `<lineSegments>` consumes.
  *
- * Coords are in WORLD space, scaled by `cubeSize` and inflated by a
- * `SEAM_OVERLAP` factor so the outline sits just outside the visible
- * cube surface (matching the renderer's seam-overlap scale).
+ * Coords are in WORLD space, scaled by `cubeSize`. Edges sit on the
+ * exact voxel boundary — adjacent cubes' shared edges land on
+ * identical world coordinates and dedupe symbolically.
  */
 
 export type Vec3 = readonly [number, number, number];
@@ -37,9 +37,9 @@ function vKey(x: number, y: number, z: number): string {
 //   centre.x = vx * cubeSize
 //   centre.z = vz * cubeSize
 //   y-min   = vy * cubeSize       (the cube extends from y to y+cubeSize)
-// Half extent for x/z is `(cubeSize / 2) * SEAM_OVERLAP + pad`.
-// Y extent is `cubeSize * SEAM_OVERLAP + 2*pad` total, with min/max
-// computed in `outlineEdgePositions` below.
+// Half extent for x/z is `cubeSize / 2`; y extent spans
+// `[yMin, yMax] = [vy * cubeSize, (vy + 1) * cubeSize]` — exact
+// voxel boundary, no inflation.
 interface FaceDef {
   /** Neighbour voxel offset. */
   n: Vec3;
@@ -125,12 +125,11 @@ const FACES: ReadonlyArray<FaceDef> = [
  * (x, y, z) triples forms one line segment. Deduplicates edges
  * shared by two adjacent exterior faces.
  *
- * Edges sit on the exact voxel boundary (no inflation) so that
- * adjacent cubes' face-perimeter edges land on identical world
- * coordinates and dedupe symbolically. The rendering side uses
- * `depthTest: false` so the lines stay visible even coplanar with
- * the visible cube surface (which is slightly inflated by
- * SEAM_OVERLAP elsewhere).
+ * Edges sit on the exact voxel boundary so that adjacent cubes'
+ * face-perimeter edges land on identical world coordinates and
+ * dedupe symbolically. The rendering side uses `depthTest: false`
+ * so the lines stay visible even coplanar with the visible cube
+ * surface.
  */
 export function outlineEdgePositions(
   voxels: ReadonlyArray<Vec3>,

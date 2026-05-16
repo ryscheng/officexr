@@ -572,7 +572,6 @@ function ContextMenuListener({
       let bestT = Infinity;
       let bestId: string | null = null;
       const half = cubeSize / 2;
-      const overlap = (cubeSize * 1.05) / 2;
       for (const inst of instances) {
         const cx = inst.position[0] * cubeSize;
         const cy = inst.position[1] * cubeSize + cubeSize / 2;
@@ -580,8 +579,8 @@ function ContextMenuListener({
         const t = rayHitAabb(
           raycaster.ray.origin,
           raycaster.ray.direction,
-          [cx - overlap, cy - half, cz - overlap],
-          [cx + overlap, cy + half, cz + overlap],
+          [cx - half, cy - half, cz - half],
+          [cx + half, cy + half, cz + half],
         );
         if (t !== null && t < bestT) {
           bestT = t;
@@ -999,8 +998,7 @@ function KindGroup({
     const m = new THREE.Matrix4();
     const p = new THREE.Vector3();
     const q = new THREE.Quaternion();
-    const baseScale = 1.05;
-    const s = new THREE.Vector3(baseScale, baseScale, baseScale);
+    const s = new THREE.Vector3(kind.scale, kind.scale, kind.scale);
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];
       p.set(

@@ -272,7 +272,7 @@ interface RoomInstanceMeshProps {
  *
  * Compiles the room cube-by-cube via `compileScene` and groups by
  * kind so the rendering path matches `ObjectInstances` (same
- * material override pipeline, same SEAM_OVERLAP scaling).
+ * material override pipeline, same `kind.scale`).
  *
  * Why a separate component instead of feeding a giant compileMap()
  * snapshot to one shared `<ObjectInstances>`?
@@ -456,8 +456,6 @@ interface RoomKindMeshProps {
   onPointerDown: (e: any) => void;
 }
 
-const SEAM_OVERLAP = 1.05;
-
 function RoomKindMesh({ kind, instances, onPointerDown }: RoomKindMeshProps) {
   const gltf = useGLTF(kind.gltfPath);
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
@@ -483,7 +481,7 @@ function RoomKindMesh({ kind, instances, onPointerDown }: RoomKindMeshProps) {
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
     const quat = new THREE.Quaternion();
-    const s = SEAM_OVERLAP * kind.scale;
+    const s = kind.scale;
     const scale = new THREE.Vector3(s, s, s);
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];

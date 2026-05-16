@@ -76,8 +76,6 @@ export function GhostLayer({ ghosts, cubeSize }: GhostLayerProps) {
   );
 }
 
-const SEAM_OVERLAP = 1.05;
-
 interface GhostMeshForGroupProps {
   mode: GhostMode;
   kindId: string;
@@ -125,7 +123,8 @@ function GhostMeshForGroup({
     const m = new THREE.Matrix4();
     const p = new THREE.Vector3();
     const q = new THREE.Quaternion();
-    const s = new THREE.Vector3(SEAM_OVERLAP, SEAM_OVERLAP, SEAM_OVERLAP);
+    const kindScale = kind?.scale ?? 1;
+    const s = new THREE.Vector3(kindScale, kindScale, kindScale);
     for (let i = 0; i < voxels.length; i++) {
       const v = voxels[i];
       p.set(v[0] * cubeSize, v[1] * cubeSize + cubeSize / 2, v[2] * cubeSize);
@@ -135,7 +134,7 @@ function GhostMeshForGroup({
     mesh.count = voxels.length;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [voxels, cubeSize]);
+  }, [voxels, cubeSize, kind?.scale]);
 
   // Drive opacity from the shared pulse ref each frame when in pulse
   // mode. Solid ghosts keep their constant 0.5 — no per-frame work.
