@@ -96,3 +96,4 @@ export {
   type CatalogStorage,
   FilesystemCatalogStorage,
 } from './filesystem-catalog-storage.ts';
+export { thumbnailUrlForKind } from './thumbnails.ts';
