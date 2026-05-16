@@ -4,6 +4,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import {
   DEFAULT_EDITOR_LIGHTING,
+  EditorCamera,
   EndlessGrid,
   LightingRig,
   buildMaterialForKind,
@@ -39,14 +40,19 @@ interface ObjectPreviewCanvasProps {
 export function ObjectPreviewCanvas({ kind }: ObjectPreviewCanvasProps) {
   return (
     <Canvas
-      camera={{ position: [2.5, 2, 2.5], fov: 45, near: 0.1, far: 200 }}
       style={{ width: '100%', height: '100%', display: 'block' }}
       shadows={false}
     >
+      <EditorCamera
+        position={[2.5, 2, 2.5]}
+        target={[0, 0.5, 0]}
+        fov={45}
+        minDistance={1.5}
+        maxDistance={40}
+      />
       <LightingRig lighting={OBJECT_PREVIEW_LIGHTING} />
       <color attach="background" args={['#0a0a0a']} />
       <EndlessGrid />
-      <OrbitCamera />
       {kind ? <KindPreview kind={kind} /> : null}
     </Canvas>
   );
@@ -108,79 +114,3 @@ function KindPreview({ kind }: { kind: CubeKindEntry }) {
   );
 }
 
-function OrbitCamera() {
-  const { camera, gl } = useThree();
-  const persp = camera as THREE.PerspectiveCamera;
-
-  const orbit = useRef({
-    azimuth: 0.6,
-    elevation: 0.5,
-    distance: 4,
-  });
-  const drag = useRef({ active: false, lastX: 0, lastY: 0 });
-  const target = useRef(new THREE.Vector3(0, 0.5, 0));
-
-  useEffect(() => {
-    const canvas = gl.domElement;
-    const onPointerDown = (e: PointerEvent) => {
-      // Right-drag orbits; matches the Room editor's convention.
-      if (e.button !== 2) return;
-      drag.current = { active: true, lastX: e.clientX, lastY: e.clientY };
-    };
-    const onPointerMove = (e: PointerEvent) => {
-      if (!drag.current.active) return;
-      const dx = e.clientX - drag.current.lastX;
-      const dy = e.clientY - drag.current.lastY;
-      drag.current.lastX = e.clientX;
-      drag.current.lastY = e.clientY;
-      const sens = 0.006;
-      orbit.current.azimuth -= dx * sens;
-      orbit.current.elevation = THREE.MathUtils.clamp(
-        orbit.current.elevation - dy * sens,
-        -Math.PI / 2 + 0.05,
-        Math.PI / 2 - 0.05,
-      );
-    };
-    const onPointerUp = (e: PointerEvent) => {
-      if (e.button !== 2) return;
-      drag.current.active = false;
-    };
-    const onContextMenu = (e: MouseEvent) => e.preventDefault();
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const factor = Math.exp(e.deltaY * 0.001);
-      orbit.current.distance = THREE.MathUtils.clamp(
-        orbit.current.distance * factor,
-        1.5,
-        40,
-      );
-    };
-    canvas.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('wheel', onWheel, { passive: false });
-    canvas.addEventListener('contextmenu', onContextMenu);
-    return () => {
-      canvas.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      canvas.removeEventListener('wheel', onWheel);
-      canvas.removeEventListener('contextmenu', onContextMenu);
-      drag.current.active = false;
-    };
-  }, [gl]);
-
-  useFrame(() => {
-    const { azimuth, elevation, distance } = orbit.current;
-    const t = target.current;
-    const cosE = Math.cos(elevation);
-    persp.position.set(
-      t.x + distance * cosE * Math.sin(azimuth),
-      t.y + distance * Math.sin(elevation),
-      t.z + distance * cosE * Math.cos(azimuth),
-    );
-    persp.lookAt(t);
-  });
-
-  return null;
-}
