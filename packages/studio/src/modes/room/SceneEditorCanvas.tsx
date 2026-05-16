@@ -15,10 +15,13 @@ const ROOM_EDITOR_LIGHTING = {
   ambientFillIntensity: 0.6,
 };
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
+import type { RoomDocument } from '@officexr/world/scenes';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
 import { snapToVoxel, type SnapHit } from './roomSnap.ts';
 import { outlineEdgePositions, type Vec3 as VoxelVec3 } from './selectionOutline.ts';
+import { computeMovedPositions } from './moveDelta.ts';
+import { checkMoveOccupancy } from './moveOccupancy.ts';
 
 type Vec3 = [number, number, number];
 
@@ -61,6 +64,25 @@ type TileState =
       kindId: string;
       groupId: string;
       xzGrid: readonly Vec3[];
+    };
+
+/**
+ * Move tool drag state. Discriminated union over two stages:
+ *   - idle:     no drag in progress.
+ *   - dragging: user is dragging selected objects. Records the voxel
+ *               the pointer was over when the drag started, whether
+ *               Shift is held (Y-axis-only drag), and the original
+ *               positions of all selected objects.
+ */
+type MoveState =
+  | { stage: 'idle' }
+  | {
+      stage: 'dragging';
+      startVoxel: Vec3;         // voxel at pointer-down
+      isYAxis: boolean;         // Shift held at drag start
+      originalPositions: ReadonlyMap<string, Vec3>;
+      proposedPositions: ReadonlyMap<string, Vec3>;
+      occupancyResult: 'ok' | 'blocked';
     };
 
 /** Generate the X-row preview voxels for the placed stage. Excludes
@@ -183,6 +205,14 @@ interface SceneEditorCanvasProps {
     screenX: number,
     screenY: number,
   ) => void;
+  /** Raw room document — needed by the move tool for occupancy checks
+   * and delta translation. Must stay in sync with `compiled`. */
+  doc: RoomDocument;
+  /** Move-tool batched position update. Called on successful drag-
+   * release. One history action per drag (once Task 03 lands). */
+  onMoveSelection: (
+    moves: Array<{ commandId: string; position: [number, number, number] }>,
+  ) => void;
 }
 
 /**
@@ -221,6 +251,21 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   // a half-completed gesture doesn't leak across tool switches.
   useEffect(() => {
     if (props.tool !== 'tile') setTileState({ stage: 'idle' });
+  }, [props.tool]);
+
+  // Move-tool state machine. Idle until a pointer-down on a selected
+  // cube starts a drag; dragging tracks delta + occupancy until release.
+  const [moveState, setMoveState] = useState<MoveState>({ stage: 'idle' });
+  // Ghost specs for the move tool (separate from tile/add/delete ghosts
+  // so they can be merged at the GhostLayer call site).
+  const [moveGhosts, setMoveGhosts] = useState<GhostSpec[]>([]);
+
+  // Reset move state when switching away from the move tool.
+  useEffect(() => {
+    if (props.tool !== 'move') {
+      setMoveState({ stage: 'idle' });
+      setMoveGhosts([]);
+    }
   }, [props.tool]);
 
   // Screen-Y anchor for the Tile tool's stage-4 (z-extruded) y-delta
@@ -262,6 +307,20 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [props]);
+
+  // Esc while mid-drag cancels the move without committing.
+  useEffect(() => {
+    if (props.tool !== 'move') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      setMoveState({ stage: 'idle' });
+      setMoveGhosts([]);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [props.tool]);
 
   const handleHoverChange = useCallback(
     (next: SnapHit | null) => setHover(next),
@@ -325,6 +384,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         }
       }
     }
+    // Move-tool ghosts are computed by the MoveController and stored
+    // separately so the XZ-plane raycasting (which needs camera + gl
+    // refs) can live in a Canvas-side component.
+    for (const g of moveGhosts) {
+      out.push(g);
+    }
     return out;
   }, [
     props.tool,
@@ -337,6 +402,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     props.compiled.instances,
     tileState,
     yDelta,
+    moveGhosts,
   ]);
 
   // Map an Add-tool click to a placement. Reads from the freshly-
@@ -458,6 +524,17 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       <color attach="background" args={['#0a0a0a']} />
       <EndlessGrid />
       <OrbitCamera compiled={props.compiled} />
+      <MoveController
+        tool={props.tool}
+        doc={props.doc}
+        compiled={props.compiled}
+        selection={props.selection}
+        moveState={moveState}
+        setMoveState={setMoveState}
+        setMoveGhosts={setMoveGhosts}
+        onMoveSelection={props.onMoveSelection}
+        onSelectInstance={props.onSelectInstance}
+      />
       <CubesLayer
         instances={props.compiled.instances}
         cubeSize={props.compiled.cubeSize}
@@ -1176,4 +1253,321 @@ function FloorPicker({
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
   );
+}
+
+// --- Move tool controller (canvas-side, accesses camera + gl) ----
+
+interface MoveControllerProps {
+  tool: Tool;
+  doc: RoomDocument;
+  compiled: WorldObjects;
+  selection: ReadonlySet<string>;
+  moveState: MoveState;
+  setMoveState: React.Dispatch<React.SetStateAction<MoveState>>;
+  setMoveGhosts: React.Dispatch<React.SetStateAction<GhostSpec[]>>;
+  onMoveSelection: (
+    moves: Array<{ commandId: string; position: [number, number, number] }>,
+  ) => void;
+  onSelectInstance: (commandId: string, modKey: boolean) => void;
+}
+
+/**
+ * Handles the move-tool pointer events. Mounted inside the R3F Canvas
+ * so it can read `camera`, `gl`, and `raycaster` from `useThree`.
+ *
+ * Design:
+ *   - pointerdown on a selected cube → start dragging; capture pointer
+ *   - pointerdown on an unselected cube → call onSelectInstance, don't drag
+ *   - pointermove → project onto XZ plane (or Y-axis plane if Shift),
+ *     compute delta, compute proposed positions, check occupancy,
+ *     emit ghost specs
+ *   - pointerup → commit if 'ok', discard if 'blocked'
+ *   - Esc → handled in the outer SceneEditorCanvas effect
+ *
+ * `import * as THREE` is legal here — this is a canvas file.
+ */
+function MoveController({
+  tool,
+  doc,
+  compiled,
+  selection,
+  moveState,
+  setMoveState,
+  setMoveGhosts,
+  onMoveSelection,
+  onSelectInstance,
+}: MoveControllerProps) {
+  const { gl, camera, raycaster, pointer } = useThree();
+
+  // Keep a ref to the latest state so the raw pointer listeners can
+  // read it without closing over a stale version. These listeners are
+  // added once and removed on cleanup.
+  const stateRef = useRef(moveState);
+  useEffect(() => { stateRef.current = moveState; }, [moveState]);
+
+  const selectionRef = useRef(selection);
+  useEffect(() => { selectionRef.current = selection; }, [selection]);
+
+  const docRef = useRef(doc);
+  useEffect(() => { docRef.current = doc; }, [doc]);
+
+  const compiledRef = useRef(compiled);
+  useEffect(() => { compiledRef.current = compiled; }, [compiled]);
+
+  // Build an instancesByKind map for hit-testing.
+  const instancesByKind = useMemo(() => {
+    const m = new Map<string, ObjectInstance[]>();
+    for (const inst of compiled.instances) {
+      let arr = m.get(inst.kindId);
+      if (!arr) { arr = []; m.set(inst.kindId, arr); }
+      arr.push(inst);
+    }
+    return m;
+  }, [compiled.instances]);
+  const instancesByKindRef = useRef(instancesByKind);
+  useEffect(() => { instancesByKindRef.current = instancesByKind; }, [instancesByKind]);
+
+  /** Project the current pointer onto the XZ plane at world Y = `planeY`.
+   *  Returns voxel-space [x, y, z] snapped to integer grid, or null. */
+  const projectXZ = useCallback(
+    (clientX: number, clientY: number, planeY: number): Vec3 | null => {
+      const canvas = gl.domElement;
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = -(((clientY - rect.top) / rect.height) * 2 - 1);
+      // Temporarily override the R3F pointer so raycaster picks up the
+      // right NDC.
+      const savedX = pointer.x;
+      const savedY = pointer.y;
+      pointer.x = nx;
+      pointer.y = ny;
+      raycaster.setFromCamera(pointer, camera);
+      pointer.x = savedX;
+      pointer.y = savedY;
+
+      // Intersect with the horizontal plane at planeY.
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+      const hit = new THREE.Vector3();
+      const ok = raycaster.ray.intersectPlane(plane, hit);
+      if (!ok) return null;
+      const cs = compiledRef.current.cubeSize;
+      return [
+        Math.round(hit.x / cs),
+        Math.round(planeY / cs),
+        Math.round(hit.z / cs),
+      ];
+    },
+    [gl, camera, raycaster, pointer],
+  );
+
+  useEffect(() => {
+    if (tool !== 'move') return;
+
+    const canvas = gl.domElement;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      // Only act on left-button down.
+      const doc = docRef.current;
+      const sel = selectionRef.current;
+      const ibk = instancesByKindRef.current;
+      const cs = compiledRef.current.cubeSize;
+
+      // Raycast to find which cube (if any) was hit.
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+      const savedX = pointer.x;
+      const savedY = pointer.y;
+      pointer.x = nx;
+      pointer.y = ny;
+      raycaster.setFromCamera(pointer, camera);
+      pointer.x = savedX;
+      pointer.y = savedY;
+
+      // Hit-test all instances analytically (same AABB approach as
+      // ContextMenuListener — fast and dependency-free).
+      const half = cs / 2;
+      let bestT = Infinity;
+      let bestInst: ObjectInstance | null = null;
+      for (const inst of compiledRef.current.instances) {
+        const cx = inst.position[0] * cs;
+        const cy = inst.position[1] * cs + cs / 2;
+        const cz = inst.position[2] * cs;
+        const t = rayHitAabb(
+          raycaster.ray.origin,
+          raycaster.ray.direction,
+          [cx - half, cy - half, cz - half],
+          [cx + half, cy + half, cz + half],
+        );
+        if (t !== null && t < bestT) {
+          bestT = t;
+          bestInst = inst;
+        }
+      }
+      void ibk; // suppress unused warning
+
+      if (!bestInst) return; // no cube hit
+
+      const commandId = bestInst.sourceCommandId;
+
+      if (!sel.has(commandId)) {
+        // Hit an unselected cube: select it, don't start drag.
+        onSelectInstance(commandId, e.ctrlKey || e.metaKey);
+        return;
+      }
+
+      // Hit a selected cube: start drag.
+      e.stopPropagation();
+      canvas.setPointerCapture(e.pointerId);
+
+      // Collect original positions of all selected objects.
+      const origPositions = new Map<string, Vec3>();
+      for (const id of sel) {
+        const cmd = doc.commands.find(
+          (c) => c.id === id && c.op === 'placeCube',
+        );
+        if (cmd) {
+          origPositions.set(
+            id,
+            (cmd as { position: Vec3 }).position,
+          );
+        }
+      }
+
+      // Use the first selected object's Y for the drag plane.
+      const firstPos = origPositions.values().next().value as Vec3 | undefined;
+      const planeWorldY = firstPos ? firstPos[1] * compiledRef.current.cubeSize : 0;
+
+      // Derive the start voxel from the pointer position.
+      const startVoxel = projectXZ(e.clientX, e.clientY, planeWorldY) ??
+        (firstPos ? [...firstPos] as Vec3 : [0, 0, 0] as Vec3);
+
+      setMoveState({
+        stage: 'dragging',
+        startVoxel,
+        isYAxis: e.shiftKey,
+        originalPositions: origPositions,
+        proposedPositions: origPositions, // start at original
+        occupancyResult: 'ok',
+      });
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      const state = stateRef.current;
+      if (state.stage !== 'dragging') return;
+
+      const sel = selectionRef.current;
+      const doc = docRef.current;
+      const cs = compiledRef.current.cubeSize;
+
+      let delta: Vec3;
+
+      if (state.isYAxis || e.shiftKey) {
+        // Y-axis drag: compute vertical screen delta from drag start.
+        // We don't have a stored screen-Y anchor here; track via a
+        // data attribute isn't available without a ref. Use a simpler
+        // approach: re-derive from the proposed Y vs original Y.
+        // For Y-axis drag we project onto a vertical plane instead.
+        // Simpler: count pixels of vertical movement scaled to voxels.
+        // We store the screen-Y of the startVoxel projected to screen.
+        // Since we don't have it here, we project the start voxel to
+        // screen and compare.
+        const canvas = gl.domElement;
+        const rect = canvas.getBoundingClientRect();
+        // Project startVoxel to screen.
+        const startWorld = new THREE.Vector3(
+          state.startVoxel[0] * cs,
+          state.startVoxel[1] * cs + cs / 2,
+          state.startVoxel[2] * cs,
+        );
+        const proj = startWorld.clone().project(camera as THREE.PerspectiveCamera);
+        const startScreenY = ((proj.y - 1) / -2) * rect.height + rect.top;
+        const PIXELS_PER_VOXEL = 28;
+        const dy = Math.round((startScreenY - e.clientY) / PIXELS_PER_VOXEL);
+        delta = [0, dy, 0];
+      } else {
+        // XZ plane drag.
+        // Use the Y from the original positions (first selected).
+        const firstEntry = state.originalPositions.entries().next().value as [string, Vec3] | undefined;
+        const origY = firstEntry ? firstEntry[1][1] : 0;
+        const planeWorldY = origY * cs;
+        const currentVoxel = projectXZ(e.clientX, e.clientY, planeWorldY);
+        if (!currentVoxel) return;
+        delta = [
+          currentVoxel[0] - state.startVoxel[0],
+          0,
+          currentVoxel[2] - state.startVoxel[2],
+        ];
+      }
+
+      const proposed = computeMovedPositions(doc, sel, delta);
+      if (!proposed) return;
+
+      const occupancyResult = checkMoveOccupancy(doc, sel, proposed);
+
+      setMoveState((prev) =>
+        prev.stage === 'dragging'
+          ? { ...prev, proposedPositions: proposed, occupancyResult }
+          : prev,
+      );
+
+      // Emit ghost specs for each proposed position.
+      const mode = occupancyResult === 'ok' ? 'solid' : 'blocked';
+      const newGhosts: GhostSpec[] = [];
+      for (const [cmdId, pos] of proposed.entries()) {
+        // Find the kindId for this command.
+        const inst = compiledRef.current.instances.find(
+          (i) => i.sourceCommandId === cmdId,
+        );
+        if (inst) {
+          newGhosts.push({ mode, kindId: inst.kindId, voxel: pos });
+        }
+      }
+      setMoveGhosts(newGhosts);
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const state = stateRef.current;
+      if (state.stage !== 'dragging') return;
+
+      canvas.releasePointerCapture(e.pointerId);
+      setMoveGhosts([]);
+      setMoveState({ stage: 'idle' });
+
+      if (state.occupancyResult === 'blocked') {
+        // Discard — no mutation.
+        return;
+      }
+
+      // Commit the move.
+      const moves = Array.from(state.proposedPositions.entries()).map(
+        ([commandId, position]) => ({ commandId, position }),
+      );
+      onMoveSelection(moves);
+    };
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    return () => {
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+  }, [
+    tool,
+    gl,
+    camera,
+    raycaster,
+    pointer,
+    projectXZ,
+    onSelectInstance,
+    onMoveSelection,
+    setMoveState,
+    setMoveGhosts,
+  ]);
+
+  return null;
 }

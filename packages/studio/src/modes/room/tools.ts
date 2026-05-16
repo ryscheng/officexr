@@ -17,7 +17,7 @@
  *     stages: idle → placed → x-extruded → z-extruded → committed).
  *     Disabled in the toolbar until Task 9 lands.
  */
-export type Tool = 'select' | 'add' | 'delete' | 'tile';
+export type Tool = 'select' | 'add' | 'delete' | 'tile' | 'move';
 
 export const TOOLS: ReadonlyArray<{
   tool: Tool;
@@ -53,5 +53,11 @@ export const TOOLS: ReadonlyArray<{
     description:
       'Place a rectangular tile of cubes. Click 1: origin. Click 2: X row. Click 3: Z grid. Click 4: Y stack. Esc to stop.',
     shortcut: 'T',
+  },
+  {
+    tool: 'move',
+    label: 'Move',
+    description: 'Drag selected objects to move them. Snap to voxel grid on release. Shift = Y-axis.',
+    shortcut: 'M',
   },
 ];

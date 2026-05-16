@@ -132,6 +132,8 @@ export function RoomApp() {
         setTool('delete');
       } else if (k === 't') {
         if (stagedKindId) setTool('tile');
+      } else if (k === 'm') {
+        setTool('move');
       }
     };
     window.addEventListener('keydown', onKey);
@@ -244,6 +246,17 @@ export function RoomApp() {
   );
 
 
+  // Move tool: batch position update. Falls back to multiple
+  // setPositionForCommand calls until Task 03's setPositionMany lands.
+  const handleMoveSelection = useCallback(
+    (moves: Array<{ commandId: string; position: [number, number, number] }>) => {
+      for (const { commandId, position } of moves) {
+        roomDoc.setPositionForCommand(commandId, position);
+      }
+    },
+    [roomDoc],
+  );
+
   // InspectorPanel is rendered directly in <SidePanel> below.
 
   return (
@@ -282,6 +295,8 @@ export function RoomApp() {
           onSetTool={setTool}
           onClickEmpty={roomDoc.clearSelection}
           onContextMenuRequest={handleContextMenuRequest}
+          onMoveSelection={handleMoveSelection}
+          doc={roomDoc.doc}
         />
         <RoomHud
           roomName={roomDoc.roomName}

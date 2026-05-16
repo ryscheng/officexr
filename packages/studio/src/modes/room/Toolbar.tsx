@@ -4,12 +4,14 @@ import { SelectIcon } from '../../ui/icons/SelectIcon.tsx';
 import { AddIcon } from '../../ui/icons/AddIcon.tsx';
 import { DeleteIcon } from '../../ui/icons/DeleteIcon.tsx';
 import { TileIcon } from '../../ui/icons/TileIcon.tsx';
+import { MoveIcon } from '../../ui/icons/MoveIcon.tsx';
 
 const TOOL_ICONS: Record<Tool, React.ReactNode> = {
   select: <SelectIcon />,
   add: <AddIcon />,
   delete: <DeleteIcon />,
   tile: <TileIcon />,
+  move: <MoveIcon />,
 };
 
 interface ToolbarProps {

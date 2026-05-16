@@ -12,8 +12,11 @@ import { ObjectInstances, type MaterialOverride } from '@officexr/world/renderer
  *   - `pulse`: 25%–75% transparent oscillation. Used by the Delete
  *     tool to denote "click will delete this". The PulseDriver
  *     mounts only when at least one pulse-mode ghost exists.
+ *   - `blocked`: red-tinted (color #ef4444), 50% opacity, static.
+ *     Used by the Move tool when the proposed destination overlaps a
+ *     non-moving object — signals that releasing here is rejected.
  */
-export type GhostMode = 'solid' | 'pulse';
+export type GhostMode = 'solid' | 'pulse' | 'blocked';
 
 export interface GhostSpec {
   mode: GhostMode;
@@ -132,7 +135,7 @@ function GhostGroup({
   const materialOverride = useCallback<MaterialOverride>(
     (_kid, base) => {
       // Already cloned? Just sync the per-mode initial opacity (pulse
-      // is overwritten every frame; solid uses 0.5).
+      // is overwritten every frame; solid/blocked use 0.5).
       if (matRef.current) {
         matRef.current.opacity = initialOpacity;
         return matRef.current;
@@ -142,10 +145,14 @@ function GhostGroup({
       m.opacity = initialOpacity;
       m.depthWrite = false;
       m.side = THREE.DoubleSide;
+      // Blocked mode: red tint to signal the position is occupied.
+      if (mode === 'blocked') {
+        m.color.set('#ef4444');
+      }
       matRef.current = m;
       return m;
     },
-    [initialOpacity],
+    [initialOpacity, mode],
   );
 
   // Pulse driver mutates the cloned material in place each frame —
