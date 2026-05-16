@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint:leva-free": "node scripts/lint-leva-free.js",
+    "lint:no-bespoke-renderer": "node scripts/lint-no-bespoke-renderer.js",
     "bots:start": "pnpm --filter @officexr/world bots:start"
   },
   "dependencies": {
