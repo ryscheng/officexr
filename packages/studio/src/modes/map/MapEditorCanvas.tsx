@@ -1,23 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Environment, Sky, Stars, useGLTF } from '@react-three/drei';
+import { Environment, Sky, Stars } from '@react-three/drei';
 import {
   compileScene,
-  useCubeCatalog,
-  type CubeKindEntry,
   type MapDocumentV1,
   type RoomDocument,
   type RoomInstance,
   type SpawnPoint,
 } from '@officexr/world/scenes';
-import {
-  EndlessGrid,
-  buildMaterialForKind,
-  extractGeometryFromGltf,
-  extractMaterialFromGltf,
-} from '@officexr/world/renderer';
-import type { ObjectInstance } from '@officexr/sdk';
+import { EndlessGrid, ObjectInstances } from '@officexr/world/renderer';
+import type { WorldObjects } from '@officexr/sdk';
 import type { MapSelection } from './useMapDocument.ts';
 
 const CUBE_SIZE = 2;
@@ -265,24 +258,26 @@ interface RoomInstanceMeshProps {
 }
 
 /**
- * Renders one `RoomInstance` as a translated/rotated group of
- * InstancedMesh-per-kind. Click handles dispatch selection; drag
- * (left-pointer-down → move) translates the room across the y=0 grid
- * snapping each dragged frame to integer voxel coords.
+ * Renders one `RoomInstance` as a translated/rotated group around the
+ * shared `<ObjectInstances>` renderer. Click handlers dispatch
+ * selection; drag (left-pointer-down → move) translates the room
+ * across the y=0 grid snapping each dragged frame to integer voxel
+ * coords.
  *
- * Compiles the room cube-by-cube via `compileScene` and groups by
- * kind so the rendering path matches `ObjectInstances` (same
- * material override pipeline, same `kind.scale`).
+ * The room's `compileScene` output is converted to a `WorldObjects`
+ * snapshot and fed to `<ObjectInstances worldObjects={…} />`. The
+ * editor no longer owns the per-kind InstancedMesh allocation, the
+ * geometry/material extraction, or the per-instance matrix
+ * composition — that's all in the renderer package now and shared
+ * with Debug/Mugshot/Room.
  *
- * Why a separate component instead of feeding a giant compileMap()
- * snapshot to one shared `<ObjectInstances>`?
- *   - Per-room groups make selection picking trivial (click → know
- *     which instance was hit from the closure).
- *   - The bounding-box outline below maps cleanly to the local-space
- *     AABB without having to maintain a parallel id→bounds lookup.
- *   - The DIP rule: the Map editor stays a `react`-aware orchestrator
- *     and reuses the headless `compileScene` + material helpers
- *     without forking the renderer.
+ * Why per-room mount instead of one flat snapshot for the whole map:
+ * each `RoomInstance` carries its own `rotationY` (0/90/180/270°).
+ * KayKit cubes have orientation-specific bevels, so the rotation has
+ * to live on a parent `<group>` rather than be pre-baked into per-
+ * instance positions. Cross-room kind batching is a future
+ * optimization (mesh merging of contiguous same-kind runs); not in
+ * scope for the unification.
  */
 function RoomInstanceMesh({
   instance,
@@ -293,39 +288,18 @@ function RoomInstanceMesh({
   spawnToolActive,
   onPlaceSpawn,
 }: RoomInstanceMeshProps) {
-  const kinds = useCubeCatalog();
-  const kindById = useMemo(() => {
-    const m = new Map<string, CubeKindEntry>();
-    for (const k of kinds) m.set(k.id, k);
-    return m;
-  }, [kinds]);
-
   const compiled = useMemo(() => {
     if (!room) return null;
     return compileScene(room, CUBE_SIZE);
   }, [room]);
 
-  // Group compiled instances by kind so we render one InstancedMesh
-  // per kind — same shape as ObjectInstances.
-  const usedKinds = useMemo(() => {
-    if (!compiled) return [];
-    const byKind = new Map<string, ObjectInstance[]>();
-    for (const inst of compiled.instances) {
-      let arr = byKind.get(inst.kindId);
-      if (!arr) {
-        arr = [];
-        byKind.set(inst.kindId, arr);
-      }
-      arr.push(inst);
-    }
-    const out: Array<{ kind: CubeKindEntry; instances: ObjectInstance[] }> = [];
-    for (const [kindId, instances] of byKind) {
-      const kind = kindById.get(kindId);
-      if (!kind) continue;
-      out.push({ kind, instances });
-    }
-    return out;
-  }, [compiled, kindById]);
+  const worldObjects: WorldObjects | null = useMemo(() => {
+    if (!compiled) return null;
+    return {
+      cubeSize: CUBE_SIZE,
+      instances: compiled.instances,
+    };
+  }, [compiled]);
 
   // Drag state: a left-pointer-down on the group enters drag mode;
   // pointer-move raycasts the floor to update the room position.
@@ -416,94 +390,47 @@ function RoomInstanceMesh({
 
   const rotationY = (instance.rotationY ?? 0) * (Math.PI / 2);
 
+  // Wrap <ObjectInstances> in a <group> that:
+  //   - applies the room's world transform (position + rotationY)
+  //   - catches pointer events from any of the rendered
+  //     InstancedMeshes (R3F bubbles pointer events up the scene
+  //     graph). Without the wrapper group, we'd need to wire
+  //     per-kind onPointerDown handlers through ObjectInstances'
+  //     prop surface — leakier and editor-specific.
   return (
-    <group position={groupPos} rotation={[0, rotationY, 0]}>
-      {usedKinds.map(({ kind, instances }) => (
-        <RoomKindMesh
-          key={kind.id}
-          kind={kind}
-          instances={instances}
-          onPointerDown={(e) => {
-            if (e.button !== 0) return;
-            e.stopPropagation();
-            if (spawnToolActive) {
-              // Spawn-tool path: drop a spawn at the raycast hit
-              // point, snapped to the nearest cube-grid Y level so
-              // markers land on cube tops (not embedded in sides).
-              onPlaceSpawn(snapToCubeTop(e.point));
-              return;
-            }
-            onSelect();
-            // Capture the raycast hit's offset from the room anchor so
-            // the room doesn't snap its centre to the cursor on drag.
-            dragStartOffset.current = [
-              e.point.x - groupPos[0],
-              0,
-              e.point.z - groupPos[2],
-            ];
-            dragging.current = true;
-          }}
-        />
-      ))}
+    <group
+      position={groupPos}
+      rotation={[0, rotationY, 0]}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        // Only react to cube hits; clicks on the floor / empty
+        // space don't reach here.
+        const hit = e.object as THREE.Object3D & {
+          userData?: { isObjectInstanceMesh?: boolean };
+        };
+        if (!hit.userData?.isObjectInstanceMesh) return;
+        e.stopPropagation();
+        if (spawnToolActive) {
+          // Spawn-tool path: drop a spawn at the raycast hit
+          // point, snapped to the nearest cube-grid Y level so
+          // markers land on cube tops (not embedded in sides).
+          onPlaceSpawn(snapToCubeTop(e.point));
+          return;
+        }
+        onSelect();
+        // Capture the raycast hit's offset from the room anchor so
+        // the room doesn't snap its centre to the cursor on drag.
+        dragStartOffset.current = [
+          e.point.x - groupPos[0],
+          0,
+          e.point.z - groupPos[2],
+        ];
+        dragging.current = true;
+      }}
+    >
+      {worldObjects ? <ObjectInstances worldObjects={worldObjects} /> : null}
       {selected && bounds ? <SelectionOutline min={bounds.min} max={bounds.max} /> : null}
     </group>
-  );
-}
-
-interface RoomKindMeshProps {
-  kind: CubeKindEntry;
-  instances: ObjectInstance[];
-  onPointerDown: (e: any) => void;
-}
-
-function RoomKindMesh({ kind, instances, onPointerDown }: RoomKindMeshProps) {
-  const gltf = useGLTF(kind.gltfPath);
-  const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
-  const mat = useMemo(
-    () => buildMaterialForKind(extractMaterialFromGltf(gltf.scene), kind),
-    [
-      gltf.scene,
-      kind.tint,
-      kind.opacity,
-      kind.roughness,
-      kind.metalness,
-      kind.emissive,
-      kind.emissiveIntensity,
-    ],
-  );
-
-  const meshRef = useRef<THREE.InstancedMesh>(null);
-  const capacity = Math.max(1, instances.length);
-
-  useEffect(() => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
-    const m = new THREE.Matrix4();
-    const pos = new THREE.Vector3();
-    const quat = new THREE.Quaternion();
-    const s = kind.scale;
-    const scale = new THREE.Vector3(s, s, s);
-    for (let i = 0; i < instances.length; i++) {
-      const inst = instances[i];
-      pos.set(
-        inst.position[0] * CUBE_SIZE,
-        inst.position[1] * CUBE_SIZE + CUBE_SIZE / 2,
-        inst.position[2] * CUBE_SIZE,
-      );
-      m.compose(pos, quat, scale);
-      mesh.setMatrixAt(i, m);
-    }
-    mesh.count = instances.length;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [instances, kind.scale, mat]);
-
-  return (
-    <instancedMesh
-      ref={meshRef}
-      args={[geom, mat, capacity]}
-      onPointerDown={onPointerDown}
-    />
   );
 }
 
