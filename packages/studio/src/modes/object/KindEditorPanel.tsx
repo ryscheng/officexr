@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { Suspense, useMemo } from 'react';
+import { useGLTF } from '@react-three/drei';
 import {
   CUBE_KIND_CATEGORIES,
   type CubeKindCategory,
   type CubeKindEntry,
 } from '@officexr/world';
+import { getKindBoundingDimensions } from '@officexr/world/renderer';
 
 import {
   ColorInput,
@@ -79,6 +81,12 @@ export function KindEditorPanel({ kind, applyPatch }: KindEditorPanelProps) {
           step={0.05}
           onChange={(scale) => applyPatch({ scale })}
         />
+      </Section>
+
+      <Section title="Dimensions">
+        <Suspense fallback={<DimensionsFallback />}>
+          <KindDimensionsRows gltfPath={kind.gltfPath} scale={kind.scale} />
+        </Suspense>
       </Section>
 
       <Section title="Material overrides">
@@ -160,6 +168,47 @@ export function KindEditorPanel({ kind, applyPatch }: KindEditorPanelProps) {
 interface LabelInputProps {
   value: string;
   onChange: (next: string) => void;
+}
+
+interface KindDimensionsRowsProps {
+  gltfPath: string;
+  scale: number;
+}
+
+/**
+ * Reads the kind's GLTF (drei caches by URL, so this shares the
+ * same loaded scene the preview canvas already uses) and renders
+ * width / height / depth in meters, post-`scale`. Suspends on
+ * first load of a kind's GLTF — the parent renders a placeholder
+ * fallback during that window.
+ */
+function KindDimensionsRows({ gltfPath, scale }: KindDimensionsRowsProps) {
+  const gltf = useGLTF(gltfPath);
+  const dims = useMemo(
+    () => getKindBoundingDimensions(gltf.scene, scale),
+    [gltf.scene, scale],
+  );
+  return (
+    <>
+      <Readonly label="width" value={formatMeters(dims.width)} />
+      <Readonly label="height" value={formatMeters(dims.height)} />
+      <Readonly label="depth" value={formatMeters(dims.depth)} />
+    </>
+  );
+}
+
+function DimensionsFallback() {
+  return (
+    <>
+      <Readonly label="width" value="…" />
+      <Readonly label="height" value="…" />
+      <Readonly label="depth" value="…" />
+    </>
+  );
+}
+
+function formatMeters(value: number): string {
+  return `${value.toFixed(2)} m`;
 }
 
 /** Tiny inline text field for the "label" row. Kept as a separate

@@ -4,6 +4,7 @@ import {
   buildMaterialForKind,
   extractGeometryFromGltf,
   extractMaterialFromGltf,
+  getKindBoundingDimensions,
   hasMaterialOverrides,
 } from './cube-material.ts';
 import {
@@ -126,5 +127,32 @@ describe('extractGeometryFromGltf / extractMaterialFromGltf', () => {
   it('throws when no mesh is in the scene graph', () => {
     expect(() => extractMaterialFromGltf(new THREE.Group())).toThrow(/material/);
     expect(() => extractGeometryFromGltf(new THREE.Group())).toThrow(/geometry/);
+  });
+});
+
+describe('getKindBoundingDimensions', () => {
+  it('returns the unit-cube extents at scale 1', () => {
+    const dims = getKindBoundingDimensions(makeGltfScene(), 1);
+    expect(dims.width).toBeCloseTo(1);
+    expect(dims.height).toBeCloseTo(1);
+    expect(dims.depth).toBeCloseTo(1);
+  });
+
+  it('multiplies each axis by the kind scale', () => {
+    const dims = getKindBoundingDimensions(makeGltfScene(), 2.5);
+    expect(dims.width).toBeCloseTo(2.5);
+    expect(dims.height).toBeCloseTo(2.5);
+    expect(dims.depth).toBeCloseTo(2.5);
+  });
+
+  it('reports per-axis extents for non-cube geometries', () => {
+    const group = new THREE.Group();
+    const geom = new THREE.BoxGeometry(2, 0.5, 4);
+    const mat = new THREE.MeshStandardMaterial();
+    group.add(new THREE.Mesh(geom, mat));
+    const dims = getKindBoundingDimensions(group, 1);
+    expect(dims.width).toBeCloseTo(2);
+    expect(dims.height).toBeCloseTo(0.5);
+    expect(dims.depth).toBeCloseTo(4);
   });
 });

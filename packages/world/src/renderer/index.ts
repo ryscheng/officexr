@@ -25,11 +25,14 @@ export { EditorCamera } from './EditorCamera.tsx';
 // Renderer-side helpers re-exported for editor overlays (e.g. the
 // Room editor's GhostLayer needs to build a transparent material from
 // the same GLTF geometry the opaque InstancedMesh uses).
+// `hasMaterialOverrides` stays internal to `cube-material.ts` (its
+// test reaches in directly) — no external editor consumes it.
 export {
   buildMaterialForKind,
   extractGeometryFromGltf,
   extractMaterialFromGltf,
-  hasMaterialOverrides,
+  getKindBoundingDimensions,
+  type KindBoundingDimensions,
 } from './cube-material.ts';
 export { EndlessGrid } from './EndlessGrid.tsx';
 

@@ -77,3 +77,36 @@ export function extractGeometryFromGltf(
   if (!geom) throw new Error('No mesh geometry in cube GLTF');
   return geom;
 }
+
+export interface KindBoundingDimensions {
+  /** X-axis extent in world meters (post-`scale`). */
+  width: number;
+  /** Y-axis extent in world meters (post-`scale`). */
+  height: number;
+  /** Z-axis extent in world meters (post-`scale`). */
+  depth: number;
+}
+
+/**
+ * Compute the axis-aligned bounding-box extents of a kind's GLTF
+ * geometry, in meters, after applying the kind's uniform `scale`.
+ * Used by the Object editor's read-only dimensions readout. Kept
+ * here (next to the other GLTF helpers) so the studio panel doesn't
+ * need to import THREE directly.
+ */
+export function getKindBoundingDimensions(
+  scene: THREE.Object3D,
+  scale: number,
+): KindBoundingDimensions {
+  const geom = extractGeometryFromGltf(scene);
+  if (!geom.boundingBox) geom.computeBoundingBox();
+  const bb = geom.boundingBox;
+  if (!bb) {
+    return { width: 0, height: 0, depth: 0 };
+  }
+  return {
+    width: (bb.max.x - bb.min.x) * scale,
+    height: (bb.max.y - bb.min.y) * scale,
+    depth: (bb.max.z - bb.min.z) * scale,
+  };
+}
