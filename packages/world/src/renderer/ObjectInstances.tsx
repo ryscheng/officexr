@@ -38,16 +38,47 @@ for (const kind of CUBE_KINDS) {
   useGLTF.preload(kind.gltfPath);
 }
 
-interface ObjectInstancesProps {
-  store: Store;
-}
+/**
+ * Apply a transformation to a kind's resolved material — e.g. an
+ * editor can dim, tint, or make transparent the cubes it renders.
+ * The base material is the one `buildMaterialForKind` returns; the
+ * override should return the material to actually use (typically a
+ * `.clone()` of the base with mutated properties).
+ */
+export type MaterialOverride = (
+  kindId: string,
+  base: THREE.Material,
+) => THREE.Material;
+
+type ObjectInstancesProps =
+  // Gameplay use: subscribe to a Store and follow its worldObjects.
+  // Publishes the `__OFFICE_OBJECT_INSTANCES__` window marker that
+  // gameplay regression tests assert on.
+  | { store: Store; worldObjects?: undefined; materialOverride?: MaterialOverride }
+  // Editor use: render a static snapshot directly. No store
+  // subscription, no window marker — editors mount their own
+  // ObjectInstances per scene/room and don't need the gameplay
+  // diagnostic.
+  | { store?: undefined; worldObjects: WorldObjects; materialOverride?: MaterialOverride };
 
 /**
- * Renders the compiled scene's cube instances as one InstancedMesh per
- * `kindId`. Reads `state.worldObjects` via a narrow store subscription
- * so it only re-builds matrices when the compiled snapshot actually
- * changes (the studio's Scenes mode pushes a new snapshot whenever
- * commands edit; gameplay broadcast applies snapshots from peers).
+ * Renders a `WorldObjects` snapshot as one InstancedMesh per `kindId`.
+ *
+ * Two ways to feed it:
+ *   - **Gameplay**: pass `store`. ObjectInstances subscribes and
+ *     re-renders whenever `state.worldObjects` changes. Publishes
+ *     `window.__OFFICE_OBJECT_INSTANCES__` for the e2e regression
+ *     suite.
+ *   - **Editor**: pass `worldObjects` directly. ObjectInstances
+ *     renders the snapshot as-is; the editor owns when to recompute
+ *     it. No window marker.
+ *
+ * In both modes the same `KindInstanceGroup` / `PrimitiveInstance
+ * Group` does the per-kind rendering — the prop just decides where
+ * the snapshot comes from. This keeps every mode (Debug, Mugshot,
+ * Map, Room, Object preview) on a single rendering code path; the
+ * difference between modes is composition above ObjectInstances,
+ * not duplication of it.
  *
  * Subscribes to the live cube catalog so per-kind material overrides
  * (tint, opacity, roughness, metalness, emissive) and the per-kind
@@ -56,7 +87,27 @@ interface ObjectInstancesProps {
  * Coords: each instance's `position` is integer voxel space; world
  * position = `position * cubeSize`.
  */
-export function ObjectInstances({ store }: ObjectInstancesProps) {
+export function ObjectInstances(props: ObjectInstancesProps) {
+  // The discriminated union guarantees exactly one of these is set.
+  return props.worldObjects !== undefined ? (
+    <ObjectInstancesView
+      worldObjects={props.worldObjects}
+      materialOverride={props.materialOverride}
+    />
+  ) : (
+    <ObjectInstancesFromStore
+      store={props.store}
+      materialOverride={props.materialOverride}
+    />
+  );
+}
+
+interface FromStoreProps {
+  store: Store;
+  materialOverride?: MaterialOverride;
+}
+
+function ObjectInstancesFromStore({ store, materialOverride }: FromStoreProps) {
   const [snapshot, setSnapshot] = useState<WorldObjects>(
     () => store.getState().worldObjects,
   );
@@ -75,6 +126,38 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
     );
   }, [store]);
 
+  // Publish a render-marker on the window for regression tests.
+  // If <ObjectInstances> is ever again forgotten in Scene.tsx (as
+  // happened during the studio refactor), `__OFFICE_OBJECT_INSTANCES__`
+  // is undefined and the e2e test "Map switch in Debug actually
+  // renders the new cubes" fails fast with a clear message.
+  //
+  // The marker is store-only because:
+  //   - Editors mount their own ObjectInstances per snapshot; the
+  //     global window key would race between editor + (some future)
+  //     simultaneously-mounted gameplay scene.
+  //   - The gameplay regression tests already only run against
+  //     Debug/Mugshot, which take this branch.
+  return (
+    <ObjectInstancesView
+      worldObjects={snapshot}
+      materialOverride={materialOverride}
+      publishWindowMarker
+    />
+  );
+}
+
+interface ViewProps {
+  worldObjects: WorldObjects;
+  materialOverride?: MaterialOverride;
+  publishWindowMarker?: boolean;
+}
+
+function ObjectInstancesView({
+  worldObjects,
+  materialOverride,
+  publishWindowMarker,
+}: ViewProps) {
   const kinds = useCubeCatalog();
   const kindById = useMemo(() => {
     const m = new Map<string, CubeKindEntry>();
@@ -95,7 +178,7 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
   // otherwise trigger 281 useGLTF suspensions on mount.
   const { usedKinds, usedPrimitives } = useMemo(() => {
     const byKind = new Map<string, ObjectInstance[]>();
-    for (const inst of snapshot.instances) {
+    for (const inst of worldObjects.instances) {
       let arr = byKind.get(inst.kindId);
       if (!arr) {
         arr = [];
@@ -103,7 +186,7 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
       }
       arr.push(inst);
     }
-    const kinds: Array<{ kind: CubeKindEntry; instances: ObjectInstance[] }> = [];
+    const out: Array<{ kind: CubeKindEntry; instances: ObjectInstance[] }> = [];
     const primitives: Array<{
       kindId: string;
       color: string;
@@ -120,19 +203,13 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
       }
       const kind = kindById.get(kindId);
       if (!kind) continue;
-      kinds.push({ kind, instances });
+      out.push({ kind, instances });
     }
-    return { usedKinds: kinds, usedPrimitives: primitives };
-  }, [snapshot, kindById]);
+    return { usedKinds: out, usedPrimitives: primitives };
+  }, [worldObjects, kindById]);
 
-  // Publish a render-marker on the window for regression tests.
-  // If <ObjectInstances> is ever again forgotten in Scene.tsx (as
-  // happened during the studio refactor), `__OFFICE_OBJECT_INSTANCES__`
-  // is undefined and the e2e test "Map switch in Debug actually
-  // renders the new cubes" fails fast with a clear message. Also
-  // exposes per-kind counts so a "mesh count out of sync with store"
-  // class of bug gets caught.
   useEffect(() => {
+    if (!publishWindowMarker) return;
     const win = globalThis as unknown as {
       __OFFICE_OBJECT_INSTANCES__?: {
         storeCount: number;
@@ -140,7 +217,7 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
       };
     };
     win.__OFFICE_OBJECT_INSTANCES__ = {
-      storeCount: snapshot.instances.length,
+      storeCount: worldObjects.instances.length,
       perKind: [
         ...usedKinds.map(({ kind, instances }) => ({
           kindId: kind.id,
@@ -155,7 +232,7 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
     return () => {
       delete win.__OFFICE_OBJECT_INSTANCES__;
     };
-  }, [snapshot, usedKinds, usedPrimitives]);
+  }, [worldObjects, usedKinds, usedPrimitives, publishWindowMarker]);
 
   return (
     <>
@@ -164,7 +241,8 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
           key={kind.id}
           kind={kind}
           instances={instances}
-          cubeSize={snapshot.cubeSize}
+          cubeSize={worldObjects.cubeSize}
+          materialOverride={materialOverride}
         />
       ))}
       {usedPrimitives.map(({ kindId, color, instances }) => (
@@ -173,7 +251,7 @@ export function ObjectInstances({ store }: ObjectInstancesProps) {
           kindId={kindId}
           color={color}
           instances={instances}
-          cubeSize={snapshot.cubeSize}
+          cubeSize={worldObjects.cubeSize}
         />
       ))}
     </>
@@ -184,9 +262,15 @@ interface KindInstanceGroupProps {
   kind: CubeKindEntry;
   instances: ObjectInstance[];
   cubeSize: number;
+  materialOverride?: MaterialOverride;
 }
 
-function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps) {
+function KindInstanceGroup({
+  kind,
+  instances,
+  cubeSize,
+  materialOverride,
+}: KindInstanceGroupProps) {
   const gltf = useGLTF(kind.gltfPath);
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
   // Clone the GLTF material per kind so per-kind override edits are
@@ -194,18 +278,20 @@ function KindInstanceGroup({ kind, instances, cubeSize }: KindInstanceGroupProps
   // GLTF asset. The clone happens once per kind material-override
   // signature; in-place mutation of an existing clone is avoided so
   // React's effect doesn't fight the renderer's frame loop.
-  const mat = useMemo(
-    () => buildMaterialForKind(extractMaterialFromGltf(gltf.scene), kind),
-    [
-      gltf.scene,
-      kind.tint,
-      kind.opacity,
-      kind.roughness,
-      kind.metalness,
-      kind.emissive,
-      kind.emissiveIntensity,
-    ],
-  );
+  const mat = useMemo(() => {
+    const base = buildMaterialForKind(extractMaterialFromGltf(gltf.scene), kind);
+    return materialOverride ? materialOverride(kind.id, base) : base;
+  }, [
+    gltf.scene,
+    kind.id,
+    kind.tint,
+    kind.opacity,
+    kind.roughness,
+    kind.metalness,
+    kind.emissive,
+    kind.emissiveIntensity,
+    materialOverride,
+  ]);
 
   const meshRef = useRef<THREE.InstancedMesh>(null);
   // Allocate at least 1 instance so InstancedMesh isn't constructed
