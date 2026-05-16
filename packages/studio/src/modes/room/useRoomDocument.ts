@@ -8,6 +8,7 @@ import {
   newPlaceCube,
   serializeRoom,
   type CubeFace,
+  type PlaceCubeCommand,
   type RoomDocument,
   type RoomGroup,
   type RoomStorage,
@@ -18,6 +19,8 @@ import {
   selectionFromToggle,
   type GroupLookup,
 } from './room-selection.ts';
+import { RoomHistory } from './RoomHistory.ts';
+import type { EditAction } from './EditAction.ts';
 
 const LAST_ROOM_KEY = 'officexr:studio:lastRoom';
 const DEFAULT_ROOM_NAME = 'default-v2';
@@ -54,6 +57,11 @@ export interface RoomDocLookup {
  * SDK store, no NetEvent broadcast. Persistence runs through
  * `RoomStorage`: filesystem in dev (Vite middleware at `/api/rooms`),
  * localStorage fallback otherwise.
+ *
+ * History is managed by a `RoomHistory` instance held in a `useRef`.
+ * Every mutator constructs an `EditAction`, pushes it to the history,
+ * then calls `setDoc(history.currentDoc)`. This enables undo, redo,
+ * and time-travel via `jumpTo`.
  *
  * Promoted from `useSceneDocument` in Task 6 of the studio
  * multi-editor restructure:
@@ -101,6 +109,11 @@ export function useRoomDocument(): {
   loadRoom: (name: string) => Promise<void>;
   newRoom: (name: string) => void;
   listRooms: () => Promise<string[]>;
+  undo: () => void;
+  redo: () => void;
+  jumpTo: (nodeId: string) => void;
+  historyNodes: ReadonlyArray<{ id: string; action: EditAction; label: string }>;
+  historyCurrentNodeId: string | null;
 } {
   const storage = useMemo<RoomStorage>(() => {
     try {
@@ -123,6 +136,19 @@ export function useRoomDocument(): {
   const [selection, setSelectionState] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+
+  // RoomHistory is held in a ref — its identity is stable across renders,
+  // which is required because RoomHistory carries mutable linked-list state.
+  // Storing it as state would cause double-initialization issues and incorrect
+  // behavior under React StrictMode.
+  const historyRef = useRef<RoomHistory | null>(null);
+
+  function getHistory(baseDoc: RoomDocument): RoomHistory {
+    if (!historyRef.current) {
+      historyRef.current = new RoomHistory(baseDoc);
+    }
+    return historyRef.current;
+  }
 
   // Re-compile on every doc change. Cheap: pure function, scenes are
   // small (hundreds of cubes at most for v1) and `compileScene` runs
@@ -183,6 +209,7 @@ export function useRoomDocument(): {
           // Brand-new room: start with an empty doc named appropriately.
           const blank = emptyRoomDocument(roomName);
           setDoc(blank);
+          historyRef.current = new RoomHistory(blank);
           lastSavedJsonRef.current = JSON.stringify({
             commands: blank.commands,
             groups: blank.groups,
@@ -191,6 +218,7 @@ export function useRoomDocument(): {
           return;
         }
         setDoc(loaded);
+        historyRef.current = new RoomHistory(loaded);
         lastSavedJsonRef.current = JSON.stringify({
           commands: loaded.commands,
           groups: loaded.groups,
@@ -201,6 +229,7 @@ export function useRoomDocument(): {
         console.warn(`[room] load("${roomName}") failed:`, err);
         const blank = emptyRoomDocument(roomName);
         setDoc(blank);
+        historyRef.current = new RoomHistory(blank);
         lastSavedJsonRef.current = JSON.stringify({
           commands: blank.commands,
           groups: blank.groups,
@@ -295,19 +324,25 @@ export function useRoomDocument(): {
   );
 
   // --- Mutators (commands) ---------------------------------------
+  // Pattern: construct EditAction → push to history → setDoc(history.currentDoc)
 
   const placeCube = useCallback(
     (kindId: string, position?: [number, number, number]) => {
       const cmd = newPlaceCube({ kindId, position });
-      setDoc((prev) => ({
-        ...prev,
-        updatedAt: Date.now(),
-        commands: [...prev.commands, cmd],
-      }));
+      const action: EditAction = {
+        type: 'place',
+        commandId: cmd.id,
+        kindId,
+        position: position ?? [0, 0, 0],
+      };
+      const h = getHistory(doc);
+      h.push(action);
+      setDoc(h.currentDoc);
       setSelectionState(new Set([cmd.id]));
       return cmd.id;
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
   );
 
   const placeMany = useCallback(
@@ -316,32 +351,28 @@ export function useRoomDocument(): {
       positions: ReadonlyArray<[number, number, number]>,
       groupId: string | null = null,
     ) => {
+      // Pre-mint command IDs before constructing the action so the EditAction
+      // carries stable ids that match what applyAction will create.
       const cmds = positions.map((pos) =>
         newPlaceCube({ kindId, position: pos }),
       );
-      setDoc((prev) => {
-        const groups = { ...prev.groups };
-        if (groupId && groups[groupId]) {
-          groups[groupId] = {
-            ...groups[groupId],
-            commandIds: [
-              ...groups[groupId].commandIds,
-              ...cmds.map((c) => c.id),
-            ],
-          };
-        }
-        return {
-          ...prev,
-          updatedAt: Date.now(),
-          commands: [...prev.commands, ...cmds],
-          groups,
-        };
-      });
+      const action: EditAction = {
+        type: 'placeMany',
+        commandIds: cmds.map((c) => c.id),
+        kindId,
+        positions: positions as [number, number, number][],
+        groupId: groupId ?? null,
+      };
+      const h = getHistory(doc);
+      h.push(action);
+      setDoc(h.currentDoc);
       return cmds.map((c) => c.id);
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
   );
 
+  // TODO Task 04: remove this mutator
   const extrudeFromFace = useCallback(
     (targetCommandId: string, face: CubeFace, count: number) => {
       const cmd = newExtrude({ targetCommandId, face, count });
@@ -358,30 +389,27 @@ export function useRoomDocument(): {
 
   const setKindForCommand = useCallback(
     (commandId: string, kindId: string) => {
-      setDoc((prev) => ({
-        ...prev,
-        updatedAt: Date.now(),
-        commands: prev.commands.map((c) =>
-          c.id === commandId && c.op === 'placeCube' ? { ...c, kindId } : c,
-        ),
-      }));
+      const action: EditAction = { type: 'setKind', commandId, kindId };
+      const h = getHistory(doc);
+      h.push(action);
+      setDoc(h.currentDoc);
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
   );
 
   const setPositionForCommand = useCallback(
     (commandId: string, position: [number, number, number]) => {
-      setDoc((prev) => ({
-        ...prev,
-        updatedAt: Date.now(),
-        commands: prev.commands.map((c) =>
-          c.id === commandId && c.op === 'placeCube' ? { ...c, position } : c,
-        ),
-      }));
+      const action: EditAction = { type: 'setPosition', commandId, position };
+      const h = getHistory(doc);
+      h.push(action);
+      setDoc(h.currentDoc);
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
   );
 
+  // TODO Task 04: remove this mutator
   const setExtrudeFace = useCallback(
     (commandId: string, face: CubeFace) => {
       setDoc((prev) => ({
@@ -395,6 +423,7 @@ export function useRoomDocument(): {
     [],
   );
 
+  // TODO Task 04: remove this mutator
   const setExtrudeCount = useCallback(
     (commandId: string, count: number) => {
       setDoc((prev) => ({
@@ -410,51 +439,51 @@ export function useRoomDocument(): {
     [],
   );
 
-  // Internal helper: drop a SET of command ids in one doc update,
-  // cascading through groups (a group whose membership is fully gone
-  // is also removed) and extrude targets (an extrude pointing at a
-  // deleted command becomes a no-op anyway, so we drop the extrude
-  // command from the history).
+  // Internal helper: record a delete action to history, then update doc.
+  // The delete action carries enough info for undo (deletedCommands + groupsAffected).
   const deleteCommandsInternal = useCallback(
     (toDelete: ReadonlySet<string>) => {
       if (toDelete.size === 0) return;
-      setDoc((prev) => {
-        // Expand `toDelete` through groups: deleting any group member
-        // pulls every sibling in too. Single pass is sufficient because
-        // groups don't nest in v1.
-        const expanded = new Set(toDelete);
-        for (const g of Object.values(prev.groups)) {
-          const overlaps = g.commandIds.some((cid) => expanded.has(cid));
-          if (overlaps) for (const cid of g.commandIds) expanded.add(cid);
+
+      // Build delete action payload from the current doc (before the delete).
+      const currentDoc = historyRef.current?.currentDoc ?? doc;
+
+      // Expand through groups: deleting any group member pulls every sibling.
+      const expanded = new Set(toDelete);
+      for (const g of Object.values(currentDoc.groups)) {
+        const overlaps = g.commandIds.some((cid) => expanded.has(cid));
+        if (overlaps) for (const cid of g.commandIds) expanded.add(cid);
+      }
+
+      const deletedCommands = currentDoc.commands.filter(
+        (c): c is PlaceCubeCommand => expanded.has(c.id) && c.op === 'placeCube',
+      );
+      const groupsAffected: Record<string, string[]> = {};
+      for (const g of Object.values(currentDoc.groups)) {
+        if (g.commandIds.some((cid) => expanded.has(cid))) {
+          groupsAffected[g.id] = g.commandIds;
         }
-        const commands = prev.commands.filter(
-          (c) =>
-            !expanded.has(c.id) &&
-            !(c.op === 'extrude' && expanded.has(c.targetCommandId)),
-        );
-        const groups: Record<string, RoomGroup> = {};
-        for (const g of Object.values(prev.groups)) {
-          const remaining = g.commandIds.filter((cid) => !expanded.has(cid));
-          // A singleton group is meaningless — drop it entirely so we
-          // never end up with a group of one.
-          if (remaining.length >= 2) {
-            groups[g.id] = { ...g, commandIds: remaining };
-          }
-        }
-        return {
-          ...prev,
-          updatedAt: Date.now(),
-          commands,
-          groups,
-        };
-      });
+      }
+
+      const action: EditAction = {
+        type: 'delete',
+        commandIds: Array.from(expanded),
+        deletedCommands,
+        groupsAffected,
+      };
+
+      const h = getHistory(currentDoc);
+      h.push(action);
+      setDoc(h.currentDoc);
+
       setSelectionState((prev) => {
         const next = new Set(prev);
-        for (const id of toDelete) next.delete(id);
+        for (const id of expanded) next.delete(id);
         return next;
       });
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
   );
 
   const deleteCommand = useCallback(
@@ -465,10 +494,7 @@ export function useRoomDocument(): {
   );
 
   const deleteSelection = useCallback(() => {
-    // Reads the current selection synchronously and dispatches. The
-    // selection state ref is read OUTSIDE the updater so the updater
-    // body stays pure (StrictMode double-invokes wouldn't burn extra
-    // group ids or fire extra setDoc calls).
+    // Reads the current selection synchronously and dispatches.
     deleteCommandsInternal(selection);
   }, [deleteCommandsInternal, selection]);
 
@@ -478,86 +504,107 @@ export function useRoomDocument(): {
     (commandIds: Iterable<string>, label?: string): string | null => {
       const ids = Array.from(new Set(commandIds));
       if (ids.length < 2) return null;
-      // Validate against the live `doc.groups` BEFORE entering the
-      // updater so the function's return value reflects the real
-      // outcome. The updater must stay pure: it's allowed to be
-      // called twice under React StrictMode and re-running it must
-      // produce the same shape.
+
+      const currentDoc = historyRef.current?.currentDoc ?? doc;
+
+      // Validate against the live doc.groups before constructing the action.
       const inAny = ids.some((cid) =>
-        Object.values(doc.groups).some((g) => g.commandIds.includes(cid)),
+        Object.values(currentDoc.groups).some((g) => g.commandIds.includes(cid)),
       );
       if (inAny) return null;
-      // Mint the id outside the updater for the same reason — calling
-      // `mintGroupId()` inside the updater would burn a new id on
-      // every dev double-invoke.
+
       const groupId = mintGroupId();
-      setDoc((prev) => {
-        // Race guard: another mutation could have grouped one of the
-        // ids between the validation above and the updater running.
-        // If so, treat this as a no-op rather than violating the v1
-        // "at most one group per command" invariant.
-        const stillFree = ids.every((cid) =>
-          Object.values(prev.groups).every((g) => !g.commandIds.includes(cid)),
-        );
-        if (!stillFree) return prev;
-        return {
-          ...prev,
-          updatedAt: Date.now(),
-          groups: {
-            ...prev.groups,
-            [groupId]: { id: groupId, commandIds: ids, label },
-          },
-        };
-      });
+      const action: EditAction = { type: 'group', groupId, commandIds: ids, label };
+      const h = getHistory(currentDoc);
+      h.push(action);
+      setDoc(h.currentDoc);
       return groupId;
     },
-    [doc.groups],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
   );
 
-  const ungroupCommands = useCallback((groupId: string) => {
-    setDoc((prev) => {
-      if (!prev.groups[groupId]) return prev;
-      const { [groupId]: _drop, ...rest } = prev.groups;
-      void _drop;
-      return {
-        ...prev,
-        updatedAt: Date.now(),
-        groups: rest,
+  const ungroupCommands = useCallback(
+    (groupId: string) => {
+      const currentDoc = historyRef.current?.currentDoc ?? doc;
+      const group = currentDoc.groups[groupId];
+      if (!group) return;
+
+      const action: EditAction = {
+        type: 'ungroup',
+        groupId,
+        commandIds: group.commandIds,
+        label: group.label,
       };
-    });
-  }, []);
+      const h = getHistory(currentDoc);
+      h.push(action);
+      setDoc(h.currentDoc);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
+  );
 
   const addToGroup = useCallback(
     (groupId: string, commandIds: Iterable<string>) => {
-      setDoc((prev) => {
-        const g = prev.groups[groupId];
-        if (!g) return prev;
-        const incoming = Array.from(commandIds).filter(
-          (cid) => !g.commandIds.includes(cid),
-        );
-        if (incoming.length === 0) return prev;
-        return {
-          ...prev,
-          updatedAt: Date.now(),
-          groups: {
-            ...prev.groups,
-            [groupId]: {
-              ...g,
-              commandIds: [...g.commandIds, ...incoming],
-            },
-          },
-        };
-      });
+      const currentDoc = historyRef.current?.currentDoc ?? doc;
+      const g = currentDoc.groups[groupId];
+      if (!g) return;
+
+      const incoming = Array.from(commandIds).filter(
+        (cid) => !g.commandIds.includes(cid),
+      );
+      if (incoming.length === 0) return;
+
+      const action: EditAction = { type: 'addToGroup', groupId, commandIds: incoming };
+      const h = getHistory(currentDoc);
+      h.push(action);
+      setDoc(h.currentDoc);
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
   );
+
+  // --- History ---------------------------------------------------
+
+  const undo = useCallback(() => {
+    const h = historyRef.current;
+    if (!h || !h.canUndo) return;
+    h.undo();
+    setDoc(h.currentDoc);
+    // Clear selection after undo to avoid dangling refs
+    setSelectionState(new Set());
+  }, []);
+
+  const redo = useCallback(() => {
+    const h = historyRef.current;
+    if (!h || !h.canRedo) return;
+    h.redo();
+    setDoc(h.currentDoc);
+    setSelectionState(new Set());
+  }, []);
+
+  const jumpTo = useCallback((nodeId: string) => {
+    const h = historyRef.current;
+    if (!h) return;
+    h.jumpTo(nodeId);
+    setDoc(h.currentDoc);
+    setSelectionState(new Set());
+  }, []);
+
+  // Derived from ref synchronously — no separate state needed.
+  const historyNodes = historyRef.current?.getNodes() ?? [];
+  const historyCurrentNodeId = historyRef.current?.currentNodeId ?? null;
+
+  // --- Persistence -----------------------------------------------
 
   const loadRoom = useCallback(async (name: string) => {
     setRoomName(name);
   }, []);
 
   const newRoom = useCallback((name: string) => {
-    setDoc(emptyRoomDocument(name));
+    const blank = emptyRoomDocument(name);
+    setDoc(blank);
+    historyRef.current = new RoomHistory(blank);
     setSelectionState(new Set());
     setRoomName(name);
   }, []);
@@ -593,5 +640,10 @@ export function useRoomDocument(): {
     loadRoom,
     newRoom,
     listRooms,
+    undo,
+    redo,
+    jumpTo,
+    historyNodes,
+    historyCurrentNodeId,
   };
 }
