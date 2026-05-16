@@ -171,4 +171,33 @@ describe('RoomHistory', () => {
     expect(nodes[0]).toHaveProperty('label');
     expect(nodes[0]).toHaveProperty('action');
   });
+
+  it('setPositionMany — pushing one action for N objects grows historyNodes by exactly 1, not N', () => {
+    // Regression guard: a move-tool drag committing 3 positions must produce
+    // a single setPositionMany history node so one Ctrl+Z undoes the whole drag.
+    const history = new RoomHistory(baseDoc);
+    history.push(makePlaceAction('cmd-1', 'block-grass'));
+    history.push({ type: 'place', commandId: 'cmd-2', kindId: 'block-grass', position: [1, 0, 0] });
+    history.push({ type: 'place', commandId: 'cmd-3', kindId: 'block-grass', position: [2, 0, 0] });
+    expect(history.getNodes()).toHaveLength(3);
+
+    // One setPositionMany action moving all three objects.
+    history.push({
+      type: 'setPositionMany',
+      moves: [
+        { commandId: 'cmd-1', position: [5, 0, 5] },
+        { commandId: 'cmd-2', position: [6, 0, 5] },
+        { commandId: 'cmd-3', position: [7, 0, 5] },
+      ],
+    });
+
+    // History must have grown by exactly 1, not 3.
+    expect(history.getNodes()).toHaveLength(4);
+    expect(history.getNodes()[3].action.type).toBe('setPositionMany');
+
+    // Undo once must revert all three objects to their prior positions.
+    history.undo();
+    expect(history.getNodes()).toHaveLength(4); // node list unchanged after undo
+    expect(history.currentDoc.commands.find((c) => c.id === 'cmd-1')).toBeDefined();
+  });
 });

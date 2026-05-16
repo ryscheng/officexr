@@ -1314,19 +1314,6 @@ function MoveController({
   const compiledRef = useRef(compiled);
   useEffect(() => { compiledRef.current = compiled; }, [compiled]);
 
-  // Build an instancesByKind map for hit-testing.
-  const instancesByKind = useMemo(() => {
-    const m = new Map<string, ObjectInstance[]>();
-    for (const inst of compiled.instances) {
-      let arr = m.get(inst.kindId);
-      if (!arr) { arr = []; m.set(inst.kindId, arr); }
-      arr.push(inst);
-    }
-    return m;
-  }, [compiled.instances]);
-  const instancesByKindRef = useRef(instancesByKind);
-  useEffect(() => { instancesByKindRef.current = instancesByKind; }, [instancesByKind]);
-
   /** Project the current pointer onto the XZ plane at world Y = `planeY`.
    *  Returns voxel-space [x, y, z] snapped to integer grid, or null. */
   const projectXZ = useCallback(
@@ -1370,7 +1357,6 @@ function MoveController({
       // Only act on left-button down.
       const doc = docRef.current;
       const sel = selectionRef.current;
-      const ibk = instancesByKindRef.current;
       const cs = compiledRef.current.cubeSize;
 
       // Raycast to find which cube (if any) was hit.
@@ -1405,7 +1391,6 @@ function MoveController({
           bestInst = inst;
         }
       }
-      void ibk; // suppress unused warning
 
       if (!bestInst) return; // no cube hit
 

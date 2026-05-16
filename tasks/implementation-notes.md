@@ -74,5 +74,15 @@
 
 - **Decisions**: Split the move tool's geometry into two pure modules: `moveOccupancy.ts` (collision check) and `moveDelta.ts` (position translation). The `MoveController` R3F component handles pointer events inside the Canvas so it can access `camera`, `gl`, and `raycaster` from `useThree`. Used a ref-based approach (`stateRef`, `selectionRef`, `docRef`, `compiledRef`) to give the raw pointer listeners access to the latest state without re-binding the listeners on every render.
 - **Deviations**: The `MoveState` type stores `proposedPositions` and `occupancyResult` directly on the dragging state (rather than in separate `useState` hooks) so the pointer-up handler can read a consistent snapshot without closure issues.
-- **Trade-offs**: The move tool commits via multiple `setPositionForCommand` calls (one per selected object) rather than a single `setPositionMany` action — this is the documented fallback until Task 03's `setPositionMany` is wired. Each call pushes a separate history node. The comment in `handleMoveSelection` explains how to upgrade this once `setPositionMany` lands.
+- **Trade-offs**: None remaining — the original fallback to multiple `setPositionForCommand` calls has been replaced; see Critical Fix below.
 - **Risks**: XZ-plane projection uses `raycaster.ray.intersectPlane` against a horizontal plane at the first selected object's Y. If no objects are selected (edge case), defaults to world Y=0.
+
+## Critical Fix: Move Tool — Single `setPositionMany` History Action (review-report §Critical 1)
+
+- **Problem**: The move tool was committing N separate `setPositionForCommand` history actions per drag (one per selected object), requiring N Ctrl+Zs to undo a multi-object move.
+- **Fix**:
+  1. Added `setPositionMany(moves)` mutator to `useRoomDocument.ts` — constructs a single `setPositionMany` EditAction and pushes it through the existing history pipeline (same pattern as `setPositionForCommand`).
+  2. Updated `handleMoveSelection` in `RoomApp.tsx` to call `roomDoc.setPositionMany(moves)` instead of looping `setPositionForCommand`.
+  3. Removed the dead `instancesByKindRef` block (lines 1318–1328 pre-fix) from `MoveController` in `SceneEditorCanvas.tsx` — the `instancesByKind` map was computed but never read; the `void ibk;` suppression was the only consumer.
+  4. Added regression test `setPositionMany — pushing one action for N objects grows historyNodes by exactly 1, not N` in `RoomHistory.test.ts` to lock the invariant.
+- **Files changed**: `useRoomDocument.ts`, `RoomApp.tsx`, `SceneEditorCanvas.tsx`, `RoomHistory.test.ts`.

@@ -246,13 +246,11 @@ export function RoomApp() {
   );
 
 
-  // Move tool: batch position update. Falls back to multiple
-  // setPositionForCommand calls until Task 03's setPositionMany lands.
+  // Move tool: commit all position updates as a single setPositionMany
+  // history action so the entire drag undoes in one Ctrl+Z.
   const handleMoveSelection = useCallback(
     (moves: Array<{ commandId: string; position: [number, number, number] }>) => {
-      for (const { commandId, position } of moves) {
-        roomDoc.setPositionForCommand(commandId, position);
-      }
+      roomDoc.setPositionMany(moves);
     },
     [roomDoc],
   );

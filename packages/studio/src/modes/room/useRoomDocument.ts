@@ -92,6 +92,9 @@ export function useRoomDocument(): {
     commandId: string,
     position: [number, number, number],
   ) => void;
+  setPositionMany: (
+    moves: Array<{ commandId: string; position: [number, number, number] }>,
+  ) => void;
   deleteCommand: (commandId: string) => void;
   deleteSelection: () => void;
   groupCommands: (commandIds: Iterable<string>, label?: string) => string | null;
@@ -385,6 +388,18 @@ export function useRoomDocument(): {
     [doc],
   );
 
+  const setPositionMany = useCallback(
+    (moves: Array<{ commandId: string; position: [number, number, number] }>) => {
+      if (moves.length === 0) return;
+      const action: EditAction = { type: 'setPositionMany', moves };
+      const h = getHistory(doc);
+      h.push(action);
+      setDoc(h.currentDoc);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
+  );
+
   // Internal helper: record a delete action to history, then update doc.
   // The delete action carries enough info for undo (deletedCommands + groupsAffected).
   const deleteCommandsInternal = useCallback(
@@ -575,6 +590,7 @@ export function useRoomDocument(): {
     placeMany,
     setKindForCommand,
     setPositionForCommand,
+    setPositionMany,
     deleteCommand,
     deleteSelection,
     groupCommands,
