@@ -89,6 +89,24 @@ export function RoomApp() {
           }
           return;
         }
+        // Ctrl/Cmd+Shift+Z = redo (must come BEFORE plain Z to avoid misfire)
+        if (k === 'z' && e.shiftKey) {
+          e.preventDefault();
+          roomDoc.redo();
+          return;
+        }
+        // Ctrl/Cmd+Z = undo
+        if (k === 'z') {
+          e.preventDefault();
+          roomDoc.undo();
+          return;
+        }
+        // Ctrl+Y = redo (Windows convention). metaKey+Y is uncommon on Mac, skip it.
+        if (k === 'y' && !e.metaKey) {
+          e.preventDefault();
+          roomDoc.redo();
+          return;
+        }
         return;
       }
       // Delete / Backspace removes the current selection.
