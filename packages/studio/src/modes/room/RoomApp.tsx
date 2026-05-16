@@ -243,13 +243,6 @@ export function RoomApp() {
     [roomDoc],
   );
 
-  const handleHistoryClick = useCallback(
-    (commandId: string, modKey: boolean) => {
-      if (modKey) roomDoc.toggleFromClick(commandId);
-      else roomDoc.pickFromClick(commandId);
-    },
-    [roomDoc],
-  );
 
   // InspectorPanel is rendered directly in <SidePanel> below.
 
@@ -310,11 +303,9 @@ export function RoomApp() {
           </div>
           <div style={{ flex: '0 0 auto', maxHeight: '45%', overflowY: 'auto' }}>
             <CommandHistory
-              commands={roomDoc.doc.commands}
-              selection={roomDoc.selection}
-              commandToGroup={roomDoc.lookup.commandToGroup}
-              onSelect={handleHistoryClick}
-              onDelete={roomDoc.deleteCommand}
+              nodes={roomDoc.historyNodes}
+              currentNodeId={roomDoc.historyCurrentNodeId}
+              onJumpTo={roomDoc.jumpTo}
             />
           </div>
         </div>

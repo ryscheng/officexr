@@ -1,36 +1,33 @@
 import React from 'react';
-import type { SceneCommand } from '@officexr/world/scenes';
+import type { EditAction } from './EditAction.ts';
 
 interface CommandHistoryProps {
-  commands: SceneCommand[];
-  selection: ReadonlySet<string>;
-  /** `(id, modKey)` — Ctrl/Cmd toggles, plain replaces. The
-   * inspector can read modKey off the React event but the history
-   * list does it via the passed flag so its keyboard story stays
-   * consistent. */
-  onSelect: (commandId: string, modKey: boolean) => void;
-  onDelete: (commandId: string) => void;
-  /** Map of commandId → groupId so the history can badge group
-   * members. */
-  commandToGroup: ReadonlyMap<string, string>;
+  nodes: ReadonlyArray<{ id: string; label: string }>;
+  currentNodeId: string | null;
+  onJumpTo: (nodeId: string) => void;
 }
 
 /**
- * Linear history list for the Room editor's right panel. Click a row
- * to focus that command in the inspector (Leva). Ctrl/Cmd-click
- * toggles multi-select. Group membership shows as a small chip.
+ * History panel for the Room editor. Shows the EditAction history with
+ * time-travel support. Clicking a row calls `onJumpTo` with that node's id
+ * to jump to that point in history.
  *
- * Selection state is owned by `useRoomDocument`, so this list is pure
- * presentation. Lives below the Leva panel rather than inside it so
- * its layout stays compact.
+ * Visual states:
+ *   - past (before current): normal text, transparent background
+ *   - current: highlighted blue background, white text
+ *   - future (after current, i.e. redo-able): greyed-out text
+ *
+ * No per-row "×" delete buttons — time-travel replaces the old delete-history
+ * row pattern.
  */
 export function CommandHistory({
-  commands,
-  selection,
-  onSelect,
-  onDelete,
-  commandToGroup,
+  nodes,
+  currentNodeId,
+  onJumpTo,
 }: CommandHistoryProps) {
+  const currentIndex =
+    currentNodeId === null ? -1 : nodes.findIndex((n) => n.id === currentNodeId);
+
   return (
     <div
       style={{
@@ -50,10 +47,13 @@ export function CommandHistory({
           marginBottom: 6,
         }}
       >
-        History ({commands.length})
+        History ({nodes.length})
       </div>
-      {commands.length === 0 ? (
-        <p style={{ fontSize: 12, color: '#a3a3a3', margin: 0 }}>Empty.</p>
+
+      {nodes.length === 0 ? (
+        <p style={{ fontSize: 12, color: '#a3a3a3', margin: 0 }}>
+          No actions yet.
+        </p>
       ) : (
         <ol
           style={{
@@ -65,30 +65,37 @@ export function CommandHistory({
             gap: 2,
           }}
         >
-          {commands.map((c, i) => {
-            const isSelected = selection.has(c.id);
-            const groupId = commandToGroup.get(c.id);
+          {nodes.map((node, i) => {
+            const isCurrent = i === currentIndex;
+            const isFuture = currentIndex !== -1 && i > currentIndex;
+
+            let bgColor = 'transparent';
+            let textColor = '#fafafa';
+            if (isCurrent) {
+              bgColor = '#1d4ed8';
+              textColor = '#ffffff';
+            } else if (isFuture) {
+              textColor = '#525252';
+            }
+
             return (
-              <li
-                key={c.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
+              <li key={node.id}>
                 <button
                   type="button"
-                  onClick={(e) =>
-                    onSelect(c.id, e.ctrlKey || e.metaKey)
-                  }
+                  onClick={() => onJumpTo(node.id)}
+                  data-current={isCurrent ? 'true' : undefined}
+                  data-future={isFuture ? 'true' : undefined}
+                  title={node.id}
                   style={{
-                    flex: 1,
+                    width: '100%',
                     textAlign: 'left',
                     padding: '4px 6px',
-                    background: isSelected ? '#1d4ed8' : 'transparent',
-                    color: '#fafafa',
-                    border: '1px solid #262626',
+                    background: bgColor,
+                    color: textColor,
+                    border: isCurrent
+                      ? '1px solid #3b82f6'
+                      : '1px solid #262626',
+                    borderLeft: isCurrent ? '3px solid #60a5fa' : undefined,
                     borderRadius: 3,
                     cursor: 'pointer',
                     font: '11px monospace',
@@ -96,26 +103,8 @@ export function CommandHistory({
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                   }}
-                  title={c.id}
                 >
-                  {String(i + 1).padStart(2, '0')}. {commandLabel(c)}
-                  {groupId ? <GroupBadge id={groupId} /> : null}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDelete(c.id)}
-                  title="Delete"
-                  style={{
-                    padding: '4px 6px',
-                    background: '#1f1f1f',
-                    color: '#fca5a5',
-                    border: '1px solid #262626',
-                    borderRadius: 3,
-                    cursor: 'pointer',
-                    font: '11px system-ui',
-                  }}
-                >
-                  ×
+                  {String(i + 1).padStart(2, '0')}. {node.label}
                 </button>
               </li>
             );
@@ -124,31 +113,4 @@ export function CommandHistory({
       )}
     </div>
   );
-}
-
-function GroupBadge({ id }: { id: string }) {
-  // Show only the short suffix so the chip stays readable. The
-  // tooltip carries the full id for hovers.
-  const short = id.split('-').slice(0, 2).join('-');
-  return (
-    <span
-      title={`group ${id}`}
-      style={{
-        marginLeft: 6,
-        padding: '0 4px',
-        borderRadius: 2,
-        background: '#374151',
-        color: '#e5e7eb',
-        font: '10px monospace',
-      }}
-    >
-      {short}
-    </span>
-  );
-}
-
-function commandLabel(c: SceneCommand): string {
-  if (c.op === 'placeCube') return `place ${c.kindId} @ ${c.position.join(',')}`;
-  // extrude commands are legacy; show a generic label if one appears
-  return `legacy op: ${c.op}`;
 }
