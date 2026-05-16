@@ -56,7 +56,14 @@ export function ObjectPreviewCanvas({ kind }: ObjectPreviewCanvasProps) {
     <Canvas
       style={canvasStyle}
       shadows={false}
-      gl={{ alpha: thumbnailMode, antialias: true }}
+      gl={{
+        alpha: thumbnailMode,
+        antialias: true,
+        // Required so `canvas.toDataURL('image/png')` returns the
+        // rendered frame in thumbnailMode — without this, the back
+        // buffer is cleared after composite and the read returns blank.
+        preserveDrawingBuffer: thumbnailMode,
+      }}
     >
       <EditorCamera
         position={[2.5, 2, 2.5]}

@@ -2,8 +2,9 @@
 /**
  * Generates 128×128 PNG thumbnails for every kind in the cube catalog.
  *
- * Prerequisites: the studio dev server must be running at
- *   http://localhost:5173 (run `pnpm dev` in packages/studio first).
+ * Prerequisites: the studio dev server must be running (default
+ *   http://localhost:5174 — set THUMBNAILS_DEV_SERVER to override).
+ *   Run `pnpm --filter @officexr/studio dev` first.
  *
  * Output: packages/world/thumbnails/<kindId>.png
  *         packages/world/src/scenes/thumbnail-manifest.ts
@@ -23,7 +24,7 @@ import { dirname } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const THUMBNAILS_DIR = path.resolve(__dirname, '../thumbnails');
 const MANIFEST_PATH = path.resolve(__dirname, '../src/scenes/thumbnail-manifest.ts');
-const DEV_SERVER = 'http://localhost:5173';
+const DEV_SERVER = process.env.THUMBNAILS_DEV_SERVER ?? 'http://localhost:5174';
 const CATALOG_URL = `${DEV_SERVER}/api/cube-kinds`;
 
 interface CubeKindEntry {
@@ -88,8 +89,11 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
-  // Navigate to the Object editor with thumbnailMode=true
-  const objectUrl = `${DEV_SERVER}/#object?thumbnailMode=true`;
+  // Navigate to the Object editor with thumbnailMode=true.
+  // The query string must precede the hash so `window.location.search`
+  // picks it up — `ObjectPreviewCanvas` reads `?thumbnailMode=true` from
+  // `URLSearchParams(window.location.search)`.
+  const objectUrl = `${DEV_SERVER}/?thumbnailMode=true#object`;
   console.log(`[gen-thumbnails] Navigating to ${objectUrl}...`);
   await page.goto(objectUrl);
 
@@ -129,15 +133,23 @@ async function main() {
       // Wait for the preview to settle (GLTF load + render)
       await page.waitForTimeout(800);
 
-      // Screenshot the canvas element
-      const canvas = page.locator('canvas').first();
-      if ((await canvas.count()) === 0) {
+      // Read the WebGL framebuffer directly via toDataURL — element
+      // screenshot would pick up the page's parent background behind
+      // the transparent canvas, producing opaque RGB. Reading the
+      // canvas pixels preserves alpha. Requires `preserveDrawingBuffer: true`
+      // on the R3F Canvas in thumbnailMode (see ObjectPreviewCanvas.tsx).
+      const dataUrl = await page.evaluate(() => {
+        const c = document.querySelector('canvas') as HTMLCanvasElement | null;
+        return c ? c.toDataURL('image/png') : null;
+      });
+      if (!dataUrl) {
         console.warn(`[gen-thumbnails] WARN: No canvas found for kind "${kind.id}". Skipping.`);
         failCount++;
         continue;
       }
 
-      await canvas.screenshot({ path: outputPath, omitBackground: true });
+      const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+      fs.writeFileSync(outputPath, Buffer.from(base64, 'base64'));
       generated.push({ id: kind.id, filePath: outputPath });
       successCount++;
       process.stdout.write('.');
