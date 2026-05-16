@@ -1,9 +1,9 @@
 import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Sphere } from '@react-three/drei';
 import { Physics, type RapierRigidBody } from '@react-three/rapier';
 import { GradientBackground } from './GradientBackground.tsx';
+import { LightingRig } from './LightingRig.tsx';
 import { MapColliders } from './MapColliders.tsx';
 import type {
   Actions,
@@ -170,26 +170,6 @@ export function Scene(props: SceneProps) {
     ],
   );
 
-  // Orthographic shadow camera. We deliberately do NOT size this to
-  // the whole floor any more — for very large maps that would either
-  // (a) require an enormous shadow map to keep texels small, or (b)
-  // produce blocky shadows because each texel covers metres of world
-  // space. Instead the shadow camera follows the local player (see
-  // `SunFollower` below) and covers a fixed-ish `shadowRange` half-
-  // width around them; anything farther than that doesn't render
-  // shadows.
-  //
-  // The `far` plane still needs to span from the sun to the far edge
-  // of the shadow region, hence `|sunPos| + radius + margin` — too
-  // small and floor near the player falls behind the shadow camera.
-  const shadowCam = useMemo(() => {
-    const [sx, sy, sz] = lighting.sunPosition;
-    const radius = lighting.shadowRange;
-    const sunMag = Math.hypot(sx, sy, sz);
-    const far = sunMag + radius + 20;
-    return { radius, far };
-  }, [lighting.sunPosition, lighting.shadowRange]);
-
   return (
     <Canvas
       shadows={{ type: THREE.PCFShadowMap }}
@@ -218,78 +198,19 @@ export function Scene(props: SceneProps) {
         */}
         <Physics gravity={[0, -20, 0]} timeStep="vary">
         <MapColliders store={store} />
-        {/* Sun-like single light source. The Leva `sunPosition` drives
-            both the shadow-casting directional light and the visible
-            sun disc in the sky so they stay aligned.
-
-            For fill we use `hemisphereLight` instead of `ambientLight`:
-            a flat ambient washed every surface identically and made
-            each beveled cube top read with the same intensity as its
-            sides, which (combined with the directional sun's hard
-            shadows on the bevels) drew a visible grid line between
-            cubes. The hemisphere light fills sky-tinted from above and
-            ground-tinted from below, which matches the directional sun
-            naturally and lets cube tops dominate while bevel sides
-            stay subtly darker — the surface reads as one cohesive
-            floor instead of a checkerboard of tiles. The Leva
-            `ambient fill` control drives its intensity. */}
-        <hemisphereLight
-          args={['#aedcff', '#3a2f24', lighting.ambientIntensity]}
+        {/* Lighting: shared LightingRig + a per-frame SunFollower
+            that mutates the sun's position/target/disc to track the
+            local player. The follower keeps the orthographic shadow
+            camera tight around the player even on huge maps — that's
+            how shadow-map texels stay small (sharp shadows) without
+            exploding shadow-map memory. Editors mount LightingRig
+            without the follower (sun stays static). */}
+        <LightingRig
+          lighting={lighting}
+          sunLightRef={sunLightRef}
+          sunLightTargetRef={sunLightTargetRef}
+          sunDiscRef={sunDiscRef}
         />
-        {/* Optional pure ambient fill, additive on top of the
-            hemisphere. Default-off across the game (intensity 0 = no
-            contribution). Mugshot mode lets the user crank it up so
-            shadowed faces are visible in captures without skewing
-            sky/ground tinting. */}
-        <ambientLight intensity={lighting.ambientFillIntensity ?? 0} />
-        {/* The sun: always emitted. Parallel rays + orthographic shadow
-            camera. The shadow camera follows the local player via
-            `SunFollower` below (its `target` and the light's
-            `position` are mutated each frame) so its frustum stays
-            tight around whoever is moving — that's how shadow-map
-            texels stay small (and shadows stay sharp) on big maps
-            without exploding shadow-map memory. */}
-        <directionalLight
-          ref={sunLightRef}
-          position={lighting.sunPosition}
-          color={lighting.sunColor}
-          intensity={lighting.sunIntensity}
-          castShadow={lighting.castShadow}
-          shadow-mapSize-width={lighting.shadowMapSize}
-          shadow-mapSize-height={lighting.shadowMapSize}
-          shadow-camera-near={1}
-          shadow-camera-far={shadowCam.far}
-          shadow-camera-left={-shadowCam.radius}
-          shadow-camera-right={shadowCam.radius}
-          shadow-camera-top={shadowCam.radius}
-          shadow-camera-bottom={-shadowCam.radius}
-          shadow-bias={lighting.shadowBias}
-          shadow-normalBias={lighting.shadowNormalBias}
-        />
-        {/* Movable target the directionalLight points at — also moved
-            each frame by SunFollower so the light's view direction
-            stays constant relative to the player. Three.js needs the
-            target's matrixWorld to be up to date; updateMatrixWorld
-            is called inside the follower. */}
-        <object3D ref={sunLightTargetRef} />
-        {/* Visible sun disc — an emissive sphere placed at the same
-            position as the directional light, so you actually see a
-            star where the shadows are coming from. Renders bright
-            regardless of lighting via emissive. */}
-        {lighting.showSunDisc && (
-          <Sphere
-            ref={sunDiscRef as unknown as React.Ref<THREE.Mesh>}
-            args={[lighting.sunDiscRadius, 32, 16]}
-            position={lighting.sunPosition}
-          >
-            <meshStandardMaterial
-              color={lighting.sunColor}
-              emissive={lighting.sunColor}
-              emissiveIntensity={lighting.sunDiscIntensity}
-              toneMapped={false}
-            />
-          </Sphere>
-        )}
         <SunFollower
           lightRef={sunLightRef}
           lightTargetRef={sunLightTargetRef}
@@ -297,34 +218,6 @@ export function Scene(props: SceneProps) {
           sunOffset={lighting.sunPosition as [number, number, number]}
           selfPosRef={selfPosRef}
         />
-        {/* Optional secondary light co-located with the sun, to fake
-            the look of a visible "star" radiating from the sun's
-            position. The directional light above already does the
-            global parallel-ray lighting; this adds a localised
-            hotspot. Shadow casting is deliberately off here — only
-            the directional drives shadows so we don't double-up
-            shadow passes (the secondary's shadows would be subtly
-            offset and produce visible doubling). */}
-        {lighting.auxLightType === 'spot' && (
-          <spotLight
-            position={lighting.sunPosition}
-            color={lighting.sunColor}
-            intensity={lighting.auxIntensity}
-            distance={lighting.auxDistance}
-            angle={lighting.auxAngle}
-            penumbra={lighting.auxPenumbra}
-            decay={lighting.auxDecay}
-          />
-        )}
-        {lighting.auxLightType === 'point' && (
-          <pointLight
-            position={lighting.sunPosition}
-            color={lighting.sunColor}
-            intensity={lighting.auxIntensity}
-            distance={lighting.auxDistance}
-            decay={lighting.auxDecay}
-          />
-        )}
         <GradientBackground
           topColor={background.topColor}
           bottomColor={background.bottomColor}

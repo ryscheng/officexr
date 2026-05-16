@@ -16,6 +16,7 @@ export { ProximityGlow } from './ProximityGlow.tsx';
 export { CameraRig } from './CameraRig.tsx';
 export { SceneFrame } from './SceneFrame.tsx';
 export { ObjectInstances, type MaterialOverride } from './ObjectInstances.tsx';
+export { LightingRig, type LightingSettings } from './LightingRig.tsx';
 // Renderer-side helpers re-exported for editor overlays (e.g. the
 // Room editor's GhostLayer needs to build a transparent material from
 // the same GLTF geometry the opaque InstancedMesh uses).
