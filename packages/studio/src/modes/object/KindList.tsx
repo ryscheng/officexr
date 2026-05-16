@@ -162,6 +162,7 @@ function KindRow({
       type="button"
       onClick={onSelect}
       title={kind.id}
+      data-kind-id={kind.id}
       style={{
         width: '100%',
         padding: '4px 12px',

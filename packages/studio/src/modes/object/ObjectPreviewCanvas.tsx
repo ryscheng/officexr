@@ -36,12 +36,27 @@ interface ObjectPreviewCanvasProps {
  *
  * Camera is a right-drag orbit around the cube; scroll dollies.
  * No keyboard nav.
+ *
+ * When the URL contains `?thumbnailMode=true`, the canvas renders
+ * with a transparent background (no <color> background, no grid)
+ * so Playwright can screenshot it as a 128×128 transparent PNG.
+ * This is used by `pnpm gen:thumbnails`.
  */
 export function ObjectPreviewCanvas({ kind }: ObjectPreviewCanvasProps) {
+  // Check for thumbnail mode via URL param — used by the gen:thumbnails script.
+  const thumbnailMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('thumbnailMode') === 'true';
+
+  const canvasStyle: React.CSSProperties = thumbnailMode
+    ? { width: 128, height: 128, display: 'block' }
+    : { width: '100%', height: '100%', display: 'block' };
+
   return (
     <Canvas
-      style={{ width: '100%', height: '100%', display: 'block' }}
+      style={canvasStyle}
       shadows={false}
+      gl={{ alpha: thumbnailMode, antialias: true }}
     >
       <EditorCamera
         position={[2.5, 2, 2.5]}
@@ -51,8 +66,8 @@ export function ObjectPreviewCanvas({ kind }: ObjectPreviewCanvasProps) {
         maxDistance={40}
       />
       <LightingRig lighting={OBJECT_PREVIEW_LIGHTING} />
-      <color attach="background" args={['#0a0a0a']} />
-      <EndlessGrid />
+      {!thumbnailMode && <color attach="background" args={['#0a0a0a']} />}
+      {!thumbnailMode && <EndlessGrid />}
       {kind ? <KindPreview kind={kind} /> : null}
     </Canvas>
   );

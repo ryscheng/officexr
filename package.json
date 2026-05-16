@@ -31,6 +31,7 @@
     "asset-packs:install": "pnpm --filter @officexr/world run asset-packs:install",
     "state:backup": "pnpm --filter @officexr/world run state:backup",
     "state:reset": "pnpm --filter @officexr/world run state:reset",
+    "gen:thumbnails": "pnpm --filter @officexr/world run gen:thumbnails",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui"

@@ -21,7 +21,8 @@
     "migrate:scenes-to-rooms": "tsx scripts/migrate-scenes-to-rooms.ts",
     "asset-packs:install": "tsx scripts/download-asset-packs.ts",
     "state:backup": "tsx scripts/state-backup.ts",
-    "state:reset": "tsx scripts/state-reset.ts"
+    "state:reset": "tsx scripts/state-reset.ts",
+    "gen:thumbnails": "tsx scripts/gen-thumbnails.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.2",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
+    "playwright": "^1.59.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.182.0",
