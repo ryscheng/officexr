@@ -5,11 +5,13 @@ import {
   getCatalog,
   getKind,
   listKinds,
+  patchKind,
   replaceCatalog,
   resetCatalogToDefault,
   subscribeCatalog,
 } from './cube-catalog.ts';
 import {
+  CUBE_KIND_CATEGORIES,
   CUBE_KIND_DEFAULTS,
   validateCubeKindCatalog,
   type CubeKindCatalogV1,
@@ -85,6 +87,57 @@ describe('cube-catalog store', () => {
 
   it('getKind returns undefined for missing ids', () => {
     expect(getKind('not-a-kind')).toBeUndefined();
+  });
+});
+
+// Task 08: Category editing TDD tests
+describe('patchKind category changes (Task 08)', () => {
+  beforeEach(() => {
+    __resetBootstrapForTests();
+  });
+
+  it('patchKind category — patchKind(id, { category: "furniture" }) updates the in-memory catalog', () => {
+    const kinds = listKinds();
+    expect(kinds.length).toBeGreaterThan(0);
+    const firstId = kinds[0].id;
+
+    // Initially block
+    expect(getKind(firstId)?.category).toBe('block');
+
+    patchKind(firstId, { category: 'furniture' });
+    expect(getKind(firstId)?.category).toBe('furniture');
+  });
+
+  it('subscriber notified on category change — subscriber callback fires after patchKind with category change', () => {
+    const kinds = listKinds();
+    const firstId = kinds[0].id;
+
+    let fireCount = 0;
+    const unsub = subscribeCatalog(() => { fireCount++; });
+    patchKind(firstId, { category: 'restaurant' });
+    expect(fireCount).toBe(1);
+    unsub();
+  });
+
+  it('character is valid category — validateCubeKindCatalog normalizes category: "character" correctly', () => {
+    const result = validateCubeKindCatalog({
+      schemaVersion: 1,
+      kinds: [
+        {
+          id: 'char-1',
+          label: 'Character',
+          gltfPath: '/models/char.glb',
+          swatch: '#ff0000',
+          walkable: false,
+          category: 'character',
+        },
+      ],
+    });
+    expect(result.kinds[0].category).toBe('character');
+  });
+
+  it('CUBE_KIND_CATEGORIES includes "character"', () => {
+    expect(CUBE_KIND_CATEGORIES).toContain('character');
   });
 });
 

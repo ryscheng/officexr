@@ -16,18 +16,22 @@
 /** Category groups the Object editor uses to sort kinds in its
  * left-panel list. `block` covers the original KayKit BlockBits set;
  * the others are seeded by Task 4 (KayKit Furniture / Prototype /
- * Restaurant packs). */
+ * Restaurant packs). `character` is for avatar-related kinds (e.g.
+ * character meshes from asset packs) — the room palette filters these
+ * out so they don't appear as placeable objects. */
 export type CubeKindCategory =
   | 'block'
   | 'furniture'
   | 'prototype'
-  | 'restaurant';
+  | 'restaurant'
+  | 'character';
 
 export const CUBE_KIND_CATEGORIES: readonly CubeKindCategory[] = [
   'block',
   'furniture',
   'prototype',
   'restaurant',
+  'character',
 ];
 
 export interface CubeKindEntry {
