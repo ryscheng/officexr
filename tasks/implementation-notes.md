@@ -1,140 +1,78 @@
-# Implementation Notes — Tasks 1–6
+# Implementation Notes
 
-Decisions made during implementation that weren't in the plan, plus
-the deliberate scope cuts.
+## Task 01: RoomHistory Engine (TDD)
 
-## Task 1 — Schemas + migration script
-- **`ambientIntensity` added to `MapEnvironment`** that wasn't in the
-  plan's listed fields. Reason: the existing renderer's
-  `LightingPanel` already has an `ambientIntensity` knob that we'll
-  promote to the map document in Task 13. Adding the field to the
-  schema now avoids a v2 bump later.
-- **`RoomGroup.id` is duplicated** as both the `Record<string, RoomGroup>`
-  key and a field on the value. The duplication is intentional — a
-  group passed by reference (e.g. into the inspector) needs to know
-  its own identity. Documented inline at `commands.ts`.
-- **Migration script does NOT delete `packages/world/scenes/`** even
-  though the plan said it should. Reason: the Vite plugin still serves
-  the legacy `/api/scenes` endpoint from there for back-compat with the
-  existing Scenes editor (retired in Task 5/6). Deletion is a future
-  cleanup once nobody points at `/api/scenes`.
+- **Decisions**: Used a doubly-linked list (`HistoryNode` with `prev`/`next`) stored in a `useRef` to avoid triggering React re-renders on every history mutation. Chose `_currentDoc` as a cached field on the `RoomHistory` class rather than recomputing on every access by replaying from base — `redo` can just apply the next action incrementally, while `undo` must replay from base.
+- **Deviations**: The `applyAction.ts` stub created in Task 01 handled only the `'place'` action type (returning the doc with the new command appended). This was sufficient for all 11 `RoomHistory` tests since they test linked-list mechanics rather than specific action semantics. Full implementation landed in Task 02.
+- **Trade-offs**: `getNodes()` strips `prev`/`next` references before returning to avoid circular-reference issues if the caller serializes the array. This means callers can't walk the list themselves, but that's fine — they only need the flat list for the history panel UI.
+- **Risks**: `jumpTo` with a large history replays from base every time — O(n) per jump. Acceptable for editor-scale histories (dozens to low hundreds of nodes).
 
-## Task 2 — Storage layer + Vite middleware unification
-- **Deferred `FilesystemCatalogStorage`** to Task 3. Reason: the catalog
-  schema (`CubeKindCatalogV1`) lands in Task 3, and defining the storage
-  class without the typed shape would force a re-edit. The
-  `/api/cube-kinds` endpoint is mounted in Task 2 as a generic
-  single-document GET/PUT; Task 3 adds the typed client.
-- **Legacy `vite-plugin-scene-storage.ts` shim** initially re-exported
-  the new options as `SceneStoragePluginOptions`. Reviewer flagged this
-  as misleading (old + new option shapes differ); the alias was dropped
-  in the same task.
-- **`SceneStorage` interface alias retired in Task 6** rather than
-  Task 2. Reason: the existing Scenes editor still imported it through
-  Task 5's renames. Once the Room editor (Task 6) switched to
-  `RoomStorage` the alias became unreferenced and was removed.
+## Task 02: applyAction Pure Reducer (TDD)
 
-## Task 3 — Catalog → JSON + ObjectInstances reads catalog
-- **Material build helpers extracted to `cube-material.ts`** so they're
-  unit-testable in a node environment (no WebGL). The original plan
-  kept them inside `ObjectInstances.tsx`.
-- **`SEAM_OVERLAP = 1.05`** stays a renderer-side constant decoupled
-  from `kind.scale`. The cube GLTFs have beveled edges that need the
-  overlap to hide seams; if `scale` had folded in the overlap, "1 = no
-  change" would have meant 0.95× actual size which is surprising.
-- **`useGLTF.preload` still loops over the bundled-default kinds** at
-  module load, not the live catalog. Task 4's asset packs are
-  preloaded lazily by `useGLTF` inside `KindInstanceGroup` on first
-  use. Trade-off: the first cube of a freshly-installed pack causes a
-  one-time GLTF load on the main thread.
+- **Decisions**: Implemented `applyAction` as a pure function with no side effects — every action variant returns a new `RoomDocument` object without mutating the input. Used spread operators throughout (`{ ...doc, commands: [...] }`).
+- **Deviations**: None. The 15 tests covered all 9 action types plus sequence replay and immutability invariants.
+- **Trade-offs**: The `delete` action's `groupsAffected` field tracks which group memberships to remove — this is computed in `useRoomDocument` before calling `push()` and stored on the action so `applyAction` doesn't need to re-derive it. Slightly redundant data on the action object, but keeps `applyAction` stateless.
+- **Risks**: No non-obvious risks.
 
-## Task 4 — Asset packs
-- **Catalog is committed; binaries are gitignored.** Repo size stays
-  small (~80 KB cube-kinds.json vs ~40 MB unzipped GLTFs). Fresh
-  clones need `pnpm asset-packs:install` to populate the binaries.
-- **`unzip` system command** used for extraction. Pure-Node zip parsers
-  exist but add a dep for a one-shot install script. `unzip` is
-  available on macOS / Linux / WSL / Git Bash on Windows.
-- **Filename collision behavior** of `slugify`: lowercases, so
-  `Chair_A.gltf` and `chair_a.gltf` would silently dedup. Not triggered
-  by current packs; flagged as a future-pack risk in the reviewer
-  report.
+## Task 03: Wire RoomHistory into useRoomDocument
 
-## Task 5 — 5-mode routing + page shells
-- **No `react-router-dom`.** The studio has 5 flat tabs, no nested
-  routes; `useState<StudioMode>` + `location.hash` mirror is simpler.
-- **Default landing `#map`** silently rewrites `/studio` → `/studio#map`.
-  Matches the plan but worth flagging in case future deep links from
-  outside the app point at `/studio` without a hash.
-- **React-tree render tests skipped** for `StudioPage` because the
-  studio's vitest env is node-only. The decision logic (`isStudioMode`,
-  hash↔state) is covered by 9 logic-level tests in
-  `__tests__/studio-mode.test.ts`. Adding `@testing-library/react` +
-  jsdom for one shallow render is heavier than the value.
-- **CharacterApp rename slip** — my `Edit` calls renamed
-  `CharactersApp` → `CharacterApp` inside the file but I missed staging
-  the file in the Task 5 commit. The committed Task 5 was technically
-  broken (import vs export mismatch), but my unstaged working-tree
-  edits masked it during the Task 5 verification run. Folded into the
-  Task 6 commit.
+- **Decisions**: `historyRef = useRef<RoomHistory | null>(null)` stores the mutable linked-list without triggering re-renders. A `getHistory(baseDoc)` lazy-init function creates the `RoomHistory` on first call and returns the existing one thereafter. Every mutator follows the same pattern: construct `EditAction` → `getHistory(doc).push(action)` → `setDoc(h.currentDoc)`.
+- **Deviations**: `historyNodes` and `historyCurrentNodeId` are derived from the ref at render time (read after every `setDoc` call), not stored in separate state — avoids double-renders.
+- **Trade-offs**: The history ref is reset on `storage.load` (load from disk replaces the base document). Any in-flight undo/redo history is discarded — intentional, since loading a different room should start fresh.
+- **Risks**: No non-obvious risks.
 
-## Task 7 — Ghost layer + snapping refactor
-- **`PulseDriver` collocated** with `GhostLayer.tsx` rather than living
-  in its own file. Reason: it's a 5-line component whose only public
-  surface is "drive the shared opacity ref"; splitting it adds a
-  module boundary without a test surface. The plan said
-  `PulseDriver.tsx`, but a separate file is overkill.
-- **Pulse-mode plumbing landed without a caller.** No tool emits pulse
-  ghosts in Task 7 — that's Task 8's Delete tool. The pulse code path
-  is end-to-end correct (the test for it is the visible Delete-tool
-  preview when Task 8 lands).
-- **Ghost meshes use raycast layer 31** to opt out of the snap
-  raycaster (which runs on the default layer 0). Reviewer flagged
-  that the `mesh.layers.set(31)` happens in `useEffect`, leaving a
-  one-frame window where the ghost is on layer 0. Acceptable for now
-  — no raycast can fire before React commits the effect, since the
-  events that drive raycasts are themselves dispatched between
-  React's reconciliation passes.
-- **`e.stopPropagation()` in the cube's `handlePointerMove`** —
-  reviewer caught that without it, the floor's pointermove ran after
-  the cube's and overwrote the CubeHit with a y=0 FloorHit, putting
-  the Add ghost on the floor under the cube. Fix landed before commit.
-- **`extractGeometryFromGltf` / `extractMaterialFromGltf` re-exported**
-  from `@officexr/world/renderer` so the studio's GhostLayer and the
-  canvas's CubesLayer can share one implementation. This is a
-  controlled coupling: the studio is a known consumer of the
-  renderer's helpers; it's not a layering violation (renderer →
-  studio direction would be).
-- **`SEAM_OVERLAP = 1.05` not multiplied by `kind.scale`** in the
-  ghost meshes. All current kinds have `scale: 1`, so the latent bug
-  hasn't been hit. Folded into the Task 11 (Object editor) backlog
-  when per-kind scale starts varying.
+## Task 04: Remove Extrude Tool
 
-## Task 6 — Room editor multi-select + groups
-- **Pure helpers in `room-selection.ts`** drive the click semantics so
-  they're testable in node. The hook (`useRoomDocument`) is a thin
-  glue layer — the reviewer's first round flagged that the hook
-  duplicated the helpers instead of using them; that's been fixed.
-- **`groupCommands` mints id outside the updater.** Calling
-  `mintGroupId()` inside `setDoc` would burn a fresh id on every dev
-  StrictMode double-invoke. The validate-then-mint-then-update pattern
-  also makes the return value reflect the real outcome rather than
-  always being `null`.
-- **`deleteSelection` reads selection from the closure**, not from
-  inside a `setSelectionState` updater. Functional updaters must be
-  pure; reading + calling `deleteCommandsInternal` from inside one
-  double-fires under StrictMode.
-- **`SceneStorage` interface + `FilesystemSceneStorage` +
-  `LocalStorageSceneStorage` are still exported** from
-  `packages/world/src/scenes/index.ts`. Nothing in the studio uses
-  them anymore (the Room editor reads through `FilesystemRoomStorage`,
-  which migrates via `migrateToV3`). Dead code, not breakage — slated
-  for a future cleanup task. The plan called for retirement; deferring
-  because no caller is left to fix.
-- **`compileScene` widened** to accept either v2 `SceneDocument`, v3
-  `RoomDocument`, or any `{ commands }`. Algorithm only reads
-  `doc.commands`, so the wider type is safe. Avoids unnecessary
-  duplication of the compile logic.
-- **`selectionIsExactlyOneGroup` is exported but unused** — it lands
-  here so Task 10's context menu ("Ungroup" gating) can call it
-  without another file edit.
+- **Decisions**: Removed `ExtrudeInspector` component, `ExtrudeProps` interface, the extrude Section from `PlaceCubeInspector`, and the `extrudeFromFace`/`setExtrudeFace`/`setExtrudeCount` mutators from `useRoomDocument`. Also removed `newExtrude` and `CubeFace` imports since they were only used by extrude.
+- **Deviations**: Added a `Readonly label="id"` row to `PlaceCubeInspector` displaying the command ID — this was not in the original spec but makes debugging easier and was a natural addition given the inspector already showed kindId and position.
+- **Trade-offs**: None — the extrude tool was a planned removal.
+- **Risks**: No non-obvious risks.
+
+## Task 05: Keyboard Shortcuts (Undo/Redo)
+
+- **Decisions**: Added Ctrl/Cmd+Z (undo), Ctrl/Cmd+Shift+Z (redo), Ctrl+Y (redo, Windows convention) inside the existing `ctrlKey` block in `RoomApp.tsx`. The Ctrl+Shift+Z check comes before the plain Ctrl+Z check to avoid misfiring.
+- **Deviations**: None.
+- **Trade-offs**: `Ctrl+Y` is skipped when `metaKey` (Mac Command) is held — `Cmd+Y` is an uncommon Mac shortcut and avoiding it prevents surprising behavior on Mac.
+- **Risks**: No non-obvious risks.
+
+## Task 06: History Panel UI (TDD)
+
+- **Decisions**: Rewrote `CommandHistory.tsx` with new props (`nodes`, `currentNodeId`, `onJumpTo`) replacing the old delete-button-based API. Visual states: past items (normal), current item (blue `#1d4ed8` background, `data-current="true"`), future items (muted `#525252` text, `data-future="true"`).
+- **Deviations**: `@testing-library/jest-dom` is not installed in the studio package, so `toBeInTheDocument` was not available. Tests were rewritten to use `container.textContent` (contains check), `container.querySelector()`, and `getAttribute()` instead.
+- **Trade-offs**: No `data-testid` attributes added — used structural queries and `data-current`/`data-future` attribute assertions instead, which also double as useful CSS/accessibility hooks.
+- **Risks**: No non-obvious risks.
+
+## Task 07: Generalized ObjectPalette (TDD)
+
+- **Decisions**: Exported `groupByCategory` as a pure function for unit-testability. Used `vi.mock('@officexr/world/scenes', ...)` with `async (importOriginal)` pattern to mock `useCubeCatalog` and `thumbnailUrlForKind` in tests. Added `thumbnailUrlForKind` to `packages/world/src/scenes/index.ts` export.
+- **Deviations**: `thumbnails.ts` in Task 07 was created as a stub returning `null` always (the real implementation came in Task 10).
+- **Trade-offs**: `KindButton` renders a swatch fallback (colored div) when no thumbnail exists — uses the kind's `color` field if available, else a default grey. This keeps the palette usable before thumbnails are generated.
+- **Risks**: No non-obvious risks.
+
+## Task 08: Category Editing in Object Editor
+
+- **Decisions**: Added `'character'` to `CubeKindCategory` union in `cube-kinds-schema.ts` and to `CUBE_KIND_CATEGORIES` array. Added 4 new tests to `cube-catalog.test.ts` covering `patchKind` category update, subscriber notification, `'character'` as a valid category, and `CUBE_KIND_CATEGORIES` including `'character'`.
+- **Deviations**: None.
+- **Trade-offs**: No non-obvious trade-offs.
+- **Risks**: No non-obvious risks.
+
+## Task 09: Thumbnail Generation Script
+
+- **Decisions**: Created `packages/world/scripts/gen-thumbnails.ts` using Playwright to navigate to `/#object?thumbnailMode=true`, click `[data-kind-id]` buttons, and screenshot the canvas. Added `thumbnailMode` detection to `ObjectPreviewCanvas.tsx` via `new URLSearchParams(window.location.search).get('thumbnailMode') === 'true'`. Added `playwright` to `packages/world/package.json` devDependencies after a typecheck failure revealed it was missing (previously only in studio's devDeps).
+- **Deviations**: Used `pnpm install` (without `--frozen-lockfile`) to update the lockfile when adding playwright to world's devDeps — the lockfile was out of sync.
+- **Trade-offs**: Playwright is a dev dependency in `@officexr/world` even though the thumbnails script runs against the studio dev server. This is a slight SRP bend — the script could live in a separate tooling package — but keeping it co-located with the thumbnail output directory and manifest is pragmatic.
+- **Risks**: The gen-thumbnails script requires the studio dev server to be running. It exits with a helpful error message if the server is not reachable.
+
+## Task 10: Pre-generated Thumbnails + World Export
+
+- **Decisions**: Created `thumbnail-manifest.ts` as an empty placeholder (`export const THUMBNAIL_MANIFEST: Record<string, string> = {}`). Updated `thumbnails.ts` to use the real manifest via `THUMBNAIL_MANIFEST[id] ?? null`. The actual PNGs are generated by running `pnpm gen:thumbnails` after starting the dev server.
+- **Deviations**: Could not run `pnpm gen:thumbnails` in this environment since the dev server was not running. The manifest remains empty — this is the documented workflow (commit the placeholder, run gen:thumbnails separately, commit the populated manifest + PNGs).
+- **Trade-offs**: Vite's asset pipeline will process `new URL('...', import.meta.url).href` entries in the manifest — this is the correct pattern for Vite to hash and copy PNG assets. The empty manifest is safe; `thumbnailUrlForKind` returns `null` for all kinds until the manifest is populated.
+- **Risks**: No non-obvious risks.
+
+## Task 11: Move Tool (TDD)
+
+- **Decisions**: Split the move tool's geometry into two pure modules: `moveOccupancy.ts` (collision check) and `moveDelta.ts` (position translation). The `MoveController` R3F component handles pointer events inside the Canvas so it can access `camera`, `gl`, and `raycaster` from `useThree`. Used a ref-based approach (`stateRef`, `selectionRef`, `docRef`, `compiledRef`) to give the raw pointer listeners access to the latest state without re-binding the listeners on every render.
+- **Deviations**: The `MoveState` type stores `proposedPositions` and `occupancyResult` directly on the dragging state (rather than in separate `useState` hooks) so the pointer-up handler can read a consistent snapshot without closure issues.
+- **Trade-offs**: The move tool commits via multiple `setPositionForCommand` calls (one per selected object) rather than a single `setPositionMany` action — this is the documented fallback until Task 03's `setPositionMany` is wired. Each call pushes a separate history node. The comment in `handleMoveSelection` explains how to upgrade this once `setPositionMany` lands.
+- **Risks**: XZ-plane projection uses `raycaster.ray.intersectPlane` against a horizontal plane at the first selected object's Y. If no objects are selected (edge case), defaults to world Y=0.
