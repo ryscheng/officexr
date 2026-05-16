@@ -1,12 +1,9 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { getCubeKind } from '@officexr/world';
-import {
-  extractGeometryFromGltf,
-  extractMaterialFromGltf,
-} from '@officexr/world/renderer';
+import type { WorldObjects, ObjectInstance } from '@officexr/sdk';
+import { ObjectInstances, type MaterialOverride } from '@officexr/world/renderer';
 
 /**
  * Render mode for a ghost cube:
@@ -30,18 +27,25 @@ interface GhostLayerProps {
 }
 
 /**
- * Renders a parallel set of `<instancedMesh>`es alongside the opaque
- * `CubesLayer`. Each (mode, kindId) pair gets its own InstancedMesh
- * so the cloned-transparent material isolates from the opaque
- * material the renderer uses elsewhere.
+ * Renders ghost cubes for the Add / Tile / Delete tool previews.
  *
- * Ghost meshes opt out of the snap raycaster via a no-op `raycast`
- * so the Add/Tile tools never snap to their own ghost preview.
+ * Composes the shared `<ObjectInstances>` renderer with a transient
+ * material override (transparent, depth-write off, double-sided) per
+ * ghost mode. One `<ObjectInstances>` mount per `(mode, kindId)`
+ * pair so the materials can stay distinct (pulse ghosts mutate
+ * `opacity` per frame; solid ghosts hold 0.5).
+ *
+ * Ghosts opt out of the picking raycaster via a wrapper `<group>`
+ * whose own `raycast` is a no-op. Without this, the Add/Tile tools
+ * could snap to their own ghost preview.
  */
 export function GhostLayer({ ghosts, cubeSize }: GhostLayerProps) {
   // Group ghosts by (mode, kindId).
   const groups = useMemo(() => {
-    const m = new Map<string, { mode: GhostMode; kindId: string; voxels: [number, number, number][] }>();
+    const m = new Map<
+      string,
+      { mode: GhostMode; kindId: string; voxels: [number, number, number][] }
+    >();
     for (const g of ghosts) {
       const key = `${g.mode}:${g.kindId}`;
       let bucket = m.get(key);
@@ -62,7 +66,7 @@ export function GhostLayer({ ghosts, cubeSize }: GhostLayerProps) {
   return (
     <>
       {groups.map((g) => (
-        <GhostMeshForGroup
+        <GhostGroup
           key={`${g.mode}:${g.kindId}`}
           mode={g.mode}
           kindId={g.kindId}
@@ -76,7 +80,7 @@ export function GhostLayer({ ghosts, cubeSize }: GhostLayerProps) {
   );
 }
 
-interface GhostMeshForGroupProps {
+interface GhostGroupProps {
   mode: GhostMode;
   kindId: string;
   voxels: [number, number, number][];
@@ -84,77 +88,91 @@ interface GhostMeshForGroupProps {
   pulseOpacityRef: React.MutableRefObject<number>;
 }
 
-function GhostMeshForGroup({
+/**
+ * One `<ObjectInstances>` mount for a single (mode, kindId) bucket.
+ * The kind's base material is cloned by the override and tracked
+ * via a ref so `useFrame` can mutate its `opacity` for pulse mode
+ * without forcing material rebuilds.
+ */
+function GhostGroup({
   mode,
   kindId,
   voxels,
   cubeSize,
   pulseOpacityRef,
-}: GhostMeshForGroupProps) {
+}: GhostGroupProps) {
   const kind = getCubeKind(kindId);
-  // useGLTF unconditionally so the hook order is stable even when the
-  // kind is unknown (we still render nothing in that case below).
-  const gltf = useGLTF(kind?.gltfPath ?? '/models/blocks/colored_block_blue.gltf');
 
-  const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
-  const mat = useMemo(() => {
-    const base = (extractMaterialFromGltf(gltf.scene) as THREE.MeshStandardMaterial).clone();
-    base.transparent = true;
-    // Solid ghosts use a constant 0.5; pulse ghosts get overwritten
-    // every frame by PulseDriver via the shared opacityRef.
-    base.opacity = 0.5;
-    base.depthWrite = false;
-    base.side = THREE.DoubleSide;
-    return base;
-  }, [gltf.scene]);
+  // Build the snapshot. Voxels are translated into `ObjectInstance`
+  // shape so ObjectInstances can render them. ids are synthesised
+  // (ghost instances have no source command).
+  const worldObjects = useMemo<WorldObjects>(() => {
+    const instances: ObjectInstance[] = voxels.map((v, i) => ({
+      id: `ghost-${mode}-${kindId}-${i}`,
+      sourceCommandId: `ghost-${mode}-${kindId}-${i}`,
+      kindId,
+      position: v,
+    }));
+    return { cubeSize, instances };
+  }, [voxels, cubeSize, kindId, mode]);
 
-  const meshRef = useRef<THREE.InstancedMesh>(null);
-
+  // The override holds the cloned material in a ref so the pulse
+  // driver can mutate its `opacity` per frame without triggering
+  // React re-renders. The ref is also disposed on unmount.
+  const matRef = useRef<THREE.MeshStandardMaterial | null>(null);
   useEffect(() => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
-    // Make the mesh non-pickable so the snap raycaster never snaps to
-    // its own ghost preview. We do NOT use `mesh.layers.set(N)` for
-    // this because that would also opt the mesh OUT of rendering —
-    // the camera only renders meshes on the layers it has enabled
-    // (default layer 0). A no-op `raycast` keeps the mesh visible
-    // while making it transparent to picking.
-    mesh.raycast = () => {};
-    const m = new THREE.Matrix4();
-    const p = new THREE.Vector3();
-    const q = new THREE.Quaternion();
-    const kindScale = kind?.scale ?? 1;
-    const s = new THREE.Vector3(kindScale, kindScale, kindScale);
-    for (let i = 0; i < voxels.length; i++) {
-      const v = voxels[i];
-      p.set(v[0] * cubeSize, v[1] * cubeSize + cubeSize / 2, v[2] * cubeSize);
-      m.compose(p, q, s);
-      mesh.setMatrixAt(i, m);
-    }
-    mesh.count = voxels.length;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [voxels, cubeSize, kind?.scale]);
+    return () => {
+      matRef.current?.dispose();
+      matRef.current = null;
+    };
+  }, []);
 
-  // Drive opacity from the shared pulse ref each frame when in pulse
-  // mode. Solid ghosts keep their constant 0.5 — no per-frame work.
+  const initialOpacity = mode === 'pulse' ? pulseOpacityRef.current : 0.5;
+
+  const materialOverride = useCallback<MaterialOverride>(
+    (_kid, base) => {
+      // Already cloned? Just sync the per-mode initial opacity (pulse
+      // is overwritten every frame; solid uses 0.5).
+      if (matRef.current) {
+        matRef.current.opacity = initialOpacity;
+        return matRef.current;
+      }
+      const m = (base as THREE.MeshStandardMaterial).clone();
+      m.transparent = true;
+      m.opacity = initialOpacity;
+      m.depthWrite = false;
+      m.side = THREE.DoubleSide;
+      matRef.current = m;
+      return m;
+    },
+    [initialOpacity],
+  );
+
+  // Pulse driver mutates the cloned material in place each frame —
+  // no React state, no override re-runs.
   useFrame(() => {
     if (mode !== 'pulse') return;
-    mat.opacity = pulseOpacityRef.current;
+    if (matRef.current) matRef.current.opacity = pulseOpacityRef.current;
   });
 
   if (!kind || voxels.length === 0) return null;
-  const capacity = Math.max(1, voxels.length);
+
+  // The wrapper group's `raycast` is a no-op so ghost cubes never
+  // enter the pointer-event raycaster — the Add/Tile tools would
+  // otherwise snap to their own previews. `renderOrder={1}` keeps
+  // ghosts drawn after the opaque cube field for stable blending.
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[geom, mat, capacity]}
-      castShadow={false}
-      receiveShadow={false}
-      renderOrder={1}
-    />
+    <group raycast={NO_RAYCAST} renderOrder={1}>
+      <ObjectInstances worldObjects={worldObjects} materialOverride={materialOverride} />
+    </group>
   );
 }
+
+// `Object3D.raycast` is `(raycaster, intersects) => void`. A no-op
+// satisfies the contract without recording any intersection — which
+// disables picking for every descendant. We use the same function
+// reference so React's prop diffing doesn't trip on a fresh closure.
+const NO_RAYCAST: THREE.Object3D['raycast'] = () => {};
 
 interface PulseDriverProps {
   opacityRef: React.MutableRefObject<number>;

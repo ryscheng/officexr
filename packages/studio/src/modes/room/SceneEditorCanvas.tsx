@@ -1,12 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei';
-import {
-  CUBE_KINDS,
-  type CubeKindDef,
-} from '@officexr/world';
-import { EndlessGrid } from '@officexr/world/renderer';
+import { EndlessGrid, ObjectInstances } from '@officexr/world/renderer';
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
@@ -115,10 +110,6 @@ function tileYReplicas(
   }
   return out;
 }
-import {
-  extractGeometryFromGltf,
-  extractMaterialFromGltf,
-} from '@officexr/world/renderer';
 
 interface SceneEditorCanvasProps {
   /** The compiled scene snapshot to render. */
@@ -916,11 +907,17 @@ interface CubesLayerProps {
 }
 
 function CubesLayer(props: CubesLayerProps) {
-  // Group instances by kind for one InstancedMesh per kind. ALL
-  // instances render here — including selected ones, which keep
-  // their normal opaque material; the per-cluster <SelectionOutline>
-  // wireframe is the only selection indicator.
-  const byKind = useMemo(() => {
+  // Compose the shared <ObjectInstances> renderer with the editor's
+  // tool dispatch. The wrapper <group>'s pointer events catch all
+  // hits on any InstancedMesh ObjectInstances renders; we then read
+  // `e.object.userData.kindId` + `e.instanceId` to look up which
+  // cube was hit.
+  //
+  // Per-kind instance lookup: ObjectInstances groups instances by
+  // kind internally, so the instanceId on the event is an index
+  // into THAT kind's array — not into the flat snapshot. We mirror
+  // ObjectInstances' grouping here so the lookup is `O(1)`.
+  const instancesByKind = useMemo(() => {
     const m = new Map<string, ObjectInstance[]>();
     for (const inst of props.instances) {
       let arr = m.get(inst.kindId);
@@ -933,92 +930,26 @@ function CubesLayer(props: CubesLayerProps) {
     return m;
   }, [props.instances]);
 
-  return (
-    <>
-      {CUBE_KINDS.map((kind) => (
-        <KindGroup
-          key={kind.id}
-          kind={kind}
-          instances={byKind.get(kind.id) ?? []}
-          cubeSize={props.cubeSize}
-          selection={props.selection}
-          tool={props.tool}
-          onSelectInstance={props.onSelectInstance}
-          onHoverCube={props.onHoverCube}
-          onHoverCommand={props.onHoverCommand}
-          onAddClick={props.onAddClick}
-          onDeleteClick={props.onDeleteClick}
-          onTileClick={props.onTileClick}
-        />
-      ))}
-    </>
+  const worldObjects: WorldObjects = useMemo(
+    () => ({ cubeSize: props.cubeSize, instances: props.instances }),
+    [props.cubeSize, props.instances],
   );
-}
 
-interface KindGroupProps {
-  kind: CubeKindDef;
-  instances: ObjectInstance[];
-  cubeSize: number;
-  selection: ReadonlySet<string>;
-  tool: Tool;
-  onSelectInstance: (commandId: string, modKey: boolean) => void;
-  onHoverCube: (hit: SnapHit | null) => void;
-  onHoverCommand: (commandId: string | null) => void;
-  onAddClick: (hit: SnapHit) => void;
-  onDeleteClick: (commandId: string) => void;
-  onTileClick: (hit: SnapHit) => void;
-}
+  const lookupInstance = (
+    e: ThreeEvent<PointerEvent>,
+  ): ObjectInstance | null => {
+    const obj = e.object as THREE.Object3D & {
+      userData?: { kindId?: string; isObjectInstanceMesh?: boolean };
+    };
+    const kindId = obj.userData?.kindId;
+    const idx = e.instanceId;
+    if (!kindId || idx === undefined) return null;
+    return instancesByKind.get(kindId)?.[idx] ?? null;
+  };
 
-function KindGroup({
-  kind,
-  instances,
-  cubeSize,
-  selection,
-  tool,
-  onSelectInstance,
-  onHoverCube,
-  onHoverCommand,
-  onAddClick,
-  onDeleteClick,
-  onTileClick,
-}: KindGroupProps) {
-  const gltf = useGLTF(kind.gltfPath);
-  const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
-  const mat = useMemo(() => {
-    const m = (extractMaterialFromGltf(gltf.scene) as THREE.MeshStandardMaterial).clone();
-    return m;
-  }, [gltf.scene]);
-
-  const meshRef = useRef<THREE.InstancedMesh>(null);
-  const capacity = Math.max(1, instances.length);
-
-  useEffect(() => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
-    const m = new THREE.Matrix4();
-    const p = new THREE.Vector3();
-    const q = new THREE.Quaternion();
-    const s = new THREE.Vector3(kind.scale, kind.scale, kind.scale);
-    for (let i = 0; i < instances.length; i++) {
-      const inst = instances[i];
-      p.set(
-        inst.position[0] * cubeSize,
-        inst.position[1] * cubeSize + cubeSize / 2,
-        inst.position[2] * cubeSize,
-      );
-      m.compose(p, q, s);
-      mesh.setMatrixAt(i, m);
-    }
-    mesh.count = instances.length;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    // Per-instance color tinting for selection state was removed in
-    // favor of a separate <SelectionOutline> wireframe AABB rendered
-    // around all selected instances — see SceneEditorCanvas.tsx.
-  }, [instances, cubeSize]);
+  const { tool, onSelectInstance, onHoverCube, onHoverCommand, onAddClick, onDeleteClick, onTileClick } = props;
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    // Only respond to LEFT-click. Right-click is owned by the camera.
     if (e.button !== 0) return;
     if (
       tool !== 'select' &&
@@ -1027,11 +958,9 @@ function KindGroup({
       tool !== 'tile'
     )
       return;
-    e.stopPropagation();
-    const instanceIdx = e.instanceId;
-    if (instanceIdx === undefined) return;
-    const inst = instances[instanceIdx];
+    const inst = lookupInstance(e);
     if (!inst) return;
+    e.stopPropagation();
     const startX = e.clientX;
     const startY = e.clientY;
     const modKey = e.ctrlKey || e.metaKey;
@@ -1072,12 +1001,8 @@ function KindGroup({
 
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (tool !== 'add' && tool !== 'delete' && tool !== 'tile') return;
-    const instanceIdx = e.instanceId;
-    if (instanceIdx === undefined) return;
-    const inst = instances[instanceIdx];
+    const inst = lookupInstance(e);
     if (!inst) return;
-    // R3F fires pointermove on every raycast intersection front-to-back.
-    // Stop here so the floor's handler doesn't overwrite our cube state.
     e.stopPropagation();
     if (tool === 'add' || tool === 'tile') {
       const n = e.face?.normal;
@@ -1097,16 +1022,13 @@ function KindGroup({
   };
 
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[geom, mat, capacity]}
-      castShadow={false}
-      receiveShadow={false}
+    <group
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerOut={handlePointerOut}
-      userData={{ kindId: kind.id, isObjectInstanceMesh: true }}
-    />
+    >
+      <ObjectInstances worldObjects={worldObjects} />
+    </group>
   );
 }
 
