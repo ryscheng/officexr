@@ -148,8 +148,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
 
     // Merge clips from every loaded rig. Earlier rigs win on name
     // collision (rare — Idle_A only lives in General, Walking_C only
-    // in MovementBasic, etc.). Declared BEFORE `meshOffsetY` because
-    // that useMemo samples each clip to compute per-frame extents.
+    // in MovementBasic, etc.).
     const clips = useMemo(() => {
       const seen = new Set<string>();
       const out: THREE.AnimationClip[] = [];
@@ -172,9 +171,8 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     ]);
 
     // -----------------------------------------------------------------
-    // Per-character mesh anchor: place the model's LOWEST visible
-    // vertex (across every frame of every loaded animation clip) at
-    // the inner group's local y=0.
+    // Per-character mesh anchor: place the model's bind-pose LOWEST
+    // visible vertex at the inner group's local y=0.
     //
     // Why this exists
     //   The Rapier body collider is a ball at local `BODY_Y=0.9`
@@ -182,21 +180,23 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     //   `root.y + 0.5`. Players.tsx wraps the character in a group
     //   offset by `BODY_Y - charRadius = 0.5`; the wrapper's local
     //   y=0 sits at the ball's bottom — the surface the controller
-    //   stands on. Our job is to place the model so its visible
-    //   feet land at THAT y=0 at every moment, not just bind pose.
+    //   thinks the character stands on. Our job is to place the
+    //   model so its bind-pose feet land at THAT y=0.
     //
-    // Why per-frame (the load-bearing decision)
-    //   An idle / walk cycle moves the foot bones (breathing,
-    //   weight shift, footplant). Anchoring on bind-pose alone
-    //   means the lowest frame of the cycle dips BELOW the cube
-    //   surface — feet briefly clip through the floor. To anchor
-    //   on the worst case we sample every clip at fixed intervals,
-    //   union the per-pose bboxes, and use the minimum across
-    //   ALL samples. The character then never clips during any
-    //   animation moment. For Mugshot (paused at bind pose), the
-    //   bind-pose extent is one of the samples — its min equals or
-    //   exceeds the union min, so paused rendering is still
-    //   correctly placed.
+    // Why bind-pose only (no per-frame sampling)
+    //   The character controller settles on the BALL collider, not
+    //   the visible mesh. The mesh is purely cosmetic. An earlier
+    //   version of this hook sampled every loaded clip at 12 frames
+    //   per clip and used `-(union.min.y)` so the model would never
+    //   dip into a cube during a stride. Net effect: in every frame
+    //   except the deepest stride dip the model rendered LIFTED
+    //   above the surface by the dip depth — most visibly a 5-10 cm
+    //   constant float in idle pose. We accept a 3-6 cm momentary
+    //   foot-into-cube clip on the lowest stride frame in exchange
+    //   for the character actually standing on the surface the rest
+    //   of the time. If a particular clip ever clips visibly
+    //   enough to bother a user, the surgical fix is to tweak the
+    //   clip's foot-Y curve in the GLB, not to add a global lift.
     //
     // The frame trick: `SkinnedMesh.computeBoundingBox()` writes
     //   the result in SkinnedMesh-LOCAL frame (bindMatrix and
@@ -210,43 +210,28 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     //
     // SOLID split
     //   Adventurer owns the MODEL-LOCAL anchor (per-character data
-    //   from the rig + its animations). Players.tsx owns the
-    //   PHYSICS-LOCAL anchor (body root → ball bottom, identical
-    //   for every character). Together they place feet on the
-    //   floor for any rig in any pose.
+    //   from the rig). Players.tsx owns the PHYSICS-LOCAL anchor
+    //   (body root → ball bottom, identical for every character).
+    //   Together they place bind-pose feet on the floor for any
+    //   rig.
     //
-    // Diagnostics in `__OFFICE_MESH_DEBUG__`: `minY` is the union
-    //   min y; `maxY` is the union max y; `offset` is what we pass
-    //   to innerRef; `sampleCount` is the number of poses sampled
-    //   (1 bind + N clips × SAMPLES_PER_CLIP). Tests + the
-    //   standing-validation probe assert these are sane.
+    // Diagnostics in `__OFFICE_MESH_DEBUG__`: `minY` is the bind-
+    //   pose min y; `maxY` is the bind-pose max y; `offset` is what
+    //   we pass to innerRef. Tests assert these are sane.
     // -----------------------------------------------------------------
     const meshOffsetY = useMemo(() => {
       scene.updateMatrixWorld(true);
-
-      // Cache the traversal so we don't re-walk per sample.
-      const skins: THREE.SkinnedMesh[] = [];
-      const staticMeshes: THREE.Mesh[] = [];
-      scene.traverse((obj) => {
-        const skin = obj as THREE.SkinnedMesh;
-        if (skin.isSkinnedMesh && skin.skeleton) {
-          skins.push(skin);
-          return;
-        }
-        const mesh = obj as THREE.Mesh;
-        if (mesh.isMesh && mesh.geometry) staticMeshes.push(mesh);
-      });
 
       const acc = new THREE.Box3();
       acc.makeEmpty();
       const tmp = new THREE.Box3();
 
-      const accumulateCurrentPose = (): void => {
-        scene.updateMatrixWorld(true);
-        for (const skin of skins) {
+      scene.traverse((obj) => {
+        const skin = obj as THREE.SkinnedMesh;
+        if (skin.isSkinnedMesh && skin.skeleton) {
           skin.skeleton.update();
           skin.computeBoundingBox();
-          if (!skin.boundingBox || skin.boundingBox.isEmpty()) continue;
+          if (!skin.boundingBox || skin.boundingBox.isEmpty()) return;
           // SkinnedMesh.computeBoundingBox writes to skin.boundingBox
           // in MESH-LOCAL frame (bindMatrix/bindMatrixInverse cancel
           // the bone math back to mesh-local). Lift into scene-local
@@ -254,45 +239,16 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
           // does this via the shader, so we have to match.
           tmp.copy(skin.boundingBox).applyMatrix4(skin.matrixWorld);
           acc.union(tmp);
+          return;
         }
-        for (const mesh of staticMeshes) {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh && mesh.geometry) {
           if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-          if (!mesh.geometry.boundingBox) continue;
+          if (!mesh.geometry.boundingBox) return;
           tmp.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
           acc.union(tmp);
         }
-      };
-
-      // 1) Bind pose — always.
-      accumulateCurrentPose();
-
-      // 2) Per-clip samples — only when the character is animated.
-      //    When `paused=true` (Mugshot's diagnostic mode) we render
-      //    the bind pose; sampling animation extremes would lift
-      //    the whole mesh above bind-pose feet, putting the
-      //    rendered character above the cube surface. For Debug
-      //    mode (animated), per-frame extents are essential so the
-      //    foot doesn't dip into the cube during an idle clip.
-      const SAMPLES_PER_CLIP = 12;
-      if (!paused && clips.length > 0) {
-        const mixer = new THREE.AnimationMixer(scene);
-        for (const clip of clips) {
-          const action = mixer.clipAction(clip);
-          action.play();
-          const duration = clip.duration;
-          for (let i = 0; i < SAMPLES_PER_CLIP; i++) {
-            const t = (i / SAMPLES_PER_CLIP) * duration;
-            mixer.setTime(t);
-            accumulateCurrentPose();
-          }
-          action.stop();
-        }
-        mixer.stopAllAction();
-        // Return the skeleton to bind pose so the rendered scene
-        // doesn't start out at the final sampled animation frame.
-        for (const skin of skins) skin.skeleton.pose();
-        scene.updateMatrixWorld(true);
-      }
+      });
 
       if (acc.isEmpty() || !isFinite(acc.min.y) || !isFinite(acc.max.y)) {
         console.warn(
@@ -307,23 +263,17 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
             minY: number;
             maxY: number;
             offset: number;
-            sampleCount: number;
           };
         }
       ).__OFFICE_MESH_DEBUG__ = {
         minY: acc.min.y,
         maxY: acc.max.y,
         offset,
-        sampleCount: 1 + clips.length * SAMPLES_PER_CLIP,
       };
       return offset;
-      // `clips` is a stable useMemo derived from the loaded
-      // animation GLTFs; this useMemo recomputes once per character
-      // when the rigs finish loading. `paused` flips between bind-
-      // only and per-frame; we recompute when it changes so a
-      // Debug → Mugshot switch picks up the right offset.
-      // Acceptable mount-time cost.
-    }, [scene, clips, paused]);
+      // Recomputes once per cloned scene — bind pose is invariant
+      // to whether playback is paused, so `paused` is not in deps.
+    }, [scene]);
 
     const innerRef = useRef<THREE.Group>(null!);
     const { actions } = useAnimations(clips, innerRef);

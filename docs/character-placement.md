@@ -85,6 +85,25 @@ time so "world space" == "scene-parent space" == "innerRef's
 parent's local space" — perfect for setting
 `innerRef.position.y = -box.min.y`.
 
+#### Bind-pose only, not per-animation-frame
+
+We deliberately measure the **bind pose** rather than sampling
+every animation clip and unioning the per-frame extents. An
+earlier version did the latter, on the assumption "anchor at the
+worst-case frame so the foot never clips into a cube during a
+stride." The cost was silent and constant: in every frame **other
+than** the deepest dip, the model rendered LIFTED above the
+surface by the difference, visible as a 5–10 cm constant float in
+idle pose.
+
+That tradeoff is wrong. The character controller settles on the
+BALL collider; the mesh is purely cosmetic. We accept a 3–6 cm
+momentary foot-into-cube clip on the lowest stride frame in
+exchange for the character actually standing on the surface the
+rest of the time. If a particular GLB ever clips visibly enough
+to bother a user, the surgical fix is a per-clip foot-Y curve
+tweak in the GLB — not a global lift here.
+
 ### 4. Bind-pose mesh Y — the GLB
 
 The model itself contributes whatever its lowest skinned vertex
@@ -109,11 +128,11 @@ cube surface for any character regardless of rig conventions.
 
 - **`window.__OFFICE_MESH_DEBUG__`** — published by Adventurer
   whenever a fresh clone is anchored. Carries `minY` (the measured
-  bind-pose bottom), `maxY` (the top, ≈ character height), and
-  `offset` (what we passed to innerRef's `position-y`). Tests and
-  the standing-validation probe at
-  `docs/standing-validation/single-cube.png` assert these are
-  finite and roughly sane.
+  bind-pose bottom), `maxY` (the bind-pose top, ≈ character
+  height), and `offset` (what we passed to innerRef's
+  `position-y` — always equals `-minY`). Tests and the standing-
+  validation probe at `docs/standing-validation/single-cube.png`
+  assert these are finite and roughly sane.
 - **Mugshot mode** (`#mugshot/<CharacterName>`) — interactive
   per-character visual check. Cycle N/E/S/W cardinal angles, tune
   distance / viewport / ambient fill. The Y slider is a **live
