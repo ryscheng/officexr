@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { CUBE_FACES, CUBE_KINDS, type CubeFace } from '@officexr/world';
+import React from 'react';
+import { CUBE_KINDS } from '@officexr/world';
 
 import { Button } from '../../components/ui/button.tsx';
 import {
@@ -15,7 +15,6 @@ type RoomDoc = ReturnType<typeof useRoomDocument>;
 type RoomCommand = RoomDoc['doc']['commands'][number];
 
 const KIND_OPTIONS = CUBE_KINDS.map((k) => k.id);
-const EXTRUDE_COUNT_DEFAULT = 2;
 
 interface InspectorPanelProps {
   roomDoc: RoomDoc;
@@ -28,16 +27,13 @@ interface InspectorPanelProps {
  *
  *   - empty selection      → tip
  *   - multi-selection (>1) → count + "delete all" + "group"
- *   - single placeCube     → kind dropdown, position vec3, extrude
- *                            count + 6 per-face extrude buttons,
+ *   - single placeCube     → kind dropdown, position vec3,
  *                            optional ungroup row if the cube is in
  *                            a group
- *   - single extrude       → face select, count slider, target id
+ *   - unrecognised op      → fallback tip
  *
  * Each control is fully controlled; edits flow straight to the
- * roomDoc mutators with no shared store. The extrude count for the
- * placeCube branch lives in component state so the per-face buttons
- * can read the latest value at click time without re-keying.
+ * roomDoc mutators with no shared store.
  */
 export function InspectorPanel({ roomDoc }: InspectorPanelProps) {
   const selectionSize = roomDoc.selection.size;
@@ -89,15 +85,13 @@ export function InspectorPanel({ roomDoc }: InspectorPanelProps) {
   if (command?.op === 'placeCube') {
     return <PlaceCubeInspector command={command} roomDoc={roomDoc} />;
   }
-  if (command?.op === 'extrude') {
-    return <ExtrudeInspector command={command} roomDoc={roomDoc} />;
-  }
-  // Defensive: a single-selection with neither op (shouldn't happen
-  // given the discriminated union). Render the empty tip.
+  // Defensive: a single-selection with an unrecognised op (e.g. legacy
+  // extrude commands in historical maps — they still exist in doc.commands
+  // for backward compat but the UI no longer shows an editor for them).
   return (
     <Panel>
       <div className="px-3 py-3 text-xs text-muted-foreground">
-        Selected command is unrecognised.
+        Selected command is unrecognised (legacy op: {command?.op ?? 'unknown'}).
       </div>
     </Panel>
   );
@@ -109,12 +103,12 @@ interface PlaceCubeProps {
 }
 
 function PlaceCubeInspector({ command, roomDoc }: PlaceCubeProps) {
-  const [extrudeCount, setExtrudeCount] = useState(EXTRUDE_COUNT_DEFAULT);
   const groupId = roomDoc.lookup.groupOf(command.id);
 
   return (
     <Panel>
       <Section title="placeCube">
+        <Readonly label="id" value={command.id} />
         <SelectInput
           label="kind"
           value={command.kindId}
@@ -136,39 +130,6 @@ function PlaceCubeInspector({ command, roomDoc }: PlaceCubeProps) {
         />
       </Section>
 
-      <Section title="Extrude">
-        <div className="flex items-center gap-2 px-3 py-1">
-          <label className="w-[35%] shrink-0 text-[11px] text-muted-foreground">
-            count
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={64}
-            step={1}
-            value={extrudeCount}
-            onChange={(e) =>
-              setExtrudeCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))
-            }
-            className="w-16 rounded-sm border border-input bg-secondary px-1.5 py-0.5 text-right text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring tabular-nums"
-          />
-        </div>
-        <div className="grid grid-cols-3 gap-1 px-3 py-1.5">
-          {CUBE_FACES.map((face) => (
-            <Button
-              key={face}
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                roomDoc.extrudeFromFace(command.id, face, extrudeCount)
-              }
-            >
-              {face}
-            </Button>
-          ))}
-        </div>
-      </Section>
-
       {groupId ? (
         <Section title="Group">
           <Readonly label="member of" value={groupId} />
@@ -183,51 +144,6 @@ function PlaceCubeInspector({ command, roomDoc }: PlaceCubeProps) {
           </div>
         </Section>
       ) : null}
-    </Panel>
-  );
-}
-
-interface ExtrudeProps {
-  command: Extract<RoomCommand, { op: 'extrude' }>;
-  roomDoc: RoomDoc;
-}
-
-function ExtrudeInspector({ command, roomDoc }: ExtrudeProps) {
-  const targetIdx = roomDoc.doc.commands.findIndex(
-    (c) => c.id === command.targetCommandId,
-  );
-  const targetLabel = targetIdx >= 0 ? `#${targetIdx + 1}` : '(missing)';
-
-  return (
-    <Panel>
-      <Section title="extrude">
-        <SelectInput
-          label="face"
-          value={command.face}
-          options={CUBE_FACES as unknown as readonly CubeFace[]}
-          onChange={(face) => roomDoc.setExtrudeFace(command.id, face)}
-        />
-        <div className="flex items-center gap-2 px-3 py-1">
-          <label className="w-[35%] shrink-0 text-[11px] text-muted-foreground">
-            count
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={64}
-            step={1}
-            value={command.count}
-            onChange={(e) =>
-              roomDoc.setExtrudeCount(
-                command.id,
-                Math.max(1, Math.floor(Number(e.target.value) || 1)),
-              )
-            }
-            className="w-16 rounded-sm border border-input bg-secondary px-1.5 py-0.5 text-right text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring tabular-nums"
-          />
-        </div>
-        <Readonly label="target" value={targetLabel} />
-      </Section>
     </Panel>
   );
 }

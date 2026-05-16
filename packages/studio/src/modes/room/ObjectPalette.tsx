@@ -83,8 +83,6 @@ export function ObjectPalette({ staged, onStage }: ObjectPaletteProps) {
       </div>
       <p style={{ marginTop: 12, fontSize: 11, color: '#737373', lineHeight: 1.4 }}>
         Click a swatch to stage that cube, then click the floor to place.
-        Click an existing cube to select; click a face on the selected
-        cube to extrude.
       </p>
     </div>
   );

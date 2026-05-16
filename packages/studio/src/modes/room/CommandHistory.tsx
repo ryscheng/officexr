@@ -149,5 +149,6 @@ function GroupBadge({ id }: { id: string }) {
 
 function commandLabel(c: SceneCommand): string {
   if (c.op === 'placeCube') return `place ${c.kindId} @ ${c.position.join(',')}`;
-  return `extrude ${c.face} ×${c.count}`;
+  // extrude commands are legacy; show a generic label if one appears
+  return `legacy op: ${c.op}`;
 }

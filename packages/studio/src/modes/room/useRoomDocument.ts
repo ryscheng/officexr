@@ -4,10 +4,8 @@ import {
   LocalStorageRoomStorage,
   compileScene,
   emptyRoomDocument,
-  newExtrude,
   newPlaceCube,
   serializeRoom,
-  type CubeFace,
   type PlaceCubeCommand,
   type RoomDocument,
   type RoomGroup,
@@ -89,18 +87,11 @@ export function useRoomDocument(): {
     positions: ReadonlyArray<[number, number, number]>,
     groupId?: string | null,
   ) => string[];
-  extrudeFromFace: (
-    targetCommandId: string,
-    face: CubeFace,
-    count: number,
-  ) => string;
   setKindForCommand: (commandId: string, kindId: string) => void;
   setPositionForCommand: (
     commandId: string,
     position: [number, number, number],
   ) => void;
-  setExtrudeFace: (commandId: string, face: CubeFace) => void;
-  setExtrudeCount: (commandId: string, count: number) => void;
   deleteCommand: (commandId: string) => void;
   deleteSelection: () => void;
   groupCommands: (commandIds: Iterable<string>, label?: string) => string | null;
@@ -372,21 +363,6 @@ export function useRoomDocument(): {
     [doc],
   );
 
-  // TODO Task 04: remove this mutator
-  const extrudeFromFace = useCallback(
-    (targetCommandId: string, face: CubeFace, count: number) => {
-      const cmd = newExtrude({ targetCommandId, face, count });
-      setDoc((prev) => ({
-        ...prev,
-        updatedAt: Date.now(),
-        commands: [...prev.commands, cmd],
-      }));
-      setSelectionState(new Set([cmd.id]));
-      return cmd.id;
-    },
-    [],
-  );
-
   const setKindForCommand = useCallback(
     (commandId: string, kindId: string) => {
       const action: EditAction = { type: 'setKind', commandId, kindId };
@@ -407,36 +383,6 @@ export function useRoomDocument(): {
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [doc],
-  );
-
-  // TODO Task 04: remove this mutator
-  const setExtrudeFace = useCallback(
-    (commandId: string, face: CubeFace) => {
-      setDoc((prev) => ({
-        ...prev,
-        updatedAt: Date.now(),
-        commands: prev.commands.map((c) =>
-          c.id === commandId && c.op === 'extrude' ? { ...c, face } : c,
-        ),
-      }));
-    },
-    [],
-  );
-
-  // TODO Task 04: remove this mutator
-  const setExtrudeCount = useCallback(
-    (commandId: string, count: number) => {
-      setDoc((prev) => ({
-        ...prev,
-        updatedAt: Date.now(),
-        commands: prev.commands.map((c) =>
-          c.id === commandId && c.op === 'extrude'
-            ? { ...c, count: Math.max(1, Math.floor(count)) }
-            : c,
-        ),
-      }));
-    },
-    [],
   );
 
   // Internal helper: record a delete action to history, then update doc.
@@ -627,11 +573,8 @@ export function useRoomDocument(): {
     lookup,
     placeCube,
     placeMany,
-    extrudeFromFace,
     setKindForCommand,
     setPositionForCommand,
-    setExtrudeFace,
-    setExtrudeCount,
     deleteCommand,
     deleteSelection,
     groupCommands,
