@@ -81,6 +81,13 @@ export interface FixedCameraViewConfig {
    * `CameraRig` and pins the camera at exactly this distance with
    * zero lateral leash. */
   distanceM?: number;
+  /** Optional world-space point the fixed camera orbits AND looks
+   * at. When undefined, the camera tracks the local player's
+   * render position (gameplay default). Set to `[0, 0, 0]` by
+   * Mugshot so framing is independent of where the character
+   * happens to stand — two characters at different y heights
+   * frame identically. */
+  lookAt?: readonly [number, number, number];
 }
 
 export interface ViewConfig {

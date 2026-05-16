@@ -101,6 +101,11 @@ export interface FixedCameraSettings {
    * by Mugshot mode for deterministic framing; absent in normal
    * gameplay (the screen-fraction derivation handles it). */
   distanceM?: number;
+  /** Optional world-space anchor for the fixed camera. When set,
+   * the camera orbits AND looks at this point instead of the
+   * local player. Used by Mugshot mode (set to `[0, 0, 0]`) so
+   * framing is character-independent. */
+  lookAt?: readonly [number, number, number];
 }
 
 export interface BotSettings {

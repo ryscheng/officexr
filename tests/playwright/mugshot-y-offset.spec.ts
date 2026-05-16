@@ -68,25 +68,27 @@ test('mugshot Y-offset slider moves the character body', async ({ page }) => {
     await page.waitForTimeout(400);
   };
 
-  // Default settle.
+  // Default settle. Cubes are centered on origin (tops at y=1),
+  // so body root settles at y = 1 - 0.5 + 0.01 (controller skin) =
+  // 0.51 by default.
   const initial = await readY();
   expect(initial, 'pos.y not exposed').not.toBeNull();
-  expect(Math.abs((initial as number) - 1.51)).toBeLessThan(0.05);
+  expect(Math.abs((initial as number) - 0.51)).toBeLessThan(0.05);
 
   // Lift the character. Auto-warp threshold=0 (gravity off) means
   // even small deltas propagate.
-  await setY(3.5);
+  await setY(2.5);
   const lifted = await readY();
   expect(
-    Math.abs((lifted as number) - 3.5),
-    `expected pos.y near 3.5 after lift, got ${lifted}`,
+    Math.abs((lifted as number) - 2.5),
+    `expected pos.y near 2.5 after lift, got ${lifted}`,
   ).toBeLessThan(0.05);
 
   // Lower it back to a different non-default value.
-  await setY(2.25);
+  await setY(1.25);
   const lowered = await readY();
   expect(
-    Math.abs((lowered as number) - 2.25),
-    `expected pos.y near 2.25 after lower, got ${lowered}`,
+    Math.abs((lowered as number) - 1.25),
+    `expected pos.y near 1.25 after lower, got ${lowered}`,
   ).toBeLessThan(0.05);
 });

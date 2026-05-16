@@ -155,6 +155,7 @@ export function Scene(props: SceneProps) {
       lateralFrac: fixedCamera.lateralFrac,
       fov: fixedCamera.fov,
       distanceM: fixedCamera.distanceM,
+      lookAt: fixedCamera.lookAt,
     }),
     [
       fixedCamera.azimuthDeg,
@@ -165,6 +166,7 @@ export function Scene(props: SceneProps) {
       fixedCamera.lateralFrac,
       fixedCamera.fov,
       fixedCamera.distanceM,
+      fixedCamera.lookAt,
     ],
   );
 

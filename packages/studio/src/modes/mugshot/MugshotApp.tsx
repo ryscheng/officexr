@@ -19,15 +19,17 @@ const SELF_ID = 'mugshot-player';
 const OFFICE_ID = 'mugshot';
 const DEFAULT_CHARACTER: CharacterName = 'Barbarian';
 
-/** Default settled-on-cube body root y. The body's ball collider
- * sits at local y=0.9 with radius 0.4; ball bottom at root+0.5;
- * controller skin adds 0.01. So root.y=1.51 places the visible
- * mesh just above the cube top y=2. The user can tune this via
- * the Y slider to lift the model out of the cubes if visible feet
- * are buried. */
-const DEFAULT_Y_OFFSET = 1.51;
+/** Default settled-on-cube body root y. With the 2×2 cube cluster
+ * centered on world origin (cube tops at y=1, bottoms at y=-1),
+ * and the ball collider at local y=BODY_Y=0.9, radius=0.4 → ball
+ * bottom at root+0.5, controller skin 0.01 → root.y = 1 - 0.5 +
+ * 0.01 = 0.51. The character's feet (visible bottom of the mesh)
+ * end up at wrapper.world.y = root + 0.5 = 1.01, sitting 1 cm
+ * above the cube top y=1. */
+const DEFAULT_Y_OFFSET = 0.51;
 
 const DEFAULT_DISTANCE_M = 6;
+const DEFAULT_CAMERA_HEIGHT = 1.7;
 const DEFAULT_VIEWPORT_W = 512;
 const DEFAULT_VIEWPORT_H = 512;
 const DEFAULT_AZIMUTH: AzimuthDeg = 180;
@@ -57,24 +59,34 @@ function readCharacterFromHash(): CharacterName {
 
 type CubeMode = 'gltf' | 'primitive';
 
-/** The mugshot scene: a 2×2 cube square at voxel y=0, alternating
- * blue and stone. Top face is at world y=2. The two layouts share
- * INSTANCE IDs deliberately — when the user flips cubeMode, the
- * SDK store swap to `setWorldObjects` produces the same set of
- * inst.id values, so React-keyed reconciliation in <MapColliders>
- * reuses the same <CuboidCollider> nodes. The colliders are
- * literally identical between modes; only the visible mesh path
- * differs. That's the whole point of the A/B diagnostic. */
+/** The mugshot scene: a 2×2 cube square whose CLUSTER is centered
+ * on world origin (0, 0, 0). With cubeSize=2, voxel positions
+ * (±0.5, -0.5, ±0.5) translate to world cube centers (±1, 0, ±1)
+ * — cluster bbox x∈[-2,2], y∈[-1,1], z∈[-2,2]. Cube tops at
+ * world y=1, bottoms at y=-1.
+ *
+ * Why origin-centered: the fixed camera is set to `lookAt:
+ * [0, 0, 0]` so framing is purely a function of azimuth + distance
+ * + height + fov — never the character's body root position. Two
+ * characters at different body.y heights frame identically.
+ *
+ * The two layouts share INSTANCE IDs deliberately — when the user
+ * flips cubeMode, the SDK store swap to `setWorldObjects` produces
+ * the same set of inst.id values, so React-keyed reconciliation
+ * in <MapColliders> reuses the same <CuboidCollider> nodes. The
+ * colliders are literally identical between modes; only the
+ * visible mesh path differs. That's the whole point of the A/B
+ * diagnostic. */
 const GLTF_CUBES: ReadonlyArray<{
   id: string;
   sourceCommandId: string;
   kindId: string;
   position: [number, number, number];
 }> = [
-  { id: 'm-0-0', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [0, 0, 0] },
-  { id: 'm-1-0', sourceCommandId: 'mugshot', kindId: 'stone', position: [1, 0, 0] },
-  { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: 'stone', position: [0, 0, 1] },
-  { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [1, 0, 1] },
+  { id: 'm-0-0', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [-0.5, -0.5, -0.5] },
+  { id: 'm-1-0', sourceCommandId: 'mugshot', kindId: 'stone', position: [0.5, -0.5, -0.5] },
+  { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: 'stone', position: [-0.5, -0.5, 0.5] },
+  { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [0.5, -0.5, 0.5] },
 ];
 
 const PRIMITIVE_CUBES: ReadonlyArray<{
@@ -83,10 +95,10 @@ const PRIMITIVE_CUBES: ReadonlyArray<{
   kindId: string;
   position: [number, number, number];
 }> = [
-  { id: 'm-0-0', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [0, 0, 0] },
-  { id: 'm-1-0', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [1, 0, 0] },
-  { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [0, 0, 1] },
-  { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [1, 0, 1] },
+  { id: 'm-0-0', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [-0.5, -0.5, -0.5] },
+  { id: 'm-1-0', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [0.5, -0.5, -0.5] },
+  { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [-0.5, -0.5, 0.5] },
+  { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [0.5, -0.5, 0.5] },
 ];
 
 function cubesForMode(mode: CubeMode) {
@@ -151,6 +163,7 @@ export function MugshotApp() {
   const [yOffset, setYOffset] = useState(DEFAULT_Y_OFFSET);
   const [azimuthDeg, setAzimuthDeg] = useState<AzimuthDeg>(DEFAULT_AZIMUTH);
   const [distanceM, setDistanceM] = useState(DEFAULT_DISTANCE_M);
+  const [cameraHeight, setCameraHeight] = useState(DEFAULT_CAMERA_HEIGHT);
   const [cubeMode, setCubeMode] = useState<CubeMode>('gltf');
   const [viewportWidth, setViewportWidth] = useState(DEFAULT_VIEWPORT_W);
   const [viewportHeight, setViewportHeight] = useState(DEFAULT_VIEWPORT_H);
@@ -177,7 +190,10 @@ export function MugshotApp() {
     const lp = createPersistentLocalState({
       selfId: SELF_ID,
       officeId: OFFICE_ID,
-      startPos: { x: 1, y: DEFAULT_Y_OFFSET, z: 1 },
+      // Cluster of cubes is centered on world origin; character
+      // stands at origin XZ at the default body-y above the cube
+      // tops at y=1.
+      startPos: { x: 0, y: DEFAULT_Y_OFFSET, z: 0 },
     });
     setLocal(lp);
     (window as unknown as { __OFFICE_STORE__: typeof lp.store }).__OFFICE_STORE__ =
@@ -266,11 +282,13 @@ export function MugshotApp() {
 
   // Push the Y offset into the SDK store every time the slider
   // changes. SceneFrame's auto-warp (with gravity off) moves the
-  // body to match on the next frame.
+  // body to match on the next frame. Character XZ is locked at
+  // world origin so the cluster-of-cubes-at-origin scene stays
+  // symmetric around the standing position.
   useEffect(() => {
     if (!local) return;
     local.actions.setSelfPosition(
-      { x: 1, y: yOffset, z: 1 },
+      { x: 0, y: yOffset, z: 0 },
       { x: 0, y: 0, z: 0 },
       0,
     );
@@ -288,15 +306,18 @@ export function MugshotApp() {
         ...DEFAULT_VIEW_CONFIG.fixedCamera,
         azimuthDeg,
         pitchDeg: -8,
-        height: 1.7,
+        height: cameraHeight,
         fov: 40,
         maxOnScreenFrac: 0.45,
         minOnScreenFrac: 0.4,
         lateralFrac: 0,
         distanceM,
+        // Camera anchors on world origin — cubes are centered
+        // here, so the frame is character-independent.
+        lookAt: [0, 0, 0],
       },
     }),
-    [lighting, background, azimuthDeg, distanceM],
+    [lighting, background, azimuthDeg, distanceM, cameraHeight],
   );
 
   // Expose test hooks for the manifest-load / per-angle capture
@@ -308,6 +329,7 @@ export function MugshotApp() {
       __OFFICE_MUGSHOT_SET_AZIMUTH__?: (deg: AzimuthDeg) => void;
       __OFFICE_MUGSHOT_SET_Y_OFFSET__?: (y: number) => void;
       __OFFICE_MUGSHOT_SET_CUBE_MODE__?: (mode: CubeMode) => void;
+      __OFFICE_MUGSHOT_SET_CAMERA_HEIGHT__?: (h: number) => void;
       __OFFICE_MUGSHOT_TRIGGER_EXPORT__?: (opts?: {
         download?: boolean;
       }) => Promise<void>;
@@ -321,6 +343,7 @@ export function MugshotApp() {
       // export captured: the default-Y rendering.
       setYOffset(DEFAULT_Y_OFFSET);
       setDistanceM(m.fixedCamera.distanceM);
+      setCameraHeight(m.fixedCamera.height);
       setViewportWidth(m.viewportWidth);
       setViewportHeight(m.viewportHeight);
       setLighting(m.lighting);
@@ -331,6 +354,7 @@ export function MugshotApp() {
     win.__OFFICE_MUGSHOT_SET_AZIMUTH__ = (deg) => setAzimuthDeg(deg);
     win.__OFFICE_MUGSHOT_SET_Y_OFFSET__ = (y) => setYOffset(y);
     win.__OFFICE_MUGSHOT_SET_CUBE_MODE__ = (mode) => setCubeMode(mode);
+    win.__OFFICE_MUGSHOT_SET_CAMERA_HEIGHT__ = (h) => setCameraHeight(h);
     // Forwards through `onExportRef` so the latest onExport closure
     // is invoked even though this useEffect captured the original.
     win.__OFFICE_MUGSHOT_TRIGGER_EXPORT__ = (opts) =>
@@ -340,6 +364,7 @@ export function MugshotApp() {
       delete win.__OFFICE_MUGSHOT_SET_AZIMUTH__;
       delete win.__OFFICE_MUGSHOT_SET_Y_OFFSET__;
       delete win.__OFFICE_MUGSHOT_SET_CUBE_MODE__;
+      delete win.__OFFICE_MUGSHOT_SET_CAMERA_HEIGHT__;
       delete win.__OFFICE_MUGSHOT_TRIGGER_EXPORT__;
     };
   }, []);
@@ -411,7 +436,7 @@ export function MugshotApp() {
         fixedCamera: {
           azimuthDeg,
           pitchDeg: -8,
-          height: 1.7,
+          height: cameraHeight,
           fov: 40,
           distanceM,
         },
@@ -458,6 +483,7 @@ export function MugshotApp() {
   }, [
     azimuthDeg,
     distanceM,
+    cameraHeight,
     yOffset,
     cubeMode,
     viewportWidth,
@@ -543,6 +569,8 @@ export function MugshotApp() {
         onAzimuthChange={setAzimuthDeg}
         distanceM={distanceM}
         onDistanceChange={setDistanceM}
+        cameraHeight={cameraHeight}
+        onCameraHeightChange={setCameraHeight}
         viewportWidth={viewportWidth}
         onViewportWidthChange={setViewportWidth}
         viewportHeight={viewportHeight}
@@ -581,6 +609,8 @@ interface ControlPanelProps {
   onAzimuthChange: (v: AzimuthDeg) => void;
   distanceM: number;
   onDistanceChange: (v: number) => void;
+  cameraHeight: number;
+  onCameraHeightChange: (v: number) => void;
   viewportWidth: number;
   onViewportWidthChange: (v: number) => void;
   viewportHeight: number;
@@ -645,6 +675,18 @@ function ControlPanel(props: ControlPanelProps) {
           step={0.1}
           value={props.distanceM}
           onChange={(e) => props.onDistanceChange(Number(e.target.value))}
+          style={rangeStyle}
+        />
+      </Section>
+
+      <Section title={`Camera height · ${props.cameraHeight.toFixed(2)} m`}>
+        <input
+          type="range"
+          min={0.5}
+          max={5}
+          step={0.05}
+          value={props.cameraHeight}
+          onChange={(e) => props.onCameraHeightChange(Number(e.target.value))}
           style={rangeStyle}
         />
       </Section>

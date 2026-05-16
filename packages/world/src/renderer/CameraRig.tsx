@@ -60,6 +60,12 @@ interface CameraRigProps {
      * deterministic across machines (the screen-fraction logic is
      * great for gameplay but makes capture-baseline tests fragile). */
     distanceM?: number;
+    /** Optional world-space anchor. When set, the camera orbits AND
+     * looks at this point instead of the local player's render
+     * position. Used by Mugshot mode (set to `[0, 0, 0]`) so framing
+     * doesn't shift when the character's body root settles at
+     * different y values. */
+    lookAt?: readonly [number, number, number];
   };
 }
 
@@ -442,10 +448,19 @@ export function CameraRig({
       // Fixed-orientation leash camera.
       //   - Orientation comes ONLY from azimuth + pitch — never tracks the
       //     character. The camera does not rotate as the player moves.
-      //   - Y is locked at character.y + height (no bobbing).
-      //   - XZ position is moved only when XZ distance to the character
+      //   - Y is locked at reference.y + height (no bobbing).
+      //   - XZ position is moved only when XZ distance to the reference
       //     leaves [minDistance, maxDistance]. Within bounds the camera
       //     stays put while the character wanders.
+      //
+      // The "reference point" the camera orbits and looks toward is
+      // the character's render pos by default (gameplay). Mugshot
+      // overrides it to a fixed world point (e.g. origin) by
+      // passing `fixed.lookAt`, so framing is character-independent
+      // and identical across rigs / spawn heights.
+      const reference = fixed.lookAt
+        ? { x: fixed.lookAt[0], y: fixed.lookAt[1], z: fixed.lookAt[2] }
+        : pos;
       const az = THREE.MathUtils.degToRad(fixed.azimuthDeg);
       const pitch = THREE.MathUtils.degToRad(fixed.pitchDeg);
 
@@ -504,32 +519,33 @@ export function CameraRig({
       const maxLateral =
         directXZ !== undefined ? 0 : fixed.lateralFrac * maxDistance * tanHalfFov;
 
-      // Initialize position on entry into fixed mode so the character is
-      // visible at the default leash distance.
+      // Initialize position on entry into fixed mode so the reference
+      // point is visible at the default leash distance.
       if (fixedNeedsInit.current) {
         fixedNeedsInit.current = false;
         const initialDist = (minDistance + maxDistance) / 2;
         camera.position.set(
-          pos.x + Math.sin(az) * initialDist,
-          pos.y + fixed.height,
-          pos.z - Math.cos(az) * initialDist,
+          reference.x + Math.sin(az) * initialDist,
+          reference.y + fixed.height,
+          reference.z - Math.cos(az) * initialDist,
         );
       }
 
-      // Lock Y to the character's height each frame.
-      camera.position.y = pos.y + fixed.height;
+      // Lock Y to the reference's height each frame.
+      camera.position.y = reference.y + fixed.height;
 
-      // Decompose the (camera → player) XZ vector into a depth component
-      // along the camera's forward axis and a lateral component along the
-      // camera's right axis. The two leashes are independent: depth is
-      // clamped to [minDistance, maxDistance], lateral to ±maxLateral.
+      // Decompose the (camera → reference) XZ vector into a depth
+      // component along the camera's forward axis and a lateral
+      // component along the camera's right axis. The two leashes are
+      // independent: depth is clamped to [minDistance, maxDistance],
+      // lateral to ±maxLateral.
       const forwardX = -Math.sin(az);
       const forwardZ = Math.cos(az);
       const rightX = -Math.cos(az);
       const rightZ = -Math.sin(az);
 
-      const rx = pos.x - camera.position.x;
-      const rz = pos.z - camera.position.z;
+      const rx = reference.x - camera.position.x;
+      const rz = reference.z - camera.position.z;
       const parallel = rx * forwardX + rz * forwardZ;
       const perp = rx * rightX + rz * rightZ;
 
