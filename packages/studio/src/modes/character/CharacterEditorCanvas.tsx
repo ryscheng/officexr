@@ -3,10 +3,19 @@ import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import {
   Adventurer,
+  DEFAULT_EDITOR_LIGHTING,
   EndlessGrid,
+  LightingRig,
   type AnimationState,
 } from '@officexr/world/renderer';
 import type { CharacterName } from '@officexr/world';
+
+const CHARACTER_EDITOR_LIGHTING = {
+  ...DEFAULT_EDITOR_LIGHTING,
+  sunPosition: [10, 20, 10] as [number, number, number],
+  sunIntensity: 1.2,
+  ambientFillIntensity: 0.7,
+};
 
 export interface CharacterPartHover {
   /** Name of the leaf node the raycast hit (usually a SkinnedMesh
@@ -60,8 +69,7 @@ export function CharacterEditorCanvas(props: CharacterEditorCanvasProps) {
       style={{ width: '100%', height: '100%', display: 'block' }}
       shadows={false}
     >
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[10, 20, 10]} intensity={1.2} />
+      <LightingRig lighting={CHARACTER_EDITOR_LIGHTING} />
       <color attach="background" args={['#0a0a0a']} />
       <EndlessGrid />
       <CharacterStage {...props} />

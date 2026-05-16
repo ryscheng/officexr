@@ -1,7 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { EndlessGrid, ObjectInstances } from '@officexr/world/renderer';
+import {
+  DEFAULT_EDITOR_LIGHTING,
+  EndlessGrid,
+  LightingRig,
+  ObjectInstances,
+} from '@officexr/world/renderer';
+
+const ROOM_EDITOR_LIGHTING = {
+  ...DEFAULT_EDITOR_LIGHTING,
+  sunPosition: [20, 40, 20] as [number, number, number],
+  sunIntensity: 1.2,
+  ambientFillIntensity: 0.6,
+};
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
@@ -442,8 +454,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       style={{ width: '100%', height: '100%', display: 'block' }}
       shadows={false}
     >
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[20, 40, 20]} intensity={1.2} />
+      <LightingRig lighting={ROOM_EDITOR_LIGHTING} />
       <color attach="background" args={['#0a0a0a']} />
       <EndlessGrid />
       <OrbitCamera compiled={props.compiled} />

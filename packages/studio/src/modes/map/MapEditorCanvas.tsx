@@ -9,11 +9,40 @@ import {
   type RoomInstance,
   type SpawnPoint,
 } from '@officexr/world/scenes';
-import { EndlessGrid, ObjectInstances } from '@officexr/world/renderer';
+import {
+  DEFAULT_EDITOR_LIGHTING,
+  EndlessGrid,
+  LightingRig,
+  ObjectInstances,
+  type LightingSettings,
+} from '@officexr/world/renderer';
 import type { WorldObjects } from '@officexr/sdk';
 import type { MapSelection } from './useMapDocument.ts';
 
 const CUBE_SIZE = 2;
+
+/**
+ * Translate the map document's `MapEnvironment` (sun position +
+ * color + intensity + ambient intensity) into the renderer's
+ * `LightingSettings` shape. The map editor's environment panel
+ * only exposes the sun + ambient fields; the rest pick up the
+ * editor defaults (no shadow casting, no sun disc, no aux light).
+ */
+function mapDocToLighting(
+  env: import('@officexr/world/scenes').MapEnvironment,
+): LightingSettings {
+  return {
+    ...DEFAULT_EDITOR_LIGHTING,
+    sunPosition: [
+      env.sun.positionX,
+      env.sun.positionY,
+      env.sun.positionZ,
+    ],
+    sunColor: env.sun.color,
+    sunIntensity: env.sun.intensity,
+    ambientFillIntensity: env.ambientIntensity,
+  };
+}
 
 /**
  * Snap a raycast hit point to the nearest cube-grid Y level so a
@@ -69,16 +98,7 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
       shadows={false}
     >
       <color attach="background" args={['#0b1220']} />
-      <ambientLight intensity={props.doc.environment.ambientIntensity} />
-      <directionalLight
-        position={[
-          props.doc.environment.sun.positionX,
-          props.doc.environment.sun.positionY,
-          props.doc.environment.sun.positionZ,
-        ]}
-        color={props.doc.environment.sun.color}
-        intensity={props.doc.environment.sun.intensity}
-      />
+      <LightingRig lighting={mapDocToLighting(props.doc.environment)} />
       <EnvironmentLayer environment={props.doc.environment} />
       <EndlessGrid />
       <FloorPicker

@@ -2,13 +2,25 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
-import { EndlessGrid } from '@officexr/world/renderer';
 import {
+  DEFAULT_EDITOR_LIGHTING,
+  EndlessGrid,
+  LightingRig,
   buildMaterialForKind,
   extractGeometryFromGltf,
   extractMaterialFromGltf,
 } from '@officexr/world/renderer';
 import type { CubeKindEntry } from '@officexr/world';
+
+// Editor-tuned lighting for the Object preview. Bright neutral fill
+// + a punchy key light so material overrides (tint, roughness,
+// emissive) read clearly on the spinning preview cube.
+const OBJECT_PREVIEW_LIGHTING = {
+  ...DEFAULT_EDITOR_LIGHTING,
+  sunPosition: [6, 12, 6] as [number, number, number],
+  sunIntensity: 1.4,
+  ambientFillIntensity: 0.55,
+};
 
 interface ObjectPreviewCanvasProps {
   kind: CubeKindEntry | null;
@@ -31,8 +43,7 @@ export function ObjectPreviewCanvas({ kind }: ObjectPreviewCanvasProps) {
       style={{ width: '100%', height: '100%', display: 'block' }}
       shadows={false}
     >
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[6, 12, 6]} intensity={1.4} />
+      <LightingRig lighting={OBJECT_PREVIEW_LIGHTING} />
       <color attach="background" args={['#0a0a0a']} />
       <EndlessGrid />
       <OrbitCamera />
