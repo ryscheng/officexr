@@ -8,6 +8,7 @@ import {
 } from '@officexr/world';
 import { getKindBoundingDimensions } from '@officexr/world/renderer';
 
+import { Button } from '../../components/ui/button.tsx';
 import {
   ColorInput,
   NullableField,
@@ -86,7 +87,12 @@ export function ObjectKindEditorPanel({ kind, applyPatch }: ObjectKindEditorPane
 
       <Section title="Dimensions">
         <Suspense fallback={<DimensionsFallback />}>
-          <KindDimensionsRows gltfPath={kind.gltfPath} scale={kind.scale} />
+          <KindDimensionsEditor
+            gltfPath={kind.gltfPath}
+            scale={kind.scale}
+            dimensions={kind.dimensions}
+            applyPatch={applyPatch}
+          />
         </Suspense>
       </Section>
 
@@ -210,29 +216,87 @@ interface LabelInputProps {
   onChange: (next: string) => void;
 }
 
-interface KindDimensionsRowsProps {
+interface KindDimensionsEditorProps {
   gltfPath: string;
   scale: number;
+  dimensions: { width: number; height: number; depth: number } | undefined;
+  applyPatch: (partial: Partial<WorldObjectKind>) => void;
 }
 
 /**
- * Reads the kind's GLTF (drei caches by URL, so this shares the
- * same loaded scene the preview canvas already uses) and renders
- * width / height / depth in meters, post-`scale`. Suspends on
- * first load of a kind's GLTF — the parent renders a placeholder
- * fallback during that window.
+ * Width / height / depth editor backed by the kind's `dimensions`
+ * field in the catalog.
+ *
+ * Hybrid bake strategy (see schema docstring):
+ *   - If `dimensions` is set in the catalog, those values populate the
+ *     fields and drive compile-time stride. Authors can hand-edit.
+ *   - If unset, the GLTF-derived measurement is shown as the field
+ *     value but is NOT persisted automatically — the author clicks
+ *     "Recompute from GLTF" to commit it to the catalog. This avoids
+ *     surprising writes when a user is just browsing the kind list.
+ *
+ * The GLTF is loaded via drei's `useGLTF` (cached by URL), so opening
+ * a kind in this editor does not trigger a duplicate download even
+ * when the preview canvas already has it loaded.
  */
-function KindDimensionsRows({ gltfPath, scale }: KindDimensionsRowsProps) {
+function KindDimensionsEditor({
+  gltfPath,
+  scale,
+  dimensions,
+  applyPatch,
+}: KindDimensionsEditorProps) {
   const gltf = useGLTF(gltfPath);
-  const dims = useMemo(
+  const measuredDims = useMemo(
     () => getKindBoundingDimensions(gltf.scene, scale),
     [gltf.scene, scale],
   );
+  const effective = dimensions ?? measuredDims;
+  const isBaked = dimensions !== undefined;
+
+  const update = (axis: 'width' | 'height' | 'depth', value: number) => {
+    if (value <= 0) return;
+    applyPatch({ dimensions: { ...effective, [axis]: value } });
+  };
+
   return (
     <>
-      <Readonly label="width" value={formatMeters(dims.width)} />
-      <Readonly label="height" value={formatMeters(dims.height)} />
-      <Readonly label="depth" value={formatMeters(dims.depth)} />
+      <NumberInput
+        label="width"
+        value={effective.width}
+        min={0.05}
+        max={64}
+        step={0.05}
+        onChange={(v) => update('width', v)}
+      />
+      <NumberInput
+        label="height"
+        value={effective.height}
+        min={0.05}
+        max={64}
+        step={0.05}
+        onChange={(v) => update('height', v)}
+      />
+      <NumberInput
+        label="depth"
+        value={effective.depth}
+        min={0.05}
+        max={64}
+        step={0.05}
+        onChange={(v) => update('depth', v)}
+      />
+      <div className="flex items-center justify-between gap-2 px-3 py-1">
+        <span className="text-xs text-muted-foreground">
+          {isBaked ? 'baked' : 'unbaked (using GLTF measurement)'}
+        </span>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => applyPatch({ dimensions: measuredDims })}
+          title="Overwrite width/height/depth with the GLTF's current AABB extents."
+        >
+          Recompute from GLTF
+        </Button>
+      </div>
     </>
   );
 }
@@ -245,10 +309,6 @@ function DimensionsFallback() {
       <Readonly label="depth" value="…" />
     </>
   );
-}
-
-function formatMeters(value: number): string {
-  return `${value.toFixed(2)} m`;
 }
 
 /** Tiny inline text field for the "label" row. Kept as a separate

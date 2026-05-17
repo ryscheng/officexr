@@ -1773,7 +1773,19 @@ function MoveController({
       const proposed = computeMovedPositions(doc, sel, delta);
       if (!proposed) return;
 
-      const occupancyResult = checkMoveOccupancy(doc, sel, proposed);
+      // Expand existing instances by their per-kind voxel footprint so a
+      // moving 2 m cube is rejected when it would overlap a 2×2×2 block
+      // anywhere in its 4³ voxel envelope.
+      const occupancyResult = checkMoveOccupancy(
+        doc,
+        sel,
+        proposed,
+        undefined,
+        (kindId) => {
+          const [w, h, d] = getKindStride(kindId, cs);
+          return { w, h, d };
+        },
+      );
 
       setMoveState((prev) =>
         prev.stage === 'dragging'
