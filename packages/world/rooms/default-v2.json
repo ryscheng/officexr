@@ -1,107 +1,107 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "name": "default-v2",
   "title": "default-v2",
   "updatedAt": 1778816837697,
   "commands": [
     {
       "id": "place-1-1i1f",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -1,
+        -4,
         0,
         0
       ]
     },
     {
       "id": "place-2-1idz",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -1,
+        -4,
         0,
-        1
+        4
       ]
     },
     {
       "id": "place-3-1jkn",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -1,
+        -4,
         0,
-        2
+        8
       ]
     },
     {
       "id": "place-4-1m34",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -2,
+        -8,
         0,
         0
       ]
     },
     {
       "id": "place-5-1mm3",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -2,
+        -8,
         0,
-        1
+        4
       ]
     },
     {
       "id": "place-6-1mx8",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -2,
+        -8,
         0,
-        2
+        8
       ]
     },
     {
       "id": "place-7-1nej",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -1,
+        -4,
         0,
-        3
+        12
       ]
     },
     {
       "id": "place-8-1nve",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -2,
+        -8,
         0,
-        3
+        12
       ]
     },
     {
       "id": "place-9-1oc2",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -1,
+        -4,
         0,
-        4
+        16
       ]
     },
     {
       "id": "place-a-1ov5",
-      "op": "placeCube",
+      "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -2,
+        -8,
         0,
-        4
+        16
       ]
     }
   ],

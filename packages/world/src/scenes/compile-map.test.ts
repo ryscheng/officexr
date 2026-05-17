@@ -9,7 +9,7 @@ function roomWithCubes(
   cubes: Array<[number, number, number]>,
 ): RoomDocument {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     name,
     title: name,
     updatedAt: 0,
@@ -156,7 +156,7 @@ describe('compileMap', () => {
 
   it('preserves kindId from the source room', () => {
     const room: RoomDocument = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       name: 'r',
       title: 'r',
       updatedAt: 0,

@@ -418,7 +418,7 @@ export function useRoomDocument(): {
       }
 
       const deletedCommands = currentDoc.commands.filter(
-        (c): c is PlaceObjectCommand => expanded.has(c.id) && c.op === 'placeCube',
+        (c): c is PlaceObjectCommand => expanded.has(c.id) && c.op === 'placeObject',
       );
       const groupsAffected: Record<string, string[]> = {};
       for (const g of Object.values(currentDoc.groups)) {

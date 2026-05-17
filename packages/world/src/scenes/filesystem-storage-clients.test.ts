@@ -81,7 +81,7 @@ describe('FilesystemRoomStorage (mocked /api/rooms)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('PUT → GET round-trips a v3 RoomDocument', async () => {
+  it('PUT → GET round-trips a v4 RoomDocument', async () => {
     const room = serializeRoom({
       name: 'kitchen',
       commands: [newPlaceCube({ kindId: 'colored_block_blue', position: [0, 0, 0] })],
@@ -89,14 +89,14 @@ describe('FilesystemRoomStorage (mocked /api/rooms)', () => {
     });
     await storage.save('kitchen', room);
     const back = await storage.load('kitchen');
-    expect(back?.schemaVersion).toBe(3);
+    expect(back?.schemaVersion).toBe(4);
     expect(back?.commands).toHaveLength(1);
     expect(back?.groups['g-1']).toBeDefined();
   });
 
-  it('migrates legacy v2 payload to v3 on load', async () => {
+  it('migrates legacy v2 payload to v4 on load', async () => {
     // Simulate an on-disk file that's still v2 (e.g. authored before
-    // the schema bump). The client must return v3.
+    // the schema bump). The client must return v4.
     docs.set(
       'legacy',
       serializeScene({
@@ -105,7 +105,7 @@ describe('FilesystemRoomStorage (mocked /api/rooms)', () => {
       }),
     );
     const back = await storage.load('legacy');
-    expect(back?.schemaVersion).toBe(3);
+    expect(back?.schemaVersion).toBe(4);
     expect(back?.groups).toEqual({});
   });
 

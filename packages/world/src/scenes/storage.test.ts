@@ -106,7 +106,7 @@ describe('migrateToV2', () => {
     expect(migrated.commands).toEqual(v2.commands);
   });
 
-  it('emits one placeCube per cell from v1 layers', () => {
+  it('emits one placeObject per cell from v1 layers', () => {
     const v1 = serializeSceneV1({
       name: 'kitchen',
       worldMap: {
@@ -129,12 +129,12 @@ describe('migrateToV2', () => {
     expect(migrated.schemaVersion).toBe(2);
     expect(migrated.commands).toHaveLength(2);
     expect(migrated.commands[0]).toMatchObject({
-      op: 'placeCube',
+      op: 'placeObject',
       kindId: 'wall',
       position: [0, 0, 0],
     });
     expect(migrated.commands[1]).toMatchObject({
-      op: 'placeCube',
+      op: 'placeObject',
       kindId: 'wall',
       position: [1, 0, 1],
     });

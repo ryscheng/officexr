@@ -2,6 +2,7 @@ import type { CharacterConfigs, Vec3, WorldMap } from '@officexr/sdk';
 import {
   emptyDocument,
   newPlaceCube,
+  type PlaceObjectCommand,
   type RoomDocument,
   type RoomGroup,
   type SceneCommand,
@@ -48,12 +49,32 @@ export type SerializedSceneV2 = {
 };
 
 /**
- * v3 — the new Room document. Spawn points and character configs have
- * been promoted out of the room and onto the parent `MapDocumentV1`.
- * Groups are now first-class document state.
+ * v3 — the legacy Room document. Op string is 'placeCube'; positions
+ * are in voxelSize=2 coordinates. Superseded by v4 in task-02.
+ * On load, the storage layer calls migrateRoomV3toV4 automatically.
+ *
+ * Note: the `commands` here use a looser op-string type to accommodate
+ * both 'placeCube' and 'placeObject' from partially-migrated files.
  */
 export type SerializedRoomV3 = {
   schemaVersion: 3;
+  name: string;
+  title?: string;
+  updatedAt?: number;
+  commands: Array<
+    | { id: string; op: 'placeCube'; kindId: string; position: [number, number, number] }
+    | { id: string; op: 'extrude'; targetCommandId: string; face: string; count: number }
+  >;
+  groups: Record<string, RoomGroup>;
+};
+
+/**
+ * v4 — the current Room document. Op string is 'placeObject'; positions
+ * are ×4 relative to v3 (coordinate system change from voxelSize=2 to
+ * voxelSize=0.5 in task-03). Groups are first-class document state.
+ */
+export type SerializedRoomV4 = {
+  schemaVersion: 4;
   name: string;
   title?: string;
   updatedAt?: number;
@@ -64,7 +85,8 @@ export type SerializedRoomV3 = {
 export type SerializedScene =
   | SerializedSceneV1
   | SerializedSceneV2
-  | SerializedRoomV3;
+  | SerializedRoomV3
+  | SerializedRoomV4;
 
 // --- v2 (default) helpers --------------------------------------
 
@@ -97,9 +119,9 @@ export interface SerializeRoomInput {
   groups?: Record<string, RoomGroup>;
 }
 
-export function serializeRoom(input: SerializeRoomInput): SerializedRoomV3 {
+export function serializeRoom(input: SerializeRoomInput): SerializedRoomV4 {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     name: input.name,
     title: input.title,
     updatedAt: Date.now(),
@@ -167,6 +189,14 @@ export function deserializeScene(raw: unknown): SerializedScene {
         throw new Error('room v3: missing `groups` object');
       }
       return obj as unknown as SerializedRoomV3;
+    case 4:
+      if (!Array.isArray(obj.commands)) {
+        throw new Error('room v4: missing `commands` array');
+      }
+      if (!obj.groups || typeof obj.groups !== 'object') {
+        throw new Error('room v4: missing `groups` object');
+      }
+      return obj as unknown as SerializedRoomV4;
     default:
       throw new Error(
         `scene: unsupported schemaVersion ${String(obj.schemaVersion)}`,
@@ -199,6 +229,21 @@ export function migrateToV2(scene: SerializedScene): SceneDocument {
     // v3 → v2 is a structural downgrade: drop the `groups` field. The
     // Scenes (v2) editor doesn't know about groups, so we just lose
     // that metadata; the underlying command list is identical.
+    // Cast required: SerializedRoomV3 uses op:'placeCube' which is a
+    // legacy on-disk string. The v2 SceneDocument tolerates this at
+    // runtime; a v3 doc in the wild today will be re-migrated to v4
+    // by the storage layer before it ever reaches this downgrade path.
+    return {
+      schemaVersion: 2,
+      name: scene.name,
+      title: scene.title,
+      updatedAt: scene.updatedAt,
+      commands: scene.commands as unknown as SceneCommand[],
+    };
+  }
+  if (scene.schemaVersion === 4) {
+    // v4 → v2 downgrade: drop groups. Commands are already typed as
+    // SceneCommand[] (op:'placeObject'), so no cast needed.
     return {
       schemaVersion: 2,
       name: scene.name,
@@ -209,6 +254,7 @@ export function migrateToV2(scene: SerializedScene): SceneDocument {
   }
   const doc = emptyDocument(scene.name, scene.title);
   doc.updatedAt = scene.updatedAt;
+  // scene is SerializedSceneV1 here (schemaVersion === 1)
   for (const layer of scene.worldMap.layers) {
     for (const cell of layer.cells) {
       doc.commands.push(
@@ -220,24 +266,81 @@ export function migrateToV2(scene: SerializedScene): SceneDocument {
 }
 
 /**
- * Promote any deserialized scene to a v3 `RoomDocument` the new Room
+ * Promote a v3 SerializedRoomV3 to v4. Pure function — no side effects.
+ *
+ * Changes in v4:
+ *   1. `op: 'placeCube'` → `op: 'placeObject'`
+ *   2. `position` on each placeObject command is multiplied by 4 to
+ *      preserve world coordinates after voxelSize changes from 2 to 0.5
+ *      (task-03). `extrude` commands have no position and pass through.
+ *   3. `schemaVersion: 4`
+ *
+ * Idempotence: this function only accepts v3 input. The caller (storage
+ * layer) gates on `schemaVersion === 3` before calling.
+ */
+export function migrateRoomV3toV4(doc: SerializedRoomV3): SerializedRoomV4 {
+  const commands: SceneCommand[] = doc.commands.map((cmd) => {
+    if (cmd.op === 'placeCube' || (cmd.op as string) === 'placeObject') {
+      // Both 'placeCube' (v3 on-disk) and 'placeObject' (from v2 intermediate)
+      // need the ×4 position scale so world coordinates are preserved when
+      // voxelSize changes from 2 to 0.5 (task-03).
+      const placeCmd = cmd as {
+        id: string;
+        op: string;
+        kindId: string;
+        position: [number, number, number];
+      };
+      const [x, y, z] = placeCmd.position;
+      return {
+        id: placeCmd.id,
+        op: 'placeObject',
+        kindId: placeCmd.kindId,
+        position: [x * 4, y * 4, z * 4],
+      } satisfies PlaceObjectCommand;
+    }
+    // extrude and any other commands pass through unchanged.
+    return cmd as unknown as SceneCommand;
+  });
+  return {
+    schemaVersion: 4,
+    name: doc.name,
+    title: doc.title,
+    updatedAt: doc.updatedAt,
+    commands,
+    groups: doc.groups,
+  };
+}
+
+/**
+ * Promote any deserialized scene to a v4 `RoomDocument` the new Room
  * editor can work on.
  *
- * - v3 inputs pass through unchanged.
- * - v2 inputs drop `spawnPoints` and `characterConfigs` (those now
- *   live on the parent `MapDocumentV1`) and gain an empty `groups`
- *   map.
- * - v1 inputs are first migrated to v2 (`migrateToV2`) and then to
- *   v3, so any old `worldMap` cell grid produces a clean v3 doc.
+ * - v4 inputs pass through unchanged.
+ * - v3 inputs are migrated via migrateRoomV3toV4 (op rewrite + ×4 positions).
+ * - v2 inputs are first promoted to v3-shape and then migrated to v4.
+ * - v1 inputs are migrated up through v2 → v3-shape → v4.
  *
- * Note: shares the input's `commands` array and `groups` object by
- * reference (mirrors the existing `migrateToV2` convention). Callers
- * that intend to mutate the result must clone first.
+ * This replaces the old migrateToV3 as the canonical migration endpoint.
+ * @deprecated Use migrateToV4 in new code. migrateToV3 is kept for the
+ * existing Scenes editor until it is updated to RoomDocument.
  */
 export function migrateToV3(scene: SerializedScene): RoomDocument {
-  if (scene.schemaVersion === 3) {
+  // Delegate to migrateToV4 — v4 IS the current RoomDocument shape.
+  return migrateToV4(scene);
+}
+
+/**
+ * Promote any deserialized scene to the current v4 `RoomDocument`.
+ *
+ * - v4 inputs pass through unchanged.
+ * - v3 inputs are migrated via migrateRoomV3toV4 (op + ×4 positions).
+ * - v2 inputs gain an empty `groups` map and go through v3→v4.
+ * - v1 inputs go through v2 migration, then v3→v4.
+ */
+export function migrateToV4(scene: SerializedScene): RoomDocument {
+  if (scene.schemaVersion === 4) {
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       name: scene.name,
       title: scene.title,
       updatedAt: scene.updatedAt,
@@ -245,27 +348,36 @@ export function migrateToV3(scene: SerializedScene): RoomDocument {
       groups: scene.groups,
     };
   }
+  if (scene.schemaVersion === 3) {
+    return migrateRoomV3toV4(scene);
+  }
   if (scene.schemaVersion === 2) {
-    return {
+    // Promote v2 commands to v3-shape (no placeCube rewrite needed —
+    // migrateRoomV3toV4 handles that; but v2 SceneDocument uses the
+    // current PlaceObjectCommand.op which is already 'placeObject').
+    const v3: SerializedRoomV3 = {
       schemaVersion: 3,
       name: scene.name,
       title: scene.title,
       updatedAt: scene.updatedAt,
-      commands: scene.commands,
+      // v2 docs already have the new op string from newPlaceObject; cast
+      // is safe — the v3 type accepts 'placeCube' | 'extrude' shapes.
+      commands: scene.commands as SerializedRoomV3['commands'],
       groups: {},
     };
+    return migrateRoomV3toV4(v3);
   }
-  // v1 path: migrate up through v2 so the cell-grid → placeCube emit
-  // logic stays in one place.
+  // v1 path: migrate to v2 first (cell-grid → placeObject commands).
   const v2 = migrateToV2(scene);
-  return {
+  const v3: SerializedRoomV3 = {
     schemaVersion: 3,
     name: v2.name,
     title: v2.title,
     updatedAt: v2.updatedAt,
-    commands: v2.commands,
+    commands: v2.commands as SerializedRoomV3['commands'],
     groups: {},
   };
+  return migrateRoomV3toV4(v3);
 }
 
 // --- Map (v1) helpers ------------------------------------------

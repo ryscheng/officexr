@@ -1,6 +1,6 @@
 import {
   deserializeScene,
-  migrateToV3,
+  migrateToV4,
 } from './serialize.ts';
 import { isValidSceneName } from './storage.ts';
 import type { RoomDocument } from './commands.ts';
@@ -77,7 +77,7 @@ export class LocalStorageRoomStorage implements RoomStorage {
     const raw = this.storage.getItem(KEY_PREFIX + name);
     if (!raw) return null;
     try {
-      return migrateToV3(deserializeScene(JSON.parse(raw) as unknown));
+      return migrateToV4(deserializeScene(JSON.parse(raw) as unknown));
     } catch (err) {
       throw new Error(`room-storage load(${name}): ${(err as Error).message}`);
     }

@@ -21,7 +21,7 @@ type CompileInput = SceneDocument | RoomDocument | { commands: SceneCommand[] };
  *   - Maintain a `byCommand: Map<commandId, ObjectInstance[]>` so
  *     subsequent extrudes can look up the cells produced by their
  *     target.
- *   - `placeCube` adds one instance whose `sourceCommandId` is the
+ *   - `placeObject` adds one instance whose `sourceCommandId` is the
  *     command itself.
  *   - `extrude` reads the target's instance set, finds the outermost
  *     layer of cells along the chosen face's normal, and emits
@@ -65,7 +65,7 @@ export function compileScene(
 
   for (const cmd of doc.commands) {
     switch (cmd.op) {
-      case 'placeCube':
+      case 'placeObject':
         upsert(makeInstance(cmd, cmd.position, cmd.kindId));
         break;
       case 'extrude': {

@@ -26,9 +26,9 @@ export const CUBE_FACES: readonly CubeFace[] = [
  * command in a scene is almost always a placeObject. */
 export interface PlaceObjectCommand {
   id: string;
-  // op: 'placeCube' — kept as-is for on-disk v3 backward compatibility.
-  // Task-02 migrates this to 'placeObject' in v4 room documents.
-  op: 'placeCube';
+  /** v4 canonical op string. v3 on-disk files used 'placeCube' —
+   * migrateRoomV3toV4 in serialize.ts rewrites them on load. */
+  op: 'placeObject';
   kindId: string;
   position: [number, number, number];
 }
@@ -98,16 +98,18 @@ export interface RoomGroup {
 /**
  * Versioned authoring document for one Room.
  *
- * - **v3** (this) is the command-list room produced by the new Room
- *   editor. It drops the `spawnPoints` and `characterConfigs` slots
- *   that lived on v2 — those now belong on the parent `MapDocumentV1`.
+ * - **v4** (this) is the command-list room produced by the Room editor
+ *   after task-02. Positions are ×4 relative to v3 (voxelSize changed
+ *   from 2 to 0.5 in task-03) and the op string is 'placeObject'.
+ * - **v3** was the previous version — op string 'placeCube', voxelSize=2.
+ *   migrateRoomV3toV4 in serialize.ts upgrades v3 docs on load.
  * - **v2** is the historical command-list "scene" — see `SceneDocument`.
  * - **v1** is the legacy cell-grid WorldMap.
  *
- * The on-disk wire form is `SerializedRoomV3` in `serialize.ts`.
+ * The on-disk wire form is `SerializedRoomV4` in `serialize.ts`.
  */
 export interface RoomDocument {
-  schemaVersion: 3;
+  schemaVersion: 4;
   name: string;
   title?: string;
   updatedAt?: number;
@@ -129,7 +131,7 @@ export function newPlaceObject(opts: {
 }): PlaceObjectCommand {
   return {
     id: opts.id ?? mintCommandId('place'),
-    op: 'placeCube',
+    op: 'placeObject',
     kindId: opts.kindId,
     position: opts.position ?? [0, 0, 0],
   };
@@ -165,7 +167,7 @@ export function emptyDocument(name: string, title?: string): SceneDocument {
 
 export function emptyRoomDocument(name: string, title?: string): RoomDocument {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     name,
     title,
     updatedAt: Date.now(),

@@ -30,7 +30,7 @@ describe('applyAction', () => {
     expect(cmd.id).toBe('cmd-x');
     expect(cmd.kindId).toBe('block-grass');
     expect(cmd.position).toEqual([1, 0, 1]);
-    expect(cmd.op).toBe('placeCube');
+    expect(cmd.op).toBe('placeObject');
   });
 
   // 2. placeMany no group

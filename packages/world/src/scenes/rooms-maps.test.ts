@@ -7,6 +7,7 @@ import {
   deserializeScene,
   deserializeMap,
   migrateToV3,
+  migrateToV4,
 } from './serialize.ts';
 import { newPlaceObject } from './commands.ts';
 import {
@@ -15,8 +16,8 @@ import {
   type MapDocumentV1,
 } from './map-document.ts';
 
-describe('serializeRoom + deserializeScene (v3 RoomDocument)', () => {
-  it('round-trips a v3 room with commands and groups', () => {
+describe('serializeRoom + deserializeScene (v4 RoomDocument)', () => {
+  it('round-trips a v4 room with commands and groups', () => {
     const out = serializeRoom({
       name: 'kitchen',
       title: 'Kitchen',
@@ -25,7 +26,7 @@ describe('serializeRoom + deserializeScene (v3 RoomDocument)', () => {
         'g-1': { id: 'g-1', commandIds: ['cmd-a', 'cmd-b'], label: 'wall' },
       },
     });
-    expect(out.schemaVersion).toBe(3);
+    expect(out.schemaVersion).toBe(4);
     expect(out.name).toBe('kitchen');
     expect(out.commands).toHaveLength(1);
     expect(out.groups['g-1'].commandIds).toEqual(['cmd-a', 'cmd-b']);
@@ -52,44 +53,57 @@ describe('serializeRoom + deserializeScene (v3 RoomDocument)', () => {
       deserializeScene({ schemaVersion: 3, name: 'x', groups: {} }),
     ).toThrow(/commands/);
   });
-});
 
-describe('migrateToV3', () => {
-  it('passes v3 docs through unchanged', () => {
-    const v3 = serializeRoom({
-      name: 'foo',
-      commands: [newPlaceObject({ kindId: 'colored_block_blue', position: [1, 0, 0] })],
-      groups: { 'g-1': { id: 'g-1', commandIds: ['cmd-1'] } },
-    });
-    const migrated = migrateToV3(v3);
-    expect(migrated.schemaVersion).toBe(3);
-    expect(migrated.commands).toEqual(v3.commands);
-    expect(migrated.groups).toEqual(v3.groups);
+  it('rejects v4 docs missing groups', () => {
+    expect(() =>
+      deserializeScene({ schemaVersion: 4, name: 'x', commands: [] }),
+    ).toThrow(/groups/);
   });
 
-  it('preserves updatedAt across v2 → v3 migration', () => {
+  it('rejects v4 docs missing commands', () => {
+    expect(() =>
+      deserializeScene({ schemaVersion: 4, name: 'x', groups: {} }),
+    ).toThrow(/commands/);
+  });
+});
+
+describe('migrateToV4', () => {
+  it('passes v4 docs through unchanged (schemaVersion 4)', () => {
+    const v4 = serializeRoom({
+      name: 'foo',
+      commands: [newPlaceObject({ kindId: 'colored_block_blue', position: [4, 0, 4] })],
+      groups: { 'g-1': { id: 'g-1', commandIds: ['cmd-1'] } },
+    });
+    const migrated = migrateToV4(v4);
+    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.commands).toEqual(v4.commands);
+    expect(migrated.groups).toEqual(v4.groups);
+  });
+
+  it('preserves updatedAt across v2 → v4 migration', () => {
     const v2 = serializeScene({ name: 'foo', commands: [] });
     v2.updatedAt = 1700000000000;
-    const migrated = migrateToV3(v2);
+    const migrated = migrateToV4(v2);
     expect(migrated.updatedAt).toBe(1700000000000);
   });
 
-  it('migrates v2 → v3 by dropping spawnPoints/characterConfigs and adding empty groups', () => {
+  it('migrates v2 → v4 (drops spawnPoints/characterConfigs, applies ×4 to positions)', () => {
     const v2 = serializeScene({
       name: 'foo',
       commands: [newPlaceObject({ kindId: 'colored_block_blue', position: [1, 0, 0] })],
       spawnPoints: [{ x: 5, y: 0, z: 5 }],
       characterConfigs: { Knight: { speedMultiplier: 1.2 } },
     });
-    const migrated = migrateToV3(v2);
-    expect(migrated.schemaVersion).toBe(3);
-    expect(migrated.commands).toEqual(v2.commands);
+    const migrated = migrateToV4(v2);
+    expect(migrated.schemaVersion).toBe(4);
     expect(migrated.groups).toEqual({});
     expect(migrated).not.toHaveProperty('spawnPoints');
     expect(migrated).not.toHaveProperty('characterConfigs');
+    // Positions ×4
+    expect(migrated.commands[0]).toMatchObject({ op: 'placeObject', position: [4, 0, 0] });
   });
 
-  it('migrates v1 → v3 through the v2 cell-grid path', () => {
+  it('migrates v1 → v4 through the v2 cell-grid path', () => {
     const v1 = serializeSceneV1({
       name: 'kitchen',
       worldMap: {
@@ -108,15 +122,35 @@ describe('migrateToV3', () => {
         kinds: { wall: { id: 'wall', walkable: false } },
       },
     });
-    const migrated = migrateToV3(v1);
-    expect(migrated.schemaVersion).toBe(3);
+    const migrated = migrateToV4(v1);
+    expect(migrated.schemaVersion).toBe(4);
     expect(migrated.commands).toHaveLength(2);
     expect(migrated.commands[0]).toMatchObject({
-      op: 'placeCube',
+      op: 'placeObject',
       kindId: 'wall',
-      position: [0, 0, 0],
+      position: [0, 0, 0],  // cell (0,0) → position [0,0,0] × 4 = [0,0,0]
+    });
+    expect(migrated.commands[1]).toMatchObject({
+      op: 'placeObject',
+      kindId: 'wall',
+      position: [4, 0, 4],  // cell (1,1) → position [1,0,1] × 4 = [4,0,4]
     });
     expect(migrated.groups).toEqual({});
+  });
+});
+
+describe('migrateToV3 (deprecated — delegates to migrateToV4)', () => {
+  it('returns v4 doc now (migrateToV3 upgraded to v4)', () => {
+    const v3raw = {
+      schemaVersion: 3 as const,
+      name: 'foo',
+      updatedAt: 0,
+      commands: [{ id: 'a', op: 'placeCube' as const, kindId: 'block', position: [1, 0, 2] as [number, number, number] }],
+      groups: {},
+    };
+    const migrated = migrateToV3(v3raw);
+    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.commands[0]).toMatchObject({ op: 'placeObject', position: [4, 0, 8] });
   });
 });
 

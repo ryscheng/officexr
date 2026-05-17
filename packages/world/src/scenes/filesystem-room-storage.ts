@@ -1,6 +1,7 @@
 import {
   deserializeScene,
   migrateToV3,
+  migrateToV4,
   type SerializedScene,
 } from './serialize.ts';
 import { isValidSceneName } from './storage.ts';
@@ -50,7 +51,7 @@ export class FilesystemRoomStorage implements RoomStorage {
     if (!r.ok) throw new Error(`room-storage load: ${r.status}`);
     const raw = (await r.json()) as unknown;
     const parsed: SerializedScene = deserializeScene(raw);
-    return migrateToV3(parsed);
+    return migrateToV4(parsed);
   }
 
   async save(name: string, room: RoomDocument): Promise<void> {
