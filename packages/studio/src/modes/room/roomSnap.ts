@@ -34,6 +34,11 @@ export interface CubeHit {
   /** Face normal in world space. May have floating-point noise; we
    * quantize internally before use. */
   faceNormal: readonly [number, number, number];
+  /** Kind id of the target object. Used by `snapToVoxel` to step by
+   * the target's per-axis voxel stride (so a new cube placed against
+   * a 2 m cube's +X face clears the target's full footprint, not just
+   * one 0.5 m voxel). */
+  kindId: string;
 }
 
 export type SnapHit = FloorHit | CubeHit;
@@ -69,18 +74,32 @@ export function computeKindTileSteps(
  * @param step - Optional per-axis step multiplier. When provided, floor hits
  *   snap to the nearest multiple of each step (e.g. step.x=4 snaps to 0, 4, 8…).
  *   Defaults to {x:1, y:1, z:1} (existing behavior).
+ * @param targetStride - Optional per-axis voxel stride of the *target*
+ *   object when `hit.kind === 'cube'`. Used to offset the new position
+ *   past the target's full footprint along the face normal. Defaults
+ *   to {x:1, y:1, z:1} (the pre-stride behaviour, which is wrong for
+ *   any kind larger than one voxel — pass the lookup-derived stride
+ *   from `getKindStride(hit.kindId, voxelSize)`).
  */
 export function snapToVoxel(
   hit: SnapHit,
   voxelSize: number,
   step?: { x: number; y: number; z: number },
+  targetStride?: { x: number; y: number; z: number },
 ): [number, number, number] {
   if (hit.kind === 'cube') {
     const n = quantizeAxisAlignedNormal(hit.faceNormal);
+    const tx = targetStride?.x ?? 1;
+    const ty = targetStride?.y ?? 1;
+    const tz = targetStride?.z ?? 1;
+    // For a +axis face, step by the target's full extent so the new
+    // object sits just past the target's last voxel. For a -axis face,
+    // the new object's anchor is one stride below the target — its top
+    // face lands flush against the target's bottom face.
     return [
-      hit.cubePosition[0] + n[0],
-      hit.cubePosition[1] + n[1],
-      hit.cubePosition[2] + n[2],
+      hit.cubePosition[0] + n[0] * tx,
+      hit.cubePosition[1] + n[1] * ty,
+      hit.cubePosition[2] + n[2] * tz,
     ];
   }
   const sx = step?.x ?? 1;

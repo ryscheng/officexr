@@ -114,23 +114,24 @@ describe('snapToVoxel (cube hit)', () => {
   function cubeHit(
     cubePosition: [number, number, number],
     faceNormal: [number, number, number],
+    kindId = 'colored_block_blue',
   ): CubeHit {
-    return { kind: 'cube', cubePosition, faceNormal };
+    return { kind: 'cube', cubePosition, faceNormal, kindId };
   }
 
-  it('snaps to the +y voxel above a top-face hit', () => {
+  it('snaps to the +y voxel above a top-face hit (no stride → 1-voxel step)', () => {
     expect(
       snapToVoxel(cubeHit([3, 0, 7], [0.01, 0.99, 0.02]), 2),
     ).toEqual([3, 1, 7]);
   });
 
-  it('snaps to the +x voxel right of an east-face hit', () => {
+  it('snaps to the +x voxel right of an east-face hit (no stride)', () => {
     expect(
       snapToVoxel(cubeHit([0, 0, 0], [1.0, 0.0, 0.0]), 2),
     ).toEqual([1, 0, 0]);
   });
 
-  it('snaps to the -z voxel north of a back-face hit', () => {
+  it('snaps to the -z voxel north of a back-face hit (no stride)', () => {
     expect(
       snapToVoxel(cubeHit([5, 2, 1], [0.0, 0.0, -1.0]), 2),
     ).toEqual([5, 2, 0]);
@@ -140,6 +141,42 @@ describe('snapToVoxel (cube hit)', () => {
     expect(
       snapToVoxel(cubeHit([10, 0, 10], [0, 1, 0]), 100),
     ).toEqual([10, 1, 10]);
+  });
+
+  it('targetStride moves the placement past the target footprint on +X', () => {
+    // 2 m cube at voxel (0,0,0) on a 0.5 m grid → stride 4 on each
+    // axis. Hit +X face → new position should be (4, 0, 0), not (1).
+    expect(
+      snapToVoxel(
+        cubeHit([0, 0, 0], [1.0, 0.0, 0.0]),
+        0.5,
+        undefined,
+        { x: 4, y: 4, z: 4 },
+      ),
+    ).toEqual([4, 0, 0]);
+  });
+
+  it('targetStride moves the placement past the target footprint on -Z', () => {
+    expect(
+      snapToVoxel(
+        cubeHit([8, 0, 8], [0.0, 0.0, -1.0]),
+        0.5,
+        undefined,
+        { x: 4, y: 4, z: 4 },
+      ),
+    ).toEqual([8, 0, 4]);
+  });
+
+  it('targetStride only multiplies the active axis; unrelated axes pass through', () => {
+    // +Y hit: targetStride.y = 4 → step up 4 voxels. X/Z keep target position.
+    expect(
+      snapToVoxel(
+        cubeHit([2, 0, 6], [0, 1, 0]),
+        0.5,
+        undefined,
+        { x: 4, y: 4, z: 4 },
+      ),
+    ).toEqual([2, 4, 6]);
   });
 });
 

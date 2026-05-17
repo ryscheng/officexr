@@ -374,6 +374,19 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     [voxelSize],
   );
 
+  /**
+   * Per-axis stride of the TARGET object when the hit is a cube face.
+   * Returned undefined for floor hits (snapToVoxel ignores
+   * targetStride for those). Used by snapToVoxel so the new placement
+   * clears the target's full footprint along the face normal instead
+   * of offsetting by one voxel.
+   */
+  const targetStrideFor = useCallback(
+    (hit: SnapHit) =>
+      hit.kind === 'cube' ? stepForKind(hit.kindId) : undefined,
+    [stepForKind],
+  );
+
   // Cache the list of tileable placed objects for snap-to-face.
   // Each entry carries the kind's baked bounding-box dimensions so
   // the face-flush math in snapToNearestTileableFace produces correct
@@ -407,7 +420,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   // boundaries (every 4 voxels) instead of every voxel.
   const snapForAdd = useCallback(
     (hit: SnapHit): [number, number, number] => {
-      if (!props.stagedKindId) return snapToVoxel(hit, voxelSize);
+      if (!props.stagedKindId) return snapToVoxel(hit, voxelSize, undefined, targetStrideFor(hit));
       const kind = getKind(props.stagedKindId);
       if (kind && !kind.tilingAxes.x && !kind.tilingAxes.y && !kind.tilingAxes.z) {
         // Non-tileable kind: snap to nearest tileable face
@@ -426,7 +439,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         };
         return snapToNearestTileableFace(hitPoint, dims, tileableObjects, voxelSize);
       }
-      return snapToVoxel(hit, voxelSize, stepForKind(props.stagedKindId));
+      return snapToVoxel(
+        hit,
+        voxelSize,
+        stepForKind(props.stagedKindId),
+        targetStrideFor(hit),
+      );
     },
     [props.stagedKindId, voxelSize, tileableObjects, stepForKind],
   );
@@ -470,7 +488,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       const tileStep = stepForKind(kindId);
       let tileHoverVoxel: Vec3 | null = null;
       if (hover) {
-        const v = snapToVoxel(hover, voxelSize, tileStep);
+        const v = snapToVoxel(hover, voxelSize, tileStep, targetStrideFor(hover));
         const isYStage =
           (tileState.stage === 'axis-extruded' && tileState.nextAxis === 'y') ||
           (tileState.stage === 'placed' && tileState.nextAxis === 'y');
@@ -563,7 +581,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         // Click 1: place the origin cube. Snap to multiples of the
         // staged kind's bounding-box step so the origin lands on a
         // tile-aligned position.
-        let voxel = snapToVoxel(hit, voxelSize, stepForKind(stagedKindId));
+        let voxel = snapToVoxel(
+          hit,
+          voxelSize,
+          stepForKind(stagedKindId),
+          targetStrideFor(hit),
+        );
 
         // Gravity: if the staged kind has gravity = true, drop to the
         // nearest surface below. Reject placement when no support exists.
@@ -613,7 +636,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         if (nextAxis === 'y') {
           hoverVoxel = [tileState.origin[0], tileState.origin[1] + yDelta, tileState.origin[2]];
         } else {
-          hoverVoxel = snapToVoxel(hit, voxelSize, tileStep);
+          hoverVoxel = snapToVoxel(hit, voxelSize, tileStep, targetStrideFor(hit));
         }
 
         const delta = hoverVoxel[axisIndex] - tileState.origin[axisIndex];
@@ -675,7 +698,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         if (nextAxis === 'y') {
           hoverVoxel = [tileState.origin[0], tileState.origin[1] + yDelta, tileState.origin[2]];
         } else {
-          hoverVoxel = snapToVoxel(hit, voxelSize, tileStep);
+          hoverVoxel = snapToVoxel(hit, voxelSize, tileStep, targetStrideFor(hit));
         }
 
         const delta = hoverVoxel[axisIndex] - tileState.origin[axisIndex];
@@ -1349,6 +1372,7 @@ function CubesLayer(props: CubesLayerProps) {
           kind: 'cube',
           cubePosition: inst.position,
           faceNormal: [normal.x, normal.y, normal.z],
+          kindId: inst.kindId,
         }
       : null;
     let moved = false;
@@ -1390,6 +1414,7 @@ function CubesLayer(props: CubesLayerProps) {
         kind: 'cube',
         cubePosition: inst.position,
         faceNormal: [n.x, n.y, n.z],
+        kindId: inst.kindId,
       });
     } else {
       onHoverCommand(inst.sourceCommandId);
