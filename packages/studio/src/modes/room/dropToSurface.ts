@@ -37,7 +37,6 @@ export function dropToSurface(
   proposedVoxel: [number, number, number],
   objectFootprint: { w: number; d: number },
   worldObjects: {
-    voxelSize: number;
     instances: ReadonlyArray<{ position: readonly [number, number, number] }>;
   },
 ): [number, number, number] | null {

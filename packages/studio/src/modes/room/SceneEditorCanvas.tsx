@@ -446,8 +446,9 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           (tileState.stage === 'axis-extruded' && tileState.nextAxis === 'y') ||
           (tileState.stage === 'placed' && tileState.nextAxis === 'y');
         if (isYStage) {
-          // Y-axis: use origin + yDelta for the hover Y
-          const originY = tileState.stage !== 'idle' ? tileState.origin[1] : 0;
+          // Inside this branch tileState.stage is 'placed' | 'axis-extruded'
+          // (narrowed by isYStage), so origin is guaranteed.
+          const originY = tileState.origin[1];
           tileHoverVoxel = [v[0], originY + yDelta, v[2]];
         } else {
           tileHoverVoxel = v;
@@ -1657,13 +1658,11 @@ function MoveController({
       const origPositions = new Map<string, Vec3>();
       for (const id of sel) {
         const cmd = doc.commands.find(
-          (c) => c.id === id && c.op === 'placeCube',
+          (c): c is Extract<typeof c, { op: 'placeObject' }> =>
+            c.id === id && c.op === 'placeObject',
         );
         if (cmd) {
-          origPositions.set(
-            id,
-            (cmd as { position: Vec3 }).position,
-          );
+          origPositions.set(id, cmd.position);
         }
       }
 

@@ -48,7 +48,7 @@ export function RoomApp() {
   const handlePlace = useCallback(
     (position: [number, number, number]) => {
       if (!stagedKindId) return;
-      roomDoc.placeCube(stagedKindId, position);
+      roomDoc.placeObject(stagedKindId, position);
     },
     [stagedKindId, roomDoc],
   );

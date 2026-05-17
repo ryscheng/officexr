@@ -97,7 +97,7 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
         ...doc,
         updatedAt: Date.now(),
         commands: doc.commands.map((c) =>
-          c.id === action.commandId && c.op === 'placeCube'
+          c.id === action.commandId && c.op === 'placeObject'
             ? { ...c, kindId: action.kindId }
             : c,
         ),
@@ -109,7 +109,7 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
         ...doc,
         updatedAt: Date.now(),
         commands: doc.commands.map((c) =>
-          c.id === action.commandId && c.op === 'placeCube'
+          c.id === action.commandId && c.op === 'placeObject'
             ? { ...c, position: action.position }
             : c,
         ),
@@ -122,7 +122,7 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
         ...doc,
         updatedAt: Date.now(),
         commands: doc.commands.map((c) => {
-          if (c.op === 'placeCube' && moveMap.has(c.id)) {
+          if (c.op === 'placeObject' && moveMap.has(c.id)) {
             return { ...c, position: moveMap.get(c.id)! };
           }
           return c;

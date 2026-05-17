@@ -82,8 +82,8 @@ export function InspectorPanel({ roomDoc }: InspectorPanelProps) {
     );
   }
 
-  if (command?.op === 'placeCube') {
-    return <PlaceCubeInspector command={command} roomDoc={roomDoc} />;
+  if (command?.op === 'placeObject') {
+    return <PlaceObjectInspector command={command} roomDoc={roomDoc} />;
   }
   // Defensive: a single-selection with an unrecognised op (e.g. legacy
   // extrude commands in historical maps — they still exist in doc.commands
@@ -97,17 +97,17 @@ export function InspectorPanel({ roomDoc }: InspectorPanelProps) {
   );
 }
 
-interface PlaceCubeProps {
-  command: Extract<RoomCommand, { op: 'placeCube' }>;
+interface PlaceObjectProps {
+  command: Extract<RoomCommand, { op: 'placeObject' }>;
   roomDoc: RoomDoc;
 }
 
-function PlaceCubeInspector({ command, roomDoc }: PlaceCubeProps) {
+function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
   const groupId = roomDoc.lookup.groupOf(command.id);
 
   return (
     <Panel>
-      <Section title="placeCube">
+      <Section title="placeObject">
         <Readonly label="id" value={command.id} />
         <SelectInput
           label="kind"

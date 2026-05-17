@@ -82,7 +82,7 @@ export function useRoomDocument(): {
   pickFromClick: (commandId: string) => void;
   toggleFromClick: (commandId: string) => void;
   lookup: RoomDocLookup;
-  placeCube: (kindId: string, position?: [number, number, number]) => string;
+  placeObject: (kindId: string, position?: [number, number, number]) => string;
   placeMany: (
     kindId: string,
     positions: ReadonlyArray<[number, number, number]>,
@@ -321,7 +321,7 @@ export function useRoomDocument(): {
   // --- Mutators (commands) ---------------------------------------
   // Pattern: construct EditAction → push to history → setDoc(history.currentDoc)
 
-  const placeCube = useCallback(
+  const placeObject = useCallback(
     (kindId: string, position?: [number, number, number]) => {
       const cmd = newPlaceObject({ kindId, position });
       const action: EditAction = {
@@ -587,7 +587,7 @@ export function useRoomDocument(): {
     pickFromClick,
     toggleFromClick,
     lookup,
-    placeCube,
+    placeObject,
     placeMany,
     setKindForCommand,
     setPositionForCommand,

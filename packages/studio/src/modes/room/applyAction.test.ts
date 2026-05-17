@@ -12,7 +12,7 @@ function makeDoc(overrides?: Partial<RoomDocument>): RoomDocument {
 }
 
 function makePlaceCmd(id: string, kindId = 'block-grass', position: [number, number, number] = [0, 0, 0]): PlaceObjectCommand {
-  return { id, op: 'placeCube', kindId, position };
+  return { id, op: 'placeObject', kindId, position };
 }
 
 describe('applyAction', () => {
