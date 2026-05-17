@@ -16,7 +16,7 @@ const ROOM_EDITOR_LIGHTING = {
   ambientFillIntensity: 0.6,
 };
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
-import { getKind } from '@officexr/world/scenes';
+import { getKind, getKindStride } from '@officexr/world/scenes';
 import type { RoomDocument } from '@officexr/world/scenes';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
@@ -358,30 +358,53 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   // cubeSize there for SDK back-compat; we alias it locally).
   const voxelSize = props.compiled.cubeSize;
 
+  /**
+   * Per-axis voxel step for a kind, derived from its baked dimensions.
+   * Used everywhere the tile tool or Add tool needs to know "how many
+   * voxels does one of these objects span?" so we can snap and step in
+   * multiples of the object's own size rather than the global 0.5 m
+   * grid. Defaults to {1,1,1} when the kind has not been baked yet.
+   */
+  const stepForKind = useCallback(
+    (kindId: string | null | undefined): { x: number; y: number; z: number } => {
+      if (!kindId) return { x: 1, y: 1, z: 1 };
+      const [x, y, z] = getKindStride(kindId, voxelSize);
+      return { x, y, z };
+    },
+    [voxelSize],
+  );
+
   // Cache the list of tileable placed objects for snap-to-face.
-  // Recomputed only when compiled.instances changes.
-  // ISP note: We use a fixed 1-voxel (voxelSize) dims default because
-  // getKindBoundingDimensions requires a GLTF scene object from the drei
-  // cache, which is not available in this non-R3F hook scope. The pure
-  // snapToNearestTileableFace function is correct; the dims approximation
-  // is a wiring simplification — future work can pass real dims once GLTF
-  // caching is plumbed through to this level.
+  // Each entry carries the kind's baked bounding-box dimensions so
+  // the face-flush math in snapToNearestTileableFace produces correct
+  // alignment (a chair sitting on a 2×2×2 block must offset by 1 m
+  // from the block's centre, not 0.25 m). When a kind has no baked
+  // dimensions, we fall back to a 1-voxel cube — the legacy behaviour.
+  const fallbackDims = useMemo(
+    () => ({ width: voxelSize, height: voxelSize, depth: voxelSize }),
+    [voxelSize],
+  );
   const tileableObjects = useMemo<TileableObjectInfo[]>(() => {
-    const defaultDims = { width: voxelSize, height: voxelSize, depth: voxelSize };
     return props.compiled.instances
       .filter((inst) => {
         const kind = getKind(inst.kindId);
         if (!kind) return false;
         return kind.tilingAxes.x || kind.tilingAxes.y || kind.tilingAxes.z;
       })
-      .map((inst) => ({
-        position: inst.position,
-        dims: defaultDims,
-      }));
-  }, [props.compiled.instances, voxelSize]);
+      .map((inst) => {
+        const kind = getKind(inst.kindId);
+        return {
+          position: inst.position,
+          dims: kind?.dimensions ?? fallbackDims,
+        };
+      });
+  }, [props.compiled.instances, fallbackDims]);
 
   // Snap a world-space hit to a voxel, routing to snapToNearestTileableFace
-  // when the staged kind is non-tileable (all tilingAxes false).
+  // when the staged kind is non-tileable (all tilingAxes false). For
+  // tileable kinds, snap to multiples of the kind's own bounding-box
+  // dimension on each axis — a 2 m cube on a 0.5 m grid lands on 2 m
+  // boundaries (every 4 voxels) instead of every voxel.
   const snapForAdd = useCallback(
     (hit: SnapHit): [number, number, number] => {
       if (!props.stagedKindId) return snapToVoxel(hit, voxelSize);
@@ -396,12 +419,16 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
               y: hit.cubePosition[1] * voxelSize,
               z: hit.cubePosition[2] * voxelSize,
             };
-        const dims = { width: voxelSize, height: voxelSize, depth: voxelSize };
+        const dims = kind.dimensions ?? {
+          width: voxelSize,
+          height: voxelSize,
+          depth: voxelSize,
+        };
         return snapToNearestTileableFace(hitPoint, dims, tileableObjects, voxelSize);
       }
-      return snapToVoxel(hit, voxelSize);
+      return snapToVoxel(hit, voxelSize, stepForKind(props.stagedKindId));
     },
-    [props.stagedKindId, voxelSize, tileableObjects],
+    [props.stagedKindId, voxelSize, tileableObjects, stepForKind],
   );
 
   // Compute the ghost specs the GhostLayer should render this frame.
@@ -439,9 +466,11 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       // SRP violation: Y-axis delta computation (PIXELS_PER_VOXEL screen
       // mapping) stays inline because it requires R3F's camera projection.
       // The pure computeTileGhosts receives the pre-computed voxel.
+      const kindId = tileState.stage !== 'idle' ? tileState.kindId : props.stagedKindId;
+      const tileStep = stepForKind(kindId);
       let tileHoverVoxel: Vec3 | null = null;
       if (hover) {
-        const v = snapToVoxel(hover, voxelSize);
+        const v = snapToVoxel(hover, voxelSize, tileStep);
         const isYStage =
           (tileState.stage === 'axis-extruded' && tileState.nextAxis === 'y') ||
           (tileState.stage === 'placed' && tileState.nextAxis === 'y');
@@ -455,9 +484,8 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         }
       }
 
-      const kindId = tileState.stage !== 'idle' ? tileState.kindId : props.stagedKindId;
       if (kindId) {
-        const ghostVoxels = computeTileGhosts(tileState, tileHoverVoxel, { x: 1, y: 1, z: 1 });
+        const ghostVoxels = computeTileGhosts(tileState, tileHoverVoxel, tileStep);
         for (const v of ghostVoxels) {
           out.push({ mode: 'solid', kindId, voxel: v });
         }
@@ -532,8 +560,10 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       const stagedKindId = props.stagedKindId;
 
       if (tileState.stage === 'idle') {
-        // Click 1: place the origin cube.
-        let voxel = snapToVoxel(hit, voxelSize);
+        // Click 1: place the origin cube. Snap to multiples of the
+        // staged kind's bounding-box step so the origin lands on a
+        // tile-aligned position.
+        let voxel = snapToVoxel(hit, voxelSize, stepForKind(stagedKindId));
 
         // Gravity: if the staged kind has gravity = true, drop to the
         // nearest surface below. Reject placement when no support exists.
@@ -574,24 +604,28 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         // Click N: commit the extrusion row along nextAxis (if any).
         const nextAxis = tileState.nextAxis;
         const axisIndex = nextAxis === 'x' ? 0 : nextAxis === 'y' ? 1 : 2;
+        const tileStep = stepForKind(tileState.kindId);
+        const axisStep =
+          nextAxis === 'x' ? tileStep.x : nextAxis === 'y' ? tileStep.y : tileStep.z;
 
         // For Y-axis, use yDelta for the hover; for X/Z use the raycasted hit
         let hoverVoxel: Vec3;
         if (nextAxis === 'y') {
           hoverVoxel = [tileState.origin[0], tileState.origin[1] + yDelta, tileState.origin[2]];
         } else {
-          hoverVoxel = snapToVoxel(hit, voxelSize);
+          hoverVoxel = snapToVoxel(hit, voxelSize, tileStep);
         }
 
         const delta = hoverVoxel[axisIndex] - tileState.origin[axisIndex];
         if (delta === 0) return; // No movement → stay in placed
 
         const sign = Math.sign(delta);
-        const count = Math.abs(delta);
+        const count = Math.round(Math.abs(delta) / axisStep);
+        if (count === 0) return;
         const extrudedRow: Vec3[] = [];
         for (let i = 1; i <= count; i++) {
           const v: Vec3 = [tileState.origin[0], tileState.origin[1], tileState.origin[2]];
-          v[axisIndex] = tileState.origin[axisIndex] + sign * i;
+          v[axisIndex] = tileState.origin[axisIndex] + sign * i * axisStep;
           extrudedRow.push(v);
         }
 
@@ -633,12 +667,15 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
 
         const nextAxis = tileState.nextAxis;
         const axisIndex = nextAxis === 'x' ? 0 : nextAxis === 'y' ? 1 : 2;
+        const tileStep = stepForKind(tileState.kindId);
+        const axisStep =
+          nextAxis === 'x' ? tileStep.x : nextAxis === 'y' ? tileStep.y : tileStep.z;
 
         let hoverVoxel: Vec3;
         if (nextAxis === 'y') {
           hoverVoxel = [tileState.origin[0], tileState.origin[1] + yDelta, tileState.origin[2]];
         } else {
-          hoverVoxel = snapToVoxel(hit, voxelSize);
+          hoverVoxel = snapToVoxel(hit, voxelSize, tileStep);
         }
 
         const delta = hoverVoxel[axisIndex] - tileState.origin[axisIndex];
@@ -652,13 +689,14 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         }
 
         const sign = Math.sign(delta);
-        const count = Math.abs(delta);
+        const count = Math.round(Math.abs(delta) / axisStep);
+        if (count === 0) return;
         const base: Vec3[] = [tileState.origin, ...tileState.extrudedRow];
         const replicas: Vec3[] = [];
         for (let i = 1; i <= count; i++) {
           for (const p of base) {
             const v: Vec3 = [p[0], p[1], p[2]];
-            v[axisIndex] = p[axisIndex] + sign * i;
+            v[axisIndex] = p[axisIndex] + sign * i * axisStep;
             replicas.push(v);
           }
         }
