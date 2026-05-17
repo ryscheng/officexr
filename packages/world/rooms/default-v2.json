@@ -83,26 +83,6 @@
         0,
         12
       ]
-    },
-    {
-      "id": "place-9-1oc2",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -4,
-        0,
-        16
-      ]
-    },
-    {
-      "id": "place-a-1ov5",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -8,
-        0,
-        16
-      ]
     }
   ],
   "groups": {}
