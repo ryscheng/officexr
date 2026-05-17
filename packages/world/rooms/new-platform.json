@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 4,
+  "name": "new-platform",
+  "title": "new-platform",
+  "updatedAt": 1779008977747,
+  "commands": [
+    {
+      "id": "place-2-0g3r",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        15
+      ]
+    }
+  ],
+  "groups": {}
+}
