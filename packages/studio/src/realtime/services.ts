@@ -82,6 +82,12 @@ export function createPersistentLocalState(opts: {
 interface BuildStackCommonOpts {
   local: PersistentLocalState;
   audio: HTMLAudioElement;
+  /** Optional canonical AABB lookup. Threaded into the in-browser
+   * BotPool so bot Rapier colliders match the visible-mesh AABB of
+   * each placed object. Studio's DebugApp passes
+   * `api.geometry.worldAABB`. Tests / harnesses omit it and fall
+   * back to the legacy one-voxel-cube collider path. */
+  instanceAABB?: import('@officexr/world').InstanceAABBLookup;
 }
 
 /**
@@ -92,7 +98,7 @@ interface BuildStackCommonOpts {
 export async function buildInMemoryStack(
   opts: BuildStackCommonOpts,
 ): Promise<ChannelStack> {
-  const { local, audio } = opts;
+  const { local, audio, instanceAABB } = opts;
   const hub = createInMemoryChannelHub();
   const { channel, voiceAdapter } = createStack({
     mode: 'local',
@@ -136,6 +142,7 @@ export async function buildInMemoryStack(
   const bots = new BotPool({
     createChannel: (botId) => new InMemoryChannel(hub, botId),
     localPlayerId: local.selfId,
+    instanceAABB,
     // Seed each new bot with the local-player store's current world
     // state so a bot spawned after Leva has pushed user values
     // doesn't fall back to SDK defaults. (Bots spawned *before* Leva

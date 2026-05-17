@@ -56,6 +56,10 @@ export interface BotDriverOptions {
    * visual bump animation fires on the local player when a bot walks
    * into them. */
   externalBus?: Bus;
+  /** Optional canonical AABB lookup for placed-object colliders.
+   * Threads through to `BotPhysicsWorld`. When omitted, bot colliders
+   * fall back to the legacy one-voxel-cube path. */
+  instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
 }
 
 /**
@@ -108,6 +112,7 @@ export class BotDriver {
 
   private physics: BotPhysicsWorld | null = null;
   private readonly externalBus?: Bus;
+  private readonly instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
 
   constructor(opts: BotDriverOptions) {
     this.createChannel = opts.createChannel;
@@ -120,6 +125,7 @@ export class BotDriver {
     this.phaseIndex = opts.phaseIndex ?? 0;
     this.initialWorld = opts.initialWorld;
     this.externalBus = opts.externalBus;
+    this.instanceAABB = opts.instanceAABB;
     this.modeState.patrolIdx = this.phaseIndex;
     // Spread orbit angles so multiple bots don't sit on the same arc spot.
     this.modeState.orbitAngle = (this.phaseIndex * 0.71) * Math.PI;
@@ -164,6 +170,7 @@ export class BotDriver {
       selfId: botId,
       startPos: this.startPos,
       worldSettings: state.worldSettings,
+      instanceAABB: this.instanceAABB,
     });
     this.physics.syncCubes(state.worldObjects);
 

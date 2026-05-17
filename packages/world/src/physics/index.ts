@@ -10,6 +10,7 @@ export {
   worldObjectsToCuboids,
   pickRespawnPosition,
   type CuboidDescriptor,
+  type InstanceAABBLookup,
 } from './rules.ts';
 export { routeContactEvent } from './bridge.ts';
 export {

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Scene, CAMERA_MODES, type CameraMode } from '@officexr/world/renderer';
+import { useApplication } from '@officexr/world/react';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { WorldPanels } from '../../panels/world/WorldPanels.tsx';
 import { useStudioSettings } from '../../panels/world/useStudioSettings.ts';
@@ -67,8 +68,23 @@ export function DebugApp() {
       lp.store;
   }, []);
 
+  // Canonical AABB lookup from the application layer's geometry service.
+  // Threaded into useStackSwitcher → BotPool → BotPhysicsWorld so the
+  // bot's Rapier static colliders match the visible-mesh AABB of each
+  // placed object (instead of the legacy one-voxel-cube collider that
+  // let bots walk through 2 m blocks).
+  const { geometry } = useApplication();
+  const instanceAABB = useCallback(
+    (
+      position: readonly [number, number, number],
+      kindId: string,
+    ): { min: readonly [number, number, number]; max: readonly [number, number, number] } =>
+      geometry.worldAABB(position, kindId),
+    [geometry],
+  );
+
   const { stack, errorBanner, dismissError, onBotCountChange, onBotModeChange } =
-    useStackSwitcher({ local, audio });
+    useStackSwitcher({ local, audio, instanceAABB });
 
   // Expose the in-browser bot pool on window for the e2e regression
   // test. The deterministic visual test wants to silence bot

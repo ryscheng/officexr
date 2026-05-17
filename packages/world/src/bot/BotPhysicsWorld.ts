@@ -77,6 +77,13 @@ interface BotPhysicsWorldOpts {
     WorldSettings,
     'charRadius' | 'proximityRadius' | 'proximityOuterRadius'
   >;
+  /** Optional canonical AABB lookup (typically
+   * `api.geometry.worldAABB`). When provided, the bot's static
+   * colliders match the visible-mesh AABB of each placed object.
+   * When omitted, falls back to the legacy one-voxel cube collider —
+   * preserved for back-compat with bot harnesses that don't have an
+   * application api wired (older unit tests). */
+  instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
 }
 
 /**
@@ -124,9 +131,11 @@ export class BotPhysicsWorld {
    * character controller's collision list can be translated into a
    * peer ID for the bump event. */
   private peerByColliderHandle = new Map<number, PlayerId>();
+  private instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
 
   constructor(opts: BotPhysicsWorldOpts) {
     this.selfId = opts.selfId;
+    this.instanceAABB = opts.instanceAABB;
     // Gravity vector matches the browser-side `<Physics>` so the bot
     // and the local player fall at identical rates. Kinematic bodies
     // don't auto-apply it — see `verticalVel` integration in step().
@@ -215,7 +224,7 @@ export class BotPhysicsWorld {
     if (this.cubesFingerprint === fingerprint) return;
     for (const b of this.mapColliderBodies) this.world.removeRigidBody(b);
     this.mapColliderBodies = [];
-    for (const c of worldObjectsToCuboids(worldObjects)) {
+    for (const c of worldObjectsToCuboids(worldObjects, this.instanceAABB)) {
       const desc = RAPIER.RigidBodyDesc.fixed().setTranslation(
         c.center.x,
         c.center.y,

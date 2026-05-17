@@ -28,6 +28,12 @@ interface BotPoolOptions {
    * initiates the collision. Only relevant for in-browser bots; the
    * Node CLI's BotPool doesn't have a local bus to plumb. */
   localBus?: Bus;
+  /** Optional canonical AABB lookup. Threaded into every bot's
+   * Rapier world so static colliders match the visible-mesh AABB of
+   * each placed object. Studio production wiring passes
+   * `api.geometry.worldAABB`. Headless / Node-CLI bots omit it and
+   * fall back to the legacy one-voxel-cube collider. */
+  instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
 }
 
 /**
@@ -43,6 +49,7 @@ export class BotPool {
   private readonly localPlayerId: PlayerId;
   private readonly getInitialWorld?: BotPoolOptions['getInitialWorld'];
   private readonly localBus?: Bus;
+  private readonly instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
   private bots: BotDriver[] = [];
   private currentMode: BotMode = 'idle';
   /** Latest target count; the serialised loop below converges to this. */
@@ -59,6 +66,7 @@ export class BotPool {
     this.localPlayerId = opts.localPlayerId;
     this.getInitialWorld = opts.getInitialWorld;
     this.localBus = opts.localBus;
+    this.instanceAABB = opts.instanceAABB;
   }
 
   /** Reach `n` active bots. New bots inherit the pool's current mode and
@@ -91,6 +99,7 @@ export class BotPool {
               phaseIndex: idx,
               initialWorld: this.getInitialWorld?.(),
               externalBus: this.localBus,
+              instanceAABB: this.instanceAABB,
             });
             this.bots.push(bot);
             await bot.start();

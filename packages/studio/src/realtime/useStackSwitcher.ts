@@ -23,6 +23,11 @@ export interface UseStackSwitcherOpts {
    * peer in the Node `bots:start` process); below it the in-browser
    * InMemoryChannel pool runs the bots with zero infra. */
   wsThreshold?: number;
+  /** Canonical AABB lookup forwarded to the in-browser BotPool. Studio
+   * `DebugApp` reads it from the application context
+   * (`useApplication().geometry.worldAABB`) so bot Rapier colliders
+   * match the visible-mesh AABB of each placed object. */
+  instanceAABB?: import('@officexr/world').InstanceAABBLookup;
 }
 
 export interface UseStackSwitcherResult {
@@ -54,7 +59,7 @@ export interface UseStackSwitcherResult {
 export function useStackSwitcher(
   opts: UseStackSwitcherOpts,
 ): UseStackSwitcherResult {
-  const { local, audio, wsThreshold = 2 } = opts;
+  const { local, audio, wsThreshold = 2, instanceAABB } = opts;
   const [stack, setStack] = useState<ChannelStack | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
@@ -97,7 +102,7 @@ export function useStackSwitcher(
     let teardown: (() => Promise<void>) | null = null;
 
     async function bootstrap() {
-      const initial = await buildInMemoryStack({ local: local!, audio: audio! });
+      const initial = await buildInMemoryStack({ local: local!, audio: audio!, instanceAABB });
       if (aborted) {
         await initial.teardown();
         return;
@@ -120,7 +125,11 @@ export function useStackSwitcher(
         teardown = null;
       }
     };
-  }, [local, audio]);
+    // instanceAABB is a stable function ref from the application api;
+    // included for exhaustive-deps correctness but in practice never
+    // changes after App mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [local, audio, instanceAABB]);
 
   // Deps are deliberately `[wsThreshold]` only. `local`/`audio` are
   // read through refs so the callback identity stays stable across
@@ -184,7 +193,7 @@ export function useStackSwitcher(
           // before we tear down the ws channel locally.
           current.botControl?.publish({ type: 'set-count', count: 0 });
           await current.teardown();
-          const next = await buildInMemoryStack({ local: localNow, audio: audioNow });
+          const next = await buildInMemoryStack({ local: localNow, audio: audioNow, instanceAABB });
           next.bots.setMode(targetModeRef.current);
           await next.bots.setCount(target);
           setStack(next);

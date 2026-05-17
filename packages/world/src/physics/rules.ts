@@ -55,19 +55,53 @@ export interface CuboidDescriptor {
   halfExtents: { x: number; y: number; z: number };
 }
 
+/** AABB lookup matching `InstanceGeometryService.worldAABB` — passed
+ * in by callers that have an application api in scope. Keeps this
+ * pure physics module free of the React-side context dependency. */
+export interface InstanceAABBLookup {
+  (
+    position: readonly [number, number, number],
+    kindId: string,
+  ): {
+    min: readonly [number, number, number];
+    max: readonly [number, number, number];
+  };
+}
+
 /**
  * Walk `worldObjects.instances` and emit one cuboid collider per
- * cube. Coordinates match the visual placement in `ObjectInstances`
- * exactly (`pos * cubeSize` with the cube center lifted by
- * `cubeSize/2`) so collider tops align with visible cube tops.
+ * placed object. When `aabbLookup` is provided, each cuboid uses the
+ * kind's true AABB (canonical convention: X/Z centered, Y bottom at
+ * voxel*cubeSize). When omitted, falls back to the legacy one-voxel
+ * cube — preserved so existing unit tests that don't have a catalog
+ * keep working.
  */
 export function worldObjectsToCuboids(
   worldObjects: WorldObjects,
+  aabbLookup?: InstanceAABBLookup,
 ): CuboidDescriptor[] {
   const cs = worldObjects.cubeSize;
   const half = cs / 2;
   const out: CuboidDescriptor[] = [];
   for (const inst of worldObjects.instances) {
+    if (aabbLookup) {
+      const aabb = aabbLookup(inst.position, inst.kindId);
+      out.push({
+        center: {
+          x: (aabb.min[0] + aabb.max[0]) / 2,
+          y: (aabb.min[1] + aabb.max[1]) / 2,
+          z: (aabb.min[2] + aabb.max[2]) / 2,
+        },
+        halfExtents: {
+          x: (aabb.max[0] - aabb.min[0]) / 2,
+          y: (aabb.max[1] - aabb.min[1]) / 2,
+          z: (aabb.max[2] - aabb.min[2]) / 2,
+        },
+      });
+      continue;
+    }
+    // Legacy fallback path — one-voxel-cube colliders. Used by old
+    // bots without a catalog injected.
     out.push({
       center: {
         x: inst.position[0] * cs,
