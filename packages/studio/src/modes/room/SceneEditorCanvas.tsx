@@ -86,41 +86,52 @@ type MoveState =
     };
 
 /** Generate the X-row preview voxels for the placed stage. Excludes
- * the origin (which is already a real cube). */
-function tileXRow(origin: Vec3, hover: SnapHit | null, voxelSize: number): Vec3[] {
+ * the origin (which is already a real cube).
+ * @param step - Optional tile step in the X direction (default 1). When > 1,
+ *   the row steps in multiples of `step` rather than individual voxels. */
+function tileXRow(
+  origin: Vec3,
+  hover: SnapHit | null,
+  voxelSize: number,
+  step: number = 1,
+): Vec3[] {
   if (!hover) return [];
-  const v = snapToVoxel(hover, voxelSize);
+  const v = snapToVoxel(hover, voxelSize, { x: step, y: 1, z: 1 });
   const dx = v[0] - origin[0];
   if (dx === 0) return [];
   const sign = Math.sign(dx);
-  const count = Math.abs(dx);
+  // Round the delta to the nearest whole-step count
+  const steps = Math.round(Math.abs(dx) / step);
   const out: Vec3[] = [];
-  for (let i = 1; i <= count; i++) {
-    out.push([origin[0] + sign * i, origin[1], origin[2]]);
+  for (let i = 1; i <= steps; i++) {
+    out.push([origin[0] + sign * i * step, origin[1], origin[2]]);
   }
   return out;
 }
 
-/** Replicate the X row along ±z for the x-extruded stage's preview. */
+/** Replicate the X row along ±z for the x-extruded stage's preview.
+ * @param step - Optional tile step in the Z direction (default 1). */
 function tileZReplicas(
   origin: Vec3,
   xRow: readonly Vec3[],
   hover: SnapHit | null,
   voxelSize: number,
+  step: number = 1,
 ): Vec3[] {
   if (!hover) return [];
-  const v = snapToVoxel(hover, voxelSize);
+  const v = snapToVoxel(hover, voxelSize, { x: 1, y: 1, z: step });
   const dz = v[2] - origin[2];
   if (dz === 0) return [];
   const sign = Math.sign(dz);
-  const count = Math.abs(dz);
+  // Round the delta to the nearest whole-step count
+  const steps = Math.round(Math.abs(dz) / step);
   // Replicate origin + xRow, since the entire X row including origin
   // is what shifts in z.
   const fullRow: Vec3[] = [origin, ...xRow];
   const out: Vec3[] = [];
-  for (let i = 1; i <= count; i++) {
+  for (let i = 1; i <= steps; i++) {
     for (const p of fullRow) {
-      out.push([p[0], p[1], p[2] + sign * i]);
+      out.push([p[0], p[1], p[2] + sign * i * step]);
     }
   }
   return out;
@@ -128,18 +139,21 @@ function tileZReplicas(
 
 /** Replicate the XZ slab along ±y for the z-extruded stage's preview.
  * Y direction is derived from the cursor's vertical movement off the
- * origin's screen position — see `yVoxelDelta`. */
+ * origin's screen position — see `yVoxelDelta`.
+ * @param step - Optional tile step in the Y direction (default 1). */
 function tileYReplicas(
   xzGrid: readonly Vec3[],
   yDelta: number,
+  step: number = 1,
 ): Vec3[] {
   if (yDelta === 0) return [];
   const sign = Math.sign(yDelta);
-  const count = Math.abs(yDelta);
+  const steps = Math.round(Math.abs(yDelta) / step);
+  if (steps === 0) return [];
   const out: Vec3[] = [];
-  for (let i = 1; i <= count; i++) {
+  for (let i = 1; i <= steps; i++) {
     for (const p of xzGrid) {
-      out.push([p[0], p[1] + sign * i, p[2]]);
+      out.push([p[0], p[1] + sign * i * step, p[2]]);
     }
   }
   return out;

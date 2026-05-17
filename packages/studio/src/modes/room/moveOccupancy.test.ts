@@ -7,7 +7,7 @@ import { emptyRoomDocument } from '@officexr/world/scenes';
 import type { RoomDocument, PlaceObjectCommand } from '@officexr/world/scenes';
 
 function makeCmd(id: string, position: [number, number, number]): PlaceObjectCommand {
-  return { id, op: 'placeCube', kindId: 'block-grass', position };
+  return { id, op: 'placeObject', kindId: 'block-grass', position };
 }
 
 function makeDoc(commands: PlaceObjectCommand[]): RoomDocument {
@@ -83,5 +83,35 @@ describe('checkMoveOccupancy', () => {
     ]);
     // Both are moving, neither collides with any STATIC object
     expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('ok');
+  });
+
+  // 7. multi-voxel footprint catches overlap
+  it('multi-voxel footprint {w:4,h:4,d:4} catches overlap with static at [0,0,0]', () => {
+    // Static object at [0,0,0]. Propose a 4×4×4 footprint at [-1,0,-1].
+    // The footprint covers [-1..2, 0..3, -1..2] which includes [0,0,0].
+    const doc = makeDoc([makeCmd('static', [0, 0, 0])]);
+    const movingIds = new Set<string>(['mover']);
+    const proposedPositions = new Map<string, [number, number, number]>([
+      ['mover', [-1, 0, -1]],
+    ]);
+    expect(checkMoveOccupancy(doc, movingIds, proposedPositions, { w: 4, h: 4, d: 4 })).toBe('blocked');
+  });
+
+  // 8. multi-voxel footprint ok when no overlap
+  it('multi-voxel footprint {w:4,h:4,d:4} ok when static is far away', () => {
+    const doc = makeDoc([makeCmd('static', [10, 0, 10])]);
+    const movingIds = new Set<string>(['mover']);
+    const proposedPositions = new Map<string, [number, number, number]>([
+      ['mover', [0, 0, 0]],
+    ]);
+    expect(checkMoveOccupancy(doc, movingIds, proposedPositions, { w: 4, h: 4, d: 4 })).toBe('ok');
+  });
+
+  // 9. default footprint still 1-voxel (no footprint arg)
+  it('default footprint is still 1-voxel (backward compat)', () => {
+    const doc = makeDoc([makeCmd('a', [0, 0, 0]), makeCmd('static-b', [1, 0, 0])]);
+    const movingIds = new Set(['a']);
+    const proposedPositions = new Map([['a', [1, 0, 0] as [number, number, number]]]);
+    expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('blocked');
   });
 });

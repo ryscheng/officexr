@@ -1,10 +1,61 @@
 import { describe, it, expect } from 'vitest';
 import {
+  computeTileStep,
+  computeKindTileSteps,
   quantizeAxisAlignedNormal,
   snapToVoxel,
   type CubeHit,
   type FloorHit,
 } from './roomSnap.ts';
+
+describe('computeTileStep', () => {
+  it('2m object on 0.5m grid → step 4', () => {
+    expect(computeTileStep(2.0, 0.5)).toBe(4);
+  });
+
+  it('small object below voxelSize → step 1', () => {
+    expect(computeTileStep(0.3, 0.5)).toBe(1);
+  });
+
+  it('exactly 1m on 0.5m grid → step 2', () => {
+    expect(computeTileStep(1.0, 0.5)).toBe(2);
+  });
+});
+
+describe('computeKindTileSteps', () => {
+  it('computes per-axis steps from dims', () => {
+    const steps = computeKindTileSteps({ width: 2.0, height: 2.0, depth: 2.0 }, 0.5);
+    expect(steps).toEqual({ x: 4, y: 4, z: 4 });
+  });
+
+  it('minimum step is 1 for small dims', () => {
+    const steps = computeKindTileSteps({ width: 0.2, height: 0.3, depth: 0.4 }, 0.5);
+    expect(steps).toEqual({ x: 1, y: 1, z: 1 });
+  });
+});
+
+describe('snapToVoxel stepped floor hit', () => {
+  function floorHit(x: number, z: number): FloorHit {
+    return { kind: 'floor', point: { x, y: 0, z } };
+  }
+
+  it('step 4 snaps to multiples of 4 — hit x=2.3, voxelSize=0.5 → voxel x=4', () => {
+    // round(2.3/0.5/4)*4 = round(1.15)*4 = 1*4 = 4
+    const result = snapToVoxel(floorHit(2.3, 0), 0.5, { x: 4, y: 1, z: 1 });
+    expect(result[0]).toBe(4);
+  });
+
+  it('step 1 is same as existing behavior', () => {
+    // With step {x:1,y:1,z:1} should match unstep behavior
+    expect(snapToVoxel(floorHit(0, 0), 2, { x: 1, y: 1, z: 1 })).toEqual([0, 0, 0]);
+    expect(snapToVoxel(floorHit(2.1, -3.9), 2, { x: 1, y: 1, z: 1 })).toEqual([1, 0, -2]);
+  });
+
+  it('without step parameter, behaves as before', () => {
+    expect(snapToVoxel(floorHit(0, 0), 2)).toEqual([0, 0, 0]);
+    expect(snapToVoxel(floorHit(4, 4), 2)).toEqual([2, 0, 2]);
+  });
+});
 
 describe('quantizeAxisAlignedNormal', () => {
   it('returns +x for an x-dominant normal', () => {

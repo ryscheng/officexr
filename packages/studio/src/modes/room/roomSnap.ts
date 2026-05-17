@@ -38,10 +38,42 @@ export interface CubeHit {
 
 export type SnapHit = FloorHit | CubeHit;
 
-/** Returns the target voxel coords for a snap hit. */
+/**
+ * Computes the tile step (in voxels) for an object dimension.
+ * Returns `Math.max(1, Math.round(dimensionM / voxelSize))`.
+ * Minimum is 1 to ensure at least one voxel of movement.
+ */
+export function computeTileStep(dimensionM: number, voxelSize: number): number {
+  return Math.max(1, Math.round(dimensionM / voxelSize));
+}
+
+/**
+ * Computes per-axis tile steps from the kind's bounding dimensions.
+ */
+export function computeKindTileSteps(
+  dims: { width: number; height: number; depth: number },
+  voxelSize: number,
+): { x: number; y: number; z: number } {
+  return {
+    x: computeTileStep(dims.width, voxelSize),
+    y: computeTileStep(dims.height, voxelSize),
+    z: computeTileStep(dims.depth, voxelSize),
+  };
+}
+
+/**
+ * Returns the target voxel coords for a snap hit.
+ *
+ * @param hit - The raycast hit (floor or cube face).
+ * @param voxelSize - The grid voxel size in metres.
+ * @param step - Optional per-axis step multiplier. When provided, floor hits
+ *   snap to the nearest multiple of each step (e.g. step.x=4 snaps to 0, 4, 8…).
+ *   Defaults to {x:1, y:1, z:1} (existing behavior).
+ */
 export function snapToVoxel(
   hit: SnapHit,
   voxelSize: number,
+  step?: { x: number; y: number; z: number },
 ): [number, number, number] {
   if (hit.kind === 'cube') {
     const n = quantizeAxisAlignedNormal(hit.faceNormal);
@@ -51,10 +83,12 @@ export function snapToVoxel(
       hit.cubePosition[2] + n[2],
     ];
   }
+  const sx = step?.x ?? 1;
+  const sz = step?.z ?? 1;
   return [
-    Math.round(hit.point.x / voxelSize),
+    Math.round(hit.point.x / voxelSize / sx) * sx,
     0,
-    Math.round(hit.point.z / voxelSize),
+    Math.round(hit.point.z / voxelSize / sz) * sz,
   ];
 }
 
