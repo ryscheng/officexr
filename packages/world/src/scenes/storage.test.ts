@@ -7,7 +7,7 @@ import {
   migrateToV2,
 } from './serialize.ts';
 import { isValidSceneName } from './storage.ts';
-import { newPlaceCube } from './commands.ts';
+import { newPlaceObject } from './commands.ts';
 
 class MemoryStorage implements Storage {
   private data = new Map<string, string>();
@@ -51,7 +51,7 @@ describe('serializeScene + deserializeScene (v2 default)', () => {
     const out = serializeScene({
       name: 'kitchen',
       title: 'Kitchen',
-      commands: [newPlaceCube({ kindId: 'colored_block_blue', position: [0, 0, 0] })],
+      commands: [newPlaceObject({ kindId: 'colored_block_blue', position: [0, 0, 0] })],
     });
     expect(out.schemaVersion).toBe(2);
     expect(out.name).toBe('kitchen');
@@ -99,7 +99,7 @@ describe('migrateToV2', () => {
   it('passes v2 docs through unchanged', () => {
     const v2 = serializeScene({
       name: 'foo',
-      commands: [newPlaceCube({ kindId: 'colored_block_blue', position: [1, 0, 0] })],
+      commands: [newPlaceObject({ kindId: 'colored_block_blue', position: [1, 0, 0] })],
     });
     const migrated = migrateToV2(v2);
     expect(migrated.schemaVersion).toBe(2);
@@ -154,7 +154,7 @@ describe('LocalStorageSceneStorage', () => {
     name: 'living-room',
     title: 'Living Room',
     commands: [
-      newPlaceCube({ kindId: 'colored_block_blue', position: [0, 0, 0] }),
+      newPlaceObject({ kindId: 'colored_block_blue', position: [0, 0, 0] }),
     ],
   });
 

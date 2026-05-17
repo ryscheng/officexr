@@ -4,9 +4,9 @@ import {
   getCatalog,
   getKind,
   patchKind,
-  useCubeCatalog,
-  type CubeKindCatalogV1,
-  type CubeKindEntry,
+  useObjectKindCatalog,
+  type WorldObjectKindCatalogV1,
+  type WorldObjectKind,
 } from '@officexr/world';
 
 /**
@@ -17,7 +17,7 @@ import {
  *     currently-selected kind via `patchKind`, which mutates the
  *     in-memory store + notifies subscribers (so the Room editor's
  *     palette + ObjectInstances re-render live).
- *   - Auto-save to /api/cube-kinds via FilesystemCatalogStorage,
+ *   - Auto-save to /api/world-object-kinds via FilesystemCatalogStorage,
  *     debounced 500ms so a slider drag doesn't fire one PUT per
  *     frame.
  *
@@ -26,20 +26,19 @@ import {
  * changes.
  */
 export interface UseObjectCatalogResult {
-  kinds: readonly CubeKindEntry[];
+  kinds: readonly WorldObjectKind[];
   selectedKindId: string | null;
-  selectedKind: CubeKindEntry | null;
+  selectedKind: WorldObjectKind | null;
   setSelectedKindId: (id: string | null) => void;
-  applyPatch: (partial: Partial<CubeKindEntry>) => void;
+  applyPatch: (partial: Partial<WorldObjectKind>) => void;
 }
 
 const LAST_KIND_KEY = 'officexr:studio:lastObjectKind';
 
 export function useObjectCatalog(): UseObjectCatalogResult {
-  // Drives re-renders when the catalog changes (Leva tweaks, fresh
-  // bootstrap, etc.) and kicks off the /api/cube-kinds fetch on
-  // first mount.
-  const kinds = useCubeCatalog();
+  // Drives re-renders when the catalog changes and kicks off the
+  // /api/world-object-kinds fetch on first mount.
+  const kinds = useObjectKindCatalog();
 
   const [selectedKindId, setSelectedKindIdState] = useState<string | null>(
     () => {
@@ -85,7 +84,7 @@ export function useObjectCatalog(): UseObjectCatalogResult {
     }
   }, []);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSave = useRef<CubeKindCatalogV1 | null>(null);
+  const pendingSave = useRef<WorldObjectKindCatalogV1 | null>(null);
 
   const scheduleSave = useCallback(() => {
     if (!storage) return;
@@ -116,11 +115,11 @@ export function useObjectCatalog(): UseObjectCatalogResult {
   }, [storage]);
 
   const applyPatch = useCallback(
-    (partial: Partial<CubeKindEntry>) => {
+    (partial: Partial<WorldObjectKind>) => {
       if (!selectedKindId) return;
       // The `id` field is the primary key — guard against an
       // accidental Leva field that tries to rename it.
-      const safe: Partial<CubeKindEntry> = { ...partial };
+      const safe: Partial<WorldObjectKind> = { ...partial };
       delete safe.id;
       const current = getKind(selectedKindId);
       if (!current) return;

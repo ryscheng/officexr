@@ -4,14 +4,15 @@ import {
   LocalStorageRoomStorage,
   compileScene,
   emptyRoomDocument,
-  newPlaceCube,
+  newPlaceObject,
   serializeRoom,
-  type PlaceCubeCommand,
+  type PlaceObjectCommand,
   type RoomDocument,
   type RoomGroup,
   type RoomStorage,
 } from '@officexr/world/scenes';
 import type { WorldObjects } from '@officexr/sdk';
+import { VOXEL_SIZE } from '@officexr/world/renderer';
 import {
   selectionFromClick,
   selectionFromToggle,
@@ -147,7 +148,7 @@ export function useRoomDocument(): {
   // Re-compile on every doc change. Cheap: pure function, scenes are
   // small (hundreds of cubes at most for v1) and `compileScene` runs
   // in <1 ms for that range.
-  const compiled = useMemo(() => compileScene(doc, 2), [doc]);
+  const compiled = useMemo(() => compileScene(doc, VOXEL_SIZE), [doc]);
 
   // Derived selection / delete lookups. Recomputed whenever the doc
   // or compiled snapshot changes (Maps fully replaced — components
@@ -322,7 +323,7 @@ export function useRoomDocument(): {
 
   const placeCube = useCallback(
     (kindId: string, position?: [number, number, number]) => {
-      const cmd = newPlaceCube({ kindId, position });
+      const cmd = newPlaceObject({ kindId, position });
       const action: EditAction = {
         type: 'place',
         commandId: cmd.id,
@@ -348,7 +349,7 @@ export function useRoomDocument(): {
       // Pre-mint command IDs before constructing the action so the EditAction
       // carries stable ids that match what applyAction will create.
       const cmds = positions.map((pos) =>
-        newPlaceCube({ kindId, position: pos }),
+        newPlaceObject({ kindId, position: pos }),
       );
       const action: EditAction = {
         type: 'placeMany',
@@ -417,7 +418,7 @@ export function useRoomDocument(): {
       }
 
       const deletedCommands = currentDoc.commands.filter(
-        (c): c is PlaceCubeCommand => expanded.has(c.id) && c.op === 'placeCube',
+        (c): c is PlaceObjectCommand => expanded.has(c.id) && c.op === 'placeCube',
       );
       const groupsAffected: Record<string, string[]> = {};
       for (const g of Object.values(currentDoc.groups)) {

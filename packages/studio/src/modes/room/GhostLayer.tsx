@@ -26,7 +26,7 @@ export interface GhostSpec {
 
 interface GhostLayerProps {
   ghosts: readonly GhostSpec[];
-  cubeSize: number;
+  voxelSize: number;
 }
 
 /**
@@ -42,7 +42,7 @@ interface GhostLayerProps {
  * whose own `raycast` is a no-op. Without this, the Add/Tile tools
  * could snap to their own ghost preview.
  */
-export function GhostLayer({ ghosts, cubeSize }: GhostLayerProps) {
+export function GhostLayer({ ghosts, voxelSize }: GhostLayerProps) {
   // Group ghosts by (mode, kindId).
   const groups = useMemo(() => {
     const m = new Map<
@@ -74,7 +74,7 @@ export function GhostLayer({ ghosts, cubeSize }: GhostLayerProps) {
           mode={g.mode}
           kindId={g.kindId}
           voxels={g.voxels}
-          cubeSize={cubeSize}
+          voxelSize={voxelSize}
           pulseOpacityRef={pulseOpacityRef}
         />
       ))}
@@ -87,7 +87,7 @@ interface GhostGroupProps {
   mode: GhostMode;
   kindId: string;
   voxels: [number, number, number][];
-  cubeSize: number;
+  voxelSize: number;
   pulseOpacityRef: React.MutableRefObject<number>;
 }
 
@@ -101,7 +101,7 @@ function GhostGroup({
   mode,
   kindId,
   voxels,
-  cubeSize,
+  voxelSize,
   pulseOpacityRef,
 }: GhostGroupProps) {
   const kind = getCubeKind(kindId);
@@ -116,8 +116,9 @@ function GhostGroup({
       kindId,
       position: v,
     }));
-    return { cubeSize, instances };
-  }, [voxels, cubeSize, kindId, mode]);
+    // cubeSize key is required by the SDK WorldObjects type — kept as-is.
+    return { cubeSize: voxelSize, instances };
+  }, [voxels, voxelSize, kindId, mode]);
 
   // The override holds the cloned material in a ref so the pulse
   // driver can mutate its `opacity` per frame without triggering

@@ -1,23 +1,23 @@
 /**
- * Pure helpers for the Room editor's "snap to grid OR snap to cube
+ * Pure helpers for the Room editor's "snap to grid OR snap to object
  * face" placement model.
  *
  * The Room editor's interactive canvas fires pointer events that the
  * caller resolves to either an empty-floor hit (just a world-space
- * point on y = 0) or a cube hit (a hit point, the hit face's normal,
- * and the cube's voxel position). This module turns either of those
+ * point on y = 0) or an object hit (a hit point, the hit face's normal,
+ * and the object's voxel position). This module turns either of those
  * into a target voxel coord:
  *
- *   - Floor hit  → `(round(x / cubeSize), 0, round(z / cubeSize))`.
- *     Used for placing the first cube in an empty room.
+ *   - Floor hit  → `(round(x / voxelSize), 0, round(z / voxelSize))`.
+ *     Used for placing the first object in an empty room.
  *   - Cube hit   → `cubePosition + quantizedFaceNormal`. The face
  *     normal gets quantized to the nearest cardinal axis to defend
  *     against floating-point noise from chained transforms.
  *
  * The user spec says "Once a single object is placed on the editor,
  * additional objects being placed should snap to other objects."
- * That falls out automatically — once a cube exists, the raycaster's
- * closest hit can be either the cube or the floor; whichever wins,
+ * That falls out automatically — once an object exists, the raycaster's
+ * closest hit can be either the object or the floor; whichever wins,
  * `snapToVoxel` produces a reasonable target.
  */
 
@@ -29,7 +29,7 @@ export interface FloorHit {
 
 export interface CubeHit {
   kind: 'cube';
-  /** Voxel position of the cube that was hit. */
+  /** Voxel position of the object that was hit. */
   cubePosition: readonly [number, number, number];
   /** Face normal in world space. May have floating-point noise; we
    * quantize internally before use. */
@@ -41,7 +41,7 @@ export type SnapHit = FloorHit | CubeHit;
 /** Returns the target voxel coords for a snap hit. */
 export function snapToVoxel(
   hit: SnapHit,
-  cubeSize: number,
+  voxelSize: number,
 ): [number, number, number] {
   if (hit.kind === 'cube') {
     const n = quantizeAxisAlignedNormal(hit.faceNormal);
@@ -52,9 +52,9 @@ export function snapToVoxel(
     ];
   }
   return [
-    Math.round(hit.point.x / cubeSize),
+    Math.round(hit.point.x / voxelSize),
     0,
-    Math.round(hit.point.z / cubeSize),
+    Math.round(hit.point.z / voxelSize),
   ];
 }
 

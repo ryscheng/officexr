@@ -51,7 +51,7 @@ describe('snapToVoxel (floor hit)', () => {
     expect(snapToVoxel(floorHit(-1.6, 1.0), 2)).toEqual([-1, 0, 1]);
   });
 
-  it('respects the cubeSize divisor', () => {
+  it('respects the voxelSize divisor', () => {
     expect(snapToVoxel(floorHit(4, 4), 4)).toEqual([1, 0, 1]);
     expect(snapToVoxel(floorHit(4, 4), 2)).toEqual([2, 0, 2]);
   });
@@ -83,7 +83,7 @@ describe('snapToVoxel (cube hit)', () => {
     ).toEqual([5, 2, 0]);
   });
 
-  it('cubeSize does not affect cube-hit snapping (already in voxel coords)', () => {
+  it('voxelSize does not affect cube-hit snapping (already in voxel coords)', () => {
     expect(
       snapToVoxel(cubeHit([10, 0, 10], [0, 1, 0]), 100),
     ).toEqual([10, 1, 10]);

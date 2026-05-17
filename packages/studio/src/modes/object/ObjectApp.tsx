@@ -1,7 +1,7 @@
 import React from 'react';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
-import { KindEditorPanel } from './KindEditorPanel.tsx';
+import { ObjectKindEditorPanel } from './ObjectKindEditorPanel.tsx';
 import { KindList } from './KindList.tsx';
 import { ObjectPreviewCanvas } from './ObjectPreviewCanvas.tsx';
 import { useObjectCatalog } from './useObjectCatalog.ts';
@@ -12,11 +12,11 @@ import { useObjectCatalog } from './useObjectCatalog.ts';
  *   - Main:       ObjectPreviewCanvas — single rotating instance of
  *                 the selected kind with live material override
  *                 application.
- *   - SidePanel:  KindEditorPanel (label, category, swatch, walkable,
+ *   - SidePanel:  ObjectKindEditorPanel (label, category, swatch, walkable,
  *                 scale, and material overrides). Edits hit the
  *                 in-memory catalog synchronously (so the preview +
  *                 Room editor's palette + ObjectInstances renderer
- *                 update live) and round-trip to /api/cube-kinds with
+ *                 update live) and round-trip to /api/world-object-kinds with
  *                 a 500ms debounce.
  */
 export function ObjectApp() {
@@ -44,7 +44,7 @@ export function ObjectApp() {
         <PreviewHud kind={catalog.selectedKind ? catalog.selectedKind.id : null} />
       </main>
       <SidePanel>
-        <KindEditorPanel
+        <ObjectKindEditorPanel
           kind={catalog.selectedKind}
           applyPatch={catalog.applyPatch}
         />

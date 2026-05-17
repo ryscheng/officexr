@@ -26,18 +26,18 @@
  * `UNKNOWN_KIND_SWATCH` constant.
  */
 
-import { getKind, listKinds } from './cube-catalog.ts';
-import type { CubeKindEntry } from './cube-kinds-schema.ts';
+import { getKind, listKinds } from './object-kind-catalog.ts';
+import type { WorldObjectKind } from './world-object-kinds-schema.ts';
 
-/** @deprecated Use `CubeKindEntry` from `cube-kinds-schema.ts`. */
-export type CubeKindDef = CubeKindEntry;
+/** @deprecated Use `WorldObjectKind` from `world-object-kinds-schema.ts`. */
+export type CubeKindDef = WorldObjectKind;
 
 /** Snapshot of the bundled default kinds taken at module load. Live
  * edits from the Object editor do not flow into this constant — use
- * `useCubeCatalog()` for reactive consumption. */
-export const CUBE_KINDS: readonly CubeKindEntry[] = listKinds();
+ * `useObjectKindCatalog()` for reactive consumption. */
+export const CUBE_KINDS: readonly WorldObjectKind[] = listKinds();
 
-export function getCubeKind(id: string): CubeKindEntry | undefined {
+export function getCubeKind(id: string): WorldObjectKind | undefined {
   return getKind(id);
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { compileMap } from './compile-map.ts';
 import { compileScene } from './compile.ts';
-import { newPlaceCube, type RoomDocument } from './commands.ts';
+import { newPlaceObject, type RoomDocument } from './commands.ts';
 import { emptyMapDocument, type MapDocumentV1 } from './map-document.ts';
 
 function roomWithCubes(
@@ -13,7 +13,7 @@ function roomWithCubes(
     name,
     title: name,
     updatedAt: 0,
-    commands: cubes.map((p) => newPlaceCube({ kindId: 'block', position: p })),
+    commands: cubes.map((p) => newPlaceObject({ kindId: 'block', position: p })),
     groups: {},
   };
 }
@@ -161,8 +161,8 @@ describe('compileMap', () => {
       title: 'r',
       updatedAt: 0,
       commands: [
-        newPlaceCube({ kindId: 'red', position: [0, 0, 0] }),
-        newPlaceCube({ kindId: 'blue', position: [1, 0, 0] }),
+        newPlaceObject({ kindId: 'red', position: [0, 0, 0] }),
+        newPlaceObject({ kindId: 'blue', position: [1, 0, 0] }),
       ],
       groups: {},
     };

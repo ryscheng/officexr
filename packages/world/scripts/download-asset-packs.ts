@@ -24,18 +24,18 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateCubeKindCatalog } from '../src/scenes/cube-kinds-schema.ts';
+import { validateWorldObjectKindCatalog } from '../src/scenes/world-object-kinds-schema.ts';
 import type {
-  CubeKindCatalogV1,
+  WorldObjectKindCatalogV1,
   CubeKindCategory,
-  CubeKindEntry,
-} from '../src/scenes/cube-kinds-schema.ts';
+  WorldObjectKind,
+} from '../src/scenes/world-object-kinds-schema.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WORLD_ROOT = join(__dirname, '..');
 const STUDIO_PUBLIC = join(WORLD_ROOT, '..', 'studio', 'public');
 const MODELS_DIR = join(STUDIO_PUBLIC, 'models');
-const CATALOG_FILE = join(WORLD_ROOT, 'cube-kinds.json');
+const CATALOG_FILE = join(WORLD_ROOT, 'world-object-kinds.json');
 
 const FORCE = process.argv.includes('--force');
 
@@ -134,7 +134,7 @@ function entryForGltf(
   packId: CubeKindCategory,
   gltfAbsPath: string,
   swatch: string,
-): CubeKindEntry {
+): WorldObjectKind {
   const rel = relative(STUDIO_PUBLIC, gltfAbsPath).replace(/\\/g, '/');
   const basename = gltfAbsPath.split(/[\\/]/).pop() ?? '';
   return {
@@ -154,12 +154,12 @@ function entryForGltf(
   };
 }
 
-async function loadCatalog(): Promise<CubeKindCatalogV1> {
+async function loadCatalog(): Promise<WorldObjectKindCatalogV1> {
   const raw = await readFile(CATALOG_FILE, 'utf8');
-  return validateCubeKindCatalog(JSON.parse(raw));
+  return validateWorldObjectKindCatalog(JSON.parse(raw));
 }
 
-async function writeCatalog(catalog: CubeKindCatalogV1): Promise<void> {
+async function writeCatalog(catalog: WorldObjectKindCatalogV1): Promise<void> {
   await writeFile(CATALOG_FILE, JSON.stringify(catalog, null, 2) + '\n', 'utf8');
 }
 

@@ -11,11 +11,11 @@ import {
   extractGeometryFromGltf,
   extractMaterialFromGltf,
 } from '@officexr/world/renderer';
-import type { CubeKindEntry } from '@officexr/world';
+import type { WorldObjectKind } from '@officexr/world';
 
 // Editor-tuned lighting for the Object preview. Bright neutral fill
 // + a punchy key light so material overrides (tint, roughness,
-// emissive) read clearly on the spinning preview cube.
+// emissive) read clearly on the spinning preview object.
 const OBJECT_PREVIEW_LIGHTING = {
   ...DEFAULT_EDITOR_LIGHTING,
   sunPosition: [6, 12, 6] as [number, number, number],
@@ -24,7 +24,7 @@ const OBJECT_PREVIEW_LIGHTING = {
 };
 
 interface ObjectPreviewCanvasProps {
-  kind: CubeKindEntry | null;
+  kind: WorldObjectKind | null;
 }
 
 /**
@@ -80,7 +80,7 @@ export function ObjectPreviewCanvas({ kind }: ObjectPreviewCanvasProps) {
   );
 }
 
-function KindPreview({ kind }: { kind: CubeKindEntry }) {
+function KindPreview({ kind }: { kind: WorldObjectKind }) {
   const { gl } = useThree();
   const gltf = useGLTF(kind.gltfPath);
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);

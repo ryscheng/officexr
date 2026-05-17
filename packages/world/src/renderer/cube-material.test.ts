@@ -8,20 +8,20 @@ import {
   hasMaterialOverrides,
 } from './cube-material.ts';
 import {
-  CUBE_KIND_DEFAULTS,
-  type CubeKindEntry,
-} from '../scenes/cube-kinds-schema.ts';
+  WORLD_OBJECT_KIND_DEFAULTS,
+  type WorldObjectKind,
+} from '../scenes/world-object-kinds-schema.ts';
 
-function makeKind(partial: Partial<CubeKindEntry> = {}): CubeKindEntry {
+function makeKind(partial: Partial<WorldObjectKind> = {}): WorldObjectKind {
   return {
     id: 'k',
     label: 'K',
     gltfPath: '/k.gltf',
     swatch: '#000000',
     walkable: false,
-    ...CUBE_KIND_DEFAULTS,
+    ...WORLD_OBJECT_KIND_DEFAULTS,
     ...partial,
-  } as CubeKindEntry;
+  } as WorldObjectKind;
 }
 
 function makeGltfScene(): THREE.Object3D {

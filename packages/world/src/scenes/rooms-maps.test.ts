@@ -8,7 +8,7 @@ import {
   deserializeMap,
   migrateToV3,
 } from './serialize.ts';
-import { newPlaceCube } from './commands.ts';
+import { newPlaceObject } from './commands.ts';
 import {
   DEFAULT_MAP_ENVIRONMENT,
   emptyMapDocument,
@@ -20,7 +20,7 @@ describe('serializeRoom + deserializeScene (v3 RoomDocument)', () => {
     const out = serializeRoom({
       name: 'kitchen',
       title: 'Kitchen',
-      commands: [newPlaceCube({ kindId: 'colored_block_blue', position: [0, 0, 0] })],
+      commands: [newPlaceObject({ kindId: 'colored_block_blue', position: [0, 0, 0] })],
       groups: {
         'g-1': { id: 'g-1', commandIds: ['cmd-a', 'cmd-b'], label: 'wall' },
       },
@@ -58,7 +58,7 @@ describe('migrateToV3', () => {
   it('passes v3 docs through unchanged', () => {
     const v3 = serializeRoom({
       name: 'foo',
-      commands: [newPlaceCube({ kindId: 'colored_block_blue', position: [1, 0, 0] })],
+      commands: [newPlaceObject({ kindId: 'colored_block_blue', position: [1, 0, 0] })],
       groups: { 'g-1': { id: 'g-1', commandIds: ['cmd-1'] } },
     });
     const migrated = migrateToV3(v3);
@@ -77,7 +77,7 @@ describe('migrateToV3', () => {
   it('migrates v2 → v3 by dropping spawnPoints/characterConfigs and adding empty groups', () => {
     const v2 = serializeScene({
       name: 'foo',
-      commands: [newPlaceCube({ kindId: 'colored_block_blue', position: [1, 0, 0] })],
+      commands: [newPlaceObject({ kindId: 'colored_block_blue', position: [1, 0, 0] })],
       spawnPoints: [{ x: 5, y: 0, z: 5 }],
       characterConfigs: { Knight: { speedMultiplier: 1.2 } },
     });

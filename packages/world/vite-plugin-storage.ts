@@ -22,12 +22,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOMS_DIR = path.resolve(HERE, 'rooms');
 const DEFAULT_MAPS_DIR = path.resolve(HERE, 'maps');
 const DEFAULT_SCENES_DIR = path.resolve(HERE, 'scenes');
-const DEFAULT_CATALOG_FILE = path.resolve(HERE, 'cube-kinds.json');
+const DEFAULT_CATALOG_FILE = path.resolve(HERE, 'world-object-kinds.json');
 
 export interface StudioStoragePluginOptions {
   rooms?: { dir?: string; basePath?: string };
   maps?: { dir?: string; basePath?: string };
-  /** Single-document file. Default: `packages/world/cube-kinds.json`. */
+  /** Single-document file. Default: `packages/world/world-object-kinds.json`. */
   catalog?: { file?: string; basePath?: string };
   /**
    * Back-compat: the legacy `/api/scenes` endpoint serves
@@ -51,8 +51,8 @@ export interface StudioStoragePluginOptions {
  *   PUT    /api/maps/:name           → 204 (body = MapDocumentV1)
  *   DELETE /api/maps/:name           → 204
  *
- *   GET    /api/cube-kinds           → catalog JSON | 404
- *   PUT    /api/cube-kinds           → 204 (body = catalog JSON)
+ *   GET    /api/world-object-kinds   → catalog JSON | 404
+ *   PUT    /api/world-object-kinds   → 204 (body = catalog JSON)
  *
  *   GET    /api/scenes/*             → legacy (back-compat for Task <6)
  *
@@ -66,7 +66,7 @@ export default function studioStoragePlugin(
   const mapsDir = opts.maps?.dir ?? DEFAULT_MAPS_DIR;
   const mapsBase = (opts.maps?.basePath ?? '/api/maps').replace(/\/$/, '');
   const catalogFile = opts.catalog?.file ?? DEFAULT_CATALOG_FILE;
-  const catalogBase = (opts.catalog?.basePath ?? '/api/cube-kinds').replace(
+  const catalogBase = (opts.catalog?.basePath ?? '/api/world-object-kinds').replace(
     /\/$/,
     '',
   );

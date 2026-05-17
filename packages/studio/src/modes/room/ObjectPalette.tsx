@@ -1,9 +1,9 @@
 import React, { useDeferredValue, useMemo, useState } from 'react';
 import {
-  useCubeCatalog,
+  useObjectKindCatalog,
   CUBE_KIND_CATEGORIES,
   thumbnailUrlForKind,
-  type CubeKindEntry,
+  type WorldObjectKind,
 } from '@officexr/world/scenes';
 
 interface ObjectPaletteProps {
@@ -18,23 +18,23 @@ interface ObjectPaletteProps {
 }
 
 /**
- * Groups a flat list of CubeKindEntry by category, filtering out
+ * Groups a flat list of WorldObjectKind by category, filtering out
  * excluded categories and ordering by CUBE_KIND_CATEGORIES order.
  * Empty groups are omitted.
  *
  * Exported for unit testing.
  */
 export function groupByCategory(
-  kinds: readonly CubeKindEntry[],
+  kinds: readonly WorldObjectKind[],
   excludeCategories: readonly string[] = [],
-): Array<{ category: string; kinds: CubeKindEntry[] }> {
+): Array<{ category: string; kinds: WorldObjectKind[] }> {
   const excludeSet = new Set(excludeCategories);
 
   // Filter out excluded categories
   const filtered = kinds.filter((k) => !excludeSet.has(k.category));
 
   // Group by category
-  const byCategory = new Map<string, CubeKindEntry[]>();
+  const byCategory = new Map<string, WorldObjectKind[]>();
   for (const kind of filtered) {
     const existing = byCategory.get(kind.category);
     if (existing) {
@@ -45,7 +45,7 @@ export function groupByCategory(
   }
 
   // Order groups by CUBE_KIND_CATEGORIES, then handle any unknown categories
-  const result: Array<{ category: string; kinds: CubeKindEntry[] }> = [];
+  const result: Array<{ category: string; kinds: WorldObjectKind[] }> = [];
   const seenCategories = new Set<string>();
 
   for (const cat of CUBE_KIND_CATEGORIES) {
@@ -74,9 +74,9 @@ export function groupByCategory(
  * Exported for unit testing.
  */
 export function filterByName(
-  kinds: readonly CubeKindEntry[],
+  kinds: readonly WorldObjectKind[],
   query: string,
-): CubeKindEntry[] {
+): WorldObjectKind[] {
   const q = query.trim().toLowerCase();
   if (q === '') return [...kinds];
   return kinds.filter(
@@ -96,7 +96,7 @@ export function filterByName(
  * with the 280-kind default catalog.
  */
 export function ObjectPalette({ staged, onStage }: ObjectPaletteProps) {
-  const allKinds = useCubeCatalog();
+  const allKinds = useObjectKindCatalog();
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
   const groups = useMemo(
@@ -183,7 +183,7 @@ export function ObjectPalette({ staged, onStage }: ObjectPaletteProps) {
 }
 
 interface KindButtonProps {
-  kind: CubeKindEntry;
+  kind: WorldObjectKind;
   isStaged: boolean;
   onStage: (kindId: string | null) => void;
 }

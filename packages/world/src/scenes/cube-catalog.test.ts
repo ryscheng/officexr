@@ -9,13 +9,13 @@ import {
   replaceCatalog,
   resetCatalogToDefault,
   subscribeCatalog,
-} from './cube-catalog.ts';
+} from './object-kind-catalog.ts';
 import {
   CUBE_KIND_CATEGORIES,
-  CUBE_KIND_DEFAULTS,
-  validateCubeKindCatalog,
-  type CubeKindCatalogV1,
-} from './cube-kinds-schema.ts';
+  WORLD_OBJECT_KIND_DEFAULTS as CUBE_KIND_DEFAULTS,
+  validateWorldObjectKindCatalog as validateCubeKindCatalog,
+  type WorldObjectKindCatalogV1 as CubeKindCatalogV1,
+} from './world-object-kinds-schema.ts';
 
 function makeCatalog(
   partial?: Partial<CubeKindCatalogV1['kinds'][number]>,
@@ -149,7 +149,7 @@ describe('cube-catalog bootstrap', () => {
     vi.unstubAllGlobals();
   });
 
-  it('replaces the catalog with the /api/cube-kinds payload on success', async () => {
+  it('replaces the catalog with the /api/world-object-kinds payload on success', async () => {
     const remote = makeCatalog({ id: 'remote_kind', label: 'Remote' });
     vi.stubGlobal(
       'fetch',

@@ -9,14 +9,14 @@
  * Each action's semantics mirror the corresponding mutator in
  * `useRoomDocument.ts` exactly.
  */
-import type { RoomDocument, PlaceCubeCommand, RoomGroup } from '@officexr/world/scenes';
-import { newPlaceCube } from '@officexr/world/scenes';
+import type { RoomDocument, PlaceObjectCommand, RoomGroup } from '@officexr/world/scenes';
+import { newPlaceObject } from '@officexr/world/scenes';
 import type { EditAction } from './EditAction.ts';
 
 export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument {
   switch (action.type) {
     case 'place': {
-      const cmd = newPlaceCube({
+      const cmd = newPlaceObject({
         kindId: action.kindId,
         position: action.position,
         id: action.commandId,
@@ -29,8 +29,8 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
     }
 
     case 'placeMany': {
-      const cmds: PlaceCubeCommand[] = action.commandIds.map((id, i) =>
-        newPlaceCube({
+      const cmds: PlaceObjectCommand[] = action.commandIds.map((id, i) =>
+        newPlaceObject({
           kindId: action.kindId,
           position: action.positions[i],
           id,

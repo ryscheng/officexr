@@ -3,7 +3,10 @@
  * cubes; there is no longer a default-floor or playable-area concept
  * here — `<MapColliders>` drives physics from `state.worldObjects`.
  */
-export const CUBE_SIZE = 2; // KayKit BlockBits cubes are 2×2×2 units
+export const VOXEL_SIZE = 2; // KayKit BlockBits cubes are 2×2×2 units (task-03 will change to 0.5)
+
+/** @deprecated Use VOXEL_SIZE */
+export const CUBE_SIZE = VOXEL_SIZE;
 
 export const PLAYER_HEIGHT = 1.7;
 export const EYE_HEIGHT = 1.6;

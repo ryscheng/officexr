@@ -36,18 +36,19 @@ export function MapColliders({ store }: MapCollidersProps) {
     );
   }, [store]);
 
-  const cubeSize = snapshot.cubeSize;
-  const half = cubeSize / 2;
+  // Read from SDK WorldObjects.cubeSize — kept as 'cubeSize' in SDK for back-compat.
+  const voxelSize = snapshot.cubeSize;
+  const half = voxelSize / 2;
 
   return (
     <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }}>
       {snapshot.instances.map((inst) => {
-        const wx = inst.position[0] * cubeSize;
+        const wx = inst.position[0] * voxelSize;
         // Match the visual cube placement in ObjectInstances:
-        // world y = voxel y * cubeSize + cubeSize/2 (the +cubeSize/2
+        // world y = voxel y * voxelSize + voxelSize/2 (the +voxelSize/2
         // lifts the cube's centre up from its bottom face).
-        const wy = inst.position[1] * cubeSize + half;
-        const wz = inst.position[2] * cubeSize;
+        const wy = inst.position[1] * voxelSize + half;
+        const wz = inst.position[2] * voxelSize;
         return (
           <CuboidCollider
             key={inst.id}

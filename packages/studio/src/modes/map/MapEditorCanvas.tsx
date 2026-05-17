@@ -14,12 +14,11 @@ import {
   EndlessGrid,
   LightingRig,
   ObjectInstances,
+  VOXEL_SIZE,
   type LightingSettings,
 } from '@officexr/world/renderer';
 import type { WorldObjects } from '@officexr/sdk';
 import type { MapSelection } from './useMapDocument.ts';
-
-const CUBE_SIZE = 2;
 
 /**
  * Translate the map document's `MapEnvironment` (sun position +
@@ -45,14 +44,14 @@ function mapDocToLighting(
 }
 
 /**
- * Snap a raycast hit point to the nearest cube-grid Y level so a
- * spawn marker lands on a cube top (or on the floor at y=0) instead
- * of inside cube geometry. Cube bottoms sit on `y = k * CUBE_SIZE`
+ * Snap a raycast hit point to the nearest voxel-grid Y level so a
+ * spawn marker lands on a voxel top (or on the floor at y=0) instead
+ * of inside voxel geometry. Voxel bottoms sit on `y = k * VOXEL_SIZE`
  * for integer k, so:
- *   - hit on a cube top (y = CUBE_SIZE) → unchanged.
- *   - hit on the floor (y = 0)         → unchanged.
- *   - hit on a cube side (e.g. y=1.5)  → rounded to the nearest
- *                                        grid level (y=2 here).
+ *   - hit on a voxel top (y = VOXEL_SIZE) → unchanged.
+ *   - hit on the floor (y = 0)            → unchanged.
+ *   - hit on a voxel side (e.g. y=1.5)   → rounded to the nearest
+ *                                           grid level (y=2 here).
  * X/Z are passed through; the caller decides whether to further
  * grid-snap those (spawn points are continuous in X/Z by design).
  */
@@ -61,7 +60,7 @@ function snapToCubeTop(hit: { x: number; y: number; z: number }): [
   number,
   number,
 ] {
-  return [hit.x, Math.round(hit.y / CUBE_SIZE) * CUBE_SIZE, hit.z];
+  return [hit.x, Math.round(hit.y / VOXEL_SIZE) * VOXEL_SIZE, hit.z];
 }
 
 interface MapEditorCanvasProps {
@@ -310,13 +309,13 @@ function RoomInstanceMesh({
 }: RoomInstanceMeshProps) {
   const compiled = useMemo(() => {
     if (!room) return null;
-    return compileScene(room, CUBE_SIZE);
+    return compileScene(room, VOXEL_SIZE);
   }, [room]);
 
   const worldObjects: WorldObjects | null = useMemo(() => {
     if (!compiled) return null;
     return {
-      cubeSize: CUBE_SIZE,
+      cubeSize: VOXEL_SIZE,
       instances: compiled.instances,
     };
   }, [compiled]);
@@ -336,8 +335,8 @@ function RoomInstanceMesh({
       if (!raycaster.ray.intersectPlane(plane, point)) return;
       // Snap the room's anchor to the cube-size grid so cubes stay on
       // integer voxel coords after the offset is applied.
-      const vx = Math.round((point.x - dragStartOffset.current[0]) / CUBE_SIZE);
-      const vz = Math.round((point.z - dragStartOffset.current[2]) / CUBE_SIZE);
+      const vx = Math.round((point.x - dragStartOffset.current[0]) / VOXEL_SIZE);
+      const vz = Math.round((point.z - dragStartOffset.current[2]) / VOXEL_SIZE);
       onMove([vx, instance.position[1], vz]);
     };
     const handlePointerUp = () => {
@@ -367,22 +366,22 @@ function RoomInstanceMesh({
     }
     return {
       min: [
-        min[0] * CUBE_SIZE - CUBE_SIZE / 2,
-        min[1] * CUBE_SIZE,
-        min[2] * CUBE_SIZE - CUBE_SIZE / 2,
+        min[0] * VOXEL_SIZE - VOXEL_SIZE / 2,
+        min[1] * VOXEL_SIZE,
+        min[2] * VOXEL_SIZE - VOXEL_SIZE / 2,
       ] as [number, number, number],
       max: [
-        max[0] * CUBE_SIZE + CUBE_SIZE / 2,
-        max[1] * CUBE_SIZE + CUBE_SIZE,
-        max[2] * CUBE_SIZE + CUBE_SIZE / 2,
+        max[0] * VOXEL_SIZE + VOXEL_SIZE / 2,
+        max[1] * VOXEL_SIZE + VOXEL_SIZE,
+        max[2] * VOXEL_SIZE + VOXEL_SIZE / 2,
       ] as [number, number, number],
     };
   }, [compiled]);
 
   const groupPos: [number, number, number] = [
-    instance.position[0] * CUBE_SIZE,
-    instance.position[1] * CUBE_SIZE,
-    instance.position[2] * CUBE_SIZE,
+    instance.position[0] * VOXEL_SIZE,
+    instance.position[1] * VOXEL_SIZE,
+    instance.position[2] * VOXEL_SIZE,
   ];
 
   if (!room) {
@@ -401,7 +400,7 @@ function RoomInstanceMesh({
             onSelect();
           }}
         >
-          <boxGeometry args={[CUBE_SIZE * 2, CUBE_SIZE, CUBE_SIZE * 2]} />
+          <boxGeometry args={[VOXEL_SIZE * 2, VOXEL_SIZE, VOXEL_SIZE * 2]} />
           <meshStandardMaterial color="#7c2d12" wireframe />
         </mesh>
       </group>

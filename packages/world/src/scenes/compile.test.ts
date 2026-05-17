@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   emptyDocument,
   newExtrude,
-  newPlaceCube,
+  newPlaceObject,
 } from './commands.ts';
 import { compileScene, commandBounds } from './compile.ts';
 
@@ -10,7 +10,7 @@ describe('compileScene', () => {
   it('places a single cube at the origin from one placeCube command', () => {
     const doc = emptyDocument('one');
     doc.commands.push(
-      newPlaceCube({ kindId: 'colored_block_blue', position: [0, 0, 0] }),
+      newPlaceObject({ kindId: 'colored_block_blue', position: [0, 0, 0] }),
     );
     const out = compileScene(doc, 2);
     expect(out.cubeSize).toBe(2);
@@ -21,7 +21,7 @@ describe('compileScene', () => {
 
   it('extrudes count=3 from +x to produce a 1×3 row of cubes (count includes source)', () => {
     const doc = emptyDocument('row');
-    const place = newPlaceCube({
+    const place = newPlaceObject({
       kindId: 'colored_block_blue',
       position: [0, 0, 0],
     });
@@ -37,7 +37,7 @@ describe('compileScene', () => {
 
   it('extrude with count=1 is a no-op (source-only)', () => {
     const doc = emptyDocument('row1');
-    const place = newPlaceCube({
+    const place = newPlaceObject({
       kindId: 'colored_block_blue',
       position: [0, 0, 0],
     });
@@ -73,7 +73,7 @@ describe('compileScene', () => {
     // We assert the actual compiled output (7 cubes) and document the
     // shape so the test stays a contract for the semantic.
     const doc = emptyDocument('slab');
-    const place = newPlaceCube({
+    const place = newPlaceObject({
       kindId: 'colored_block_blue',
       position: [0, 0, 0],
     });
@@ -98,7 +98,7 @@ describe('compileScene', () => {
   it('extrude with unknown targetCommandId is a no-op', () => {
     const doc = emptyDocument('bad');
     doc.commands.push(
-      newPlaceCube({ kindId: 'colored_block_blue', position: [0, 0, 0] }),
+      newPlaceObject({ kindId: 'colored_block_blue', position: [0, 0, 0] }),
     );
     doc.commands.push(
       newExtrude({ targetCommandId: 'made-up', face: 'px', count: 5 }),
@@ -108,7 +108,7 @@ describe('compileScene', () => {
 
   it('extrude with count <= 0 is a no-op', () => {
     const doc = emptyDocument('z');
-    const place = newPlaceCube({ kindId: 'wood', position: [0, 0, 0] });
+    const place = newPlaceObject({ kindId: 'wood', position: [0, 0, 0] });
     doc.commands.push(place);
     doc.commands.push(
       newExtrude({ targetCommandId: place.id, face: 'px', count: 0 }),
@@ -118,7 +118,7 @@ describe('compileScene', () => {
 
   it('inherits the target kind on extrude', () => {
     const doc = emptyDocument('inherit');
-    const place = newPlaceCube({ kindId: 'stone_dark', position: [0, 0, 0] });
+    const place = newPlaceObject({ kindId: 'stone_dark', position: [0, 0, 0] });
     doc.commands.push(place);
     // count=3 → source + 2 new = 3 total along +y.
     doc.commands.push(
@@ -133,7 +133,7 @@ describe('compileScene', () => {
 
   it('produces deterministic output (same doc → same JSON)', () => {
     const doc = emptyDocument('det');
-    const place = newPlaceCube({ kindId: 'wood', position: [0, 0, 0] });
+    const place = newPlaceObject({ kindId: 'wood', position: [0, 0, 0] });
     doc.commands.push(place);
     doc.commands.push(
       newExtrude({ targetCommandId: place.id, face: 'px', count: 3 }),
@@ -147,7 +147,7 @@ describe('compileScene', () => {
 describe('commandBounds', () => {
   it('returns the bounding box and count for one command', () => {
     const doc = emptyDocument('b');
-    const place = newPlaceCube({ kindId: 'wood', position: [0, 0, 0] });
+    const place = newPlaceObject({ kindId: 'wood', position: [0, 0, 0] });
     doc.commands.push(place);
     // count=3 → source + 2 new = 3 along +x. The extrude command itself
     // owns just the 2 new cubes at x=1 and x=2.

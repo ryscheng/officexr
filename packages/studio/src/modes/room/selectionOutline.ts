@@ -17,7 +17,7 @@
  * `[ax, ay, az, bx, by, bz, ...]` — exactly what
  * `BufferAttribute(positions, 3)` + `<lineSegments>` consumes.
  *
- * Coords are in WORLD space, scaled by `cubeSize`. Edges sit on the
+ * Coords are in WORLD space, scaled by `voxelSize`. Edges sit on the
  * exact voxel boundary — adjacent cubes' shared edges land on
  * identical world coordinates and dedupe symbolically.
  */
@@ -133,7 +133,7 @@ const FACES: ReadonlyArray<FaceDef> = [
  */
 export function outlineEdgePositions(
   voxels: ReadonlyArray<Vec3>,
-  cubeSize: number,
+  voxelSize: number,
 ): Float32Array {
   if (voxels.length === 0) return new Float32Array(0);
 
@@ -141,7 +141,7 @@ export function outlineEdgePositions(
   const sel = new Set<string>();
   for (const v of voxels) sel.add(vKey(v[0], v[1], v[2]));
 
-  const halfXZ = cubeSize / 2;
+  const halfXZ = voxelSize / 2;
 
   const edges = new Set<string>();
   const positions: number[] = [];
@@ -168,10 +168,10 @@ export function outlineEdgePositions(
 
   for (const v of voxels) {
     const [vx, vy, vz] = v;
-    const cx = vx * cubeSize;
-    const cz = vz * cubeSize;
-    const yMin = vy * cubeSize;
-    const yMax = (vy + 1) * cubeSize;
+    const cx = vx * voxelSize;
+    const cz = vz * voxelSize;
+    const yMin = vy * voxelSize;
+    const yMax = (vy + 1) * voxelSize;
     for (const f of FACES) {
       if (sel.has(vKey(vx + f.n[0], vy + f.n[1], vz + f.n[2]))) {
         // Shared with another selected voxel — not on the outline.

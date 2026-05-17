@@ -22,14 +22,19 @@ export const CUBE_FACES: readonly CubeFace[] = [
   'nz',
 ];
 
-/** Place a single cube at integer voxel coords. The first command in
- * a scene is almost always a placeCube. */
-export interface PlaceCubeCommand {
+/** Place a single world object at integer voxel coords. The first
+ * command in a scene is almost always a placeObject. */
+export interface PlaceObjectCommand {
   id: string;
+  // op: 'placeCube' — kept as-is for on-disk v3 backward compatibility.
+  // Task-02 migrates this to 'placeObject' in v4 room documents.
   op: 'placeCube';
   kindId: string;
   position: [number, number, number];
 }
+
+/** @deprecated Use PlaceObjectCommand */
+export type PlaceCubeCommand = PlaceObjectCommand;
 
 /**
  * Tile cubes outward from a chosen face of an existing object.
@@ -49,7 +54,7 @@ export interface ExtrudeCommand {
   count: number;
 }
 
-export type SceneCommand = PlaceCubeCommand | ExtrudeCommand;
+export type SceneCommand = PlaceObjectCommand | ExtrudeCommand;
 
 /**
  * Versioned authoring document. `schemaVersion: 2` is the new
@@ -117,11 +122,11 @@ function mintCommandId(prefix: string): string {
   return `${prefix}-${(nextCmdId++).toString(36)}-${Date.now().toString(36).slice(-4)}`;
 }
 
-export function newPlaceCube(opts: {
+export function newPlaceObject(opts: {
   kindId: string;
   position?: [number, number, number];
   id?: string;
-}): PlaceCubeCommand {
+}): PlaceObjectCommand {
   return {
     id: opts.id ?? mintCommandId('place'),
     op: 'placeCube',
@@ -129,6 +134,9 @@ export function newPlaceCube(opts: {
     position: opts.position ?? [0, 0, 0],
   };
 }
+
+/** @deprecated Use newPlaceObject */
+export const newPlaceCube = newPlaceObject;
 
 export function newExtrude(opts: {
   targetCommandId: string;

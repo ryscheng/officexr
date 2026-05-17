@@ -4,13 +4,13 @@
 import { describe, it, expect } from 'vitest';
 import { checkMoveOccupancy } from './moveOccupancy.ts';
 import { emptyRoomDocument } from '@officexr/world/scenes';
-import type { RoomDocument, PlaceCubeCommand } from '@officexr/world/scenes';
+import type { RoomDocument, PlaceObjectCommand } from '@officexr/world/scenes';
 
-function makeCmd(id: string, position: [number, number, number]): PlaceCubeCommand {
+function makeCmd(id: string, position: [number, number, number]): PlaceObjectCommand {
   return { id, op: 'placeCube', kindId: 'block-grass', position };
 }
 
-function makeDoc(commands: PlaceCubeCommand[]): RoomDocument {
+function makeDoc(commands: PlaceObjectCommand[]): RoomDocument {
   return { ...emptyRoomDocument('test'), commands };
 }
 

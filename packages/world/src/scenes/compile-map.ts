@@ -26,7 +26,7 @@ import { compileScene } from './compile.ts';
 export function compileMap(
   map: MapDocumentV1,
   rooms: ReadonlyMap<string, RoomDocument>,
-  cubeSize: number,
+  voxelSize: number,
 ): WorldObjects {
   const instances: ObjectInstance[] = [];
 
@@ -38,7 +38,7 @@ export function compileMap(
       );
       continue;
     }
-    const compiled = compileScene(room, cubeSize);
+    const compiled = compileScene(room, voxelSize);
     const rotated = applyRoomInstance(compiled.instances, ri);
     instances.push(...rotated);
   }
@@ -46,7 +46,8 @@ export function compileMap(
   // Keep iteration order deterministic so the diff broadcaster sees a
   // stable JSON shape across runs (matches `compileScene`).
   instances.sort((a, b) => a.id.localeCompare(b.id));
-  return { cubeSize, instances };
+  // cubeSize key is required by the SDK WorldObjects type — kept as-is.
+  return { cubeSize: voxelSize, instances };
 }
 
 function applyRoomInstance(

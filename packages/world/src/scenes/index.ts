@@ -24,6 +24,7 @@ export {
 } from './serialize.ts';
 export {
   type SceneCommand,
+  type PlaceObjectCommand,
   type PlaceCubeCommand,
   type ExtrudeCommand,
   type SceneDocument,
@@ -31,6 +32,7 @@ export {
   type RoomGroup,
   type CubeFace,
   CUBE_FACES,
+  newPlaceObject,
   newPlaceCube,
   newExtrude,
   emptyDocument,
@@ -60,13 +62,18 @@ export {
   type CubeKindDef,
 } from './cube-kinds.ts';
 export {
+  type WorldObjectKind,
+  type WorldObjectKindCatalogV1,
   type CubeKindEntry,
   type CubeKindCatalogV1,
   type CubeKindCategory,
   CUBE_KIND_CATEGORIES,
+  WORLD_OBJECT_KIND_DEFAULTS,
   CUBE_KIND_DEFAULTS,
+  validateWorldObjectKindCatalog,
   validateCubeKindCatalog,
-} from './cube-kinds-schema.ts';
+  normalizeKind,
+} from './world-object-kinds-schema.ts';
 export {
   bootstrapCatalog,
   getCatalog,
@@ -76,8 +83,10 @@ export {
   replaceCatalog,
   resetCatalogToDefault,
   subscribeCatalog,
+  useObjectKindCatalog,
   useCubeCatalog,
-} from './cube-catalog.ts';
+  __resetBootstrapForTests,
+} from './object-kind-catalog.ts';
 export { FilesystemSceneStorage } from './filesystem-storage.ts';
 export { LocalStorageSceneStorage } from './localstorage-storage.ts';
 export {

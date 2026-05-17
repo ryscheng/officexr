@@ -6,13 +6,13 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { groupByCategory, filterByName } from './ObjectPalette.tsx';
-import type { CubeKindEntry } from '@officexr/world/scenes';
+import type { WorldObjectKind } from '@officexr/world/scenes';
 
 function makeKind(
   id: string,
   category: string,
-  overrides?: Partial<CubeKindEntry>,
-): CubeKindEntry {
+  overrides?: Partial<WorldObjectKind>,
+): WorldObjectKind {
   return {
     id,
     label: id,
@@ -26,7 +26,7 @@ function makeKind(
     metalness: null,
     emissive: null,
     emissiveIntensity: 0,
-    category: category as CubeKindEntry['category'],
+    category: category as WorldObjectKind['category'],
     ...overrides,
   };
 }
@@ -137,12 +137,14 @@ describe('filterByName', () => {
 // We need to mock the catalog since in test environment there's no fetch
 vi.mock('@officexr/world/scenes', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@officexr/world/scenes')>();
+  const mockKinds = [
+    makeKind('block-grass', 'block', { label: 'Grass' }),
+    makeKind('furniture-chair', 'furniture', { label: 'Chair' }),
+  ];
   return {
     ...actual,
-    useCubeCatalog: () => [
-      makeKind('block-grass', 'block', { label: 'Grass' }),
-      makeKind('furniture-chair', 'furniture', { label: 'Chair' }),
-    ],
+    useObjectKindCatalog: () => mockKinds,
+    useCubeCatalog: () => mockKinds,
     thumbnailUrlForKind: () => null,
     CUBE_KIND_CATEGORIES: ['block', 'furniture', 'prototype', 'restaurant'],
   };

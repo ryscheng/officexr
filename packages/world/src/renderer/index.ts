@@ -38,6 +38,7 @@ export { EndlessGrid } from './EndlessGrid.tsx';
 
 export {
   CAMERA_MODES,
+  VOXEL_SIZE,
   CUBE_SIZE,
   CHARACTERS,
   PLAYER_HEIGHT,

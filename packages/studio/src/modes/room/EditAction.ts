@@ -1,4 +1,4 @@
-import type { PlaceCubeCommand } from '@officexr/world/scenes';
+import type { PlaceObjectCommand } from '@officexr/world/scenes';
 
 /**
  * Discriminated union of all user edits that can be recorded in the
@@ -6,7 +6,7 @@ import type { PlaceCubeCommand } from '@officexr/world/scenes';
  * logical user operation (undo-able step).
  *
  * Naming note: `EditAction` = a recorded user edit event.
- * `SceneCommand` / `PlaceCubeCommand` = a placed object in doc.commands.
+ * `SceneCommand` / `PlaceObjectCommand` = a placed object in doc.commands.
  * These are completely different things.
  */
 export type EditAction =
@@ -26,8 +26,8 @@ export type EditAction =
   | {
       type: 'delete';
       commandIds: string[];
-      /** Full PlaceCubeCommand objects so undo can restore them. */
-      deletedCommands: PlaceCubeCommand[];
+      /** Full PlaceObjectCommand objects so undo can restore them. */
+      deletedCommands: PlaceObjectCommand[];
       /** Map from groupId → full commandIds array of affected groups, so undo can restore partial group membership. */
       groupsAffected: Record<string, string[]>;
     }

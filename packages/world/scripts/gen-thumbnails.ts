@@ -25,15 +25,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const THUMBNAILS_DIR = path.resolve(__dirname, '../thumbnails');
 const MANIFEST_PATH = path.resolve(__dirname, '../src/scenes/thumbnail-manifest.ts');
 const DEV_SERVER = process.env.THUMBNAILS_DEV_SERVER ?? 'http://localhost:5174';
-const CATALOG_URL = `${DEV_SERVER}/api/cube-kinds`;
+const CATALOG_URL = `${DEV_SERVER}/api/world-object-kinds`;
 
-interface CubeKindEntry {
+interface WorldObjectKindEntry {
   id: string;
   label: string;
   category: string;
 }
 
-async function fetchCatalog(): Promise<CubeKindEntry[]> {
+async function fetchCatalog(): Promise<WorldObjectKindEntry[]> {
   let res: Response;
   try {
     res = await fetch(CATALOG_URL, { signal: AbortSignal.timeout(5000) });
@@ -47,12 +47,12 @@ async function fetchCatalog(): Promise<CubeKindEntry[]> {
   }
   if (!res.ok) {
     console.error(
-      `[gen-thumbnails] ERROR: /api/cube-kinds returned ${res.status}.`,
+      `[gen-thumbnails] ERROR: /api/world-object-kinds returned ${res.status}.`,
       'Make sure the studio dev server is running.',
     );
     process.exit(1);
   }
-  const json = (await res.json()) as { kinds?: CubeKindEntry[] };
+  const json = (await res.json()) as { kinds?: WorldObjectKindEntry[] };
   return json.kinds ?? [];
 }
 

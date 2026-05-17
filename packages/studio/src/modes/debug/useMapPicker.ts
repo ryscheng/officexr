@@ -11,9 +11,9 @@ import {
   type RoomDocument,
   type SpawnPoint,
 } from '@officexr/world/scenes';
+import { VOXEL_SIZE } from '@officexr/world/renderer';
 
 const LAST_MAP_KEY = 'officexr:studio:lastMap';
-const CUBE_SIZE = 2;
 /** Default vertical offset (metres) added to a spawn point when
  * teleporting the local player at map load. Gravity does the rest —
  * the player falls onto the spawn instead of materialising on the
@@ -143,7 +143,7 @@ export function useMapPicker({
         }
         const a = actionsRef.current;
         if (a) {
-          a.setWorldObjects(compileMap(map, rooms, CUBE_SIZE));
+          a.setWorldObjects(compileMap(map, rooms, VOXEL_SIZE));
         }
         return { map, spawns: map.spawnPoints };
       } catch (err) {

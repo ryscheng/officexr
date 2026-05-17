@@ -2,11 +2,11 @@ import React, { useMemo, useState } from 'react';
 import {
   CUBE_KIND_CATEGORIES,
   type CubeKindCategory,
-  type CubeKindEntry,
+  type WorldObjectKind,
 } from '@officexr/world';
 
 interface KindListProps {
-  kinds: readonly CubeKindEntry[];
+  kinds: readonly WorldObjectKind[];
   selectedKindId: string | null;
   onSelect: (id: string) => void;
 }
@@ -29,7 +29,7 @@ export function KindList({ kinds, selectedKindId, onSelect }: KindListProps) {
   );
 
   const byCategory = useMemo(() => {
-    const m = new Map<CubeKindCategory, CubeKindEntry[]>();
+    const m = new Map<CubeKindCategory, WorldObjectKind[]>();
     for (const cat of CUBE_KIND_CATEGORIES) m.set(cat, []);
     const q = filter.trim().toLowerCase();
     for (const k of kinds) {
@@ -150,7 +150,7 @@ function KindRow({
   selected,
   onSelect,
 }: {
-  kind: CubeKindEntry;
+  kind: WorldObjectKind;
   selected: boolean;
   onSelect: () => void;
 }) {

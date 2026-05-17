@@ -1,7 +1,7 @@
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type {
   CubeFace,
-  PlaceCubeCommand,
+  PlaceObjectCommand,
   RoomDocument,
   SceneCommand,
   SceneDocument,
@@ -14,7 +14,7 @@ type CompileInput = SceneDocument | RoomDocument | { commands: SceneCommand[] };
 
 /**
  * Pure replay of a `SceneDocument`'s command list into a flat list of
- * placed cube instances. Same input → same output; safe to call as
+ * placed object instances. Same input → same output; safe to call as
  * often as the editor needs (it runs on every command-list edit).
  *
  * Algorithm:
@@ -33,12 +33,12 @@ type CompileInput = SceneDocument | RoomDocument | { commands: SceneCommand[] };
  * Edge cases handled:
  *   - Unknown `targetCommandId` → no-op (logged but doesn't throw).
  *   - `count <= 0` → no-op.
- *   - Two cubes occupying the same voxel after extrude → the later
+ *   - Two objects occupying the same voxel after extrude → the later
  *     wins (the earlier instance is dropped from the global set).
  */
 export function compileScene(
   doc: CompileInput,
-  cubeSize: number,
+  voxelSize: number,
 ): WorldObjects {
   const byCommand = new Map<string, ObjectInstance[]>();
   const byVoxel = new Map<string, ObjectInstance>();
@@ -101,7 +101,9 @@ export function compileScene(
   // Keep iteration order deterministic so the diff broadcaster sees a
   // stable JSON shape across runs of identical commands.
   instances.sort((a, b) => a.id.localeCompare(b.id));
-  return { cubeSize, instances };
+  // Note: the SDK's WorldObjects type uses `cubeSize` — the field will
+  // be renamed to `voxelSize` in a future SDK update (tracked separately).
+  return { cubeSize: voxelSize, instances };
 }
 
 function makeInstance(
@@ -183,9 +185,9 @@ function signOf(face: CubeFace): 1 | -1 {
 export function commandBounds(
   doc: CompileInput,
   commandId: string,
-  cubeSize: number,
+  voxelSize: number,
 ): { min: [number, number, number]; max: [number, number, number]; count: number } | null {
-  const compiled = compileScene(doc, cubeSize);
+  const compiled = compileScene(doc, voxelSize);
   const owned = compiled.instances.filter((i) => i.sourceCommandId === commandId);
   if (owned.length === 0) return null;
   const min: [number, number, number] = [Infinity, Infinity, Infinity];

@@ -87,9 +87,9 @@ type MoveState =
 
 /** Generate the X-row preview voxels for the placed stage. Excludes
  * the origin (which is already a real cube). */
-function tileXRow(origin: Vec3, hover: SnapHit | null, cubeSize: number): Vec3[] {
+function tileXRow(origin: Vec3, hover: SnapHit | null, voxelSize: number): Vec3[] {
   if (!hover) return [];
-  const v = snapToVoxel(hover, cubeSize);
+  const v = snapToVoxel(hover, voxelSize);
   const dx = v[0] - origin[0];
   if (dx === 0) return [];
   const sign = Math.sign(dx);
@@ -106,10 +106,10 @@ function tileZReplicas(
   origin: Vec3,
   xRow: readonly Vec3[],
   hover: SnapHit | null,
-  cubeSize: number,
+  voxelSize: number,
 ): Vec3[] {
   if (!hover) return [];
-  const v = snapToVoxel(hover, cubeSize);
+  const v = snapToVoxel(hover, voxelSize);
   const dz = v[2] - origin[2];
   if (dz === 0) return [];
   const sign = Math.sign(dz);
@@ -331,7 +331,9 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     [],
   );
 
-  const cubeSize = props.compiled.cubeSize;
+  // Read the voxel size from the SDK WorldObjects shape (field is named
+  // cubeSize there for SDK back-compat; we alias it locally).
+  const voxelSize = props.compiled.cubeSize;
 
   // Compute the ghost specs the GhostLayer should render this frame.
   // Selection no longer emits a ghost overlay — the per-cluster
@@ -343,7 +345,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const ghosts = useMemo<GhostSpec[]>(() => {
     const out: GhostSpec[] = [];
     if (props.tool === 'add' && props.stagedKindId && hover) {
-      const voxel = snapToVoxel(hover, cubeSize);
+      const voxel = snapToVoxel(hover, voxelSize);
       out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
     }
     if (props.tool === 'delete' && hoverCommandId) {
@@ -363,10 +365,10 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     }
     if (props.tool === 'tile') {
       if (tileState.stage === 'idle' && props.stagedKindId && hover) {
-        const voxel = snapToVoxel(hover, cubeSize);
+        const voxel = snapToVoxel(hover, voxelSize);
         out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
       } else if (tileState.stage === 'placed') {
-        for (const v of tileXRow(tileState.origin, hover, cubeSize)) {
+        for (const v of tileXRow(tileState.origin, hover, voxelSize)) {
           out.push({ mode: 'solid', kindId: tileState.kindId, voxel: v });
         }
       } else if (tileState.stage === 'x-extruded') {
@@ -374,7 +376,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           tileState.origin,
           tileState.xRow,
           hover,
-          cubeSize,
+          voxelSize,
         )) {
           out.push({ mode: 'solid', kindId: tileState.kindId, voxel: v });
         }
@@ -396,7 +398,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     props.stagedKindId,
     hover,
     hoverCommandId,
-    cubeSize,
+    voxelSize,
     props.commandToGroup,
     props.groupMembers,
     props.compiled.instances,
@@ -411,10 +413,10 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const handleAddClick = useCallback(
     (hit: SnapHit) => {
       if (props.tool !== 'add' || !props.stagedKindId) return;
-      const voxel = snapToVoxel(hit, cubeSize);
+      const voxel = snapToVoxel(hit, voxelSize);
       props.onPlaceAt(voxel);
     },
-    [props, cubeSize],
+    [props, voxelSize],
   );
 
   // Delete-tool click on a cube routes to the parent's delete (which
@@ -438,7 +440,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       const stagedKindId = props.stagedKindId;
       if (tileState.stage === 'idle') {
         // Click 1: place the origin cube.
-        const voxel = snapToVoxel(hit, cubeSize);
+        const voxel = snapToVoxel(hit, voxelSize);
         const ids = props.onPlaceMany(stagedKindId, [voxel]);
         if (ids.length === 0) return;
         setTileState({
@@ -451,7 +453,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       }
       if (tileState.stage === 'placed') {
         // Click 2: commit the X row (if any) + create the group.
-        const xRow = tileXRow(tileState.origin, hit, cubeSize);
+        const xRow = tileXRow(tileState.origin, hit, voxelSize);
         if (xRow.length > 0) {
           const newIds = props.onPlaceMany(stagedKindId, xRow);
           const groupId = props.onCreateGroup([
@@ -479,7 +481,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           tileState.origin,
           tileState.xRow,
           hit,
-          cubeSize,
+          voxelSize,
         );
         if (zReplicas.length > 0) {
           props.onPlaceMany(stagedKindId, zReplicas, tileState.groupId);
@@ -506,7 +508,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         return;
       }
     },
-    [props, tileState, cubeSize, yDelta],
+    [props, tileState, voxelSize, yDelta],
   );
 
   return (
@@ -537,7 +539,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       />
       <CubesLayer
         instances={props.compiled.instances}
-        cubeSize={props.compiled.cubeSize}
+        voxelSize={props.compiled.cubeSize}
         selection={props.selection}
         tool={props.tool}
         onSelectInstance={props.onSelectInstance}
@@ -548,7 +550,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         onTileClick={handleTileClick}
       />
       <FloorPicker
-        cubeSize={props.compiled.cubeSize}
+        voxelSize={props.compiled.cubeSize}
         tool={props.tool}
         stagedKindId={props.stagedKindId}
         buildHeight={props.buildHeight}
@@ -557,20 +559,20 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         onHoverFloor={handleHoverChange}
         onTileClick={handleTileClick}
       />
-      <GhostLayer ghosts={ghosts} cubeSize={cubeSize} />
+      <GhostLayer ghosts={ghosts} voxelSize={voxelSize} />
       <SelectionOutline
         instances={props.compiled.instances}
-        cubeSize={props.compiled.cubeSize}
+        voxelSize={props.compiled.cubeSize}
         selection={props.selection}
       />
       <BuildHeightPlane
         buildHeight={props.buildHeight}
-        cubeSize={props.compiled.cubeSize}
+        voxelSize={props.compiled.cubeSize}
         visible={props.tool === 'add' || props.tool === 'tile'}
       />
       <ContextMenuListener
         instances={props.compiled.instances}
-        cubeSize={props.compiled.cubeSize}
+        voxelSize={props.compiled.cubeSize}
         onRequest={props.onContextMenuRequest}
       />
     </Canvas>
@@ -581,7 +583,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
 
 interface ContextMenuListenerProps {
   instances: ObjectInstance[];
-  cubeSize: number;
+  voxelSize: number;
   onRequest: (
     commandId: string | null,
     screenX: number,
@@ -603,7 +605,7 @@ interface ContextMenuListenerProps {
  */
 function ContextMenuListener({
   instances,
-  cubeSize,
+  voxelSize,
   onRequest,
 }: ContextMenuListenerProps) {
   const { gl, camera, raycaster, pointer } = useThree();
@@ -650,11 +652,11 @@ function ContextMenuListener({
 
       let bestT = Infinity;
       let bestId: string | null = null;
-      const half = cubeSize / 2;
+      const half = voxelSize / 2;
       for (const inst of instances) {
-        const cx = inst.position[0] * cubeSize;
-        const cy = inst.position[1] * cubeSize + cubeSize / 2;
-        const cz = inst.position[2] * cubeSize;
+        const cx = inst.position[0] * voxelSize;
+        const cy = inst.position[1] * voxelSize + voxelSize / 2;
+        const cz = inst.position[2] * voxelSize;
         const t = rayHitAabb(
           raycaster.ray.origin,
           raycaster.ray.direction,
@@ -678,7 +680,7 @@ function ContextMenuListener({
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
     };
-  }, [gl, camera, raycaster, pointer, instances, cubeSize, onRequest]);
+  }, [gl, camera, raycaster, pointer, instances, voxelSize, onRequest]);
 
   return null;
 }
@@ -721,7 +723,7 @@ function rayHitAabb(
 
 interface SelectionOutlineProps {
   instances: ObjectInstance[];
-  cubeSize: number;
+  voxelSize: number;
   selection: ReadonlySet<string>;
 }
 
@@ -737,7 +739,7 @@ interface SelectionOutlineProps {
  * material uses `depthTest: false` so the wireframe stays visible
  * even when coplanar with the cube surface.
  */
-function SelectionOutline({ instances, cubeSize, selection }: SelectionOutlineProps) {
+function SelectionOutline({ instances, voxelSize, selection }: SelectionOutlineProps) {
   const geometry = useMemo(() => {
     if (selection.size === 0) return null;
     const voxels: VoxelVec3[] = [];
@@ -745,12 +747,12 @@ function SelectionOutline({ instances, cubeSize, selection }: SelectionOutlinePr
       if (!selection.has(inst.sourceCommandId)) continue;
       voxels.push([inst.position[0], inst.position[1], inst.position[2]]);
     }
-    const positions = outlineEdgePositions(voxels, cubeSize);
+    const positions = outlineEdgePositions(voxels, voxelSize);
     if (positions.length === 0) return null;
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     return geom;
-  }, [instances, cubeSize, selection]);
+  }, [instances, voxelSize, selection]);
 
   if (!geometry) return null;
   return (
@@ -931,7 +933,7 @@ function OrbitCamera({ compiled }: OrbitCameraProps) {
 
 interface BuildHeightPlaneProps {
   buildHeight: number;
-  cubeSize: number;
+  voxelSize: number;
   visible: boolean;
 }
 
@@ -946,11 +948,11 @@ interface BuildHeightPlaneProps {
  */
 function BuildHeightPlane({
   buildHeight,
-  cubeSize,
+  voxelSize,
   visible,
 }: BuildHeightPlaneProps) {
   if (!visible) return null;
-  const y = buildHeight * cubeSize;
+  const y = buildHeight * voxelSize;
   // Slight tint based on build-height sign so the user can tell at a
   // glance whether they're above or below the world's reference grid.
   const color = buildHeight === 0 ? '#fde68a' : buildHeight > 0 ? '#86efac' : '#f9a8d4';
@@ -972,7 +974,7 @@ function BuildHeightPlane({
 
 interface CubesLayerProps {
   instances: ObjectInstance[];
-  cubeSize: number;
+  voxelSize: number;
   selection: ReadonlySet<string>;
   tool: Tool;
   onSelectInstance: (commandId: string, modKey: boolean) => void;
@@ -1018,9 +1020,10 @@ function CubesLayer(props: CubesLayerProps) {
     return m;
   }, [props.instances]);
 
+  // cubeSize key is required by the SDK WorldObjects type — kept as-is.
   const worldObjects: WorldObjects = useMemo(
-    () => ({ cubeSize: props.cubeSize, instances: props.instances }),
-    [props.cubeSize, props.instances],
+    () => ({ cubeSize: props.voxelSize, instances: props.instances }),
+    [props.voxelSize, props.instances],
   );
 
   const lookupInstance = (
@@ -1123,7 +1126,7 @@ function CubesLayer(props: CubesLayerProps) {
 // --- Floor picker (place-on-empty when Add tool is active) ------
 
 interface FloorPickerProps {
-  cubeSize: number;
+  voxelSize: number;
   tool: Tool;
   stagedKindId: string | null;
   /** Integer voxel y the picker plane sits at. Q/E shift it in
@@ -1141,7 +1144,7 @@ interface FloorPickerProps {
 }
 
 function FloorPicker({
-  cubeSize,
+  voxelSize,
   tool,
   stagedKindId,
   buildHeight,
@@ -1155,7 +1158,7 @@ function FloorPicker({
   // picker isn't a hard floor — Q/E in RoomApp let the user place
   // cubes below the grid (y<0) or above it (y>0).
   const snapFloor = (point: { x: number; y: number; z: number }): [number, number, number] => {
-    const v = snapToVoxel({ kind: 'floor', point }, cubeSize);
+    const v = snapToVoxel({ kind: 'floor', point }, voxelSize);
     v[1] = buildHeight;
     return v;
   };
@@ -1189,9 +1192,9 @@ function FloorPicker({
         onTileClick({
           kind: 'floor',
           point: {
-            x: voxel[0] * cubeSize,
-            y: voxel[1] * cubeSize,
-            z: voxel[2] * cubeSize,
+            x: voxel[0] * voxelSize,
+            y: voxel[1] * voxelSize,
+            z: voxel[2] * voxelSize,
           },
         });
       } else if (tool === 'select') {
@@ -1223,9 +1226,9 @@ function FloorPicker({
     onHoverFloor({
       kind: 'floor',
       point: {
-        x: voxel[0] * cubeSize,
-        y: voxel[1] * cubeSize,
-        z: voxel[2] * cubeSize,
+        x: voxel[0] * voxelSize,
+        y: voxel[1] * voxelSize,
+        z: voxel[2] * voxelSize,
       },
     });
   };
@@ -1239,7 +1242,7 @@ function FloorPicker({
   // mesh whenever they overlap (the grid is at world y=0). When
   // buildHeight != 0 the picker is well above/below the grid and
   // there's no overlap; the epsilon only matters at y=0.
-  const pickerWorldY = buildHeight * cubeSize + 0.01;
+  const pickerWorldY = buildHeight * voxelSize + 0.01;
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
@@ -1337,11 +1340,11 @@ function MoveController({
       const hit = new THREE.Vector3();
       const ok = raycaster.ray.intersectPlane(plane, hit);
       if (!ok) return null;
-      const cs = compiledRef.current.cubeSize;
+      const vs = compiledRef.current.cubeSize;
       return [
-        Math.round(hit.x / cs),
-        Math.round(planeY / cs),
-        Math.round(hit.z / cs),
+        Math.round(hit.x / vs),
+        Math.round(planeY / vs),
+        Math.round(hit.z / vs),
       ];
     },
     [gl, camera, raycaster, pointer],
@@ -1357,7 +1360,7 @@ function MoveController({
       // Only act on left-button down.
       const doc = docRef.current;
       const sel = selectionRef.current;
-      const cs = compiledRef.current.cubeSize;
+      const cs = compiledRef.current.cubeSize; // SDK WorldObjects field name
 
       // Raycast to find which cube (if any) was hit.
       const rect = canvas.getBoundingClientRect();
@@ -1444,7 +1447,7 @@ function MoveController({
 
       const sel = selectionRef.current;
       const doc = docRef.current;
-      const cs = compiledRef.current.cubeSize;
+      const cs = compiledRef.current.cubeSize; // SDK WorldObjects field name
 
       let delta: Vec3;
 

@@ -3,15 +3,15 @@
  */
 import { describe, it, expect } from 'vitest';
 import { applyAction } from './applyAction.ts';
-import { emptyRoomDocument, newPlaceCube } from '@officexr/world/scenes';
-import type { RoomDocument, PlaceCubeCommand } from '@officexr/world/scenes';
+import { emptyRoomDocument, newPlaceObject } from '@officexr/world/scenes';
+import type { RoomDocument, PlaceObjectCommand } from '@officexr/world/scenes';
 import type { EditAction } from './EditAction.ts';
 
 function makeDoc(overrides?: Partial<RoomDocument>): RoomDocument {
   return { ...emptyRoomDocument('test'), ...overrides };
 }
 
-function makePlaceCmd(id: string, kindId = 'block-grass', position: [number, number, number] = [0, 0, 0]): PlaceCubeCommand {
+function makePlaceCmd(id: string, kindId = 'block-grass', position: [number, number, number] = [0, 0, 0]): PlaceObjectCommand {
   return { id, op: 'placeCube', kindId, position };
 }
 
@@ -26,7 +26,7 @@ describe('applyAction', () => {
       position: [1, 0, 1],
     });
     expect(result.commands).toHaveLength(1);
-    const cmd = result.commands[0] as PlaceCubeCommand;
+    const cmd = result.commands[0] as PlaceObjectCommand;
     expect(cmd.id).toBe('cmd-x');
     expect(cmd.kindId).toBe('block-grass');
     expect(cmd.position).toEqual([1, 0, 1]);
@@ -138,8 +138,8 @@ describe('applyAction', () => {
       commandId: 'cmd-a',
       kindId: 'block-dirt',
     });
-    expect((result.commands[0] as PlaceCubeCommand).kindId).toBe('block-dirt');
-    expect((result.commands[1] as PlaceCubeCommand).kindId).toBe('block-stone');
+    expect((result.commands[0] as PlaceObjectCommand).kindId).toBe('block-dirt');
+    expect((result.commands[1] as PlaceObjectCommand).kindId).toBe('block-stone');
   });
 
   // 7. setPosition
@@ -152,8 +152,8 @@ describe('applyAction', () => {
       commandId: 'cmd-a',
       position: [5, 0, 5],
     });
-    expect((result.commands[0] as PlaceCubeCommand).position).toEqual([5, 0, 5]);
-    expect((result.commands[1] as PlaceCubeCommand).position).toEqual([1, 0, 1]);
+    expect((result.commands[0] as PlaceObjectCommand).position).toEqual([5, 0, 5]);
+    expect((result.commands[1] as PlaceObjectCommand).position).toEqual([1, 0, 1]);
   });
 
   // 8. setPositionMany
@@ -172,9 +172,9 @@ describe('applyAction', () => {
         { commandId: 'b', position: [11, 0, 10] },
       ],
     });
-    expect((result.commands[0] as PlaceCubeCommand).position).toEqual([10, 0, 10]);
-    expect((result.commands[1] as PlaceCubeCommand).position).toEqual([11, 0, 10]);
-    expect((result.commands[2] as PlaceCubeCommand).position).toEqual([2, 0, 0]); // unchanged
+    expect((result.commands[0] as PlaceObjectCommand).position).toEqual([10, 0, 10]);
+    expect((result.commands[1] as PlaceObjectCommand).position).toEqual([11, 0, 10]);
+    expect((result.commands[2] as PlaceObjectCommand).position).toEqual([2, 0, 0]); // unchanged
   });
 
   // 9. group

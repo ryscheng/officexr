@@ -25,7 +25,7 @@ export default defineConfig({
     // Mounts the studio's authoring REST surface:
     //   /api/rooms      → packages/world/rooms/      (FilesystemRoomStorage)
     //   /api/maps       → packages/world/maps/       (FilesystemMapStorage)
-    //   /api/cube-kinds → packages/world/cube-kinds.json (Object editor catalog; Task 3)
+    //   /api/world-object-kinds → packages/world/world-object-kinds.json (Object editor catalog; Task 3)
     //   /api/scenes     → packages/world/scenes/     (legacy back-compat for the
     //                                                 existing Scenes editor until Task 5)
     studioStorage(),

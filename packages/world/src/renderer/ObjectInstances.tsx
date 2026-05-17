@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
-import { useCubeCatalog } from '../scenes/cube-catalog.ts';
-import type { CubeKindEntry } from '../scenes/cube-kinds-schema.ts';
-import { CUBE_KINDS, getCubeKind } from '../scenes/cube-kinds.ts';
+import { useObjectKindCatalog } from '../scenes/object-kind-catalog.ts';
+import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
+import { listKinds } from '../scenes/object-kind-catalog.ts';
+/** @deprecated Use getKind from object-kind-catalog. Re-exported for backward compat. */
+import { getCubeKind } from '../scenes/cube-kinds.ts';
 import {
   buildMaterialForKind,
   extractGeometryFromGltf,
@@ -34,7 +36,7 @@ const PRIMITIVE_FALLBACK_COLOR = '#ff00ff';
 // the first scene paint renders without a flash. Kinds added later via
 // catalog hydration (Task 4's asset packs) are preloaded lazily inside
 // `KindInstanceGroup` via `useGLTF` itself, which caches by URL.
-for (const kind of CUBE_KINDS) {
+for (const kind of listKinds()) {
   useGLTF.preload(kind.gltfPath);
 }
 
@@ -85,7 +87,7 @@ type ObjectInstancesProps =
  * default scale propagate from the Object editor.
  *
  * Coords: each instance's `position` is integer voxel space; world
- * position = `position * cubeSize`.
+ * position = `position * voxelSize` (SDK field named `cubeSize` for back-compat).
  */
 export function ObjectInstances(props: ObjectInstancesProps) {
   // The discriminated union guarantees exactly one of these is set.
@@ -158,9 +160,9 @@ function ObjectInstancesView({
   materialOverride,
   publishWindowMarker,
 }: ViewProps) {
-  const kinds = useCubeCatalog();
+  const kinds = useObjectKindCatalog();
   const kindById = useMemo(() => {
-    const m = new Map<string, CubeKindEntry>();
+    const m = new Map<string, WorldObjectKind>();
     for (const k of kinds) m.set(k.id, k);
     return m;
   }, [kinds]);
@@ -186,7 +188,7 @@ function ObjectInstancesView({
       }
       arr.push(inst);
     }
-    const out: Array<{ kind: CubeKindEntry; instances: ObjectInstance[] }> = [];
+    const out: Array<{ kind: WorldObjectKind; instances: ObjectInstance[] }> = [];
     const primitives: Array<{
       kindId: string;
       color: string;
@@ -241,7 +243,7 @@ function ObjectInstancesView({
           key={kind.id}
           kind={kind}
           instances={instances}
-          cubeSize={worldObjects.cubeSize}
+          voxelSize={worldObjects.cubeSize}
           materialOverride={materialOverride}
         />
       ))}
@@ -251,7 +253,7 @@ function ObjectInstancesView({
           kindId={kindId}
           color={color}
           instances={instances}
-          cubeSize={worldObjects.cubeSize}
+          voxelSize={worldObjects.cubeSize}
         />
       ))}
     </>
@@ -259,16 +261,16 @@ function ObjectInstancesView({
 }
 
 interface KindInstanceGroupProps {
-  kind: CubeKindEntry;
+  kind: WorldObjectKind;
   instances: ObjectInstance[];
-  cubeSize: number;
+  voxelSize: number;
   materialOverride?: MaterialOverride;
 }
 
 function KindInstanceGroup({
   kind,
   instances,
-  cubeSize,
+  voxelSize,
   materialOverride,
 }: KindInstanceGroupProps) {
   const gltf = useGLTF(kind.gltfPath);
@@ -318,9 +320,9 @@ function KindInstanceGroup({
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];
       pos.set(
-        inst.position[0] * cubeSize,
-        inst.position[1] * cubeSize + cubeSize / 2,
-        inst.position[2] * cubeSize,
+        inst.position[0] * voxelSize,
+        inst.position[1] * voxelSize + voxelSize / 2,
+        inst.position[2] * voxelSize,
       );
       m.compose(pos, quat, scale);
       mesh.setMatrixAt(i, m);
@@ -333,8 +335,8 @@ function KindInstanceGroup({
     // InstancedMesh — `meshRef.current` then points at a new mesh with
     // uninitialized matrices. Re-running this effect refills them so a
     // live tint/opacity edit from the Object editor doesn't scramble
-    // cube positions.
-  }, [instances, cubeSize, kind.scale, mat]);
+    // object positions.
+  }, [instances, voxelSize, kind.scale, mat]);
 
   // userData lets the editor's R3F overlay raycast and identify which
   // kind / instance was hit. The caller can read `intersection.object.userData.kindId`
@@ -354,7 +356,7 @@ interface PrimitiveInstanceGroupProps {
   kindId: string;
   color: string;
   instances: ObjectInstance[];
-  cubeSize: number;
+  voxelSize: number;
 }
 
 /**
@@ -372,11 +374,11 @@ function PrimitiveInstanceGroup({
   kindId,
   color,
   instances,
-  cubeSize,
+  voxelSize,
 }: PrimitiveInstanceGroupProps) {
   const geom = useMemo(
-    () => new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize),
-    [cubeSize],
+    () => new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize),
+    [voxelSize],
   );
   const mat = useMemo(() => new THREE.MeshStandardMaterial({ color }), [color]);
   useEffect(
@@ -403,9 +405,9 @@ function PrimitiveInstanceGroup({
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];
       pos.set(
-        inst.position[0] * cubeSize,
-        inst.position[1] * cubeSize + cubeSize / 2,
-        inst.position[2] * cubeSize,
+        inst.position[0] * voxelSize,
+        inst.position[1] * voxelSize + voxelSize / 2,
+        inst.position[2] * voxelSize,
       );
       m.compose(pos, quat, scale);
       mesh.setMatrixAt(i, m);
@@ -413,7 +415,7 @@ function PrimitiveInstanceGroup({
     mesh.count = instances.length;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [instances, cubeSize, mat]);
+  }, [instances, voxelSize, mat]);
 
   return (
     <instancedMesh

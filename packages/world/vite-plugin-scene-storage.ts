@@ -1,7 +1,7 @@
 /**
  * Back-compat shim. The studio's authoring REST surface is now served
  * by `vite-plugin-storage.ts`, which mounts `/api/rooms`, `/api/maps`,
- * `/api/cube-kinds`, **and** the legacy `/api/scenes` (for the
+ * `/api/world-object-kinds`, **and** the legacy `/api/scenes` (for the
  * existing Scenes editor until Task 5 of the studio restructure
  * renames it).
  *

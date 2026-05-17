@@ -60,7 +60,7 @@ function readCharacterFromHash(): CharacterName {
 type CubeMode = 'gltf' | 'primitive';
 
 /** The mugshot scene: a 2×2 cube square whose CLUSTER is centered
- * on world origin (0, 0, 0). With cubeSize=2, voxel positions
+ * on world origin (0, 0, 0). With voxelSize=2, voxel positions
  * (±0.5, -0.5, ±0.5) translate to world cube centers (±1, 0, ±1)
  * — cluster bbox x∈[-2,2], y∈[-1,1], z∈[-2,2]. Cube tops at
  * world y=1, bottoms at y=-1.

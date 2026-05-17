@@ -12,12 +12,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import committedCatalog from '../../cube-kinds.json' with { type: 'json' };
-import bundledDefault from '../../cube-kinds.default.json' with { type: 'json' };
+import committedCatalog from '../../world-object-kinds.json' with { type: 'json' };
+import bundledDefault from '../../world-object-kinds.default.json' with { type: 'json' };
 import {
   CUBE_KIND_CATEGORIES,
-  validateCubeKindCatalog,
-} from './cube-kinds-schema.ts';
+  validateWorldObjectKindCatalog as validateCubeKindCatalog,
+} from './world-object-kinds-schema.ts';
 
 describe('cube-kinds.json (the committed editable catalog)', () => {
   it('passes validateCubeKindCatalog', () => {

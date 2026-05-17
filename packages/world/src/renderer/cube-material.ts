@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import type { CubeKindEntry } from '../scenes/cube-kinds-schema.ts';
+import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
 
 /**
- * Renderer-side helpers for turning a `CubeKindEntry`'s material
+ * Renderer-side helpers for turning a `WorldObjectKind`'s material
  * overrides into a Three.js material instance. Extracted from
  * `ObjectInstances.tsx` so the override-application logic is unit
  * testable without a WebGL context.
@@ -14,7 +14,7 @@ import type { CubeKindEntry } from '../scenes/cube-kinds-schema.ts';
  */
 
 /** True iff any per-kind material override is non-default. */
-export function hasMaterialOverrides(kind: CubeKindEntry): boolean {
+export function hasMaterialOverrides(kind: WorldObjectKind): boolean {
   return (
     kind.tint !== null ||
     kind.opacity < 1 ||
@@ -28,7 +28,7 @@ export function hasMaterialOverrides(kind: CubeKindEntry): boolean {
  * `base` unchanged when `hasMaterialOverrides(kind) === false`. */
 export function buildMaterialForKind(
   base: THREE.Material,
-  kind: CubeKindEntry,
+  kind: WorldObjectKind,
 ): THREE.Material {
   if (!hasMaterialOverrides(kind)) return base;
   const clone = base.clone();
