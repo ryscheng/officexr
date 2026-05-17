@@ -29,49 +29,24 @@ import { outlineEdgePositions, type Vec3 as VoxelVec3 } from './selectionOutline
 import { computeMovedPositions } from './moveDelta.ts';
 import { checkMoveOccupancy } from './moveOccupancy.ts';
 import { dropToSurface } from './dropToSurface.ts';
+import {
+  computeTileGhosts,
+  resolveAvailableAxes,
+  switchNextAxis,
+  type TileAxis,
+  type TileMachineState,
+} from './tileStateMachine.ts';
 
 type Vec3 = [number, number, number];
 
-/**
- * Tile tool state machine. Spec from the PRD:
- *
- *   - idle:        before click 1 — show 1 solid ghost under cursor.
- *   - placed:      click 1 placed origin; hovering shows ghosts
- *                  along ±x from origin sized by mouse delta.
- *   - x-extruded:  click 2 committed the X row + grouped them;
- *                  hovering shows the X row replicated along ±z.
- *   - z-extruded:  click 3 committed the X*Z slab + grew the group;
- *                  hovering shows the slab replicated along ±y.
- *
- * Click 4 commits the Y stack and returns to Select. Esc commits
- * whatever's-real-so-far (nothing extra — every click already
- * committed something) and returns to Select.
- *
- * `groupId` is null until click 2 (no point grouping a singleton);
- * after that it accumulates every subsequent click's commands.
- */
-type TileState =
-  | { stage: 'idle' }
-  | {
-      stage: 'placed';
-      origin: Vec3;
-      kindId: string;
-      originCommandId: string;
-    }
-  | {
-      stage: 'x-extruded';
-      origin: Vec3;
-      kindId: string;
-      groupId: string;
-      xRow: readonly Vec3[];
-    }
-  | {
-      stage: 'z-extruded';
-      origin: Vec3;
-      kindId: string;
-      groupId: string;
-      xzGrid: readonly Vec3[];
-    };
+// TileState is now TileMachineState from tileStateMachine.ts.
+// The generalized machine supports per-kind axis order driven by
+// kind.tilingAxes. The old hardcoded x→z→y sequence is replaced
+// with dynamic remainingAxes / nextAxis fields.
+//
+// The local TileState alias is retained so existing call-sites that
+// use the type in inline checks still compile without rename churn.
+type TileState = TileMachineState;
 
 /**
  * Move tool drag state. Discriminated union over two stages:
@@ -297,7 +272,11 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const yAnchorRef = useRef<number | null>(null);
   const [yDelta, setYDelta] = useState<number>(0);
   useEffect(() => {
-    if (tileState.stage !== 'z-extruded') {
+    // Activate Y-delta tracking when the next axis is Y (generalized)
+    const isYAxisActive =
+      (tileState.stage === 'axis-extruded' && tileState.nextAxis === 'y') ||
+      (tileState.stage === 'placed' && tileState.nextAxis === 'y');
+    if (!isYAxisActive) {
       yAnchorRef.current = null;
       setYDelta(0);
       return;
@@ -431,25 +410,32 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       }
     }
     if (props.tool === 'tile') {
-      if (tileState.stage === 'idle' && props.stagedKindId && hover) {
-        const voxel = snapToVoxel(hover, voxelSize);
-        out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
-      } else if (tileState.stage === 'placed') {
-        for (const v of tileXRow(tileState.origin, hover, voxelSize)) {
-          out.push({ mode: 'solid', kindId: tileState.kindId, voxel: v });
+      // Compute the hover voxel for the tile ghost function.
+      // For Y-axis extrusion (z-extruded/axis-extruded with nextAxis=y),
+      // the hover Y is derived from the screen yDelta, not the 3D raycast.
+      // SRP violation: Y-axis delta computation (PIXELS_PER_VOXEL screen
+      // mapping) stays inline because it requires R3F's camera projection.
+      // The pure computeTileGhosts receives the pre-computed voxel.
+      let tileHoverVoxel: Vec3 | null = null;
+      if (hover) {
+        const v = snapToVoxel(hover, voxelSize);
+        const isYStage =
+          (tileState.stage === 'axis-extruded' && tileState.nextAxis === 'y') ||
+          (tileState.stage === 'placed' && tileState.nextAxis === 'y');
+        if (isYStage) {
+          // Y-axis: use origin + yDelta for the hover Y
+          const originY = tileState.stage !== 'idle' ? tileState.origin[1] : 0;
+          tileHoverVoxel = [v[0], originY + yDelta, v[2]];
+        } else {
+          tileHoverVoxel = v;
         }
-      } else if (tileState.stage === 'x-extruded') {
-        for (const v of tileZReplicas(
-          tileState.origin,
-          tileState.xRow,
-          hover,
-          voxelSize,
-        )) {
-          out.push({ mode: 'solid', kindId: tileState.kindId, voxel: v });
-        }
-      } else if (tileState.stage === 'z-extruded') {
-        for (const v of tileYReplicas(tileState.xzGrid, yDelta)) {
-          out.push({ mode: 'solid', kindId: tileState.kindId, voxel: v });
+      }
+
+      const kindId = tileState.stage !== 'idle' ? tileState.kindId : props.stagedKindId;
+      if (kindId) {
+        const ghostVoxels = computeTileGhosts(tileState, tileHoverVoxel, { x: 1, y: 1, z: 1 });
+        for (const v of ghostVoxels) {
+          out.push({ mode: 'solid', kindId, voxel: v });
         }
       }
     }
@@ -508,14 +494,19 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     [props],
   );
 
-  // Tile-tool click dispatcher. Drives the 4-stage state machine
-  // forward. Every click commits the cubes that were being previewed
-  // as ghosts, then advances to the next stage. Click 4 commits the
-  // Y stack and returns to Select.
+  // Tile-tool click dispatcher. Drives the generalized state machine
+  // forward. Each click commits the cubes previewed as ghosts and
+  // advances to the next extrusion axis (driven by kind.tilingAxes).
+  // When all available axes are consumed, returns to Select.
+  //
+  // Kinds with 0 tileable axes: single-click place, return to Select.
+  // Kinds with 1 tileable axis: 2-click machine (place + extrude).
+  // Kinds with 3 axes: 4-click machine (legacy block behavior).
   const handleTileClick = useCallback(
     (hit: SnapHit) => {
       if (props.tool !== 'tile' || !props.stagedKindId) return;
       const stagedKindId = props.stagedKindId;
+
       if (tileState.stage === 'idle') {
         // Click 1: place the origin cube.
         let voxel = snapToVoxel(hit, voxelSize);
@@ -531,68 +522,147 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
 
         const ids = props.onPlaceMany(stagedKindId, [voxel]);
         if (ids.length === 0) return;
+
+        // Resolve available axes for this kind
+        const availableAxes = tileKind
+          ? resolveAvailableAxes(tileKind.tilingAxes)
+          : [];
+
+        if (availableAxes.length === 0) {
+          // Non-tileable kind: single-click placement, return to Select
+          setTileState({ stage: 'idle' });
+          props.onSetTool('select');
+          return;
+        }
+
         setTileState({
           stage: 'placed',
           origin: voxel,
           kindId: stagedKindId,
           originCommandId: ids[0],
+          remainingAxes: availableAxes,
+          nextAxis: availableAxes[0],
         });
         return;
       }
+
       if (tileState.stage === 'placed') {
-        // Click 2: commit the X row (if any) + create the group.
-        const xRow = tileXRow(tileState.origin, hit, voxelSize);
-        if (xRow.length > 0) {
-          const newIds = props.onPlaceMany(stagedKindId, xRow);
-          const groupId = props.onCreateGroup([
-            tileState.originCommandId,
-            ...newIds,
-          ]);
-          if (groupId) {
-            setTileState({
-              stage: 'x-extruded',
-              origin: tileState.origin,
-              kindId: tileState.kindId,
-              groupId,
-              xRow,
-            });
-            return;
+        // Click N: commit the extrusion row along nextAxis (if any).
+        const nextAxis = tileState.nextAxis;
+        const axisIndex = nextAxis === 'x' ? 0 : nextAxis === 'y' ? 1 : 2;
+
+        // For Y-axis, use yDelta for the hover; for X/Z use the raycasted hit
+        let hoverVoxel: Vec3;
+        if (nextAxis === 'y') {
+          hoverVoxel = [tileState.origin[0], tileState.origin[1] + yDelta, tileState.origin[2]];
+        } else {
+          hoverVoxel = snapToVoxel(hit, voxelSize);
+        }
+
+        const delta = hoverVoxel[axisIndex] - tileState.origin[axisIndex];
+        if (delta === 0) return; // No movement → stay in placed
+
+        const sign = Math.sign(delta);
+        const count = Math.abs(delta);
+        const extrudedRow: Vec3[] = [];
+        for (let i = 1; i <= count; i++) {
+          const v: Vec3 = [tileState.origin[0], tileState.origin[1], tileState.origin[2]];
+          v[axisIndex] = tileState.origin[axisIndex] + sign * i;
+          extrudedRow.push(v);
+        }
+
+        const newIds = props.onPlaceMany(stagedKindId, extrudedRow);
+        const groupId = props.onCreateGroup([tileState.originCommandId, ...newIds]);
+        if (!groupId) return;
+
+        const consumed = nextAxis;
+        const remaining = tileState.remainingAxes.filter((a) => a !== consumed);
+        const next = remaining.length > 0 ? remaining[0] : null;
+
+        if (next === null) {
+          // All axes consumed → done
+          setTileState({ stage: 'idle' });
+          props.onSetTool('select');
+          return;
+        }
+
+        setTileState({
+          stage: 'axis-extruded',
+          consumedAxis: consumed,
+          origin: tileState.origin,
+          kindId: tileState.kindId,
+          groupId,
+          extrudedRow,
+          remainingAxes: remaining,
+          nextAxis: next,
+        });
+        return;
+      }
+
+      if (tileState.stage === 'axis-extruded') {
+        // Subsequent click: replicate accumulated base along nextAxis.
+        if (tileState.nextAxis === null) {
+          setTileState({ stage: 'idle' });
+          props.onSetTool('select');
+          return;
+        }
+
+        const nextAxis = tileState.nextAxis;
+        const axisIndex = nextAxis === 'x' ? 0 : nextAxis === 'y' ? 1 : 2;
+
+        let hoverVoxel: Vec3;
+        if (nextAxis === 'y') {
+          hoverVoxel = [tileState.origin[0], tileState.origin[1] + yDelta, tileState.origin[2]];
+        } else {
+          hoverVoxel = snapToVoxel(hit, voxelSize);
+        }
+
+        const delta = hoverVoxel[axisIndex] - tileState.origin[axisIndex];
+        if (delta === 0) {
+          // No movement → finish if this is the last axis
+          if (tileState.remainingAxes.length <= 1) {
+            setTileState({ stage: 'idle' });
+            props.onSetTool('select');
+          }
+          return;
+        }
+
+        const sign = Math.sign(delta);
+        const count = Math.abs(delta);
+        const base: Vec3[] = [tileState.origin, ...tileState.extrudedRow];
+        const replicas: Vec3[] = [];
+        for (let i = 1; i <= count; i++) {
+          for (const p of base) {
+            const v: Vec3 = [p[0], p[1], p[2]];
+            v[axisIndex] = p[axisIndex] + sign * i;
+            replicas.push(v);
           }
         }
-        // Empty X row → stay in `placed` (the user can move and click
-        // again, or Esc out with just the origin placed).
-        return;
-      }
-      if (tileState.stage === 'x-extruded') {
-        // Click 3: commit Z replicas, extending the group.
-        const zReplicas = tileZReplicas(
-          tileState.origin,
-          tileState.xRow,
-          hit,
-          voxelSize,
-        );
-        if (zReplicas.length > 0) {
-          props.onPlaceMany(stagedKindId, zReplicas, tileState.groupId);
-          // The slab is now origin + xRow + zReplicas.
-          const xzGrid = [tileState.origin, ...tileState.xRow, ...zReplicas];
-          setTileState({
-            stage: 'z-extruded',
-            origin: tileState.origin,
-            kindId: tileState.kindId,
-            groupId: tileState.groupId,
-            xzGrid,
-          });
+
+        if (replicas.length > 0) {
+          props.onPlaceMany(stagedKindId, replicas, tileState.groupId);
         }
-        return;
-      }
-      if (tileState.stage === 'z-extruded') {
-        // Click 4: commit Y replicas, extending the group, then exit.
-        const yReplicas = tileYReplicas(tileState.xzGrid, yDelta);
-        if (yReplicas.length > 0) {
-          props.onPlaceMany(stagedKindId, yReplicas, tileState.groupId);
+
+        const consumed = nextAxis;
+        const remaining = tileState.remainingAxes.filter((a) => a !== consumed);
+        const next = remaining.length > 0 ? remaining[0] : null;
+
+        if (next === null) {
+          setTileState({ stage: 'idle' });
+          props.onSetTool('select');
+          return;
         }
-        setTileState({ stage: 'idle' });
-        props.onSetTool('select');
+
+        setTileState({
+          stage: 'axis-extruded',
+          consumedAxis: consumed,
+          origin: tileState.origin,
+          kindId: tileState.kindId,
+          groupId: tileState.groupId,
+          extrudedRow: [...tileState.extrudedRow, ...replicas],
+          remainingAxes: remaining,
+          nextAxis: next,
+        });
         return;
       }
     },
