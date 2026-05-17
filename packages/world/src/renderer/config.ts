@@ -3,7 +3,8 @@
  * cubes; there is no longer a default-floor or playable-area concept
  * here — `<MapColliders>` drives physics from `state.worldObjects`.
  */
-export const VOXEL_SIZE = 2; // KayKit BlockBits cubes are 2×2×2 units (task-03 will change to 0.5)
+// 0.5 m grid — four voxels per KayKit 2×2×2 block (was 2 before v4 migration)
+export const VOXEL_SIZE = 0.5;
 
 /** @deprecated Use VOXEL_SIZE */
 export const CUBE_SIZE = VOXEL_SIZE;
