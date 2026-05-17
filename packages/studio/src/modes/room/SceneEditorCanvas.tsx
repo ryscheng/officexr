@@ -28,6 +28,7 @@ import {
 import { outlineEdgePositions, type Vec3 as VoxelVec3 } from './selectionOutline.ts';
 import { computeMovedPositions } from './moveDelta.ts';
 import { checkMoveOccupancy } from './moveOccupancy.ts';
+import { dropToSurface } from './dropToSurface.ts';
 
 type Vec3 = [number, number, number];
 
@@ -480,7 +481,17 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const handleAddClick = useCallback(
     (hit: SnapHit) => {
       if (props.tool !== 'add' || !props.stagedKindId) return;
-      const voxel = snapForAdd(hit);
+      let voxel = snapForAdd(hit);
+
+      // Gravity: if the staged kind has gravity = true, drop to the
+      // nearest surface below. Reject placement when no support exists.
+      const addKind = getKind(props.stagedKindId);
+      if (addKind?.gravity) {
+        const settled = dropToSurface(voxel, { w: 1, d: 1 }, props.compiled);
+        if (!settled) return; // No support → reject placement
+        voxel = settled;
+      }
+
       props.onPlaceAt(voxel);
     },
     [props, snapForAdd],
@@ -507,7 +518,17 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       const stagedKindId = props.stagedKindId;
       if (tileState.stage === 'idle') {
         // Click 1: place the origin cube.
-        const voxel = snapToVoxel(hit, voxelSize);
+        let voxel = snapToVoxel(hit, voxelSize);
+
+        // Gravity: if the staged kind has gravity = true, drop to the
+        // nearest surface below. Reject placement when no support exists.
+        const tileKind = getKind(stagedKindId);
+        if (tileKind?.gravity) {
+          const settled = dropToSurface(voxel, { w: 1, d: 1 }, props.compiled);
+          if (!settled) return; // No support → reject placement
+          voxel = settled;
+        }
+
         const ids = props.onPlaceMany(stagedKindId, [voxel]);
         if (ids.length === 0) return;
         setTileState({
