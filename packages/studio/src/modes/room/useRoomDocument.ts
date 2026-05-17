@@ -4,6 +4,7 @@ import {
   LocalStorageRoomStorage,
   compileScene,
   emptyRoomDocument,
+  getKindStride,
   newPlaceObject,
   serializeRoom,
   type PlaceObjectCommand,
@@ -148,7 +149,10 @@ export function useRoomDocument(): {
   // Re-compile on every doc change. Cheap: pure function, scenes are
   // small (hundreds of cubes at most for v1) and `compileScene` runs
   // in <1 ms for that range.
-  const compiled = useMemo(() => compileScene(doc, VOXEL_SIZE), [doc]);
+  const compiled = useMemo(
+    () => compileScene(doc, VOXEL_SIZE, (id) => getKindStride(id, VOXEL_SIZE)),
+    [doc],
+  );
 
   // Derived selection / delete lookups. Recomputed whenever the doc
   // or compiled snapshot changes (Maps fully replaced — components

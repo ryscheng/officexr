@@ -45,6 +45,36 @@ export function getKind(id: string): WorldObjectKind | undefined {
   return current.kinds.find((k) => k.id === id);
 }
 
+/**
+ * Per-axis voxel step for a kind, derived from its baked dimensions.
+ *
+ * Used by `compileScene` extrude stride, the tile-tool ghost preview,
+ * occupancy footprint, and snap-to-face alignment. Each axis steps by
+ * `round(dim_m / voxelSize)`, with a minimum of 1 voxel — a kind smaller
+ * than half a voxel still occupies one cell.
+ *
+ * Falls back to `[1, 1, 1]` when:
+ *   - the kind is unknown (caller passed a stale id), OR
+ *   - `kind.dimensions` is undefined (the catalog has not been baked
+ *     yet for that kind; the Object editor's "Recompute from GLTF"
+ *     button or the preprocess bake script fills it in).
+ *
+ * Pure function — safe to call from compile.ts.
+ */
+export function getKindStride(
+  id: string,
+  voxelSize: number,
+): [number, number, number] {
+  const kind = getKind(id);
+  if (!kind?.dimensions) return [1, 1, 1];
+  const { width, height, depth } = kind.dimensions;
+  return [
+    Math.max(1, Math.round(width / voxelSize)),
+    Math.max(1, Math.round(height / voxelSize)),
+    Math.max(1, Math.round(depth / voxelSize)),
+  ];
+}
+
 export function subscribeCatalog(listener: () => void): () => void {
   listeners.add(listener);
   return () => {

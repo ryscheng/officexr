@@ -4,6 +4,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Sky, Stars } from '@react-three/drei';
 import {
   compileScene,
+  getKindStride,
   type MapDocumentV1,
   type RoomDocument,
   type RoomInstance,
@@ -309,7 +310,7 @@ function RoomInstanceMesh({
 }: RoomInstanceMeshProps) {
   const compiled = useMemo(() => {
     if (!room) return null;
-    return compileScene(room, VOXEL_SIZE);
+    return compileScene(room, VOXEL_SIZE, (id) => getKindStride(id, VOXEL_SIZE));
   }, [room]);
 
   const worldObjects: WorldObjects | null = useMemo(() => {

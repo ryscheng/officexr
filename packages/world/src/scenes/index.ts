@@ -79,6 +79,7 @@ export {
   bootstrapCatalog,
   getCatalog,
   getKind,
+  getKindStride,
   listKinds,
   patchKind,
   replaceCatalog,

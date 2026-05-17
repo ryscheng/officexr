@@ -36,9 +36,20 @@ type CompileInput = SceneDocument | RoomDocument | { commands: SceneCommand[] };
  *   - Two objects occupying the same voxel after extrude → the later
  *     wins (the earlier instance is dropped from the global set).
  */
+/**
+ * Optional per-kind extrude-stride lookup. When provided, an extrude
+ * command places each successive layer `stride[axis]` voxels away
+ * instead of the legacy 1-voxel step. Callers that have access to a
+ * catalog should pass `getKindStride` from `object-kind-catalog.ts`.
+ * When omitted (legacy callers, unit tests), behavior matches the
+ * previous 1-voxel step.
+ */
+export type KindStrideLookup = (kindId: string) => [number, number, number];
+
 export function compileScene(
   doc: CompileInput,
   voxelSize: number,
+  kindStride?: KindStrideLookup,
 ): WorldObjects {
   const byCommand = new Map<string, ObjectInstance[]>();
   const byVoxel = new Map<string, ObjectInstance>();
@@ -73,7 +84,17 @@ export function compileScene(
         if (!target || target.length === 0 || cmd.count <= 1) break;
         const kindId = target[0].kindId;
         const layer = outerLayer(target, cmd.face);
-        const stride = faceNormal(cmd.face);
+        const normal = faceNormal(cmd.face);
+        // Per-axis voxel step for the target kind. When `kindStride` is
+        // omitted the legacy 1-voxel step is preserved (back-compat for
+        // unit tests and callers that haven't been wired to a catalog).
+        const kindSteps = kindStride ? kindStride(kindId) : ([1, 1, 1] as const);
+        const axis = normal[0] !== 0 ? 0 : normal[1] !== 0 ? 1 : 2;
+        const stride: [number, number, number] = [
+          normal[0] * kindSteps[axis],
+          normal[1] * kindSteps[axis],
+          normal[2] * kindSteps[axis],
+        ];
         // count = TOTAL cubes along the direction including the
         // source. The source already exists in `target`, so we add
         // count - 1 new layers walking outward from its outer face.
@@ -186,8 +207,9 @@ export function commandBounds(
   doc: CompileInput,
   commandId: string,
   voxelSize: number,
+  kindStride?: KindStrideLookup,
 ): { min: [number, number, number]; max: [number, number, number]; count: number } | null {
-  const compiled = compileScene(doc, voxelSize);
+  const compiled = compileScene(doc, voxelSize, kindStride);
   const owned = compiled.instances.filter((i) => i.sourceCommandId === commandId);
   if (owned.length === 0) return null;
   const min: [number, number, number] = [Infinity, Infinity, Infinity];

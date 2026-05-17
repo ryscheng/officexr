@@ -78,6 +78,22 @@ export interface WorldObjectKind {
   /** Renderer optimization hint. 'none' = no special handling.
    * 'static-batch' and 'frustum-cull' are scaffolded for future use. */
   optimization: OptimizationMode;
+  /** Axis-aligned bounding-box extents in metres (post-`scale`).
+   *
+   * Hybrid bake strategy:
+   *   1. A one-shot preprocess script loads every GLTF, computes
+   *      `getKindBoundingDimensions(scene, scale)`, and writes the
+   *      result into the catalog JSON. This produces sensible defaults
+   *      for all kinds out of the box.
+   *   2. The Object Editor exposes width / height / depth as editable
+   *      fields so authors can override the auto-baked values (useful
+   *      when a mesh has stray geometry that inflates the AABB, etc.).
+   *
+   * `compileScene` extrude stride, occupancy footprint, and the
+   * tile-tool step all consult this field. When undefined (catalog has
+   * not been baked yet), compile-time consumers fall back to a
+   * 1-voxel step. */
+  dimensions?: { width: number; height: number; depth: number };
 }
 
 export interface WorldObjectKindCatalogV1 {
@@ -193,7 +209,26 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     optimization: isOptimizationMode(k.optimization)
       ? k.optimization
       : WORLD_OBJECT_KIND_DEFAULTS.optimization,
+    dimensions: normalizeDimensions(k.dimensions),
   };
+}
+
+function normalizeDimensions(
+  raw: unknown,
+): { width: number; height: number; depth: number } | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const d = raw as Record<string, unknown>;
+  if (
+    typeof d.width === 'number' &&
+    typeof d.height === 'number' &&
+    typeof d.depth === 'number' &&
+    d.width > 0 &&
+    d.height > 0 &&
+    d.depth > 0
+  ) {
+    return { width: d.width, height: d.height, depth: d.depth };
+  }
+  return undefined;
 }
 
 function isCategory(v: unknown): v is CubeKindCategory {
