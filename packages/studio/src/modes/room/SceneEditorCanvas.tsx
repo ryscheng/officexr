@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import {
   DEFAULT_EDITOR_LIGHTING,
+  DirectionGizmo,
   EndlessGrid,
   LightingRig,
   ObjectInstances,
@@ -698,6 +699,33 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     tileState.stage !== 'idle' &&
     tileState.remainingAxes.length > 1;
 
+  // Compute DirectionGizmo props from the current tile state.
+  // The gizmo shows during placed / axis-extruded stages when nextAxis
+  // is non-null. The origin is the world-space position of the tile
+  // origin; the direction is the unit vector for nextAxis.
+  const directionGizmoProps = useMemo<{
+    origin: [number, number, number];
+    direction: [number, number, number];
+    color: string;
+  } | null>(() => {
+    if (props.tool !== 'tile') return null;
+    if (tileState.stage === 'idle') return null;
+    const nextAxis = tileState.nextAxis;
+    if (!nextAxis) return null;
+
+    const origin: [number, number, number] = [
+      tileState.origin[0] * voxelSize,
+      tileState.origin[1] * voxelSize,
+      tileState.origin[2] * voxelSize,
+    ];
+    const direction: [number, number, number] =
+      nextAxis === 'x' ? [1, 0, 0] : nextAxis === 'y' ? [0, 1, 0] : [0, 0, 1];
+    // Axis color convention: red=X, green=Y, blue=Z
+    const color =
+      nextAxis === 'x' ? '#ef4444' : nextAxis === 'y' ? '#22c55e' : '#3b82f6';
+    return { origin, direction, color };
+  }, [props.tool, tileState, voxelSize]);
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <Canvas
@@ -763,6 +791,13 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           voxelSize={props.compiled.cubeSize}
           onRequest={props.onContextMenuRequest}
         />
+        {directionGizmoProps && (
+          <DirectionGizmo
+            origin={directionGizmoProps.origin}
+            direction={directionGizmoProps.direction}
+            color={directionGizmoProps.color}
+          />
+        )}
       </Canvas>
       {showAxisHint && (
         <div

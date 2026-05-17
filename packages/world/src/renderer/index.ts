@@ -35,6 +35,7 @@ export {
   type KindBoundingDimensions,
 } from './cube-material.ts';
 export { EndlessGrid } from './EndlessGrid.tsx';
+export { DirectionGizmo } from './DirectionGizmo.tsx';
 
 export {
   CAMERA_MODES,
