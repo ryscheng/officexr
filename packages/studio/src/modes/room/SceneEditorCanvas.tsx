@@ -16,8 +16,8 @@ const ROOM_EDITOR_LIGHTING = {
   ambientFillIntensity: 0.6,
 };
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
-import { getKind, getKindStride } from '@officexr/world/scenes';
 import type { RoomDocument } from '@officexr/world/scenes';
+import { useApplication } from '@officexr/world/react';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
 import {
@@ -365,13 +365,14 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
    * multiples of the object's own size rather than the global 0.5 m
    * grid. Defaults to {1,1,1} when the kind has not been baked yet.
    */
+  const { geometry: geomService, catalog: catalogService } = useApplication();
   const stepForKind = useCallback(
     (kindId: string | null | undefined): { x: number; y: number; z: number } => {
       if (!kindId) return { x: 1, y: 1, z: 1 };
-      const [x, y, z] = getKindStride(kindId, voxelSize);
+      const [x, y, z] = geomService.tileStep(kindId);
       return { x, y, z };
     },
-    [voxelSize],
+    [geomService],
   );
 
   /**
@@ -400,12 +401,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const tileableObjects = useMemo<TileableObjectInfo[]>(() => {
     return props.compiled.instances
       .filter((inst) => {
-        const kind = getKind(inst.kindId);
+        const kind = catalogService.getKind(inst.kindId);
         if (!kind) return false;
         return kind.tilingAxes.x || kind.tilingAxes.y || kind.tilingAxes.z;
       })
       .map((inst) => {
-        const kind = getKind(inst.kindId);
+        const kind = catalogService.getKind(inst.kindId);
         return {
           position: inst.position,
           dims: kind?.dimensions ?? fallbackDims,
@@ -421,7 +422,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const snapForAdd = useCallback(
     (hit: SnapHit): [number, number, number] => {
       if (!props.stagedKindId) return snapToVoxel(hit, voxelSize, undefined, targetStrideFor(hit));
-      const kind = getKind(props.stagedKindId);
+      const kind = catalogService.getKind(props.stagedKindId);
       if (kind && !kind.tilingAxes.x && !kind.tilingAxes.y && !kind.tilingAxes.z) {
         // Non-tileable kind: snap to nearest tileable face
         const hitPoint = hit.kind === 'floor'
@@ -541,7 +542,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
 
       // Gravity: if the staged kind has gravity = true, drop to the
       // nearest surface below. Reject placement when no support exists.
-      const addKind = getKind(props.stagedKindId);
+      const addKind = catalogService.getKind(props.stagedKindId);
       if (addKind?.gravity) {
         const settled = dropToSurface(voxel, { w: 1, d: 1 }, props.compiled);
         if (!settled) return; // No support → reject placement
@@ -590,7 +591,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
 
         // Gravity: if the staged kind has gravity = true, drop to the
         // nearest surface below. Reject placement when no support exists.
-        const tileKind = getKind(stagedKindId);
+        const tileKind = catalogService.getKind(stagedKindId);
         if (tileKind?.gravity) {
           const settled = dropToSurface(voxel, { w: 1, d: 1 }, props.compiled);
           if (!settled) return; // No support → reject placement
@@ -1046,24 +1047,24 @@ interface SelectionOutlineProps {
  * even when coplanar with the cube surface.
  */
 function SelectionOutline({ instances, voxelSize, selection }: SelectionOutlineProps) {
+  const { geometry: geomService } = useApplication();
   const geometry = useMemo(() => {
     if (selection.size === 0) return null;
-    const boxes: { position: VoxelVec3; dims: { width: number; height: number; depth: number } }[] = [];
-    const fallback = { width: voxelSize, height: voxelSize, depth: voxelSize };
+    const aabbs = [];
     for (const inst of instances) {
       if (!selection.has(inst.sourceCommandId)) continue;
-      const kind = getKind(inst.kindId);
-      boxes.push({
-        position: [inst.position[0], inst.position[1], inst.position[2]],
-        dims: kind?.dimensions ?? fallback,
-      });
+      aabbs.push(geomService.worldAABB(inst.position, inst.kindId));
     }
-    const positions = outlineEdgePositions(boxes, voxelSize);
+    const positions = outlineEdgePositions(aabbs);
     if (positions.length === 0) return null;
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     return geom;
-  }, [instances, voxelSize, selection]);
+    // voxelSize is intentionally absent from deps — the AABB is
+    // computed by the geometry service which already encapsulates the
+    // voxelSize. Listed for the linter; harmless when stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instances, selection, geomService, voxelSize]);
 
   if (!geometry) return null;
   return (
@@ -1614,6 +1615,7 @@ function MoveController({
   onSelectInstance,
 }: MoveControllerProps) {
   const { gl, camera, raycaster, pointer } = useThree();
+  const { geometry: geomService } = useApplication();
 
   // Keep a ref to the latest state so the raw pointer listeners can
   // read it without closing over a stale version. These listeners are
@@ -1812,7 +1814,7 @@ function MoveController({
         proposed,
         undefined,
         (kindId) => {
-          const [w, h, d] = getKindStride(kindId, cs);
+          const [w, h, d] = geomService.tileStep(kindId);
           return { w, h, d };
         },
       );
