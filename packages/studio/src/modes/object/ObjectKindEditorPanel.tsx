@@ -3,6 +3,7 @@ import { useGLTF } from '@react-three/drei';
 import {
   CUBE_KIND_CATEGORIES,
   type CubeKindCategory,
+  type OptimizationMode,
   type WorldObjectKind,
 } from '@officexr/world';
 import { getKindBoundingDimensions } from '@officexr/world/renderer';
@@ -160,6 +161,42 @@ export function ObjectKindEditorPanel({ kind, applyPatch }: ObjectKindEditorPane
           step={0.1}
           onChange={(emissiveIntensity) => applyPatch({ emissiveIntensity })}
         />
+      </Section>
+
+      <Section title="Tiling">
+        <Toggle
+          label="tile X"
+          value={kind.tilingAxes.x}
+          onChange={(v) => applyPatch({ tilingAxes: { ...kind.tilingAxes, x: v } })}
+        />
+        <Toggle
+          label="tile Y"
+          value={kind.tilingAxes.y}
+          onChange={(v) => applyPatch({ tilingAxes: { ...kind.tilingAxes, y: v } })}
+        />
+        <Toggle
+          label="tile Z"
+          value={kind.tilingAxes.z}
+          onChange={(v) => applyPatch({ tilingAxes: { ...kind.tilingAxes, z: v } })}
+        />
+      </Section>
+
+      <Section title="Placement">
+        <Toggle
+          label="gravity"
+          value={kind.gravity}
+          onChange={(gravity) => applyPatch({ gravity })}
+        />
+      </Section>
+
+      <Section title="Optimization">
+        <SelectInput
+          label="mode"
+          value={kind.optimization}
+          options={['none', 'static-batch', 'frustum-cull'] as readonly OptimizationMode[]}
+          onChange={(optimization) => applyPatch({ optimization })}
+        />
+        <Readonly label="" value="scaffold — no runtime effect" />
       </Section>
     </Panel>
   );
