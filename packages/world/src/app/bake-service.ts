@@ -6,7 +6,16 @@
  * measurement implementation.
  */
 
-import * as THREE from 'three';
+// Type-only `THREE` import: the BakeService never instantiates THREE
+// objects itself; the injected `loadGltf` does. Keeps the Application
+// Layer free of runtime three.js dependencies per CLAUDE.md DIP.
+import type * as THREE from 'three';
+// DIP exception: the AABB measurement helper lives in the renderer
+// because it walks THREE.Object3D scene graphs — an inherently
+// THREE-coupled operation. The dependency direction is therefore
+// `app/` → `renderer/` for this one pure helper. Acceptable scope;
+// alternative was to inject `measureScene` as a fourth dependency
+// and add a renderer-side adapter, with no functional gain.
 import { getKindBoundingDimensions } from '../renderer/cube-material.ts';
 import type {
   BakeService,
