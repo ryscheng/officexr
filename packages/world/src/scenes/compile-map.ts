@@ -1,7 +1,7 @@
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { MapDocumentV1, RoomInstance } from './map-document.ts';
 import type { RoomDocument } from './commands.ts';
-import { compileScene } from './compile.ts';
+import { compileScene, type KindStrideLookup } from './compile.ts';
 
 /**
  * Pure replay of a `MapDocumentV1` against the rooms it references.
@@ -27,6 +27,7 @@ export function compileMap(
   map: MapDocumentV1,
   rooms: ReadonlyMap<string, RoomDocument>,
   voxelSize: number,
+  kindStride?: KindStrideLookup,
 ): WorldObjects {
   const instances: ObjectInstance[] = [];
 
@@ -38,7 +39,7 @@ export function compileMap(
       );
       continue;
     }
-    const compiled = compileScene(room, voxelSize);
+    const compiled = compileScene(room, voxelSize, kindStride);
     const rotated = applyRoomInstance(compiled.instances, ri);
     instances.push(...rotated);
   }

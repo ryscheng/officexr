@@ -7,6 +7,7 @@ import {
   LocalStorageMapStorage,
   LocalStorageRoomStorage,
   compileMap,
+  getKindStride,
   type MapDocumentV1,
   type RoomDocument,
   type SpawnPoint,
@@ -143,7 +144,11 @@ export function useMapPicker({
         }
         const a = actionsRef.current;
         if (a) {
-          a.setWorldObjects(compileMap(map, rooms, VOXEL_SIZE));
+          a.setWorldObjects(
+            compileMap(map, rooms, VOXEL_SIZE, (id) =>
+              getKindStride(id, VOXEL_SIZE),
+            ),
+          );
         }
         return { map, spawns: map.spawnPoints };
       } catch (err) {
