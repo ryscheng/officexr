@@ -308,6 +308,28 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [props]);
 
+  // X/Y/Z key handler: switches the next tiling axis during an active
+  // tile gesture. Uses a ref mirror to avoid re-binding the listener
+  // on every state change.
+  const tileStateRef = useRef(tileState);
+  useEffect(() => {
+    tileStateRef.current = tileState;
+  }, [tileState]);
+
+  useEffect(() => {
+    if (props.tool !== 'tile') return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'x' && key !== 'y' && key !== 'z') return;
+      const axis = key as TileAxis;
+      setTileState((prev) => switchNextAxis(prev, axis));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [props.tool]);
+
   // Esc while mid-drag cancels the move without committing.
   useEffect(() => {
     if (props.tool !== 'move') return;
@@ -669,71 +691,100 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     [props, tileState, voxelSize, yDelta],
   );
 
+  // Show the axis-switch hint when the tile gesture is active and the
+  // current kind has 2+ axes remaining (so switching is meaningful).
+  const showAxisHint =
+    props.tool === 'tile' &&
+    tileState.stage !== 'idle' &&
+    tileState.remainingAxes.length > 1;
+
   return (
-    <Canvas
-      camera={{
-        position: [0, 8, 14],
-        fov: 45,
-        near: 0.1,
-        far: 500,
-      }}
-      style={{ width: '100%', height: '100%', display: 'block' }}
-      shadows={false}
-    >
-      <LightingRig lighting={ROOM_EDITOR_LIGHTING} />
-      <color attach="background" args={['#0a0a0a']} />
-      <EndlessGrid />
-      <OrbitCamera compiled={props.compiled} />
-      <MoveController
-        tool={props.tool}
-        doc={props.doc}
-        compiled={props.compiled}
-        selection={props.selection}
-        moveState={moveState}
-        setMoveState={setMoveState}
-        setMoveGhosts={setMoveGhosts}
-        onMoveSelection={props.onMoveSelection}
-        onSelectInstance={props.onSelectInstance}
-      />
-      <CubesLayer
-        instances={props.compiled.instances}
-        voxelSize={props.compiled.cubeSize}
-        selection={props.selection}
-        tool={props.tool}
-        onSelectInstance={props.onSelectInstance}
-        onHoverCube={handleHoverChange}
-        onHoverCommand={handleHoverCommand}
-        onAddClick={handleAddClick}
-        onDeleteClick={handleDeleteClick}
-        onTileClick={handleTileClick}
-      />
-      <FloorPicker
-        voxelSize={props.compiled.cubeSize}
-        tool={props.tool}
-        stagedKindId={props.stagedKindId}
-        buildHeight={props.buildHeight}
-        onPlaceAt={props.onPlaceAt}
-        onClickEmpty={props.onClickEmpty}
-        onHoverFloor={handleHoverChange}
-        onTileClick={handleTileClick}
-      />
-      <GhostLayer ghosts={ghosts} voxelSize={voxelSize} />
-      <SelectionOutline
-        instances={props.compiled.instances}
-        voxelSize={props.compiled.cubeSize}
-        selection={props.selection}
-      />
-      <BuildHeightPlane
-        buildHeight={props.buildHeight}
-        voxelSize={props.compiled.cubeSize}
-        visible={props.tool === 'add' || props.tool === 'tile'}
-      />
-      <ContextMenuListener
-        instances={props.compiled.instances}
-        voxelSize={props.compiled.cubeSize}
-        onRequest={props.onContextMenuRequest}
-      />
-    </Canvas>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <Canvas
+        camera={{
+          position: [0, 8, 14],
+          fov: 45,
+          near: 0.1,
+          far: 500,
+        }}
+        style={{ width: '100%', height: '100%', display: 'block' }}
+        shadows={false}
+      >
+        <LightingRig lighting={ROOM_EDITOR_LIGHTING} />
+        <color attach="background" args={['#0a0a0a']} />
+        <EndlessGrid />
+        <OrbitCamera compiled={props.compiled} />
+        <MoveController
+          tool={props.tool}
+          doc={props.doc}
+          compiled={props.compiled}
+          selection={props.selection}
+          moveState={moveState}
+          setMoveState={setMoveState}
+          setMoveGhosts={setMoveGhosts}
+          onMoveSelection={props.onMoveSelection}
+          onSelectInstance={props.onSelectInstance}
+        />
+        <CubesLayer
+          instances={props.compiled.instances}
+          voxelSize={props.compiled.cubeSize}
+          selection={props.selection}
+          tool={props.tool}
+          onSelectInstance={props.onSelectInstance}
+          onHoverCube={handleHoverChange}
+          onHoverCommand={handleHoverCommand}
+          onAddClick={handleAddClick}
+          onDeleteClick={handleDeleteClick}
+          onTileClick={handleTileClick}
+        />
+        <FloorPicker
+          voxelSize={props.compiled.cubeSize}
+          tool={props.tool}
+          stagedKindId={props.stagedKindId}
+          buildHeight={props.buildHeight}
+          onPlaceAt={props.onPlaceAt}
+          onClickEmpty={props.onClickEmpty}
+          onHoverFloor={handleHoverChange}
+          onTileClick={handleTileClick}
+        />
+        <GhostLayer ghosts={ghosts} voxelSize={voxelSize} />
+        <SelectionOutline
+          instances={props.compiled.instances}
+          voxelSize={props.compiled.cubeSize}
+          selection={props.selection}
+        />
+        <BuildHeightPlane
+          buildHeight={props.buildHeight}
+          voxelSize={props.compiled.cubeSize}
+          visible={props.tool === 'add' || props.tool === 'tile'}
+        />
+        <ContextMenuListener
+          instances={props.compiled.instances}
+          voxelSize={props.compiled.cubeSize}
+          onRequest={props.onContextMenuRequest}
+        />
+      </Canvas>
+      {showAxisHint && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(0,0,0,0.55)',
+            color: '#e0e0e0',
+            fontSize: 12,
+            padding: '4px 10px',
+            borderRadius: 4,
+            pointerEvents: 'none',
+            userSelect: 'none',
+            fontFamily: 'monospace',
+          }}
+        >
+          X / Y / Z — switch axis
+        </div>
+      )}
+    </div>
   );
 }
 
