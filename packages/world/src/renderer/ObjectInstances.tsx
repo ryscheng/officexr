@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
-import { useObjectKindCatalog } from '../scenes/object-kind-catalog.ts';
+import { useApplication, useCatalog } from '../react/application-context.tsx';
 import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
 import { listKinds } from '../scenes/object-kind-catalog.ts';
 /** @deprecated Use getKind from object-kind-catalog. Re-exported for backward compat. */
@@ -160,7 +160,7 @@ function ObjectInstancesView({
   materialOverride,
   publishWindowMarker,
 }: ViewProps) {
-  const kinds = useObjectKindCatalog();
+  const kinds = useCatalog();
   const kindById = useMemo(() => {
     const m = new Map<string, WorldObjectKind>();
     for (const k of kinds) m.set(k.id, k);
@@ -278,6 +278,7 @@ function KindInstanceGroup({
   voxelSize,
   materialOverride,
 }: KindInstanceGroupProps) {
+  const { geometry } = useApplication();
   const gltf = useGLTF(kind.gltfPath);
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
   // Clone the GLTF material per kind so per-kind override edits are
@@ -312,23 +313,17 @@ function KindInstanceGroup({
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
     const quat = new THREE.Quaternion();
-    // Scale is exactly `kind.scale` — no seam-overlap fudge. The
-    // previous SEAM_OVERLAP=1.05 inflated each instance 5 % to hide
-    // groove lines between bevelled-edge KayKit blocks; but the
-    // visual top of a cube ended up 0.05 m higher than its physics
-    // collider (in <MapColliders>), so the character's feet rested
-    // on the collider top while visually appearing to sink slightly
-    // into the cube. Visual seams are an acceptable trade for a
-    // correctly aligned standing surface.
+    // Scale is exactly `kind.scale` — no seam-overlap fudge.
     const s = kind.scale;
     const scale = new THREE.Vector3(s, s, s);
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];
-      pos.set(
-        inst.position[0] * voxelSize,
-        inst.position[1] * voxelSize + voxelSize / 2,
-        inst.position[2] * voxelSize,
-      );
+      // Single source of truth for "where does this instance live?"
+      // The geometry service applies the canonical convention:
+      //   X/Z centered on position * voxelSize
+      //   Y bottom at position * voxelSize (no +vs/2 legacy offset)
+      const [ox, oy, oz] = geometry.meshOrigin(inst.position, inst.kindId);
+      pos.set(ox, oy, oz);
       m.compose(pos, quat, scale);
       mesh.setMatrixAt(i, m);
     }
@@ -341,7 +336,7 @@ function KindInstanceGroup({
     // uninitialized matrices. Re-running this effect refills them so a
     // live tint/opacity edit from the Object editor doesn't scramble
     // object positions.
-  }, [instances, voxelSize, kind.scale, mat]);
+  }, [instances, voxelSize, kind.scale, mat, geometry]);
 
   // userData lets the editor's R3F overlay raycast and identify which
   // kind / instance was hit. The caller can read `intersection.object.userData.kindId`
@@ -409,6 +404,12 @@ function PrimitiveInstanceGroup({
     const scale = new THREE.Vector3(1, 1, 1);
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];
+      // Center-origin BoxGeometry: shift up by vs/2 so the box's
+      // bottom sits at floor (vy*vs) — matching the GLTF path's
+      // bottom-at-floor convention. This is NOT the legacy +vs/2
+      // offset from the old object renderer; it's the conversion
+      // between BoxGeometry's center origin and the canonical
+      // floor-convention bottom.
       pos.set(
         inst.position[0] * voxelSize,
         inst.position[1] * voxelSize + voxelSize / 2,

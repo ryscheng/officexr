@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import type { Store, WorldObjects } from '@officexr/sdk';
+import { useApplication } from '../react/application-context.tsx';
 import { WALL_GROUPS } from '../physics/groups.ts';
 
 interface MapCollidersProps {
@@ -8,23 +9,23 @@ interface MapCollidersProps {
 }
 
 /**
- * One static cuboid collider per cube in `state.worldObjects`. Replaces
- * the old `FloorColliders` (which built four perimeter walls around a
- * fixed `gridSize × gridSize` area regardless of the map). The Map
- * Editor is now the source of truth: wherever an authored cube sits in
- * `worldObjects.instances`, the player physically bumps into it.
+ * One static cuboid collider per placed object in `state.worldObjects`.
  *
- * Subscribes via the same lazy-init + catch-up pattern as
- * `ObjectInstances`: read the store inside the useEffect before
- * installing the subscription so a `setWorldObjects` that lands
- * between render and effect-commit isn't missed.
+ * Position + half-extents are derived from the **canonical
+ * `InstanceGeometryService`** — same source of truth the renderer
+ * uses for the visible mesh placement. Before this refactor the
+ * colliders hardcoded `[half, half, half]` half-extents
+ * (one-voxel-size everywhere) and a `+vs/2` Y offset that worked only
+ * for objects exactly one voxel in size. After the per-kind dimensions
+ * rollout that became wrong for every kind larger than one voxel —
+ * players walked through 2 m blocks while the visible mesh appeared
+ * to block them.
  *
- * One `<RigidBody type="fixed">` holds every collider so Rapier
- * doesn't pay per-cube rigid-body bookkeeping; React reconciliation
- * keys each collider by `inst.id` so map switches only diff the
- * cubes that actually changed.
+ * Now: collider center = AABB center, collider half-extents = AABB
+ * half-extents. Player collision matches the visible mesh exactly.
  */
 export function MapColliders({ store }: MapCollidersProps) {
+  const { geometry } = useApplication();
   const [snapshot, setSnapshot] = useState<WorldObjects>(
     () => store.getState().worldObjects,
   );
@@ -36,24 +37,21 @@ export function MapColliders({ store }: MapCollidersProps) {
     );
   }, [store]);
 
-  // Read from SDK WorldObjects.cubeSize — kept as 'cubeSize' in SDK for back-compat.
-  const voxelSize = snapshot.cubeSize;
-  const half = voxelSize / 2;
-
   return (
     <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }}>
       {snapshot.instances.map((inst) => {
-        const wx = inst.position[0] * voxelSize;
-        // Match the visual cube placement in ObjectInstances:
-        // world y = voxel y * voxelSize + voxelSize/2 (the +voxelSize/2
-        // lifts the cube's centre up from its bottom face).
-        const wy = inst.position[1] * voxelSize + half;
-        const wz = inst.position[2] * voxelSize;
+        const aabb = geometry.worldAABB(inst.position, inst.kindId);
+        const cx = (aabb.min[0] + aabb.max[0]) / 2;
+        const cy = (aabb.min[1] + aabb.max[1]) / 2;
+        const cz = (aabb.min[2] + aabb.max[2]) / 2;
+        const hx = (aabb.max[0] - aabb.min[0]) / 2;
+        const hy = (aabb.max[1] - aabb.min[1]) / 2;
+        const hz = (aabb.max[2] - aabb.min[2]) / 2;
         return (
           <CuboidCollider
             key={inst.id}
-            position={[wx, wy, wz]}
-            args={[half, half, half]}
+            position={[cx, cy, cz]}
+            args={[hx, hy, hz]}
             collisionGroups={WALL_GROUPS}
           />
         );
