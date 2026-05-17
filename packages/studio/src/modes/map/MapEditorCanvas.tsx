@@ -5,6 +5,7 @@ import { Environment, Sky, Stars } from '@react-three/drei';
 import {
   compileScene,
   getKindStride,
+  useCatalogReady,
   type MapDocumentV1,
   type RoomDocument,
   type RoomInstance,
@@ -308,10 +309,15 @@ function RoomInstanceMesh({
   spawnToolActive,
   onPlaceSpawn,
 }: RoomInstanceMeshProps) {
+  // Wait for the catalog bootstrap before compiling. Without this gate,
+  // getKindStride falls back to [1,1,1] for every kind on the first
+  // paint — and any extrude or per-kind-stride placement compiles into
+  // overlapping cubes (most visibly on the platform / long_corridor).
+  const catalogReady = useCatalogReady();
   const compiled = useMemo(() => {
-    if (!room) return null;
+    if (!room || !catalogReady) return null;
     return compileScene(room, VOXEL_SIZE, (id) => getKindStride(id, VOXEL_SIZE));
-  }, [room]);
+  }, [room, catalogReady]);
 
   const worldObjects: WorldObjects | null = useMemo(() => {
     if (!compiled) return null;

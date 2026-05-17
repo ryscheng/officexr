@@ -6,6 +6,7 @@ import {
   FilesystemRoomStorage,
   LocalStorageMapStorage,
   LocalStorageRoomStorage,
+  bootstrapCatalog,
   compileMap,
   getKindStride,
   type MapDocumentV1,
@@ -123,6 +124,12 @@ export function useMapPicker({
       name: string,
     ): Promise<{ map: MapDocumentV1; spawns: SpawnPoint[] } | null> => {
       try {
+        // Ensure the catalog has loaded before compiling so that
+        // getKindStride returns per-kind stride (not the [1,1,1]
+        // fallback). Without this, deep-linking straight to #debug
+        // before #room mounts ObjectInstances would compile every
+        // map with overlapping cubes.
+        await bootstrapCatalog();
         const map = await storage.maps.load(name);
         if (!map) return null;
         const refSet = new Set<string>();

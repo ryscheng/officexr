@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 // Node's strict ESM loader requires the `with { type: 'json' }`
 // attribute for JSON modules. Vite, esbuild, and TypeScript 5.3+ all
 // pass it through unchanged for browser bundles.
@@ -158,6 +158,37 @@ export function useObjectKindCatalog(): readonly WorldObjectKind[] {
     }
   }, []);
   return current.kinds;
+}
+
+/**
+ * React hook: returns `true` once the catalog bootstrap has completed
+ * (successfully or fallen back to the bundled default). Triggers the
+ * bootstrap on first call so callers don't need to wire it from the
+ * app root.
+ *
+ * Use this to gate any code path that compiles a scene against the
+ * catalog — most notably the Map Editor, where `compileMap` /
+ * `compileScene` reads per-kind extrude stride. If the gate is
+ * skipped, `getKindStride` falls back to [1,1,1] for every kind on
+ * the first paint, producing visibly overlapping cubes for any
+ * placed object larger than 1 voxel.
+ */
+export function useCatalogReady(): boolean {
+  const [ready, setReady] = useState<boolean>(bootstrapped);
+  useEffect(() => {
+    if (bootstrapped) {
+      setReady(true);
+      return;
+    }
+    let cancelled = false;
+    void bootstrapCatalog().then(() => {
+      if (!cancelled) setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return ready;
 }
 
 // ---------------------------------------------------------------------------

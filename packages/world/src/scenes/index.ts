@@ -85,6 +85,7 @@ export {
   replaceCatalog,
   resetCatalogToDefault,
   subscribeCatalog,
+  useCatalogReady,
   useObjectKindCatalog,
   useCubeCatalog,
   __resetBootstrapForTests,
