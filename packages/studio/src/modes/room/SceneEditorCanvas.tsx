@@ -15,10 +15,16 @@ const ROOM_EDITOR_LIGHTING = {
   ambientFillIntensity: 0.6,
 };
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
+import { getKind } from '@officexr/world/scenes';
 import type { RoomDocument } from '@officexr/world/scenes';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
-import { snapToVoxel, type SnapHit } from './roomSnap.ts';
+import {
+  snapToNearestTileableFace,
+  snapToVoxel,
+  type SnapHit,
+  type TileableObjectInfo,
+} from './roomSnap.ts';
 import { outlineEdgePositions, type Vec3 as VoxelVec3 } from './selectionOutline.ts';
 import { computeMovedPositions } from './moveDelta.ts';
 import { checkMoveOccupancy } from './moveOccupancy.ts';
@@ -349,6 +355,52 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   // cubeSize there for SDK back-compat; we alias it locally).
   const voxelSize = props.compiled.cubeSize;
 
+  // Cache the list of tileable placed objects for snap-to-face.
+  // Recomputed only when compiled.instances changes.
+  // ISP note: We use a fixed 1-voxel (voxelSize) dims default because
+  // getKindBoundingDimensions requires a GLTF scene object from the drei
+  // cache, which is not available in this non-R3F hook scope. The pure
+  // snapToNearestTileableFace function is correct; the dims approximation
+  // is a wiring simplification — future work can pass real dims once GLTF
+  // caching is plumbed through to this level.
+  const tileableObjects = useMemo<TileableObjectInfo[]>(() => {
+    const defaultDims = { width: voxelSize, height: voxelSize, depth: voxelSize };
+    return props.compiled.instances
+      .filter((inst) => {
+        const kind = getKind(inst.kindId);
+        if (!kind) return false;
+        return kind.tilingAxes.x || kind.tilingAxes.y || kind.tilingAxes.z;
+      })
+      .map((inst) => ({
+        position: inst.position,
+        dims: defaultDims,
+      }));
+  }, [props.compiled.instances, voxelSize]);
+
+  // Snap a world-space hit to a voxel, routing to snapToNearestTileableFace
+  // when the staged kind is non-tileable (all tilingAxes false).
+  const snapForAdd = useCallback(
+    (hit: SnapHit): [number, number, number] => {
+      if (!props.stagedKindId) return snapToVoxel(hit, voxelSize);
+      const kind = getKind(props.stagedKindId);
+      if (kind && !kind.tilingAxes.x && !kind.tilingAxes.y && !kind.tilingAxes.z) {
+        // Non-tileable kind: snap to nearest tileable face
+        const hitPoint = hit.kind === 'floor'
+          ? { x: hit.point.x, y: hit.point.y, z: hit.point.z }
+          : {
+              // Use the face center as the hit point for cube hits
+              x: hit.cubePosition[0] * voxelSize,
+              y: hit.cubePosition[1] * voxelSize,
+              z: hit.cubePosition[2] * voxelSize,
+            };
+        const dims = { width: voxelSize, height: voxelSize, depth: voxelSize };
+        return snapToNearestTileableFace(hitPoint, dims, tileableObjects, voxelSize);
+      }
+      return snapToVoxel(hit, voxelSize);
+    },
+    [props.stagedKindId, voxelSize, tileableObjects],
+  );
+
   // Compute the ghost specs the GhostLayer should render this frame.
   // Selection no longer emits a ghost overlay — the per-cluster
   // wireframe in <SelectionOutline> is the sole selection indicator.
@@ -359,7 +411,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const ghosts = useMemo<GhostSpec[]>(() => {
     const out: GhostSpec[] = [];
     if (props.tool === 'add' && props.stagedKindId && hover) {
-      const voxel = snapToVoxel(hover, voxelSize);
+      const voxel = snapForAdd(hover);
       out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
     }
     if (props.tool === 'delete' && hoverCommandId) {
@@ -419,6 +471,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     tileState,
     yDelta,
     moveGhosts,
+    snapForAdd,
   ]);
 
   // Map an Add-tool click to a placement. Reads from the freshly-
@@ -427,10 +480,10 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const handleAddClick = useCallback(
     (hit: SnapHit) => {
       if (props.tool !== 'add' || !props.stagedKindId) return;
-      const voxel = snapToVoxel(hit, voxelSize);
+      const voxel = snapForAdd(hit);
       props.onPlaceAt(voxel);
     },
-    [props, voxelSize],
+    [props, snapForAdd],
   );
 
   // Delete-tool click on a cube routes to the parent's delete (which

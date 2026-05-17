@@ -92,6 +92,117 @@ export function snapToVoxel(
   ];
 }
 
+/** Info about a tileable object for snap face computation. */
+export interface TileableObjectInfo {
+  /** Voxel position of the placed object. */
+  position: readonly [number, number, number];
+  /** Bounding dimensions in metres (from getKindBoundingDimensions). */
+  dims: { width: number; height: number; depth: number };
+}
+
+/**
+ * Snaps a non-tileable object to the face of the nearest tileable placed
+ * object. Falls back to the 0.5 m world grid when no tileable object exists
+ * within `fallbackRadiusM` metres (default 5).
+ *
+ * Pure function — no React, no THREE, no side effects.
+ *
+ * Algorithm:
+ *  1. Find the nearest tileable object by Euclidean distance from
+ *     `hitWorldPoint` to each tileable object's world-space centre
+ *     (`pos[i] * voxelSize`).
+ *  2. If the nearest is farther than `fallbackRadiusM`, return the
+ *     world-grid snap: `[round(x/vs), round(y/vs), round(z/vs)]`.
+ *  3. Otherwise find which of the tileable object's 6 AABB faces is
+ *     closest to `hitWorldPoint`, then position the non-tileable
+ *     object so its nearest face is flush with that face.
+ *
+ * AABB conventions (object at voxel [vx, vy, vz] with dims {w, h, d}):
+ *   +X face: vx*vs + w/2   -X face: vx*vs - w/2
+ *   +Y face: vy*vs + h      -Y face: vy*vs
+ *   +Z face: vz*vs + d/2   -Z face: vz*vs - d/2
+ * (The Y axis is bottom-anchored — voxel y is the bottom of the object.)
+ */
+export function snapToNearestTileableFace(
+  hitWorldPoint: { x: number; y: number; z: number },
+  nonTileableDims: { width: number; height: number; depth: number },
+  tileableObjects: readonly TileableObjectInfo[],
+  voxelSize: number,
+  fallbackRadiusM = 5,
+): [number, number, number] {
+  // World-grid fallback
+  const fallback: [number, number, number] = [
+    Math.round(hitWorldPoint.x / voxelSize),
+    Math.round(hitWorldPoint.y / voxelSize),
+    Math.round(hitWorldPoint.z / voxelSize),
+  ];
+
+  if (tileableObjects.length === 0) return fallback;
+
+  // Find nearest tileable object by distance from hit point to object centre
+  let nearestObj: TileableObjectInfo | null = null;
+  let nearestDist = Infinity;
+  for (const obj of tileableObjects) {
+    const cx = obj.position[0] * voxelSize;
+    const cy = obj.position[1] * voxelSize + obj.dims.height / 2;
+    const cz = obj.position[2] * voxelSize;
+    const dx = hitWorldPoint.x - cx;
+    const dy = hitWorldPoint.y - cy;
+    const dz = hitWorldPoint.z - cz;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearestObj = obj;
+    }
+  }
+
+  if (!nearestObj || nearestDist > fallbackRadiusM) return fallback;
+
+  const obj = nearestObj;
+  const vx = obj.position[0] * voxelSize;
+  const vy = obj.position[1] * voxelSize;
+  const vz = obj.position[2] * voxelSize;
+  const { width: ow, height: oh, depth: od } = obj.dims;
+  const { width: nw, height: nh, depth: nd } = nonTileableDims;
+
+  // Six faces of the tileable object's AABB and corresponding flush placement
+  // for the non-tileable object. For each face, we compute the distance from
+  // hitWorldPoint to the face plane, then choose the closest.
+  const faces: Array<{
+    dist: number;
+    // world-space centre of the non-tileable object when flush with this face
+    cx: number;
+    cy: number;
+    cz: number;
+  }> = [
+    // +X face: faceX = vx + ow/2; non-tileable -X face at faceX → centre at faceX + nw/2
+    { dist: Math.abs(hitWorldPoint.x - (vx + ow / 2)), cx: vx + ow / 2 + nw / 2, cy: hitWorldPoint.y, cz: hitWorldPoint.z },
+    // -X face: faceX = vx - ow/2; non-tileable +X face at faceX → centre at faceX - nw/2
+    { dist: Math.abs(hitWorldPoint.x - (vx - ow / 2)), cx: vx - ow / 2 - nw / 2, cy: hitWorldPoint.y, cz: hitWorldPoint.z },
+    // +Y face: faceY = vy + oh; non-tileable -Y face at faceY → centre at faceY + nh/2
+    { dist: Math.abs(hitWorldPoint.y - (vy + oh)), cx: hitWorldPoint.x, cy: vy + oh + nh / 2, cz: hitWorldPoint.z },
+    // -Y face: faceY = vy; non-tileable +Y face at faceY → centre at faceY - nh/2
+    { dist: Math.abs(hitWorldPoint.y - vy), cx: hitWorldPoint.x, cy: vy - nh / 2, cz: hitWorldPoint.z },
+    // +Z face: faceZ = vz + od/2; non-tileable -Z face at faceZ → centre at faceZ + nd/2
+    { dist: Math.abs(hitWorldPoint.z - (vz + od / 2)), cx: hitWorldPoint.x, cy: hitWorldPoint.y, cz: vz + od / 2 + nd / 2 },
+    // -Z face: faceZ = vz - od/2; non-tileable +Z face at faceZ → centre at faceZ - nd/2
+    { dist: Math.abs(hitWorldPoint.z - (vz - od / 2)), cx: hitWorldPoint.x, cy: hitWorldPoint.y, cz: vz - od / 2 - nd / 2 },
+  ];
+
+  // Find the closest face
+  let bestFace = faces[0];
+  for (const face of faces) {
+    if (face.dist < bestFace.dist) bestFace = face;
+  }
+
+  // Convert world-space centre to voxel coords
+  return [
+    Math.round(bestFace.cx / voxelSize),
+    Math.round(bestFace.cy / voxelSize),
+    Math.round(bestFace.cz / voxelSize),
+  ];
+}
+
 /**
  * Quantize a 3D vector to its dominant axis as a `±1` along one axis,
  * `0` on the others. KayKit blocks are axis-aligned, so a clean hit
