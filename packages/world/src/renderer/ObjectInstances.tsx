@@ -267,6 +267,11 @@ interface KindInstanceGroupProps {
   materialOverride?: MaterialOverride;
 }
 
+// TODO(task-01): kind.optimization is read but not yet acted on.
+// A future PR should implement 'static-batch' (merge geometry) and
+// 'frustum-cull' (set mesh.frustumCulled = true) paths here.
+// Scaffolding per updated-prd.md "Out of Scope".
+
 function KindInstanceGroup({
   kind,
   instances,

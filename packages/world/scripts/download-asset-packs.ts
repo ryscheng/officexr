@@ -151,6 +151,9 @@ function entryForGltf(
     emissive: null,
     emissiveIntensity: 0,
     category: packId,
+    tilingAxes: { x: packId === 'block', y: packId === 'block', z: packId === 'block' },
+    gravity: false,
+    optimization: 'none' as const,
   };
 }
 

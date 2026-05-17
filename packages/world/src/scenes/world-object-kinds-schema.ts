@@ -34,6 +34,12 @@ export const CUBE_KIND_CATEGORIES: readonly CubeKindCategory[] = [
   'character',
 ];
 
+// OCP: optimization enum — any new variant added here will produce a compile
+// error in the renderer switch (if one is added) because the exhaustive type
+// check will fail at compile time. New variants must be handled before they
+// can be merged.
+export type OptimizationMode = 'none' | 'static-batch' | 'frustum-cull';
+
 export interface WorldObjectKind {
   /** Stable id; do NOT rename — every room doc references kinds by id. */
   id: string;
@@ -62,6 +68,16 @@ export interface WorldObjectKind {
   emissiveIntensity: number;
   /** Object-editor grouping label. Does not affect the renderer. */
   category: CubeKindCategory;
+  /** Whether this kind tiles along each axis. Block-category kinds
+   * default to all-axes tileable; all other categories default to
+   * non-tileable. Can be overridden per-kind in the catalog JSON. */
+  tilingAxes: { x: boolean; y: boolean; z: boolean };
+  /** Whether this kind is affected by gravity placement (drop-to-surface).
+   * Default false for all categories. */
+  gravity: boolean;
+  /** Renderer optimization hint. 'none' = no special handling.
+   * 'static-batch' and 'frustum-cull' are scaffolded for future use. */
+  optimization: OptimizationMode;
 }
 
 export interface WorldObjectKindCatalogV1 {
@@ -72,7 +88,11 @@ export interface WorldObjectKindCatalogV1 {
 
 /** Defaults applied to entries whose override fields are missing
  * (e.g. a legacy `CubeKindDef` widened into the new shape). Mirrors
- * the "no behavior change" baseline. */
+ * the "no behavior change" baseline.
+ *
+ * Note: `tilingAxes` is NOT in this constant because the default depends on
+ * the entry's `category` field (blocks = all-axes tileable, others = non-tileable).
+ * The category-conditional default is applied in `normalizeKind`. */
 export const WORLD_OBJECT_KIND_DEFAULTS = {
   scale: 1,
   tint: null as string | null,
@@ -82,6 +102,9 @@ export const WORLD_OBJECT_KIND_DEFAULTS = {
   emissive: null as string | null,
   emissiveIntensity: 0,
   category: 'block' as CubeKindCategory,
+  tilingAxes: { x: false, y: false, z: false },
+  gravity: false,
+  optimization: 'none' as OptimizationMode,
 } as const;
 
 /** Validate + normalize a parsed JSON object into a WorldObjectKindCatalogV1.
@@ -106,6 +129,30 @@ export function validateWorldObjectKindCatalog(raw: unknown): WorldObjectKindCat
   return { schemaVersion: 1, updatedAt, kinds };
 }
 
+const OPTIMIZATION_VALUES: readonly OptimizationMode[] = ['none', 'static-batch', 'frustum-cull'];
+
+function isOptimizationMode(v: unknown): v is OptimizationMode {
+  return typeof v === 'string' && (OPTIMIZATION_VALUES as readonly string[]).includes(v);
+}
+
+function normalizeTilingAxes(
+  raw: unknown,
+  category: CubeKindCategory,
+): { x: boolean; y: boolean; z: boolean } {
+  const blockDefault = category === 'block';
+  if (raw && typeof raw === 'object') {
+    const t = raw as Record<string, unknown>;
+    if (
+      typeof t.x === 'boolean' &&
+      typeof t.y === 'boolean' &&
+      typeof t.z === 'boolean'
+    ) {
+      return { x: t.x, y: t.y, z: t.z };
+    }
+  }
+  return { x: blockDefault, y: blockDefault, z: blockDefault };
+}
+
 export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
   if (!raw || typeof raw !== 'object') {
     throw new Error(`world-object-kind-catalog: kinds[${idx}] is not an object`);
@@ -118,6 +165,9 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     }
     return v;
   };
+  const category: CubeKindCategory = isCategory(k.category)
+    ? (k.category as CubeKindCategory)
+    : WORLD_OBJECT_KIND_DEFAULTS.category;
   return {
     id: requireString('id'),
     label: requireString('label'),
@@ -137,9 +187,12 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
       typeof k.emissiveIntensity === 'number'
         ? k.emissiveIntensity
         : WORLD_OBJECT_KIND_DEFAULTS.emissiveIntensity,
-    category: isCategory(k.category)
-      ? (k.category as CubeKindCategory)
-      : WORLD_OBJECT_KIND_DEFAULTS.category,
+    category,
+    tilingAxes: normalizeTilingAxes(k.tilingAxes, category),
+    gravity: typeof k.gravity === 'boolean' ? k.gravity : WORLD_OBJECT_KIND_DEFAULTS.gravity,
+    optimization: isOptimizationMode(k.optimization)
+      ? k.optimization
+      : WORLD_OBJECT_KIND_DEFAULTS.optimization,
   };
 }
 
