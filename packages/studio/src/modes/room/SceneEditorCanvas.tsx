@@ -1025,12 +1025,17 @@ interface SelectionOutlineProps {
 function SelectionOutline({ instances, voxelSize, selection }: SelectionOutlineProps) {
   const geometry = useMemo(() => {
     if (selection.size === 0) return null;
-    const voxels: VoxelVec3[] = [];
+    const boxes: { position: VoxelVec3; dims: { width: number; height: number; depth: number } }[] = [];
+    const fallback = { width: voxelSize, height: voxelSize, depth: voxelSize };
     for (const inst of instances) {
       if (!selection.has(inst.sourceCommandId)) continue;
-      voxels.push([inst.position[0], inst.position[1], inst.position[2]]);
+      const kind = getKind(inst.kindId);
+      boxes.push({
+        position: [inst.position[0], inst.position[1], inst.position[2]],
+        dims: kind?.dimensions ?? fallback,
+      });
     }
-    const positions = outlineEdgePositions(voxels, voxelSize);
+    const positions = outlineEdgePositions(boxes, voxelSize);
     if (positions.length === 0) return null;
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));

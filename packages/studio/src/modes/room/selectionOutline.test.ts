@@ -5,119 +5,111 @@ function edgeCount(positions: Float32Array): number {
   return positions.length / 6;
 }
 
+const UNIT = { width: 1, height: 1, depth: 1 };
+
+/** Helper: wrap a voxel position into the new OutlineBox shape with
+ * 1×1×1 dims so these tests can mirror the legacy assertions on
+ * adjacency / dedup counts. */
+function box(position: Vec3, dims = UNIT) {
+  return { position, dims };
+}
+
 describe('outlineEdgePositions', () => {
   it('returns no edges for an empty selection', () => {
     expect(edgeCount(outlineEdgePositions([], 1))).toBe(0);
   });
 
   it('outlines a single isolated cube with exactly 12 edges', () => {
-    // Every face of an isolated cube is exterior; the dedupe step
-    // collapses the 6 faces × 4 edges = 24 emissions into the 12
-    // unique edges of the cube.
-    expect(edgeCount(outlineEdgePositions([[0, 0, 0]], 1))).toBe(12);
+    expect(edgeCount(outlineEdgePositions([box([0, 0, 0])], 1))).toBe(12);
   });
 
   it('outlines two stacked cubes with 20 unique edges', () => {
-    // Two cubes sharing one face. Each cube's exterior contributes
-    // its 5 exterior face perimeters. The 4 SHARED edges around the
-    // boundary of the interior face dedupe. The 4 corner verticals
-    // are split at the seam (A: y=0→1, B: y=1→2) and stay separate.
-    //
-    // Expected:
-    //   4 bottom-rect edges of A (at y=0)
-    // + 4 top-rect edges of B (at y=2)
-    // + 4 seam-rect edges (at y=1, shared between A's tops and B's
-    //   bottoms — deduped)
-    // + 4 verticals on A (y=0→1)
-    // + 4 verticals on B (y=1→2)
-    // = 20.
+    // Two cubes sharing one horizontal face. The 4 edges around the
+    // shared face's perimeter dedupe to 1 emission per edge; the rest
+    // of each cube's 12 edges stay. 12 + 12 - 4 = 20.
     const out = outlineEdgePositions(
-      [
-        [0, 0, 0],
-        [0, 1, 0],
-      ],
+      [box([0, 0, 0]), box([0, 1, 0])],
       1,
     );
     expect(edgeCount(out)).toBe(20);
   });
 
-  it('outlines a 1×1×1 single voxel and a disjoint voxel as two clusters of 12 each', () => {
+  it('outlines two disjoint cubes as two separate 12-edge boxes', () => {
     const out = outlineEdgePositions(
-      [
-        [0, 0, 0],
-        [10, 0, 0],
-      ],
+      [box([0, 0, 0]), box([10, 0, 0])],
       1,
     );
-    // Two isolated cubes → 12 + 12 = 24.
     expect(edgeCount(out)).toBe(24);
   });
 
-  it('L-shape has MORE edges than its AABB would', () => {
-    // L = (0,0,0), (1,0,0), (0,0,1). AABB would be a 2×1×2 box → 12
-    // edges. The L's actual outline includes the inner corner so
-    // it must have noticeably more than 12. The exact count includes
-    // the seam edges between adjacent cubes too — what matters here
-    // is that the outline is RICHER than a flat AABB.
-    const lShape: Vec3[] = [
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 0, 1],
-    ];
-    const aabbEdges = edgeCount(outlineEdgePositions([[0, 0, 0]], 1));
-    const lEdges = edgeCount(outlineEdgePositions(lShape, 1));
-    expect(lEdges).toBeGreaterThan(aabbEdges); // more than a single cube
-    // Three isolated cubes would be 36 edges; sharing a face reduces
-    // by 8 per shared face. L has 2 shared faces (A-B and A-C)
-    // — so 36 - 16 = 20 expected. But edges around the shared faces'
-    // perimeters still draw; this test pins the structure rather
-    // than the exact count to stay robust to seam-edge counting.
-    expect(lEdges).toBeGreaterThan(20);
+  it('L-shape: 3 cubes with 2 shared faces → 28 edges', () => {
+    const lShape = [box([0, 0, 0]), box([1, 0, 0]), box([0, 0, 1])];
+    const count = edgeCount(outlineEdgePositions(lShape, 1));
+    expect(count).toBe(28);
   });
 
-  it('a 2×2×1 slab has 24 edges (12 + 4 seams around the shared faces)', () => {
-    // 2×2 voxels in a plane: 4 cubes, 4 shared faces. The outline
-    // is the perimeter of the 2×2 square plus the cube top/bottom
-    // perimeters plus the seam crosses where cubes meet on top/
-    // bottom. Pinning the count here makes regressions visible.
-    const slab: Vec3[] = [
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 0, 1],
-      [1, 0, 1],
+  it('2×2×1 slab: 4 cubes form a 3×3 grid silhouette → 33 edges', () => {
+    // The dedup output for a 2×2 plane of 1m cubes:
+    //   - 9 vertical edges (one per grid intersection in xz)
+    //   - 12 bottom edges (3 horizontal × 2 segments + 3 vertical × 2)
+    //   - 12 top edges (same as bottom)
+    //   = 33.
+    const slab = [
+      box([0, 0, 0]),
+      box([1, 0, 0]),
+      box([0, 0, 1]),
+      box([1, 0, 1]),
     ];
     const count = edgeCount(outlineEdgePositions(slab, 1));
-    // 4 cubes × 6 exterior-face checks: each shares 2 of 6 faces
-    // with neighbours, leaving 4 exterior faces per cube = 16
-    // exterior faces total. Each face has 4 edges = 64 emissions.
-    // After dedupe, the count is meaningfully smaller; the exact
-    // figure depends on how many of those 64 edges are shared.
-    // We just assert it's much less than the un-deduped 64.
-    expect(count).toBeLessThan(64);
-    expect(count).toBeGreaterThan(16);
+    expect(count).toBe(33);
   });
 
-  it('coords are scaled by cubeSize', () => {
-    const a = outlineEdgePositions([[0, 0, 0]], 1);
-    const b = outlineEdgePositions([[0, 0, 0]], 2);
-    // The world extent of cube at voxel (0,0,0) doubles when
-    // cubeSize doubles. Sanity-check by comparing max abs coord.
+  it('a 2 m cube on the 0.5 m grid outlines as a 2 m AABB', () => {
+    // The whole motivation for the refactor: a 2 m cube at voxel
+    // (0,0,0) on a 0.5 m grid should produce a 2 m wireframe (max
+    // coord = 2 m), not a 0.5 m sub-cell.
+    const out = outlineEdgePositions(
+      [box([0, 0, 0], { width: 2, height: 2, depth: 2 })],
+      0.5,
+    );
+    const maxCoord = Math.max(...Array.from(out));
+    expect(maxCoord).toBe(2);
+    expect(edgeCount(out)).toBe(12);
+  });
+
+  it('two adjacent 2 m cubes (on 0.5 m grid) outline as a single combined silhouette', () => {
+    // Cube A at voxel 0 → world AABB [0, 2]. Cube B at voxel 4 →
+    // world AABB [2, 4]. They share the face at x=2. The 4 edges
+    // of that shared face dedupe. Combined: 12 + 12 - 4 = 20.
+    const out = outlineEdgePositions(
+      [
+        box([0, 0, 0], { width: 2, height: 2, depth: 2 }),
+        box([4, 0, 0], { width: 2, height: 2, depth: 2 }),
+      ],
+      0.5,
+    );
+    expect(edgeCount(out)).toBe(20);
+    const maxX = Math.max(...Array.from(out).filter((_, i) => i % 3 === 0));
+    expect(maxX).toBe(4);
+  });
+
+  it('coords scale by voxelSize when the position is non-zero', () => {
+    // Same dims, different voxelSize. Cube at voxel (1,0,0) → world
+    // anchor x = voxelSize. Bigger voxelSize → bigger max coord.
+    const a = outlineEdgePositions([box([1, 0, 0])], 1);
+    const b = outlineEdgePositions([box([1, 0, 0])], 2);
     const maxA = Math.max(...Array.from(a).map(Math.abs));
     const maxB = Math.max(...Array.from(b).map(Math.abs));
     expect(maxB).toBeGreaterThan(maxA);
   });
 
-  it('outlines a ring (square with hole) — the hole gets its own loop', () => {
-    // 8 cubes in a 3×3 square with the centre missing.
-    const ring: Vec3[] = [
-      [0, 0, 0], [1, 0, 0], [2, 0, 0],
-      [0, 0, 1], /* hole */  [2, 0, 1],
-      [0, 0, 2], [1, 0, 2], [2, 0, 2],
+  it('ring (3×3 with hole) outlines with more edges than the AABB would suggest', () => {
+    const ring = [
+      box([0, 0, 0]), box([1, 0, 0]), box([2, 0, 0]),
+      box([0, 0, 1]),                  box([2, 0, 1]),
+      box([0, 0, 2]), box([1, 0, 2]), box([2, 0, 2]),
     ];
     const count = edgeCount(outlineEdgePositions(ring, 1));
-    // Includes the OUTSIDE perimeter + INSIDE hole perimeter + the
-    // tops/bottoms of each cube. We just check the count is
-    // notably bigger than a flat AABB would produce (12 edges).
     expect(count).toBeGreaterThan(20);
   });
 });

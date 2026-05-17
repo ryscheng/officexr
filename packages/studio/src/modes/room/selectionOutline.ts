@@ -1,147 +1,49 @@
 /**
- * Pure helper: turn a set of selected voxel positions into the edge
- * list of their outline. The outline is the boundary between
- * "selected" and "not selected" — for an L-shape the outline traces
- * the L silhouette rather than collapsing to the L's AABB.
+ * Pure helper: turn a set of selected objects (each with a voxel
+ * position + its kind's world-space dimensions) into the flat edge
+ * list of their outline.
  *
  * Algorithm:
- *   - Bucket the selection into a voxel set keyed by "x|y|z".
- *   - For each selected voxel, walk its 6 face directions. If the
- *     neighbour in that direction is NOT in the set, that face is
- *     EXTERIOR — emit its 4 edges.
- *   - Dedupe edges by canonical endpoint pair so adjacent exterior
- *     faces don't double-draw their shared rim (12 edges of an
- *     isolated cube vs. 24 if we didn't dedupe).
+ *   - Each object contributes its 12 axis-aligned bounding-box edges
+ *     in world space (`pos * voxelSize` → `pos * voxelSize + dims`).
+ *   - Coincident edges between two adjacent objects collapse via
+ *     symbolic endpoint dedup, so two flush 2 m cubes outline as the
+ *     combined silhouette (the shared 4-edge rim of the touching face
+ *     becomes a single rim, not two).
+ *
+ * Replaces the prior voxel-grid silhouette algorithm, which assumed
+ * "1 voxel = 1 object." After the per-kind dimensions refactor each
+ * placeObject is a single instance at one voxel position with its own
+ * world-space size, so the outline must size each box from the kind's
+ * `dimensions` field.
  *
  * Output is a flat number[] of (x, y, z) coords arranged in pairs:
  * `[ax, ay, az, bx, by, bz, ...]` — exactly what
  * `BufferAttribute(positions, 3)` + `<lineSegments>` consumes.
  *
- * Coords are in WORLD space, scaled by `voxelSize`. Edges sit on the
- * exact voxel boundary — adjacent cubes' shared edges land on
- * identical world coordinates and dedupe symbolically.
+ * Coords are in WORLD space, scaled by `voxelSize`.
  */
 
 export type Vec3 = readonly [number, number, number];
 
-function vKey(x: number, y: number, z: number): string {
-  return `${x}|${y}|${z}`;
+export interface OutlineBox {
+  /** Anchor voxel position (lower corner). */
+  position: Vec3;
+  /** Bounding-box extents in metres. */
+  dims: { width: number; height: number; depth: number };
 }
 
-// Six axis-aligned face directions. Each entry: the neighbour offset
-// + the 4 face corners as half-extent multipliers (±1, ±1, ±1) in
-// (x, y, z) where the y coordinate is RELATIVE to the cube's y-min
-// (since cube y=0 sits at world y=0, not centred).
-//
-// For a cube at voxel (vx, vy, vz):
-//   centre.x = vx * cubeSize
-//   centre.z = vz * cubeSize
-//   y-min   = vy * cubeSize       (the cube extends from y to y+cubeSize)
-// Half extent for x/z is `cubeSize / 2`; y extent spans
-// `[yMin, yMax] = [vy * cubeSize, (vy + 1) * cubeSize]` — exact
-// voxel boundary, no inflation.
-interface FaceDef {
-  /** Neighbour voxel offset. */
-  n: Vec3;
-  /** 4 corners of the face. Each is (xSign, ySign, zSign) where:
-   *   - xSign ∈ {-1, +1}: maps to centre.x ± halfX
-   *   - ySign ∈ {0, 1}: maps to yMin or yMax
-   *   - zSign ∈ {-1, +1}: maps to centre.z ± halfZ
-   * Ordered so consecutive corners share an edge.
-   */
-  corners: [
-    [number, number, number],
-    [number, number, number],
-    [number, number, number],
-    [number, number, number],
-  ];
-}
-
-const FACES: ReadonlyArray<FaceDef> = [
-  // +x face (right): the 4 corners share x = +halfX.
-  {
-    n: [1, 0, 0],
-    corners: [
-      [1, 0, -1],
-      [1, 1, -1],
-      [1, 1, 1],
-      [1, 0, 1],
-    ],
-  },
-  // -x face (left)
-  {
-    n: [-1, 0, 0],
-    corners: [
-      [-1, 0, -1],
-      [-1, 1, -1],
-      [-1, 1, 1],
-      [-1, 0, 1],
-    ],
-  },
-  // +y face (top): y = yMax
-  {
-    n: [0, 1, 0],
-    corners: [
-      [-1, 1, -1],
-      [1, 1, -1],
-      [1, 1, 1],
-      [-1, 1, 1],
-    ],
-  },
-  // -y face (bottom): y = yMin
-  {
-    n: [0, -1, 0],
-    corners: [
-      [-1, 0, -1],
-      [1, 0, -1],
-      [1, 0, 1],
-      [-1, 0, 1],
-    ],
-  },
-  // +z face (front)
-  {
-    n: [0, 0, 1],
-    corners: [
-      [-1, 0, 1],
-      [1, 0, 1],
-      [1, 1, 1],
-      [-1, 1, 1],
-    ],
-  },
-  // -z face (back)
-  {
-    n: [0, 0, -1],
-    corners: [
-      [-1, 0, -1],
-      [1, 0, -1],
-      [1, 1, -1],
-      [-1, 1, -1],
-    ],
-  },
-];
-
-/** Compute the flat `positions` array for `<lineSegments>` that
- * outlines the union of `voxels`. Each pair of consecutive
- * (x, y, z) triples forms one line segment. Deduplicates edges
- * shared by two adjacent exterior faces.
- *
- * Edges sit on the exact voxel boundary so that adjacent cubes'
- * face-perimeter edges land on identical world coordinates and
- * dedupe symbolically. The rendering side uses `depthTest: false`
- * so the lines stay visible even coplanar with the visible cube
- * surface.
+/**
+ * Compute the flat `positions` array for `<lineSegments>` that
+ * outlines the union of `boxes`. Each pair of consecutive (x, y, z)
+ * triples forms one line segment. Deduplicates edges shared by two
+ * adjacent boxes that have an axis-aligned coincident face rim.
  */
 export function outlineEdgePositions(
-  voxels: ReadonlyArray<Vec3>,
+  boxes: ReadonlyArray<OutlineBox>,
   voxelSize: number,
 ): Float32Array {
-  if (voxels.length === 0) return new Float32Array(0);
-
-  // Build set of selected voxel keys for O(1) neighbour lookups.
-  const sel = new Set<string>();
-  for (const v of voxels) sel.add(vKey(v[0], v[1], v[2]));
-
-  const halfXZ = voxelSize / 2;
+  if (boxes.length === 0) return new Float32Array(0);
 
   const edges = new Set<string>();
   const positions: number[] = [];
@@ -166,28 +68,35 @@ export function outlineEdgePositions(
     positions.push(ax, ay, az, bx, by, bz);
   };
 
-  for (const v of voxels) {
-    const [vx, vy, vz] = v;
-    const cx = vx * voxelSize;
-    const cz = vz * voxelSize;
-    const yMin = vy * voxelSize;
-    const yMax = (vy + 1) * voxelSize;
-    for (const f of FACES) {
-      if (sel.has(vKey(vx + f.n[0], vy + f.n[1], vz + f.n[2]))) {
-        // Shared with another selected voxel — not on the outline.
-        continue;
-      }
-      const corners: Vec3[] = f.corners.map(([sx, sy, sz]) => [
-        cx + sx * halfXZ,
-        sy === 0 ? yMin : yMax,
-        cz + sz * halfXZ,
-      ]);
-      for (let i = 0; i < 4; i++) {
-        const a = corners[i];
-        const b = corners[(i + 1) % 4];
-        pushEdge(a[0], a[1], a[2], b[0], b[1], b[2]);
-      }
-    }
+  for (const box of boxes) {
+    const [vx, vy, vz] = box.position;
+    const x0 = vx * voxelSize;
+    const y0 = vy * voxelSize;
+    const z0 = vz * voxelSize;
+    const x1 = x0 + box.dims.width;
+    const y1 = y0 + box.dims.height;
+    const z1 = z0 + box.dims.depth;
+
+    // 12 edges of an axis-aligned box. Numbered as the 8 corners:
+    //   0: (x0, y0, z0)   1: (x1, y0, z0)
+    //   2: (x1, y0, z1)   3: (x0, y0, z1)
+    //   4: (x0, y1, z0)   5: (x1, y1, z0)
+    //   6: (x1, y1, z1)   7: (x0, y1, z1)
+    // Bottom rim:    0-1, 1-2, 2-3, 3-0
+    // Top rim:       4-5, 5-6, 6-7, 7-4
+    // Vertical sides:0-4, 1-5, 2-6, 3-7
+    pushEdge(x0, y0, z0, x1, y0, z0);
+    pushEdge(x1, y0, z0, x1, y0, z1);
+    pushEdge(x1, y0, z1, x0, y0, z1);
+    pushEdge(x0, y0, z1, x0, y0, z0);
+    pushEdge(x0, y1, z0, x1, y1, z0);
+    pushEdge(x1, y1, z0, x1, y1, z1);
+    pushEdge(x1, y1, z1, x0, y1, z1);
+    pushEdge(x0, y1, z1, x0, y1, z0);
+    pushEdge(x0, y0, z0, x0, y1, z0);
+    pushEdge(x1, y0, z0, x1, y1, z0);
+    pushEdge(x1, y0, z1, x1, y1, z1);
+    pushEdge(x0, y0, z1, x0, y1, z1);
   }
 
   return new Float32Array(positions);
