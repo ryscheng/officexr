@@ -22,7 +22,8 @@
     "asset-packs:install": "tsx scripts/download-asset-packs.ts",
     "state:backup": "tsx scripts/state-backup.ts",
     "state:reset": "tsx scripts/state-reset.ts",
-    "gen:thumbnails": "tsx scripts/gen-thumbnails.ts"
+    "gen:thumbnails": "tsx scripts/gen-thumbnails.ts",
+    "bake:dimensions": "tsx scripts/bake-kind-dimensions.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.2",

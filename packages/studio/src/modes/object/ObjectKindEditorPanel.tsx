@@ -258,8 +258,13 @@ function KindDimensionsEditor({
     applyPatch({ dimensions: { ...effective, [axis]: value } });
   };
 
+  // The bake script reads `data-measured-dims` to harvest the GLTF
+  // AABB for every kind in a single Playwright pass without scraping
+  // individual input values.
+  const measuredAttr = `${measuredDims.width},${measuredDims.height},${measuredDims.depth}`;
+
   return (
-    <>
+    <div data-measured-dims={measuredAttr}>
       <NumberInput
         label="width"
         value={effective.width}
@@ -297,7 +302,7 @@ function KindDimensionsEditor({
           Recompute from GLTF
         </Button>
       </div>
-    </>
+    </div>
   );
 }
 
