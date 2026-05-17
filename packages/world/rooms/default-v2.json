@@ -2,7 +2,7 @@
   "schemaVersion": 4,
   "name": "default-v2",
   "title": "default-v2",
-  "updatedAt": 1779039208381,
+  "updatedAt": 1779044011212,
   "commands": [
     {
       "id": "place-1-1i1f",
@@ -103,35 +103,7 @@
         0,
         16
       ]
-    },
-    {
-      "id": "place-1-0dlg",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -8,
-        1,
-        12
-      ]
-    },
-    {
-      "id": "place-2-0e4x",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -4,
-        1,
-        12
-      ]
     }
   ],
-  "groups": {
-    "g-1-0e4x": {
-      "id": "g-1-0e4x",
-      "commandIds": [
-        "place-1-0dlg",
-        "place-2-0e4x"
-      ]
-    }
-  }
+  "groups": {}
 }
