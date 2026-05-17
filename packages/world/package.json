@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./app": "./src/app/index.ts",
+    "./react": "./src/react/index.ts",
     "./renderer": "./src/renderer/index.ts",
     "./physics": "./src/physics/index.ts",
     "./bot": "./src/bot/index.ts",
