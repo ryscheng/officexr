@@ -370,4 +370,73 @@ describe('snapToNearestFace — anchor-convention face snap', () => {
     // Large A's anchor at world x=2 → voxel x = 4.
     expect(result![0]).toBe(4);
   });
+
+  it('Large cube REFUSES the +X face when it would overlap a neighbouring cube', () => {
+    // Two Blue cubes at world (0..2) and (3..5) — only a 1 m gap.
+    // Placing a 4 m Large A flush against leftBlue's +X face would
+    // sit at world (2..6), overlapping rightBlue (3..5). The snap
+    // should reject that candidate; with the cursor right next to
+    // leftBlue's +X face the only competing face within pull radius
+    // is leftBlue's +Y top (anchor at y=2 — non-overlapping). The
+    // result should sit ON TOP of leftBlue, not punching through
+    // rightBlue.
+    const largeAShape = {
+      width: 4,
+      height: 4,
+      depth: 4,
+      step: { x: 8, y: 8, z: 8 },
+    };
+    const leftBlue: NearbyObjectInfo = blueAtOrigin;
+    const rightBlue: NearbyObjectInfo = {
+      position: [6, 0, 0],
+      aabb: { min: [3, 0, 0], max: [5, 2, 2] },
+    };
+    const result = snapToNearestFace(
+      { x: 2.1, y: 1, z: 1 },
+      largeAShape,
+      [leftBlue, rightBlue],
+      VS,
+      1.5,
+    );
+    expect(result).not.toBeNull();
+    // Verify the resulting Large A AABB does not overlap rightBlue.
+    const [vx, vy, vz] = result!;
+    const ax = vx * VS;
+    const ay = vy * VS;
+    const az = vz * VS;
+    const bx = ax + 4;
+    const by = ay + 4;
+    const bz = az + 4;
+    const overlapsX = bx > 3 && ax < 5;
+    const overlapsY = by > 0 && ay < 2;
+    const overlapsZ = bz > 0 && az < 2;
+    expect(overlapsX && overlapsY && overlapsZ).toBe(false);
+  });
+
+  it('Large cube snaps to the OTHER cube when the closer face would overlap', () => {
+    // Same two-cube setup but the cursor is over the right cube's +X
+    // face. Snap should pick rightBlue's +X face (anchor at world 6)
+    // instead of leftBlue's +X face (which would overlap rightBlue).
+    const largeAShape = {
+      width: 4,
+      height: 4,
+      depth: 4,
+      step: { x: 8, y: 8, z: 8 },
+    };
+    const leftBlue: NearbyObjectInfo = blueAtOrigin;
+    const rightBlue: NearbyObjectInfo = {
+      position: [8, 0, 0],
+      aabb: { min: [4, 0, 0], max: [6, 2, 2] },
+    };
+    const result = snapToNearestFace(
+      { x: 6.1, y: 1, z: 1 },
+      largeAShape,
+      [leftBlue, rightBlue],
+      VS,
+      1.5,
+    );
+    expect(result).not.toBeNull();
+    // anchor.x = rightBlue.max.x = 6 → voxel x = 12.
+    expect(result![0]).toBe(12);
+  });
 });

@@ -886,7 +886,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           tool={props.tool}
           stagedKindId={props.stagedKindId}
           buildHeight={props.buildHeight}
-          onPlaceAt={props.onPlaceAt}
+          onAddClick={handleAddClick}
           onClickEmpty={props.onClickEmpty}
           onHoverFloor={handleHoverChange}
           onTileClick={handleTileClick}
@@ -1497,7 +1497,11 @@ interface FloorPickerProps {
    * `RoomApp`; the EndlessGrid stays at world y=0 as a visual
    * reference but cube placement is free to happen at any y. */
   buildHeight: number;
-  onPlaceAt: (position: [number, number, number]) => void;
+  /** Add-tool click on empty floor. The caller routes through the
+   * SAME `handleAddClick` (and thus the same `snapForAdd`) that the
+   * cube-hit path uses, so the ghost preview and the committed
+   * placement always agree. */
+  onAddClick: (hit: SnapHit) => void;
   onClickEmpty: () => void;
   /** Called on pointermove over the floor with a SnapHit so the
    * parent can drive the Add/Tile ghost preview. */
@@ -1512,21 +1516,11 @@ function FloorPicker({
   tool,
   stagedKindId,
   buildHeight,
-  onPlaceAt,
+  onAddClick,
   onClickEmpty,
   onHoverFloor,
   onTileClick,
 }: FloorPickerProps) {
-  // Snap the floor hit at the current build height instead of always
-  // y=0. Floor hits give XZ; the build height fills the Y so the
-  // picker isn't a hard floor — Q/E in RoomApp let the user place
-  // cubes below the grid (y<0) or above it (y>0).
-  const snapFloor = (point: { x: number; y: number; z: number }): [number, number, number] => {
-    const v = snapToVoxel({ kind: 'floor', point }, voxelSize);
-    v[1] = buildHeight;
-    return v;
-  };
-
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (e.button !== 0) return;
     const startX = e.clientX;
@@ -1545,22 +1539,17 @@ function FloorPicker({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       if (moved || u.button !== 0) return;
+      // Floor hit at the current build height. Hand the FloorHit to
+      // `onAddClick` so the SAME `snapForAdd` that drives the ghost
+      // preview decides the committed voxel — no parallel snap path.
+      const floorHit: SnapHit = {
+        kind: 'floor',
+        point: { x: point.x, y: buildHeight * voxelSize, z: point.z },
+      };
       if (tool === 'add' && stagedKindId) {
-        onPlaceAt(snapFloor(point));
+        onAddClick(floorHit);
       } else if (tool === 'tile' && stagedKindId) {
-        // Build a synthetic FloorHit with the build-height baked into
-        // the point's y so downstream `snapToVoxel` picks the right
-        // voxel; the tile state machine then uses `snapToVoxel` on
-        // this hit.
-        const voxel = snapFloor(point);
-        onTileClick({
-          kind: 'floor',
-          point: {
-            x: voxel[0] * voxelSize,
-            y: voxel[1] * voxelSize,
-            z: voxel[2] * voxelSize,
-          },
-        });
+        onTileClick(floorHit);
       } else if (tool === 'select') {
         onClickEmpty();
       }
@@ -1569,30 +1558,19 @@ function FloorPicker({
     window.addEventListener('pointerup', onUp);
   };
 
-  // The hover SnapHit carries the build height directly (rather than
-  // letting the upstream snap re-snap to y=0). We forge a
-  // FloorHit-like shape but with the picker's world y baked into the
-  // point so any subsequent `snapToVoxel` call on this hit produces
-  // the right voxel.
+  // The hover SnapHit carries the build height as its world Y so the
+  // upstream `snapForAdd` doesn't re-snap to y=0. We do NOT pre-snap
+  // X/Z here — the ghost (which calls snapForAdd on this hit) needs
+  // the raw cursor world position so the face-snap proximity-pull
+  // can decide whether to attach to a nearby object.
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (tool !== 'add' && tool !== 'tile') return;
-    // We pass the FloorHit through but force the y to the build
-    // height's world equivalent. The parent canvas's `snapToVoxel`
-    // computes (round(x/cubeSize), 0, round(z/cubeSize)); we override
-    // the y in `snapFloor` above for clicks, and the hover SnapHit
-    // is only used to draw the ghost — the ghost layer reads voxel
-    // coords post-snap, so we pre-snap here and re-emit.
-    const voxel = snapFloor({
-      x: e.point.x,
-      y: e.point.y,
-      z: e.point.z,
-    });
     onHoverFloor({
       kind: 'floor',
       point: {
-        x: voxel[0] * voxelSize,
-        y: voxel[1] * voxelSize,
-        z: voxel[2] * voxelSize,
+        x: e.point.x,
+        y: buildHeight * voxelSize,
+        z: e.point.z,
       },
     });
   };

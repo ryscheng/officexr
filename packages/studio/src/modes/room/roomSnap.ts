@@ -283,6 +283,30 @@ export function snapToNearestFace(
 ): [number, number, number] | null {
   if (nearbyObjects.length === 0) return null;
 
+  /** Does the new object's world AABB overlap any nearby AABB? */
+  const wouldOverlap = (anchor: [number, number, number]): boolean => {
+    const ax = anchor[0];
+    const ay = anchor[1];
+    const az = anchor[2];
+    const bx = ax + newObject.width;
+    const by = ay + newObject.height;
+    const bz = az + newObject.depth;
+    for (const obj of nearbyObjects) {
+      const o = obj.aabb;
+      if (
+        bx > o.min[0] + EPS &&
+        ax < o.max[0] - EPS &&
+        by > o.min[1] + EPS &&
+        ay < o.max[1] - EPS &&
+        bz > o.min[2] + EPS &&
+        az < o.max[2] - EPS
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const clamp = (v: number, lo: number, hi: number) =>
     Math.max(lo, Math.min(hi, v));
 
@@ -405,6 +429,11 @@ export function snapToNearestFace(
 
     for (const c of candidates) {
       if (c.cursorDist >= bestDist) continue;
+      // Reject candidates that would overlap any OTHER existing
+      // object. A large cube snapping flush against a small cube can
+      // still extend into a neighbouring cube — we want the next-best
+      // non-overlapping face instead of producing an invalid ghost.
+      if (wouldOverlap(c.anchor)) continue;
       // Quantize anchor → voxel position. NO step rounding — the
       // flush position is the snap target. Step rounding would push
       // the new object off the flush plane, defeating the whole
@@ -421,6 +450,8 @@ export function snapToNearestFace(
 
   return bestVoxel;
 }
+
+const EPS = 1e-6;
 
 /**
  * Quantize a 3D vector to its dominant axis as a `±1` along one axis,
