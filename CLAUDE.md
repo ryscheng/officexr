@@ -109,3 +109,17 @@ escape hatch is for genuine constraints, not for skipping refactors.
   renderer package. If you need a new primitive, add it to
   `packages/world/src/renderer/` and export it — don't fork
   it inside an editor.
+- **Playwright e2e tests (incl. mugshot) MUST be run after any
+  change to `@officexr/world` renderer logic.** The mugshot
+  baselines under `tests/playwright/mugshot-baselines/` are the
+  visual contract for the renderer's positioning, scaling, and
+  lighting — they will silently drift when a renderer-side
+  convention changes (anchor convention, voxel size, kind AABB,
+  primitive sizing, camera plumbing, etc.) and unit tests will
+  not catch it because the divergence is purely pixel-level. Run
+  the full e2e suite (`pnpm test:e2e`, or at minimum the mugshot
+  specs `pnpm exec playwright test tests/playwright/mugshot-*`)
+  before considering a renderer change complete. If a baseline
+  truly needs to change, change BOTH the ideal PNGs and the
+  manifest in the same PR — never silently widen the diff
+  threshold to make the suite green.

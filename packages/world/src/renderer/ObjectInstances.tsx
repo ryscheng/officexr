@@ -375,6 +375,14 @@ interface PrimitiveInstanceGroupProps {
  * We construct the geometry + material locally, which means we OWN
  * disposal (unlike useGLTF, which manages its own asset cache).
  */
+/** Primitive cube physical size in metres. Mugshot's A/B diagnostic
+ * mirrors the KayKit BlockBit GLTFs (`colored_block_blue` / `stone`)
+ * which are 2 m on a side, so the primitive twin renders a 2 m box
+ * regardless of the per-scene `voxelSize` (the grid step). Without
+ * this, scenes with `voxelSize < 2` would emit shrunken primitive
+ * cubes that no longer match their GLTF reference. */
+const PRIMITIVE_BLOCK_SIZE = 2;
+
 function PrimitiveInstanceGroup({
   kindId,
   color,
@@ -382,8 +390,13 @@ function PrimitiveInstanceGroup({
   voxelSize,
 }: PrimitiveInstanceGroupProps) {
   const geom = useMemo(
-    () => new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize),
-    [voxelSize],
+    () =>
+      new THREE.BoxGeometry(
+        PRIMITIVE_BLOCK_SIZE,
+        PRIMITIVE_BLOCK_SIZE,
+        PRIMITIVE_BLOCK_SIZE,
+      ),
+    [],
   );
   const mat = useMemo(() => new THREE.MeshStandardMaterial({ color }), [color]);
   useEffect(
@@ -407,18 +420,18 @@ function PrimitiveInstanceGroup({
     // geometry from `kind.scale` tweaks. If someone later wants
     // scale support here, the answer is "use the GLB path".
     const scale = new THREE.Vector3(1, 1, 1);
+    const half = PRIMITIVE_BLOCK_SIZE / 2;
     for (let i = 0; i < instances.length; i++) {
       const inst = instances[i];
-      // Center-origin BoxGeometry: shift up by vs/2 so the box's
-      // bottom sits at floor (vy*vs) — matching the GLTF path's
-      // bottom-at-floor convention. This is NOT the legacy +vs/2
-      // offset from the old object renderer; it's the conversion
-      // between BoxGeometry's center origin and the canonical
-      // floor-convention bottom.
+      // Place the box centre `+half` past the world anchor on every
+      // axis so the box's lower-left corner sits at
+      // `position * voxelSize` — same convention as the GLTF path's
+      // `geometry.meshOrigin` for fully-centred kinds like
+      // `colored_block_blue` (localAABB.min = -half on each axis).
       pos.set(
-        inst.position[0] * voxelSize,
-        inst.position[1] * voxelSize + voxelSize / 2,
-        inst.position[2] * voxelSize,
+        inst.position[0] * voxelSize + half,
+        inst.position[1] * voxelSize + half,
+        inst.position[2] * voxelSize + half,
       );
       m.compose(pos, quat, scale);
       mesh.setMatrixAt(i, m);

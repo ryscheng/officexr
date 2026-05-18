@@ -60,10 +60,21 @@ function readCharacterFromHash(): CharacterName {
 type CubeMode = 'gltf' | 'primitive';
 
 /** The mugshot scene: a 2×2 cube square whose CLUSTER is centered
- * on world origin (0, 0, 0). With voxelSize=2, voxel positions
- * (±0.5, -0.5, ±0.5) translate to world cube centers (±1, 0, ±1)
- * — cluster bbox x∈[-2,2], y∈[-1,1], z∈[-2,2]. Cube tops at
- * world y=1, bottoms at y=-1.
+ * on world origin (0, 0, 0). With voxelSize=0.5 (the global
+ * `VOXEL_SIZE`), voxel positions in [-4, 0] on X/Z translate to
+ * world cube anchors in [-2, 0]; each 2 m kind extends +2 m so the
+ * cluster bbox is x∈[-2,2], y∈[-1,1], z∈[-2,2]. Cube tops at world
+ * y=1, bottoms at y=-1.
+ *
+ * Why voxelSize=0.5 (not 2): the geometry service in the renderer is
+ * pinned to the global `VOXEL_SIZE` constant (see
+ * `packages/world/src/app/create-default-api.ts`); a per-scene
+ * `cubeSize` mismatch silently shifts every instance because
+ * `geometry.meshOrigin` uses the global, not the snapshot's
+ * `cubeSize`. Until the geometry service learns a per-call voxel
+ * size, every scene MUST use `cubeSize = VOXEL_SIZE` to stay
+ * consistent with both the visible mesh placement AND the collider
+ * placement (which also flows through the geometry service).
  *
  * Why origin-centered: the fixed camera is set to `lookAt:
  * [0, 0, 0]` so framing is purely a function of azimuth + distance
@@ -83,10 +94,10 @@ const GLTF_CUBES: ReadonlyArray<{
   kindId: string;
   position: [number, number, number];
 }> = [
-  { id: 'm-0-0', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [-0.5, -0.5, -0.5] },
-  { id: 'm-1-0', sourceCommandId: 'mugshot', kindId: 'stone', position: [0.5, -0.5, -0.5] },
-  { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: 'stone', position: [-0.5, -0.5, 0.5] },
-  { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [0.5, -0.5, 0.5] },
+  { id: 'm-0-0', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [-4, -2, -4] },
+  { id: 'm-1-0', sourceCommandId: 'mugshot', kindId: 'stone', position: [0, -2, -4] },
+  { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: 'stone', position: [-4, -2, 0] },
+  { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: 'colored_block_blue', position: [0, -2, 0] },
 ];
 
 const PRIMITIVE_CUBES: ReadonlyArray<{
@@ -95,10 +106,10 @@ const PRIMITIVE_CUBES: ReadonlyArray<{
   kindId: string;
   position: [number, number, number];
 }> = [
-  { id: 'm-0-0', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [-0.5, -0.5, -0.5] },
-  { id: 'm-1-0', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [0.5, -0.5, -0.5] },
-  { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [-0.5, -0.5, 0.5] },
-  { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [0.5, -0.5, 0.5] },
+  { id: 'm-0-0', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [-4, -2, -4] },
+  { id: 'm-1-0', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [0, -2, -4] },
+  { id: 'm-0-1', sourceCommandId: 'mugshot', kindId: '__primitive_stone', position: [-4, -2, 0] },
+  { id: 'm-1-1', sourceCommandId: 'mugshot', kindId: '__primitive_blue', position: [0, -2, 0] },
 ];
 
 function cubesForMode(mode: CubeMode) {
@@ -265,8 +276,12 @@ export function MugshotApp() {
   // keyed reconciliation produces the identical collider tree).
   useEffect(() => {
     if (!local) return;
+    // cubeSize MUST equal the global VOXEL_SIZE (0.5) — see the
+    // comment above the CUBES tables. The geometry service reads
+    // VOXEL_SIZE, not this snapshot's cubeSize, so a mismatch
+    // silently shifts every instance off-baseline.
     local.actions.setWorldObjects({
-      cubeSize: 2,
+      cubeSize: 0.5,
       instances: cubesForMode(cubeMode).map((c) => ({ ...c })),
     });
   }, [local, cubeMode]);
