@@ -62,17 +62,23 @@ export function BoundsScene({ sceneId }: BoundsSceneProps) {
   const [framePainted, setFramePainted] = useState(false);
   useEffect(() => {
     if (!catalogReady) return;
-    // Two RAFs to ensure the first useEffect after mount has flushed
-    // and a frame has been painted by Three's render loop.
+    let raf2 = 0;
+    // Two rAFs so the first useEffect after mount has flushed AND
+    // Three has painted a frame before we flip the ready sentinel.
     const raf1 = requestAnimationFrame(() => {
-      const raf2 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
         setFramePainted(true);
-        const w = window as unknown as { __officexrBoundsReady?: boolean };
-        w.__officexrBoundsReady = true;
+        (window as unknown as { __officexrBoundsReady?: boolean })
+          .__officexrBoundsReady = true;
       });
-      return () => cancelAnimationFrame(raf2);
     });
-    return () => cancelAnimationFrame(raf1);
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+      // Reset the sentinel so the next mount starts clean.
+      delete (window as unknown as { __officexrBoundsReady?: boolean })
+        .__officexrBoundsReady;
+    };
   }, [catalogReady]);
 
   return (

@@ -6,7 +6,7 @@ import { useApplication } from '@officexr/world/react';
  *
  * Mounted by HeadlessApp on `?op=bake`. Awaits the catalog bootstrap,
  * then calls `api.bake.measureAll()` and writes the result to
- * `window.officexrApi.bakeResults` so the Playwright driver can pick
+ * `window.__officexrBakeResults` so the Playwright driver can pick
  * it up via a single `page.evaluate`.
  *
  * No UI clicks; no DOM scraping; no race between Suspense and the
