@@ -5,6 +5,7 @@ import type { WorldObjects } from '@officexr/sdk';
 import { createStore, createActions } from '@officexr/sdk';
 import { LightingRig, ObjectInstances } from '@officexr/world/renderer';
 import { useApplication } from '@officexr/world/react';
+import { outlineEdgePositions } from '../room/selectionOutline.ts';
 
 interface BoundsSceneProps {
   sceneId: string;
@@ -115,8 +116,52 @@ export function BoundsScene({ sceneId }: BoundsSceneProps) {
               the GL framebuffer to have settled). */}
           <ReadySignal />
         </Suspense>
+        {/* Wireframe overlay for every selected instance. Pins the
+            "wireframe wraps the visible mesh exactly" invariant. */}
+        <SelectionWireframe
+          instances={scene.instances}
+          selection={scene.selection}
+        />
       </Canvas>
     </div>
+  );
+}
+
+interface SelectionWireframeProps {
+  instances: readonly { id: string; position: readonly [number, number, number]; kindId: string }[];
+  selection: ReadonlySet<string>;
+}
+
+/** Mirrors the studio's SelectionOutline component but lives inside the
+ * headless harness so the visual regression scene shows the wireframe
+ * around the mesh. Pulls AABBs from the geometry service so the
+ * outline is guaranteed to match the rendered mesh's world bounds. */
+function SelectionWireframe({ instances, selection }: SelectionWireframeProps) {
+  const { geometry } = useApplication();
+  const geom = useMemo(() => {
+    if (selection.size === 0) return null;
+    const aabbs = [];
+    for (const inst of instances) {
+      if (!selection.has(inst.id)) continue;
+      aabbs.push(geometry.worldAABB(inst.position, inst.kindId));
+    }
+    const positions = outlineEdgePositions(aabbs);
+    if (positions.length === 0) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return g;
+  }, [instances, selection, geometry]);
+
+  if (!geom) return null;
+  return (
+    <lineSegments renderOrder={2} geometry={geom}>
+      <lineBasicMaterial
+        color="#fde68a"
+        transparent
+        opacity={0.95}
+        depthTest={false}
+      />
+    </lineSegments>
   );
 }
 

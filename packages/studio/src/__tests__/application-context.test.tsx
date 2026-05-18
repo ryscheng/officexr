@@ -144,8 +144,12 @@ describe('useInstanceAABB — regression guard', () => {
       () => useInstanceAABB([0, 0, 0], 'blue'),
       { wrapper: wrapper(api) },
     );
-    expect(result.current.min).toEqual([-1, 0, -1]);
-    expect(result.current.max).toEqual([1, 2, 1]);
+    // Anchor lower-left convention: voxel (0,0,0) → world AABB
+    // (0,0,0) → (w,h,d). The fallback localAABB (no baked GLTF AABB)
+    // is X/Z-centered + Y-bottom, so anchored at voxel 0 the AABB
+    // spans (0, 0, 0) → (2, 2, 2) for a 2 m cube.
+    expect(result.current.min).toEqual([0, 0, 0]);
+    expect(result.current.max).toEqual([2, 2, 2]);
 
     // Live edit: shrink the blue cube.
     act(() => {
@@ -153,7 +157,7 @@ describe('useInstanceAABB — regression guard', () => {
         dimensions: { width: 1, height: 1, depth: 1 },
       });
     });
-    expect(result.current.min).toEqual([-0.5, 0, -0.5]);
-    expect(result.current.max).toEqual([0.5, 1, 0.5]);
+    expect(result.current.min).toEqual([0, 0, 0]);
+    expect(result.current.max).toEqual([1, 1, 1]);
   });
 });

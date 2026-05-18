@@ -11,8 +11,8 @@ import {
 } from './tileStateMachine.ts';
 
 describe('resolveAvailableAxes', () => {
-  it('all true → [x, y, z]', () => {
-    expect(resolveAvailableAxes({ x: true, y: true, z: true })).toEqual(['x', 'y', 'z']);
+  it('all true → canonical X, Z, Y order', () => {
+    expect(resolveAvailableAxes({ x: true, y: true, z: true })).toEqual(['x', 'z', 'y']);
   });
 
   it('only X and Z → [x, z]', () => {
@@ -25,6 +25,14 @@ describe('resolveAvailableAxes', () => {
 
   it('only Y → [y]', () => {
     expect(resolveAvailableAxes({ x: false, y: true, z: false })).toEqual(['y']);
+  });
+
+  it('Y and X without Z → [x, y] (X first, then Y as the only remaining)', () => {
+    expect(resolveAvailableAxes({ x: true, y: true, z: false })).toEqual(['x', 'y']);
+  });
+
+  it('Y and Z without X → [z, y] (Z first per X→Z→Y order)', () => {
+    expect(resolveAvailableAxes({ x: false, y: true, z: true })).toEqual(['z', 'y']);
   });
 });
 

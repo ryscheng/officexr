@@ -29,7 +29,7 @@ const UPDATE = process.argv.includes('--update');
 // produce non-zero diffs even on identical scenes; ~0.5% is the
 // usual headroom for canvas-toDataURL captures.
 const PIXEL_DIFF_TOLERANCE = 0.005;
-const SCENES = ['blue-and-large-a'];
+const SCENES = ['blue-and-large-a', 'blue-wireframe', 'large-a-wireframe'];
 
 function dataUrlToPng(dataUrl: string): Buffer {
   const match = /^data:image\/png;base64,(.*)$/.exec(dataUrl);

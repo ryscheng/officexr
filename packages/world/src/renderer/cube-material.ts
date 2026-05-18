@@ -85,6 +85,13 @@ export interface KindBoundingDimensions {
   height: number;
   /** Z-axis extent in world meters (post-`scale`). */
   depth: number;
+  /** Local-coord AABB MIN of the geometry (pre-translation, post-scale).
+   * Reveals the GLTF's origin convention: KayKit blocks typically have
+   * min ≈ (-w/2, 0, -d/2) i.e. bottom-X/Z-centered. The renderer reads
+   * this so the visible mesh aligns with `worldAABB`'s anchor. */
+  min: { x: number; y: number; z: number };
+  /** Local-coord AABB MAX (pre-translation, post-scale). */
+  max: { x: number; y: number; z: number };
 }
 
 /**
@@ -102,11 +109,19 @@ export function getKindBoundingDimensions(
   if (!geom.boundingBox) geom.computeBoundingBox();
   const bb = geom.boundingBox;
   if (!bb) {
-    return { width: 0, height: 0, depth: 0 };
+    return {
+      width: 0,
+      height: 0,
+      depth: 0,
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 0, y: 0, z: 0 },
+    };
   }
   return {
     width: (bb.max.x - bb.min.x) * scale,
     height: (bb.max.y - bb.min.y) * scale,
     depth: (bb.max.z - bb.min.z) * scale,
+    min: { x: bb.min.x * scale, y: bb.min.y * scale, z: bb.min.z * scale },
+    max: { x: bb.max.x * scale, y: bb.max.y * scale, z: bb.max.z * scale },
   };
 }

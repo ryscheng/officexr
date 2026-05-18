@@ -96,11 +96,35 @@ describe('BakeService', () => {
     });
   });
 
+  it('measureKindLocalAABB exposes the GLTF local-coord AABB', async () => {
+    expect(await bake.measureKindLocalAABB('blue')).toEqual({
+      min: { x: -1, y: 0, z: -1 },
+      max: { x: 1, y: 2, z: 1 },
+    });
+    expect(await bake.measureKindLocalAABB('largeA')).toEqual({
+      min: { x: -2, y: 0, z: -2 },
+      max: { x: 2, y: 4, z: 2 },
+    });
+  });
+
+  it('measureKindFull bundles extents + localAABB in a single load', async () => {
+    const full = await bake.measureKindFull('blue');
+    expect(full.width).toBe(2);
+    expect(full.height).toBe(2);
+    expect(full.depth).toBe(2);
+    expect(full.localAABB).toEqual({
+      min: { x: -1, y: 0, z: -1 },
+      max: { x: 1, y: 2, z: 1 },
+    });
+  });
+
   it('measureAll measures every non-character kind', async () => {
     const out = await bake.measureAll();
     expect(out.has('blue')).toBe(true);
     expect(out.has('largeA')).toBe(true);
     expect(out.has('aCharacter')).toBe(false); // characters are skipped
+    const blue = out.get('blue');
+    expect(blue?.localAABB.min).toEqual({ x: -1, y: 0, z: -1 });
   });
 
   it('measureKind throws for unknown kind id', async () => {

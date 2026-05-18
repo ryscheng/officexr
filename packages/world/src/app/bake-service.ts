@@ -21,11 +21,20 @@ import type {
   BakeService,
   CatalogService,
   KindDimensions,
+  KindLocalAABB,
+  KindMeasurement,
 } from './types.ts';
 
 export interface GltfHandle {
   /** The loaded scene root (THREE.Group/THREE.Object3D). */
   scene: THREE.Object3D;
+}
+
+export interface KindAABB {
+  /** Local-coord AABB MIN of the GLTF geometry, post-scale. */
+  min: { x: number; y: number; z: number };
+  /** Local-coord AABB MAX of the GLTF geometry, post-scale. */
+  max: { x: number; y: number; z: number };
 }
 
 /** Injected: load a GLTF by URL path and return its scene. The default
@@ -39,29 +48,45 @@ export function createBakeService(deps: {
 }): BakeService {
   const { catalog, loadGltf } = deps;
 
-  async function measureKind(id: string): Promise<KindDimensions> {
+  async function measureKindFull(id: string): Promise<KindMeasurement> {
     const kind = catalog.getKind(id);
-    if (!kind) throw new Error(`measureKind: unknown kind "${id}"`);
+    if (!kind) throw new Error(`measureKindFull: unknown kind "${id}"`);
     const { scene } = await loadGltf(kind.gltfPath);
-    return getKindBoundingDimensions(scene, kind.scale);
+    const m = getKindBoundingDimensions(scene, kind.scale);
+    return {
+      width: m.width,
+      height: m.height,
+      depth: m.depth,
+      localAABB: { min: m.min, max: m.max },
+    };
   }
 
-  async function measureAll(): Promise<Map<string, KindDimensions | null>> {
-    const out = new Map<string, KindDimensions | null>();
+  async function measureKind(id: string): Promise<KindDimensions> {
+    const m = await measureKindFull(id);
+    return { width: m.width, height: m.height, depth: m.depth };
+  }
+
+  async function measureKindLocalAABB(id: string): Promise<KindLocalAABB> {
+    const m = await measureKindFull(id);
+    return m.localAABB;
+  }
+
+  async function measureAll(): Promise<Map<string, KindMeasurement | null>> {
+    const out = new Map<string, KindMeasurement | null>();
     // Sequential rather than Promise.all so a single bad GLTF can't
     // overwhelm the loader. Each measure is cheap once the GLTF cache
     // is warm.
     for (const k of catalog.listKinds()) {
       if (k.category === 'character') continue;
       try {
-        out.set(k.id, await measureKind(k.id));
+        out.set(k.id, await measureKindFull(k.id));
       } catch (err) {
-        console.warn(`[bake-service] measureKind("${k.id}") failed:`, err);
+        console.warn(`[bake-service] measureKindFull("${k.id}") failed:`, err);
         out.set(k.id, null);
       }
     }
     return out;
   }
 
-  return { measureKind, measureAll };
+  return { measureKind, measureKindLocalAABB, measureKindFull, measureAll };
 }

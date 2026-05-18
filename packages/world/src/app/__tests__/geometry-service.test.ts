@@ -1,14 +1,15 @@
 /**
  * Pin the canonical geometry convention with explicit, unambiguous
- * cases for two reference kinds the user named:
- *   - colored_block_blue (2 × 2 × 2 m)
- *   - prototype_cube_prototype_large_a (4 × 4 × 4 m)
+ * cases for the two reference kinds the user named:
+ *   - colored_block_blue (2 × 2 × 2 m, fully-centered GLTF origin)
+ *   - prototype_cube_prototype_large_a (4 × 4 × 4 m, X/Z-centered, Y-bottom)
  *
- * Convention enforced by these tests:
- *   - X/Z: AABB is centered on position * voxelSize.
- *   - Y: AABB bottom sits at position * voxelSize (floor convention).
- *   - No `+ voxelSize / 2` offset. (Regression of the offset would
- *     flip every test in this file.)
+ * Conventions enforced:
+ *   - Voxel position * voxelSize = lower-left-bottom corner of the
+ *     world AABB. No matter where the GLTF's local origin sits, the
+ *     world AABB anchors at the same point.
+ *   - `meshOrigin` translates the mesh by `-localMin` on each axis
+ *     so the local AABB lower-left lands at world position*vs.
  */
 import { describe, it, expect } from 'vitest';
 import { createInstanceGeometry } from '../geometry-service.ts';
@@ -23,6 +24,10 @@ const VS = 0.5;
 function makeKind(
   id: string,
   dims: { width: number; height: number; depth: number } | undefined,
+  localAABB?: {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  },
 ): WorldObjectKind {
   return {
     id,
@@ -42,6 +47,7 @@ function makeKind(
     gravity: false,
     optimization: 'none',
     dimensions: dims,
+    localAABB,
   };
 }
 
@@ -62,63 +68,122 @@ function makeCatalog(kinds: WorldObjectKind[]): CatalogService {
   };
 }
 
-describe('InstanceGeometry — canonical convention', () => {
-  const catalog = makeCatalog([
-    makeKind('colored_block_blue', { width: 2, height: 2, depth: 2 }),
-    makeKind('prototype_cube_prototype_large_a', {
-      width: 4,
-      height: 4,
-      depth: 4,
-    }),
-    makeKind('unbaked', undefined),
-  ]);
-  const geom = createInstanceGeometry({ catalog, voxelSize: VS });
+describe('InstanceGeometry — canonical anchor-lower-left convention', () => {
+  const blue = makeKind(
+    'colored_block_blue',
+    { width: 2, height: 2, depth: 2 },
+    // Real KayKit BlockBits GLTF: fully-centered on origin.
+    { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+  );
+  const largeA = makeKind(
+    'prototype_cube_prototype_large_a',
+    { width: 4, height: 4, depth: 4 },
+    // Real KayKit Prototype GLTF: X/Z-centered, Y-bottom.
+    { min: { x: -2, y: 0, z: -2 }, max: { x: 2, y: 4, z: 2 } },
+  );
 
-  it('Blue cube at voxel (0,0,0) → AABB (-1, 0, -1) to (1, 2, 1)', () => {
-    const aabb = geom.worldAABB([0, 0, 0], 'colored_block_blue');
-    expect(aabb.min).toEqual([-1, 0, -1]);
-    expect(aabb.max).toEqual([1, 2, 1]);
+  const geom = createInstanceGeometry({
+    catalog: makeCatalog([
+      blue,
+      largeA,
+      makeKind('unbaked', undefined, undefined),
+    ]),
+    voxelSize: VS,
   });
 
-  it('Blue cube at voxel (4,0,0) sits flush against the one at (0,0,0) on x=1', () => {
+  it('Blue cube at voxel (0,0,0) → world AABB (0,0,0)→(2,2,2)', () => {
+    const aabb = geom.worldAABB([0, 0, 0], 'colored_block_blue');
+    expect(aabb.min).toEqual([0, 0, 0]);
+    expect(aabb.max).toEqual([2, 2, 2]);
+  });
+
+  it('Blue mesh origin translates fully-centered GLTF to anchor at world (0,0,0)', () => {
+    // Local AABB min = (-1, -1, -1). To put it at world (0, 0, 0):
+    // meshRoot = (0 - (-1), 0 - (-1), 0 - (-1)) = (1, 1, 1)
+    expect(geom.meshOrigin([0, 0, 0], 'colored_block_blue')).toEqual([1, 1, 1]);
+  });
+
+  it('Blue cube at voxel (4,0,0) sits flush against (0,0,0) on x=2', () => {
     const a = geom.worldAABB([0, 0, 0], 'colored_block_blue');
     const b = geom.worldAABB([4, 0, 0], 'colored_block_blue');
-    expect(b.min[0]).toBe(1); // touches A's max.x
-    expect(b.max[0]).toBe(3);
-    expect(a.max[0]).toBe(b.min[0]); // adjacent, no gap, no overlap
+    expect(a.max[0]).toBe(2);
+    expect(b.min[0]).toBe(2);
+    expect(b.max[0]).toBe(4);
   });
 
-  it('Cube Prototype Large A at voxel (0,0,0) → AABB (-2, 0, -2) to (2, 4, 2)', () => {
+  it('Cube Prototype Large A at voxel (0,0,0) → world AABB (0,0,0)→(4,4,4)', () => {
     const aabb = geom.worldAABB([0, 0, 0], 'prototype_cube_prototype_large_a');
-    expect(aabb.min).toEqual([-2, 0, -2]);
-    expect(aabb.max).toEqual([2, 4, 2]);
+    expect(aabb.min).toEqual([0, 0, 0]);
+    expect(aabb.max).toEqual([4, 4, 4]);
   });
 
-  it('Unbaked kind falls back to a 1-voxel-cube AABB centered on position', () => {
-    // Voxel (0,0,0) on a 0.5 m grid → world AABB (-0.25, 0, -0.25) → (0.25, 0.5, 0.25).
+  it('Large A mesh origin translates X/Z-centered + Y-bottom GLTF', () => {
+    // Local AABB min = (-2, 0, -2). To put it at world (0, 0, 0):
+    // meshRoot = (0 - (-2), 0 - 0, 0 - (-2)) = (2, 0, 2)
+    expect(geom.meshOrigin([0, 0, 0], 'prototype_cube_prototype_large_a')).toEqual(
+      [2, 0, 2],
+    );
+  });
+
+  it('Unbaked kind falls back to 1-voxel-cube AABB at the anchor', () => {
+    // Fallback localAABB = (-vs/2, 0, -vs/2) → (+vs/2, vs, +vs/2).
+    // Anchored at voxel (0,0,0): world AABB (0, 0, 0) → (0.5, 0.5, 0.5).
     const aabb = geom.worldAABB([0, 0, 0], 'unbaked');
-    expect(aabb.min).toEqual([-0.25, 0, -0.25]);
-    expect(aabb.max).toEqual([0.25, 0.5, 0.25]);
+    expect(aabb.min).toEqual([0, 0, 0]);
+    expect(aabb.max).toEqual([0.5, 0.5, 0.5]);
   });
 
-  it('meshOrigin returns (cx, AABB.min.y, cz) for bottom-center GLTFs', () => {
-    expect(geom.meshOrigin([0, 0, 0], 'colored_block_blue')).toEqual([0, 0, 0]);
-    expect(geom.meshOrigin([4, 0, 0], 'colored_block_blue')).toEqual([2, 0, 0]);
-    expect(geom.meshOrigin([0, 2, 0], 'colored_block_blue')).toEqual([0, 1, 0]);
-  });
-
-  it('voxelFootprint integerises the AABB on the voxel grid', () => {
-    // Blue cube at voxel (0,0,0): world AABB (-1, 0, -1)..(1, 2, 1).
-    // On a 0.5 m grid that's voxel cells from (-2, 0, -2) to (2, 4, 2) exclusive.
+  it('voxelFootprint integerises the world AABB onto the voxel grid', () => {
+    // Blue cube at voxel (0,0,0): world AABB (0,0,0)→(2,2,2) → voxels (0..4) on each axis.
     const fp = geom.voxelFootprint([0, 0, 0], 'colored_block_blue');
-    expect(fp.min).toEqual([-2, 0, -2]);
-    expect(fp.max).toEqual([2, 4, 2]);
+    expect(fp.min).toEqual([0, 0, 0]);
+    expect(fp.max).toEqual([4, 4, 4]);
   });
 
   it('tileStep equals round(dims/vs) per axis with min 1', () => {
     expect(geom.tileStep('colored_block_blue')).toEqual([4, 4, 4]);
     expect(geom.tileStep('prototype_cube_prototype_large_a')).toEqual([8, 8, 8]);
     expect(geom.tileStep('unbaked')).toEqual([1, 1, 1]);
+  });
+
+  it('Wireframe AABB = visible mesh AABB (alignment guarantee)', () => {
+    // For Blue (fully-centered GLTF), the mesh's WORLD AABB after
+    // placement at meshOrigin equals worldAABB. This is the property
+    // the user needs: wireframe wraps the visible cube exactly.
+    const aabb = geom.worldAABB([0, 0, 0], 'colored_block_blue');
+    const origin = geom.meshOrigin([0, 0, 0], 'colored_block_blue');
+    // Mesh world extent = meshOrigin + local AABB (min/max).
+    const localMin = blue.localAABB!.min;
+    const localMax = blue.localAABB!.max;
+    const visibleMin = [
+      origin[0] + localMin.x,
+      origin[1] + localMin.y,
+      origin[2] + localMin.z,
+    ];
+    const visibleMax = [
+      origin[0] + localMax.x,
+      origin[1] + localMax.y,
+      origin[2] + localMax.z,
+    ];
+    expect(visibleMin).toEqual([...aabb.min]);
+    expect(visibleMax).toEqual([...aabb.max]);
+  });
+
+  it('Wireframe AABB = visible mesh AABB for Cube Prototype Large A', () => {
+    const aabb = geom.worldAABB([0, 0, 0], 'prototype_cube_prototype_large_a');
+    const origin = geom.meshOrigin([0, 0, 0], 'prototype_cube_prototype_large_a');
+    const lmin = largeA.localAABB!.min;
+    const lmax = largeA.localAABB!.max;
+    expect([
+      origin[0] + lmin.x,
+      origin[1] + lmin.y,
+      origin[2] + lmin.z,
+    ]).toEqual([...aabb.min]);
+    expect([
+      origin[0] + lmax.x,
+      origin[1] + lmax.y,
+      origin[2] + lmax.z,
+    ]).toEqual([...aabb.max]);
   });
 
   it('worldAABBOfInstance is sugar over worldAABB', () => {

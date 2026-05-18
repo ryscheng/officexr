@@ -14,14 +14,18 @@ type Vec3 = [number, number, number];
 /** One of the three axis identifiers for tiling. */
 export type TileAxis = 'x' | 'y' | 'z';
 
-/** Axes the current kind can tile on, ordered canonically X→Y→Z. */
+/** Axes the current kind can tile on, ordered canonically X → Z → Y.
+ * Matches the historical legacy 4-click flow (click 1 = origin,
+ * click 2 = X row, click 3 = Z slab, click 4 = Y stack). The user
+ * can switch the next axis mid-gesture via the X/Y/Z keys; the order
+ * here just determines the default sequence when they don't. */
 export function resolveAvailableAxes(
   tilingAxes: { x: boolean; y: boolean; z: boolean },
 ): TileAxis[] {
   const axes: TileAxis[] = [];
   if (tilingAxes.x) axes.push('x');
-  if (tilingAxes.y) axes.push('y');
   if (tilingAxes.z) axes.push('z');
+  if (tilingAxes.y) axes.push('y');
   return axes;
 }
 

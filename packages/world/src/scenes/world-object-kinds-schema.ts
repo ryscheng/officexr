@@ -78,22 +78,28 @@ export interface WorldObjectKind {
   /** Renderer optimization hint. 'none' = no special handling.
    * 'static-batch' and 'frustum-cull' are scaffolded for future use. */
   optimization: OptimizationMode;
-  /** Axis-aligned bounding-box extents in metres (post-`scale`).
-   *
-   * Hybrid bake strategy:
-   *   1. A one-shot preprocess script loads every GLTF, computes
-   *      `getKindBoundingDimensions(scene, scale)`, and writes the
-   *      result into the catalog JSON. This produces sensible defaults
-   *      for all kinds out of the box.
-   *   2. The Object Editor exposes width / height / depth as editable
-   *      fields so authors can override the auto-baked values (useful
-   *      when a mesh has stray geometry that inflates the AABB, etc.).
-   *
-   * `compileScene` extrude stride, occupancy footprint, and the
-   * tile-tool step all consult this field. When undefined (catalog has
-   * not been baked yet), compile-time consumers fall back to a
-   * 1-voxel step. */
+  /** Axis-aligned bounding-box extents in metres (post-`scale`). */
   dimensions?: { width: number; height: number; depth: number };
+  /** Local-coordinate AABB of the GLTF geometry (post-`scale`), in
+   * metres. Different kinds have different origin conventions:
+   *   - KayKit BlockBits (`colored_block_*`, `stone*`, …) are FULLY
+   *     centered on origin, AABB e.g. (-1, -1, -1) → (1, 1, 1).
+   *   - KayKit Prototype cubes are X/Z-centered, Y-bottom, AABB e.g.
+   *     (-2, 0, -2) → (2, 4, 2).
+   *   - Furniture / Restaurant kinds vary further.
+   *
+   * The InstanceGeometryService uses this to translate the mesh at
+   * render time so the AABB's lower-left-bottom lands at the voxel
+   * position — i.e. a cube at voxel (0,0,0) on a 0.5 m grid lives in
+   * the world cell (0,0,0)→(w,h,d) regardless of GLTF origin.
+   *
+   * Populated by the bake script. When undefined the geometry service
+   * falls back to assuming X/Z-centered, Y-bottom (the prototype-cube
+   * pattern, most common after the asset-pack install). */
+  localAABB?: {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  };
 }
 
 export interface WorldObjectKindCatalogV1 {
@@ -210,6 +216,7 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
       ? k.optimization
       : WORLD_OBJECT_KIND_DEFAULTS.optimization,
     dimensions: normalizeDimensions(k.dimensions),
+    localAABB: normalizeLocalAABB(k.localAABB),
   };
 }
 
@@ -229,6 +236,27 @@ function normalizeDimensions(
     return { width: d.width, height: d.height, depth: d.depth };
   }
   return undefined;
+}
+
+function normalizeXYZ(raw: unknown): { x: number; y: number; z: number } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const v = raw as Record<string, unknown>;
+  if (typeof v.x !== 'number' || typeof v.y !== 'number' || typeof v.z !== 'number') {
+    return null;
+  }
+  return { x: v.x, y: v.y, z: v.z };
+}
+
+function normalizeLocalAABB(raw: unknown):
+  | { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }
+  | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const a = raw as Record<string, unknown>;
+  const min = normalizeXYZ(a.min);
+  const max = normalizeXYZ(a.max);
+  if (!min || !max) return undefined;
+  if (max.x <= min.x || max.y <= min.y || max.z <= min.z) return undefined;
+  return { min, max };
 }
 
 function isCategory(v: unknown): v is CubeKindCategory {

@@ -29,6 +29,10 @@ interface BakedDims {
   width: number;
   height: number;
   depth: number;
+  localAABB: {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  };
 }
 
 interface CatalogShape {
@@ -147,16 +151,20 @@ async function main() {
     }
   }
 
-  // Merge baked dims into the existing catalog. Preserve every other
-  // field on each kind so author-edited tilingAxes/scale/etc. don't
-  // get clobbered.
+  // Merge baked dims + localAABB into the existing catalog. Preserve
+  // every other field on each kind so author-edited tilingAxes / scale
+  // / etc. don't get clobbered.
   const nextCatalog: CatalogShape = {
     ...catalog,
     updatedAt: Date.now(),
     kinds: catalog.kinds.map((k) => {
-      const dims = results[k.id];
-      if (!dims) return k;
-      return { ...k, dimensions: dims };
+      const m = results[k.id];
+      if (!m) return k;
+      return {
+        ...k,
+        dimensions: { width: m.width, height: m.height, depth: m.depth },
+        localAABB: m.localAABB,
+      };
     }),
   };
 

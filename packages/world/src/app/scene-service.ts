@@ -42,27 +42,47 @@ function camera(
   };
 }
 
+/** Both reference cubes side-by-side. World layout under the anchor-
+ * lower-left convention with voxelSize 0.5:
+ *   - Blue cube at voxel (0,0,0)  → AABB (0,0,0)→(2,2,2)
+ *   - Large A   at voxel (8,0,0)  → AABB (4,0,0)→(8,4,4)  (1 m gap on X)
+ * Camera centered on the midpoint so both cubes are in frame. */
 const blueAndLargeA: ProgrammaticScene = {
   id: 'blue-and-large-a',
   instances: [
-    // Blue cube at voxel (0,0,0) → world AABB (-1, 0, -1) → (1, 2, 1)
     inst('p1', 'colored_block_blue', [0, 0, 0]),
-    // Cube Prototype Large A at voxel (8,0,0) → world AABB (2, 0, -2) → (6, 4, 2).
-    // Voxel 8 with vs=0.5 = world x=4, dims 4 → spans 2..6. 1m gap from Blue.
     inst('p2', 'prototype_cube_prototype_large_a', [8, 0, 0]),
   ],
-  // Look at the midpoint of the two cubes. Both selected so the
-  // wireframe renders for the visual regression.
-  camera: camera([2, 1.5, 0], {
+  camera: camera([4, 2, 2], {
     azimuthDeg: 35,
     elevationDeg: 25,
-    distance: 10,
+    distance: 12,
   }),
   selection: new Set(['p1', 'p2']),
 };
 
+/** Just the Blue cube — pins the 2 m wireframe alignment in isolation. */
+const blueWireframe: ProgrammaticScene = {
+  id: 'blue-wireframe',
+  instances: [inst('blue', 'colored_block_blue', [0, 0, 0])],
+  camera: camera([1, 1, 1], { azimuthDeg: 35, elevationDeg: 25, distance: 5 }),
+  selection: new Set(['blue']),
+};
+
+/** Just the Cube Prototype Large A — pins the 4 m wireframe in isolation. */
+const largeAWireframe: ProgrammaticScene = {
+  id: 'large-a-wireframe',
+  instances: [
+    inst('largeA', 'prototype_cube_prototype_large_a', [0, 0, 0]),
+  ],
+  camera: camera([2, 2, 2], { azimuthDeg: 35, elevationDeg: 25, distance: 10 }),
+  selection: new Set(['largeA']),
+};
+
 const SCENES: Record<string, ProgrammaticScene> = {
   [blueAndLargeA.id]: blueAndLargeA,
+  [blueWireframe.id]: blueWireframe,
+  [largeAWireframe.id]: largeAWireframe,
 };
 
 export function createSceneService(): SceneService {

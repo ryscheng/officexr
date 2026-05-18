@@ -5,6 +5,8 @@ export type {
   CatalogService,
   InstanceGeometryService,
   KindDimensions,
+  KindLocalAABB,
+  KindMeasurement,
   ProgrammaticScene,
   RoomService,
   SceneService,

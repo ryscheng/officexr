@@ -129,11 +129,36 @@ export interface RoomService {
  * both the live "Recompute from GLTF" button AND the headless bake runner
  * so there is exactly ONE measurement code path.
  */
+export interface KindLocalAABB {
+  readonly min: Readonly<{ x: number; y: number; z: number }>;
+  readonly max: Readonly<{ x: number; y: number; z: number }>;
+}
+
+/** Combined per-kind measurement: extents (back-compat) PLUS the
+ * local-coord AABB (so the geometry service can translate the GLTF's
+ * varying origin convention to a uniform anchor-lower-left world AABB). */
+export interface KindMeasurement {
+  readonly width: number;
+  readonly height: number;
+  readonly depth: number;
+  readonly localAABB: KindLocalAABB;
+}
+
 export interface BakeService {
   measureKind(id: string): Promise<KindDimensions>;
-  /** Measure all non-character kinds. Returns a Map keyed by kind id.
-   * Kinds that fail to load resolve as `null` in the map. */
-  measureAll(): Promise<Map<string, KindDimensions | null>>;
+  /** Returns the FULL local-coordinate AABB of the GLTF (post-scale).
+   * Used to verify the GLTF origin convention (bottom-center vs
+   * bottom-corner) so the renderer / wireframe coordinate convention
+   * matches what's actually drawn. */
+  measureKindLocalAABB(id: string): Promise<KindLocalAABB>;
+  /** Measure one kind, returning both extents and local AABB in one
+   * GLTF load. Used by the catalog bake to populate `kind.dimensions`
+   * + `kind.localAABB` together. */
+  measureKindFull(id: string): Promise<KindMeasurement>;
+  /** Measure all non-character kinds, returning the FULL measurement
+   * (extents + local AABB). Returns a Map keyed by kind id; kinds
+   * that fail to load resolve as `null`. */
+  measureAll(): Promise<Map<string, KindMeasurement | null>>;
 }
 
 // ---------------------------------------------------------------------------

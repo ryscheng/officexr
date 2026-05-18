@@ -34,11 +34,20 @@ export function BakeRunner() {
         const results = await api.bake.measureAll();
         if (cancelled) return;
         // Surface results via the same single getter Playwright uses
-        // to reach the api itself.
+        // to reach the api itself. Each entry carries the full
+        // measurement (extents + localAABB).
         const win = window as unknown as {
           __officexrBakeResults?: Record<
             string,
-            { width: number; height: number; depth: number } | null
+            {
+              width: number;
+              height: number;
+              depth: number;
+              localAABB: {
+                min: { x: number; y: number; z: number };
+                max: { x: number; y: number; z: number };
+              };
+            } | null
           >;
           __officexrBakeDone?: boolean;
         };
