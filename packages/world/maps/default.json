@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "name": "default",
   "title": "Default Map",
-  "updatedAt": 1778912686047,
+  "updatedAt": 1779051584587,
   "rooms": [
     {
       "id": "room-1",
       "roomName": "platform",
       "position": [
+        -21,
         0,
-        0,
-        0
+        -21
       ]
     }
   ],

@@ -2,18 +2,534 @@
   "schemaVersion": 4,
   "name": "new-platform",
   "title": "new-platform",
-  "updatedAt": 1779008977747,
+  "updatedAt": 1779081106627,
   "commands": [
     {
-      "id": "place-2-0g3r",
+      "id": "place-4-s7og",
       "op": "placeObject",
       "kindId": "colored_block_blue",
       "position": [
-        -8,
+        8,
         0,
-        15
+        32
+      ]
+    },
+    {
+      "id": "place-5-s904",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-6-s904",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-7-s904",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-8-s904",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-9-sf8n",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        -4,
+        32
+      ]
+    },
+    {
+      "id": "place-a-sf8o",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        -4,
+        32
+      ]
+    },
+    {
+      "id": "place-b-sf8o",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        -4,
+        32
+      ]
+    },
+    {
+      "id": "place-c-sf8o",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        -4,
+        32
+      ]
+    },
+    {
+      "id": "place-d-sf8o",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        -4,
+        32
+      ]
+    },
+    {
+      "id": "place-e-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-f-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-g-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-h-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-i-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-j-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        -4,
+        36
+      ]
+    },
+    {
+      "id": "place-k-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        -4,
+        36
+      ]
+    },
+    {
+      "id": "place-l-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        -4,
+        36
+      ]
+    },
+    {
+      "id": "place-m-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        -4,
+        36
+      ]
+    },
+    {
+      "id": "place-n-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        -4,
+        36
+      ]
+    },
+    {
+      "id": "place-o-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-p-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-q-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-r-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-s-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-t-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        -4,
+        40
+      ]
+    },
+    {
+      "id": "place-u-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        -4,
+        40
+      ]
+    },
+    {
+      "id": "place-v-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        -4,
+        40
+      ]
+    },
+    {
+      "id": "place-w-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        -4,
+        40
+      ]
+    },
+    {
+      "id": "place-x-sgo2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        -4,
+        40
+      ]
+    },
+    {
+      "id": "place-a-x46y",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        12,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-b-xqjz",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        16,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-c-xrry",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        20,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-d-xsvd",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        24,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-e-xu7g",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        16,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-f-xv4s",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        20,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-g-xvy0",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        24,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-h-xwnf",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        24,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-i-xxcu",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        20,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-j-xy2c",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        16,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-k-xz58",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        12,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-l-y016",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        12,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-m-y3o9",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        8,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-n-y4e4",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        8,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-o-y541",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        8,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-p-y9vt",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        16,
+        4,
+        28
+      ]
+    },
+    {
+      "id": "place-q-yb0j",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        16,
+        8,
+        28
+      ]
+    },
+    {
+      "id": "place-r-yc4t",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        16,
+        12,
+        28
+      ]
+    },
+    {
+      "id": "place-s-yf1i",
+      "op": "placeObject",
+      "kindId": "colored_block_yellow",
+      "position": [
+        16,
+        16,
+        28
       ]
     }
   ],
-  "groups": {}
+  "groups": {
+    "g-1-s905": {
+      "id": "g-1-s905",
+      "commandIds": [
+        "place-4-s7og",
+        "place-5-s904",
+        "place-6-s904",
+        "place-7-s904",
+        "place-8-s904",
+        "place-9-sf8n",
+        "place-a-sf8o",
+        "place-b-sf8o",
+        "place-c-sf8o",
+        "place-d-sf8o",
+        "place-e-sgo2",
+        "place-f-sgo2",
+        "place-g-sgo2",
+        "place-h-sgo2",
+        "place-i-sgo2",
+        "place-j-sgo2",
+        "place-k-sgo2",
+        "place-l-sgo2",
+        "place-m-sgo2",
+        "place-n-sgo2",
+        "place-o-sgo2",
+        "place-p-sgo2",
+        "place-q-sgo2",
+        "place-r-sgo2",
+        "place-s-sgo2",
+        "place-t-sgo2",
+        "place-u-sgo2",
+        "place-v-sgo2",
+        "place-w-sgo2",
+        "place-x-sgo2"
+      ]
+    }
+  }
 }
