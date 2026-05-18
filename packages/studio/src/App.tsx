@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider } from '@officexr/world/react';
 import { StudioPage } from './StudioPage.tsx';
+import { HeadlessApp } from './modes/headless/HeadlessApp.tsx';
 
 /**
  * Studio root.
@@ -36,9 +37,16 @@ export default function App() {
     });
   }, []);
 
+  // `?op=...` URL param routes to the headless test harness instead
+  // of the studio UI. The application api is the same — both layers
+  // consume the same DI-managed services.
+  const params = new URLSearchParams(globalThis.location?.search ?? '');
+  const op = params.get('op');
+  const sceneId = params.get('scene') ?? undefined;
+
   return (
     <ApplicationProvider api={api}>
-      <StudioPage />
+      {op ? <HeadlessApp op={op} sceneId={sceneId} /> : <StudioPage />}
     </ApplicationProvider>
   );
 }

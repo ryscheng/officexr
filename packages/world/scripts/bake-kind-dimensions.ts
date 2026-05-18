@@ -1,42 +1,29 @@
 #!/usr/bin/env tsx
 /**
- * Bakes per-kind GLTF-derived bounding-box dimensions into the
- * world-object-kind catalog. After this runs, every kind in
- * `packages/world/world-object-kinds.json` has a `dimensions` field
- * populated from its GLTF AABB extents (post-`scale`).
+ * Programmatic bake driver.
  *
- * Why this matters:
- *   - `compileScene` uses `getKindStride(kindId, voxelSize)` to step
- *     extrude commands by the kind's actual bounding-box voxels.
- *   - The tile tool steps and snaps to multiples of the kind's dims.
- *   - The Object Editor shows "baked" instead of "unbaked".
- * Without baked dimensions every kind falls back to a 1-voxel step
- * (legacy behaviour) — which on the 0.5 m grid means 2 m blocks
- * overlap when extruded.
+ * Navigates Playwright to the studio's headless `?op=bake` route,
+ * awaits the `BakeRunner` component's completion sentinel, then reads
+ * the measurement result off `window.__officexrBakeResults`. The page
+ * does the actual work via `api.bake.measureAll()` — this script is
+ * just transport.
  *
- * Prerequisites: the studio dev server must be running
- *   (default http://localhost:5174 — set BAKE_DEV_SERVER to override).
- *   Run `pnpm --filter @officexr/studio dev` first.
+ * Replaces the prior click-walk implementation, which raced React
+ * Suspense + drei's useGLTF cache and produced poisoned values
+ * (duplicate dimensions across distinct kinds, stale {1,1,0.349}
+ * reads for kinds that are actually 4×4×4 in their GLTF).
+ *
+ * Prerequisites: the studio dev server must be running.
+ *   pnpm --filter @officexr/studio dev
  *
  * Usage: pnpm bake:dimensions
- *
- * The script:
- *   1. Fetches the current catalog from /api/world-object-kinds.
- *   2. Drives Playwright to the Object editor, clicks each kind, and
- *      reads the `data-measured-dims` attribute on the Dimensions
- *      section (set by ObjectKindEditorPanel).
- *   3. Builds a new catalog where every kind has the baked dimensions
- *      merged in (preserves any other fields the author has edited).
- *   4. PUTs the new catalog to /api/world-object-kinds.
- *
- * On failure for a specific kind, logs a warning, leaves that kind's
- * dimensions unchanged, and continues. Prints a summary at the end.
  */
 
 import { chromium } from 'playwright';
 
 const DEV_SERVER = process.env.BAKE_DEV_SERVER ?? 'http://localhost:5174';
 const CATALOG_URL = `${DEV_SERVER}/api/world-object-kinds`;
+const BAKE_URL = `${DEV_SERVER}/?op=bake`;
 
 interface BakedDims {
   width: number;
@@ -44,18 +31,10 @@ interface BakedDims {
   depth: number;
 }
 
-interface KindShape {
-  id: string;
-  label: string;
-  category: string;
-  dimensions?: BakedDims;
-  [k: string]: unknown;
-}
-
 interface CatalogShape {
   schemaVersion: number;
   updatedAt: number;
-  kinds: KindShape[];
+  kinds: Array<{ id: string; [k: string]: unknown }>;
 }
 
 async function fetchCatalog(): Promise<CatalogShape> {
@@ -88,110 +67,100 @@ async function putCatalog(catalog: CatalogShape): Promise<void> {
   }
 }
 
-async function main() {
-  console.log(`[bake-dimensions] Fetching catalog from ${CATALOG_URL}...`);
-  const catalog = await fetchCatalog();
-  const allKinds = catalog.kinds;
-  // Character kinds are not placeable objects — skip the bake (they're
-  // not selectable in the Object editor's kind list either).
-  const kinds = allKinds.filter((k) => k.category !== 'character');
-  console.log(
-    `[bake-dimensions] ${allKinds.length} kinds total, ${allKinds.length - kinds.length} 'character' skipped.`,
-  );
+/** Sanity check: flag kindIds that share the same rounded (w,h,d). */
+function findDuplicateDimensions(
+  results: Record<string, BakedDims | null>,
+): Array<{ key: string; ids: string[] }> {
+  const buckets = new Map<string, string[]>();
+  for (const [id, dims] of Object.entries(results)) {
+    if (!dims) continue;
+    const key = `${dims.width.toFixed(3)}×${dims.height.toFixed(3)}×${dims.depth.toFixed(3)}`;
+    let arr = buckets.get(key);
+    if (!arr) {
+      arr = [];
+      buckets.set(key, arr);
+    }
+    arr.push(id);
+  }
+  const dups: Array<{ key: string; ids: string[] }> = [];
+  for (const [key, ids] of buckets) {
+    if (ids.length > 1) dups.push({ key, ids });
+  }
+  return dups;
+}
 
-  const browser = await chromium.launch({ headless: true });
+async function main() {
+  console.log('[bake-dimensions] Fetching current catalog…');
+  const catalog = await fetchCatalog();
+
+  console.log('[bake-dimensions] Launching headless browser…');
+  const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.PLAYWRIGHT_CHROME_PATH ?? chromePath,
+  });
   const page = await browser.newPage();
 
-  const objectUrl = `${DEV_SERVER}/#object`;
-  console.log(`[bake-dimensions] Navigating to ${objectUrl}...`);
-  await page.goto(objectUrl);
+  page.on('pageerror', (e) => console.warn('[bake-dimensions] PAGEERR:', e.message));
 
-  // Wait for the page to stabilize.
-  await page.waitForTimeout(2000);
+  console.log(`[bake-dimensions] Navigating to ${BAKE_URL}`);
+  await page.goto(BAKE_URL);
 
-  const bakedById = new Map<string, BakedDims>();
-  let okCount = 0;
-  let failCount = 0;
+  // BakeRunner sets window.__officexrBakeDone = true when it finishes.
+  await page.waitForFunction(
+    () => (window as unknown as { __officexrBakeDone?: boolean }).__officexrBakeDone === true,
+    null,
+    { timeout: 120_000 },
+  );
 
-  for (const kind of kinds) {
-    try {
-      const kindBtn = page.locator(`[data-kind-id="${kind.id}"]`);
-      let count = await kindBtn.count();
-      if (count === 0) {
-        // The kind list collapses categories — expand the matching one.
-        const collapseBtn = page.locator('button').filter({ hasText: kind.category });
-        if ((await collapseBtn.count()) > 0) {
-          await collapseBtn.first().click();
-          await page.waitForTimeout(80);
-        }
-        count = await kindBtn.count();
-        if (count === 0) {
-          console.warn(`[bake-dimensions] WARN: kind "${kind.id}" not found. Skipping.`);
-          failCount++;
-          continue;
-        }
-      }
-
-      await kindBtn.first().click();
-      // Wait for the dimensions section to populate (data-measured-dims
-      // is rendered by KindDimensionsEditor once the GLTF is loaded).
-      const dimsLocator = page.locator('[data-measured-dims]');
-      await dimsLocator.first().waitFor({ state: 'attached', timeout: 8000 });
-
-      // Re-read on a short retry loop — the panel may be momentarily
-      // empty as Suspense unsuspends between kinds.
-      let raw: string | null = null;
-      for (let i = 0; i < 15; i++) {
-        raw = await dimsLocator.first().getAttribute('data-measured-dims');
-        if (raw && raw.split(',').every((s) => Number.isFinite(parseFloat(s)))) break;
-        await page.waitForTimeout(120);
-      }
-      if (!raw) {
-        console.warn(`[bake-dimensions] WARN: kind "${kind.id}" produced no dims. Skipping.`);
-        failCount++;
-        continue;
-      }
-
-      const parts = raw.split(',').map((s) => parseFloat(s));
-      if (parts.length !== 3 || parts.some((p) => !Number.isFinite(p) || p <= 0)) {
-        console.warn(`[bake-dimensions] WARN: kind "${kind.id}" invalid dims "${raw}". Skipping.`);
-        failCount++;
-        continue;
-      }
-      const [width, height, depth] = parts as [number, number, number];
-      bakedById.set(kind.id, { width, height, depth });
-      okCount++;
-      if (okCount % 25 === 0) {
-        console.log(`[bake-dimensions] Progress: ${okCount}/${kinds.length} measured...`);
-      }
-    } catch (err) {
-      console.warn(`[bake-dimensions] WARN: kind "${kind.id}" failed:`, err);
-      failCount++;
-    }
-  }
+  const results = (await page.evaluate(
+    () =>
+      (window as unknown as {
+        __officexrBakeResults?: Record<string, BakedDims | null>;
+      }).__officexrBakeResults ?? null,
+  )) as Record<string, BakedDims | null> | null;
 
   await browser.close();
 
-  console.log(`[bake-dimensions] Measured ${okCount} kinds, ${failCount} failed.`);
+  if (!results) {
+    console.error('[bake-dimensions] No results object — BakeRunner did not complete?');
+    process.exit(1);
+  }
+
+  const okCount = Object.values(results).filter((d) => d !== null).length;
+  const failCount = Object.values(results).filter((d) => d === null).length;
+  console.log(`[bake-dimensions] Measured ${okCount} kinds; ${failCount} failed.`);
+
   if (okCount === 0) {
     console.error('[bake-dimensions] No kinds measured — refusing to overwrite catalog.');
     process.exit(1);
   }
 
-  // Merge baked dims into the existing catalog (preserving any other
-  // edits the author has made). Skipped/failed kinds keep whatever
-  // dimensions field they already had (which may be undefined).
+  // Sanity check: distinct kinds with identical dims is suspicious but
+  // not strictly an error (the "block" family genuinely shares 2×2×2).
+  // Print but do not abort.
+  const dups = findDuplicateDimensions(results);
+  if (dups.length > 0) {
+    console.warn('[bake-dimensions] Duplicate-dimension buckets (informational):');
+    for (const d of dups.slice(0, 10)) {
+      console.warn(`  ${d.key}: ${d.ids.length} kinds (${d.ids.slice(0, 4).join(', ')}${d.ids.length > 4 ? '…' : ''})`);
+    }
+  }
+
+  // Merge baked dims into the existing catalog. Preserve every other
+  // field on each kind so author-edited tilingAxes/scale/etc. don't
+  // get clobbered.
   const nextCatalog: CatalogShape = {
     ...catalog,
     updatedAt: Date.now(),
     kinds: catalog.kinds.map((k) => {
-      const baked = bakedById.get(k.id);
-      if (!baked) return k;
-      return { ...k, dimensions: baked };
+      const dims = results[k.id];
+      if (!dims) return k;
+      return { ...k, dimensions: dims };
     }),
   };
 
-  console.log(`[bake-dimensions] PUT ${CATALOG_URL}...`);
+  console.log(`[bake-dimensions] PUT ${CATALOG_URL}`);
   await putCatalog(nextCatalog);
   console.log('[bake-dimensions] Done.');
 }
