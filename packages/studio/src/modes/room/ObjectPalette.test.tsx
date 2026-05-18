@@ -135,19 +135,27 @@ describe('filterByName', () => {
   });
 });
 
-// --- Component tests (mocking useCubeCatalog) ---
+// --- Component tests (mocking the catalog hook) ---
 
-// We need to mock the catalog since in test environment there's no fetch
-vi.mock('@officexr/world/scenes', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@officexr/world/scenes')>();
-  const mockKinds = [
-    makeKind('block-grass', 'block', { label: 'Grass' }),
-    makeKind('furniture-chair', 'furniture', { label: 'Chair' }),
-  ];
+const mockKinds = [
+  makeKind('block-grass', 'block', { label: 'Grass' }),
+  makeKind('furniture-chair', 'furniture', { label: 'Chair' }),
+];
+
+// ObjectPalette consumes the catalog through @officexr/world/react's
+// `useCatalog`. Mock that to return our fixture, and stub the static
+// helpers from @officexr/world/scenes that the palette also touches.
+vi.mock('@officexr/world/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@officexr/world/react')>();
   return {
     ...actual,
-    useObjectKindCatalog: () => mockKinds,
-    useCubeCatalog: () => mockKinds,
+    useCatalog: () => mockKinds,
+  };
+});
+vi.mock('@officexr/world/scenes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@officexr/world/scenes')>();
+  return {
+    ...actual,
     thumbnailUrlForKind: () => null,
     CUBE_KIND_CATEGORIES: ['block', 'furniture', 'prototype', 'restaurant'],
   };

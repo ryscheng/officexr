@@ -1,10 +1,10 @@
 import React, { useDeferredValue, useMemo, useState } from 'react';
 import {
-  useObjectKindCatalog,
   CUBE_KIND_CATEGORIES,
   thumbnailUrlForKind,
   type WorldObjectKind,
 } from '@officexr/world/scenes';
+import { useCatalog } from '@officexr/world/react';
 
 interface ObjectPaletteProps {
   staged: string | null;
@@ -96,7 +96,7 @@ export function filterByName(
  * with the 280-kind default catalog.
  */
 export function ObjectPalette({ staged, onStage }: ObjectPaletteProps) {
-  const allKinds = useObjectKindCatalog();
+  const allKinds = useCatalog();
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
   const groups = useMemo(
