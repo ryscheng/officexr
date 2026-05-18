@@ -21,7 +21,7 @@ import { cloneWorldMap } from './world-map.ts';
 
 export interface Actions {
   // local intents
-  setSelfPosition(pos: Vec3, vel: Vec3, yaw: number): void;
+  setSelfPosition(pos: Vec3, vel: Vec3, yaw: number, isAirborne: boolean): void;
   setMyJitsiRoom(roomId: string | null): void;
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
@@ -57,6 +57,7 @@ export interface Actions {
     vel: Vec3,
     yaw: number,
     tRecv: number,
+    isAirborne: boolean,
   ): void;
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
@@ -85,6 +86,7 @@ const DEFAULT_PLAYER: Omit<PlayerState, 'id'> = {
   yaw: 0,
   hp: 100,
   isDead: false,
+  isAirborne: false,
   avatar: { model: 'default' },
   jitsiRoom: null,
   status: 'active',
@@ -118,8 +120,8 @@ export function createActions(store: Store, bus?: Bus): Actions {
   }
 
   return {
-    setSelfPosition(pos, vel, yaw) {
-      patchSelf({ pos, vel, yaw });
+    setSelfPosition(pos, vel, yaw, isAirborne) {
+      patchSelf({ pos, vel, yaw, isAirborne });
     },
 
     setMyJitsiRoom(roomId) {
@@ -247,17 +249,17 @@ export function createActions(store: Store, bus?: Bus): Actions {
       if (removed) bus?.emit({ kind: 'inventory:removed', itemId });
     },
 
-    applyRemotePosition(playerId, pos, vel, yaw, tRecv) {
+    applyRemotePosition(playerId, pos, vel, yaw, tRecv, isAirborne) {
       // A position broadcast is implicit "this peer is here, with this state".
       // Upsert-on-missing so peers that join without a snapshot handshake
       // still materialise into the receiver's office. The DEFAULT_PLAYER
       // template provides sensible defaults for fields not on the wire
-      // (name, hp, avatar, status); pos/vel/yaw/tRecv come from the event.
+      // (name, hp, avatar, status); pos/vel/yaw/tRecv/isAirborne come from the event.
       store.setState((s) => {
         const existing = s.players[playerId];
         const next: PlayerState = existing
-          ? { ...existing, pos, vel, yaw, tRecv }
-          : { ...DEFAULT_PLAYER, id: playerId, pos, vel, yaw, tRecv };
+          ? { ...existing, pos, vel, yaw, tRecv, isAirborne }
+          : { ...DEFAULT_PLAYER, id: playerId, pos, vel, yaw, tRecv, isAirborne };
         return { players: { ...s.players, [playerId]: next } };
       });
     },

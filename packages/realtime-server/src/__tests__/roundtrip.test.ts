@@ -23,6 +23,7 @@ function makeMoveEvent(actor: string, x: number): NetEvent {
     pos: { x, y: 0, z: 0 },
     vel: { x: 0, y: 0, z: 0 },
     yaw: 0,
+    isAirborne: false,
   };
 }
 

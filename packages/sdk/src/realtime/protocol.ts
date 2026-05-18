@@ -63,6 +63,7 @@ const ZPlayerState = z.object({
   yaw: z.number(),
   hp: z.number(),
   isDead: z.boolean(),
+  isAirborne: z.boolean(),
   avatar: ZAvatarData,
   jitsiRoom: z.string().nullable(),
   status: z.enum(['active', 'inactive']),
@@ -125,6 +126,11 @@ const ZWorldSettings: z.ZodType<WorldSettings> = z.object({
   sunPositionZ: z.number(),
   sunIntensity: z.number(),
   ambientIntensity: z.number(),
+  // Jump
+  jumpVelocity: z.number().positive(),
+  airControl: z.number().min(0).max(1),
+  maxJumps: z.number().int().min(1).max(10),
+  landingEaseMs: z.number().min(0),
 });
 
 const ZCubeAppearance = z.object({
@@ -202,7 +208,7 @@ const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
 
 // --- Per-kind payload schemas (without envelope) ---
 
-const ZPresencePosition = z.object({ pos: ZVec3, vel: ZVec3, yaw: z.number() });
+const ZPresencePosition = z.object({ pos: ZVec3, vel: ZVec3, yaw: z.number(), isAirborne: z.boolean() });
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData });
 const ZChatMessage = z.object({ text: z.string() });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
@@ -230,7 +236,7 @@ const ZSnapshotOffer = z.object({
 type WithEnvelope<K extends string, V extends number, P = {}> = Envelope & { kind: K; v: V } & P;
 
 export type NetEvent =
-  | WithEnvelope<'presence:position', 1, { pos: Vec3; vel: Vec3; yaw: number }>
+  | WithEnvelope<'presence:position', 1, { pos: Vec3; vel: Vec3; yaw: number; isAirborne: boolean }>
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData }>
   | WithEnvelope<'chat:message', 1, { text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>

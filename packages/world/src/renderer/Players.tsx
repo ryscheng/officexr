@@ -38,6 +38,11 @@ interface PlayersProps {
    * timeScale updates). Used by the Mugshot mode to produce a
    * deterministic frame for snapshot testing. */
   paused?: boolean;
+  /** Ref mutated each frame by SceneFrame to reflect local player airborne
+   * state. Used to override motion to 'jumping' for the self avatar without
+   * a React re-render. Ref is created in Scene.tsx and threaded to both
+   * SceneFrame and Players. */
+  isAirborneRef: React.MutableRefObject<boolean>;
 }
 
 interface BumpState {
@@ -49,7 +54,7 @@ interface BumpState {
 
 /** What animation tier a character is currently in. Derived per-frame from
  * |player.vel| against the broadcast walk and run speeds. */
-type MotionState = 'idle' | 'walking' | 'running';
+type MotionState = 'idle' | 'walking' | 'running' | 'jumping';
 
 /** Offset added to player.yaw when rotating the avatar — adjust if the GLB's
  * default facing differs from -Z. KayKit Adventurers point at +Z by default. */
@@ -137,6 +142,7 @@ export function Players({
   selfPosRef,
   selfBodyRef,
   paused,
+  isAirborneRef,
 }: PlayersProps) {
   // Read movement/animation params from the broadcast world state. Any peer
   // (the local player here) that calls actions.setWorldSettings updates the
@@ -371,6 +377,20 @@ export function Players({
         if (speedSq <= WALK_EXIT_SQ) motion = 'idle';
         else if (speedSq <= RUN_EXIT_SQ) motion = 'walking';
       }
+      // Airborne override: if the player is in the air, force 'jumping'
+      // regardless of horizontal speed. Driven by isAirborneRef for the
+      // local player (frame-accurate, no re-render overhead); by
+      // player.isAirborne for peers (broadcast once per state change via
+      // presence:position).
+      const playerIsAirborne =
+        id === selfId
+          ? isAirborneRef.current
+          : (state.players[id]?.isAirborne ?? false);
+
+      if (playerIsAirborne) {
+        motion = 'jumping';
+      }
+
       nextMotion[id] = motion;
       if (previous !== motion) {
         motionState.current.set(id, motion);
@@ -545,7 +565,7 @@ export function Players({
 function PerPlayerAdventurer(props: {
   playerId: string;
   character: CharacterName;
-  motion: MotionState;
+  motion: MotionState;  // now includes 'jumping'
   invisible: boolean;
   animScale: number;
   bumpCounter: number;

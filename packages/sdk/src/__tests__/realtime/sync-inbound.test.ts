@@ -60,6 +60,7 @@ describe('SyncEngine inbound', () => {
       pos: { x: 5, y: 0, z: 5 },
       vel: { x: 1, y: 0, z: 0 },
       yaw: 0.5,
+      isAirborne: false,
     };
     await ctx.remote.send(evt);
     const r = ctx.store.getState().players['other'];

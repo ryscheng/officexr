@@ -15,6 +15,7 @@ describe('applyRemotePosition — membership upsert', () => {
       { x: 0.5, y: 0, z: -0.5 },
       Math.PI / 4,
       1234,
+      false,
     );
 
     const created = store.getState().players['stranger'];
@@ -50,6 +51,7 @@ describe('applyRemotePosition — membership upsert', () => {
       { x: 1, y: 0, z: 0 },
       0,
       9999,
+      false,
     );
 
     const after = store.getState().players['alice'];

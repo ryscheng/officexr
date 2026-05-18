@@ -79,6 +79,7 @@ describe('SyncEngine outbound — presence:position', () => {
       { x: POSITION_CONSTANTS.deltaP * 2, y: 0, z: 0 },
       { x: 1, y: 0, z: 0 },
       0,
+      false,
     );
     ctx.sync.flushPosition();
     // Skip the initial spawn announcement (broadcast on start) — we're
@@ -96,7 +97,7 @@ describe('SyncEngine outbound — presence:position', () => {
     // move every 1ms for 1 second; only ~MAX_HZ packets should send
     for (let ms = 0; ms < 1000; ms++) {
       x += POSITION_CONSTANTS.deltaP * 2;
-      ctx.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0);
+      ctx.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0, false);
       ctx.sync.flushPosition();
       ctx.clock.advance(1);
     }
@@ -114,6 +115,7 @@ describe('SyncEngine outbound — presence:position', () => {
         { x: (i + 1) * POSITION_CONSTANTS.deltaP * 2, y: 0, z: 0 },
         { x: 1, y: 0, z: 0 },
         0,
+        false,
       );
       ctx.clock.advance(50);
       ctx.sync.flushPosition();
@@ -123,6 +125,7 @@ describe('SyncEngine outbound — presence:position', () => {
       { x: 5 * POSITION_CONSTANTS.deltaP * 2, y: 0, z: 0 },
       { x: 0, y: 0, z: 0 },
       0,
+      false,
     );
     ctx.clock.advance(POSITION_CONSTANTS.stopGraceMs + 10);
     ctx.sync.flushPosition();

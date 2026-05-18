@@ -63,13 +63,14 @@ const LOOPING_STATES: ReadonlySet<AnimationState> = new Set([
   'idle',
   'walking',
   'running',
+  'jumping',  // loops while airborne
 ]);
 
 interface AdventurerProps {
   character: CharacterName;
   /** Which clip the GAMEPLAY layer should loop. Comes from the
    * velocity-derived motion state in `Players.tsx`. */
-  motion: 'idle' | 'walking' | 'running';
+  motion: 'idle' | 'walking' | 'running' | 'jumping';
   /**
    * Optional preview override owned by the Character editor. When
    * non-null, plays this state's clip in place of `motion`'s. Setting
@@ -98,7 +99,9 @@ function clipForMotion(motion: AdventurerProps['motion']): string {
     ? STATE_CLIPS.running
     : motion === 'walking'
       ? STATE_CLIPS.walking
-      : STATE_CLIPS.idle;
+      : motion === 'jumping'
+        ? STATE_CLIPS.jumping
+        : STATE_CLIPS.idle;
 }
 
 /**

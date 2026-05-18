@@ -23,6 +23,7 @@ export function applyNetEventToStore(
         event.vel,
         event.yaw,
         clock.now(),
+        event.isAirborne,
       );
       return;
     case 'chat:message': {

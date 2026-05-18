@@ -193,6 +193,7 @@ export function useMapPicker({
       { x: t[0], y: t[1] + dropHeightRef.current, z: t[2] },
       { x: 0, y: 0, z: 0 },
       0,
+      false,
     );
   }, []);
 

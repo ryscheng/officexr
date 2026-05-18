@@ -17,6 +17,7 @@ describe('PROTOCOL table', () => {
       pos: { x: 0, y: 0, z: 0 },
       vel: { x: 0, y: 0, z: 0 },
       yaw: 0,
+      isAirborne: false,
     },
     { kind: 'chat:message', v: 1, actorId: 'a', seq: 1, t: 0, text: 'hi' },
     { kind: 'avatar:update', v: 1, actorId: 'a', seq: 1, t: 0, avatar: { model: 'gnome' } },
@@ -106,6 +107,10 @@ describe('PROTOCOL table', () => {
           sunPositionZ: 20,
           sunIntensity: 1.4,
           ambientIntensity: 0.15,
+          jumpVelocity: 8,
+          airControl: 0.2,
+          maxJumps: 2,
+          landingEaseMs: 120,
         },
         worldMap: {
           gridSize: 50,
@@ -145,6 +150,10 @@ describe('PROTOCOL table', () => {
         sunPositionZ: 20,
         sunIntensity: 1.4,
         ambientIntensity: 0.15,
+        jumpVelocity: 8,
+        airControl: 0.2,
+        maxJumps: 2,
+        landingEaseMs: 120,
       },
     },
     {
@@ -260,5 +269,154 @@ describe('PROTOCOL table', () => {
         text: 'hi',
       }),
     ).toBe(false);
+  });
+});
+
+// Base world:settings object with all required fields (including jump).
+const BASE_WORLD_SETTINGS = {
+  playerSpeed: 3,
+  runSpeedMultiplier: 2,
+  walkAnimSpeed: 1,
+  runAnimSpeed: 1,
+  idleAnimSpeed: 1,
+  turnSpeed: 16,
+  charRadius: 0.4,
+  proximityRadius: 3,
+  proximityOuterRadius: 6,
+  bumpEasingMs: 180,
+  proximityEnterDebounceMs: 500,
+  conversationCameraDistance: 7,
+  conversationCameraHeight: 5,
+  movementBlockThreshold: 0.9,
+  sunPositionX: 20,
+  sunPositionY: 40,
+  sunPositionZ: 20,
+  sunIntensity: 1.4,
+  ambientIntensity: 0.15,
+  jumpVelocity: 8,
+  airControl: 0.2,
+  maxJumps: 2,
+  landingEaseMs: 120,
+};
+
+function makeWorldSettingsEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: 'world:settings',
+    v: 1,
+    actorId: 'a',
+    seq: 1,
+    t: 0,
+    settings: { ...BASE_WORLD_SETTINGS, ...overrides },
+  };
+}
+
+describe('ZWorldSettings — JumpSettings fields', () => {
+  it('accepts all four new fields at valid defaults', () => {
+    const r = validateNetEvent(makeWorldSettingsEvent());
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects airControl: 1.5 (out of range)', () => {
+    const r = validateNetEvent(makeWorldSettingsEvent({ airControl: 1.5 }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+
+  it('rejects jumpVelocity: -1 (not positive)', () => {
+    const r = validateNetEvent(makeWorldSettingsEvent({ jumpVelocity: -1 }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+
+  it('rejects jumpVelocity: 0 (not positive)', () => {
+    const r = validateNetEvent(makeWorldSettingsEvent({ jumpVelocity: 0 }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+
+  it('rejects maxJumps: 0 (below min 1)', () => {
+    const r = validateNetEvent(makeWorldSettingsEvent({ maxJumps: 0 }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+
+  it('accepts maxJumps: 3', () => {
+    const r = validateNetEvent(makeWorldSettingsEvent({ maxJumps: 3 }));
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects landingEaseMs: -1 (below zero)', () => {
+    const r = validateNetEvent(makeWorldSettingsEvent({ landingEaseMs: -1 }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+
+  it('rejects old-format message missing all four jump fields', () => {
+    const oldSettings = {
+      playerSpeed: 3,
+      runSpeedMultiplier: 2,
+      walkAnimSpeed: 1,
+      runAnimSpeed: 1,
+      idleAnimSpeed: 1,
+      turnSpeed: 16,
+      charRadius: 0.4,
+      proximityRadius: 3,
+      proximityOuterRadius: 6,
+      bumpEasingMs: 180,
+      proximityEnterDebounceMs: 500,
+      conversationCameraDistance: 7,
+      conversationCameraHeight: 5,
+      movementBlockThreshold: 0.9,
+      sunPositionX: 20,
+      sunPositionY: 40,
+      sunPositionZ: 20,
+      sunIntensity: 1.4,
+      ambientIntensity: 0.15,
+      // no jump fields
+    };
+    const r = validateNetEvent({
+      kind: 'world:settings',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      settings: oldSettings,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+});
+
+function makePresencePositionEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: 'presence:position',
+    v: 1,
+    actorId: 'alice',
+    seq: 1,
+    t: 0,
+    pos: { x: 0, y: 0, z: 0 },
+    vel: { x: 0, y: 0, z: 0 },
+    yaw: 0,
+    isAirborne: false,
+    ...overrides,
+  };
+}
+
+describe('presence:position — isAirborne field', () => {
+  it('accepts isAirborne: false', () => {
+    const r = validateNetEvent(makePresencePositionEvent({ isAirborne: false }));
+    expect(r.ok).toBe(true);
+  });
+
+  it('accepts isAirborne: true', () => {
+    const r = validateNetEvent(makePresencePositionEvent({ isAirborne: true }));
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects missing isAirborne', () => {
+    const { isAirborne: _, ...noAirborne } = makePresencePositionEvent();
+    const r = validateNetEvent(noAirborne);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
   });
 });

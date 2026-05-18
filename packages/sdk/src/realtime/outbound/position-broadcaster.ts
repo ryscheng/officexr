@@ -61,6 +61,7 @@ export class PositionBroadcaster {
   private lastSentPos: Vec3 = { ...ZERO_V };
   private lastSentYaw = 0;
   private lastSentTMs = -Infinity;
+  private lastSentIsAirborne = false;
   private wasMoving = false;
   private hasInitialPosition = false;
   private pendingStopCheckSinceMs: number | null = null;
@@ -89,6 +90,7 @@ export class PositionBroadcaster {
     if (!me) return;
     this.lastSentPos = { ...me.pos };
     this.lastSentYaw = me.yaw;
+    this.lastSentIsAirborne = me.isAirborne;
     this.hasInitialPosition = true;
     this.broadcast({
       kind: 'presence:position',
@@ -99,6 +101,7 @@ export class PositionBroadcaster {
       pos: { ...me.pos },
       vel: { ...ZERO_V },
       yaw: me.yaw,
+      isAirborne: me.isAirborne,
     });
   }
 
@@ -115,6 +118,7 @@ export class PositionBroadcaster {
       // -Infinity so the first real movement is not rate-capped.
       this.lastSentPos = { ...me.pos };
       this.lastSentYaw = me.yaw;
+      this.lastSentIsAirborne = me.isAirborne;
       this.hasInitialPosition = true;
       return;
     }
@@ -124,8 +128,14 @@ export class PositionBroadcaster {
     const dt = now - this.lastSentTMs;
     const aboveCeiling = dt < 1000 / POSITION_CONSTANTS.maxHz;
     const movedEnough = dPos > POSITION_CONSTANTS.deltaP || dYaw > POSITION_CONSTANTS.deltaY;
+    // Force a broadcast when the airborne flag flips so peers can flip
+    // the jump animation immediately, without waiting for the stop-grace
+    // packet (which would lag by up to `stopGraceMs` for a stationary
+    // jump). Bypasses the `movedEnough` gate but still honours the rate
+    // ceiling — at 30 Hz that's at most ~33 ms latency on a flip.
+    const airborneChanged = me.isAirborne !== this.lastSentIsAirborne;
 
-    if (movedEnough && !aboveCeiling) {
+    if ((movedEnough || airborneChanged) && !aboveCeiling) {
       // estimated velocity since last send. On the first send (dt non-finite)
       // fall back to the player's own velocity vector.
       const vel = dt > 0 && Number.isFinite(dt)
@@ -153,9 +163,11 @@ export class PositionBroadcaster {
         pos: { ...me.pos },
         vel,
         yaw: me.yaw,
+        isAirborne: me.isAirborne,
       };
       this.lastSentPos = { ...me.pos };
       this.lastSentYaw = me.yaw;
+      this.lastSentIsAirborne = me.isAirborne;
       this.lastSentTMs = now;
       this.wasMoving = true;
       this.pendingStopCheckSinceMs = null;
@@ -181,9 +193,11 @@ export class PositionBroadcaster {
           pos: { ...me.pos },
           vel: { ...ZERO_V },
           yaw: me.yaw,
+          isAirborne: me.isAirborne,
         };
         this.lastSentPos = { ...me.pos };
         this.lastSentYaw = me.yaw;
+        this.lastSentIsAirborne = me.isAirborne;
         this.lastSentTMs = now;
         this.wasMoving = false;
         this.pendingStopCheckSinceMs = null;

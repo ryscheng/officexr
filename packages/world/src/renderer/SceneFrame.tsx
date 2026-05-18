@@ -50,6 +50,11 @@ interface SceneFrameProps {
    * y-lift so they fall onto the surface). Empty/undefined => no
    * respawn ever (the player floats in the void instead). */
   spawnPoints?: readonly Vec3[];
+  /** Mutated each frame to true while the local player is airborne.
+   * Players.tsx reads this to drive the jump animation for the self avatar
+   * without React re-renders. Ref is created in Scene.tsx and threaded to
+   * both SceneFrame and Players. */
+  isAirborneRef: React.MutableRefObject<boolean>;
 }
 
 const ARROW_KEYS = new Set([
@@ -95,6 +100,7 @@ export function SceneFrame({
   selfBodyRef,
   worldFocused,
   spawnPoints,
+  isAirborneRef,
 }: SceneFrameProps) {
   // Mirror the spawn list into a ref so the per-frame fall-respawn
   // check below can read the live value without re-binding the
@@ -151,13 +157,43 @@ export function SceneFrame({
   // it can pin the player to a fixed pos without the body drifting
   // away each frame. Production code never reads or writes this.
   const gravityEnabledRef = useRef(true);
+  // Jump state refs — all declared here so the per-frame closure can
+  // mutate them without re-binding useFrame. Declared BEFORE the
+  // `__OFFICE_GRAVITY__` effect so its `setEnabled` closure can
+  // reference them without TS "used before declaration" errors.
+  // Tracks "this character actively jumped and has not finished the
+  // landing blend yet". Drives the broadcast `isAirborne` flag and the
+  // 'jumping' animation. Critically NOT inferred from
+  // `jumpsRemainingRef < maxJumps` — the ref starts at 0 (refilled on
+  // first grounded frame), so that derivation would misclassify the
+  // spawn frame as airborne.
+  const airborneRef = useRef(false);
+  const jumpsRemainingRef = useRef(0);    // refilled to maxJumps on landing
+  const airVelXRef = useRef(0);           // captured/deflected horizontal velocity while airborne
+  const airVelZRef = useRef(0);
+  const landingBlendTRef = useRef(0);     // ms elapsed in the landing ease blend
+  const blendStartVelXRef = useRef(0);    // airVel at the moment the landing blend began (linear lerp source)
+  const blendStartVelZRef = useRef(0);
+  const spaceWasDownRef = useRef(false);  // edge-trigger: was Space held last frame?
   useEffect(() => {
     (window as unknown as {
       __OFFICE_GRAVITY__?: { setEnabled: (v: boolean) => void };
     }).__OFFICE_GRAVITY__ = {
       setEnabled: (v: boolean) => {
         gravityEnabledRef.current = v;
-        if (!v) verticalVelRef.current = 0;
+        if (!v) {
+          // Gravity-off mode (Mugshot): treat the character as
+          // grounded — clear any jump/landing state but do NOT zero
+          // `jumpsRemainingRef`. Zeroing it would make every frame
+          // classify as airborne (since 0 < maxJumps), permanently
+          // pinning the avatar in the `'jumping'` animation pose
+          // and forcing the airborne broadcast branch.
+          verticalVelRef.current = 0;
+          airborneRef.current = false;
+          airVelXRef.current = 0;
+          airVelZRef.current = 0;
+          landingBlendTRef.current = 0;
+        }
       },
     };
     return () => {
@@ -165,6 +201,7 @@ export function SceneFrame({
         .__OFFICE_GRAVITY__;
     };
   }, []);
+
   // PlayerIds whose bodies the local character was bumping into on the
   // previous frame. Used to edge-trigger `collision:char-bump` — Rapier
   // reports a collision every frame two characters are in contact, but
@@ -191,7 +228,7 @@ export function SceneFrame({
       ) {
         return;
       }
-      if (ARROW_KEYS.has(e.key)) e.preventDefault();
+      if (ARROW_KEYS.has(e.key) || e.key === ' ') e.preventDefault();
       keysDown.current.add(e.key.toLowerCase());
     };
     const onKeyUp = (e: KeyboardEvent) =>
@@ -233,6 +270,24 @@ export function SceneFrame({
     const minProgress = 1 - movementBlockThreshold;
 
     if (self && body) {
+      // Destructure jump tunables from worldSettings for this frame.
+      const { jumpVelocity, airControl, maxJumps, landingEaseMs } =
+        stateSnapshot.worldSettings;
+
+      // Space key edge-trigger for jump: only fire on the frame the
+      // key transitions from up to down. Holding Space does not repeat.
+      const spaceDown = keys.has(' ');
+      const spacePressedThisFrame = spaceDown && !spaceWasDownRef.current;
+      spaceWasDownRef.current = spaceDown;
+
+      // Airborne is an explicit state set on jump trigger and cleared
+      // on full landing blend (or warp / respawn / gravity-off).
+      const isAirborne = airborneRef.current;
+
+      // Write to the ref each frame so Players.tsx can read it
+      // without a React re-render.
+      isAirborneRef.current = isAirborne;
+
       // Auto-warp detector. If the store's pos has been mutated to
       // somewhere far from where the body actually is (a map-switch
       // spawn or a test-driven `store.setState`), teleport the body
@@ -265,6 +320,13 @@ export function SceneFrame({
       if (warped) {
         body.setNextKinematicTranslation(self.pos);
         verticalVelRef.current = 0;
+        // Reset jump state so a teleport doesn't leave the player
+        // mid-jump with a depleted counter.
+        airborneRef.current = false;
+        jumpsRemainingRef.current = maxJumps;
+        airVelXRef.current = 0;
+        airVelZRef.current = 0;
+        landingBlendTRef.current = 0;
         // Reset moving/idle so the moving→idle edge-trigger below
         // doesn't fire spuriously after a teleport.
         wasMoving.current = false;
@@ -360,6 +422,85 @@ export function SceneFrame({
           verticalVelRef.current = 0;
         }
 
+        // --- Grounded handling + landing blend ---
+        // Must happen BEFORE the jump trigger so we know if we landed
+        // this frame and can properly clear airborne state.
+        if (controller.computedGrounded()) {
+          verticalVelRef.current = 0;
+          if (airborneRef.current) {
+            // Capture start-of-blend airVel once so the blend is a true
+            // linear lerp toward zero (not a compounding `*= (1-t)`).
+            if (landingBlendTRef.current === 0) {
+              blendStartVelXRef.current = airVelXRef.current;
+              blendStartVelZRef.current = airVelZRef.current;
+            }
+            landingBlendTRef.current += dt;
+            if (landingEaseMs <= 0 || landingBlendTRef.current >= landingEaseMs) {
+              // Blend complete (or instant hard-stop).
+              airborneRef.current = false;
+              jumpsRemainingRef.current = maxJumps;
+              airVelXRef.current = 0;
+              airVelZRef.current = 0;
+              landingBlendTRef.current = 0;
+            } else {
+              // Linear lerp from `blendStart*` toward zero over the
+              // configured ease duration.
+              const t = landingBlendTRef.current / landingEaseMs;
+              airVelXRef.current = blendStartVelXRef.current * (1 - t);
+              airVelZRef.current = blendStartVelZRef.current * (1 - t);
+            }
+          } else {
+            // On the ground without an active jump — refill the
+            // counter so the first Space press from rest works, and
+            // make sure any stale blend timer is cleared.
+            jumpsRemainingRef.current = maxJumps;
+            landingBlendTRef.current = 0;
+          }
+        }
+
+        // --- Jump trigger ---
+        // Placed after grounded handling so a freshly-landed frame
+        // that also receives a Space press correctly re-grants a jump.
+        // Also requires gravity to be enabled — disable-gravity mode
+        // (Mugshot) treats the character as frozen on the ground.
+        if (
+          spacePressedThisFrame &&
+          jumpsRemainingRef.current > 0 &&
+          !warped &&
+          gravityEnabledRef.current
+        ) {
+          verticalVelRef.current = jumpVelocity;
+          if (!airborneRef.current) {
+            // First jump from ground: capture current WASD intent as
+            // the air-vel baseline. dx/dz are normalised direction
+            // unit vectors; multiply by playerSpeed to get m/s.
+            // Standing-still jump → 0 carry.
+            airVelXRef.current = dx * playerSpeed;
+            airVelZRef.current = dz * playerSpeed;
+          }
+          // Second jump: airVelXRef/Z already hold mid-air deflected values.
+          airborneRef.current = true;
+          jumpsRemainingRef.current--;
+          landingBlendTRef.current = 0; // cancel any active landing blend
+        }
+
+        // --- Horizontal movement (airborne vs. ground) ---
+        let moveX: number;
+        let moveZ: number;
+
+        if (isAirborne) {
+          // Air-control: low-pass blend airVel toward WASD intent each frame.
+          const intentX = dx * playerSpeed;
+          const intentZ = dz * playerSpeed;
+          airVelXRef.current += (intentX - airVelXRef.current) * airControl * dtSec;
+          airVelZRef.current += (intentZ - airVelZRef.current) * airControl * dtSec;
+          moveX = airVelXRef.current * dtSec;
+          moveZ = airVelZRef.current * dtSec;
+        } else {
+          moveX = dx * horizMove;
+          moveZ = dz * horizMove;
+        }
+
         // EXCLUDE_SENSORS: the proximity rings (inner/outer) are
         // sensors. Without this flag the character controller
         // treats them as solid geometry — the local player would
@@ -371,21 +512,13 @@ export function SceneFrame({
         controller.computeColliderMovement(
           bodyCollider,
           {
-            x: dx * horizMove,
+            x: moveX,
             y: verticalVelRef.current * dtSec,
-            z: dz * horizMove,
+            z: moveZ,
           },
           RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
         );
         const corrected = controller.computedMovement();
-
-        // When the controller resolves us onto solid ground, drop
-        // accumulated fall speed. Otherwise it would compound across
-        // frames while standing on a cube and the player would punch
-        // through the floor the next time they step over an edge.
-        if (controller.computedGrounded()) {
-          verticalVelRef.current = 0;
-        }
 
         // Edge-trigger bilateral `collision:char-bump` events for
         // every peer character we're newly touching. The Rapier
@@ -436,7 +569,7 @@ export function SceneFrame({
         // user is intentionally moving; gravity-only frames don't
         // count as "blocked horizontal movement".
         const correctedLen = Math.hypot(corrected.x, corrected.z);
-        const intentLen = Math.hypot(dx * horizMove, dz * horizMove);
+        const intentLen = Math.hypot(moveX, moveZ);
         const progress =
           intentLen > 1e-9 ? Math.min(1, correctedLen / intentLen) : 0;
         const horizBlocked = intendsMove && progress < minProgress;
@@ -457,6 +590,12 @@ export function SceneFrame({
           if (r) {
             newPos = r;
             verticalVelRef.current = 0;
+            // Reset jump state on respawn so the player starts fresh.
+            airborneRef.current = false;
+            jumpsRemainingRef.current = maxJumps;
+            airVelXRef.current = 0;
+            airVelZRef.current = 0;
+            landingBlendTRef.current = 0;
             // Skip animation transitions; treat as a teleport. The
             // body warp happens via the same auto-warp path that
             // handles spawn-from-sky: setSelfPosition(r) updates the
@@ -467,31 +606,30 @@ export function SceneFrame({
 
         body.setNextKinematicTranslation(newPos);
 
-        if (intendsMove && !horizBlocked) {
-          actions.setSelfPosition(
-            newPos,
-            {
-              x: dx * playerSpeed * progress,
-              y: 0,
-              z: dz * playerSpeed * progress,
-            },
-            movementYaw,
-          );
-          isMoving = true;
+        // Broadcast velocity and isAirborne. While airborne, use the
+        // carried air velocity so peers extrapolate the correct mid-air
+        // trajectory.
+        const broadcastVel = isAirborne
+          ? { x: airVelXRef.current, y: 0, z: airVelZRef.current }
+          : (intendsMove && !horizBlocked)
+            ? { x: dx * playerSpeed * progress, y: 0, z: dz * playerSpeed * progress }
+            : { x: 0, y: 0, z: 0 };
+        const broadcastYaw = intendsMove ? movementYaw : self.yaw;
+
+        if (isAirborne || (intendsMove && !horizBlocked)) {
+          actions.setSelfPosition(newPos, broadcastVel, broadcastYaw, isAirborne);
+          isMoving = isAirborne || (intendsMove && !horizBlocked);
         } else {
-          actions.setSelfPosition(
-            newPos,
-            { x: 0, y: 0, z: 0 },
-            intendsMove ? movementYaw : self.yaw,
-          );
+          actions.setSelfPosition(newPos, { x: 0, y: 0, z: 0 }, broadcastYaw, false);
         }
       }
       // On the moving → idle transition, zero out the velocity once so
-      // the renderer (and remote peers) see the stop.
+      // the renderer (and remote peers) see the stop. While airborne,
+      // isMoving is true so this branch never fires mid-air.
       if (!isMoving && wasMoving.current) {
         const t = body?.translation();
         const stopPos = t ? { x: t.x, y: t.y, z: t.z } : self.pos;
-        actions.setSelfPosition(stopPos, { x: 0, y: 0, z: 0 }, self.yaw);
+        actions.setSelfPosition(stopPos, { x: 0, y: 0, z: 0 }, self.yaw, false);
       }
       wasMoving.current = isMoving;
     }

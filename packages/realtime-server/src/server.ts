@@ -212,6 +212,7 @@ export class RealtimeServer {
         pos: p.pos,
         vel: p.vel,
         yaw: p.yaw,
+        isAirborne: p.isAirborne ?? false,
       });
     }
     return events;

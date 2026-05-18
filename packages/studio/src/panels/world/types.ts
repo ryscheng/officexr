@@ -18,6 +18,13 @@ export type AuxLightType = 'none' | 'spot' | 'point';
  *     They live here in addition so the panel UI can stay fully
  *     controlled even when no SDK store is mounted yet.
  */
+export interface JumpSettings {
+  jumpVelocity: number;
+  airControl: number;
+  maxJumps: number;
+  landingEaseMs: number;
+}
+
 export interface ViewConfig {
   animation: AnimationSettings;
   proximity: ProximitySettings;
@@ -25,6 +32,7 @@ export interface ViewConfig {
   background: BackgroundSettings;
   fixedCamera: FixedCameraSettings;
   bot: BotSettings;
+  jump: JumpSettings;
 }
 
 export interface AnimationSettings {
@@ -182,5 +190,11 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   bot: {
     count: 1,
     mode: 'idle',
+  },
+  jump: {
+    jumpVelocity: 8,
+    airControl: 0.2,
+    maxJumps: 2,
+    landingEaseMs: 120,
   },
 };

@@ -331,7 +331,7 @@ export class BotDriver {
       }
     }
 
-    this.botActions.setSelfPosition(newPos, vel, yaw);
+    this.botActions.setSelfPosition(newPos, vel, yaw, false);
     this.physics.stepWorld();
     this.flushEvents();
     this.botSync.flushPosition();
@@ -366,7 +366,7 @@ export class BotDriver {
     // downward velocity through the warp.
     this.physics.teleport({ ...pos });
     const yaw = this.botStore?.getState().players[this.botId]?.yaw ?? 0;
-    this.botActions.setSelfPosition({ ...pos }, { x: 0, y: 0, z: 0 }, yaw);
+    this.botActions.setSelfPosition({ ...pos }, { x: 0, y: 0, z: 0 }, yaw, false);
     // Reset any strategy-state that's stale w.r.t. the new location
     // (e.g. wander direction picked from the old position).
     this.wasMoving = false;

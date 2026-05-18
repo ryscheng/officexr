@@ -76,12 +76,12 @@ describe.skipIf(!supabaseUp)('integration: state-sync over Supabase Realtime', (
     for (let i = 0; i < 6; i++) {
       harness.clock.advance(50);
       x += stepDx;
-      A.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0);
+      A.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0, false);
       harness.flush();
     }
 
     // Stop
-    A.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 0);
+    A.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 0, false);
     harness.clock.advance(POSITION_CONSTANTS.stopGraceMs + 20);
     harness.flush();
 

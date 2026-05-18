@@ -16,6 +16,9 @@ export type PlayerState = {
   yaw: number;
   hp: number;
   isDead: boolean;
+  /** True while the local player has jumped and has not yet touched ground.
+   * Broadcast via presence:position so peers can play the jump animation clip. */
+  isAirborne: boolean;
   avatar: AvatarData;
   jitsiRoom: string | null;
   status: 'active' | 'inactive';
@@ -182,6 +185,25 @@ export type LightingSettings = {
 };
 
 /**
+ * Player jump tunables. Broadcast via `world:settings` so all clients
+ * (local player, peers, bots) share the same jump parameters.
+ */
+export type JumpSettings = {
+  /** Vertical liftoff impulse (m/s). Applied identically for jump #1 and #2.
+   * With GRAVITY = -20, a value of 8 reaches a peak of ~1.6 m. */
+  jumpVelocity: number;
+  /** 0..1 fraction of WASD intent that deflects in-air horizontal velocity
+   * per second (low-pass blend). 0 = no air control; 1 = instant snap to intent. */
+  airControl: number;
+  /** Maximum consecutive jumps before landing resets the counter.
+   * 1 = single jump; 2 = double-jump (default). */
+  maxJumps: number;
+  /** Duration (ms) over which carried horizontal air velocity blends back to
+   * WASD-driven ground movement after landing. 0 = hard stop. */
+  landingEaseMs: number;
+};
+
+/**
  * World-level movement & animation tunables. These live in OfficeState so
  * they can be broadcast to every client and used uniformly by the local
  * player, AI/bots, and any other agent — there's no "client-private"
@@ -198,7 +220,8 @@ export type WorldSettings = AnimationSettings &
   ProximitySettings &
   CollisionSettings &
   ConversationCameraSettings &
-  LightingSettings;
+  LightingSettings &
+  JumpSettings;
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   playerSpeed: 3,
@@ -220,6 +243,12 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   sunPositionZ: 20,
   sunIntensity: 1.4,
   ambientIntensity: 0.15,
+
+  // Jump
+  jumpVelocity: 8,        // m/s
+  airControl: 0.2,        // low-pass fraction per second
+  maxJumps: 2,            // double-jump enabled by default
+  landingEaseMs: 120,     // ~120 ms blend on landing
 };
 
 /**

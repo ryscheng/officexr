@@ -12,7 +12,7 @@ import {
   Toggle,
   Vector3Input,
 } from '../../ui/controls/index.ts';
-import type { AuxLightType, ViewConfig } from './types.ts';
+import type { AuxLightType, JumpSettings as JumpSettingsType, ViewConfig } from './types.ts';
 import type { UseStudioSettingsResult } from './useStudioSettings.ts';
 
 interface WorldPanelsProps {
@@ -60,6 +60,11 @@ export function WorldPanels({
       />
       <AnimationPanel
         animation={viewConfig.animation}
+        setSection={setSection}
+        actions={actions}
+      />
+      <JumpPanel
+        jump={viewConfig.jump}
         setSection={setSection}
         actions={actions}
       />
@@ -188,6 +193,76 @@ function AnimationPanel({ animation, setSection, actions }: AnimationPanelProps)
       <NumberInput label="walk (m/s)" value={animation.playerSpeed} min={0.5} max={15} step={0.1} onChange={set('playerSpeed')} />
       <NumberInput label="run × walk" value={animation.runMultiplier} min={1} max={6} step={0.1} onChange={set('runMultiplier')} />
       <NumberInput label="block thresh" value={animation.movementBlockThreshold} min={0} max={1} step={0.01} onChange={set('movementBlockThreshold')} />
+    </Section>
+  );
+}
+
+// --- Jump ---------------------------------------------------------
+
+interface JumpPanelProps {
+  jump: ViewConfig['jump'];
+  setSection: UseStudioSettingsResult['setSection'];
+  actions: Actions | null;
+}
+
+function JumpPanel({ jump, setSection, actions }: JumpPanelProps) {
+  useEffect(() => {
+    if (!actions) return;
+    actions.setWorldSettings({
+      jumpVelocity: jump.jumpVelocity,
+      airControl: jump.airControl,
+      maxJumps: jump.maxJumps,
+      landingEaseMs: jump.landingEaseMs,
+    });
+  }, [
+    actions,
+    jump.jumpVelocity,
+    jump.airControl,
+    jump.maxJumps,
+    jump.landingEaseMs,
+  ]);
+
+  const set =
+    <K extends keyof JumpSettingsType>(key: K) =>
+    (value: JumpSettingsType[K]) =>
+      setSection('jump', (prev) => ({ ...prev, [key]: value }));
+
+  return (
+    <Section title="Jump" defaultOpen={false}>
+      <NumberInput
+        label="velocity (m/s)"
+        value={jump.jumpVelocity}
+        min={1}
+        max={20}
+        step={0.5}
+        onChange={set('jumpVelocity')}
+      />
+      <NumberInput
+        label="air control"
+        value={jump.airControl}
+        min={0}
+        max={1}
+        step={0.05}
+        onChange={set('airControl')}
+      />
+      <NumberInput
+        label="max jumps"
+        value={jump.maxJumps}
+        min={1}
+        max={3}
+        step={1}
+        digits={0}
+        onChange={set('maxJumps')}
+      />
+      <NumberInput
+        label="landing ease (ms)"
+        value={jump.landingEaseMs}
+        min={0}
+        max={500}
+        step={10}
+        digits={0}
+        onChange={set('landingEaseMs')}
+      />
     </Section>
   );
 }

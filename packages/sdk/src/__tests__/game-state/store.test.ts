@@ -114,7 +114,7 @@ describe('actions', () => {
   it('setSelfPosition updates self only', async () => {
     const { actions, store } = await makeStoreWithActions();
     seedSelf(store, 'me');
-    actions.setSelfPosition({ x: 5, y: 0, z: 5 }, { x: 1, y: 0, z: 0 }, 0.5);
+    actions.setSelfPosition({ x: 5, y: 0, z: 5 }, { x: 1, y: 0, z: 0 }, 0.5, false);
     const me = store.getState().players.me;
     expect(me.pos).toEqual({ x: 5, y: 0, z: 5 });
     expect(me.vel).toEqual({ x: 1, y: 0, z: 0 });
@@ -124,7 +124,7 @@ describe('actions', () => {
   it('applyRemotePosition sets pos+vel+yaw and writes tRecv', async () => {
     const { actions, store } = await makeStoreWithActions();
     seedPlayer(store, 'remote');
-    actions.applyRemotePosition('remote', { x: 1, y: 2, z: 3 }, { x: 0.5, y: 0, z: 0 }, 1.5, 12345);
+    actions.applyRemotePosition('remote', { x: 1, y: 2, z: 3 }, { x: 0.5, y: 0, z: 0 }, 1.5, 12345, false);
     const r = store.getState().players.remote;
     expect(r.pos).toEqual({ x: 1, y: 2, z: 3 });
     expect(r.vel).toEqual({ x: 0.5, y: 0, z: 0 });
@@ -162,6 +162,7 @@ describe('actions', () => {
       yaw: 0,
       hp: 100,
       isDead: false,
+      isAirborne: false,
       avatar: { model: 'default' },
       jitsiRoom: null,
       status: 'active',
@@ -198,6 +199,7 @@ function makePlayer(id: string) {
     yaw: 0,
     hp: 100,
     isDead: false,
+    isAirborne: false,
     avatar: { model: 'default' },
     jitsiRoom: null,
     status: 'active' as const,

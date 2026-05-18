@@ -291,6 +291,7 @@ export function MugshotApp() {
       { x: 0, y: yOffset, z: 0 },
       { x: 0, y: 0, z: 0 },
       0,
+      false,
     );
   }, [local, yOffset]);
 

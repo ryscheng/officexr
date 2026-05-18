@@ -137,6 +137,11 @@ export function Scene(props: SceneProps) {
   // reads it each frame to drive the `KinematicCharacterController`.
   const selfBodyRef = useRef<RapierRigidBody | null>(null);
 
+  // Mutated each frame by SceneFrame to true while the local player is
+  // airborne. Players reads this ref (not React state) to drive the jump
+  // animation for the self avatar without triggering re-renders.
+  const isAirborneRef = useRef<boolean>(false);
+
   // Updated each frame by `ProximityGlow`'s tracker: the local player's
   // current MeetingArea centroid (lifted to local-player y), or `null`
   // when not in a conversation. `CameraRig` reads it to drive the
@@ -243,6 +248,7 @@ export function Scene(props: SceneProps) {
           selfPosRef={selfPosRef}
           selfBodyRef={selfBodyRef}
           paused={props.paused}
+          isAirborneRef={isAirborneRef}
         />
 
         <ProximityGlow
@@ -292,6 +298,7 @@ export function Scene(props: SceneProps) {
           selfBodyRef={selfBodyRef}
           worldFocused={worldFocused}
           spawnPoints={props.spawnPoints}
+          isAirborneRef={isAirborneRef}
         />
         </Physics>
       </Suspense>
