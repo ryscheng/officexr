@@ -118,7 +118,13 @@ describe('snapToVoxel (cube hit)', () => {
     faceNormal: [number, number, number],
     kindId = 'colored_block_blue',
   ): CubeHit {
-    return { kind: 'cube', cubePosition, faceNormal, kindId };
+    return {
+      kind: 'cube',
+      cubePosition,
+      faceNormal,
+      kindId,
+      point: { x: cubePosition[0], y: cubePosition[1], z: cubePosition[2] },
+    };
   }
 
   it('snaps to the +y voxel above a top-face hit (no stride → 1-voxel step)', () => {

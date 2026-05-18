@@ -39,6 +39,11 @@ export interface CubeHit {
    * a 2 m cube's +X face clears the target's full footprint, not just
    * one 0.5 m voxel). */
   kindId: string;
+  /** Actual world-space coordinates of the raycast hit point on the
+   * cube's face. Used by `snapToNearestFace` to decide which side of
+   * the cube the cursor is on (e.g. hovering the TOP needs the hit's
+   * world Y at the top face, not the cube's anchor Y). */
+  point: { x: number; y: number; z: number };
 }
 
 export type SnapHit = FloorHit | CubeHit;

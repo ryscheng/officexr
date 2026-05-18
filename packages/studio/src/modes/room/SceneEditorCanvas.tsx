@@ -358,12 +358,18 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   // cubeSize there for SDK back-compat; we alias it locally).
   const voxelSize = props.compiled.cubeSize;
 
-  // Camera world-Y, mirrored from the R3F tree below each frame. Used
-  // by the snap to bias stacking: camera looking DOWN at a target →
-  // prefer ABOVE (closer to camera); looking UP → prefer BELOW.
+  // Camera world position, mirrored from the R3F tree below each
+  // frame. Used by the snap (Y bias for stack-above-or-below) AND by
+  // the debug HUD that reports the live camera coords on screen.
+  // The HUD updates its DOM text directly via a ref so an orbiting
+  // camera doesn't trigger a React re-render every frame.
   const cameraYRef = useRef(0);
-  const setCameraY = useCallback((y: number) => {
+  const cameraHudRef = useRef<HTMLDivElement | null>(null);
+  const setCameraPos = useCallback((x: number, y: number, z: number) => {
     cameraYRef.current = y;
+    if (cameraHudRef.current) {
+      cameraHudRef.current.textContent = `camera  x:${x.toFixed(2)}  y:${y.toFixed(2)}  z:${z.toFixed(2)}`;
+    }
   }, []);
 
   /**
@@ -426,16 +432,13 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       const stagedId = props.stagedKindId;
       const placingStep = stepForKind(stagedId);
 
-      // World-space cursor point — for cube hits use the actual face hit
-      // position when available; for floor hits use the raycast point.
-      const cursorPoint =
-        hit.kind === 'floor'
-          ? { x: hit.point.x, y: hit.point.y, z: hit.point.z }
-          : {
-              x: hit.cubePosition[0] * voxelSize,
-              y: hit.cubePosition[1] * voxelSize,
-              z: hit.cubePosition[2] * voxelSize,
-            };
+      // World-space cursor point — always use the actual raycast hit
+      // position. Floor hits already carry it; cube hits carry the
+      // hit point on the cube's face. (We previously synthesised the
+      // cube's anchor instead, which always reads as the cube's
+      // BOTTOM regardless of which face was clicked — so the snap
+      // dominant-axis pick always picked -Y. That was the bug.)
+      const cursorPoint = hit.point;
 
       if (stagedId) {
         const kind = catalogService.getKind(stagedId);
@@ -907,7 +910,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         <color attach="background" args={['#0a0a0a']} />
         <EndlessGrid />
         <OrbitCamera compiled={props.compiled} />
-        <CameraYTracker onUpdate={setCameraY} />
+        <CameraYTracker onUpdate={setCameraPos} />
         <MoveController
           tool={props.tool}
           doc={props.doc}
@@ -964,6 +967,32 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           />
         )}
       </Canvas>
+      {/* Debug HUD: live camera world position. Reports what the
+          snap actually uses for "is the camera above this cube?" so
+          you can correlate the on-screen viewing angle with the
+          numeric values driving the stack-above-or-below decision.
+          Text is updated directly via the ref each frame — no React
+          re-render. */}
+      <div
+        ref={cameraHudRef}
+        style={{
+          position: 'absolute',
+          right: 8,
+          bottom: 8,
+          padding: '4px 8px',
+          background: 'rgba(0, 0, 0, 0.55)',
+          color: '#fde68a',
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: 11,
+          lineHeight: 1.3,
+          borderRadius: 4,
+          pointerEvents: 'none',
+          userSelect: 'none',
+          zIndex: 5,
+        }}
+      >
+        camera  x:0.00  y:0.00  z:0.00
+      </div>
       {showAxisHint && (
         <div
           style={{
@@ -1198,12 +1227,17 @@ interface OrbitCameraProps {
  * Spec: "Room is meant to be a much smaller space and we'd rotate
  * the entire room like we do the character."
  */
-/** Mirrors the live camera world-Y into a parent ref each frame. The
- * snap (which lives outside the R3F tree) reads the ref so it can
- * bias stack-above-or-below by viewer perspective. */
-function CameraYTracker({ onUpdate }: { onUpdate: (y: number) => void }) {
+/** Mirrors the live camera world position into the parent each frame.
+ * The snap (which lives outside the R3F tree) reads it to bias the
+ * stack-above-or-below choice by viewer perspective; the debug HUD
+ * reads it to display the live coords. */
+function CameraYTracker({
+  onUpdate,
+}: {
+  onUpdate: (x: number, y: number, z: number) => void;
+}) {
   const { camera } = useThree();
-  useFrame(() => onUpdate(camera.position.y));
+  useFrame(() => onUpdate(camera.position.x, camera.position.y, camera.position.z));
   return null;
 }
 
@@ -1483,6 +1517,7 @@ function CubesLayer(props: CubesLayerProps) {
           cubePosition: inst.position,
           faceNormal: [normal.x, normal.y, normal.z],
           kindId: inst.kindId,
+          point: { x: e.point.x, y: e.point.y, z: e.point.z },
         }
       : null;
     let moved = false;
@@ -1525,6 +1560,7 @@ function CubesLayer(props: CubesLayerProps) {
         cubePosition: inst.position,
         faceNormal: [n.x, n.y, n.z],
         kindId: inst.kindId,
+        point: { x: e.point.x, y: e.point.y, z: e.point.z },
       });
     } else {
       onHoverCommand(inst.sourceCommandId);
