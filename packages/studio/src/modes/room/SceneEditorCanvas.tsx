@@ -26,7 +26,7 @@ import {
   type SnapHit,
   type TileableObjectInfo,
 } from './roomSnap.ts';
-import { outlineEdgePositions, type Vec3 as VoxelVec3 } from './selectionOutline.ts';
+import { outlineEdgePositions } from './selectionOutline.ts';
 import { computeMovedPositions } from './moveDelta.ts';
 import { checkMoveOccupancy } from './moveOccupancy.ts';
 import { dropToSurface } from './dropToSurface.ts';
@@ -841,7 +841,6 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         <GhostLayer ghosts={ghosts} voxelSize={voxelSize} />
         <SelectionOutline
           instances={props.compiled.instances}
-          voxelSize={props.compiled.cubeSize}
           selection={props.selection}
         />
         <BuildHeightPlane
@@ -1030,23 +1029,20 @@ function rayHitAabb(
 
 interface SelectionOutlineProps {
   instances: ObjectInstance[];
-  voxelSize: number;
   selection: ReadonlySet<string>;
 }
 
 /**
- * Renders a wireframe that traces the actual silhouette of the
- * selection — exterior-face edges of every selected voxel, deduped
- * where two cubes share a face's perimeter. An L-shape selection
- * outlines an L (with the inner corner visible) rather than a
- * rectangle that includes empty space. Disjoint cubes naturally
- * produce disjoint outlines because they share no faces.
+ * Renders a wireframe that traces the silhouette of the selection.
+ * Each selected instance's world AABB is fetched from the shared
+ * `InstanceGeometryService` so the wireframe sits exactly on the
+ * rendered mesh. Two flush cubes outline as the combined silhouette
+ * via edge-pair dedup in `outlineEdgePositions`.
  *
- * Edges sit on exact voxel boundaries so dedup is precise; the
- * material uses `depthTest: false` so the wireframe stays visible
+ * The material uses `depthTest: false` so the wireframe stays visible
  * even when coplanar with the cube surface.
  */
-function SelectionOutline({ instances, voxelSize, selection }: SelectionOutlineProps) {
+function SelectionOutline({ instances, selection }: SelectionOutlineProps) {
   const { geometry: geomService } = useApplication();
   const geometry = useMemo(() => {
     if (selection.size === 0) return null;
@@ -1061,10 +1057,7 @@ function SelectionOutline({ instances, voxelSize, selection }: SelectionOutlineP
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     return geom;
     // voxelSize is intentionally absent from deps — the AABB is
-    // computed by the geometry service which already encapsulates the
-    // voxelSize. Listed for the linter; harmless when stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instances, selection, geomService, voxelSize]);
+  }, [instances, selection, geomService]);
 
   if (!geometry) return null;
   return (
@@ -1689,20 +1682,20 @@ function MoveController({
       pointer.x = savedX;
       pointer.y = savedY;
 
-      // Hit-test all instances analytically (same AABB approach as
-      // ContextMenuListener — fast and dependency-free).
-      const half = cs / 2;
+      // Hit-test all instances analytically against their canonical
+      // world AABB from the geometry service. Previously this used
+      // a hardcoded `voxelSize/2` half-extents + `+vs/2` Y offset
+      // which only worked for one-voxel kinds — picking missed for
+      // anything bigger.
       let bestT = Infinity;
       let bestInst: ObjectInstance | null = null;
       for (const inst of compiledRef.current.instances) {
-        const cx = inst.position[0] * cs;
-        const cy = inst.position[1] * cs + cs / 2;
-        const cz = inst.position[2] * cs;
+        const aabb = geomService.worldAABB(inst.position, inst.kindId);
         const t = rayHitAabb(
           raycaster.ray.origin,
           raycaster.ray.direction,
-          [cx - half, cy - half, cz - half],
-          [cx + half, cy + half, cz + half],
+          [aabb.min[0], aabb.min[1], aabb.min[2]],
+          [aabb.max[0], aabb.max[1], aabb.max[2]],
         );
         if (t !== null && t < bestT) {
           bestT = t;
@@ -1773,13 +1766,14 @@ function MoveController({
         // Simpler: count pixels of vertical movement scaled to voxels.
         // We store the screen-Y of the startVoxel projected to screen.
         // Since we don't have it here, we project the start voxel to
-        // screen and compare.
+        // screen and compare. Floor-convention Y — `state.startVoxel[1]
+        // * cs` is the bottom of the AABB. The +vs/2 offset was
+        // removed when the geometry service became the SOT.
         const canvas = gl.domElement;
         const rect = canvas.getBoundingClientRect();
-        // Project startVoxel to screen.
         const startWorld = new THREE.Vector3(
           state.startVoxel[0] * cs,
-          state.startVoxel[1] * cs + cs / 2,
+          state.startVoxel[1] * cs,
           state.startVoxel[2] * cs,
         );
         const proj = startWorld.clone().project(camera as THREE.PerspectiveCamera);
