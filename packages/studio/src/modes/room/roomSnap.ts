@@ -274,6 +274,95 @@ export interface NewObjectShape {
   step: { x: number; y: number; z: number };
 }
 
+type Face = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
+
+const EPS = 1e-6;
+
+/** Distance from a 3D point to an axis-aligned bounding box (clamped to
+ * the nearest point on the AABB, then Euclidean distance). Zero when
+ * the point is inside or on the AABB. */
+function distanceToAABB(
+  p: { x: number; y: number; z: number },
+  aabb: { min: readonly number[]; max: readonly number[] },
+): number {
+  const dx = Math.max(aabb.min[0] - p.x, 0, p.x - aabb.max[0]);
+  const dy = Math.max(aabb.min[1] - p.y, 0, p.y - aabb.max[1]);
+  const dz = Math.max(aabb.min[2] - p.z, 0, p.z - aabb.max[2]);
+  return Math.hypot(dx, dy, dz);
+}
+
+/** Pick the face of `aabb` the user most likely wants to attach to.
+ *
+ * For a cursor OUTSIDE the AABB on any axis, that axis wins (cursor
+ * is "past" the +/- face on that axis). For ties (corner / inside
+ * regions) the Y axis wins, with +Y preferred — the user explicitly
+ * asked for stacking-on-top as the default when objects would
+ * otherwise merge. */
+function pickDominantFace(
+  cursor: { x: number; y: number; z: number },
+  aabb: { min: readonly number[]; max: readonly number[] },
+): Face {
+  const cx = (aabb.min[0] + aabb.max[0]) / 2;
+  const cy = (aabb.min[1] + aabb.max[1]) / 2;
+  const cz = (aabb.min[2] + aabb.max[2]) / 2;
+  const hw = Math.max(EPS, (aabb.max[0] - aabb.min[0]) / 2);
+  const hh = Math.max(EPS, (aabb.max[1] - aabb.min[1]) / 2);
+  const hd = Math.max(EPS, (aabb.max[2] - aabb.min[2]) / 2);
+
+  // Normalize so a "1.0" value on any axis means "exactly at the face."
+  const nx = (cursor.x - cx) / hw;
+  const ny = (cursor.y - cy) / hh;
+  const nz = (cursor.z - cz) / hd;
+
+  const ax = Math.abs(nx);
+  const ay = Math.abs(ny);
+  const az = Math.abs(nz);
+
+  // Y-bias: when the dominant axis is Y (or tied with another axis)
+  // prefer Y so a click on top of a cube → stack on top.
+  if (ay >= ax && ay >= az) return ny >= 0 ? '+y' : '-y';
+  if (ax >= az) return nx >= 0 ? '+x' : '-x';
+  return nz >= 0 ? '+z' : '-z';
+}
+
+/** New object's anchor (world coords, lower-left-bottom) so its AABB
+ * sits flush against the given face of `aabb`. Non-face axes keep the
+ * cursor's coords so the new object follows the cursor along the face. */
+function computeFlushAnchor(
+  face: Face,
+  aabb: { min: readonly number[]; max: readonly number[] },
+  cursor: { x: number; y: number; z: number },
+  newObject: NewObjectShape,
+): [number, number, number] {
+  const cy = Math.max(cursor.y, aabb.min[1]);
+  switch (face) {
+    case '+x':
+      return [aabb.max[0], cy, cursor.z - newObject.depth / 2];
+    case '-x':
+      return [aabb.min[0] - newObject.width, cy, cursor.z - newObject.depth / 2];
+    case '+y':
+      return [
+        cursor.x - newObject.width / 2,
+        aabb.max[1],
+        cursor.z - newObject.depth / 2,
+      ];
+    case '-y':
+      return [
+        cursor.x - newObject.width / 2,
+        aabb.min[1] - newObject.height,
+        cursor.z - newObject.depth / 2,
+      ];
+    case '+z':
+      return [cursor.x - newObject.width / 2, cy, aabb.max[2]];
+    case '-z':
+      return [
+        cursor.x - newObject.width / 2,
+        cy,
+        aabb.min[2] - newObject.depth,
+      ];
+  }
+}
+
 export function snapToNearestFace(
   hitWorldPoint: { x: number; y: number; z: number },
   newObject: NewObjectShape,
@@ -283,23 +372,19 @@ export function snapToNearestFace(
 ): [number, number, number] | null {
   if (nearbyObjects.length === 0) return null;
 
-  /** Does the new object's world AABB overlap any nearby AABB? */
   const wouldOverlap = (anchor: [number, number, number]): boolean => {
-    const ax = anchor[0];
-    const ay = anchor[1];
-    const az = anchor[2];
-    const bx = ax + newObject.width;
-    const by = ay + newObject.height;
-    const bz = az + newObject.depth;
+    const bx = anchor[0] + newObject.width;
+    const by = anchor[1] + newObject.height;
+    const bz = anchor[2] + newObject.depth;
     for (const obj of nearbyObjects) {
       const o = obj.aabb;
       if (
         bx > o.min[0] + EPS &&
-        ax < o.max[0] - EPS &&
+        anchor[0] < o.max[0] - EPS &&
         by > o.min[1] + EPS &&
-        ay < o.max[1] - EPS &&
+        anchor[1] < o.max[1] - EPS &&
         bz > o.min[2] + EPS &&
-        az < o.max[2] - EPS
+        anchor[2] < o.max[2] - EPS
       ) {
         return true;
       }
@@ -307,151 +392,44 @@ export function snapToNearestFace(
     return false;
   };
 
-  const clamp = (v: number, lo: number, hi: number) =>
-    Math.max(lo, Math.min(hi, v));
-
   let bestVoxel: [number, number, number] | null = null;
   let bestDist = pullRadiusM;
 
   for (const obj of nearbyObjects) {
-    const omin = obj.aabb.min;
-    const omax = obj.aabb.max;
+    const aabbDist = distanceToAABB(hitWorldPoint, obj.aabb);
+    if (aabbDist >= bestDist) continue;
 
-    // Six candidate faces. For each, compute:
-    //   - the cursor's distance to the FACE RECTANGLE (not just the
-    //     face plane) so a cursor far above the cube doesn't snap to
-    //     the cube's bottom face just because their Y values happen
-    //     to coincide.
-    //   - the new object's voxel anchor that puts it flush against
-    //     this face. Y-axis anchors keep the cursor's Y when sliding
-    //     along a vertical face so the new object sits at the
-    //     cursor's height.
-    const candidates: Array<{
-      anchor: [number, number, number];
-      cursorDist: number;
-    }> = [];
+    // Primary: face dictated by the cursor's dominant axis.
+    const primaryFace = pickDominantFace(hitWorldPoint, obj.aabb);
+    let anchor = computeFlushAnchor(
+      primaryFace,
+      obj.aabb,
+      hitWorldPoint,
+      newObject,
+    );
 
-    // +X face: plane x = omax.x, rect over y ∈ [omin.y, omax.y], z ∈ [omin.z, omax.z]
-    {
-      const cy = clamp(hitWorldPoint.y, omin[1], omax[1]);
-      const cz = clamp(hitWorldPoint.z, omin[2], omax[2]);
-      const d = Math.hypot(
-        hitWorldPoint.x - omax[0],
-        hitWorldPoint.y - cy,
-        hitWorldPoint.z - cz,
-      );
-      candidates.push({
-        anchor: [
-          omax[0],
-          // Sit at the cursor's height, but never below the existing
-          // object's base, so a click on the cube top stays on top.
-          Math.max(hitWorldPoint.y, omin[1]),
-          hitWorldPoint.z - newObject.depth / 2,
-        ],
-        cursorDist: d,
-      });
-    }
-    // -X face: plane x = omin.x
-    {
-      const cy = clamp(hitWorldPoint.y, omin[1], omax[1]);
-      const cz = clamp(hitWorldPoint.z, omin[2], omax[2]);
-      const d = Math.hypot(
-        hitWorldPoint.x - omin[0],
-        hitWorldPoint.y - cy,
-        hitWorldPoint.z - cz,
-      );
-      candidates.push({
-        anchor: [
-          omin[0] - newObject.width,
-          Math.max(hitWorldPoint.y, omin[1]),
-          hitWorldPoint.z - newObject.depth / 2,
-        ],
-        cursorDist: d,
-      });
-    }
-    // +Y face (top): plane y = omax.y, rect over x ∈ [omin.x, omax.x], z ∈ [omin.z, omax.z]
-    {
-      const cx = clamp(hitWorldPoint.x, omin[0], omax[0]);
-      const cz = clamp(hitWorldPoint.z, omin[2], omax[2]);
-      const d = Math.hypot(
-        hitWorldPoint.x - cx,
-        hitWorldPoint.y - omax[1],
-        hitWorldPoint.z - cz,
-      );
-      candidates.push({
-        anchor: [
-          hitWorldPoint.x - newObject.width / 2,
-          omax[1],
-          hitWorldPoint.z - newObject.depth / 2,
-        ],
-        cursorDist: d,
-      });
-    }
-    // -Y face (bottom): plane y = omin.y. Skip — placing below an
-    // existing object's bottom is a rare gesture and shouldn't pull
-    // when the cursor is at floor level next to the cube.
-    // +Z face: plane z = omax.z
-    {
-      const cx = clamp(hitWorldPoint.x, omin[0], omax[0]);
-      const cy = clamp(hitWorldPoint.y, omin[1], omax[1]);
-      const d = Math.hypot(
-        hitWorldPoint.x - cx,
-        hitWorldPoint.y - cy,
-        hitWorldPoint.z - omax[2],
-      );
-      candidates.push({
-        anchor: [
-          hitWorldPoint.x - newObject.width / 2,
-          Math.max(hitWorldPoint.y, omin[1]),
-          omax[2],
-        ],
-        cursorDist: d,
-      });
-    }
-    // -Z face: plane z = omin.z
-    {
-      const cx = clamp(hitWorldPoint.x, omin[0], omax[0]);
-      const cy = clamp(hitWorldPoint.y, omin[1], omax[1]);
-      const d = Math.hypot(
-        hitWorldPoint.x - cx,
-        hitWorldPoint.y - cy,
-        hitWorldPoint.z - omin[2],
-      );
-      candidates.push({
-        anchor: [
-          hitWorldPoint.x - newObject.width / 2,
-          Math.max(hitWorldPoint.y, omin[1]),
-          omin[2] - newObject.depth,
-        ],
-        cursorDist: d,
-      });
+    // If the primary face would overlap another object, fall back to
+    // stacking. Stack ABOVE when the cursor is in the upper half of
+    // this object (or above it); stack BELOW otherwise. Matches the
+    // user's stated default: when in doubt, stack above/below.
+    if (wouldOverlap(anchor)) {
+      const cy = (obj.aabb.min[1] + obj.aabb.max[1]) / 2;
+      const stackFace: Face = hitWorldPoint.y >= cy ? '+y' : '-y';
+      if (stackFace === primaryFace) continue;
+      anchor = computeFlushAnchor(stackFace, obj.aabb, hitWorldPoint, newObject);
+      if (wouldOverlap(anchor)) continue;
     }
 
-    for (const c of candidates) {
-      if (c.cursorDist >= bestDist) continue;
-      // Reject candidates that would overlap any OTHER existing
-      // object. A large cube snapping flush against a small cube can
-      // still extend into a neighbouring cube — we want the next-best
-      // non-overlapping face instead of producing an invalid ghost.
-      if (wouldOverlap(c.anchor)) continue;
-      // Quantize anchor → voxel position. NO step rounding — the
-      // flush position is the snap target. Step rounding would push
-      // the new object off the flush plane, defeating the whole
-      // point of the snap. For floor-grid snaps (no nearby object)
-      // we DO use step rounding; that happens in snapToVoxel.
-      bestDist = c.cursorDist;
-      bestVoxel = [
-        Math.round(c.anchor[0] / voxelSize),
-        Math.round(c.anchor[1] / voxelSize),
-        Math.round(c.anchor[2] / voxelSize),
-      ];
-    }
+    bestDist = aabbDist;
+    bestVoxel = [
+      Math.round(anchor[0] / voxelSize),
+      Math.round(anchor[1] / voxelSize),
+      Math.round(anchor[2] / voxelSize),
+    ];
   }
 
   return bestVoxel;
 }
-
-const EPS = 1e-6;
 
 /**
  * Quantize a 3D vector to its dominant axis as a `±1` along one axis,

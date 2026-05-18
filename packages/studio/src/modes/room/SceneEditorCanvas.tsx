@@ -398,11 +398,13 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     }));
   }, [props.compiled.instances, geomService]);
 
-  // Pull radius in metres. Generous enough that clicking anywhere
-  // ON or NEAR an existing object snaps flush instead of landing in
-  // a half-overlapping grid cell. Smaller than the kind's own step so
-  // the floor grid still wins when you click far from any object.
-  const FACE_SNAP_PULL_RADIUS_M = 1.5;
+  // Pull radius in metres. Generous enough that the cursor inside
+  // OR within a small buffer around any object's AABB always snaps
+  // flush. Corners of a large tile are √3·gap away from the nearest
+  // face-rectangle, so we want a radius that still catches them when
+  // the cursor floats ~1m off the corner. 2.5m fits 4m-cubes and
+  // smaller without overcommitting on floor clicks 5m+ from a cube.
+  const FACE_SNAP_PULL_RADIUS_M = 2.5;
 
   // Snap a world-space hit to a voxel. For ANY kind, first try the
   // proximity-based face snap against nearby existing objects — if
@@ -434,31 +436,68 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           height: voxelSize,
           depth: voxelSize,
         };
-        // Don't include the cube we just hit in the candidate list —
-        // when clicking ON a cube's face the cube-face branch below
-        // handles flushness directly. The face-snap is for OTHER
-        // nearby objects.
-        const candidates =
-          hit.kind === 'cube'
-            ? nearbyObjects.filter(
-                (o) =>
-                  o.position[0] !== hit.cubePosition[0] ||
-                  o.position[1] !== hit.cubePosition[1] ||
-                  o.position[2] !== hit.cubePosition[2],
-              )
-            : nearbyObjects;
+        // Face-snap considers ALL nearby objects, including the one
+        // the cursor is currently on. When the cursor is directly on a
+        // cube the dominant-axis face naturally points OUT of that
+        // cube; if it would overlap a neighbour, the snap falls back
+        // to stacking on top.
         const facePull = snapToNearestFace(
           cursorPoint,
           { ...dims, step: placingStep },
-          candidates,
+          nearbyObjects,
           voxelSize,
           FACE_SNAP_PULL_RADIUS_M,
         );
         if (facePull) return facePull;
       }
 
-      // No nearby object → cube-face snap (if applicable) or grid snap.
-      return snapToVoxel(hit, voxelSize, placingStep, targetStrideFor(hit));
+      // No nearby object → grid snap. Then check overlap one last
+      // time: if the grid snap happens to land at an overlapping
+      // position (cursor just inside an existing cube's XZ footprint),
+      // stack the new object on top of the overlapping cube. This is
+      // the same "never produce a merged ghost" promise the face
+      // snap honours.
+      const gridVoxel = snapToVoxel(
+        hit,
+        voxelSize,
+        placingStep,
+        targetStrideFor(hit),
+      );
+      if (stagedId) {
+        const kind = catalogService.getKind(stagedId);
+        const dims = kind?.dimensions ?? {
+          width: voxelSize,
+          height: voxelSize,
+          depth: voxelSize,
+        };
+        const aax = gridVoxel[0] * voxelSize;
+        const aay = gridVoxel[1] * voxelSize;
+        const aaz = gridVoxel[2] * voxelSize;
+        const bbx = aax + dims.width;
+        const bby = aay + dims.height;
+        const bbz = aaz + dims.depth;
+        for (const obj of nearbyObjects) {
+          const o = obj.aabb;
+          if (
+            bbx > o.min[0] + 1e-6 &&
+            aax < o.max[0] - 1e-6 &&
+            bby > o.min[1] + 1e-6 &&
+            aay < o.max[1] - 1e-6 &&
+            bbz > o.min[2] + 1e-6 &&
+            aaz < o.max[2] - 1e-6
+          ) {
+            // Overlap → stack on top of this cube (or below if cursor
+            // is below the cube's midpoint).
+            const cy = (o.min[1] + o.max[1]) / 2;
+            const stackedY =
+              cursorPoint.y >= cy
+                ? Math.round(o.max[1] / voxelSize)
+                : Math.round((o.min[1] - dims.height) / voxelSize);
+            return [gridVoxel[0], stackedY, gridVoxel[2]];
+          }
+        }
+      }
+      return gridVoxel;
     },
     [
       props.stagedKindId,

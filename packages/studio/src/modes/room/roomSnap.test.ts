@@ -413,6 +413,36 @@ describe('snapToNearestFace — anchor-convention face snap', () => {
     expect(overlapsX && overlapsY && overlapsZ).toBe(false);
   });
 
+  it('cursor INSIDE an existing cube → stacks on TOP by default', () => {
+    // Hovering over the centre of an existing cube. The user's stated
+    // default: stack above (or below if cursor is in the lower half).
+    const result = snapToNearestFace(
+      { x: 1, y: 1, z: 1 }, // dead centre of the 2 m blue cube
+      blueShape,
+      [blueAtOrigin],
+      VS,
+      2.5,
+    );
+    expect(result).not.toBeNull();
+    // Stack ABOVE: anchor.y = max.y = 2 → voxel y = 4.
+    expect(result![1]).toBe(4);
+  });
+
+  it('cursor LOW inside an existing cube → stacks BELOW', () => {
+    // Cursor in the lower half of the cube — dominant axis is Y with
+    // a negative sign, so primary face is -Y. Stack BELOW: anchor.y =
+    // -newHeight = -2 → voxel y = -4.
+    const result = snapToNearestFace(
+      { x: 1, y: 0.3, z: 1 },
+      blueShape,
+      [blueAtOrigin],
+      VS,
+      2.5,
+    );
+    expect(result).not.toBeNull();
+    expect(result![1]).toBe(-4);
+  });
+
   it('Large cube snaps to the OTHER cube when the closer face would overlap', () => {
     // Same two-cube setup but the cursor is over the right cube's +X
     // face. Snap should pick rightBlue's +X face (anchor at world 6)
