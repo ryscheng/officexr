@@ -119,6 +119,56 @@ export function DebugApp() {
   // The HUD's <FocusIndicator> below surfaces the state visually.
   const worldFocused = useWorldFocus();
 
+  // Derive bakedLayoutName / bakedLayoutPath for the currently-loaded map.
+  //
+  // DebugApp loads a MapDocumentV1 which may compose multiple RoomInstances,
+  // each potentially referencing a different RoomDocument.layoutName. <Scene>
+  // accepts only a single bakedLayoutPath/bakedLayoutName pair — it is not a
+  // per-instance compositor.
+  //
+  // Strategy: collect the distinct layoutNames from all rooms referenced by
+  // the active map. When exactly one distinct layoutName is present (the common
+  // case — one room, or all rooms share the same layout), pass it through to
+  // <Scene> so BakedLayout + BakedLayoutColliders render the structural GLB and
+  // its static Rapier colliders.
+  //
+  // When multiple distinct layoutNames are present, <Scene>'s single-layout
+  // prop surface cannot express them. The correct multi-room solution is to
+  // render per-instance <BakedLayout> siblings the way MapEditorCanvas does —
+  // but DebugApp uses <Scene> as its R3F canvas root, not raw R3F content, so
+  // that would require a new prop or a different composition boundary.
+  // TODO: if multi-layout maps become a common runtime need, add a
+  // `bakedLayouts?: Array<{path, name}>` prop to <Scene> and have it render
+  // the collection; for now we log a warning and omit baked rendering so the
+  // bug surface is visible rather than silently wrong.
+  //
+  // ISP note: the single-layout constraint lives in <Scene>'s prop interface,
+  // not in DebugApp — the violation is documented there (Scene.tsx) and is an
+  // intentional MVP scope boundary.
+  const bakedLayoutName = (() => {
+    const { mapDoc, rooms } = picker;
+    if (!mapDoc) return undefined;
+    const distinctLayouts = new Set<string>();
+    for (const ri of mapDoc.rooms) {
+      const room = rooms.get(ri.roomName);
+      if (room?.layoutName) distinctLayouts.add(room.layoutName);
+    }
+    if (distinctLayouts.size === 1) return [...distinctLayouts][0];
+    if (distinctLayouts.size > 1) {
+      console.warn(
+        '[DebugApp] Map has multiple distinct layoutNames across room instances; ' +
+          'baked-layout rendering is not supported at the Scene level for multi-layout ' +
+          'maps. Only voxel-object WorldObjects will render. Affected map:',
+        mapDoc.name,
+        [...distinctLayouts],
+      );
+    }
+    return undefined;
+  })();
+  const bakedLayoutPath = bakedLayoutName
+    ? `/api/baked-layouts/${encodeURIComponent(bakedLayoutName)}`
+    : undefined;
+
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
       <main
@@ -148,6 +198,8 @@ export function DebugApp() {
             viewConfig={studioSettings.viewConfig}
             worldFocused={worldFocused}
             spawnPoints={picker.spawnPoints}
+            bakedLayoutPath={bakedLayoutPath}
+            bakedLayoutName={bakedLayoutName}
           />
         )}
         <Hud cameraMode={cameraMode} mode={stack?.mode ?? 'in-memory'} />

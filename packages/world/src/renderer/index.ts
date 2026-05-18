@@ -11,6 +11,8 @@ export {
 } from './Adventurer.tsx';
 export { Players } from './Players.tsx';
 export { MapColliders } from './MapColliders.tsx';
+export { BakedLayout, type BakedLayoutProps } from './BakedLayout.tsx';
+export { BakedLayoutColliders, type BakedLayoutCollidersProps } from './BakedLayoutColliders.tsx';
 export { GradientBackground } from './GradientBackground.tsx';
 export { ProximityGlow } from './ProximityGlow.tsx';
 export { CameraRig } from './CameraRig.tsx';

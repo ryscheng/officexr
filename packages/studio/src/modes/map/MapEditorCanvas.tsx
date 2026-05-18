@@ -10,6 +10,7 @@ import {
 } from '@officexr/world/scenes';
 import { useApplication, useCatalogReady } from '@officexr/world/react';
 import {
+  BakedLayout,
   DEFAULT_EDITOR_LIGHTING,
   EndlessGrid,
   LightingRig,
@@ -418,6 +419,13 @@ function RoomInstanceMesh({
   //     graph). Without the wrapper group, we'd need to wire
   //     per-kind onPointerDown handlers through ObjectInstances'
   //     prop surface — leakier and editor-specific.
+  // Derive baked-layout path from the room's layoutName (if set). The
+  // Map view renders full room geometry, so each room instance should
+  // also show its structural GLB at the same world transform.
+  const bakedLayoutPath = room.layoutName
+    ? `/api/baked-layouts/${encodeURIComponent(room.layoutName)}`
+    : undefined;
+
   return (
     <group
       position={groupPos}
@@ -449,6 +457,12 @@ function RoomInstanceMesh({
         dragging.current = true;
       }}
     >
+      {bakedLayoutPath && room.layoutName ? (
+        <BakedLayout
+          gltfPath={bakedLayoutPath}
+          layoutName={room.layoutName}
+        />
+      ) : null}
       {worldObjects ? <ObjectInstances worldObjects={worldObjects} /> : null}
       {selected && bounds ? <SelectionOutline min={bounds.min} max={bounds.max} /> : null}
     </group>

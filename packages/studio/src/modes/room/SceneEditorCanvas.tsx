@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import {
+  BakedLayout,
   DEFAULT_EDITOR_LIGHTING,
   DirectionGizmo,
   EndlessGrid,
@@ -205,6 +206,12 @@ interface SceneEditorCanvasProps {
   /** Raw room document — needed by the move tool for occupancy checks
    * and delta translation. Must stay in sync with `compiled`. */
   doc: RoomDocument;
+  /** URL of the pre-baked layout GLB for this room's structural base.
+   * Requires `bakedLayoutName`. Rendered behind the object instances. */
+  bakedLayoutPath?: string;
+  /** Layout name for cache-busting via BakeRegistry. Must match the
+   * layout's `LayoutDocument.name`. */
+  bakedLayoutName?: string;
   /** Move-tool batched position update. Called on successful drag-
    * release. One history action per drag (once Task 03 lands). */
   onMoveSelection: (
@@ -922,6 +929,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           onMoveSelection={props.onMoveSelection}
           onSelectInstance={props.onSelectInstance}
         />
+        {props.bakedLayoutPath && props.bakedLayoutName && (
+          <BakedLayout
+            gltfPath={props.bakedLayoutPath}
+            layoutName={props.bakedLayoutName}
+          />
+        )}
         <CubesLayer
           instances={props.compiled.instances}
           voxelSize={props.compiled.cubeSize}

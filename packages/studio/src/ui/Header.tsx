@@ -3,6 +3,7 @@ import React from 'react';
 export type StudioMode =
   | 'map'
   | 'room'
+  | 'layout'
   | 'object'
   | 'character'
   | 'debug'
@@ -15,6 +16,7 @@ export const STUDIO_MODES: ReadonlyArray<{
 }> = [
   { mode: 'map', label: 'Map', description: 'Compose rooms into a world' },
   { mode: 'room', label: 'Room', description: 'Build a room from objects' },
+  { mode: 'layout', label: 'Layout', description: 'Design structural geometry (walls, floors)' },
   { mode: 'object', label: 'Object', description: 'View + tune the non-character catalog' },
   { mode: 'character', label: 'Character', description: 'Preview models + per-character tuning' },
   { mode: 'debug', label: 'Debug', description: 'Test gameplay + network protocol' },

@@ -98,23 +98,27 @@ export interface RoomGroup {
 /**
  * Versioned authoring document for one Room.
  *
- * - **v4** (this) is the command-list room produced by the Room editor
- *   after task-02. Positions are ×4 relative to v3 (voxelSize changed
- *   from 2 to 0.5 in task-03) and the op string is 'placeObject'.
+ * - **v5** (this) adds optional `layoutName` — a reference to a
+ *   `LayoutDocument` whose baked GLB is rendered as the room's base.
+ * - **v4** was the previous version — no `layoutName` field.
+ *   migrateRoomV4toV5 in serialize.ts upgrades v4 docs on load.
  * - **v3** was the previous version — op string 'placeCube', voxelSize=2.
  *   migrateRoomV3toV4 in serialize.ts upgrades v3 docs on load.
  * - **v2** is the historical command-list "scene" — see `SceneDocument`.
  * - **v1** is the legacy cell-grid WorldMap.
  *
- * The on-disk wire form is `SerializedRoomV4` in `serialize.ts`.
+ * The on-disk wire form is `SerializedRoomV5` in `serialize.ts`.
  */
 export interface RoomDocument {
-  schemaVersion: 4;
+  schemaVersion: 5;
   name: string;
   title?: string;
   updatedAt?: number;
   commands: SceneCommand[];
   groups: Record<string, RoomGroup>;
+  /** Optional reference to a named LayoutDocument. When set, the room
+   * loads the baked GLB for this layout as its structural base. */
+  layoutName?: string;
 }
 
 let nextCmdId = 1;
@@ -167,7 +171,7 @@ export function emptyDocument(name: string, title?: string): SceneDocument {
 
 export function emptyRoomDocument(name: string, title?: string): RoomDocument {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     name,
     title,
     updatedAt: Date.now(),

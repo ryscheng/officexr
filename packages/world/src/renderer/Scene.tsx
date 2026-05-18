@@ -19,6 +19,8 @@ import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
+import { BakedLayout } from './BakedLayout.tsx';
+import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
 import type { CameraMode } from './config.ts';
 import type { ViewConfig } from './viewConfig.ts';
@@ -95,6 +97,17 @@ interface SceneProps {
    * straight to `SceneFrame`'s fall-respawn rule. Empty/undefined
    * disables respawn (the player floats in the void instead). */
   spawnPoints?: readonly Vec3[];
+  /**
+   * URL of the pre-baked layout GLB to render as this room's structural
+   * base, e.g. `/api/baked-layouts/lobby`.  Requires `bakedLayoutName`.
+   */
+  bakedLayoutPath?: string;
+  /**
+   * Registry key for the layout (used for cache-busting and collider sync).
+   * Must match the `LayoutDocument.name` used when baking.
+   * Required alongside `bakedLayoutPath` for the layout to render.
+   */
+  bakedLayoutName?: string;
   /** When true, every character rendered in this scene is frozen at
    * its bind pose (no animation mixer activity). Used by the Mugshot
    * mode to produce deterministic snapshot tests. */
@@ -109,6 +122,8 @@ interface SceneProps {
 
 export function Scene(props: SceneProps) {
   const { store, selfId, cameraMode, sync, viewConfig } = props;
+  const showLayout =
+    Boolean(props.bakedLayoutPath) && Boolean(props.bakedLayoutName);
   const { proximity, lighting, background, fixedCamera } = viewConfig;
   const worldFocused = props.worldFocused ?? true;
 
@@ -203,6 +218,18 @@ export function Scene(props: SceneProps) {
         */}
         <Physics gravity={[0, -20, 0]} timeStep="vary">
         <MapColliders store={store} />
+        {showLayout && (
+          <>
+            <BakedLayout
+              gltfPath={props.bakedLayoutPath!}
+              layoutName={props.bakedLayoutName}
+            />
+            <BakedLayoutColliders
+              gltfPath={props.bakedLayoutPath!}
+              layoutName={props.bakedLayoutName}
+            />
+          </>
+        )}
         {/* Lighting: shared LightingRig + a per-frame SunFollower
             that mutates the sun's position/target/disc to track the
             local player. The follower keeps the orthographic shadow

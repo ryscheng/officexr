@@ -28,6 +28,7 @@ function makeKind(
     category,
     tilingAxes: { x: true, y: true, z: true },
     gravity: false,
+    isLayoutObject: false,
     optimization: 'none',
   };
 }

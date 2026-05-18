@@ -1,36 +1,9 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "name": "platform",
   "title": "Platform (25×25)",
-  "updatedAt": 1778800000000,
-  "commands": [
-    {
-      "id": "place-origin",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [0, 0, 0]
-    },
-    {
-      "id": "extrude-x-row",
-      "op": "extrude",
-      "targetCommandId": "place-origin",
-      "face": "px",
-      "count": 25
-    },
-    {
-      "id": "extrude-z-col-from-origin",
-      "op": "extrude",
-      "targetCommandId": "place-origin",
-      "face": "pz",
-      "count": 25
-    },
-    {
-      "id": "extrude-grid",
-      "op": "extrude",
-      "targetCommandId": "extrude-x-row",
-      "face": "pz",
-      "count": 25
-    }
-  ],
+  "updatedAt": 1779138558286,
+  "layoutName": "platform",
+  "commands": [],
   "groups": {}
 }

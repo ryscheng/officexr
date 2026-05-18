@@ -40,11 +40,12 @@ describe('isStudioMode', () => {
     expect(isStudioMode({ mode: 'room' })).toBe(false);
   });
 
-  it('STUDIO_MODES covers all six expected modes', () => {
+  it('STUDIO_MODES covers all seven expected modes', () => {
     const modes = STUDIO_MODES.map((m) => m.mode).sort();
     expect(modes).toEqual([
       'character',
       'debug',
+      'layout',
       'map',
       'mugshot',
       'object',

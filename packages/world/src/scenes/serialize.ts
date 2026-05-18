@@ -69,9 +69,10 @@ export type SerializedRoomV3 = {
 };
 
 /**
- * v4 — the current Room document. Op string is 'placeObject'; positions
+ * v4 — previous Room document. Op string is 'placeObject'; positions
  * are ×4 relative to v3 (coordinate system change from voxelSize=2 to
  * voxelSize=0.5 in task-03). Groups are first-class document state.
+ * Superseded by v5.
  */
 export type SerializedRoomV4 = {
   schemaVersion: 4;
@@ -82,11 +83,27 @@ export type SerializedRoomV4 = {
   groups: Record<string, RoomGroup>;
 };
 
+/**
+ * v5 — current Room document. Adds optional `layoutName` field that
+ * references a LayoutDocument by name. On load, rooms without
+ * `layoutName` default to `undefined` (no layout).
+ */
+export type SerializedRoomV5 = {
+  schemaVersion: 5;
+  name: string;
+  title?: string;
+  updatedAt?: number;
+  commands: SceneCommand[];
+  groups: Record<string, RoomGroup>;
+  layoutName?: string;
+};
+
 export type SerializedScene =
   | SerializedSceneV1
   | SerializedSceneV2
   | SerializedRoomV3
-  | SerializedRoomV4;
+  | SerializedRoomV4
+  | SerializedRoomV5;
 
 // --- v2 (default) helpers --------------------------------------
 
@@ -117,16 +134,18 @@ export interface SerializeRoomInput {
   title?: string;
   commands: SceneCommand[];
   groups?: Record<string, RoomGroup>;
+  layoutName?: string;
 }
 
-export function serializeRoom(input: SerializeRoomInput): SerializedRoomV4 {
+export function serializeRoom(input: SerializeRoomInput): SerializedRoomV5 {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     name: input.name,
     title: input.title,
     updatedAt: Date.now(),
     commands: input.commands,
     groups: input.groups ?? {},
+    layoutName: input.layoutName,
   };
 }
 
@@ -197,6 +216,14 @@ export function deserializeScene(raw: unknown): SerializedScene {
         throw new Error('room v4: missing `groups` object');
       }
       return obj as unknown as SerializedRoomV4;
+    case 5:
+      if (!Array.isArray(obj.commands)) {
+        throw new Error('room v5: missing `commands` array');
+      }
+      if (!obj.groups || typeof obj.groups !== 'object') {
+        throw new Error('room v5: missing `groups` object');
+      }
+      return obj as unknown as SerializedRoomV5;
     default:
       throw new Error(
         `scene: unsupported schemaVersion ${String(obj.schemaVersion)}`,
@@ -252,6 +279,16 @@ export function migrateToV2(scene: SerializedScene): SceneDocument {
       commands: scene.commands,
     };
   }
+  if (scene.schemaVersion === 5) {
+    // v5 → v2 downgrade: drop groups + layoutName.
+    return {
+      schemaVersion: 2,
+      name: scene.name,
+      title: scene.title,
+      updatedAt: scene.updatedAt,
+      commands: scene.commands,
+    };
+  }
   const doc = emptyDocument(scene.name, scene.title);
   doc.updatedAt = scene.updatedAt;
   // scene is SerializedSceneV1 here (schemaVersion === 1)
@@ -263,6 +300,52 @@ export function migrateToV2(scene: SerializedScene): SceneDocument {
     }
   }
   return doc;
+}
+
+/**
+ * Promote a v4 SerializedRoomV4 to v5. Pure function — no side effects.
+ *
+ * Changes in v5:
+ *   1. `schemaVersion: 5`
+ *   2. `layoutName` is carried through if present, defaulting to
+ *      `undefined` (no layout) for existing v4 documents.
+ */
+export function migrateRoomV4toV5(doc: SerializedRoomV4): SerializedRoomV5 {
+  return {
+    schemaVersion: 5,
+    name: doc.name,
+    title: doc.title,
+    updatedAt: doc.updatedAt,
+    commands: doc.commands,
+    groups: doc.groups,
+    // layoutName is absent in v4; leave undefined
+  };
+}
+
+/**
+ * Promote any deserialized scene to the current v5 `RoomDocument`.
+ *
+ * - v5 inputs pass through unchanged.
+ * - v4 inputs are migrated via migrateRoomV4toV5 (adds layoutName slot).
+ * - v3/v2/v1 inputs chain through migrateToV4 first, then v4→v5.
+ */
+export function migrateToV5(scene: SerializedScene): RoomDocument {
+  if (scene.schemaVersion === 5) {
+    return {
+      schemaVersion: 5,
+      name: scene.name,
+      title: scene.title,
+      updatedAt: scene.updatedAt,
+      commands: scene.commands,
+      groups: scene.groups,
+      layoutName: scene.layoutName,
+    };
+  }
+  if (scene.schemaVersion === 4) {
+    return migrateRoomV4toV5(scene);
+  }
+  // v3/v2/v1: promote to v4 first, then lift to v5.
+  return migrateRoomV4toV5(migrateToV4(scene) as SerializedRoomV4);
 }
 
 /**
@@ -312,32 +395,33 @@ export function migrateRoomV3toV4(doc: SerializedRoomV3): SerializedRoomV4 {
 }
 
 /**
- * Promote any deserialized scene to a v4 `RoomDocument` the new Room
- * editor can work on.
+ * Promote any deserialized scene to a v4 intermediate.
+ * Returns `SerializedRoomV4` (NOT the live `RoomDocument` — use
+ * `migrateToV5` / `migrateToV3` for the final consumer type).
  *
+ * - v5 inputs are treated as v4 (layoutName dropped — this is only
+ *   called when v5→v4 downgrade is needed internally).
  * - v4 inputs pass through unchanged.
- * - v3 inputs are migrated via migrateRoomV3toV4 (op rewrite + ×4 positions).
- * - v2 inputs are first promoted to v3-shape and then migrated to v4.
- * - v1 inputs are migrated up through v2 → v3-shape → v4.
- *
- * This replaces the old migrateToV3 as the canonical migration endpoint.
- * @deprecated Use migrateToV4 in new code. migrateToV3 is kept for the
- * existing Scenes editor until it is updated to RoomDocument.
- */
-export function migrateToV3(scene: SerializedScene): RoomDocument {
-  // Delegate to migrateToV4 — v4 IS the current RoomDocument shape.
-  return migrateToV4(scene);
-}
-
-/**
- * Promote any deserialized scene to the current v4 `RoomDocument`.
- *
- * - v4 inputs pass through unchanged.
- * - v3 inputs are migrated via migrateRoomV3toV4 (op + ×4 positions).
+ * - v3 inputs are migrated via migrateRoomV3toV4.
  * - v2 inputs gain an empty `groups` map and go through v3→v4.
  * - v1 inputs go through v2 migration, then v3→v4.
+ *
+ * @deprecated Use migrateToV5 for new production code.
+ *   migrateToV4 is kept as an internal stepping stone and for legacy
+ *   callers still referencing it.
  */
-export function migrateToV4(scene: SerializedScene): RoomDocument {
+export function migrateToV4(scene: SerializedScene): SerializedRoomV4 {
+  if (scene.schemaVersion === 5) {
+    // Strip layoutName to produce a v4 intermediate.
+    return {
+      schemaVersion: 4,
+      name: scene.name,
+      title: scene.title,
+      updatedAt: scene.updatedAt,
+      commands: scene.commands,
+      groups: scene.groups,
+    };
+  }
   if (scene.schemaVersion === 4) {
     return {
       schemaVersion: 4,
@@ -378,6 +462,16 @@ export function migrateToV4(scene: SerializedScene): RoomDocument {
     groups: {},
   };
   return migrateRoomV3toV4(v3);
+}
+
+/**
+ * Canonical migration endpoint: promote any deserialized scene to the
+ * current v5 `RoomDocument`.
+ *
+ * @deprecated migrateToV3 is kept as an alias for backcompat.
+ */
+export function migrateToV3(scene: SerializedScene): RoomDocument {
+  return migrateToV5(scene);
 }
 
 // --- Map (v1) helpers ------------------------------------------

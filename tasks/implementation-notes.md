@@ -1,73 +1,75 @@
 # Implementation Notes
 
-## Task 00: Rename cube-kind identifiers to world-object-kind
-- **Decisions**: Kept `CubeKindEntry`, `CUBE_KIND_DEFAULTS`, `getCubeKind`, and `PlaceCubeCommand` as re-export aliases in `cube-kinds.ts` / `commands.ts` / `index.ts` so all existing callers remain unbroken without a mass rename. New canonical names live in `world-object-kinds-schema.ts`.
+## Task 01: Add isLayoutObject to WorldObjectKind
+- **Decisions**: Added `isLayoutObject?: boolean` as an optional field on `WorldObjectKind` in `world-object-kinds.ts`. Kept optional to avoid breaking existing catalog entries.
 - **Deviations**: None.
-- **Trade-offs**: Alias shims add a thin indirection layer. Acceptable because they are marked deprecated and compile to zero overhead.
-- **Risks**: Any caller that imports the old name without going through the shim will still see the old name; a future cleanup pass should remove aliases once all callsites are updated.
+- **Trade-offs**: Optional field means no compile-time enforcement that every kind declares its category. Acceptable because the catalog is hand-authored and the UI makes the choice explicit.
+- **Risks**: None significant.
 
-## Task 01: Extend WorldObjectKind schema with capability fields
-- **Decisions**: Added `tilingAxes`, `gravity`, and `optimization` directly to the Zod schema with safe defaults (`{x:false,y:false,z:false}`, `false`, `'none'`). Added a scaffold `// TODO(task-01)` comment in `ObjectInstances.tsx` since `optimization` runtime logic is out of scope.
+## Task 02: Define LayoutDocument type and serialization
+- **Decisions**: `LayoutDocument` mirrors `RoomDocument` structurally (`schemaVersion: 1`, `name`, `title?`, `updatedAt?`, `commands: SceneCommand[]`) but with no `groups` field (v1 layouts are flat command lists). Serialization via `serializeLayout` parallels `serializeRoom`.
 - **Deviations**: None.
-- **Trade-offs**: Schema defaults ensure all existing room files remain valid without migration.
-- **Risks**: The `optimization` field is a scaffold — runtime instancing / culling not implemented.
+- **Trade-offs**: Deliberate near-copy of RoomDocument (SRP per-doc-type, no premature abstraction).
+- **Risks**: If layout schema evolves to need groups, migration tooling will be needed.
 
-## Task 02: Bump RoomDocument to v4 with v3→v4 migration
-- **Decisions**: `PlaceObjectCommand.op` changed from `'placeCube'` to `'placeObject'`. `migrateRoomV3toV4` rewrites each command's `op` field. `schemaVersion` bumped to 4. All room JSON files under `packages/world/rooms/` were re-saved in v4 form.
+## Task 03: RoomDocument v4-to-v5 migration with layoutName
+- **Decisions**: `RoomDocument` `schemaVersion` bumped to `5`; added `layoutName?: string`. Migration from v4 leaves `layoutName` undefined. `serializeRoom` round-trips the field. Downgrade path (v5 → v4) strips `layoutName`.
 - **Deviations**: None.
-- **Trade-offs**: The migration is one-way; old v3 readers that hard-check `op === 'placeCube'` will break. Several non-migrated files (`applyAction.ts`, `InspectorPanel.tsx`, `moveDelta.ts`) still check for `'placeCube'` — pre-existing type errors, not introduced here.
-- **Risks**: Files that check `op === 'placeCube'` (applyAction, InspectorPanel, moveDelta) produce TS errors until updated in a follow-up pass.
-
-## Task 03: Set VOXEL_SIZE = 0.5 globally
-- **Decisions**: Changed `VOXEL_SIZE = 2` → `VOXEL_SIZE = 0.5` in `config.ts`. Added comment documenting the v4 migration rationale. No other source files hardcoded the literal.
-- **Deviations**: None.
-- **Trade-offs**: Tests that used `compileScene(doc, 2)` or `cubeSize: 2` remain at 2 — they are testing the SDK/physics layer with an explicit voxelSize argument, not the global constant.
-- **Risks**: Any caller that relied on the old value of 2 without using the constant will have stale behaviour; verified none exist in non-test source.
-
-## Task 04: Per-object snap step and multi-voxel occupancy
-- **Decisions**: Added `computeTileStep` and `computeKindTileSteps` to `roomSnap.ts` for per-kind tile stepping. Updated `snapToVoxel` to accept optional `step` parameter. Fixed `checkMoveOccupancy` op filter from `'placeCube'` → `'placeObject'`. Added `footprint` parameter to support multi-voxel occupancy checks.
-- **Deviations**: None.
-- **Trade-offs**: `snapToVoxel` remains backward-compatible (step defaults to 1).
+- **Trade-offs**: Version bump means any client reading a v5 doc against a v4 schema will silently ignore `layoutName`. Acceptable for the current single-client setup.
 - **Risks**: None.
 
-## Task 05: Snap non-tileable kinds to nearest tileable face
-- **Decisions**: Added `TileableObjectInfo` interface and `snapToNearestTileableFace` to `roomSnap.ts`. Uses nearest-by-distance tie-breaking for tileable objects, 6-face AABB check, `fallbackRadiusM=5` world-grid fallback. In `SceneEditorCanvas.tsx`, `tileableObjects` useMemo uses a fixed `voxelSize`-cube default dims because `getKindBoundingDimensions` requires GLTF scene context unavailable outside R3F. Documented as ISP violation comment.
-- **Deviations**: Fixed test for flush +X face: hit point moved from y=0 to y=1.0 to prevent the -Y face (distance=0) from winning.
-- **Trade-offs**: Default dims approximation means snap position is slightly off for non-1×1×1 tileable objects until real dims are plumbed through.
-- **Risks**: The dims approximation is a known simplification. Future work: plumb GLTF bounding dims to this level.
-
-## Task 06: Drop-to-surface gravity placement
-- **Decisions**: Created `dropToSurface.ts` as a pure function. Rejects placement (returns `null`) when no supporting object exists — world floor (y=0) is NOT a valid support. Applied in both `handleAddClick` and tile idle-stage click in `SceneEditorCanvas.tsx`.
+## Task 04: Layout storage and bake routes
+- **Decisions**: Vite dev-middleware at `/api/layouts` (GET list, GET/PUT individual) and `/api/baked-layouts` (GET/PUT GLB) wired into `vite.config.ts`. `FilesystemLayoutStorage` for layout JSON persistence.
 - **Deviations**: None.
-- **Trade-offs**: Gravity rejection on empty-world placement means gravity kinds cannot be placed on a bare floor — intentional per spec.
+- **Trade-offs**: Dev-only filesystem routes; production would need a real backend.
+- **Risks**: `/api/layouts` returns bare string[] which is not typed — acceptable for a dev-only endpoint.
+
+## Task 05: Headless LayoutBakeService using gltf-transform
+- **Decisions**: `bakeLayout(doc, kindLookup, gltfLoader, options?)` is zero-dependency on `three`/`react`. Uses `@gltf-transform/core` WebIO + `mergeDocuments`. Source GLB caching by URL prevents redundant fetches within a single bake call.
+- **Deviations**: `mergeDocuments` node mapping was non-obvious — used `propMap.get(sourceScene)` to get merged scene counterpart, then called `listChildren()` on it.
+- **Trade-offs**: `WebIO` works in both browser and Node; `NodeIO` injection is available for CLI use.
+- **Risks**: `@gltf-transform/core` mergeDocuments API may change across versions.
+
+## Task 06: BakeRegistry debounce and cross-unmount promise
+- **Decisions**: Module-level singleton with `Map<layoutName, RegistryEntry>`. `scheduleBake` debounces 1500ms. `awaitFresh` is non-async (creates and stores `inFlight` synchronously before any `await`) to prevent concurrent-call race where second call misses the dedup.
+- **Deviations**: Added `.catch(() => undefined)` no-op to `inFlight` in both `startBake` and `awaitFresh` to prevent unhandled Promise rejections in tests.
+- **Trade-offs**: Module singleton means registry state persists across hot-module-reloads in dev — reset via `_resetRegistry()` in tests.
+- **Risks**: If bake fails, `BakeState` = `'error'` and the GLB is not updated. Subsequent `scheduleBake` will retry.
+
+## Task 07: Browser bake wrapper and Node CLI
+- **Decisions**: `createBrowserBakeDeps(catalog)` builds a `BakeDeps` with `fetch`-based gltf loader and PUT publisher. Node CLI (`scripts/bake-layout.ts`) resolves `kind.gltfPath` from `/models/...` to `packages/studio/public/...`.
+- **Deviations**: `fetch` body type `Uint8Array` caused TypeScript error — fixed with `.buffer.slice(...)` cast to `ArrayBuffer`.
+- **Trade-offs**: CLI reads catalog from `world-object-kinds.json`; fallback to `.default.json`. Hard-coded path mapping is fragile if public asset paths change.
+- **Risks**: CLI only works from monorepo root; not suitable for standalone invocation.
+
+## Task 08: BakedLayout and BakedLayoutColliders renderer primitives
+- **Decisions**: `BakedLayout` subscribes to BakeRegistry for cache-busting via `?v=N` URL suffix. Created separate `LayoutMaterialOverride = (material: THREE.Material) => THREE.Material` since layout meshes have no `kindId` (unlike `ObjectInstances.MaterialOverride` which takes `(kindId, base)`).
+- **Deviations**: `compileScene` third arg was not `voxelSize` but `KindStrideLookup` — removed the erroneous argument.
+- **Trade-offs**: `BakedLayoutColliders` traverses the GLTF scene graph on every mount; could be memoized if performance is a concern.
+- **Risks**: `useGLTF` caches by URL; cache-busting via `?v=N` works but leaves stale cache entries in `useGLTF`'s cache.
+
+## Task 09: ObjectPalette layoutFilter prop and Room view toggle
+- **Decisions**: Added `layoutFilter: 'all' | 'exclude' | 'require'` prop to `ObjectPalette`. `'exclude'` (default for Room view) hides `isLayoutObject` kinds; `'require'` (Layout editor) shows only them. Room editor adds "Show layout objects" checkbox defaulting to unchecked.
+- **Deviations**: None.
+- **Trade-offs**: Session-local toggle (not persisted to localStorage). Acceptable for a dev-facing control.
 - **Risks**: None.
 
-## Task 07: ObjectKindEditorPanel capability sections
-- **Decisions**: Added Tiling (X/Y/Z axis toggles), Placement (gravity toggle), and Optimization (select with scaffold label) sections to `ObjectKindEditorPanel.tsx`. Exported `OptimizationMode` type from `packages/world/src/scenes/index.ts` since it was missing.
+## Task 10: Object editor isLayoutObject toggle
+- **Decisions**: Added `isLayoutObject` boolean toggle in the Object editor's kind inspector. Persists to `world-object-kinds.json` via the existing kind-update API.
 - **Deviations**: None.
-- **Trade-offs**: Optimization select shows a `(scaffold — no runtime effect)` label to be transparent to users.
+- **Trade-offs**: No validation preventing a kind from being both layout and non-layout; relies on author discipline.
 - **Risks**: None.
 
-## Task 08: Generalize tiling state machine
-- **Decisions**: Created `tileStateMachine.ts` (SRP module) with `TileMachineState`, `resolveAvailableAxes`, `computeTileGhosts`, `switchNextAxis`. Replaced hardcoded `TileState` union in `SceneEditorCanvas.tsx` with `type TileState = TileMachineState`. Y-axis hover computation stays inline in the canvas (SRP violation documented) because it requires R3F camera projection.
+## Task 11: LayoutApp mode and useLayoutDocument hook
+- **Decisions**: Simple snapshot-based undo stack (array of `LayoutDocument`) in `useLayoutDocument` since `RoomHistory` is coupled to `RoomDocument`/`EditAction`. `LayoutEditorCanvas` is a thin adapter that converts `LayoutDocument` to a minimal `RoomDocument` shim for `SceneEditorCanvas`. `LayoutApp` includes `BakeStatusPill` showing bake state from `BakeRegistry.subscribe`. Added `'layout'` to `StudioMode` and `STUDIO_MODES` array; updated studio-mode test from 6 to 7 modes. `roomDocCompat` ISP violation documented inline.
 - **Deviations**: None.
-- **Trade-offs**: The SRP violation for Y-axis delta is an acceptable narrow exception — splitting it would require either a Leva-style hook merge or threading camera state into the pure module.
-- **Risks**: None.
+- **Trade-offs**: ISP violation in `LayoutApp.roomDocCompat` — `InspectorPanel` depends on the full `RoomDoc` interface; shim provides all required fields. Documented with SOLID comment.
+- **Risks**: If `useRoomDocument` return type grows, `roomDocCompat` must be updated.
 
-## Task 09: X/Y/Z keyboard shortcuts for axis switching
-- **Decisions**: Added window-level `keydown` handler with `tileStateRef` mirror to avoid re-binding on every state change. Wrapped `<Canvas>` in a `position:relative` div to host the absolute-positioned hint overlay. Hint shows when `stage !== 'idle' && remainingAxes.length > 1`.
-- **Deviations**: None.
-- **Trade-offs**: Wrapping Canvas in a div adds one DOM element. Acceptable — the wrapper has no visual impact and is the standard pattern for overlaying HTML on an R3F canvas.
-- **Risks**: None.
-
-## Task 10: DirectionGizmo renderer primitive
-- **Decisions**: Created `DirectionGizmo.tsx` in `packages/world/src/renderer/` using `meshBasicMaterial` with `depthTest:false` + `renderOrder=1` so the gizmo is always visible on top of geometry. Handled the `direction = [0,-1,0]` anti-parallel edge case with a manual 180° rotation. Per-axis color convention: red=X, green=Y, blue=Z.
-- **Deviations**: None.
-- **Trade-offs**: `depthTest:false` makes the gizmo render on top even when behind walls; acceptable for a tiling aid, where visibility matters more than depth accuracy.
-- **Risks**: None.
-
-## Task 11: Integration lint and build verification
-- **Decisions**: All checks passed without code modifications. Verified: grep guards (0 violations), lint:no-bespoke-renderer (clean), all 158 world tests + 169 studio tests pass, studio build succeeds, SDK typecheck clean. Room JSON files already at schemaVersion 4 with `op: 'placeObject'`.
-- **Deviations**: None.
-- **Trade-offs**: Pre-existing TS errors in `applyAction.ts`, `InspectorPanel.tsx`, and `moveDelta.ts` (checking `op === 'placeCube'`) were not fixed — they pre-date this task set and require a separate migration pass.
-- **Risks**: The `'placeCube'` TS errors in the files above will cause `tsc --noEmit` failures until those files are updated. They do not affect runtime behaviour or the test suite.
+## Task 12: Room and Map views consume baked layouts
+- **Decisions**: `useRoomDocument` gains `setLayoutName` (direct `setDoc` mutation, not an `EditAction` — layout link is metadata, not a reversible command). Prefetch `awaitFresh` fires on `doc.layoutName` change and on `setLayoutName`. `InspectorPanel` adds `LayoutSection` shown in all selection branches (empty, multi, placeObject, unknown-op). `MapEditorCanvas` renders `<BakedLayout>` per `RoomInstanceMesh` when `room.layoutName` is set. Map view DOES render full geometry; baked layout GLB is composed per room instance.
+- **Deviations**: `layoutName` not added to `EditAction` / `RoomHistory` — metadata-only, undo would be unexpected for a room-geometry-link change.
+- **Trade-offs**: `LayoutSection`'s datalist is populated from `GET /api/layouts` on every mount; could be cached at the hook level if the list is large.
+- **Risks**: `awaitFresh` prefetch silently no-ops if `/api/layouts/:name` returns 404 (layout not yet baked). Non-blocking.
+- **Map view note**: Map view renders full room geometry via `<ObjectInstances>`. `<BakedLayout>` is now also composed per room instance, positioned/rotated by the `RoomInstance`'s group transform (same `position` + `rotationY` as the cubes).
+- **Playwright mugshot status**: 8 passed (Barbarian, all angles × 2 modes), 40 skipped (no ideal PNG for other characters — expected). No failures. No baseline drift from this task set (renderer primitives only activate when `layoutName` is set, which is not the case in mugshot fixtures).

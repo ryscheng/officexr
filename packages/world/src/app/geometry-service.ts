@@ -26,7 +26,6 @@
  */
 
 import type {
-  CatalogService,
   InstanceGeometryService,
   Vec3,
   VoxelFootprint,
@@ -34,6 +33,16 @@ import type {
 } from './types.ts';
 import type { ObjectInstance } from '@officexr/sdk';
 import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
+
+/**
+ * Minimum-surface dependency the geometry service needs from a catalog.
+ * ISP (Interface Segregation): the geometry service only ever calls
+ * `getKind(id)` — callers that want to construct one (Node CLI, tests,
+ * the bake service) shouldn't have to mock the full `CatalogService`.
+ */
+export interface KindResolver {
+  getKind(id: string): WorldObjectKind | undefined;
+}
 
 interface LocalAABB {
   min: { x: number; y: number; z: number };
@@ -61,7 +70,7 @@ function localAABBFor(kind: WorldObjectKind | undefined, voxelSize: number): Loc
 }
 
 export function createInstanceGeometry(deps: {
-  catalog: CatalogService;
+  catalog: KindResolver;
   voxelSize: number;
 }): InstanceGeometryService {
   const { catalog, voxelSize } = deps;

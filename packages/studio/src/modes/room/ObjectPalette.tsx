@@ -6,6 +6,15 @@ import {
 } from '@officexr/world/scenes';
 import { useCatalog } from '@officexr/world/react';
 
+/**
+ * Controls which `isLayoutObject` kinds appear in the palette.
+ *
+ * - `'all'` (default): show every kind regardless of isLayoutObject.
+ * - `'exclude'`: hide kinds where isLayoutObject is true (Room view default).
+ * - `'require'`: show ONLY kinds where isLayoutObject is true (Layout view).
+ */
+export type LayoutFilter = 'all' | 'exclude' | 'require';
+
 interface ObjectPaletteProps {
   staged: string | null;
   /**
@@ -15,6 +24,11 @@ interface ObjectPaletteProps {
    * without a separate toolbar tap.
    */
   onStage: (kindId: string | null) => void;
+  /**
+   * Controls which isLayoutObject kinds are visible.
+   * Defaults to 'all' (no filtering) when omitted.
+   */
+  layoutFilter?: LayoutFilter;
 }
 
 /**
@@ -95,14 +109,19 @@ export function filterByName(
  * match on label or id. Matching is deferred so typing stays responsive
  * with the 280-kind default catalog.
  */
-export function ObjectPalette({ staged, onStage }: ObjectPaletteProps) {
+export function ObjectPalette({ staged, onStage, layoutFilter = 'all' }: ObjectPaletteProps) {
   const allKinds = useCatalog();
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
-  const groups = useMemo(
-    () => groupByCategory(filterByName(allKinds, deferredQuery), ['character']),
-    [allKinds, deferredQuery],
-  );
+  const groups = useMemo(() => {
+    const layoutFiltered =
+      layoutFilter === 'all'
+        ? allKinds
+        : allKinds.filter((k) =>
+            layoutFilter === 'require' ? k.isLayoutObject : !k.isLayoutObject,
+          );
+    return groupByCategory(filterByName(layoutFiltered, deferredQuery), ['character']);
+  }, [allKinds, deferredQuery, layoutFilter]);
 
   return (
     <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>

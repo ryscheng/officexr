@@ -22,6 +22,7 @@ function makeKind(id: string, label: string = id): WorldObjectKind {
     category: 'block',
     tilingAxes: { x: true, y: true, z: true },
     gravity: false,
+    isLayoutObject: false,
     optimization: 'none',
   };
 }

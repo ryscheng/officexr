@@ -46,6 +46,13 @@ export interface MapPickerState {
    * fall-respawn rule. Empty until the first map finishes loading;
    * empty for any map that doesn't author spawns. */
   spawnPoints: readonly Vec3[];
+  /** Room documents for the currently-loaded map, keyed by roomName.
+   * Empty until the first map finishes loading. Used by DebugApp to
+   * derive per-room `layoutName` values for baked-layout rendering. */
+  rooms: ReadonlyMap<string, RoomDocument>;
+  /** The MapDocumentV1 for the currently-loaded map.
+   * Null until the first map finishes loading. */
+  mapDoc: MapDocumentV1 | null;
   /** Pick a different map; loads it, pushes WorldObjects, teleports
    *  the local player, and respawns bots. */
   choose: (name: string) => void;
@@ -117,6 +124,8 @@ export function useMapPicker({
   const [maps, setMaps] = useState<string[]>([initialName]);
   const [selected, setSelected] = useState<string>(initialName);
   const [spawnPoints, setSpawnPoints] = useState<readonly Vec3[]>([]);
+  const [rooms, setRooms] = useState<ReadonlyMap<string, RoomDocument>>(new Map());
+  const [mapDoc, setMapDoc] = useState<MapDocumentV1 | null>(null);
 
   const loadMap = useCallback(
     async (
@@ -152,6 +161,8 @@ export function useMapPicker({
         if (a) {
           a.setWorldObjects(roomService.compileMap(map, rooms));
         }
+        setRooms(rooms);
+        setMapDoc(map);
         return { map, spawns: map.spawnPoints };
       } catch (err) {
         console.warn(`[map-picker] load("${name}") failed:`, err);
@@ -288,5 +299,5 @@ export function useMapPicker({
     })();
   }, [selected, loadMap, teleportLocal, respawnBots]);
 
-  return { maps, selected, spawnPoints, choose, reset, reloadList };
+  return { maps, selected, spawnPoints, rooms, mapDoc, choose, reset, reloadList };
 }

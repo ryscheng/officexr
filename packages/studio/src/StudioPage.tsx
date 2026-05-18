@@ -4,6 +4,7 @@ import { DebugApp } from './modes/debug/DebugApp.tsx';
 import { RoomApp } from './modes/room/RoomApp.tsx';
 import { CharacterApp } from './modes/character/CharacterApp.tsx';
 import { MapApp } from './modes/map/MapApp.tsx';
+import { LayoutApp } from './modes/layout/LayoutApp.tsx';
 import { ObjectApp } from './modes/object/ObjectApp.tsx';
 import { MugshotApp } from './modes/mugshot/MugshotApp.tsx';
 
@@ -67,6 +68,7 @@ export function StudioPage() {
     >
       <Header active={studioMode} onChange={setStudioMode} />
       {studioMode === 'map' && <MapApp />}
+      {studioMode === 'layout' && <LayoutApp />}
       {studioMode === 'room' && <RoomApp />}
       {studioMode === 'object' && <ObjectApp />}
       {studioMode === 'character' && <CharacterApp />}

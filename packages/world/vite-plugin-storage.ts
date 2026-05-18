@@ -16,19 +16,27 @@ import {
   type SerializedScene,
 } from './src/scenes/serialize.ts';
 import { deserializeMap } from './src/scenes/serialize.ts';
+import { deserializeLayout } from './src/scenes/layout-document.ts';
 import type { MapDocumentV1 } from './src/scenes/map-document.ts';
+import type { LayoutDocument } from './src/scenes/layout-document.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOMS_DIR = path.resolve(HERE, 'rooms');
 const DEFAULT_MAPS_DIR = path.resolve(HERE, 'maps');
 const DEFAULT_SCENES_DIR = path.resolve(HERE, 'scenes');
 const DEFAULT_CATALOG_FILE = path.resolve(HERE, 'world-object-kinds.json');
+const DEFAULT_LAYOUTS_DIR = path.resolve(HERE, 'layouts');
+const DEFAULT_BAKED_LAYOUTS_DIR = path.resolve(HERE, 'baked-layouts');
 
 export interface StudioStoragePluginOptions {
   rooms?: { dir?: string; basePath?: string };
   maps?: { dir?: string; basePath?: string };
   /** Single-document file. Default: `packages/world/world-object-kinds.json`. */
   catalog?: { file?: string; basePath?: string };
+  /** Layout JSON docs. Default dir: `packages/world/layouts/`. */
+  layouts?: { dir?: string; basePath?: string };
+  /** Baked GLBs. Default dir: `packages/world/baked-layouts/`. */
+  bakedLayouts?: { dir?: string; basePath?: string };
   /**
    * Back-compat: the legacy `/api/scenes` endpoint serves
    * `packages/world/scenes/` so the existing Scenes editor keeps
@@ -70,6 +78,13 @@ export default function studioStoragePlugin(
     /\/$/,
     '',
   );
+  const layoutsDir = opts.layouts?.dir ?? DEFAULT_LAYOUTS_DIR;
+  const layoutsBase = (opts.layouts?.basePath ?? '/api/layouts').replace(/\/$/, '');
+  const bakedLayoutsDir = opts.bakedLayouts?.dir ?? DEFAULT_BAKED_LAYOUTS_DIR;
+  const bakedLayoutsBase = (opts.bakedLayouts?.basePath ?? '/api/baked-layouts').replace(
+    /\/$/,
+    '',
+  );
   const legacyScenesDir = opts.legacyScenes?.dir ?? DEFAULT_SCENES_DIR;
   const legacyScenesBase = (
     opts.legacyScenes?.basePath ?? '/api/scenes'
@@ -98,6 +113,18 @@ export default function studioStoragePlugin(
       server.middlewares.use(
         catalogBase,
         makeSingleDocumentMiddleware({ file: catalogFile }),
+      );
+      server.middlewares.use(
+        layoutsBase,
+        makeJsonResourceMiddleware({
+          dir: layoutsDir,
+          listKey: 'layouts',
+          validate: (raw: unknown) => deserializeLayout(raw),
+        }),
+      );
+      server.middlewares.use(
+        bakedLayoutsBase,
+        makeBinaryResourceMiddleware({ dir: bakedLayoutsDir }),
       );
       if (mountLegacy) {
         server.middlewares.use(
@@ -154,6 +181,86 @@ function makeJsonResourceMiddleware(
       }
     } catch (err) {
       console.error(`[studio-storage:${opts.listKey}] middleware error:`, err);
+      jsonResponse(res, 500, { error: (err as Error).message });
+      next?.();
+    }
+  };
+}
+
+interface BinaryResourceOpts {
+  dir: string;
+}
+
+/**
+ * Middleware for binary GLB files.
+ *
+ *   GET  /api/baked-layouts/:name  → application/octet-stream or 404
+ *   PUT  /api/baked-layouts/:name  → 204 (body = binary GLB)
+ *   DELETE /api/baked-layouts/:name → 204
+ *
+ * Names must end with `.glb` — `isValidSceneName` is checked after
+ * stripping the `.glb` suffix.
+ */
+function makeBinaryResourceMiddleware(
+  opts: BinaryResourceOpts,
+): Connect.NextHandleFunction {
+  return async (req, res, next) => {
+    try {
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      const slug = url.pathname.replace(/^\/+/, '');
+
+      if (!slug) {
+        return badMethod(res, ['GET', 'PUT', 'DELETE']);
+      }
+
+      // Names look like "foo" or "foo.glb". Normalise to bare name for
+      // validation, keep the .glb extension for the actual filename.
+      const bareName = slug.endsWith('.glb') ? slug.slice(0, -4) : slug;
+      if (!isValidSceneName(bareName)) {
+        return jsonResponse(res, 400, { error: 'invalid resource name' });
+      }
+      const filename = `${bareName}.glb`;
+      const file = path.join(opts.dir, filename);
+
+      switch (req.method) {
+        case 'GET': {
+          let data: Buffer;
+          try {
+            data = await fs.readFile(file);
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+              return jsonResponse(res, 404, { error: 'not found' });
+            }
+            throw err;
+          }
+          res.statusCode = 200;
+          res.setHeader('content-type', 'model/gltf-binary');
+          res.end(data);
+          return;
+        }
+        case 'PUT': {
+          const data = await readBodyBinary(req);
+          await ensureDir(opts.dir);
+          await fs.writeFile(file, data);
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+        case 'DELETE': {
+          try {
+            await fs.unlink(file);
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+          }
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+        default:
+          return badMethod(res, ['GET', 'PUT', 'DELETE']);
+      }
+    } catch (err) {
+      console.error(`[studio-storage:baked-layouts] middleware error:`, err);
       jsonResponse(res, 500, { error: (err as Error).message });
       next?.();
     }
@@ -271,9 +378,9 @@ async function handlePut(
   res: ServerResponse,
 ): Promise<void> {
   const body = await readBody(req);
-  let parsed: SerializedScene | MapDocumentV1;
+  let parsed: SerializedScene | MapDocumentV1 | LayoutDocument;
   try {
-    parsed = opts.validate(JSON.parse(body)) as SerializedScene | MapDocumentV1;
+    parsed = opts.validate(JSON.parse(body)) as SerializedScene | MapDocumentV1 | LayoutDocument;
   } catch (err) {
     return jsonResponse(res, 400, { error: (err as Error).message });
   }
@@ -317,6 +424,24 @@ function readBody(req: IncomingMessage): Promise<string> {
       }
     });
     req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+}
+
+function readBodyBinary(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    req.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      total += chunk.length;
+      // Refuse > 50 MB; a baked GLB should never be that large.
+      if (total > 50_000_000) {
+        reject(new Error('binary payload exceeds 50 MB'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }

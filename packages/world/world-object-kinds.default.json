@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": 1778616231590,
+  "updatedAt": 1747584000000,
   "kinds": [
     {
       "id": "colored_block_blue",
@@ -15,7 +15,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "colored_block_green",
@@ -30,7 +31,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "colored_block_red",
@@ -45,7 +47,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "colored_block_yellow",
@@ -60,7 +63,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "stone",
@@ -75,7 +79,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "stone_dark",
@@ -90,7 +95,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "stone_with_gold",
@@ -105,7 +111,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "wood",
@@ -120,7 +127,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "bricks_A",
@@ -135,7 +143,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "dirt_with_grass",
@@ -150,7 +159,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "glass",
@@ -165,7 +175,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     },
     {
       "id": "lava",
@@ -180,7 +191,8 @@
       "metalness": null,
       "emissive": null,
       "emissiveIntensity": 0,
-      "category": "block"
+      "category": "block",
+      "isLayoutObject": true
     }
   ]
 }

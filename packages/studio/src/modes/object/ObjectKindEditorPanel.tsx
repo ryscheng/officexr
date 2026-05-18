@@ -193,6 +193,12 @@ export function ObjectKindEditorPanel({ kind, applyPatch }: ObjectKindEditorPane
           value={kind.gravity}
           onChange={(gravity) => applyPatch({ gravity })}
         />
+        <Toggle
+          label="Is layout object"
+          value={kind.isLayoutObject}
+          onChange={(isLayoutObject) => applyPatch({ isLayoutObject })}
+          hint="Walls, floors, structural geometry. Used in Layout view; hidden from Room view by default."
+        />
       </Section>
 
       <Section title="Optimization">

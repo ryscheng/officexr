@@ -26,6 +26,9 @@ export function RoomApp() {
   const roomDoc = useRoomDocument();
   const [tool, setTool] = useState<Tool>('select');
   const [stagedKindId, setStagedKindId] = useState<string | null>(null);
+  // Session-local toggle: show layout objects (walls/floors) in the palette.
+  // Defaults to hidden so the Room palette focuses on furnishings.
+  const [showLayoutObjects, setShowLayoutObjects] = useState(false);
   // Current build height (integer voxel y). The Add tool's floor
   // picker sits at this y; Q lowers it, E raises it. The visible
   // EndlessGrid stays at world y=0 as a reference plane — the build
@@ -266,7 +269,33 @@ export function RoomApp() {
           loadRoom={roomDoc.loadRoom}
           newRoom={roomDoc.newRoom}
         />
-        <ObjectPalette staged={stagedKindId} onStage={handleStage} />
+        <div
+          style={{
+            padding: '6px 12px 2px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <input
+            id="room-show-layout-objects"
+            type="checkbox"
+            checked={showLayoutObjects}
+            onChange={(e) => setShowLayoutObjects(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          <label
+            htmlFor="room-show-layout-objects"
+            style={{ fontSize: 11, color: '#a3a3a3', cursor: 'pointer', userSelect: 'none' }}
+          >
+            Show layout objects
+          </label>
+        </div>
+        <ObjectPalette
+          staged={stagedKindId}
+          onStage={handleStage}
+          layoutFilter={showLayoutObjects ? 'all' : 'exclude'}
+        />
       </LeftPanel>
       <main
         style={{
@@ -295,6 +324,12 @@ export function RoomApp() {
           onContextMenuRequest={handleContextMenuRequest}
           onMoveSelection={handleMoveSelection}
           doc={roomDoc.doc}
+          bakedLayoutPath={
+            roomDoc.doc.layoutName
+              ? `/api/baked-layouts/${encodeURIComponent(roomDoc.doc.layoutName)}`
+              : undefined
+          }
+          bakedLayoutName={roomDoc.doc.layoutName}
         />
         <RoomHud
           roomName={roomDoc.roomName}

@@ -153,6 +153,7 @@ function entryForGltf(
     category: packId,
     tilingAxes: { x: packId === 'block', y: packId === 'block', z: packId === 'block' },
     gravity: false,
+    isLayoutObject: false,
     optimization: 'none' as const,
   };
 }

@@ -20,11 +20,16 @@ import { describe, it, expect } from 'vitest';
 import platformRoomJson from '../../rooms/platform.json' with { type: 'json' };
 import defaultV2RoomJson from '../../rooms/default-v2.json' with { type: 'json' };
 import longCorridorMapJson from '../../maps/long_corridor.json' with { type: 'json' };
+import platformLayoutJson from '../../layouts/platform.json' with { type: 'json' };
+import longCorridorLayoutJson from '../../layouts/long_corridor.json' with { type: 'json' };
 import catalogJson from '../../world-object-kinds.json' with { type: 'json' };
 
 import { compileScene, type KindStrideLookup } from './compile.ts';
 import { compileMap } from './compile-map.ts';
-import { deserializeScene, deserializeMap, migrateToV4 } from './serialize.ts';
+import { deserializeScene, deserializeMap, migrateToV5 } from './serialize.ts';
+import { deserializeLayout, type LayoutDocument } from './layout-document.ts';
+import type { RoomDocument } from './commands.ts';
+import type { ObjectInstance } from '@officexr/sdk';
 import {
   validateWorldObjectKindCatalog,
   type WorldObjectKind,
@@ -139,18 +144,31 @@ function findOverlapping(
   return out;
 }
 
+/** Compile the room together with its referenced layout. Mirrors the
+ * runtime semantics: layout commands provide the structural geometry,
+ * room commands provide the non-layout (furniture) overlays. */
+function compileRoomWithLayout(
+  room: RoomDocument,
+  layout: LayoutDocument | null,
+  kindStride: KindStrideLookup,
+): ObjectInstance[] {
+  const roomCompiled = compileScene(room, VOXEL_SIZE, kindStride);
+  if (!layout) return [...roomCompiled.instances];
+  const layoutCompiled = compileScene(layout, VOXEL_SIZE, kindStride);
+  return [...layoutCompiled.instances, ...roomCompiled.instances];
+}
+
 describe('room render bounds', () => {
   const { kindStride, kindById } = buildStrideLookup();
 
-  it('platform room compiles to a 50 m × 50 m × 2 m slab', () => {
-    const doc = migrateToV4(deserializeScene(platformRoomJson));
-    const compiled = compileScene(doc, VOXEL_SIZE, kindStride);
+  it('platform room + layout compiles to a 50 m × 50 m × 2 m slab', () => {
+    const doc = migrateToV5(deserializeScene(platformRoomJson));
+    const layout = deserializeLayout(platformLayoutJson);
+    const instances = compileRoomWithLayout(doc, layout, kindStride);
 
-    expect(compiled.instances.length).toBeGreaterThan(0);
+    expect(instances.length).toBeGreaterThan(0);
 
-    const aabb = unionAABB(
-      compiled.instances.map((i) => instanceAABB(i, kindById)),
-    );
+    const aabb = unionAABB(instances.map((i) => instanceAABB(i, kindById)));
     const [w, h, d] = extents(aabb);
 
     // 25 × 25 grid of 2 m colored_block_blue cubes.
@@ -158,19 +176,18 @@ describe('room render bounds', () => {
     expect(d).toBeCloseTo(50, 5);
     expect(h).toBeCloseTo(2, 5);
 
-    const overlapsFound = findOverlapping(compiled.instances, kindById);
+    const overlapsFound = findOverlapping(instances, kindById);
     expect(overlapsFound).toEqual([]);
   });
 
-  it('default-v2 room compiles to an 8 m × 4 m × 2 m corridor', () => {
-    const doc = migrateToV4(deserializeScene(defaultV2RoomJson));
-    const compiled = compileScene(doc, VOXEL_SIZE, kindStride);
+  it('default-v2 room + long_corridor layout compiles to an 8 m × 4 m × 2 m corridor', () => {
+    const doc = migrateToV5(deserializeScene(defaultV2RoomJson));
+    const layout = deserializeLayout(longCorridorLayoutJson);
+    const instances = compileRoomWithLayout(doc, layout, kindStride);
 
-    expect(compiled.instances.length).toBeGreaterThan(0);
+    expect(instances.length).toBeGreaterThan(0);
 
-    const aabb = unionAABB(
-      compiled.instances.map((i) => instanceAABB(i, kindById)),
-    );
+    const aabb = unionAABB(instances.map((i) => instanceAABB(i, kindById)));
     const [w, h, d] = extents(aabb);
 
     // 2 wide × 4 long × 1 tall arrangement of 2 m cubes.
@@ -180,29 +197,44 @@ describe('room render bounds', () => {
     expect(d).toBeCloseTo(8, 5);
     expect(h).toBeCloseTo(2, 5);
 
-    const overlapsFound = findOverlapping(compiled.instances, kindById);
+    const overlapsFound = findOverlapping(instances, kindById);
     expect(overlapsFound).toEqual([]);
   });
 
   it('long_corridor map composes to the same 8 m × 4 m × 2 m AABB', () => {
     const map = deserializeMap(longCorridorMapJson);
-    const room = migrateToV4(deserializeScene(defaultV2RoomJson));
+    const room = migrateToV5(deserializeScene(defaultV2RoomJson));
+    const layout = deserializeLayout(longCorridorLayoutJson);
     const rooms = new Map([[room.name, room]]);
 
-    const compiled = compileMap(map, rooms, VOXEL_SIZE, kindStride);
+    // compileMap operates on the room commands only; to verify the
+    // composed map's geometry we add the layout's instances at the
+    // room-instance origin (the long_corridor map places the room at a
+    // non-zero offset, so apply it here).
+    const mapCompiled = compileMap(map, rooms, VOXEL_SIZE, kindStride);
+    const layoutCompiled = compileScene(layout, VOXEL_SIZE, kindStride);
+    const ri = map.rooms[0];
+    const offset = ri.position;
+    const offsetLayoutInstances = layoutCompiled.instances.map((inst) => ({
+      ...inst,
+      position: [
+        inst.position[0] + offset[0],
+        inst.position[1] + offset[1],
+        inst.position[2] + offset[2],
+      ] as [number, number, number],
+    }));
+    const instances = [...offsetLayoutInstances, ...mapCompiled.instances];
 
-    expect(compiled.instances.length).toBeGreaterThan(0);
+    expect(instances.length).toBeGreaterThan(0);
 
-    const aabb = unionAABB(
-      compiled.instances.map((i) => instanceAABB(i, kindById)),
-    );
+    const aabb = unionAABB(instances.map((i) => instanceAABB(i, kindById)));
     const [w, h, d] = extents(aabb);
 
     expect(w).toBeCloseTo(4, 5);
     expect(d).toBeCloseTo(8, 5);
     expect(h).toBeCloseTo(2, 5);
 
-    const overlapsFound = findOverlapping(compiled.instances, kindById);
+    const overlapsFound = findOverlapping(instances, kindById);
     expect(overlapsFound).toEqual([]);
   });
 });

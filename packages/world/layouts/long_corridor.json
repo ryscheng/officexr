@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "name": "long_corridor",
+  "title": "default-v2",
+  "updatedAt": 1779138558288,
+  "commands": [
+    {
+      "id": "place-default-v2-1",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -4,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-default-v2-2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -4,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-default-v2-3",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -4,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-default-v2-4",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-default-v2-5",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-default-v2-6",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-default-v2-7",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -4,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-default-v2-8",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        12
+      ]
+    }
+  ]
+}

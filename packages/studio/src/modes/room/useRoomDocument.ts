@@ -12,6 +12,7 @@ import {
 } from '@officexr/world/scenes';
 import type { WorldObjects } from '@officexr/sdk';
 import { useApplication } from '@officexr/world/react';
+import { awaitFresh, createBrowserBakeDeps } from '@officexr/world/app';
 import {
   selectionFromClick,
   selectionFromToggle,
@@ -100,6 +101,8 @@ export function useRoomDocument(): {
   groupCommands: (commandIds: Iterable<string>, label?: string) => string | null;
   ungroupCommands: (groupId: string) => void;
   addToGroup: (groupId: string, commandIds: Iterable<string>) => void;
+  /** Set the room's linked layout name. Empty string or undefined unlinks it. */
+  setLayoutName: (name: string | undefined) => void;
   loadRoom: (name: string) => Promise<void>;
   newRoom: (name: string) => void;
   listRooms: () => Promise<string[]>;
@@ -148,7 +151,7 @@ export function useRoomDocument(): {
   // canonical extrude stride from the application layer's geometry
   // service — same source of truth the renderer, colliders, and
   // outline already use.
-  const { rooms: roomService } = useApplication();
+  const { rooms: roomService, catalog, geometry } = useApplication();
   const compiled = useMemo(
     () => roomService.compileScene(doc),
     [doc, roomService],
@@ -530,6 +533,52 @@ export function useRoomDocument(): {
     [doc],
   );
 
+  // --- Layout name (metadata, not tracked in command history) ----
+
+  /**
+   * Directly updates `doc.layoutName` without creating a history node.
+   * `layoutName` is room metadata (links to an authored layout), not a
+   * reversible command-edit — analogous to changing `doc.title`.
+   *
+   * SRP note: the layout → room link lives in the doc so the Room view
+   * can render the baked GLB.  Not in the command history because undo
+   * should not swap the base geometry out from under all the placed
+   * objects.
+   */
+  const setLayoutName = useCallback((name: string | undefined) => {
+    const trimmed = name?.trim() || undefined;
+    setDoc((prev) => ({ ...prev, layoutName: trimmed, updatedAt: Date.now() }));
+    // Best-effort prefetch: if the new layout has been baked before,
+    // warm the BakeRegistry's in-flight cache so the viewport loads fast.
+    if (trimmed) {
+      const deps = createBrowserBakeDeps(catalog, geometry);
+      const fetchDoc = async () => {
+        const res = await fetch(`/api/layouts/${encodeURIComponent(trimmed)}`);
+        if (!res.ok) throw new Error(`layout not found: ${trimmed}`);
+        return (await res.json()) as import('@officexr/world/scenes').LayoutDocument;
+      };
+      awaitFresh(trimmed, deps, fetchDoc).catch(() => {
+        // Best-effort — failure is non-blocking.
+      });
+    }
+  }, [catalog, geometry]);
+
+  // Also prefetch when doc.layoutName changes after load (e.g. on
+  // initial load of a room that already has a layoutName).
+  useEffect(() => {
+    if (!doc.layoutName) return;
+    const name = doc.layoutName;
+    const deps = createBrowserBakeDeps(catalog, geometry);
+    const fetchDoc = async () => {
+      const res = await fetch(`/api/layouts/${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error(`layout not found: ${name}`);
+      return (await res.json()) as import('@officexr/world/scenes').LayoutDocument;
+    };
+    awaitFresh(name, deps, fetchDoc).catch(() => {
+      // Best-effort — failure is non-blocking.
+    });
+  }, [doc.layoutName, catalog, geometry]);
+
   // --- History ---------------------------------------------------
 
   const undo = useCallback(() => {
@@ -601,6 +650,7 @@ export function useRoomDocument(): {
     groupCommands,
     ungroupCommands,
     addToGroup,
+    setLayoutName,
     loadRoom,
     newRoom,
     listRooms,

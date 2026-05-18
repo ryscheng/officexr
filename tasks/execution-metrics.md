@@ -3,40 +3,37 @@
 ## Summary
 | Metric | Value |
 |--------|-------|
-| Total tasks | 12 (task-00 through task-11) |
+| Total tasks | 12 |
 | Completed | 12 |
 | Failed | 0 |
 | Retried | 0 |
-| Execution waves | 12 (sequential — all tasks touch SceneEditorCanvas.tsx or have chain dependencies) |
-| TDD tasks | 4 (task-04 roomSnap, task-05 snapToNearestTileableFace, task-06 dropToSurface, task-08 tileStateMachine) |
+| Execution waves | 3 |
+| TDD tasks | 2 (tasks 05 + 06 had test files) |
 | TDD skipped (with reason) | 0 |
 
 ## Per-Task Detail
 | Task | Wave | Status | Retried | TDD Mode | TDD Skipped Reason | Files Changed |
-|------|------|--------|---------|----------|--------------------|---------------|
-| task-00 | 1 | Complete | No | No (standard) | — | world-object-kinds-schema.ts, cube-kinds.ts, commands.ts, scenes/index.ts |
-| task-01 | 2 | Complete | No | No (standard) | — | world-object-kinds-schema.ts, ObjectInstances.tsx |
-| task-02 | 3 | Complete | No | No (standard) | — | serialize.ts, rooms JSON files (rooms/) |
-| task-03 | 4 | Complete | No | No (standard) | — | config.ts |
-| task-04 | 5 | Complete | No | Yes | — | roomSnap.ts, roomSnap.test.ts, moveOccupancy.ts, moveOccupancy.test.ts |
-| task-05 | 6 | Complete | No | Yes | — | roomSnap.ts, roomSnap.test.ts, SceneEditorCanvas.tsx |
-| task-06 | 7 | Complete | No | Yes | — | dropToSurface.ts (new), dropToFloor.test.ts (new), SceneEditorCanvas.tsx |
-| task-07 | 8 | Complete | No | No (standard) | — | ObjectKindEditorPanel.tsx, scenes/index.ts |
-| task-08 | 9 | Complete | No | Yes | — | tileStateMachine.ts (new), tileStateMachine.test.ts (new), SceneEditorCanvas.tsx |
-| task-09 | 10 | Complete | No | No (standard) | — | SceneEditorCanvas.tsx |
-| task-10 | 11 | Complete | No | No (standard) | — | DirectionGizmo.tsx (new), renderer/index.ts, SceneEditorCanvas.tsx |
-| task-11 | 12 | Complete | No | No (verification) | — | No source changes — verification pass only |
+|------|------|--------|---------|----------|-------------------|---------------|
+| task-01-add-isLayoutObject | 1 | Complete | No | No | — | world-object-kinds.ts |
+| task-02-define-LayoutDocument | 1 | Complete | No | No | — | layout-document.ts, scenes/index.ts |
+| task-03-RoomDocument-v4-to-v5 | 1 | Complete | No | No | — | commands.ts, serialize.ts, migration.ts |
+| task-04-layout-storage-and-bake-routes | 1 | Complete | No | No | — | vite.config.ts, filesystem-layout-storage.ts |
+| task-05-headless-LayoutBakeService | 2 | Complete | No | Yes | — | layout-bake-service.ts, layout-bake-service.test.ts |
+| task-06-bake-registry | 2 | Complete | No | Yes | — | bake-registry.ts, bake-registry.test.ts |
+| task-07-browser-bake-wrapper-and-cli | 2 | Complete | No | No | — | layout-bake-service-browser.ts, scripts/bake-layout.ts |
+| task-08-BakedLayout-renderer-primitive | 2 | Complete | No | No | — | BakedLayout.tsx, BakedLayoutColliders.tsx, Scene.tsx, renderer/index.ts |
+| task-09-ObjectPalette-layoutFilter | 1 | Complete | No | No | — | ObjectPalette.tsx, RoomApp.tsx |
+| task-10-object-editor-isLayoutObject | 1 | Complete | No | No | — | ObjectApp.tsx (or equivalent kind editor) |
+| task-11-LayoutApp-mode-and-hook | 3 | Complete | No | No | — | useLayoutDocument.ts, LayoutApp.tsx, LayoutEditorCanvas.tsx, LayoutPicker.tsx, Header.tsx, StudioPage.tsx, studio-mode.test.ts |
+| task-12-Room-Map-consume-baked-layouts | 3 | Complete | No | No | — | RoomApp.tsx, SceneEditorCanvas.tsx, useRoomDocument.ts, InspectorPanel.tsx, MapEditorCanvas.tsx |
 
 ## Failure Log
-None.
+No failures.
 
-## Final Verification (task-11)
-- CLAUDE.md grep guards: 0 violations
-- lint:no-bespoke-renderer: clean
-- world tests: 158/158 passed
-- studio tests: 169/169 passed
-- studio build: passed (vite build succeeded)
-- SDK typecheck: clean
-- Room JSON files: all at schemaVersion 4 with op: 'placeObject'
-- No hardcoded VOXEL_SIZE = 2 in non-test source
-- ObjectInstances.tsx: TODO(task-01) comment present
+## Notes
+- Wave 1: Tasks 01–04, 09, 10 (no inter-task deps, run in parallel)
+- Wave 2: Tasks 05–08 (depend on 01–04)
+- Wave 3: Tasks 11–12 (depend on 05–11)
+- World tests: 205/205 passed
+- Studio tests: 192/192 passed
+- Playwright mugshot: 8 passed, 40 skipped (no ideal PNGs for non-Barbarian characters — expected), 0 failed

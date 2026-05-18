@@ -49,11 +49,11 @@ describe('LocalStorageRoomStorage', () => {
     storage = new LocalStorageRoomStorage({ storage: mem });
   });
 
-  it('save → load round-trips a v4 RoomDocument', async () => {
+  it('save → load round-trips a v5 RoomDocument', async () => {
     await storage.save('kitchen', sample);
     const back = await storage.load('kitchen');
     expect(back?.name).toBe('kitchen');
-    expect(back?.schemaVersion).toBe(4);
+    expect(back?.schemaVersion).toBe(5);
     expect(back?.commands).toHaveLength(1);
     expect(back?.groups['g-1'].commandIds).toEqual(['cmd-1']);
   });
@@ -76,9 +76,9 @@ describe('LocalStorageRoomStorage', () => {
     expect(await storage.list()).toEqual([]);
   });
 
-  it('migrates a legacy v2 doc to v4 on load', async () => {
+  it('migrates a legacy v2 doc to v5 on load', async () => {
     // Caller wrote a v2 doc directly (e.g. a legacy localStorage entry
-    // from before the schema bump). load() must still return v4.
+    // from before the schema bump). load() must still return v5.
     mem.setItem(
       'officexr:room:legacy',
       JSON.stringify(
@@ -95,7 +95,7 @@ describe('LocalStorageRoomStorage', () => {
       JSON.stringify({ legacy: { updatedAt: Date.now() } }),
     );
     const back = await storage.load('legacy');
-    expect(back?.schemaVersion).toBe(4);
+    expect(back?.schemaVersion).toBe(5);
     expect(back?.groups).toEqual({});
   });
 

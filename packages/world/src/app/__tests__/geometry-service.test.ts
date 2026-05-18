@@ -45,6 +45,7 @@ function makeKind(
     category: 'block',
     tilingAxes: { x: true, y: true, z: true },
     gravity: false,
+    isLayoutObject: false,
     optimization: 'none',
     dimensions: dims,
     localAABB,

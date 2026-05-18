@@ -1,89 +1,9 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "name": "default-v2",
   "title": "default-v2",
-  "updatedAt": 1779044011212,
-  "commands": [
-    {
-      "id": "place-1-1i1f",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -4,
-        0,
-        0
-      ]
-    },
-    {
-      "id": "place-2-1idz",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -4,
-        0,
-        4
-      ]
-    },
-    {
-      "id": "place-3-1jkn",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -4,
-        0,
-        8
-      ]
-    },
-    {
-      "id": "place-4-1m34",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -8,
-        0,
-        0
-      ]
-    },
-    {
-      "id": "place-5-1mm3",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -8,
-        0,
-        4
-      ]
-    },
-    {
-      "id": "place-6-1mx8",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -8,
-        0,
-        8
-      ]
-    },
-    {
-      "id": "place-7-1nej",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -4,
-        0,
-        12
-      ]
-    },
-    {
-      "id": "place-8-1nve",
-      "op": "placeObject",
-      "kindId": "colored_block_blue",
-      "position": [
-        -8,
-        0,
-        12
-      ]
-    }
-  ],
+  "updatedAt": 1779138558288,
+  "layoutName": "long_corridor",
+  "commands": [],
   "groups": {}
 }

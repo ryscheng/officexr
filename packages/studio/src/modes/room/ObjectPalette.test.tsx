@@ -29,6 +29,7 @@ function makeKind(
     category: category as WorldObjectKind['category'],
     tilingAxes: { x: category === 'block', y: category === 'block', z: category === 'block' },
     gravity: false,
+    isLayoutObject: false,
     optimization: 'none' as const,
     ...overrides,
   };

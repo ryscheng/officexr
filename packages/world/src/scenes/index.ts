@@ -5,10 +5,21 @@ export {
   SCENE_NAME_RE,
 } from './storage.ts';
 export {
+  type LayoutDocument,
+  type LayoutDocumentV1,
+  type SerializedLayoutV1,
+  type SerializeLayoutInput,
+  serializeLayout,
+  deserializeLayout,
+  emptyLayoutDocument,
+} from './layout-document.ts';
+export {
   type SerializedScene,
   type SerializedSceneV1,
   type SerializedSceneV2,
   type SerializedRoomV3,
+  type SerializedRoomV4,
+  type SerializedRoomV5,
   type SerializeV2Input,
   type SerializeV1Input,
   type SerializeRoomInput,
@@ -21,6 +32,10 @@ export {
   deserializeMap,
   migrateToV2,
   migrateToV3,
+  migrateToV4,
+  migrateRoomV3toV4,
+  migrateRoomV4toV5,
+  migrateToV5,
 } from './serialize.ts';
 export {
   type SceneCommand,
@@ -91,6 +106,12 @@ export {
   FilesystemMapStorage,
 } from './filesystem-map-storage.ts';
 export { LocalStorageMapStorage } from './localstorage-map-storage.ts';
+export {
+  type LayoutStorage,
+  type LayoutSummary,
+  FilesystemLayoutStorage,
+} from './filesystem-layout-storage.ts';
+export { LocalStorageLayoutStorage } from './localstorage-layout-storage.ts';
 export {
   type CatalogStorage,
   FilesystemCatalogStorage,

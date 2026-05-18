@@ -114,6 +114,33 @@ describe('normalizeKind — optimization', () => {
 });
 
 // ---------------------------------------------------------------------------
+// normalizeKind — isLayoutObject
+// ---------------------------------------------------------------------------
+
+describe('normalizeKind — isLayoutObject', () => {
+  it('defaults false when field is absent (backwards compat)', () => {
+    const kind = normalizeKind(minimalRaw(), 0);
+    expect(kind.isLayoutObject).toBe(false);
+  });
+
+  it('explicit isLayoutObject: true is preserved', () => {
+    const kind = normalizeKind(minimalRaw('block', { isLayoutObject: true }), 0);
+    expect(kind.isLayoutObject).toBe(true);
+  });
+
+  it('explicit isLayoutObject: false is preserved', () => {
+    const kind = normalizeKind(minimalRaw('block', { isLayoutObject: false }), 0);
+    expect(kind.isLayoutObject).toBe(false);
+  });
+
+  it('non-boolean isLayoutObject value falls back to false', () => {
+    // Handles corrupted/old catalog entries gracefully
+    const kind = normalizeKind(minimalRaw('block', { isLayoutObject: 1 }), 0);
+    expect(kind.isLayoutObject).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // validateWorldObjectKindCatalog round-trip
 // ---------------------------------------------------------------------------
 
@@ -127,6 +154,7 @@ describe('validateWorldObjectKindCatalog — round-trip', () => {
       expect(typeof kind.tilingAxes.y).toBe('boolean');
       expect(typeof kind.tilingAxes.z).toBe('boolean');
       expect(typeof kind.gravity).toBe('boolean');
+      expect(typeof kind.isLayoutObject).toBe('boolean');
       expect(['none', 'static-batch', 'frustum-cull']).toContain(kind.optimization);
     }
   });

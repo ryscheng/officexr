@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useCatalog } from '@officexr/world/react';
 
 import { Button } from '../../components/ui/button.tsx';
 import {
+  Field,
   Panel,
   Readonly,
   Section,
@@ -17,6 +18,72 @@ type RoomCommand = RoomDoc['doc']['commands'][number];
 interface InspectorPanelProps {
   roomDoc: RoomDoc;
 }
+
+// ---------------------------------------------------------------------------
+// LayoutSection — always shown at the top of the inspector.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches the list of available layouts from `/api/layouts` and renders
+ * an autocomplete field bound to `doc.layoutName`.  Empty value unlinks
+ * the layout.
+ *
+ * ISP note: takes only the two fields it uses from `RoomDoc` rather than
+ * the full type, but must still accept the full type at the call site
+ * because the parent passes the whole `roomDoc`.  A narrow interface is
+ * deferred until InspectorPanel is refactored to accept a slim prop type.
+ */
+function LayoutSection({ roomDoc }: { roomDoc: RoomDoc }) {
+  const [availableLayouts, setAvailableLayouts] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/layouts')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: { layouts: { name: string }[] }) =>
+        setAvailableLayouts(data.layouts.map((l) => l.name)),
+      )
+      .catch(() => {
+        // Non-blocking — the datalist just stays empty if the route
+        // is unavailable (e.g. in test or localStorage environments).
+      });
+  }, []);
+
+  const currentLayout = roomDoc.doc.layoutName ?? '';
+
+  return (
+    <Section title="Room">
+      <Field label="layout" hint="Linked layout that provides structural geometry (walls, floors). Leave empty for no layout.">
+        <input
+          list="inspector-layouts-datalist"
+          value={currentLayout}
+          placeholder="none"
+          onChange={(e) => {
+            const v = e.target.value.trim();
+            roomDoc.setLayoutName(v || undefined);
+          }}
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: '1px solid #334155',
+            borderRadius: 3,
+            color: '#fafafa',
+            fontSize: 11,
+            padding: '2px 4px',
+          }}
+        />
+        <datalist id="inspector-layouts-datalist">
+          {availableLayouts.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+      </Field>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// InspectorPanel — selection-driven branches
+// ---------------------------------------------------------------------------
 
 /**
  * Right-hand panel for the Room editor. Replaces the previous Leva-
@@ -45,6 +112,7 @@ export function InspectorPanel({ roomDoc }: InspectorPanelProps) {
   if (selectionSize === 0) {
     return (
       <Panel>
+        <LayoutSection roomDoc={roomDoc} />
         <div className="px-3 py-3 text-xs text-muted-foreground leading-relaxed">
           Pick the Add tool + click the floor to place a cube. Click
           an existing cube with the Select tool to edit it here. Hold
@@ -57,6 +125,7 @@ export function InspectorPanel({ roomDoc }: InspectorPanelProps) {
   if (selectionSize > 1) {
     return (
       <Panel>
+        <LayoutSection roomDoc={roomDoc} />
         <Section title={`Multi-selection (${selectionSize})`}>
           <Readonly label="selected" value={`${selectionSize} commands`} />
           <div className="flex flex-col gap-1.5 px-3 py-2">
@@ -88,6 +157,7 @@ export function InspectorPanel({ roomDoc }: InspectorPanelProps) {
   // for backward compat but the UI no longer shows an editor for them).
   return (
     <Panel>
+      <LayoutSection roomDoc={roomDoc} />
       <div className="px-3 py-3 text-xs text-muted-foreground">
         Selected command is unrecognised (legacy op: {command?.op ?? 'unknown'}).
       </div>
@@ -110,6 +180,7 @@ function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
 
   return (
     <Panel>
+      <LayoutSection roomDoc={roomDoc} />
       <Section title="placeObject">
         <Readonly label="id" value={command.id} />
         <SelectInput

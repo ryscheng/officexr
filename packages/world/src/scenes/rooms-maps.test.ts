@@ -16,8 +16,8 @@ import {
   type MapDocumentV1,
 } from './map-document.ts';
 
-describe('serializeRoom + deserializeScene (v4 RoomDocument)', () => {
-  it('round-trips a v4 room with commands and groups', () => {
+describe('serializeRoom + deserializeScene (v5 RoomDocument)', () => {
+  it('round-trips a v5 room with commands and groups', () => {
     const out = serializeRoom({
       name: 'kitchen',
       title: 'Kitchen',
@@ -26,7 +26,7 @@ describe('serializeRoom + deserializeScene (v4 RoomDocument)', () => {
         'g-1': { id: 'g-1', commandIds: ['cmd-a', 'cmd-b'], label: 'wall' },
       },
     });
-    expect(out.schemaVersion).toBe(4);
+    expect(out.schemaVersion).toBe(5);
     expect(out.name).toBe('kitchen');
     expect(out.commands).toHaveLength(1);
     expect(out.groups['g-1'].commandIds).toEqual(['cmd-a', 'cmd-b']);
@@ -68,16 +68,16 @@ describe('serializeRoom + deserializeScene (v4 RoomDocument)', () => {
 });
 
 describe('migrateToV4', () => {
-  it('passes v4 docs through unchanged (schemaVersion 4)', () => {
-    const v4 = serializeRoom({
+  it('downgrades v5 docs to v4 (strips layoutName)', () => {
+    const v5 = serializeRoom({
       name: 'foo',
       commands: [newPlaceObject({ kindId: 'colored_block_blue', position: [4, 0, 4] })],
       groups: { 'g-1': { id: 'g-1', commandIds: ['cmd-1'] } },
     });
-    const migrated = migrateToV4(v4);
+    const migrated = migrateToV4(v5);
     expect(migrated.schemaVersion).toBe(4);
-    expect(migrated.commands).toEqual(v4.commands);
-    expect(migrated.groups).toEqual(v4.groups);
+    expect(migrated.commands).toEqual(v5.commands);
+    expect(migrated.groups).toEqual(v5.groups);
   });
 
   it('preserves updatedAt across v2 → v4 migration', () => {
@@ -139,8 +139,8 @@ describe('migrateToV4', () => {
   });
 });
 
-describe('migrateToV3 (deprecated — delegates to migrateToV4)', () => {
-  it('returns v4 doc now (migrateToV3 upgraded to v4)', () => {
+describe('migrateToV3 (deprecated — delegates to migrateToV5)', () => {
+  it('returns v5 doc now (migrateToV3 upgraded to delegate to migrateToV5)', () => {
     const v3raw = {
       schemaVersion: 3 as const,
       name: 'foo',
@@ -149,7 +149,7 @@ describe('migrateToV3 (deprecated — delegates to migrateToV4)', () => {
       groups: {},
     };
     const migrated = migrateToV3(v3raw);
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(migrated.commands[0]).toMatchObject({ op: 'placeObject', position: [4, 0, 8] });
   });
 });

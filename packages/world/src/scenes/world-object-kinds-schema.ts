@@ -75,6 +75,11 @@ export interface WorldObjectKind {
   /** Whether this kind is affected by gravity placement (drop-to-surface).
    * Default false for all categories. */
   gravity: boolean;
+  /** Whether this kind is structural geometry (walls, floors, structural
+   * pieces) that belongs in Layout view. Default false = furnishing.
+   * Layout view filters to require this; Room view hides it by default
+   * (session toggle to show all). */
+  isLayoutObject: boolean;
   /** Renderer optimization hint. 'none' = no special handling.
    * 'static-batch' and 'frustum-cull' are scaffolded for future use. */
   optimization: OptimizationMode;
@@ -126,6 +131,7 @@ export const WORLD_OBJECT_KIND_DEFAULTS = {
   category: 'block' as CubeKindCategory,
   tilingAxes: { x: false, y: false, z: false },
   gravity: false,
+  isLayoutObject: false,
   optimization: 'none' as OptimizationMode,
 } as const;
 
@@ -212,6 +218,10 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     category,
     tilingAxes: normalizeTilingAxes(k.tilingAxes, category),
     gravity: typeof k.gravity === 'boolean' ? k.gravity : WORLD_OBJECT_KIND_DEFAULTS.gravity,
+    isLayoutObject:
+      typeof k.isLayoutObject === 'boolean'
+        ? k.isLayoutObject
+        : WORLD_OBJECT_KIND_DEFAULTS.isLayoutObject,
     optimization: isOptimizationMode(k.optimization)
       ? k.optimization
       : WORLD_OBJECT_KIND_DEFAULTS.optimization,
