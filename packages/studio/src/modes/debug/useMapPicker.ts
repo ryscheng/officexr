@@ -6,14 +6,11 @@ import {
   FilesystemRoomStorage,
   LocalStorageMapStorage,
   LocalStorageRoomStorage,
-  bootstrapCatalog,
-  compileMap,
-  getKindStride,
   type MapDocumentV1,
   type RoomDocument,
   type SpawnPoint,
 } from '@officexr/world/scenes';
-import { VOXEL_SIZE } from '@officexr/world/renderer';
+import { useApplication } from '@officexr/world/react';
 
 const LAST_MAP_KEY = 'officexr:studio:lastMap';
 /** Default vertical offset (metres) added to a spawn point when
@@ -107,6 +104,8 @@ export function useMapPicker({
     botsRef.current = bots;
   }, [bots]);
 
+  const { catalog: catalogService, rooms: roomService } = useApplication();
+
   const initialName = useMemo(() => {
     try {
       return globalThis.localStorage?.getItem(LAST_MAP_KEY) ?? 'default';
@@ -124,12 +123,12 @@ export function useMapPicker({
       name: string,
     ): Promise<{ map: MapDocumentV1; spawns: SpawnPoint[] } | null> => {
       try {
-        // Ensure the catalog has loaded before compiling so that
-        // getKindStride returns per-kind stride (not the [1,1,1]
-        // fallback). Without this, deep-linking straight to #debug
-        // before #room mounts ObjectInstances would compile every
-        // map with overlapping cubes.
-        await bootstrapCatalog();
+        // Wait for the catalog to land before compiling so the room
+        // service's stride lookup returns per-kind values (not the
+        // [1,1,1] fallback). Without this, deep-linking straight to
+        // #debug before #room mounts ObjectInstances would compile
+        // every map with overlapping cubes.
+        await catalogService.ready();
         const map = await storage.maps.load(name);
         if (!map) return null;
         const refSet = new Set<string>();
@@ -151,11 +150,7 @@ export function useMapPicker({
         }
         const a = actionsRef.current;
         if (a) {
-          a.setWorldObjects(
-            compileMap(map, rooms, VOXEL_SIZE, (id) =>
-              getKindStride(id, VOXEL_SIZE),
-            ),
-          );
+          a.setWorldObjects(roomService.compileMap(map, rooms));
         }
         return { map, spawns: map.spawnPoints };
       } catch (err) {

@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FilesystemCatalogStorage,
-  getCatalog,
-  getKind,
-  patchKind,
-  useObjectKindCatalog,
   type WorldObjectKindCatalogV1,
   type WorldObjectKind,
 } from '@officexr/world';
+import { useApplication, useCatalog } from '@officexr/world/react';
 
 /**
  * Studio-side wrapper around the world's catalog store. Adds:
@@ -36,9 +33,11 @@ export interface UseObjectCatalogResult {
 const LAST_KIND_KEY = 'officexr:studio:lastObjectKind';
 
 export function useObjectCatalog(): UseObjectCatalogResult {
-  // Drives re-renders when the catalog changes and kicks off the
-  // /api/world-object-kinds fetch on first mount.
-  const kinds = useObjectKindCatalog();
+  // Drives re-renders when the catalog changes. The catalog bootstrap
+  // is initiated by `createCatalogService` at App mount time; this
+  // hook simply subscribes to the resulting in-memory updates.
+  const { catalog: catalogService } = useApplication();
+  const kinds = useCatalog();
 
   const [selectedKindId, setSelectedKindIdState] = useState<string | null>(
     () => {
@@ -88,7 +87,7 @@ export function useObjectCatalog(): UseObjectCatalogResult {
 
   const scheduleSave = useCallback(() => {
     if (!storage) return;
-    pendingSave.current = getCatalog();
+    pendingSave.current = catalogService.getCatalog();
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const c = pendingSave.current;
@@ -99,7 +98,7 @@ export function useObjectCatalog(): UseObjectCatalogResult {
         console.warn('[object-catalog] save failed:', err);
       });
     }, 500);
-  }, [storage]);
+  }, [storage, catalogService]);
 
   // Flush any pending save on unmount so a quick edit + tab away
   // doesn't lose work.
@@ -121,7 +120,7 @@ export function useObjectCatalog(): UseObjectCatalogResult {
       // accidental Leva field that tries to rename it.
       const safe: Partial<WorldObjectKind> = { ...partial };
       delete safe.id;
-      const current = getKind(selectedKindId);
+      const current = catalogService.getKind(selectedKindId);
       if (!current) return;
       // Skip no-op patches so we don't trigger save churn when Leva
       // fires onChange with the same value the user just typed.
@@ -130,10 +129,10 @@ export function useObjectCatalog(): UseObjectCatalogResult {
         ([key, value]) => currentRecord[key] !== value,
       );
       if (!changed) return;
-      patchKind(selectedKindId, safe);
+      catalogService.patchKind(selectedKindId, safe);
       scheduleSave();
     },
-    [selectedKindId, scheduleSave],
+    [selectedKindId, scheduleSave, catalogService],
   );
 
   return {

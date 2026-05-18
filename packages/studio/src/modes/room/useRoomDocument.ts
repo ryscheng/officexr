@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FilesystemRoomStorage,
   LocalStorageRoomStorage,
-  compileScene,
   emptyRoomDocument,
-  getKindStride,
   newPlaceObject,
   serializeRoom,
   type PlaceObjectCommand,
@@ -13,7 +11,7 @@ import {
   type RoomStorage,
 } from '@officexr/world/scenes';
 import type { WorldObjects } from '@officexr/sdk';
-import { VOXEL_SIZE } from '@officexr/world/renderer';
+import { useApplication } from '@officexr/world/react';
 import {
   selectionFromClick,
   selectionFromToggle,
@@ -146,12 +144,14 @@ export function useRoomDocument(): {
     return historyRef.current;
   }
 
-  // Re-compile on every doc change. Cheap: pure function, scenes are
-  // small (hundreds of cubes at most for v1) and `compileScene` runs
-  // in <1 ms for that range.
+  // Re-compile on every doc change. The room service supplies the
+  // canonical extrude stride from the application layer's geometry
+  // service — same source of truth the renderer, colliders, and
+  // outline already use.
+  const { rooms: roomService } = useApplication();
   const compiled = useMemo(
-    () => compileScene(doc, VOXEL_SIZE, (id) => getKindStride(id, VOXEL_SIZE)),
-    [doc],
+    () => roomService.compileScene(doc),
+    [doc, roomService],
   );
 
   // Derived selection / delete lookups. Recomputed whenever the doc

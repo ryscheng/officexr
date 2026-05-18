@@ -3,14 +3,12 @@ import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Sky, Stars } from '@react-three/drei';
 import {
-  compileScene,
-  getKindStride,
-  useCatalogReady,
   type MapDocumentV1,
   type RoomDocument,
   type RoomInstance,
   type SpawnPoint,
 } from '@officexr/world/scenes';
+import { useApplication, useCatalogReady } from '@officexr/world/react';
 import {
   DEFAULT_EDITOR_LIGHTING,
   EndlessGrid,
@@ -314,10 +312,11 @@ function RoomInstanceMesh({
   // paint — and any extrude or per-kind-stride placement compiles into
   // overlapping cubes (most visibly on the platform / long_corridor).
   const catalogReady = useCatalogReady();
+  const { rooms: roomService, geometry: geomService } = useApplication();
   const compiled = useMemo(() => {
     if (!room || !catalogReady) return null;
-    return compileScene(room, VOXEL_SIZE, (id) => getKindStride(id, VOXEL_SIZE));
-  }, [room, catalogReady]);
+    return roomService.compileScene(room);
+  }, [room, catalogReady, roomService]);
 
   const worldObjects: WorldObjects | null = useMemo(() => {
     if (!compiled) return null;
@@ -361,29 +360,25 @@ function RoomInstanceMesh({
   // Local-space AABB for the selection outline. Computed in voxel
   // space then converted to world units; only depends on the room's
   // own cubes, not the placement.
+  //
+  // Previously this used voxelSize/2 half-extents and a +vs/2 Y
+  // offset — the legacy "1 cube = 1 voxel" math that produced
+  // mis-sized selection boxes for any kind larger than one voxel.
+  // Now driven by `geomService.worldAABB` so the room's bounds match
+  // the rendered mesh AABB union exactly.
   const bounds = useMemo(() => {
     if (!compiled || compiled.instances.length === 0) return null;
     const min: [number, number, number] = [Infinity, Infinity, Infinity];
     const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
     for (const inst of compiled.instances) {
+      const aabb = geomService.worldAABB(inst.position, inst.kindId);
       for (let a = 0; a < 3; a++) {
-        if (inst.position[a] < min[a]) min[a] = inst.position[a];
-        if (inst.position[a] > max[a]) max[a] = inst.position[a];
+        if (aabb.min[a] < min[a]) min[a] = aabb.min[a];
+        if (aabb.max[a] > max[a]) max[a] = aabb.max[a];
       }
     }
-    return {
-      min: [
-        min[0] * VOXEL_SIZE - VOXEL_SIZE / 2,
-        min[1] * VOXEL_SIZE,
-        min[2] * VOXEL_SIZE - VOXEL_SIZE / 2,
-      ] as [number, number, number],
-      max: [
-        max[0] * VOXEL_SIZE + VOXEL_SIZE / 2,
-        max[1] * VOXEL_SIZE + VOXEL_SIZE,
-        max[2] * VOXEL_SIZE + VOXEL_SIZE / 2,
-      ] as [number, number, number],
-    };
-  }, [compiled]);
+    return { min, max };
+  }, [compiled, geomService]);
 
   const groupPos: [number, number, number] = [
     instance.position[0] * VOXEL_SIZE,
