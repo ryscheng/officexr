@@ -358,6 +358,14 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   // cubeSize there for SDK back-compat; we alias it locally).
   const voxelSize = props.compiled.cubeSize;
 
+  // Camera world-Y, mirrored from the R3F tree below each frame. Used
+  // by the snap to bias stacking: camera looking DOWN at a target →
+  // prefer ABOVE (closer to camera); looking UP → prefer BELOW.
+  const cameraYRef = useRef(0);
+  const setCameraY = useCallback((y: number) => {
+    cameraYRef.current = y;
+  }, []);
+
   /**
    * Per-axis voxel step for a kind, derived from its baked dimensions.
    * Used everywhere the tile tool or Add tool needs to know "how many
@@ -447,6 +455,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
           nearbyObjects,
           voxelSize,
           FACE_SNAP_PULL_RADIUS_M,
+          { cameraY: cameraYRef.current },
         );
         if (facePull) return facePull;
       }
@@ -486,13 +495,14 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
             bbz > o.min[2] + 1e-6 &&
             aaz < o.max[2] - 1e-6
           ) {
-            // Overlap → stack on top of this cube (or below if cursor
-            // is below the cube's midpoint).
+            // Overlap → stack above or below this cube based on the
+            // camera direction: looking DOWN at the cube prefers
+            // above (closer to camera); looking UP prefers below.
             const cy = (o.min[1] + o.max[1]) / 2;
-            const stackedY =
-              cursorPoint.y >= cy
-                ? Math.round(o.max[1] / voxelSize)
-                : Math.round((o.min[1] - dims.height) / voxelSize);
+            const stackAbove = cameraYRef.current >= cy;
+            const stackedY = stackAbove
+              ? Math.round(o.max[1] / voxelSize)
+              : Math.round((o.min[1] - dims.height) / voxelSize);
             return [gridVoxel[0], stackedY, gridVoxel[2]];
           }
         }
@@ -897,6 +907,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         <color attach="background" args={['#0a0a0a']} />
         <EndlessGrid />
         <OrbitCamera compiled={props.compiled} />
+        <CameraYTracker onUpdate={setCameraY} />
         <MoveController
           tool={props.tool}
           doc={props.doc}
@@ -1187,6 +1198,15 @@ interface OrbitCameraProps {
  * Spec: "Room is meant to be a much smaller space and we'd rotate
  * the entire room like we do the character."
  */
+/** Mirrors the live camera world-Y into a parent ref each frame. The
+ * snap (which lives outside the R3F tree) reads the ref so it can
+ * bias stack-above-or-below by viewer perspective. */
+function CameraYTracker({ onUpdate }: { onUpdate: (y: number) => void }) {
+  const { camera } = useThree();
+  useFrame(() => onUpdate(camera.position.y));
+  return null;
+}
+
 function OrbitCamera({ compiled }: OrbitCameraProps) {
   const { camera, gl } = useThree();
   const persp = camera as THREE.PerspectiveCamera;

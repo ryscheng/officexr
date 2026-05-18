@@ -443,6 +443,35 @@ describe('snapToNearestFace — anchor-convention face snap', () => {
     expect(result![1]).toBe(-4);
   });
 
+  it('camera ABOVE the cube → tie-break prefers stack ABOVE (+y)', () => {
+    // Cursor at the cube's exact midpoint (no axis dominance). The
+    // tie-break uses the camera direction: camera above cube center
+    // → +Y (place closer to camera).
+    const result = snapToNearestFace(
+      { x: 1, y: 1, z: 1 },
+      blueShape,
+      [blueAtOrigin],
+      VS,
+      2.5,
+      { cameraY: 10 },
+    );
+    expect(result).not.toBeNull();
+    expect(result![1]).toBe(4); // voxel.y for above-cube anchor
+  });
+
+  it('camera BELOW the cube → tie-break prefers stack BELOW (-y)', () => {
+    const result = snapToNearestFace(
+      { x: 1, y: 1, z: 1 },
+      blueShape,
+      [blueAtOrigin],
+      VS,
+      2.5,
+      { cameraY: -5 },
+    );
+    expect(result).not.toBeNull();
+    expect(result![1]).toBe(-4); // anchor.y = omin.y - newHeight = -2 → voxel -4
+  });
+
   it('Large cube snaps to the OTHER cube when the closer face would overlap', () => {
     // Same two-cube setup but the cursor is over the right cube's +X
     // face. Snap should pick rightBlue's +X face (anchor at world 6)

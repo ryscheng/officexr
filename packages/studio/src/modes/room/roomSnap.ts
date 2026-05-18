@@ -295,12 +295,17 @@ function distanceToAABB(
  *
  * For a cursor OUTSIDE the AABB on any axis, that axis wins (cursor
  * is "past" the +/- face on that axis). For ties (corner / inside
- * regions) the Y axis wins, with +Y preferred — the user explicitly
- * asked for stacking-on-top as the default when objects would
- * otherwise merge. */
+ * regions) the Y axis wins, and the +/- preference comes from the
+ * VIEWING DIRECTION:
+ *   - Camera looking DOWN at the object (cameraY > cube center) →
+ *     prefer ABOVE so the new object lands closer to the camera.
+ *   - Camera looking UP (cameraY < cube center) → prefer BELOW.
+ *   - No camera info or camera level with the cube → fall back to
+ *     the cursor's Y position relative to the cube centre. */
 function pickDominantFace(
   cursor: { x: number; y: number; z: number },
   aabb: { min: readonly number[]; max: readonly number[] },
+  cameraY?: number,
 ): Face {
   const cx = (aabb.min[0] + aabb.max[0]) / 2;
   const cy = (aabb.min[1] + aabb.max[1]) / 2;
@@ -318,9 +323,16 @@ function pickDominantFace(
   const ay = Math.abs(ny);
   const az = Math.abs(nz);
 
-  // Y-bias: when the dominant axis is Y (or tied with another axis)
-  // prefer Y so a click on top of a cube → stack on top.
-  if (ay >= ax && ay >= az) return ny >= 0 ? '+y' : '-y';
+  if (ay >= ax && ay >= az) {
+    // Y is dominant or tied. Pick +Y / -Y by the camera's viewing
+    // direction when supplied (the visible side wins). When the
+    // cursor is clearly above or below the cube the sign is
+    // unambiguous regardless of camera angle — only the inside-cube
+    // / tie case relies on the camera hint.
+    if (ay > EPS) return ny > 0 ? '+y' : '-y';
+    if (cameraY !== undefined) return cameraY >= cy ? '+y' : '-y';
+    return '+y';
+  }
   if (ax >= az) return nx >= 0 ? '+x' : '-x';
   return nz >= 0 ? '+z' : '-z';
 }
@@ -363,12 +375,20 @@ function computeFlushAnchor(
   }
 }
 
+export interface SnapViewport {
+  /** Camera world-Y. Used to bias the stack-above-or-below tie:
+   * a camera looking DOWN at the target prefers ABOVE (closer to
+   * the camera); looking UP prefers BELOW. */
+  cameraY?: number;
+}
+
 export function snapToNearestFace(
   hitWorldPoint: { x: number; y: number; z: number },
   newObject: NewObjectShape,
   nearbyObjects: readonly NearbyObjectInfo[],
   voxelSize: number,
   pullRadiusM: number,
+  viewport: SnapViewport = {},
 ): [number, number, number] | null {
   if (nearbyObjects.length === 0) return null;
 
@@ -399,8 +419,13 @@ export function snapToNearestFace(
     const aabbDist = distanceToAABB(hitWorldPoint, obj.aabb);
     if (aabbDist >= bestDist) continue;
 
-    // Primary: face dictated by the cursor's dominant axis.
-    const primaryFace = pickDominantFace(hitWorldPoint, obj.aabb);
+    // Primary: face dictated by the cursor's dominant axis (camera
+    // direction breaks Y ties).
+    const primaryFace = pickDominantFace(
+      hitWorldPoint,
+      obj.aabb,
+      viewport.cameraY,
+    );
     let anchor = computeFlushAnchor(
       primaryFace,
       obj.aabb,
@@ -409,15 +434,26 @@ export function snapToNearestFace(
     );
 
     // If the primary face would overlap another object, fall back to
-    // stacking. Stack ABOVE when the cursor is in the upper half of
-    // this object (or above it); stack BELOW otherwise. Matches the
-    // user's stated default: when in doubt, stack above/below.
+    // stacking above-or-below. Side preference uses the camera angle:
+    // looking down → stack above (closer to viewer); looking up →
+    // stack below. Without camera info, fall back to the cursor's Y
+    // relative to the cube midpoint.
     if (wouldOverlap(anchor)) {
       const cy = (obj.aabb.min[1] + obj.aabb.max[1]) / 2;
-      const stackFace: Face = hitWorldPoint.y >= cy ? '+y' : '-y';
+      const above =
+        viewport.cameraY !== undefined
+          ? viewport.cameraY >= cy
+          : hitWorldPoint.y >= cy;
+      const stackFace: Face = above ? '+y' : '-y';
       if (stackFace === primaryFace) continue;
       anchor = computeFlushAnchor(stackFace, obj.aabb, hitWorldPoint, newObject);
-      if (wouldOverlap(anchor)) continue;
+      if (wouldOverlap(anchor)) {
+        // Stack target also overlaps — try the other side.
+        const flipFace: Face = above ? '-y' : '+y';
+        if (flipFace === primaryFace) continue;
+        anchor = computeFlushAnchor(flipFace, obj.aabb, hitWorldPoint, newObject);
+        if (wouldOverlap(anchor)) continue;
+      }
     }
 
     bestDist = aabbDist;
