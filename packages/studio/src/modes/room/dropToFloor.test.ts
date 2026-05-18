@@ -6,7 +6,10 @@ import { dropToSurface } from './dropToSurface.ts';
 
 type WorldObjects = {
   voxelSize: number;
-  instances: ReadonlyArray<{ position: readonly [number, number, number] }>;
+  instances: ReadonlyArray<{
+    position: readonly [number, number, number];
+    kindId: string;
+  }>;
 };
 
 function makeWorld(
@@ -14,7 +17,7 @@ function makeWorld(
 ): WorldObjects {
   return {
     voxelSize: 0.5,
-    instances: positions.map((position) => ({ position })),
+    instances: positions.map((position) => ({ position, kindId: 'test' })),
   };
 }
 

@@ -33,38 +33,72 @@
  *   `voxelSize` is carried for future compatibility but not used here —
  *   all arithmetic is in voxel coords.
  */
+/** Footprint lookup matching `InstanceGeometryService.voxelFootprint`.
+ * Callers with an application api in scope pass it through; the legacy
+ * default treats every existing instance as one voxel — preserved for
+ * tests that don't have a catalog. */
+export interface InstanceFootprintLookup {
+  (
+    position: readonly [number, number, number],
+    kindId: string,
+  ): {
+    min: readonly [number, number, number];
+    max: readonly [number, number, number]; // exclusive
+  };
+}
+
 export function dropToSurface(
   proposedVoxel: [number, number, number],
   objectFootprint: { w: number; d: number },
   worldObjects: {
-    instances: ReadonlyArray<{ position: readonly [number, number, number] }>;
+    instances: ReadonlyArray<{
+      position: readonly [number, number, number];
+      kindId: string;
+    }>;
   },
+  footprintOf?: InstanceFootprintLookup,
 ): [number, number, number] | null {
   const [px, py, pz] = proposedVoxel;
   const { w, d } = objectFootprint;
 
-  // Half-extents (integer, centered on px/pz)
+  // Proposed object's XZ footprint, centered on px / pz.
   const xMin = px - Math.floor(w / 2);
   const xMax = px + Math.ceil(w / 2);
   const zMin = pz - Math.floor(d / 2);
   const zMax = pz + Math.ceil(d / 2);
 
-  let maxSupportY = -Infinity;
+  let maxSupportTop = -Infinity;
 
   for (const inst of worldObjects.instances) {
-    const [ix, iy, iz] = inst.position;
-    // Only look downward
-    if (iy >= py) continue;
-    // Check XZ overlap
-    if (ix < xMin || ix >= xMax) continue;
-    if (iz < zMin || iz >= zMax) continue;
-    if (iy > maxSupportY) maxSupportY = iy;
+    const fp = footprintOf
+      ? footprintOf(inst.position, inst.kindId)
+      : {
+          // Legacy fallback: treat the existing instance as a single
+          // voxel at its anchor position.
+          min: [inst.position[0], inst.position[1], inst.position[2]] as const,
+          max: [
+            inst.position[0] + 1,
+            inst.position[1] + 1,
+            inst.position[2] + 1,
+          ] as const,
+        };
+    // Only look downward — the instance's top face must be at or
+    // below the proposed Y.
+    if (fp.max[1] > py) continue;
+    // Check XZ overlap of the proposed footprint with the instance's
+    // full voxel footprint.
+    if (fp.max[0] <= xMin || fp.min[0] >= xMax) continue;
+    if (fp.max[2] <= zMin || fp.min[2] >= zMax) continue;
+    // Instance's top voxel Y (max is exclusive → top voxel = max-1,
+    // and the SURFACE the new object sits on is the row above that).
+    const topY = fp.max[1];
+    if (topY > maxSupportTop) maxSupportTop = topY;
   }
 
-  if (maxSupportY === -Infinity) {
+  if (maxSupportTop === -Infinity) {
     // No supporting object found — placement rejected
     return null;
   }
 
-  return [px, maxSupportY + 1, pz];
+  return [px, maxSupportTop, pz];
 }

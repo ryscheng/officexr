@@ -544,7 +544,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       // nearest surface below. Reject placement when no support exists.
       const addKind = catalogService.getKind(props.stagedKindId);
       if (addKind?.gravity) {
-        const settled = dropToSurface(voxel, { w: 1, d: 1 }, props.compiled);
+        const settled = dropToSurface(
+          voxel,
+          { w: 1, d: 1 },
+          props.compiled,
+          (pos, kindId) => geomService.voxelFootprint(pos, kindId),
+        );
         if (!settled) return; // No support → reject placement
         voxel = settled;
       }
@@ -593,7 +598,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         // nearest surface below. Reject placement when no support exists.
         const tileKind = catalogService.getKind(stagedKindId);
         if (tileKind?.gravity) {
-          const settled = dropToSurface(voxel, { w: 1, d: 1 }, props.compiled);
+          const settled = dropToSurface(
+          voxel,
+          { w: 1, d: 1 },
+          props.compiled,
+          (pos, kindId) => geomService.voxelFootprint(pos, kindId),
+        );
           if (!settled) return; // No support → reject placement
           voxel = settled;
         }
@@ -915,6 +925,7 @@ function ContextMenuListener({
   onRequest,
 }: ContextMenuListenerProps) {
   const { gl, camera, raycaster, pointer } = useThree();
+  const { geometry: geomService } = useApplication();
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -958,16 +969,19 @@ function ContextMenuListener({
 
       let bestT = Infinity;
       let bestId: string | null = null;
-      const half = voxelSize / 2;
+      // Ray-test each instance against its canonical world AABB from
+      // the geometry service — same SOT used by the renderer + the
+      // MoveController picker. Previously this used hardcoded
+      // voxelSize/2 half-extents + +vs/2 Y offset which only worked
+      // for one-voxel kinds; right-clicks on multi-voxel kinds missed
+      // most of the visible mesh.
       for (const inst of instances) {
-        const cx = inst.position[0] * voxelSize;
-        const cy = inst.position[1] * voxelSize + voxelSize / 2;
-        const cz = inst.position[2] * voxelSize;
+        const aabb = geomService.worldAABB(inst.position, inst.kindId);
         const t = rayHitAabb(
           raycaster.ray.origin,
           raycaster.ray.direction,
-          [cx - half, cy - half, cz - half],
-          [cx + half, cy + half, cz + half],
+          [aabb.min[0], aabb.min[1], aabb.min[2]],
+          [aabb.max[0], aabb.max[1], aabb.max[2]],
         );
         if (t !== null && t < bestT) {
           bestT = t;
