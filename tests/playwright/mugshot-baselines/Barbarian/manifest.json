@@ -3,13 +3,13 @@
   "character": "Barbarian",
   "viewportWidth": 512,
   "viewportHeight": 512,
-  "exportedAt": "2026-05-16T00:09:27.160Z",
+  "exportedAt": "2026-05-18T19:04:38.580Z",
   "fixedCamera": {
-    "azimuthDeg": 0,
+    "azimuthDeg": 270,
     "pitchDeg": -8,
-    "height": 2.5,
+    "height": 1.7,
     "fov": 40,
-    "distanceM": 9.5
+    "distanceM": 9.8
   },
   "lighting": {
     "sunPosition": [
@@ -34,7 +34,7 @@
     "showSunDisc": false,
     "sunDiscRadius": 3,
     "sunDiscIntensity": 2,
-    "ambientFillIntensity": 0.4
+    "ambientFillIntensity": 0.3
   },
   "background": {
     "topColor": "#02030a",
