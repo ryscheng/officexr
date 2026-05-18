@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { Suspense, useEffect, useMemo } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { WorldObjects } from '@officexr/sdk';
 import { createStore, createActions } from '@officexr/sdk';
 import { LightingRig, ObjectInstances } from '@officexr/world/renderer';
-import { useApplication, useCatalogReady } from '@officexr/world/react';
+import { useApplication } from '@officexr/world/react';
 
 interface BoundsSceneProps {
   sceneId: string;
@@ -28,7 +28,6 @@ interface BoundsSceneProps {
  */
 export function BoundsScene({ sceneId }: BoundsSceneProps) {
   const api = useApplication();
-  const catalogReady = useCatalogReady();
   const scene = useMemo(() => api.scenes.load(sceneId), [api, sceneId]);
 
   const worldObjects: WorldObjects = useMemo(
@@ -59,32 +58,17 @@ export function BoundsScene({ sceneId }: BoundsSceneProps) {
     ] as [number, number, number];
   }, [scene.camera]);
 
-  const [framePainted, setFramePainted] = useState(false);
   useEffect(() => {
-    if (!catalogReady) return;
-    let raf2 = 0;
-    // Two rAFs so the first useEffect after mount has flushed AND
-    // Three has painted a frame before we flip the ready sentinel.
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        setFramePainted(true);
-        (window as unknown as { __officexrBoundsReady?: boolean })
-          .__officexrBoundsReady = true;
-      });
-    });
     return () => {
-      cancelAnimationFrame(raf1);
-      if (raf2) cancelAnimationFrame(raf2);
       // Reset the sentinel so the next mount starts clean.
       delete (window as unknown as { __officexrBoundsReady?: boolean })
         .__officexrBoundsReady;
     };
-  }, [catalogReady]);
+  }, []);
 
   return (
     <div
       data-bounds-scene={sceneId}
-      data-bounds-ready={framePainted ? 'true' : 'false'}
       style={{ position: 'absolute', inset: 0, background: '#202024' }}
     >
       <Canvas
@@ -122,8 +106,41 @@ export function BoundsScene({ sceneId }: BoundsSceneProps) {
             sunDiscIntensity: 0,
           }}
         />
-        <ObjectInstances store={store} />
+        <Suspense fallback={null}>
+          <ObjectInstances store={store} />
+          {/* Sits AFTER the Suspense boundary so it only mounts once
+              the GLTFs have loaded. Counts rendered frames and flips
+              the global ready sentinel after a safe number of frames
+              (enough for InstancedMesh.setMatrixAt to have run AND
+              the GL framebuffer to have settled). */}
+          <ReadySignal />
+        </Suspense>
       </Canvas>
     </div>
   );
+}
+
+/**
+ * Frame counter that flips `window.__officexrBoundsReady` after a few
+ * rendered frames. Mounts only after the parent's Suspense boundary
+ * resolves, so GLTFs are guaranteed to be loaded by the time the
+ * sentinel is set.
+ */
+function ReadySignal() {
+  const framesRef = React.useRef(0);
+  const flippedRef = React.useRef(false);
+  // 3 frames is enough for InstancedMesh.setMatrixAt to have run
+  // (one frame for mount, one for the matrix update effect, one for
+  // the next paint pass).
+  const FRAMES_BEFORE_READY = 3;
+  useFrame(() => {
+    if (flippedRef.current) return;
+    framesRef.current += 1;
+    if (framesRef.current >= FRAMES_BEFORE_READY) {
+      flippedRef.current = true;
+      (window as unknown as { __officexrBoundsReady?: boolean })
+        .__officexrBoundsReady = true;
+    }
+  });
+  return null;
 }
