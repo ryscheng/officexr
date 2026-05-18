@@ -3,10 +3,12 @@ import {
   computeTileStep,
   computeKindTileSteps,
   quantizeAxisAlignedNormal,
+  snapToNearestFace,
   snapToNearestTileableFace,
   snapToVoxel,
   type CubeHit,
   type FloorHit,
+  type NearbyObjectInfo,
   type TileableObjectInfo,
 } from './roomSnap.ts';
 
@@ -279,5 +281,93 @@ describe('snapToNearestTileableFace', () => {
       VS,
     );
     expect(resultWithBoth).toEqual(resultWithOnly);
+  });
+});
+
+describe('snapToNearestFace — anchor-convention face snap', () => {
+  const VS = 0.5;
+
+  // A Blue cube (2×2×2) at voxel (0,0,0) → world AABB (0,0,0) → (2,2,2)
+  const blueAtOrigin: NearbyObjectInfo = {
+    position: [0, 0, 0],
+    aabb: { min: [0, 0, 0], max: [2, 2, 2] },
+  };
+
+  // Step for a Blue cube (2 m on 0.5 m grid) = 4 voxels.
+  const blueStep = { x: 4, y: 4, z: 4 };
+  const blueShape = { width: 2, height: 2, depth: 2, step: blueStep };
+
+  it('cursor near +X face of existing 2m cube → new cube anchor.x = 2', () => {
+    // Hit world (2.2, 1, 1) — just past the +X face at x=2.
+    const result = snapToNearestFace(
+      { x: 2.2, y: 1, z: 1 },
+      blueShape,
+      [blueAtOrigin],
+      VS,
+      1.5,
+    );
+    expect(result).not.toBeNull();
+    // voxel anchor.x = 4 → world x = 2 (flush right against existing).
+    expect(result![0]).toBe(4);
+  });
+
+  it('cursor near -X face → new cube anchor.x = -2 (world x=-1...1)', () => {
+    const result = snapToNearestFace(
+      { x: -0.2, y: 1, z: 1 },
+      blueShape,
+      [blueAtOrigin],
+      VS,
+      1.5,
+    );
+    expect(result).not.toBeNull();
+    // existing min.x = 0, new cube width 2, so new anchor.x = -2 → voxel -4.
+    expect(result![0]).toBe(-4);
+  });
+
+  it('cursor near +Y face (top) → new cube sits on top', () => {
+    const result = snapToNearestFace(
+      { x: 1, y: 2.2, z: 1 },
+      blueShape,
+      [blueAtOrigin],
+      VS,
+      1.5,
+    );
+    expect(result).not.toBeNull();
+    // existing max.y = 2, new anchor.y = 2 → voxel y = 4.
+    expect(result![1]).toBe(4);
+  });
+
+  it('cursor anywhere returns null when no object is within radius', () => {
+    // 10 m away from the cube on all axes — far outside pull radius.
+    expect(
+      snapToNearestFace(
+        { x: 12, y: 5, z: 12 },
+        blueShape,
+        [blueAtOrigin],
+        VS,
+        1.5,
+      ),
+    ).toBeNull();
+  });
+
+
+  it('Cube Prototype Large A (4m) snaps flush against Blue cube', () => {
+    const largeAShape = {
+      width: 4,
+      height: 4,
+      depth: 4,
+      step: { x: 8, y: 8, z: 8 },
+    };
+    // Hit just past the +X face of the Blue cube.
+    const result = snapToNearestFace(
+      { x: 2.1, y: 2, z: 2 },
+      largeAShape,
+      [blueAtOrigin],
+      VS,
+      1.5,
+    );
+    expect(result).not.toBeNull();
+    // Large A's anchor at world x=2 → voxel x = 4.
+    expect(result![0]).toBe(4);
   });
 });

@@ -21,10 +21,10 @@ import { useApplication } from '@officexr/world/react';
 import type { Tool } from './tools.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
 import {
-  snapToNearestTileableFace,
+  snapToNearestFace,
   snapToVoxel,
+  type NearbyObjectInfo,
   type SnapHit,
-  type TileableObjectInfo,
 } from './roomSnap.ts';
 import { outlineEdgePositions } from './selectionOutline.ts';
 import { computeMovedPositions } from './moveDelta.ts';
@@ -388,66 +388,86 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     [stepForKind],
   );
 
-  // Cache the list of tileable placed objects for snap-to-face.
-  // Each entry carries the kind's baked bounding-box dimensions so
-  // the face-flush math in snapToNearestTileableFace produces correct
-  // alignment (a chair sitting on a 2×2×2 block must offset by 1 m
-  // from the block's centre, not 0.25 m). When a kind has no baked
-  // dimensions, we fall back to a 1-voxel cube — the legacy behaviour.
-  const fallbackDims = useMemo(
-    () => ({ width: voxelSize, height: voxelSize, depth: voxelSize }),
-    [voxelSize],
-  );
-  const tileableObjects = useMemo<TileableObjectInfo[]>(() => {
-    return props.compiled.instances
-      .filter((inst) => {
-        const kind = catalogService.getKind(inst.kindId);
-        if (!kind) return false;
-        return kind.tilingAxes.x || kind.tilingAxes.y || kind.tilingAxes.z;
-      })
-      .map((inst) => {
-        const kind = catalogService.getKind(inst.kindId);
-        return {
-          position: inst.position,
-          dims: kind?.dimensions ?? fallbackDims,
-        };
-      });
-  }, [props.compiled.instances, fallbackDims]);
+  // World-space AABBs of every existing placed object — fed to the
+  // face-snap so it can pull the cursor toward flush adjacency with
+  // any nearby object. Recomputed when the compiled scene changes.
+  const nearbyObjects = useMemo(() => {
+    return props.compiled.instances.map((inst) => ({
+      position: inst.position,
+      aabb: geomService.worldAABB(inst.position, inst.kindId),
+    }));
+  }, [props.compiled.instances, geomService]);
 
-  // Snap a world-space hit to a voxel, routing to snapToNearestTileableFace
-  // when the staged kind is non-tileable (all tilingAxes false). For
-  // tileable kinds, snap to multiples of the kind's own bounding-box
-  // dimension on each axis — a 2 m cube on a 0.5 m grid lands on 2 m
-  // boundaries (every 4 voxels) instead of every voxel.
+  // Pull radius in metres. Generous enough that clicking anywhere
+  // ON or NEAR an existing object snaps flush instead of landing in
+  // a half-overlapping grid cell. Smaller than the kind's own step so
+  // the floor grid still wins when you click far from any object.
+  const FACE_SNAP_PULL_RADIUS_M = 1.5;
+
+  // Snap a world-space hit to a voxel. For ANY kind, first try the
+  // proximity-based face snap against nearby existing objects — if
+  // the cursor is within `FACE_SNAP_PULL_RADIUS_M` of an existing
+  // object's face, the new object lands flush against that face.
+  // Otherwise, fall back to:
+  //   - cube-face snap (when the hit IS on a cube face)
+  //   - grid snap stepped by the placing kind's stride
   const snapForAdd = useCallback(
     (hit: SnapHit): [number, number, number] => {
-      if (!props.stagedKindId) return snapToVoxel(hit, voxelSize, undefined, targetStrideFor(hit));
-      const kind = catalogService.getKind(props.stagedKindId);
-      if (kind && !kind.tilingAxes.x && !kind.tilingAxes.y && !kind.tilingAxes.z) {
-        // Non-tileable kind: snap to nearest tileable face
-        const hitPoint = hit.kind === 'floor'
+      const stagedId = props.stagedKindId;
+      const placingStep = stepForKind(stagedId);
+
+      // World-space cursor point — for cube hits use the actual face hit
+      // position when available; for floor hits use the raycast point.
+      const cursorPoint =
+        hit.kind === 'floor'
           ? { x: hit.point.x, y: hit.point.y, z: hit.point.z }
           : {
-              // Use the face center as the hit point for cube hits
               x: hit.cubePosition[0] * voxelSize,
               y: hit.cubePosition[1] * voxelSize,
               z: hit.cubePosition[2] * voxelSize,
             };
-        const dims = kind.dimensions ?? {
+
+      if (stagedId) {
+        const kind = catalogService.getKind(stagedId);
+        const dims = kind?.dimensions ?? {
           width: voxelSize,
           height: voxelSize,
           depth: voxelSize,
         };
-        return snapToNearestTileableFace(hitPoint, dims, tileableObjects, voxelSize);
+        // Don't include the cube we just hit in the candidate list —
+        // when clicking ON a cube's face the cube-face branch below
+        // handles flushness directly. The face-snap is for OTHER
+        // nearby objects.
+        const candidates =
+          hit.kind === 'cube'
+            ? nearbyObjects.filter(
+                (o) =>
+                  o.position[0] !== hit.cubePosition[0] ||
+                  o.position[1] !== hit.cubePosition[1] ||
+                  o.position[2] !== hit.cubePosition[2],
+              )
+            : nearbyObjects;
+        const facePull = snapToNearestFace(
+          cursorPoint,
+          { ...dims, step: placingStep },
+          candidates,
+          voxelSize,
+          FACE_SNAP_PULL_RADIUS_M,
+        );
+        if (facePull) return facePull;
       }
-      return snapToVoxel(
-        hit,
-        voxelSize,
-        stepForKind(props.stagedKindId),
-        targetStrideFor(hit),
-      );
+
+      // No nearby object → cube-face snap (if applicable) or grid snap.
+      return snapToVoxel(hit, voxelSize, placingStep, targetStrideFor(hit));
     },
-    [props.stagedKindId, voxelSize, tileableObjects, stepForKind],
+    [
+      props.stagedKindId,
+      voxelSize,
+      nearbyObjects,
+      stepForKind,
+      targetStrideFor,
+      catalogService,
+    ],
   );
 
   // Compute the ghost specs the GhostLayer should render this frame.
@@ -554,9 +574,32 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         voxel = settled;
       }
 
+      // Overlap guard: if the proposed placement's footprint overlaps
+      // ANY existing instance's footprint, refuse the place. Otherwise
+      // a click slightly off-grid could pile a second cube on top of
+      // the existing one — confusing the user into thinking multiple
+      // cubes were placed per click.
+      if (props.stagedKindId) {
+        const proposed = geomService.voxelFootprint(voxel, props.stagedKindId);
+        for (const inst of props.compiled.instances) {
+          const fp = geomService.voxelFootprint(inst.position, inst.kindId);
+          // Half-open AABB overlap on the voxel grid.
+          if (
+            proposed.max[0] > fp.min[0] &&
+            proposed.min[0] < fp.max[0] &&
+            proposed.max[1] > fp.min[1] &&
+            proposed.min[1] < fp.max[1] &&
+            proposed.max[2] > fp.min[2] &&
+            proposed.min[2] < fp.max[2]
+          ) {
+            return; // refuse — would overlap
+          }
+        }
+      }
+
       props.onPlaceAt(voxel);
     },
-    [props, snapForAdd],
+    [props, snapForAdd, geomService],
   );
 
   // Delete-tool click on a cube routes to the parent's delete (which

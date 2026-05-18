@@ -111,11 +111,25 @@ export function snapToVoxel(
   ];
 }
 
-/** Info about a tileable object for snap face computation. */
-export interface TileableObjectInfo {
+/** Info about an existing placed object for snap-to-face computation.
+ * Always carries the object's full world-space AABB (computed by the
+ * canonical geometry service) so the snap math stays agnostic to GLTF
+ * origin conventions. */
+export interface NearbyObjectInfo {
   /** Voxel position of the placed object. */
   position: readonly [number, number, number];
-  /** Bounding dimensions in metres (from getKindBoundingDimensions). */
+  /** World-space AABB of the placed object, in metres. */
+  aabb: {
+    min: readonly [number, number, number];
+    max: readonly [number, number, number];
+  };
+}
+
+/** @deprecated Use NearbyObjectInfo. Old shape used dims (extents)
+ * + assumed X/Z-centered + Y-bottom origin convention which no longer
+ * holds since per-kind GLTF origins vary. */
+export interface TileableObjectInfo {
+  position: readonly [number, number, number];
   dims: { width: number; height: number; depth: number };
 }
 
@@ -220,6 +234,192 @@ export function snapToNearestTileableFace(
     Math.round(bestFace.cy / voxelSize),
     Math.round(bestFace.cz / voxelSize),
   ];
+}
+
+// ---------------------------------------------------------------------------
+// snapToNearestFace — anchor-convention-correct, works for ANY kind
+// ---------------------------------------------------------------------------
+
+/**
+ * Place the new object flush against the nearest existing object's
+ * face. Operates entirely in world-space AABBs (supplied by the
+ * canonical InstanceGeometryService) so the math is agnostic to GLTF
+ * origin conventions — pin-aligned with the renderer + wireframe.
+ *
+ * Algorithm:
+ *   1. For each existing object, find the closest of its 6 faces to
+ *      the cursor's world-space hit point.
+ *   2. For each face, compute the new object's voxel-anchor position
+ *      that would put its OPPOSITE face flush with the existing
+ *      object's face.
+ *   3. Pick the (object, face) pair with the smallest cursor distance
+ *      AND within `pullRadiusM`. Return that voxel position.
+ *   4. Fall back to `null` when no object is within range; callers
+ *      then defer to grid snap.
+ *
+ * The new object's world AABB at voxel `[vx, vy, vz]` is computed by
+ * the geometry service as `(vx*vs, vy*vs, vz*vs)` →
+ * `(vx*vs + nw, vy*vs + nh, vz*vs + nd)` where (nw,nh,nd) = new object's
+ * extents. Voxel position = world_anchor / voxelSize, since
+ * `vx*vs = world_anchor.x` etc.
+ */
+export interface NewObjectShape {
+  /** New object's world-space extents in metres (width × height × depth). */
+  width: number;
+  height: number;
+  depth: number;
+  /** New object's voxel-step per axis. The snapped voxel is rounded
+   * to the nearest multiple of step so two same-kind cubes line up on
+   * the same grid. */
+  step: { x: number; y: number; z: number };
+}
+
+export function snapToNearestFace(
+  hitWorldPoint: { x: number; y: number; z: number },
+  newObject: NewObjectShape,
+  nearbyObjects: readonly NearbyObjectInfo[],
+  voxelSize: number,
+  pullRadiusM: number,
+): [number, number, number] | null {
+  if (nearbyObjects.length === 0) return null;
+
+  const clamp = (v: number, lo: number, hi: number) =>
+    Math.max(lo, Math.min(hi, v));
+
+  let bestVoxel: [number, number, number] | null = null;
+  let bestDist = pullRadiusM;
+
+  for (const obj of nearbyObjects) {
+    const omin = obj.aabb.min;
+    const omax = obj.aabb.max;
+
+    // Six candidate faces. For each, compute:
+    //   - the cursor's distance to the FACE RECTANGLE (not just the
+    //     face plane) so a cursor far above the cube doesn't snap to
+    //     the cube's bottom face just because their Y values happen
+    //     to coincide.
+    //   - the new object's voxel anchor that puts it flush against
+    //     this face. Y-axis anchors keep the cursor's Y when sliding
+    //     along a vertical face so the new object sits at the
+    //     cursor's height.
+    const candidates: Array<{
+      anchor: [number, number, number];
+      cursorDist: number;
+    }> = [];
+
+    // +X face: plane x = omax.x, rect over y ∈ [omin.y, omax.y], z ∈ [omin.z, omax.z]
+    {
+      const cy = clamp(hitWorldPoint.y, omin[1], omax[1]);
+      const cz = clamp(hitWorldPoint.z, omin[2], omax[2]);
+      const d = Math.hypot(
+        hitWorldPoint.x - omax[0],
+        hitWorldPoint.y - cy,
+        hitWorldPoint.z - cz,
+      );
+      candidates.push({
+        anchor: [
+          omax[0],
+          // Sit at the cursor's height, but never below the existing
+          // object's base, so a click on the cube top stays on top.
+          Math.max(hitWorldPoint.y, omin[1]),
+          hitWorldPoint.z - newObject.depth / 2,
+        ],
+        cursorDist: d,
+      });
+    }
+    // -X face: plane x = omin.x
+    {
+      const cy = clamp(hitWorldPoint.y, omin[1], omax[1]);
+      const cz = clamp(hitWorldPoint.z, omin[2], omax[2]);
+      const d = Math.hypot(
+        hitWorldPoint.x - omin[0],
+        hitWorldPoint.y - cy,
+        hitWorldPoint.z - cz,
+      );
+      candidates.push({
+        anchor: [
+          omin[0] - newObject.width,
+          Math.max(hitWorldPoint.y, omin[1]),
+          hitWorldPoint.z - newObject.depth / 2,
+        ],
+        cursorDist: d,
+      });
+    }
+    // +Y face (top): plane y = omax.y, rect over x ∈ [omin.x, omax.x], z ∈ [omin.z, omax.z]
+    {
+      const cx = clamp(hitWorldPoint.x, omin[0], omax[0]);
+      const cz = clamp(hitWorldPoint.z, omin[2], omax[2]);
+      const d = Math.hypot(
+        hitWorldPoint.x - cx,
+        hitWorldPoint.y - omax[1],
+        hitWorldPoint.z - cz,
+      );
+      candidates.push({
+        anchor: [
+          hitWorldPoint.x - newObject.width / 2,
+          omax[1],
+          hitWorldPoint.z - newObject.depth / 2,
+        ],
+        cursorDist: d,
+      });
+    }
+    // -Y face (bottom): plane y = omin.y. Skip — placing below an
+    // existing object's bottom is a rare gesture and shouldn't pull
+    // when the cursor is at floor level next to the cube.
+    // +Z face: plane z = omax.z
+    {
+      const cx = clamp(hitWorldPoint.x, omin[0], omax[0]);
+      const cy = clamp(hitWorldPoint.y, omin[1], omax[1]);
+      const d = Math.hypot(
+        hitWorldPoint.x - cx,
+        hitWorldPoint.y - cy,
+        hitWorldPoint.z - omax[2],
+      );
+      candidates.push({
+        anchor: [
+          hitWorldPoint.x - newObject.width / 2,
+          Math.max(hitWorldPoint.y, omin[1]),
+          omax[2],
+        ],
+        cursorDist: d,
+      });
+    }
+    // -Z face: plane z = omin.z
+    {
+      const cx = clamp(hitWorldPoint.x, omin[0], omax[0]);
+      const cy = clamp(hitWorldPoint.y, omin[1], omax[1]);
+      const d = Math.hypot(
+        hitWorldPoint.x - cx,
+        hitWorldPoint.y - cy,
+        hitWorldPoint.z - omin[2],
+      );
+      candidates.push({
+        anchor: [
+          hitWorldPoint.x - newObject.width / 2,
+          Math.max(hitWorldPoint.y, omin[1]),
+          omin[2] - newObject.depth,
+        ],
+        cursorDist: d,
+      });
+    }
+
+    for (const c of candidates) {
+      if (c.cursorDist >= bestDist) continue;
+      // Quantize anchor → voxel position. NO step rounding — the
+      // flush position is the snap target. Step rounding would push
+      // the new object off the flush plane, defeating the whole
+      // point of the snap. For floor-grid snaps (no nearby object)
+      // we DO use step rounding; that happens in snapToVoxel.
+      bestDist = c.cursorDist;
+      bestVoxel = [
+        Math.round(c.anchor[0] / voxelSize),
+        Math.round(c.anchor[1] / voxelSize),
+        Math.round(c.anchor[2] / voxelSize),
+      ];
+    }
+  }
+
+  return bestVoxel;
 }
 
 /**
