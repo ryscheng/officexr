@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { getCubeKind } from '@officexr/world';
+import { useKind } from '@officexr/world/react';
 import type { WorldObjects, ObjectInstance } from '@officexr/sdk';
 import { ObjectInstances, type MaterialOverride } from '@officexr/world/renderer';
 
@@ -104,7 +104,7 @@ function GhostGroup({
   voxelSize,
   pulseOpacityRef,
 }: GhostGroupProps) {
-  const kind = getCubeKind(kindId);
+  const kind = useKind(kindId);
 
   // Build the snapshot. Voxels are translated into `ObjectInstance`
   // shape so ObjectInstances can render them. ids are synthesised

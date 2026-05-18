@@ -3,10 +3,15 @@ import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
 import { useApplication, useCatalog } from '../react/application-context.tsx';
-import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
-import { listKinds } from '../scenes/object-kind-catalog.ts';
-/** @deprecated Use getKind from object-kind-catalog. Re-exported for backward compat. */
-import { getCubeKind } from '../scenes/cube-kinds.ts';
+import {
+  validateWorldObjectKindCatalog,
+  type WorldObjectKind,
+} from '../scenes/world-object-kinds-schema.ts';
+// Static preload list: the bundled-default catalog. Used at module
+// load to warm drei's useGLTF cache so the first scene paint doesn't
+// flash. Kinds beyond the bundled defaults are preloaded lazily by
+// useGLTF when the catalog service hydrates with the live JSON.
+import defaultCatalogJson from '../../world-object-kinds.default.json' with { type: 'json' };
 import {
   buildMaterialForKind,
   extractGeometryFromGltf,
@@ -34,9 +39,9 @@ const PRIMITIVE_FALLBACK_COLOR = '#ff00ff';
 
 // Preload every kind in the bundled-default registry at module load so
 // the first scene paint renders without a flash. Kinds added later via
-// catalog hydration (Task 4's asset packs) are preloaded lazily inside
-// `KindInstanceGroup` via `useGLTF` itself, which caches by URL.
-for (const kind of listKinds()) {
+// catalog hydration are preloaded lazily inside `KindInstanceGroup`
+// via `useGLTF`, which caches by URL.
+for (const kind of validateWorldObjectKindCatalog(defaultCatalogJson).kinds) {
   useGLTF.preload(kind.gltfPath);
 }
 
@@ -434,6 +439,3 @@ function PrimitiveInstanceGroup({
   );
 }
 
-/** Convenience accessor for editor code that needs to look up a kind
- * from a raycast hit. Re-exported for ergonomics. */
-export { getCubeKind };

@@ -1,5 +1,5 @@
-import React from 'react';
-import { CUBE_KINDS } from '@officexr/world';
+import React, { useMemo } from 'react';
+import { useCatalog } from '@officexr/world/react';
 
 import { Button } from '../../components/ui/button.tsx';
 import {
@@ -13,8 +13,6 @@ import type { useRoomDocument } from './useRoomDocument.ts';
 
 type RoomDoc = ReturnType<typeof useRoomDocument>;
 type RoomCommand = RoomDoc['doc']['commands'][number];
-
-const KIND_OPTIONS = CUBE_KINDS.map((k) => k.id);
 
 interface InspectorPanelProps {
   roomDoc: RoomDoc;
@@ -104,6 +102,11 @@ interface PlaceObjectProps {
 
 function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
   const groupId = roomDoc.lookup.groupOf(command.id);
+  // The kind dropdown stays reactive — if the catalog hot-reloads
+  // (e.g. via the Object editor or a `replaceCatalog` test), the
+  // available options reflect the live list.
+  const kinds = useCatalog();
+  const kindOptions = useMemo(() => kinds.map((k) => k.id), [kinds]);
 
   return (
     <Panel>
@@ -112,7 +115,7 @@ function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
         <SelectInput
           label="kind"
           value={command.kindId}
-          options={KIND_OPTIONS}
+          options={kindOptions}
           onChange={(kind) => roomDoc.setKindForCommand(command.id, kind)}
         />
         <Vector3Input

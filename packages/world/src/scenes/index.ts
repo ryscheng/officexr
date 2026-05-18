@@ -55,12 +55,10 @@ export {
   commandBounds,
 } from './compile.ts';
 export { compileMap } from './compile-map.ts';
-export {
-  CUBE_KINDS,
-  UNKNOWN_KIND_SWATCH,
-  getCubeKind,
-  type CubeKindDef,
-} from './cube-kinds.ts';
+// CUBE_KINDS / getCubeKind / UNKNOWN_KIND_SWATCH / CubeKindDef were
+// the back-compat shim for code predating the catalog service.
+// Removed in the three-layer architecture refactor; consume the
+// catalog via `@officexr/world/app` or `@officexr/world/react`.
 export {
   type WorldObjectKind,
   type WorldObjectKindCatalogV1,
@@ -75,21 +73,10 @@ export {
   validateCubeKindCatalog,
   normalizeKind,
 } from './world-object-kinds-schema.ts';
-export {
-  bootstrapCatalog,
-  getCatalog,
-  getKind,
-  getKindStride,
-  listKinds,
-  patchKind,
-  replaceCatalog,
-  resetCatalogToDefault,
-  subscribeCatalog,
-  useCatalogReady,
-  useObjectKindCatalog,
-  useCubeCatalog,
-  __resetBootstrapForTests,
-} from './object-kind-catalog.ts';
+// Module-globals for the kind catalog were removed in the three-layer
+// architecture refactor. Consume the catalog through the application
+// layer (`@officexr/world/app`) and the React context
+// (`@officexr/world/react`). See `app/catalog-service.ts`.
 export { FilesystemSceneStorage } from './filesystem-storage.ts';
 export { LocalStorageSceneStorage } from './localstorage-storage.ts';
 export {
