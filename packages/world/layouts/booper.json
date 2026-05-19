@@ -1,0 +1,673 @@
+{
+  "schemaVersion": 1,
+  "name": "booper",
+  "title": "booper",
+  "updatedAt": 1779209251601,
+  "commands": [
+    {
+      "id": "place-73-uz1f",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-74-v0kz",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -4,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-75-v0kz",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-76-v0kz",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-77-v0kz",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-78-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-79-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -4,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-7a-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-7b-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-7c-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-7d-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-7e-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -4,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-7f-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-7g-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-7h-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-7i-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-7j-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -4,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-7k-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-7l-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-7m-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-7n-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -8,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-7o-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        -4,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-7p-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-7q-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-7r-v20u",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-7t-vpw3",
+      "op": "placeObject",
+      "kindId": "prototype_cube_prototype_large_b",
+      "position": [
+        -32,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-7u-vrcv",
+      "op": "placeObject",
+      "kindId": "prototype_cube_prototype_large_b",
+      "position": [
+        -24,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-7v-vrcv",
+      "op": "placeObject",
+      "kindId": "prototype_cube_prototype_large_b",
+      "position": [
+        -16,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-7w-vtgc",
+      "op": "placeObject",
+      "kindId": "prototype_cube_prototype_large_b",
+      "position": [
+        -32,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-7x-vtgc",
+      "op": "placeObject",
+      "kindId": "prototype_cube_prototype_large_b",
+      "position": [
+        -24,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-7y-vtgc",
+      "op": "placeObject",
+      "kindId": "prototype_cube_prototype_large_b",
+      "position": [
+        -16,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-7z-126b",
+      "op": "placeObject",
+      "kindId": "prototype_primitive_stairs_half",
+      "position": [
+        -8,
+        4,
+        0
+      ]
+    },
+    {
+      "id": "place-80-1q6m",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -12,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-81-4w4y",
+      "op": "placeObject",
+      "kindId": "prototype_primitive_stairs_half",
+      "position": [
+        -8,
+        4,
+        8
+      ]
+    },
+    {
+      "id": "place-82-5g4u",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -12,
+        4,
+        16
+      ]
+    },
+    {
+      "id": "place-83-5h9l",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -12,
+        8,
+        16
+      ]
+    },
+    {
+      "id": "place-84-5jv3",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -12,
+        12,
+        16
+      ]
+    },
+    {
+      "id": "place-85-5mrq",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -16,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-86-5nv2",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -16,
+        4,
+        16
+      ]
+    },
+    {
+      "id": "place-87-5p7o",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -16,
+        8,
+        16
+      ]
+    },
+    {
+      "id": "place-88-5q89",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -16,
+        12,
+        16
+      ]
+    },
+    {
+      "id": "place-89-5tax",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -20,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-8a-5un2",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -20,
+        4,
+        16
+      ]
+    },
+    {
+      "id": "place-8b-5wpl",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        -20,
+        8,
+        16
+      ]
+    },
+    {
+      "id": "place-8e-8uk8",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        12,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-8f-8yt0",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        12,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-8g-8yt0",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        12,
+        0,
+        -4
+      ]
+    },
+    {
+      "id": "place-8h-8yt0",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        12,
+        0,
+        -12
+      ]
+    },
+    {
+      "id": "place-8i-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        20,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-8j-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        20,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-8k-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        20,
+        0,
+        -4
+      ]
+    },
+    {
+      "id": "place-8l-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        20,
+        0,
+        -12
+      ]
+    },
+    {
+      "id": "place-8m-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        28,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-8n-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        28,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-8o-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        28,
+        0,
+        -4
+      ]
+    },
+    {
+      "id": "place-8p-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        28,
+        0,
+        -12
+      ]
+    },
+    {
+      "id": "place-8q-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        36,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-8r-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        36,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-8s-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        36,
+        0,
+        -4
+      ]
+    },
+    {
+      "id": "place-8t-90cj",
+      "op": "placeObject",
+      "kindId": "restaurant_floor_kitchen",
+      "position": [
+        36,
+        0,
+        -12
+      ]
+    }
+  ],
+  "groups": {
+    "g-a-v0kz": {
+      "id": "g-a-v0kz",
+      "commandIds": [
+        "place-73-uz1f",
+        "place-74-v0kz",
+        "place-75-v0kz",
+        "place-76-v0kz",
+        "place-77-v0kz",
+        "place-78-v20u",
+        "place-79-v20u",
+        "place-7a-v20u",
+        "place-7b-v20u",
+        "place-7c-v20u",
+        "place-7d-v20u",
+        "place-7e-v20u",
+        "place-7f-v20u",
+        "place-7g-v20u",
+        "place-7h-v20u",
+        "place-7i-v20u",
+        "place-7j-v20u",
+        "place-7k-v20u",
+        "place-7l-v20u",
+        "place-7m-v20u",
+        "place-7n-v20u",
+        "place-7o-v20u",
+        "place-7p-v20u",
+        "place-7q-v20u",
+        "place-7r-v20u"
+      ]
+    },
+    "g-b-vrcv": {
+      "id": "g-b-vrcv",
+      "commandIds": [
+        "place-7t-vpw3",
+        "place-7u-vrcv",
+        "place-7v-vrcv",
+        "place-7w-vtgc",
+        "place-7x-vtgc",
+        "place-7y-vtgc"
+      ]
+    },
+    "g-c-8yt0": {
+      "id": "g-c-8yt0",
+      "commandIds": [
+        "place-8e-8uk8",
+        "place-8f-8yt0",
+        "place-8g-8yt0",
+        "place-8h-8yt0",
+        "place-8i-90cj",
+        "place-8j-90cj",
+        "place-8k-90cj",
+        "place-8l-90cj",
+        "place-8m-90cj",
+        "place-8n-90cj",
+        "place-8o-90cj",
+        "place-8p-90cj",
+        "place-8q-90cj",
+        "place-8r-90cj",
+        "place-8s-90cj",
+        "place-8t-90cj"
+      ]
+    }
+  },
+  "optimizer": "simplify-aggressive"
+}
