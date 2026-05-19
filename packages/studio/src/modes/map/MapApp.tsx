@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { EnvironmentPanel } from './EnvironmentPanel.tsx';
 import { MapEditorCanvas } from './MapEditorCanvas.tsx';
 import { MapPicker } from './MapPicker.tsx';
+import { MapToolbar } from './MapToolbar.tsx';
+import { MAP_TOOLS, type MapTool } from './mapTools.ts';
 import { RoomPalette } from './RoomPalette.tsx';
 import { RoomInstanceList } from './RoomInstanceList.tsx';
 import { SpawnList } from './SpawnList.tsx';
@@ -17,9 +19,9 @@ import { useMapRoomLibrary } from './useMapRoomLibrary.ts';
  * Layout:
  *   - LeftPanel:  RoomPalette (saved rooms) + MapPicker (load/new).
  *   - Main:       MapEditorCanvas (free-fly + per-room groups + spawn
- *                 markers + selection outline).
- *   - SidePanel:  Toolbar (spawn-tool toggle), RoomInstanceList,
- *                 SpawnList, Leva env panel (Task 13 wires sky/stars/HDRI).
+ *                 markers + selection outline) with a top-right
+ *                 MapToolbar overlay (Select / Move / Spawn).
+ *   - SidePanel:  RoomInstanceList, SpawnList, environment panel.
  */
 export function MapApp() {
   const map = useMapDocument();
@@ -29,7 +31,36 @@ export function MapApp() {
     return s;
   }, [map.doc.rooms]);
   const library = useMapRoomLibrary(referenced);
-  const [spawnToolActive, setSpawnToolActive] = useState(false);
+  const [tool, setTool] = useState<MapTool>('select');
+
+  // Tool keyboard shortcuts (V / M / P, Esc → select). Bound at window
+  // scope so they work even when focus is in the canvas. Skip while
+  // typing in inputs so the SpawnList rename doesn't switch tools.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.isContentEditable)
+      )
+        return;
+      if (e.key === 'Escape') {
+        setTool('select');
+        return;
+      }
+      const key = e.key.toLowerCase();
+      for (const def of MAP_TOOLS) {
+        if (def.shortcut.toLowerCase() === key) {
+          setTool(def.tool);
+          return;
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
@@ -67,15 +98,15 @@ export function MapApp() {
           onMoveRoom={map.setRoomPosition}
           onPlaceSpawn={(pos) => {
             map.addSpawn(pos);
-            setSpawnToolActive(false);
+            // One-shot: drop back to Select after placing a spawn so
+            // the next click selects normally rather than placing
+            // another spawn.
+            setTool('select');
           }}
-          spawnToolActive={spawnToolActive}
+          tool={tool}
         />
-        <CanvasHud
-          mapName={map.mapName}
-          spawnToolActive={spawnToolActive}
-          onToggleSpawnTool={() => setSpawnToolActive((s) => !s)}
-        />
+        <CanvasHud mapName={map.mapName} />
+        <MapToolbar tool={tool} onChange={setTool} />
       </main>
       <SidePanel>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -114,11 +145,9 @@ export function MapApp() {
 
 interface CanvasHudProps {
   mapName: string;
-  spawnToolActive: boolean;
-  onToggleSpawnTool: () => void;
 }
 
-function CanvasHud({ mapName, spawnToolActive, onToggleSpawnTool }: CanvasHudProps) {
+function CanvasHud({ mapName }: CanvasHudProps) {
   return (
     <div
       style={{
@@ -142,21 +171,6 @@ function CanvasHud({ mapName, spawnToolActive, onToggleSpawnTool }: CanvasHudPro
       >
         Map: {mapName} · WASD pan · right-drag orbit · scroll zoom · Q/E elevate
       </div>
-      <button
-        type="button"
-        onClick={onToggleSpawnTool}
-        style={{
-          padding: '6px 10px',
-          background: spawnToolActive ? '#0e7490' : '#1e293b',
-          border: '1px solid #334155',
-          color: '#fafafa',
-          borderRadius: 4,
-          cursor: 'pointer',
-          font: 'inherit',
-        }}
-      >
-        {spawnToolActive ? '✓ Placing spawn — click ground' : '+ Add spawn'}
-      </button>
     </div>
   );
 }

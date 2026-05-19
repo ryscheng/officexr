@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Sky, Stars } from '@react-three/drei';
@@ -20,6 +20,19 @@ import {
 } from '@officexr/world/renderer';
 import type { WorldObjects } from '@officexr/sdk';
 import type { MapSelection } from './useMapDocument.ts';
+import type { MapTool } from './mapTools.ts';
+import {
+  snapRoomToNeighbors,
+  type RoomAABBVoxel,
+} from './roomBoundarySnap.ts';
+
+/**
+ * Snap threshold (in voxels) for room-to-room boundary alignment
+ * during a Move-tool drag. 2 voxels = 4 m at the default
+ * VOXEL_SIZE=2 — comfortable but not aggressive. See
+ * `roomBoundarySnap.ts` for the candidate algebra.
+ */
+const ROOM_SNAP_THRESHOLD_VOXELS = 2;
 
 /**
  * Translate the map document's `MapEnvironment` (sun position +
@@ -44,26 +57,6 @@ function mapDocToLighting(
   };
 }
 
-/**
- * Snap a raycast hit point to the nearest voxel-grid Y level so a
- * spawn marker lands on a voxel top (or on the floor at y=0) instead
- * of inside voxel geometry. Voxel bottoms sit on `y = k * VOXEL_SIZE`
- * for integer k, so:
- *   - hit on a voxel top (y = VOXEL_SIZE) → unchanged.
- *   - hit on the floor (y = 0)            → unchanged.
- *   - hit on a voxel side (e.g. y=1.5)   → rounded to the nearest
- *                                           grid level (y=2 here).
- * X/Z are passed through; the caller decides whether to further
- * grid-snap those (spawn points are continuous in X/Z by design).
- */
-function snapToCubeTop(hit: { x: number; y: number; z: number }): [
-  number,
-  number,
-  number,
-] {
-  return [hit.x, Math.round(hit.y / VOXEL_SIZE) * VOXEL_SIZE, hit.z];
-}
-
 interface MapEditorCanvasProps {
   doc: MapDocumentV1;
   rooms: ReadonlyMap<string, RoomDocument>;
@@ -71,9 +64,9 @@ interface MapEditorCanvasProps {
   onSelect: (sel: MapSelection) => void;
   onMoveRoom: (id: string, position: [number, number, number]) => void;
   onPlaceSpawn: (position: [number, number, number]) => void;
-  /** True while the "Add spawn" tool is active. Click on the floor
-   * places a spawn rather than deselecting. */
-  spawnToolActive: boolean;
+  /** Active map-editor tool — Select / Move / Spawn. Determines what
+   * a pointer-down on a room or on the floor does. */
+  tool: MapTool;
 }
 
 /**
@@ -104,7 +97,7 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
       <FloorPicker
         onPlaceSpawn={props.onPlaceSpawn}
         onDeselect={() => props.onSelect(null)}
-        spawnToolActive={props.spawnToolActive}
+        tool={props.tool}
       />
       <RoomsLayer
         instances={props.doc.rooms}
@@ -112,7 +105,7 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
         selection={props.selection}
         onSelect={props.onSelect}
         onMove={props.onMoveRoom}
-        spawnToolActive={props.spawnToolActive}
+        tool={props.tool}
         onPlaceSpawn={props.onPlaceSpawn}
       />
       <SpawnLayer
@@ -190,21 +183,23 @@ function EnvironmentLayer({ environment }: EnvironmentLayerProps) {
 interface FloorPickerProps {
   onPlaceSpawn: (position: [number, number, number]) => void;
   onDeselect: () => void;
-  spawnToolActive: boolean;
+  tool: MapTool;
 }
 
 /**
  * A 1000×1000 invisible plane at y=0 that catches click events the
  * cubes / spawn markers didn't consume. Behavior depends on the tool:
- *   - spawn tool active → place a new spawn at the world-space hit
- *   - otherwise → clear the selection (matches the "click empty
- *     space to deselect" convention from the Room editor).
+ *   - **select / move**: clear the selection (matches the
+ *     "click empty space to deselect" convention from the Room editor).
+ *   - **spawn**: NO-OP. Spawns must land on a room surface, so a click
+ *     that fell all the way through to the floor (no room beneath the
+ *     cursor) is rejected.
  *
  * The plane has to be large enough that a wide-FOV fly camera always
  * has it in frame; 1000 units = 500 voxels = bigger than any realistic
  * map.
  */
-function FloorPicker({ onPlaceSpawn, onDeselect, spawnToolActive }: FloorPickerProps) {
+function FloorPicker({ onPlaceSpawn: _onPlaceSpawn, onDeselect, tool }: FloorPickerProps) {
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
@@ -212,11 +207,10 @@ function FloorPicker({ onPlaceSpawn, onDeselect, spawnToolActive }: FloorPickerP
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
-        if (spawnToolActive) {
-          onPlaceSpawn([e.point.x, 0, e.point.z]);
-        } else {
-          onDeselect();
-        }
+        // Spawn tool: ignore empty-ground clicks; spawns are
+        // room-surface-only by design.
+        if (tool === 'spawn') return;
+        onDeselect();
       }}
     >
       <planeGeometry args={[1000, 1000]} />
@@ -233,15 +227,62 @@ interface RoomsLayerProps {
   selection: MapSelection;
   onSelect: (sel: MapSelection) => void;
   onMove: (id: string, position: [number, number, number]) => void;
-  spawnToolActive: boolean;
-  /** Spawn-tool drop callback. Clicking a cube fires this with the
-   *  raycast hit point snapped to the nearest cube-grid Y level, so
-   *  spawn markers land on cube tops rather than embedded in their
-   *  sides. */
+  tool: MapTool;
+  /** Spawn-tool drop callback. Receives the raw raycast world-space
+   *  hit point — Y is the surface Y, so spawn markers land on cube
+   *  tops or on a baked-layout surface naturally. */
   onPlaceSpawn: (position: [number, number, number]) => void;
 }
 
 function RoomsLayer(props: RoomsLayerProps) {
+  const { geometry: geomService, rooms: roomService } = useApplication();
+  const catalogReady = useCatalogReady();
+
+  // Precompute each room instance's world voxel AABB by uniting the
+  // voxelFootprints of its compiled cubes, rotating by rotationY, then
+  // offsetting by the instance's voxel position. This is the data the
+  // Move-tool snap needs from every NON-moving room. Memoized on
+  // doc.rooms + the room library so the cost is paid once per
+  // selection/library mutation, not per drag frame.
+  const allAabbs = useMemo<readonly RoomAABBVoxel[]>(() => {
+    if (!catalogReady) return [];
+    const out: RoomAABBVoxel[] = [];
+    for (const ri of props.instances) {
+      const room = props.rooms.get(ri.roomName);
+      if (!room) continue;
+      const compiled = roomService.compileScene(room);
+      if (compiled.instances.length === 0) continue;
+      // Compute the room-local voxel AABB by unioning each cube's
+      // voxelFootprint.
+      let minX = Infinity,
+        minY = Infinity,
+        minZ = Infinity;
+      let maxX = -Infinity,
+        maxY = -Infinity,
+        maxZ = -Infinity;
+      for (const cube of compiled.instances) {
+        const fp = geomService.voxelFootprint(cube.position, cube.kindId);
+        if (fp.min[0] < minX) minX = fp.min[0];
+        if (fp.min[1] < minY) minY = fp.min[1];
+        if (fp.min[2] < minZ) minZ = fp.min[2];
+        if (fp.max[0] - 1 > maxX) maxX = fp.max[0] - 1; // VoxelFootprint.max is exclusive
+        if (fp.max[1] - 1 > maxY) maxY = fp.max[1] - 1;
+        if (fp.max[2] - 1 > maxZ) maxZ = fp.max[2] - 1;
+      }
+      // Rotate the X/Z extents by rotationY * 90°. Y is unaffected.
+      const rot = ((ri.rotationY ?? 0) % 4) as 0 | 1 | 2 | 3;
+      const rotated = rotateXZ({ minX, minZ, maxX, maxZ }, rot);
+      // Offset by the room instance's voxel position.
+      const [px, py, pz] = ri.position;
+      out.push({
+        id: ri.id,
+        min: [rotated.minX + px, minY + py, rotated.minZ + pz],
+        max: [rotated.maxX + px, maxY + py, rotated.maxZ + pz],
+      });
+    }
+    return out;
+  }, [props.instances, props.rooms, geomService, roomService, catalogReady]);
+
   return (
     <>
       {props.instances.map((ri) => {
@@ -250,6 +291,8 @@ function RoomsLayer(props: RoomsLayerProps) {
           props.selection !== null &&
           props.selection.kind === 'room' &&
           props.selection.id === ri.id;
+        const selfAabb = allAabbs.find((a) => a.id === ri.id) ?? null;
+        const neighborAabbs = allAabbs.filter((a) => a.id !== ri.id);
         return (
           <RoomInstanceMesh
             key={ri.id}
@@ -258,13 +301,58 @@ function RoomsLayer(props: RoomsLayerProps) {
             selected={isSelected}
             onSelect={() => props.onSelect({ kind: 'room', id: ri.id })}
             onMove={(pos) => props.onMove(ri.id, pos)}
-            spawnToolActive={props.spawnToolActive}
+            tool={props.tool}
             onPlaceSpawn={props.onPlaceSpawn}
+            selfAabb={selfAabb}
+            neighborAabbs={neighborAabbs}
           />
         );
       })}
     </>
   );
+}
+
+/** Rotate an XZ-axis-aligned voxel rectangle by `rot * 90°` (Y axis,
+ *  right-handed). Used to convert a room's local AABB into the AABB
+ *  it occupies after `rotationY` is applied. */
+function rotateXZ(
+  rect: { minX: number; minZ: number; maxX: number; maxZ: number },
+  rot: 0 | 1 | 2 | 3,
+): { minX: number; minZ: number; maxX: number; maxZ: number } {
+  const { minX, minZ, maxX, maxZ } = rect;
+  // The four corners of the original rectangle.
+  const corners: [number, number][] = [
+    [minX, minZ],
+    [maxX, minZ],
+    [minX, maxZ],
+    [maxX, maxZ],
+  ];
+  // Y-axis rotation matrix in XZ (right-handed): (x,z) → rotated.
+  // Note: voxel coords are inclusive integer indices; after rotation
+  // we re-union the corners to recover the new axis-aligned AABB.
+  const rotated = corners.map(([x, z]) => {
+    switch (rot) {
+      case 0:
+        return [x, z];
+      case 1:
+        return [-z, x]; // 90° CCW about Y
+      case 2:
+        return [-x, -z];
+      case 3:
+        return [z, -x];
+    }
+  });
+  let rMinX = Infinity,
+    rMinZ = Infinity,
+    rMaxX = -Infinity,
+    rMaxZ = -Infinity;
+  for (const [x, z] of rotated) {
+    if (x < rMinX) rMinX = x;
+    if (x > rMaxX) rMaxX = x;
+    if (z < rMinZ) rMinZ = z;
+    if (z > rMaxZ) rMaxZ = z;
+  }
+  return { minX: rMinX, minZ: rMinZ, maxX: rMaxX, maxZ: rMaxZ };
 }
 
 interface RoomInstanceMeshProps {
@@ -273,8 +361,15 @@ interface RoomInstanceMeshProps {
   selected: boolean;
   onSelect: () => void;
   onMove: (position: [number, number, number]) => void;
-  spawnToolActive: boolean;
+  tool: MapTool;
   onPlaceSpawn: (position: [number, number, number]) => void;
+  /** Room's own world voxel AABB at its current position (null until
+   *  the catalog is ready). The Move tool re-bases this each drag
+   *  frame against the cursor's proposed voxel position. */
+  selfAabb: RoomAABBVoxel | null;
+  /** Every other room's world voxel AABB. Used by the Move tool to
+   *  snap the moving room's faces to a neighbor's. */
+  neighborAabbs: readonly RoomAABBVoxel[];
 }
 
 /**
@@ -305,8 +400,10 @@ function RoomInstanceMesh({
   selected,
   onSelect,
   onMove,
-  spawnToolActive,
+  tool,
   onPlaceSpawn,
+  selfAabb,
+  neighborAabbs,
 }: RoomInstanceMeshProps) {
   // Wait for the catalog bootstrap before compiling. Without this gate,
   // getKindStride falls back to [1,1,1] for every kind on the first
@@ -327,11 +424,25 @@ function RoomInstanceMesh({
     };
   }, [compiled]);
 
-  // Drag state: a left-pointer-down on the group enters drag mode;
-  // pointer-move raycasts the floor to update the room position.
+  // Drag state. Move tool only — Select/Spawn tools never enter
+  // drag mode. The drag starts on the room's group pointer-down and
+  // tracks the cursor on a y=0 plane, snapping the room's anchor to
+  // integer voxel coords. After the grid snap we additionally try to
+  // align the moving room's voxel AABB to any neighbor AABB face
+  // within `ROOM_SNAP_THRESHOLD_VOXELS` — that's what gives the
+  // "rooms click together" feel the Map editor wants.
   const { camera, gl, raycaster, pointer } = useThree();
   const dragging = useRef(false);
   const dragStartOffset = useRef<[number, number, number]>([0, 0, 0]);
+
+  // Refs so the pointer-move handler always reads the latest props
+  // without re-binding listeners on every render.
+  const selfAabbRef = useRef(selfAabb);
+  const neighborAabbsRef = useRef(neighborAabbs);
+  const instancePosRef = useRef(instance.position);
+  selfAabbRef.current = selfAabb;
+  neighborAabbsRef.current = neighborAabbs;
+  instancePosRef.current = instance.position;
 
   useEffect(() => {
     const handlePointerMove = () => {
@@ -340,10 +451,35 @@ function RoomInstanceMesh({
       const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
       const point = new THREE.Vector3();
       if (!raycaster.ray.intersectPlane(plane, point)) return;
-      // Snap the room's anchor to the cube-size grid so cubes stay on
-      // integer voxel coords after the offset is applied.
-      const vx = Math.round((point.x - dragStartOffset.current[0]) / VOXEL_SIZE);
-      const vz = Math.round((point.z - dragStartOffset.current[2]) / VOXEL_SIZE);
+      // Step 1: grid-snap the proposed room anchor so cubes stay on
+      // integer voxel coords after the cursor offset is applied.
+      let vx = Math.round((point.x - dragStartOffset.current[0]) / VOXEL_SIZE);
+      let vz = Math.round((point.z - dragStartOffset.current[2]) / VOXEL_SIZE);
+
+      // Step 2: AABB snap to neighbors. Translate the room's selfAabb
+      // by the proposed (vx, vz) - currentPosition delta, then ask
+      // snapRoomToNeighbors for a corrective (dx, dz) within
+      // threshold.
+      const self = selfAabbRef.current;
+      const neighbors = neighborAabbsRef.current;
+      if (self && neighbors.length > 0) {
+        const curPos = instancePosRef.current;
+        const tx = vx - curPos[0];
+        const tz = vz - curPos[2];
+        const proposed: RoomAABBVoxel = {
+          id: self.id,
+          min: [self.min[0] + tx, self.min[1], self.min[2] + tz],
+          max: [self.max[0] + tx, self.max[1], self.max[2] + tz],
+        };
+        const { dx, dz } = snapRoomToNeighbors(
+          proposed,
+          neighbors,
+          ROOM_SNAP_THRESHOLD_VOXELS,
+        );
+        vx += dx;
+        vz += dz;
+      }
+
       onMove([vx, instance.position[1], vz]);
     };
     const handlePointerUp = () => {
@@ -396,8 +532,11 @@ function RoomInstanceMesh({
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.stopPropagation();
-            if (spawnToolActive) {
-              onPlaceSpawn(snapToCubeTop(e.point));
+            if (tool === 'spawn') {
+              // Use the raw raycast hit Y — the surface of whatever
+              // was clicked. Voxel-rounding is intentionally gone:
+              // baked layouts may have non-voxel-aligned surfaces.
+              onPlaceSpawn([e.point.x, e.point.y, e.point.z]);
               return;
             }
             onSelect();
@@ -432,29 +571,33 @@ function RoomInstanceMesh({
       rotation={[0, rotationY, 0]}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
-        // Only react to cube hits; clicks on the floor / empty
-        // space don't reach here.
-        const hit = e.object as THREE.Object3D & {
-          userData?: { isObjectInstanceMesh?: boolean };
-        };
-        if (!hit.userData?.isObjectInstanceMesh) return;
+        // Any pointer-down on a descendant of this group counts —
+        // cube InstancedMesh OR a BakedLayout mesh. The previous
+        // gate that required `userData.isObjectInstanceMesh` broke
+        // drag + spawn the moment a room started rendering its baked
+        // layout in front of the raw cubes.
         e.stopPropagation();
-        if (spawnToolActive) {
-          // Spawn-tool path: drop a spawn at the raycast hit
-          // point, snapped to the nearest cube-grid Y level so
-          // markers land on cube tops (not embedded in sides).
-          onPlaceSpawn(snapToCubeTop(e.point));
+        if (tool === 'spawn') {
+          // Spawn tool: drop at the raw raycast hit. `e.point.y` is
+          // the actual surface Y from R3F's raycaster — works for
+          // both cube tops and baked-layout surfaces.
+          onPlaceSpawn([e.point.x, e.point.y, e.point.z]);
           return;
         }
+        // Select OR Move: select the room. The Move tool also kicks
+        // off a drag in the same gesture so the user doesn't have to
+        // click twice.
         onSelect();
-        // Capture the raycast hit's offset from the room anchor so
-        // the room doesn't snap its centre to the cursor on drag.
-        dragStartOffset.current = [
-          e.point.x - groupPos[0],
-          0,
-          e.point.z - groupPos[2],
-        ];
-        dragging.current = true;
+        if (tool === 'move') {
+          // Capture the raycast hit's offset from the room anchor so
+          // the room doesn't jump its centre to the cursor on drag.
+          dragStartOffset.current = [
+            e.point.x - groupPos[0],
+            0,
+            e.point.z - groupPos[2],
+          ];
+          dragging.current = true;
+        }
       }}
     >
       {bakedLayoutPath && room.layoutName ? (
@@ -509,6 +652,16 @@ interface SpawnLayerProps {
   onSelect: (sel: MapSelection) => void;
 }
 
+// Marker geometry — cone is `SPAWN_CONE_HEIGHT` tall. The cone's
+// origin in three.js is its centroid (height/2 above the base), so
+// the marker is positioned with `y = SPAWN_CONE_HEIGHT/2` to put the
+// base flush with `s.position`. The spawn position represents the
+// player's foot, so the marker must visually rest *on* that point
+// rather than be centered through the surface.
+const SPAWN_CONE_HEIGHT = 1.6;
+const SPAWN_CONE_RADIUS = 0.6;
+const SPAWN_SPHERE_OFFSET = SPAWN_CONE_HEIGHT + 0.1; // tip sphere
+
 function SpawnLayer({ spawns, selection, onSelect }: SpawnLayerProps) {
   return (
     <>
@@ -518,20 +671,21 @@ function SpawnLayer({ spawns, selection, onSelect }: SpawnLayerProps) {
         return (
           <group key={s.id} position={s.position}>
             <mesh
+              position={[0, SPAWN_CONE_HEIGHT / 2, 0]}
               onPointerDown={(e) => {
                 if (e.button !== 0) return;
                 e.stopPropagation();
                 onSelect({ kind: 'spawn', id: s.id });
               }}
             >
-              <coneGeometry args={[0.6, 1.6, 8]} />
+              <coneGeometry args={[SPAWN_CONE_RADIUS, SPAWN_CONE_HEIGHT, 8]} />
               <meshStandardMaterial
                 color={isSelected ? '#fde047' : '#22d3ee'}
                 emissive={isSelected ? '#fde047' : '#0e7490'}
                 emissiveIntensity={0.6}
               />
             </mesh>
-            <mesh position={[0, 1.3, 0]}>
+            <mesh position={[0, SPAWN_SPHERE_OFFSET, 0]}>
               <sphereGeometry args={[0.18, 8, 8]} />
               <meshBasicMaterial color={isSelected ? '#fef9c3' : '#cffafe'} />
             </mesh>
