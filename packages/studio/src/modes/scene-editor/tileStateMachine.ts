@@ -17,8 +17,9 @@ export type TileAxis = 'x' | 'y' | 'z';
 /** Axes the current kind can tile on, ordered canonically X → Z → Y.
  * Matches the historical legacy 4-click flow (click 1 = origin,
  * click 2 = X row, click 3 = Z slab, click 4 = Y stack). The user
- * can switch the next axis mid-gesture via the X/Y/Z keys; the order
- * here just determines the default sequence when they don't. */
+ * can cycle the next axis mid-gesture via the `c` key (cycles through
+ * `remainingAxes`); the order here just determines the default
+ * sequence when they don't. */
 export function resolveAvailableAxes(
   tilingAxes: { x: boolean; y: boolean; z: boolean },
 ): TileAxis[] {

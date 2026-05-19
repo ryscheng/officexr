@@ -9,16 +9,19 @@
  *   - On every doc change, `useLayoutDocument` calls scheduleBake automatically.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
-import { ObjectPalette } from '../room/ObjectPalette.tsx';
+import { ObjectPalette } from '../scene-editor/ObjectPalette.tsx';
 import { InspectorPanel } from '../room/InspectorPanel.tsx';
-import { CommandHistory } from '../room/CommandHistory.tsx';
-import { Toolbar } from '../room/Toolbar.tsx';
-import type { Tool } from '../room/tools.ts';
+import { CommandHistory } from '../scene-editor/CommandHistory.tsx';
+import { ContextMenu, type ContextMenuItem } from '../room/ContextMenu.tsx';
+import { Toolbar } from '../scene-editor/Toolbar.tsx';
+import type { Tool } from '../scene-editor/tools.ts';
+import { SceneEditorCanvas } from '../scene-editor/SceneEditorCanvas.tsx';
+import type { SceneEditorBackend } from '../scene-editor/SceneEditorBackend.ts';
+import { selectionIsExactlyOneGroup } from '../room/room-selection.ts';
 import { LayoutPicker } from './LayoutPicker.tsx';
-import { LayoutEditorCanvas } from './LayoutEditorCanvas.tsx';
 import { useLayoutDocument } from './useLayoutDocument.ts';
 import {
   subscribe as registrySubscribe,
@@ -163,19 +166,106 @@ export function LayoutApp() {
     [stagedKindId, layoutDoc],
   );
 
+  // Group-aware click: clicking a tile-grouped cube selects the whole
+  // group, matching Room behavior. Uses the same `pickFromClick` /
+  // `toggleFromClick` helpers the Room editor uses — they read the
+  // doc's group lookup tables and expand the click into the atomic
+  // select-set for that group.
   const handleSelectInstance = useCallback(
     (commandId: string, modKey: boolean) => {
-      if (modKey) layoutDoc.toggleSelection(commandId);
-      else layoutDoc.setSelection([commandId]);
+      if (modKey) layoutDoc.toggleFromClick(commandId);
+      else layoutDoc.pickFromClick(commandId);
     },
     [layoutDoc],
   );
 
   const handleMoveSelection = useCallback(
     (moves: Array<{ commandId: string; position: [number, number, number] }>) => {
-      for (const m of moves) {
-        layoutDoc.setPositionForCommand(m.commandId, m.position);
+      // Single history step covers the whole drag — Ctrl+Z undoes the
+      // entire move at once, not per-command.
+      layoutDoc.setPositionMany(moves);
+    },
+    [layoutDoc],
+  );
+
+  // Context menu state (mirrors RoomApp). `null` = closed.
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+  } | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  /**
+   * Right-click handler. Mirrors `RoomApp.handleContextMenuRequest`
+   * because group/ungroup/delete in the Layout editor should behave
+   * identically to the Room editor — the tile tool needs them for the
+   * "clean up a misplaced tile" workflow.
+   */
+  const handleContextMenuRequest = useCallback(
+    (commandId: string | null, screenX: number, screenY: number) => {
+      let selectionForMenu: ReadonlySet<string>;
+      if (commandId !== null) {
+        if (layoutDoc.selection.has(commandId)) {
+          selectionForMenu = layoutDoc.selection;
+        } else {
+          layoutDoc.pickFromClick(commandId);
+          const g = layoutDoc.lookup.commandToGroup.get(commandId);
+          if (g) {
+            const members = layoutDoc.lookup.groupMembers.get(g) ?? [commandId];
+            selectionForMenu = new Set(members);
+          } else {
+            selectionForMenu = new Set([commandId]);
+          }
+        }
+      } else {
+        if (layoutDoc.selection.size === 0) return;
+        selectionForMenu = layoutDoc.selection;
       }
+
+      const items: ContextMenuItem[] = [];
+      const noneGrouped = Array.from(selectionForMenu).every(
+        (id) => !layoutDoc.lookup.commandToGroup.has(id),
+      );
+      if (selectionForMenu.size >= 2 && noneGrouped) {
+        items.push({
+          id: 'group',
+          label: 'Group',
+          shortcut: 'Ctrl+G',
+          onActivate: () => {
+            layoutDoc.groupCommands(selectionForMenu);
+          },
+        });
+      }
+      const exactGroupId = selectionIsExactlyOneGroup(
+        selectionForMenu,
+        layoutDoc.lookup.groupMembers,
+      );
+      if (exactGroupId) {
+        items.push({
+          id: 'ungroup',
+          label: 'Ungroup',
+          shortcut: 'Ctrl+Shift+G',
+          onActivate: () => {
+            layoutDoc.ungroupCommands(exactGroupId);
+          },
+        });
+      }
+      items.push({
+        id: 'delete',
+        label: 'Delete',
+        shortcut: 'Del',
+        danger: true,
+        onActivate: () => {
+          if (commandId !== null && !layoutDoc.selection.has(commandId)) {
+            layoutDoc.deleteCommand(commandId);
+          } else {
+            layoutDoc.deleteSelection();
+          }
+        },
+      });
+
+      setContextMenu({ x: screenX, y: screenY, items });
     },
     [layoutDoc],
   );
@@ -194,6 +284,24 @@ export function LayoutApp() {
 
       if (e.ctrlKey || e.metaKey) {
         const k = e.key.toLowerCase();
+        // Ctrl+Shift+G ungroups — matches Room. Must come BEFORE the
+        // plain `g` branch so the shift modifier is checked first.
+        if (k === 'g' && e.shiftKey) {
+          e.preventDefault();
+          const exact = selectionIsExactlyOneGroup(
+            layoutDoc.selection,
+            layoutDoc.lookup.groupMembers,
+          );
+          if (exact) layoutDoc.ungroupCommands(exact);
+          return;
+        }
+        if (k === 'g') {
+          e.preventDefault();
+          if (layoutDoc.selection.size >= 2) {
+            layoutDoc.groupCommands(layoutDoc.selection);
+          }
+          return;
+        }
         if (k === 'z' && e.shiftKey) {
           e.preventDefault();
           layoutDoc.redo();
@@ -227,62 +335,79 @@ export function LayoutApp() {
       else if (k === 'v') setTool('select');
       else if (k === 'b' && stagedKindId) setTool('add');
       else if (k === 'x') setTool('delete');
+      else if (k === 't') {
+        // Tile tool — same shortcut + same staged-kind requirement as
+        // RoomApp. Without a staged kind the tile tool has nothing to
+        // place, so silently ignore the keypress in that case.
+        if (stagedKindId) setTool('tile');
+      }
       else if (k === 'm') setTool('move');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [layoutDoc, stagedKindId]);
 
-  // Build a minimal roomDoc-compatible object for InspectorPanel.
-  // ISP note (SOLID): InspectorPanel takes the full useRoomDocument return value,
-  // but only uses a small subset.  We pass a compatible shim.  The cast is
-  // required because TypeScript infers the return type of useRoomDocument as a
-  // structural type with many fields.  When InspectorPanel is refactored to
-  // accept a narrow interface, this shim can be removed.
-  // ISP violation: InspectorPanel depends on the full RoomDoc interface. The
-  // fix is to refactor InspectorPanel to accept a narrower interface — deferred
-  // because it would require changes to the room editor's prop drilling.
-  const roomDocCompat = {
-    doc: { ...layoutDoc.doc, schemaVersion: 5 as const, groups: {} },
-    compiled: layoutDoc.compiled,
-    selection: layoutDoc.selection,
-    lookup: {
-      instancesByCommand: new Map(),
-      commandToGroup: new Map(),
-      groupMembers: new Map(),
-      groupOf: () => null,
-    },
-    setKindForCommand: (_id: string, _kindId: string) => undefined,
-    setPositionForCommand: layoutDoc.setPositionForCommand,
-    deleteCommand: layoutDoc.deleteCommand,
-    deleteSelection: layoutDoc.deleteSelection,
-    groupCommands: () => null,
-    ungroupCommands: () => undefined,
-    addToGroup: () => undefined,
-    // setLayoutName is a no-op in the Layout editor — layout objects don't
-    // link to a nested layout (they ARE the layout).  The InspectorPanel
-    // calls this when the user edits the "Layout" field; suppressing the
-    // call here is intentional so the layout name never gets corrupted.
-    setLayoutName: (_name: string | undefined) => undefined,
-    historyNodes: [],
-    historyCurrentNodeId: null,
-    jumpTo: () => undefined,
-    // Remaining fields from useRoomDocument return type — stub unused ones.
-    roomName: layoutDoc.layoutName,
-    setSelection: layoutDoc.setSelection,
-    toggleSelection: layoutDoc.toggleSelection,
-    clearSelection: layoutDoc.clearSelection,
-    pickFromClick: (id: string) => layoutDoc.setSelection([id]),
-    toggleFromClick: layoutDoc.toggleSelection,
-    placeObject: layoutDoc.placeObject,
-    placeMany: () => [] as string[],
-    setPositionMany: () => undefined,
-    loadRoom: async () => undefined,
-    newRoom: () => undefined,
-    listRooms: async () => [] as string[],
-    undo: layoutDoc.undo,
-    redo: layoutDoc.redo,
-  };
+  // Canvas backend: every field SceneEditorCanvas needs, sourced from
+  // useLayoutDocument + the editor's UI state. Mirrors how RoomApp
+  // builds its backend — both editors satisfy the same
+  // `SceneEditorBackend` contract.
+  const backend = useMemo<SceneEditorBackend>(
+    () => ({
+      compiled: layoutDoc.compiled,
+      selection: layoutDoc.selection,
+      tool,
+      stagedKindId,
+      buildHeight,
+      commandToGroup: layoutDoc.lookup.commandToGroup,
+      groupMembers: layoutDoc.lookup.groupMembers,
+      doc: layoutDoc.doc,
+      // Layouts have no nested base layout — they ARE the base. The
+      // canvas leaves the BakedLayout slot empty when these are
+      // undefined.
+      bakedLayoutPath: undefined,
+      bakedLayoutName: undefined,
+      onPlaceAt: handlePlace,
+      onPlaceMany: layoutDoc.placeMany,
+      onSelectInstance: handleSelectInstance,
+      onDeleteCommand: layoutDoc.deleteCommand,
+      onClickEmpty: layoutDoc.clearSelection,
+      onCreateGroup: layoutDoc.groupCommands,
+      onSetTool: setTool,
+      onContextMenuRequest: handleContextMenuRequest,
+      onMoveSelection: handleMoveSelection,
+    }),
+    [
+      layoutDoc.compiled,
+      layoutDoc.selection,
+      tool,
+      stagedKindId,
+      buildHeight,
+      layoutDoc.lookup.commandToGroup,
+      layoutDoc.lookup.groupMembers,
+      layoutDoc.doc,
+      handlePlace,
+      layoutDoc.placeMany,
+      handleSelectInstance,
+      layoutDoc.deleteCommand,
+      layoutDoc.clearSelection,
+      layoutDoc.groupCommands,
+      handleContextMenuRequest,
+      handleMoveSelection,
+    ],
+  );
+
+  // useLayoutDocument now spreads the entire useRoomDocument shape, so
+  // InspectorPanel takes layoutDoc directly with one targeted override:
+  // setLayoutName is suppressed because layouts don't link to other
+  // layouts. (Editing the "Layout" field inside the inspector would
+  // otherwise corrupt the layout's own name.)
+  const inspectorDoc = useMemo(
+    () => ({
+      ...layoutDoc,
+      setLayoutName: (_name: string | undefined) => undefined,
+    }),
+    [layoutDoc],
+  );
 
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
@@ -308,20 +433,7 @@ export function LayoutApp() {
           overflow: 'hidden',
         }}
       >
-        <LayoutEditorCanvas
-          doc={layoutDoc.doc}
-          compiled={layoutDoc.compiled}
-          selection={layoutDoc.selection}
-          tool={tool}
-          stagedKindId={stagedKindId}
-          buildHeight={buildHeight}
-          onPlaceAt={handlePlace}
-          onSelectInstance={handleSelectInstance}
-          onDeleteCommand={layoutDoc.deleteCommand}
-          onSetTool={setTool}
-          onClickEmpty={layoutDoc.clearSelection}
-          onMoveSelection={handleMoveSelection}
-        />
+        <SceneEditorCanvas backend={backend} />
         <BakeStatusPill layoutName={layoutDoc.layoutName} />
         <Toolbar
           active={tool}
@@ -332,21 +444,29 @@ export function LayoutApp() {
       <SidePanel>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            <InspectorPanel roomDoc={roomDocCompat as Parameters<typeof InspectorPanel>[0]['roomDoc']} />
+            <InspectorPanel roomDoc={inspectorDoc} />
           </div>
           <OptimizerPicker
-            value={layoutDoc.doc.optimizer}
+            value={layoutDoc.optimizer}
             onChange={layoutDoc.setOptimizer}
           />
           <div style={{ flex: '0 0 auto', maxHeight: '45%', overflowY: 'auto' }}>
             <CommandHistory
-              nodes={[]}
-              currentNodeId={null}
-              onJumpTo={() => undefined}
+              nodes={layoutDoc.historyNodes}
+              currentNodeId={layoutDoc.historyCurrentNodeId}
+              onJumpTo={layoutDoc.jumpTo}
             />
           </div>
         </div>
       </SidePanel>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={closeContextMenu}
+        />
+      )}
     </div>
   );
 }

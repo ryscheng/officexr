@@ -44,7 +44,7 @@ export {
   type ExtrudeCommand,
   type SceneDocument,
   type RoomDocument,
-  type RoomGroup,
+  type CommandGroup,
   type CubeFace,
   CUBE_FACES,
   newPlaceObject,

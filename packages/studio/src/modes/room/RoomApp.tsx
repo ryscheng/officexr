@@ -1,16 +1,17 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
-import { CommandHistory } from './CommandHistory.tsx';
+import { CommandHistory } from '../scene-editor/CommandHistory.tsx';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.tsx';
 import { InspectorPanel } from './InspectorPanel.tsx';
-import { ObjectPalette } from './ObjectPalette.tsx';
+import { ObjectPalette } from '../scene-editor/ObjectPalette.tsx';
 import { RoomPicker } from './RoomPicker.tsx';
-import { SceneEditorCanvas } from './SceneEditorCanvas.tsx';
-import { Toolbar } from './Toolbar.tsx';
+import { SceneEditorCanvas } from '../scene-editor/SceneEditorCanvas.tsx';
+import { Toolbar } from '../scene-editor/Toolbar.tsx';
 import { useRoomDocument } from './useRoomDocument.ts';
 import { selectionIsExactlyOneGroup } from './room-selection.ts';
-import type { Tool } from './tools.ts';
+import type { Tool } from '../scene-editor/tools.ts';
+import type { SceneEditorBackend } from '../scene-editor/SceneEditorBackend.ts';
 
 /**
  * Standalone Room editor application (renamed from `ScenesApp` in
@@ -258,6 +259,54 @@ export function RoomApp() {
     [roomDoc],
   );
 
+  // Build the canvas's backend object. Memoized so the canvas only
+  // re-renders when one of the observable fields changes. The Room
+  // editor owns tool / stagedKindId / buildHeight as local component
+  // state; the document hook owns everything else.
+  const backend = useMemo<SceneEditorBackend>(
+    () => ({
+      compiled: roomDoc.compiled,
+      selection: roomDoc.selection,
+      tool,
+      stagedKindId,
+      buildHeight,
+      commandToGroup: roomDoc.lookup.commandToGroup,
+      groupMembers: roomDoc.lookup.groupMembers,
+      doc: roomDoc.doc,
+      bakedLayoutPath: roomDoc.doc.layoutName
+        ? `/api/baked-layouts/${encodeURIComponent(roomDoc.doc.layoutName)}`
+        : undefined,
+      bakedLayoutName: roomDoc.doc.layoutName,
+      onPlaceAt: handlePlace,
+      onPlaceMany: roomDoc.placeMany,
+      onSelectInstance: handleSelectInstance,
+      onDeleteCommand: roomDoc.deleteCommand,
+      onClickEmpty: roomDoc.clearSelection,
+      onCreateGroup: roomDoc.groupCommands,
+      onSetTool: setTool,
+      onContextMenuRequest: handleContextMenuRequest,
+      onMoveSelection: handleMoveSelection,
+    }),
+    [
+      roomDoc.compiled,
+      roomDoc.selection,
+      tool,
+      stagedKindId,
+      buildHeight,
+      roomDoc.lookup.commandToGroup,
+      roomDoc.lookup.groupMembers,
+      roomDoc.doc,
+      handlePlace,
+      roomDoc.placeMany,
+      handleSelectInstance,
+      roomDoc.deleteCommand,
+      roomDoc.clearSelection,
+      roomDoc.groupCommands,
+      handleContextMenuRequest,
+      handleMoveSelection,
+    ],
+  );
+
   // InspectorPanel is rendered directly in <SidePanel> below.
 
   return (
@@ -306,31 +355,7 @@ export function RoomApp() {
           overflow: 'hidden',
         }}
       >
-        <SceneEditorCanvas
-          compiled={roomDoc.compiled}
-          selection={roomDoc.selection}
-          tool={tool}
-          stagedKindId={stagedKindId}
-          buildHeight={buildHeight}
-          commandToGroup={roomDoc.lookup.commandToGroup}
-          groupMembers={roomDoc.lookup.groupMembers}
-          onPlaceAt={handlePlace}
-          onSelectInstance={handleSelectInstance}
-          onDeleteCommand={roomDoc.deleteCommand}
-          onPlaceMany={roomDoc.placeMany}
-          onCreateGroup={roomDoc.groupCommands}
-          onSetTool={setTool}
-          onClickEmpty={roomDoc.clearSelection}
-          onContextMenuRequest={handleContextMenuRequest}
-          onMoveSelection={handleMoveSelection}
-          doc={roomDoc.doc}
-          bakedLayoutPath={
-            roomDoc.doc.layoutName
-              ? `/api/baked-layouts/${encodeURIComponent(roomDoc.doc.layoutName)}`
-              : undefined
-          }
-          bakedLayoutName={roomDoc.doc.layoutName}
-        />
+        <SceneEditorCanvas backend={backend} />
         <RoomHud
           roomName={roomDoc.roomName}
           tool={tool}

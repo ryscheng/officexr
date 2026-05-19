@@ -9,7 +9,7 @@
  * Each action's semantics mirror the corresponding mutator in
  * `useRoomDocument.ts` exactly.
  */
-import type { RoomDocument, PlaceObjectCommand, RoomGroup } from '@officexr/world/scenes';
+import type { RoomDocument, PlaceObjectCommand, CommandGroup } from '@officexr/world/scenes';
 import { newPlaceObject } from '@officexr/world/scenes';
 import type { EditAction } from './EditAction.ts';
 
@@ -37,7 +37,7 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
         }),
       );
 
-      const groups: Record<string, RoomGroup> = { ...doc.groups };
+      const groups: Record<string, CommandGroup> = { ...doc.groups };
       if (action.groupId !== null) {
         const existing = groups[action.groupId];
         if (existing) {
@@ -69,7 +69,7 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
 
       // Reconstruct groups: for each affected group, keep only surviving commandIds.
       // If fewer than 2 survive, drop the group.
-      const groups: Record<string, RoomGroup> = {};
+      const groups: Record<string, CommandGroup> = {};
       for (const g of Object.values(doc.groups)) {
         if (action.groupsAffected[g.id] !== undefined) {
           // This group is affected by the delete — recompute membership

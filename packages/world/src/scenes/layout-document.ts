@@ -7,14 +7,16 @@
  * optimized GLB via `@gltf-transform`.
  *
  * Design notes:
- * - No `groups` field in v1 — layouts don't need command grouping yet.
- *   If required later, bump to v2.
+ * - `groups` is an optional additive field — older on-disk layouts
+ *   without it deserialize as if they had `{}` (empty groups). Layouts
+ *   share the `CommandGroup` shape with rooms so the shared
+ *   SceneEditorCanvas works for both.
  * - Referenced kind IDs are NOT validated at deserialize time against
  *   `isLayoutObject`; that check belongs in the layout editor UI and
  *   the bake service, not here.
  */
 
-import type { SceneCommand } from './commands.ts';
+import type { SceneCommand, CommandGroup } from './commands.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,6 +28,15 @@ export interface LayoutDocumentV1 {
   title?: string;
   updatedAt?: number;
   commands: SceneCommand[];
+  /**
+   * Authoring-time command groupings used by the tile / select / delete
+   * tools to treat a cluster of placeObject commands as a unit. The
+   * canonical state lives on disk under this field; the runtime
+   * cascade maps (`commandToGroup`, `groupMembers`) are derived from
+   * it. Optional / defaults to `{}` for back-compat with v1 layouts
+   * authored before this field existed.
+   */
+  groups?: Record<string, CommandGroup>;
   /**
    * Persisted bake-optimization strategy id (one of `BAKE_OPTIMIZERS`
    * keys from `@officexr/world/app/bake-optimizers`). When undefined,
@@ -47,6 +58,7 @@ export type SerializedLayoutV1 = {
   title?: string;
   updatedAt?: number;
   commands: SceneCommand[];
+  groups?: Record<string, CommandGroup>;
   optimizer?: string;
 };
 
@@ -58,6 +70,7 @@ export interface SerializeLayoutInput {
   name: string;
   title?: string;
   commands: SceneCommand[];
+  groups?: Record<string, CommandGroup>;
   optimizer?: string;
 }
 
@@ -68,6 +81,7 @@ export function serializeLayout(input: SerializeLayoutInput): SerializedLayoutV1
     title: input.title,
     updatedAt: Date.now(),
     commands: input.commands,
+    groups: input.groups,
     optimizer: input.optimizer,
   };
 }
@@ -106,6 +120,10 @@ export function deserializeLayout(raw: unknown): LayoutDocument {
     title: typeof obj.title === 'string' ? obj.title : undefined,
     updatedAt: typeof obj.updatedAt === 'number' ? obj.updatedAt : undefined,
     commands: obj.commands as SceneCommand[],
+    groups:
+      obj.groups && typeof obj.groups === 'object' && !Array.isArray(obj.groups)
+        ? (obj.groups as Record<string, CommandGroup>)
+        : undefined,
     optimizer: typeof obj.optimizer === 'string' ? obj.optimizer : undefined,
   };
 }

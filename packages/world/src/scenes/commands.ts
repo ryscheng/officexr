@@ -83,13 +83,13 @@ export interface SceneDocument {
  * v1 invariant: each `commandId` belongs to at most one group.
  * Nesting is not supported in v1.
  *
- * Invariant: `id` must equal the `Record<string, RoomGroup>` key that
+ * Invariant: `id` must equal the `Record<string, CommandGroup>` key that
  * stores this group. Carrying the id inline is intentional so a group
  * passed around by reference (e.g. into the inspector) still knows its
  * own identity; the duplication is checked when the Room editor's
  * mutators write to the document.
  */
-export interface RoomGroup {
+export interface CommandGroup {
   id: string;
   commandIds: string[];
   label?: string;
@@ -115,7 +115,7 @@ export interface RoomDocument {
   title?: string;
   updatedAt?: number;
   commands: SceneCommand[];
-  groups: Record<string, RoomGroup>;
+  groups: Record<string, CommandGroup>;
   /** Optional reference to a named LayoutDocument. When set, the room
    * loads the baked GLB for this layout as its structural base. */
   layoutName?: string;

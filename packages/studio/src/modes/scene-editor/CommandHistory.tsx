@@ -1,5 +1,4 @@
 import React from 'react';
-import type { EditAction } from './EditAction.ts';
 
 interface CommandHistoryProps {
   nodes: ReadonlyArray<{ id: string; label: string }>;

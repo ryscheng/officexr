@@ -1,4 +1,4 @@
-import type { RoomDocument } from '@officexr/world/scenes';
+import type { SceneCommand } from '@officexr/world/scenes';
 
 /**
  * Returns a string key uniquely identifying a voxel position.
@@ -41,7 +41,7 @@ export interface VoxelFootprint {
  * @returns 'ok' if no collision, 'blocked' if any proposed position is occupied
  */
 export function checkMoveOccupancy(
-  doc: RoomDocument,
+  doc: { commands: readonly SceneCommand[] },
   movingIds: ReadonlySet<string>,
   proposedPositions: ReadonlyMap<string, [number, number, number]>,
   movingFootprint?: VoxelFootprint,

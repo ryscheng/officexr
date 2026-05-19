@@ -1,12 +1,15 @@
-import type { RoomDocument } from '@officexr/world/scenes';
+import type { SceneCommand } from '@officexr/world/scenes';
 
 /**
  * Given a selection of commandIds and an integer-voxel delta, return
  * the proposed new positions for each selected object.
  * Returns null if any selected commandId is not found in doc.commands.
+ *
+ * Doc is narrowed to `{ commands }` so this helper is document-agnostic
+ * — both Room and Layout drive the move tool through the same function.
  */
 export function computeMovedPositions(
-  doc: RoomDocument,
+  doc: { commands: readonly SceneCommand[] },
   selectedIds: ReadonlySet<string>,
   delta: [number, number, number],
 ): ReadonlyMap<string, [number, number, number]> | null {

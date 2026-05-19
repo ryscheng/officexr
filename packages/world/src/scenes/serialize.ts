@@ -4,7 +4,7 @@ import {
   newPlaceCube,
   type PlaceObjectCommand,
   type RoomDocument,
-  type RoomGroup,
+  type CommandGroup,
   type SceneCommand,
   type SceneDocument,
 } from './commands.ts';
@@ -65,7 +65,7 @@ export type SerializedRoomV3 = {
     | { id: string; op: 'placeCube'; kindId: string; position: [number, number, number] }
     | { id: string; op: 'extrude'; targetCommandId: string; face: string; count: number }
   >;
-  groups: Record<string, RoomGroup>;
+  groups: Record<string, CommandGroup>;
 };
 
 /**
@@ -80,7 +80,7 @@ export type SerializedRoomV4 = {
   title?: string;
   updatedAt?: number;
   commands: SceneCommand[];
-  groups: Record<string, RoomGroup>;
+  groups: Record<string, CommandGroup>;
 };
 
 /**
@@ -94,7 +94,7 @@ export type SerializedRoomV5 = {
   title?: string;
   updatedAt?: number;
   commands: SceneCommand[];
-  groups: Record<string, RoomGroup>;
+  groups: Record<string, CommandGroup>;
   layoutName?: string;
 };
 
@@ -133,7 +133,7 @@ export interface SerializeRoomInput {
   name: string;
   title?: string;
   commands: SceneCommand[];
-  groups?: Record<string, RoomGroup>;
+  groups?: Record<string, CommandGroup>;
   layoutName?: string;
 }
 

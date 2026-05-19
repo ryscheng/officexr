@@ -298,4 +298,33 @@ describe('LayoutDocument round-trip', () => {
     expect(parsed.commands).toHaveLength(0);
     expect(parsed.schemaVersion).toBe(1);
   });
+
+  it('deserializeLayout accepts older v1 docs without `groups` (additive field)', () => {
+    // A layout authored before `groups` existed must round-trip with
+    // `groups` resolving to undefined; consumers treat that as `{}`.
+    const raw = {
+      schemaVersion: 1,
+      name: 'no-groups-on-disk',
+      commands: [
+        { id: 'a', op: 'placeObject', kindId: 'wall', position: [0, 0, 0] },
+      ],
+    };
+    const parsed = deserializeLayout(raw);
+    expect(parsed.name).toBe('no-groups-on-disk');
+    expect(parsed.groups).toBeUndefined();
+  });
+
+  it('serializeLayout + deserializeLayout round-trips groups', () => {
+    const commands = [
+      { id: 'a', op: 'placeObject' as const, kindId: 'wall', position: [0, 0, 0] as [number, number, number] },
+      { id: 'b', op: 'placeObject' as const, kindId: 'wall', position: [4, 0, 0] as [number, number, number] },
+    ];
+    const groups = {
+      g1: { id: 'g1', commandIds: ['a', 'b'], label: 'wall-row' },
+    };
+    const serialized = serializeLayout({ name: 'with-groups', commands, groups });
+    const raw = JSON.parse(JSON.stringify(serialized));
+    const parsed = deserializeLayout(raw);
+    expect(parsed.groups).toEqual(groups);
+  });
 });

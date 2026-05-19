@@ -7,7 +7,7 @@ import {
   serializeRoom,
   type PlaceObjectCommand,
   type RoomDocument,
-  type RoomGroup,
+  type CommandGroup,
   type RoomStorage,
 } from '@officexr/world/scenes';
 import type { WorldObjects } from '@officexr/sdk';
@@ -24,6 +24,41 @@ import type { EditAction } from './EditAction.ts';
 const LAST_ROOM_KEY = 'officexr:studio:lastRoom';
 const DEFAULT_ROOM_NAME = 'default-v2';
 
+/**
+ * Optional configuration for `useRoomDocument`. The defaults match the
+ * Room editor's historical behavior, so existing callers don't need
+ * to pass anything.
+ *
+ * The Layout editor passes a different `storage` (a LayoutStorage
+ * adapter that translates LayoutDocument JSON ↔ RoomDocument shape),
+ * a different `lastNameKey`, and an `afterSave` callback that schedules
+ * a GLB bake. Everything else — mutators, history, selection, group
+ * cascade — is reused as-is. That's the point: Layout is "almost
+ * identical to Room except things are optimized when saved."
+ */
+export interface UseRoomDocumentOptions {
+  /** RoomStorage to load/save documents through. Defaults to the
+   *  Filesystem adapter with a LocalStorage fallback. */
+  storage?: RoomStorage;
+  /** Document name used when nothing is in localStorage. */
+  defaultName?: string;
+  /** localStorage key remembering the last-opened document name. */
+  lastNameKey?: string;
+  /**
+   * Called after each successful save. Receives the same RoomDocument
+   * that was persisted. The Layout editor uses this hook to schedule
+   * a bake — equivalent to the room editor having no post-save side
+   * effect.
+   */
+  afterSave?: (name: string, doc: RoomDocument) => void;
+  /**
+   * When true (default), changing `doc.layoutName` warm-prefetches the
+   * linked layout's bake. The Layout editor sets this to false because
+   * layouts don't link to other layouts.
+   */
+  enableLayoutLinkPrefetch?: boolean;
+}
+
 let nextGroupSeq = 1;
 function mintGroupId(): string {
   return `g-${(nextGroupSeq++).toString(36)}-${Date.now().toString(36).slice(-4)}`;
@@ -39,7 +74,7 @@ function mintGroupId(): string {
  *   - `commandToGroup` maps a `commandId` → its enclosing group's id
  *     (or `null`). Drives "click a group member → select whole group".
  *   - `groupMembers` maps a `groupId` → its membership list (a copy
- *     of `RoomGroup.commandIds` so callers can't mutate the doc).
+ *     of `CommandGroup.commandIds` so callers can't mutate the doc).
  */
 export interface RoomDocLookup {
   instancesByCommand: ReadonlyMap<
@@ -67,11 +102,11 @@ export interface RoomDocLookup {
  *   - `selection` is now `ReadonlySet<string>` (multi-select via
  *     Ctrl/Cmd+click). Clicking a group member selects the whole
  *     group atomically — see `pickFromClick` / `toggleFromClick`.
- *   - The document carries `groups: Record<string, RoomGroup>` so a
+ *   - The document carries `groups: Record<string, CommandGroup>` so a
  *     tile-tool result (Task 9) or a manual Group action persists
  *     across save/load.
  */
-export function useRoomDocument(): {
+export function useRoomDocument(options?: UseRoomDocumentOptions): {
   doc: RoomDocument;
   compiled: WorldObjects;
   roomName: string;
@@ -112,24 +147,38 @@ export function useRoomDocument(): {
   historyNodes: ReadonlyArray<{ id: string; action: EditAction; label: string }>;
   historyCurrentNodeId: string | null;
 } {
-  const storage = useMemo<RoomStorage>(() => {
+  const defaultName = options?.defaultName ?? DEFAULT_ROOM_NAME;
+  const lastNameKey = options?.lastNameKey ?? LAST_ROOM_KEY;
+  const enableLayoutLinkPrefetch = options?.enableLayoutLinkPrefetch ?? true;
+  const afterSave = options?.afterSave;
+
+  // Fall back to the default Filesystem/LocalStorage stack when the
+  // caller doesn't supply a storage. Layout passes its own adapter
+  // (which wraps LayoutStorage + translates document shapes).
+  const fallbackStorage = useMemo<RoomStorage>(() => {
     try {
       return new FilesystemRoomStorage();
     } catch {
       return new LocalStorageRoomStorage();
     }
   }, []);
+  const storage = options?.storage ?? fallbackStorage;
 
   const [roomName, setRoomName] = useState<string>(() => {
     try {
-      return globalThis.localStorage?.getItem(LAST_ROOM_KEY) ?? DEFAULT_ROOM_NAME;
+      return globalThis.localStorage?.getItem(lastNameKey) ?? defaultName;
     } catch {
-      return DEFAULT_ROOM_NAME;
+      return defaultName;
     }
   });
   const [doc, setDoc] = useState<RoomDocument>(() =>
     emptyRoomDocument(roomName),
   );
+  // Stable ref of the latest committed doc — `afterSave` (and any
+  // other side-effect hook that fires on saves) reads through it so
+  // we don't rebuild the autosave effect every time the doc changes.
+  const docRef = useRef(doc);
+  useEffect(() => { docRef.current = doc; }, [doc]);
   const [selection, setSelectionState] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -239,7 +288,7 @@ export function useRoomDocument(): {
         loadedForRef.current = roomName;
       });
     try {
-      globalThis.localStorage?.setItem(LAST_ROOM_KEY, roomName);
+      globalThis.localStorage?.setItem(lastNameKey, roomName);
     } catch {
       // ignore — localStorage may be blocked.
     }
@@ -259,22 +308,26 @@ export function useRoomDocument(): {
     if (json === lastSavedJsonRef.current) return;
     const t = setTimeout(() => {
       lastSavedJsonRef.current = json;
+      const serialized = serializeRoom({
+        name: roomName,
+        title: doc.title ?? roomName,
+        commands: doc.commands,
+        groups: doc.groups,
+      }) as RoomDocument;
       storage
-        .save(
-          roomName,
-          serializeRoom({
-            name: roomName,
-            title: doc.title ?? roomName,
-            commands: doc.commands,
-            groups: doc.groups,
-          }) as RoomDocument,
-        )
+        .save(roomName, serialized)
+        .then(() => {
+          // afterSave fires only on successful persistence. Layout mode
+          // uses this to schedule a bake of the just-saved doc; in Room
+          // mode it's undefined and we skip.
+          afterSave?.(roomName, serialized);
+        })
         .catch((err) => {
           console.warn(`[room] save("${roomName}") failed:`, err);
         });
     }, 500);
     return () => clearTimeout(t);
-  }, [doc, roomName, storage]);
+  }, [doc, roomName, storage, afterSave]);
 
   // --- Selection -------------------------------------------------
 
@@ -550,7 +603,8 @@ export function useRoomDocument(): {
     setDoc((prev) => ({ ...prev, layoutName: trimmed, updatedAt: Date.now() }));
     // Best-effort prefetch: if the new layout has been baked before,
     // warm the BakeRegistry's in-flight cache so the viewport loads fast.
-    if (trimmed) {
+    // Layout editor disables this — layouts don't link to layouts.
+    if (trimmed && enableLayoutLinkPrefetch) {
       const deps = createBrowserBakeDeps(catalog, geometry);
       const fetchDoc = async () => {
         const res = await fetch(`/api/layouts/${encodeURIComponent(trimmed)}`);
@@ -561,11 +615,13 @@ export function useRoomDocument(): {
         // Best-effort — failure is non-blocking.
       });
     }
-  }, [catalog, geometry]);
+  }, [catalog, geometry, enableLayoutLinkPrefetch]);
 
   // Also prefetch when doc.layoutName changes after load (e.g. on
-  // initial load of a room that already has a layoutName).
+  // initial load of a room that already has a layoutName). Skipped in
+  // Layout mode (layouts don't have a nested base layout).
   useEffect(() => {
+    if (!enableLayoutLinkPrefetch) return;
     if (!doc.layoutName) return;
     const name = doc.layoutName;
     const deps = createBrowserBakeDeps(catalog, geometry);
@@ -577,7 +633,7 @@ export function useRoomDocument(): {
     awaitFresh(name, deps, fetchDoc).catch(() => {
       // Best-effort — failure is non-blocking.
     });
-  }, [doc.layoutName, catalog, geometry]);
+  }, [doc.layoutName, catalog, geometry, enableLayoutLinkPrefetch]);
 
   // --- History ---------------------------------------------------
 

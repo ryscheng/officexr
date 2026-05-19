@@ -17,20 +17,21 @@ const ROOM_EDITOR_LIGHTING = {
   ambientFillIntensity: 0.6,
 };
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
-import type { RoomDocument } from '@officexr/world/scenes';
+import type { SceneCommand } from '@officexr/world/scenes';
 import { useApplication } from '@officexr/world/react';
 import type { Tool } from './tools.ts';
+import type { SceneEditorBackend } from './SceneEditorBackend.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
 import {
   snapToNearestFace,
   snapToVoxel,
   type NearbyObjectInfo,
   type SnapHit,
-} from './roomSnap.ts';
-import { outlineEdgePositions } from './selectionOutline.ts';
-import { computeMovedPositions } from './moveDelta.ts';
-import { checkMoveOccupancy } from './moveOccupancy.ts';
-import { dropToSurface } from './dropToSurface.ts';
+} from '../room/roomSnap.ts';
+import { outlineEdgePositions } from '../room/selectionOutline.ts';
+import { computeMovedPositions } from '../room/moveDelta.ts';
+import { checkMoveOccupancy } from '../room/moveOccupancy.ts';
+import { dropToSurface } from '../room/dropToSurface.ts';
 import {
   computeTileGhosts,
   resolveAvailableAxes,
@@ -143,80 +144,16 @@ function tileYReplicas(
   return out;
 }
 
+/**
+ * Props for the canvas — exactly one field, the `SceneEditorBackend`
+ * the parent provides. Every piece of state and every callback the
+ * canvas needs lives on that object; the canvas reads `backend.*`
+ * throughout. This makes the canvas document-agnostic: any hook that
+ * implements `SceneEditorBackend` (`useRoomDocument`,
+ * `useLayoutDocument`, …) can drive it.
+ */
 interface SceneEditorCanvasProps {
-  /** The compiled scene snapshot to render. */
-  compiled: WorldObjects;
-  /** Currently-selected source command ids (multi-select). Every
-   * instance whose `sourceCommandId` is in this set gets the
-   * highlight tint so the user can see what they're editing. */
-  selection: ReadonlySet<string>;
-  /** Active editor tool — determines what a left-click does. */
-  tool: Tool;
-  /** Cube kind staged for the Add tool. */
-  stagedKindId: string | null;
-  /** Integer voxel y the Add-tool floor picker sits at. The grid
-   * plane at world y=0 is a visual reference; this can be any int
-   * (positive or negative) so users can place cubes anywhere along
-   * the y axis. */
-  buildHeight: number;
-  /** Lookup tables for selection / delete cascade — maps each
-   * commandId to its group (if any) so the Delete tool's pulse
-   * ghosts cover every group member. */
-  commandToGroup: ReadonlyMap<string, string>;
-  groupMembers: ReadonlyMap<string, readonly string[]>;
-  /** Click on an empty cell (no cube hit) with the Add tool active —
-   * places a cube of the staged kind at the picked floor position.
-   * Coords are integer voxels. */
-  onPlaceAt: (position: [number, number, number]) => void;
-  /** Click on an existing cube with the Select tool active. `modKey`
-   * is true when Ctrl or Cmd was held — caller maps that to toggle
-   * vs. replace semantics. */
-  onSelectInstance: (commandId: string, modKey: boolean) => void;
-  /** Click on an existing cube with the Delete tool active. Deletes
-   * the command (cascading through the group if any). */
-  onDeleteCommand: (commandId: string) => void;
-  /** Tile-tool placement: batch-create N cubes at the given voxel
-   * positions, optionally adding them all to the same group. Returns
-   * the new commandIds. */
-  onPlaceMany: (
-    kindId: string,
-    positions: ReadonlyArray<[number, number, number]>,
-    groupId?: string | null,
-  ) => string[];
-  /** Tile-tool group creation. Called after click 2 once we have ≥2
-   * cubes to bundle. Returns the new groupId. */
-  onCreateGroup: (commandIds: Iterable<string>) => string | null;
-  /** Click on EMPTY floor with the Select tool — deselects. The
-   * canvas only knows that the click missed every cube; the parent
-   * decides whether that means "deselect" or some other action. */
-  onClickEmpty: () => void;
-  /** Tool-state external setter. Tile tool returns to Select on
-   * click 4 / Esc; the canvas owns the tile state machine but the
-   * `tool` lives in the parent. */
-  onSetTool: (tool: Tool) => void;
-  /** Right-click without drag — opens the context menu. The canvas
-   * supplies the cube's sourceCommandId if a cube was hit, else null.
-   * The parent decides menu visibility + items based on selection
-   * state. */
-  onContextMenuRequest: (
-    commandId: string | null,
-    screenX: number,
-    screenY: number,
-  ) => void;
-  /** Raw room document — needed by the move tool for occupancy checks
-   * and delta translation. Must stay in sync with `compiled`. */
-  doc: RoomDocument;
-  /** URL of the pre-baked layout GLB for this room's structural base.
-   * Requires `bakedLayoutName`. Rendered behind the object instances. */
-  bakedLayoutPath?: string;
-  /** Layout name for cache-busting via BakeRegistry. Must match the
-   * layout's `LayoutDocument.name`. */
-  bakedLayoutName?: string;
-  /** Move-tool batched position update. Called on successful drag-
-   * release. One history action per drag (once Task 03 lands). */
-  onMoveSelection: (
-    moves: Array<{ commandId: string; position: [number, number, number] }>,
-  ) => void;
+  backend: SceneEditorBackend;
 }
 
 /**
@@ -238,7 +175,15 @@ interface SceneEditorCanvasProps {
  *   - Click on the floor (no cube hit) with a `stagedKindId`: place a
  *     new cube at that voxel.
  */
-export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
+export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
+  // Alias the backend to `props` so the existing function body — which
+  // reads `props.compiled`, `props.tool`, `props.onPlaceAt`, etc. — keeps
+  // working without churn. The canvas was previously parameterized by a
+  // 19-prop interface; that interface collapsed into a single
+  // `backend: SceneEditorBackend` field, and `props` now points at it.
+  // SRP: this single alias replaces what would otherwise be ~80 mechanical
+  // edits.
+  const props = backend;
   // Add/Tile snap target — populated by pointermove on floor or cube.
   const [hover, setHover] = useState<SnapHit | null>(null);
   // Delete hover — populated by pointermove on a cube when the
@@ -272,32 +217,29 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     }
   }, [props.tool]);
 
-  // Screen-Y anchor for the Tile tool's stage-4 (z-extruded) y-delta
-  // picker. After click 3 we capture the current cursor screen Y;
-  // each ~28 pixels of vertical movement above/below it counts as 1
-  // voxel up/down. Tracked in a ref + state pair so the ghosts
-  // re-render but the listener doesn't re-bind every frame.
-  const yAnchorRef = useRef<number | null>(null);
+  // Y-delta for the tile tool's Y-axis extrusion stage. Updated by the
+  // `<YAxisTracker>` mounted inside the R3F Canvas (below) whenever the
+  // pointer moves and the gesture is in a Y-axis stage. The tracker
+  // raycasts the cursor onto a vertical plane through the tile origin
+  // so the ghost follows the cursor's actual world-space position —
+  // unlike the previous screen-pixel-delta approach, which felt off
+  // at any non-default zoom / camera distance because 1 voxel was
+  // hard-wired to 28 screen pixels.
   const [yDelta, setYDelta] = useState<number>(0);
+  // Whether Y-axis pointer tracking should be live. Derived from
+  // `tileState`; isolated as a primitive so child effects can depend
+  // on it as a single, accurate value. Bug guarded: a previous version
+  // depended on `tileState.stage` alone, which missed `nextAxis` flips
+  // that happen WITHOUT a stage change (e.g. user presses Y while
+  // still in the 'placed' stage to switch from X to Y).
+  const isYAxisActive =
+    (tileState.stage === 'axis-extruded' && tileState.nextAxis === 'y') ||
+    (tileState.stage === 'placed' && tileState.nextAxis === 'y');
+  // Reset yDelta whenever Y-axis tracking deactivates so a stale value
+  // from a previous Y stage doesn't bleed into the next gesture.
   useEffect(() => {
-    // Activate Y-delta tracking when the next axis is Y (generalized)
-    const isYAxisActive =
-      (tileState.stage === 'axis-extruded' && tileState.nextAxis === 'y') ||
-      (tileState.stage === 'placed' && tileState.nextAxis === 'y');
-    if (!isYAxisActive) {
-      yAnchorRef.current = null;
-      setYDelta(0);
-      return;
-    }
-    const PIXELS_PER_VOXEL = 28;
-    const onMove = (e: MouseEvent) => {
-      if (yAnchorRef.current === null) yAnchorRef.current = e.clientY;
-      const dy = yAnchorRef.current - e.clientY; // up on screen → +y voxels
-      setYDelta(Math.round(dy / PIXELS_PER_VOXEL));
-    };
-    window.addEventListener('mousemove', onMove);
-    return () => window.removeEventListener('mousemove', onMove);
-  }, [tileState.stage]);
+    if (!isYAxisActive) setYDelta(0);
+  }, [isYAxisActive]);
 
   // Esc commits-real-and-exits at any stage. Listening at window level
   // here keeps the tile state in the canvas's hands — RoomApp's Esc
@@ -316,9 +258,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [props]);
 
-  // X/Y/Z key handler: switches the next tiling axis during an active
-  // tile gesture. Uses a ref mirror to avoid re-binding the listener
-  // on every state change.
+  // `c` cycles through the remaining (not-yet-consumed) tile axes
+  // mid-gesture. A single key keeps the editor's keymap small AND
+  // sidesteps the conflict with the global `x` = delete-tool shortcut
+  // that a per-axis key (x/y/z) would have caused. Cycling is bounded
+  // to `tileState.remainingAxes`, so once an axis has been extruded
+  // the user can't accidentally re-select it.
   const tileStateRef = useRef(tileState);
   useEffect(() => {
     tileStateRef.current = tileState;
@@ -329,10 +274,21 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      const key = e.key.toLowerCase();
-      if (key !== 'x' && key !== 'y' && key !== 'z') return;
-      const axis = key as TileAxis;
-      setTileState((prev) => switchNextAxis(prev, axis));
+      if (e.key.toLowerCase() !== 'c') return;
+      setTileState((prev) => {
+        if (prev.stage === 'idle') return prev;
+        if (prev.remainingAxes.length < 2) return prev;
+        // `nextAxis` is nullable in the axis-extruded stage (set null
+        // once every remaining axis has been consumed). When the user
+        // presses `c` from that null state — meaning "I want to start
+        // tiling in a different remaining axis" — just take the first.
+        const currentAxis = prev.nextAxis;
+        const currentIdx =
+          currentAxis === null ? -1 : prev.remainingAxes.indexOf(currentAxis);
+        const nextIdx =
+          currentIdx < 0 ? 0 : (currentIdx + 1) % prev.remainingAxes.length;
+        return switchNextAxis(prev, prev.remainingAxes[nextIdx]);
+      });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -427,17 +383,29 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   // smaller without overcommitting on floor clicks 5m+ from a cube.
   const FACE_SNAP_PULL_RADIUS_M = 2.5;
 
-  // Snap a world-space hit to a voxel. For ANY kind, first try the
-  // proximity-based face snap against nearby existing objects — if
-  // the cursor is within `FACE_SNAP_PULL_RADIUS_M` of an existing
-  // object's face, the new object lands flush against that face.
-  // Otherwise, fall back to:
-  //   - cube-face snap (when the hit IS on a cube face)
-  //   - grid snap stepped by the placing kind's stride
-  const snapForAdd = useCallback(
-    (hit: SnapHit): [number, number, number] => {
-      const stagedId = props.stagedKindId;
-      const placingStep = stepForKind(stagedId);
+  // Snap a world-space hit to a voxel position for ORIGIN PLACEMENT
+  // (Add tool, Tile tool click 1, and their hover ghosts).
+  //
+  // Used by both Add and Tile so the two tools place the origin cube
+  // at IDENTICAL positions for the same cursor — this is the contract
+  // the user expects. Previously the Tile tool snapped through plain
+  // `snapToVoxel` while the Add tool went through the proximity-based
+  // face snap, so hovering near an existing cube's face produced two
+  // different ghost positions.
+  //
+  // The kind id is parametrized rather than closed over so callers
+  // can pass `props.stagedKindId` (Add) or the tile's own
+  // `stagedKindId` (Tile) without invalidating the memo.
+  //
+  // Algorithm (single source of truth for placement snap):
+  //   1. Face-snap: if the cursor is within FACE_SNAP_PULL_RADIUS_M
+  //      of an existing object's face, snap flush against that face.
+  //   2. Grid snap: quantize to the placing kind's per-axis stride.
+  //   3. Overlap stack: if the grid snap lands in an existing cube's
+  //      footprint, stack above or below depending on camera angle.
+  const snapForPlacement = useCallback(
+    (hit: SnapHit, kindId: string | null): [number, number, number] => {
+      const placingStep = stepForKind(kindId);
 
       // World-space cursor point — always use the actual raycast hit
       // position. Floor hits already carry it; cube hits carry the
@@ -447,8 +415,8 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       // dominant-axis pick always picked -Y. That was the bug.)
       const cursorPoint = hit.point;
 
-      if (stagedId) {
-        const kind = catalogService.getKind(stagedId);
+      if (kindId) {
+        const kind = catalogService.getKind(kindId);
         const dims = kind?.dimensions ?? {
           width: voxelSize,
           height: voxelSize,
@@ -482,8 +450,8 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         placingStep,
         targetStrideFor(hit),
       );
-      if (stagedId) {
-        const kind = catalogService.getKind(stagedId);
+      if (kindId) {
+        const kind = catalogService.getKind(kindId);
         const dims = kind?.dimensions ?? {
           width: voxelSize,
           height: voxelSize,
@@ -520,7 +488,6 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       return gridVoxel;
     },
     [
-      props.stagedKindId,
       voxelSize,
       nearbyObjects,
       stepForKind,
@@ -539,7 +506,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const ghosts = useMemo<GhostSpec[]>(() => {
     const out: GhostSpec[] = [];
     if (props.tool === 'add' && props.stagedKindId && hover) {
-      const voxel = snapForAdd(hover);
+      const voxel = snapForPlacement(hover, props.stagedKindId);
       out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
     }
     if (props.tool === 'delete' && hoverCommandId) {
@@ -558,27 +525,38 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       }
     }
     if (props.tool === 'tile') {
-      // Compute the hover voxel for the tile ghost function.
-      // For Y-axis extrusion (z-extruded/axis-extruded with nextAxis=y),
-      // the hover Y is derived from the screen yDelta, not the 3D raycast.
-      // SRP violation: Y-axis delta computation (PIXELS_PER_VOXEL screen
-      // mapping) stays inline because it requires R3F's camera projection.
-      // The pure computeTileGhosts receives the pre-computed voxel.
+      // Two different snap modes here, both delegating to the shared
+      // helpers used by the Add tool — no bespoke math inline:
+      //
+      //   - idle stage: this click will place the ORIGIN cube. The
+      //     ghost mirrors what the Add tool would show for the same
+      //     cursor, so we go through `snapForPlacement` (face-snap
+      //     pull → grid snap → overlap stacking). This was the
+      //     bespoke divergence the user reported: previously the
+      //     idle-stage ghost used raw `snapToVoxel`, so hovering near
+      //     an existing cube showed a different position than Add.
+      //
+      //   - placed / axis-extruded stage: the hover quantizes the
+      //     EXTRUSION LENGTH along the active axis from the origin.
+      //     `snapToVoxel` is correct here — face-snapping into a
+      //     different object's edge would derail the extrusion.
       const kindId = tileState.stage !== 'idle' ? tileState.kindId : props.stagedKindId;
       const tileStep = stepForKind(kindId);
       let tileHoverVoxel: Vec3 | null = null;
       if (hover) {
-        const v = snapToVoxel(hover, voxelSize, tileStep, targetStrideFor(hover));
-        const isYStage =
-          (tileState.stage === 'axis-extruded' && tileState.nextAxis === 'y') ||
-          (tileState.stage === 'placed' && tileState.nextAxis === 'y');
-        if (isYStage) {
-          // Inside this branch tileState.stage is 'placed' | 'axis-extruded'
-          // (narrowed by isYStage), so origin is guaranteed.
-          const originY = tileState.origin[1];
-          tileHoverVoxel = [v[0], originY + yDelta, v[2]];
+        if (tileState.stage === 'idle') {
+          tileHoverVoxel = snapForPlacement(hover, props.stagedKindId);
         } else {
-          tileHoverVoxel = v;
+          const v = snapToVoxel(hover, voxelSize, tileStep, targetStrideFor(hover));
+          // Y-axis extrusion: hover X/Z come from the raycast, Y comes
+          // from the world-space cursor projection done by
+          // <YAxisTracker> (which writes into `yDelta`).
+          const isYStage = tileState.nextAxis === 'y';
+          if (isYStage) {
+            tileHoverVoxel = [v[0], tileState.origin[1] + yDelta, v[2]];
+          } else {
+            tileHoverVoxel = v;
+          }
         }
       }
 
@@ -608,7 +586,9 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
     tileState,
     yDelta,
     moveGhosts,
-    snapForAdd,
+    snapForPlacement,
+    stepForKind,
+    targetStrideFor,
   ]);
 
   // Map an Add-tool click to a placement. Reads from the freshly-
@@ -617,7 +597,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
   const handleAddClick = useCallback(
     (hit: SnapHit) => {
       if (props.tool !== 'add' || !props.stagedKindId) return;
-      let voxel = snapForAdd(hit);
+      let voxel = snapForPlacement(hit, props.stagedKindId);
 
       // Gravity: if the staged kind has gravity = true, drop to the
       // nearest surface below. Reject placement when no support exists.
@@ -658,7 +638,7 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
 
       props.onPlaceAt(voxel);
     },
-    [props, snapForAdd, geomService],
+    [props, snapForPlacement, geomService],
   );
 
   // Delete-tool click on a cube routes to the parent's delete (which
@@ -686,15 +666,12 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
       const stagedKindId = props.stagedKindId;
 
       if (tileState.stage === 'idle') {
-        // Click 1: place the origin cube. Snap to multiples of the
-        // staged kind's bounding-box step so the origin lands on a
-        // tile-aligned position.
-        let voxel = snapToVoxel(
-          hit,
-          voxelSize,
-          stepForKind(stagedKindId),
-          targetStrideFor(hit),
-        );
+        // Click 1: place the origin cube via the SAME snap pipeline
+        // the Add tool uses — face-snap → grid snap → overlap stack.
+        // The ghost the user saw before clicking was computed with
+        // `snapForPlacement` (see the tile ghost branch above), so
+        // the commit position is guaranteed to match the preview.
+        let voxel = snapForPlacement(hit, stagedKindId);
 
         // Gravity: if the staged kind has gravity = true, drop to the
         // nearest surface below. Reject placement when no support exists.
@@ -864,7 +841,17 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
         return;
       }
     },
-    [props, tileState, voxelSize, yDelta],
+    [
+      props,
+      tileState,
+      voxelSize,
+      yDelta,
+      snapForPlacement,
+      stepForKind,
+      targetStrideFor,
+      catalogService,
+      geomService,
+    ],
   );
 
   // Show the axis-switch hint when the tile gesture is active and the
@@ -979,6 +966,19 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
             color={directionGizmoProps.color}
           />
         )}
+        {/* `isYAxisActive` already implies stage ∈ {placed, axis-extruded},
+            so accessing `tileState.origin` / `kindId` is safe. The
+            extra discriminant check below is for TS — it narrows
+            `tileState` to the non-idle variants so the property
+            accesses typecheck. */}
+        {isYAxisActive && (tileState.stage === 'placed' || tileState.stage === 'axis-extruded') && (
+          <YAxisTracker
+            origin={tileState.origin}
+            stepY={stepForKind(tileState.kindId).y}
+            voxelSize={voxelSize}
+            onYDelta={setYDelta}
+          />
+        )}
       </Canvas>
       {/* Debug HUD: live camera world position. Reports what the
           snap actually uses for "is the camera above this cube?" so
@@ -1023,11 +1023,109 @@ export function SceneEditorCanvas(props: SceneEditorCanvasProps) {
             fontFamily: 'monospace',
           }}
         >
-          X / Y / Z — switch axis
+          C — cycle axis
         </div>
       )}
     </div>
   );
+}
+
+// --- Tile-tool Y-axis cursor tracker ---------------------------
+
+interface YAxisTrackerProps {
+  /** Tile origin in voxel coordinates. The vertical pick plane passes
+   *  through this point. */
+  origin: [number, number, number];
+  /** Per-axis voxel step for the staged kind. Used to snap the
+   *  reported delta to step boundaries so the ghost lines up with
+   *  cube-sized increments instead of fractional voxels. */
+  stepY: number;
+  /** World-space size of one voxel. */
+  voxelSize: number;
+  /** Called with the Y voxel offset from origin every time the
+   *  cursor moves. The offset is signed and snapped to a multiple
+   *  of `stepY`. */
+  onYDelta: (delta: number) => void;
+}
+
+/**
+ * Lives inside the R3F Canvas during the tile tool's Y-axis stage.
+ * Casts the cursor ray against a vertical plane that passes through
+ * the tile origin and faces the camera (normal = camera→origin
+ * projected to the XZ plane), so the cursor's apparent world-space Y
+ * position drives the Y-delta — moving the mouse "up" puts the
+ * ghost up to where the cursor visually is.
+ *
+ * Replaces an earlier screen-pixel anchor (`28 pixels = 1 voxel`)
+ * that felt wrong at any non-default zoom because the screen-to-
+ * voxel ratio was fixed regardless of camera distance.
+ *
+ * SRP: only does cursor → Y voxel translation. The ghost rendering
+ * and the click-commit flow continue to consume the `yDelta` state
+ * exactly as before.
+ */
+function YAxisTracker({ origin, stepY, voxelSize, onYDelta }: YAxisTrackerProps) {
+  const { gl, camera, raycaster, pointer } = useThree();
+
+  // Pre-allocated THREE objects to avoid GC churn on every mousemove.
+  // These are scoped to the effect closure; the effect re-binds when
+  // origin / voxelSize / stepY change.
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const plane = new THREE.Plane();
+    const hit = new THREE.Vector3();
+    const camToOrigin = new THREE.Vector3();
+    const originWorld = new THREE.Vector3(
+      origin[0] * voxelSize,
+      origin[1] * voxelSize,
+      origin[2] * voxelSize,
+    );
+
+    const stepWorld = Math.max(1, stepY) * voxelSize;
+
+    const onMove = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+      // Reuse R3F's raycaster + camera with the synthetic NDC pointer.
+      // Same pattern as ContextMenuListener / MoveController so the
+      // ray matches the rest of the canvas's picking logic.
+      const savedX = pointer.x;
+      const savedY = pointer.y;
+      pointer.x = nx;
+      pointer.y = ny;
+      raycaster.setFromCamera(pointer, camera);
+      pointer.x = savedX;
+      pointer.y = savedY;
+
+      // Vertical plane through the origin, normal pointing horizontally
+      // toward the camera. If the camera is directly above/below the
+      // origin in the XZ plane, the projection is degenerate — bail
+      // out and leave the previous yDelta intact.
+      camToOrigin.subVectors(camera.position, originWorld);
+      camToOrigin.y = 0;
+      if (camToOrigin.lengthSq() < 1e-6) return;
+      camToOrigin.normalize();
+      plane.setFromNormalAndCoplanarPoint(camToOrigin, originWorld);
+
+      if (!raycaster.ray.intersectPlane(plane, hit)) return;
+
+      // Convert world Y of the projected cursor to a step-aligned
+      // voxel offset from the origin.
+      const dyWorld = hit.y - originWorld.y;
+      const steps = Math.round(dyWorld / stepWorld);
+      onYDelta(steps * Math.max(1, stepY));
+    };
+
+    canvas.addEventListener('pointermove', onMove);
+    return () => canvas.removeEventListener('pointermove', onMove);
+    // origin is spread because tuples are referentially unstable when
+    // computed inside React renders; spreading the components is
+    // cheap and avoids re-binding on every render of the parent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gl, camera, raycaster, pointer, origin[0], origin[1], origin[2], voxelSize, stepY, onYDelta]);
+
+  return null;
 }
 
 // --- Right-click context menu listener -------------------------
@@ -1606,9 +1704,11 @@ interface FloorPickerProps {
    * reference but cube placement is free to happen at any y. */
   buildHeight: number;
   /** Add-tool click on empty floor. The caller routes through the
-   * SAME `handleAddClick` (and thus the same `snapForAdd`) that the
-   * cube-hit path uses, so the ghost preview and the committed
-   * placement always agree. */
+   * SAME `handleAddClick` (and thus the same `snapForPlacement`) that
+   * the cube-hit path uses, so the ghost preview and the committed
+   * placement always agree. The Tile tool's click 1 goes through the
+   * same `snapForPlacement` too — the two tools share the placement
+   * snap pipeline. */
   onAddClick: (hit: SnapHit) => void;
   onClickEmpty: () => void;
   /** Called on pointermove over the floor with a SnapHit so the
@@ -1648,8 +1748,9 @@ function FloorPicker({
       window.removeEventListener('pointerup', onUp);
       if (moved || u.button !== 0) return;
       // Floor hit at the current build height. Hand the FloorHit to
-      // `onAddClick` so the SAME `snapForAdd` that drives the ghost
-      // preview decides the committed voxel — no parallel snap path.
+      // `onAddClick` / `onTileClick` so the SAME `snapForPlacement`
+      // that drives the ghost preview decides the committed voxel —
+      // no parallel snap path.
       const floorHit: SnapHit = {
         kind: 'floor',
         point: { x: point.x, y: buildHeight * voxelSize, z: point.z },
@@ -1667,10 +1768,10 @@ function FloorPicker({
   };
 
   // The hover SnapHit carries the build height as its world Y so the
-  // upstream `snapForAdd` doesn't re-snap to y=0. We do NOT pre-snap
-  // X/Z here — the ghost (which calls snapForAdd on this hit) needs
-  // the raw cursor world position so the face-snap proximity-pull
-  // can decide whether to attach to a nearby object.
+  // upstream `snapForPlacement` doesn't re-snap to y=0. We do NOT
+  // pre-snap X/Z here — the ghost (which calls snapForPlacement on
+  // this hit) needs the raw cursor world position so the face-snap
+  // proximity-pull can decide whether to attach to a nearby object.
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (tool !== 'add' && tool !== 'tile') return;
     onHoverFloor({
@@ -1712,7 +1813,9 @@ function FloorPicker({
 
 interface MoveControllerProps {
   tool: Tool;
-  doc: RoomDocument;
+  /** Narrowed doc — the move tool only reads `commands` for occupancy
+   *  checks. Document-agnostic by design (Layout and Room both fit). */
+  doc: { commands: readonly SceneCommand[] };
   compiled: WorldObjects;
   selection: ReadonlySet<string>;
   moveState: MoveState;
