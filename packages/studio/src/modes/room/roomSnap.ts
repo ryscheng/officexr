@@ -109,9 +109,19 @@ export function snapToVoxel(
   }
   const sx = step?.x ?? 1;
   const sz = step?.z ?? 1;
+  // Honor the hit's actual world Y rather than hardcoding 0. Floor
+  // hits come from two sources:
+  //   - The FloorPicker plane, where Y = buildHeight * voxelSize.
+  //   - A pick on a baked layout mesh (e.g. clicking the top of a
+  //     wall), where Y is the hit's world coordinate on that face.
+  // In both cases the caller's intent is "place at the height the
+  // cursor is actually pointing to," not "snap to the ground." The
+  // earlier `0` only happened to look right when buildHeight was 0
+  // and there was no baked layout — it silently broke both other
+  // cases.
   return [
     Math.round(hit.point.x / voxelSize / sx) * sx,
-    0,
+    Math.round(hit.point.y / voxelSize),
     Math.round(hit.point.z / voxelSize / sz) * sz,
   ];
 }

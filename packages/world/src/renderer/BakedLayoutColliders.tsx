@@ -16,6 +16,7 @@ import { useGLTF } from '@react-three/drei';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { getVersion } from '../app/bake-registry.ts';
 import { WALL_GROUPS } from '../physics/groups.ts';
+import { BakedLayoutErrorBoundary } from './BakedLayout.tsx';
 
 // ---------------------------------------------------------------------------
 // Inner component (inside Suspense — can use useGLTF)
@@ -111,9 +112,15 @@ export function BakedLayoutColliders({
   const version = layoutName ? getVersion(layoutName) : 0;
   const effectiveUrl = version > 0 ? `${gltfPath}?v=${version}` : gltfPath;
 
+  // Wrap in the shared error boundary so a missing/erroring GLB
+  // doesn't tear down the canvas — same UX as <BakedLayout>. The
+  // player will pass through unbaked layouts until the bake lands;
+  // that's preferable to a full app crash.
   return (
-    <Suspense fallback={null}>
-      <BakedLayoutCollidersInner effectiveUrl={effectiveUrl} />
-    </Suspense>
+    <BakedLayoutErrorBoundary resetKey={layoutName ?? gltfPath} fallback={null}>
+      <Suspense fallback={null}>
+        <BakedLayoutCollidersInner effectiveUrl={effectiveUrl} />
+      </Suspense>
+    </BakedLayoutErrorBoundary>
   );
 }

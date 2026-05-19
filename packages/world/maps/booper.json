@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "name": "booper",
+  "updatedAt": 1779219186587,
+  "rooms": [
+    {
+      "id": "room-1-4l1j",
+      "roomName": "booper",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotationY": 0
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "spawn-6-5yb4",
+      "position": [
+        15.957121573140022,
+        0,
+        1.9120159867661277
+      ]
+    }
+  ],
+  "environment": {
+    "sun": {
+      "positionX": 20,
+      "positionY": 40,
+      "positionZ": 20,
+      "color": "#ffffff",
+      "intensity": 1.4
+    },
+    "sky": null,
+    "stars": null,
+    "hdri": null,
+    "ambientIntensity": 0.15
+  }
+}

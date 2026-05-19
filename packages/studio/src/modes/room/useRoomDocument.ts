@@ -12,7 +12,6 @@ import {
 } from '@officexr/world/scenes';
 import type { WorldObjects } from '@officexr/sdk';
 import { useApplication } from '@officexr/world/react';
-import { awaitFresh, createBrowserBakeDeps } from '@officexr/world/app';
 import {
   selectionFromClick,
   selectionFromToggle,
@@ -52,9 +51,10 @@ export interface UseRoomDocumentOptions {
    */
   afterSave?: (name: string, doc: RoomDocument) => void;
   /**
-   * When true (default), changing `doc.layoutName` warm-prefetches the
-   * linked layout's bake. The Layout editor sets this to false because
-   * layouts don't link to other layouts.
+   * Reserved. Earlier versions used this to gate a bake-prefetch from
+   * inside the Room editor — that flow was removed (the Layout editor
+   * is the single owner of bake triggering). Kept as an accepted
+   * optional field so existing callers (Layout hook) don't break.
    */
   enableLayoutLinkPrefetch?: boolean;
 }
@@ -149,8 +149,10 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
 } {
   const defaultName = options?.defaultName ?? DEFAULT_ROOM_NAME;
   const lastNameKey = options?.lastNameKey ?? LAST_ROOM_KEY;
-  const enableLayoutLinkPrefetch = options?.enableLayoutLinkPrefetch ?? true;
   const afterSave = options?.afterSave;
+  // `enableLayoutLinkPrefetch` is intentionally unread — reserved for
+  // future use; see the option's docstring.
+  void options?.enableLayoutLinkPrefetch;
 
   // Fall back to the default Filesystem/LocalStorage stack when the
   // caller doesn't supply a storage. Layout passes its own adapter
@@ -264,6 +266,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
           lastSavedJsonRef.current = JSON.stringify({
             commands: blank.commands,
             groups: blank.groups,
+            layoutName: blank.layoutName,
           });
           loadedForRef.current = roomName;
           return;
@@ -273,6 +276,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
         lastSavedJsonRef.current = JSON.stringify({
           commands: loaded.commands,
           groups: loaded.groups,
+          layoutName: loaded.layoutName,
         });
         loadedForRef.current = roomName;
       })
@@ -284,6 +288,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
         lastSavedJsonRef.current = JSON.stringify({
           commands: blank.commands,
           groups: blank.groups,
+          layoutName: blank.layoutName,
         });
         loadedForRef.current = roomName;
       });
@@ -298,12 +303,17 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   }, [storage, roomName]);
 
   // Auto-save on doc change (debounced). Gated on load completion
-  // so the initial empty placeholder never reaches storage.
+  // so the initial empty placeholder never reaches storage. The
+  // dirty-check key includes `layoutName` so changing the linked
+  // layout via the Inspector picks up the autosave — and so the
+  // saved JSON ALSO includes the field (the earlier version dropped
+  // it on every save, which silently unlinked layouts).
   useEffect(() => {
     if (loadedForRef.current !== roomName) return;
     const json = JSON.stringify({
       commands: doc.commands,
       groups: doc.groups,
+      layoutName: doc.layoutName,
     });
     if (json === lastSavedJsonRef.current) return;
     const t = setTimeout(() => {
@@ -313,6 +323,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
         title: doc.title ?? roomName,
         commands: doc.commands,
         groups: doc.groups,
+        layoutName: doc.layoutName,
       }) as RoomDocument;
       storage
         .save(roomName, serialized)
@@ -600,40 +611,29 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
    */
   const setLayoutName = useCallback((name: string | undefined) => {
     const trimmed = name?.trim() || undefined;
-    setDoc((prev) => ({ ...prev, layoutName: trimmed, updatedAt: Date.now() }));
-    // Best-effort prefetch: if the new layout has been baked before,
-    // warm the BakeRegistry's in-flight cache so the viewport loads fast.
-    // Layout editor disables this — layouts don't link to layouts.
-    if (trimmed && enableLayoutLinkPrefetch) {
-      const deps = createBrowserBakeDeps(catalog, geometry);
-      const fetchDoc = async () => {
-        const res = await fetch(`/api/layouts/${encodeURIComponent(trimmed)}`);
-        if (!res.ok) throw new Error(`layout not found: ${trimmed}`);
-        return (await res.json()) as import('@officexr/world/scenes').LayoutDocument;
-      };
-      awaitFresh(trimmed, deps, fetchDoc).catch(() => {
-        // Best-effort — failure is non-blocking.
-      });
-    }
-  }, [catalog, geometry, enableLayoutLinkPrefetch]);
-
-  // Also prefetch when doc.layoutName changes after load (e.g. on
-  // initial load of a room that already has a layoutName). Skipped in
-  // Layout mode (layouts don't have a nested base layout).
-  useEffect(() => {
-    if (!enableLayoutLinkPrefetch) return;
-    if (!doc.layoutName) return;
-    const name = doc.layoutName;
-    const deps = createBrowserBakeDeps(catalog, geometry);
-    const fetchDoc = async () => {
-      const res = await fetch(`/api/layouts/${encodeURIComponent(name)}`);
-      if (!res.ok) throw new Error(`layout not found: ${name}`);
-      return (await res.json()) as import('@officexr/world/scenes').LayoutDocument;
-    };
-    awaitFresh(name, deps, fetchDoc).catch(() => {
-      // Best-effort — failure is non-blocking.
+    // CRITICAL: patch both the React `doc` state AND the underlying
+    // history. `RoomHistory.push` rebuilds `currentDoc` from its own
+    // internal `_currentDoc`, NOT from React state — so a bare
+    // `setDoc(prev => ...)` here would update the React copy but
+    // leave the history holding a stale version without `layoutName`.
+    // The next `placeObject` (or any mutator) would then push an
+    // action whose result spreads the stale `_currentDoc`, and React
+    // state would snap back to no-layoutName. That's the bug behind
+    // "placing furniture makes the layout disappear."
+    historyRef.current?.patchBaseDoc({
+      layoutName: trimmed,
+      updatedAt: Date.now(),
     });
-  }, [doc.layoutName, catalog, geometry, enableLayoutLinkPrefetch]);
+    setDoc((prev) => ({ ...prev, layoutName: trimmed, updatedAt: Date.now() }));
+    // SRP: baking is the Layout editor's job (it schedules a bake on
+    // every save via `afterSave`). The Room editor only CONSUMES the
+    // baked GLB — `<BakedLayout>` lazily loads it from disk. No
+    // bake-trigger here; an earlier version called `awaitFresh` to
+    // "warm the cache," but that actually kicked off a fresh bake on
+    // every room load and any transient failure left the inspector's
+    // bake badge stuck on "failed" until the user opened the layout
+    // editor.
+  }, []);
 
   // --- History ---------------------------------------------------
 

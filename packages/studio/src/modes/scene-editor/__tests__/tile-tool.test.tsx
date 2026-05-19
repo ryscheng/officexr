@@ -39,6 +39,7 @@ import type {
 
 import type { SceneEditorBackend } from '../SceneEditorBackend.ts';
 import { useLayoutDocument } from '../../layout/useLayoutDocument.ts';
+import { useRoomDocument } from '../../room/useRoomDocument.ts';
 
 // ---------------------------------------------------------------------------
 // Test helpers (mirrors `application-context.test.tsx`)
@@ -339,3 +340,51 @@ describe('Tile tool — Layout hook integration', () => {
     expect(secondGroup).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: setLayoutName must survive subsequent placement actions.
+// ---------------------------------------------------------------------------
+
+describe('Room layoutName persistence (regression)', () => {
+  // Bug: `setLayoutName` only patched the React doc state, not the
+  // underlying `RoomHistory`. The history's internal `_currentDoc` kept
+  // the pre-link version, so the next `placeObject` would `push` an
+  // action whose result spread the stale `_currentDoc` (no
+  // `layoutName`), and React state snapped back. Symptom: linking a
+  // layout, then placing a cube, instantly unlinked the layout.
+  it('layoutName survives a placeObject after setLayoutName', () => {
+    const api = makeApi();
+    const { result } = renderHook(() => useRoomDocument(), {
+      wrapper: wrapper(api),
+    });
+
+    act(() => {
+      result.current.setLayoutName('lobby');
+    });
+    expect(result.current.doc.layoutName).toBe('lobby');
+
+    act(() => {
+      result.current.placeObject('wall', [0, 0, 0]);
+    });
+
+    // Before the fix, this snapped back to undefined because the
+    // history's stale _currentDoc overwrote React state.
+    expect(result.current.doc.layoutName).toBe('lobby');
+  });
+
+  it('layoutName survives undo of a placement', () => {
+    const api = makeApi();
+    const { result } = renderHook(() => useRoomDocument(), {
+      wrapper: wrapper(api),
+    });
+
+    act(() => { result.current.setLayoutName('lobby'); });
+    act(() => { result.current.placeObject('wall', [0, 0, 0]); });
+    act(() => { result.current.undo(); });
+
+    // Undo replays from `_baseDoc`. If the patch never reached
+    // `_baseDoc` (only `_currentDoc`), undo would lose the layout.
+    expect(result.current.doc.layoutName).toBe('lobby');
+  });
+});
+

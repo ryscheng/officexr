@@ -238,6 +238,28 @@ function makeBinaryResourceMiddleware(
           res.end(data);
           return;
         }
+        case 'HEAD': {
+          // Existence + size probe with no body. The inspector's bake
+          // badge uses this to decide whether the GLB is on disk
+          // without paying the bandwidth cost of streaming the file.
+          // Spec requires HEAD to return the same headers as GET; we
+          // mirror status + content-type and the file size.
+          try {
+            const stat = await fs.stat(file);
+            res.statusCode = 200;
+            res.setHeader('content-type', 'model/gltf-binary');
+            res.setHeader('content-length', String(stat.size));
+            res.end();
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+              res.statusCode = 404;
+              res.end();
+              return;
+            }
+            throw err;
+          }
+          return;
+        }
         case 'PUT': {
           const data = await readBodyBinary(req);
           await ensureDir(opts.dir);
@@ -257,7 +279,7 @@ function makeBinaryResourceMiddleware(
           return;
         }
         default:
-          return badMethod(res, ['GET', 'PUT', 'DELETE']);
+          return badMethod(res, ['GET', 'HEAD', 'PUT', 'DELETE']);
       }
     } catch (err) {
       console.error(`[studio-storage:baked-layouts] middleware error:`, err);

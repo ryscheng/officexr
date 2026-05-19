@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Header, isStudioMode, type StudioMode } from './ui/Header.tsx';
+import { BakeStatusBar } from './ui/BakeStatusBar.tsx';
 import { DebugApp } from './modes/debug/DebugApp.tsx';
 import { RoomApp } from './modes/room/RoomApp.tsx';
 import { CharacterApp } from './modes/character/CharacterApp.tsx';
@@ -67,6 +68,14 @@ export function StudioPage() {
       }}
     >
       <Header active={studioMode} onChange={setStudioMode} />
+      {/* Global bake-status indicator. Sits directly below the header
+          across every mode so the user always knows what bakes are
+          in flight, regardless of which editor is open. The drawer
+          it opens is also rendered here so it overlays the active
+          mode's canvas without that mode having to know about it. */}
+      <div style={{ position: 'relative' }}>
+        <BakeStatusBar />
+      </div>
       {studioMode === 'map' && <MapApp />}
       {studioMode === 'layout' && <LayoutApp />}
       {studioMode === 'room' && <RoomApp />}

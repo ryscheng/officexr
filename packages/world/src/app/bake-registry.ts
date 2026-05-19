@@ -292,6 +292,37 @@ export function getBakeState(layoutName: string): BakeState {
 }
 
 /**
+ * Snapshot of the in-memory registry: every layout the user has
+ * touched in this tab's session, with its latest state + (when
+ * available) the last error message. Used by the global bake status
+ * bar to show how many bakes are in flight and which layouts they
+ * belong to. The result is a NEW array on every call — callers
+ * should not mutate it.
+ */
+export function listAllBakes(): Array<{
+  layoutName: string;
+  state: BakeState;
+  version: number;
+  lastError?: string;
+}> {
+  const out: Array<{
+    layoutName: string;
+    state: BakeState;
+    version: number;
+    lastError?: string;
+  }> = [];
+  for (const [layoutName, entry] of registry) {
+    out.push({
+      layoutName,
+      state: entry.state,
+      version: entry.version,
+      lastError: entry.lastError?.message,
+    });
+  }
+  return out;
+}
+
+/**
  * Clear all registry state. Intended for use in tests only.
  * @internal
  */

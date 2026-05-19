@@ -173,6 +173,30 @@ export class RoomHistory {
   }
 
   /**
+   * Apply a metadata-only patch (e.g. `{ layoutName: 'lobby' }`) to
+   * BOTH `_baseDoc` and `_currentDoc` without recording a history
+   * node. Used by mutators that live outside the command history —
+   * `setLayoutName`, `title` edits, etc.
+   *
+   * Why both: subsequent `push`es apply on top of `_currentDoc`, and
+   * `undo` / `jumpTo` replay from `_baseDoc`. If the patch were
+   * applied only to `_currentDoc`, an undo would lose the metadata.
+   * If applied only to `_baseDoc`, the next `push` would overwrite
+   * `_currentDoc` from the old version on top of new action → metadata
+   * lost. So both must be patched in lockstep.
+   *
+   * SRP escape hatch: metadata is intentionally NOT in the action
+   * history (see `setLayoutName`'s comment in `useRoomDocument`).
+   * This method is the side-channel that keeps the metadata coherent
+   * with the history-managed `commands` / `groups` without making it
+   * a history step.
+   */
+  patchBaseDoc(patch: Partial<RoomDocument>): void {
+    this._baseDoc = { ...this._baseDoc, ...patch };
+    this._currentDoc = { ...this._currentDoc, ...patch };
+  }
+
+  /**
    * Replay all nodes from head up to and including `targetNode`
    * (or stop before it if targetNode is null, returning baseDoc).
    */

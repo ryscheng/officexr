@@ -13,8 +13,15 @@
  * - `three` is allowed in renderer files.
  */
 
-import React, { Suspense, useState, useEffect, type ReactNode } from 'react';
-import type * as THREE from 'three';
+import React, {
+  Component,
+  Suspense,
+  useState,
+  useEffect,
+  type ErrorInfo,
+  type ReactNode,
+} from 'react';
+import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import { getVersion, subscribe } from '../app/bake-registry.ts';
 
@@ -37,6 +44,23 @@ interface BakedLayoutMeshProps {
 function BakedLayoutMesh({ effectiveUrl, materialOverride }: BakedLayoutMeshProps) {
   const gltf = useGLTF(effectiveUrl);
 
+  // Make the baked layout participate in the shadow pipeline the same
+  // way `<ObjectInstances>` does for per-instance kinds. Without this,
+  // structural walls/floors loaded from a baked GLB don't cast or
+  // receive shadows — characters end up looking shadow-less in Debug
+  // mode the moment a map's structural geometry moves into a bake.
+  // The patch runs as a render-time traversal (not a mutation of the
+  // cached GLTF asset) so it doesn't leak into other consumers.
+  useEffect(() => {
+    gltf.scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const m = child as THREE.Mesh;
+        m.castShadow = true;
+        m.receiveShadow = true;
+      }
+    });
+  }, [gltf]);
+
   // If a material override is provided, apply it to every mesh in the scene.
   // This is intentionally a "render-time patch" (not mutating the GLTF asset)
   // so the override is ephemeral and doesn't bleed into other consumers.
@@ -56,6 +80,77 @@ function BakedLayoutMesh({ effectiveUrl, materialOverride }: BakedLayoutMeshProp
 }
 
 // ---------------------------------------------------------------------------
+// Error boundary — keeps a missing/failing GLB from killing the canvas
+// ---------------------------------------------------------------------------
+
+interface BakedLayoutErrorBoundaryProps {
+  /** The layout name being loaded. Changing this resets the boundary
+   *  so a fresh bake gets a fresh load attempt. */
+  resetKey: string | undefined;
+  /** Called when the load fails (and again when a retry fails). Lets
+   *  the editor surface a "bake not ready" message in the inspector. */
+  onError?: (err: Error) => void;
+  /** Rendered while the loader is throwing. Defaults to nothing so the
+   *  rest of the scene remains visible. */
+  fallback?: ReactNode;
+  children: ReactNode;
+}
+
+interface BakedLayoutErrorBoundaryState {
+  /** Last `resetKey` we caught an error under. When the live resetKey
+   *  diverges from this one the boundary clears itself, giving the
+   *  new layout name a fresh load attempt. */
+  failedFor: string | undefined;
+}
+
+/**
+ * Class-based error boundary scoped to a single baked-GLB consumer
+ * (`<BakedLayout>` or `<BakedLayoutColliders>`). Catches the `useGLTF`
+ * 404 / parse-failure that drei lets propagate through Suspense,
+ * displays `fallback` instead of unwinding the whole R3F canvas, and
+ * re-arms when the parent passes a new layout name.
+ *
+ * Class component is necessary — React's error-boundary API is only
+ * available to class components. Everything else in this file stays
+ * functional.
+ */
+export class BakedLayoutErrorBoundary extends Component<
+  BakedLayoutErrorBoundaryProps,
+  BakedLayoutErrorBoundaryState
+> {
+  state: BakedLayoutErrorBoundaryState = { failedFor: undefined };
+
+  static getDerivedStateFromError(): Partial<BakedLayoutErrorBoundaryState> {
+    // We don't know the resetKey here (statics can't see props); store
+    // a sentinel and let componentDidCatch fill in the real value.
+    return { failedFor: '__pending__' };
+  }
+
+  componentDidCatch(error: Error, _info: ErrorInfo): void {
+    this.setState({ failedFor: this.props.resetKey });
+    this.props.onError?.(error);
+  }
+
+  componentDidUpdate(prevProps: BakedLayoutErrorBoundaryProps): void {
+    // New layout name? Clear the boundary so the next render gets a
+    // fresh shot at loading it.
+    if (
+      this.state.failedFor !== undefined &&
+      prevProps.resetKey !== this.props.resetKey
+    ) {
+      this.setState({ failedFor: undefined });
+    }
+  }
+
+  render(): ReactNode {
+    if (this.state.failedFor !== undefined) {
+      return this.props.fallback ?? null;
+    }
+    return this.props.children;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // BakedLayout (exported)
 // ---------------------------------------------------------------------------
 
@@ -66,8 +161,10 @@ export interface BakedLayoutProps {
    * Layout name for registry integration.  When provided:
    * - The component subscribes to `BakeRegistry.subscribe` and
    *   re-renders (cache-busts) when a new bake is published.
-   * - If the initial load fails (e.g. 404 — no bake on disk yet), an
-   *   error boundary higher up can catch and trigger an initial bake.
+   * - If the initial load fails (e.g. 404 — no bake on disk yet), the
+   *   built-in error boundary catches the error so the rest of the
+   *   canvas keeps rendering. Pair with `onLoadError` to surface a
+   *   "still baking" hint in the editor UI.
    */
   layoutName?: string;
   /** React node rendered while the GLB is loading. Defaults to null. */
@@ -79,6 +176,13 @@ export interface BakedLayoutProps {
    * kindId — the override only receives the raw material.
    */
   materialOverride?: LayoutMaterialOverride;
+  /**
+   * Called when the underlying GLB load throws (e.g. 404 because the
+   * layout has not been baked yet). The boundary swallows the error so
+   * the canvas keeps rendering; the editor surfaces a UI hint based on
+   * this callback. Re-armed when `layoutName` changes.
+   */
+  onLoadError?: (err: Error) => void;
 }
 
 /**
@@ -93,6 +197,7 @@ export function BakedLayout({
   layoutName,
   fallback = null,
   materialOverride,
+  onLoadError,
 }: BakedLayoutProps) {
   // Track the registry version so we can append `?v=<N>` to the URL,
   // causing drei to re-fetch after a new bake is published.
@@ -126,11 +231,17 @@ export function BakedLayout({
   const effectiveUrl = version > 0 ? `${gltfPath}?v=${version}` : gltfPath;
 
   return (
-    <Suspense fallback={fallback}>
-      <BakedLayoutMesh
-        effectiveUrl={effectiveUrl}
-        materialOverride={materialOverride}
-      />
-    </Suspense>
+    <BakedLayoutErrorBoundary
+      resetKey={layoutName ?? gltfPath}
+      onError={onLoadError}
+      fallback={fallback}
+    >
+      <Suspense fallback={fallback}>
+        <BakedLayoutMesh
+          effectiveUrl={effectiveUrl}
+          materialOverride={materialOverride}
+        />
+      </Suspense>
+    </BakedLayoutErrorBoundary>
   );
 }

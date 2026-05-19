@@ -41,6 +41,7 @@ export {
   getVersion,
   subscribe,
   getBakeState,
+  listAllBakes,
   _resetRegistry,
 } from './bake-registry.ts';
 export type {

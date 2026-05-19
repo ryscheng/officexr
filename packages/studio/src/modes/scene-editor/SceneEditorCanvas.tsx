@@ -917,10 +917,18 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
           onSelectInstance={props.onSelectInstance}
         />
         {props.bakedLayoutPath && props.bakedLayoutName && (
-          <BakedLayout
-            gltfPath={props.bakedLayoutPath}
-            layoutName={props.bakedLayoutName}
-          />
+          <BakedLayoutPicker
+            tool={props.tool}
+            stagedKindId={props.stagedKindId}
+            onHoverFloor={handleHoverChange}
+            onAddClick={handleAddClick}
+            onTileClick={handleTileClick}
+          >
+            <BakedLayout
+              gltfPath={props.bakedLayoutPath}
+              layoutName={props.bakedLayoutName}
+            />
+          </BakedLayoutPicker>
         )}
         <CubesLayer
           instances={props.compiled.instances}
@@ -1689,6 +1697,89 @@ function CubesLayer(props: CubesLayerProps) {
       onPointerOut={handlePointerOut}
     >
       <ObjectInstances worldObjects={worldObjects} />
+    </group>
+  );
+}
+
+// --- Baked-layout picker ----------------------------------------
+//
+// Wraps the BakedLayout primitive in an R3F pointer-event group so the
+// Add and Tile tools can place cubes ON TOP of the baked structural
+// geometry (walls, floors). Without this, the baked layout was a
+// purely visual layer — the user could see it but couldn't click on
+// it, so placement only worked on the build-height picker plane.
+//
+// We don't try to extract per-instance metadata from the merged GLB:
+// the meshes have been welded/joined/flattened by gltf-transform and
+// no longer carry the original placement positions. Instead, every
+// hit is translated into a SnapHit of kind 'floor' carrying the
+// world-space hit point. `snapForPlacement` then runs through its
+// usual face-pull → grid snap → overlap stack pipeline, and
+// `snapToVoxel`'s honoring of `hit.point.y` (see roomSnap.ts) lands
+// the new cube at the voxel directly under the cursor — for a click
+// on a wall's top face, that's exactly the cube cell above the wall.
+
+interface BakedLayoutPickerProps {
+  tool: Tool;
+  stagedKindId: string | null;
+  onHoverFloor: (hit: SnapHit | null) => void;
+  onAddClick: (hit: SnapHit) => void;
+  onTileClick: (hit: SnapHit) => void;
+  children: React.ReactNode;
+}
+
+function BakedLayoutPicker({
+  tool,
+  stagedKindId,
+  onHoverFloor,
+  onAddClick,
+  onTileClick,
+  children,
+}: BakedLayoutPickerProps) {
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (tool !== 'add' && tool !== 'tile') return;
+    if (!stagedKindId) return;
+    e.stopPropagation();
+    onHoverFloor({
+      kind: 'floor',
+      point: { x: e.point.x, y: e.point.y, z: e.point.z },
+    });
+  };
+
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (e.button !== 0) return;
+    if (tool !== 'add' && tool !== 'tile') return;
+    if (!stagedKindId) return;
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let moved = false;
+    const hit: SnapHit = {
+      kind: 'floor',
+      point: { x: e.point.x, y: e.point.y, z: e.point.z },
+    };
+    const onMove = (m: PointerEvent) => {
+      if (
+        Math.abs(m.clientX - startX) > 4 ||
+        Math.abs(m.clientY - startY) > 4
+      ) {
+        moved = true;
+      }
+    };
+    const onUp = (u: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      if (moved || u.button !== 0) return;
+      if (tool === 'add') onAddClick(hit);
+      else if (tool === 'tile') onTileClick(hit);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  return (
+    <group onPointerMove={handlePointerMove} onPointerDown={handlePointerDown}>
+      {children}
     </group>
   );
 }

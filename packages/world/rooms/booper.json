@@ -2,7 +2,8 @@
   "schemaVersion": 5,
   "name": "booper",
   "title": "booper",
-  "updatedAt": 1779209270235,
+  "updatedAt": 1779219064725,
   "commands": [],
-  "groups": {}
+  "groups": {},
+  "layoutName": "booper"
 }

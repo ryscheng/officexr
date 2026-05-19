@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useCatalog } from '@officexr/world/react';
+import {
+  getBakeState,
+  subscribe as registrySubscribe,
+  type BakeState,
+} from '@officexr/world/app';
 
 import { Button } from '../../components/ui/button.tsx';
 import {
@@ -76,8 +81,128 @@ function LayoutSection({ roomDoc }: { roomDoc: RoomDoc }) {
             <option key={name} value={name} />
           ))}
         </datalist>
+        {currentLayout ? <LayoutBakeBadge layoutName={currentLayout} /> : null}
       </Field>
     </Section>
+  );
+}
+
+/**
+ * Tiny inline status badge for the linked layout's bake state. Shown
+ * below the layout input so the user sees WHY a freshly-linked layout
+ * isn't visible yet.
+ *
+ * Two signals are merged:
+ *   - `BakeRegistry` for live in-session state (`pending` / `running` /
+ *     `error` while a bake is being scheduled or executed).
+ *   - A HEAD probe against `/api/baked-layouts/<name>` for ground-
+ *     truth disk presence.
+ *
+ * Priority rules — disk presence trumps a stale registry error:
+ *   - `pending` / `running` → show "Bake pending" / "Baking…" (the
+ *     in-flight bake is the most informative signal).
+ *   - GLB exists on disk → "settled" (badge hides). A registry error
+ *     from an earlier failed attempt doesn't matter if the file is
+ *     there now — that's what "stale" means.
+ *   - No disk file AND registry `error` → "Bake failed" (a real
+ *     failure the user should know about).
+ *   - No disk file otherwise → "not baked yet" (the user typed a
+ *     name that's never been baked).
+ *
+ * The earlier version mapped `error` straight to "Bake failed" even
+ * when the GLB existed, so any past failure stuck the badge until the
+ * tab was reloaded — which the user reported as "constantly says Bake
+ * Failed."
+ */
+function LayoutBakeBadge({ layoutName }: { layoutName: string }) {
+  const [state, setState] = useState<BakeState>(() => getBakeState(layoutName));
+  // `null` = not yet probed. We need three-valued state here because
+  // "haven't checked yet" must not look the same as "missing on disk."
+  const [diskPresent, setDiskPresent] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setState(getBakeState(layoutName));
+    const unsub = registrySubscribe((name, s) => {
+      if (name === layoutName) setState(s);
+    });
+    return unsub;
+  }, [layoutName]);
+
+  // Probe disk. Re-runs on every state transition because a registry
+  // going `settled` is the signal the GLB just landed; we want the
+  // badge to re-read disk so it can flip to settled too.
+  useEffect(() => {
+    let cancelled = false;
+    setDiskPresent(null);
+    fetch(`/api/baked-layouts/${encodeURIComponent(layoutName)}`, { method: 'HEAD' })
+      .then((r) => {
+        if (cancelled) return;
+        setDiskPresent(r.ok);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Network/transport failure (server down, offline, etc.).
+        // Leave `diskPresent` null so we don't accidentally flag the
+        // layout as missing when the API just isn't reachable.
+        setDiskPresent(null);
+      });
+    return () => { cancelled = true; };
+  }, [layoutName, state]);
+
+  // Pick the most-informative status under the priority rules above.
+  let effective: BakeState | 'not-baked' | 'settled';
+  if (state === 'pending' || state === 'running') {
+    effective = state;
+  } else if (diskPresent === true) {
+    effective = 'settled';
+  } else if (state === 'error') {
+    effective = 'error';
+  } else if (diskPresent === false) {
+    effective = 'not-baked';
+  } else {
+    // Disk probe in flight and registry idle/settled — nothing to
+    // show. Avoids a momentary "not baked yet" flash on first mount
+    // before the HEAD comes back.
+    effective = 'settled';
+  }
+
+  if (effective === 'settled') return null;
+
+  const labels: Record<BakeState | 'not-baked', string> = {
+    idle: '',
+    pending: 'Bake pending…',
+    running: 'Baking…',
+    settled: 'Baked',
+    error: 'Bake failed',
+    'not-baked': 'Layout not baked yet — open it in the Layout editor',
+  };
+  const colors: Record<BakeState | 'not-baked', { bg: string; color: string }> = {
+    idle: { bg: 'transparent', color: '#a3a3a3' },
+    pending: { bg: '#1a2433', color: '#60a5fa' },
+    running: { bg: '#1a2433', color: '#93c5fd' },
+    settled: { bg: '#0d2b1d', color: '#4ade80' },
+    error: { bg: '#2b0d0d', color: '#f87171' },
+    'not-baked': { bg: '#2b0d0d', color: '#f87171' },
+  };
+  const { bg, color } = colors[effective];
+
+  return (
+    <div
+      style={{
+        marginTop: 4,
+        fontSize: 10,
+        padding: '2px 8px',
+        borderRadius: 10,
+        fontWeight: 600,
+        letterSpacing: '0.05em',
+        textTransform: effective === 'not-baked' ? 'none' : 'uppercase',
+        display: 'inline-block',
+        background: bg,
+        color,
+      }}
+    >
+      {labels[effective]}
+    </div>
   );
 }
 

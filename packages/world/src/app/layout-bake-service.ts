@@ -221,6 +221,26 @@ export async function bakeLayout(
       : (options?.optimizer ?? defaultOptimizer);
   await optimizer.apply(outDoc);
 
+  // GLB output requires exactly 0–1 buffers (spec constraint of the
+  // binary container). After mergeDocuments runs N times — once per
+  // source kind — outDoc holds one buffer per source GLB. The
+  // optimizer's `dedup` collapses IDENTICAL buffers but won't merge
+  // buffers whose bytes differ, and `join` / `flatten` don't relocate
+  // accessor storage. So before writeBinary we consolidate every
+  // remaining accessor onto a single target buffer and dispose the
+  // others. This belongs in the bake service (a property of the GLB
+  // output path) rather than in every optimizer.
+  const buffers = outDoc.getRoot().listBuffers();
+  if (buffers.length > 1) {
+    const target = buffers[0];
+    for (const accessor of outDoc.getRoot().listAccessors()) {
+      accessor.setBuffer(target);
+    }
+    for (const b of buffers.slice(1)) {
+      b.dispose();
+    }
+  }
+
   // Draco compression is opt-in (off by default) to avoid mandatory decoder
   // dependencies on the consuming side.  When enabled the caller is
   // responsible for registering the Draco encoder dependency on the IO
