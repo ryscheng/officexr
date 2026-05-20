@@ -113,6 +113,22 @@ export {
 } from './filesystem-layout-storage.ts';
 export { LocalStorageLayoutStorage } from './localstorage-layout-storage.ts';
 export {
+  MemoryWebStorage,
+  createMemoryWebStorage,
+} from './in-memory-web-storage.ts';
+export {
+  type MapSeedEntry,
+  InMemoryMapStorage,
+} from './in-memory-map-storage.ts';
+export {
+  type RoomSeedEntry,
+  InMemoryRoomStorage,
+} from './in-memory-room-storage.ts';
+export {
+  type LayoutSeedEntry,
+  InMemoryLayoutStorage,
+} from './in-memory-layout-storage.ts';
+export {
   type CatalogStorage,
   FilesystemCatalogStorage,
 } from './filesystem-catalog-storage.ts';
