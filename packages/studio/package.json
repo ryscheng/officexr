@@ -41,6 +41,7 @@
     "three": "^0.182.0"
   },
   "devDependencies": {
+    "@react-three/test-renderer": "^9.1.0",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^22.7.5",

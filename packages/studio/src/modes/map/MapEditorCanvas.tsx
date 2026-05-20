@@ -21,6 +21,7 @@ import {
 import type { WorldObjects } from '@officexr/sdk';
 import type { MapSelection } from './useMapDocument.ts';
 import type { MapTool } from './mapTools.ts';
+import { resolveRoomPointerAction } from './mapPointerActions.ts';
 import {
   snapRoomToNeighbors,
   type RoomAABBVoxel,
@@ -221,7 +222,7 @@ function FloorPicker({ onPlaceSpawn: _onPlaceSpawn, onDeselect, tool }: FloorPic
 
 // --- Rooms ------------------------------------------------------
 
-interface RoomsLayerProps {
+export interface RoomsLayerProps {
   instances: readonly RoomInstance[];
   rooms: ReadonlyMap<string, RoomDocument>;
   selection: MapSelection;
@@ -234,7 +235,14 @@ interface RoomsLayerProps {
   onPlaceSpawn: (position: [number, number, number]) => void;
 }
 
-function RoomsLayer(props: RoomsLayerProps) {
+/**
+ * Renders one `<RoomInstanceMesh>` per placed room. Exported (alongside
+ * the component itself) so editor-scenario tests can mount the room
+ * scene subtree under `@react-three/test-renderer` without the DOM
+ * chrome — `MapEditorCanvas` returns a `<Canvas>`, which the test
+ * renderer can't host.
+ */
+export function RoomsLayer(props: RoomsLayerProps) {
   const { geometry: geomService, rooms: roomService } = useApplication();
   const catalogReady = useCatalogReady();
 
@@ -532,7 +540,10 @@ function RoomInstanceMesh({
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.stopPropagation();
-            if (tool === 'spawn') {
+            // Missing-room placeholder: no drag (we have no compiled
+            // AABB), but spawn + select still route via the shared
+            // decision so behavior matches a real room.
+            if (resolveRoomPointerAction(tool) === 'place-spawn') {
               // Use the raw raycast hit Y — the surface of whatever
               // was clicked. Voxel-rounding is intentionally gone:
               // baked layouts may have non-voxel-aligned surfaces.
@@ -577,7 +588,8 @@ function RoomInstanceMesh({
         // drag + spawn the moment a room started rendering its baked
         // layout in front of the raw cubes.
         e.stopPropagation();
-        if (tool === 'spawn') {
+        const action = resolveRoomPointerAction(tool);
+        if (action === 'place-spawn') {
           // Spawn tool: drop at the raw raycast hit. `e.point.y` is
           // the actual surface Y from R3F's raycaster — works for
           // both cube tops and baked-layout surfaces.
@@ -588,7 +600,7 @@ function RoomInstanceMesh({
         // off a drag in the same gesture so the user doesn't have to
         // click twice.
         onSelect();
-        if (tool === 'move') {
+        if (action === 'select-drag') {
           // Capture the raycast hit's offset from the room anchor so
           // the room doesn't jump its centre to the cursor on drag.
           dragStartOffset.current = [
