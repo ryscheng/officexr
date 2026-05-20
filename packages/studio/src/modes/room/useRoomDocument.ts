@@ -19,6 +19,7 @@ import {
 } from './room-selection.ts';
 import { RoomHistory } from './RoomHistory.ts';
 import type { EditAction } from './EditAction.ts';
+import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 
 const LAST_ROOM_KEY = 'officexr:studio:lastRoom';
 const DEFAULT_ROOM_NAME = 'default-v2';
@@ -164,7 +165,11 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
       return new LocalStorageRoomStorage();
     }
   }, []);
-  const storage = options?.storage ?? fallbackStorage;
+  // Resolution order: explicit option → hermetic test storage (?test=1)
+  // → the default Filesystem stack. The Layout hook passes its own
+  // adapter as `options.storage`, so it bypasses the test context.
+  const testStorages = useTestStorages();
+  const storage = options?.storage ?? testStorages?.roomStorage ?? fallbackStorage;
 
   const [roomName, setRoomName] = useState<string>(() => {
     try {

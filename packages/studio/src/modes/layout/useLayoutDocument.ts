@@ -41,6 +41,7 @@ import {
 import { useApplication } from '@officexr/world/react';
 import { scheduleBake, createBrowserBakeDeps } from '@officexr/world/app';
 import { useRoomDocument } from '../room/useRoomDocument.ts';
+import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 
 const LAST_LAYOUT_KEY = 'officexr:studio:lastLayout';
 const DEFAULT_LAYOUT_NAME = 'default';
@@ -139,7 +140,11 @@ export function useLayoutDocument(options?: UseLayoutDocumentOptions) {
       return new LocalStorageLayoutStorage();
     }
   }, []);
-  const layoutStorage = options?.layoutStorage ?? fallbackLayoutStorage;
+  // Resolution order: explicit option → hermetic test storage (?test=1)
+  // → the default Filesystem stack.
+  const testStorages = useTestStorages();
+  const layoutStorage =
+    options?.layoutStorage ?? testStorages?.layoutStorage ?? fallbackLayoutStorage;
 
   const adapter = useMemo<RoomStorage>(
     () => ({

@@ -50,10 +50,19 @@ test('RoomPalette adds an instance when a room is clicked', async ({ page }) => 
   });
 });
 
-test('Add-spawn tool toggle button is wired up', async ({ page }) => {
+test('Map toolbar exposes Select / Move / Spawn tools', async ({ page }) => {
+  // The implicit "click a cube to drag" flow was replaced by an
+  // explicit tool model (commit c606f10). The toolbar overlay must
+  // render the three tools as aria-pressed buttons.
   await goToMode(page, 'map');
   await waitForCanvasReady(page);
-  await expect(page.getByRole('button', { name: /Add spawn/ })).toBeVisible();
+  for (const label of ['Select', 'Move', 'Spawn']) {
+    await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+  }
+  // Select is the default active tool.
+  await expect(
+    page.getByRole('button', { name: 'Select', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('EnvironmentPanel renders Lighting / Sky / Stars / HDRI sections', async ({

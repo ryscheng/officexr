@@ -24,6 +24,32 @@ export async function goToMode(
   ).toHaveText(modeLabel(mode), { timeout: 8_000 });
 }
 
+/**
+ * Navigate to a mode in hermetic test mode (`?test=1`): the studio
+ * boots with a bundled catalog and in-memory storages instead of the
+ * dev-server backend. Optionally seeds those storages via
+ * `window.__OFFICEXR_TEST_SEED__` (injected before load) so an editor
+ * opens with known content.
+ *
+ * `seed` must be JSON-serializable (it crosses into the page via
+ * `addInitScript`).
+ */
+export async function goToModeHermetic(
+  page: Page,
+  mode: 'map' | 'room' | 'object' | 'character' | 'debug',
+  seed?: unknown,
+): Promise<void> {
+  if (seed !== undefined) {
+    await page.addInitScript((s) => {
+      (window as unknown as { __OFFICEXR_TEST_SEED__: unknown }).__OFFICEXR_TEST_SEED__ = s;
+    }, seed);
+  }
+  await page.goto(`/?test=1#${mode}`, { waitUntil: 'domcontentloaded' });
+  await expect(
+    page.locator(`button[role="tab"][aria-selected="true"]`),
+  ).toHaveText(modeLabel(mode), { timeout: 8_000 });
+}
+
 function modeLabel(mode: string): string {
   switch (mode) {
     case 'map':

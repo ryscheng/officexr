@@ -41,6 +41,28 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E (editor interaction, hermetic)
+        # Scoped to the editor-interaction specs that run hermetically
+        # (?test=1: in-memory storage, bundled catalog — no Supabase,
+        # no dev-server filesystem). The broader Playwright suite has
+        # pre-existing rot (stale /api/cube-kinds endpoint, drifted
+        # room-editor selectors) and is fixed/expanded in a follow-up;
+        # see packages/studio/src/test-harness/README.md.
+        run: pnpm test:e2e:ci
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
       - name: Stop Supabase
         if: always()
         working-directory: tools/supabase-test

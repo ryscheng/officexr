@@ -3,8 +3,44 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider } from '@officexr/world/react';
+import {
+  InMemoryLayoutStorage,
+  InMemoryMapStorage,
+  InMemoryRoomStorage,
+  type LayoutDocument,
+  type MapDocumentV1,
+  type RoomDocument,
+} from '@officexr/world/scenes';
 import { StudioPage } from './StudioPage.tsx';
 import { HeadlessApp } from './modes/headless/HeadlessApp.tsx';
+import { createTestApi } from './test-harness/createTestApi.ts';
+import {
+  TestStorageProvider,
+  type TestStorages,
+} from './test-harness/TestStorageContext.tsx';
+
+/**
+ * Shape of `window.__OFFICEXR_TEST_SEED__`, set by a Playwright spec via
+ * `page.addInitScript(...)` before the app boots. Each array seeds the
+ * matching in-memory storage so an editor opens with known content.
+ */
+interface TestSeed {
+  maps?: Array<{ name: string; doc: MapDocumentV1 }>;
+  rooms?: Array<{ name: string; doc: RoomDocument }>;
+  layouts?: Array<{ name: string; doc: LayoutDocument }>;
+}
+
+/** Build the hermetic in-memory storages for `?test=1` mode, seeding
+ *  them from `window.__OFFICEXR_TEST_SEED__` if present. */
+function buildTestStorages(): TestStorages {
+  const seed = (globalThis as { __OFFICEXR_TEST_SEED__?: TestSeed })
+    .__OFFICEXR_TEST_SEED__;
+  return {
+    mapStorage: new InMemoryMapStorage({ seed: seed?.maps }),
+    roomStorage: new InMemoryRoomStorage({ seed: seed?.rooms }),
+    layoutStorage: new InMemoryLayoutStorage({ seed: seed?.layouts }),
+  };
+}
 
 /**
  * Studio root.
@@ -27,7 +63,17 @@ import { HeadlessApp } from './modes/headless/HeadlessApp.tsx';
  * HTTP response).
  */
 export default function App() {
+  const params = new URLSearchParams(globalThis.location?.search ?? '');
+  const op = params.get('op');
+  const sceneId = params.get('scene') ?? undefined;
+  // `?test=1` boots the studio hermetically: a bundled-catalog api (no
+  // /api/world-object-kinds fetch) + in-memory storages (no /api/maps
+  // etc.). Used by the Playwright suite so editor interaction can be
+  // exercised without a backend. Documented in CLAUDE.md.
+  const testMode = params.get('test') === '1';
+
   const api = useMemo(() => {
+    if (testMode) return createTestApi();
     const loader = new GLTFLoader();
     return createDefaultApi({
       loadGltf: async (path) => {
@@ -35,18 +81,22 @@ export default function App() {
         return { scene: gltf.scene as THREE.Object3D };
       },
     });
-  }, []);
+  }, [testMode]);
 
-  // `?op=...` URL param routes to the headless test harness instead
-  // of the studio UI. The application api is the same — both layers
-  // consume the same DI-managed services.
-  const params = new URLSearchParams(globalThis.location?.search ?? '');
-  const op = params.get('op');
-  const sceneId = params.get('scene') ?? undefined;
+  const testStorages = useMemo<TestStorages | null>(
+    () => (testMode ? buildTestStorages() : null),
+    [testMode],
+  );
+
+  const tree = op ? <HeadlessApp op={op} sceneId={sceneId} /> : <StudioPage />;
 
   return (
     <ApplicationProvider api={api}>
-      {op ? <HeadlessApp op={op} sceneId={sceneId} /> : <StudioPage />}
+      {testStorages ? (
+        <TestStorageProvider value={testStorages}>{tree}</TestStorageProvider>
+      ) : (
+        tree
+      )}
     </ApplicationProvider>
   );
 }

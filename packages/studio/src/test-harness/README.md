@@ -78,10 +78,26 @@ expect(spy).toHaveBeenCalledWith([1.5, 2.25, -3]);
 | A pointer hit data | `MapApp.scenarios` (spawn hit point), `roomSnap` unit |
 | B batch closure | `useRoomDocument` (placeMany+groupCommands) |
 | C hardcoded fallback | `useMapDocument` (spawn position), `MapApp.scenarios` |
-| D ref/module staleness | Object-editor kind-switch — Playwright (Tier 4) |
+| D ref/module staleness | `object-editor.spec.ts` kind-switch (Tier 4) |
 | E cross-hook desync | `useRoomDocument` (setLayoutName), `useLayoutDocument` (optimizer) |
 | F implicit gating | `mapPointerActions` unit + `MapApp.scenarios` (litmus) |
 
 Tier-3 scenarios currently focus on the Map editor (the c606f10 class).
 Room tile-grouping is covered at Tier 2; the Object-editor Leva
-kind-switch (a DOM concern, not a scene-graph one) lands at Tier 4.
+kind-switch (a DOM concern, not a scene-graph one) is covered by the
+existing `object-editor.spec.ts` at Tier 4.
+
+## Tier 4 — Playwright hermetic mode (`?test=1`)
+
+`App.tsx` boots hermetically when the URL carries `?test=1`: a
+bundled-catalog api (no `/api/world-object-kinds` fetch) and in-memory
+storages seeded from `window.__OFFICEXR_TEST_SEED__`. The
+`goToModeHermetic(page, mode, seed)` helper sets the seed via
+`addInitScript` and navigates. See `tests/playwright/map-editor-hermetic.spec.ts`.
+
+**CI** runs `pnpm test:e2e:ci` (scoped to the green, hermetic-friendly
+editor specs). Known follow-up: several legacy specs rotted while
+Playwright was ungated — `object-editor.spec.ts` / `routing.spec.ts`
+query the renamed `/api/cube-kinds` endpoint (now
+`/api/world-object-kinds`) and `room-editor.spec.ts` selectors drifted.
+Fixing + folding those into `test:e2e:ci` is the next increment.

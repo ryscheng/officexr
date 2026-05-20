@@ -109,6 +109,19 @@ escape hatch is for genuine constraints, not for skipping refactors.
   renderer package. If you need a new primitive, add it to
   `packages/world/src/renderer/` and export it — don't fork
   it inside an editor.
+- **Hermetic studio test mode (`?test=1`).** `packages/studio/src/App.tsx`
+  has a startup branch: when the URL carries `?test=1`, the studio boots
+  with a bundled-catalog `ApplicationApi` (no `/api/world-object-kinds`
+  fetch) and in-memory storages (no `/api/*` filesystem), seeded from
+  `window.__OFFICEXR_TEST_SEED__`. This is a deliberate production-code
+  seam for the Playwright suite, not a stealth feature — it's a single
+  branch evaluated once at boot and is null/no-op in normal operation.
+  The editor document hooks resolve storage as
+  `explicit option → TestStorageContext (?test=1) → Filesystem stack`.
+  The hermetic harness + conventions live under
+  `packages/studio/src/test-harness/` (see its README). When adding a
+  new editor hook that persists, accept an optional `storage` and read
+  `useTestStorages()` so it stays hermetically testable.
 - **Playwright e2e tests (incl. mugshot) MUST be run after any
   change to `@officexr/world` renderer logic.** The mugshot
   baselines under `tests/playwright/mugshot-baselines/` are the

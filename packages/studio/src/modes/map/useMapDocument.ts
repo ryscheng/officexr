@@ -8,6 +8,7 @@ import {
   type RoomInstance,
   type SpawnPoint,
 } from '@officexr/world/scenes';
+import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 
 /**
  * Optional configuration for `useMapDocument`. Mirrors
@@ -95,7 +96,10 @@ export function useMapDocument(
       return new LocalStorageMapStorage();
     }
   }, []);
-  const storage = options?.storage ?? fallbackStorage;
+  // Resolution order: explicit option → hermetic test storage (when the
+  // studio booted in ?test=1 mode) → the default Filesystem stack.
+  const testStorages = useTestStorages();
+  const storage = options?.storage ?? testStorages?.mapStorage ?? fallbackStorage;
 
   const [mapName, setMapName] = useState<string>(() => {
     try {
