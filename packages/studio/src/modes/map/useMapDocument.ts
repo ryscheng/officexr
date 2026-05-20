@@ -9,6 +9,18 @@ import {
   type SpawnPoint,
 } from '@officexr/world/scenes';
 
+/**
+ * Optional configuration for `useMapDocument`. Mirrors
+ * `UseRoomDocumentOptions` — the default behavior (Filesystem with a
+ * LocalStorage fallback) is unchanged when nothing is passed. Tests
+ * inject an `InMemoryMapStorage` here for hermetic runs.
+ */
+export interface UseMapDocumentOptions {
+  /** MapStorage to load/save through. Defaults to the Filesystem
+   *  adapter with a LocalStorage fallback. */
+  storage?: MapStorage;
+}
+
 const LAST_MAP_KEY = 'officexr:studio:lastMap';
 const DEFAULT_MAP_NAME = 'default';
 
@@ -71,14 +83,19 @@ export interface UseMapDocumentResult {
   listMaps: () => Promise<string[]>;
 }
 
-export function useMapDocument(): UseMapDocumentResult {
-  const storage = useMemo<MapStorage>(() => {
+export function useMapDocument(
+  options?: UseMapDocumentOptions,
+): UseMapDocumentResult {
+  // Fall back to the default Filesystem/LocalStorage stack when the
+  // caller doesn't supply a storage. Tests pass an in-memory adapter.
+  const fallbackStorage = useMemo<MapStorage>(() => {
     try {
       return new FilesystemMapStorage();
     } catch {
       return new LocalStorageMapStorage();
     }
   }, []);
+  const storage = options?.storage ?? fallbackStorage;
 
   const [mapName, setMapName] = useState<string>(() => {
     try {

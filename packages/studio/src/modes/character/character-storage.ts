@@ -11,9 +11,19 @@ const STORAGE_KEY = 'officexr:studio:characterConfigs';
  * the existing `world:characters` NetEvent.
  */
 export class CharacterStorage {
+  /** Backing store. Defaults to `globalThis.localStorage`; tests pass
+   *  an in-memory `Storage` (e.g. `createMemoryWebStorage()`) for a
+   *  hermetic run. Undefined when no Storage is available — every
+   *  access is already null-guarded, matching the prior behavior. */
+  private readonly storage: Storage | undefined;
+
+  constructor(opts: { storage?: Storage } = {}) {
+    this.storage = opts.storage ?? globalThis.localStorage ?? undefined;
+  }
+
   load(): CharacterConfigs {
     try {
-      const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
+      const raw = this.storage?.getItem(STORAGE_KEY);
       if (!raw) return {};
       const parsed = JSON.parse(raw) as unknown;
       if (!parsed || typeof parsed !== 'object') return {};
@@ -25,7 +35,7 @@ export class CharacterStorage {
 
   save(configs: CharacterConfigs): void {
     try {
-      globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(configs));
+      this.storage?.setItem(STORAGE_KEY, JSON.stringify(configs));
     } catch {
       // ignore — quota exceeded or storage blocked.
     }

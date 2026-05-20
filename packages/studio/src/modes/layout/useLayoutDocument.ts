@@ -103,7 +103,18 @@ function roomToLayout(
  *     existing Layout call-sites don't churn.
  *   - `optimizer` / `setOptimizer` expose the bake-strategy choice.
  */
-export function useLayoutDocument() {
+/**
+ * Optional configuration for `useLayoutDocument`. Default behavior
+ * (Filesystem with a LocalStorage fallback) is unchanged when nothing
+ * is passed. Tests inject an `InMemoryLayoutStorage` for hermetic runs.
+ */
+export interface UseLayoutDocumentOptions {
+  /** LayoutStorage to load/save through. Defaults to the Filesystem
+   *  adapter with a LocalStorage fallback. */
+  layoutStorage?: LayoutStorage;
+}
+
+export function useLayoutDocument(options?: UseLayoutDocumentOptions) {
   const { catalog, geometry } = useApplication();
 
   // --- Optimizer (layout-only metadata, held outside the history) ---
@@ -121,13 +132,14 @@ export function useLayoutDocument() {
 
   // --- Storage adapter: LayoutStorage → RoomStorage ---
 
-  const layoutStorage = useMemo<LayoutStorage>(() => {
+  const fallbackLayoutStorage = useMemo<LayoutStorage>(() => {
     try {
       return new FilesystemLayoutStorage();
     } catch {
       return new LocalStorageLayoutStorage();
     }
   }, []);
+  const layoutStorage = options?.layoutStorage ?? fallbackLayoutStorage;
 
   const adapter = useMemo<RoomStorage>(
     () => ({
