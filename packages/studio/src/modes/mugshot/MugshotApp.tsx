@@ -674,7 +674,7 @@ function ControlPanel(props: ControlPanelProps) {
       <Section title={`Y offset · ${props.yOffset.toFixed(2)} m`}>
         <input
           type="range"
-          min={1.0}
+          min={0}
           max={5.0}
           step={0.01}
           value={props.yOffset}
