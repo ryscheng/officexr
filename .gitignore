@@ -68,3 +68,8 @@ playwright-report/
 # Baked layout GLBs — generated artifacts, do NOT commit.
 # Layout JSON sources (packages/world/layouts/) are tracked.
 packages/world/baked-layouts/
+
+# Playwright scratch documents. The editor specs save maps/rooms with a
+# generated `pw-test-<random>` name; these are throwaway artifacts.
+packages/world/maps/pw-test-*.json
+packages/world/rooms/pw-test-*.json
