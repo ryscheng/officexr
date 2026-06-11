@@ -31,15 +31,16 @@ const CHARACTERS = [
 ] as const;
 
 const SELF_ID = 'mugshot-player';
-// The Rapier body's ROOT y when the character is standing on the
-// mugshot cube cluster. The cluster's cubes are aligned to the global
-// VOXEL_SIZE=0.5, so their tops sit at world y=1 (see MugshotApp's
-// DEFAULT_Y_OFFSET derivation — cube tops y=1, bottoms y=-1). The ball
-// collider sits at local y = BODY_Y (0.9) with radius `charRadius`
-// (0.4); ball bottom in world = root.y + 0.5. The controller's
-// penetration skin (`createCharacterController(0.01)`) adds a final
-// 1 cm so the settled root is 1 - 0.5 + 0.01 = 0.51, not exactly 0.5.
-const SETTLED_BODY_Y = 0.51;
+// The Rapier body's ROOT y after the character is DROPPED onto the
+// mugshot cube cluster and SETTLES under gravity (no teleport). The
+// cluster's cubes are aligned to the global VOXEL_SIZE=0.5 so their
+// tops sit at world y=1; the ball collider sits at local y = BODY_Y
+// (0.9) with radius `charRadius` (0.4), so ball bottom = root.y + 0.5
+// and geometric contact is root = 1 - 0.5 = 0.50. The Mugshot threads
+// a near-zero character-controller skin (MUGSHOT_CONTROLLER_OFFSET, vs
+// gameplay's 0.01) so the gravity-settle lands feet-flush at ≈0.50
+// rather than floating ~1 cm. Measured settle: ≈0.5002.
+const SETTLED_BODY_Y = 0.5;
 
 for (const character of CHARACTERS) {
   test(`mugshot: ${character} stands on 2x2 cube surface`, async ({ page }) => {
@@ -54,11 +55,12 @@ for (const character of CHARACTERS) {
     await waitForCanvasReady(page, 0, 30_000);
 
     // Wait for the kinematic body to land on the cube surface. The
-    // mugshot drops the player from y=4 onto cubes at y=2; with
-    // GRAVITY=-20 and contact at body-root y=1.5, settle takes a
-    // handful of frames after the initial fall (~0.5 s for the drop
-    // + a tick or two for `computedGrounded()` to zero vertical
-    // velocity). Cap at 8 s for cold-cache safety.
+    // mugshot drops the player from y=SPAWN_DROP_HEIGHT (4) onto cubes
+    // whose tops are at y=1; with GRAVITY=-20 and geometric contact at
+    // body-root y=0.5, the settle takes a handful of frames after the
+    // initial fall (~0.5 s for the drop + a tick or two for
+    // `computedGrounded()` to zero vertical velocity). Cap at 8 s for
+    // cold-cache safety.
     await page.waitForFunction(
       ({ selfId, settledY }: { selfId: string; settledY: number }) => {
         const store = (

@@ -112,6 +112,12 @@ interface SceneProps {
    * its bind pose (no animation mixer activity). Used by the Mugshot
    * mode to produce deterministic snapshot tests. */
   paused?: boolean;
+  /** Penetration skin (metres) for the local player's kinematic
+   * character controller. Defaults to gameplay's 0.01 (an anti-tunnel
+   * gap). The Mugshot mode passes a near-zero value so the gravity-
+   * settled character rests feet-flush on the cube top instead of
+   * floating ~1 cm above it. Threaded straight to `SceneFrame`. */
+  characterControllerOffset?: number;
   /** Forwarded to R3F `<Canvas dpr={...}>`. Default is R3F's (auto-
    * picks `devicePixelRatio`). Set to 1 in Mugshot mode so the
    * captured framebuffer matches the container's CSS pixel size
@@ -326,6 +332,7 @@ export function Scene(props: SceneProps) {
           worldFocused={worldFocused}
           spawnPoints={props.spawnPoints}
           isAirborneRef={isAirborneRef}
+          characterControllerOffset={props.characterControllerOffset}
         />
         </Physics>
       </Suspense>

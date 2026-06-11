@@ -49,6 +49,19 @@ interface LocalAABB {
   max: { x: number; y: number; z: number };
 }
 
+/** Magic kind-id prefix for the Mugshot's primitive-box diagnostic
+ * (rendered by ObjectInstances' `PrimitiveInstanceGroup`). These ids
+ * are NOT in the catalog, so without the special-case in `worldAABB`
+ * below they'd fall back to a one-voxel cube and the collider would be
+ * far smaller than the 2 m visible box — under gravity the character
+ * falls straight through it. Single source of truth; ObjectInstances
+ * imports these. */
+export const PRIMITIVE_KIND_PREFIX = '__primitive_';
+/** Physical size (m) of a primitive diagnostic box — mirrors the 2 m
+ * KayKit blocks (`colored_block_blue` / `stone`) it stands in for, so
+ * the collider matches the mesh exactly. */
+export const PRIMITIVE_BLOCK_SIZE = 2;
+
 function localAABBFor(kind: WorldObjectKind | undefined, voxelSize: number): LocalAABB {
   if (kind?.localAABB) return kind.localAABB;
   // Fallback 1: dimensions present, origin convention unknown — assume
@@ -79,11 +92,22 @@ export function createInstanceGeometry(deps: {
   }
 
   function worldAABB(position: Vec3, kindId: string): WorldAABB {
-    const kind = catalog.getKind(kindId);
-    const local = localAABBFor(kind, voxelSize);
     const ox = position[0] * voxelSize;
     const oy = position[1] * voxelSize;
     const oz = position[2] * voxelSize;
+    // Mugshot primitive-box diagnostic: the box isn't a catalog kind,
+    // so derive its collider straight from PRIMITIVE_BLOCK_SIZE (the
+    // same size the mesh renders) instead of the one-voxel fallback.
+    // Anchored lower-left-bottom at position*voxelSize, identical to
+    // the GLB-cube convention so colliders match across cube modes.
+    if (kindId.startsWith(PRIMITIVE_KIND_PREFIX)) {
+      return {
+        min: [ox, oy, oz],
+        max: [ox + PRIMITIVE_BLOCK_SIZE, oy + PRIMITIVE_BLOCK_SIZE, oz + PRIMITIVE_BLOCK_SIZE],
+      };
+    }
+    const kind = catalog.getKind(kindId);
+    const local = localAABBFor(kind, voxelSize);
     // Anchor lower-left-bottom: the world AABB's MIN sits at position*vs.
     return {
       min: [ox, oy, oz],

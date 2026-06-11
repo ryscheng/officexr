@@ -17,6 +17,13 @@ import {
   extractGeometryFromGltf,
   extractMaterialFromGltf,
 } from './cube-material.ts';
+// Single source of truth for the primitive-box diagnostic: the prefix
+// + 2 m size live in the geometry service so the collider it derives
+// (MapColliders → worldAABB) matches the box this file renders.
+import {
+  PRIMITIVE_KIND_PREFIX,
+  PRIMITIVE_BLOCK_SIZE,
+} from '../app/geometry-service.ts';
 
 /**
  * Magic-id prefix recognized by ObjectInstances to render a plain
@@ -30,7 +37,7 @@ import {
  * emit a `__primitive_` instance — these kindIds are exclusive to
  * the Mugshot diagnostic harness.
  */
-const PRIMITIVE_PREFIX = '__primitive_';
+const PRIMITIVE_PREFIX = PRIMITIVE_KIND_PREFIX;
 const PRIMITIVE_COLORS: Record<string, string> = {
   __primitive_blue: '#3b6bf2',
   __primitive_stone: '#a8a8a8',
@@ -375,13 +382,6 @@ interface PrimitiveInstanceGroupProps {
  * We construct the geometry + material locally, which means we OWN
  * disposal (unlike useGLTF, which manages its own asset cache).
  */
-/** Primitive cube physical size in metres. Mugshot's A/B diagnostic
- * mirrors the KayKit BlockBit GLTFs (`colored_block_blue` / `stone`)
- * which are 2 m on a side, so the primitive twin renders a 2 m box
- * regardless of the per-scene `voxelSize` (the grid step). Without
- * this, scenes with `voxelSize < 2` would emit shrunken primitive
- * cubes that no longer match their GLTF reference. */
-const PRIMITIVE_BLOCK_SIZE = 2;
 
 function PrimitiveInstanceGroup({
   kindId,

@@ -19,14 +19,39 @@ const SELF_ID = 'mugshot-player';
 const OFFICE_ID = 'mugshot';
 const DEFAULT_CHARACTER: CharacterName = 'Barbarian';
 
-/** Default settled-on-cube body root y. With the 2×2 cube cluster
- * centered on world origin (cube tops at y=1, bottoms at y=-1),
- * and the ball collider at local y=BODY_Y=0.9, radius=0.4 → ball
- * bottom at root+0.5, controller skin 0.01 → root.y = 1 - 0.5 +
- * 0.01 = 0.51. The character's feet (visible bottom of the mesh)
- * end up at wrapper.world.y = root + 0.5 = 1.01, sitting 1 cm
- * above the cube top y=1. */
-const DEFAULT_Y_OFFSET = 0.51;
+/** Height (world y, in metres) the character body is spawned at so
+ * gravity can drop it onto the cube cluster. The 2×2 cluster's tops
+ * sit at world y=1; dropping from well above and letting Rapier's
+ * kinematic controller settle the body is what places the character —
+ * NOT a teleport to a tuned constant. (See the component doc comment
+ * for why the old DEFAULT_Y_OFFSET teleport was retired.) */
+const SPAWN_DROP_HEIGHT = 4;
+
+/** Penetration skin for the Mugshot's character controller — the ONLY
+ * sanctioned vertical compensation in the portrait. Gameplay uses
+ * 0.01 m (an anti-tunnel gap) which rests the body ~1 cm above true
+ * contact (settled root ≈ 0.51); that 1 cm float is noticeable in a
+ * tight portrait. So the Mugshot threads this near-zero skin through
+ * Scene → SceneFrame and the gravity-settle lands feet-flush at root
+ * ≈ 0.50 (feet ≈ 1.00). Not exactly 0 — Rapier discourages a zero
+ * offset (re-introduces tunneling/jitter) — but small enough to be
+ * sub-pixel against the curated 0.50 ideals.
+ *
+ * Why this is honest, not a teleport cheat: a controller skin can only
+ * float the body UP, never sink it below contact, so it physically
+ * cannot mask a large gravity float — placement stays 100% gravity.
+ * The `mugshot-gravity-invariant` spec guards this: if the character
+ * ever settles >10 cm from the surface, that test fails and demands a
+ * gravity bug-fix, NOT a bigger offset. Do not re-introduce a
+ * position-offset teleport here (that was the cheat this work removed).
+ */
+const MUGSHOT_CONTROLLER_OFFSET = 0.0001;
+
+/** Default value shown by the manual Y-offset slider. This is the
+ * approximate gravity-settled root y; it is a DISPLAY/override seed
+ * only — officexr never relies on it to place the character (gravity
+ * does). See the slider's manual-override note below. */
+const SLIDER_DEFAULT_Y = 0.5;
 
 const DEFAULT_DISTANCE_M = 6;
 const DEFAULT_CAMERA_HEIGHT = 1.7;
@@ -117,13 +142,14 @@ function cubesForMode(mode: CubeMode) {
 }
 
 /** v2 of the mugshot export manifest. Captures rendering inputs but
- * deliberately OMITS `yOffset` — the export always captures at the
- * system's default Y, never a tuned value. If we recorded `yOffset`,
- * the manifest-load round-trip would re-apply the same lift the
- * human used to "fix" the rendering visually, masking the underlying
- * placement bug. The whole point of the mugshot is that baselines
- * show what the system NATURALLY produces; the Y slider in the UI
- * exists only for live diagnostic exploration. */
+ * deliberately OMITS `yOffset` — placement is gravity-driven, so the
+ * manifest carries no Y at all. On manifest-load the body is dropped
+ * back under gravity (manual override cleared), reproducing the
+ * renderer's NATURAL settled placement. If we recorded a tuned Y, the
+ * round-trip would re-apply the human's manual lift and mask any
+ * underlying placement bug. The whole point of the mugshot is that
+ * baselines show what the system NATURALLY produces; the Y slider in
+ * the UI exists only for live diagnostic exploration. */
 export interface MugshotManifest {
   schemaVersion: 2;
   character: CharacterName;
@@ -154,14 +180,28 @@ const DEFAULT_MUGSHOT_BACKGROUND: BackgroundViewConfig =
 
 /**
  * Mugshot mode: a deterministic 2×2 cube scene with a paused
- * character (no animation), tunable Y / camera angle / distance /
+ * character (no animation), tunable camera angle / distance /
  * viewport. Drives the export-for-test workflow (downloads a ZIP
  * of 4 PNGs + manifest.json) and is the live target for the
  * manifest-driven comparison test.
  *
- * Gravity is disabled on mount so the Y slider works at fine
- * granularity (SceneFrame's auto-warp drops its 0.5 m threshold to
- * zero when gravity is off — see SceneFrame.tsx).
+ * Placement is GRAVITY-DRIVEN. The character body is spawned above
+ * the cubes (`SPAWN_DROP_HEIGHT`) and falls onto them under the same
+ * kinematic controller + gravity integration Debug mode uses — the
+ * rendered resting height is whatever physics produces, never a tuned
+ * constant. This is deliberate: the whole point of the mugshot is to
+ * surface the renderer's NATURAL placement so a human can catch
+ * gravity/anchor regressions visually.
+ *
+ * The Y-offset slider is a MANUAL DIAGNOSTIC OVERRIDE for that human,
+ * NOT a placement mechanism officexr relies on. While untouched
+ * (`manualPlacement === false`) gravity owns the body. The moment the
+ * human drags the slider (or a test calls `__OFFICE_MUGSHOT_SET_Y_OFFSET__`)
+ * we flip into manual mode: gravity is suspended and the body is
+ * pinned at the slider value, so a human can lift/lower the character
+ * to inspect placement when gravity rendering looks wrong. The "Auto
+ * (gravity)" button drops it back under gravity. See the mugshot test
+ * README for why this knob exists.
  */
 export function MugshotApp() {
   const [local, setLocal] = useState<PersistentLocalState | null>(null);
@@ -171,7 +211,11 @@ export function MugshotApp() {
   );
 
   // Tunable rendering inputs.
-  const [yOffset, setYOffset] = useState(DEFAULT_Y_OFFSET);
+  // `yOffset` is the manual Y-override slider value; `manualPlacement`
+  // gates whether it actually drives the body. Default false → gravity
+  // places the character and the slider is inert (display only).
+  const [yOffset, setYOffset] = useState(SLIDER_DEFAULT_Y);
+  const [manualPlacement, setManualPlacement] = useState(false);
   const [azimuthDeg, setAzimuthDeg] = useState<AzimuthDeg>(DEFAULT_AZIMUTH);
   const [distanceM, setDistanceM] = useState(DEFAULT_DISTANCE_M);
   const [cameraHeight, setCameraHeight] = useState(DEFAULT_CAMERA_HEIGHT);
@@ -201,10 +245,11 @@ export function MugshotApp() {
     const lp = createPersistentLocalState({
       selfId: SELF_ID,
       officeId: OFFICE_ID,
-      // Cluster of cubes is centered on world origin; character
-      // stands at origin XZ at the default body-y above the cube
-      // tops at y=1.
-      startPos: { x: 0, y: DEFAULT_Y_OFFSET, z: 0 },
+      // Cluster of cubes is centered on world origin; spawn the
+      // character at origin XZ but ABOVE the cube tops (y=1) so
+      // gravity drops it onto the surface and settles it. The resting
+      // height is produced by physics, not a hardcoded offset.
+      startPos: { x: 0, y: SPAWN_DROP_HEIGHT, z: 0 },
     });
     setLocal(lp);
     (window as unknown as { __OFFICE_STORE__: typeof lp.store }).__OFFICE_STORE__ =
@@ -232,29 +277,34 @@ export function MugshotApp() {
     };
   }, []);
 
-  // Disable gravity while the Mugshot mode is mounted so the Y
-  // slider works with fine granularity. Re-enable on unmount so
-  // navigating back to Debug behaves normally. The `__OFFICE_GRAVITY__`
-  // hook is published by SceneFrame as soon as Scene mounts; we
-  // retry until it appears since Scene mounts after `stack` resolves.
+  // Gravity placement vs. manual override. By DEFAULT gravity is ON
+  // (manualPlacement === false): the character is dropped from
+  // SPAWN_DROP_HEIGHT and settles onto the cubes under physics. When
+  // the human grabs the Y slider (manualPlacement === true) we suspend
+  // gravity so the body can be pinned at an arbitrary height for
+  // inspection — the diagnostic the slider exists for. The
+  // `__OFFICE_GRAVITY__` hook is published by SceneFrame as soon as
+  // Scene mounts; we retry until it appears since Scene mounts after
+  // `stack` resolves. Re-enable gravity on unmount so navigating back
+  // to Debug behaves normally.
   useEffect(() => {
     if (!stack) return;
     let cancelled = false;
-    const tryDisable = () => {
+    const tryApply = () => {
       const g = (
         window as unknown as {
           __OFFICE_GRAVITY__?: { setEnabled: (v: boolean) => void };
         }
       ).__OFFICE_GRAVITY__;
       if (g) {
-        g.setEnabled(false);
+        g.setEnabled(!manualPlacement);
         return true;
       }
       return false;
     };
-    if (!tryDisable()) {
+    if (!tryApply()) {
       const id = setInterval(() => {
-        if (cancelled || tryDisable()) clearInterval(id);
+        if (cancelled || tryApply()) clearInterval(id);
       }, 50);
       return () => {
         cancelled = true;
@@ -269,7 +319,7 @@ export function MugshotApp() {
       ).__OFFICE_GRAVITY__;
       g?.setEnabled(true);
     };
-  }, [stack]);
+  }, [stack, manualPlacement]);
 
   // Push the cube field. Re-runs on cubeMode change to swap the
   // kindIds (instance IDs stay the same, so MapColliders' React-
@@ -295,20 +345,24 @@ export function MugshotApp() {
     });
   }, [local, character]);
 
-  // Push the Y offset into the SDK store every time the slider
-  // changes. SceneFrame's auto-warp (with gravity off) moves the
-  // body to match on the next frame. Character XZ is locked at
-  // world origin so the cluster-of-cubes-at-origin scene stays
-  // symmetric around the standing position.
+  // Manual-override pin. ONLY runs in manual mode (the human is
+  // diagnosing placement via the slider). With gravity suspended,
+  // SceneFrame's auto-warp threshold is 0, so this setSelfPosition
+  // teleports the body to the slider's Y on the next frame and holds
+  // it there. In the default gravity mode this effect is inert — the
+  // body's position is owned entirely by the physics settle, never by
+  // `yOffset`. Character XZ is locked at world origin so the
+  // cluster-of-cubes-at-origin scene stays symmetric around the
+  // standing position.
   useEffect(() => {
-    if (!local) return;
+    if (!local || !manualPlacement) return;
     local.actions.setSelfPosition(
       { x: 0, y: yOffset, z: 0 },
       { x: 0, y: 0, z: 0 },
       0,
       false,
     );
-  }, [local, yOffset]);
+  }, [local, manualPlacement, yOffset]);
 
   // Build the live viewConfig from current state. Memoized so Scene
   // doesn't re-mount on every render — only when the tunables
@@ -352,12 +406,13 @@ export function MugshotApp() {
     };
     win.__OFFICE_MUGSHOT_APPLY_MANIFEST__ = (m: MugshotManifest) => {
       setCharacter(m.character);
-      // Force Y back to the system default — manifests don't carry
-      // yOffset (by design, see the schema comment above). If the
-      // human had tuned Y in the live preview before the test ran,
-      // this snap ensures the test reproduces exactly what the
-      // export captured: the default-Y rendering.
-      setYOffset(DEFAULT_Y_OFFSET);
+      // Drop any manual Y-override and return to gravity placement —
+      // manifests don't carry yOffset (by design, see the schema
+      // comment above). The compare test must reproduce the renderer's
+      // NATURAL gravity-settled placement, not a tuned Y. If the human
+      // had pinned the body via the slider before the test ran, this
+      // re-enables gravity so the body re-settles onto the cubes.
+      setManualPlacement(false);
       setDistanceM(m.fixedCamera.distanceM);
       setCameraHeight(m.fixedCamera.height);
       setViewportWidth(m.viewportWidth);
@@ -368,7 +423,12 @@ export function MugshotApp() {
       // sets it per-angle via __OFFICE_MUGSHOT_SET_AZIMUTH__.
     };
     win.__OFFICE_MUGSHOT_SET_AZIMUTH__ = (deg) => setAzimuthDeg(deg);
-    win.__OFFICE_MUGSHOT_SET_Y_OFFSET__ = (y) => setYOffset(y);
+    // Driving the Y override flips into manual placement (gravity
+    // suspended, body pinned) — same as the human grabbing the slider.
+    win.__OFFICE_MUGSHOT_SET_Y_OFFSET__ = (y) => {
+      setManualPlacement(true);
+      setYOffset(y);
+    };
     win.__OFFICE_MUGSHOT_SET_CUBE_MODE__ = (mode) => setCubeMode(mode);
     win.__OFFICE_MUGSHOT_SET_CAMERA_HEIGHT__ = (h) => setCameraHeight(h);
     // Forwards through `onExportRef` so the latest onExport closure
@@ -570,6 +630,11 @@ export function MugshotApp() {
               paused={true}
               spawnPoints={[]}
               dpr={1}
+              // Feet-flush portrait: gameplay's 0.01 anti-tunnel skin
+              // floats the body ~1 cm; the mugshot wants the gravity-
+              // settle to land flush on the cube top. See
+              // MUGSHOT_CONTROLLER_OFFSET.
+              characterControllerOffset={MUGSHOT_CONTROLLER_OFFSET}
             />
           )}
         </div>
@@ -580,7 +645,14 @@ export function MugshotApp() {
           window.location.hash = `mugshot/${c}`;
         }}
         yOffset={yOffset}
-        onYOffsetChange={setYOffset}
+        // Grabbing the slider enters manual placement (gravity off,
+        // body pinned) — the human's diagnostic override.
+        onYOffsetChange={(v) => {
+          setManualPlacement(true);
+          setYOffset(v);
+        }}
+        manualPlacement={manualPlacement}
+        onResetToGravity={() => setManualPlacement(false)}
         azimuthDeg={azimuthDeg}
         onAzimuthChange={setAzimuthDeg}
         distanceM={distanceM}
@@ -621,6 +693,11 @@ interface ControlPanelProps {
   onCharacterChange: (c: CharacterName) => void;
   yOffset: number;
   onYOffsetChange: (v: number) => void;
+  /** True when the slider has been grabbed → gravity is suspended and
+   * the body is pinned at `yOffset`. False → gravity owns placement. */
+  manualPlacement: boolean;
+  /** Re-engage gravity placement (drop the manual pin). */
+  onResetToGravity: () => void;
   azimuthDeg: AzimuthDeg;
   onAzimuthChange: (v: AzimuthDeg) => void;
   distanceM: number;
@@ -671,7 +748,13 @@ function ControlPanel(props: ControlPanelProps) {
         </select>
       </Section>
 
-      <Section title={`Y offset · ${props.yOffset.toFixed(2)} m`}>
+      <Section
+        title={
+          props.manualPlacement
+            ? `Y offset · ${props.yOffset.toFixed(2)} m · MANUAL`
+            : `Y offset · gravity-placed (drag to override)`
+        }
+      >
         <input
           type="range"
           min={0}
@@ -681,6 +764,31 @@ function ControlPanel(props: ControlPanelProps) {
           onChange={(e) => props.onYOffsetChange(Number(e.target.value))}
           style={rangeStyle}
         />
+        {/* Manual override is a human DIAGNOSTIC only. officexr never
+            relies on this offset — gravity places the character. The
+            slider lets a human pin the body to inspect placement when
+            the gravity render looks wrong; this button drops the pin
+            and lets the body re-settle under gravity. */}
+        <button
+          type="button"
+          onClick={props.onResetToGravity}
+          disabled={!props.manualPlacement}
+          style={{
+            marginTop: 6,
+            width: '100%',
+            padding: '6px 0',
+            border: 0,
+            borderRadius: 3,
+            cursor: props.manualPlacement ? 'pointer' : 'default',
+            background: props.manualPlacement ? '#1f2937' : '#141a23',
+            color: props.manualPlacement ? '#cbd5e1' : '#4b5563',
+            fontSize: 11,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+          }}
+        >
+          ↺ Auto (gravity)
+        </button>
       </Section>
 
       <Section title={`Camera distance · ${props.distanceM.toFixed(1)} m`}>
