@@ -95,9 +95,28 @@ storages seeded from `window.__OFFICEXR_TEST_SEED__`. The
 `goToModeHermetic(page, mode, seed)` helper sets the seed via
 `addInitScript` and navigates. See `tests/playwright/map-editor-hermetic.spec.ts`.
 
-**CI** runs `pnpm test:e2e:ci` (scoped to the green, hermetic-friendly
-editor specs). Known follow-up: several legacy specs rotted while
-Playwright was ungated — `object-editor.spec.ts` / `routing.spec.ts`
-query the renamed `/api/cube-kinds` endpoint (now
-`/api/world-object-kinds`) and `room-editor.spec.ts` selectors drifted.
-Fixing + folding those into `test:e2e:ci` is the next increment.
+**CI** runs `pnpm test:e2e:ci`, now scoped to: `map-editor`,
+`map-editor-hermetic`, `object-editor`, `routing`, `room-editor`,
+`debug-mode`, and `character-on-surface`.
+
+The previously-rotted specs are repaired:
+
+- `object-editor.spec.ts` / `routing.spec.ts` now query the renamed
+  `/api/world-object-kinds` endpoint (was `/api/cube-kinds`).
+- `room-editor.spec.ts` reveals the "Show layout objects" toggle before
+  staging `Blue block` (a layout object, hidden by default), and
+  expects the current five-tool toolbar (Select/Add/Delete/Tile/Move).
+- `debug-mode.spec.ts` was realigned to the baked-geometry model: the
+  map-switch test asserts a new `/api/baked-layouts/<layout>` fetch +
+  pixel-hash change (maps carry no inline store cubes anymore), and the
+  cube-field regression grid is sized to the global `VOXEL_SIZE=0.5`
+  (the geometry service ignores a snapshot's `cubeSize`).
+
+`character-on-surface.spec.ts` uses Playwright's per-platform
+`toHaveScreenshot`. Its stale `SETTLED_BODY_Y` was fixed (cube tops
+moved y=2→y=1 when `cubeSize` aligned to `VOXEL_SIZE`), and BOTH
+platforms' baselines were regenerated and hand-verified (character
+stands on the surface): the `-darwin.png` set locally, and the
+`-linux.png` set in an amd64 Playwright container via podman (see
+CLAUDE.md — the committed `-linux.png` set is what CI compares against,
+so it must come from a linux/amd64 render, not a macOS dev box).

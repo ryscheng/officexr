@@ -31,13 +31,15 @@ const CHARACTERS = [
 ] as const;
 
 const SELF_ID = 'mugshot-player';
-// The Rapier body's ROOT y when the character is standing on a cube
-// whose top face is at y=2. The body's ball collider sits at local
-// y = BODY_Y (0.9) with radius `charRadius` (0.4); ball bottom in
-// world = root.y + 0.5. The controller's penetration skin
-// (`createCharacterController(0.01)`) adds a final 1 cm so the
-// settled root is 1.51, not exactly 1.5.
-const SETTLED_BODY_Y = 1.51;
+// The Rapier body's ROOT y when the character is standing on the
+// mugshot cube cluster. The cluster's cubes are aligned to the global
+// VOXEL_SIZE=0.5, so their tops sit at world y=1 (see MugshotApp's
+// DEFAULT_Y_OFFSET derivation — cube tops y=1, bottoms y=-1). The ball
+// collider sits at local y = BODY_Y (0.9) with radius `charRadius`
+// (0.4); ball bottom in world = root.y + 0.5. The controller's
+// penetration skin (`createCharacterController(0.01)`) adds a final
+// 1 cm so the settled root is 1 - 0.5 + 0.01 = 0.51, not exactly 0.5.
+const SETTLED_BODY_Y = 0.51;
 
 for (const character of CHARACTERS) {
   test(`mugshot: ${character} stands on 2x2 cube surface`, async ({ page }) => {

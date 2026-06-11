@@ -47,6 +47,9 @@ test('clicking a palette swatch activates the Add tool', async ({ page }) => {
   await expect(buttons[1]).toBeDisabled();
 
   // Click a known palette entry. Palette buttons have title="Blue block" etc.
+  // Blue block is a layout object (isLayoutObject), which the Room
+  // palette hides by default — reveal it before staging.
+  await page.check('#room-show-layout-objects');
   await page.click('button[title="Blue block"]');
 
   // After staging: the Add button is enabled and active.
@@ -74,21 +77,26 @@ test('RoomPicker exposes a select + new-room input', async ({ page }) => {
   ).toBeVisible();
 });
 
-test('Toolbar shows all four tools — Tile is gated on a staged kind', async ({
+test('Toolbar shows all five tools — Add/Tile are gated on a staged kind', async ({
   page,
 }) => {
   await goToMode(page, 'room');
   await waitForCanvasReady(page, 1200);
   const toolbar = page.locator('div[role="toolbar"]');
   const buttons = await toolbar.locator('button').all();
-  expect(buttons.length).toBe(4);
-  // Select + Delete are always enabled.
+  // TOOLS order: Select(0), Add(1), Delete(2), Tile(3), Move(4).
+  expect(buttons.length).toBe(5);
+  // Select + Delete + Move are always enabled.
   await expect(buttons[0]).toBeEnabled();
   await expect(buttons[2]).toBeEnabled();
+  await expect(buttons[4]).toBeEnabled();
   // Add (1) + Tile (3) need a staged kind first.
   await expect(buttons[1]).toBeDisabled();
   await expect(buttons[3]).toBeDisabled();
   // Stage a kind → both become enabled.
+  // Blue block is a layout object (isLayoutObject), which the Room
+  // palette hides by default — reveal it before staging.
+  await page.check('#room-show-layout-objects');
   await page.click('button[title="Blue block"]');
   await expect(buttons[1]).toBeEnabled();
   await expect(buttons[3]).toBeEnabled();
@@ -101,6 +109,9 @@ test('Add tool ghost preview renders a blue ghost cube under the cursor', async 
   const canvas = await waitForCanvasReady(page, 1500);
 
   // Stage a kind so the Add tool has a model to preview.
+  // Blue block is a layout object (isLayoutObject), which the Room
+  // palette hides by default — reveal it before staging.
+  await page.check('#room-show-layout-objects');
   await page.click('button[title="Blue block"]');
   await page.waitForTimeout(300);
 

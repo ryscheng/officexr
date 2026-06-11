@@ -8,12 +8,12 @@
 import { expect, test } from '@playwright/test';
 import { goToMode } from './helpers.ts';
 
-test('Object editor hydrates the full catalog from /api/cube-kinds', async ({
+test('Object editor hydrates the full catalog from /api/world-object-kinds', async ({
   page,
   request,
 }) => {
   // Source of truth: the catalog the dev server serves.
-  const apiResp = await request.get('http://localhost:5174/api/cube-kinds');
+  const apiResp = await request.get('http://localhost:5174/api/world-object-kinds');
   const apiBody = (await apiResp.json()) as { kinds?: unknown[] };
   const expectedKindCount = apiBody.kinds?.length ?? 0;
   expect(expectedKindCount).toBeGreaterThan(0);
@@ -32,7 +32,7 @@ test('Object editor sums category row counts to the catalog total', async ({
   page,
   request,
 }) => {
-  const apiResp = await request.get('http://localhost:5174/api/cube-kinds');
+  const apiResp = await request.get('http://localhost:5174/api/world-object-kinds');
   const apiBody = (await apiResp.json()) as { kinds?: { category: string }[] };
   const expectedTotal = apiBody.kinds?.length ?? 0;
 
@@ -95,7 +95,7 @@ test('Switching kinds does NOT clobber the new kind with previous kind values', 
   // unchanged after a kind switch with no user typing).
 
   // Pick two distinct kinds from the catalog to switch between.
-  const apiResp = await request.get('http://localhost:5174/api/cube-kinds');
+  const apiResp = await request.get('http://localhost:5174/api/world-object-kinds');
   const apiBody = (await apiResp.json()) as {
     kinds: Array<{ id: string; label: string; scale: number; swatch: string }>;
   };
@@ -132,7 +132,7 @@ test('Switching kinds does NOT clobber the new kind with previous kind values', 
   // into B's catalog entry and the auto-save would have persisted it.
   await page.waitForTimeout(900);
 
-  const after = await request.get('http://localhost:5174/api/cube-kinds');
+  const after = await request.get('http://localhost:5174/api/world-object-kinds');
   const afterBody = (await after.json()) as {
     kinds: Array<{ id: string; label: string }>;
   };

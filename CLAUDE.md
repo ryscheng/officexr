@@ -136,3 +136,20 @@ escape hatch is for genuine constraints, not for skipping refactors.
   truly needs to change, change BOTH the ideal PNGs and the
   manifest in the same PR — never silently widen the diff
   threshold to make the suite green.
+- **Regenerating per-platform Playwright baselines: use podman.**
+  `character-on-surface.spec.ts` uses Playwright's native
+  `toHaveScreenshot`, which writes OS-suffixed baselines
+  (`*-chromium-linux.png` / `*-chromium-darwin.png`). CI runs on
+  linux, so its `-linux.png` baselines can't be regenerated from a
+  macOS dev box directly. When they need refreshing (a renderer
+  change moved the rendered pixels), regenerate them in a linux
+  container via **podman** (Docker is not installed on these
+  machines — prefer podman when available, `podman --version` to
+  check). Use the Playwright image matching the installed version
+  (`mcr.microsoft.com/playwright:v<version>-noble`) against a
+  throwaway `git clone` of the repo (NOT a mount of the working
+  tree — an in-container `pnpm install` would clobber the host's
+  node_modules with linux binaries), then copy the generated
+  `*-chromium-linux.png` back into
+  `tests/playwright/<spec>-snapshots/`. Review each PNG by hand
+  before committing.

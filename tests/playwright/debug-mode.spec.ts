@@ -73,27 +73,27 @@ test('Debug mode mounts a canvas, the SDK store has both the local player and a 
 });
 
 /**
- * Map-switch regression. Pins THREE invariants in order from
- * "data-only" to "actually drawn pixels":
+ * Map-switch regression — BAKED-GEOMETRY model. Maps no longer carry
+ * inline cubes in `worldObjects.instances`; room/layout geometry is
+ * baked to a GLB and drawn by `<BakedLayout>`, which fetches
+ * `/api/baked-layouts/<layoutName>`. So "the rendered world actually
+ * changed" is pinned by two observable signals:
  *
- *   1. **Store side.** The picker pushes a new WorldObjects via
- *      `actions.setWorldObjects` — `state.worldObjects.instances`
- *      changes count between maps.
- *   2. **Renderer-wiring side.** `<ObjectInstances>` is mounted in
- *      Scene and consumes that snapshot — `window.__OFFICE_OBJECT_
- *      INSTANCES__.storeCount` is non-undefined AND tracks the
- *      store. This is the critical layer the previous test missed:
- *      ObjectInstances was once accidentally dropped from Scene's
- *      JSX, the data side kept working, and visually NOTHING from
- *      the map ever rendered. The marker only exists when the
- *      component is mounted, so an unmounted ObjectInstances makes
- *      this assertion fail immediately.
- *   3. **Pixel side.** Downsampled `gl.readPixels` over the canvas
- *      produces a different hash between maps. Doesn't pin specific
- *      colours (bots/animations move pixels around) but catches the
- *      "frame didn't change at all" failure mode.
+ *   1. **Baked-layout fetch.** Switching to a map backed by a
+ *      DIFFERENT layout fires a GET to `/api/baked-layouts/<newLayout>`
+ *      — the renderer asked the server for that map's geometry. A
+ *      switch that silently kept the old layout (or rendered nothing)
+ *      never fires it. This replaces the old store-count delta, which
+ *      is now always 0→0 because geometry is baked, not in the store.
+ *   2. **Pixel side.** A downsampled `gl.readPixels` hash over the
+ *      canvas differs between maps — the frame actually changed.
  *
- * Requires at least TWO maps on disk; skips gracefully otherwise.
+ * Uses two specific maps with KNOWN, DISTINCT baked layouts that ship
+ * on disk: `default`→`platform.glb`, `long_corridor`→
+ * `long_corridor.glb`. Skips gracefully if either is absent. Pins
+ * `lastMap=default` via `addInitScript` BEFORE the first script runs
+ * so map B's layout is never fetched during boot (a boot fetch would
+ * be served from `useGLTF`'s URL cache on switch, hiding the signal).
  * Drives the Radix Select via synthetic pointer events to bypass
  * Playwright actionability checks (which hang under Debug's GPU
  * stalls).
@@ -104,26 +104,40 @@ test('Map switch in Debug actually changes the rendered world', async ({
 }) => {
   test.setTimeout(180_000);
 
-  // Pre-flight: ensure /api/maps has at least two entries to switch
-  // between. Skip gracefully if not — keeps the suite green on
-  // clean checkouts before a second map is authored.
+  const a = 'default';
+  const b = 'long_corridor';
   const maps = (await request
     .get('http://localhost:5174/api/maps')
     .then((r) => r.json())) as { maps?: { name: string }[] };
-  const names = (maps.maps ?? []).map((m) => m.name);
-  test.skip(names.length < 2, 'needs at least 2 maps on disk');
-  const a = names[0];
-  const b = names[1];
+  const names = new Set((maps.maps ?? []).map((m) => m.name));
+  test.skip(
+    !names.has(a) || !names.has(b),
+    `needs maps "${a}" and "${b}" on disk`,
+  );
 
-  // Boot at map `a` so we know the starting state. Set localStorage
-  // AFTER the first navigation (before that the page is about:blank,
-  // which throws SecurityError on localStorage access).
+  // Record every baked-layout GLB the page fetches, parsing the layout
+  // name out of `/api/baked-layouts/<name>?v=<n>`. Attach BEFORE the
+  // first navigation so the boot fetch is captured.
+  const bakedFetches: string[] = [];
+  page.on('response', (r) => {
+    const u = r.url();
+    const i = u.indexOf('/api/baked-layouts/');
+    if (i === -1) return;
+    const name = u.slice(i + '/api/baked-layouts/'.length).split('?')[0];
+    if (name) bakedFetches.push(decodeURIComponent(name));
+  });
+
+  // Boot directly at map `a` — pin lastMap before any page script runs
+  // so map B's layout isn't fetched during boot.
+  await page.addInitScript((m) => {
+    try {
+      localStorage.setItem('officexr:studio:lastMap', m as string);
+    } catch {
+      /* about:blank etc. — ignore */
+    }
+  }, a);
   await page.goto('/#debug', { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 });
-  await page.evaluate((m: string) => localStorage.setItem('officexr:studio:lastMap', m), a);
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 });
-  await page.waitForTimeout(8000);
 
   const snap = async () =>
     page.evaluate(async () => {
@@ -166,36 +180,34 @@ test('Map switch in Debug actually changes the rendered world', async ({
           hash = acc.toString(16);
         }
       }
-      // ObjectInstances writes this marker on every render. If
-      // it's `undefined`, ObjectInstances is unmounted (the bug
-      // class we just fixed).
-      const rendered = (window as unknown as {
-        __OFFICE_OBJECT_INSTANCES__?: {
-          storeCount: number;
-          perKind: Array<{ kindId: string; count: number }>;
-        };
-      }).__OFFICE_OBJECT_INSTANCES__;
       return {
         count: st?.worldObjects?.instances?.length ?? 0,
-        renderedCount: rendered?.storeCount ?? null,
-        renderedPerKind: rendered?.perKind ?? null,
         hash,
       };
     });
 
+  // Wait for map A's baked layout to be fetched + drawn, then snapshot.
+  await expect
+    .poll(() => bakedFetches.length, {
+      message: `map "${a}" baked layout fetched`,
+      timeout: 25_000,
+    })
+    .toBeGreaterThan(0);
+  await page.waitForTimeout(5000);
   const before = await snap();
+  const fetchCountBeforeSwitch = bakedFetches.length;
 
-  // Switch via Radix Select. Use synthetic pointer events — Radix
-  // listens for pointerdown, and Playwright's .click() chain hangs
-  // under Debug's GPU stalls.
-  await page.evaluate((nextMap: string) => {
+  // Switch to map B via the Radix Select. Synthetic pointer events —
+  // Radix listens for pointerdown, and .click() hangs under Debug's
+  // GPU stalls. Option text == the raw map name (SelectInput uses the
+  // name as both value and label).
+  await page.evaluate(() => {
     const trigger = document.querySelector('[role="combobox"]') as HTMLElement | null;
     if (!trigger) throw new Error('no combobox');
     trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' }));
     trigger.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' }));
     trigger.click();
-    void nextMap;
-  }, b);
+  });
   await page.waitForTimeout(500);
   await page.evaluate((nextMap: string) => {
     const opts = Array.from(document.querySelectorAll('[role="option"]')) as HTMLElement[];
@@ -205,35 +217,35 @@ test('Map switch in Debug actually changes the rendered world', async ({
     target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' }));
     target.click();
   }, b);
-  await page.waitForTimeout(5000);
 
+  // Wait for map B's baked layout to be fetched (the new-geometry
+  // signal), then let it draw.
+  await expect
+    .poll(() => bakedFetches.length, {
+      message: `baked layout fetched after switching to "${b}"`,
+      timeout: 30_000,
+    })
+    .toBeGreaterThan(fetchCountBeforeSwitch);
+  await page.waitForTimeout(5000);
   const after = await snap();
 
-  // (1) Store delta.
-  expect(after.count, `store cube count differs (was ${before.count})`).not.toBe(
-    before.count,
-  );
+  // (1) Baked-geometry model: maps carry NO inline store cubes —
+  // geometry is baked. Documents why the old store-count delta is gone.
+  expect(before.count, `map "${a}" geometry is baked, not in the store`).toBe(0);
+  expect(after.count, `map "${b}" geometry is baked, not in the store`).toBe(0);
 
-  // (2) Renderer-wiring invariant: ObjectInstances IS mounted and
-  // reflects the store. Without this, the previous version of this
-  // test passed even when ObjectInstances was missing from Scene
-  // entirely (the data side was correct; nothing rendered the
-  // cubes). If either side of this assertion is `null` or stale,
-  // the bug class is back.
+  // (2) The switch fetched a baked layout that map A did NOT use — the
+  // renderer asked the server for map B's distinct geometry.
+  const layoutsBefore = new Set(bakedFetches.slice(0, fetchCountBeforeSwitch));
+  const newLayouts = bakedFetches
+    .slice(fetchCountBeforeSwitch)
+    .filter((n) => !layoutsBefore.has(n));
   expect(
-    before.renderedCount,
-    '<ObjectInstances> mounted on map A (window.__OFFICE_OBJECT_INSTANCES__ set)',
-  ).toBe(before.count);
-  expect(
-    after.renderedCount,
-    '<ObjectInstances> mounted on map B (window.__OFFICE_OBJECT_INSTANCES__ set)',
-  ).toBe(after.count);
-  expect(
-    after.renderedCount,
-    'rendered count tracks store delta between maps',
-  ).not.toBe(before.renderedCount);
+    newLayouts.length,
+    `a new baked layout was fetched after switching to "${b}" (saw ${JSON.stringify(bakedFetches)})`,
+  ).toBeGreaterThan(0);
 
-  // (3) Pixel-side sanity check — frames differ across maps.
+  // (3) Pixel-side sanity check — the frame actually changed.
   expect(after.hash, 'pixel hash differs across maps').not.toBe(before.hash);
 });
 
@@ -356,10 +368,14 @@ test('Rendered cube field actually tracks state.worldObjects (deterministic)', a
       return { w, h, len: px.length };
     });
 
-  // Frame A: empty world.
+  // Frame A: empty world. cubeSize MUST be the global VOXEL_SIZE
+  // (0.5) — the geometry service ignores the snapshot's cubeSize and
+  // positions every instance via the global, so a mismatched cubeSize
+  // here silently shifts the field (see MugshotApp's cube-cluster
+  // comment). Keep both frames at 0.5 so voxel→world is x*0.5.
   await page.evaluate(() => {
     (window as unknown as { __OFFICE_STORE__: any }).__OFFICE_STORE__.setState(
-      () => ({ worldObjects: { cubeSize: 2, instances: [] } }),
+      () => ({ worldObjects: { cubeSize: 0.5, instances: [] } }),
     );
   });
   await pinPlayer();
@@ -371,7 +387,17 @@ test('Rendered cube field actually tracks state.worldObjects (deterministic)', a
     ).__FRAME__;
   });
 
-  // Frame B: 21×21 blue cubes around the player.
+  // Frame B: a 21×21 floor of 2 m blue cubes tiled edge-to-edge and
+  // CENTERED on the pinned player. With voxel→world = pos*0.5, a
+  // voxel step of 4 = a 2 m world step (one cube width), so the cubes
+  // abut without gaps. Voxel x/z = -20 + i*4 (i in 0..20) → world
+  // -10..30, centered on the player's world x/z = 10. Voxel y = -4 →
+  // world anchor y=-2, cube tops at y=0 = the player's feet, so the
+  // field reads as a solid floor under the fixed camera and fills a
+  // large fraction of the frame (well above the 5% noise floor). The
+  // old test used integer positions + cubeSize:2, which — once the
+  // geometry service pinned to VOXEL_SIZE=0.5 — collapsed the field to
+  // a ~10 m patch at the player's edge (~1% footprint) and failed.
   await page.evaluate(() => {
     const insts: Array<{
       id: string;
@@ -385,12 +411,12 @@ test('Rendered cube field actually tracks state.worldObjects (deterministic)', a
           id: `regression-${x}-${z}`,
           sourceCommandId: 'regression',
           kindId: 'colored_block_blue',
-          position: [x, 0, z],
+          position: [-20 + x * 4, -4, -20 + z * 4],
         });
       }
     }
     (window as unknown as { __OFFICE_STORE__: any }).__OFFICE_STORE__.setState(
-      () => ({ worldObjects: { cubeSize: 2, instances: insts } }),
+      () => ({ worldObjects: { cubeSize: 0.5, instances: insts } }),
     );
   });
   await pinPlayer();

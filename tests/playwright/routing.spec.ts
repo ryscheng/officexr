@@ -22,7 +22,7 @@ test('hash deep-link opens the matching mode', async ({ page }) => {
 });
 
 test('storage endpoints respond', async ({ request }) => {
-  for (const path of ['/api/rooms', '/api/maps', '/api/cube-kinds']) {
+  for (const path of ['/api/rooms', '/api/maps', '/api/world-object-kinds']) {
     const r = await request.get(`http://localhost:5174${path}`);
     expect(r.status(), `${path} status`).toBe(200);
     const body = await r.json();

@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "name": "booper",
-  "updatedAt": 1779219186587,
+  "updatedAt": 1779223599970,
   "rooms": [
     {
-      "id": "room-1-4l1j",
+      "id": "room-1-se5k",
       "roomName": "booper",
       "position": [
         0,
@@ -16,11 +16,11 @@
   ],
   "spawnPoints": [
     {
-      "id": "spawn-6-5yb4",
+      "id": "spawn-2-sjo5",
       "position": [
-        15.957121573140022,
-        0,
-        1.9120159867661277
+        13.475434604333472,
+        0.5,
+        1.7782112127051732
       ]
     }
   ],

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "booper",
   "title": "booper",
-  "updatedAt": 1779219259887,
+  "updatedAt": 1779219914885,
   "commands": [
     {
       "id": "place-73-uz1f",
@@ -602,6 +602,16 @@
         36,
         0,
         -12
+      ]
+    },
+    {
+      "id": "place-1-lk9x",
+      "op": "placeObject",
+      "kindId": "colored_block_red",
+      "position": [
+        8,
+        0,
+        -4
       ]
     }
   ],

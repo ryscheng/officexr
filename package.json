@@ -35,7 +35,7 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:ci": "playwright test tests/playwright/map-editor.spec.ts tests/playwright/map-editor-hermetic.spec.ts --project=chromium"
+    "test:e2e:ci": "playwright test tests/playwright/map-editor.spec.ts tests/playwright/map-editor-hermetic.spec.ts tests/playwright/object-editor.spec.ts tests/playwright/routing.spec.ts tests/playwright/room-editor.spec.ts tests/playwright/debug-mode.spec.ts tests/playwright/character-on-surface.spec.ts --project=chromium"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
