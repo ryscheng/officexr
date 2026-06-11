@@ -36,10 +36,10 @@ const SELF_ID = 'mugshot-player';
 // cluster's cubes are aligned to the global VOXEL_SIZE=0.5 so their
 // tops sit at world y=1; the ball collider sits at local y = BODY_Y
 // (0.9) with radius `charRadius` (0.4), so ball bottom = root.y + 0.5
-// and geometric contact is root = 1 - 0.5 = 0.50. The Mugshot threads
-// a near-zero character-controller skin (MUGSHOT_CONTROLLER_OFFSET, vs
-// gameplay's 0.01) so the gravity-settle lands feet-flush at ≈0.50
-// rather than floating ~1 cm. Measured settle: ≈0.5002.
+// and geometric contact is root = 1 - 0.5 = 0.50. The global
+// character-controller skin is near-zero (CHARACTER_CONTROLLER_SKIN ≈
+// 0.0001) so the gravity-settle lands feet-flush at ≈0.50 with no
+// float. Measured settle: ≈0.5002.
 const SETTLED_BODY_Y = 0.5;
 
 for (const character of CHARACTERS) {

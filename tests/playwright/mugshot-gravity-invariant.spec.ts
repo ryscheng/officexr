@@ -3,13 +3,11 @@
  *
  * officexr places the Mugshot character by GRAVITY, not by an offset:
  * the body is dropped from above the cubes and settles onto them under
- * the kinematic character controller. The ONLY sanctioned vertical
- * compensation is the near-zero controller skin
- * (`MUGSHOT_CONTROLLER_OFFSET` in MugshotApp), which makes the settle
- * land feet-flush instead of floating ~1 cm on gameplay's 0.01 skin.
- * It is self-limiting: a controller skin can only float the body UP,
- * never sink it below contact, so it physically cannot mask a large
- * gravity float.
+ * the kinematic character controller. The controller's penetration
+ * skin is near-zero GLOBALLY (`CHARACTER_CONTROLLER_SKIN` in
+ * physics/rules.ts — same for the local player and bots), so the
+ * collider settles ON the surface instead of floating ~1 cm above it.
+ * Nothing here is mugshot-scoped.
  *
  * THE INVARIANT: after settling, the character's feet must rest within
  * MAX_GROUND_SINK (10 cm) of the cube surface. If this fails, gravity

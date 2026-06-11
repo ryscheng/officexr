@@ -27,26 +27,6 @@ const DEFAULT_CHARACTER: CharacterName = 'Barbarian';
  * for why the old DEFAULT_Y_OFFSET teleport was retired.) */
 const SPAWN_DROP_HEIGHT = 4;
 
-/** Penetration skin for the Mugshot's character controller — the ONLY
- * sanctioned vertical compensation in the portrait. Gameplay uses
- * 0.01 m (an anti-tunnel gap) which rests the body ~1 cm above true
- * contact (settled root ≈ 0.51); that 1 cm float is noticeable in a
- * tight portrait. So the Mugshot threads this near-zero skin through
- * Scene → SceneFrame and the gravity-settle lands feet-flush at root
- * ≈ 0.50 (feet ≈ 1.00). Not exactly 0 — Rapier discourages a zero
- * offset (re-introduces tunneling/jitter) — but small enough to be
- * sub-pixel against the curated 0.50 ideals.
- *
- * Why this is honest, not a teleport cheat: a controller skin can only
- * float the body UP, never sink it below contact, so it physically
- * cannot mask a large gravity float — placement stays 100% gravity.
- * The `mugshot-gravity-invariant` spec guards this: if the character
- * ever settles >10 cm from the surface, that test fails and demands a
- * gravity bug-fix, NOT a bigger offset. Do not re-introduce a
- * position-offset teleport here (that was the cheat this work removed).
- */
-const MUGSHOT_CONTROLLER_OFFSET = 0.0001;
-
 /** Default value shown by the manual Y-offset slider. This is the
  * approximate gravity-settled root y; it is a DISPLAY/override seed
  * only — officexr never relies on it to place the character (gravity
@@ -630,11 +610,6 @@ export function MugshotApp() {
               paused={true}
               spawnPoints={[]}
               dpr={1}
-              // Feet-flush portrait: gameplay's 0.01 anti-tunnel skin
-              // floats the body ~1 cm; the mugshot wants the gravity-
-              // settle to land flush on the cube top. See
-              // MUGSHOT_CONTROLLER_OFFSET.
-              characterControllerOffset={MUGSHOT_CONTROLLER_OFFSET}
             />
           )}
         </div>

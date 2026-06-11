@@ -20,13 +20,16 @@ body was teleported to a `DEFAULT_Y_OFFSET` constant. That is gone.
 body to a magic Y to "fix" placement, the bug is in gravity/geometry —
 fix that instead.
 
-The single sanctioned vertical compensation is a **near-zero character-
-controller skin** (`MUGSHOT_CONTROLLER_OFFSET`, threaded as
-`characterControllerOffset` through `Scene` → `SceneFrame`). Gameplay's
-0.01 m anti-tunnel skin floats the body ~1 cm; the portrait uses a
-near-zero skin so the gravity-settle is feet-flush. This is honest: a
-controller skin can only float the body **up**, never sink it below
-contact, so it physically cannot mask a large gravity float.
+The character settles flush because the kinematic controller's
+penetration skin is **near-zero globally** —
+`CHARACTER_CONTROLLER_SKIN` in `packages/world/src/physics/rules.ts`,
+used by BOTH the local player (`SceneFrame`) and bots
+(`BotPhysicsWorld`). Nothing about physics is mugshot-scoped: every
+character in the game settles on the ground the same way. (A larger
+"anti-tunnel" skin would float the collider ~1 cm above every surface;
+the world's solid 2 m cubes make tunneling at a near-zero skin a
+non-issue.) If you change that constant, expect every character
+baseline to shift.
 
 ### The invariant (`mugshot-gravity-invariant.spec.ts`)
 

@@ -31,9 +31,12 @@ const SELF_ID = 'local-player';
 // (MapColliders applies `voxelY * cubeSize + cubeSize/2`, lifting the
 // y=0 row half a cube above world y=0). Cube top is therefore at
 // world y=2. Ball collider bottom = body.y + (BODY_Y - charRadius)
-// = body.y + 0.5. Controller skin = 0.01. Settled body.y = 1.51.
+// = body.y + 0.5. The controller skin is near-zero
+// (CHARACTER_CONTROLLER_SKIN ≈ 0.0001), so the character settles ON
+// the cube: ball bottom = cube top → settled body.y ≈ 1.50 (feet flush
+// at y=2.00, no float).
 const CUBE_TOP_Y = 2;
-const SETTLED_BODY_Y = 1.51;
+const SETTLED_BODY_Y = 1.5;
 
 test('Debug character stands on cube — bind-pose anchor, no float', async ({
   page,
@@ -260,14 +263,15 @@ test('Debug character stands on cube — bind-pose anchor, no float', async ({
   expect(md.minY).toBeLessThanOrEqual(0);
   expect(md.minY).toBeGreaterThan(-1.0);
 
-  // 5. World-space mesh feet land on the cube top (±2 cm).
+  // 5. World-space mesh feet land flush on the cube top (±2 cm).
   //    feet_y = body.y + wrapper (0.5) + offset + minY
   //           = body.y + 0.5  (because offset + minY = 0 by #3)
-  //    Should equal cube_top + skin = 1.01.
+  //    With the near-zero controller skin the body settles flush, so
+  //    this should equal cube_top (≈2.00), not cube_top + a float.
   const feetY = (result.bodyY as number) + 0.5 + md.offset + md.minY;
   expect(
-    Math.abs(feetY - (CUBE_TOP_Y + 0.01)),
-    `mesh feet world y (${feetY}) must equal cube_top + skin ` +
-      `(${CUBE_TOP_Y + 0.01}) within 2 cm`,
+    Math.abs(feetY - CUBE_TOP_Y),
+    `mesh feet world y (${feetY}) must land flush on cube_top ` +
+      `(${CUBE_TOP_Y}) within 2 cm`,
   ).toBeLessThan(0.02);
 });

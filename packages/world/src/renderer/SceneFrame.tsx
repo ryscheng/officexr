@@ -18,6 +18,7 @@ import type { BotPool } from '../bot/BotPool.ts';
 import type { CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
+  CHARACTER_CONTROLLER_SKIN,
   GRAVITY as GAME_GRAVITY,
   pickRespawnPosition,
   respawnThreshold,
@@ -55,14 +56,6 @@ interface SceneFrameProps {
    * without React re-renders. Ref is created in Scene.tsx and threaded to
    * both SceneFrame and Players. */
   isAirborneRef: React.MutableRefObject<boolean>;
-  /** Penetration skin (in metres) passed to Rapier's
-   * `createCharacterController`. The skin is a deliberate gap that
-   * stops the kinematic collider sitting exactly flush against ground
-   * and tunneling/jittering — gameplay needs it (default 0.01). The
-   * Mugshot mode overrides it to a near-zero value so the gravity-
-   * settled character rests feet-flush on the cube top (no 1 cm float
-   * in the portrait). See `MugshotApp.tsx`'s MUGSHOT_CONTROLLER_OFFSET. */
-  characterControllerOffset?: number;
 }
 
 const ARROW_KEYS = new Set([
@@ -109,7 +102,6 @@ export function SceneFrame({
   worldFocused,
   spawnPoints,
   isAirborneRef,
-  characterControllerOffset = 0.01,
 }: SceneFrameProps) {
   // Mirror the spawn list into a ref so the per-frame fall-respawn
   // check below can read the live value without re-binding the
@@ -154,11 +146,6 @@ export function SceneFrame({
     null,
   );
   const controllerWorldRef = useRef<unknown>(null);
-  // The penetration skin the cached controller was created with. When
-  // the `characterControllerOffset` prop changes (e.g. Mugshot mounts
-  // with a near-zero skin), the controller must be recreated — Rapier
-  // bakes the offset at construction time and offers no setter.
-  const controllerOffsetRef = useRef<number>(characterControllerOffset);
   // Vertical velocity (m/s) for the local player. Accumulates `GRAVITY
   // * dt` every frame and resets to 0 whenever the character controller
   // reports `computedGrounded()`. The Rapier `Physics` world's gravity
@@ -404,10 +391,9 @@ export function SceneFrame({
         // across the world swap.
         if (
           !controllerRef.current ||
-          controllerWorldRef.current !== world ||
-          controllerOffsetRef.current !== characterControllerOffset
+          controllerWorldRef.current !== world
         ) {
-          const c = world.createCharacterController(characterControllerOffset);
+          const c = world.createCharacterController(CHARACTER_CONTROLLER_SKIN);
           c.setApplyImpulsesToDynamicBodies(false);
           c.setSlideEnabled(true);
           c.setUp({ x: 0, y: 1, z: 0 });
@@ -419,7 +405,6 @@ export function SceneFrame({
           c.enableSnapToGround(0.3);
           controllerRef.current = c;
           controllerWorldRef.current = world;
-          controllerOffsetRef.current = characterControllerOffset;
           verticalVelRef.current = 0;
         }
         const controller = controllerRef.current;

@@ -74,7 +74,7 @@ test('mugshot Y-offset slider moves the character body', async ({ page }) => {
   };
 
   // Default settle (gravity, no override). Cube tops at y=1, near-zero
-  // mugshot controller skin → body root settles feet-flush at ≈0.50.
+  // global controller skin → body root settles feet-flush at ≈0.50.
   const initial = await readY();
   expect(initial, 'pos.y not exposed').not.toBeNull();
   expect(Math.abs((initial as number) - 0.5)).toBeLessThan(0.05);

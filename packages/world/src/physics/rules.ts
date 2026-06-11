@@ -22,6 +22,22 @@ export const GRAVITY = -20;
  * (re)spawning it. Gravity carries them onto the surface. */
 export const SPAWN_DROP_HEIGHT = 4;
 
+/** Penetration "skin" (offset) for the kinematic character controller
+ * — the small gap Rapier keeps between the character collider and the
+ * world during collide-and-slide. Its job is to avoid numerical
+ * penetration / tunneling (a fast collider slipping through geometry
+ * in one step) and contact jitter. The side effect is that the
+ * collider rests this far ABOVE whatever it lands on, so the visible
+ * feet float by exactly this much.
+ *
+ * Kept very near zero (not exactly 0 — Rapier discourages that) so the
+ * character genuinely settles ON the ground rather than floating ~1 cm
+ * above it. Tunneling risk is low here: world geometry is solid 2 m
+ * cubes, far thicker than any per-frame movement step. Used by BOTH
+ * the local player (`SceneFrame`) and bots (`BotPhysicsWorld`) so every
+ * character obeys the same contact rule. */
+export const CHARACTER_CONTROLLER_SKIN = 0.0001;
+
 /** Margin (m) below the lowest cube before a character counts as
  * "fallen off the map" and is forcibly respawned. Generous enough
  * that a character resting on the lowest cube's top can't trip the

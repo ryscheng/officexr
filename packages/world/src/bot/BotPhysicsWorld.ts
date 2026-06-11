@@ -7,7 +7,11 @@ import {
   OUTER_SENSOR_GROUPS,
   type ColliderTag,
 } from '../physics/groups.ts';
-import { GRAVITY, worldObjectsToCuboids } from '../physics/rules.ts';
+import {
+  CHARACTER_CONTROLLER_SKIN,
+  GRAVITY,
+  worldObjectsToCuboids,
+} from '../physics/rules.ts';
 
 /** Local-y the bot collider sits at (matches the browser-side BODY_Y in
  * Players.tsx so all bodies are at the same elevation). */
@@ -189,7 +193,7 @@ export class BotPhysicsWorld {
       ownerId: opts.selfId,
     });
 
-    this.controller = this.world.createCharacterController(0.01);
+    this.controller = this.world.createCharacterController(CHARACTER_CONTROLLER_SKIN);
     this.controller.setApplyImpulsesToDynamicBodies(false);
     this.controller.setSlideEnabled(true);
     this.controller.setUp({ x: 0, y: 1, z: 0 });
