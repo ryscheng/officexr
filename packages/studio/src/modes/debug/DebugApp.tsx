@@ -12,6 +12,7 @@ import { useStackSwitcher } from '../../realtime/useStackSwitcher.ts';
 import { MapPickerPanel } from './MapPickerPanel.tsx';
 import { useMapPicker } from './useMapPicker.ts';
 import { useWorldFocus } from './useWorldFocus.ts';
+import { publishFrameStats } from '../../perf/frame-stats.ts';
 
 const SELF_ID = 'local-player';
 const OFFICE_ID = 'studio-office';
@@ -210,9 +211,14 @@ export function DebugApp() {
             spawnPoints={picker.spawnPoints}
             bakedLayoutPath={bakedLayoutPath}
             bakedLayoutName={bakedLayoutName}
+            onFrameStats={publishFrameStats}
           />
         )}
-        <Hud cameraMode={cameraMode} mode={stack?.mode ?? 'in-memory'} />
+        <Hud
+          cameraMode={cameraMode}
+          mode={stack?.mode ?? 'in-memory'}
+          bakedLayoutName={bakedLayoutName}
+        />
         <FocusIndicator focused={worldFocused} />
         {errorBanner && (
           <ErrorBanner message={errorBanner} onDismiss={dismissError} />
@@ -291,7 +297,22 @@ function FocusIndicator({ focused }: { focused: boolean }) {
   );
 }
 
-function Hud({ cameraMode, mode }: { cameraMode: CameraMode; mode: AppMode }) {
+function Hud({
+  cameraMode,
+  mode,
+  bakedLayoutName,
+}: {
+  cameraMode: CameraMode;
+  mode: AppMode;
+  /** The baked layout `<Scene>` is rendering, or undefined when the
+   * map fell back to per-object instanced rendering. Surfaced here
+   * because the fallback is otherwise silent (a console.warn) — the
+   * user deserves to SEE which render path they're profiling. */
+  bakedLayoutName?: string;
+}) {
+  const layoutLine = bakedLayoutName
+    ? `Layout: baked "${bakedLayoutName}"`
+    : 'Layout: unbaked (instanced objects)';
   return (
     <div
       style={{
@@ -307,7 +328,7 @@ function Hud({ cameraMode, mode }: { cameraMode: CameraMode; mode: AppMode }) {
         whiteSpace: 'pre-line',
       }}
     >
-      {`Camera: ${cameraMode} (Alt+P to cycle) · Realtime: ${mode}
+      {`Camera: ${cameraMode} (Alt+P to cycle) · Realtime: ${mode} · ${layoutLine}
 WASD to move · Click to look · Esc to release mouse`}
     </div>
   );

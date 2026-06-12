@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Header, isStudioMode, type StudioMode } from './ui/Header.tsx';
 import { BakeStatusBar } from './ui/BakeStatusBar.tsx';
+import { PerfFooter } from './ui/PerfFooter.tsx';
 import { DebugApp } from './modes/debug/DebugApp.tsx';
 import { RoomApp } from './modes/room/RoomApp.tsx';
 import { CharacterApp } from './modes/character/CharacterApp.tsx';
@@ -31,6 +32,20 @@ const DEFAULT_MODE: StudioMode = 'map';
 export function StudioPage() {
   const [studioMode, setStudioMode] = useState<StudioMode>(() =>
     readHashMode() ?? DEFAULT_MODE,
+  );
+
+  // `?perfFooter=0` suppresses the perf footer for pixel-capture
+  // contexts. The Playwright motion-keyframe specs screenshot the
+  // Debug canvas against committed baselines; the footer's height
+  // changes the canvas viewport, which would shift every baseline
+  // whenever the footer changes. Same URL-param-seam pattern as
+  // `?test=1` (hermetic boot) and `?thumbnailMode=true` (object
+  // thumbnails). Read once at mount — the search string can't change
+  // without a full page load.
+  const [showPerfFooter] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      new URLSearchParams(window.location.search).get('perfFooter') !== '0',
   );
 
   // Mirror mode → hash so links survive a hard reload. Compare only
@@ -83,6 +98,15 @@ export function StudioPage() {
       {studioMode === 'character' && <CharacterApp />}
       {studioMode === 'debug' && <DebugApp />}
       {studioMode === 'mugshot' && <MugshotApp />}
+      {/* Global render-perf readout. Bottom counterpart of the
+          BakeStatusBar: whichever mode's canvas is mounted publishes
+          FPS / draw-call samples to the frame-stats bus and this
+          footer renders them, mode-agnostically. Suppressed in
+          Mugshot mode: that canvas is a pixel-deterministic capture
+          surface (character-on-surface / mugshot baselines) and the
+          footer's height would change its viewport, shifting every
+          screenshot baseline. */}
+      {showPerfFooter && studioMode !== 'mugshot' && <PerfFooter />}
     </div>
   );
 }

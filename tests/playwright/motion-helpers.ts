@@ -441,7 +441,10 @@ export async function goToDebugWithMap(page: Page, mapName: string): Promise<voi
       // about:blank or private mode — ignore
     }
   }, mapName);
-  await page.goto('/#debug', { waitUntil: 'domcontentloaded' });
+  // `perfFooter=0` keeps the studio's perf footer out of the layout so
+  // the Debug canvas viewport (and therefore every motion-keyframe
+  // screenshot baseline) stays the same size it was captured at.
+  await page.goto('/?perfFooter=0#debug', { waitUntil: 'domcontentloaded' });
 }
 
 // ---------------------------------------------------------------------------

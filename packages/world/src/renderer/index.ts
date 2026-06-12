@@ -38,6 +38,11 @@ export {
 } from './cube-material.ts';
 export { EndlessGrid } from './EndlessGrid.tsx';
 export { DirectionGizmo } from './DirectionGizmo.tsx';
+export {
+  FrameStatsProbe,
+  type FrameStatsSample,
+  type FrameStatsProbeProps,
+} from './FrameStatsProbe.tsx';
 
 export {
   CAMERA_MODES,

@@ -22,6 +22,7 @@ import { useApplication } from '@officexr/world/react';
 import type { Tool } from './tools.ts';
 import type { SceneEditorBackend } from './SceneEditorBackend.ts';
 import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
+import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 import {
   snapToNearestFace,
   snapToVoxel,
@@ -900,6 +901,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
         style={{ width: '100%', height: '100%', display: 'block' }}
         shadows={false}
       >
+        <CanvasFrameStats />
         <LightingRig lighting={ROOM_EDITOR_LIGHTING} />
         <color attach="background" args={['#0a0a0a']} />
         <EndlessGrid />

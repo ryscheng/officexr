@@ -9,6 +9,7 @@ import {
   type AnimationState,
 } from '@officexr/world/renderer';
 import type { CharacterName } from '@officexr/world';
+import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 
 const CHARACTER_EDITOR_LIGHTING = {
   ...DEFAULT_EDITOR_LIGHTING,
@@ -69,6 +70,7 @@ export function CharacterEditorCanvas(props: CharacterEditorCanvasProps) {
       style={{ width: '100%', height: '100%', display: 'block' }}
       shadows={false}
     >
+      <CanvasFrameStats />
       <LightingRig lighting={CHARACTER_EDITOR_LIGHTING} />
       <color attach="background" args={['#0a0a0a']} />
       <EndlessGrid />

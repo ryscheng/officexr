@@ -12,6 +12,7 @@ import {
   extractMaterialFromGltf,
 } from '@officexr/world/renderer';
 import type { WorldObjectKind } from '@officexr/world';
+import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 
 // Editor-tuned lighting for the Object preview. Bright neutral fill
 // + a punchy key light so material overrides (tint, roughness,
@@ -65,6 +66,9 @@ export function ObjectPreviewCanvas({ kind }: ObjectPreviewCanvasProps) {
         preserveDrawingBuffer: thumbnailMode,
       }}
     >
+      {/* No stats in thumbnailMode — the capture script's canvas
+          shouldn't publish to (or clear) the live footer readout. */}
+      {!thumbnailMode && <CanvasFrameStats />}
       <EditorCamera
         position={[2.5, 2, 2.5]}
         target={[0, 0.5, 0]}

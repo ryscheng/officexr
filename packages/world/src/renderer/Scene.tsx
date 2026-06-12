@@ -22,6 +22,7 @@ import { ObjectInstances } from './ObjectInstances.tsx';
 import { BakedLayout } from './BakedLayout.tsx';
 import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
+import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
 import type { CameraMode } from './config.ts';
 import type { ViewConfig } from './viewConfig.ts';
 
@@ -118,6 +119,11 @@ interface SceneProps {
    * exactly — capture baselines are deterministic regardless of
    * the user's display DPI. */
   dpr?: number;
+  /** When provided, mounts a `<FrameStatsProbe>` inside the canvas
+   * that reports FPS / frame-time / draw-call samples here (and a
+   * final `null` on unmount). The studio's perf footer is the
+   * intended consumer; omitting the prop adds zero per-frame work. */
+  onFrameStats?: (sample: FrameStatsSample | null) => void;
 }
 
 export function Scene(props: SceneProps) {
@@ -218,6 +224,7 @@ export function Scene(props: SceneProps) {
       // consumers (Debug) don't use the export path.
       gl={{ preserveDrawingBuffer: true }}
     >
+      {props.onFrameStats && <FrameStatsProbe onSample={props.onFrameStats} />}
       <Suspense fallback={null}>
         {/*
           <Physics> wraps everything that needs Rapier — characters,

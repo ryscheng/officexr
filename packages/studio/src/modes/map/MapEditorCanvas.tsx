@@ -22,6 +22,7 @@ import type { WorldObjects } from '@officexr/sdk';
 import type { MapSelection } from './useMapDocument.ts';
 import type { MapTool } from './mapTools.ts';
 import { resolveRoomPointerAction } from './mapPointerActions.ts';
+import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 import {
   snapRoomToNeighbors,
   type RoomAABBVoxel,
@@ -91,6 +92,7 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
       style={{ width: '100%', height: '100%', display: 'block' }}
       shadows={false}
     >
+      <CanvasFrameStats />
       <color attach="background" args={['#0b1220']} />
       <LightingRig lighting={mapDocToLighting(props.doc.environment)} />
       <EnvironmentLayer environment={props.doc.environment} />
