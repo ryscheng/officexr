@@ -3,29 +3,35 @@ import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import type { Store, WorldObjects } from '@officexr/sdk';
 import { useApplication } from '../react/application-context.tsx';
 import { WALL_GROUPS } from '../physics/groups.ts';
+import { worldObjectsToCuboids } from '../physics/rules.ts';
 
 interface MapCollidersProps {
   store: Store;
 }
 
 /**
- * One static cuboid collider per placed object in `state.worldObjects`.
+ * Static cuboid colliders for every placed object in `state.worldObjects`.
  *
  * Position + half-extents are derived from the **canonical
- * `InstanceGeometryService`** — same source of truth the renderer
- * uses for the visible mesh placement. Before this refactor the
- * colliders hardcoded `[half, half, half]` half-extents
- * (one-voxel-size everywhere) and a `+vs/2` Y offset that worked only
- * for objects exactly one voxel in size. After the per-kind dimensions
- * rollout that became wrong for every kind larger than one voxel —
- * players walked through 2 m blocks while the visible mesh appeared
- * to block them.
+ * `InstanceGeometryService`** — same source of truth the renderer uses
+ * for the visible mesh placement.
  *
- * Now: collider center = AABB center, collider half-extents = AABB
- * half-extents. Player collision matches the visible mesh exactly.
+ * Default (all kinds): one CuboidCollider per placed object, sized to
+ * the kind's AABB. This matches the visible mesh exactly for rectangular
+ * objects (colored blocks, walls, floors, etc.).
+ *
+ * Override (kinds with `colliderShape: 'compound-steps'`): multiple
+ * CuboidColliders per placed object, one per step column. This creates
+ * a staircase topology instead of an opaque bounding-box wall, allowing
+ * Rapier's kinematic character controller to climb the steps.
+ *
+ * OCP note: the compound-step path is additive. The default single-AABB
+ * path is unchanged for all kinds that do not declare a `colliderShape`.
+ * Future shape variants (slope, hollow, etc.) would add new branches in
+ * `worldObjectsToCuboids` without touching this component.
  */
 export function MapColliders({ store }: MapCollidersProps) {
-  const { geometry } = useApplication();
+  const { geometry, catalog } = useApplication();
   const [snapshot, setSnapshot] = useState<WorldObjects>(
     () => store.getState().worldObjects,
   );
@@ -37,25 +43,25 @@ export function MapColliders({ store }: MapCollidersProps) {
     );
   }, [store]);
 
+  // Build a flat array of cuboid descriptors using the shared helper so
+  // the browser collider layout exactly mirrors what BotPhysicsWorld.syncCubes
+  // builds on the server side — one source of truth for collider geometry.
+  const cuboids = worldObjectsToCuboids(
+    snapshot,
+    (pos, kindId) => geometry.worldAABB(pos, kindId),
+    (kindId) => catalog.getKind(kindId)?.colliderShape,
+  );
+
   return (
     <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }}>
-      {snapshot.instances.map((inst) => {
-        const aabb = geometry.worldAABB(inst.position, inst.kindId);
-        const cx = (aabb.min[0] + aabb.max[0]) / 2;
-        const cy = (aabb.min[1] + aabb.max[1]) / 2;
-        const cz = (aabb.min[2] + aabb.max[2]) / 2;
-        const hx = (aabb.max[0] - aabb.min[0]) / 2;
-        const hy = (aabb.max[1] - aabb.min[1]) / 2;
-        const hz = (aabb.max[2] - aabb.min[2]) / 2;
-        return (
-          <CuboidCollider
-            key={inst.id}
-            position={[cx, cy, cz]}
-            args={[hx, hy, hz]}
-            collisionGroups={WALL_GROUPS}
-          />
-        );
-      })}
+      {cuboids.map((c, i) => (
+        <CuboidCollider
+          key={i}
+          position={[c.center.x, c.center.y, c.center.z]}
+          args={[c.halfExtents.x, c.halfExtents.y, c.halfExtents.z]}
+          collisionGroups={WALL_GROUPS}
+        />
+      ))}
     </RigidBody>
   );
 }

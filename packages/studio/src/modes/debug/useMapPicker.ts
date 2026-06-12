@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Actions, Vec3 } from '@officexr/sdk';
 import type { BotPool } from '@officexr/world/bot';
 import {
+  FilesystemLayoutStorage,
   FilesystemMapStorage,
   FilesystemRoomStorage,
+  LocalStorageLayoutStorage,
   LocalStorageMapStorage,
   LocalStorageRoomStorage,
+  type LayoutDocument,
   type MapDocumentV1,
   type RoomDocument,
   type SpawnPoint,
@@ -90,11 +93,13 @@ export function useMapPicker({
       return {
         maps: new FilesystemMapStorage(),
         rooms: new FilesystemRoomStorage(),
+        layouts: new FilesystemLayoutStorage(),
       };
     } catch {
       return {
         maps: new LocalStorageMapStorage(),
         rooms: new LocalStorageRoomStorage(),
+        layouts: new LocalStorageLayoutStorage(),
       };
     }
   }, []);
@@ -157,9 +162,37 @@ export function useMapPicker({
         for (const e of roomEntries) {
           if (e) rooms.set(e[0], e[1]);
         }
+
+        // Collect layout names referenced by baked-only rooms (rooms with
+        // layoutName set and empty commands). Load those layouts in parallel
+        // so compileMap can resolve their geometry for BotPhysicsWorld.
+        // This is the ONLY caller that opts into layout resolution — editor
+        // paths (map editor, room editor) do not pass layouts to compileMap.
+        const layoutNameSet = new Set<string>();
+        for (const room of rooms.values()) {
+          if (room.commands.length === 0 && room.layoutName !== undefined) {
+            layoutNameSet.add(room.layoutName);
+          }
+        }
+        const layoutEntries = await Promise.all(
+          Array.from(layoutNameSet).map(async (layoutName) => {
+            try {
+              const doc: LayoutDocument | null = await storage.layouts.load(layoutName);
+              return doc ? ([layoutName, doc] as const) : null;
+            } catch (err) {
+              console.warn(`[map-picker] layout load("${layoutName}") failed:`, err);
+              return null;
+            }
+          }),
+        );
+        const layouts = new Map<string, LayoutDocument>();
+        for (const e of layoutEntries) {
+          if (e) layouts.set(e[0], e[1]);
+        }
+
         const a = actionsRef.current;
         if (a) {
-          a.setWorldObjects(roomService.compileMap(map, rooms));
+          a.setWorldObjects(roomService.compileMap(map, rooms, layouts));
         }
         setRooms(rooms);
         setMapDoc(map);

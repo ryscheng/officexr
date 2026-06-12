@@ -1,4 +1,5 @@
 import type { Vec3, WorldObjects } from '@officexr/sdk';
+import type { ColliderShapeSpec } from '../scenes/world-object-kinds-schema.ts';
 
 /**
  * Game-physics constants + helpers that EVERY character in the world
@@ -44,6 +45,40 @@ export const CHARACTER_CONTROLLER_SKIN = 0.0001;
  * check on a single jitter frame. */
 export const RESPAWN_MARGIN = 10;
 
+/** Downward speed (m/s, positive magnitude) at which a falling character
+ * is eligible for respawn. Must hold simultaneously with no floor beneath.
+ * Gate (b) for {@link shouldRespawnFalling}. */
+export const MAX_FALL_VELOCITY = 8;
+
+/** Metres below character feet to probe for a floor surface.
+ * If no floor is found within this range, condition (a) of the dual-gate
+ * fall-respawn rule is met. Used by both {@link BotPhysicsWorld.probeFloor}
+ * and the SceneFrame player controller. */
+export const FLOOR_PROBE_RANGE = 2.0;
+
+/**
+ * Primary fall-respawn gate: returns true when BOTH conditions hold.
+ *   (a) hasFloorUnderneath === false  (downward probe found no surface)
+ *   (b) velY <= -MAX_FALL_VELOCITY    (falling fast enough)
+ *
+ * SRP: this function knows nothing about Rapier, React, or Three. It
+ * receives pre-computed inputs from the caller (bot or player).
+ *
+ * Callers must ALSO check the Y-floor backstop (respawnThreshold) as a
+ * last resort so a character that somehow bypasses this gate still
+ * returns eventually.
+ *
+ * @param velY - Vertical velocity (m/s, negative = falling).
+ * @param hasFloorUnderneath - True if a downward probe found ground within
+ *   FLOOR_PROBE_RANGE metres of the character's feet.
+ */
+export function shouldRespawnFalling(
+  velY: number,
+  hasFloorUnderneath: boolean,
+): boolean {
+  return !hasFloorUnderneath && velY <= -MAX_FALL_VELOCITY;
+}
+
 /**
  * Y-coordinate below which a character has "fallen off the map"
  * and should be respawned. Returns `-Infinity` when the map has no
@@ -84,17 +119,90 @@ export interface InstanceAABBLookup {
   };
 }
 
+/** Collider-shape lookup: returns the optional `colliderShape` override
+ * for a given kind id. Passed by callers that have a catalog in scope.
+ * ISP: only `worldObjectsToCuboids` reads this; other callers are
+ * unaffected and do not need to provide it. */
+export interface ColliderShapeLookup {
+  (kindId: string): ColliderShapeSpec | undefined;
+}
+
 /**
- * Walk `worldObjects.instances` and emit one cuboid collider per
- * placed object. When `aabbLookup` is provided, each cuboid uses the
- * kind's true AABB (canonical convention: X/Z centered, Y bottom at
- * voxel*cubeSize). When omitted, falls back to the legacy one-voxel
- * cube — preserved so existing unit tests that don't have a catalog
- * keep working.
+ * Emit per-step compound cuboid descriptors for a staircase placed at
+ * world-space origin `[ox, oy, oz]`.
+ *
+ * Geometry (from the Primitive_Stairs binary audit, task-05):
+ *   - The staircase ascends in the −X direction (step 1 near face at
+ *     local x = +maxX, step N far face at x = −maxX).
+ *   - Each step column is a solid rectangular prism from y=oy (bottom)
+ *     to y=oy + (i+1)*stepRise (step top), covering one step's X run
+ *     and the full Z depth.
+ *
+ * This approximation replaces the single bounding-box cuboid with a
+ * staircase topology that Rapier's kinematic character controller can
+ * physically climb. The cuboid shape is a deliberate approximation —
+ * the exact GLTF mesh triangles are not used because @react-three/rapier
+ * does not expose TriMesh static colliders in the current version.
+ * See STAIRS-INVESTIGATION-FINDING.md §4 for the full rationale.
+ */
+function compoundStepCuboids(
+  ox: number,
+  oy: number,
+  oz: number,
+  aabb: { min: readonly [number, number, number]; max: readonly [number, number, number] },
+  spec: import('../scenes/world-object-kinds-schema.ts').CompoundStepsSpec,
+): CuboidDescriptor[] {
+  const { stepCount, stepRise, stepRun, stepDepth } = spec;
+  const out: CuboidDescriptor[] = [];
+  // World-space X extent of the whole staircase: [ox, ox + totalWidth].
+  // Step 1 (lowest) near face is at worldX = ox + totalWidth - stepRun * 0; far face is
+  // at worldX = ox + totalWidth - stepRun * 1, etc.
+  const totalWidth = aabb.max[0] - aabb.min[0];  // in local space units (metres)
+  for (let i = 0; i < stepCount; i++) {
+    // Step i: column from x_far to x_near, y=oy to oy+(i+1)*stepRise, z=oz to oz+stepDepth
+    const xFar = ox + totalWidth - (i + 1) * stepRun;
+    const xNear = xFar + stepRun;
+    const yTop = oy + (i + 1) * stepRise;
+    const yBot = oy;
+    const zMin = oz;
+    const zMax = oz + stepDepth;
+    out.push({
+      center: {
+        x: (xFar + xNear) / 2,
+        y: (yBot + yTop) / 2,
+        z: (zMin + zMax) / 2,
+      },
+      halfExtents: {
+        x: (xNear - xFar) / 2,
+        y: (yTop - yBot) / 2,
+        z: (zMax - zMin) / 2,
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * Walk `worldObjects.instances` and emit cuboid collider descriptors.
+ *
+ * When `aabbLookup` is provided, each cuboid uses the kind's true AABB
+ * (canonical convention: X/Z centred, Y bottom at voxel*cubeSize).
+ * When omitted, falls back to the legacy one-voxel cube — preserved so
+ * existing unit tests that don't have a catalog keep working.
+ *
+ * When `colliderShapeLookup` is also provided, kinds that declare a
+ * `colliderShape` override (e.g. `compound-steps`) emit multiple cuboids
+ * instead of the single AABB box. Callers that don't supply this lookup
+ * always get the single-AABB behaviour (no regression for them).
+ *
+ * OCP note: the default AABB path is never touched by a new collider
+ * shape variant — each new shape adds a branch here without modifying
+ * the existing code paths.
  */
 export function worldObjectsToCuboids(
   worldObjects: WorldObjects,
   aabbLookup?: InstanceAABBLookup,
+  colliderShapeLookup?: ColliderShapeLookup,
 ): CuboidDescriptor[] {
   const cs = worldObjects.cubeSize;
   const half = cs / 2;
@@ -102,6 +210,15 @@ export function worldObjectsToCuboids(
   for (const inst of worldObjects.instances) {
     if (aabbLookup) {
       const aabb = aabbLookup(inst.position, inst.kindId);
+      // Check for a compound-steps override before falling back to single AABB.
+      const shapeSpec = colliderShapeLookup?.(inst.kindId);
+      if (shapeSpec?.kind === 'compound-steps') {
+        const ox = aabb.min[0];
+        const oy = aabb.min[1];
+        const oz = aabb.min[2];
+        out.push(...compoundStepCuboids(ox, oy, oz, aabb, shapeSpec));
+        continue;
+      }
       out.push({
         center: {
           x: (aabb.min[0] + aabb.max[0]) / 2,

@@ -19,7 +19,7 @@
  * folder and are wired together by `createDefaultApi`.
  */
 
-import type { RoomDocument } from '../scenes/commands.ts';
+import type { RoomDocument, SceneCommand } from '../scenes/commands.ts';
 import type { MapDocumentV1 } from '../scenes/map-document.ts';
 import type {
   WorldObjectKind,
@@ -112,12 +112,29 @@ export interface InstanceGeometryService {
 // ---------------------------------------------------------------------------
 
 /**
+ * Minimum shape the layout resolver needs. Both `LayoutDocument` and any
+ * `{ commands: SceneCommand[] }` literal satisfy this.
+ */
+export type LayoutCommandSource = { commands: SceneCommand[] };
+
+/**
  * Wraps `compileScene` / `compileMap` with the canonical geometry-derived
  * tile step. Pure functions; no internal state.
  */
 export interface RoomService {
   compileScene(doc: RoomDocument): WorldObjects;
-  compileMap(map: MapDocumentV1, rooms: ReadonlyMap<string, RoomDocument>): WorldObjects;
+  /**
+   * Compile a map into a flat WorldObjects. The optional `layouts` map
+   * enables baked-layout resolution: when a room has empty `commands`
+   * and a `layoutName`, the room's geometry is sourced from the matching
+   * layout's commands instead. Callers that omit `layouts` (all editor
+   * paths) get exactly the same behavior as before this parameter existed.
+   */
+  compileMap(
+    map: MapDocumentV1,
+    rooms: ReadonlyMap<string, RoomDocument>,
+    layouts?: ReadonlyMap<string, LayoutCommandSource>,
+  ): WorldObjects;
 }
 
 // ---------------------------------------------------------------------------

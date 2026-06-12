@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { WorldObjects } from '@officexr/sdk';
 import {
   GRAVITY,
+  MAX_FALL_VELOCITY,
+  FLOOR_PROBE_RANGE,
   pickRespawnPosition,
   RESPAWN_MARGIN,
   respawnThreshold,
+  shouldRespawnFalling,
   SPAWN_DROP_HEIGHT,
   worldObjectsToCuboids,
 } from './rules.ts';
@@ -69,6 +72,43 @@ describe('physics/rules', () => {
         instances: [inst(0, 0, 0), inst(1, 0, 0), inst(2, 1, 3)],
       };
       expect(worldObjectsToCuboids(w)).toHaveLength(3);
+    });
+  });
+
+  describe('shouldRespawnFalling', () => {
+    it('both gates open — no floor AND velocity at threshold: true', () => {
+      // velY = -MAX_FALL_VELOCITY (exactly at threshold), hasFloor = false
+      expect(shouldRespawnFalling(-MAX_FALL_VELOCITY, false)).toBe(true);
+    });
+
+    it('floor present — should NOT respawn even at high fall speed', () => {
+      expect(shouldRespawnFalling(-MAX_FALL_VELOCITY, true)).toBe(false);
+    });
+
+    it('velocity below threshold — should NOT respawn even without floor', () => {
+      expect(shouldRespawnFalling(-3, false)).toBe(false);
+    });
+
+    it('ascending velocity — should NOT respawn', () => {
+      expect(shouldRespawnFalling(2, false)).toBe(false);
+    });
+
+    it('exactly at threshold (boundary inclusive) — should respawn', () => {
+      expect(shouldRespawnFalling(-MAX_FALL_VELOCITY, false)).toBe(true);
+    });
+
+    it('just below threshold (velocity -7.99 when threshold is 8) — should NOT respawn', () => {
+      expect(shouldRespawnFalling(-(MAX_FALL_VELOCITY - 0.01), false)).toBe(false);
+    });
+  });
+
+  describe('constants', () => {
+    it('MAX_FALL_VELOCITY is positive (represents magnitude of downward speed)', () => {
+      expect(MAX_FALL_VELOCITY).toBeGreaterThan(0);
+    });
+
+    it('FLOOR_PROBE_RANGE is positive', () => {
+      expect(FLOOR_PROBE_RANGE).toBeGreaterThan(0);
     });
   });
 

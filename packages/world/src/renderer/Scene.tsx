@@ -124,6 +124,20 @@ export function Scene(props: SceneProps) {
   const { store, selfId, cameraMode, sync, viewConfig } = props;
   const showLayout =
     Boolean(props.bakedLayoutPath) && Boolean(props.bakedLayoutName);
+  // `hasBaked` is true when a pre-baked GLB is being rendered for this
+  // room. When true, we suppress MapColliders and ObjectInstances to avoid
+  // double geometry: the baked GLB provides the visual mesh (BakedLayout)
+  // and the player colliders (BakedLayoutColliders). The worldObjects
+  // instances compiled from the layout commands are ONLY used by
+  // BotPhysicsWorld.syncCubes — they are NOT rendered by the React tree.
+  //
+  // This gate is a strict no-op for all maps that existed before task-13:
+  //   - Non-baked rooms: hasBaked === false → MapColliders/ObjectInstances render as always.
+  //   - Baked rooms (pre-task-13): worldObjects was empty → MapColliders/
+  //     ObjectInstances rendered nothing. With task-13, worldObjects is now
+  //     populated for baked rooms, so the gate prevents them from rendering
+  //     duplicate geometry on top of the baked GLB.
+  const hasBaked = showLayout;
   const { proximity, lighting, background, fixedCamera } = viewConfig;
   const worldFocused = props.worldFocused ?? true;
 
@@ -217,7 +231,17 @@ export function Scene(props: SceneProps) {
           Rapier sub-step at the real frame delta.
         */}
         <Physics gravity={[0, -20, 0]} timeStep="vary">
-        <MapColliders store={store} />
+        {/*
+          For non-baked rooms: MapColliders provides Rapier colliders
+          from worldObjects, and ObjectInstances renders the cube meshes.
+          For baked rooms (hasBaked === true): the baked GLB provides both
+          the visual mesh (BakedLayout) and the player colliders
+          (BakedLayoutColliders). worldObjects is populated by task-13's
+          layout resolution and consumed by BotPhysicsWorld.syncCubes —
+          but we must NOT also render MapColliders/ObjectInstances, or the
+          player would experience double colliders and z-fighting meshes.
+        */}
+        {!hasBaked && <MapColliders store={store} />}
         {showLayout && (
           <>
             <BakedLayout
@@ -255,7 +279,10 @@ export function Scene(props: SceneProps) {
           bottomColor={background.bottomColor}
         />
 
-        {/* Per-map cubes — the ONLY visible world content. The Map
+        {/* Per-map cubes — the ONLY visible world content for non-baked
+            rooms. Gated behind !hasBaked: for baked rooms, the visual
+            comes from BakedLayout (the GLB); ObjectInstances must be
+            suppressed to avoid z-fighting with the baked mesh. The Map
             Editor is the source of truth; the picker pushes a fresh
             WorldObjects snapshot via `actions.setWorldObjects(
             compileMap(...))` on every map switch, and this
@@ -265,7 +292,7 @@ export function Scene(props: SceneProps) {
             visually competed with map-authored content — authors saw
             a stripe of "default" cubes peeking around the edges of
             their own map and assumed map switching was broken. */}
-        <ObjectInstances store={store} />
+        {!hasBaked && <ObjectInstances store={store} />}
 
         <Players
           store={store}

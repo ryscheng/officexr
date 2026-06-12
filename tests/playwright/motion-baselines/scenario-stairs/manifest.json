@@ -1,0 +1,31 @@
+{
+  "scenario": "stairs",
+  "description": "Stairs climb: bot walks from base platform up compound-step staircase; bot.pos.y increases monotonically, no respawn fires.",
+  "geometry": "scenario-stairs map — base platform of colored_block_blue plus prototype_primitive_stairs with compound-step colliders (8 steps, stepRise=0.5m, stepRun=0.5m); stair ascent direction: -X; top of stairs at world Y≈6m",
+  "spawnPoint": { "x": 0, "y": 2, "z": 0, "description": "Base of stairs — bot spawns on the flat base platform and walks toward the stair entry" },
+  "keyframes": [
+    {
+      "id": "keyframe-01-base",
+      "filename": "ideal/keyframe-01-base.png",
+      "captureCondition": "bot.pos.y within 0.3 of base platform top (y≈2) and bot has not yet reached stair footprint",
+      "description": "Bot settled on base platform before beginning the climb"
+    },
+    {
+      "id": "keyframe-02-mid-climb",
+      "filename": "ideal/keyframe-02-mid-climb.png",
+      "captureCondition": "bot.pos.y > 2.5 and bot.pos.y < 5.5 (somewhere mid-staircase, clearly ascending)",
+      "description": "Bot partway up the staircase; pos.y monotonically increasing"
+    },
+    {
+      "id": "keyframe-03-top",
+      "filename": "ideal/keyframe-03-top.png",
+      "captureCondition": "bot.pos.y within 0.3 of stair top height (y≈6) and bot.vel.y ≈ 0 (settled)",
+      "description": "Bot reached the top of the staircase and settled"
+    }
+  ],
+  "assertionThresholds": {
+    "positionTolerance": 0.3,
+    "velocityTolerance": 0.1,
+    "keyframePixelDiffPercent": 0.02
+  }
+}

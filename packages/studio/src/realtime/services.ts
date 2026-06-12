@@ -88,6 +88,11 @@ interface BuildStackCommonOpts {
    * `api.geometry.worldAABB`. Tests / harnesses omit it and fall
    * back to the legacy one-voxel-cube collider path. */
   instanceAABB?: import('@officexr/world').InstanceAABBLookup;
+  /** Optional collider-shape override lookup. Threaded into the in-browser
+   * BotPool so compound-step staircase colliders mirror what MapColliders
+   * emits on the browser side. Studio's DebugApp passes
+   * `(id) => api.catalog.getKind(id)?.colliderShape`. */
+  colliderShape?: import('@officexr/world').ColliderShapeLookup;
 }
 
 /**
@@ -98,7 +103,7 @@ interface BuildStackCommonOpts {
 export async function buildInMemoryStack(
   opts: BuildStackCommonOpts,
 ): Promise<ChannelStack> {
-  const { local, audio, instanceAABB } = opts;
+  const { local, audio, instanceAABB, colliderShape } = opts;
   const hub = createInMemoryChannelHub();
   const { channel, voiceAdapter } = createStack({
     mode: 'local',
@@ -143,6 +148,7 @@ export async function buildInMemoryStack(
     createChannel: (botId) => new InMemoryChannel(hub, botId),
     localPlayerId: local.selfId,
     instanceAABB,
+    colliderShape,
     // Seed each new bot with the local-player store's current world
     // state so a bot spawned after Leva has pushed user values
     // doesn't fall back to SDK defaults. (Bots spawned *before* Leva
@@ -153,6 +159,12 @@ export async function buildInMemoryStack(
       return {
         worldSettings: { ...state.worldSettings },
         worldMap: state.worldMap,
+        // Seed worldObjects so bots spawned after the initial world:objects
+        // broadcast (which in-memory channels do not replay) still get floor
+        // colliders from their first tick. Without this, bots spawned after
+        // the map has already loaded have an empty Rapier world and fall
+        // through the floor, entering a respawn loop.
+        worldObjects: { ...state.worldObjects },
       };
     },
     // In-browser bots can forward their controller-detected

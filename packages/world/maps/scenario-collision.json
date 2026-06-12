@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "name": "scenario-collision",
+  "updatedAt": 1749600000000,
+  "rooms": [
+    {
+      "id": "room-collision-1",
+      "roomName": "scenario-collision",
+      "position": [0, 0, 0],
+      "rotationY": 0
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "spawn-collision-near",
+      "position": [4, 2, 1]
+    },
+    {
+      "id": "spawn-collision-far",
+      "position": [4, 2, 7]
+    }
+  ],
+  "environment": {
+    "sun": {
+      "positionX": 20,
+      "positionY": 40,
+      "positionZ": 20,
+      "color": "#ffffff",
+      "intensity": 1.4
+    },
+    "sky": null,
+    "stars": null,
+    "hdri": null,
+    "ambientIntensity": 0.15
+  }
+}

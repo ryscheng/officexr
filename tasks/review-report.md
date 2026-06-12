@@ -1,203 +1,124 @@
-# Code Review Report — Post-Auto-Fix (Re-review)
+# Code Review Report — Character-Movement Scenario Tests (Motion Regression Suite)
 
 ## Summary
 
-Re-review of the two Critical issues from the prior review. Both fixes
-verify clean. Studio (192/192) and world (205/205) test suites still
-pass; no new Critical issues introduced. Remaining Important and Minor
-issues from the prior review are **out of scope** for this re-review
-and remain as documented follow-ups, not blockers.
-
-**Recommendation: SHIP.**
+Strong, careful implementation. The physics changes are honest (no fudge offsets), the bot movement genuinely flows through the new `CharacterMovement` interface, the unit tests call real Rapier and assert specific behaviour, and the deliberate SOLID bends are documented inline per CLAUDE.md. **One requirement is materially short of the PRD's headline deliverable: the human player path (`SceneFrame.tsx`) does NOT delegate to `CharacterMovement` — it remains a full duplicate.** That, plus the corridor spec dropping the velocity-vector fall assertion on a partly-incorrect premise, are the two things to resolve before this can be called "done" against the PRD as written. Neither blocks shipping the *tests*; both are correctness-of-claim gaps against an explicit spec.
 
 ---
 
-## Critical Fix Verification
+## PRD Compliance
 
-### Fix 1 — InspectorPanel `/api/layouts` shape
+| # | Requirement | Status | Notes |
+|---|-------------|--------|-------|
+| Q1 | Dual-gate fall-respawn rule (`shouldRespawnFalling`, `MAX_FALL_VELOCITY`, `FLOOR_PROBE_RANGE`) in rules.ts; old Y-floor demoted to backstop | ✅ Complete | `rules.ts:75-80` pure fn; backstop retained at both call sites (`SceneFrame.tsx:621`, `BotDriver.tick:392`). TDD tests present. |
+| Q3 | CharacterMovement interface — ONE path, human + bot share it | ⚠️ Partial | Interface + `BotCharacterMovement` built and bot side fully migrated. **Human (`SceneFrame`) does NOT use it** — it duplicates gravity, KCC step, progress calc, floor probe, respawn inline. Migration step 3 ("adapt SceneFrame to delegate") not done. See Important #1. |
+| Q4 | linear-walk bot mode as pure intent source (`walk(dir)` only, no physics) | ✅ Complete | `linearWalk.ts` is pure; no Rapier/Three; normalizes + unit-tested. |
+| Q5 | Two-bot head-on collision spec | ✅ Complete | `scenario-collision.spec.ts` asserts vel vectors approaching + ~0 blocked, position stability, no respawn. |
+| Q5 | Stairs investigation (gating) — written finding, climbable decision | ✅ Complete | `STAIRS-INVESTIGATION-FINDING.md` + compound-step collider (Path B). Honest reasoning for why single-AABB and 2 m cubes were rejected. |
+| Q6 | Real authoring pipeline: layout → bake GLB → room → map | ✅ Complete | All 3 scenarios have layout/baked GLB/room/map. Task-13 resolves baked-room geometry into worldObjects so the authored content drives colliders (injection removed). |
+| Q2 | Video-comparison spike + numeric/keyframe fallback gate | ✅ Complete | `VIDEO-COMPARISON-SPIKE.md` finding + supplementary util; numeric + keyframe PNGs are the committed gate. |
+| Q7 | Motion-baseline harness (manifests, helpers, keyframe dirs) | ✅ Complete | `motion-helpers.ts` + manifests. (Manifest content drift — see Minor.) |
+| S1 | Corridor: settle, monotonic +Z, **fall vel.y ≤ −MAX_FALL_VELOCITY**, respawn, re-settle | ⚠️ Partial | All present EXCEPT the fall **velocity-vector** assertion was replaced with a position assertion (`pos.z > 15`) on an incorrect "vel.y always 0" premise. See Important #2. |
+| S2 | Collision scenario assertions | ✅ Complete | vel.x/vel.z ±0.05 while blocked; Δpos < tol; no fall. |
+| S3 | Stairs: monotonic Y, reach top ±0.3, no respawn | ✅ Complete | Monotonic-Y sampling, top reach assertion, explicit no-spurious-respawn assertion. (Tolerance widened to ±0.5 on top reach — see Minor.) |
+| GR | DIP greps clean; no THREE/react in headless physics; lint:no-bespoke-renderer; honest physics; e2e run | ✅ Complete | Verified: new physics files import neither three nor react; DIP greps return zero; user-confirmed lint + mugshot/character-on-surface 0% drift. |
 
-**File**: `packages/studio/src/modes/room/InspectorPanel.tsx:39-49`
-
-**Prior bug**: Fetch cast the response body to `string[]`, but the
-Vite plugin actually returns `{ layouts: ResourceSummary[] }`
-(verified at `packages/world/vite-plugin-storage.ts:121` where
-`listKey: 'layouts'` and `packages/world/vite-plugin-storage.ts:351`
-writes `{ [opts.listKey]: out }`). The autocomplete datalist would
-never populate.
-
-**Fix applied**:
-```ts
-fetch('/api/layouts')
-  .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-  .then((data: { layouts: { name: string }[] }) =>
-    setAvailableLayouts(data.layouts.map((l) => l.name)),
-  )
-  .catch(() => { /* non-blocking */ });
-```
-
-**Verification**:
-- Response shape matches the Vite plugin's
-  `jsonResponse(res, 200, { [opts.listKey]: out })` where each entry
-  in `out` is a `ResourceSummary` containing `name: string`
-  (`vite-plugin-storage.ts:144,330,339,351`). ✅
-- `data.layouts.map((l) => l.name)` correctly extracts the `string[]`
-  the datalist consumes at line 75. ✅
-- Adds `r.ok` gate before `r.json()` — defends against the route
-  being unavailable in test / localStorage environments (the
-  prior implementation would have parsed a 404 HTML body). ✅
-- `.catch(() => {})` swallow is acceptable here — the dev-only
-  autocomplete is a UX nicety, not a correctness path. ✅
-
-**Status**: ✅ Correctly implemented.
-
-### Fix 2 — DebugApp baked-layout wiring
-
-**Files**:
-- `packages/studio/src/modes/debug/useMapPicker.ts:39-63,127-128,156-166,302`
-- `packages/studio/src/modes/debug/DebugApp.tsx:122-170,201-202`
-
-**Prior bug**: The runtime `<Scene>` in DebugApp did not pass
-`bakedLayoutPath` / `bakedLayoutName`, so baked walls and their
-static colliders never rendered in the play path — players walked
-through walls. PRD goal #4 ("Preserve physics — players still
-collide with walls and floors") was unmet.
-
-**Fix applied** in `useMapPicker.ts`:
-- New `MapPickerState.rooms: ReadonlyMap<string, RoomDocument>`
-  (line 49-52) and `MapPickerState.mapDoc: MapDocumentV1 | null`
-  (line 53-55), populated in `loadMap` (lines 156-166) where the
-  rooms map is already constructed for compileMap, so exposing it is
-  free — no new I/O.
-- `setRooms` / `setMapDoc` are called in lockstep with the existing
-  `setWorldObjects` call, so observers always see consistent state.
-- Returned from the hook alongside the existing surface (line 302).
-
-**Fix applied** in `DebugApp.tsx`:
-- Lines 148-170: derives `bakedLayoutName` by collecting the
-  distinct `layoutName` values from every `RoomDocument` referenced
-  by the active map's `RoomInstance` list.
-- Single distinct layout → returned for `<Scene>` to bake. ✅
-- Multiple distinct layouts → logs a warning and returns `undefined`
-  (graceful degradation; voxel WorldObjects still render). ✅
-- No layouts / no map → `undefined`. ✅
-- `bakedLayoutPath` (line 168-170) URL-encodes the layout name to
-  match the rest of the codebase's `/api/baked-layouts/<encoded>`
-  convention.
-- Both props threaded into `<Scene>` at lines 201-202.
-
-**Verification of correctness**:
-- Data flow: `useMapPicker.loadMap` loads each `RoomDocument` for the
-  selected map's `RoomInstance`s into a `Map<string, RoomDocument>`,
-  then both `setRooms(rooms)` and `setMapDoc(map)` publish via
-  React state (lines 164-165). `DebugApp` reads
-  `picker.rooms` + `picker.mapDoc` and iterates `mapDoc.rooms` (the
-  `RoomInstance[]`), looking each up in the rooms map to read its
-  `layoutName`. This matches the actual `MapDocumentV1` shape —
-  `mapDoc.rooms` is the `RoomInstance[]`, and `rooms.get(ri.roomName)`
-  yields the `RoomDocument` (with its `layoutName` field added by
-  the v5 migration). ✅
-- Inline ISP / TODO comments at lines 124-147 document the
-  scope-of-MVP decision (Scene's prop surface is single-layout) and
-  the multi-layout-map workaround in the spirit of CLAUDE.md's
-  "document the SOLID violation reason inline" rule. ✅
-- Warning at line 158-164 includes the map name and the set of
-  conflicting layouts so a multi-layout map is debuggable from the
-  console without source diving. ✅
-- `bakedLayoutPath` is derived only if `bakedLayoutName` is defined
-  (line 168), so `<Scene>`'s `Boolean(bakedLayoutPath) &&
-  Boolean(bakedLayoutName)` early-guard sees a consistent pair —
-  no risk of a half-set props pair. ✅
-
-**Status**: ✅ Correctly implemented.
+**Compliance Score**: 10/12 fully met; 2 partial (the architectural headline Q3, and corridor scenario assertion S1#3).
 
 ---
+
+## Issues Found
+
+### Critical (must fix before shipping)
+None. No data loss, no security exposure, no crash, no silent corruption. The physics changes are sound.
+
+### Important (should fix)
+
+- **`packages/world/src/renderer/SceneFrame.tsx:259-661` — Human path is not unified with `CharacterMovement`.** This is the PRD's #1 deliverable ("There is ONE code path for character movement — human and bot share it", Q3 + "Migration strategy" step 3). `SceneFrame` still independently integrates gravity (`verticalVelRef.current += GRAVITY * dtSec`, line 438), calls `controller.computeColliderMovement` directly (line 530), computes its own floor probe + dual-gate (lines 609-624), and runs its own respawn. The bot side genuinely delegates; the human side only *adopted the dual-gate rule and intent-verb comments* but is still a parallel implementation. The inline SRP note (lines 248-258) honestly documents the bend and gives a concrete "what would remove this", which is exactly what CLAUDE.md asks for — so this is a *documented* deviation, not a silent one. But the PRD treats SceneFrame delegation as in-scope, not optional, so it should either be implemented or the PRD scope explicitly renegotiated. Concrete divergence risk this creates: see next item — the two paths already compute `progress` differently.
+
+- **`packages/world/src/renderer/SceneFrame.tsx:589-592` — Human path still uses the OLD magnitude-ratio `progress`; bot path was fixed to dot-product (task-11).** `BotPhysicsWorld.step()` (lines 525-529) was deliberately changed from `sqrt(correctedLen/intentLen)` to `dot(corrected,intent)/intentLenSq` precisely because the magnitude ratio reports ~0.42 "progress" when the KCC slides a character *backward* against its intent, causing pass-through instead of blocking. `SceneFrame` still does `correctedLen / intentLen` (the exact bug that was fixed for bots). For a human walking head-on into another character, the player can be classified as "moved" while sliding backward. This is the strongest concrete argument FOR completing the unification: the divergence the PRD warned about ("a bug fix to one path does not fix the other") has already materialised in this very changeset.
+
+- **`tests/playwright/scenario-corridor.spec.ts:288-308` — Fall velocity-vector assertion (PRD S1 #3) dropped on an incorrect premise.** The spec comment says "BotCharacterMovement.broadcastVel always has y=0 … vel.y in the store is always 0 for bots", and substitutes `pos.z > 15`. That premise is only true for the bot's *own* store. The store the test reads (`__OFFICE_STORE__`, the browser/observer) receives the bot's position over the in-memory channel and `PositionBroadcaster.flushPosition` (`packages/sdk/src/realtime/outbound/position-broadcaster.ts:183-189`) **overwrites** the broadcast vel with a position-delta estimate. During the corridor fall the bot's Y drops fast, so the observer store's `vel.y` is strongly negative — observable. The user explicitly required velocity-VECTOR assertions; the manifest's own `keyframe-02` condition is `vel.y <= -4`. Recommend asserting `vel.y < -4` (or similar, matching the manifest) during the fall window, in addition to the position gate. Asserting the exact `<= -8` accumulator value on the rate-capped delta estimate may be flaky, so `-4` is the right magnitude to gate on. As-is, nothing in the corridor spec would catch a regression where the bot walks off but free-fall velocity stops accumulating — only the position/respawn path is gated.
+
+### Minor (nice to fix)
+
+- **`rapier-test.mjs` (repo root) — stray investigation scratch file committed-adjacent (untracked).** It's a standalone Rapier broadphase probe with `console.log`s. Either move it under a `scratch/`/`investigations/` path that's gitignored, or delete it. It is not referenced by any spec.
+
+- **`tests/playwright/motion-baselines/scenario-corridor/manifest.json:5,16` — manifest drifted from the shipped map/spec.** `spawnPoint` is `{x:0,y:2,z:0}` but the authored map (`maps/scenario-corridor.json`) and the spec use `{x:0,y:0,z:0}` (the y=0 honest-settle value, changed during task-10). `keyframe-02.captureCondition` says `vel.y <= -4` which the spec never asserts. The manifest is documentation/threshold source — keep it truthful or the next person tunes against a stale spawn.
+
+- **`tests/playwright/scenario-stairs.spec.ts:109-110` — top-reach tolerance widened to ±0.5 vs PRD's ±0.3.** PRD S3 #2 says "within ±0.3 m of expected." The spec uses `STAIR_TOP_REACH_THRESHOLD = 5.5 - 0.5 = 5.0`. The implementation note justifies 0.15 m of per-step KCC jitter; ±0.5 is defensible for a 16-step climb but exceeds the spec number. Either tighten to ±0.3 if stable, or note the deviation in the PRD. (The assertion is one-sided `> 5.0`, so it gates "reached near the top" but not "didn't overshoot" — acceptable for a climb.)
+
+- **`packages/world/src/bot/BotPhysicsWorld.ts:227 / SceneFrame controller` — autostep is bot-only.** Documented inline as an OCP-additive choice (the human controller is unchanged, lines 219-226). This is fine and honest, but it is a second concrete behavioural divergence between the two movement paths (bots can climb the compound stairs; the human player currently cannot). Worth tracking alongside the unification work so the stairs scenario isn't silently human-unreachable.
+
+---
+
+## What Looks Good
+
+- **Honest physics throughout.** No magic Y offsets. The corridor spawn at `y=0` (body resolves up out of the platform via KCC penetration recovery), the stairs `voxelPos [0,4,0]` move, and the `stepRise 0.5→0.25` change are all geometry-honest fixes with derivations in the notes — exactly what the `honest-physics-over-fudge-offsets` guardrail demands. `CHARACTER_CONTROLLER_SKIN` left near-zero.
+- **The dot-product `progress` fix (`BotPhysicsWorld.step():525-529`) is correct** and the inline comment explains both the failure mode (backward slide reads as 42% progress) and why dot-product clamps it to 0. It does NOT regress wall-sliding: a glancing wall contact still yields a positive forward projection (partial progress preserved); only motion that nets *against* intent is zeroed, which is the desired block semantics.
+- **The `corrected.y >= 0` velY-reset branch (`step():489`) does NOT suppress legitimate free-fall.** In free fall `verticalVel < 0` ⇒ `corrected.y = verticalVel*dt < 0` ⇒ branch is false ⇒ accumulation proceeds, so the corridor dual-gate still fires. The branch only catches the autostep-lift phase (`corrected.y > 0`) where `computedGrounded()` is transiently false. The implementer flagged this as a risk; on review the risk does not materialise for the free-fall path. (Edge note: it also resets velY on the landing frame when penetration recovery pushes up, which is benign/desirable.)
+- **`BotCharacterMovement` is a clean SRP unit** — intent verb → corrected result, with broadcasting/store left to `BotDriver`. The `dtSec`-on-every-verb interface extension is well-justified in the notes (avoids an implicit `setDt` lifecycle ordering footgun).
+- **SOLID bends are documented per CLAUDE.md** — the `step()` BODY_GROUPS filter SRP note, the autostep OCP note, the `SceneFrame` SRP note, the `compoundStepCuboids` approximation note all state principle/why/what-would-remove-it.
+- **Compound-steps collider threaded through one source of truth** (`MapColliders` browser side + `BotPhysicsWorld.syncCubes` bot side both dispatch on the kind's `colliderShape`), preventing the "player sees stairs, bot sees a wall" divergence. Good OCP via the kind-JSON field rather than a kind-id switch.
+
+---
+
+## Test Coverage
+
+| Area | Tests Exist | Coverage Notes |
+|------|-------------|----------------|
+| `rules.ts` dual-gate + constants | Yes | `rules.test.ts` — boundary-inclusive (`-8 → true`, `-7.99 → false`), floor-present false, ascending false. Calls real fn, specific values. Strong. |
+| `BotCharacterMovement` | Yes | `bot-character-movement.test.ts` — 10 tests against REAL Rapier (no mocks): velY sign+growth, velY reset on land, hasFloorUnderneath true/false within probe range, blocked→idle, run>walk. Meaningful. |
+| `linearWalk` strategy | Yes | `linearWalk.test.ts` — exact direction, normalization, zero-vector fallback, onEnter default, unit-length invariant. |
+| `compile-map` layout resolution (task-13) | Yes | 6 tests: back-compat without resolver, instances populated, inline precedence, missing-layout warning, rotation applied, corridor fixture matches layout. |
+| Corridor scenario | Yes | e2e: settle, +Z progress, far-edge, respawn-teleport, re-settle + 3 committed keyframes. **Gap: no fall velocity-vector assertion** (Important #2). |
+| Collision scenario | Yes | e2e: vel.z sign approaching, vel.x/z ±0.05 blocked (genuine — store vel is position-delta estimate, so tunneling would keep it non-zero), Δpos<tol, no respawn. |
+| Stairs scenario | Yes | e2e: settle, monotonic-Y sampling, top reach, explicit no-spurious-respawn. |
+| `SceneFrame` human path | No new tests | Pre-existing gap; the magnitude-ratio progress bug (Important #2) is untested for the human. |
+
+**Test Coverage Assessment**: Unit tests are genuine specifications against real physics — they would catch regressions, not just pin current output. The one substantive scenario gap is the corridor fall *velocity* gate, which the user explicitly asked for and which is achievable via the observer-store delta estimate.
 
 ## Test Execution
 
 | Check | Result | Details |
 |-------|--------|---------|
-| `packages/world` test suite | Passed (205/205) | 21 test files, 1.88s |
-| `packages/studio` test suite | Passed (192/192) | 17 test files, 3.48s |
+| Test command discovered | Yes (`pnpm --filter @officexr/world test` → vitest) | From package.json scripts. |
+| Test suite run | Passed (281/281 world) | Re-ran world package: 25 files, 281 tests, 2.33s. User pre-verified full 903 across all packages, typecheck on 5 packages, DIP greps, lint:no-bespoke-renderer, 3 scenario specs together, mugshot + character-on-surface 0% drift. |
+| TDD evidence in implementation notes | Yes | Notes record RED→GREEN per TDD task (rules, character-movement, linearWalk, compile-map) with pass counts; stairs spec records measured y-progression and regression-check pass counts. |
 
-Both fixes ship green. Counts are unchanged from the prior run, which
-confirms the fixes are surgical — no test file was inadvertently
-deleted or skipped to make the suite pass.
+**Test Execution Assessment**: Green. (Note: the bash tooling in this review session hit a full sandbox temp-overlay on `tasks/`, unrelated to the code — test runs were redirected to files and read back; the suite itself is healthy.)
 
----
+## TDD Compliance
 
-## Did the fixes regress any of the previously-flagged Important / Minor issues?
+| Task | Tests Written | Tests Adequate | TDD Skipped Reason Valid | Notes |
+|------|---------------|---------------|-------------------------|-------|
+| 01 rules dual-gate | Yes | Yes | N/A | Boundary cases real, specific. |
+| 03 CharacterMovement | Yes | Yes | N/A | Real-Rapier integration, not mocked. Tests 9/10 use ordering (run>walk) instead of exact-speed equality — justified (Rapier progress is non-linear), still catches "wrong tunable used". |
+| 04 linear-walk | Yes | Yes | N/A | Exact direction + invariants. |
+| 13 compile-map resolution | Yes | Yes | N/A | Back-compat + resolution + precedence covered. |
+| 10/11/12 scenario specs | They ARE the tests | Mostly | N/A | Collision/stairs assert vectors+positions. Corridor drops the fall vel-vector (Important #2). |
 
-Checked each Important / Minor item to be sure the surgical fixes
-didn't make anything worse:
+**TDD Assessment**: Adhered to where the PRD scoped it. No `expect(true).toBe(true)` filler; no snapshot-style hardcoding in unit tests.
+**Test Adequacy**: ~all unit tests meaningful and specific. One scenario assertion (corridor fall velocity) loosened to a position check on a partly-incorrect premise.
 
-| Prior issue | Status after fix |
-|-------------|------------------|
-| `<BakedLayoutColliders>` doesn't subscribe to bake-registry transitions | Unchanged. The DebugApp wiring now exposes this code path at runtime where it previously was editor-only, which makes the consequence more user-visible — but the fix doesn't make the underlying bug worse. Still an Important follow-up. |
-| `<BakedLayout>` lacks 404 recovery | Unchanged. Same dynamic as above — the runtime wiring now exercises the code path. Important follow-up. |
-| `layout-bake-service.test.ts` missing "fewer primitives" assertion | Unchanged. |
-| No round-trip test for `FilesystemLayoutStorage` / `LocalStorageLayoutStorage` | Unchanged. |
-| `setLayoutName` per-keystroke `awaitFresh` | Unchanged. |
-| `bake-registry.ts` supersede branch untested | Unchanged. |
-| `InspectorPanel` datalist doesn't live-refresh after creating a new layout | Unchanged. |
-| `LayoutApp.tsx` `roomDocCompat` shim silent `setLayoutName` no-op | Unchanged. |
-| `BakedLayout.tsx` stale-closure read of `version` | Unchanged. |
-| Missing tests for `useLayoutDocument` / `LayoutApp` / `ObjectPalette.layoutFilter` | Unchanged. |
+## Implementation Decision Review
 
-No prior issue was made worse by the fixes. The two
-"now-runtime-exposed" items (BakedLayoutColliders subscribe + 404
-recovery) were already flagged Important and remain so — the fix
-correctly extends the existing rendering pipeline rather than
-working around it, which is the right call.
+| Task | Decisions Documented | Decisions Sound | Flags |
+|------|---------------------|----------------|-------|
+| 03 | Yes | Yes | `dtSec` interface extension, velY-from-accumulator, null-guard pattern — all sound. |
+| 05/08 | Yes | Yes | compound-steps over single-AABB/2m-cubes; honest geometry reasoning. |
+| 11 | Yes | Yes | dot-product progress + `_lastAppliedPos` staleness fix — correct; but the fix was NOT mirrored into SceneFrame (Important #2). |
+| 12 | Yes | Mostly | stepRise<charRadius derivation + autostep + `corrected.y>=0` reset are correct. The "broadcastVel.y always 0" framing leaks into the corridor spec as an over-broad claim (Important #2/#3). |
+| 10 | Yes | Partially | Injection removal good; the vel.y rationale is the one flawed call. |
+
+**Decision Assessment**: High quality, well-documented, honest. The single recurring blind spot is treating the bot's internal `broadcastVel.y == 0` as if the *observer store* vel.y were also always 0 — it isn't, because the broadcaster re-estimates velocity from position deltas.
 
 ---
 
-## New Issues Introduced
+## Recommendations
 
-### Critical
-None.
-
-### Important
-None.
-
-### Minor
-- **`DebugApp.tsx:148-167` — IIFE-style derivation runs on every
-  render.** The `const bakedLayoutName = (() => { … })()` block
-  recomputes the Set + loop on every render. For a typical map with
-  <20 rooms this is negligible (~microseconds), but if the map grows
-  it would be trivially memoizable with `useMemo` keyed on
-  `[picker.mapDoc, picker.rooms]`. Not a regression; pure
-  optimization opportunity.
-
----
-
-## What Looks Good (post-fix)
-
-- **`useMapPicker` state additions are exposed in lockstep with the
-  existing `setWorldObjects` call** (lines 162-165), so any consumer
-  reading `rooms` / `mapDoc` sees state consistent with the SDK
-  store. No torn-write window.
-- **The multi-layout case is handled visibly, not silently.** A
-  `console.warn` plus a code comment that names the eventual fix
-  (per-instance `<BakedLayout>` like MapEditorCanvas does) means a
-  user encountering this won't have to spelunk for the cause.
-- **The TODO at lines 138-143 reads as a deliberate MVP scope
-  boundary, not unfinished work**, and it correctly identifies the
-  shape of the future fix (`bakedLayouts?: Array<{path, name}>` prop
-  on `<Scene>`). Matches the CLAUDE.md "document the principle / why
-  / what would unbreak" pattern.
-- **Both new state fields are typed properly** —
-  `ReadonlyMap<string, RoomDocument>` (not `Map`) prevents external
-  mutation; `MapDocumentV1 | null` is the same union the storage
-  layer already uses.
-
----
-
-## Final Recommendation
-
-**SHIP.**
-
-Both Critical fixes are correct, the test suites are green, and no
-new Critical issues were introduced. The remaining Important and
-Minor items are pre-flagged follow-ups (collider re-subscription,
-404 recovery, test-coverage gaps) that should be tracked but do not
-block this release. Each is small, isolated, and well-understood.
+1. **Decide Q3 scope explicitly.** Either (a) complete the human-path migration so `SceneFrame` delegates its per-frame step to a `CharacterMovement` implementation (the PRD's intended end state, and the only thing that retires the duplicated/diverging `progress` logic), or (b) if it's being deferred, record that deferral in the PRD/notes so "ONE code path" isn't reported as met. This is the headline deliverable.
+2. **Port the dot-product `progress` fix into `SceneFrame.tsx:589-592`** even if full unification is deferred — the human currently carries the exact pass-through bug that was fixed for bots.
+3. **Restore a fall velocity-vector assertion in `scenario-corridor.spec.ts`** (e.g. `vel.y < -4` from the observer store during the fall window) to satisfy PRD S1 #3 and the user's explicit velocity-vector requirement.
+4. **Fix manifest drift** (`scenario-corridor/manifest.json` spawnPoint y, keyframe-02 condition) and **remove/relocate `rapier-test.mjs`.**
+5. **Reconcile the stairs ±0.5 tolerance** with the PRD's ±0.3 (tighten or document).

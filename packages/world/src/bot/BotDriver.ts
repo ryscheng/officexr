@@ -7,10 +7,15 @@ import {
   SyncEngine,
   SnapshotHandshake,
 } from '@officexr/sdk';
-import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldSettings } from '@officexr/sdk';
+import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldObjects, WorldSettings } from '@officexr/sdk';
 import type { Clock } from '@officexr/sdk/test-harness';
 import { routeContactEvent } from '../physics/bridge.ts';
-import { pickRespawnPosition, respawnThreshold } from '../physics/rules.ts';
+import {
+  pickRespawnPosition,
+  respawnThreshold,
+  shouldRespawnFalling,
+} from '../physics/rules.ts';
+import { BotCharacterMovement } from '../physics/bot-character-movement.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import { BotPhysicsWorld } from './BotPhysicsWorld.ts';
 import {
@@ -45,10 +50,15 @@ export interface BotDriverOptions {
    * orbit at the same angle). Pool typically passes the bot's index. */
   phaseIndex?: number;
   /** Optional snapshot of the authoritative world state to seed the
-   * bot's SDK store before it subscribes. */
+   * bot's SDK store before it subscribes. Including worldObjects here
+   * ensures the bot's Rapier world has floor colliders from the first
+   * tick, regardless of whether it receives the world:objects broadcast
+   * (bots spawned after the initial broadcast miss it via the in-memory
+   * channel since there is no replay mechanism). */
   initialWorld?: {
     worldSettings?: WorldSettings;
     worldMap?: WorldMap;
+    worldObjects?: WorldObjects;
   };
   /** Optional external bus the bot can re-emit body-vs-body bump
    * events onto (in addition to its own private bus). Used in-browser
@@ -60,6 +70,11 @@ export interface BotDriverOptions {
    * Threads through to `BotPhysicsWorld`. When omitted, bot colliders
    * fall back to the legacy one-voxel-cube path. */
   instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
+  /** Optional collider-shape override lookup (typically
+   * `(id) => api.catalog.getKind(id)?.colliderShape`). Threads through
+   * to `BotPhysicsWorld` so compound-step staircase colliders mirror
+   * what `MapColliders` emits on the browser side. */
+  colliderShape?: import('../physics/rules.ts').ColliderShapeLookup;
 }
 
 /**
@@ -100,6 +115,7 @@ export class BotDriver {
     patrolIdx: 0,
     patrolWaypoints: null,
     orbitAngle: 0,
+    linearWalkDir: { x: 0, z: 1 },
   };
 
   private botStore: ReturnType<typeof createStore> | null = null;
@@ -111,8 +127,10 @@ export class BotDriver {
   private readonly initialWorld: BotDriverOptions['initialWorld'];
 
   private physics: BotPhysicsWorld | null = null;
+  private movement: BotCharacterMovement | null = null;
   private readonly externalBus?: Bus;
   private readonly instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
+  private readonly colliderShape?: import('../physics/rules.ts').ColliderShapeLookup;
 
   constructor(opts: BotDriverOptions) {
     this.createChannel = opts.createChannel;
@@ -126,6 +144,7 @@ export class BotDriver {
     this.initialWorld = opts.initialWorld;
     this.externalBus = opts.externalBus;
     this.instanceAABB = opts.instanceAABB;
+    this.colliderShape = opts.colliderShape;
     this.modeState.patrolIdx = this.phaseIndex;
     // Spread orbit angles so multiple bots don't sit on the same arc spot.
     this.modeState.orbitAngle = (this.phaseIndex * 0.71) * Math.PI;
@@ -156,6 +175,9 @@ export class BotDriver {
     if (this.initialWorld?.worldMap) {
       botActions.setWorldMap(this.initialWorld.worldMap);
     }
+    if (this.initialWorld?.worldObjects) {
+      botActions.setWorldObjects(this.initialWorld.worldObjects);
+    }
 
     botActions.upsertPlayer({
       id: botId,
@@ -171,8 +193,23 @@ export class BotDriver {
       startPos: this.startPos,
       worldSettings: state.worldSettings,
       instanceAABB: this.instanceAABB,
+      colliderShape: this.colliderShape,
     });
     this.physics.syncCubes(state.worldObjects);
+
+    // Initialize the CharacterMovement adapter so tick() can express
+    // intent as walk/stop verbs rather than raw physics deltas.
+    // tunables will be updated each tick via movement.updateTunables().
+    const tunablesForInit = resolveCharacterTunables(
+      state.players[botId]?.avatar.model ?? 'default',
+      state.worldSettings,
+      state.characterConfigs,
+    );
+    this.movement = new BotCharacterMovement(this.physics, {
+      walkSpeed: tunablesForInit.playerSpeed,
+      runSpeed: tunablesForInit.playerSpeed * tunablesForInit.runSpeedMultiplier,
+      movementBlockThreshold: state.worldSettings.movementBlockThreshold,
+    });
 
     const botChannel = this.createChannel(botId);
     const botSync = new SyncEngine({
@@ -217,9 +254,29 @@ export class BotDriver {
     this.botChannel?.close();
     this.physics?.dispose();
     this.physics = null;
+    this.movement = null;
   }
 
-  tick(dt: number): void {
+  /**
+   * Tick the bot for one frame.
+   *
+   * @param dt - Frame delta in milliseconds.
+   * @param directPeers - Optional map of peer bot-id → current physics
+   *   position, collected by BotPool immediately before/after each bot
+   *   ticks. When provided, these positions override the broadcast-lagged
+   *   store positions for peer mirror placement, eliminating the ~33ms
+   *   lag (≈0.1 m at 3 m/s) that causes start-inside-collider overlaps
+   *   and KCC pass-through at head-on contact. Without this, the 30Hz
+   *   broadcast cap means a mirror can be 0.1 m behind the actual peer
+   *   position at the moment of contact, producing an overlap that Rapier's
+   *   KCC resolves by pushing the bot FORWARD (tunneling) instead of
+   *   blocking it.
+   *   BotPool passes a rolling map: each earlier bot in the tick order
+   *   contributes its post-tick store position so later bots see a
+   *   zero-lag mirror, while earlier bots see the prior-tick position of
+   *   later bots (at most 1-frame lag ≈ 0.05 m — within the safe range).
+   */
+  tick(dt: number, directPeers?: ReadonlyMap<string, Vec3>): void {
     if (
       this.stopped ||
       !this.botActions ||
@@ -227,12 +284,12 @@ export class BotDriver {
       !this.botHandshake ||
       !this.botBus ||
       !this.physics ||
+      !this.movement ||
       !this.botStore
     )
       return;
 
     const botState = this.botStore.getState();
-    const { movementBlockThreshold } = botState.worldSettings;
     // Resolve per-character tunables for this bot's model. Each bot can
     // move at a different speed / have a different collision radius if
     // CharacterMode has tuned that model. Falls back to the world's
@@ -244,13 +301,44 @@ export class BotDriver {
       botState.worldSettings,
       botState.characterConfigs,
     );
-    const speed = tunables.playerSpeed ?? this.speed;
 
     // Keep cube colliders + peer mirrors in sync with the latest
     // state. `syncCubes` no-ops when the WorldObjects fingerprint is
     // unchanged, so this is cheap on idle ticks.
     this.physics.syncCubes(botState.worldObjects);
-    this.physics.syncPeers(botState.players, this.clock.now(), tunables.charRadius);
+    // Merge direct peer positions (if provided by BotPool) into the
+    // players map before syncPeers. Direct positions are the fresh
+    // post-tick store positions collected by BotPool this frame,
+    // bypassing the 30Hz broadcast cap for bot-to-bot synchronisation.
+    let playersForSync = botState.players;
+    if (directPeers && directPeers.size > 0) {
+      const merged: typeof botState.players = { ...botState.players };
+      for (const [id, pos] of directPeers) {
+        if (id !== this.botId && merged[id]) {
+          merged[id] = { ...merged[id], pos };
+        }
+      }
+      playersForSync = merged;
+    }
+    this.physics.syncPeers(playersForSync, this.clock.now(), tunables.charRadius);
+    // Advance the simulation BEFORE the KCC so peer mirrors reach the
+    // broadphase at their current positions. In Rapier 0.19 the KCC
+    // (computeColliderMovement) queries the broadphase AABB tree, which is
+    // only rebuilt during world.step(). Without stepping first, the KCC
+    // sees mirrors at their previous-tick committed positions — a 1-tick
+    // lag that lets bots walk into the mirror's stale AABB at an angle
+    // that causes the KCC to resolve the overlap by pushing the bot
+    // FORWARD (pass-through) rather than backward (block). Stepping here
+    // commits the peer setNextKinematicTranslation values set by syncPeers
+    // (and the bot's own body from the previous tick's applyTranslation)
+    // into the broadphase so the KCC sees fresh peer positions.
+    //
+    // Floor-settling is unaffected: bots teleported to y=0 (inside the
+    // floor block) fall through as before, trigger the dual-gate
+    // fall-respawn rule, and drop from y=4 to settle on the platform —
+    // the same path as the original ordering. The ordering change only
+    // affects WHEN the broadphase is refreshed, not the physics outcomes.
+    this.physics.stepWorld();
 
     const botPos = this.getBotPos();
     const ctx: BotModeContext = {
@@ -264,75 +352,57 @@ export class BotDriver {
     const intent = strategy.computeIntent(ctx);
 
     const dtSec = dt / 1000;
+    const currentYaw = botState.players[this.botId]?.yaw ?? 0;
 
-    // Always run the controller step, even when the mode is idle —
-    // otherwise gravity wouldn't apply and an "idle" bot floats
-    // wherever it last was instead of falling onto the cube field
-    // (or off it). Horizontal intent is just zeroed when the mode
-    // returns null.
-    const moveDX = intent ? intent.x * speed * dtSec : 0;
-    const moveDZ = intent ? intent.z * speed * dtSec : 0;
+    // Update tunables each tick so speed / collision changes propagate
+    // immediately (e.g. after a CharacterConfig hot-reload).
+    this.movement.updateTunables({
+      walkSpeed: tunables.playerSpeed,
+      runSpeed: tunables.playerSpeed * tunables.runSpeedMultiplier,
+      movementBlockThreshold: botState.worldSettings.movementBlockThreshold,
+    });
 
-    const stepResult = this.physics.step({ x: moveDX, z: moveDZ, dtSec });
-    this.emitControllerBumps(stepResult.bumps);
+    // Intent verb: bots always walk (no run/crouch input source yet).
+    // stop() is issued when the mode returns null intent so gravity
+    // still integrates each tick — an "idle" bot must fall onto the
+    // cube field, not float at its spawn height.
+    const result = intent
+      ? this.movement.walk(intent, currentYaw, dtSec)
+      : this.movement.stop(currentYaw, dtSec);
 
-    const minProgress = 1 - movementBlockThreshold;
+    this.emitControllerBumps(result.bumps);
 
     // Wander pivots early on a hard block so the bot doesn't grind
     // into walls. Other modes are happy to stand still until
     // conditions change.
-    if (intent && this.mode === 'wander' && stepResult.progress < minProgress) {
+    if (intent && this.mode === 'wander' && !result.moved) {
       strategy.onEnter?.(ctx);
     }
 
-    const t = this.physics.translation();
-    let newPos: Vec3;
-    let vel: Vec3;
-    let moved: boolean;
-    let yaw: number;
-    if (!intent || stepResult.progress < minProgress) {
-      // Horizontal motion blocked or unintended — keep x/z, but
-      // still apply the gravity-driven y delta.
-      newPos = {
-        x: t.x,
-        y: t.y + stepResult.corrected.y,
-        z: t.z,
-      };
-      vel = { x: 0, y: 0, z: 0 };
-      moved = false;
-      yaw = botState.players[this.botId]?.yaw ?? 0;
-    } else {
-      newPos = {
-        x: t.x + stepResult.corrected.x,
-        y: t.y + stepResult.corrected.y,
-        z: t.z + stepResult.corrected.z,
-      };
-      vel = {
-        x: intent.x * speed * stepResult.progress,
-        y: 0,
-        z: intent.z * speed * stepResult.progress,
-      };
-      moved = true;
-      yaw = Math.atan2(-intent.x, -intent.z);
-    }
-    this.physics.applyTranslation(newPos);
-
-    // Fall-respawn check. Bots obey the same below-the-lowest-cube
-    // rule as the local player — they're simulations of remote
-    // players, they don't get to defy game physics.
-    const threshold = respawnThreshold(botState.worldObjects);
-    if (newPos.y < threshold) {
-      const respawnPos = pickRespawnPosition(this.spawnList);
+    // Dual-gate fall-respawn check (single call site for all characters).
+    // Primary gate: both (a) no floor found within FLOOR_PROBE_RANGE and
+    // (b) falling at >= MAX_FALL_VELOCITY (from BotPhysicsWorld.getVerticalVel()).
+    // Backstop: Y-floor threshold (respawnThreshold) remains as a last-resort
+    // safety net in case the primary gate misses (e.g. floor probe briefly
+    // inconclusive or map geometry extremely sparse).
+    let newPos = result.newPos;
+    let vel = result.broadcastVel;
+    let moved = result.moved;
+    const fallsBackstop = newPos.y < respawnThreshold(botState.worldObjects);
+    if (shouldRespawnFalling(result.velY, result.hasFloorUnderneath) || fallsBackstop) {
+      // Use phaseIndex so each bot in a cohort respawns to a DIFFERENT spawn
+      // point when the list has multiple entries — prevents the whole cohort
+      // from stacking at spawnList[0] and passing through each other.
+      const respawnPos = pickRespawnPosition(this.spawnList, this.phaseIndex);
       if (respawnPos) {
-        this.physics.teleport(respawnPos);
+        this.movement.teleport(respawnPos);
         newPos = respawnPos;
         vel = { x: 0, y: 0, z: 0 };
         moved = false;
       }
     }
 
-    this.botActions.setSelfPosition(newPos, vel, yaw, false);
-    this.physics.stepWorld();
+    this.botActions.setSelfPosition(newPos, vel, result.broadcastYaw, false);
     this.flushEvents();
     this.botSync.flushPosition();
     this.botHandshake.tickTimers();
@@ -343,6 +413,31 @@ export class BotDriver {
     if (mode === this.mode) return;
     this.mode = mode;
     this.invokeOnEnter();
+  }
+
+  /**
+   * Switch to a mode and supply mode-specific config before the onEnter hook
+   * fires. For linear-walk: `{ direction: { x, z } }`.
+   *
+   * OCP: this is the only call site that needs to know about per-mode config;
+   * BotDriver.tick() and BOT_MODE_STRATEGIES remain unaffected by new modes.
+   */
+  setModeWithConfig(
+    mode: BotMode,
+    config?: { direction?: { x: number; z: number } },
+  ): void {
+    // Set config fields on modeState BEFORE calling setMode() so that
+    // onEnter fires with the correct values already in place.
+    if (config?.direction) {
+      this.modeState.linearWalkDir = config.direction;
+    }
+    // setMode skips onEnter if the mode is unchanged; force a re-enter
+    // so the direction config is applied even when staying in linear-walk.
+    if (mode === this.mode) {
+      this.invokeOnEnter();
+    } else {
+      this.setMode(mode);
+    }
   }
 
   /** Teleport the bot to a fresh position. Re-applies into the

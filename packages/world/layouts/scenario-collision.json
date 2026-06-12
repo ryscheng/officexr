@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "name": "scenario-collision",
+  "title": "Scenario: Two-Bot Head-On Collision",
+  "updatedAt": 1749600000000,
+  "optimizer": "simplify-light",
+  "commands": [
+    { "id": "place-collision-1",  "op": "placeObject", "kindId": "colored_block_blue", "position": [0,  0, 0]  },
+    { "id": "place-collision-2",  "op": "placeObject", "kindId": "colored_block_blue", "position": [0,  0, 4]  },
+    { "id": "place-collision-3",  "op": "placeObject", "kindId": "colored_block_blue", "position": [0,  0, 8]  },
+    { "id": "place-collision-4",  "op": "placeObject", "kindId": "colored_block_blue", "position": [0,  0, 12] },
+    { "id": "place-collision-5",  "op": "placeObject", "kindId": "colored_block_blue", "position": [4,  0, 0]  },
+    { "id": "place-collision-6",  "op": "placeObject", "kindId": "colored_block_blue", "position": [4,  0, 4]  },
+    { "id": "place-collision-7",  "op": "placeObject", "kindId": "colored_block_blue", "position": [4,  0, 8]  },
+    { "id": "place-collision-8",  "op": "placeObject", "kindId": "colored_block_blue", "position": [4,  0, 12] },
+    { "id": "place-collision-9",  "op": "placeObject", "kindId": "colored_block_blue", "position": [8,  0, 0]  },
+    { "id": "place-collision-10", "op": "placeObject", "kindId": "colored_block_blue", "position": [8,  0, 4]  },
+    { "id": "place-collision-11", "op": "placeObject", "kindId": "colored_block_blue", "position": [8,  0, 8]  },
+    { "id": "place-collision-12", "op": "placeObject", "kindId": "colored_block_blue", "position": [8,  0, 12] },
+    { "id": "place-collision-13", "op": "placeObject", "kindId": "colored_block_blue", "position": [12, 0, 0]  },
+    { "id": "place-collision-14", "op": "placeObject", "kindId": "colored_block_blue", "position": [12, 0, 4]  },
+    { "id": "place-collision-15", "op": "placeObject", "kindId": "colored_block_blue", "position": [12, 0, 8]  },
+    { "id": "place-collision-16", "op": "placeObject", "kindId": "colored_block_blue", "position": [12, 0, 12] }
+  ]
+}

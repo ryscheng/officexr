@@ -28,6 +28,11 @@ export interface UseStackSwitcherOpts {
    * (`useApplication().geometry.worldAABB`) so bot Rapier colliders
    * match the visible-mesh AABB of each placed object. */
   instanceAABB?: import('@officexr/world').InstanceAABBLookup;
+  /** Optional collider-shape override lookup forwarded to the in-browser
+   * BotPool. `DebugApp` passes
+   * `(id) => api.catalog.getKind(id)?.colliderShape` so compound-step
+   * staircase colliders mirror what `MapColliders` emits. */
+  colliderShape?: import('@officexr/world').ColliderShapeLookup;
 }
 
 export interface UseStackSwitcherResult {
@@ -59,7 +64,7 @@ export interface UseStackSwitcherResult {
 export function useStackSwitcher(
   opts: UseStackSwitcherOpts,
 ): UseStackSwitcherResult {
-  const { local, audio, wsThreshold = 2, instanceAABB } = opts;
+  const { local, audio, wsThreshold = 2, instanceAABB, colliderShape } = opts;
   const [stack, setStack] = useState<ChannelStack | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
@@ -102,7 +107,7 @@ export function useStackSwitcher(
     let teardown: (() => Promise<void>) | null = null;
 
     async function bootstrap() {
-      const initial = await buildInMemoryStack({ local: local!, audio: audio!, instanceAABB });
+      const initial = await buildInMemoryStack({ local: local!, audio: audio!, instanceAABB, colliderShape });
       if (aborted) {
         await initial.teardown();
         return;
@@ -125,11 +130,11 @@ export function useStackSwitcher(
         teardown = null;
       }
     };
-    // instanceAABB is a stable function ref from the application api;
-    // included for exhaustive-deps correctness but in practice never
-    // changes after App mount.
+    // instanceAABB and colliderShape are stable function refs from the application
+    // api; included for exhaustive-deps correctness but in practice never
+    // change after App mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [local, audio, instanceAABB]);
+  }, [local, audio, instanceAABB, colliderShape]);
 
   // Deps are deliberately `[wsThreshold]` only. `local`/`audio` are
   // read through refs so the callback identity stays stable across
@@ -193,7 +198,7 @@ export function useStackSwitcher(
           // before we tear down the ws channel locally.
           current.botControl?.publish({ type: 'set-count', count: 0 });
           await current.teardown();
-          const next = await buildInMemoryStack({ local: localNow, audio: audioNow, instanceAABB });
+          const next = await buildInMemoryStack({ local: localNow, audio: audioNow, instanceAABB, colliderShape });
           next.bots.setMode(targetModeRef.current);
           await next.bots.setCount(target);
           setStack(next);

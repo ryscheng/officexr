@@ -105,6 +105,59 @@ export interface WorldObjectKind {
     min: { x: number; y: number; z: number };
     max: { x: number; y: number; z: number };
   };
+  /**
+   * Optional override for the Rapier collider shape emitted by
+   * `MapColliders` and `worldObjectsToCuboids`. When absent the default
+   * is a single AABB cuboid (one-box-per-placed-object).
+   *
+   * 'compound-steps': emit one solid column per step instead of a single
+   * bounding-box cuboid. Intended for staircase kinds whose single-AABB
+   * collider would block the character at the front face rather than
+   * letting it climb the steps. Step parameters (`stepCount`, `stepRise`,
+   * `stepRun`, `stepDepth`) describe the staircase geometry in the kind's
+   * own local space; `worldObjectsToCuboids` / `MapColliders` translate
+   * them to world space at placement time.
+   *
+   * OCP note: new collider shapes (e.g. 'slope', 'hollow') would each
+   * add an entry to this discriminated union rather than modifying the
+   * default AABB path — the default path stays unchanged.
+   */
+  colliderShape?: ColliderShapeSpec;
+}
+
+/**
+ * Discriminated union of optional collider-shape overrides for kinds
+ * that cannot be accurately represented by a single AABB cuboid.
+ *
+ * ISP note: callers that only emit the default AABB collider never need
+ * to read this field — it is consumed exclusively by MapColliders and
+ * worldObjectsToCuboids, both of which are the correct level of
+ * abstraction for this decision.
+ */
+export type ColliderShapeSpec =
+  | CompoundStepsSpec;
+
+/**
+ * Compound staircase collider: one solid column per step, ascending in
+ * the +X direction (the first step's near face is at localAABB.max.x,
+ * and each step adds `stepRun` in the −X direction while adding `stepRise`
+ * in the +Y direction). All columns span the full Z depth of the kind.
+ *
+ * The staircase described by `prototype_primitive_stairs` has:
+ *   stepCount=8, stepRise=0.5, stepRun=0.5, stepDepth=4
+ * (derived from the binary audit of Primitive_Stairs.bin in task-05).
+ */
+export interface CompoundStepsSpec {
+  kind: 'compound-steps';
+  /** Number of steps. */
+  stepCount: number;
+  /** Height gain per step (metres, positive). */
+  stepRise: number;
+  /** Horizontal run per step (metres, positive), along the local X axis. */
+  stepRun: number;
+  /** Depth of each step column (metres), along the local Z axis. Typically
+   * equals the kind's localAABB Z span. */
+  stepDepth: number;
 }
 
 export interface WorldObjectKindCatalogV1 {
@@ -227,6 +280,7 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
       : WORLD_OBJECT_KIND_DEFAULTS.optimization,
     dimensions: normalizeDimensions(k.dimensions),
     localAABB: normalizeLocalAABB(k.localAABB),
+    colliderShape: normalizeColliderShape(k.colliderShape),
   };
 }
 
@@ -271,6 +325,28 @@ function normalizeLocalAABB(raw: unknown):
 
 function isCategory(v: unknown): v is CubeKindCategory {
   return typeof v === 'string' && (CUBE_KIND_CATEGORIES as readonly string[]).includes(v);
+}
+
+function normalizeColliderShape(raw: unknown): ColliderShapeSpec | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const s = raw as Record<string, unknown>;
+  if (s.kind === 'compound-steps') {
+    if (
+      typeof s.stepCount === 'number' && s.stepCount > 0 &&
+      typeof s.stepRise === 'number' && s.stepRise > 0 &&
+      typeof s.stepRun === 'number' && s.stepRun > 0 &&
+      typeof s.stepDepth === 'number' && s.stepDepth > 0
+    ) {
+      return {
+        kind: 'compound-steps',
+        stepCount: s.stepCount,
+        stepRise: s.stepRise,
+        stepRun: s.stepRun,
+        stepDepth: s.stepDepth,
+      };
+    }
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

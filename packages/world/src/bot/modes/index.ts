@@ -1,4 +1,5 @@
 import { idleStrategy } from './idle.ts';
+import { linearWalkStrategy } from './linearWalk.ts';
 import { orbitStrategy } from './orbit.ts';
 import { patrolStrategy } from './patrol.ts';
 import { walkAwayStrategy, walkToLocalStrategy } from './walkToLocal.ts';
@@ -19,4 +20,5 @@ export const BOT_MODE_STRATEGIES: Record<BotMode, BotModeStrategy> = {
   wander: wanderStrategy,
   patrol: patrolStrategy,
   orbit: orbitStrategy,
+  'linear-walk': linearWalkStrategy,
 };

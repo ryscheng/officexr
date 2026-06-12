@@ -19,10 +19,13 @@ import type { CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
   CHARACTER_CONTROLLER_SKIN,
+  FLOOR_PROBE_RANGE,
   GRAVITY as GAME_GRAVITY,
   pickRespawnPosition,
   respawnThreshold,
+  shouldRespawnFalling,
 } from '../physics/rules.ts';
+import { horizontalProgress } from '../physics/blocking.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -243,6 +246,17 @@ export function SceneFrame({
     };
   }, []);
 
+  // SRP violation: SceneFrame owns WASD input, physics step, gravity,
+  // respawn, broadcast, and bot/world ticks. This is a pre-existing bend
+  // forced by React/r3f: `useRapier()` must be called inside the Canvas
+  // component tree, and `useFrame` must be called from a mounted component,
+  // so the per-frame physics step cannot be split into a separate module
+  // without a significant r3f refactor. The dual-gate respawn rule and
+  // intent-verb pattern are adopted here to ensure behavioral parity with
+  // BotCharacterMovement without restructuring the component model.
+  // What would remove this: extract SceneFrame's physics step into a
+  // headless class that accepts `world` + `controller` as constructor args,
+  // wrapping it in a thin r3f component that calls useRapier/useFrame.
   useFrame((_, dtSec) => {
     const dt = dtSec * 1000;
     const now = performance.now();
@@ -340,6 +354,10 @@ export function SceneFrame({
         (keys.has('d') || keys.has('arrowright') ? 1 : 0) -
         (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
 
+      // Intent verb (mirrors CharacterMovement interface):
+      // isRunning + (fwd || strafe) → 'run' verb
+      // !isRunning + (fwd || strafe) → 'walk' verb
+      // neither → 'stop' verb
       // Horizontal intent. Zero when no WASD keys are held; we still
       // run the controller below so gravity can apply.
       let dx = 0;
@@ -569,10 +587,28 @@ export function SceneFrame({
         // the walking animation back to idle. Only applies when the
         // user is intentionally moving; gravity-only frames don't
         // count as "blocked horizontal movement".
-        const correctedLen = Math.hypot(corrected.x, corrected.z);
-        const intentLen = Math.hypot(moveX, moveZ);
-        const progress =
-          intentLen > 1e-9 ? Math.min(1, correctedLen / intentLen) : 0;
+        //
+        // Unified blocking decision: horizontalProgress() is shared with
+        // BotPhysicsWorld (bot path) via physics/blocking.ts — single
+        // source of truth for both human and bot movement-blocking.
+        //
+        // DIP note: SceneFrame (renderer) and BotPhysicsWorld (physics)
+        // each run their own Rapier world and gravity integration because
+        // SceneFrame lives inside the r3f Canvas with @react-three/rapier
+        // while BotPhysicsWorld is a headless Rapier instance. The full
+        // CharacterMovement interface (gravity, position application, anim
+        // derivation) is therefore still duplicated across the two paths.
+        // What IS now unified is the blocking-decision scalar:
+        // horizontalProgress replaces the old magnitude-ratio in SceneFrame
+        // and the inline dot-product in BotPhysicsWorld, so both paths
+        // agree on when "the character is blocked". To remove the remaining
+        // duplication, SceneFrame would need to be refactored onto a
+        // SceneFrameCharacterMovement impl of CharacterMovement — tracked
+        // as a future step in refactor-plan/.
+        const progress = horizontalProgress(
+          { x: corrected.x, z: corrected.z },
+          { x: moveX, z: moveZ },
+        );
         const horizBlocked = intendsMove && progress < minProgress;
 
         const t = body.translation();
@@ -582,11 +618,29 @@ export function SceneFrame({
           z: horizBlocked ? t.z : t.z + corrected.z,
         };
 
-        // Fall-respawn. Bots and the local player obey the same
-        // below-the-lowest-cube rule — bots are simulations of
-        // remote players, they don't get to defy game physics.
-        const threshold = respawnThreshold(stateSnapshot.worldObjects);
-        if (newPos.y < threshold) {
+        // Fall-respawn — dual-gate rule (matches BotCharacterMovement / BotDriver).
+        // Primary gate: both (a) no floor found within FLOOR_PROBE_RANGE and
+        // (b) falling fast enough (shouldRespawnFalling). This fires before the
+        // character exits the bottom of the world so respawns feel responsive.
+        // Backstop: Y-floor threshold (respawnThreshold) is retained as a
+        // last-resort safety net for edge cases where the primary gate misses
+        // (e.g. floor probe briefly inconclusive or map geometry very sparse).
+        const floorRay = new RAPIER.Ray(
+          { x: newPos.x, y: newPos.y, z: newPos.z },
+          { x: 0, y: -1, z: 0 },
+        );
+        const floorHit = world.castRay(
+          floorRay,
+          FLOOR_PROBE_RANGE,
+          true,
+          RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+        );
+        const hasFloorUnderneath = floorHit !== null;
+        const backstopThreshold = respawnThreshold(stateSnapshot.worldObjects);
+        if (
+          shouldRespawnFalling(verticalVelRef.current, hasFloorUnderneath) ||
+          newPos.y < backstopThreshold
+        ) {
           const r = pickRespawnPosition(spawnsRef.current);
           if (r) {
             newPos = r;

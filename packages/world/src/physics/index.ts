@@ -11,8 +11,10 @@ export {
   pickRespawnPosition,
   type CuboidDescriptor,
   type InstanceAABBLookup,
+  type ColliderShapeLookup,
 } from './rules.ts';
 export { routeContactEvent } from './bridge.ts';
+export { horizontalProgress } from './blocking.ts';
 export {
   BODY_GROUPS,
   WALL_GROUPS,

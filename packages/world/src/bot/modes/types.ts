@@ -11,7 +11,11 @@ export type BotMode =
   /** Patrol four corners of an inset square in a fixed loop. */
   | 'patrol'
   /** Orbit the local player at a fixed radius. */
-  | 'orbit';
+  | 'orbit'
+  /** Walk in a fixed XZ direction indefinitely. Pure intent source: calls
+   * walk(dir) on CharacterMovement; direction is set via ModeState or the
+   * __OFFICE_BOTS__ window hook before onEnter fires. */
+  | 'linear-walk';
 
 export const ALL_MODES: readonly BotMode[] = [
   'idle',
@@ -20,6 +24,7 @@ export const ALL_MODES: readonly BotMode[] = [
   'wander',
   'patrol',
   'orbit',
+  'linear-walk',
 ];
 
 /** Per-bot mutable scratch the modes mutate. Held on the driver so a
@@ -36,6 +41,10 @@ export interface ModeState {
   patrolWaypoints: Array<{ x: number; z: number }> | null;
   /** Current angle around the local player for orbit mode (radians). */
   orbitAngle: number;
+  /** Direction for linear-walk mode. Set by BotDriver.setModeWithConfig
+   * before onEnter fires, or by linearWalkStrategy.onEnter as a default.
+   * Defaults to {x:0, z:1} if not provided. */
+  linearWalkDir: { x: number; z: number };
 }
 
 export interface BotModeContext {

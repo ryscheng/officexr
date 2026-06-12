@@ -1,0 +1,28 @@
+{
+  "scenario": "collision",
+  "description": "Two-bot head-on collision: bot-A walks +Z and bot-B walks -Z on a shared 4x4 platform until both stabilize blocked.",
+  "geometry": "scenario-collision map — 4x4 colored_block_blue platform (voxel cols x={0,4,8,12}, z={0,4,8,12}); platform world X: 0–8m, Z: 0–8m, top face at world Y=2m",
+  "spawnPoints": [
+    { "id": "bot-a-near", "x": 4, "y": 2, "z": 1, "description": "Bot-A start — near-Z end, walks in +Z direction" },
+    { "id": "bot-b-far", "x": 4, "y": 2, "z": 7, "description": "Bot-B start — far-Z end, walks in -Z direction" }
+  ],
+  "keyframes": [
+    {
+      "id": "keyframe-01-approaching",
+      "filename": "ideal/keyframe-01-approaching.png",
+      "captureCondition": "bot-A.pos.z > 2 and bot-B.pos.z < 6 (both moving toward each other, gap > 1m)",
+      "description": "Both bots walking toward each other, approaching but not yet blocked"
+    },
+    {
+      "id": "keyframe-02-blocked",
+      "filename": "ideal/keyframe-02-blocked.png",
+      "captureCondition": "|bot-A.pos.z delta over 1s| < 0.05 and |bot-B.pos.z delta over 1s| < 0.05 (both stabilized)",
+      "description": "Both bots stabilized blocked face-to-face; vel.x ≈ 0 and vel.z ≈ 0 for both"
+    }
+  ],
+  "assertionThresholds": {
+    "positionTolerance": 0.05,
+    "velocityTolerance": 0.05,
+    "keyframePixelDiffPercent": 0.02
+  }
+}

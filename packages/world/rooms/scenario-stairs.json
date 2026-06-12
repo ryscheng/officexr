@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 5,
+  "name": "scenario-stairs",
+  "title": "Scenario Stairs Room",
+  "updatedAt": 1749694800000,
+  "layoutName": "scenario-stairs",
+  "commands": [],
+  "groups": {}
+}

@@ -73,7 +73,7 @@ export function DebugApp() {
   // bot's Rapier static colliders match the visible-mesh AABB of each
   // placed object (instead of the legacy one-voxel-cube collider that
   // let bots walk through 2 m blocks).
-  const { geometry } = useApplication();
+  const { geometry, catalog } = useApplication();
   const instanceAABB = useCallback(
     (
       position: readonly [number, number, number],
@@ -83,8 +83,18 @@ export function DebugApp() {
     [geometry],
   );
 
+  // Collider-shape override lookup from the catalog. Threaded into
+  // useStackSwitcher → BotPool → BotPhysicsWorld so compound-step
+  // staircase colliders in the bot's private Rapier world mirror what
+  // MapColliders emits on the browser side (one source of truth for
+  // staircase physics topology).
+  const colliderShape = useCallback(
+    (kindId: string) => catalog.getKind(kindId)?.colliderShape,
+    [catalog],
+  );
+
   const { stack, errorBanner, dismissError, onBotCountChange, onBotModeChange } =
-    useStackSwitcher({ local, audio, instanceAABB });
+    useStackSwitcher({ local, audio, instanceAABB, colliderShape });
 
   // Expose the in-browser bot pool on window for the e2e regression
   // test. The deterministic visual test wants to silence bot

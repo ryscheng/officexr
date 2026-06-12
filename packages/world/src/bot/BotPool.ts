@@ -1,4 +1,4 @@
-import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldSettings } from '@officexr/sdk';
+import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldObjects, WorldSettings } from '@officexr/sdk';
 import { BotDriver, type BotMode } from './BotDriver.ts';
 
 interface BotPoolOptions {
@@ -16,6 +16,7 @@ interface BotPoolOptions {
   getInitialWorld?: () => {
     worldSettings?: WorldSettings;
     worldMap?: WorldMap;
+    worldObjects?: WorldObjects;
   };
   /** When a bot's character controller detects a body-vs-body contact
    * inside its own Rapier world (e.g. bot walked into the local player),
@@ -34,6 +35,11 @@ interface BotPoolOptions {
    * `api.geometry.worldAABB`. Headless / Node-CLI bots omit it and
    * fall back to the legacy one-voxel-cube collider. */
   instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
+  /** Optional collider-shape override lookup. Threaded into every bot's
+   * Rapier world so compound-step staircase colliders mirror what
+   * `MapColliders` emits on the browser side. Production wiring passes
+   * `(id) => api.catalog.getKind(id)?.colliderShape`. */
+  colliderShape?: import('../physics/rules.ts').ColliderShapeLookup;
 }
 
 /**
@@ -50,6 +56,7 @@ export class BotPool {
   private readonly getInitialWorld?: BotPoolOptions['getInitialWorld'];
   private readonly localBus?: Bus;
   private readonly instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
+  private readonly colliderShape?: import('../physics/rules.ts').ColliderShapeLookup;
   private bots: BotDriver[] = [];
   private currentMode: BotMode = 'idle';
   /** Latest target count; the serialised loop below converges to this. */
@@ -67,6 +74,7 @@ export class BotPool {
     this.getInitialWorld = opts.getInitialWorld;
     this.localBus = opts.localBus;
     this.instanceAABB = opts.instanceAABB;
+    this.colliderShape = opts.colliderShape;
   }
 
   /** Reach `n` active bots. New bots inherit the pool's current mode and
@@ -100,6 +108,7 @@ export class BotPool {
               initialWorld: this.getInitialWorld?.(),
               externalBus: this.localBus,
               instanceAABB: this.instanceAABB,
+              colliderShape: this.colliderShape,
             });
             this.bots.push(bot);
             await bot.start();
@@ -129,9 +138,51 @@ export class BotPool {
     for (const b of this.bots) b.setMode(mode);
   }
 
-  /** Tick every bot. Called once per frame from SceneFrame. */
+  /**
+   * Set the linear-walk direction for a specific bot by index and switch it
+   * to `linear-walk` mode. Exposed on `__OFFICE_BOTS__` for Playwright tests
+   * (tasks 10–12) to configure bot direction before a scenario starts.
+   *
+   * Usage from Playwright:
+   *   await page.evaluate(() =>
+   *     window.__OFFICE_BOTS__.setLinearWalkDir(0, { x: 0, z: 1 })
+   *   );
+   */
+  setLinearWalkDir(botIndex: number, direction: { x: number; z: number }): void {
+    const bot = this.bots[botIndex];
+    if (!bot) return;
+    bot.setModeWithConfig('linear-walk', { direction });
+  }
+
+  /** Tick every bot. Called once per frame from SceneFrame.
+   *
+   * Two-phase position collection: before each bot ticks, the
+   * rolling `directPeers` map holds every OTHER bot's latest
+   * known position (from the store, reflecting setSelfPosition
+   * from the prior or current frame). This bypasses the 30Hz
+   * broadcast cap for bot-to-bot peer mirror placement, reducing
+   * per-frame position lag from ~0.1 m (2-frame broadcast lag
+   * at 3 m/s) to at most ~0.05 m (1-frame store lag) so Rapier's
+   * KCC never starts inside a peer mirror's collider at contact.
+   *
+   * Sequential order is preserved: bot-0 ticks first with prior-
+   * tick positions for all peers; after its tick the map is updated
+   * so bot-1 uses bot-0's fresh post-tick position as its mirror.
+   */
   tick(dt: number): void {
-    for (const b of this.bots) b.tick(dt);
+    // Seed the map with every bot's store position BEFORE any tick
+    // runs this frame (prior-tick positions for all).
+    const directPeers = new Map<string, Vec3>();
+    for (const b of this.bots) {
+      directPeers.set(b.botId, b.getBotPos());
+    }
+
+    for (const b of this.bots) {
+      b.tick(dt, directPeers);
+      // After this bot ticks, update the map with its fresh post-tick
+      // store position so subsequent bots see a zero-lag mirror.
+      directPeers.set(b.botId, b.getBotPos());
+    }
   }
 
   /** Stop and clear every bot. Called on unmount. Also flips the stopped

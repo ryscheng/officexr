@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "name": "scenario-stairs",
+  "updatedAt": 1749694800000,
+  "rooms": [
+    {
+      "id": "room-stairs-1",
+      "roomName": "scenario-stairs",
+      "position": [0, 0, 0],
+      "rotationY": 0
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "spawn-stairs-base",
+      "position": [6, 2, 2]
+    }
+  ],
+  "environment": {
+    "sun": {
+      "positionX": 20,
+      "positionY": 40,
+      "positionZ": 20,
+      "color": "#ffffff",
+      "intensity": 1.4
+    },
+    "sky": null,
+    "stars": null,
+    "hdri": null,
+    "ambientIntensity": 0.15
+  },
+  "_meta": {
+    "stairGeometryPath": "B",
+    "stairGeometryNotes": "prototype_primitive_stairs with compound-step colliders (colliderShape.kind=compound-steps, stepCount=16, stepRise=0.25m). Ascends in -X direction. Stairs placed at voxelPos [0,4,0] so entry step (y=2.25) connects to base platform top (y=2). Top step y=6.0. Step rise 0.25m < charRadius 0.4m for safe KCC climbing.",
+    "baseY": 2.0,
+    "expectedTopY": 5.5,
+    "expectedTopYNotes": "Stair top face (and landing platform top) at world Y=6.0m. Bot body_root settles at 6.0-0.5=5.5m (ball_bottom=body_root+0.5=6.0). Tolerance ±0.5m for task-12 assertion (covers any settling position from stair top to landing).",
+    "spawnPosition": [6, 2, 2],
+    "spawnNotes": "Above base platform center (world x=[4,8], y=[0,2], z=[0,4]). Bot walks in direction {x:-1, z:0} to approach stairs.",
+    "botWalkDirection": {"x": -1, "z": 0}
+  }
+}

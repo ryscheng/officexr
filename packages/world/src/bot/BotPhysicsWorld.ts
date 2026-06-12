@@ -12,27 +12,12 @@ import {
   GRAVITY,
   worldObjectsToCuboids,
 } from '../physics/rules.ts';
+import { horizontalProgress } from '../physics/blocking.ts';
 
 /** Local-y the bot collider sits at (matches the browser-side BODY_Y in
  * Players.tsx so all bodies are at the same elevation). */
 export const BODY_Y = 0.9;
 
-/** Match the renderer's extrapolation cap so the resolver and the
- * visible avatar agree on where a peer "is" right now. */
-const EXTRAPOLATION_CAP_S = 0.1;
-
-function extrapolatePeerPos(
-  player: { pos: Vec3; vel: Vec3; tRecv?: number },
-  nowMs: number,
-): Vec3 {
-  if (player.tRecv === undefined) return { ...player.pos };
-  const elapsed = Math.min(EXTRAPOLATION_CAP_S, (nowMs - player.tRecv) / 1000);
-  return {
-    x: player.pos.x + player.vel.x * elapsed,
-    y: player.pos.y + player.vel.y * elapsed,
-    z: player.pos.z + player.vel.z * elapsed,
-  };
-}
 
 /** Per-peer kinematic mirror body the bot maintains in its own Rapier
  * world. Their positions are kept in sync with the SDK store's last
@@ -88,6 +73,12 @@ interface BotPhysicsWorldOpts {
    * preserved for back-compat with bot harnesses that don't have an
    * application api wired (older unit tests). */
   instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
+  /** Optional collider-shape override lookup (typically
+   * `(id) => api.catalog.getKind(id)?.colliderShape`). When provided,
+   * kinds that declare a `colliderShape` (e.g. `compound-steps`) emit
+   * multiple cuboids instead of the single AABB box, mirroring what
+   * `MapColliders` emits on the browser side. */
+  colliderShape?: import('../physics/rules.ts').ColliderShapeLookup;
 }
 
 /**
@@ -135,11 +126,22 @@ export class BotPhysicsWorld {
    * character controller's collision list can be translated into a
    * peer ID for the bump event. */
   private peerByColliderHandle = new Map<number, PlayerId>();
+  /** The last position applied via `applyTranslation` (or `teleport`). This
+   * is the position scheduled via `setNextKinematicTranslation` that WILL be
+   * committed to the Rapier broadphase on the next `stepWorld()` call. Using
+   * this in `syncPeers` instead of `body.translation()` (which returns the
+   * position from the PREVIOUS `stepWorld()` — 1 tick stale) ensures the
+   * peer-mirror clamp is computed against the position that the KCC will
+   * actually see during `physics.step()`, preventing the 1-tick staleness
+   * gap-error that causes start-inside-collider pass-through. */
+  private _lastAppliedPos: Vec3 | null = null;
   private instanceAABB?: import('../physics/rules.ts').InstanceAABBLookup;
+  private colliderShape?: import('../physics/rules.ts').ColliderShapeLookup;
 
   constructor(opts: BotPhysicsWorldOpts) {
     this.selfId = opts.selfId;
     this.instanceAABB = opts.instanceAABB;
+    this.colliderShape = opts.colliderShape;
     // Gravity vector matches the browser-side `<Physics>` so the bot
     // and the local player fall at identical rates. Kinematic bodies
     // don't auto-apply it — see `verticalVel` integration in step().
@@ -151,6 +153,9 @@ export class BotPhysicsWorld {
       opts.startPos.z,
     );
     this.body = this.world.createRigidBody(bodyDesc);
+    // Seed _lastAppliedPos with the initial start position so the first
+    // syncPeers call has a non-null predicted body position.
+    this._lastAppliedPos = { x: opts.startPos.x, y: opts.startPos.y, z: opts.startPos.z };
 
     // `ActiveCollisionTypes.ALL` — without this, Rapier's default
     // (DEFAULT = 15) skips kinematic↔kinematic contact / intersection
@@ -201,12 +206,67 @@ export class BotPhysicsWorld {
     // ground when stepping between cubes at nominally the same
     // height so the bot doesn't float for a frame across each seam.
     this.controller.enableSnapToGround(0.3);
+    // Enable autostep so the bot can climb staircase compound-step
+    // colliders. Without this the Rapier KCC deflects the ball
+    // backward when it contacts a step face (the slide direction nets
+    // +X instead of advancing in –X), so the bot halts at every step.
+    // maxHeight=0.4 = charRadius (default) — climbing a step taller
+    //   than the ball radius requires the KCC's autostep logic; below
+    //   that the ball can slide over the corner naturally.
+    // minWidth=0.1 — the step column is 0.25 m wide (stepRun=0.25), so
+    //   a minWidth smaller than that ensures the KCC detects it.
+    // includeDynamicBodies=false — steps are all fixed (no dynamic).
+    //
+    // OCP note: this is additive to the SceneFrame controller which
+    //   does NOT enable autostep (human player does not climb steps).
+    //   Bots and humans have different controller configs for this
+    //   feature; both are kinematic bodies with the same skin and
+    //   snapToGround, but only bots need autostep for the scenario-stairs
+    //   test. The SceneFrame controller is in the browser/renderer layer
+    //   (packages/world/src/renderer/SceneFrame.tsx) and is kept
+    //   unchanged — this change is additive.
+    this.controller.enableAutostep(0.4, 0.1, false);
   }
 
   /** Current bot pose in world space. */
   translation(): Vec3 {
     const t = this.body.translation();
     return { x: t.x, y: t.y, z: t.z };
+  }
+
+  /** Current integrated fall speed (m/s, negative = falling).
+   * Exposed for {@link BotCharacterMovement} so it can populate
+   * {@link CharacterMoveResult.velY} from the authoritative integrated
+   * value rather than an approximation derived from corrected.y / dtSec.
+   * Read-only accessor — no logic change to the integration in step(). */
+  getVerticalVel(): number {
+    return this.verticalVel;
+  }
+
+  /**
+   * Downward floor probe: casts a ray from `fromPos` downward by `range` m.
+   * Returns true if a surface is found within that range.
+   *
+   * Used by BotDriver.tick() to populate the `hasFloorUnderneath` input
+   * to shouldRespawnFalling (dual-gate fall-respawn rule). Rapier only —
+   * no Three, no React. The ray origin is placed at character-feet level
+   * (fromPos.y) so the probe checks below the bot's current ground contact.
+   *
+   * EXCLUDE_SENSORS: sensor colliders (proximity rings) must not count as
+   * "floor" — only solid geometry should prevent a respawn trigger.
+   */
+  probeFloor(fromPos: Vec3, range: number): boolean {
+    const ray = new RAPIER.Ray(
+      { x: fromPos.x, y: fromPos.y, z: fromPos.z },
+      { x: 0, y: -1, z: 0 },
+    );
+    const hit = this.world.castRay(
+      ray,
+      range,
+      true,
+      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+    );
+    return hit !== null;
   }
 
   /**
@@ -228,7 +288,7 @@ export class BotPhysicsWorld {
     if (this.cubesFingerprint === fingerprint) return;
     for (const b of this.mapColliderBodies) this.world.removeRigidBody(b);
     this.mapColliderBodies = [];
-    for (const c of worldObjectsToCuboids(worldObjects, this.instanceAABB)) {
+    for (const c of worldObjectsToCuboids(worldObjects, this.instanceAABB, this.colliderShape)) {
       const desc = RAPIER.RigidBodyDesc.fixed().setTranslation(
         c.center.x,
         c.center.y,
@@ -251,7 +311,7 @@ export class BotPhysicsWorld {
    * collisions inside the bot's own Rapier world. */
   syncPeers(
     players: Record<PlayerId, { pos: Vec3; vel: Vec3; tRecv?: number }>,
-    nowMs: number,
+    _nowMs: number,
     charRadius: number,
   ): void {
     const seen = new Set<PlayerId>();
@@ -259,7 +319,80 @@ export class BotPhysicsWorld {
     for (const [id, p] of Object.entries(players)) {
       if (id === this.selfId) continue;
       seen.add(id as PlayerId);
-      const ePos = extrapolatePeerPos(p, nowMs);
+      // Use the raw stored position for the physics mirror (no extrapolation),
+      // but clamped so the mirror sphere's 3D contact surface never overlaps
+      // our own sphere (the "start-inside-collider" pass-through guard).
+      //
+      // WHY CLAMP: bots approach each other at ~3 m/s each (combined 0.1 m/frame
+      // at 60 Hz). In the frame they first make contact, the peer has already
+      // moved 0.05 m toward us since the last store read. Without clamping, the
+      // mirror sphere overlaps our sphere by 0.05-0.1 m on the first contact
+      // frame. Rapier's KCC shape-cast only detects FUTURE contacts (TOI > 0);
+      // when the character starts INSIDE an obstacle the cast reports no hit and
+      // allows unrestricted movement — the classic "start-inside-collider" pass-
+      // through. The clamp ensures the mirror sphere never overlaps ours.
+      //
+      // SPHERE-SURFACE AWARE: We compute the minimum horizontal (XZ) distance
+      // at which sphere centres are exactly at the contact sum (2 * charRadius),
+      // taking into account the ACTUAL vertical separation between sphere centres.
+      // This is important because even a small Y difference (e.g. 0.15 m during
+      // platform settling) reduces the required XZ distance — if we always clamp
+      // to the full 2 * charRadius horizontally, the 3D contact distance exceeds
+      // the contact sum and the KCC sees no collision.
+      //
+      // Y PRESERVED: the mirror body root's Y is always the peer's authoritative
+      // Y (from directPeers). We only adjust the XZ position. This prevents the
+      // spurious vertical-contact-normal artifact that 3D clamping introduces:
+      // a mirror pushed diagonally in 3D appears at the wrong height, causing
+      // the KCC to push our bot upward off the platform.
+      let mirrorBodyPos: Vec3 = p.pos;
+      {
+        // Use `_lastAppliedPos` (the position most recently scheduled via
+        // `setNextKinematicTranslation`) rather than `body.translation()` (which
+        // returns the position committed by the PREVIOUS `stepWorld()` — 1 tick
+        // stale). `_lastAppliedPos` is the position that WILL be committed by
+        // the UPCOMING `stepWorld()` call (i.e. what the KCC broadphase will see
+        // during `physics.step()`), so the clamp is computed against the correct
+        // body position. Without this, the staleness causes the gap to appear
+        // 0.05 m larger than it actually is in the broadphase, making the mirror
+        // 0.05 m too close → the gap after stepWorld collapses to exactly
+        // contactSum (TOI = 0) → KCC treats it as "touching" → allows movement
+        // → pass-through.
+        const myPos = this._lastAppliedPos ?? this.translation();
+        // Vertical distance between the two sphere centres (BODY_Y offset same
+        // for both bots, so it cancels in the difference; only the body-root Y
+        // difference matters for the per-contact-axis geometry).
+        const dyCentres = p.pos.y - myPos.y; // peer root Y − my root Y
+        const contactSum = 2 * charRadius;
+        // Pythagoras: the required horizontal distance h such that
+        //   sqrt(h² + dyCentres²) = contactSum  →  h² = contactSum² - dyCentres²
+        // If |dyCentres| >= contactSum the spheres can never touch horizontally.
+        const hSq = contactSum * contactSum - dyCentres * dyCentres;
+        if (hSq > 0) {
+          // The clamp uses `_lastAppliedPos` (the position that WILL be
+          // committed to the broadphase by the upcoming `stepWorld()`) so
+          // the gap calculation is exact — no staleness, no extra margin
+          // needed. The mirror is placed at EXACTLY contactSum distance
+          // from the bot's broadphase position, giving TOI = 0 in the KCC
+          // shape-cast, which prevents ALL movement toward the mirror
+          // (progress = 0 → animState:'idle' → broadcastVel:{0,0,0}).
+          const requiredHoriz = Math.sqrt(hSq);
+          const dx = p.pos.x - myPos.x;
+          const dz = p.pos.z - myPos.z;
+          const horizDistSq = dx * dx + dz * dz;
+          if (horizDistSq < requiredHoriz * requiredHoriz && horizDistSq > 1e-9) {
+            const horizDist = Math.sqrt(horizDistSq);
+            const scale = requiredHoriz / horizDist;
+            mirrorBodyPos = {
+              x: myPos.x + dx * scale,
+              y: p.pos.y, // preserve peer's authoritative body-root Y
+              z: myPos.z + dz * scale,
+            };
+          }
+        }
+        // If hSq <= 0 (bots vertically too far apart to touch), leave mirrorBodyPos = p.pos.
+      }
+      const ePos = mirrorBodyPos;
       let mirror = this.peerMirrors.get(id as PlayerId);
       if (!mirror) {
         const bdesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
@@ -279,11 +412,7 @@ export class BotPhysicsWorld {
         mirror = { body: mb, collider: mc };
         this.peerMirrors.set(id as PlayerId, mirror);
       } else {
-        mirror.body.setNextKinematicTranslation({
-          x: ePos.x,
-          y: ePos.y,
-          z: ePos.z,
-        });
+        mirror.body.setNextKinematicTranslation({ x: ePos.x, y: ePos.y, z: ePos.z });
       }
     }
 
@@ -316,6 +445,27 @@ export class BotPhysicsWorld {
     // 3D delta into the controller. Matches SceneFrame's pattern
     // for the local player so bots fall at the same rate.
     this.verticalVel += GRAVITY * intent.dtSec;
+    // Explicit BODY_GROUPS filter: ensures the KCC interacts with both the
+    // floor (WALL_GROUPS membership=WALL) and peer mirrors (BODY_GROUPS
+    // membership=BODY) while skipping uncategorised colliders. Without an
+    // explicit filter the JS binding passes the sentinel 0x100000001 whose
+    // low-32-bit truncation to WASM i32 = 1 (memberships=0, filter=BODY=1)
+    // → (memberships=0) & anything = 0 → always false → NO interactions
+    // detected. That sentinel was intended to signal None/all-groups in
+    // Rust, but the JS→WASM i32 truncation loses the high bit, so the
+    // WASM receives 1 instead of the None sentinel. Passing BODY_GROUPS
+    // explicitly avoids the truncation and correctly detects both floor and
+    // peer mirrors.
+    //
+    // The mirror-position clamp in syncPeers prevents mirrors from being
+    // placed inside the bot's sphere (which would cause KCC start-inside-
+    // collider undefined behavior), so this explicit filter is safe.
+    //
+    // SRP violation: step() now implicitly depends on BODY_GROUPS being
+    // the correct filter for the bot's interaction topology. If the group
+    // layout changes (new group bits, new collision rules), this must also
+    // update. Acceptable because step() is the sole physics-integration
+    // point in this class and the groups.ts file is the single authority.
     this.controller.computeColliderMovement(
       this.bodyCollider,
       {
@@ -324,10 +474,20 @@ export class BotPhysicsWorld {
         z: intent.z,
       },
       RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+      BODY_GROUPS,
     );
     const corrected = this.controller.computedMovement();
 
-    if (this.controller.computedGrounded()) {
+    // Reset accumulated vertical velocity when the character controller
+    // reports it is grounded OR when the corrected movement has a non-negative
+    // y component (upward or flat). The non-negative branch covers autostep:
+    // when enableAutostep lifts the body over a step face, computedGrounded()
+    // may briefly return false (the ball is "climbing" rather than resting on
+    // a flat surface), but corrected.y is positive (the controller moved the
+    // body UP). Without this branch, gravity accumulates over each autostep
+    // lift and can reach -MAX_FALL_VELOCITY, triggering a spurious respawn
+    // near the top of a staircase even though the bot is physically climbing.
+    if (this.controller.computedGrounded() || corrected.y >= 0) {
       this.verticalVel = 0;
     }
 
@@ -346,12 +506,13 @@ export class BotPhysicsWorld {
     }
     this.bumpingPeers = next;
 
-    const intentLenSq = intent.x * intent.x + intent.z * intent.z;
-    const correctedLenSq = corrected.x * corrected.x + corrected.z * corrected.z;
-    const progress =
-      intentLenSq > 1e-12
-        ? Math.max(0, Math.min(1, Math.sqrt(correctedLenSq / intentLenSq)))
-        : 1;
+    // Directional progress: shared with SceneFrame (human player) via
+    // horizontalProgress() in physics/blocking.ts. Single source of truth for
+    // the blocking decision for both bot and human paths.
+    const progress = horizontalProgress(
+      { x: corrected.x, z: corrected.z },
+      { x: intent.x, z: intent.z },
+    );
 
     return {
       corrected: { x: corrected.x, y: corrected.y, z: corrected.z },
@@ -365,6 +526,7 @@ export class BotPhysicsWorld {
    * three components are written — y is no longer pinned, since
    * gravity drives vertical motion. */
   applyTranslation(pos: Vec3): void {
+    this._lastAppliedPos = { x: pos.x, y: pos.y, z: pos.z };
     this.body.setNextKinematicTranslation({ x: pos.x, y: pos.y, z: pos.z });
   }
 
@@ -373,6 +535,7 @@ export class BotPhysicsWorld {
    * cohort and by the fall-respawn path so the bot doesn't keep
    * accumulating downward velocity through the teleport. */
   teleport(pos: Vec3): void {
+    this._lastAppliedPos = { x: pos.x, y: pos.y, z: pos.z };
     this.body.setNextKinematicTranslation({ x: pos.x, y: pos.y, z: pos.z });
     this.verticalVel = 0;
   }
