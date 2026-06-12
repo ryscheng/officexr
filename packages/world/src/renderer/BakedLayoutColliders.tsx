@@ -1,10 +1,23 @@
 /**
- * `<BakedLayoutColliders>` — static Rapier colliders derived from a baked
- * layout GLB's mesh AABBs.
+ * `<BakedLayoutColliders>` — static Rapier colliders for a baked layout
+ * GLB.
  *
- * Traverses the loaded GLTF scene, extracts one world-space AABB per Mesh,
- * and emits one `<CuboidCollider>` per mesh wrapped in a single fixed
- * `<RigidBody>`.  Uses the same `WALL_GROUPS` interaction group as
+ * PRIMARY SOURCE: the collider cuboids the bake embedded in the GLB's
+ * scene `extras` (see `app/baked-collider-extras.ts`). These come from
+ * `worldObjectsToCuboids` — the exact same physics helper MapColliders
+ * (unbaked rooms) and BotPhysicsWorld (bots) use, including the
+ * compound-steps staircase override — so the player walks on identical
+ * geometry whether a room is baked or not. The visual mesh is merged
+ * (and possibly simplified) by the bake optimizer, so it can no longer
+ * describe physics.
+ *
+ * FALLBACK (stale pre-extras bakes only): traverse the scene and emit
+ * one world-space AABB per Mesh, the legacy behaviour. Safe because
+ * pre-extras GLBs were baked with the broken non-merging pipeline —
+ * their per-object mesh nodes are still intact.
+ *
+ * Either way the output shape is the same: one `<CuboidCollider>` per
+ * descriptor in a single fixed `<RigidBody>` on `WALL_GROUPS`, matching
  * `<MapColliders>` so existing player collision code just works.
  *
  * `three` IS allowed in renderer files per CLAUDE.md rules.
@@ -15,6 +28,7 @@ import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { getVersion } from '../app/bake-registry.ts';
+import { parseEmbeddedColliders } from '../app/baked-collider-extras.ts';
 import { WALL_GROUPS } from '../physics/groups.ts';
 import { BakedLayoutErrorBoundary } from './BakedLayout.tsx';
 
@@ -63,7 +77,28 @@ interface BakedLayoutCollidersInnerProps {
 
 function BakedLayoutCollidersInner({ effectiveUrl }: BakedLayoutCollidersInnerProps) {
   const gltf = useGLTF(effectiveUrl);
-  const aabbs = extractMeshAABBs(gltf.scene);
+
+  // Preferred path: the physics cuboids the bake embedded in the scene
+  // extras (GLTFLoader surfaces glTF `extras` as `userData`).
+  const embedded = parseEmbeddedColliders(gltf.scene.userData);
+  let aabbs: MeshAABB[];
+  if (embedded) {
+    aabbs = embedded.map((c) => ({
+      center: [c.center.x, c.center.y, c.center.z],
+      halfExtents: [c.halfExtents.x, c.halfExtents.y, c.halfExtents.z],
+    }));
+  } else {
+    // Stale bake (pre-extras GLB). Its meshes are still one-per-object
+    // (the old non-merging pipeline), so per-mesh AABBs remain a valid
+    // collider source. Warn so the user knows to re-save the layout —
+    // a re-bake upgrades it to embedded colliders + merged visuals.
+    console.warn(
+      `[BakedLayoutColliders] "${effectiveUrl}" carries no embedded collider ` +
+        'extras (stale bake). Falling back to per-mesh AABB colliders; ' +
+        're-save the layout to re-bake it.',
+    );
+    aabbs = extractMeshAABBs(gltf.scene);
+  }
 
   if (aabbs.length === 0) return null;
 

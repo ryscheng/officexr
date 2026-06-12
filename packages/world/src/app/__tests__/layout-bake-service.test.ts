@@ -9,6 +9,7 @@ import { Document, WebIO } from '@gltf-transform/core';
 import { bakeLayout } from '../layout-bake-service.ts';
 import type { KindLookup } from '../layout-bake-service.ts';
 import { createInstanceGeometry } from '../geometry-service.ts';
+import { parseEmbeddedColliders } from '../baked-collider-extras.ts';
 import type { WorldObjectKind } from '../../scenes/world-object-kinds-schema.ts';
 import type { LayoutDocument } from '../../scenes/layout-document.ts';
 
@@ -346,5 +347,168 @@ describe('bakeLayout', () => {
     // dedup + join + prune. Strict inequality is the contract; a single
     // merged primitive is the realistic outcome for identical kinds.
     expect(primitiveCount).toBeLessThan(N);
+  });
+
+  it('collapses N same-kind instances to a single mesh-bearing node (draw call)', async () => {
+    // Regression for the join-before-flatten bug. The primitive-count
+    // test above passed even while the bug shipped, because `dedup`
+    // collapsed N identical MESHES into 1 shared mesh — while N NODES
+    // each still referenced it, i.e. one DRAW CALL per placed object
+    // (platform.glb shipped with 625). Draw calls are what the GPU
+    // pays for, so this invariant counts mesh-bearing NODES: with the
+    // default pipeline (flatten → join), N instances of one kind/one
+    // material must merge into exactly one renderable node.
+    const cubeBytes = await makeTrivialGlb('cube');
+    const kindMap = new Map<string, WorldObjectKind>([
+      ['cube', makeKind('cube', '/models/cube.glb')],
+    ]);
+    const kindLookup: KindLookup = (id) => kindMap.get(id);
+    const gltfLoader = async () => cubeBytes;
+
+    const N = 8;
+    const commands = Array.from({ length: N }, (_, i) => ({
+      id: `c${i}`,
+      op: 'placeObject' as const,
+      kindId: 'cube',
+      position: [i * 4, 0, 0] as [number, number, number],
+    }));
+    const doc = makeLayoutDoc('draw-call-collapse', commands);
+
+    const result = await bakeLayout(
+      doc,
+      kindLookup,
+      gltfLoader,
+      makeGeometry(kindMap),
+      { io },
+    );
+
+    const parsed = await io.readBinary(result.glb);
+    const meshNodes = parsed
+      .getRoot()
+      .listNodes()
+      .filter((n) => n.getMesh() !== null);
+    expect(meshNodes.length).toBe(1);
+  });
+
+  it('embeds collider cuboids in scene extras matching geometry.worldAABB', async () => {
+    // The optimizer merges (and may lossily simplify) the VISUAL mesh,
+    // so the runtime can't derive physics from mesh nodes anymore. The
+    // bake must embed one collider cuboid per placeObject command in
+    // the scene extras, positioned by the canonical geometry service —
+    // the same answer MapColliders computes for unbaked rooms.
+    const cubeBytes = await makeTrivialGlb('cube');
+    const kindMap = new Map<string, WorldObjectKind>([
+      [
+        'cube',
+        {
+          ...makeKind('cube', '/models/cube.glb'),
+          dimensions: { width: 2, height: 2, depth: 2 },
+          localAABB: {
+            min: { x: -1, y: -1, z: -1 },
+            max: { x: 1, y: 1, z: 1 },
+          },
+        },
+      ],
+    ]);
+    const kindLookup: KindLookup = (id) => kindMap.get(id);
+    const gltfLoader = async () => cubeBytes;
+    const geometry = makeGeometry(kindMap, 0.5);
+
+    const positions: Array<[number, number, number]> = [
+      [0, 0, 0],
+      [4, 0, 0],
+      [4, 4, 4],
+    ];
+    const doc = makeLayoutDoc(
+      'collider-extras',
+      positions.map((position, i) => ({
+        id: `c${i}`,
+        op: 'placeObject' as const,
+        kindId: 'cube',
+        position,
+      })),
+    );
+
+    const result = await bakeLayout(doc, kindLookup, gltfLoader, geometry, { io });
+    expect(result.meta.colliderCount).toBe(positions.length);
+
+    // Round-trip through the same parser the renderer uses.
+    const parsed = await io.readBinary(result.glb);
+    const extras = parsed.getRoot().listScenes()[0].getExtras();
+    const cuboids = parseEmbeddedColliders(extras);
+    expect(cuboids).not.toBeNull();
+    expect(cuboids!.length).toBe(positions.length);
+
+    for (let i = 0; i < positions.length; i++) {
+      const aabb = geometry.worldAABB(positions[i], 'cube');
+      const c = cuboids![i];
+      expect(c.center.x).toBeCloseTo((aabb.min[0] + aabb.max[0]) / 2, 6);
+      expect(c.center.y).toBeCloseTo((aabb.min[1] + aabb.max[1]) / 2, 6);
+      expect(c.center.z).toBeCloseTo((aabb.min[2] + aabb.max[2]) / 2, 6);
+      expect(c.halfExtents.x).toBeCloseTo((aabb.max[0] - aabb.min[0]) / 2, 6);
+      expect(c.halfExtents.y).toBeCloseTo((aabb.max[1] - aabb.min[1]) / 2, 6);
+      expect(c.halfExtents.z).toBeCloseTo((aabb.max[2] - aabb.min[2]) / 2, 6);
+    }
+  });
+
+  it('embeds per-step cuboids for compound-steps kinds (climbable stairs)', async () => {
+    // A staircase kind must NOT bake down to one bounding-box collider —
+    // that's the difference between a climbable staircase and a wall.
+    // The bake threads the kind's `colliderShape` into
+    // `worldObjectsToCuboids`, which emits one column per step; assert
+    // the step topology (count + ascending tops) independently.
+    const stairsBytes = await makeTrivialGlb('stairs');
+    const stepCount = 4;
+    const stepRise = 0.5;
+    const kindMap = new Map<string, WorldObjectKind>([
+      [
+        'stairs',
+        {
+          ...makeKind('stairs', '/models/stairs.glb'),
+          dimensions: { width: 2, height: 2, depth: 2 },
+          localAABB: {
+            min: { x: -1, y: -1, z: -1 },
+            max: { x: 1, y: 1, z: 1 },
+          },
+          colliderShape: {
+            kind: 'compound-steps',
+            stepCount,
+            stepRise,
+            stepRun: 0.5,
+            stepDepth: 2,
+          },
+        },
+      ],
+    ]);
+    const kindLookup: KindLookup = (id) => kindMap.get(id);
+    const gltfLoader = async () => stairsBytes;
+    const geometry = makeGeometry(kindMap, 0.5);
+
+    const position: [number, number, number] = [0, 0, 0];
+    const doc = makeLayoutDoc('stairs-extras', [
+      { id: 'c1', op: 'placeObject', kindId: 'stairs', position },
+    ]);
+
+    const result = await bakeLayout(doc, kindLookup, gltfLoader, geometry, { io });
+    expect(result.meta.colliderCount).toBe(stepCount);
+
+    const parsed = await io.readBinary(result.glb);
+    const cuboids = parseEmbeddedColliders(
+      parsed.getRoot().listScenes()[0].getExtras(),
+    );
+    expect(cuboids).not.toBeNull();
+    expect(cuboids!.length).toBe(stepCount);
+
+    // Step columns all share the staircase's base; their tops ascend by
+    // stepRise per step. (Step i top = base + (i+1) * stepRise.)
+    const aabb = geometry.worldAABB(position, 'stairs');
+    const base = aabb.min[1];
+    for (let i = 0; i < stepCount; i++) {
+      const c = cuboids![i];
+      const top = c.center.y + c.halfExtents.y;
+      const bottom = c.center.y - c.halfExtents.y;
+      expect(bottom).toBeCloseTo(base, 6);
+      expect(top).toBeCloseTo(base + (i + 1) * stepRise, 6);
+    }
   });
 });

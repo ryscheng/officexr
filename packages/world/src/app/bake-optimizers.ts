@@ -83,18 +83,25 @@ export const noneOptimizer: BakeOptimizer = {
 };
 
 /**
- * Default lossless pipeline: `dedup → weld → prune → join → flatten`.
- * Identical-vertex welding and instance merging cut size dramatically
- * when many instances share a kind, without altering polygon count
- * or appearance.
+ * Default lossless pipeline: `dedup → flatten → join → weld → prune`.
+ *
+ * ORDER MATTERS — `flatten()` must run BEFORE `join()`. The bake
+ * service parents each instance under its own `inst_<id>` wrapper
+ * node, and `join()` only merges primitives that are siblings with
+ * bakeable transforms. With the old `join → flatten` order nothing
+ * was ever a sibling at join time, so the "merged" GLB silently kept
+ * one mesh node per placed object — one DRAW CALL per object (625 for
+ * the platform layout), worse than the unbaked InstancedMesh path.
+ * This is also the order the gltf-transform docs prescribe. The merge
+ * invariant in `layout-bake-service.test.ts` guards the regression.
  */
 export const defaultOptimizer: BakeOptimizer = {
   id: 'default',
   label: 'Default (lossless)',
   description:
-    'Dedup + weld + prune + join + flatten. No polygon reduction; safe for any layout.',
+    'Dedup + flatten + join + weld + prune. Merges instances into few draw calls; no polygon reduction; safe for any layout.',
   async apply(doc) {
-    await doc.transform(dedup(), weld(), prune(), join(), flatten());
+    await doc.transform(dedup(), flatten(), join(), weld(), prune());
   },
 };
 
@@ -119,17 +126,24 @@ function simplifyOptimizer(spec: {
     label: spec.label,
     description: spec.description,
     async apply(doc) {
+      // Same flatten-before-join ordering as the default pipeline
+      // (see defaultOptimizer), with `weld` immediately before
+      // `simplify` as the gltf-transform docs require. Simplify runs
+      // on the MERGED geometry — far more effective than on hundreds
+      // of tiny per-instance primitives — and it's safe to be lossy
+      // here because colliders come from the GLB's embedded extras
+      // (see layout-bake-service.ts), never from the visual mesh.
       await doc.transform(
         dedup(),
-        weld(),
-        prune(),
-        join(),
         flatten(),
+        join(),
+        weld(),
         simplify({
           simplifier: MeshoptSimplifier,
           ratio: spec.ratio,
           error: spec.error,
         }),
+        prune(),
       );
     },
   };
@@ -158,9 +172,9 @@ export const simplifyAggressiveOptimizer: BakeOptimizer = simplifyOptimizer({
   id: 'simplify-aggressive',
   label: 'Simplify (aggressive)',
   description:
-    'Default pipeline + meshopt simplify aiming for ~25% vertex retention, max 0.5% error.',
+    'Default pipeline + meshopt simplify aiming for ~25% vertex retention, max 1% error.',
   ratio: 0.25,
-  error: 0.005,
+  error: 0.01,
 });
 
 // ---------------------------------------------------------------------------

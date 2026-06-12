@@ -27,6 +27,8 @@ import type { LayoutDocument } from '../scenes/layout-document.ts';
 import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
 import type { PlaceObjectCommand } from '../scenes/commands.ts';
 import type { InstanceGeometryService } from './types.ts';
+import { worldObjectsToCuboids } from '../physics/rules.ts';
+import { buildColliderExtras } from './baked-collider-extras.ts';
 import {
   defaultOptimizer,
   resolveOptimizer,
@@ -78,6 +80,9 @@ export interface BakeResultBytes {
     commandCount: number;
     /** Stable id of the optimizer that ran. Useful for telemetry / UI. */
     optimizerId: string;
+    /** Number of collider cuboids embedded in the GLB's scene extras
+     * (≥ commandCount: compound-step kinds emit several per command). */
+    colliderCount: number;
   };
 }
 
@@ -221,6 +226,40 @@ export async function bakeLayout(
       : (options?.optimizer ?? defaultOptimizer);
   await optimizer.apply(outDoc);
 
+  // Embed physics colliders in the (post-optimizer) scene extras.
+  //
+  // The optimizer is free to merge (`join`) and lossily `simplify` the
+  // VISUAL geometry, so mesh nodes can no longer serve as the collider
+  // source — a fully-merged room would read back as one giant AABB.
+  // Instead, compute collider cuboids from the canonical physics
+  // helper `worldObjectsToCuboids` — the exact function MapColliders
+  // (browser, unbaked rooms) and BotPhysicsWorld.syncCubes (bots) use,
+  // including the compound-steps staircase override — so a character
+  // walks on identical geometry in baked and unbaked rooms alike.
+  // `BakedLayoutColliders` reads these back via `parseEmbeddedColliders`.
+  //
+  // Runs AFTER the optimizer so no transform can strip or reshape the
+  // extras; `prune` only removes unused properties and the scene is
+  // the document root's entry point, but ordering removes the question.
+  const cuboids = worldObjectsToCuboids(
+    {
+      cubeSize: geometry.voxelSize,
+      instances: placeCommands.map((c) => ({
+        id: c.id,
+        sourceCommandId: c.id,
+        kindId: c.kindId,
+        position: c.position,
+      })),
+    },
+    (position, kindId) => geometry.worldAABB(position, kindId),
+    (kindId) => kindLookup(kindId)?.colliderShape,
+  );
+  // Re-resolve the scene from the root rather than trusting the
+  // pre-transform `outScene` reference — a future optimizer strategy
+  // could legally replace the scene object.
+  const bakedScene = outDoc.getRoot().listScenes()[0] ?? outScene;
+  bakedScene.setExtras(buildColliderExtras(cuboids));
+
   // GLB output requires exactly 0–1 buffers (spec constraint of the
   // binary container). After mergeDocuments runs N times — once per
   // source kind — outDoc holds one buffer per source GLB. The
@@ -262,6 +301,7 @@ export async function bakeLayout(
       kindCount: seenKindIds.size,
       commandCount: placeCommands.length,
       optimizerId: optimizer.id,
+      colliderCount: cuboids.length,
     },
   };
 }
