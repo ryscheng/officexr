@@ -8,6 +8,8 @@ import {
   type ColliderTag,
 } from '../physics/groups.ts';
 import {
+  AUTOSTEP_MAX_HEIGHT,
+  AUTOSTEP_MIN_WIDTH,
   CHARACTER_CONTROLLER_SKIN,
   GRAVITY,
   worldObjectsToCuboids,
@@ -206,26 +208,12 @@ export class BotPhysicsWorld {
     // ground when stepping between cubes at nominally the same
     // height so the bot doesn't float for a frame across each seam.
     this.controller.enableSnapToGround(0.3);
-    // Enable autostep so the bot can climb staircase compound-step
-    // colliders. Without this the Rapier KCC deflects the ball
-    // backward when it contacts a step face (the slide direction nets
-    // +X instead of advancing in –X), so the bot halts at every step.
-    // maxHeight=0.4 = charRadius (default) — climbing a step taller
-    //   than the ball radius requires the KCC's autostep logic; below
-    //   that the ball can slide over the corner naturally.
-    // minWidth=0.1 — the step column is 0.25 m wide (stepRun=0.25), so
-    //   a minWidth smaller than that ensures the KCC detects it.
-    // includeDynamicBodies=false — steps are all fixed (no dynamic).
-    //
-    // OCP note: this is additive to the SceneFrame controller which
-    //   does NOT enable autostep (human player does not climb steps).
-    //   Bots and humans have different controller configs for this
-    //   feature; both are kinematic bodies with the same skin and
-    //   snapToGround, but only bots need autostep for the scenario-stairs
-    //   test. The SceneFrame controller is in the browser/renderer layer
-    //   (packages/world/src/renderer/SceneFrame.tsx) and is kept
-    //   unchanged — this change is additive.
-    this.controller.enableAutostep(0.4, 0.1, false);
+    // Autostep so the bot can climb staircase compound-step colliders.
+    // Shared AUTOSTEP_* constants (physics/rules.ts) — the player's
+    // controller in SceneFrame.tsx enables the same config so humans
+    // and bots climb identical geometry. includeDynamicBodies=false —
+    // steps are all fixed (no dynamic).
+    this.controller.enableAutostep(AUTOSTEP_MAX_HEIGHT, AUTOSTEP_MIN_WIDTH, false);
   }
 
   /** Current bot pose in world space. */

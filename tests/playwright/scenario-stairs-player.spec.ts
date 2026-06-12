@@ -172,11 +172,13 @@ async function waitForSettle(
   return self!.pos.y;
 }
 
-test('stairs: local player settles at per-step heights on baked-layout colliders', async ({
-  page,
-}) => {
-  test.setTimeout(90_000);
-
+/**
+ * Boot the scenario-stairs map in Debug mode, silence bots, and wait
+ * for the local player to settle on the spawn platform — which proves
+ * the baked-layout colliders are live (no colliders → free-fall →
+ * settle timeout). Shared by the drop test and the walk test.
+ */
+async function bootStairsScenario(page: Page): Promise<void> {
   await goToDebugWithMap(page, 'scenario-stairs');
   await waitForCanvasReady(page, 0, 30_000);
 
@@ -201,7 +203,12 @@ test('stairs: local player settles at per-step heights on baked-layout colliders
     { timeout: 30_000, polling: 200 },
   );
 
-  // Silence bots: this spec is about the local player only.
+  // Silence bots BEFORE waiting for the settle. The default bot and
+  // the player drop onto the SAME spawn point at boot; with autostep
+  // enabled the player can perch on the bot's ball top mid-fall (a
+  // sub-0.4 m "ledge" while overlapping), and silencing the bot
+  // mid-drop freezes its store entry in the air — leaving the player
+  // standing on a phantom ball instead of the platform.
   await page.evaluate(async () => {
     const bots = (
       window as unknown as {
@@ -211,11 +218,18 @@ test('stairs: local player settles at per-step heights on baked-layout colliders
     if (bots) await bots.setCount(0);
   });
 
-  // The map picker dropped the player over spawn [6,2,2]. Settling at
-  // body y≈1.5 (platform top 2.0) proves the baked-layout colliders
-  // are live — the load gate for everything below. Without colliders
-  // the player free-falls and this times out.
+  // Re-drop the player now that the spawn area is clear (it may have
+  // perched on the bot during the initial shared-spawn drop).
+  await teleportSelf(page, { x: 6, y: 3, z: 2 });
   await waitForSettle(page, SPAWN_SETTLED_BODY_Y, 0.1, 'spawn platform');
+}
+
+test('stairs: local player settles at per-step heights on baked-layout colliders', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+
+  await bootStairsScenario(page);
 
   // Drop onto three points along the staircase; settled heights must
   // track the LOCAL step tops (ascending toward −X).
@@ -246,4 +260,95 @@ test('stairs: local player settles at per-step heights on baked-layout colliders
     settled[2] - settled[1],
     `top (${settled[2]}) must sit well above mid (${settled[1]})`,
   ).toBeGreaterThan(1.0);
+});
+
+test('stairs: local player WALKS up the staircase under keyboard input', async ({
+  page,
+}) => {
+  // The drop test above proves the colliders EXIST; this one proves
+  // they're CLIMBABLE by the player's controller — i.e. autostep +
+  // the climb-aware gravity reset in SceneFrame work end to end.
+  // This is the test that was missing when "stairs don't work"
+  // shipped: bots climbed (their own physics world has autostep),
+  // the player didn't.
+  test.setTimeout(120_000);
+
+  // Pin the fixed camera azimuth to 90° BEFORE boot. SceneFrame maps
+  // WASD through cameraYaw = π − azimuth + movementYawOffset; with
+  // azimuth=90°, offset=0 the forward vector is exactly (−1, 0), so
+  // holding W walks pure −X — straight up the staircase. The studio's
+  // persisted view-config hydrates with a per-section shallow merge
+  // (useStudioSettings.mergeViewConfig), so a partial fixedCamera
+  // section is safe.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'officexr:studio:view-config',
+      JSON.stringify({
+        fixedCamera: { azimuthDeg: 90, movementYawOffsetDeg: 0 },
+      }),
+    );
+  });
+
+  await bootStairsScenario(page);
+
+  // Stand at the stair base on the platform (x=5, centreline z=2),
+  // facing a 5 m walk to the staircase top at x≈0.
+  await teleportSelf(page, { x: 5, y: 2.5, z: 2 });
+  await waitForSettle(page, SPAWN_SETTLED_BODY_Y, 0.15, 'stair base');
+
+  // Focus the world so SceneFrame accepts keydown (useWorldFocus
+  // re-arms on any mousedown outside a [data-studio-panel]).
+  await page.locator('canvas').first().click({ position: { x: 200, y: 200 } });
+
+  // Hold W and sample the player pose until they reach the top.
+  await page.keyboard.down('KeyW');
+  const trace: Array<{ x: number; y: number }> = [];
+  let maxY = -Infinity;
+  let reachedTop = false;
+  try {
+    const deadline = Date.now() + 30_000;
+    let prev: { x: number; y: number } | null = null;
+    while (Date.now() < deadline) {
+      await page.waitForTimeout(250);
+      const self = await getSelf(page);
+      if (!self) continue;
+      const cur = { x: self.pos.x, y: self.pos.y };
+      trace.push(cur);
+
+      // A spurious fall-respawn teleports the player back to spawn
+      // (x jumps from the staircase to ≈6) — fail loudly with the
+      // trace rather than timing out.
+      if (prev && cur.x > prev.x + 1.5) {
+        throw new Error(
+          `player reset mid-climb (x ${prev.x.toFixed(2)} → ${cur.x.toFixed(2)}). ` +
+            `trace: ${JSON.stringify(trace.map((t) => ({ x: +t.x.toFixed(2), y: +t.y.toFixed(2) })))}`,
+        );
+      }
+      // Monotonic ascent guard (same 0.15 m budget as the bot spec):
+      // a real climb never gives back more than solver jitter.
+      if (cur.y < maxY - 0.15) {
+        throw new Error(
+          `player lost height mid-climb (maxY ${maxY.toFixed(2)} → ${cur.y.toFixed(2)}). ` +
+            `trace: ${JSON.stringify(trace.map((t) => ({ x: +t.x.toFixed(2), y: +t.y.toFixed(2) })))}`,
+        );
+      }
+      maxY = Math.max(maxY, cur.y);
+      prev = cur;
+
+      // Same top threshold as the bot spec: body y > 5.2 = stair top
+      // (6.0) − 0.5 body offset − 0.3 tolerance.
+      if (cur.y > 5.2) {
+        reachedTop = true;
+        break;
+      }
+    }
+  } finally {
+    await page.keyboard.up('KeyW');
+  }
+
+  expect(
+    reachedTop,
+    `player must climb to body y > 5.2 within 30 s of holding W. ` +
+      `maxY=${maxY.toFixed(2)}, trace: ${JSON.stringify(trace.map((t) => ({ x: +t.x.toFixed(2), y: +t.y.toFixed(2) })))}`,
+  ).toBe(true);
 });

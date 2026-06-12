@@ -18,6 +18,8 @@ import type { BotPool } from '../bot/BotPool.ts';
 import type { CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
+  AUTOSTEP_MAX_HEIGHT,
+  AUTOSTEP_MIN_WIDTH,
   CHARACTER_CONTROLLER_SKIN,
   FLOOR_PROBE_RANGE,
   GRAVITY as GAME_GRAVITY,
@@ -421,6 +423,14 @@ export function SceneFrame({
           // that are nominally at the same height but pixel-diff
           // because of physics solver tolerance.
           c.enableSnapToGround(0.3);
+          // Autostep: walk up sub-threshold ledges (stair steps)
+          // instead of colliding with the riser face. Same shared
+          // config as the bots (BotPhysicsWorld) so humans climb the
+          // exact geometry bots do. Paired with the climb-aware
+          // vertical-velocity reset after computedMovement() below —
+          // see AUTOSTEP_MAX_HEIGHT's doc comment for why both halves
+          // are required.
+          c.enableAutostep(AUTOSTEP_MAX_HEIGHT, AUTOSTEP_MIN_WIDTH, false);
           controllerRef.current = c;
           controllerWorldRef.current = world;
           verticalVelRef.current = 0;
@@ -538,6 +548,25 @@ export function SceneFrame({
           RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
         );
         const corrected = controller.computedMovement();
+
+        // Climb-aware gravity reset — the player half of the autostep
+        // pairing (see BotPhysicsWorld.step() for the bot half). While
+        // autostep lifts the body over a step face, computedGrounded()
+        // flickers false (the ball is climbing, not resting), so the
+        // grounded reset above never fires and gravity accumulates
+        // across the staircase — eventually tripping the fall-respawn
+        // gate mid-climb. When the controller moved us upward or flat
+        // (corrected.y >= 0) despite a downward integrated velocity,
+        // we're being lifted, not falling: zero the fall speed.
+        //
+        // The `< 0` guard is the difference from the bot version: bots
+        // never jump, but a player's jump ascent has POSITIVE vertical
+        // velocity and corrected.y > 0 — resetting then would kill the
+        // jump at its first frame. Falling-only reset leaves jumps
+        // untouched.
+        if (verticalVelRef.current < 0 && corrected.y >= 0) {
+          verticalVelRef.current = 0;
+        }
 
         // Edge-trigger bilateral `collision:char-bump` events for
         // every peer character we're newly touching. The Rapier

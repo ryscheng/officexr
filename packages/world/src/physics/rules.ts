@@ -39,6 +39,30 @@ export const SPAWN_DROP_HEIGHT = 4;
  * character obeys the same contact rule. */
 export const CHARACTER_CONTROLLER_SKIN = 0.0001;
 
+/** Autostep config for the kinematic character controller — lets EVERY
+ * character (player and bot alike) walk up sub-threshold ledges like
+ * staircase steps instead of colliding with the riser face. Without
+ * autostep the Rapier KCC deflects the ball backward when it contacts a
+ * step face (the slide direction nets away from the step instead of
+ * over it), so the character halts at the first step.
+ *
+ * - `AUTOSTEP_MAX_HEIGHT` = 0.4 m (= default charRadius): the tallest
+ *   ledge autostep will lift over. Steps taller than the ball radius
+ *   need the KCC's autostep logic; below that the ball can sometimes
+ *   slide over the corner naturally, but autostep makes it reliable.
+ *   Full 2 m blocks stay unclimbable — only stair-scale thresholds.
+ * - `AUTOSTEP_MIN_WIDTH` = 0.1 m: minimum landing width to step onto.
+ *   Stair columns are 0.25 m wide (stepRun), comfortably above this.
+ *
+ * Callers that enable autostep MUST also pair it with the climb-aware
+ * vertical-velocity reset (zero the integrated fall speed when the
+ * corrected movement is upward/flat) — `computedGrounded()` flickers
+ * false during autostep lifts, and without the reset gravity
+ * accumulates across a climb until it trips the fall-respawn gate.
+ * See BotPhysicsWorld.step() and SceneFrame's frame loop. */
+export const AUTOSTEP_MAX_HEIGHT = 0.4;
+export const AUTOSTEP_MIN_WIDTH = 0.1;
+
 /** Margin (m) below the lowest cube before a character counts as
  * "fallen off the map" and is forcibly respawned. Generous enough
  * that a character resting on the lowest cube's top can't trip the
@@ -48,7 +72,7 @@ export const RESPAWN_MARGIN = 10;
 /** Downward speed (m/s, positive magnitude) at which a falling character
  * is eligible for respawn. Must hold simultaneously with no floor beneath.
  * Gate (b) for {@link shouldRespawnFalling}. */
-export const MAX_FALL_VELOCITY = 8;
+export const MAX_FALL_VELOCITY = 80;
 
 /** Metres below character feet to probe for a floor surface.
  * If no floor is found within this range, condition (a) of the dual-gate
