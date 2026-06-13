@@ -17,7 +17,7 @@ import type { ColliderShapeSpec } from '../scenes/world-object-kinds-schema.ts';
  * body via Rapier's KinematicCharacterController. Snappier than
  * real-world gravity (-9.81) so falling reads as "stepping down"
  * not "floating down". */
-export const GRAVITY = -20;
+export const GRAVITY = -50;
 
 /** Metres above a spawn point's nominal y to drop a character when
  * (re)spawning it. Gravity carries them onto the surface. */
@@ -38,30 +38,6 @@ export const SPAWN_DROP_HEIGHT = 4;
  * the local player (`SceneFrame`) and bots (`BotPhysicsWorld`) so every
  * character obeys the same contact rule. */
 export const CHARACTER_CONTROLLER_SKIN = 0.0001;
-
-/** Autostep config for the kinematic character controller — lets EVERY
- * character (player and bot alike) walk up sub-threshold ledges like
- * staircase steps instead of colliding with the riser face. Without
- * autostep the Rapier KCC deflects the ball backward when it contacts a
- * step face (the slide direction nets away from the step instead of
- * over it), so the character halts at the first step.
- *
- * - `AUTOSTEP_MAX_HEIGHT` = 0.4 m (= default charRadius): the tallest
- *   ledge autostep will lift over. Steps taller than the ball radius
- *   need the KCC's autostep logic; below that the ball can sometimes
- *   slide over the corner naturally, but autostep makes it reliable.
- *   Full 2 m blocks stay unclimbable — only stair-scale thresholds.
- * - `AUTOSTEP_MIN_WIDTH` = 0.1 m: minimum landing width to step onto.
- *   Stair columns are 0.25 m wide (stepRun), comfortably above this.
- *
- * Callers that enable autostep MUST also pair it with the climb-aware
- * vertical-velocity reset (zero the integrated fall speed when the
- * corrected movement is upward/flat) — `computedGrounded()` flickers
- * false during autostep lifts, and without the reset gravity
- * accumulates across a climb until it trips the fall-respawn gate.
- * See BotPhysicsWorld.step() and SceneFrame's frame loop. */
-export const AUTOSTEP_MAX_HEIGHT = 0.4;
-export const AUTOSTEP_MIN_WIDTH = 0.1;
 
 /** Margin (m) below the lowest cube before a character counts as
  * "fallen off the map" and is forcibly respawned. Generous enough
@@ -234,13 +210,17 @@ export function worldObjectsToCuboids(
   for (const inst of worldObjects.instances) {
     if (aabbLookup) {
       const aabb = aabbLookup(inst.position, inst.kindId);
-      // Check for a compound-steps override before falling back to single AABB.
+      // Check for a collider-shape override before falling back to single AABB.
       const shapeSpec = colliderShapeLookup?.(inst.kindId);
       if (shapeSpec?.kind === 'compound-steps') {
         const ox = aabb.min[0];
         const oy = aabb.min[1];
         const oz = aabb.min[2];
         out.push(...compoundStepCuboids(ox, oy, oz, aabb, shapeSpec));
+        continue;
+      }
+      if (shapeSpec?.kind === 'scanned-cuboids') {
+        out.push(...scannedCuboidsToWorld(aabb, shapeSpec.cuboids));
         continue;
       }
       out.push({
@@ -269,6 +249,44 @@ export function worldObjectsToCuboids(
     });
   }
   return out;
+}
+
+/**
+ * Map geometry-scanned cuboids (normalized 0..1 in the kind's local
+ * AABB space — see `ScannedCuboidsSpec`) into world space through the
+ * placed instance's world AABB: `world = aabb.min + n·aabbSize` per
+ * axis. Per-axis scaling means the data survives voxel-size /
+ * mesh-origin / uniform-scale convention changes without re-scanning.
+ */
+function scannedCuboidsToWorld(
+  aabb: {
+    min: readonly [number, number, number];
+    max: readonly [number, number, number];
+  },
+  cuboids: ReadonlyArray<{
+    min: [number, number, number];
+    max: [number, number, number];
+  }>,
+): CuboidDescriptor[] {
+  const sx = aabb.max[0] - aabb.min[0];
+  const sy = aabb.max[1] - aabb.min[1];
+  const sz = aabb.max[2] - aabb.min[2];
+  return cuboids.map((c) => {
+    const x0 = aabb.min[0] + c.min[0] * sx;
+    const y0 = aabb.min[1] + c.min[1] * sy;
+    const z0 = aabb.min[2] + c.min[2] * sz;
+    const x1 = aabb.min[0] + c.max[0] * sx;
+    const y1 = aabb.min[1] + c.max[1] * sy;
+    const z1 = aabb.min[2] + c.max[2] * sz;
+    return {
+      center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (z0 + z1) / 2 },
+      halfExtents: {
+        x: (x1 - x0) / 2,
+        y: (y1 - y0) / 2,
+        z: (z1 - z0) / 2,
+      },
+    };
+  });
 }
 
 /** Pick a spawn point + lift it by `SPAWN_DROP_HEIGHT` so the

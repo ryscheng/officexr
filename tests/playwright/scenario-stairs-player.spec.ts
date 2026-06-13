@@ -21,12 +21,15 @@
  *   - Missing colliders (extras absent + fallback broken): the player
  *     falls through the staircase → settle timeout.
  *
- * Geometry (documented in scenario-stairs.spec.ts; layout
- * `scenario-stairs`): staircase worldAABB x=[0,4], y=[2,6], z=[0,4];
- * 16 steps, stepRise=stepRun=0.25 m, ascending toward −X. Step k
- * (k=0 at the high-X entry) covers x∈[4-(k+1)·0.25, 4-k·0.25] with
- * top at y = 2 + (k+1)·0.25. Settled body root = surface_top − 0.5
- * (ball bottom = body_root + 0.5, near-zero controller skin).
+ * Geometry: staircase worldAABB x=[0,4], y=[2,6], z=[0,4], ascending
+ * toward −X. The colliders come from the GEOMETRY SCANNER
+ * (`scanned-cuboids` on prototype_primitive_stairs), which measured
+ * the REAL KayKit mesh: 8 steps, stepRise=stepRun=0.5 m (the old
+ * hand-authored 16×0.25 spec was a deliberate fake to fit the old
+ * 0.4 m autostep limit). Step k (k=0 at the high-X entry) covers
+ * x∈[4-(k+1)·0.5, 4-k·0.5] with top at y = 2 + (k+1)·0.5. Settled
+ * body root = surface_top − 0.5 (ball bottom = body_root + 0.5,
+ * near-zero controller skin).
  *
  * Tolerances: the ball (radius 0.4 m) spans ~3 step runs, so it rests
  * on step CORNERS slightly above the flat local step top. Windows are
@@ -52,11 +55,11 @@ const STAIRS_INSTANCE_COUNT = 9;
 /** Spawn platform top face y=2 → settled body y=1.5. */
 const SPAWN_SETTLED_BODY_Y = 1.5;
 
-/** Local flat step top at x: steps ascend toward −X from x=4 (top 2.25)
- * to x=0 (top 6.0). */
+/** Local flat step top at x: 8 real steps (0.5 rise / 0.5 run, per the
+ * geometry scan) ascending toward −X from x=4 (top 2.5) to x=0 (top 6.0). */
 function stepTopAtX(x: number): number {
-  const k = Math.min(15, Math.max(0, Math.floor((4 - x) / 0.25)));
-  return 2 + (k + 1) * 0.25;
+  const k = Math.min(7, Math.max(0, Math.floor((4 - x) / 0.5)));
+  return 2 + (k + 1) * 0.5;
 }
 
 /** Drop points along the staircase centreline (z=2), low → high. */
@@ -217,6 +220,23 @@ async function bootStairsScenario(page: Page): Promise<void> {
     ).__OFFICE_BOTS__;
     if (bots) await bots.setCount(0);
   });
+
+  // Wait until the bot's store entry is actually GONE. A bot silenced
+  // mid-drop freezes wherever it was; while its entry lingers, its
+  // peer-mirror collider remains a phantom ball in the player's world
+  // — and the re-dropped player can land on it (observed: frozen at
+  // exactly ball-top height with vel 0 for the whole settle window).
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as {
+        __OFFICE_STORE__?: { getState: () => { players: Record<string, unknown> } };
+      };
+      const players = w.__OFFICE_STORE__?.getState().players;
+      return players ? Object.keys(players).length === 1 : false;
+    },
+    null,
+    { timeout: 10_000, polling: 100 },
+  );
 
   // Re-drop the player now that the spawn area is clear (it may have
   // perched on the bot during the initial shared-spawn drop).

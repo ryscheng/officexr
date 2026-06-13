@@ -72,6 +72,7 @@ import type { Page } from '@playwright/test';
 import { waitForCanvasReady } from './helpers.ts';
 import {
   goToDebugWithMap,
+  parkLocalPlayer,
   waitForBotsHook,
   waitForBotCondition,
   captureMotionKeyframe,
@@ -182,6 +183,7 @@ test('stairs: bot walks in −X, ascends compound-step staircase, Y increases mo
   // 3. Wait for the bot pool to publish __OFFICE_BOTS__ on window.
   await waitForBotsHook(page);
 
+
   // 4. Spawn one bot in IDLE mode so it settles on the platform before walking.
   //    Starting in idle avoids the bot walking before the platform settle wait
   //    can catch a stable state — pattern from scenario-collision.spec.ts.
@@ -221,6 +223,13 @@ test('stairs: bot walks in −X, ascends compound-step staircase, Y increases mo
     STAIRS_INSTANCE_COUNT,
     { timeout: 20_000, polling: 200 },
   );
+
+  // Park the local player off the bot's lane. MUST run AFTER the
+  // map-loaded gate: useMapPicker's bootstrap teleports the player
+  // to the spawn when loadMap completes, which would silently undo
+  // an earlier park (observed: player back at the spawn corner, bot
+  // wedged against its own contact-clamped mirror of the player).
+  await parkLocalPlayer(page, { x: 6.5, y: 2.5, z: 3.3 });
 
   // 6. Teleport bot to the base platform.
   //    Spawn at y=0: places bot body inside the base platform block (y=[0,2]).

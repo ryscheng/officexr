@@ -159,3 +159,67 @@ describe('validateWorldObjectKindCatalog — round-trip', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// normalizeKind — colliderShape: scanned-cuboids
+// ---------------------------------------------------------------------------
+
+describe('normalizeKind — scanned-cuboids colliderShape', () => {
+  const validCuboids = [
+    { min: [0, 0, 0], max: [0.5, 0.25, 1] },
+    { min: [0.5, 0, 0], max: [1, 0.5, 1] },
+  ];
+
+  it('accepts a valid scanned-cuboids spec', () => {
+    const kind = normalizeKind(
+      minimalRaw('prototype', {
+        colliderShape: { kind: 'scanned-cuboids', cuboids: validCuboids },
+      }),
+      0,
+    );
+    expect(kind.colliderShape).toEqual({
+      kind: 'scanned-cuboids',
+      cuboids: validCuboids,
+    });
+  });
+
+  it('rejects the whole shape when any cuboid is malformed', () => {
+    const cases: unknown[] = [
+      // min >= max on an axis
+      [{ min: [0, 0.5, 0], max: [1, 0.5, 1] }],
+      // out-of-range coordinate (way beyond float-noise tolerance)
+      [{ min: [0, 0, 0], max: [2, 1, 1] }],
+      // non-numeric coordinate
+      [{ min: [0, 'zero', 0], max: [1, 1, 1] }],
+      // missing max
+      [{ min: [0, 0, 0] }],
+      // empty list
+      [],
+      // not an array
+      { min: [0, 0, 0], max: [1, 1, 1] },
+    ];
+    for (const cuboids of cases) {
+      const kind = normalizeKind(
+        minimalRaw('prototype', {
+          colliderShape: { kind: 'scanned-cuboids', cuboids },
+        }),
+        0,
+      );
+      expect(kind.colliderShape, JSON.stringify(cuboids)).toBeUndefined();
+    }
+  });
+
+  it('rejects more cuboids than the review cap', () => {
+    const tooMany = Array.from({ length: 257 }, (_, i) => ({
+      min: [0, 0, i / 300],
+      max: [1, 1, (i + 0.5) / 300],
+    }));
+    const kind = normalizeKind(
+      minimalRaw('prototype', {
+        colliderShape: { kind: 'scanned-cuboids', cuboids: tooMany },
+      }),
+      0,
+    );
+    expect(kind.colliderShape).toBeUndefined();
+  });
+});

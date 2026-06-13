@@ -135,7 +135,8 @@ export interface WorldObjectKind {
  * abstraction for this decision.
  */
 export type ColliderShapeSpec =
-  | CompoundStepsSpec;
+  | CompoundStepsSpec
+  | ScannedCuboidsSpec;
 
 /**
  * Compound staircase collider: one solid column per step, ascending in
@@ -158,6 +159,30 @@ export interface CompoundStepsSpec {
   /** Depth of each step column (metres), along the local Z axis. Typically
    * equals the kind's localAABB Z span. */
   stepDepth: number;
+}
+
+/** Hard cap on scanned cuboids per kind — a collider denser than this
+ * is unreviewable and should be re-scanned at a coarser cell size. */
+export const SCANNED_CUBOIDS_MAX = 256;
+
+/**
+ * Geometry-scanned collider: axis-aligned boxes generated from the
+ * kind's actual GLB mesh by the collider scanner
+ * (`app/collider-scan.ts`, written via `pnpm scan:colliders`).
+ *
+ * Coordinates are NORMALIZED 0..1 against the kind's local mesh AABB.
+ * Consumers map them through the per-instance `worldAABB(position,
+ * kindId)` they already have (`world = aabb.min + n·aabbSize` per
+ * axis), which keeps the data independent of voxel-size / mesh-origin
+ * / uniform-scale conventions — and survives those conventions
+ * changing.
+ */
+export interface ScannedCuboidsSpec {
+  kind: 'scanned-cuboids';
+  cuboids: Array<{
+    min: [number, number, number];
+    max: [number, number, number];
+  }>;
 }
 
 export interface WorldObjectKindCatalogV1 {
@@ -346,7 +371,42 @@ function normalizeColliderShape(raw: unknown): ColliderShapeSpec | undefined {
       };
     }
   }
+  if (s.kind === 'scanned-cuboids') {
+    const cuboids = normalizeScannedCuboids(s.cuboids);
+    if (cuboids) return { kind: 'scanned-cuboids', cuboids };
+  }
   return undefined;
+}
+
+/** Validate the scanner's normalized-cuboid list. Rejecting the whole
+ * shape (→ undefined → plain AABB collider) on ANY malformed entry is
+ * deliberate: a partially-valid scan is a silently-wrong collider. */
+function normalizeScannedCuboids(
+  raw: unknown,
+): ScannedCuboidsSpec['cuboids'] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > SCANNED_CUBOIDS_MAX) {
+    return undefined;
+  }
+  const out: ScannedCuboidsSpec['cuboids'] = [];
+  for (const c of raw) {
+    const min = (c as { min?: unknown })?.min;
+    const max = (c as { max?: unknown })?.max;
+    if (!isNormalizedVec3(min) || !isNormalizedVec3(max)) return undefined;
+    for (let axis = 0; axis < 3; axis++) {
+      if (!(min[axis] < max[axis])) return undefined;
+    }
+    out.push({ min: [min[0], min[1], min[2]], max: [max[0], max[1], max[2]] });
+  }
+  return out;
+}
+
+function isNormalizedVec3(v: unknown): v is [number, number, number] {
+  if (!Array.isArray(v) || v.length !== 3) return false;
+  // Small tolerance outside [0,1] absorbs float noise from the
+  // scanner's AABB division without admitting wild values.
+  return v.every(
+    (n) => typeof n === 'number' && Number.isFinite(n) && n >= -0.01 && n <= 1.01,
+  );
 }
 
 // ---------------------------------------------------------------------------

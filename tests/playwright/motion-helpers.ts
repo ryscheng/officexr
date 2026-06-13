@@ -447,6 +447,62 @@ export async function goToDebugWithMap(page: Page, mapName: string): Promise<voi
   await page.goto('/?perfFooter=0#debug', { waitUntil: 'domcontentloaded' });
 }
 
+/**
+ * Park the LOCAL PLAYER at a fixed spot away from the bot's lane.
+ *
+ * Bot scenario specs share one spawn point between the local player
+ * and the bot cohort: both drop onto the same coordinates at boot, and
+ * how that overlap resolves is a physics race (mirror-clamp direction,
+ * settle order). A bot can end up wedged behind the player — or the
+ * player perched on a bot — making both trajectories AND keyframe
+ * pixels nondeterministic. Parking the player deterministically before
+ * the bot starts removes the race. Keyframe baselines must be captured
+ * with the SAME parking spot the spec uses.
+ *
+ * @param pos Drop position (world coords). Should be ~1 m above the
+ *   floor so gravity settles the player; pick a spot ON map geometry
+ *   (off-map parking would trigger fall-respawn back to the spawn).
+ */
+export async function parkLocalPlayer(
+  page: Page,
+  pos: { x: number; y: number; z: number },
+): Promise<void> {
+  await page.evaluate(
+    ({ pos }: { pos: { x: number; y: number; z: number } }) => {
+      const w = window as unknown as {
+        __OFFICE_STORE__: {
+          getState: () => { selfId: string };
+          setState: (updater: (s: unknown) => unknown) => void;
+        };
+      };
+      const selfId = w.__OFFICE_STORE__.getState().selfId;
+      w.__OFFICE_STORE__.setState((s: unknown) => {
+        const state = s as {
+          players: Record<
+            string,
+            { pos: unknown; vel: unknown; yaw: number } | undefined
+          >;
+        };
+        const self = state.players[selfId];
+        if (!self) return {};
+        return {
+          players: {
+            ...state.players,
+            [selfId]: {
+              ...self,
+              pos,
+              vel: { x: 0, y: 0, z: 0 },
+            },
+          },
+        };
+      });
+    },
+    { pos },
+  );
+  // Let the auto-warp + gravity settle play out.
+  await page.waitForTimeout(800);
+}
+
 // ---------------------------------------------------------------------------
 // Numeric assertion helpers
 // ---------------------------------------------------------------------------

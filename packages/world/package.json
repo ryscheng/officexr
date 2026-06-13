@@ -27,7 +27,8 @@
     "gen:thumbnails": "tsx scripts/gen-thumbnails.ts",
     "bake:dimensions": "tsx scripts/bake-kind-dimensions.ts",
     "bake:layout": "tsx scripts/bake-layout.ts",
-    "test:bounds-visual": "tsx scripts/test-bounds-visual.ts"
+    "test:bounds-visual": "tsx scripts/test-bounds-visual.ts",
+    "scan:colliders": "tsx scripts/scan-kind-colliders.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.2",

@@ -55,6 +55,7 @@ import type { Page } from '@playwright/test';
 import { waitForCanvasReady } from './helpers.ts';
 import {
   goToDebugWithMap,
+  parkLocalPlayer,
   waitForBotsHook,
   waitForBotCondition,
   captureMotionKeyframe,
@@ -161,6 +162,7 @@ test('corridor: bot walks in +Z, falls off far end, respawns at spawn point', as
   // 3. Wait for the bot pool to publish __OFFICE_BOTS__ on window.
   await waitForBotsHook(page);
 
+
   // 4. Spawn one bot and configure it for linear-walk +Z.
   //    setCount(1) awaits BotDriver.start() (Rapier init + SyncEngine start).
   //    setLinearWalkDir wires direction and mode before the bot's first tick.
@@ -203,6 +205,13 @@ test('corridor: bot walks in +Z, falls off far end, respawns at spawn point', as
     CORRIDOR_INSTANCE_COUNT,
     { timeout: 20_000, polling: 200 },
   );
+
+  // Park the local player off the bot's lane. MUST run AFTER the
+  // map-loaded gate: useMapPicker's bootstrap teleports the player
+  // to the spawn when loadMap completes, which would silently undo
+  // an earlier park (observed: player back at the spawn corner, bot
+  // wedged against its own contact-clamped mirror of the player).
+  await parkLocalPlayer(page, { x: 3, y: 2.5, z: 0.5 });
 
   // 6. Teleport bot to the corridor spawn point and configure the spawnList.
   //

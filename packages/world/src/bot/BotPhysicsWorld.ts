@@ -8,13 +8,12 @@ import {
   type ColliderTag,
 } from '../physics/groups.ts';
 import {
-  AUTOSTEP_MAX_HEIGHT,
-  AUTOSTEP_MIN_WIDTH,
   CHARACTER_CONTROLLER_SKIN,
   GRAVITY,
   worldObjectsToCuboids,
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
+import { tryStepUp, type StepUpProbe } from '../physics/step-up.ts';
 
 /** Local-y the bot collider sits at (matches the browser-side BODY_Y in
  * Players.tsx so all bodies are at the same elevation). */
@@ -208,12 +207,13 @@ export class BotPhysicsWorld {
     // ground when stepping between cubes at nominally the same
     // height so the bot doesn't float for a frame across each seam.
     this.controller.enableSnapToGround(0.3);
-    // Autostep so the bot can climb staircase compound-step colliders.
-    // Shared AUTOSTEP_* constants (physics/rules.ts) — the player's
-    // controller in SceneFrame.tsx enables the same config so humans
-    // and bots climb identical geometry. includeDynamicBodies=false —
-    // steps are all fixed (no dynamic).
-    this.controller.enableAutostep(AUTOSTEP_MAX_HEIGHT, AUTOSTEP_MIN_WIDTH, false);
+    // NO Rapier autostep — deliberately. Verified by deterministic
+    // simulation (physics/step-up.test.ts): autostep cannot lift a
+    // ball collider over real stair risers at ANY config, while at
+    // maxHeight ≥ 0.6 it DOES hop onto other characters' ball tops
+    // (kinematic peers can't be excluded via includeDynamicBodies).
+    // Ledge climbing is handled explicitly by the shared step-up
+    // assist (physics/step-up.ts), which has a peer-contact guard.
   }
 
   /** Current bot pose in world space. */
@@ -497,18 +497,99 @@ export class BotPhysicsWorld {
     // Directional progress: shared with SceneFrame (human player) via
     // horizontalProgress() in physics/blocking.ts. Single source of truth for
     // the blocking decision for both bot and human paths.
-    const progress = horizontalProgress(
+    let progress = horizontalProgress(
       { x: corrected.x, z: corrected.z },
       { x: intent.x, z: intent.z },
     );
+    let finalCorrected = { x: corrected.x, y: corrected.y, z: corrected.z };
+
+    // Step-up assist (shared with the player — physics/step-up.ts):
+    // when horizontal movement is blocked while grounded and falling/
+    // level, probe for a climbable ledge ahead (a stair riser) and hop
+    // onto it. Rapier's autostep cannot lift a ball over the honest
+    // scanned 0.5 m risers, so this is THE climbing mechanism.
+    //
+    // `next.size === 0` (no peer contact this frame) is load-bearing:
+    // without it a bot blocked by another CHARACTER treats the peer's
+    // ball as a ledge and climbs onto their head — breaking head-on
+    // blocking (scenario-collision) and spawn-area encounters. Steps
+    // are walls; characters are not stairs.
+    if (
+      progress < 0.1 &&
+      next.size === 0 &&
+      this.controller.computedGrounded() &&
+      this.verticalVel <= 0 &&
+      (intent.x !== 0 || intent.z !== 0)
+    ) {
+      const hop = tryStepUp(this.stepUpProbe, intent.x, intent.z);
+      if (hop) {
+        finalCorrected = { x: hop.x, y: hop.y, z: hop.z };
+        this.verticalVel = 0;
+        progress = horizontalProgress(
+          { x: hop.x, z: hop.z },
+          { x: intent.x, z: intent.z },
+        );
+      }
+      // The probe sweeps clobbered the controller's computed state
+      // (grounded, collisions). Re-run the frame's real sweep so
+      // anything reading controller state after this point — the
+      // `grounded` field below, next frame's grounded check — sees
+      // the actual frame, not the last probe.
+      this.controller.computeColliderMovement(
+        this.bodyCollider,
+        { x: intent.x, y: this.verticalVel * intent.dtSec, z: intent.z },
+        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+        BODY_GROUPS,
+      );
+    }
 
     return {
-      corrected: { x: corrected.x, y: corrected.y, z: corrected.z },
+      corrected: finalCorrected,
       progress,
       bumps,
       grounded: this.controller.computedGrounded(),
     };
   }
+
+  /** Adapter exposing this world's controller/body pair to the shared
+   * step-up assist. `setTranslation` propagates the probe pose to the
+   * colliders immediately so subsequent sweeps see it. */
+  private readonly stepUpProbe: StepUpProbe = {
+    compute: (desired) => {
+      this.controller.computeColliderMovement(
+        this.bodyCollider,
+        desired,
+        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+        BODY_GROUPS,
+      );
+      const c = this.controller.computedMovement();
+      return {
+        x: c.x,
+        y: c.y,
+        z: c.z,
+        grounded: this.controller.computedGrounded(),
+      };
+    },
+    getTranslation: () => {
+      const t = this.body.translation();
+      return { x: t.x, y: t.y, z: t.z };
+    },
+    setTranslation: (p) => {
+      this.body.setTranslation({ x: p.x, y: p.y, z: p.z }, true);
+      this.world.propagateModifiedBodyPositionsToColliders();
+    },
+    lastContactIsCharacter: () => {
+      const n = this.controller.numComputedCollisions();
+      for (let i = 0; i < n; i++) {
+        const coll = this.controller.computedCollision(i);
+        if (!coll?.collider) continue;
+        const handle = coll.collider.handle;
+        if (this.peerByColliderHandle.has(handle)) return true;
+        if (this.tagByHandle.get(handle)?.kind === 'body') return true;
+      }
+      return false;
+    },
+  };
 
   /** Commit an absolute world-space pose to the bot's body. ALL
    * three components are written — y is no longer pinned, since

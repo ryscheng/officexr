@@ -18,8 +18,6 @@ import type { BotPool } from '../bot/BotPool.ts';
 import type { CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
-  AUTOSTEP_MAX_HEIGHT,
-  AUTOSTEP_MIN_WIDTH,
   CHARACTER_CONTROLLER_SKIN,
   FLOOR_PROBE_RANGE,
   GRAVITY as GAME_GRAVITY,
@@ -28,6 +26,7 @@ import {
   shouldRespawnFalling,
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
+import { tryStepUp } from '../physics/step-up.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -423,14 +422,10 @@ export function SceneFrame({
           // that are nominally at the same height but pixel-diff
           // because of physics solver tolerance.
           c.enableSnapToGround(0.3);
-          // Autostep: walk up sub-threshold ledges (stair steps)
-          // instead of colliding with the riser face. Same shared
-          // config as the bots (BotPhysicsWorld) so humans climb the
-          // exact geometry bots do. Paired with the climb-aware
-          // vertical-velocity reset after computedMovement() below —
-          // see AUTOSTEP_MAX_HEIGHT's doc comment for why both halves
-          // are required.
-          c.enableAutostep(AUTOSTEP_MAX_HEIGHT, AUTOSTEP_MIN_WIDTH, false);
+          // NO Rapier autostep — deliberately; see the matching note
+          // in BotPhysicsWorld's controller setup. Step climbing is
+          // handled by the shared step-up assist below, which (unlike
+          // engine autostep) refuses to climb other characters.
           controllerRef.current = c;
           controllerWorldRef.current = world;
           verticalVelRef.current = 0;
@@ -638,13 +633,92 @@ export function SceneFrame({
           { x: corrected.x, z: corrected.z },
           { x: moveX, z: moveZ },
         );
-        const horizBlocked = intendsMove && progress < minProgress;
+        let horizBlocked = intendsMove && progress < minProgress;
+        let moveDelta = { x: corrected.x, y: corrected.y, z: corrected.z };
+
+        // Step-up assist (shared with bots — physics/step-up.ts): a
+        // blocked, grounded, non-jumping character pushing into a
+        // climbable ledge (stair riser ≤ STEP_UP_MAX_HEIGHT) hops onto
+        // it. Rapier's autostep cannot lift the ball collider over the
+        // honest scanned 0.5 m risers, so without this the player
+        // wedges at the first step. The probe teleports the body for
+        // its sweeps and restores it; we re-apply the returned delta
+        // through the normal pipeline below.
+        // `touchedThisFrame.size === 0` (no peer contact) is
+        // load-bearing: a player blocked by another CHARACTER must
+        // bump, not climb onto their head — see the bot-side guard in
+        // BotPhysicsWorld.step() for the failure mode.
+        if (
+          horizBlocked &&
+          touchedThisFrame.size === 0 &&
+          controller.computedGrounded() &&
+          verticalVelRef.current <= 0
+        ) {
+          const hop = tryStepUp(
+            {
+              compute: (desired) => {
+                controller.computeColliderMovement(
+                  bodyCollider,
+                  desired,
+                  RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+                );
+                const c = controller.computedMovement();
+                return {
+                  x: c.x,
+                  y: c.y,
+                  z: c.z,
+                  grounded: controller.computedGrounded(),
+                };
+              },
+              getTranslation: () => {
+                const bt = body.translation();
+                return { x: bt.x, y: bt.y, z: bt.z };
+              },
+              setTranslation: (p) => {
+                body.setTranslation({ x: p.x, y: p.y, z: p.z }, true);
+                world.propagateModifiedBodyPositionsToColliders();
+              },
+              lastContactIsCharacter: () => {
+                const n = controller.numComputedCollisions();
+                for (let i = 0; i < n; i++) {
+                  const coll = controller.computedCollision(i);
+                  const otherRb = coll?.collider?.parent();
+                  const ud = otherRb?.userData as
+                    | { playerId?: string }
+                    | undefined;
+                  if (ud?.playerId) return true;
+                }
+                return false;
+              },
+            },
+            moveX,
+            moveZ,
+          );
+          if (hop) {
+            moveDelta = hop;
+            horizBlocked = false;
+            verticalVelRef.current = 0;
+          }
+          // The probe sweeps clobbered the controller's computed
+          // state; the grounded check at the top of the NEXT frame
+          // reads it. Re-run the frame's real sweep so the controller
+          // reflects the actual frame, not the last probe.
+          controller.computeColliderMovement(
+            bodyCollider,
+            {
+              x: moveX,
+              y: verticalVelRef.current * dtSec,
+              z: moveZ,
+            },
+            RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+          );
+        }
 
         const t = body.translation();
         let newPos = {
-          x: horizBlocked ? t.x : t.x + corrected.x,
-          y: t.y + corrected.y,
-          z: horizBlocked ? t.z : t.z + corrected.z,
+          x: horizBlocked ? t.x : t.x + moveDelta.x,
+          y: t.y + moveDelta.y,
+          z: horizBlocked ? t.z : t.z + moveDelta.z,
         };
 
         // Fall-respawn — dual-gate rule (matches BotCharacterMovement / BotDriver).

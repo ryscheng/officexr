@@ -73,6 +73,55 @@ describe('physics/rules', () => {
       };
       expect(worldObjectsToCuboids(w)).toHaveLength(3);
     });
+
+    it('maps scanned-cuboids (normalized 0..1) through the instance AABB', () => {
+      const w: WorldObjects = {
+        cubeSize: 2,
+        instances: [inst(0, 0, 0)],
+      };
+      // World AABB: 4 m wide/deep, 2 m tall, based at (10, 0, 20).
+      const aabbLookup = () => ({
+        min: [10, 0, 20] as const,
+        max: [14, 2, 24] as const,
+      });
+      // One scanned column covering the lower-left quarter footprint
+      // at half height: normalized [0,0,0]..[0.5,0.5,0.5].
+      const shapeLookup = () => ({
+        kind: 'scanned-cuboids' as const,
+        cuboids: [
+          {
+            min: [0, 0, 0] as [number, number, number],
+            max: [0.5, 0.5, 0.5] as [number, number, number],
+          },
+        ],
+      });
+      const out = worldObjectsToCuboids(w, aabbLookup, shapeLookup);
+      expect(out).toHaveLength(1);
+      // World box: (10,0,20)..(12,1,22) → center (11, 0.5, 21).
+      expect(out[0].center).toEqual({ x: 11, y: 0.5, z: 21 });
+      expect(out[0].halfExtents).toEqual({ x: 1, y: 0.5, z: 1 });
+    });
+
+    it('emits one world cuboid per scanned cuboid', () => {
+      const w: WorldObjects = { cubeSize: 2, instances: [inst(0, 0, 0)] };
+      const aabbLookup = () => ({
+        min: [0, 0, 0] as const,
+        max: [4, 4, 4] as const,
+      });
+      const shapeLookup = () => ({
+        kind: 'scanned-cuboids' as const,
+        cuboids: [
+          { min: [0, 0, 0], max: [0.25, 0.25, 1] },
+          { min: [0.25, 0, 0], max: [0.5, 0.5, 1] },
+          { min: [0.5, 0, 0], max: [1, 1, 1] },
+        ] as Array<{ min: [number, number, number]; max: [number, number, number] }>,
+      });
+      const out = worldObjectsToCuboids(w, aabbLookup, shapeLookup);
+      expect(out).toHaveLength(3);
+      // Ascending tops: 1, 2, 4 (normalized 0.25/0.5/1 of the 4 m AABB).
+      const tops = out.map((c) => c.center.y + c.halfExtents.y);
+      expect(tops).toEqual([1, 2, 4]);
+    });
   });
 
   describe('shouldRespawnFalling', () => {
