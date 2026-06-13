@@ -211,7 +211,7 @@ test('corridor: bot walks in +Z, falls off far end, respawns at spawn point', as
   // to the spawn when loadMap completes, which would silently undo
   // an earlier park (observed: player back at the spawn corner, bot
   // wedged against its own contact-clamped mirror of the player).
-  await parkLocalPlayer(page, { x: 3, y: 2.5, z: 0.5 });
+  await parkLocalPlayer(page, { x: 3, y: 1.5, z: 0.5 });
 
   // 6. Teleport bot to the corridor spawn point and configure the spawnList.
   //

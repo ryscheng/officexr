@@ -136,7 +136,8 @@ export interface WorldObjectKind {
  */
 export type ColliderShapeSpec =
   | CompoundStepsSpec
-  | ScannedCuboidsSpec;
+  | ScannedCuboidsSpec
+  | TrimeshSpec;
 
 /**
  * Compound staircase collider: one solid column per step, ascending in
@@ -183,6 +184,28 @@ export interface ScannedCuboidsSpec {
     min: [number, number, number];
     max: [number, number, number];
   }>;
+}
+
+/** Caps for trimesh colliders — slopes are tens of triangles; anything
+ * near these caps should be simplified or re-thought, not shipped. */
+export const TRIMESH_MAX_VERTICES = 1024;
+export const TRIMESH_MAX_TRIANGLES = 2048;
+
+/**
+ * Geometry-scanned TRIANGLE collider — for kinds where a smooth
+ * surface beats stepped boxes (slopes/ramps: one small trimesh gives
+ * gliding ascent under the KCC's slope handling, where ~30 thin step
+ * boxes would stutter). Produced by `pnpm scan:colliders
+ * --mode=trimesh` from the kind's own welded mesh.
+ *
+ * `positions` are flat xyz triplets NORMALIZED 0..1 against the kind's
+ * local mesh AABB (same convention as `ScannedCuboidsSpec`); `indices`
+ * are triangle indices into the triplets.
+ */
+export interface TrimeshSpec {
+  kind: 'trimesh';
+  positions: number[];
+  indices: number[];
 }
 
 export interface WorldObjectKindCatalogV1 {
@@ -375,7 +398,48 @@ function normalizeColliderShape(raw: unknown): ColliderShapeSpec | undefined {
     const cuboids = normalizeScannedCuboids(s.cuboids);
     if (cuboids) return { kind: 'scanned-cuboids', cuboids };
   }
+  if (s.kind === 'trimesh') {
+    const tm = normalizeTrimesh(s.positions, s.indices);
+    if (tm) return { kind: 'trimesh', ...tm };
+  }
   return undefined;
+}
+
+/** Validate a normalized trimesh payload. Rejecting the whole shape
+ * (→ undefined → plain AABB collider) on ANY malformed entry is
+ * deliberate — a partially-valid mesh is a silently-wrong collider. */
+function normalizeTrimesh(
+  rawPositions: unknown,
+  rawIndices: unknown,
+): { positions: number[]; indices: number[] } | undefined {
+  if (!Array.isArray(rawPositions) || !Array.isArray(rawIndices)) return undefined;
+  if (
+    rawPositions.length === 0 ||
+    rawPositions.length % 3 !== 0 ||
+    rawPositions.length / 3 > TRIMESH_MAX_VERTICES
+  ) {
+    return undefined;
+  }
+  if (
+    rawIndices.length === 0 ||
+    rawIndices.length % 3 !== 0 ||
+    rawIndices.length / 3 > TRIMESH_MAX_TRIANGLES
+  ) {
+    return undefined;
+  }
+  const vertexCount = rawPositions.length / 3;
+  for (const p of rawPositions) {
+    // Same float-noise tolerance outside [0,1] as scanned cuboids.
+    if (typeof p !== 'number' || !Number.isFinite(p) || p < -0.01 || p > 1.01) {
+      return undefined;
+    }
+  }
+  for (const i of rawIndices) {
+    if (typeof i !== 'number' || !Number.isInteger(i) || i < 0 || i >= vertexCount) {
+      return undefined;
+    }
+  }
+  return { positions: [...rawPositions], indices: [...rawIndices] };
 }
 
 /** Validate the scanner's normalized-cuboid list. Rejecting the whole

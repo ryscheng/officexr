@@ -229,7 +229,7 @@ test('stairs: bot walks in −X, ascends compound-step staircase, Y increases mo
   // to the spawn when loadMap completes, which would silently undo
   // an earlier park (observed: player back at the spawn corner, bot
   // wedged against its own contact-clamped mirror of the player).
-  await parkLocalPlayer(page, { x: 6.5, y: 2.5, z: 3.3 });
+  await parkLocalPlayer(page, { x: 6.5, y: 1.5, z: 3.3 });
 
   // 6. Teleport bot to the base platform.
   //    Spawn at y=0: places bot body inside the base platform block (y=[0,2]).

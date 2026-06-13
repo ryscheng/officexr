@@ -26,7 +26,7 @@
 import React, { Suspense } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
+import { RigidBody, CuboidCollider, TrimeshCollider } from '@react-three/rapier';
 import { getVersion } from '../app/bake-registry.ts';
 import { parseEmbeddedColliders } from '../app/baked-collider-extras.ts';
 import { WALL_GROUPS } from '../physics/groups.ts';
@@ -78,28 +78,47 @@ interface BakedLayoutCollidersInnerProps {
 function BakedLayoutCollidersInner({ effectiveUrl }: BakedLayoutCollidersInnerProps) {
   const gltf = useGLTF(effectiveUrl);
 
-  // Preferred path: the physics cuboids the bake embedded in the scene
-  // extras (GLTFLoader surfaces glTF `extras` as `userData`).
+  // Preferred path: the physics descriptors the bake embedded in the
+  // scene extras (GLTFLoader surfaces glTF `extras` as `userData`).
   const embedded = parseEmbeddedColliders(gltf.scene.userData);
-  let aabbs: MeshAABB[];
+
   if (embedded) {
-    aabbs = embedded.map((c) => ({
-      center: [c.center.x, c.center.y, c.center.z],
-      halfExtents: [c.halfExtents.x, c.halfExtents.y, c.halfExtents.z],
-    }));
-  } else {
-    // Stale bake (pre-extras GLB). Its meshes are still one-per-object
-    // (the old non-merging pipeline), so per-mesh AABBs remain a valid
-    // collider source. Warn so the user knows to re-save the layout —
-    // a re-bake upgrades it to embedded colliders + merged visuals.
-    console.warn(
-      `[BakedLayoutColliders] "${effectiveUrl}" carries no embedded collider ` +
-        'extras (stale bake). Falling back to per-mesh AABB colliders; ' +
-        're-save the layout to re-bake it.',
+    if (embedded.length === 0) return null;
+    return (
+      <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }}>
+        {embedded.map((d, i) =>
+          d.type === 'cuboid' ? (
+            <CuboidCollider
+              key={i}
+              position={[d.center.x, d.center.y, d.center.z]}
+              args={[d.halfExtents.x, d.halfExtents.y, d.halfExtents.z]}
+              collisionGroups={WALL_GROUPS}
+            />
+          ) : (
+            <TrimeshCollider
+              key={i}
+              args={[
+                new Float32Array(d.vertices),
+                new Uint32Array(d.indices),
+              ]}
+              collisionGroups={WALL_GROUPS}
+            />
+          ),
+        )}
+      </RigidBody>
     );
-    aabbs = extractMeshAABBs(gltf.scene);
   }
 
+  // Stale bake (pre-extras GLB). Its meshes are still one-per-object
+  // (the old non-merging pipeline), so per-mesh AABBs remain a valid
+  // collider source. Warn so the user knows to re-save the layout —
+  // a re-bake upgrades it to embedded colliders + merged visuals.
+  console.warn(
+    `[BakedLayoutColliders] "${effectiveUrl}" carries no embedded collider ` +
+      'extras (stale bake). Falling back to per-mesh AABB colliders; ' +
+      're-save the layout to re-bake it.',
+  );
+  const aabbs = extractMeshAABBs(gltf.scene);
   if (aabbs.length === 0) return null;
 
   return (

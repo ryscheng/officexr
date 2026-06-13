@@ -223,3 +223,56 @@ describe('normalizeKind — scanned-cuboids colliderShape', () => {
     expect(kind.colliderShape).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// normalizeKind — colliderShape: trimesh
+// ---------------------------------------------------------------------------
+
+describe('normalizeKind — trimesh colliderShape', () => {
+  const validPositions = [0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1];
+  const validIndices = [0, 1, 2, 1, 3, 2];
+
+  it('accepts a valid trimesh spec', () => {
+    const kind = normalizeKind(
+      minimalRaw('prototype', {
+        colliderShape: {
+          kind: 'trimesh',
+          positions: validPositions,
+          indices: validIndices,
+        },
+      }),
+      0,
+    );
+    expect(kind.colliderShape).toEqual({
+      kind: 'trimesh',
+      positions: validPositions,
+      indices: validIndices,
+    });
+  });
+
+  it('rejects the whole shape on any malformed payload', () => {
+    const cases: Array<{ positions?: unknown; indices?: unknown }> = [
+      // positions not a multiple of 3
+      { positions: [0, 0], indices: validIndices },
+      // index out of range
+      { positions: validPositions, indices: [0, 1, 99] },
+      // coordinate outside the normalized range
+      { positions: [0, 0, 0, 5, 0, 0, 1, 1, 1], indices: [0, 1, 2] },
+      // non-integer index
+      { positions: validPositions, indices: [0, 1, 1.5] },
+      // empty
+      { positions: [], indices: [] },
+      // missing indices
+      { positions: validPositions },
+    ];
+    for (const colliderShape of cases) {
+      const kind = normalizeKind(
+        minimalRaw('prototype', {
+          colliderShape: { kind: 'trimesh', ...colliderShape },
+        }),
+        0,
+      );
+      expect(kind.colliderShape, JSON.stringify(colliderShape)).toBeUndefined();
+    }
+  });
+});

@@ -28,7 +28,10 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
-import { scanColliderCuboids } from '../src/app/collider-scan.ts';
+import {
+  scanColliderCuboids,
+  scanColliderTrimesh,
+} from '../src/app/collider-scan.ts';
 import {
   normalizeKind,
   validateWorldObjectKindCatalog,
@@ -96,13 +99,6 @@ function round6(n: number): number {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  if (args.mode === 'trimesh') {
-    throw new Error(
-      '--mode=trimesh is not implemented yet — it lands together with ' +
-        'trimesh collider support (slope kinds).',
-    );
-  }
-
   const rawText = await fs.readFile(CATALOG_PATH, 'utf-8');
   const rawCatalog = JSON.parse(rawText) as {
     updatedAt: number;
@@ -120,6 +116,32 @@ async function main(): Promise<void> {
     const rel = gltfPath.startsWith('/') ? gltfPath.slice(1) : gltfPath;
     const absPath = path.resolve(STUDIO_PUBLIC, rel);
     const doc = await io.read(absPath);
+
+    if (args.mode === 'trimesh') {
+      const tm = scanColliderTrimesh(doc);
+      const spec = {
+        kind: 'trimesh' as const,
+        positions: tm.positions.map(round6),
+        indices: tm.indices,
+      };
+      const normalized = normalizeKind({ ...entry, colliderShape: spec }, 0);
+      if (normalized.colliderShape?.kind !== 'trimesh') {
+        throw new Error(
+          `generated trimesh for "${kindId}" failed schema validation — not writing.`,
+        );
+      }
+      console.log(`[scan-colliders] ${kindId}`);
+      console.log(`  gltf:        ${gltfPath}`);
+      console.log(
+        `  local AABB:  [${tm.aabb.min.map(round6).join(', ')}] .. [${tm.aabb.max.map(round6).join(', ')}]`,
+      );
+      console.log(`  previous:    ${JSON.stringify(entry.colliderShape ?? null)}`);
+      console.log(
+        `  trimesh:     ${tm.positions.length / 3} vertices, ${tm.triangleCount} triangles (welded)`,
+      );
+      entry.colliderShape = spec;
+      continue;
+    }
 
     const result = scanColliderCuboids(doc, {
       cellSize: args.cellSize,

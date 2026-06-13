@@ -435,7 +435,9 @@ describe('bakeLayout', () => {
     // Round-trip through the same parser the renderer uses.
     const parsed = await io.readBinary(result.glb);
     const extras = parsed.getRoot().listScenes()[0].getExtras();
-    const cuboids = parseEmbeddedColliders(extras);
+    const cuboids = parseEmbeddedColliders(extras)?.filter(
+      (d): d is Extract<typeof d, { type: 'cuboid' }> => d.type === 'cuboid',
+    );
     expect(cuboids).not.toBeNull();
     expect(cuboids!.length).toBe(positions.length);
 
@@ -495,7 +497,7 @@ describe('bakeLayout', () => {
     const parsed = await io.readBinary(result.glb);
     const cuboids = parseEmbeddedColliders(
       parsed.getRoot().listScenes()[0].getExtras(),
-    );
+    )?.filter((d): d is Extract<typeof d, { type: 'cuboid' }> => d.type === 'cuboid');
     expect(cuboids).not.toBeNull();
     expect(cuboids!.length).toBe(stepCount);
 

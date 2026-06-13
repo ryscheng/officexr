@@ -459,48 +459,93 @@ export async function goToDebugWithMap(page: Page, mapName: string): Promise<voi
  * the bot starts removes the race. Keyframe baselines must be captured
  * with the SAME parking spot the spec uses.
  *
- * @param pos Drop position (world coords). Should be ~1 m above the
- *   floor so gravity settles the player; pick a spot ON map geometry
- *   (off-map parking would trigger fall-respawn back to the spawn).
+ * @param pos The EXACT settled pose (world coords) — pass the resting
+ *   body y for the floor (floor_top − 0.5), not a drop height. The
+ *   camera follows the player, so any run-to-run variance in the
+ *   parked position translates the whole frame and breaks keyframe
+ *   baselines; an exact pose keeps the camera bit-deterministic.
+ *   Pick a spot ON map geometry (off-map parking would trigger
+ *   fall-respawn back to the spawn).
  */
 export async function parkLocalPlayer(
   page: Page,
   pos: { x: number; y: number; z: number },
 ): Promise<void> {
-  await page.evaluate(
-    ({ pos }: { pos: { x: number; y: number; z: number } }) => {
-      const w = window as unknown as {
-        __OFFICE_STORE__: {
-          getState: () => { selfId: string };
-          setState: (updater: (s: unknown) => unknown) => void;
+  const writePark = () =>
+    page.evaluate(
+      ({ pos }: { pos: { x: number; y: number; z: number } }) => {
+        const w = window as unknown as {
+          __OFFICE_STORE__: {
+            getState: () => { selfId: string };
+            setState: (updater: (s: unknown) => unknown) => void;
+          };
         };
-      };
-      const selfId = w.__OFFICE_STORE__.getState().selfId;
-      w.__OFFICE_STORE__.setState((s: unknown) => {
-        const state = s as {
-          players: Record<
-            string,
-            { pos: unknown; vel: unknown; yaw: number } | undefined
-          >;
-        };
-        const self = state.players[selfId];
-        if (!self) return {};
-        return {
-          players: {
-            ...state.players,
-            [selfId]: {
-              ...self,
-              pos,
-              vel: { x: 0, y: 0, z: 0 },
+        const selfId = w.__OFFICE_STORE__.getState().selfId;
+        w.__OFFICE_STORE__.setState((s: unknown) => {
+          const state = s as {
+            players: Record<
+              string,
+              { pos: unknown; vel: unknown; yaw: number } | undefined
+            >;
+          };
+          const self = state.players[selfId];
+          if (!self) return {};
+          return {
+            players: {
+              ...state.players,
+              [selfId]: {
+                ...self,
+                pos,
+                vel: { x: 0, y: 0, z: 0 },
+              },
             },
-          },
+          };
+        });
+      },
+      { pos },
+    );
+
+  // Write-and-verify loop: the map picker's bootstrap teleports the
+  // player to the spawn when `loadMap` resolves, and that can land
+  // AFTER a single park write even when the caller waited for the
+  // worldObjects gate (the gate observes `setWorldObjects`, which
+  // happens INSIDE loadMap, before the teleport). Retrying until the
+  // player demonstrably stays near the park spot makes the ordering
+  // irrelevant.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await writePark();
+    await page.waitForTimeout(700);
+    const settled = await page.evaluate(
+      ({ pos }: { pos: { x: number; y: number; z: number } }) => {
+        const w = window as unknown as {
+          __OFFICE_STORE__: {
+            getState: () => {
+              selfId: string;
+              players: Record<
+                string,
+                { pos: { x: number; y: number; z: number } } | undefined
+              >;
+            };
+          };
         };
-      });
-    },
-    { pos },
+        const s = w.__OFFICE_STORE__.getState();
+        const p = s.players[s.selfId];
+        if (!p) return false;
+        // Tight: the pose IS the target (already-settled y). Any drift
+        // means the boot teleport raced us or the spot isn't stable.
+        return (
+          Math.abs(p.pos.x - pos.x) < 0.05 &&
+          Math.abs(p.pos.y - pos.y) < 0.05 &&
+          Math.abs(p.pos.z - pos.z) < 0.05
+        );
+      },
+      { pos },
+    );
+    if (settled) return;
+  }
+  throw new Error(
+    `parkLocalPlayer: player did not hold (${pos.x}, ${pos.y}, ${pos.z}) after 6 attempts`,
   );
-  // Let the auto-warp + gravity settle play out.
-  await page.waitForTimeout(800);
 }
 
 // ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ import {
 import {
   CHARACTER_CONTROLLER_SKIN,
   GRAVITY,
-  worldObjectsToCuboids,
+  worldObjectsToColliders,
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp, type StepUpProbe } from '../physics/step-up.ts';
@@ -276,20 +276,32 @@ export class BotPhysicsWorld {
     if (this.cubesFingerprint === fingerprint) return;
     for (const b of this.mapColliderBodies) this.world.removeRigidBody(b);
     this.mapColliderBodies = [];
-    for (const c of worldObjectsToCuboids(worldObjects, this.instanceAABB, this.colliderShape)) {
-      const desc = RAPIER.RigidBodyDesc.fixed().setTranslation(
-        c.center.x,
-        c.center.y,
-        c.center.z,
-      );
-      const body = this.world.createRigidBody(desc);
-      const cdesc = RAPIER.ColliderDesc.cuboid(
-        c.halfExtents.x,
-        c.halfExtents.y,
-        c.halfExtents.z,
-      ).setCollisionGroups(WALL_GROUPS);
-      this.world.createCollider(cdesc, body);
-      this.mapColliderBodies.push(body);
+    for (const c of worldObjectsToColliders(worldObjects, this.instanceAABB, this.colliderShape)) {
+      if (c.type === 'cuboid') {
+        const desc = RAPIER.RigidBodyDesc.fixed().setTranslation(
+          c.center.x,
+          c.center.y,
+          c.center.z,
+        );
+        const body = this.world.createRigidBody(desc);
+        const cdesc = RAPIER.ColliderDesc.cuboid(
+          c.halfExtents.x,
+          c.halfExtents.y,
+          c.halfExtents.z,
+        ).setCollisionGroups(WALL_GROUPS);
+        this.world.createCollider(cdesc, body);
+        this.mapColliderBodies.push(body);
+      } else {
+        // Slope kinds: world-space trimesh (vertices already placed),
+        // so the fixed body sits at the origin.
+        const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+        const cdesc = RAPIER.ColliderDesc.trimesh(
+          new Float32Array(c.vertices),
+          new Uint32Array(c.indices),
+        ).setCollisionGroups(WALL_GROUPS);
+        this.world.createCollider(cdesc, body);
+        this.mapColliderBodies.push(body);
+      }
     }
     this.cubesFingerprint = fingerprint;
   }

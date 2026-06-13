@@ -141,6 +141,87 @@ export function extractLocalTriangles(doc: Document): LocalTriangles {
 // Heightfield cuboid scan
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Trimesh scan (slopes)
+// ---------------------------------------------------------------------------
+
+export interface ScanTrimeshResult {
+  /** Flat xyz vertex positions normalized 0..1 to `aabb`. */
+  positions: number[];
+  /** Triangle indices into `positions`. */
+  indices: number[];
+  /** The scanned mesh's local AABB (mesh units). */
+  aabb: { min: [number, number, number]; max: [number, number, number] };
+  triangleCount: number;
+}
+
+/**
+ * Scan a kind's mesh into a normalized trimesh collider: the welded,
+ * degenerate-filtered triangle soup of the model itself. For slope
+ * kinds the visual mesh IS the right collider — one small trimesh
+ * gives smooth ascent under the KCC's slope handling where stepped
+ * boxes would stutter.
+ */
+export function scanColliderTrimesh(doc: Document): ScanTrimeshResult {
+  const { positions, indices } = extractLocalTriangles(doc);
+  if (indices.length === 0) {
+    throw new Error('scanColliderTrimesh: document contains no triangles.');
+  }
+
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < positions.length; i += 3) {
+    minX = Math.min(minX, positions[i]);     maxX = Math.max(maxX, positions[i]);
+    minY = Math.min(minY, positions[i + 1]); maxY = Math.max(maxY, positions[i + 1]);
+    minZ = Math.min(minZ, positions[i + 2]); maxZ = Math.max(maxZ, positions[i + 2]);
+  }
+  const sx = maxX - minX || 1;
+  const sy = maxY - minY || 1;
+  const sz = maxZ - minZ || 1;
+
+  // Weld vertices on a fine grid (0.1 mm in normalized space ≈ sub-mm
+  // for room-scale kinds) so coplanar source meshes share vertices and
+  // the KCC sees a watertight surface instead of seam cracks.
+  const WELD = 1e-4;
+  const keyOf = (x: number, y: number, z: number) =>
+    `${Math.round(x / WELD)}:${Math.round(y / WELD)}:${Math.round(z / WELD)}`;
+  const vertexIndex = new Map<string, number>();
+  const outPositions: number[] = [];
+  const remap = new Uint32Array(positions.length / 3);
+  for (let v = 0; v < positions.length / 3; v++) {
+    const nx = (positions[v * 3] - minX) / sx;
+    const ny = (positions[v * 3 + 1] - minY) / sy;
+    const nz = (positions[v * 3 + 2] - minZ) / sz;
+    const key = keyOf(nx, ny, nz);
+    let idx = vertexIndex.get(key);
+    if (idx === undefined) {
+      idx = outPositions.length / 3;
+      vertexIndex.set(key, idx);
+      outPositions.push(nx, ny, nz);
+    }
+    remap[v] = idx;
+  }
+
+  const outIndices: number[] = [];
+  for (let t = 0; t < indices.length; t += 3) {
+    const a = remap[indices[t]];
+    const b = remap[indices[t + 1]];
+    const c = remap[indices[t + 2]];
+    if (a === b || b === c || a === c) continue; // degenerate after weld
+    outIndices.push(a, b, c);
+  }
+  if (outIndices.length === 0) {
+    throw new Error('scanColliderTrimesh: all triangles degenerate after welding.');
+  }
+
+  return {
+    positions: outPositions,
+    indices: outIndices,
+    aabb: { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
+    triangleCount: outIndices.length / 3,
+  };
+}
+
 /** Largest grid dimension the scanner will allocate. A 4 m kind at the
  * 0.125 m default is 32 cells/axis; 512 guards absurd cellSize input. */
 const MAX_GRID_CELLS_PER_AXIS = 512;

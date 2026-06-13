@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
+import { RigidBody, CuboidCollider, TrimeshCollider } from '@react-three/rapier';
 import type { Store, WorldObjects } from '@officexr/sdk';
 import { useApplication } from '../react/application-context.tsx';
 import { WALL_GROUPS } from '../physics/groups.ts';
-import { worldObjectsToCuboids } from '../physics/rules.ts';
+import { worldObjectsToColliders } from '../physics/rules.ts';
 
 interface MapCollidersProps {
   store: Store;
@@ -43,10 +43,11 @@ export function MapColliders({ store }: MapCollidersProps) {
     );
   }, [store]);
 
-  // Build a flat array of cuboid descriptors using the shared helper so
-  // the browser collider layout exactly mirrors what BotPhysicsWorld.syncCubes
-  // builds on the server side — one source of truth for collider geometry.
-  const cuboids = worldObjectsToCuboids(
+  // Build collider descriptors using the shared helper so the browser
+  // collider layout exactly mirrors what BotPhysicsWorld.syncCubes
+  // builds on the server side — one source of truth for collider
+  // geometry. Cuboids for boxes/stairs; trimeshes for slope kinds.
+  const colliders = worldObjectsToColliders(
     snapshot,
     (pos, kindId) => geometry.worldAABB(pos, kindId),
     (kindId) => catalog.getKind(kindId)?.colliderShape,
@@ -54,14 +55,22 @@ export function MapColliders({ store }: MapCollidersProps) {
 
   return (
     <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }}>
-      {cuboids.map((c, i) => (
-        <CuboidCollider
-          key={i}
-          position={[c.center.x, c.center.y, c.center.z]}
-          args={[c.halfExtents.x, c.halfExtents.y, c.halfExtents.z]}
-          collisionGroups={WALL_GROUPS}
-        />
-      ))}
+      {colliders.map((c, i) =>
+        c.type === 'cuboid' ? (
+          <CuboidCollider
+            key={i}
+            position={[c.center.x, c.center.y, c.center.z]}
+            args={[c.halfExtents.x, c.halfExtents.y, c.halfExtents.z]}
+            collisionGroups={WALL_GROUPS}
+          />
+        ) : (
+          <TrimeshCollider
+            key={i}
+            args={[new Float32Array(c.vertices), new Uint32Array(c.indices)]}
+            collisionGroups={WALL_GROUPS}
+          />
+        ),
+      )}
     </RigidBody>
   );
 }

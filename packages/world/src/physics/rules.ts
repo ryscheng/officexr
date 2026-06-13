@@ -106,6 +106,21 @@ export interface CuboidDescriptor {
   halfExtents: { x: number; y: number; z: number };
 }
 
+/** Triangle-mesh collider descriptor in world space (slopes/ramps —
+ * smooth ascent under the KCC's slope handling). Vertices are flat
+ * xyz triplets; indices are triangle indices into them. */
+export interface TrimeshDescriptor {
+  type: 'trimesh';
+  vertices: number[];
+  indices: number[];
+}
+
+/** Discriminated union over every collider shape the world emits.
+ * Cuboids carry `type: 'cuboid'` so adapters can switch exhaustively. */
+export type ColliderDescriptor =
+  | ({ type: 'cuboid' } & CuboidDescriptor)
+  | TrimeshDescriptor;
+
 /** AABB lookup matching `InstanceGeometryService.worldAABB` — passed
  * in by callers that have an application api in scope. Keeps this
  * pure physics module free of the React-side context dependency. */
@@ -204,9 +219,34 @@ export function worldObjectsToCuboids(
   aabbLookup?: InstanceAABBLookup,
   colliderShapeLookup?: ColliderShapeLookup,
 ): CuboidDescriptor[] {
+  // Back-compat view: strips trimesh descriptors. Collider adapters
+  // should migrate to `worldObjectsToColliders`; this remains for
+  // tests/tools that only reason about boxes.
+  const out: CuboidDescriptor[] = [];
+  for (const d of worldObjectsToColliders(worldObjects, aabbLookup, colliderShapeLookup)) {
+    if (d.type === 'cuboid') {
+      out.push({ center: d.center, halfExtents: d.halfExtents });
+    }
+  }
+  return out;
+}
+
+/**
+ * Walk `worldObjects.instances` and emit world-space collider
+ * descriptors — cuboids (default AABB, compound-steps, scanned) and
+ * trimeshes (slope kinds). The single source of collider geometry for
+ * all three consumers: `<MapColliders>` (player, unbaked rooms),
+ * `BotPhysicsWorld.syncCubes` (bots), and the bake's embedded extras
+ * (player, baked rooms).
+ */
+export function worldObjectsToColliders(
+  worldObjects: WorldObjects,
+  aabbLookup?: InstanceAABBLookup,
+  colliderShapeLookup?: ColliderShapeLookup,
+): ColliderDescriptor[] {
   const cs = worldObjects.cubeSize;
   const half = cs / 2;
-  const out: CuboidDescriptor[] = [];
+  const out: ColliderDescriptor[] = [];
   for (const inst of worldObjects.instances) {
     if (aabbLookup) {
       const aabb = aabbLookup(inst.position, inst.kindId);
@@ -216,14 +256,23 @@ export function worldObjectsToCuboids(
         const ox = aabb.min[0];
         const oy = aabb.min[1];
         const oz = aabb.min[2];
-        out.push(...compoundStepCuboids(ox, oy, oz, aabb, shapeSpec));
+        for (const c of compoundStepCuboids(ox, oy, oz, aabb, shapeSpec)) {
+          out.push({ type: 'cuboid', ...c });
+        }
         continue;
       }
       if (shapeSpec?.kind === 'scanned-cuboids') {
-        out.push(...scannedCuboidsToWorld(aabb, shapeSpec.cuboids));
+        for (const c of scannedCuboidsToWorld(aabb, shapeSpec.cuboids)) {
+          out.push({ type: 'cuboid', ...c });
+        }
+        continue;
+      }
+      if (shapeSpec?.kind === 'trimesh') {
+        out.push(trimeshToWorld(aabb, shapeSpec.positions, shapeSpec.indices));
         continue;
       }
       out.push({
+        type: 'cuboid',
         center: {
           x: (aabb.min[0] + aabb.max[0]) / 2,
           y: (aabb.min[1] + aabb.max[1]) / 2,
@@ -240,6 +289,7 @@ export function worldObjectsToCuboids(
     // Legacy fallback path — one-voxel-cube colliders. Used by old
     // bots without a catalog injected.
     out.push({
+      type: 'cuboid',
       center: {
         x: inst.position[0] * cs,
         y: inst.position[1] * cs + half,
@@ -249,6 +299,28 @@ export function worldObjectsToCuboids(
     });
   }
   return out;
+}
+
+/** Map a normalized (0..1 in local-AABB space) trimesh through the
+ * placed instance's world AABB — same convention as scanned cuboids. */
+function trimeshToWorld(
+  aabb: {
+    min: readonly [number, number, number];
+    max: readonly [number, number, number];
+  },
+  positions: readonly number[],
+  indices: readonly number[],
+): TrimeshDescriptor {
+  const sx = aabb.max[0] - aabb.min[0];
+  const sy = aabb.max[1] - aabb.min[1];
+  const sz = aabb.max[2] - aabb.min[2];
+  const vertices = new Array<number>(positions.length);
+  for (let i = 0; i < positions.length; i += 3) {
+    vertices[i] = aabb.min[0] + positions[i] * sx;
+    vertices[i + 1] = aabb.min[1] + positions[i + 1] * sy;
+    vertices[i + 2] = aabb.min[2] + positions[i + 2] * sz;
+  }
+  return { type: 'trimesh', vertices, indices: [...indices] };
 }
 
 /**
