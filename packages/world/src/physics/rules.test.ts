@@ -51,6 +51,33 @@ describe('physics/rules', () => {
       // Lowest cube bottom = -5 * 2 = -10. Threshold = -10 - margin.
       expect(respawnThreshold(w)).toBe(-10 - RESPAWN_MARGIN);
     });
+
+    it('uses spawn-point y as the floor when there are no cubes (baked-layout maps)', () => {
+      // The booper map case: room is empty (instances=[]) because the
+      // platforms live in a baked GLB collided by `<BakedLayoutColliders>`.
+      // Without the spawn-derived fallback, threshold would be -Infinity
+      // and the backstop fall check would never fire.
+      const w: WorldObjects = { cubeSize: 2, instances: [] };
+      expect(respawnThreshold(w, [{ x: 13.5, y: 0.5, z: 1.8 }])).toBe(
+        0.5 - RESPAWN_MARGIN,
+      );
+    });
+
+    it('cube bottom dominates spawn y when both are present (back-compat)', () => {
+      // Voxel map where the spawn rests on top of cubes: cube bottom is
+      // lower than spawn y, so the existing cube-derived threshold wins.
+      const w: WorldObjects = {
+        cubeSize: 2,
+        instances: [inst(0, 0, 0)], // bottom = 0
+      };
+      // Spawn y = 1 (sitting on the cube). Lowest floor = 0 (cube bottom).
+      expect(respawnThreshold(w, [{ x: 0, y: 1, z: 0 }])).toBe(-RESPAWN_MARGIN);
+    });
+
+    it('returns -Infinity when neither source contributes (empty world, no spawns)', () => {
+      const w: WorldObjects = { cubeSize: 2, instances: [] };
+      expect(respawnThreshold(w, [])).toBe(Number.NEGATIVE_INFINITY);
+    });
   });
 
   describe('worldObjectsToCuboids', () => {

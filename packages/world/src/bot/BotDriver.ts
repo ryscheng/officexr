@@ -388,7 +388,12 @@ export class BotDriver {
     let newPos = result.newPos;
     let vel = result.broadcastVel;
     let moved = result.moved;
-    const fallsBackstop = newPos.y < respawnThreshold(botState.worldObjects);
+    // Pass `this.spawnList` so the backstop has a finite floor
+    // reference even for baked-layout maps whose platforms live in
+    // the GLB rather than in `worldObjects.instances` (otherwise the
+    // threshold collapses to -Infinity and never fires).
+    const fallsBackstop =
+      newPos.y < respawnThreshold(botState.worldObjects, this.spawnList);
     if (shouldRespawnFalling(result.velY, result.hasFloorUnderneath) || fallsBackstop) {
       // Use phaseIndex so each bot in a cohort respawns to a DIFFERENT spawn
       // point when the list has multiple entries — prevents the whole cohort
@@ -471,7 +476,9 @@ export class BotDriver {
   /** Record the spawn list for fall-respawn. Called by
    * `BotPool.respawnAll` so every driver knows where to teleport
    * back to when the bot walks off the cube field and falls below
-   * `respawnThreshold(worldObjects)`. The cohort all share the same
+   * `respawnThreshold(worldObjects, spawnList)`. The spawn list also
+   * feeds the backstop so baked-layout maps (empty `worldObjects`)
+   * still get a finite threshold. The cohort all share the same
    * list — each bot picks one round-robin by phaseIndex. */
   setSpawnList(spawns: readonly Vec3[]): void {
     this.spawnList = spawns;

@@ -50,10 +50,15 @@ interface SceneFrameProps {
    * `useWorldFocus` hook based on side-panel interaction. */
   worldFocused: boolean;
   /** Spawn points from the active map. When the local player falls
-   * below `respawnThreshold(state.worldObjects)`, SceneFrame
-   * teleports them to one of these positions (+ SPAWN_DROP_HEIGHT
-   * y-lift so they fall onto the surface). Empty/undefined => no
-   * respawn ever (the player floats in the void instead). */
+   * below `respawnThreshold(state.worldObjects, spawnPoints)` (the
+   * backstop) or trips the primary dual-gate (no floor underneath +
+   * fall speed >= MAX_FALL_VELOCITY), SceneFrame teleports them to
+   * one of these positions (+ SPAWN_DROP_HEIGHT y-lift so they fall
+   * onto the surface). The spawn list is also folded into the
+   * backstop threshold so baked-layout maps (whose floor lives in
+   * the GLB, not in `worldObjects.instances`) still get a finite
+   * backstop. Empty/undefined => no respawn ever (the player floats
+   * in the void instead). */
   spawnPoints?: readonly Vec3[];
   /** Mutated each frame to true while the local player is airborne.
    * Players.tsx reads this to drive the jump animation for the self avatar
@@ -739,7 +744,14 @@ export function SceneFrame({
           RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
         );
         const hasFloorUnderneath = floorHit !== null;
-        const backstopThreshold = respawnThreshold(stateSnapshot.worldObjects);
+        // Pass `spawnsRef.current` so the backstop has a finite floor
+        // reference even for baked-layout maps whose platforms live in
+        // the GLB rather than in `worldObjects.instances` (otherwise
+        // the threshold collapses to -Infinity and never fires).
+        const backstopThreshold = respawnThreshold(
+          stateSnapshot.worldObjects,
+          spawnsRef.current,
+        );
         if (
           shouldRespawnFalling(verticalVelRef.current, hasFloorUnderneath) ||
           newPos.y < backstopThreshold

@@ -81,20 +81,43 @@ export function shouldRespawnFalling(
 
 /**
  * Y-coordinate below which a character has "fallen off the map"
- * and should be respawned. Returns `-Infinity` when the map has no
- * cubes (i.e., there's nothing to fall off — never respawn).
+ * and should be respawned. Acts as the last-resort backstop for the
+ * primary dual-gate rule {@link shouldRespawnFalling} — see the
+ * caller-side comments in `SceneFrame` and `BotDriver`.
  *
- * Cube bottom face = `inst.position[1] * cubeSize` (matches the
- * collider placement in `<MapColliders>` and
- * `worldObjectsToCuboids`).
+ * Two floor sources, combined by min:
+ *  - Cube bottom face = `inst.position[1] * cubeSize` (matches the
+ *    collider placement in `<MapColliders>` and `worldObjectsToCuboids`).
+ *  - Spawn point y. Baked-layout maps (e.g. `booper`) put the floor
+ *    geometry inside a baked GLB rendered/collided by `<BakedLayout>`
+ *    + `<BakedLayoutColliders>`, NOT inside `worldObjects.instances`
+ *    (the referenced room is empty). Without the spawn-derived floor,
+ *    the backstop threshold would collapse to `-Infinity` for those
+ *    maps and the backstop check `newPos.y < threshold` would never
+ *    fire — so if the primary dual-gate ever misses (e.g. floor probe
+ *    briefly inconclusive), the character would have no safety net
+ *    and would fall through the void forever. Spawn points sit on the
+ *    floor by construction, so they're a reliable proxy.
+ *
+ * Voxel maps where the spawn rests on top of cubes are unchanged:
+ * the cube bottom is lower than the spawn y, so it dominates the min.
+ *
+ * Returns `-Infinity` only when neither source contributes (no
+ * instances AND no spawns) — there's genuinely nothing to fall off.
  */
-export function respawnThreshold(worldObjects: WorldObjects): number {
-  if (worldObjects.instances.length === 0) return Number.NEGATIVE_INFINITY;
+export function respawnThreshold(
+  worldObjects: WorldObjects,
+  spawns: readonly Vec3[] = [],
+): number {
   let minBottom = Number.POSITIVE_INFINITY;
   for (const inst of worldObjects.instances) {
     const bottom = inst.position[1] * worldObjects.cubeSize;
     if (bottom < minBottom) minBottom = bottom;
   }
+  for (const s of spawns) {
+    if (s.y < minBottom) minBottom = s.y;
+  }
+  if (minBottom === Number.POSITIVE_INFINITY) return Number.NEGATIVE_INFINITY;
   return minBottom - RESPAWN_MARGIN;
 }
 
