@@ -375,11 +375,11 @@ test('stairs: bot walks in −X, ascends compound-step staircase, Y increases mo
   // Three.js rAF render loop produces different frames on each screenshot
   // call. toHaveScreenshot's pixel-stability check requires two identical
   // consecutive frames, which is not guaranteed while the character is
-  // animating. Saved directly to ideal/ for visual inspection.
-  // The numeric Phase 2 monotonicity assertions above are the real regression gate.
+  // animating. The numeric Phase 2 monotonicity assertions above are the
+  // real regression gate; the PNG lands in `test-results/motion-captures/`
+  // as a per-run artifact for CI to attach to PR reviews.
   await captureMotionKeyframe(page, 'keyframe-02-mid-climb.png', {
     committed: false,
-    outputDir: 'tests/playwright/motion-baselines/scenario-stairs/ideal',
   });
 
   // ------------------------------------------------------------------
@@ -474,11 +474,12 @@ test('stairs: bot walks in −X, ascends compound-step staircase, Y increases mo
 
   // Keyframe 3: bot at or near the top of the staircase / top landing.
   // Non-committed: the bot is still walking in linear-walk mode and the
-  // Three.js render loop is continuously updating (shadow updates, post-processing),
-  // so two consecutive screenshots will differ. Saved directly to ideal/ for
-  // visual inspection. The numeric Phase 3/4 position assertions are the real gate.
+  // Three.js render loop is continuously updating (shadow updates,
+  // post-processing), so two consecutive screenshots will differ. The
+  // numeric Phase 3/4 position assertions are the real gate; the PNG lands
+  // in `test-results/motion-captures/` as a per-run artifact for CI to
+  // attach to PR reviews.
   await captureMotionKeyframe(page, 'keyframe-03-top.png', {
     committed: false,
-    outputDir: 'tests/playwright/motion-baselines/scenario-stairs/ideal',
   });
 });

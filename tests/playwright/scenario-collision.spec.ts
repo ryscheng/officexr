@@ -316,11 +316,11 @@ test('collision: two bots walk head-on, collide, and are blocked with zero vel',
   // Non-committed capture because toHaveScreenshot's stability check requires
   // two identical consecutive frames — not guaranteed while bots are walking
   // (Three.js rAF loop runs independently of CSS animation disabling).
-  // The PNG is saved directly to the ideal/ directory as a visual record.
-  // The numeric assertions above are the real regression gate.
+  // The numeric assertions above are the real regression gate; the PNG is
+  // produced as a per-run artifact in `test-results/motion-captures/` so CI
+  // can attach it to PR reviews for humans to eyeball.
   await captureMotionKeyframe(page, 'keyframe-01-approaching.png', {
     committed: false,
-    outputDir: 'tests/playwright/motion-baselines/scenario-collision/ideal',
   });
 
   // ------------------------------------------------------------------
@@ -423,10 +423,10 @@ test('collision: two bots walk head-on, collide, and are blocked with zero vel',
   // continues rendering (lighting, post-processing) even when characters are
   // stationary, so toHaveScreenshot's pixel-stability check times out.
   // The numeric assertions in Phase 3 (vel ≈ 0) and Phase 4 (Δpos < 0.05 m)
-  // are the real regression gate; the PNG is a visual record only.
+  // are the real regression gate; the PNG lands in `test-results/motion-
+  // captures/` as a per-run artifact for CI to surface in PR reviews.
   await captureMotionKeyframe(page, 'keyframe-02-blocked.png', {
     committed: false,
-    outputDir: 'tests/playwright/motion-baselines/scenario-collision/ideal',
   });
 
   // ------------------------------------------------------------------
