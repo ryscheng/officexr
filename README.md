@@ -62,7 +62,6 @@ officexr/
 │   ├── web/                    # @officexr/web — Vite browser build
 │   │   ├── index.html
 │   │   ├── vite.config.ts      # React shell + /api server plugin
-│   │   ├── public/             # Static assets
 │   │   └── .env.example
 │   ├── desktop/                # @officexr/desktop — Electron wrapper
 │   │   └── src/
@@ -127,7 +126,7 @@ supabase link --project-ref <your-project-id>
 supabase db push
 ```
 
-The web server runs migrations with `pnpm db:migrate` (uses `SUPABASE_DB_URL`); run it before
+The web server runs migrations with `pnpm db:migrate` (reads `SUPABASE_DB_URL` from the shell environment, not `packages/web/.env`); run it before
 `pnpm --filter @officexr/web start`.
 
 ### Run

@@ -58,7 +58,6 @@ officexr/
 │   │   ├── server/             # /api/me, /api/offices (pg), /config.js; vitest specs
 │   │   ├── vite.config.ts
 │   │   ├── tsconfig.json
-│   │   ├── public/             # Static assets (SVGs etc.)
 │   │   └── .env.example        # SUPABASE_DB_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*
 │   ├── desktop/                # @officexr/desktop — Electron wrapper
 │   │   └── src/

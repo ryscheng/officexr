@@ -51,6 +51,14 @@ describe('/api/me', () => {
     expect((await res.json()).name).toBe('José Ruiz');
   });
 
+  it('decodes base64 and split encoded words', async () => {
+    const base = await start('configurePreviewServer');
+    const res = await fetch(`${base}/api/me`, {
+      headers: { 'Tailscale-User-Login': 'a@example.com', 'Tailscale-User-Name': '=?utf-8?b?Sm9z?= =?utf-8?q?=C3=A9?=' },
+    });
+    expect((await res.json()).name).toBe('José');
+  });
+
   it('is 401 without headers', async () => {
     const base = await start('configurePreviewServer');
     expect((await fetch(`${base}/api/me`)).status).toBe(401);

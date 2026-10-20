@@ -20,7 +20,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Decodes RFC 2047 UTF-8 encoded words (`=?utf-8?q?…?=` / `?b?`), which Tailscale uses for non-ASCII names. */
 function decodeMimeWords(value: string): string {
-  return value.replace(/=\?utf-8\?([qb])\?(.*?)\?=/gi, (_, kind: string, text: string) =>
+  return value.replace(/(\?=)\s+(?==\?)/g, '$1').replace(/=\?utf-8\?([qb])\?(.*?)\?=/gi, (_, kind: string, text: string) =>
     kind.toLowerCase() === 'b'
       ? Buffer.from(text, 'base64').toString('utf8')
       : Buffer.from(

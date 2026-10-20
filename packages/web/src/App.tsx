@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router-dom';
-import type { Office } from '../server/api';
+import type { Identity, Office } from '../server/api';
 import { useApi, type ApiState } from './useApi';
 
 function Async<T>({ state, children }: { state: ApiState<T>; children: (data: T) => ReactNode }) {
@@ -40,7 +40,7 @@ function Room() {
 }
 
 export default function App() {
-  const me = useApi<{ login: string; name: string }>('/api/me');
+  const me = useApi<Identity>('/api/me');
   return (
     <BrowserRouter>
       <main className="mx-auto max-w-2xl p-6">

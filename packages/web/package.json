@@ -11,7 +11,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:migrate": "supabase db push --workdir ../.. --db-url \"$SUPABASE_DB_URL\""
+    "db:migrate": "supabase db push --yes --workdir ../.. --db-url \"$SUPABASE_DB_URL\""
   },
   "dependencies": {
     "pg": "^8.23.1",

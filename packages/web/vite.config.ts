@@ -22,6 +22,11 @@ export default defineConfig(({ mode }) => {
     );
     return rows;
   };
+  const closePool = () => {
+    const closing = pool;
+    pool = undefined;
+    closing?.end().catch((err) => console.error(err));
+  };
   const { OFFICEXR_DEV_USER_LOGIN: login, OFFICEXR_DEV_USER_NAME: name } = env;
 
   return {
@@ -31,10 +36,10 @@ export default defineConfig(({ mode }) => {
       {
         name: 'officexr-pool-close',
         configureServer: (server) => {
-          server.httpServer?.on('close', () => pool?.end());
+          server.httpServer?.on('close', closePool);
         },
         configurePreviewServer: (server) => {
-          server.httpServer.on('close', () => pool?.end());
+          server.httpServer.on('close', closePool);
         },
       },
       officexrServer({ queryOffices, devUser: login ? { login, name: name ?? login } : undefined, devEnv }),
