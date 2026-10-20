@@ -40,7 +40,7 @@ export function applyNetEventToStore(
       actions.applyRemoteStroke(event.stroke);
       return;
     case 'avatar:update':
-      actions.upsertPlayer({ id: event.actorId, avatar: event.avatar });
+      actions.upsertPlayer({ id: event.actorId, avatar: event.avatar, name: event.name });
       return;
     case 'shot:hit':
       actions.applyHit(event.targetId, event.dmg, event.actorId);

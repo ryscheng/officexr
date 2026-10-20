@@ -51,6 +51,8 @@ export interface WsChannelOptions {
   url: string;
   /** PlayerId the server should associate with this connection. */
   userId: PlayerId;
+  /** Office to join. Omitted means the server's default office. */
+  officeId?: string;
   /** Override the WebSocket constructor. Default uses the global. */
   wsFactory?: WsFactory;
   /** Timeout (ms) for the initial subscribe handshake. Default 10000. */
@@ -76,6 +78,7 @@ export interface WsChannelOptions {
 export class WsChannel implements Channel {
   public readonly userId: PlayerId;
   private readonly url: string;
+  private readonly officeId?: string;
   private readonly wsFactory: WsFactory;
   private readonly handshakeTimeoutMs: number;
 
@@ -99,6 +102,7 @@ export class WsChannel implements Channel {
   constructor(opts: WsChannelOptions) {
     this.url = opts.url;
     this.userId = opts.userId;
+    this.officeId = opts.officeId;
     this.wsFactory = opts.wsFactory ?? defaultFactory;
     this.handshakeTimeoutMs = opts.handshakeTimeoutMs ?? 10_000;
   }
@@ -134,7 +138,13 @@ export class WsChannel implements Channel {
         this.handshakeTimeoutMs,
       );
       const onOpen = () => {
-        ws.send(encodeFrame({ t: 'hello', userId: this.userId }));
+        ws.send(
+          encodeFrame({
+            t: 'hello',
+            userId: this.userId,
+            officeId: this.officeId,
+          }),
+        );
       };
       const onAck = (frame: Frame) => {
         if (frame.t !== 'hello-ack') return;

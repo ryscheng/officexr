@@ -75,7 +75,7 @@ type Envelope = {
 
 type NetEvent = Envelope & (
   | { kind: 'presence:position', v: 1, pos: Vec3, vel: Vec3, yaw: number }
-  | { kind: 'avatar:update',     v: 1, avatar: AvatarData }
+  | { kind: 'avatar:update',     v: 1, avatar: AvatarData, name: string }
   | { kind: 'chat:message',      v: 1, text: string }
   | { kind: 'whiteboard:stroke', v: 1, stroke: Stroke }
   | { kind: 'whiteboard:clear',  v: 1, epoch: number }

@@ -22,10 +22,12 @@ export type Frame =
 
 /** Client → server, first frame after the websocket opens. Identifies
  * the caller; server uses it as the `selfId` for the attached hub
- * client. There is no authentication — this is debug infra. */
+ * client. `officeId` picks the room; omitted means the server's default
+ * office. There is no authentication — this is debug infra. */
 export interface HelloFrame {
   t: 'hello';
   userId: PlayerId;
+  officeId?: string;
 }
 
 /** Server → client, immediately after `hello`. Confirms the join and

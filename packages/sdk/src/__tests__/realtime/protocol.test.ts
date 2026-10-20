@@ -20,7 +20,15 @@ describe('PROTOCOL table', () => {
       isAirborne: false,
     },
     { kind: 'chat:message', v: 1, actorId: 'a', seq: 1, t: 0, text: 'hi' },
-    { kind: 'avatar:update', v: 1, actorId: 'a', seq: 1, t: 0, avatar: { model: 'gnome' } },
+    {
+      kind: 'avatar:update',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      avatar: { model: 'gnome' },
+      name: 'A',
+    },
     {
       kind: 'whiteboard:stroke',
       v: 1,
@@ -418,5 +426,17 @@ describe('presence:position — isAirborne field', () => {
     const r = validateNetEvent(noAirborne);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('schema');
+  });
+
+  it('rejects avatar:update without a name', () => {
+    const result = validateNetEvent({
+      kind: 'avatar:update',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      avatar: { model: 'gnome' },
+    });
+    expect(result.ok).toBe(false);
   });
 });

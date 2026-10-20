@@ -40,6 +40,9 @@ export interface WsStackConfig {
    * through the Vite dev-server proxy, `${origin}/ws`). */
   url: string;
   selfId: string;
+  /** Office to join on the server. Omitted means the server's default
+   * office. */
+  officeId?: string;
   /** Voice callbacks. Same proximity-driven `LocalVoiceAdapter` as the
    * `local` mode — the elevator audio is browser-side and doesn't need
    * a real voice room. */
@@ -86,7 +89,11 @@ export function createStack(config: StackConfig): Stack {
   }
 
   if (config.mode === 'ws') {
-    const channel = new WsChannel({ url: config.url, userId: config.selfId });
+    const channel = new WsChannel({
+      url: config.url,
+      userId: config.selfId,
+      officeId: config.officeId,
+    });
     const voiceAdapter = new LocalVoiceAdapter({
       onRoomJoined: config.onRoomJoined,
       onRoomLeft: config.onRoomLeft,
