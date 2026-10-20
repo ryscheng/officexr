@@ -73,7 +73,8 @@ export class BotServer extends RealtimeServer {
     this.pool.setMode(this.initialMode);
     if (this.initialCount > 0) await this.pool.setCount(this.initialCount);
 
-    this.offCustom = this.onCustomFrame((_client, kind, payload) => {
+    this.offCustom = this.onCustomFrame((_client, kind, payload, room) => {
+      if (room !== this.defaultRoom) return false;
       if (kind === FRAME_SET_COUNT) {
         const n = Number((payload as { count?: unknown })?.count);
         if (Number.isFinite(n)) {

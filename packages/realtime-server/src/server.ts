@@ -37,14 +37,16 @@ export interface RealtimeServerOptions {
 }
 
 /**
- * Handler signature for app-level custom frames. Return `true` if the
- * frame was consumed; the server won't emit any further side effects
- * for it. Return `false` to let the server log a warning and drop.
+ * Handler signature for app-level custom frames. `room` is the sender's
+ * room; replies should go through it. Return `true` if the frame was
+ * consumed; the server won't emit any further side effects for it.
+ * Return `false` to let the server log a warning and drop.
  */
 export type CustomFrameHandler = (
   client: WsClient,
   kind: string,
   payload: unknown,
+  room: Room,
 ) => boolean;
 
 /**
@@ -101,7 +103,7 @@ export class Room {
 
   /** Build the snapshot events sent to a freshly-joined client:
    * `presence:position` and (for players who have announced a name) the
-   * equivalent `avatar:update` for every other player.
+   * equivalent `avatar:update` for every other present player.
    *
    * We intentionally do **NOT** include `world:settings` or `world:map`
    * here. The browser owns those values (driven by its Leva panel /
@@ -116,10 +118,11 @@ export class Room {
   buildSnapshotFor(joinerId: PlayerId): NetEvent[] {
     const state = this.store.getState();
     const events: NetEvent[] = [];
+    const present = new Set([...this.hub.present(), ...this.clients.keys()]);
     let seq = 1;
 
     for (const [id, p] of Object.entries(state.players)) {
-      if (id === joinerId) continue;
+      if (id === joinerId || !present.has(id)) continue;
       events.push({
         kind: 'presence:position',
         v: 1,
@@ -156,7 +159,8 @@ export class Room {
  * peers (see `BotServer`) can attach to it.
  *
  * Designed to be subclassed: see `BotServer` in the debug-app for an
- * example that adds bot orchestration on top of the default room's hub.
+ * example (in `@officexr/world`) that adds bot orchestration on top of the
+ * default room's hub.
  */
 export class RealtimeServer {
   readonly defaultRoom: Room;
@@ -242,8 +246,11 @@ export class RealtimeServer {
     }
   }
 
-  private roomFor(officeId: string | undefined): Room {
-    const id = officeId ?? this.defaultRoom.officeId;
+  private roomFor(officeId: unknown): Room {
+    const id =
+      typeof officeId === 'string' && officeId !== ''
+        ? officeId
+        : this.defaultRoom.officeId;
     let room = this.rooms.get(id);
     if (!room) {
       room = new Room(id);
@@ -313,11 +320,16 @@ export class RealtimeServer {
   }
 
   private removeClient(room: Room, client: WsClient): void {
-    if (room.clients.get(client.userId) === client) {
-      room.clients.delete(client.userId);
-    }
     client.detach();
-    if (room.clients.size === 0 && room !== this.defaultRoom) {
+    // A replaced client's late close must not evict its successor or a
+    // room recreated since.
+    if (room.clients.get(client.userId) !== client) return;
+    room.clients.delete(client.userId);
+    if (
+      room.clients.size === 0 &&
+      room !== this.defaultRoom &&
+      this.rooms.get(room.officeId) === room
+    ) {
       room.close();
       this.rooms.delete(room.officeId);
     }
@@ -341,7 +353,7 @@ export class RealtimeServer {
       case 'custom': {
         for (const h of this.customHandlers) {
           try {
-            if (h(client, frame.kind, frame.payload)) return;
+            if (h(client, frame.kind, frame.payload, room)) return;
           } catch (err) {
             console.error('[realtime-server] custom handler threw:', err);
           }

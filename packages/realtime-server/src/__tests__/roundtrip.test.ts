@@ -6,6 +6,7 @@ import {
   createStore,
   type NetEvent,
 } from '@officexr/sdk';
+import { WebSocket as RawWebSocket } from 'ws';
 import { RealtimeServer } from '../server.ts';
 import { WsChannel } from '../ws-channel.ts';
 // Note: external consumers go via subpath exports:
@@ -167,7 +168,7 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     b.close();
   });
 
-  it('keeps offices isolated and allows one user in two offices', async () => {
+  it('keeps offices isolated and keeps both connections of one user live', async () => {
     const url = `ws://127.0.0.1:${port}/ws`;
     const a1 = new WsChannel({ url, userId: 'A', officeId: 'office-1' });
     const b1 = new WsChannel({ url, userId: 'B', officeId: 'office-1' });
@@ -182,22 +183,78 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     c2.on((e) => atC.push(e));
     c2.onPresenceChange((joined, left) => presenceC.push(...joined, ...left));
 
+    b1.trackPresence({});
+    await waitFor(() => a1.listPresent().includes('B'));
+
     await a1.send(makeMoveEvent('A', 3));
-    await waitFor(() => atB.length > 0);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(atC).toEqual([]);
-
-    b1.close();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(presenceC).not.toContain('B');
-
     await a2.send(makeMoveEvent('A', 4));
-    await waitFor(() => atC.length > 0);
-    expect(a1.listPresent()).toEqual([]);
+    await waitFor(() => atB.length > 0 && atC.length > 0);
+
+    const xs = (events: NetEvent[]) =>
+      events.map((e) => (e.kind === 'presence:position' ? e.pos.x : null));
+    expect(xs(atB)).toEqual([3]);
+    expect(xs(atC)).toEqual([4]);
+    expect(presenceC).not.toContain('B');
 
     a1.close();
     a2.close();
+    b1.close();
     c2.close();
+  });
+
+  it('a replaced socket closing late does not evict its successor or the room', async () => {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    const old = new RawWebSocket(url);
+    await new Promise<void>((resolve) => old.once('open', () => resolve()));
+    old.send(JSON.stringify({ t: 'hello', userId: 'A', officeId: 'office-x' }));
+
+    const b = new WsChannel({ url, userId: 'B', officeId: 'office-x' });
+    await b.subscribe();
+    const received: NetEvent[] = [];
+    b.on((e) => received.push(e));
+
+    const oldClosed = new Promise<void>((resolve) => old.once('close', () => resolve()));
+    const a = new WsChannel({ url, userId: 'A', officeId: 'office-x' });
+    await a.subscribe();
+    await oldClosed;
+
+    await a.send(makeMoveEvent('A', 5));
+    await waitFor(() => received.length > 0);
+    const health = (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as {
+      offices: string[];
+    };
+    expect(health.offices).toContain('office-x');
+
+    a.close();
+    b.close();
+  });
+
+  it('scopes custom frames to the sender room', async () => {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    server.onCustomFrame((_client, _kind, payload, room) => {
+      room.sendCustom('echo', payload);
+      return true;
+    });
+
+    const inDefault = new WsChannel({ url, userId: 'D' });
+    const inOther = new WsChannel({ url, userId: 'O', officeId: 'other' });
+    await inDefault.subscribe();
+    await inOther.subscribe();
+    const atDefault: unknown[] = [];
+    const atOther: unknown[] = [];
+    inDefault.onCustom('echo', (p) => atDefault.push(p));
+    inOther.onCustom('echo', (p) => atOther.push(p));
+
+    inOther.sendCustom('ping', 'other');
+    await waitFor(() => atOther.length > 0);
+    inDefault.sendCustom('ping', 'default');
+    await waitFor(() => atDefault.length > 0);
+
+    expect(atOther).toEqual(['other']);
+    expect(atDefault).toEqual(['default']);
+
+    inDefault.close();
+    inOther.close();
   });
 
   it('custom frames round-trip through onCustomFrame', async () => {

@@ -138,7 +138,13 @@ export class WsChannel implements Channel {
         this.handshakeTimeoutMs,
       );
       const onOpen = () => {
-        ws.send(encodeFrame({ t: 'hello', userId: this.userId, officeId: this.officeId }));
+        ws.send(
+          encodeFrame({
+            t: 'hello',
+            userId: this.userId,
+            officeId: this.officeId,
+          }),
+        );
       };
       const onAck = (frame: Frame) => {
         if (frame.t !== 'hello-ack') return;

@@ -20,7 +20,15 @@ describe('PROTOCOL table', () => {
       isAirborne: false,
     },
     { kind: 'chat:message', v: 1, actorId: 'a', seq: 1, t: 0, text: 'hi' },
-    { kind: 'avatar:update', v: 1, actorId: 'a', seq: 1, t: 0, avatar: { model: 'gnome' }, name: 'A' },
+    {
+      kind: 'avatar:update',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      avatar: { model: 'gnome' },
+      name: 'A',
+    },
     {
       kind: 'whiteboard:stroke',
       v: 1,
