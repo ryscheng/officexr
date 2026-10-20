@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import studioStorage from '@officexr/world/vite-plugin-storage';
+import studioStorage, { STORAGE_ENTRIES } from '@officexr/world/vite-plugin-storage';
 import bots from '@officexr/world/vite-plugin-bots';
 
 /**
@@ -23,16 +23,6 @@ const REALTIME_TARGET =
 
 const WORLD_DIR = fileURLToPath(new URL('../world', import.meta.url));
 const DATA_DIR = process.env.OFFICEXR_STUDIO_DATA_DIR;
-
-type StorageEntry = { kind: 'dir' | 'file'; name: string };
-const STORAGE_ENTRIES = {
-  rooms: { kind: 'dir', name: 'rooms' },
-  maps: { kind: 'dir', name: 'maps' },
-  layouts: { kind: 'dir', name: 'layouts' },
-  bakedLayouts: { kind: 'dir', name: 'baked-layouts' },
-  legacyScenes: { kind: 'dir', name: 'scenes' },
-  catalog: { kind: 'file', name: 'world-object-kinds.json' },
-} satisfies Record<string, StorageEntry>;
 
 const exists = (p: string) =>
   access(p).then(
@@ -64,16 +54,6 @@ async function seedDataDir(dataDir: string): Promise<void> {
   await writeFile(marker, '');
 }
 
-const storageOptions = (dataDir: string) =>
-  Object.fromEntries(
-    Object.entries(STORAGE_ENTRIES).map(([key, { kind, name }]) => [
-      key,
-      kind === 'dir'
-        ? { dir: path.join(dataDir, name) }
-        : { file: path.join(dataDir, name) },
-    ]),
-  );
-
 export default defineConfig({
   plugins: [
     react(),
@@ -85,7 +65,7 @@ export default defineConfig({
     //   /api/world-object-kinds → packages/world/world-object-kinds.json (Object editor catalog; Task 3)
     //   /api/scenes     → packages/world/scenes/     (legacy back-compat for the
     //                                                 existing Scenes editor until Task 5)
-    studioStorage(DATA_DIR ? storageOptions(DATA_DIR) : {}),
+    studioStorage({ dataDir: DATA_DIR }),
     {
       name: 'officexr:seed-data-dir',
       async configureServer() {
