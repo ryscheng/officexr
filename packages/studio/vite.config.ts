@@ -1,4 +1,4 @@
-import { access, cp, mkdir } from 'node:fs/promises';
+import { access, cp, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -40,21 +40,28 @@ const exists = (p: string) =>
     () => false,
   );
 
+// Written once the whole seed has copied, so a seed interrupted mid-copy
+// (e.g. the container is killed) resumes on the next start, while files the
+// user deletes after a completed seed are never re-seeded.
+const SEED_MARKER = '.seeded';
+
 // ponytail: copy-if-missing only; updated defaults never merge into an existing data dir.
 async function seedDataDir(dataDir: string): Promise<void> {
+  const marker = path.join(dataDir, SEED_MARKER);
+  if (await exists(marker)) {
+    return;
+  }
   await mkdir(dataDir, { recursive: true });
   for (const { kind, name } of Object.values(STORAGE_ENTRIES)) {
     const src = path.join(WORLD_DIR, name);
     const dst = path.join(dataDir, name);
-    if (await exists(dst)) {
-      continue;
-    }
     if (await exists(src)) {
-      await cp(src, dst, { recursive: true });
+      await cp(src, dst, { recursive: true, force: false, errorOnExist: false });
     } else if (kind === 'dir') {
-      await mkdir(dst);
+      await mkdir(dst, { recursive: true });
     }
   }
+  await writeFile(marker, '');
 }
 
 const storageOptions = (dataDir: string) =>
