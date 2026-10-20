@@ -11,25 +11,33 @@ export interface Office {
 /** Lists all offices, or just the one with `id` when given. */
 export type QueryOffices = (id?: string) => Promise<Office[]>;
 
-export interface DevUser {
+export interface Identity {
   login: string;
   name: string;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function header(req: IncomingMessage, name: string): string | undefined {
-  const value = req.headers[name];
-  return Array.isArray(value) ? value[0] : value;
+/** Decodes RFC 2047 UTF-8 encoded words (`=?utf-8?q?…?=` / `?b?`), which Tailscale uses for non-ASCII names. */
+function decodeMimeWords(value: string): string {
+  return value.replace(/=\?utf-8\?([qb])\?(.*?)\?=/gi, (_, kind: string, text: string) =>
+    kind.toLowerCase() === 'b'
+      ? Buffer.from(text, 'base64').toString('utf8')
+      : Buffer.from(
+          text.replace(/_/g, ' ').replace(/=([0-9a-f]{2})/gi, (_m, hex: string) => String.fromCharCode(parseInt(hex, 16))),
+          'latin1',
+        ).toString('utf8'),
+  );
 }
 
 /** Tailscale Serve sets these headers on proxied tailnet requests and strips client-supplied copies. */
-export function tailscaleIdentity(req: IncomingMessage): DevUser | null {
-  const login = header(req, 'tailscale-user-login');
+export function tailscaleIdentity(req: IncomingMessage): Identity | null {
+  const login = req.headers['tailscale-user-login'] as string | undefined;
   if (!login) {
     return null;
   }
-  return { login, name: header(req, 'tailscale-user-name') ?? login };
+  const name = req.headers['tailscale-user-name'] as string | undefined;
+  return { login, name: name ? decodeMimeWords(name) : login };
 }
 
 export function apiMiddleware(queryOffices: QueryOffices): Connect.NextHandleFunction {
@@ -65,7 +73,7 @@ export function apiMiddleware(queryOffices: QueryOffices): Connect.NextHandleFun
 }
 
 /** Sets the Tailscale headers on every request so local dev works without a tailnet. */
-function devUserMiddleware(user: DevUser): Connect.NextHandleFunction {
+function devUserMiddleware(user: Identity): Connect.NextHandleFunction {
   return (req, _res, next) => {
     req.headers['tailscale-user-login'] = user.login;
     req.headers['tailscale-user-name'] = user.name;
@@ -76,7 +84,7 @@ function devUserMiddleware(user: DevUser): Connect.NextHandleFunction {
 export interface ServerPluginOptions {
   queryOffices: QueryOffices;
   /** Applied to the dev server only, never to preview. */
-  devUser?: DevUser;
+  devUser?: Identity;
   devEnv?: Record<string, string>;
 }
 

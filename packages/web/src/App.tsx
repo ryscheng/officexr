@@ -1,12 +1,7 @@
 import type { ReactNode } from 'react';
 import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router-dom';
+import type { Office } from '../server/api';
 import { useApi, type ApiState } from './useApi';
-
-interface Office {
-  id: string;
-  name: string;
-  description: string | null;
-}
 
 function Async<T>({ state, children }: { state: ApiState<T>; children: (data: T) => ReactNode }) {
   return state.type === 'loading' ? (

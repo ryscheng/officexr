@@ -183,6 +183,8 @@ in the app); the server reads offices from Postgres via `SUPABASE_DB_URL`. Run
 `pnpm db:migrate` (applies `supabase/migrations` to `SUPABASE_DB_URL`) before `start`.
 For local dev set `OFFICEXR_DEV_USER_LOGIN` / `OFFICEXR_DEV_USER_NAME`; the dev server
 injects them as the Tailscale headers (never in preview).
+The identity headers are trusted only because the server is reachable solely through the
+Tailscale ingress; direct access to the pod port would allow spoofing them.
 
 Copy from `packages/web/.env.example`. Vite loads `.env` from `packages/web/` when
 `pnpm dev` / `pnpm build` are run inside that package.

@@ -9,7 +9,13 @@ export default defineConfig(({ mode }) => {
   const env = { ...devEnv, ...process.env };
   let pool: pg.Pool | undefined;
   const queryOffices = async (id?: string) => {
-    pool ??= new pg.Pool({ connectionString: env.SUPABASE_DB_URL });
+    if (!env.SUPABASE_DB_URL) {
+      throw new Error('SUPABASE_DB_URL is not set');
+    }
+    if (!pool) {
+      pool = new pg.Pool({ connectionString: env.SUPABASE_DB_URL });
+      pool.on('error', (err) => console.error(err));
+    }
     const { rows } = await pool.query<Office>(
       `select id, name, description from offices ${id ? 'where id = $1' : ''} order by created_at`,
       id ? [id] : [],
@@ -19,10 +25,18 @@ export default defineConfig(({ mode }) => {
   const { OFFICEXR_DEV_USER_LOGIN: login, OFFICEXR_DEV_USER_NAME: name } = env;
 
   return {
-    assetsInclude: ['**/*.exr'],
     plugins: [
       react(),
       tailwindcss(),
+      {
+        name: 'officexr-pool-close',
+        configureServer: (server) => {
+          server.httpServer?.on('close', () => pool?.end());
+        },
+        configurePreviewServer: (server) => {
+          server.httpServer.on('close', () => pool?.end());
+        },
+      },
       officexrServer({ queryOffices, devUser: login ? { login, name: name ?? login } : undefined, devEnv }),
     ],
     preview: {

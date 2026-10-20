@@ -43,6 +43,14 @@ describe('/api/me', () => {
     expect(await res.json()).toEqual({ login: 'a@example.com', name: 'Alice' });
   });
 
+  it('decodes RFC 2047 encoded names', async () => {
+    const base = await start('configurePreviewServer');
+    const res = await fetch(`${base}/api/me`, {
+      headers: { 'Tailscale-User-Login': 'a@example.com', 'Tailscale-User-Name': '=?utf-8?q?Jos=C3=A9_Ruiz?=' },
+    });
+    expect((await res.json()).name).toBe('José Ruiz');
+  });
+
   it('is 401 without headers', async () => {
     const base = await start('configurePreviewServer');
     expect((await fetch(`${base}/api/me`)).status).toBe(401);

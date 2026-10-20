@@ -9,8 +9,10 @@ export function useApi<T>(url: string): ApiState<T> {
     let cancelled = false;
     fetch(url)
       .then(async (res) => {
-        const body = await res.json();
-        return res.ok ? { type: 'ready' as const, data: body as T } : { type: 'error' as const, message: body.error };
+        const body = await res.json().catch(() => null);
+        return res.ok
+          ? { type: 'ready' as const, data: body as T }
+          : { type: 'error' as const, message: body?.error ?? `HTTP ${res.status}` };
       })
       .catch((err: Error) => ({ type: 'error' as const, message: err.message }))
       .then((next) => {
