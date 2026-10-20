@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BotMode } from '@officexr/world/bot';
-import {
-  buildInMemoryStack,
-  buildWsStack,
-  type ChannelStack,
-  type PersistentLocalState,
-} from './services.ts';
+import type { PersistentLocalState } from '@officexr/core-refactor';
+import { buildInMemoryStack, buildWsStack, type ChannelStack } from './services.ts';
 import {
   browserRealtimeConfig,
   isRealtimeServerAvailable,

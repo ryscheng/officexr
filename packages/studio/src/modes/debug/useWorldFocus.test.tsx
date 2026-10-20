@@ -10,7 +10,7 @@
  */
 import { describe, expect, it, afterEach } from 'vitest';
 import { render, renderHook, act, cleanup } from '@testing-library/react';
-import { useWorldFocus } from './useWorldFocus.ts';
+import { useWorldFocus } from '@officexr/world/react';
 
 afterEach(() => {
   cleanup();

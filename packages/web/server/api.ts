@@ -1,11 +1,14 @@
 import type { IncomingMessage } from 'node:http';
 import type { Connect, Plugin } from 'vite';
+import studioStorage from '@officexr/world/vite-plugin-storage';
 import { configJsMiddleware } from './runtimeConfig';
+import { staticDirMiddleware } from './staticDir';
 
 export interface Office {
   id: string;
   name: string;
   description: string | null;
+  map_name: string | null;
 }
 
 /** Lists all offices, or just the one with `id` when given. */
@@ -86,21 +89,32 @@ export interface ServerPluginOptions {
   /** Applied to the dev server only, never to preview. */
   devUser?: Identity;
   devEnv?: Record<string, string>;
+  /** Studio data dir served read-only under `/api`; the storage plugin's defaults when unset. */
+  studioDataDir?: string;
+  /** Character and object models served at `/models`. */
+  modelsDir: string;
 }
 
-export function officexrServer({ queryOffices, devUser, devEnv }: ServerPluginOptions): Plugin {
-  return {
-    name: 'officexr-server',
-    configureServer: (server) => {
-      if (devUser) {
-        server.middlewares.use(devUserMiddleware(devUser));
-      }
-      server.middlewares.use(configJsMiddleware(devEnv));
-      server.middlewares.use(apiMiddleware(queryOffices));
+export function officexrServer({ queryOffices, devUser, devEnv, studioDataDir, modelsDir }: ServerPluginOptions): Plugin[] {
+  const models = staticDirMiddleware('/models', modelsDir);
+  return [
+    // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
+    studioStorage({ dataDir: studioDataDir, readOnly: true }),
+    {
+      name: 'officexr-server',
+      configureServer: (server) => {
+        if (devUser) {
+          server.middlewares.use(devUserMiddleware(devUser));
+        }
+        server.middlewares.use(models);
+        server.middlewares.use(configJsMiddleware(devEnv));
+        server.middlewares.use(apiMiddleware(queryOffices));
+      },
+      configurePreviewServer: (server) => {
+        server.middlewares.use(models);
+        server.middlewares.use(configJsMiddleware());
+        server.middlewares.use(apiMiddleware(queryOffices));
+      },
     },
-    configurePreviewServer: (server) => {
-      server.middlewares.use(configJsMiddleware());
-      server.middlewares.use(apiMiddleware(queryOffices));
-    },
-  };
+  ];
 }

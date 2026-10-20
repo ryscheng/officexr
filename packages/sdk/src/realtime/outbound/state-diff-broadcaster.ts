@@ -22,7 +22,7 @@ interface StateDiffBroadcasterOpts {
 /**
  * Owns broadcast of store mutations that are *append-only* (chat,
  * whiteboard strokes) or *snapshot-on-change* (worldSettings,
- * worldMap, characterConfigs). Each receives a diff via
+ * worldMap, characterConfigs, the local player's name + avatar). Each receives a diff via
  * `onStoreChange(next, prev)` and issues a single broadcast for each
  * newly-added record / changed struct, authored by self only.
  *
@@ -111,6 +111,21 @@ export class StateDiffBroadcaster {
         }
       }
       this.lastStrokeCount = nextStrokes.length;
+    }
+
+    // Peers only learn names from avatar:update, which requires one.
+    const me = next.players[next.selfId];
+    const prevMe = prev.players[prev.selfId];
+    if (me?.name && (me.name !== prevMe?.name || me.avatar !== prevMe?.avatar)) {
+      this.broadcast({
+        kind: 'avatar:update',
+        v: 1,
+        actorId: next.selfId,
+        seq: this.takeSeq(),
+        t: this.clock.now(),
+        avatar: me.avatar,
+        name: me.name,
+      });
     }
 
     // worldSettings: broadcast on any change. Cheap shallow-JSON equality is

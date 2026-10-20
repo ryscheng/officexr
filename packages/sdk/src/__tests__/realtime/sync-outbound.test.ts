@@ -212,4 +212,13 @@ describe('SyncEngine outbound — send-on-mutation kinds', () => {
       expect(evt.objects.instances[0].position).toEqual([1, 0, 2]);
     }
   });
+
+  it('avatar:update sends when self name or avatar changes, but not on movement', () => {
+    ctx.actions.setSelfPosition({ x: 5, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0, false);
+    expect(ctx.sent.some((e) => e.kind === 'avatar:update')).toBe(false);
+
+    ctx.actions.upsertPlayer({ id: 'me', name: 'Alice', avatar: { model: 'gnome' } });
+    const evt = ctx.sent.find((e) => e.kind === 'avatar:update');
+    expect(evt).toMatchObject({ actorId: 'me', name: 'Alice', avatar: { model: 'gnome' } });
+  });
 });

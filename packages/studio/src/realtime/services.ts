@@ -1,24 +1,11 @@
+import { createInMemoryChannelHub, InMemoryChannel } from '@officexr/sdk';
+import type { Channel, SnapshotHandshake, SyncEngine } from '@officexr/sdk';
 import {
-  attachProximityReducer,
-  createActions,
-  createBus,
-  createInMemoryChannelHub,
-  createRuleRegistry,
-  createStore,
-  InMemoryChannel,
-  serializeOfficeState,
-  SnapshotHandshake,
-  SyncEngine,
-} from '@officexr/sdk';
-import type {
-  Actions,
-  Bus,
-  Channel,
-  PlayerId,
-  RuleRegistry,
-  Store,
-} from '@officexr/sdk';
-import { createStack, Communication } from '@officexr/core-refactor';
+  createStack,
+  startOfficeSync,
+  type Communication,
+  type PersistentLocalState,
+} from '@officexr/core-refactor';
 import { WsChannel } from '@officexr/realtime-server';
 import { BotPool } from '@officexr/world/bot';
 import { createBotControlPublisher, type BotControlPublisher } from './bot-control.ts';
@@ -42,41 +29,6 @@ export interface ChannelStack {
   botControl: BotControlPublisher | null;
   /** Stops + closes everything in the right order. Idempotent. */
   teardown: () => Promise<void>;
-}
-
-/** Fields preserved across mode flips. */
-export interface PersistentLocalState {
-  selfId: PlayerId;
-  officeId: string;
-  store: Store;
-  actions: Actions;
-  bus: Bus;
-  rules: RuleRegistry;
-}
-
-/** Build the persistent local-player state bundle. Called once on mount;
- * survives every channel-stack swap. */
-export function createPersistentLocalState(opts: {
-  selfId: PlayerId;
-  officeId: string;
-  startPos?: { x: number; y: number; z: number };
-}): PersistentLocalState {
-  const store = createStore({ selfId: opts.selfId, officeId: opts.officeId });
-  const bus = createBus();
-  const actions = createActions(store, bus);
-  actions.upsertPlayer({
-    id: opts.selfId,
-    name: 'You',
-    pos: opts.startPos ?? { x: 0, y: 0, z: 0 },
-    vel: { x: 0, y: 0, z: 0 },
-    yaw: 0,
-  });
-  const rules = createRuleRegistry();
-  // Proximity + bump events are emitted directly by the Rapier
-  // collision/sensor bridges (`packages/world/src/physics/bridge.ts`)
-  // — no SDK collision-pass rules needed any more.
-  attachProximityReducer(store, bus);
-  return { selfId: opts.selfId, officeId: opts.officeId, store, actions, bus, rules };
 }
 
 interface BuildStackCommonOpts {
@@ -120,30 +72,6 @@ export async function buildInMemoryStack(
     },
   });
 
-  const clock = { now: () => performance.now() };
-  const sync = new SyncEngine({
-    store: local.store,
-    actions: local.actions,
-    bus: local.bus,
-    channel,
-    clock,
-  });
-  const handshake = new SnapshotHandshake({
-    selfId: local.selfId,
-    store: local.store,
-    actions: local.actions,
-    sync,
-    channel,
-    clock,
-    serialize: () => serializeOfficeState(local.store.getState()),
-  });
-  const comm = new Communication({
-    selfId: local.selfId,
-    store: local.store,
-    actions: local.actions,
-    bus: local.bus,
-    voice: voiceAdapter,
-  });
   const bots = new BotPool({
     createChannel: (botId) => new InMemoryChannel(hub, botId),
     localPlayerId: local.selfId,
@@ -174,16 +102,14 @@ export async function buildInMemoryStack(
     localBus: local.bus,
   });
 
-  await channel.subscribe();
-  channel.trackPresence({});
-  sync.start();
-  handshake.start();
-  comm.start();
+  const { sync, handshake, comm, stop } = await startOfficeSync({
+    local,
+    channel,
+    voice: voiceAdapter,
+  });
 
   const teardown = async () => {
-    comm.stop();
-    sync.stop();
-    handshake.stop();
+    stop();
     bots.stop();
     channel.close();
     audio.pause();
@@ -229,30 +155,6 @@ export async function buildWsStack(opts: {
     },
   });
 
-  const clock = { now: () => performance.now() };
-  const sync = new SyncEngine({
-    store: local.store,
-    actions: local.actions,
-    bus: local.bus,
-    channel,
-    clock,
-  });
-  const handshake = new SnapshotHandshake({
-    selfId: local.selfId,
-    store: local.store,
-    actions: local.actions,
-    sync,
-    channel,
-    clock,
-    serialize: () => serializeOfficeState(local.store.getState()),
-  });
-  const comm = new Communication({
-    selfId: local.selfId,
-    store: local.store,
-    actions: local.actions,
-    bus: local.bus,
-    voice: voiceAdapter,
-  });
   // In ws mode the in-browser pool stays empty — bots run in the
   // realtime-server process. We still construct one so the teardown
   // surface is uniform.
@@ -263,11 +165,11 @@ export async function buildWsStack(opts: {
     localPlayerId: local.selfId,
   });
 
-  await channel.subscribe();
-  channel.trackPresence({});
-  sync.start();
-  handshake.start();
-  comm.start();
+  const { sync, handshake, comm, stop } = await startOfficeSync({
+    local,
+    channel,
+    voice: voiceAdapter,
+  });
 
   // channel is typed as Channel by createStack's return; we know it's a
   // WsChannel in this mode. Narrow for the bot-control publisher.
@@ -276,9 +178,7 @@ export async function buildWsStack(opts: {
   });
 
   const teardown = async () => {
-    comm.stop();
-    sync.stop();
-    handshake.stop();
+    stop();
     bots.stop();
     botControl.close();
     channel.close();
