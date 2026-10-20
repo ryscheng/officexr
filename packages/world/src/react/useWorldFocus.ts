@@ -18,6 +18,13 @@ import { useEffect, useState } from 'react';
  *
  * Pass the result to `<Scene worldFocused>` and `<FocusIndicator>`.
  */
+const FOCUS_WORLD_EVENT = 'officexr:focus-world';
+
+/** Hands the keyboard back to the world, as clicking the canvas would. */
+export function focusWorld(): void {
+  window.dispatchEvent(new Event(FOCUS_WORLD_EVENT));
+}
+
 export function useWorldFocus(): boolean {
   const [focused, setFocused] = useState(true);
 
@@ -43,7 +50,10 @@ export function useWorldFocus(): boolean {
 
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('focusin', onFocusIn);
+    const onFocusWorld = () => setFocused(true);
+    window.addEventListener(FOCUS_WORLD_EVENT, onFocusWorld);
     return () => {
+      window.removeEventListener(FOCUS_WORLD_EVENT, onFocusWorld);
       document.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('focusin', onFocusIn);
     };
