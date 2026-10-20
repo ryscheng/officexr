@@ -12,6 +12,9 @@ const offices: Office[] = [{ id: ID, name: 'HQ', description: null, map_name: 'h
 const modelsDir = mkdtempSync(path.join(tmpdir(), 'officexr-models-'));
 mkdirSync(path.join(modelsDir, 'characters'));
 writeFileSync(path.join(modelsDir, 'characters', 'Mage.glb'), 'glb');
+const outsideFile = path.join(modelsDir, '..', `${path.basename(modelsDir)}-secret.txt`);
+writeFileSync(outsideFile, 'secret');
+const outsideName = encodeURIComponent(path.basename(outsideFile));
 const queryOffices: QueryOffices = async (id) => offices.filter((o) => !id || o.id === id);
 
 /** Mimics connect's `use(base, fn)`: only matching paths reach `fn`, with `base` stripped from `req.url`. */
@@ -152,8 +155,8 @@ describe('/models', () => {
 
   it('404s paths that escape the models dir', async () => {
     const base = await start('configurePreviewServer');
-    expect(await rawStatus(base, '/models/..%2f..%2fetc%2fpasswd')).toBe(404);
-    expect(await rawStatus(base, '/models/characters/..%2f..%2f..%2f..%2fetc%2fpasswd')).toBe(404);
+    expect(await rawStatus(base, `/models/..%2f${outsideName}`)).toBe(404);
+    expect(await rawStatus(base, `/models/characters/..%2f..%2f${outsideName}`)).toBe(404);
   });
 
   it('400s malformed escapes and keeps serving', async () => {

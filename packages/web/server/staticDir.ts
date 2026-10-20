@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import type { Connect } from 'vite';
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -42,9 +43,14 @@ async function serveFile(root: string, prefix: string, req: Connect.IncomingMess
     res.end();
     return true;
   }
-  await new Promise<void>((resolve, reject) => {
-    createReadStream(file).on('error', reject).on('end', resolve).pipe(res);
-  });
+  try {
+    await pipeline(createReadStream(file), res);
+  } catch (err) {
+    // The client went away mid-download; pipeline has already closed the file.
+    if ((err as NodeJS.ErrnoException).code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+      throw err;
+    }
+  }
   return true;
 }
 

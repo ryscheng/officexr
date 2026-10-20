@@ -6,7 +6,7 @@ import {
   createStore,
   type NetEvent,
 } from '@officexr/sdk';
-import { WebSocket as RawWebSocket } from 'ws';
+import { WebSocket as RawWebSocket, WebSocketServer } from 'ws';
 import { RealtimeServer } from '../server.ts';
 import { WsChannel } from '../ws-channel.ts';
 // Note: external consumers go via subpath exports:
@@ -276,5 +276,22 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     expect(seen[0]).toEqual({ kind: 'bots:set-count', payload: { n: 3 } });
 
     a.close();
+  });
+});
+
+describe('WsChannel handshake', () => {
+  it('rejects subscribe() as soon as the socket closes before hello-ack', async () => {
+    const port = ephemeralPort();
+    const wss = new WebSocketServer({ port });
+    wss.on('connection', (ws) => ws.on('message', () => ws.close()));
+    await new Promise<void>((resolve) => wss.once('listening', () => resolve()));
+    try {
+      const channel = new WsChannel({ url: `ws://127.0.0.1:${port}/ws`, userId: 'A', handshakeTimeoutMs: 10_000 });
+      const started = Date.now();
+      await expect(channel.subscribe()).rejects.toThrow('closed before handshake');
+      expect(Date.now() - started).toBeLessThan(2000);
+    } finally {
+      await new Promise((resolve) => wss.close(resolve));
+    }
   });
 });
