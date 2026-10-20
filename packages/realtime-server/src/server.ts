@@ -32,7 +32,7 @@ export interface RealtimeServerOptions {
   port?: number;
   /** WebSocket path. Default '/ws'. */
   path?: string;
-  /** OfficeId baked into the authoritative store. Default 'debug-office'. */
+  /** Office served to clients whose `hello` omits `officeId`. Default 'debug-office'. */
   officeId?: string;
 }
 
@@ -48,49 +48,26 @@ export type CustomFrameHandler = (
 ) => boolean;
 
 /**
- * Authoritative game-state server. Owns:
- *  - an `InMemoryChannelHub` that every connected websocket attaches to
- *    via a `WsClient` adapter (and that anyone in-process — e.g. the
- *    debug-app's bot pool — can also attach to with a vanilla
- *    `InMemoryChannel`),
- *  - an SDK `Store` that mirrors every broadcast for late-joiner
- *    snapshots,
- *  - the HTTP/WebSocket plumbing.
- *
- * Designed to be subclassed: see `BotServer` in the debug-app for an
- * example that adds bot orchestration on top of the same hub.
+ * One office's authoritative state: an `InMemoryChannelHub` every
+ * websocket client (via `WsClient`) and in-process peer (e.g. bots)
+ * attaches to, plus an SDK `Store` that mirrors every broadcast for
+ * late-joiner snapshots.
  */
-export class RealtimeServer {
-  readonly hub: ReturnType<typeof createInMemoryChannelHub>;
+export class Room {
+  readonly hub = createInMemoryChannelHub();
   readonly store: Store;
   readonly actions: Actions;
   readonly bus: Bus;
-  readonly officeId: string;
+  readonly clients = new Map<PlayerId, WsClient>();
+  private readonly offMirror: () => void;
 
-  private readonly port: number;
-  private readonly path: string;
-  private httpServer: HttpServer | null = null;
-  private wss: WebSocketServer | null = null;
-  private readonly clients = new Map<PlayerId, WsClient>();
-  private customHandlers: CustomFrameHandler[] = [];
-  /** Detacher for the hub mirror that applies every broadcast to the
-   * authoritative store. */
-  private offMirror: (() => void) | null = null;
-
-  constructor(opts: RealtimeServerOptions = {}) {
-    this.port = opts.port ?? DEFAULT_PORT;
-    this.path = opts.path ?? DEFAULT_PATH;
-    this.officeId = opts.officeId ?? DEFAULT_OFFICE_ID;
-    this.store = createStore({ selfId: SERVER_SELF_ID, officeId: this.officeId });
+  constructor(readonly officeId: string) {
+    this.store = createStore({ selfId: SERVER_SELF_ID, officeId });
     this.bus = createBus();
     this.actions = createActions(this.store, this.bus);
-    this.hub = createInMemoryChannelHub();
 
-    // Attach a hub-side mirror that applies every broadcast to the
-    // authoritative store. We use a plain InMemoryChannel as the mirror
-    // adapter; its `on` handler receives every event the hub fans out
-    // *except* its own broadcasts (which is what we want — the server
-    // doesn't originate broadcasts).
+    // The mirror receives every hub fan-out except its own broadcasts,
+    // which is what we want: the server doesn't originate broadcasts.
     const mirror = new InMemoryChannel(this.hub, SERVER_SELF_ID);
     void mirror.subscribe();
     const off = mirror.on((event) => {
@@ -104,6 +81,100 @@ export class RealtimeServer {
     };
   }
 
+  close(): void {
+    for (const c of [...this.clients.values()]) c.terminate();
+    this.clients.clear();
+    this.offMirror();
+  }
+
+  /** Send a custom frame to one client, or every client if `target` is
+   * omitted. */
+  sendCustom(kind: string, payload: unknown, target?: PlayerId): void {
+    const frame: CustomFrame = { t: 'custom', kind, payload };
+    const raw = encodeFrame(frame);
+    if (target) {
+      this.clients.get(target)?.sendRaw(raw);
+      return;
+    }
+    for (const c of this.clients.values()) c.sendRaw(raw);
+  }
+
+  /** Build the snapshot events sent to a freshly-joined client:
+   * `presence:position` and (for players who have announced a name) the
+   * equivalent `avatar:update` for every other player.
+   *
+   * We intentionally do **NOT** include `world:settings` or `world:map`
+   * here. The browser owns those values (driven by its Leva panel /
+   * localStorage); applying the server's copy on connect would
+   * silently overwrite the user's persisted settings with SDK
+   * defaults, breaking renderer/collision agreement on the floor
+   * extent. The browser broadcasts its own world state via
+   * `SyncEngine.broadcastWorldState()` after subscribing, and the
+   * server's mirror channel + hub fan-out propagate it to bots; bots
+   * spawned later inherit the current server state via the
+   * `BotServer.getInitialWorld` seed. */
+  buildSnapshotFor(joinerId: PlayerId): NetEvent[] {
+    const state = this.store.getState();
+    const events: NetEvent[] = [];
+    let seq = 1;
+
+    for (const [id, p] of Object.entries(state.players)) {
+      if (id === joinerId) continue;
+      events.push({
+        kind: 'presence:position',
+        v: 1,
+        actorId: id as PlayerId,
+        seq: seq++,
+        t: Date.now(),
+        pos: p.pos,
+        vel: p.vel,
+        yaw: p.yaw,
+        isAirborne: p.isAirborne ?? false,
+      });
+      // The store's default name is '', so a name means the player sent
+      // an avatar:update.
+      if (p.name) {
+        events.push({
+          kind: 'avatar:update',
+          v: 1,
+          actorId: id as PlayerId,
+          seq: seq++,
+          t: Date.now(),
+          avatar: p.avatar,
+          name: p.name,
+        });
+      }
+    }
+    return events;
+  }
+}
+
+/**
+ * Game-state server hosting one {@link Room} per office. Clients pick
+ * their office in the `hello` frame; a missing `officeId` means the
+ * default room, which lives for the server's lifetime so in-process
+ * peers (see `BotServer`) can attach to it.
+ *
+ * Designed to be subclassed: see `BotServer` in the debug-app for an
+ * example that adds bot orchestration on top of the default room's hub.
+ */
+export class RealtimeServer {
+  readonly defaultRoom: Room;
+
+  private readonly rooms = new Map<string, Room>();
+  private readonly port: number;
+  private readonly path: string;
+  private httpServer: HttpServer | null = null;
+  private wss: WebSocketServer | null = null;
+  private customHandlers: CustomFrameHandler[] = [];
+
+  constructor(opts: RealtimeServerOptions = {}) {
+    this.port = opts.port ?? DEFAULT_PORT;
+    this.path = opts.path ?? DEFAULT_PATH;
+    this.defaultRoom = new Room(opts.officeId ?? DEFAULT_OFFICE_ID);
+    this.rooms.set(this.defaultRoom.officeId, this.defaultRoom);
+  }
+
   /** Register a handler for custom (`{ t: 'custom' }`) frames. Returns
    * an unsubscribe function. Handlers are called in registration order;
    * the first to return `true` wins. */
@@ -114,18 +185,9 @@ export class RealtimeServer {
     };
   }
 
-  /** Broadcast a custom frame to a specific client (or every client if
-   * `target` is omitted). Used by app-level code to push state changes
-   * (e.g. echoing a bot pool's current count back to the browser). */
+  /** Send a custom frame to the default room (see {@link Room.sendCustom}). */
   sendCustom(kind: string, payload: unknown, target?: PlayerId): void {
-    const frame: CustomFrame = { t: 'custom', kind, payload };
-    const raw = encodeFrame(frame);
-    if (target) {
-      const c = this.clients.get(target);
-      if (c) c.sendRaw(raw);
-      return;
-    }
-    for (const c of this.clients.values()) c.sendRaw(raw);
+    this.defaultRoom.sendCustom(kind, payload, target);
   }
 
   async start(): Promise<void> {
@@ -133,7 +195,9 @@ export class RealtimeServer {
     const http = createServer((req, res) => {
       if (req.url === '/health' && req.method === 'GET') {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, officeId: this.officeId }));
+        res.end(
+          JSON.stringify({ ok: true, offices: [...this.rooms.keys()] }),
+        );
         return;
       }
       res.writeHead(404);
@@ -164,8 +228,8 @@ export class RealtimeServer {
   }
 
   async stop(): Promise<void> {
-    for (const c of [...this.clients.values()]) c.terminate();
-    this.clients.clear();
+    for (const room of this.rooms.values()) room.close();
+    this.rooms.clear();
     if (this.wss) {
       await new Promise<void>((resolve) => this.wss!.close(() => resolve()));
       this.wss = null;
@@ -176,50 +240,21 @@ export class RealtimeServer {
       );
       this.httpServer = null;
     }
-    if (this.offMirror) {
-      this.offMirror();
-      this.offMirror = null;
-    }
   }
 
-  /** Build the snapshot events the server sends to a freshly-joined
-   * client. Currently only emits `presence:position` for every other
-   * player so the joiner sees who's already in the room.
-   *
-   * We intentionally do **NOT** include `world:settings` or `world:map`
-   * here. The browser owns those values (driven by its Leva panel /
-   * localStorage); applying the server's copy on connect would
-   * silently overwrite the user's persisted settings with SDK
-   * defaults, breaking renderer/collision agreement on the floor
-   * extent. The browser broadcasts its own world state via
-   * `SyncEngine.broadcastWorldState()` after subscribing, and the
-   * server's mirror channel + hub fan-out propagate it to bots; bots
-   * spawned later inherit the current server state via the
-   * `BotServer.getInitialWorld` seed. */
-  private buildSnapshotFor(joinerId: PlayerId): NetEvent[] {
-    const state = this.store.getState();
-    const events: NetEvent[] = [];
-    let seq = 1;
-
-    for (const [id, p] of Object.entries(state.players)) {
-      if (id === joinerId) continue;
-      events.push({
-        kind: 'presence:position',
-        v: 1,
-        actorId: id as PlayerId,
-        seq: seq++,
-        t: Date.now(),
-        pos: p.pos,
-        vel: p.vel,
-        yaw: p.yaw,
-        isAirborne: p.isAirborne ?? false,
-      });
+  private roomFor(officeId: string | undefined): Room {
+    const id = officeId ?? this.defaultRoom.officeId;
+    let room = this.rooms.get(id);
+    if (!room) {
+      room = new Room(id);
+      this.rooms.set(id, room);
     }
-    return events;
+    return room;
   }
 
   private onConnection(ws: WebSocket, _req: IncomingMessage): void {
     let client: WsClient | null = null;
+    let room: Room | null = null;
 
     ws.on('message', (raw) => {
       const text = typeof raw === 'string' ? raw : raw.toString('utf8');
@@ -228,16 +263,17 @@ export class RealtimeServer {
 
       if (frame.t === 'hello') {
         if (client) return; // already greeted
-        client = this.acceptClient(ws, frame.userId);
+        room = this.roomFor(frame.officeId);
+        client = this.acceptClient(room, ws, frame.userId);
         return;
       }
-      if (!client) return; // any other frame before hello is dropped
+      if (!client || !room) return; // any other frame before hello is dropped
 
-      this.handleFrame(client, frame);
+      this.handleFrame(room, client, frame);
     });
 
     ws.on('close', () => {
-      if (client) this.removeClient(client);
+      if (client && room) this.removeClient(room, client);
     });
 
     ws.on('error', () => {
@@ -245,31 +281,30 @@ export class RealtimeServer {
     });
   }
 
-  private acceptClient(ws: WebSocket, userId: PlayerId): WsClient {
+  private acceptClient(room: Room, ws: WebSocket, userId: PlayerId): WsClient {
     // Honor identity-checked detach: if a stale client with the same id
     // exists (rare — only on rapid reconnect), retire it first.
-    const existing = this.clients.get(userId);
-    if (existing) existing.terminate();
+    room.clients.get(userId)?.terminate();
 
-    const channel = new InMemoryChannel(this.hub, userId);
+    const channel = new InMemoryChannel(room.hub, userId);
     const client = new WsClient(userId, ws, channel);
-    this.clients.set(userId, client);
+    room.clients.set(userId, client);
 
     // Wire the channel into the hub. _deliver routes hub broadcasts
     // back out to this client's websocket; presence-change forwards
     // peer joins/leaves.
     void channel.subscribe();
-    client.attach(this.hub);
+    client.attach();
 
     // Send hello-ack + snapshot synchronously so the client's subscribe
     // handshake resolves quickly.
     ws.send(
       encodeFrame({
         t: 'hello-ack',
-        present: this.hub.present().filter((id) => id !== userId),
+        present: room.hub.present().filter((id) => id !== userId),
       }),
     );
-    const snapEvents = this.buildSnapshotFor(userId);
+    const snapEvents = room.buildSnapshotFor(userId);
     if (snapEvents.length > 0) {
       ws.send(encodeFrame({ t: 'snapshot', events: snapEvents }));
     }
@@ -277,26 +312,30 @@ export class RealtimeServer {
     return client;
   }
 
-  private removeClient(client: WsClient): void {
-    if (this.clients.get(client.userId) === client) {
-      this.clients.delete(client.userId);
+  private removeClient(room: Room, client: WsClient): void {
+    if (room.clients.get(client.userId) === client) {
+      room.clients.delete(client.userId);
     }
     client.detach();
+    if (room.clients.size === 0 && room !== this.defaultRoom) {
+      room.close();
+      this.rooms.delete(room.officeId);
+    }
   }
 
-  private handleFrame(client: WsClient, frame: Frame): void {
+  private handleFrame(room: Room, client: WsClient, frame: Frame): void {
     switch (frame.t) {
       case 'broadcast': {
         const v = validateNetEvent(frame.event);
         if (!v.ok) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
-        this.hub.broadcast(client.userId, v.event);
+        room.hub.broadcast(client.userId, v.event);
         return;
       }
       case 'track-presence': {
         const data = (frame as { data?: PresenceData }).data ?? {};
-        this.hub.trackPresence(client.userId, data);
+        room.hub.trackPresence(client.userId, data);
         return;
       }
       case 'custom': {
@@ -338,7 +377,7 @@ export class WsClient {
     this.channel = channel;
   }
 
-  attach(_hub: ReturnType<typeof createInMemoryChannelHub>): void {
+  attach(): void {
     this.offBroadcast = this.channel.on((event) => {
       this.sendRaw(encodeFrame({ t: 'broadcast', from: event.actorId, event }));
     });

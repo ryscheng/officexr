@@ -51,7 +51,7 @@ export class BotServer extends RealtimeServer {
     this.initialMode = opts.initialMode ?? 'wander';
     const localId = opts.localPlayerId ?? LOCAL_PLAYER_ID;
     this.pool = new BotPool({
-      createChannel: (botId) => new InMemoryChannel(this.hub, botId),
+      createChannel: (botId) => new InMemoryChannel(this.defaultRoom.hub, botId),
       localPlayerId: localId,
       // Each new bot inherits the server's *current* authoritative
       // world state — which the browser's `broadcastWorldState()`
@@ -59,7 +59,7 @@ export class BotServer extends RealtimeServer {
       // would use SDK defaults and collide against a different floor
       // extent than the renderer is showing.
       getInitialWorld: () => {
-        const state = this.store.getState();
+        const state = this.defaultRoom.store.getState();
         return {
           worldSettings: { ...state.worldSettings },
           worldMap: state.worldMap,

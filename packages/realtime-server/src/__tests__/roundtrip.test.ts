@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { NetEvent } from '@officexr/sdk';
+import {
+  applyNetEventToStore,
+  createActions,
+  createBus,
+  createStore,
+  type NetEvent,
+} from '@officexr/sdk';
 import { RealtimeServer } from '../server.ts';
 import { WsChannel } from '../ws-channel.ts';
 // Note: external consumers go via subpath exports:
@@ -107,7 +113,7 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     await a.send(makeMoveEvent('A', 7));
     // Give the server's mirror a moment to apply the event.
     await waitFor(
-      () => server.store.getState().players['A']?.pos.x === 7,
+      () => server.defaultRoom.store.getState().players['A']?.pos.x === 7,
       2000,
     );
 
@@ -125,6 +131,73 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
 
     a.close();
     b.close();
+  });
+
+  it('late joiner snapshot carries earlier avatar:update with the name', async () => {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    const a = new WsChannel({ url, userId: 'A' });
+    await a.subscribe();
+    await a.send(makeMoveEvent('A', 1));
+    await a.send({
+      kind: 'avatar:update',
+      v: 1,
+      actorId: 'A',
+      seq: 2,
+      t: 0,
+      avatar: { model: 'gnome' },
+      name: 'Alice',
+    });
+    await waitFor(() => server.defaultRoom.store.getState().players['A']?.name === 'Alice');
+
+    const b = new WsChannel({ url, userId: 'B' });
+    const received: NetEvent[] = [];
+    b.on((ev) => received.push(ev));
+    await b.subscribe();
+    await waitFor(() => received.some((e) => e.kind === 'avatar:update'));
+
+    const store = createStore({ selfId: 'B', officeId: 'test-office' });
+    const actions = createActions(store, createBus());
+    for (const ev of received) {
+      applyNetEventToStore(actions, ev, { now: () => Date.now() });
+    }
+    expect(store.getState().players['A']?.name).toBe('Alice');
+    expect(store.getState().players['A']?.avatar.model).toBe('gnome');
+
+    a.close();
+    b.close();
+  });
+
+  it('keeps offices isolated and allows one user in two offices', async () => {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    const a1 = new WsChannel({ url, userId: 'A', officeId: 'office-1' });
+    const b1 = new WsChannel({ url, userId: 'B', officeId: 'office-1' });
+    const a2 = new WsChannel({ url, userId: 'A', officeId: 'office-2' });
+    const c2 = new WsChannel({ url, userId: 'C', officeId: 'office-2' });
+    await Promise.all([a1.subscribe(), b1.subscribe(), a2.subscribe(), c2.subscribe()]);
+
+    const atB: NetEvent[] = [];
+    const atC: NetEvent[] = [];
+    const presenceC: string[] = [];
+    b1.on((e) => atB.push(e));
+    c2.on((e) => atC.push(e));
+    c2.onPresenceChange((joined, left) => presenceC.push(...joined, ...left));
+
+    await a1.send(makeMoveEvent('A', 3));
+    await waitFor(() => atB.length > 0);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(atC).toEqual([]);
+
+    b1.close();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(presenceC).not.toContain('B');
+
+    await a2.send(makeMoveEvent('A', 4));
+    await waitFor(() => atC.length > 0);
+    expect(a1.listPresent()).toEqual([]);
+
+    a1.close();
+    a2.close();
+    c2.close();
   });
 
   it('custom frames round-trip through onCustomFrame', async () => {
