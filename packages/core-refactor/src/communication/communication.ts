@@ -89,8 +89,7 @@ export class Communication {
     this.offEntered?.();
     this.offExited?.();
     this.started = false;
-    this.cancelLeave?.();
-    this.cancelLeave = null;
+    this.cancelPendingLeave();
     void this.voice.leaveRoom();
     this.currentRoom = null;
     this.nearby.clear();
@@ -116,11 +115,15 @@ export class Communication {
       }
       return;
     }
-    this.cancelLeave?.();
-    this.cancelLeave = null;
+    this.cancelPendingLeave();
     if (target === this.currentRoom) return;
     this.setRoom(target);
     await this.voice.joinRoom(target, { selfId: this.selfId });
+  }
+
+  private cancelPendingLeave(): void {
+    this.cancelLeave?.();
+    this.cancelLeave = null;
   }
 
   private async leave(): Promise<void> {
