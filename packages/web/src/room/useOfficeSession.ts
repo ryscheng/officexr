@@ -37,11 +37,11 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
     let office: OfficeSync | undefined;
     startOfficeSync({ local, channel, voice: voiceAdapter }).then(
       (started) => {
-        office = started;
         if (cancelled) {
           started.stop();
           return;
         }
+        office = started;
         // After start, so the sync engine announces the name to the office.
         local.actions.upsertPlayer({ id: me.login, name: me.name });
         setSession({ type: 'ready', local, office: started, bots });

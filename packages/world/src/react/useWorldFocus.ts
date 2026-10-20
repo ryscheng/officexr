@@ -16,11 +16,7 @@ import { useEffect, useState } from 'react';
  *   - mousedown anywhere else → `true`.
  *   - focusin (Tab key navigation) into a panel input → `false`.
  *
- * Why a hook instead of a global module: the indicator in the HUD
- * and the SceneFrame both need to react to focus changes. A React
- * state-bound hook composes cleanly with both — DebugApp passes
- * the boolean through `<Scene worldFocused={...}>` and reads it
- * inline for the indicator.
+ * Pass the result to `<Scene worldFocused>` and `<FocusIndicator>`.
  */
 export function useWorldFocus(): boolean {
   const [focused, setFocused] = useState(true);
