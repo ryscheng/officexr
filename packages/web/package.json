@@ -8,29 +8,29 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "start": "vite preview",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "supabase db push --yes --workdir ../.. --db-url \"$SUPABASE_DB_URL\""
   },
   "dependencies": {
-    "@jitsi/react-sdk": "^1.4.4",
-    "@officexr/core": "workspace:*",
-    "@supabase/supabase-js": "^2.49.4",
+    "pg": "^8.23.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-router-dom": "^7.5.1",
-    "three": "^0.182.0",
-    "uuid": "^13.0.0"
+    "react-router-dom": "^7.5.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/three": "^0.182.0",
-    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.4.1",
     "eslint": "^9",
+    "supabase": "^2.121.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vite": "^6.3.2"
+    "vite": "^6.3.2",
+    "vitest": "^4.1.3"
   }
 }

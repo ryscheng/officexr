@@ -61,8 +61,7 @@ officexr/
 │   │           └── avatar.ts
 │   ├── web/                    # @officexr/web — Vite browser build
 │   │   ├── index.html
-│   │   ├── vite.config.ts      # @ alias → ../core/src
-│   │   ├── public/             # Static assets
+│   │   ├── vite.config.ts      # React shell + /api server plugin
 │   │   └── .env.example
 │   ├── desktop/                # @officexr/desktop — Electron wrapper
 │   │   └── src/
@@ -110,8 +109,9 @@ cp packages/web/.env.example packages/web/.env
 ```
 
 ```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+OFFICEXR_DEV_USER_LOGIN=you@example.com   # dev server only; injected as Tailscale-User-Login
+OFFICEXR_DEV_USER_NAME=You                # dev server only; injected as Tailscale-User-Name
 VITE_JAAS_APP_ID=your-jaas-app-id
 VITE_JAAS_API_KEY_ID=your-jaas-api-key-id
 VITE_JAAS_PRIVATE_KEY=your-jaas-private-key-base64
@@ -125,6 +125,9 @@ Apply migrations to your Supabase project:
 supabase link --project-ref <your-project-id>
 supabase db push
 ```
+
+The web server runs migrations with `pnpm db:migrate` (reads `SUPABASE_DB_URL` from the shell environment, not `packages/web/.env`); run it before
+`pnpm --filter @officexr/web start`.
 
 ### Run
 
