@@ -1,5 +1,5 @@
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -60,6 +60,18 @@ async function start(hook: Hook, devUser?: { login: string; name: string }): Pro
   });
   await new Promise<void>((resolve) => server!.listen(0, resolve));
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+/** Sends `path` verbatim; `fetch` would normalise dot segments before the server sees them. */
+function rawStatus(base: string, path: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    request(`${base}${path}`, { path }, (res) => {
+      res.resume();
+      resolve(res.statusCode ?? 0);
+    })
+      .on('error', reject)
+      .end();
+  });
 }
 
 const tailscale = { 'Tailscale-User-Login': 'a@example.com', 'Tailscale-User-Name': 'Alice' };
@@ -136,6 +148,17 @@ describe('/models', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('model/gltf-binary');
     expect(await res.text()).toBe('glb');
-    expect((await fetch(`${base}/models/%2e%2e/%2e%2e/etc/passwd`)).status).toBe(404);
+  });
+
+  it('404s paths that escape the models dir', async () => {
+    const base = await start('configurePreviewServer');
+    expect(await rawStatus(base, '/models/..%2f..%2fetc%2fpasswd')).toBe(404);
+    expect(await rawStatus(base, '/models/characters/..%2f..%2f..%2f..%2fetc%2fpasswd')).toBe(404);
+  });
+
+  it('400s malformed escapes and keeps serving', async () => {
+    const base = await start('configurePreviewServer');
+    expect(await rawStatus(base, '/models/%E0%A4%A')).toBe(400);
+    expect((await fetch(`${base}/models/characters/Mage.glb`)).status).toBe(200);
   });
 });

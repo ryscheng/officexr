@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { PersistentLocalState } from '@officexr/core-refactor';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi, loadMap, type LoadedMap } from '@officexr/world/app';
 import {
@@ -75,7 +76,8 @@ function World({ office, me }: { office: Office; me: Identity }) {
   const { map, error: mapError } = useOfficeMap(office.map_name);
   const cameraMode = useCameraModeCycle();
   const worldFocused = useWorldFocus();
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
+  const [applied, setApplied] = useState<{ local: PersistentLocalState; map: LoadedMap } | null>(null);
   const local = session.type === 'ready' ? session.local : undefined;
   const names = usePlayerNames(local?.store);
 
@@ -93,6 +95,8 @@ function World({ office, me }: { office: Office; me: Identity }) {
     if (spawn) {
       local.actions.setSelfPosition({ ...spawn, y: spawn.y + SPAWN_DROP_HEIGHT }, { x: 0, y: 0, z: 0 }, 0, false);
     }
+    // <Scene> broadcasts the world state on mount, so it must not mount before the map is in the store.
+    setApplied({ local, map });
   }, [local, map, spawnPoints]);
 
   const error = session.type === 'error' ? session.message : mapError;
@@ -100,7 +104,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      {session.type === 'ready' && map && (
+      {session.type === 'ready' && applied?.local === session.local && applied.map === map && (
         <Scene
           store={session.local.store}
           actions={session.local.actions}
@@ -125,7 +129,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
           {office.name}: {names}
         </div>
       )}
-      {error && !dismissed && <ErrorBanner message={error} onDismiss={() => setDismissed(true)} />}
+      {error && error !== dismissedError && <ErrorBanner message={error} onDismiss={() => setDismissedError(error)} />}
     </div>
   );
 }

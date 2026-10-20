@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * useWorldFocus regressions. The hook drives the focus indicator +
  * the SceneFrame keyboard gate in Debug mode; getting these
@@ -10,7 +11,7 @@
  */
 import { describe, expect, it, afterEach } from 'vitest';
 import { render, renderHook, act, cleanup } from '@testing-library/react';
-import { useWorldFocus } from '@officexr/world/react';
+import { useWorldFocus } from './useWorldFocus.ts';
 
 afterEach(() => {
   cleanup();

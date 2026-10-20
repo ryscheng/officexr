@@ -1,5 +1,7 @@
 import type { CameraMode } from '../renderer/config.ts';
 
+export type HudRealtime = 'in-memory' | 'ws' | 'connecting' | 'ready' | 'error';
+
 /**
  * Top-right chip showing whether the 3D canvas owns keyboard input.
  * Pointer-events: none so clicking the chip doesn't count as a "focus
@@ -52,7 +54,7 @@ export function WorldHud({
   bakedLayoutName,
 }: {
   cameraMode: CameraMode;
-  realtime: string;
+  realtime: HudRealtime;
   /** Shown because the unbaked fallback is otherwise silent (a console.warn). */
   bakedLayoutName?: string;
 }) {

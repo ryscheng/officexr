@@ -125,7 +125,7 @@ import { DEFAULT_VIEW_CONFIG as RENDERER_VIEW_DEFAULTS } from '@officexr/world/r
 
 /** Bundled defaults — match the previous Leva hook initial values exactly. */
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
-  ...RENDERER_VIEW_DEFAULTS,
+  ...structuredClone(RENDERER_VIEW_DEFAULTS),
   animation: {
     idleSpeed: 1,
     walkSpeed: 1,

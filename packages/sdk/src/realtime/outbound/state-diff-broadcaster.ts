@@ -22,9 +22,10 @@ interface StateDiffBroadcasterOpts {
 /**
  * Owns broadcast of store mutations that are *append-only* (chat,
  * whiteboard strokes) or *snapshot-on-change* (worldSettings,
- * worldMap, characterConfigs, the local player's name + avatar). Each receives a diff via
- * `onStoreChange(next, prev)` and issues a single broadcast for each
- * newly-added record / changed struct, authored by self only.
+ * worldMap, characterConfigs, the local player's name + avatar). Each
+ * receives a diff via `onStoreChange(next, prev)` and issues a single
+ * broadcast for each newly-added record / changed struct, authored by
+ * self only.
  *
  * Anti-echo: when the InboundRouter applies a remote
  * `world:settings` / `world:map` / `world:characters`, the SyncEngine
