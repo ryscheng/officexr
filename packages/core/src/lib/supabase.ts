@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getRuntimeConfig } from './runtime-config';
 
 // NOTE: @supabase/postgrest-js ≥ v1.17 (supabase-js ≥ v2.50) requires every table to
 // have a `Relationships` field and the schema to have `Views` and `Functions`.
@@ -105,8 +106,7 @@ export type Database = {
   };
 };
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+const { VITE_SUPABASE_URL: supabaseUrl, VITE_SUPABASE_PUBLISHABLE_KEY: supabasePublishableKey } = getRuntimeConfig();
 
 if (!supabaseUrl || !supabasePublishableKey) {
   throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY environment variables');

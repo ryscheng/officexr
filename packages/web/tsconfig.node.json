@@ -8,7 +8,9 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "strict": true,
-    "composite": true
+    "composite": true,
+    "rootDir": "..",
+    "outDir": "node_modules/.tmp/tsconfig-node"
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "../core/src/lib/runtime-config-keys.ts"]
 }

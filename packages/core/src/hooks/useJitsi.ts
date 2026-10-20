@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { generateJaaSJwt } from '@/lib/jaasJwt';
+import { getRuntimeConfig } from '@/lib/runtime-config';
 import { PresenceEntry } from '@/types/room';
 
 export interface JitsiHandle {
@@ -83,9 +84,12 @@ export function useJitsi({
 
   // Generate JaaS JWT
   useEffect(() => {
-    const appId = import.meta.env.VITE_JAAS_APP_ID as string | undefined;
-    const apiKeyId = import.meta.env.VITE_JAAS_API_KEY_ID as string | undefined;
-    const privateKeyB64 = import.meta.env.VITE_JAAS_PRIVATE_KEY as string | undefined;
+    const {
+      VITE_JAAS_APP_ID: appId,
+      VITE_JAAS_API_KEY_ID: apiKeyId,
+      VITE_JAAS_PRIVATE_KEY: privateKeyB64,
+    } = getRuntimeConfig();
+    // ponytail: VITE_JAAS_PRIVATE_KEY is browser-visible by design until JWTs are minted server-side.
     const privateKey = privateKeyB64 ? atob(privateKeyB64) : undefined;
 
     if (!appId || !apiKeyId || !privateKey || !currentUser) {
