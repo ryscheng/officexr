@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   createStore,
   createActions,
@@ -63,6 +63,7 @@ describe('local-stack proximity → Communication integration', () => {
     voiceAdapter = stack.voiceAdapter as LocalVoiceAdapter;
 
     communication = new Communication({
+      officeId: 'debug-office',
       selfId: SELF_ID,
       store,
       actions,
@@ -89,8 +90,10 @@ describe('local-stack proximity → Communication integration', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(communication.getCurrentRoom()).not.toBeNull();
 
+    vi.useFakeTimers();
     bus.emit({ kind: 'proximity:exited', otherId: PEER_ID });
-    await new Promise((r) => setTimeout(r, 0));
+    await vi.advanceTimersByTimeAsync(1500);
+    vi.useRealTimers();
     expect(communication.getCurrentRoom()).toBeNull();
     expect(voiceAdapter.getCurrentRoom()).toBeNull();
   });

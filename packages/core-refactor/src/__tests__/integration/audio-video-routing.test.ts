@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createMultiClientHarness,
   type ClientHandle,
@@ -24,6 +24,7 @@ interface CommNode {
 function attachComm(client: ClientHandle): CommNode {
   const voice = new MockVoiceAdapter();
   const comm = new Communication({
+    officeId: 'o1',
     selfId: client.id,
     store: client.store,
     actions: client.actions,
@@ -55,10 +56,10 @@ describe('integration: audio-video routing', () => {
     const nodes = [attachComm(A), attachComm(B)];
     joinAll(nodes);
 
-    expect(nodes[0].voice.getCurrentRoom()).toBe('room-alice');
-    expect(nodes[1].voice.getCurrentRoom()).toBe('room-alice');
-    expect(A.store.getState().players['alice'].jitsiRoom).toBe('room-alice');
-    expect(B.store.getState().players['bob'].jitsiRoom).toBe('room-alice');
+    expect(nodes[0].voice.getCurrentRoom()).toBe('room-o1-alice');
+    expect(nodes[1].voice.getCurrentRoom()).toBe('room-o1-alice');
+    expect(A.store.getState().players['alice'].jitsiRoom).toBe('room-o1-alice');
+    expect(B.store.getState().players['bob'].jitsiRoom).toBe('room-o1-alice');
   });
 
   it('moving out of the bubble drops both clients from the room', async () => {
@@ -66,14 +67,17 @@ describe('integration: audio-video routing', () => {
     const A = await h.add('alice');
     const B = await h.add('bob');
     h.ensureMutualPresence();
+    vi.useFakeTimers();
     const nodes = [attachComm(A), attachComm(B)];
 
     joinAll(nodes);
-    expect(nodes[0].voice.getCurrentRoom()).toBe('room-alice');
+    expect(nodes[0].voice.getCurrentRoom()).toBe('room-o1-alice');
 
     // Both clients see the other leave proximity.
     A.bus.emit({ kind: 'proximity:exited', otherId: 'bob' });
     B.bus.emit({ kind: 'proximity:exited', otherId: 'alice' });
+    vi.advanceTimersByTime(1500);
+    vi.useRealTimers();
 
     expect(nodes[0].voice.getCurrentRoom()).toBeNull();
     expect(nodes[1].voice.getCurrentRoom()).toBeNull();
@@ -90,7 +94,7 @@ describe('integration: audio-video routing', () => {
     joinAll(nodes);
 
     for (const n of nodes) {
-      expect(n.voice.getCurrentRoom()).toBe('room-alice');
+      expect(n.voice.getCurrentRoom()).toBe('room-o1-alice');
     }
   });
 });

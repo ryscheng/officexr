@@ -14,6 +14,7 @@ import {
 import { DEFAULT_VIEW_CONFIG, Scene } from '@officexr/world/renderer';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
+import { JaasMeeting, MuteToggle } from '../voice/JaasMeeting';
 import { loadOfficeMap } from './loadOfficeMap';
 import { useOfficeSession } from './useOfficeSession';
 
@@ -121,6 +122,12 @@ function World({ office, me }: { office: Office; me: Identity }) {
           bakedLayoutPath={bakedLayoutName && `/api/baked-layouts/${encodeURIComponent(bakedLayoutName)}`}
           bakedLayoutName={bakedLayoutName}
         />
+      )}
+      {session.type === 'ready' && session.voice && (
+        <>
+          <JaasMeeting voice={session.voice} />
+          <MuteToggle voice={session.voice} />
+        </>
       )}
       <WorldHud cameraMode={cameraMode} realtime={session.type} bakedLayoutName={bakedLayoutName} />
       <FocusIndicator focused={worldFocused} />

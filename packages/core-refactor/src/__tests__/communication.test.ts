@@ -6,7 +6,7 @@ import {
   attachProximityReducer,
 } from '@officexr/sdk';
 import type { Store, Actions, Bus } from '@officexr/sdk';
-import { Communication } from '../communication/communication.ts';
+import { Communication, type Schedule } from '../communication/communication.ts';
 import { MockVoiceAdapter } from '../communication/mock-voice-adapter.ts';
 
 interface Ctx {
@@ -15,6 +15,26 @@ interface Ctx {
   bus: Bus;
   voice: MockVoiceAdapter;
   comm: Communication;
+  timer: FakeTimer;
+}
+
+/** Manual clock: `advance(ms)` runs whatever came due. */
+class FakeTimer {
+  private now = 0;
+  private pending: Array<{ at: number; fn: () => void }> = [];
+  readonly schedule: Schedule = (fn, ms) => {
+    const entry = { at: this.now + ms, fn };
+    this.pending.push(entry);
+    return () => {
+      this.pending = this.pending.filter((e) => e !== entry);
+    };
+  };
+  advance(ms: number): void {
+    this.now += ms;
+    const due = this.pending.filter((e) => e.at <= this.now);
+    this.pending = this.pending.filter((e) => e.at > this.now);
+    for (const e of due) e.fn();
+  }
 }
 
 function setup(selfId: string): Ctx {
@@ -24,9 +44,10 @@ function setup(selfId: string): Ctx {
   const bus = createBus();
   attachProximityReducer(store, bus);
   const voice = new MockVoiceAdapter();
-  const comm = new Communication({ selfId, store, actions, bus, voice });
+  const timer = new FakeTimer();
+  const comm = new Communication({ officeId: 'o1', selfId, store, actions, bus, voice, schedule: timer.schedule });
   comm.start();
-  return { store, actions, bus, voice, comm };
+  return { store, actions, bus, voice, comm, timer };
 }
 
 describe('Communication', () => {
@@ -39,25 +60,40 @@ describe('Communication', () => {
     ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
     const joinCalls = ctx.voice.calls.filter((c) => c.type === 'joinRoom');
     expect(joinCalls).toHaveLength(1);
-    expect(joinCalls[0].type === 'joinRoom' && joinCalls[0].roomId).toBe('room-alice');
-    expect(ctx.store.getState().players['alice'].jitsiRoom).toBe('room-alice');
+    expect(joinCalls[0].type === 'joinRoom' && joinCalls[0].roomId).toBe('room-o1-alice');
+    expect(ctx.store.getState().players['alice'].jitsiRoom).toBe('room-o1-alice');
   });
 
-  it('leaves the room when the last peer exits', () => {
+  it('leaves the room 1.5s after the last peer exits', () => {
     ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
     ctx.voice.clearCalls();
     ctx.bus.emit({ kind: 'proximity:exited', otherId: 'bob' });
-    const lastJoin = [...ctx.voice.calls].reverse().find((c) => c.type === 'joinRoom');
-    expect(lastJoin && lastJoin.type === 'joinRoom' && lastJoin.roomId).toBeNull();
+    ctx.timer.advance(1499);
+    expect(ctx.voice.calls).toHaveLength(0);
+    expect(ctx.store.getState().players['alice'].jitsiRoom).toBe('room-o1-alice');
+    ctx.timer.advance(1);
+    expect(ctx.voice.calls).toEqual([{ type: 'leaveRoom' }]);
+    expect(ctx.comm.getCurrentRoom()).toBeNull();
     expect(ctx.store.getState().players['alice'].jitsiRoom).toBeNull();
+  });
+
+  it('re-entering before the debounce elapses cancels the leave', () => {
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+    ctx.voice.clearCalls();
+    ctx.bus.emit({ kind: 'proximity:exited', otherId: 'bob' });
+    ctx.timer.advance(1000);
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+    ctx.timer.advance(5000);
+    expect(ctx.voice.calls).toHaveLength(0);
+    expect(ctx.comm.getCurrentRoom()).toBe('room-o1-alice');
   });
 
   it('switches to a smaller lex-min when a smaller-id peer arrives', () => {
     ctx.bus.emit({ kind: 'proximity:entered', otherId: 'charlie' });
-    expect(ctx.comm.getCurrentRoom()).toBe('room-alice');
+    expect(ctx.comm.getCurrentRoom()).toBe('room-o1-alice');
     ctx.bus.emit({ kind: 'proximity:entered', otherId: 'aaron' });
-    expect(ctx.comm.getCurrentRoom()).toBe('room-aaron');
-    expect(ctx.store.getState().players['alice'].jitsiRoom).toBe('room-aaron');
+    expect(ctx.comm.getCurrentRoom()).toBe('room-o1-aaron');
+    expect(ctx.store.getState().players['alice'].jitsiRoom).toBe('room-o1-aaron');
   });
 
   it('does not call joinRoom when proximity:entered fires for an already-known peer', () => {
@@ -73,7 +109,8 @@ describe('Communication', () => {
     ctx.bus.on('voice:room-changed', (e) => events.push(e.roomId));
     ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
     ctx.bus.emit({ kind: 'proximity:exited', otherId: 'bob' });
-    expect(events).toEqual(['room-alice', null]);
+    ctx.timer.advance(1500);
+    expect(events).toEqual(['room-o1-alice', null]);
   });
 
   it('seeds nearby from existing proximity state when started', () => {
@@ -85,10 +122,10 @@ describe('Communication', () => {
     // Simulate proximity already populated before Communication starts
     bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
     const voice = new MockVoiceAdapter();
-    const comm = new Communication({ selfId: 'alice', store, actions, bus, voice });
+    const comm = new Communication({ officeId: 'o1', selfId: 'alice', store, actions, bus, voice });
     comm.start();
     expect(comm.getNearby().has('bob')).toBe(true);
-    expect(voice.getCurrentRoom()).toBe('room-alice');
+    expect(voice.getCurrentRoom()).toBe('room-o1-alice');
   });
 
   it('stop() leaves the current room and clears state', async () => {
