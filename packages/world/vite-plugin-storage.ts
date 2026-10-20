@@ -98,9 +98,15 @@ export interface StudioStoragePluginOptions {
 export default function studioStoragePlugin(
   options: StudioStoragePluginOptions = {},
 ): Plugin {
+  const fromDataDir = options.dataDir ? dataDirOptions(options.dataDir) : {};
   const opts = {
-    ...(options.dataDir ? dataDirOptions(options.dataDir) : {}),
     ...options,
+    rooms: { ...fromDataDir.rooms, ...options.rooms },
+    maps: { ...fromDataDir.maps, ...options.maps },
+    layouts: { ...fromDataDir.layouts, ...options.layouts },
+    bakedLayouts: { ...fromDataDir.bakedLayouts, ...options.bakedLayouts },
+    legacyScenes: { ...fromDataDir.legacyScenes, ...options.legacyScenes },
+    catalog: { ...fromDataDir.catalog, ...options.catalog },
   };
   const roomsDir = opts.rooms?.dir ?? DEFAULT_ROOMS_DIR;
   const roomsBase = (opts.rooms?.basePath ?? '/api/rooms').replace(/\/$/, '');

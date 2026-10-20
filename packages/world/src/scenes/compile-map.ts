@@ -14,7 +14,7 @@ import { compileScene, type KindStrideLookup } from './compile.ts';
  * The resolver is intentionally optional (not part of the default
  * signature) so that all existing callers (room editor, map editor, and
  * any test that does not supply layouts) remain byte-for-byte unchanged.
- * Only the debug runtime (`useMapPicker`) opts in by passing this
+ * Only the runtime map loader (`loadMap` in `app/map-loader.ts`) opts in by passing this
  * function. Editor paths explicitly do NOT pass it — they only see the
  * room's own commands, which is the correct authoring-time behavior.
  */

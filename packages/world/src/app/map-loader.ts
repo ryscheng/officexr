@@ -89,6 +89,7 @@ export async function loadMap(
       bakedLayoutNames.add(layoutName);
     }
   }
+  // ponytail: <Scene> renders one baked layout; multi-layout maps need a bakedLayouts array prop.
   if (bakedLayoutNames.size > 1) {
     console.warn(
       `[map-loader] map "${mapDoc.name}" references multiple layouts; baked-layout rendering supports one`,

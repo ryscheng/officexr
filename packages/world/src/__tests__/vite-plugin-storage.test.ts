@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,7 +9,7 @@ import studioStorage, {
   dataDirOptions,
 } from '../../vite-plugin-storage.ts';
 
-type Handler = (req: any, res: any, next: () => void) => unknown;
+type Handler = (req: IncomingMessage, res: ServerResponse, next: () => void) => unknown;
 
 async function serve(options: Parameters<typeof studioStorage>[0]) {
   const mounts: Array<[string, Handler]> = [];
@@ -38,7 +38,7 @@ describe('studio storage plugin', () => {
   let server: Server | undefined;
 
   afterEach(async () => {
-    server?.close();
+    await new Promise((r) => (server ? server.close(r) : r(undefined)));
     if (dataDir) {
       await rm(dataDir, { recursive: true, force: true });
     }
@@ -54,6 +54,7 @@ describe('studio storage plugin', () => {
       }
     }
     await writeFile(path.join(dir, 'world-object-kinds.json'), '{}');
+    await writeFile(path.join(dir, 'maps', 'x.json'), '{}');
     const s = await serve({ dataDir: dir, readOnly });
     server = s.server;
     return s.url;
@@ -75,6 +76,9 @@ describe('studio storage plugin', () => {
     for (const base of [...BASE_PATHS, '/api/world-object-kinds']) {
       const get = await fetch(`${url}${base}/x`);
       expect(get.status, `GET ${base}`).not.toBe(405);
+      if (base === '/api/maps') {
+        expect(get.status).toBe(200);
+      }
       for (const method of ['PUT', 'DELETE', 'POST']) {
         const res = await fetch(`${url}${base}/x`, { method, body: method === 'DELETE' ? undefined : '{}' });
         expect(res.status, `${method} ${base}`).toBe(405);
