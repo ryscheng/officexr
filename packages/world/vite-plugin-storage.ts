@@ -28,7 +28,36 @@ const DEFAULT_CATALOG_FILE = path.resolve(HERE, 'world-object-kinds.json');
 const DEFAULT_LAYOUTS_DIR = path.resolve(HERE, 'layouts');
 const DEFAULT_BAKED_LAYOUTS_DIR = path.resolve(HERE, 'baked-layouts');
 
+type StorageEntry = { kind: 'dir' | 'file'; name: string };
+
+/** Per-entry layout of a studio data dir. */
+export const STORAGE_ENTRIES = {
+  rooms: { kind: 'dir', name: 'rooms' },
+  maps: { kind: 'dir', name: 'maps' },
+  layouts: { kind: 'dir', name: 'layouts' },
+  bakedLayouts: { kind: 'dir', name: 'baked-layouts' },
+  legacyScenes: { kind: 'dir', name: 'scenes' },
+  catalog: { kind: 'file', name: 'world-object-kinds.json' },
+} satisfies Record<string, StorageEntry>;
+
+/** Expands a data dir into the per-entry `dir` / `file` options. */
+export function dataDirOptions(dataDir: string) {
+  return Object.fromEntries(
+    Object.entries(STORAGE_ENTRIES).map(([key, { kind, name }]) => [
+      key,
+      kind === 'dir'
+        ? { dir: path.join(dataDir, name) }
+        : { file: path.join(dataDir, name) },
+    ]),
+  ) as Pick<StudioStoragePluginOptions, keyof typeof STORAGE_ENTRIES>;
+}
+
 export interface StudioStoragePluginOptions {
+  /** Root of a studio data dir; expands to every entry's dir/file. Explicit
+   * per-entry options win over it. */
+  dataDir?: string;
+  /** Reject every request except GET/HEAD with 405. */
+  readOnly?: boolean;
   rooms?: { dir?: string; basePath?: string };
   maps?: { dir?: string; basePath?: string };
   /** Single-document file. Default: `packages/world/world-object-kinds.json`. */
@@ -67,8 +96,18 @@ export interface StudioStoragePluginOptions {
  * Mounted on both the dev and preview servers.
  */
 export default function studioStoragePlugin(
-  opts: StudioStoragePluginOptions = {},
+  options: StudioStoragePluginOptions = {},
 ): Plugin {
+  const fromDataDir = options.dataDir ? dataDirOptions(options.dataDir) : {};
+  const opts = {
+    ...options,
+    rooms: { ...fromDataDir.rooms, ...options.rooms },
+    maps: { ...fromDataDir.maps, ...options.maps },
+    layouts: { ...fromDataDir.layouts, ...options.layouts },
+    bakedLayouts: { ...fromDataDir.bakedLayouts, ...options.bakedLayouts },
+    legacyScenes: { ...fromDataDir.legacyScenes, ...options.legacyScenes },
+    catalog: { ...fromDataDir.catalog, ...options.catalog },
+  };
   const roomsDir = opts.rooms?.dir ?? DEFAULT_ROOMS_DIR;
   const roomsBase = (opts.rooms?.basePath ?? '/api/rooms').replace(/\/$/, '');
   const mapsDir = opts.maps?.dir ?? DEFAULT_MAPS_DIR;
@@ -91,8 +130,15 @@ export default function studioStoragePlugin(
   ).replace(/\/$/, '');
   const mountLegacy = !opts.legacyScenes?.disable;
 
-  const mountStorage = (middlewares: Connect.Server) => {
-    middlewares.use(
+  const mountStorage = (server: Connect.Server) => {
+    const use = (base: string, handler: Connect.NextHandleFunction) =>
+      server.use(base, (req, res, next) => {
+        if (opts.readOnly && req.method !== 'GET' && req.method !== 'HEAD') {
+          return badMethod(res, ['GET', 'HEAD']);
+        }
+        return handler(req, res, next);
+      });
+    use(
       roomsBase,
       makeJsonResourceMiddleware({
         dir: roomsDir,
@@ -100,7 +146,7 @@ export default function studioStoragePlugin(
         validate: (raw: unknown) => deserializeScene(raw),
       }),
     );
-    middlewares.use(
+    use(
       mapsBase,
       makeJsonResourceMiddleware({
         dir: mapsDir,
@@ -108,11 +154,11 @@ export default function studioStoragePlugin(
         validate: (raw: unknown) => deserializeMap(raw),
       }),
     );
-    middlewares.use(
+    use(
       catalogBase,
       makeSingleDocumentMiddleware({ file: catalogFile }),
     );
-    middlewares.use(
+    use(
       layoutsBase,
       makeJsonResourceMiddleware({
         dir: layoutsDir,
@@ -120,12 +166,12 @@ export default function studioStoragePlugin(
         validate: (raw: unknown) => deserializeLayout(raw),
       }),
     );
-    middlewares.use(
+    use(
       bakedLayoutsBase,
       makeBinaryResourceMiddleware({ dir: bakedLayoutsDir }),
     );
     if (mountLegacy) {
-      middlewares.use(
+      use(
         legacyScenesBase,
         makeJsonResourceMiddleware({
           dir: legacyScenesDir,

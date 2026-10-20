@@ -8,11 +8,9 @@ import {
   LocalStorageLayoutStorage,
   LocalStorageMapStorage,
   LocalStorageRoomStorage,
-  type LayoutDocument,
-  type MapDocumentV1,
-  type RoomDocument,
   type SpawnPoint,
 } from '@officexr/world/scenes';
+import { loadMap as loadWorldMap } from '@officexr/world/app';
 import { useApplication } from '@officexr/world/react';
 
 const LAST_MAP_KEY = 'officexr:studio:lastMap';
@@ -49,13 +47,8 @@ export interface MapPickerState {
    * fall-respawn rule. Empty until the first map finishes loading;
    * empty for any map that doesn't author spawns. */
   spawnPoints: readonly Vec3[];
-  /** Room documents for the currently-loaded map, keyed by roomName.
-   * Empty until the first map finishes loading. Used by DebugApp to
-   * derive per-room `layoutName` values for baked-layout rendering. */
-  rooms: ReadonlyMap<string, RoomDocument>;
-  /** The MapDocumentV1 for the currently-loaded map.
-   * Null until the first map finishes loading. */
-  mapDoc: MapDocumentV1 | null;
+  /** The single layout the loaded map's rooms reference, if any. */
+  bakedLayoutName: string | undefined;
   /** Pick a different map; loads it, pushes WorldObjects, teleports
    *  the local player, and respawns bots. */
   choose: (name: string) => void;
@@ -129,80 +122,24 @@ export function useMapPicker({
   const [maps, setMaps] = useState<string[]>([initialName]);
   const [selected, setSelected] = useState<string>(initialName);
   const [spawnPoints, setSpawnPoints] = useState<readonly Vec3[]>([]);
-  const [rooms, setRooms] = useState<ReadonlyMap<string, RoomDocument>>(new Map());
-  const [mapDoc, setMapDoc] = useState<MapDocumentV1 | null>(null);
+  const [bakedLayoutName, setBakedLayoutName] = useState<string | undefined>();
 
   const loadMap = useCallback(
-    async (
-      name: string,
-    ): Promise<{ map: MapDocumentV1; spawns: SpawnPoint[] } | null> => {
+    async (name: string): Promise<{ spawns: SpawnPoint[] } | null> => {
       try {
-        // Wait for the catalog to land before compiling so the room
-        // service's stride lookup returns per-kind values (not the
-        // [1,1,1] fallback). Without this, deep-linking straight to
-        // #debug before #room mounts ObjectInstances would compile
-        // every map with overlapping cubes.
-        await catalogService.ready();
-        const map = await storage.maps.load(name);
-        if (!map) return null;
-        const refSet = new Set<string>();
-        for (const ri of map.rooms) refSet.add(ri.roomName);
-        const roomEntries = await Promise.all(
-          Array.from(refSet).map(async (roomName) => {
-            try {
-              const doc = await storage.rooms.load(roomName);
-              return doc ? ([roomName, doc] as const) : null;
-            } catch (err) {
-              console.warn(`[map-picker] room load("${roomName}") failed:`, err);
-              return null;
-            }
-          }),
+        const loaded = await loadWorldMap(
+          { storages: storage, catalog: catalogService, roomService },
+          name,
         );
-        const rooms = new Map<string, RoomDocument>();
-        for (const e of roomEntries) {
-          if (e) rooms.set(e[0], e[1]);
-        }
-
-        // Collect layout names referenced by baked-only rooms (rooms with
-        // layoutName set and empty commands). Load those layouts in parallel
-        // so compileMap can resolve their geometry for BotPhysicsWorld.
-        // This is the ONLY caller that opts into layout resolution — editor
-        // paths (map editor, room editor) do not pass layouts to compileMap.
-        const layoutNameSet = new Set<string>();
-        for (const room of rooms.values()) {
-          if (room.commands.length === 0 && room.layoutName !== undefined) {
-            layoutNameSet.add(room.layoutName);
-          }
-        }
-        const layoutEntries = await Promise.all(
-          Array.from(layoutNameSet).map(async (layoutName) => {
-            try {
-              const doc: LayoutDocument | null = await storage.layouts.load(layoutName);
-              return doc ? ([layoutName, doc] as const) : null;
-            } catch (err) {
-              console.warn(`[map-picker] layout load("${layoutName}") failed:`, err);
-              return null;
-            }
-          }),
-        );
-        const layouts = new Map<string, LayoutDocument>();
-        for (const e of layoutEntries) {
-          if (e) layouts.set(e[0], e[1]);
-        }
-
-        const a = actionsRef.current;
-        if (a) {
-          a.setWorldObjects(roomService.compileMap(map, rooms, layouts));
-        }
-        setRooms(rooms);
-        setMapDoc(map);
-        return { map, spawns: map.spawnPoints };
+        actionsRef.current?.setWorldObjects(loaded.worldObjects);
+        setBakedLayoutName(loaded.bakedLayoutName);
+        return { spawns: loaded.mapDoc.spawnPoints };
       } catch (err) {
         console.warn(`[map-picker] load("${name}") failed:`, err);
         return null;
       }
     },
-    [storage],
+    [storage, catalogService, roomService],
   );
 
   // Capture spawnDropHeight in a ref so changes propagate without
@@ -332,5 +269,5 @@ export function useMapPicker({
     })();
   }, [selected, loadMap, teleportLocal, respawnBots]);
 
-  return { maps, selected, spawnPoints, rooms, mapDoc, choose, reset, reloadList };
+  return { maps, selected, spawnPoints, bakedLayoutName, choose, reset, reloadList };
 }
