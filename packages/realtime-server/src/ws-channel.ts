@@ -127,6 +127,7 @@ export class WsChannel implements Channel {
         // reconnect by constructing a new WsChannel.
         this.closed = true;
       }
+      this.abortHandshake?.(new Error('WsChannel: closed before handshake'));
     });
     ws.addEventListener('error', () => {
       // Don't tear down here; the close event will follow.
@@ -137,6 +138,10 @@ export class WsChannel implements Channel {
         () => reject(new Error('WsChannel: handshake timeout')),
         this.handshakeTimeoutMs,
       );
+      this.abortHandshake = (err) => {
+        clearTimeout(timer);
+        reject(err);
+      };
       const onOpen = () => {
         ws.send(
           encodeFrame({
@@ -156,6 +161,7 @@ export class WsChannel implements Channel {
         clearTimeout(timer);
         ws.removeEventListener('open', onOpen);
         this.offHelloAck = null;
+        this.abortHandshake = null;
         resolve();
       };
       this.offHelloAck = onAck;
@@ -171,6 +177,7 @@ export class WsChannel implements Channel {
   /** Set during subscribe(); handleFrame routes hello-ack through this
    * so we can resolve the subscribe promise from a frame handler. */
   private offHelloAck: ((frame: Frame) => void) | null = null;
+  private abortHandshake: ((err: Error) => void) | null = null;
 
   async send(event: NetEvent): Promise<void> {
     if (this.closed || !this.subscribed || !this.ws) return;

@@ -1,23 +1,27 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Scene, CAMERA_MODES, type CameraMode } from '@officexr/world/renderer';
-import { useApplication } from '@officexr/world/react';
-import { SidePanel } from '../../ui/SidePanel.tsx';
-import { WorldPanels } from '../../panels/world/WorldPanels.tsx';
-import { useStudioSettings } from '../../panels/world/useStudioSettings.ts';
 import {
   createPersistentLocalState,
   type PersistentLocalState,
-} from '../../realtime/services.ts';
+} from '@officexr/core-refactor';
+import { Scene } from '@officexr/world/renderer';
+import {
+  ErrorBanner,
+  FocusIndicator,
+  useApplication,
+  useCameraModeCycle,
+  useWorldFocus,
+  WorldHud,
+} from '@officexr/world/react';
+import { SidePanel } from '../../ui/SidePanel.tsx';
+import { WorldPanels } from '../../panels/world/WorldPanels.tsx';
+import { useStudioSettings } from '../../panels/world/useStudioSettings.ts';
 import { useStackSwitcher } from '../../realtime/useStackSwitcher.ts';
 import { MapPickerPanel } from './MapPickerPanel.tsx';
 import { useMapPicker } from './useMapPicker.ts';
-import { useWorldFocus } from './useWorldFocus.ts';
 import { publishFrameStats } from '../../perf/frame-stats.ts';
 
 const SELF_ID = 'local-player';
 const OFFICE_ID = 'studio-office';
-
-type AppMode = 'in-memory' | 'ws';
 
 /**
  * Debug application. Owns the full multiplayer SDK stack: persistent
@@ -29,29 +33,9 @@ type AppMode = 'in-memory' | 'ws';
  * editors are completely separate apps that don't share this stack.
  */
 export function DebugApp() {
-  const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
+  const cameraMode = useCameraModeCycle();
   const [local, setLocal] = useState<PersistentLocalState | null>(null);
   const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
-
-  // Alt+P cycles camera modes (excluding the editor-only 'top-down'
-  // and 'free-fly' modes — those belong to the Scenes editor).
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey && e.code === 'KeyP') {
-        e.preventDefault();
-        setCameraMode((current) => {
-          const cycleable: CameraMode[] = CAMERA_MODES.filter(
-            (m) => m !== 'top-down' && m !== 'free-fly',
-          );
-          const i = cycleable.indexOf(current);
-          const nextIdx = i === -1 ? 0 : (i + 1) % cycleable.length;
-          return cycleable[nextIdx];
-        });
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
 
   useEffect(() => {
     const a = new Audio('/elevator-music.mp3');
@@ -169,9 +153,9 @@ export function DebugApp() {
             onFrameStats={publishFrameStats}
           />
         )}
-        <Hud
+        <WorldHud
           cameraMode={cameraMode}
-          mode={stack?.mode ?? 'in-memory'}
+          realtime={stack?.mode ?? 'in-memory'}
           bakedLayoutName={bakedLayoutName}
         />
         <FocusIndicator focused={worldFocused} />
@@ -194,127 +178,6 @@ export function DebugApp() {
           </div>
         </div>
       </SidePanel>
-    </div>
-  );
-}
-
-/**
- * Top-right chip showing whether the 3D canvas owns keyboard input.
- *   - Focused: green dot + "Controls active".
- *   - Blurred: amber dot + "Click world to control" prompt; the
- *     whole chip pulses gently so it draws the eye when the user
- *     starts typing and nothing happens.
- *
- * The chip itself is pointer-events: none so clicking ON it doesn't
- * register as a "focus the world" mousedown — the user has to click
- * the canvas behind it.
- */
-function FocusIndicator({ focused }: { focused: boolean }) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 12,
-        right: 12,
-        padding: '6px 10px',
-        background: focused ? 'rgba(0,0,0,0.55)' : 'rgba(146, 64, 14, 0.85)',
-        color: '#fff',
-        font: '12px system-ui, sans-serif',
-        borderRadius: 4,
-        pointerEvents: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        animation: focused ? undefined : 'officexr-focus-pulse 1.6s ease-in-out infinite',
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          display: 'inline-block',
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: focused ? '#22c55e' : '#fbbf24',
-          boxShadow: focused
-            ? '0 0 6px #22c55e'
-            : '0 0 6px #fbbf24',
-        }}
-      />
-      {focused ? 'Controls active' : 'Click world to control'}
-      <style>{`
-        @keyframes officexr-focus-pulse {
-          0%, 100% { opacity: 0.85; }
-          50% { opacity: 1; }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-function Hud({
-  cameraMode,
-  mode,
-  bakedLayoutName,
-}: {
-  cameraMode: CameraMode;
-  mode: AppMode;
-  /** The baked layout `<Scene>` is rendering, or undefined when the
-   * map fell back to per-object instanced rendering. Surfaced here
-   * because the fallback is otherwise silent (a console.warn) — the
-   * user deserves to SEE which render path they're profiling. */
-  bakedLayoutName?: string;
-}) {
-  const layoutLine = bakedLayoutName
-    ? `Layout: baked "${bakedLayoutName}"`
-    : 'Layout: unbaked (instanced objects)';
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 12,
-        left: 12,
-        padding: '6px 10px',
-        background: 'rgba(0,0,0,0.55)',
-        color: '#fff',
-        font: '12px system-ui, sans-serif',
-        borderRadius: 4,
-        pointerEvents: 'none',
-        whiteSpace: 'pre-line',
-      }}
-    >
-      {`Camera: ${cameraMode} (Alt+P to cycle) · Realtime: ${mode} · ${layoutLine}
-WASD to move · Click to look · Esc to release mouse`}
-    </div>
-  );
-}
-
-function ErrorBanner({
-  message,
-  onDismiss,
-}: {
-  message: string;
-  onDismiss: () => void;
-}) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 12,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        padding: '8px 14px',
-        background: 'rgba(180, 50, 50, 0.92)',
-        color: '#fff',
-        font: '12px system-ui, sans-serif',
-        borderRadius: 6,
-        cursor: 'pointer',
-        maxWidth: '90vw',
-      }}
-      onClick={onDismiss}
-      title="click to dismiss"
-    >
-      {message}
     </div>
   );
 }

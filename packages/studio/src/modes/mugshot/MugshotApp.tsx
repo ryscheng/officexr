@@ -8,11 +8,10 @@ import type {
   LightingViewConfig,
 } from '@officexr/world/renderer';
 import {
-  buildInMemoryStack,
   createPersistentLocalState,
-  type ChannelStack,
   type PersistentLocalState,
-} from '../../realtime/services.ts';
+} from '@officexr/core-refactor';
+import { buildInMemoryStack, type ChannelStack } from '../../realtime/services.ts';
 import { DEFAULT_VIEW_CONFIG, type ViewConfig } from '../../panels/world/types.ts';
 
 const SELF_ID = 'mugshot-player';

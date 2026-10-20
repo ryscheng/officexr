@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * useWorldFocus regressions. The hook drives the focus indicator +
  * the SceneFrame keyboard gate in Debug mode; getting these

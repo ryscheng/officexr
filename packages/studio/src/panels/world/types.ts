@@ -121,10 +121,11 @@ export interface BotSettings {
   mode: BotMode;
 }
 
-import { FIXED_CAMERA_DEFAULTS } from '@officexr/world/renderer';
+import { DEFAULT_VIEW_CONFIG as RENDERER_VIEW_DEFAULTS } from '@officexr/world/renderer';
 
 /** Bundled defaults — match the previous Leva hook initial values exactly. */
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
+  ...structuredClone(RENDERER_VIEW_DEFAULTS),
   animation: {
     idleSpeed: 1,
     walkSpeed: 1,
@@ -133,59 +134,6 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
     playerSpeed: 3,
     runMultiplier: 2,
     movementBlockThreshold: 0.9,
-  },
-  proximity: {
-    sensorRadius: 3,
-    outerRadius: 6,
-    enterDebounceMs: 500,
-    discRadius: 1.6,
-    pulseSpeed: 0.8,
-    intensity: 1,
-    enteringColor: '#ffd24a',
-    enteredColor: '#7be67b',
-    exitingColor: '#ff8c42',
-    meetingBorderInset: 0.05,
-    meetingBorderOutset: 0.05,
-    sparkleSpeed: 1.5,
-    sparkleFloatHeight: 1.5,
-    conversationDistance: 7,
-    conversationHeight: 5,
-    sparkleSize: 1,
-  },
-  lighting: {
-    sunPosition: [20, 40, 20],
-    sunColor: '#ffffff',
-    sunIntensity: 1.4,
-    ambientIntensity: 0.15,
-    castShadow: true,
-    shadowRange: 40,
-    shadowMapSize: 2048,
-    shadowBias: -0.0005,
-    shadowNormalBias: 0.02,
-    auxLightType: 'none',
-    auxIntensity: 1,
-    auxDistance: 0,
-    auxAngle: Math.PI / 6,
-    auxPenumbra: 0.2,
-    auxDecay: 2,
-    showSunDisc: true,
-    sunDiscRadius: 3,
-    sunDiscIntensity: 2,
-    ambientFillIntensity: 0,
-  },
-  background: {
-    topColor: '#02030a',
-    bottomColor: '#1a1238',
-  },
-  fixedCamera: {
-    azimuthDeg: FIXED_CAMERA_DEFAULTS.azimuthDeg,
-    pitchDeg: FIXED_CAMERA_DEFAULTS.pitchDeg,
-    height: FIXED_CAMERA_DEFAULTS.height,
-    maxOnScreenFrac: FIXED_CAMERA_DEFAULTS.maxOnScreenFrac,
-    minOnScreenFrac: FIXED_CAMERA_DEFAULTS.minOnScreenFrac,
-    lateralFrac: FIXED_CAMERA_DEFAULTS.lateralFrac,
-    fov: FIXED_CAMERA_DEFAULTS.fov,
-    movementYawOffsetDeg: 0,
   },
   bot: {
     count: 1,
