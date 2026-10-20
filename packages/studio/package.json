@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "start": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint:leva-free": "node scripts/lint-leva-free.js",

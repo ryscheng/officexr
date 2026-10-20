@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Plugin, ViteDevServer } from 'vite';
+import type { Plugin } from 'vite';
 import type { Connect } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 // Import directly from source modules instead of the scenes barrel.
@@ -64,7 +64,7 @@ export interface StudioStoragePluginOptions {
  *
  *   GET    /api/scenes/*             → legacy (back-compat for Task <6)
  *
- * **Dev-only.** Production studio falls back to localStorage adapters.
+ * Mounted on both the dev and preview servers.
  */
 export default function studioStoragePlugin(
   opts: StudioStoragePluginOptions = {},
@@ -91,51 +91,58 @@ export default function studioStoragePlugin(
   ).replace(/\/$/, '');
   const mountLegacy = !opts.legacyScenes?.disable;
 
-  return {
-    name: 'officexr:studio-storage',
-    configureServer(server: ViteDevServer) {
-      server.middlewares.use(
-        roomsBase,
+  const mountStorage = (middlewares: Connect.Server) => {
+    middlewares.use(
+      roomsBase,
+      makeJsonResourceMiddleware({
+        dir: roomsDir,
+        listKey: 'rooms',
+        validate: (raw: unknown) => deserializeScene(raw),
+      }),
+    );
+    middlewares.use(
+      mapsBase,
+      makeJsonResourceMiddleware({
+        dir: mapsDir,
+        listKey: 'maps',
+        validate: (raw: unknown) => deserializeMap(raw),
+      }),
+    );
+    middlewares.use(
+      catalogBase,
+      makeSingleDocumentMiddleware({ file: catalogFile }),
+    );
+    middlewares.use(
+      layoutsBase,
+      makeJsonResourceMiddleware({
+        dir: layoutsDir,
+        listKey: 'layouts',
+        validate: (raw: unknown) => deserializeLayout(raw),
+      }),
+    );
+    middlewares.use(
+      bakedLayoutsBase,
+      makeBinaryResourceMiddleware({ dir: bakedLayoutsDir }),
+    );
+    if (mountLegacy) {
+      middlewares.use(
+        legacyScenesBase,
         makeJsonResourceMiddleware({
-          dir: roomsDir,
-          listKey: 'rooms',
+          dir: legacyScenesDir,
+          listKey: 'scenes',
           validate: (raw: unknown) => deserializeScene(raw),
         }),
       );
-      server.middlewares.use(
-        mapsBase,
-        makeJsonResourceMiddleware({
-          dir: mapsDir,
-          listKey: 'maps',
-          validate: (raw: unknown) => deserializeMap(raw),
-        }),
-      );
-      server.middlewares.use(
-        catalogBase,
-        makeSingleDocumentMiddleware({ file: catalogFile }),
-      );
-      server.middlewares.use(
-        layoutsBase,
-        makeJsonResourceMiddleware({
-          dir: layoutsDir,
-          listKey: 'layouts',
-          validate: (raw: unknown) => deserializeLayout(raw),
-        }),
-      );
-      server.middlewares.use(
-        bakedLayoutsBase,
-        makeBinaryResourceMiddleware({ dir: bakedLayoutsDir }),
-      );
-      if (mountLegacy) {
-        server.middlewares.use(
-          legacyScenesBase,
-          makeJsonResourceMiddleware({
-            dir: legacyScenesDir,
-            listKey: 'scenes',
-            validate: (raw: unknown) => deserializeScene(raw),
-          }),
-        );
-      }
+    }
+  };
+
+  return {
+    name: 'officexr:studio-storage',
+    configureServer(server) {
+      mountStorage(server.middlewares);
+    },
+    configurePreviewServer(server) {
+      mountStorage(server.middlewares);
     },
   };
 }
