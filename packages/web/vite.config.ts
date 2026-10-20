@@ -1,52 +1,34 @@
-import { defineConfig, loadEnv, type Connect } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import path from 'path';
-import { RUNTIME_CONFIG_KEYS } from '../core/src/lib/runtime-config-keys';
+import pg from 'pg';
+import { officexrServer, type Office } from './server/api';
 
-// packages/core/src is one level up from packages/web
-const coreRoot = path.resolve(__dirname, '../core/src');
-
-/** Serves `/config.js` from env at request time so one build can be configured per deployment. */
-function configJsMiddleware(extraEnv: Record<string, string> = {}): Connect.NextHandleFunction {
-  return (req, res, next) => {
-    if (req.url?.split('?')[0] !== '/config.js') {
-      return next();
-    }
-    const env = { ...extraEnv, ...process.env };
-    const config = Object.fromEntries(
-      RUNTIME_CONFIG_KEYS.filter((key) => env[key] !== undefined).map((key) => [key, env[key]]),
+export default defineConfig(({ mode }) => {
+  const devEnv = loadEnv(mode, __dirname, '');
+  const env = { ...devEnv, ...process.env };
+  let pool: pg.Pool | undefined;
+  const queryOffices = async (id?: string) => {
+    pool ??= new pg.Pool({ connectionString: env.SUPABASE_DB_URL });
+    const { rows } = await pool.query<Office>(
+      `select id, name, description from offices ${id ? 'where id = $1' : ''} order by created_at`,
+      id ? [id] : [],
     );
-    res.setHeader('Content-Type', 'application/javascript');
-    res.setHeader('Cache-Control', 'no-store');
-    res.end(`window.__OFFICEXR_CONFIG__ = ${JSON.stringify(config)};`);
+    return rows;
   };
-}
+  const { OFFICEXR_DEV_USER_LOGIN: login, OFFICEXR_DEV_USER_NAME: name } = env;
 
-export default defineConfig(({ mode }) => ({
-  assetsInclude: ['**/*.exr'],
-  plugins: [
-    react(),
-    tailwindcss(),
-    {
-      name: 'officexr-runtime-config',
-      configureServer: (server) => {
-        server.middlewares.use(configJsMiddleware(loadEnv(mode, __dirname, 'VITE_')));
-      },
-      configurePreviewServer: (server) => {
-        server.middlewares.use(configJsMiddleware());
-      },
-    },
-  ],
-  preview: {
-    host: true,
-    port: Number(process.env.PORT) || 4173,
-    allowedHosts: true,
-  },
-  resolve: {
-    alias: [
-      // @/* resolves to packages/core/src — covers all web + shared imports.
-      { find: '@', replacement: coreRoot },
+  return {
+    assetsInclude: ['**/*.exr'],
+    plugins: [
+      react(),
+      tailwindcss(),
+      officexrServer({ queryOffices, devUser: login ? { login, name: name ?? login } : undefined, devEnv }),
     ],
-  },
-}));
+    preview: {
+      host: true,
+      port: Number(process.env.PORT) || 4173,
+      allowedHosts: true,
+    },
+  };
+});

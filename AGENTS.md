@@ -52,13 +52,14 @@ officexr/
 │   │       │   └── RoomPage.tsx # Route "/room/:id" — deep-link into a specific room
 │   │       └── types/
 │   │           └── avatar.ts   # AvatarCustomization, AvatarPreset, MARIO_PRESETS, etc.
-│   ├── web/                    # @officexr/web — Vite build wrapper for the browser
-│   │   ├── index.html          # SPA shell (entry: ../core/src/main.tsx)
-│   │   ├── vite.config.ts      # @ alias → ../core/src; assetsInclude EXR
+│   ├── web/                    # @officexr/web — React shell + small server API (Vite plugin)
+│   │   ├── index.html          # SPA shell (entry: src/main.tsx)
+│   │   ├── src/                # main.tsx, App.tsx: office list + room placeholder
+│   │   ├── server/             # /api/me, /api/offices (pg), /config.js; vitest specs
+│   │   ├── vite.config.ts
 │   │   ├── tsconfig.json
-│   │   ├── tsconfig.node.json
 │   │   ├── public/             # Static assets (SVGs etc.)
-│   │   └── .env.example        # VITE_SUPABASE_*, VITE_JAAS_*
+│   │   └── .env.example        # SUPABASE_DB_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*
 │   ├── desktop/                # @officexr/desktop — Electron wrapper
 │   │   └── src/
 │   │       ├── main.ts         # Electron main process
@@ -83,9 +84,8 @@ officexr/
 
 ## Shared Code Strategy
 
-All application source lives in **`packages/core/src`**. The web build (`packages/web`) is
-a thin Vite wrapper that points its entry and `@` alias at `packages/core/src` — it adds
-no application logic of its own.
+Most application source lives in **`packages/core/src`**. `packages/web` has its own
+source (`src/`, `server/`) and does not import `@officexr/core`.
 
 | What | Where |
 |------|-------|
@@ -178,10 +178,11 @@ pnpm --filter @officexr/mobile run ios
 
 ### Web (`packages/web/.env`)
 
-```
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
-```
+Identity comes from the `Tailscale-User-Login` / `Tailscale-User-Name` headers (no auth
+in the app); the server reads offices from Postgres via `SUPABASE_DB_URL`. Run
+`pnpm db:migrate` (applies `supabase/migrations` to `SUPABASE_DB_URL`) before `start`.
+For local dev set `OFFICEXR_DEV_USER_LOGIN` / `OFFICEXR_DEV_USER_NAME`; the dev server
+injects them as the Tailscale headers (never in preview).
 
 Copy from `packages/web/.env.example`. Vite loads `.env` from `packages/web/` when
 `pnpm dev` / `pnpm build` are run inside that package.
