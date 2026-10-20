@@ -251,6 +251,7 @@ export class RealtimeServer {
       typeof officeId === 'string' && officeId !== ''
         ? officeId
         : this.defaultRoom.officeId;
+    // ponytail: office ids and room count are unbounded; fine on a tailnet-only server.
     let room = this.rooms.get(id);
     if (!room) {
       room = new Room(id);

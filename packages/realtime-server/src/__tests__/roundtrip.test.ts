@@ -207,23 +207,26 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     const old = new RawWebSocket(url);
     await new Promise<void>((resolve) => old.once('open', () => resolve()));
     old.send(JSON.stringify({ t: 'hello', userId: 'A', officeId: 'office-x' }));
+    const oldClosed = new Promise<void>((resolve) => old.once('close', () => resolve()));
+
+    const a = new WsChannel({ url, userId: 'A', officeId: 'office-x' });
+    await a.subscribe();
+    await oldClosed;
+
+    const offices = async (): Promise<string[]> =>
+      ((await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as {
+        offices: string[];
+      }).offices;
+    // Let the server-side close of the old socket land.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(await offices()).toContain('office-x');
 
     const b = new WsChannel({ url, userId: 'B', officeId: 'office-x' });
     await b.subscribe();
     const received: NetEvent[] = [];
     b.on((e) => received.push(e));
-
-    const oldClosed = new Promise<void>((resolve) => old.once('close', () => resolve()));
-    const a = new WsChannel({ url, userId: 'A', officeId: 'office-x' });
-    await a.subscribe();
-    await oldClosed;
-
     await a.send(makeMoveEvent('A', 5));
     await waitFor(() => received.length > 0);
-    const health = (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as {
-      offices: string[];
-    };
-    expect(health.offices).toContain('office-x');
 
     a.close();
     b.close();
