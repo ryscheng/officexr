@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getRuntimeConfig } from '@/lib/runtime-config';
 
 interface ConnectionStatusBannerProps {
   // Realtime channel
@@ -53,11 +54,10 @@ export default function ConnectionStatusBanner({
       : 'Reconnecting…';
 
   // ── Voice section ────────────────────────────────────────────────────────
-  const missing = ([
-    !import.meta.env.VITE_JAAS_APP_ID      && 'VITE_JAAS_APP_ID',
-    !import.meta.env.VITE_JAAS_API_KEY_ID  && 'VITE_JAAS_API_KEY_ID',
-    !import.meta.env.VITE_JAAS_PRIVATE_KEY && 'VITE_JAAS_PRIVATE_KEY',
-  ] as (string | false)[]).filter(Boolean) as string[];
+  const config = getRuntimeConfig();
+  const missing = (
+    ['VITE_JAAS_APP_ID', 'VITE_JAAS_API_KEY_ID', 'VITE_JAAS_PRIVATE_KEY'] as const
+  ).filter((key) => !config[key]);
   const jaasConfigured = missing.length === 0;
 
   let voiceIcon: string;

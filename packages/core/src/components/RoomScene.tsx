@@ -14,6 +14,7 @@ import { useChannelLogger } from '@/hooks/useChannelLogger';
 import { PANEL_HEIGHT } from './NetworkDebugPanel';
 import { CameraMode, EnvironmentType } from '@/types/room';
 import { supabase } from '@/lib/supabase';
+import { getRuntimeConfig } from '@/lib/runtime-config';
 import { useAuth, signOut } from '@/hooks/useAuth';
 import { useMotionControls } from '@/hooks/useMotionControls';
 import { useRealtimeChannel } from '@/hooks/useRealtimeChannel';
@@ -1104,7 +1105,7 @@ export default function OfficeScene({ officeId, onLeave, onShowOfficeSelector }:
         <JitsiMeetingContainer
           retryCount={jitsiRetryCount}
           roomName={activeJitsiRoom}
-          appId={import.meta.env.VITE_JAAS_APP_ID ?? ''}
+          appId={getRuntimeConfig().VITE_JAAS_APP_ID ?? ''}
           jwt={jaasJwt}
           displayName={currentUser?.name || 'User'}
           email={user?.email || ''}
