@@ -7,6 +7,7 @@ import {
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import { BotPool } from '@officexr/world/bot';
+import { DEFAULT_VIEW_CONFIG, proximityWorldSettings } from '@officexr/world/renderer';
 import type { Identity } from '../../server/api';
 import { generateJaaSJwt } from '../voice/jaasJwt';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -32,6 +33,8 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
   useEffect(() => {
     setSession({ type: 'connecting' });
     const local = createPersistentLocalState({ selfId: me.login, officeId });
+    // Same voice/proximity boundary as the studio's defaults (its proximity panel applies these too).
+    local.actions.setWorldSettings(proximityWorldSettings(DEFAULT_VIEW_CONFIG.proximity));
     const voice = createJaasVoice(me);
     const { channel, voiceAdapter } = createStack({
       mode: 'ws',
