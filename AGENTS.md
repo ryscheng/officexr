@@ -19,9 +19,9 @@ officexr/
 ├── packages/
 │   ├── web/              # @officexr/web — office app
 │   │   ├── index.html    # SPA shell (entry: src/main.tsx)
-│   │   ├── src/          # App.tsx (office list), room/ (OfficeWorld, session, characters),
+│   │   ├── src/          # App.tsx (routing), home/ (office list + create form), room/ (OfficeWorld, session, characters),
 │   │   │                 # hud/ (chat), voice/ (JaaS proximity voice)
-│   │   ├── server/       # /api/me, /api/offices, /api/offices/:id/character (pg), /config.js; vitest specs
+│   │   ├── server/       # /api/me, /api/offices (list + create), /api/offices/:id/character (pg), /config.js; vitest specs
 │   │   ├── vite.config.ts
 │   │   └── .env.example  # SUPABASE_DB_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds

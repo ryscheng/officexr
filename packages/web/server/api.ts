@@ -1,7 +1,10 @@
+import { access } from 'node:fs/promises';
 import type { IncomingMessage } from 'node:http';
+import path from 'node:path';
 import type { Connect, Plugin } from 'vite';
 import { isCharacterName } from '@officexr/world/characters';
-import studioStorage from '@officexr/world/vite-plugin-storage';
+import { isValidSceneName } from '@officexr/world/scenes';
+import studioStorage, { resolveMapsDir } from '@officexr/world/vite-plugin-storage';
 import { configJsMiddleware } from './runtimeConfig';
 import { staticDirMiddleware } from './staticDir';
 
@@ -14,6 +17,17 @@ export interface Office {
 
 /** Lists all offices, or just the one with `id` when given. */
 export type QueryOffices = (id?: string) => Promise<Office[]>;
+
+export interface NewOffice {
+  name: string;
+  description: string | null;
+  mapName: string;
+}
+
+export type CreateOffice = (input: NewOffice) => Promise<Office>;
+
+/** Whether a studio map with this (already slug-validated) name exists. */
+export type MapExists = (name: string) => Promise<boolean>;
 
 /** Each user's character choice per office. */
 export interface OfficeCharacters {
@@ -71,7 +85,30 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-export function apiMiddleware(queryOffices: QueryOffices, characters: OfficeCharacters): Connect.NextHandleFunction {
+const MAX_NAME = 100;
+const MAX_DESCRIPTION = 500;
+
+/** The validated input, or the error to send back with a 400. */
+async function parseNewOffice(body: unknown, mapExists: MapExists): Promise<NewOffice | string> {
+  const { name, description, mapName } = (body ?? {}) as Record<string, unknown>;
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > MAX_NAME) {
+    return `name is required (max ${MAX_NAME} characters)`;
+  }
+  if (description !== undefined && (typeof description !== 'string' || description.length > MAX_DESCRIPTION)) {
+    return `description must be text (max ${MAX_DESCRIPTION} characters)`;
+  }
+  if (typeof mapName !== 'string' || !isValidSceneName(mapName) || !(await mapExists(mapName))) {
+    return 'Unknown map';
+  }
+  return { name: name.trim(), description: description?.trim() || null, mapName };
+}
+
+export function apiMiddleware(
+  queryOffices: QueryOffices,
+  characters: OfficeCharacters,
+  createOffice: CreateOffice,
+  mapExists: MapExists,
+): Connect.NextHandleFunction {
   return async (req, res, next) => {
     const path = req.url?.split('?')[0] ?? '';
     if (!path.startsWith('/api/')) {
@@ -88,7 +125,18 @@ export function apiMiddleware(queryOffices: QueryOffices, characters: OfficeChar
         return me ? send(200, me) : send(401, { error: 'Not identified via Tailscale' });
       }
       if (path === '/api/offices') {
-        return send(200, await queryOffices());
+        if (req.method === 'POST') {
+          if (!tailscaleIdentity(req)) {
+            return send(401, { error: 'Not identified via Tailscale' });
+          }
+          const body = await readJson(req);
+          if (body === TOO_LARGE) {
+            return send(413, { error: 'Body too large' });
+          }
+          const input = await parseNewOffice(body, mapExists);
+          return typeof input === 'string' ? send(400, { error: input }) : send(201, await createOffice(input));
+        }
+        return req.method === 'GET' ? send(200, await queryOffices()) : send(405, { error: 'Method not allowed' });
       }
       const characterOffice = path.match(/^\/api\/offices\/([^/]+)\/character$/)?.[1];
       if (characterOffice) {
@@ -142,6 +190,7 @@ function devUserMiddleware(user: Identity): Connect.NextHandleFunction {
 export interface ServerPluginOptions {
   queryOffices: QueryOffices;
   characters: OfficeCharacters;
+  createOffice: CreateOffice;
   /** Applied to the dev server only, never to preview. */
   devUser?: Identity;
   devEnv?: Record<string, string>;
@@ -154,13 +203,20 @@ export interface ServerPluginOptions {
 export function officexrServer({
   queryOffices,
   characters,
+  createOffice,
   devUser,
   devEnv,
   studioDataDir,
   modelsDir,
 }: ServerPluginOptions): Plugin[] {
   const models = staticDirMiddleware('/models', modelsDir);
-  const api = apiMiddleware(queryOffices, characters);
+  const mapsDir = resolveMapsDir(studioDataDir);
+  const mapExists: MapExists = (name) =>
+    access(path.join(mapsDir, `${name}.json`)).then(
+      () => true,
+      () => false,
+    );
+  const api = apiMiddleware(queryOffices, characters, createOffice, mapExists);
   return [
     // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
     studioStorage({ dataDir: studioDataDir, readOnly: true }),

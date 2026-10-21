@@ -3,7 +3,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import pg from 'pg';
-import { officexrServer, type Office, type OfficeCharacters } from './server/api';
+import { officexrServer, type CreateOffice, type Office, type OfficeCharacters } from './server/api';
 
 export default defineConfig(({ mode }) => {
   const devEnv = loadEnv(mode, __dirname, '');
@@ -25,6 +25,13 @@ export default defineConfig(({ mode }) => {
       id ? [id] : [],
     );
     return rows;
+  };
+  const createOffice: CreateOffice = async ({ name, description, mapName }) => {
+    const { rows } = await getPool().query<Office>(
+      'insert into offices (name, description, map_name) values ($1, $2, $3) returning id, name, description, map_name',
+      [name, description, mapName],
+    );
+    return rows[0];
   };
   const characters: OfficeCharacters = {
     get: async (officeId, login) => {
@@ -66,6 +73,7 @@ export default defineConfig(({ mode }) => {
       officexrServer({
         queryOffices,
         characters,
+        createOffice,
         devUser: login ? { login, name: name ?? login } : undefined,
         devEnv,
         studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,

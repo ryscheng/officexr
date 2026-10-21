@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Connect, PreviewServer, ViteDevServer } from 'vite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { officexrServer, type Office, type OfficeCharacters, type QueryOffices } from './api';
+import { officexrServer, type CreateOffice, type Office, type OfficeCharacters, type QueryOffices } from './api';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const OTHER = '33333333-3333-4333-8333-333333333333';
@@ -20,6 +20,12 @@ const outsideFile = path.join(modelsDir, '..', `${path.basename(modelsDir)}-secr
 writeFileSync(outsideFile, 'secret');
 const outsideName = encodeURIComponent(path.basename(outsideFile));
 const queryOffices: QueryOffices = async (id) => offices.filter((o) => !id || o.id === id);
+const createOffice: CreateOffice = async ({ name, description, mapName }) => ({
+  id: OTHER,
+  name,
+  description,
+  map_name: mapName,
+});
 const storedCharacters = new Map<string, string>();
 const characters: OfficeCharacters = {
   get: async (officeId, login) => storedCharacters.get(`${officeId}/${login}`) ?? null,
@@ -58,7 +64,7 @@ async function start(hook: Hook, devUser?: { login: string; name: string }): Pro
       },
     },
   };
-  for (const plugin of officexrServer({ queryOffices, characters, devUser, modelsDir })) {
+  for (const plugin of officexrServer({ queryOffices, characters, createOffice, devUser, modelsDir })) {
     (plugin[hook] as (s: ViteDevServer | PreviewServer) => void)(fake as unknown as ViteDevServer);
   }
   server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -141,6 +147,51 @@ describe('/api/offices', () => {
     expect(await (await fetch(`${base}/api/offices/${ID}`)).json()).toEqual(offices[0]);
     expect((await fetch(`${base}/api/offices/22222222-2222-4222-8222-222222222222`)).status).toBe(404);
     expect((await fetch(`${base}/api/offices/not-a-uuid`)).status).toBe(404);
+  });
+});
+
+describe('POST /api/offices', () => {
+  const post = (base: string, body: unknown, headers: Record<string, string> = tailscale) =>
+    fetch(`${base}/api/offices`, {
+      method: 'POST',
+      headers,
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+
+  it('creates an office', async () => {
+    const base = await start('configurePreviewServer');
+    const res = await post(base, { name: ' Lab ', description: 'Test', mapName: 'default' });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ id: OTHER, name: 'Lab', description: 'Test', map_name: 'default' });
+  });
+
+  it('is 401 without identity', async () => {
+    const base = await start('configurePreviewServer');
+    expect((await post(base, { name: 'Lab', mapName: 'default' }, {})).status).toBe(401);
+  });
+
+  it.each([
+    ['a blank name', { name: '  ', mapName: 'default' }],
+    ['a long name', { name: 'x'.repeat(101), mapName: 'default' }],
+    ['a non-string description', { name: 'Lab', description: 3, mapName: 'default' }],
+    ['a long description', { name: 'Lab', description: 'x'.repeat(501), mapName: 'default' }],
+    ['an unknown map', { name: 'Lab', mapName: 'nope' }],
+    ['a traversal map name', { name: 'Lab', mapName: '../x' }],
+    ['a missing map', { name: 'Lab' }],
+    ['a non-JSON body', '{'],
+  ])('is 400 for %s', async (_label, body) => {
+    const base = await start('configurePreviewServer');
+    expect((await post(base, body)).status).toBe(400);
+  });
+
+  it('is 413 past the body limit', async () => {
+    const base = await start('configurePreviewServer');
+    expect((await post(base, { name: 'Lab', description: 'x'.repeat(5000), mapName: 'default' })).status).toBe(413);
+  });
+
+  it('is 405 for other methods', async () => {
+    const base = await start('configurePreviewServer');
+    expect((await fetch(`${base}/api/offices`, { method: 'PUT', headers: tailscale })).status).toBe(405);
   });
 });
 

@@ -52,6 +52,11 @@ export function dataDirOptions(dataDir: string) {
   ) as Pick<StudioStoragePluginOptions, keyof typeof STORAGE_ENTRIES>;
 }
 
+/** The maps directory the plugin serves for `dataDir` (its default when unset). */
+export function resolveMapsDir(dataDir?: string): string {
+  return dataDir ? path.join(dataDir, STORAGE_ENTRIES.maps.name) : DEFAULT_MAPS_DIR;
+}
+
 export interface StudioStoragePluginOptions {
   /** Root of a studio data dir; expands to every entry's dir/file. Explicit
    * per-entry options win over it. */
