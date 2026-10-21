@@ -1,17 +1,18 @@
 import type { PlayerId } from '@officexr/sdk';
 
 /**
- * Lex-min room derivation: given the local user's id and the set of nearby
- * peer ids, returns a deterministic shared room id all parties will agree on.
+ * Lex-min room derivation: given the office, the local user's id and the set
+ * of nearby peer ids, returns a deterministic shared room id all parties will
+ * agree on.
  *
  * - If no nearby peers: returns null (caller leaves any current room).
- * - If at least one nearby peer: returns the lex-min of {self, ...nearby}.
- *   Two clients who agree on the membership set always derive the same room.
- *
- * This is the same lex-min seed today's `useJitsi.handleProximityChange`
- * uses.
+ * - If at least one nearby peer: returns the lex-min of {self, ...nearby},
+ *   scoped to the office so the same players in two offices never share a
+ *   room. Two clients who agree on the membership set always derive the same
+ *   room.
  */
 export function deriveJitsiRoom(
+  officeId: string,
   selfId: PlayerId,
   nearby: Iterable<PlayerId>,
 ): string | null {
@@ -24,5 +25,5 @@ export function deriveJitsiRoom(
   }
   if (!any) return null;
   ids.sort();
-  return `room-${ids[0]}`;
+  return `room-${officeId}-${ids[0]}`;
 }

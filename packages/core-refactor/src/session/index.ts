@@ -81,6 +81,7 @@ export async function startOfficeSync({
     serialize: () => serializeOfficeState(local.store.getState()),
   });
   const comm = new Communication({
+    officeId: local.officeId,
     selfId: local.selfId,
     store: local.store,
     actions: local.actions,

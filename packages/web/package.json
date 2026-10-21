@@ -14,6 +14,7 @@
     "db:migrate": "supabase db push --yes --workdir ../.. --db-url \"$SUPABASE_DB_URL\""
   },
   "dependencies": {
+    "@jitsi/react-sdk": "^1.4.4",
     "@officexr/core-refactor": "workspace:*",
     "@officexr/sdk": "workspace:*",
     "@officexr/world": "workspace:*",
@@ -24,12 +25,14 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4",
+    "@testing-library/react": "^16.1.0",
     "@types/node": "^22.7.5",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.4.1",
     "eslint": "^9",
+    "jsdom": "^25.0.1",
     "supabase": "^2.121.0",
     "tailwindcss": "^4",
     "typescript": "^5",

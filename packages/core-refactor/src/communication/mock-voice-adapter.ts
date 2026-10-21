@@ -5,6 +5,7 @@ import type {
   VoiceAdapterEvents,
   VoiceConnectionState,
 } from './types.ts';
+import { VoiceEventEmitter } from './voice-event-emitter.ts';
 
 /**
  * Test-only voice adapter. Records every joinRoom/leaveRoom/setMuted call
@@ -20,7 +21,7 @@ export class MockVoiceAdapter implements VoiceAdapter {
 
   private currentRoom: string | null = null;
   private connectionState: VoiceConnectionState = 'idle';
-  private handlers = new Map<VoiceAdapterEventName, Set<(payload: any) => void>>();
+  private events = new VoiceEventEmitter('mock-voice-adapter');
   private disposed = false;
 
   async joinRoom(roomId: string | null, opts?: { selfId: PlayerId }): Promise<void> {
@@ -57,22 +58,14 @@ export class MockVoiceAdapter implements VoiceAdapter {
     name: K,
     handler: (payload: VoiceAdapterEvents[K]) => void,
   ): () => void {
-    let set = this.handlers.get(name);
-    if (!set) {
-      set = new Set();
-      this.handlers.set(name, set);
-    }
-    set.add(handler as (payload: any) => void);
-    return () => {
-      this.handlers.get(name)?.delete(handler as (payload: any) => void);
-    };
+    return this.events.on(name, handler);
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.calls.push({ type: 'dispose' });
-    this.handlers.clear();
+    this.events.clear();
   }
 
   // -- test surface --
@@ -80,7 +73,7 @@ export class MockVoiceAdapter implements VoiceAdapter {
   /** Test-only: simulate a remote participant joining. */
   emitParticipantJoined(participantId: PlayerId): void {
     if (!this.currentRoom) return;
-    this.fire('remote-participant-joined', {
+    this.events.emit('remote-participant-joined', {
       roomId: this.currentRoom,
       participantId,
     });
@@ -88,7 +81,7 @@ export class MockVoiceAdapter implements VoiceAdapter {
 
   emitParticipantLeft(participantId: PlayerId): void {
     if (!this.currentRoom) return;
-    this.fire('remote-participant-left', {
+    this.events.emit('remote-participant-left', {
       roomId: this.currentRoom,
       participantId,
     });
@@ -101,21 +94,6 @@ export class MockVoiceAdapter implements VoiceAdapter {
 
   private setConnectionState(state: VoiceConnectionState): void {
     this.connectionState = state;
-    this.fire('connection-state-change', { state, roomId: this.currentRoom });
-  }
-
-  private fire<K extends VoiceAdapterEventName>(
-    name: K,
-    payload: VoiceAdapterEvents[K],
-  ): void {
-    const set = this.handlers.get(name);
-    if (!set) return;
-    for (const h of [...set]) {
-      try {
-        h(payload);
-      } catch (err) {
-        console.error('[mock-voice-adapter] handler threw:', err);
-      }
-    }
+    this.events.emit('connection-state-change', { state, roomId: this.currentRoom });
   }
 }

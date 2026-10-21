@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
 
+const FOCUS_WORLD_EVENT = 'officexr:focus-world';
+
+/** Hands the keyboard back to the world, as clicking the canvas would. */
+export function focusWorld(): void {
+  window.dispatchEvent(new Event(FOCUS_WORLD_EVENT));
+}
+
 /**
  * Tracks whether the in-world 3D canvas currently "has focus" for
  * keyboard input. The model:
@@ -43,7 +50,10 @@ export function useWorldFocus(): boolean {
 
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('focusin', onFocusIn);
+    const onFocusWorld = () => setFocused(true);
+    window.addEventListener(FOCUS_WORLD_EVENT, onFocusWorld);
     return () => {
+      window.removeEventListener(FOCUS_WORLD_EVENT, onFocusWorld);
       document.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('focusin', onFocusIn);
     };

@@ -61,7 +61,7 @@ export {
 // ViewConfig: the renderer-tweaker bag Scene takes. Editing UI for
 // these fields lives in the studio package
 // (`packages/studio/src/panels/world/`) — world stays panel-UI-free.
-export { DEFAULT_VIEW_CONFIG } from './viewConfig.ts';
+export { DEFAULT_VIEW_CONFIG, proximityWorldSettings } from './viewConfig.ts';
 export type {
   AuxLightType,
   ViewConfig,

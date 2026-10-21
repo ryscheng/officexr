@@ -14,6 +14,8 @@ import {
 import { DEFAULT_VIEW_CONFIG, Scene } from '@officexr/world/renderer';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
+import { ChatPanel } from '../hud/ChatPanel';
+import { JaasMeeting, MuteToggle } from '../voice/JaasMeeting';
 import { CharacterPicker } from './CharacterPicker';
 import { loadOfficeMap } from './loadOfficeMap';
 import { useOfficeSession } from './useOfficeSession';
@@ -124,8 +126,10 @@ function World({ office, me }: { office: Office; me: Identity }) {
           bakedLayoutName={bakedLayoutName}
         />
       )}
+      {session.type === 'ready' && session.voice && <JaasMeeting voice={session.voice} />}
       <WorldHud cameraMode={cameraMode} realtime={session.type} bakedLayoutName={bakedLayoutName} />
       <FocusIndicator focused={worldFocused} />
+      {local && <ChatPanel store={local.store} actions={local.actions} selfId={me.login} />}
       {names && (
         <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-black/55 px-2.5 py-1.5 text-xs text-white">
           {office.name}: {names}
@@ -133,6 +137,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
       )}
       <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
         {local && <CharacterPicker local={local} onSaveResult={setSaveError} />}
+        {session.type === 'ready' && session.voice && <MuteToggle voice={session.voice} />}
       </div>
       {error && error !== dismissedError && <ErrorBanner message={error} onDismiss={() => setDismissedError(error)} />}
     </div>

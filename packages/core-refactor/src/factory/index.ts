@@ -43,9 +43,10 @@ export interface WsStackConfig {
   /** Office to join on the server. Omitted means the server's default
    * office. */
   officeId?: string;
-  /** Voice callbacks. Same proximity-driven `LocalVoiceAdapter` as the
-   * `local` mode — the elevator audio is browser-side and doesn't need
-   * a real voice room. */
+  /** Real voice backend. Omitted means the same proximity-driven
+   * `LocalVoiceAdapter` as the `local` mode, driving the browser-side
+   * elevator audio through the callbacks below. */
+  voiceAdapter?: VoiceAdapter;
   onRoomJoined?: (roomId: string) => void;
   onRoomLeft?: () => void;
 }
@@ -94,10 +95,12 @@ export function createStack(config: StackConfig): Stack {
       userId: config.selfId,
       officeId: config.officeId,
     });
-    const voiceAdapter = new LocalVoiceAdapter({
-      onRoomJoined: config.onRoomJoined,
-      onRoomLeft: config.onRoomLeft,
-    });
+    const voiceAdapter =
+      config.voiceAdapter ??
+      new LocalVoiceAdapter({
+        onRoomJoined: config.onRoomJoined,
+        onRoomLeft: config.onRoomLeft,
+      });
     return { channel, voiceAdapter };
   }
 
