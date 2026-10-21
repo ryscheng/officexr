@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FilesystemMapStorage } from '@officexr/world/scenes';
-import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office } from '../../server/api';
+import type { Identity, Office } from '../../server/api';
+import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
 import { Async } from '../Async';
 import { DEFAULT_MAP } from '../room/loadOfficeMap';
 import { errorMessage, useApi, type ApiState } from '../useApi';

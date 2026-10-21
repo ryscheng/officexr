@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Connect, Plugin } from 'vite';
 import { isCharacterName } from '@officexr/world/characters';
 import studioStorage, { studioMapExists } from '@officexr/world/vite-plugin-storage';
+import { MAX_DESCRIPTION, MAX_NAME } from './officeLimits';
 import { configJsMiddleware } from './runtimeConfig';
 import { staticDirMiddleware } from './staticDir';
 
@@ -81,9 +82,6 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
     return null;
   }
 }
-
-export const MAX_NAME = 100;
-export const MAX_DESCRIPTION = 500;
 
 /** The validated input, or the error to send back with a 400. */
 async function parseNewOffice(body: unknown, mapExists: MapExists): Promise<NewOffice | string> {
