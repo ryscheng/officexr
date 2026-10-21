@@ -5,10 +5,20 @@ import { JaasVoiceAdapter, jitsiRoomName } from './JaasVoiceAdapter';
 
 class FakeJitsiApi extends EventEmitter {
   toggles = 0;
+  audioMuted = false;
   disposed = false;
+  /** `audioMuteStatusChanged` reports not yet delivered. */
+  private reports: boolean[] = [];
   executeCommand(name: string) {
     if (name === 'toggleAudio') {
       this.toggles++;
+      this.audioMuted = !this.audioMuted;
+      this.reports.push(this.audioMuted);
+    }
+  }
+  deliverReports() {
+    while (this.reports.length > 0) {
+      this.emit('audioMuteStatusChanged', { muted: this.reports.shift() });
     }
   }
   dispose() {
@@ -81,6 +91,39 @@ describe('JaasVoiceAdapter', () => {
     error.mockRestore();
   });
 
+  it('rejoins the same room after a fatal error', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    const first = voice.getMeeting()!;
+    api.emit('errorOccurred', { isFatal: true });
+    await voice.joinRoom('room-a');
+    expect(voice.getMeeting()).not.toBeNull();
+    expect(voice.getMeeting()!.key).not.toBe(first.key);
+    expect(api.disposed).toBe(true);
+  });
+
+  it('keeps the call up and mute working on a non-fatal error', async () => {
+    const { voice, states } = setup();
+    const api = await joinedMeeting(voice);
+    api.emit('errorOccurred', { isFatal: false });
+    voice.setMuted(true);
+    expect(states.at(-1)).toBe('connected');
+    expect(api.audioMuted).toBe(true);
+  });
+
+  it('ends on the clicked mute state when Jitsi reports trail quick toggles', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    voice.setMuted(true);
+    voice.setMuted(false);
+    voice.setMuted(true);
+    api.deliverReports();
+    expect(api.audioMuted).toBe(true);
+    voice.setMuted(false);
+    api.deliverReports();
+    expect(api.audioMuted).toBe(false);
+  });
+
   it('goes to error when the conference drops', async () => {
     const { voice, states } = setup();
     const api = await joinedMeeting(voice);
@@ -109,11 +152,12 @@ describe('JaasVoiceAdapter', () => {
     expect(api.toggles).toBe(1);
   });
 
-  it('follows mute changes Jitsi reports', async () => {
+  it('holds Jitsi to the button when Jitsi mutes on its own', async () => {
     const { voice } = setup();
     const api = await joinedMeeting(voice);
+    api.audioMuted = true;
     api.emit('audioMuteStatusChanged', { muted: true });
-    voice.setMuted(true);
-    expect(api.toggles).toBe(0);
+    api.deliverReports();
+    expect(api.audioMuted).toBe(false);
   });
 });

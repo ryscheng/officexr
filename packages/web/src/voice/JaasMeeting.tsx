@@ -13,7 +13,7 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
   // Kept in-viewport but invisible: fully off-screen, Chrome throttles the iframe's timers and the XMPP connection never completes.
   return (
     <div
-      key={meeting.roomName}
+      key={meeting.key}
       style={{ position: 'fixed', bottom: 0, right: 0, width: 480, height: 270, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
     >
       <JaaSMeeting

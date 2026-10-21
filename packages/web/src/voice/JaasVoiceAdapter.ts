@@ -15,6 +15,8 @@ export interface JaasVoiceOptions {
 
 /** What `<JaasMeeting>` renders for the current room. */
 export interface JaasMeetingTarget {
+  /** Unique per meeting, so re-joining the same room remounts the iframe. */
+  key: number;
   roomName: string;
   jwt: string;
 }
@@ -42,6 +44,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
   private jitsiMuted = false;
   private room: string | null = null;
   private meeting: JaasMeetingTarget | null = null;
+  private meetingCount = 0;
   private state: VoiceConnectionState = 'idle';
   private muted = false;
   private events = new VoiceEventEmitter('jaas-voice-adapter');
@@ -55,7 +58,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     if (roomId === null) {
       return this.leaveRoom();
     }
-    if (roomId === this.room) {
+    if (roomId === this.room && this.state !== 'error') {
       return;
     }
     this.room = roomId;
@@ -64,9 +67,10 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     try {
       const [jwt, roomName] = await Promise.all([this.options.jwt, jitsiRoomName(roomId)]);
       if (this.room === roomId) {
-        this.setMeeting({ roomName, jwt });
+        this.setMeeting({ key: ++this.meetingCount, roomName, jwt });
       }
-    } catch {
+    } catch (err) {
+      console.error('Could not join the JaaS room:', err);
       if (this.room === roomId) {
         this.setState('error');
       }
@@ -142,14 +146,26 @@ export class JaasVoiceAdapter implements VoiceAdapter {
       'audioMuteStatusChanged',
       ifCurrent(({ muted }: { muted: boolean }) => {
         this.jitsiMuted = muted;
+        // Reports can trail quick toggles; reconciling on each one converges on the last.
+        this.applyMute();
       }),
     );
-    const fail = ifCurrent(() => {
-      this.joined = false;
-      this.setState('error');
-    });
-    api.on('videoConferenceLeft', fail);
-    api.on('errorOccurred', fail);
+    api.on(
+      'videoConferenceLeft',
+      ifCurrent(() => {
+        this.joined = false;
+        this.setState('error');
+      }),
+    );
+    api.on(
+      'errorOccurred',
+      ifCurrent(({ isFatal }: { isFatal?: boolean }) => {
+        if (isFatal) {
+          this.joined = false;
+          this.setState('error');
+        }
+      }),
+    );
     api.on(
       'participantJoined',
       ifCurrent(({ id }: { id: string }) => this.events.emit('remote-participant-joined', { roomId, participantId: id })),
@@ -181,9 +197,10 @@ export class JaasVoiceAdapter implements VoiceAdapter {
 
   private setMeeting(meeting: JaasMeetingTarget | null): void {
     // `<JaaSMeeting>` never disposes its API on unmount, which would leak its window listeners.
-    this.api?.dispose();
+    const api = this.api;
     this.api = null;
     this.joined = false;
+    api?.dispose();
     this.meeting = meeting;
     for (const listener of [...this.meetingListeners]) {
       listener();
