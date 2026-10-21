@@ -4,7 +4,7 @@ import {
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import type { Vec3 } from '@officexr/sdk';
-import { PlayView, useApplication, type PlayStorages } from '@officexr/world/react';
+import { PlayView, useApplication } from '@officexr/world/react';
 import {
   FilesystemLayoutStorage,
   FilesystemMapStorage,
@@ -24,7 +24,7 @@ import { publishFrameStats } from '../../perf/frame-stats.ts';
 const SELF_ID = 'local-player';
 const OFFICE_ID = 'studio-office';
 
-function createStorages(): PlayStorages {
+function createStorages() {
   try {
     return {
       maps: new FilesystemMapStorage(),

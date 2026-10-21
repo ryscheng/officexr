@@ -6,8 +6,6 @@ import {
   type OfficeSync,
   type PersistentLocalState,
 } from '@officexr/core-refactor';
-import { BotPool } from '@officexr/world/bot';
-import { DEFAULT_VIEW_CONFIG, proximityWorldSettings } from '@officexr/world/renderer';
 import type { Identity } from '../../server/api';
 import { generateJaaSJwt } from '../voice/jaasJwt';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -16,7 +14,7 @@ import { loadCharacter } from './character';
 
 export type OfficeSession =
   | { type: 'connecting' }
-  | { type: 'ready'; local: PersistentLocalState; office: OfficeSync; bots: BotPool; voice: JaasVoiceAdapter | null }
+  | { type: 'ready'; local: PersistentLocalState; office: OfficeSync; voice: JaasVoiceAdapter | null }
   | { type: 'error'; message: string };
 
 function createJaasVoice(me: Identity): JaasVoiceAdapter | null {
@@ -34,8 +32,6 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
   useEffect(() => {
     setSession({ type: 'connecting' });
     const local = createPersistentLocalState({ selfId: me.login, officeId });
-    // Same voice/proximity boundary as the studio's defaults (its proximity panel applies these too).
-    local.actions.setWorldSettings(proximityWorldSettings(DEFAULT_VIEW_CONFIG.proximity));
     const voice = createJaasVoice(me);
     const { channel, voiceAdapter } = createStack({
       mode: 'ws',
@@ -43,13 +39,6 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
       selfId: me.login,
       officeId,
       voiceAdapter: voice ?? undefined,
-    });
-    // <Scene> requires a pool; this page never spawns bots.
-    const bots = new BotPool({
-      createChannel: () => {
-        throw new Error('the office page runs no bots');
-      },
-      localPlayerId: me.login,
     });
     let cancelled = false;
     let office: OfficeSync | undefined;
@@ -69,7 +58,7 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
         }
         // After start, so the sync engine announces the name and character to the office.
         local.actions.upsertPlayer({ id: me.login, name: me.name, avatar: { model } });
-        setSession({ type: 'ready', local, office: started, bots, voice });
+        setSession({ type: 'ready', local, office: started, voice });
       },
       (err: Error) => {
         if (!cancelled) {
@@ -80,7 +69,6 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
     return () => {
       cancelled = true;
       office?.stop();
-      bots.stop();
       voiceAdapter.dispose();
       channel.close();
     };

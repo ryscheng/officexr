@@ -1,6 +1,6 @@
 import type { CameraMode } from '../renderer/config.ts';
 
-export type HudRealtime = 'in-memory' | 'ws' | 'connecting' | 'ready' | 'error';
+export type HudRealtime = 'in-memory' | 'ws';
 
 /**
  * Top-right chip showing whether the 3D canvas owns keyboard input.

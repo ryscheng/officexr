@@ -18,7 +18,7 @@ export class MapNotFoundError extends Error {
 }
 
 export interface MapLoaderDeps {
-  storages: { maps: MapStorage; rooms: RoomStorage; layouts: LayoutStorage };
+  storages: { maps: Pick<MapStorage, 'load'>; rooms: RoomStorage; layouts: LayoutStorage };
   catalog: Pick<CatalogService, 'ready'>;
   roomService: Pick<RoomService, 'compileMap'>;
 }
