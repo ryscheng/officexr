@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import type { Actions } from '@officexr/sdk';
 import type { BotMode } from '@officexr/world/bot';
+import { proximityWorldSettings } from '@officexr/world/renderer';
 
 import { Button } from '../../components/ui/button.tsx';
 import {
@@ -278,13 +279,7 @@ interface ProximityPanelProps {
 function ProximityPanel({ proximity, setSection, actions }: ProximityPanelProps) {
   useEffect(() => {
     if (!actions) return;
-    actions.setWorldSettings({
-      proximityRadius: proximity.sensorRadius,
-      proximityOuterRadius: proximity.outerRadius,
-      proximityEnterDebounceMs: proximity.enterDebounceMs,
-      conversationCameraDistance: proximity.conversationDistance,
-      conversationCameraHeight: proximity.conversationHeight,
-    });
+    actions.setWorldSettings(proximityWorldSettings(proximity));
   }, [
     actions,
     proximity.sensorRadius,

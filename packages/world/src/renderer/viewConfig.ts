@@ -10,6 +10,7 @@
  * of calling a Leva hook internally — the renderer stays UI-free
  * (SOLID: world doesn't depend on a UI library).
  */
+import type { WorldSettings } from '@officexr/sdk';
 import { FIXED_CAMERA_DEFAULTS } from './config.ts';
 
 export type AuxLightType = 'none' | 'spot' | 'point';
@@ -154,3 +155,14 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
     movementYawOffsetDeg: 0,
   },
 };
+
+/** The gameplay half of the proximity config, as the world settings every client's sensors read. */
+export function proximityWorldSettings(proximity: ProximityViewConfig): Partial<WorldSettings> {
+  return {
+    proximityRadius: proximity.sensorRadius,
+    proximityOuterRadius: proximity.outerRadius,
+    proximityEnterDebounceMs: proximity.enterDebounceMs,
+    conversationCameraDistance: proximity.conversationDistance,
+    conversationCameraHeight: proximity.conversationHeight,
+  };
+}
