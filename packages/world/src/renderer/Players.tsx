@@ -13,7 +13,8 @@ import {
 import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
 import type { Bus, OfficeState, Store } from '@officexr/sdk';
 import { Adventurer } from './Adventurer.tsx';
-import { CHARACTERS, type CameraMode, type CharacterName } from './config.ts';
+import type { CameraMode, CharacterName } from './config.ts';
+import { pickCharacterForPlayer } from '../characters/registry.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
   BODY_GROUPS,
@@ -94,24 +95,15 @@ interface PlayerEntry {
 
 const WALK_THRESHOLD = 0.05;
 
-function pickCharacter(): CharacterName {
-  return CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
-}
+const playerEntries = (state: OfficeState): PlayerEntry[] =>
+  Object.entries(state.players).map(([id, player]) => ({
+    id,
+    character: pickCharacterForPlayer(id, player.avatar.model),
+  }));
 
-/** Use `state.players[id].avatar.model` as the rendered character if
- * it's a valid `CharacterName` (e.g. Mugshot mode sets it explicitly);
- * otherwise pick at random. Lets a caller deterministically force a
- * specific character without us having to thread a new prop through. */
-function pickCharacterForPlayer(
-  state: OfficeState,
-  id: string,
-): CharacterName {
-  const model = state.players[id]?.avatar.model;
-  if (model && (CHARACTERS as readonly string[]).includes(model)) {
-    return model as CharacterName;
-  }
-  return pickCharacter();
-}
+const sameEntries = (a: PlayerEntry[], b: PlayerEntry[]) =>
+  a.length === b.length &&
+  a.every((p, i) => p.id === b[i].id && p.character === b[i].character);
 
 /** Rotate `from` toward `to` by at most `maxStep` radians along the shortest arc. */
 function stepTowardAngle(from: number, to: number, maxStep: number): number {
@@ -168,35 +160,16 @@ export function Players({
     proximityOuterRadius,
   } = worldSettings;
   const runSpeed = playerSpeed * runSpeedMultiplier;
-  const initialState = useMemo(() => store.getState(), [store]);
   const [players, setPlayers] = useState<PlayerEntry[]>(() =>
-    Object.keys(initialState.players).map((id) => ({
-      id,
-      character: pickCharacterForPlayer(initialState, id),
-    })),
+    playerEntries(store.getState()),
   );
 
-  // Subscribe to player-id set changes only (not positions).
+  // Re-render only when the player set or someone's character changes, not on movement.
   useEffect(() => {
-    const unsubscribe = store.subscribeAll(
-      (next: OfficeState, prev: OfficeState) => {
-        const nextIds = Object.keys(next.players);
-        const prevIds = Object.keys(prev.players);
-        if (
-          nextIds.length === prevIds.length &&
-          nextIds.every((id, i) => id === prevIds[i])
-        ) {
-          return;
-        }
-        setPlayers((current) => {
-          const byId = new Map(current.map((p) => [p.id, p]));
-          return nextIds.map(
-            (id) =>
-              byId.get(id) ?? { id, character: pickCharacterForPlayer(next, id) },
-          );
-        });
-      },
-    );
+    const unsubscribe = store.subscribeAll((next: OfficeState) => {
+      const entries = playerEntries(next);
+      setPlayers((current) => (sameEntries(current, entries) ? current : entries));
+    });
     return unsubscribe;
   }, [store]);
 
@@ -452,9 +425,6 @@ export function Players({
         // peer to `pairStates` with state="exiting" and the glow stays
         // on permanently. Spawning at the actual position avoids the
         // phantom frame-1 overlap entirely.
-        // Read store directly: `initialState` is frozen at first
-        // mount; new peers join after that and need their *current*
-        // broadcast position, not the (0,0,0) default.
         const currentPlayer = store.getState().players[p.id];
         const spawn = currentPlayer?.pos ?? { x: 0, y: 0, z: 0 };
         return (
@@ -532,6 +502,8 @@ export function Players({
               }}
             >
               <PerPlayerAdventurer
+                // Remount on a character change so the animation mixer binds to the new model's bones.
+                key={p.character}
                 playerId={p.id}
                 character={p.character}
                 motion={motionByPlayer[p.id] ?? 'idle'}

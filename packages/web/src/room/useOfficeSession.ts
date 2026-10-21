@@ -8,6 +8,7 @@ import {
 } from '@officexr/core-refactor';
 import { BotPool } from '@officexr/world/bot';
 import type { Identity } from '../../server/api';
+import { loadCharacter } from './character';
 
 export type OfficeSession =
   | { type: 'connecting' }
@@ -36,15 +37,15 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
     let cancelled = false;
     let office: OfficeSync | undefined;
     // ponytail: a server-initiated close (same login in another tab, sidecar restart) isn't surfaced or retried.
-    startOfficeSync({ local, channel, voice: voiceAdapter }).then(
-      (started) => {
+    Promise.all([startOfficeSync({ local, channel, voice: voiceAdapter }), loadCharacter(officeId, me.login)]).then(
+      ([started, model]) => {
         if (cancelled) {
           started.stop();
           return;
         }
         office = started;
-        // After start, so the sync engine announces the name to the office.
-        local.actions.upsertPlayer({ id: me.login, name: me.name });
+        // After start, so the sync engine announces the name and character to the office.
+        local.actions.upsertPlayer({ id: me.login, name: me.name, avatar: { model } });
         setSession({ type: 'ready', local, office: started, bots });
       },
       (err: Error) => {

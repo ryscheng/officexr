@@ -14,6 +14,7 @@ import {
 import { DEFAULT_VIEW_CONFIG, Scene } from '@officexr/world/renderer';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
+import { CharacterPicker } from './CharacterPicker';
 import { loadOfficeMap } from './loadOfficeMap';
 import { useOfficeSession } from './useOfficeSession';
 
@@ -77,6 +78,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
   const cameraMode = useCameraModeCycle();
   const worldFocused = useWorldFocus();
   const [dismissedError, setDismissedError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [applied, setApplied] = useState<{ local: PersistentLocalState; map: LoadedMap } | null>(null);
   const local = session.type === 'ready' ? session.local : undefined;
   const names = usePlayerNames(local?.store);
@@ -99,7 +101,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
     setApplied({ local, map });
   }, [local, map, spawnPoints]);
 
-  const error = session.type === 'error' ? session.message : mapError;
+  const error = session.type === 'error' ? session.message : (mapError ?? saveError);
   const bakedLayoutName = map?.bakedLayoutName;
 
   return (
@@ -129,6 +131,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
           {office.name}: {names}
         </div>
       )}
+      {local && <CharacterPicker local={local} onError={setSaveError} />}
       {error && error !== dismissedError && <ErrorBanner message={error} onDismiss={() => setDismissedError(error)} />}
     </div>
   );

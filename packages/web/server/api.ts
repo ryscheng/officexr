@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { Connect, Plugin } from 'vite';
+import { isCharacterName } from '@officexr/world/characters';
 import studioStorage from '@officexr/world/vite-plugin-storage';
 import { configJsMiddleware } from './runtimeConfig';
 import { staticDirMiddleware } from './staticDir';
@@ -13,6 +14,12 @@ export interface Office {
 
 /** Lists all offices, or just the one with `id` when given. */
 export type QueryOffices = (id?: string) => Promise<Office[]>;
+
+/** Each user's character choice per office. */
+export interface OfficeCharacters {
+  get: (officeId: string, login: string) => Promise<string | null>;
+  set: (officeId: string, login: string, characterId: string) => Promise<void>;
+}
 
 export interface Identity {
   login: string;
@@ -43,7 +50,19 @@ export function tailscaleIdentity(req: IncomingMessage): Identity | null {
   return { login, name: name ? decodeMimeWords(name) : login };
 }
 
-export function apiMiddleware(queryOffices: QueryOffices): Connect.NextHandleFunction {
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(chunk as Buffer);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export function apiMiddleware(queryOffices: QueryOffices, characters: OfficeCharacters): Connect.NextHandleFunction {
   return async (req, res, next) => {
     const path = req.url?.split('?')[0] ?? '';
     if (!path.startsWith('/api/')) {
@@ -61,6 +80,29 @@ export function apiMiddleware(queryOffices: QueryOffices): Connect.NextHandleFun
       }
       if (path === '/api/offices') {
         return send(200, await queryOffices());
+      }
+      const characterOffice = path.match(/^\/api\/offices\/([^/]+)\/character$/)?.[1];
+      if (characterOffice) {
+        const me = tailscaleIdentity(req);
+        if (!me) {
+          return send(401, { error: 'Not identified via Tailscale' });
+        }
+        const [office] = UUID.test(characterOffice) ? await queryOffices(characterOffice) : [];
+        if (!office) {
+          return send(404, { error: 'Office not found' });
+        }
+        if (req.method === 'GET') {
+          return send(200, { characterId: await characters.get(office.id, me.login) });
+        }
+        if (req.method === 'PUT') {
+          const characterId = ((await readJson(req)) as { characterId?: unknown } | null)?.characterId;
+          if (!isCharacterName(characterId)) {
+            return send(400, { error: 'Unknown character' });
+          }
+          await characters.set(office.id, me.login, characterId);
+          return send(200, { characterId });
+        }
+        return send(405, { error: 'Method not allowed' });
       }
       const id = path.match(/^\/api\/offices\/([^/]+)$/)?.[1];
       if (id) {
@@ -86,6 +128,7 @@ function devUserMiddleware(user: Identity): Connect.NextHandleFunction {
 
 export interface ServerPluginOptions {
   queryOffices: QueryOffices;
+  characters: OfficeCharacters;
   /** Applied to the dev server only, never to preview. */
   devUser?: Identity;
   devEnv?: Record<string, string>;
@@ -95,8 +138,16 @@ export interface ServerPluginOptions {
   modelsDir: string;
 }
 
-export function officexrServer({ queryOffices, devUser, devEnv, studioDataDir, modelsDir }: ServerPluginOptions): Plugin[] {
+export function officexrServer({
+  queryOffices,
+  characters,
+  devUser,
+  devEnv,
+  studioDataDir,
+  modelsDir,
+}: ServerPluginOptions): Plugin[] {
   const models = staticDirMiddleware('/models', modelsDir);
+  const api = apiMiddleware(queryOffices, characters);
   return [
     // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
     studioStorage({ dataDir: studioDataDir, readOnly: true }),
@@ -108,12 +159,12 @@ export function officexrServer({ queryOffices, devUser, devEnv, studioDataDir, m
         }
         server.middlewares.use(models);
         server.middlewares.use(configJsMiddleware(devEnv));
-        server.middlewares.use(apiMiddleware(queryOffices));
+        server.middlewares.use(api);
       },
       configurePreviewServer: (server) => {
         server.middlewares.use(models);
         server.middlewares.use(configJsMiddleware());
-        server.middlewares.use(apiMiddleware(queryOffices));
+        server.middlewares.use(api);
       },
     },
   ];

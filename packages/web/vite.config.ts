@@ -3,13 +3,13 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import pg from 'pg';
-import { officexrServer, type Office } from './server/api';
+import { officexrServer, type Office, type OfficeCharacters } from './server/api';
 
 export default defineConfig(({ mode }) => {
   const devEnv = loadEnv(mode, __dirname, '');
   const env = { ...devEnv, ...process.env };
   let pool: pg.Pool | undefined;
-  const queryOffices = async (id?: string) => {
+  const getPool = () => {
     if (!env.SUPABASE_DB_URL) {
       throw new Error('SUPABASE_DB_URL is not set');
     }
@@ -17,11 +17,30 @@ export default defineConfig(({ mode }) => {
       pool = new pg.Pool({ connectionString: env.SUPABASE_DB_URL });
       pool.on('error', (err) => console.error(err));
     }
-    const { rows } = await pool.query<Office>(
+    return pool;
+  };
+  const queryOffices = async (id?: string) => {
+    const { rows } = await getPool().query<Office>(
       `select id, name, description, map_name from offices ${id ? 'where id = $1' : ''} order by created_at`,
       id ? [id] : [],
     );
     return rows;
+  };
+  const characters: OfficeCharacters = {
+    get: async (officeId, login) => {
+      const { rows } = await getPool().query<{ character_id: string }>(
+        'select character_id from office_characters where office_id = $1 and user_login = $2',
+        [officeId, login],
+      );
+      return rows[0]?.character_id ?? null;
+    },
+    set: async (officeId, login, characterId) => {
+      await getPool().query(
+        `insert into office_characters (office_id, user_login, character_id) values ($1, $2, $3)
+         on conflict (office_id, user_login) do update set character_id = excluded.character_id, updated_at = now()`,
+        [officeId, login, characterId],
+      );
+    },
   };
   const closePool = () => {
     const closing = pool;
@@ -46,6 +65,7 @@ export default defineConfig(({ mode }) => {
       },
       officexrServer({
         queryOffices,
+        characters,
         devUser: login ? { login, name: name ?? login } : undefined,
         devEnv,
         studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,
