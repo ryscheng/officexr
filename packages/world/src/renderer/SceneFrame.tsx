@@ -35,7 +35,7 @@ interface SceneFrameProps {
   bus: Bus;
   sync: SyncEngine;
   handshake: SnapshotHandshake;
-  bots: BotPool;
+  bots?: BotPool;
   cameraMode: CameraMode;
   fixedAzimuthDeg: number;
   /** Manual fine-tune for fixed-mode WASD direction (degrees). */
@@ -805,7 +805,7 @@ export function SceneFrame({
     }
 
     actions.tick(now);
-    bots.tick(dt);
+    bots?.tick(dt);
     const current = store.getState();
     rules.tick(current, prevState.current, bus);
     prevState.current = store.getState();

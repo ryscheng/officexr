@@ -77,7 +77,7 @@ interface SceneProps {
   bus: Bus;
   sync: SyncEngine;
   handshake: SnapshotHandshake;
-  bots: BotPool;
+  bots?: BotPool;
   selfId: string;
   cameraMode: CameraMode;
   /** Renderer-tweaker bag. Studio owns the React state for these

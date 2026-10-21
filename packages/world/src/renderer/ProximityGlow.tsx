@@ -428,7 +428,7 @@ function PlayerProximityFx({
         <circleGeometry args={[radius, 64]} />
         <meshBasicMaterial
           ref={matRef}
-          map={radialTexture}
+          map={radialTexture()}
           color={0xffffff}
           transparent
           opacity={0}
@@ -536,7 +536,7 @@ function MeetingAreaFx({
         <circleGeometry args={[1, 96]} />
         <meshBasicMaterial
           ref={matRef}
-          map={radialTexture}
+          map={radialTexture()}
           color={color}
           transparent
           opacity={0}

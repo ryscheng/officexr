@@ -3,15 +3,8 @@ import {
   createPersistentLocalState,
   type PersistentLocalState,
 } from '@officexr/core-refactor';
-import { Scene } from '@officexr/world/renderer';
-import {
-  ErrorBanner,
-  FocusIndicator,
-  useApplication,
-  useCameraModeCycle,
-  useWorldFocus,
-  WorldHud,
-} from '@officexr/world/react';
+import type { Vec3 } from '@officexr/sdk';
+import { PlayView, useApplication } from '@officexr/world/react';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { WorldPanels } from '../../panels/world/WorldPanels.tsx';
 import { useStudioSettings } from '../../panels/world/useStudioSettings.ts';
@@ -26,14 +19,13 @@ const OFFICE_ID = 'studio-office';
 /**
  * Debug application. Owns the full multiplayer SDK stack: persistent
  * local-player store, channel-stack switcher (in-memory ↔ ws), the
- * in-world `<Scene>` from `@officexr/world` with all gameplay
+ * in-world `<PlayView>` from `@officexr/world` with all gameplay
  * fixtures, the bot pool, and the right-side Leva panel.
  *
  * Mounted only when the studio's mode is 'debug'. Scenes / Characters
  * editors are completely separate apps that don't share this stack.
  */
 export function DebugApp() {
-  const cameraMode = useCameraModeCycle();
   const [local, setLocal] = useState<PersistentLocalState | null>(null);
   const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
 
@@ -94,30 +86,20 @@ export function DebugApp() {
     };
   }, [stack]);
 
-  // Headless Map-picker state. The paired MapPickerPanel below
-  // consumes this to render the dropdown + buttons; the hook itself
-  // owns the load/teleport/respawn side effects.
-  const picker = useMapPicker({
-    actions: local?.actions ?? null,
-    bots: stack?.mode === 'in-memory' ? stack.bots : null,
-  });
+  const picker = useMapPicker();
+
+  // WS-mode bots run in the Node CLI, so only the in-browser pool respawns.
+  const respawnBots = (spawnPoints: readonly Vec3[]) => {
+    if (stack?.mode === 'in-memory') {
+      stack.bots.respawnAll(spawnPoints);
+    }
+  };
 
   // The renderer-tweaker bag. Studio owns the React state (persisted
-  // to localStorage) and passes the current value into <Scene>; the
+  // to localStorage) and passes the current value into <PlayView>; the
   // editing UI lives in <WorldPanels> rendered in the SidePanel
   // below.
   const studioSettings = useStudioSettings();
-
-  // True iff the 3D canvas currently "owns" keyboard input. Clicking
-  // anywhere inside a `[data-studio-panel]` ancestor (the
-  // <SidePanel>) releases focus; clicking the canvas reclaims it.
-  // The HUD's <FocusIndicator> below surfaces the state visually.
-  const worldFocused = useWorldFocus();
-
-  const { bakedLayoutName } = picker;
-  const bakedLayoutPath = bakedLayoutName
-    ? `/api/baked-layouts/${encodeURIComponent(bakedLayoutName)}`
-    : undefined;
 
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
@@ -135,7 +117,7 @@ export function DebugApp() {
         }}
       >
         {stack && local && (
-          <Scene
+          <PlayView
             store={local.store}
             actions={local.actions}
             rules={local.rules}
@@ -144,23 +126,16 @@ export function DebugApp() {
             handshake={stack.handshake}
             bots={stack.bots}
             selfId={SELF_ID}
-            cameraMode={cameraMode}
+            mapName={picker.selected}
+            reloadKey={picker.resetCount}
+            storages={picker.storages}
             viewConfig={studioSettings.viewConfig}
-            worldFocused={worldFocused}
-            spawnPoints={picker.spawnPoints}
-            bakedLayoutPath={bakedLayoutPath}
-            bakedLayoutName={bakedLayoutName}
+            realtime={stack.mode}
+            error={errorBanner}
+            onDismissError={dismissError}
+            onMapApplied={respawnBots}
             onFrameStats={publishFrameStats}
           />
-        )}
-        <WorldHud
-          cameraMode={cameraMode}
-          realtime={stack?.mode ?? 'in-memory'}
-          bakedLayoutName={bakedLayoutName}
-        />
-        <FocusIndicator focused={worldFocused} />
-        {errorBanner && (
-          <ErrorBanner message={errorBanner} onDismiss={dismissError} />
         )}
       </main>
       <SidePanel>
