@@ -21,8 +21,6 @@ const sameNames = (a: Names, b: Names) => {
 const isComposing = (e: { nativeEvent: KeyboardEvent }) =>
   e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229;
 
-let localSeq = 0;
-
 type ChatPanelProps = { store: Store; actions: Actions; selfId: string };
 
 export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
@@ -99,7 +97,7 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
         handBack(hide);
         return;
       }
-      actions.appendChat({ id: `${selfId}:local-${++localSeq}`, authorId: selfId, text, t: Date.now() });
+      actions.appendChat({ id: `${selfId}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`, authorId: selfId, text, t: Date.now() });
       setDraft('');
       handBack(peek);
     }
