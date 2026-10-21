@@ -7,6 +7,7 @@ import {
   type VoiceConnectionState,
 } from '@officexr/core-refactor';
 
+const MAX_MUTE_CORRECTIONS = 4;
 export interface JaasVoiceOptions {
   appId: string;
   jwt: Promise<string>;
@@ -42,6 +43,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
   private joined = false;
   /** Jitsi's own mute state, as last commanded or reported. */
   private jitsiMuted = false;
+  private corrections = 0;
   private room: string | null = null;
   private meeting: JaasMeetingTarget | null = null;
   private meetingCount = 0;
@@ -88,6 +90,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
+    this.corrections = 0;
     this.applyMute();
   }
 
@@ -147,7 +150,11 @@ export class JaasVoiceAdapter implements VoiceAdapter {
       ifCurrent(({ muted }: { muted: boolean }) => {
         this.jitsiMuted = muted;
         // Reports can trail quick toggles; reconciling on each one converges on the last.
-        this.applyMute();
+        // Capped so a mic Jitsi can't unmute (no permission, moderator mute) isn't toggled forever.
+        if (this.corrections < MAX_MUTE_CORRECTIONS) {
+          this.corrections++;
+          this.applyMute();
+        }
       }),
     );
     api.on(

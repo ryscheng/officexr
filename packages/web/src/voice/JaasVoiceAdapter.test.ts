@@ -160,4 +160,15 @@ describe('JaasVoiceAdapter', () => {
     api.deliverReports();
     expect(api.audioMuted).toBe(false);
   });
+
+  it('stops correcting a mic that Jitsi keeps muted', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    api.executeCommand = () => {
+      api.toggles++;
+      api.emit('audioMuteStatusChanged', { muted: true });
+    };
+    api.emit('audioMuteStatusChanged', { muted: true });
+    expect(api.toggles).toBeLessThanOrEqual(4);
+  });
 });
