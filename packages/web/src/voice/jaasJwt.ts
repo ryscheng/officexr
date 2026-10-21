@@ -3,13 +3,7 @@
  *
  * JaaS requires a signed RS256 JWT for authenticated room access.
  * Signing is done entirely in the browser — no server round-trip needed.
- *
- * Required env vars:
- *   VITE_JAAS_APP_ID       — your JaaS App ID (vpaas-magic-cookie-…)
- *   VITE_JAAS_API_KEY_ID   — the Key ID shown in the JaaS console for this key
- *   VITE_JAAS_PRIVATE_KEY  — RSA private key in PKCS#8 PEM format, base64-encoded.
- *                            The caller must decode from base64 before passing
- *                            the PEM string to generateJaaSJwt().
+ * The keys come from `/config.js` (see `getJaasConfig`).
  */
 
 export interface JaaSUserInfo {
@@ -45,11 +39,11 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return buf.buffer;
 }
 
-// ponytail: the JaaS private key ships to every browser via /config.js; mint server-side before untrusted users get access.
 /**
  * Generate a signed JaaS JWT valid for `ttlSeconds` (default: 7 days).
  * Throws if the private key cannot be imported or signing fails.
  */
+// ponytail: the JaaS private key ships to every browser via /config.js; mint server-side before untrusted users get access.
 export async function generateJaaSJwt(
   appId: string,
   apiKeyId: string,

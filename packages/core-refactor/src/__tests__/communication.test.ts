@@ -88,6 +88,39 @@ describe('Communication', () => {
     expect(ctx.comm.getCurrentRoom()).toBe('room-o1-alice');
   });
 
+  it('stop() while a leave is pending cancels it', () => {
+    const events: Array<string | null> = [];
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:exited', otherId: 'bob' });
+    ctx.comm.stop();
+    ctx.voice.clearCalls();
+    ctx.bus.on('voice:room-changed', (e) => events.push(e.roomId));
+    ctx.timer.advance(5000);
+    expect(ctx.voice.calls).toHaveLength(0);
+    expect(events).toEqual([]);
+  });
+
+  it('stays in a room, recomputed, when one of two peers exits', () => {
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'aaron' });
+    ctx.voice.clearCalls();
+    ctx.bus.emit({ kind: 'proximity:exited', otherId: 'aaron' });
+    ctx.timer.advance(5000);
+    expect(ctx.voice.calls).toEqual([{ type: 'joinRoom', roomId: 'room-o1-alice', selfId: 'alice' }]);
+    expect(ctx.comm.getCurrentRoom()).toBe('room-o1-alice');
+  });
+
+  it('a different peer entering while a leave is pending switches rooms instead of leaving', () => {
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+    ctx.bus.emit({ kind: 'proximity:exited', otherId: 'bob' });
+    ctx.voice.clearCalls();
+    ctx.timer.advance(1000);
+    ctx.bus.emit({ kind: 'proximity:entered', otherId: 'aaron' });
+    ctx.timer.advance(5000);
+    expect(ctx.voice.calls).toEqual([{ type: 'joinRoom', roomId: 'room-o1-aaron', selfId: 'alice' }]);
+    expect(ctx.comm.getCurrentRoom()).toBe('room-o1-aaron');
+  });
+
   it('switches to a smaller lex-min when a smaller-id peer arrives', () => {
     ctx.bus.emit({ kind: 'proximity:entered', otherId: 'charlie' });
     expect(ctx.comm.getCurrentRoom()).toBe('room-o1-alice');

@@ -1,9 +1,10 @@
 import type IJitsiMeetExternalApi from '@jitsi/react-sdk/lib/types/IJitsiMeetExternalApi';
-import type {
-  VoiceAdapter,
-  VoiceAdapterEventName,
-  VoiceAdapterEvents,
-  VoiceConnectionState,
+import {
+  VoiceEventEmitter,
+  type VoiceAdapter,
+  type VoiceAdapterEventName,
+  type VoiceAdapterEvents,
+  type VoiceConnectionState,
 } from '@officexr/core-refactor';
 
 export interface JaasVoiceOptions {
@@ -12,21 +13,43 @@ export interface JaasVoiceOptions {
   displayName: string;
 }
 
+/** What `<JaasMeeting>` renders for the current room. */
+export interface JaasMeetingTarget {
+  roomName: string;
+  jwt: string;
+}
+
+/**
+ * Jitsi room names become XMPP JIDs, so the derived room id (which embeds
+ * logins like `a@b.co`) is hashed rather than escaped: escaping can make two
+ * distinct rooms collide.
+ */
+export async function jitsiRoomName(room: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(room));
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  return `officexr-${hex.slice(0, 32)}`;
+}
+
 /**
  * Audio-only JaaS voice. Holds the room `Communication` picked; `<JaasMeeting>`
- * renders the Jitsi iframe for it and hands back the API handle via
+ * renders the Jitsi iframe for {@link getMeeting} and hands back its API via
  * {@link attachApi}.
  */
 export class JaasVoiceAdapter implements VoiceAdapter {
-  /** Jitsi IFrame API of the current meeting; null until it loads. */
-  api: IJitsiMeetExternalApi | null = null;
+  private api: IJitsiMeetExternalApi | null = null;
+  private joined = false;
+  /** Jitsi's own mute state, as last commanded or reported. */
+  private jitsiMuted = false;
   private room: string | null = null;
+  private meeting: JaasMeetingTarget | null = null;
   private state: VoiceConnectionState = 'idle';
   private muted = false;
-  private muteSync = Promise.resolve();
-  private handlers = new Map<VoiceAdapterEventName, Set<(payload: never) => void>>();
+  private events = new VoiceEventEmitter('jaas-voice-adapter');
+  private meetingListeners = new Set<() => void>();
 
-  constructor(readonly options: JaasVoiceOptions) {}
+  constructor(readonly options: JaasVoiceOptions) {
+    options.jwt.catch((err: unknown) => console.error('JaaS JWT generation failed:', err));
+  }
 
   async joinRoom(roomId: string | null): Promise<void> {
     if (roomId === null) {
@@ -36,8 +59,18 @@ export class JaasVoiceAdapter implements VoiceAdapter {
       return;
     }
     this.room = roomId;
-    this.disposeApi();
+    this.setMeeting(null);
     this.setState('joining');
+    try {
+      const [jwt, roomName] = await Promise.all([this.options.jwt, jitsiRoomName(roomId)]);
+      if (this.room === roomId) {
+        this.setMeeting({ roomName, jwt });
+      }
+    } catch {
+      if (this.room === roomId) {
+        this.setState('error');
+      }
+    }
   }
 
   async leaveRoom(): Promise<void> {
@@ -45,24 +78,13 @@ export class JaasVoiceAdapter implements VoiceAdapter {
       return;
     }
     this.room = null;
-    this.disposeApi();
+    this.setMeeting(null);
     this.setState('idle');
   }
 
   setMuted(muted: boolean): void {
     this.muted = muted;
-    this.syncMute();
-  }
-
-  // The IFrame API only toggles, so compare against Jitsi's own state, one
-  // check at a time so rapid clicks can't both see the stale state and toggle twice.
-  private syncMute(): void {
-    this.muteSync = this.muteSync.then(async () => {
-      const api = this.api;
-      if (api && (await api.isAudioMuted()) !== this.muted) {
-        api.executeCommand('toggleAudio');
-      }
-    });
+    this.applyMute();
   }
 
   isMuted(): boolean {
@@ -77,56 +99,99 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     return this.state;
   }
 
-  /** Called once the iframe for `roomId` is ready; ignored if the room changed meanwhile. */
-  attachApi(roomId: string, api: IJitsiMeetExternalApi): void {
-    if (roomId !== this.room) {
+  getMeeting(): JaasMeetingTarget | null {
+    return this.meeting;
+  }
+
+  onMeetingChange(listener: () => void): () => void {
+    this.meetingListeners.add(listener);
+    return () => {
+      this.meetingListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Called once the iframe for `meeting` is ready, with the mute state it was
+   * started with. A meeting that is no longer current is disposed.
+   */
+  attachApi(meeting: JaasMeetingTarget, api: IJitsiMeetExternalApi, startMuted: boolean): void {
+    if (meeting !== this.meeting) {
+      api.dispose();
       return;
     }
+    const roomId = this.room!;
     this.api = api;
-    api.on('videoConferenceJoined', () => {
-      this.setState('connected');
-      // The mic may have been toggled while the iframe was loading.
-      this.syncMute();
-    });
-    api.on('participantJoined', ({ id }: { id: string }) =>
-      this.fire('remote-participant-joined', { roomId, participantId: id }),
+    this.joined = false;
+    this.jitsiMuted = startMuted;
+    const ifCurrent =
+      <T>(fn: (payload: T) => void) =>
+      (payload: T) => {
+        if (this.api === api) {
+          fn(payload);
+        }
+      };
+    api.on(
+      'videoConferenceJoined',
+      ifCurrent(() => {
+        this.joined = true;
+        this.setState('connected');
+        this.applyMute();
+      }),
     );
-    api.on('participantLeft', ({ id }: { id: string }) =>
-      this.fire('remote-participant-left', { roomId, participantId: id }),
+    api.on(
+      'audioMuteStatusChanged',
+      ifCurrent(({ muted }: { muted: boolean }) => {
+        this.jitsiMuted = muted;
+      }),
+    );
+    const fail = ifCurrent(() => {
+      this.joined = false;
+      this.setState('error');
+    });
+    api.on('videoConferenceLeft', fail);
+    api.on('errorOccurred', fail);
+    api.on(
+      'participantJoined',
+      ifCurrent(({ id }: { id: string }) => this.events.emit('remote-participant-joined', { roomId, participantId: id })),
+    );
+    api.on(
+      'participantLeft',
+      ifCurrent(({ id }: { id: string }) => this.events.emit('remote-participant-left', { roomId, participantId: id })),
     );
   }
 
   on<K extends VoiceAdapterEventName>(name: K, handler: (payload: VoiceAdapterEvents[K]) => void): () => void {
-    let set = this.handlers.get(name);
-    if (!set) {
-      set = new Set();
-      this.handlers.set(name, set);
-    }
-    set.add(handler);
-    return () => {
-      set.delete(handler);
-    };
+    return this.events.on(name, handler);
   }
 
   dispose(): void {
     void this.leaveRoom();
-    this.handlers.clear();
+    this.events.clear();
+    this.meetingListeners.clear();
   }
 
-  // `<JaaSMeeting>` never disposes its API on unmount, which would leak its window listeners.
-  private disposeApi(): void {
+  // The IFrame API can only toggle, and answers queries only once joined, so
+  // compare against the tracked state instead of asking.
+  private applyMute(): void {
+    if (this.api && this.joined && this.jitsiMuted !== this.muted) {
+      this.api.executeCommand('toggleAudio');
+      this.jitsiMuted = this.muted;
+    }
+  }
+
+  private setMeeting(meeting: JaasMeetingTarget | null): void {
+    // `<JaaSMeeting>` never disposes its API on unmount, which would leak its window listeners.
     this.api?.dispose();
     this.api = null;
+    this.joined = false;
+    this.meeting = meeting;
+    for (const listener of [...this.meetingListeners]) {
+      listener();
+    }
   }
 
   private setState(state: VoiceConnectionState): void {
     this.state = state;
-    this.fire('connection-state-change', { state, roomId: this.room });
-  }
-
-  private fire<K extends VoiceAdapterEventName>(name: K, payload: VoiceAdapterEvents[K]): void {
-    for (const handler of this.handlers.get(name) ?? []) {
-      (handler as (payload: VoiceAdapterEvents[K]) => void)(payload);
-    }
+    this.events.emit('connection-state-change', { state, roomId: this.room });
   }
 }
