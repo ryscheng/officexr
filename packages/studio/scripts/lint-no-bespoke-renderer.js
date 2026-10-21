@@ -16,8 +16,7 @@
  *
  * BoxGeometry is intentionally NOT linted: editors legitimately
  * use it for selection-outline edge geometry, the renderer's own
- * `__primitive_*` diagnostic mode constructs it, and legacy
- * `packages/core` code uses it for non-cube objects (desks, chairs).
+ * `__primitive_*` diagnostic mode constructs it.
  * The SEAM_OVERLAP rule above already catches any future cube
  * renderer that re-introduces the inflation bug.
  *

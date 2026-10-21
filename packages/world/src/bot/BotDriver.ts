@@ -31,8 +31,8 @@ export const BOT_MODES = ALL_MODES;
 
 export interface BotDriverOptions {
   /** Factory that mints a fresh Channel for this bot's SDK client. The
-   * pool injects this so the same BotDriver runs unchanged in both the
-   * in-browser InMemoryChannel and the Node CLI's SupabaseChannel modes. */
+   * pool injects this so the same BotDriver runs unchanged over the
+   * in-browser InMemoryChannel and the realtime server's WsChannel. */
   createChannel: (botId: PlayerId) => Channel;
   /** PlayerId of the local (human) player whose position the bot homes
    * toward in the `walk-to-local` / `orbit` modes. The bot reads this from

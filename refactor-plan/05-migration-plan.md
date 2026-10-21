@@ -40,10 +40,11 @@ Steps 1, 2, 5, and 6 landed (in shape if not in scope) via the
   added by the studio split as the third broadcast-on-change slot
   alongside `world:settings` and `world:map`.
 
-`packages/web/` and `packages/core/` were intentionally **not touched**
-by the studio split. The remaining migration steps (4 — pull THREE out
-of `usePresence`; 9 — shrink `RoomScene`; 10 — mobile parity) all
-operate on the `core/` codepath and remain TODO.
+The remaining migration steps (4 — pull THREE out of `usePresence`;
+9 — shrink the legacy room component; 10 — mobile parity) targeted the
+legacy client, which was later deleted instead of migrated: `web` was
+rebuilt on `@officexr/world` and the mobile app was dropped. Those
+steps are kept below as historical context only.
 
 ## The eleven steps
 

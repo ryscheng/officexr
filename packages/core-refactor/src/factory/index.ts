@@ -1,11 +1,6 @@
 import type { Channel } from '@officexr/sdk';
-import {
-  createInMemoryChannelHub,
-  InMemoryChannel,
-  SupabaseChannel,
-} from '@officexr/sdk';
+import { createInMemoryChannelHub, InMemoryChannel } from '@officexr/sdk';
 import { WsChannel } from '@officexr/realtime-server';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import type { VoiceAdapter } from '../communication/types.ts';
 import { LocalVoiceAdapter } from '../adapters/local-voice-adapter.ts';
 
@@ -15,21 +10,6 @@ export interface LocalStackConfig {
   selfId: string;
   /** Delay in ms before LocalVoiceAdapter emits remote-participant-joined. Default 300. */
   participantJoinDelay?: number;
-  onRoomJoined?: (roomId: string) => void;
-  onRoomLeft?: () => void;
-}
-
-export interface SupabaseStackConfig {
-  mode: 'supabase';
-  /** Pre-built Supabase client. The caller owns its lifetime — createStack
-   * does not call removeAllChannels on it. */
-  supabase: SupabaseClient;
-  officeId: string;
-  selfId: string;
-  /** Voice callbacks. The debug-app's elevator-music is proximity-driven
-   * and routes through these — `LocalVoiceAdapter` is used in both modes
-   * because the audio is browser-side and doesn't need a real voice
-   * room. A future real `SupabaseVoiceAdapter` can be wired in here. */
   onRoomJoined?: (roomId: string) => void;
   onRoomLeft?: () => void;
 }
@@ -51,7 +31,7 @@ export interface WsStackConfig {
   onRoomLeft?: () => void;
 }
 
-export type StackConfig = LocalStackConfig | SupabaseStackConfig | WsStackConfig;
+export type StackConfig = LocalStackConfig | WsStackConfig;
 
 /** Type-narrow helper: in `ws` mode the returned channel is a {@link
  * WsChannel}, useful when callers need `sendCustom` for app-level
@@ -70,19 +50,6 @@ export function createStack(config: StackConfig): Stack {
     const channel = new InMemoryChannel(config.hub, config.selfId);
     const voiceAdapter = new LocalVoiceAdapter({
       participantJoinDelay: config.participantJoinDelay,
-      onRoomJoined: config.onRoomJoined,
-      onRoomLeft: config.onRoomLeft,
-    });
-    return { channel, voiceAdapter };
-  }
-
-  if (config.mode === 'supabase') {
-    const channel = new SupabaseChannel({
-      supabase: config.supabase,
-      officeId: config.officeId,
-      userId: config.selfId,
-    });
-    const voiceAdapter = new LocalVoiceAdapter({
       onRoomJoined: config.onRoomJoined,
       onRoomLeft: config.onRoomLeft,
     });

@@ -1,7 +1,6 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/web" },
-    { "path": "./packages/desktop" }
+    { "path": "./packages/web" }
   ]
 }

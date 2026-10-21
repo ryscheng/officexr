@@ -39,6 +39,10 @@ anything under `communication/`, you are about to violate this invariant.
 
 ## Target architecture
 
+> This is the original target. For the architecture as built (no
+> desktop/mobile shells, WebSocket realtime, server-side Postgres,
+> Tailscale identity) see [ARCHITECTURE.md](../ARCHITECTURE.md) §1.
+
 ```mermaid
 flowchart TB
     subgraph Shells["Platform shells"]
@@ -95,7 +99,14 @@ flowchart TB
 
 ## Package boundaries
 
-The current `@officexr/core` is split in two:
+> **Status.** The production web app now renders through `@officexr/world`
+> with a WebSocket realtime server, Tailscale identity and server-side
+> Postgres access. The legacy `RoomScene` client (`packages/core`), the
+> mobile and desktop shells, and the Supabase Realtime channel have been
+> removed rather than migrated, so steps that target them (and mentions
+> of Supabase as the realtime/auth substrate) are historical.
+
+The original `@officexr/core` was split as follows:
 
 | Package | Contents | Allowed deps |
 |---------|----------|--------------|
@@ -103,9 +114,7 @@ The current `@officexr/core` is split in two:
 | `@officexr/core-refactor` | Communication subsystem (voice / Jitsi), stack factory | React optional. No `three`. Depends on `@officexr/sdk`. |
 | `@officexr/world` | Renderer, physics, bots, character registry, scene serialization | React, `three`, `@react-three/fiber`, `@react-three/rapier`. Depends on `@officexr/sdk`. |
 | `@officexr/studio` | Authoring app — Debug / Character / Scene mode shells over `@officexr/world`'s renderer | React. Depends on `@officexr/world` + `@officexr/sdk` + `@officexr/core-refactor`. |
-| `@officexr/web` | Vite shell (production app) | Currently depends on `@officexr/core` (legacy). Will eventually swap to depend on `@officexr/world` + future HUD package. |
-| `@officexr/desktop` | Electron shell | loads built `@officexr/web` |
-| `@officexr/mobile` | Expo / React Native | depends on `@officexr/sdk` only — owns its own UI/renderer |
+| `@officexr/web` | Vite shell (production app) + `/api` server | Depends on `@officexr/world` + `@officexr/core-refactor` + `@officexr/sdk`; HUD lives in `web/src/hud/`. |
 
 > **Naming note.** Earlier drafts of this plan used `@officexr/app` for
 > the renderer + HUD + communication bundle. That single package has
@@ -176,19 +185,11 @@ What landed:
   `world:characters` NetEvent + PROTOCOL entry, and a richer `CubeKind`
   (optional `appearance`) — all generally useful, not studio-specific.
 
-What is **not** done as a result of the studio split:
-
-- `packages/web/` is **untouched**. It still depends on
-  `packages/core/`'s legacy `RoomScene.tsx` god component, its own
-  `Avatar.tsx`, its own `useJitsi`, etc.
-- The `core` → `world` migration of the production renderer is the
-  next layer of this work. When it lands, `web` swaps from
-  `@officexr/core` to `@officexr/world` (renderer) plus a future
-  HUD package extracted from `core/components/`. The studio path
-  proves the seams.
-- HUD components (Chat, User, Inventory, etc.) still live only in
-  `core/`. A future `@officexr/hud` (or `@officexr/world/hud`)
-  extraction is in scope for the `web` migration, not for studio.
+Since the studio split, `packages/web/` was rebuilt on
+`@officexr/world` and the legacy client was deleted. Its HUD (chat)
+lives in `web/src/hud/`; legacy-only features (whiteboard, shooting,
+loot, zombies, guest lobby, skins, Supabase screen-share signalling)
+were not ported.
 
 ## Reading order
 

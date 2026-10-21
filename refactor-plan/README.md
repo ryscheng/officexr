@@ -3,6 +3,13 @@
 > Set of architectural designs for the next major refactor of OfficeXR.
 > Reads top-to-bottom — each doc assumes the previous one. Cross-references
 > ARCHITECTURE.md observations (`O1`–`O11`) where relevant.
+>
+> **Status.** The production web app now renders through `@officexr/world`
+> with a WebSocket realtime server, Tailscale identity and server-side
+> Postgres access. The legacy `RoomScene` client (`packages/core`), the
+> mobile and desktop shells, and the Supabase Realtime channel have been
+> removed rather than migrated, so steps that target them (and mentions
+> of Supabase as the realtime/auth substrate) are historical.
 
 ## Why refactor
 

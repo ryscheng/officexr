@@ -4,7 +4,7 @@ import { BotDriver, type BotMode } from './BotDriver.ts';
 interface BotPoolOptions {
   /** Channel factory passed through to each new BotDriver. The pool
    * doesn't care whether channels are InMemory (one shared hub) or
-   * Supabase (separate realtime subscriptions) — only the factory does. */
+   * WebSocket (one connection per bot) — only the factory does. */
   createChannel: (botId: PlayerId) => Channel;
   /** PlayerId of the local human player. Bots use it to home toward the
    * player in `walk-to-local` / `orbit` modes. */

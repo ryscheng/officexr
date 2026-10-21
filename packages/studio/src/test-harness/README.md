@@ -1,7 +1,7 @@
 # Studio test harness
 
 Hermetic helpers for testing the studio editors without a dev server,
-Supabase, or the network. Three layers, mirroring the test pyramid in
+a database, or the network. Three layers, mirroring the test pyramid in
 the integration-test roadmap.
 
 ## What's here
