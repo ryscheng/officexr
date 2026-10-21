@@ -15,7 +15,7 @@ import { DEFAULT_VIEW_CONFIG, Scene } from '@officexr/world/renderer';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
-import { JaasMeeting, MuteToggle } from '../voice/JaasMeeting';
+import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
 import { CharacterPicker } from './CharacterPicker';
 import { loadOfficeMap } from './loadOfficeMap';
 import { useOfficeSession } from './useOfficeSession';
@@ -137,7 +137,12 @@ function World({ office, me }: { office: Office; me: Identity }) {
       )}
       <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
         {local && <CharacterPicker local={local} onSaveResult={setSaveError} />}
-        {session.type === 'ready' && session.voice && <MuteToggle voice={session.voice} />}
+        {session.type === 'ready' && session.voice && (
+          <div className="flex gap-2">
+            <ShareScreenToggle voice={session.voice} />
+            <MuteToggle voice={session.voice} />
+          </div>
+        )}
       </div>
       {error && error !== dismissedError && <ErrorBanner message={error} onDismiss={() => setDismissedError(error)} />}
     </div>
