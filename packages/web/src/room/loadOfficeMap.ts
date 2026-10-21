@@ -1,17 +1,20 @@
-import { MapNotFoundError } from '@officexr/world/app';
+import type { MapStorage } from '@officexr/world/scenes';
 
 export const DEFAULT_MAP = 'default';
 
-/** Loads the office's map, falling back to the default map when it has none or it doesn't exist. */
-export async function loadOfficeMap<T>(load: (name: string) => Promise<T>, mapName: string | null): Promise<T> {
-  const name = mapName ?? DEFAULT_MAP;
-  try {
-    return await load(name);
-  } catch (err) {
-    if (!(err instanceof MapNotFoundError) || name === DEFAULT_MAP) {
-      throw err;
-    }
-    console.warn(`Map "${name}" not found; loading "${DEFAULT_MAP}" instead`);
-    return load(DEFAULT_MAP);
-  }
+/** Serves the default map in place of any other map that doesn't exist. */
+export function withDefaultMap(maps: MapStorage): MapStorage {
+  return {
+    list: () => maps.list(),
+    save: (name, map) => maps.save(name, map),
+    delete: (name) => maps.delete(name),
+    async load(name) {
+      const map = await maps.load(name);
+      if (map || name === DEFAULT_MAP) {
+        return map;
+      }
+      console.warn(`Map "${name}" not found; loading "${DEFAULT_MAP}" instead`);
+      return maps.load(DEFAULT_MAP);
+    },
+  };
 }
