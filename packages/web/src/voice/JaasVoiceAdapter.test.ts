@@ -6,10 +6,13 @@ import { JaasVoiceAdapter, jitsiRoomName } from './JaasVoiceAdapter';
 class FakeJitsiApi extends EventEmitter {
   toggles = 0;
   audioMuted = false;
+  commands: string[] = [];
+  largeVideo: string | null = null;
   disposed = false;
   /** `audioMuteStatusChanged` reports not yet delivered. */
   private reports: boolean[] = [];
   executeCommand(name: string) {
+    this.commands.push(name);
     if (name === 'toggleAudio') {
       this.toggles++;
       this.audioMuted = !this.audioMuted;
@@ -20,6 +23,9 @@ class FakeJitsiApi extends EventEmitter {
     while (this.reports.length > 0) {
       this.emit('audioMuteStatusChanged', { muted: this.reports.shift() });
     }
+  }
+  setLargeVideoParticipant(id: string) {
+    this.largeVideo = id;
   }
   dispose() {
     this.disposed = true;
@@ -39,7 +45,7 @@ async function joinedMeeting(voice: JaasVoiceAdapter, room = 'room-a', startMute
   await voice.joinRoom(room);
   const api = new FakeJitsiApi();
   voice.attachApi(voice.getMeeting()!, asApi(api), startMuted);
-  api.emit('videoConferenceJoined');
+  api.emit('videoConferenceJoined', { id: 'me' });
   return api;
 }
 
@@ -148,7 +154,7 @@ describe('JaasVoiceAdapter', () => {
     voice.attachApi(voice.getMeeting()!, asApi(api), false);
     voice.setMuted(true);
     expect(api.toggles).toBe(0);
-    api.emit('videoConferenceJoined');
+    api.emit('videoConferenceJoined', { id: 'me' });
     expect(api.toggles).toBe(1);
   });
 
@@ -170,5 +176,55 @@ describe('JaasVoiceAdapter', () => {
     };
     api.emit('audioMuteStatusChanged', { muted: true });
     expect(api.toggles).toBeLessThanOrEqual(4);
+  });
+
+  it('only toggles a screen share once the call is joined', async () => {
+    const { voice } = setup();
+    voice.toggleShareScreen();
+    await voice.joinRoom('room-a');
+    const api = new FakeJitsiApi();
+    voice.attachApi(voice.getMeeting()!, asApi(api), false);
+    voice.toggleShareScreen();
+    expect(voice.getShareState().canShare).toBe(false);
+    expect(api.commands).toEqual([]);
+
+    api.emit('videoConferenceJoined', { id: 'me' });
+    expect(voice.getShareState().canShare).toBe(true);
+    voice.toggleShareScreen();
+    expect(api.commands).toEqual(['toggleShareScreen']);
+  });
+
+  it('stops its own share when leaving the call', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    api.emit('screenSharingStatusChanged', { on: true });
+    expect(voice.getShareState().sharing).toBe(true);
+
+    await voice.joinRoom('room-b');
+    expect(api.commands).toEqual(['toggleShareScreen']);
+    expect(api.disposed).toBe(true);
+    expect(voice.getShareState()).toEqual({ canShare: false, sharing: false, viewing: null });
+  });
+
+  it('shows the latest remote share, never its own', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    api.emit('contentSharingParticipantsChanged', { data: ['me'] });
+    expect(voice.getShareState().viewing).toBeNull();
+
+    api.emit('contentSharingParticipantsChanged', { data: ['bob', 'me'] });
+    expect(voice.getShareState().viewing).toBe('bob');
+    expect(api.largeVideo).toBe('bob');
+
+    api.emit('contentSharingParticipantsChanged', { data: [] });
+    expect(voice.getShareState().viewing).toBeNull();
+  });
+
+  it('stops showing shares when the call ends', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    api.emit('contentSharingParticipantsChanged', { data: ['bob'] });
+    await voice.leaveRoom();
+    expect(voice.getShareState().viewing).toBeNull();
   });
 });

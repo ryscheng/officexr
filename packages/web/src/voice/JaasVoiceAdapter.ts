@@ -22,6 +22,16 @@ export interface JaasMeetingTarget {
   jwt: string;
 }
 
+export interface ScreenShareState {
+  /** Joined to a call, so a share can start. */
+  canShare: boolean;
+  sharing: boolean;
+  /** Another participant whose shared screen the meeting is showing. */
+  viewing: string | null;
+}
+
+const NO_SHARE: ScreenShareState = { canShare: false, sharing: false, viewing: null };
+
 /**
  * Jitsi room names become XMPP JIDs, so the derived room id (which embeds
  * logins like `a@b.co`) is hashed rather than escaped: escaping can make two
@@ -34,9 +44,9 @@ export async function jitsiRoomName(room: string): Promise<string> {
 }
 
 /**
- * Audio-only JaaS voice. Holds the room `Communication` picked; `<JaasMeeting>`
- * renders the Jitsi iframe for {@link getMeeting} and hands back its API via
- * {@link attachApi}.
+ * JaaS voice, plus screen sharing within the same call. Holds the room
+ * `Communication` picked; `<JaasMeeting>` renders the Jitsi iframe for
+ * {@link getMeeting} and hands back its API via {@link attachApi}.
  */
 export class JaasVoiceAdapter implements VoiceAdapter {
   private api: IJitsiMeetExternalApi | null = null;
@@ -51,6 +61,9 @@ export class JaasVoiceAdapter implements VoiceAdapter {
   private muted = false;
   private events = new VoiceEventEmitter('jaas-voice-adapter');
   private meetingListeners = new Set<() => void>();
+  private localId: string | null = null;
+  private share = NO_SHARE;
+  private shareListeners = new Set<() => void>();
 
   constructor(readonly options: JaasVoiceOptions) {
     options.jwt.catch((err: unknown) => console.error('JaaS JWT generation failed:', err));
@@ -117,6 +130,21 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     };
   }
 
+  getShareState = (): ScreenShareState => this.share;
+
+  onShareChange = (listener: () => void): (() => void) => {
+    this.shareListeners.add(listener);
+    return () => {
+      this.shareListeners.delete(listener);
+    };
+  };
+
+  toggleShareScreen(): void {
+    if (this.api && this.joined) {
+      this.api.executeCommand('toggleShareScreen');
+    }
+  }
+
   /**
    * Called once the iframe for `meeting` is ready, with the mute state it was
    * started with. A meeting that is no longer current is disposed.
@@ -129,6 +157,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     const roomId = this.room!;
     this.api = api;
     this.joined = false;
+    this.localId = null;
     this.jitsiMuted = startMuted;
     const ifCurrent =
       <T>(fn: (payload: T) => void) =>
@@ -139,7 +168,8 @@ export class JaasVoiceAdapter implements VoiceAdapter {
       };
     api.on(
       'videoConferenceJoined',
-      ifCurrent(() => {
+      ifCurrent(({ id }: { id: string }) => {
+        this.localId = id;
         this.joined = true;
         this.setState('connected');
         this.applyMute();
@@ -155,6 +185,22 @@ export class JaasVoiceAdapter implements VoiceAdapter {
           this.corrections++;
           this.applyMute();
         }
+      }),
+    );
+    api.on(
+      'screenSharingStatusChanged',
+      ifCurrent(({ on }: { on: boolean }) => this.setShare({ sharing: on })),
+    );
+    api.on(
+      'contentSharingParticipantsChanged',
+      ifCurrent(({ data }: { data: string[] }) => {
+        const viewing = data.findLast((id) => id !== this.localId) ?? null;
+        if (viewing && viewing !== this.share.viewing) {
+          // Tile view would shrink the share to one tile of the small panel.
+          api.executeCommand('setTileView', false);
+          api.setLargeVideoParticipant(viewing);
+        }
+        this.setShare({ viewing });
       }),
     );
     api.on(
@@ -191,6 +237,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     void this.leaveRoom();
     this.events.clear();
     this.meetingListeners.clear();
+    this.shareListeners.clear();
   }
 
   // The IFrame API can only toggle, and answers queries only once joined, so
@@ -205,6 +252,10 @@ export class JaasVoiceAdapter implements VoiceAdapter {
   private setMeeting(meeting: JaasMeetingTarget | null): void {
     // `<JaaSMeeting>` never disposes its API on unmount, which would leak its window listeners.
     const api = this.api;
+    // Disposing tears down the iframe and its capture, but stopping first lets Jitsi end the share cleanly for the others.
+    if (api && this.share.sharing) {
+      api.executeCommand('toggleShareScreen');
+    }
     this.api = null;
     this.joined = false;
     api?.dispose();
@@ -214,8 +265,16 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     }
   }
 
+  private setShare(patch: Partial<ScreenShareState>): void {
+    this.share = { ...this.share, ...patch };
+    for (const listener of [...this.shareListeners]) {
+      listener();
+    }
+  }
+
   private setState(state: VoiceConnectionState): void {
     this.state = state;
+    this.setShare(state === 'connected' ? { canShare: true } : NO_SHARE);
     this.events.emit('connection-state-change', { state, roomId: this.room });
   }
 }
