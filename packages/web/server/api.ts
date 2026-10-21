@@ -1,10 +1,7 @@
-import { access } from 'node:fs/promises';
 import type { IncomingMessage } from 'node:http';
-import path from 'node:path';
 import type { Connect, Plugin } from 'vite';
 import { isCharacterName } from '@officexr/world/characters';
-import { isValidSceneName } from '@officexr/world/scenes';
-import studioStorage, { resolveMapsDir } from '@officexr/world/vite-plugin-storage';
+import studioStorage, { studioMapExists } from '@officexr/world/vite-plugin-storage';
 import { configJsMiddleware } from './runtimeConfig';
 import { staticDirMiddleware } from './staticDir';
 
@@ -26,7 +23,7 @@ export interface NewOffice {
 
 export type CreateOffice = (input: NewOffice) => Promise<Office>;
 
-/** Whether a studio map with this (already slug-validated) name exists. */
+/** Whether a studio map with this name exists; must reject names that aren't plain slugs. */
 export type MapExists = (name: string) => Promise<boolean>;
 
 /** Each user's character choice per office. */
@@ -85,22 +82,27 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-const MAX_NAME = 100;
-const MAX_DESCRIPTION = 500;
+export const MAX_NAME = 100;
+export const MAX_DESCRIPTION = 500;
 
 /** The validated input, or the error to send back with a 400. */
 async function parseNewOffice(body: unknown, mapExists: MapExists): Promise<NewOffice | string> {
-  const { name, description, mapName } = (body ?? {}) as Record<string, unknown>;
-  if (typeof name !== 'string' || !name.trim() || name.trim().length > MAX_NAME) {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (!name || name.length > MAX_NAME) {
     return `name is required (max ${MAX_NAME} characters)`;
   }
-  if (description !== undefined && (typeof description !== 'string' || description.length > MAX_DESCRIPTION)) {
-    return `description must be text (max ${MAX_DESCRIPTION} characters)`;
+  if (raw.description !== undefined && typeof raw.description !== 'string') {
+    return 'description must be text';
   }
-  if (typeof mapName !== 'string' || !isValidSceneName(mapName) || !(await mapExists(mapName))) {
+  const description = raw.description?.trim() ?? '';
+  if (description.length > MAX_DESCRIPTION) {
+    return `description is too long (max ${MAX_DESCRIPTION} characters)`;
+  }
+  if (typeof raw.mapName !== 'string' || !(await mapExists(raw.mapName))) {
     return 'Unknown map';
   }
-  return { name: name.trim(), description: description?.trim() || null, mapName };
+  return { name, description: description || null, mapName: raw.mapName };
 }
 
 export function apiMiddleware(
@@ -210,13 +212,7 @@ export function officexrServer({
   modelsDir,
 }: ServerPluginOptions): Plugin[] {
   const models = staticDirMiddleware('/models', modelsDir);
-  const mapsDir = resolveMapsDir(studioDataDir);
-  const mapExists: MapExists = (name) =>
-    access(path.join(mapsDir, `${name}.json`)).then(
-      () => true,
-      () => false,
-    );
-  const api = apiMiddleware(queryOffices, characters, createOffice, mapExists);
+  const api = apiMiddleware(queryOffices, characters, createOffice, studioMapExists(studioDataDir));
   return [
     // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
     studioStorage({ dataDir: studioDataDir, readOnly: true }),

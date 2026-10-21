@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Connect, PreviewServer, ViteDevServer } from 'vite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { officexrServer, type CreateOffice, type Office, type OfficeCharacters, type QueryOffices } from './api';
+import { apiMiddleware, officexrServer, type CreateOffice, type Office, type OfficeCharacters, type QueryOffices } from './api';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const OTHER = '33333333-3333-4333-8333-333333333333';
@@ -151,42 +151,61 @@ describe('/api/offices', () => {
 });
 
 describe('POST /api/offices', () => {
-  const post = (base: string, body: unknown, headers: Record<string, string> = tailscale) =>
-    fetch(`${base}/api/offices`, {
+  const calls: string[] = [];
+  const mapExists = async (name: string) => {
+    calls.push(`mapExists:${name}`);
+    return name === 'hq';
+  };
+  const spyCreate: CreateOffice = async (input) => {
+    calls.push('createOffice');
+    return createOffice(input);
+  };
+  const middleware = apiMiddleware(queryOffices, characters, spyCreate, mapExists);
+
+  const post = async (body: unknown, headers: Record<string, string> = tailscale) => {
+    calls.length = 0;
+    server = createServer((req, res) => middleware(req, res, () => res.end()));
+    await new Promise<void>((resolve) => server!.listen(0, resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    return fetch(`${base}/api/offices`, {
       method: 'POST',
       headers,
       body: typeof body === 'string' ? body : JSON.stringify(body),
     });
+  };
 
-  it('creates an office', async () => {
-    const base = await start('configurePreviewServer');
-    const res = await post(base, { name: ' Lab ', description: 'Test', mapName: 'default' });
+  it('creates an office from trimmed input', async () => {
+    const res = await post({ name: ' Lab ', description: ' Test ', mapName: 'hq' });
     expect(res.status).toBe(201);
-    expect(await res.json()).toEqual({ id: OTHER, name: 'Lab', description: 'Test', map_name: 'default' });
+    expect(await res.json()).toEqual({ id: OTHER, name: 'Lab', description: 'Test', map_name: 'hq' });
+    expect(calls).toEqual(['mapExists:hq', 'createOffice']);
   });
 
-  it('is 401 without identity', async () => {
-    const base = await start('configurePreviewServer');
-    expect((await post(base, { name: 'Lab', mapName: 'default' }, {})).status).toBe(401);
+  it('is 401 without identity, before reading the body or touching maps', async () => {
+    expect((await post({ name: 'Lab', mapName: 'hq' }, {})).status).toBe(401);
+    expect(calls).toEqual([]);
   });
 
   it.each([
-    ['a blank name', { name: '  ', mapName: 'default' }],
-    ['a long name', { name: 'x'.repeat(101), mapName: 'default' }],
-    ['a non-string description', { name: 'Lab', description: 3, mapName: 'default' }],
-    ['a long description', { name: 'Lab', description: 'x'.repeat(501), mapName: 'default' }],
-    ['an unknown map', { name: 'Lab', mapName: 'nope' }],
-    ['a traversal map name', { name: 'Lab', mapName: '../x' }],
-    ['a missing map', { name: 'Lab' }],
+    ['a blank name', { name: '  ', mapName: 'hq' }],
+    ['a long name', { name: 'x'.repeat(101), mapName: 'hq' }],
+    ['a non-string description', { name: 'Lab', description: 3, mapName: 'hq' }],
+    ['a long description', { name: 'Lab', description: 'x'.repeat(501), mapName: 'hq' }],
     ['a non-JSON body', '{'],
-  ])('is 400 for %s', async (_label, body) => {
-    const base = await start('configurePreviewServer');
-    expect((await post(base, body)).status).toBe(400);
+    ['a missing map', { name: 'Lab' }],
+  ])('is 400 for %s without creating', async (_label, body) => {
+    expect((await post(body)).status).toBe(400);
+    expect(calls).not.toContain('createOffice');
   });
 
-  it('is 413 past the body limit', async () => {
-    const base = await start('configurePreviewServer');
-    expect((await post(base, { name: 'Lab', description: 'x'.repeat(5000), mapName: 'default' })).status).toBe(413);
+  it('is 400 for an unknown map without creating', async () => {
+    expect((await post({ name: 'Lab', mapName: 'nope' })).status).toBe(400);
+    expect(calls).toEqual(['mapExists:nope']);
+  });
+
+  it('is 413 past the body limit without creating', async () => {
+    expect((await post({ name: 'Lab', description: 'x'.repeat(5000), mapName: 'hq' })).status).toBe(413);
+    expect(calls).toEqual([]);
   });
 
   it('is 405 for other methods', async () => {

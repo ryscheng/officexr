@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FilesystemMapStorage } from '@officexr/world/scenes';
-import type { Identity, Office } from '../../server/api';
+import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office } from '../../server/api';
 import { Async } from '../Async';
-import { useApi, type ApiState } from '../useApi';
+import { DEFAULT_MAP } from '../room/loadOfficeMap';
+import { errorMessage, useApi, type ApiState } from '../useApi';
 
 function OfficeList() {
   return (
@@ -18,7 +19,7 @@ function OfficeList() {
                 <Link to={`/room/${office.id}`} className="block rounded border p-3 hover:bg-gray-50">
                   <span className="font-medium">{office.name}</span>
                   {office.description && <span className="block text-sm text-gray-600">{office.description}</span>}
-                  <span className="block text-xs text-gray-500">Map: {office.map_name ?? 'default'}</span>
+                  <span className="block text-xs text-gray-500">Map: {office.map_name ?? DEFAULT_MAP}</span>
                 </Link>
               </li>
             ))}
@@ -37,13 +38,24 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     new FilesystemMapStorage()
       .list()
       .then((list) => {
+        if (cancelled) {
+          return;
+        }
         setMaps(list.map((m) => m.name));
-        setMapName((current) => current || (list.some((m) => m.name === 'default') ? 'default' : (list[0]?.name ?? '')));
+        setMapName((current) => current || (list.some((m) => m.name === DEFAULT_MAP) ? DEFAULT_MAP : (list[0]?.name ?? '')));
       })
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setError(err.message);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -59,7 +71,7 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(body?.error ?? `HTTP ${res.status}`);
+        throw new Error(errorMessage(res, body));
       }
       navigate(`/room/${(body as Office).id}`);
     } catch (err) {
@@ -75,11 +87,11 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
       <fieldset disabled={!identified || busy} className="space-y-3">
         <label className="block text-sm">
           Name
-          <input name="name" required maxLength={100} className="mt-1 block w-full rounded border p-2" />
+          <input name="name" required maxLength={MAX_NAME} className="mt-1 block w-full rounded border p-2" />
         </label>
         <label className="block text-sm">
           Description (optional)
-          <textarea name="description" maxLength={500} className="mt-1 block w-full rounded border p-2" />
+          <textarea name="description" maxLength={MAX_DESCRIPTION} className="mt-1 block w-full rounded border p-2" />
         </label>
         <label className="block text-sm">
           Map

@@ -52,9 +52,20 @@ export function dataDirOptions(dataDir: string) {
   ) as Pick<StudioStoragePluginOptions, keyof typeof STORAGE_ENTRIES>;
 }
 
-/** The maps directory the plugin serves for `dataDir` (its default when unset). */
-export function resolveMapsDir(dataDir?: string): string {
-  return dataDir ? path.join(dataDir, STORAGE_ENTRIES.maps.name) : DEFAULT_MAPS_DIR;
+/** Whether `name` is a map the `/api/maps` list would offer: a valid slug whose file parses as a map. */
+export function studioMapExists(dataDir?: string): (name: string) => Promise<boolean> {
+  const dir = (dataDir ? dataDirOptions(dataDir).maps?.dir : undefined) ?? DEFAULT_MAPS_DIR;
+  return async (name) => {
+    if (!isValidSceneName(name)) {
+      return false;
+    }
+    try {
+      deserializeMap(JSON.parse(await fs.readFile(path.join(dir, `${name}.json`), 'utf8')));
+      return true;
+    } catch {
+      return false;
+    }
+  };
 }
 
 export interface StudioStoragePluginOptions {
