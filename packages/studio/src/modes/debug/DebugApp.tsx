@@ -1,10 +1,18 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createPersistentLocalState,
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import type { Vec3 } from '@officexr/sdk';
-import { PlayView, useApplication } from '@officexr/world/react';
+import { PlayView, useApplication, type PlayStorages } from '@officexr/world/react';
+import {
+  FilesystemLayoutStorage,
+  FilesystemMapStorage,
+  FilesystemRoomStorage,
+  LocalStorageLayoutStorage,
+  LocalStorageMapStorage,
+  LocalStorageRoomStorage,
+} from '@officexr/world/scenes';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { WorldPanels } from '../../panels/world/WorldPanels.tsx';
 import { useStudioSettings } from '../../panels/world/useStudioSettings.ts';
@@ -15,6 +23,22 @@ import { publishFrameStats } from '../../perf/frame-stats.ts';
 
 const SELF_ID = 'local-player';
 const OFFICE_ID = 'studio-office';
+
+function createStorages(): PlayStorages {
+  try {
+    return {
+      maps: new FilesystemMapStorage(),
+      rooms: new FilesystemRoomStorage(),
+      layouts: new FilesystemLayoutStorage(),
+    };
+  } catch {
+    return {
+      maps: new LocalStorageMapStorage(),
+      rooms: new LocalStorageRoomStorage(),
+      layouts: new LocalStorageLayoutStorage(),
+    };
+  }
+}
 
 /**
  * Debug application. Owns the full multiplayer SDK stack: persistent
@@ -86,10 +110,17 @@ export function DebugApp() {
     };
   }, [stack]);
 
-  const picker = useMapPicker();
+  const storages = useMemo(createStorages, []);
+  const picker = useMapPicker(storages.maps);
 
-  // WS-mode bots run in the Node CLI, so only the in-browser pool respawns.
+  // Bots keep their bootstrap positions on the first map so none lands under
+  // the player's spawn drop; WS-mode bots run in the Node CLI.
+  const firstMapAppliedRef = useRef(false);
   const respawnBots = (spawnPoints: readonly Vec3[]) => {
+    if (!firstMapAppliedRef.current) {
+      firstMapAppliedRef.current = true;
+      return;
+    }
     if (stack?.mode === 'in-memory') {
       stack.bots.respawnAll(spawnPoints);
     }
@@ -128,7 +159,7 @@ export function DebugApp() {
             selfId={SELF_ID}
             mapName={picker.selected}
             reloadKey={picker.resetCount}
-            storages={picker.storages}
+            storages={storages}
             viewConfig={studioSettings.viewConfig}
             realtime={stack.mode}
             error={errorBanner}

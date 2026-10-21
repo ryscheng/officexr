@@ -95,6 +95,17 @@ describe('usePlaySession', () => {
     expect(onMapApplied).toHaveBeenCalledOnce();
   });
 
+  it('settles a failed first load so the scene can mount, with the error set', async () => {
+    const { actions, onMapApplied, render } = setup();
+    const { result } = render('missing');
+
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.error).toMatch(/missing/);
+    expect(result.current.spawnPoints).toEqual([]);
+    expect(actions.setWorldObjects).not.toHaveBeenCalled();
+    expect(onMapApplied).not.toHaveBeenCalled();
+  });
+
   it('applies proximity world settings from the view config', () => {
     const { actions, render } = setup();
     render('office');

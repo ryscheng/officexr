@@ -38,9 +38,6 @@ export interface PlayViewProps {
  * landed, and overlays the HUD, focus chip and error banner. Renders
  * into the caller's positioned container.
  */
-// SRP violation: owns both the map session and the HUD composition. Every
-// caller needs exactly this pairing, and the HUD reads session state (baked
-// layout, load error); split it if a caller ever needs the scene without the HUD.
 export function PlayView(props: PlayViewProps) {
   const cameraMode = useCameraModeCycle();
   const worldFocused = useWorldFocus();

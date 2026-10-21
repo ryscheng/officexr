@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import type { Actions, Vec3 } from '@officexr/sdk';
+import { bakedLayoutUrl } from '../app/baked-layout-url.ts';
 import { loadMap, type LoadedMap, type MapLoaderDeps } from '../app/map-loader.ts';
 import { proximityWorldSettings } from '../renderer/viewConfig.ts';
 import type { ViewConfig } from '../renderer/viewConfig.ts';
@@ -69,13 +70,13 @@ export function usePlaySession({
         setError(null);
         notifyApplied(spawnPoints);
       },
-      (err: Error) => {
+      (err: unknown) => {
         if (cancelled) {
           return;
         }
         console.warn(`[play-session] load("${mapName}") failed:`, err);
         setApplied((prev) => ({ actions, map: prev?.actions === actions ? prev.map : null }));
-        setError(`Could not load map "${mapName}": ${err.message}`);
+        setError(`Could not load map "${mapName}": ${err instanceof Error ? err.message : String(err)}`);
       },
     );
     return () => {
@@ -83,9 +84,12 @@ export function usePlaySession({
     };
   }, [actions, mapName, storages, catalog, rooms, reloadKey]);
 
+  const { sensorRadius, outerRadius, enterDebounceMs, conversationDistance, conversationHeight } = proximity;
   useEffect(() => {
-    actions.setWorldSettings(proximityWorldSettings(proximity));
-  }, [actions, proximity]);
+    actions.setWorldSettings(
+      proximityWorldSettings({ sensorRadius, outerRadius, enterDebounceMs, conversationDistance, conversationHeight }),
+    );
+  }, [actions, sensorRadius, outerRadius, enterDebounceMs, conversationDistance, conversationHeight]);
 
   const map = applied?.actions === actions ? applied.map : null;
   const spawnPoints = useMemo(() => (map ? toVec3s(map) : []), [map]);
@@ -93,7 +97,7 @@ export function usePlaySession({
   return {
     spawnPoints,
     bakedLayoutName,
-    bakedLayoutPath: bakedLayoutName && `/api/baked-layouts/${encodeURIComponent(bakedLayoutName)}`,
+    bakedLayoutPath: bakedLayoutName ? bakedLayoutUrl(bakedLayoutName) : undefined,
     error,
     dismissError: () => setError(null),
     ready: applied?.actions === actions,

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { bakedLayoutUrl } from '@officexr/world/app';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { CommandHistory } from '../scene-editor/CommandHistory.tsx';
@@ -274,7 +275,7 @@ export function RoomApp() {
       groupMembers: roomDoc.lookup.groupMembers,
       doc: roomDoc.doc,
       bakedLayoutPath: roomDoc.doc.layoutName
-        ? `/api/baked-layouts/${encodeURIComponent(roomDoc.doc.layoutName)}`
+        ? bakedLayoutUrl(roomDoc.doc.layoutName)
         : undefined,
       bakedLayoutName: roomDoc.doc.layoutName,
       onPlaceAt: handlePlace,

@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  FilesystemLayoutStorage,
-  FilesystemMapStorage,
-  FilesystemRoomStorage,
-  LocalStorageLayoutStorage,
-  LocalStorageMapStorage,
-  LocalStorageRoomStorage,
-} from '@officexr/world/scenes';
-import type { PlayStorages } from '@officexr/world/react';
+import type { MapStorage } from '@officexr/world/scenes';
 
 const LAST_MAP_KEY = 'officexr:studio:lastMap';
 
@@ -18,7 +10,6 @@ export interface MapPickerState {
   selected: string;
   /** Bumped by `reset`; pass to `<PlayView reloadKey>` to re-apply the map. */
   resetCount: number;
-  storages: PlayStorages;
   choose: (name: string) => void;
   reset: () => void;
   /** Re-fetch the list from /api/maps. */
@@ -29,22 +20,7 @@ export interface MapPickerState {
  * Headless state for the Debug-mode Map picker: which map is selected,
  * remembered in localStorage across reloads. `<PlayView>` does the loading.
  */
-export function useMapPicker(): MapPickerState {
-  const storages = useMemo<PlayStorages>(() => {
-    try {
-      return {
-        maps: new FilesystemMapStorage(),
-        rooms: new FilesystemRoomStorage(),
-        layouts: new FilesystemLayoutStorage(),
-      };
-    } catch {
-      return {
-        maps: new LocalStorageMapStorage(),
-        rooms: new LocalStorageRoomStorage(),
-        layouts: new LocalStorageLayoutStorage(),
-      };
-    }
-  }, []);
+export function useMapPicker(mapStorage: MapStorage): MapPickerState {
 
   const initialName = useMemo(() => {
     try {
@@ -60,7 +36,7 @@ export function useMapPicker(): MapPickerState {
 
   const reloadList = useCallback(async () => {
     try {
-      const list = await storages.maps.list();
+      const list = await mapStorage.list();
       const names = list.map((m) => m.name).sort();
       // Always keep the selected name visible even if storage doesn't
       // know about it yet (just-created map).
@@ -70,7 +46,7 @@ export function useMapPicker(): MapPickerState {
       console.warn('[map-picker] list failed:', err);
       setMaps([selected]);
     }
-  }, [storages, selected]);
+  }, [mapStorage, selected]);
 
   useEffect(() => {
     void reloadList();
@@ -88,5 +64,5 @@ export function useMapPicker(): MapPickerState {
 
   const reset = useCallback(() => setResetCount((n) => n + 1), []);
 
-  return { maps, selected, resetCount, storages, choose, reset, reloadList };
+  return { maps, selected, resetCount, choose, reset, reloadList };
 }

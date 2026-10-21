@@ -157,7 +157,12 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
 };
 
 /** The gameplay half of the proximity config, as the world settings every client's sensors read. */
-export function proximityWorldSettings(proximity: ProximityViewConfig): Partial<WorldSettings> {
+export function proximityWorldSettings(
+  proximity: Pick<
+    ProximityViewConfig,
+    'sensorRadius' | 'outerRadius' | 'enterDebounceMs' | 'conversationDistance' | 'conversationHeight'
+  >,
+): Partial<WorldSettings> {
   return {
     proximityRadius: proximity.sensorRadius,
     proximityOuterRadius: proximity.outerRadius,

@@ -21,6 +21,7 @@
 import { WebIO } from '@gltf-transform/core';
 import type { CatalogService, InstanceGeometryService } from './types.ts';
 import type { BakeDeps } from './bake-registry.ts';
+import { bakedLayoutUrl } from './baked-layout-url.ts';
 
 /**
  * Build a `BakeDeps` object suitable for use in the browser.
@@ -64,7 +65,7 @@ export function createBrowserBakeDeps(
     layoutName: string,
     glb: Uint8Array,
   ) => {
-    const url = `/api/baked-layouts/${encodeURIComponent(layoutName)}`;
+    const url = bakedLayoutUrl(layoutName);
     // Send a copy of the underlying buffer; fetch() accepts ArrayBuffer as body.
     const body: BodyInit = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer;
     const res = await fetch(url, {

@@ -66,5 +66,6 @@ export type { BakeOptimizer } from './bake-optimizers.ts';
 export { createDefaultApi } from './create-default-api.ts';
 export type { CreateDefaultApiOptions } from './create-default-api.ts';
 
+export { bakedLayoutUrl } from './baked-layout-url.ts';
 export { loadMap, MapNotFoundError } from './map-loader.ts';
 export type { LoadedMap, MapLoaderDeps } from './map-loader.ts';
