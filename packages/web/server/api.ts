@@ -50,9 +50,18 @@ export function tailscaleIdentity(req: IncomingMessage): Identity | null {
   return { login, name: name ? decodeMimeWords(name) : login };
 }
 
+const MAX_BODY_BYTES = 4096;
+const TOO_LARGE = Symbol('too large');
+
+/** The parsed JSON body, `null` when it isn't JSON, or `TOO_LARGE` past `MAX_BODY_BYTES`. */
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let size = 0;
   for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > MAX_BODY_BYTES) {
+      return TOO_LARGE;
+    }
     chunks.push(chunk as Buffer);
   }
   try {
@@ -95,7 +104,11 @@ export function apiMiddleware(queryOffices: QueryOffices, characters: OfficeChar
           return send(200, { characterId: await characters.get(office.id, me.login) });
         }
         if (req.method === 'PUT') {
-          const characterId = ((await readJson(req)) as { characterId?: unknown } | null)?.characterId;
+          const body = await readJson(req);
+          if (body === TOO_LARGE) {
+            return send(413, { error: 'Body too large' });
+          }
+          const characterId = (body as { characterId?: unknown } | null)?.characterId;
           if (!isCharacterName(characterId)) {
             return send(400, { error: 'Unknown character' });
           }

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { Scene } from '@officexr/world/renderer';
-import { CHARACTERS } from '@officexr/world';
+import { CHARACTERS, isCharacterName } from '@officexr/world';
 import type { CharacterName } from '@officexr/world';
 import type {
   BackgroundViewConfig,
@@ -55,8 +55,8 @@ function readCharacterFromHash(): CharacterName {
   if (typeof window === 'undefined') return DEFAULT_CHARACTER;
   const parts = window.location.hash.replace(/^#/, '').split('/');
   const candidate = parts[1];
-  if (candidate && (CHARACTERS as readonly string[]).includes(candidate)) {
-    return candidate as CharacterName;
+  if (isCharacterName(candidate)) {
+    return candidate;
   }
   return DEFAULT_CHARACTER;
 }

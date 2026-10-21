@@ -13,25 +13,28 @@ function useSelfCharacter({ store, selfId }: PersistentLocalState): CharacterNam
   return character;
 }
 
-export function CharacterPicker({ local, onError }: { local: PersistentLocalState; onError: (message: string) => void }) {
+/** Reports each save's error, or `null` once a save succeeds. */
+type SaveResult = (error: string | null) => void;
+
+export function CharacterPicker({ local, onSaveResult }: { local: PersistentLocalState; onSaveResult: SaveResult }) {
   const character = useSelfCharacter(local);
   const [open, setOpen] = useState(false);
   return (
-    <div data-studio-panel className="absolute right-3 bottom-3 w-56 rounded bg-black/70 p-2 text-xs text-white">
-      <button type="button" className="w-full text-left font-medium" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Character: {character}
-      </button>
+    <div data-studio-panel className="pointer-events-auto w-56 rounded bg-black/70 p-2 text-xs text-white">
       {open && (
         <>
-          <div className="my-2 h-56 overflow-hidden rounded">
+          <div className="mb-2 h-40 overflow-hidden rounded">
             <CharacterPreviewCanvas character={character} />
           </div>
           <select
             aria-label="Character"
-            className="w-full rounded bg-white px-1 py-0.5 text-black"
+            className="mb-2 w-full rounded bg-white px-1 py-0.5 text-black"
             value={character}
             onChange={(e) =>
-              chooseCharacter(local, e.target.value as CharacterName).catch((err: Error) => onError(err.message))
+              chooseCharacter(local, e.target.value as CharacterName).then(
+                () => onSaveResult(null),
+                (err: Error) => onSaveResult(err.message),
+              )
             }
           >
             {CHARACTERS.map((c) => (
@@ -40,6 +43,9 @@ export function CharacterPicker({ local, onError }: { local: PersistentLocalStat
           </select>
         </>
       )}
+      <button type="button" className="w-full text-left font-medium" aria-expanded={open} onClick={() => setOpen(!open)}>
+        Character: {character}
+      </button>
     </div>
   );
 }

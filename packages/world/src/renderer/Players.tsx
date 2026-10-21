@@ -165,13 +165,7 @@ export function Players({
   );
 
   // Re-render only when the player set or someone's character changes, not on movement.
-  useEffect(() => {
-    const unsubscribe = store.subscribeAll((next: OfficeState) => {
-      const entries = playerEntries(next);
-      setPlayers((current) => (sameEntries(current, entries) ? current : entries));
-    });
-    return unsubscribe;
-  }, [store]);
+  useEffect(() => store.subscribe(playerEntries, setPlayers, sameEntries), [store]);
 
   // Per-player rigid body refs — peers driven from store each frame; self is
   // wired through `selfBodyRef` and driven by the character controller.

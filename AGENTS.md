@@ -55,7 +55,7 @@ officexr/
 │   ├── web/                    # @officexr/web — React shell + small server API (Vite plugin)
 │   │   ├── index.html          # SPA shell (entry: src/main.tsx)
 │   │   ├── src/                # main.tsx, App.tsx: office list + room placeholder
-│   │   ├── server/             # /api/me, /api/offices (pg), /config.js; vitest specs
+│   │   ├── server/             # /api/me, /api/offices, /api/offices/:id/character (pg), /config.js; vitest specs
 │   │   ├── vite.config.ts
 │   │   ├── tsconfig.json
 │   │   └── .env.example        # SUPABASE_DB_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*

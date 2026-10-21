@@ -131,7 +131,9 @@ function World({ office, me }: { office: Office; me: Identity }) {
           {office.name}: {names}
         </div>
       )}
-      {local && <CharacterPicker local={local} onError={setSaveError} />}
+      <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
+        {local && <CharacterPicker local={local} onSaveResult={setSaveError} />}
+      </div>
       {error && error !== dismissedError && <ErrorBanner message={error} onDismiss={() => setDismissedError(error)} />}
     </div>
   );

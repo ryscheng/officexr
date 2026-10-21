@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Connect, PreviewServer, ViteDevServer } from 'vite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { officexrServer, type Office, type OfficeCharacters, type QueryOffices } from './api';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -150,6 +150,7 @@ describe('/api/offices/:id/character', () => {
     fetch(`${base}/api/offices/${officeId}/character`, { method: 'PUT', headers, body: JSON.stringify(body) });
   const get = async (base: string, officeId: string, headers = tailscale) =>
     (await (await fetch(`${base}/api/offices/${officeId}/character`, { headers })).json()).characterId;
+  beforeEach(() => storedCharacters.clear());
 
   it('stores the choice per office and login', async () => {
     const base = await start('configurePreviewServer');
@@ -168,12 +169,23 @@ describe('/api/offices/:id/character', () => {
     expect((await put(base, ID, 'not json')).status).toBe(400);
     const raw = await fetch(`${base}/api/offices/${ID}/character`, { method: 'PUT', headers: tailscale, body: '{' });
     expect(raw.status).toBe(400);
+    expect((await put(base, ID, { characterId: 'Mage', pad: 'x'.repeat(5000) })).status).toBe(413);
+    expect(await get(base, ID)).toBeNull();
+  });
+
+  it('is 405 for other methods', async () => {
+    const base = await start('configurePreviewServer');
+    const res = await fetch(`${base}/api/offices/${ID}/character`, { method: 'DELETE', headers: tailscale });
+    expect(res.status).toBe(405);
   });
 
   it('is 401 without identity and 404 for unknown offices', async () => {
     const base = await start('configurePreviewServer');
     expect((await fetch(`${base}/api/offices/${ID}/character`)).status).toBe(401);
-    expect((await put(base, '22222222-2222-4222-8222-222222222222', { characterId: 'Mage' })).status).toBe(404);
+    const missing = '22222222-2222-4222-8222-222222222222';
+    expect((await put(base, missing, { characterId: 'Mage' })).status).toBe(404);
+    expect((await fetch(`${base}/api/offices/${missing}/character`, { headers: tailscale })).status).toBe(404);
+    expect((await fetch(`${base}/api/offices/not-a-uuid/character`, { headers: tailscale })).status).toBe(404);
   });
 });
 

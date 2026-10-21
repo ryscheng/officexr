@@ -20,6 +20,13 @@ describe('loadCharacter', () => {
       pickCharacterForPlayer('a@example.com'),
     );
   });
+
+  it('falls back to the login default when the response is unreadable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchFn = async () => new Response('<html>', { status: 200 });
+    expect(await loadCharacter(OFFICE, 'a@example.com', fetchFn)).toBe(pickCharacterForPlayer('a@example.com'));
+    warn.mockRestore();
+  });
 });
 
 describe('chooseCharacter', () => {
