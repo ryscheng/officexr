@@ -16,8 +16,8 @@ interface MapPickerPanelProps {
  * Right-hand panel for Debug mode. Replaces the previous Leva
  * `useMapPicker` schema. Two controls:
  *
- *   - `map` dropdown: pick a saved map; load fires teleport +
- *     bot respawn (handled by the hook).
+ *   - `map` dropdown: pick a saved map; `<PlayView>` loads it,
+ *     teleports the player and DebugApp respawns bots.
  *   - `Reload list`: re-fetch /api/maps for fresh entries.
  *   - `Reset & respawn`: re-apply the current map and warp bots.
  */

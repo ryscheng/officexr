@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import type { Actions } from '@officexr/sdk';
 import type { BotMode } from '@officexr/world/bot';
-import { proximityWorldSettings } from '@officexr/world/renderer';
 
 import { Button } from '../../components/ui/button.tsx';
 import {
@@ -34,10 +33,11 @@ interface WorldPanelsProps {
  * Each section is a fully-controlled React component. Edits flow:
  *   - **Renderer-local fields** → `setSection(...)` updates the
  *     view-config; `<Scene>` re-reads it on every render.
- *   - **Synced fields** (animation speeds, proximity radii, sun
- *     intensity, world grid size) → ALSO call into the SDK
+ *   - **Synced fields** (animation speeds, sun intensity, world
+ *     grid size) → ALSO call into the SDK
  *     `actions.setWorldSettings(...)` or `actions.setWorldMap(...)`
- *     so peers + bots see the updated values.
+ *     so peers + bots see the updated values. Proximity radii are
+ *     applied by `<PlayView>` from the view-config instead.
  *
  * The `WorldPanels` component itself is intentionally a render-only
  * wrapper — all the mirror-to-SDK effects live inside the inner
@@ -72,7 +72,6 @@ export function WorldPanels({
       <ProximityPanel
         proximity={viewConfig.proximity}
         setSection={setSection}
-        actions={actions}
       />
       <LightingPanel
         lighting={viewConfig.lighting}
@@ -273,22 +272,9 @@ function JumpPanel({ jump, setSection, actions }: JumpPanelProps) {
 interface ProximityPanelProps {
   proximity: ViewConfig['proximity'];
   setSection: UseStudioSettingsResult['setSection'];
-  actions: Actions | null;
 }
 
-function ProximityPanel({ proximity, setSection, actions }: ProximityPanelProps) {
-  useEffect(() => {
-    if (!actions) return;
-    actions.setWorldSettings(proximityWorldSettings(proximity));
-  }, [
-    actions,
-    proximity.sensorRadius,
-    proximity.outerRadius,
-    proximity.enterDebounceMs,
-    proximity.conversationDistance,
-    proximity.conversationHeight,
-  ]);
-
+function ProximityPanel({ proximity, setSection }: ProximityPanelProps) {
   const set =
     <K extends keyof ViewConfig['proximity']>(key: K) =>
     (value: ViewConfig['proximity'][K]) =>

@@ -2,12 +2,18 @@ import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 
+let sharedRadialTexture: THREE.CanvasTexture | null = null;
+
 /**
  * Procedural radial-gradient texture used as the bubble glow `map`.
- * Module-scoped so every instance (and the per-player ground discs
- * in ProximityGlow that import it) shares one texture.
+ * Shared by every instance (and the per-player ground discs in
+ * ProximityGlow); built on first use so importing the renderer needs
+ * no canvas.
  */
-export const radialTexture = (() => {
+export function radialTexture(): THREE.CanvasTexture {
+  if (sharedRadialTexture) {
+    return sharedRadialTexture;
+  }
   const size = 256;
   const c = document.createElement('canvas');
   c.width = c.height = size;
@@ -28,8 +34,9 @@ export const radialTexture = (() => {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
+  sharedRadialTexture = tex;
   return tex;
-})();
+}
 
 export interface BubbleParticlesProps {
   count: number;
@@ -165,7 +172,7 @@ export function BubbleParticles({
     <points geometry={geometry} renderOrder={3}>
       <pointsMaterial
         size={baseSize}
-        map={radialTexture}
+        map={radialTexture()}
         color={color}
         transparent
         opacity={0.95}

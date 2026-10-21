@@ -8,6 +8,7 @@ import {
   type RoomInstance,
   type SpawnPoint,
 } from '@officexr/world/scenes';
+import { bakedLayoutUrl } from '@officexr/world/app';
 import { useApplication, useCatalogReady } from '@officexr/world/react';
 import {
   BakedLayout,
@@ -575,7 +576,7 @@ function RoomInstanceMesh({
   // Map view renders full room geometry, so each room instance should
   // also show its structural GLB at the same world transform.
   const bakedLayoutPath = room.layoutName
-    ? `/api/baked-layouts/${encodeURIComponent(room.layoutName)}`
+    ? bakedLayoutUrl(room.layoutName)
     : undefined;
 
   return (

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useCatalog } from '@officexr/world/react';
 import {
+  bakedLayoutUrl,
   getBakeState,
   subscribe as registrySubscribe,
   type BakeState,
@@ -134,7 +135,7 @@ function LayoutBakeBadge({ layoutName }: { layoutName: string }) {
   useEffect(() => {
     let cancelled = false;
     setDiskPresent(null);
-    fetch(`/api/baked-layouts/${encodeURIComponent(layoutName)}`, { method: 'HEAD' })
+    fetch(bakedLayoutUrl(layoutName), { method: 'HEAD' })
       .then((r) => {
         if (cancelled) return;
         setDiskPresent(r.ok);

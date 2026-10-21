@@ -2,12 +2,11 @@ import { vi } from 'vitest';
 
 /**
  * jsdom doesn't implement `HTMLCanvasElement.getContext`, so it throws.
- * Some renderer modules build a procedural 2D texture at import time
- * (e.g. `renderer/proximity/BubbleParticles.tsx`'s module-scoped
- * `radialTexture`). Any studio test that transitively imports the
- * renderer barrel — including the Tier 3 editor-scenario tests that
- * mount scene layers under `@react-three/test-renderer` — would crash
- * on load without this stub.
+ * Renderer components build procedural 2D textures when they render
+ * (e.g. `renderer/proximity/BubbleParticles.tsx`'s `radialTexture()`),
+ * so studio tests that mount scene layers under
+ * `@react-three/test-renderer` (the Tier 3 editor-scenario tests)
+ * would crash without this stub.
  *
  * We only stub the 2D context (returning a no-op canvas API including
  * `createRadialGradient`); WebGL is handled by the test renderer's own
