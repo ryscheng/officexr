@@ -20,23 +20,14 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck (sdk + core-refactor)
+      - name: Typecheck
         run: pnpm typecheck
 
       - name: Build
         run: pnpm build
-
-      - name: Start Supabase (test instance)
-        working-directory: tools/supabase-test
-        run: |
-          supabase start --exclude edge-runtime,storage-api,imgproxy,mailpit,vector,logflare,supavisor,studio,postgres-meta
 
       - name: Test
         run: pnpm test
@@ -46,7 +37,7 @@ jobs:
 
       - name: E2E (editor interaction, hermetic)
         # Scoped to the editor-interaction specs that run hermetically
-        # (?test=1: in-memory storage, bundled catalog — no Supabase,
+        # (?test=1: in-memory storage, bundled catalog — no database,
         # no dev-server filesystem). The broader Playwright suite has
         # pre-existing rot (stale /api/cube-kinds endpoint, drifted
         # room-editor selectors) and is fixed/expanded in a follow-up;
@@ -62,8 +53,3 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
-
-      - name: Stop Supabase
-        if: always()
-        working-directory: tools/supabase-test
-        run: supabase stop

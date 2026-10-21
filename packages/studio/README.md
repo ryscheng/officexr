@@ -90,7 +90,5 @@ pnpm --filter @officexr/core-refactor test  # voice / communication
 
 Studio is a thin shell. All renderer code, character registry, and
 scene serialization live in `@officexr/world`. The production
-`@officexr/web` package is untouched — it still depends on
-`@officexr/core`'s legacy `RoomScene.tsx`. The eventual `web`
-migration will swap `core` for `@officexr/world` (renderer) plus a
-future HUD package; the studio path is what proves those seams.
+`@officexr/web` app renders rooms through the same `@officexr/world`
+renderer, so the studio path exercises the seams the web app uses.

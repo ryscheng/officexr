@@ -13,8 +13,8 @@ about *how* code in it should be written. Keep it short.
 Default to writing code that respects the five SOLID principles. They're
 not aspirational rules — they're the baseline the existing
 `@officexr/sdk` + `@officexr/world` + `@officexr/studio` split is built around, and the
-`refactor-plan/` work is explicitly aimed at restoring them where the
-old `RoomScene.tsx` god component eroded them.
+`refactor-plan/` work restored them where the old (since removed)
+`RoomScene.tsx` god component eroded them.
 
 - **Single Responsibility.** A module, class, or component does one
   thing. If you can't describe its job in one short sentence without
@@ -29,7 +29,7 @@ old `RoomScene.tsx` god component eroded them.
   and the `PROTOCOL` table are existing examples — they fail at compile
   time when a new variant is added without a registry entry.
 - **Liskov Substitution.** A concrete `Channel` implementation
-  (`InMemoryChannel`, `WsChannel`, `SupabaseChannel`) must obey the
+  (`InMemoryChannel`, `WsChannel`) must obey the
   same observable contract the `Channel` interface advertises —
   including subscribe / send / presence semantics. Any "this
   implementation behaves slightly differently" needs to either be
@@ -86,7 +86,7 @@ escape hatch is for genuine constraints, not for skipping refactors.
 ## Other guardrails
 
 - **No mock-only tests for cross-process behaviour.** If a test would
-  pass with mocked Supabase / mocked channels but fail in production,
+  pass with mocked channels but fail in production,
   add an integration test against the in-memory channel hub
   (`createInMemoryChannelHub`) — that's the convergence-test pattern
   the SDK already uses.

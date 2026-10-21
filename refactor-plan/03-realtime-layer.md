@@ -8,6 +8,10 @@ a specification, not an options menu.
 > Addresses observations **O6** (untyped network grab-bag), **O7**
 > (ad-hoc multiplayer authority), **O10** (unthrottled position
 > broadcasts).
+>
+> The Supabase Realtime channel adapter specified here was later
+> replaced by the WebSocket `WsChannel` (`@officexr/realtime-server`)
+> and removed; the protocol and sync design still apply.
 
 ## Layer shape
 

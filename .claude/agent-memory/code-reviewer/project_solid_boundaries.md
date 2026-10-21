@@ -17,7 +17,7 @@ have NO `three` or `react` imports — they're authoring data layer, headless by
 design. `import * as THREE` is restricted to `packages/*/renderer/**`.
 
 **Why:** The refactor-plan/ work is explicitly aimed at restoring SOLID's
-Dependency Inversion after `RoomScene.tsx` god component eroded it. The SDK
+Dependency Inversion after the (since removed) `RoomScene.tsx` god component eroded it. The SDK
 must remain headless so it can be embedded by other clients (server, tests,
 future native).
 
