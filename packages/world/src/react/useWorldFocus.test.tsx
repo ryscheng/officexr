@@ -11,7 +11,7 @@
  */
 import { describe, expect, it, afterEach } from 'vitest';
 import { render, renderHook, act, cleanup } from '@testing-library/react';
-import { useWorldFocus } from './useWorldFocus.ts';
+import { focusWorld, useWorldFocus } from './useWorldFocus.ts';
 
 afterEach(() => {
   cleanup();
@@ -133,5 +133,22 @@ describe('useWorldFocus', () => {
       );
     });
     expect(result.current).toBe(false);
+  });
+
+  it('focusWorld() reclaims focus after a panel mousedown', () => {
+    const { result } = renderHook(() => useWorldFocus());
+    const { container } = render(
+      <aside data-studio-panel="true">
+        <button id="panel-btn">x</button>
+      </aside>,
+    );
+    act(() => {
+      container.querySelector('#panel-btn')!.dispatchEvent(
+        new MouseEvent('mousedown', { bubbles: true, button: 0 }),
+      );
+    });
+    expect(result.current).toBe(false);
+    act(() => focusWorld());
+    expect(result.current).toBe(true);
   });
 });
