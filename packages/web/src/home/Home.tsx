@@ -4,7 +4,7 @@ import { FilesystemMapStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
 import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
 import { Async } from '../Async';
-import { DEFAULT_MAP } from '../room/loadOfficeMap';
+import { DEFAULT_MAP } from '../room/withDefaultMap';
 import { errorMessage, useApi, type ApiState } from '../useApi';
 
 function OfficeList() {

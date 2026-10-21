@@ -2,12 +2,11 @@ import type { MapStorage } from '@officexr/world/scenes';
 
 export const DEFAULT_MAP = 'default';
 
+type LoadableMaps = Pick<MapStorage, 'load'>;
+
 /** Serves the default map in place of any other map that doesn't exist. */
-export function withDefaultMap(maps: MapStorage): MapStorage {
+export function withDefaultMap(maps: LoadableMaps): LoadableMaps {
   return {
-    list: () => maps.list(),
-    save: (name, map) => maps.save(name, map),
-    delete: (name) => maps.delete(name),
     async load(name) {
       const map = await maps.load(name);
       if (map || name === DEFAULT_MAP) {

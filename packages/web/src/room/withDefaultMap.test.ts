@@ -1,14 +1,13 @@
-import type { MapDocumentV1, MapStorage } from '@officexr/world/scenes';
+import type { MapDocumentV1 } from '@officexr/world/scenes';
 import { describe, expect, it, vi } from 'vitest';
-import { withDefaultMap } from './loadOfficeMap';
+import { withDefaultMap } from './withDefaultMap';
 
-const fakeMaps = (existing: string[]) =>
-  ({
-    load: async (name: string) => (existing.includes(name) ? ({ name } as unknown as MapDocumentV1) : null),
-  }) as MapStorage;
+const fakeMaps = (existing: string[]) => ({
+  load: async (name: string) => (existing.includes(name) ? ({ name } as unknown as MapDocumentV1) : null),
+});
 
 const loadedName = async (existing: string[], name: string) =>
-  (await withDefaultMap(fakeMaps(existing)).load(name)) as unknown as { name: string } | null;
+  (await withDefaultMap(fakeMaps(existing)).load(name)) as { name: string } | null;
 
 describe('withDefaultMap', () => {
   it('loads the requested map when it exists', async () => {
@@ -22,16 +21,19 @@ describe('withDefaultMap', () => {
     warn.mockRestore();
   });
 
-  it('returns null when the default map is missing too', async () => {
-    expect(await loadedName([], 'default')).toBeNull();
+  it('returns null after one warning when the default map is missing too', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await loadedName([], 'gone')).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 
   it('rethrows other load errors', async () => {
     const maps = {
-      load: async () => {
+      load: async (): Promise<MapDocumentV1 | null> => {
         throw new Error('network down');
       },
-    } as unknown as MapStorage;
+    };
     await expect(withDefaultMap(maps).load('hq')).rejects.toThrow('network down');
   });
 });

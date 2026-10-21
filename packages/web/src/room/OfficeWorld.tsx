@@ -8,7 +8,7 @@ import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
 import { CharacterPicker } from './CharacterPicker';
-import { DEFAULT_MAP, withDefaultMap } from './loadOfficeMap';
+import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 import { useOfficeSession } from './useOfficeSession';
 
 const storages = {
