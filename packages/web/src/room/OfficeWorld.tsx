@@ -16,6 +16,7 @@ import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } 
 import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
 import { JaasMeeting, MuteToggle } from '../voice/JaasMeeting';
+import { CharacterPicker } from './CharacterPicker';
 import { loadOfficeMap } from './loadOfficeMap';
 import { useOfficeSession } from './useOfficeSession';
 
@@ -79,6 +80,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
   const cameraMode = useCameraModeCycle();
   const worldFocused = useWorldFocus();
   const [dismissedError, setDismissedError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [applied, setApplied] = useState<{ local: PersistentLocalState; map: LoadedMap } | null>(null);
   const local = session.type === 'ready' ? session.local : undefined;
   const names = usePlayerNames(local?.store);
@@ -101,7 +103,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
     setApplied({ local, map });
   }, [local, map, spawnPoints]);
 
-  const error = session.type === 'error' ? session.message : mapError;
+  const error = session.type === 'error' ? session.message : (mapError ?? saveError);
   const bakedLayoutName = map?.bakedLayoutName;
 
   return (
@@ -124,12 +126,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
           bakedLayoutName={bakedLayoutName}
         />
       )}
-      {session.type === 'ready' && session.voice && (
-        <>
-          <JaasMeeting voice={session.voice} />
-          <MuteToggle voice={session.voice} />
-        </>
-      )}
+      {session.type === 'ready' && session.voice && <JaasMeeting voice={session.voice} />}
       <WorldHud cameraMode={cameraMode} realtime={session.type} bakedLayoutName={bakedLayoutName} />
       <FocusIndicator focused={worldFocused} />
       {local && <ChatPanel store={local.store} actions={local.actions} selfId={me.login} />}
@@ -138,6 +135,10 @@ function World({ office, me }: { office: Office; me: Identity }) {
           {office.name}: {names}
         </div>
       )}
+      <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
+        {local && <CharacterPicker local={local} onSaveResult={setSaveError} />}
+        {session.type === 'ready' && session.voice && <MuteToggle voice={session.voice} />}
+      </div>
       {error && error !== dismissedError && <ErrorBanner message={error} onDismiss={() => setDismissedError(error)} />}
     </div>
   );

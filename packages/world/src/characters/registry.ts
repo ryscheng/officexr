@@ -21,6 +21,26 @@ export const CHARACTERS = [
 
 export type CharacterName = (typeof CHARACTERS)[number];
 
+export function isCharacterName(value: unknown): value is CharacterName {
+  return (CHARACTERS as readonly unknown[]).includes(value);
+}
+
+/** `model` when it names a built-in character, else one picked by a stable
+ * hash of `playerId` so every peer renders the same fallback. */
+export function pickCharacterForPlayer(
+  playerId: string,
+  model?: string,
+): CharacterName {
+  if (isCharacterName(model)) {
+    return model;
+  }
+  let hash = 0;
+  for (let i = 0; i < playerId.length; i++) {
+    hash = (hash * 31 + playerId.charCodeAt(i)) >>> 0;
+  }
+  return CHARACTERS[hash % CHARACTERS.length];
+}
+
 /**
  * Per-model default overrides. Empty per model means "fall back to
  * `WorldSettings`" — i.e. every character moves at the same speed

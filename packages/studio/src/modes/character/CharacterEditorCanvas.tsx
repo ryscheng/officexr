@@ -1,22 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import {
-  Adventurer,
-  DEFAULT_EDITOR_LIGHTING,
-  EndlessGrid,
-  LightingRig,
-  type AnimationState,
-} from '@officexr/world/renderer';
+import { useFrame, useThree } from '@react-three/fiber';
+import { CharacterPreviewCanvas, type AnimationState } from '@officexr/world/renderer';
 import type { CharacterName } from '@officexr/world';
 import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 
-const CHARACTER_EDITOR_LIGHTING = {
-  ...DEFAULT_EDITOR_LIGHTING,
-  sunPosition: [10, 20, 10] as [number, number, number],
-  sunIntensity: 1.2,
-  ambientFillIntensity: 0.7,
-};
+type Motion = 'idle' | 'walking' | 'running';
 
 export interface CharacterPartHover {
   /** Name of the leaf node the raycast hit (usually a SkinnedMesh
@@ -64,35 +53,41 @@ interface CharacterEditorCanvasProps {
  * No SDK store, no peers, no broadcast — purely a previewer.
  */
 export function CharacterEditorCanvas(props: CharacterEditorCanvasProps) {
+  const charGroupRef = useRef<THREE.Group>(null);
+  const [motion, setMotion] = useState<Motion>('idle');
   return (
-    <Canvas
-      camera={{ position: [0, 2, 5], fov: 45, near: 0.1, far: 200 }}
-      style={{ width: '100%', height: '100%', display: 'block' }}
-      shadows={false}
+    <CharacterPreviewCanvas
+      character={props.character}
+      motion={motion}
+      // In control mode the velocity-derived motion takes over from the selected preview clip.
+      previewState={props.inControl ? undefined : props.previewState}
+      idleSpeed={props.idleSpeed}
+      walkSpeed={props.walkSpeed}
+      runSpeed={props.runSpeed}
+      groupRef={charGroupRef}
     >
       <CanvasFrameStats />
-      <LightingRig lighting={CHARACTER_EDITOR_LIGHTING} />
-      <color attach="background" args={['#0a0a0a']} />
-      <EndlessGrid />
-      <CharacterStage {...props} />
-    </Canvas>
+      <CharacterStage {...props} charGroupRef={charGroupRef} onMotionChange={setMotion} />
+    </CharacterPreviewCanvas>
   );
 }
 
-interface CharacterStageProps extends CharacterEditorCanvasProps {}
+interface CharacterStageProps extends CharacterEditorCanvasProps {
+  charGroupRef: React.RefObject<THREE.Group | null>;
+  onMotionChange: (motion: Motion) => void;
+}
 
+/** Drives the preview's camera and character from mouse and keyboard input. */
 function CharacterStage(props: CharacterStageProps) {
   const { camera, gl } = useThree();
   const persp = camera as THREE.PerspectiveCamera;
+  const { charGroupRef, onMotionChange } = props;
 
   // The character's transform. In preview mode it stays at origin;
   // in control mode WASD moves it.
   const charPos = useRef(new THREE.Vector3(0, 0, 0));
   const charYaw = useRef(0);
-  const motion = useRef<'idle' | 'walking' | 'running'>('idle');
-  const [renderedMotion, setRenderedMotion] = useState<
-    'idle' | 'walking' | 'running'
-  >('idle');
+  const motion = useRef<Motion>('idle');
 
   // Camera orbit state (preview mode).
   const orbit = useRef({
@@ -183,11 +178,9 @@ function CharacterStage(props: CharacterStageProps) {
     charPos.current.set(0, 0, 0);
     charYaw.current = 0;
     motion.current = 'idle';
-    setRenderedMotion('idle');
+    onMotionChange('idle');
     keys.current.clear();
-  }, [props.inControl, props.character]);
-
-  const charGroupRef = useRef<THREE.Group>(null);
+  }, [props.inControl, props.character, onMotionChange]);
 
   // --- Part-name hover (debug tooltip) ----------------------------
   // Track cursor in NDC + page-space so each frame we can raycast
@@ -243,7 +236,7 @@ function CharacterStage(props: CharacterStageProps) {
       const isRunning = k.has('shiftleft') || k.has('shiftright');
       const baseSpeed = 3;
       const speed = isRunning ? baseSpeed * 2 : baseSpeed;
-      let nextMotion: 'idle' | 'walking' | 'running' = 'idle';
+      let nextMotion: Motion = 'idle';
       if (fwd !== 0 || strafe !== 0) {
         // Camera-relative direction in XZ.
         const camYaw = orbit.current.azimuth;
@@ -266,7 +259,7 @@ function CharacterStage(props: CharacterStageProps) {
       }
       if (nextMotion !== motion.current) {
         motion.current = nextMotion;
-        setRenderedMotion(nextMotion);
+        onMotionChange(nextMotion);
       }
     }
     // Camera orbits / follows the character either way.
@@ -331,32 +324,5 @@ function CharacterStage(props: CharacterStageProps) {
     }
   });
 
-  // In preview mode the Adventurer plays whatever previewState the
-  // panel has selected; in control mode the velocity-derived motion
-  // takes over and previewState is undefined.
-  const adventurerPreview: AnimationState | undefined = props.inControl
-    ? undefined
-    : props.previewState;
-
-  return (
-    <group ref={charGroupRef}>
-      {/*
-        `key={props.character}` forces a fresh Adventurer mount when
-        the model changes. Without it, useAnimations' mixer stays
-        bound to the previous cloned scene's bones — the new GLB
-        renders but its bones never get driven so it stands frozen.
-        Remounting also resets the mixer, action, and clip state
-        cleanly so cross-fades behave the same on every model swap.
-      */}
-      <Adventurer
-        key={props.character}
-        character={props.character}
-        motion={renderedMotion}
-        previewState={adventurerPreview}
-        idleSpeed={props.idleSpeed}
-        walkSpeed={props.walkSpeed}
-        runSpeed={props.runSpeed}
-      />
-    </group>
-  );
+  return null;
 }

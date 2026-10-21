@@ -4,11 +4,15 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Connect, PreviewServer, ViteDevServer } from 'vite';
-import { afterEach, describe, expect, it } from 'vitest';
-import { officexrServer, type Office, type QueryOffices } from './api';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { officexrServer, type Office, type OfficeCharacters, type QueryOffices } from './api';
 
 const ID = '11111111-1111-4111-8111-111111111111';
-const offices: Office[] = [{ id: ID, name: 'HQ', description: null, map_name: 'hq' }];
+const OTHER = '33333333-3333-4333-8333-333333333333';
+const offices: Office[] = [
+  { id: ID, name: 'HQ', description: null, map_name: 'hq' },
+  { id: OTHER, name: 'Annex', description: null, map_name: null },
+];
 const modelsDir = mkdtempSync(path.join(tmpdir(), 'officexr-models-'));
 mkdirSync(path.join(modelsDir, 'characters'));
 writeFileSync(path.join(modelsDir, 'characters', 'Mage.glb'), 'glb');
@@ -16,6 +20,13 @@ const outsideFile = path.join(modelsDir, '..', `${path.basename(modelsDir)}-secr
 writeFileSync(outsideFile, 'secret');
 const outsideName = encodeURIComponent(path.basename(outsideFile));
 const queryOffices: QueryOffices = async (id) => offices.filter((o) => !id || o.id === id);
+const storedCharacters = new Map<string, string>();
+const characters: OfficeCharacters = {
+  get: async (officeId, login) => storedCharacters.get(`${officeId}/${login}`) ?? null,
+  set: async (officeId, login, characterId) => {
+    storedCharacters.set(`${officeId}/${login}`, characterId);
+  },
+};
 
 /** Mimics connect's `use(base, fn)`: only matching paths reach `fn`, with `base` stripped from `req.url`. */
 function mountAt(base: string, fn: Connect.NextHandleFunction): Connect.NextHandleFunction {
@@ -47,7 +58,7 @@ async function start(hook: Hook, devUser?: { login: string; name: string }): Pro
       },
     },
   };
-  for (const plugin of officexrServer({ queryOffices, devUser, modelsDir })) {
+  for (const plugin of officexrServer({ queryOffices, characters, devUser, modelsDir })) {
     (plugin[hook] as (s: ViteDevServer | PreviewServer) => void)(fake as unknown as ViteDevServer);
   }
   server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -130,6 +141,51 @@ describe('/api/offices', () => {
     expect(await (await fetch(`${base}/api/offices/${ID}`)).json()).toEqual(offices[0]);
     expect((await fetch(`${base}/api/offices/22222222-2222-4222-8222-222222222222`)).status).toBe(404);
     expect((await fetch(`${base}/api/offices/not-a-uuid`)).status).toBe(404);
+  });
+});
+
+describe('/api/offices/:id/character', () => {
+  const bob = { 'Tailscale-User-Login': 'b@example.com', 'Tailscale-User-Name': 'Bob' };
+  const put = (base: string, officeId: string, body: unknown, headers = tailscale) =>
+    fetch(`${base}/api/offices/${officeId}/character`, { method: 'PUT', headers, body: JSON.stringify(body) });
+  const get = async (base: string, officeId: string, headers = tailscale) =>
+    (await (await fetch(`${base}/api/offices/${officeId}/character`, { headers })).json()).characterId;
+  beforeEach(() => storedCharacters.clear());
+
+  it('stores the choice per office and login', async () => {
+    const base = await start('configurePreviewServer');
+    expect(await get(base, ID)).toBeNull();
+    expect((await put(base, ID, { characterId: 'Mage' })).status).toBe(200);
+    expect((await put(base, OTHER, { characterId: 'Knight' })).status).toBe(200);
+    expect((await put(base, ID, { characterId: 'Rogue' }, bob)).status).toBe(200);
+    expect(await get(base, ID)).toBe('Mage');
+    expect(await get(base, OTHER)).toBe('Knight');
+    expect(await get(base, ID, bob)).toBe('Rogue');
+  });
+
+  it('rejects unknown characters and malformed bodies', async () => {
+    const base = await start('configurePreviewServer');
+    expect((await put(base, ID, { characterId: 'Dragon' })).status).toBe(400);
+    expect((await put(base, ID, 'not json')).status).toBe(400);
+    const raw = await fetch(`${base}/api/offices/${ID}/character`, { method: 'PUT', headers: tailscale, body: '{' });
+    expect(raw.status).toBe(400);
+    expect((await put(base, ID, { characterId: 'Mage', pad: 'x'.repeat(5000) })).status).toBe(413);
+    expect(await get(base, ID)).toBeNull();
+  });
+
+  it('is 405 for other methods', async () => {
+    const base = await start('configurePreviewServer');
+    const res = await fetch(`${base}/api/offices/${ID}/character`, { method: 'DELETE', headers: tailscale });
+    expect(res.status).toBe(405);
+  });
+
+  it('is 401 without identity and 404 for unknown offices', async () => {
+    const base = await start('configurePreviewServer');
+    expect((await fetch(`${base}/api/offices/${ID}/character`)).status).toBe(401);
+    const missing = '22222222-2222-4222-8222-222222222222';
+    expect((await put(base, missing, { characterId: 'Mage' })).status).toBe(404);
+    expect((await fetch(`${base}/api/offices/${missing}/character`, { headers: tailscale })).status).toBe(404);
+    expect((await fetch(`${base}/api/offices/not-a-uuid/character`, { headers: tailscale })).status).toBe(404);
   });
 });
 

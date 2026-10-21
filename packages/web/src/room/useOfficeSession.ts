@@ -12,6 +12,7 @@ import type { Identity } from '../../server/api';
 import { generateJaaSJwt } from '../voice/jaasJwt';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { getJaasConfig } from '../voice/runtimeConfig';
+import { loadCharacter } from './character';
 
 export type OfficeSession =
   | { type: 'connecting' }
@@ -53,15 +54,21 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
     let cancelled = false;
     let office: OfficeSync | undefined;
     // ponytail: a server-initiated close (same login in another tab, sidecar restart) isn't surfaced or retried.
+    const character = loadCharacter(officeId, me.login);
     startOfficeSync({ local, channel, voice: voiceAdapter }).then(
-      (started) => {
+      async (started) => {
         if (cancelled) {
           started.stop();
           return;
         }
+        // Owned by the cleanup from here on, so it's stopped whatever happens next.
         office = started;
-        // After start, so the sync engine announces the name to the office.
-        local.actions.upsertPlayer({ id: me.login, name: me.name });
+        const model = await character;
+        if (cancelled) {
+          return;
+        }
+        // After start, so the sync engine announces the name and character to the office.
+        local.actions.upsertPlayer({ id: me.login, name: me.name, avatar: { model } });
         setSession({ type: 'ready', local, office: started, bots, voice });
       },
       (err: Error) => {

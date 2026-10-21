@@ -51,7 +51,7 @@ export function MuteToggle({ voice }: { voice: JaasVoiceAdapter }) {
       aria-pressed={muted}
       onMouseDown={(e) => e.preventDefault()}
       onClick={toggle}
-      className={`absolute right-3 bottom-3 rounded px-3 py-1.5 text-xs text-white ${muted ? 'bg-red-700/80 hover:bg-red-700' : 'bg-black/55 hover:bg-black/70'}`}
+      className={`pointer-events-auto rounded px-3 py-1.5 text-xs text-white ${muted ? 'bg-red-700/80 hover:bg-red-700' : 'bg-black/55 hover:bg-black/70'}`}
     >
       Mute mic
     </button>
