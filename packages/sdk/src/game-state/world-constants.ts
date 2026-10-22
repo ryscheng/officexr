@@ -84,7 +84,6 @@ export type WorldConstants = {
   fixedCamera: FixedCameraConstants;
 };
 
-/** Default fixed-camera tweakables. */
 export const FIXED_CAMERA_DEFAULTS = {
   /** Compass heading FROM character TO camera. 0 = N, 180 = S; 202.5 = SSW. */
   azimuthDeg: 202.5,
