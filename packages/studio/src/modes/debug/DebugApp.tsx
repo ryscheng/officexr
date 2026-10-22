@@ -4,7 +4,7 @@ import {
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import type { Vec3 } from '@officexr/sdk';
-import { PlayView, useApplication } from '@officexr/world/react';
+import { PlayView, useApplication, useWorldConstants } from '@officexr/world/react';
 import {
   FilesystemLayoutStorage,
   FilesystemMapStorage,
@@ -14,8 +14,12 @@ import {
   LocalStorageRoomStorage,
 } from '@officexr/world/scenes';
 import { SidePanel } from '../../ui/SidePanel.tsx';
-import { WorldPanels } from '../../panels/world/WorldPanels.tsx';
+import { SaveStatus, WorldPanels } from '../../panels/world/WorldPanels.tsx';
 import { useStudioSettings } from '../../panels/world/useStudioSettings.ts';
+import {
+  isLoaded,
+  useWorldConstantsPersistence,
+} from '../../panels/world/useWorldConstantsPersistence.ts';
 import { useStackSwitcher } from '../../realtime/useStackSwitcher.ts';
 import { MapPickerPanel } from './MapPickerPanel.tsx';
 import { useMapPicker } from './useMapPicker.ts';
@@ -50,7 +54,9 @@ function createStorages() {
  * editors are completely separate apps that don't share this stack.
  */
 export function DebugApp() {
-  const [local, setLocal] = useState<PersistentLocalState | null>(null);
+  const [local] = useState<PersistentLocalState>(() =>
+    createPersistentLocalState({ selfId: SELF_ID, officeId: OFFICE_ID }),
+  );
   const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -58,16 +64,19 @@ export function DebugApp() {
     a.loop = true;
     a.volume = 0.4;
     setAudio(a);
-
-    const lp = createPersistentLocalState({
-      selfId: SELF_ID,
-      officeId: OFFICE_ID,
-    });
-    setLocal(lp);
-
-    (window as unknown as { __OFFICE_STORE__: typeof lp.store }).__OFFICE_STORE__ =
-      lp.store;
   }, []);
+
+  useEffect(() => {
+    (window as unknown as { __OFFICE_STORE__: typeof local.store }).__OFFICE_STORE__ =
+      local.store;
+  }, [local]);
+
+  const worldConstants = useWorldConstants(local.store);
+  const persistence = useWorldConstantsPersistence({
+    store: local.store,
+    actions: local.actions,
+  });
+  const constantsSettled = persistence.status.type !== 'loading';
 
   // Canonical AABB lookup from the application layer's geometry service.
   // Threaded into useStackSwitcher → BotPool → BotPhysicsWorld so the
@@ -126,7 +135,6 @@ export function DebugApp() {
     }
   };
 
-  // Studio-local panel state (persisted to localStorage), edited in <WorldPanels>.
   const studioSettings = useStudioSettings();
 
   return (
@@ -144,7 +152,7 @@ export function DebugApp() {
           overflow: 'hidden',
         }}
       >
-        {stack && local && (
+        {stack && constantsSettled && (
           <PlayView
             store={local.store}
             actions={local.actions}
@@ -171,11 +179,16 @@ export function DebugApp() {
             <MapPickerPanel picker={picker} />
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
-            <WorldPanels
-              settings={studioSettings}
-              onBotCountChange={onBotCountChange}
-              onBotModeChange={onBotModeChange}
-            />
+            <SaveStatus status={persistence.status} onRetry={persistence.retry} />
+            {isLoaded(persistence.status) && (
+              <WorldPanels
+                worldConstants={worldConstants}
+                edit={persistence.edit}
+                settings={studioSettings}
+                onBotCountChange={onBotCountChange}
+                onBotModeChange={onBotModeChange}
+              />
+            )}
           </div>
         </div>
       </SidePanel>

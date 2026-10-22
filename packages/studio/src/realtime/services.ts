@@ -1,12 +1,12 @@
 import { createInMemoryChannelHub, InMemoryChannel } from '@officexr/sdk';
-import type { Channel, SnapshotHandshake, SyncEngine } from '@officexr/sdk';
+import type { Channel, SnapshotHandshake, Store, SyncEngine, WorldConstants } from '@officexr/sdk';
 import {
   createStack,
   startOfficeSync,
   type Communication,
   type PersistentLocalState,
 } from '@officexr/core-refactor';
-import { WsChannel } from '@officexr/realtime-server';
+import { SERVER_SELF_ID, WsChannel } from '@officexr/realtime-server';
 import { BotPool } from '@officexr/world/bot';
 import { createBotControlPublisher, type BotControlPublisher } from './bot-control.ts';
 
@@ -106,8 +106,10 @@ export async function buildInMemoryStack(
     channel,
     voice: voiceAdapter,
   });
+  const stopAuthority = await startWorldConstantsAuthority(hub, local.store);
 
   const teardown = async () => {
+    stopAuthority();
     stop();
     bots.stop();
     channel.close();
@@ -123,6 +125,37 @@ export async function buildInMemoryStack(
     bots,
     botControl: null,
     teardown,
+  };
+}
+
+/**
+ * Stands in for the realtime server on an in-memory hub: emits the local
+ * store's world constants as the server actor now and whenever they
+ * change, so in-browser bots take them through the same inbound
+ * `world:constants` path as over ws.
+ */
+async function startWorldConstantsAuthority(
+  hub: ReturnType<typeof createInMemoryChannelHub>,
+  store: Store,
+): Promise<() => void> {
+  const channel = new InMemoryChannel(hub, SERVER_SELF_ID);
+  await channel.subscribe();
+  // Same seq scheme as the realtime server's own events.
+  let seq = Date.now();
+  const emit = (constants: WorldConstants) =>
+    void channel.send({
+      kind: 'world:constants',
+      v: 1,
+      actorId: SERVER_SELF_ID,
+      seq: ++seq,
+      t: Date.now(),
+      constants,
+    });
+  emit(store.getState().worldConstants);
+  const off = store.subscribe((s) => s.worldConstants, emit);
+  return () => {
+    off();
+    channel.close();
   };
 }
 

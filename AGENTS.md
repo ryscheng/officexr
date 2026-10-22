@@ -143,12 +143,14 @@ backing any of the panels. The previous Leva-based stack has been
 removed entirely; `pnpm --filter @officexr/studio lint:leva-free`
 runs four greps and fails CI if any Leva references leak back in.
 
-The world renderer's 8 dev-tweaker panels (Bot, Animation,
-Proximity, Lighting, Background, FixedCamera, World, Settings) live
-at `packages/studio/src/panels/world/`. They edit a `ViewConfig`
-bag persisted to `localStorage` via `useStudioSettings`; Debug Mode
-passes the bag into `<Scene>` as a `viewConfig` prop so the
-renderer stays UI-free.
+The Debug tuning panels (Bot, Animation, Jump, Proximity, Lighting,
+Background, FixedCamera, Settings) live at
+`packages/studio/src/panels/world/`. Every section but Bot edits the
+store's `worldConstants`; `useWorldConstantsPersistence` loads the saved
+document on start and saves (`/api/world-settings`) 500 ms after the last
+edit. Bot count/mode stay studio-local (`useStudioSettings`). In the
+in-memory stack a small authority re-emits the constants as the server
+actor so in-browser bots follow them.
 
 ## Studio Asset Packs
 

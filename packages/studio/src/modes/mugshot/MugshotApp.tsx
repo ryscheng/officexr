@@ -14,7 +14,7 @@ import {
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import { buildInMemoryStack, type ChannelStack } from '../../realtime/services.ts';
-import { DEFAULT_VIEW_CONFIG } from '../../panels/world/types.ts';
+import { downloadBlob } from '../../lib/utils.ts';
 
 const SELF_ID = 'mugshot-player';
 const OFFICE_ID = 'mugshot';
@@ -152,12 +152,12 @@ export interface MugshotManifest {
  * default lighting but with the visible sun disc hidden — a bright
  * disc in the sky would dominate any pixel diff. */
 const DEFAULT_MUGSHOT_LIGHTING: LightingViewConfig = {
-  ...DEFAULT_VIEW_CONFIG.lighting,
+  ...DEFAULT_WORLD_CONSTANTS.lighting,
   showSunDisc: false,
 };
 
 const DEFAULT_MUGSHOT_BACKGROUND: BackgroundViewConfig =
-  DEFAULT_VIEW_CONFIG.background;
+  DEFAULT_WORLD_CONSTANTS.background;
 
 /**
  * Mugshot mode: a deterministic 2×2 cube scene with a paused
@@ -352,7 +352,7 @@ export function MugshotApp() {
       lighting,
       background,
       fixedCamera: {
-        ...DEFAULT_VIEW_CONFIG.fixedCamera,
+        ...DEFAULT_WORLD_CONSTANTS.fixedCamera,
         azimuthDeg,
         pitchDeg: -8,
         height: cameraHeight,
@@ -502,15 +502,8 @@ export function MugshotApp() {
       const blob = await zip.generateAsync({ type: 'blob' });
       const download = opts?.download !== false;
       if (download) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        a.href = url;
-        a.download = `mugshot-Barbarian-${stamp}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(blob, `mugshot-Barbarian-${stamp}.zip`);
       }
       (
         window as unknown as {

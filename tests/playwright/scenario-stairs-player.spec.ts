@@ -44,7 +44,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { waitForCanvasReady } from './helpers.ts';
-import { goToDebugWithMap } from './motion-helpers.ts';
+import { goToDebugWithMap, setFixedCamera } from './motion-helpers.ts';
 
 const SELF_ID = 'local-player';
 
@@ -293,23 +293,10 @@ test('stairs: local player WALKS up the staircase under keyboard input', async (
   // the player didn't.
   test.setTimeout(120_000);
 
-  // Pin the fixed camera azimuth to 90° BEFORE boot. SceneFrame maps
-  // WASD through cameraYaw = π − azimuth + movementYawOffset; with
-  // azimuth=90°, offset=0 the forward vector is exactly (−1, 0), so
-  // holding W walks pure −X — straight up the staircase. The studio's
-  // persisted view-config hydrates with a per-section shallow merge
-  // (useStudioSettings.mergeViewConfig), so a partial fixedCamera
-  // section is safe.
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'officexr:studio:view-config',
-      JSON.stringify({
-        fixedCamera: { azimuthDeg: 90, movementYawOffsetDeg: 0 },
-      }),
-    );
-  });
-
   await bootStairsScenario(page);
+  // SceneFrame maps WASD through cameraYaw = π − azimuth + movementYawOffset;
+  // with azimuth=90°, offset=0 holding W walks pure −X, straight up the stairs.
+  await setFixedCamera(page, { azimuthDeg: 90, movementYawOffsetDeg: 0 });
 
   // Stand at the stair base on the platform (x=5, centreline z=2),
   // facing a 5 m walk to the staircase top at x≈0.

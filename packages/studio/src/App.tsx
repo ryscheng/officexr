@@ -7,7 +7,6 @@ import {
   InMemoryLayoutStorage,
   InMemoryMapStorage,
   InMemoryRoomStorage,
-  InMemoryWorldConstantsStorage,
   type LayoutDocument,
   type MapDocumentV1,
   type RoomDocument,
@@ -16,6 +15,7 @@ import type { WorldConstants } from '@officexr/sdk';
 import { StudioPage } from './StudioPage.tsx';
 import { HeadlessApp } from './modes/headless/HeadlessApp.tsx';
 import { createTestApi } from './test-harness/createTestApi.ts';
+import { RecordingWorldConstantsStorage, testApi } from './test-harness/pageTestApi.ts';
 import {
   TestStorageProvider,
   type TestStorages,
@@ -38,13 +38,14 @@ interface TestSeed {
 function buildTestStorages(): TestStorages {
   const seed = (globalThis as { __OFFICEXR_TEST_SEED__?: TestSeed })
     .__OFFICEXR_TEST_SEED__;
+  const worldConstantsStorage = new RecordingWorldConstantsStorage(testApi().worldConstantsSaves, {
+    seed: seed?.worldConstants,
+  });
   return {
     mapStorage: new InMemoryMapStorage({ seed: seed?.maps }),
     roomStorage: new InMemoryRoomStorage({ seed: seed?.rooms }),
     layoutStorage: new InMemoryLayoutStorage({ seed: seed?.layouts }),
-    worldConstantsStorage: new InMemoryWorldConstantsStorage({
-      seed: seed?.worldConstants,
-    }),
+    worldConstantsStorage,
   };
 }
 

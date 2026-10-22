@@ -448,6 +448,26 @@ export async function goToDebugWithMap(page: Page, mapName: string): Promise<voi
 }
 
 /**
+ * Patch the store's fixed-camera world constants once Debug mode has
+ * loaded them (the canvas is up). The panels' save logic treats it like a
+ * server push, so nothing is written to the saved world settings.
+ */
+export async function setFixedCamera(
+  page: Page,
+  patch: { azimuthDeg?: number; movementYawOffsetDeg?: number },
+): Promise<void> {
+  await page.evaluate((p) => {
+    type Store = {
+      setState: (u: (s: { worldConstants: { fixedCamera: object } }) => object) => void;
+    };
+    const store = (window as unknown as { __OFFICE_STORE__: Store }).__OFFICE_STORE__;
+    store.setState((s) => ({
+      worldConstants: { ...s.worldConstants, fixedCamera: { ...s.worldConstants.fixedCamera, ...p } },
+    }));
+  }, patch);
+}
+
+/**
  * Park the LOCAL PLAYER at a fixed spot away from the bot's lane.
  *
  * Bot scenario specs share one spawn point between the local player
