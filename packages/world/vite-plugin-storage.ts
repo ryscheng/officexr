@@ -31,7 +31,12 @@ const DEFAULT_WORLD_SETTINGS_FILE = path.resolve(HERE, 'world-settings.json');
 const DEFAULT_LAYOUTS_DIR = path.resolve(HERE, 'layouts');
 const DEFAULT_BAKED_LAYOUTS_DIR = path.resolve(HERE, 'baked-layouts');
 
-type StorageEntry = { kind: 'dir' | 'file'; name: string };
+export type StorageEntry = {
+  kind: 'dir' | 'file';
+  name: string;
+  /** `false`: no default exists, so `seedDataDir` skips it. */
+  seed?: false;
+};
 
 /** Per-entry layout of a studio data dir. */
 export const STORAGE_ENTRIES = {
@@ -41,7 +46,7 @@ export const STORAGE_ENTRIES = {
   bakedLayouts: { kind: 'dir', name: 'baked-layouts' },
   legacyScenes: { kind: 'dir', name: 'scenes' },
   catalog: { kind: 'file', name: 'world-object-kinds.json' },
-  worldSettings: { kind: 'file', name: 'world-settings.json' },
+  worldSettings: { kind: 'file', name: 'world-settings.json', seed: false },
 } satisfies Record<string, StorageEntry>;
 
 /** Expands a data dir into the per-entry `dir` / `file` options. */
@@ -195,12 +200,13 @@ export default function studioStoragePlugin(
     );
     use(
       catalogBase,
-      makeSingleDocumentMiddleware({ file: catalogFile }),
+      makeSingleDocumentMiddleware({ file: catalogFile, label: 'catalog' }),
     );
     use(
       worldSettingsBase,
       makeSingleDocumentMiddleware({
         file: worldSettingsFile,
+        label: 'world-settings',
         validate: parseWorldConstants,
         onSaved: opts.worldSettings.onSaved,
       }),
@@ -391,9 +397,12 @@ function makeBinaryResourceMiddleware(
 
 interface SingleDocOpts<T> {
   file: string;
+  /** Names the route in error logs. */
+  label: string;
   /** Throws on an invalid document; the PUT is then a 400 and the file is untouched. */
   validate?: (raw: unknown) => T;
-  onSaved?: (doc: T) => Promise<WorldConstantsPushFailure[]>;
+  /** Runs after the file is written; any returned failure makes the PUT a 502 `{failed}`. */
+  onSaved?: (doc: T) => Promise<unknown[]>;
 }
 
 function makeSingleDocumentMiddleware<T = unknown>(
@@ -429,8 +438,13 @@ function makeSingleDocumentMiddleware<T = unknown>(
           await fs.mkdir(path.dirname(opts.file), { recursive: true });
           // Rename so a reader never sees a half-written file.
           const tmp = `${opts.file}.${process.pid}.${Date.now()}.tmp`;
-          await fs.writeFile(tmp, body, 'utf8');
-          await fs.rename(tmp, opts.file);
+          try {
+            await fs.writeFile(tmp, body, 'utf8');
+            await fs.rename(tmp, opts.file);
+          } catch (err) {
+            await fs.unlink(tmp).catch(() => {});
+            throw err;
+          }
           const failed = (await opts.onSaved?.(doc)) ?? [];
           if (failed.length > 0) {
             return jsonResponse(res, 502, { failed });
@@ -443,7 +457,7 @@ function makeSingleDocumentMiddleware<T = unknown>(
           return badMethod(res, ['GET', 'PUT']);
       }
     } catch (err) {
-      console.error('[studio-storage:catalog] middleware error:', err);
+      console.error(`[studio-storage:${opts.label}] middleware error:`, err);
       jsonResponse(res, 500, { error: (err as Error).message });
       next?.();
     }

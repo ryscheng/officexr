@@ -35,8 +35,8 @@ export interface BotsPluginOptions {
    * receives the dev server, for values that depend on its config.
    */
   env?: NodeJS.ProcessEnv | ((server: ViteDevServer) => NodeJS.ProcessEnv);
-  /** Called once the CLI has been spawned (not when an external one was found). */
-  onSpawn?: () => void;
+  /** Called with the spawned server's origin once a spawn was attempted (not when an external one was found). */
+  onSpawn?: (baseUrl: string) => void;
 }
 
 /**
@@ -114,7 +114,7 @@ export default function botsPlugin(opts: BotsPluginOptions = {}): Plugin {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
-      opts.onSpawn?.();
+      opts.onSpawn?.(new URL(healthUrl).origin);
 
       // Prefix every line of child output so it's distinguishable from
       // Vite's own log stream. Buffer until newline so we don't split

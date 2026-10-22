@@ -321,6 +321,15 @@ describe('WorldConstantsStorage conformance', () => {
       { target: 'http://rt', status: 500 },
     ]);
   });
+
+  it('Filesystem save() rejects with a plain error on a non-JSON 502', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>bad gateway</html>', { status: 502 })));
+    const err = await new FilesystemWorldConstantsStorage()
+      .save(DEFAULT_WORLD_CONSTANTS)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(WorldConstantsPushError);
+  });
 });
 
 describe('InMemory seed convenience', () => {

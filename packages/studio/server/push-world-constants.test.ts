@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
-import { parsePushTargets, pushWorldConstants } from './push-world-constants.ts';
+import { pushWorldConstants } from './push-world-constants.ts';
 
 type Call = { url: string; init: RequestInit };
 
@@ -68,14 +68,7 @@ describe('pushWorldConstants', () => {
 
   it('is a no-op success with no targets', async () => {
     expect(
-      await pushWorldConstants({ targets: [], token: undefined, doc: DEFAULT_WORLD_CONSTANTS }),
+      await pushWorldConstants({ targets: [], token: 't', doc: DEFAULT_WORLD_CONSTANTS }),
     ).toEqual([]);
-  });
-});
-
-describe('parsePushTargets', () => {
-  it('splits, trims and drops empties', () => {
-    expect(parsePushTargets(' http://a , ,http://b')).toEqual(['http://a', 'http://b']);
-    expect(parsePushTargets(undefined)).toEqual([]);
   });
 });

@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import studioStorage, { STORAGE_ENTRIES } from '@officexr/world/vite-plugin-storage';
+import studioStorage, { STORAGE_ENTRIES, type StorageEntry } from '@officexr/world/vite-plugin-storage';
 import bots from '@officexr/world/vite-plugin-bots';
-import { parsePushTargets, pushWorldConstants } from './server/push-world-constants.ts';
+import { pushWorldConstants } from './server/push-world-constants.ts';
 
 /**
  * The custom realtime server (`@officexr/realtime-server`, started by
@@ -23,10 +23,14 @@ import { parsePushTargets, pushWorldConstants } from './server/push-world-consta
 const REALTIME_TARGET =
   process.env.REALTIME_SERVER_TARGET ?? 'http://127.0.0.1:8787';
 
-// Realtime servers the studio pushes saved world settings to. The bot server
-// the dev server spawns itself joins this list (see `bots` below) and gets a
-// per-start admin token; an externally run one is only pushed to when listed.
-const pushTargets = parsePushTargets(process.env.OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS);
+// A bot server run outside the dev server is pushed to only when listed here,
+// and must share OFFICEXR_REALTIME_ADMIN_TOKEN.
+const pushTargets = new Set(
+  (process.env.OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS ?? '')
+    .split(',')
+    .map((t) => t.trim().replace(/\/$/, ''))
+    .filter(Boolean),
+);
 const adminToken = process.env.OFFICEXR_REALTIME_ADMIN_TOKEN ?? randomUUID();
 
 const WORLD_DIR = fileURLToPath(new URL('../world', import.meta.url));
@@ -50,9 +54,8 @@ async function seedDataDir(dataDir: string): Promise<void> {
     return;
   }
   await mkdir(dataDir, { recursive: true });
-  for (const [key, { kind, name }] of Object.entries(STORAGE_ENTRIES)) {
-    // No default document: absence means the sdk defaults.
-    if (key === 'worldSettings') {
+  for (const { kind, name, seed } of Object.values<StorageEntry>(STORAGE_ENTRIES)) {
+    if (seed === false) {
       continue;
     }
     const src = path.join(WORLD_DIR, name);
@@ -81,7 +84,7 @@ export default defineConfig({
     studioStorage({
       dataDir: DATA_DIR,
       worldSettings: {
-        onSaved: (doc) => pushWorldConstants({ targets: pushTargets, token: adminToken, doc }),
+        onSaved: (doc) => pushWorldConstants({ targets: [...pushTargets], token: adminToken, doc }),
       },
     }),
     {
@@ -111,7 +114,7 @@ export default defineConfig({
         OFFICEXR_WORLD_CONSTANTS_URL: `http://127.0.0.1:${server.config.server.port}/api/world-settings`,
         OFFICEXR_REALTIME_ADMIN_TOKEN: adminToken,
       }),
-      onSpawn: () => pushTargets.push(REALTIME_TARGET),
+      onSpawn: (baseUrl) => pushTargets.add(baseUrl),
     }),
   ],
   // proxy and host are inherited from `server`.
@@ -121,6 +124,8 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    // The spawned bot server reads this server's settings by port, so it must not move.
+    strictPort: true,
     host: true, // listen on 0.0.0.0 so remote browsers can reach the dev server
     proxy: {
       '/ws': {

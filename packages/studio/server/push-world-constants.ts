@@ -6,7 +6,7 @@ const DEFAULT_TIMEOUT_MS = 5000;
 /** PUTs `doc` to every target's admin endpoint in parallel; resolves with the targets that did not answer 204. */
 export async function pushWorldConstants(opts: {
   targets: readonly string[];
-  token: string | undefined;
+  token: string;
   doc: WorldConstants;
   fetchFn?: typeof fetch;
   timeoutMs?: number;
@@ -19,7 +19,7 @@ export async function pushWorldConstants(opts: {
           method: 'PUT',
           headers: {
             'content-type': 'application/json',
-            authorization: `Bearer ${token ?? ''}`,
+            authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(doc),
           signal: AbortSignal.timeout(timeoutMs),
@@ -31,12 +31,4 @@ export async function pushWorldConstants(opts: {
     }),
   );
   return results.filter((f) => f !== null);
-}
-
-/** Comma-separated base URLs, e.g. the `OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS` value. */
-export function parsePushTargets(raw: string | undefined): string[] {
-  return (raw ?? '')
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean);
 }

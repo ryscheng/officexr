@@ -1,4 +1,5 @@
 import { parseWorldConstants, type WorldConstants } from '@officexr/sdk';
+import { FilesystemSingleDocumentStorage } from './filesystem-single-document-storage.ts';
 
 /** One realtime server the studio failed to push a saved document to. */
 export type WorldConstantsPushFailure = {
@@ -38,36 +39,22 @@ export class InMemoryWorldConstantsStorage implements WorldConstantsStorage {
 }
 
 /** Talks to `/api/world-settings`; a 502 means saved on disk but not pushed everywhere. */
-export class FilesystemWorldConstantsStorage implements WorldConstantsStorage {
-  private base: string;
-
+export class FilesystemWorldConstantsStorage
+  extends FilesystemSingleDocumentStorage<WorldConstants>
+  implements WorldConstantsStorage
+{
   constructor(opts: { basePath?: string } = {}) {
-    this.base = (opts.basePath ?? '/api/world-settings').replace(/\/$/, '');
+    super(opts.basePath ?? '/api/world-settings', 'world-constants-storage', parseWorldConstants);
   }
 
-  async load(): Promise<WorldConstants | null> {
-    const r = await fetch(this.base);
-    if (r.status === 404) {
-      return null;
-    }
-    if (!r.ok) {
-      throw new Error(`world-constants-storage load: ${r.status}`);
-    }
-    return parseWorldConstants(await r.json());
-  }
-
-  async save(doc: WorldConstants): Promise<void> {
-    const r = await fetch(this.base, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(doc),
-    });
+  protected override async rejectSave(r: Response): Promise<never> {
     if (r.status === 502) {
-      const body = (await r.json()) as { failed: WorldConstantsPushFailure[] };
-      throw new WorldConstantsPushError(body.failed);
+      // A proxy's own 502 has no `failed` list; fall through to the generic error.
+      const body = (await r.json().catch(() => null)) as { failed?: unknown } | null;
+      if (Array.isArray(body?.failed)) {
+        throw new WorldConstantsPushError(body.failed as WorldConstantsPushFailure[]);
+      }
     }
-    if (!r.ok) {
-      throw new Error(`world-constants-storage save: ${r.status}`);
-    }
+    return super.rejectSave(r);
   }
 }
