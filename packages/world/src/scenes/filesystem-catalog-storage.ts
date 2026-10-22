@@ -1,3 +1,4 @@
+import { FilesystemSingleDocumentStorage } from './filesystem-single-document-storage.ts';
 import {
   validateWorldObjectKindCatalog,
   type WorldObjectKindCatalogV1,
@@ -21,27 +22,15 @@ export interface CatalogStorage {
   save(catalog: WorldObjectKindCatalogV1): Promise<void>;
 }
 
-export class FilesystemCatalogStorage implements CatalogStorage {
-  private base: string;
-
+export class FilesystemCatalogStorage
+  extends FilesystemSingleDocumentStorage<WorldObjectKindCatalogV1>
+  implements CatalogStorage
+{
   constructor(opts: { basePath?: string } = {}) {
-    this.base = (opts.basePath ?? '/api/world-object-kinds').replace(/\/$/, '');
-  }
-
-  async load(): Promise<WorldObjectKindCatalogV1 | null> {
-    const r = await fetch(this.base, { method: 'GET' });
-    if (r.status === 404) return null;
-    if (!r.ok) throw new Error(`catalog-storage load: ${r.status}`);
-    const raw = (await r.json()) as unknown;
-    return validateWorldObjectKindCatalog(raw);
-  }
-
-  async save(catalog: WorldObjectKindCatalogV1): Promise<void> {
-    const r = await fetch(this.base, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(catalog),
-    });
-    if (!r.ok) throw new Error(`catalog-storage save: ${r.status}`);
+    super(
+      opts.basePath ?? '/api/world-object-kinds',
+      'catalog-storage',
+      validateWorldObjectKindCatalog,
+    );
   }
 }

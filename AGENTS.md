@@ -111,6 +111,7 @@ Storage endpoints (Vite middleware):
 - `/api/rooms/:name` — RoomDocument JSON
 - `/api/maps/:name` — MapDocumentV1 JSON
 - `/api/cube-kinds` — single-doc catalog GET/PUT
+- `/api/world-settings` — single-doc `WorldConstants` GET/PUT; a save is pushed to the realtime servers (502 `{failed}` when some push fails)
 
 Files on disk:
 - `packages/world/rooms/*.json`

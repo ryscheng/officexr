@@ -16,5 +16,5 @@
     "esModuleInterop": true,
     "types": ["@react-three/fiber", "node"]
   },
-  "include": ["src"]
+  "include": ["src", "server"]
 }

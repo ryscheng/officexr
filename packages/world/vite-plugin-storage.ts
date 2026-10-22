@@ -19,16 +19,24 @@ import { deserializeMap } from './src/scenes/serialize.ts';
 import { deserializeLayout } from './src/scenes/layout-document.ts';
 import type { MapDocumentV1 } from './src/scenes/map-document.ts';
 import type { LayoutDocument } from './src/scenes/layout-document.ts';
+import { parseWorldConstants, type WorldConstants } from '@officexr/sdk';
+import type { WorldConstantsPushFailure } from './src/scenes/world-constants-storage.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOMS_DIR = path.resolve(HERE, 'rooms');
 const DEFAULT_MAPS_DIR = path.resolve(HERE, 'maps');
 const DEFAULT_SCENES_DIR = path.resolve(HERE, 'scenes');
 const DEFAULT_CATALOG_FILE = path.resolve(HERE, 'world-object-kinds.json');
+const DEFAULT_WORLD_SETTINGS_FILE = path.resolve(HERE, 'world-settings.json');
 const DEFAULT_LAYOUTS_DIR = path.resolve(HERE, 'layouts');
 const DEFAULT_BAKED_LAYOUTS_DIR = path.resolve(HERE, 'baked-layouts');
 
-type StorageEntry = { kind: 'dir' | 'file'; name: string };
+export type StorageEntry = {
+  kind: 'dir' | 'file';
+  name: string;
+  /** `false`: no default exists, so `seedDataDir` skips it. */
+  seed?: false;
+};
 
 /** Per-entry layout of a studio data dir. */
 export const STORAGE_ENTRIES = {
@@ -38,6 +46,7 @@ export const STORAGE_ENTRIES = {
   bakedLayouts: { kind: 'dir', name: 'baked-layouts' },
   legacyScenes: { kind: 'dir', name: 'scenes' },
   catalog: { kind: 'file', name: 'world-object-kinds.json' },
+  worldSettings: { kind: 'file', name: 'world-settings.json', seed: false },
 } satisfies Record<string, StorageEntry>;
 
 /** Expands a data dir into the per-entry `dir` / `file` options. */
@@ -78,6 +87,16 @@ export interface StudioStoragePluginOptions {
   maps?: { dir?: string; basePath?: string };
   /** Single-document file. Default: `packages/world/world-object-kinds.json`. */
   catalog?: { file?: string; basePath?: string };
+  /**
+   * Single-document file, absent until first saved. `onSaved` runs after the
+   * file is written and returns the targets it failed to reach; any failure
+   * turns the PUT into a 502. Default: `packages/world/world-settings.json`.
+   */
+  worldSettings?: {
+    file?: string;
+    basePath?: string;
+    onSaved?: (doc: WorldConstants) => Promise<WorldConstantsPushFailure[]>;
+  };
   /** Layout JSON docs. Default dir: `packages/world/layouts/`. */
   layouts?: { dir?: string; basePath?: string };
   /** Baked GLBs. Default dir: `packages/world/baked-layouts/`. */
@@ -107,6 +126,9 @@ export interface StudioStoragePluginOptions {
  *   GET    /api/world-object-kinds   → catalog JSON | 404
  *   PUT    /api/world-object-kinds   → 204 (body = catalog JSON)
  *
+ *   GET    /api/world-settings       → WorldConstants JSON | 404
+ *   PUT    /api/world-settings       → 204 | 400 | 502 { failed } (body = WorldConstants JSON)
+ *
  *   GET    /api/scenes/*             → legacy (back-compat for Task <6)
  *
  * Mounted on both the dev and preview servers.
@@ -123,6 +145,7 @@ export default function studioStoragePlugin(
     bakedLayouts: { ...fromDataDir.bakedLayouts, ...options.bakedLayouts },
     legacyScenes: { ...fromDataDir.legacyScenes, ...options.legacyScenes },
     catalog: { ...fromDataDir.catalog, ...options.catalog },
+    worldSettings: { ...fromDataDir.worldSettings, ...options.worldSettings },
   };
   const roomsDir = opts.rooms?.dir ?? DEFAULT_ROOMS_DIR;
   const roomsBase = (opts.rooms?.basePath ?? '/api/rooms').replace(/\/$/, '');
@@ -130,6 +153,11 @@ export default function studioStoragePlugin(
   const mapsBase = (opts.maps?.basePath ?? '/api/maps').replace(/\/$/, '');
   const catalogFile = opts.catalog?.file ?? DEFAULT_CATALOG_FILE;
   const catalogBase = (opts.catalog?.basePath ?? '/api/world-object-kinds').replace(
+    /\/$/,
+    '',
+  );
+  const worldSettingsFile = opts.worldSettings.file ?? DEFAULT_WORLD_SETTINGS_FILE;
+  const worldSettingsBase = (opts.worldSettings.basePath ?? '/api/world-settings').replace(
     /\/$/,
     '',
   );
@@ -172,7 +200,16 @@ export default function studioStoragePlugin(
     );
     use(
       catalogBase,
-      makeSingleDocumentMiddleware({ file: catalogFile }),
+      makeSingleDocumentMiddleware({ file: catalogFile, label: 'catalog' }),
+    );
+    use(
+      worldSettingsBase,
+      makeSingleDocumentMiddleware({
+        file: worldSettingsFile,
+        label: 'world-settings',
+        validate: parseWorldConstants,
+        onSaved: opts.worldSettings.onSaved,
+      }),
     );
     use(
       layoutsBase,
@@ -358,12 +395,18 @@ function makeBinaryResourceMiddleware(
   };
 }
 
-interface SingleDocOpts {
+interface SingleDocOpts<T> {
   file: string;
+  /** Names the route in error logs. */
+  label: string;
+  /** Throws on an invalid document; the PUT is then a 400 and the file is untouched. */
+  validate?: (raw: unknown) => T;
+  /** Runs after the file is written; any returned failure makes the PUT a 502 `{failed}`. */
+  onSaved?: (doc: T) => Promise<unknown[]>;
 }
 
-function makeSingleDocumentMiddleware(
-  opts: SingleDocOpts,
+function makeSingleDocumentMiddleware<T = unknown>(
+  opts: SingleDocOpts<T>,
 ): Connect.NextHandleFunction {
   return async (req, res, next) => {
     try {
@@ -385,14 +428,27 @@ function makeSingleDocumentMiddleware(
         }
         case 'PUT': {
           const body = await readBody(req);
-          // Validate JSON only — the catalog schema is Task 3.
+          let doc: T;
           try {
-            JSON.parse(body);
+            const raw: unknown = JSON.parse(body);
+            doc = opts.validate ? opts.validate(raw) : (raw as T);
           } catch (err) {
             return jsonResponse(res, 400, { error: (err as Error).message });
           }
           await fs.mkdir(path.dirname(opts.file), { recursive: true });
-          await fs.writeFile(opts.file, body, 'utf8');
+          // Rename so a reader never sees a half-written file.
+          const tmp = `${opts.file}.${process.pid}.${Date.now()}.tmp`;
+          try {
+            await fs.writeFile(tmp, body, 'utf8');
+            await fs.rename(tmp, opts.file);
+          } catch (err) {
+            await fs.unlink(tmp).catch(() => {});
+            throw err;
+          }
+          const failed = (await opts.onSaved?.(doc)) ?? [];
+          if (failed.length > 0) {
+            return jsonResponse(res, 502, { failed });
+          }
           res.statusCode = 204;
           res.end();
           return;
@@ -401,7 +457,7 @@ function makeSingleDocumentMiddleware(
           return badMethod(res, ['GET', 'PUT']);
       }
     } catch (err) {
-      console.error('[studio-storage:catalog] middleware error:', err);
+      console.error(`[studio-storage:${opts.label}] middleware error:`, err);
       jsonResponse(res, 500, { error: (err as Error).message });
       next?.();
     }

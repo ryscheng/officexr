@@ -132,4 +132,11 @@ export {
   type CatalogStorage,
   FilesystemCatalogStorage,
 } from './filesystem-catalog-storage.ts';
+export {
+  type WorldConstantsPushFailure,
+  type WorldConstantsStorage,
+  FilesystemWorldConstantsStorage,
+  InMemoryWorldConstantsStorage,
+  WorldConstantsPushError,
+} from './world-constants-storage.ts';
 export { thumbnailUrlForKind } from './thumbnails.ts';
