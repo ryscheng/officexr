@@ -1,4 +1,11 @@
-import { createServer, type IncomingMessage, type Server as HttpServer } from 'node:http';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import {
+  createServer,
+  type IncomingMessage,
+  type Server as HttpServer,
+  type ServerResponse,
+} from 'node:http';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   applyNetEventToStore,
@@ -6,7 +13,9 @@ import {
   createBus,
   createInMemoryChannelHub,
   createStore,
+  DEFAULT_WORLD_CONSTANTS,
   InMemoryChannel,
+  parseWorldConstants,
   validateNetEvent,
   type Actions,
   type Bus,
@@ -14,10 +23,12 @@ import {
   type PlayerId,
   type PresenceData,
   type Store,
+  type WorldConstants,
 } from '@officexr/sdk';
 import {
   decodeFrame,
   encodeFrame,
+  SERVER_SELF_ID,
   type CustomFrame,
   type Frame,
 } from './protocol.ts';
@@ -25,7 +36,9 @@ import {
 const DEFAULT_PORT = 8787;
 const DEFAULT_PATH = '/ws';
 const DEFAULT_OFFICE_ID = 'debug-office';
-const SERVER_SELF_ID = 'server';
+const MAX_ADMIN_BODY_BYTES = 1024 * 1024;
+const DEFAULT_BOOT_RETRY_MS = 2_000;
+const BOOT_RETRY_MAX_MS = 30_000;
 
 export interface RealtimeServerOptions {
   /** Port to listen on. Default 8787. */
@@ -34,6 +47,16 @@ export interface RealtimeServerOptions {
   path?: string;
   /** Office served to clients whose `hello` omits `officeId`. Default 'debug-office'. */
   officeId?: string;
+  /** Boot source for the world constants. A 404 keeps the defaults;
+   * network errors and 5xx are retried with backoff. */
+  worldConstantsUrl?: string;
+  /** Bearer token for `PUT /admin/world-constants`. Unset or empty
+   * disables the route (404). */
+  adminToken?: string;
+  /** Used for the boot load. Default: global `fetch`. */
+  fetch?: typeof fetch;
+  /** First boot-load retry delay; doubles per attempt up to 30 s. Default 2000. */
+  bootRetryMs?: number;
 }
 
 /**
@@ -61,16 +84,26 @@ export class Room {
   readonly actions: Actions;
   readonly bus: Bus;
   readonly clients = new Map<PlayerId, WsClient>();
+  private readonly mirror: InMemoryChannel;
   private readonly offMirror: () => void;
 
-  constructor(readonly officeId: string) {
+  /** `takeServerSeq` hands out the server-wide seq for events the server
+   * itself originates (actor {@link SERVER_SELF_ID}). */
+  constructor(
+    readonly officeId: string,
+    private readonly takeServerSeq: () => number,
+    worldConstants: WorldConstants,
+  ) {
     this.store = createStore({ selfId: SERVER_SELF_ID, officeId });
     this.bus = createBus();
     this.actions = createActions(this.store, this.bus);
+    this.actions.setWorldConstants(worldConstants);
 
     // The mirror receives every hub fan-out except its own broadcasts,
-    // which is what we want: the server doesn't originate broadcasts.
+    // so server-originated events must also be applied to the store
+    // directly (see pushWorldConstants).
     const mirror = new InMemoryChannel(this.hub, SERVER_SELF_ID);
+    this.mirror = mirror;
     void mirror.subscribe();
     const off = mirror.on((event) => {
       const v = validateNetEvent(event);
@@ -89,6 +122,24 @@ export class Room {
     this.offMirror();
   }
 
+  /** Adopt `constants` and fan them out to every hub peer (WS clients
+   * and in-process bots). */
+  pushWorldConstants(constants: WorldConstants, seq: number): void {
+    this.actions.setWorldConstants(constants);
+    void this.mirror.send(this.worldConstantsEvent(seq));
+  }
+
+  private worldConstantsEvent(seq: number): NetEvent {
+    return {
+      kind: 'world:constants',
+      v: 1,
+      actorId: SERVER_SELF_ID,
+      seq,
+      t: Date.now(),
+      constants: this.store.getState().worldConstants,
+    };
+  }
+
   /** Send a custom frame to one client, or every client if `target` is
    * omitted. */
   sendCustom(kind: string, payload: unknown, target?: PlayerId): void {
@@ -101,9 +152,10 @@ export class Room {
     for (const c of this.clients.values()) c.sendRaw(raw);
   }
 
-  /** Build the snapshot events sent to a freshly-joined client:
-   * `presence:position` and (for players who have announced a name) the
-   * equivalent `avatar:update` for every other present player.
+  /** Build the snapshot events sent to a freshly-joined client: the
+   * room's `world:constants`, then `presence:position` and (for players
+   * who have announced a name) the equivalent `avatar:update` for every
+   * other present player.
    *
    * We intentionally do **NOT** include `world:map` here. The browser
    * owns it; applying the server's copy on connect would silently
@@ -116,7 +168,7 @@ export class Room {
    * `BotServer.getInitialWorld` seed. */
   buildSnapshotFor(joinerId: PlayerId): NetEvent[] {
     const state = this.store.getState();
-    const events: NetEvent[] = [];
+    const events: NetEvent[] = [this.worldConstantsEvent(this.takeServerSeq())];
     const present = new Set([...this.hub.present(), ...this.clients.keys()]);
     let seq = 1;
 
@@ -170,11 +222,30 @@ export class RealtimeServer {
   private httpServer: HttpServer | null = null;
   private wss: WebSocketServer | null = null;
   private customHandlers: CustomFrameHandler[] = [];
+  private readonly worldConstantsUrl: string | undefined;
+  private readonly adminToken: string | undefined;
+  private readonly fetch: typeof fetch;
+  private readonly bootRetryMs: number;
+  private worldConstants: WorldConstants = DEFAULT_WORLD_CONSTANTS;
+  private bootLoad: AbortController | null = null;
+  // Clients dedup on (actorId, seq) and keep their seq table across a
+  // reconnect, so seeding from the clock keeps a restarted server's
+  // events ahead of the previous instance's.
+  private serverSeq = Date.now();
+  private readonly takeServerSeq = (): number => ++this.serverSeq;
 
   constructor(opts: RealtimeServerOptions = {}) {
     this.port = opts.port ?? DEFAULT_PORT;
     this.path = opts.path ?? DEFAULT_PATH;
-    this.defaultRoom = new Room(opts.officeId ?? DEFAULT_OFFICE_ID);
+    this.worldConstantsUrl = opts.worldConstantsUrl;
+    this.adminToken = opts.adminToken;
+    this.fetch = opts.fetch ?? globalThis.fetch;
+    this.bootRetryMs = opts.bootRetryMs ?? DEFAULT_BOOT_RETRY_MS;
+    this.defaultRoom = new Room(
+      opts.officeId ?? DEFAULT_OFFICE_ID,
+      this.takeServerSeq,
+      this.worldConstants,
+    );
     this.rooms.set(this.defaultRoom.officeId, this.defaultRoom);
   }
 
@@ -203,6 +274,10 @@ export class RealtimeServer {
         );
         return;
       }
+      if (req.url === '/admin/world-constants' && req.method === 'PUT' && this.adminToken) {
+        this.putWorldConstants(req, res, this.adminToken).catch(() => res.destroy());
+        return;
+      }
       res.writeHead(404);
       res.end();
     });
@@ -228,9 +303,20 @@ export class RealtimeServer {
         resolve();
       });
     });
+
+    if (this.worldConstantsUrl) {
+      const bootLoad = new AbortController();
+      this.bootLoad = bootLoad;
+      void fetchWorldConstants(this.worldConstantsUrl, this.fetch, this.bootRetryMs, bootLoad.signal).then((constants) => {
+        if (constants && !bootLoad.signal.aborted) {
+          this.setWorldConstants(constants);
+        }
+      });
+    }
   }
 
   async stop(): Promise<void> {
+    this.bootLoad?.abort();
     for (const room of this.rooms.values()) room.close();
     this.rooms.clear();
     if (this.wss) {
@@ -245,6 +331,39 @@ export class RealtimeServer {
     }
   }
 
+  private setWorldConstants(constants: WorldConstants): void {
+    this.worldConstants = constants;
+    const seq = this.takeServerSeq();
+    for (const room of this.rooms.values()) room.pushWorldConstants(constants, seq);
+  }
+
+  private async putWorldConstants(
+    req: IncomingMessage,
+    res: ServerResponse,
+    token: string,
+  ): Promise<void> {
+    if (!bearerMatches(req.headers.authorization, token)) {
+      res.writeHead(401).end();
+      return;
+    }
+    const body = await readBody(req, MAX_ADMIN_BODY_BYTES);
+    if (body === null) {
+      res.writeHead(413, { connection: 'close' }).end(() => req.destroy());
+      return;
+    }
+    let constants: WorldConstants;
+    try {
+      constants = parseWorldConstants(JSON.parse(body));
+    } catch (err) {
+      res.writeHead(400, { 'content-type': 'text/plain' }).end(String((err as Error).message));
+      return;
+    }
+    // A pushed doc is newer than whatever the boot load would return.
+    this.bootLoad?.abort();
+    this.setWorldConstants(constants);
+    res.writeHead(204).end();
+  }
+
   private roomFor(officeId: unknown): Room {
     const id =
       typeof officeId === 'string' && officeId !== ''
@@ -253,7 +372,7 @@ export class RealtimeServer {
     // ponytail: office ids and room count are unbounded; fine on a tailnet-only server.
     let room = this.rooms.get(id);
     if (!room) {
-      room = new Room(id);
+      room = new Room(id, this.takeServerSeq, this.worldConstants);
       this.rooms.set(id, room);
     }
     return room;
@@ -270,6 +389,10 @@ export class RealtimeServer {
 
       if (frame.t === 'hello') {
         if (client) return; // already greeted
+        if (frame.userId === SERVER_SELF_ID) {
+          ws.close();
+          return;
+        }
         room = this.roomFor(frame.officeId);
         client = this.acceptClient(room, ws, frame.userId);
         return;
@@ -311,10 +434,7 @@ export class RealtimeServer {
         present: room.hub.present().filter((id) => id !== userId),
       }),
     );
-    const snapEvents = room.buildSnapshotFor(userId);
-    if (snapEvents.length > 0) {
-      ws.send(encodeFrame({ t: 'snapshot', events: snapEvents }));
-    }
+    ws.send(encodeFrame({ t: 'snapshot', events: room.buildSnapshotFor(userId) }));
 
     return client;
   }
@@ -339,7 +459,11 @@ export class RealtimeServer {
     switch (frame.t) {
       case 'broadcast': {
         const v = validateNetEvent(frame.event);
-        if (!v.ok) return;
+        // Only the server originates world constants, and a spoofed
+        // server actor with a high seq would make peers dedup away every
+        // later server push. The retired `world:settings` kind already
+        // fails validation.
+        if (!v.ok || v.event.kind === 'world:constants' || v.event.actorId === SERVER_SELF_ID) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
         room.hub.broadcast(client.userId, v.event);
@@ -369,6 +493,76 @@ export class RealtimeServer {
         return;
     }
   }
+}
+
+/** Fetches the boot constants doc, retrying network errors and 5xx with
+ * capped backoff. Resolves `null` (keep the defaults) on a 404, an
+ * invalid doc, any other status, or abort. */
+async function fetchWorldConstants(
+  url: string,
+  fetchFn: typeof fetch,
+  firstRetryMs: number,
+  signal: AbortSignal,
+): Promise<WorldConstants | null> {
+  for (let delayMs = firstRetryMs; ; delayMs = Math.min(delayMs * 2, BOOT_RETRY_MAX_MS)) {
+    const res = await fetchFn(url, { signal }).catch((err: unknown) => {
+      if (!signal.aborted) {
+        console.warn(`[realtime-server] world constants load failed; retrying in ${delayMs}ms:`, err);
+      }
+      return null;
+    });
+    if (signal.aborted) {
+      return null;
+    }
+    if (res?.ok) {
+      try {
+        return parseWorldConstants(await res.json());
+      } catch (err) {
+        if (!signal.aborted) {
+          console.error('[realtime-server] invalid world constants doc; keeping defaults:', err);
+        }
+        return null;
+      }
+    }
+    if (res && res.status < 500) {
+      if (res.status !== 404) {
+        console.error(`[realtime-server] world constants load got ${res.status}; keeping defaults`);
+      }
+      return null;
+    }
+    if (res) {
+      console.warn(`[realtime-server] world constants load got ${res.status}; retrying in ${delayMs}ms`);
+    }
+    try {
+      await sleep(delayMs, undefined, { signal });
+    } catch {
+      return null;
+    }
+  }
+}
+
+function bearerMatches(header: string | undefined, token: string): boolean {
+  // Hashing equalises lengths, which timingSafeEqual requires.
+  const digest = (s: string) => createHash('sha256').update(s).digest();
+  return timingSafeEqual(digest(header ?? ''), digest(`Bearer ${token}`));
+}
+
+/** Resolves the request body as UTF-8, or `null` once it exceeds `limit` bytes. */
+function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) {
+        resolve(null);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
 }
 
 /**

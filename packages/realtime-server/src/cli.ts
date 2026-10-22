@@ -1,7 +1,11 @@
 import { RealtimeServer } from './server.ts';
 
 const port = Number(process.env.REALTIME_PORT || 8787);
-const server = new RealtimeServer({ port });
+const server = new RealtimeServer({
+  port,
+  worldConstantsUrl: process.env.OFFICEXR_WORLD_CONSTANTS_URL,
+  adminToken: process.env.OFFICEXR_REALTIME_ADMIN_TOKEN,
+});
 await server.start();
 console.log(`[realtime-server] listening on :${port}`);
 

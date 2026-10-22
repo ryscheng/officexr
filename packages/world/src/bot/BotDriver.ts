@@ -491,6 +491,11 @@ export class BotDriver {
     return player?.pos ?? { ...this.startPos };
   }
 
+  /** `null` until `start()` has built the bot's store. */
+  getWorldConstants(): WorldConstants | null {
+    return this.botStore?.getState().worldConstants ?? null;
+  }
+
   /** Latest broadcast position of the local (human) player from this bot's
    * own SDK store. Returns origin if the local player hasn't broadcast yet
    * (e.g. CLI started before the browser connects) so mode strategies stay

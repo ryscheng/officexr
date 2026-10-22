@@ -21,6 +21,8 @@
  *   OFFICE_ID             default 'debug-office' (must match browser)
  *   BOT_COUNT             initial count, default 0
  *   BOT_MODE              initial mode, default 'wander'
+ *   OFFICEXR_WORLD_CONSTANTS_URL   optional boot source for world constants
+ *   OFFICEXR_REALTIME_ADMIN_TOKEN  optional; enables PUT /admin/world-constants
  */
 
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -44,6 +46,8 @@ async function main(): Promise<void> {
     port,
     path,
     officeId,
+    worldConstantsUrl: process.env.OFFICEXR_WORLD_CONSTANTS_URL,
+    adminToken: process.env.OFFICEXR_REALTIME_ADMIN_TOKEN,
     initialMode,
     initialCount: Number.isFinite(initialCount) ? initialCount : 0,
   });
