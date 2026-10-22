@@ -9,16 +9,12 @@ import {
 import { WebSocket as RawWebSocket, WebSocketServer } from 'ws';
 import { RealtimeServer } from '../server.ts';
 import { WsChannel } from '../ws-channel.ts';
+import { ephemeralPort, waitFor } from './helpers.ts';
 // Note: external consumers go via subpath exports:
 //   import { WsChannel } from '@officexr/realtime-server';
 //   import { RealtimeServer } from '@officexr/realtime-server/server';
 // The internal test imports go through relative paths so they don't
 // depend on the exports map being resolved.
-
-function ephemeralPort(): number {
-  // 50000-60000 range — avoid privileged ports + common services.
-  return 50000 + Math.floor(Math.random() * 10000);
-}
 
 function makeMoveEvent(actor: string, x: number): NetEvent {
   return {
@@ -32,15 +28,6 @@ function makeMoveEvent(actor: string, x: number): NetEvent {
     yaw: 0,
     isAirborne: false,
   };
-}
-
-async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((r) => setTimeout(r, 10));
-  }
-  throw new Error('waitFor: predicate did not become true');
 }
 
 describe('RealtimeServer + WsChannel roundtrip', () => {

@@ -20,6 +20,11 @@ export type Frame =
   | PresenceFrame
   | CustomFrame;
 
+/** Actor id of events the server itself originates (e.g.
+ * `world:constants`). Its seq is server-wide and monotonic across
+ * restarts. Clients must not use it as their `userId`. */
+export const SERVER_SELF_ID = 'server';
+
 /** Client → server, first frame after the websocket opens. Identifies
  * the caller; server uses it as the `selfId` for the attached hub
  * client. `officeId` picks the room; omitted means the server's default
