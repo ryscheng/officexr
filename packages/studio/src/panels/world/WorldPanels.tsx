@@ -1,4 +1,10 @@
 import React from 'react';
+import {
+  DEFAULT_WORLD_CONSTANTS,
+  type AuxLightType,
+  type JumpSettings as JumpSettingsType,
+  type WorldConstants,
+} from '@officexr/sdk';
 import type { BotMode } from '@officexr/world/bot';
 
 import { Button } from '../../components/ui/button.tsx';
@@ -11,10 +17,20 @@ import {
   Toggle,
   Vector3Input,
 } from '../../ui/controls/index.ts';
-import type { AuxLightType, JumpSettings as JumpSettingsType, ViewConfig } from './types.ts';
 import type { UseStudioSettingsResult } from './useStudioSettings.ts';
+import type {
+  PersistenceStatus,
+  UseWorldConstantsPersistenceResult,
+} from './useWorldConstantsPersistence.ts';
+
+type SetSection = <K extends Exclude<keyof WorldConstants, 'schemaVersion'>>(
+  key: K,
+  update: (prev: WorldConstants[K]) => WorldConstants[K],
+) => void;
 
 interface WorldPanelsProps {
+  worldConstants: WorldConstants;
+  persistence: UseWorldConstantsPersistenceResult;
   settings: UseStudioSettingsResult;
   /** Page-level handlers — Debug app routes bot count to in-browser
    *  pool or promotes to WS mode + the Node CLI. */
@@ -23,63 +39,107 @@ interface WorldPanelsProps {
 }
 
 /**
- * Right-hand panel stack for Debug mode. Replaces the 8 Leva panels
- * that used to live in `packages/world/src/renderer/panels/*`:
- *   Animation, Proximity, Lighting, Background, FixedCamera, World,
- *   Bot, Settings.
- *
- * Each section is a fully-controlled React component: `setSection(...)`
- * updates the studio-local view-config.
+ * Right-hand panel stack for Debug mode: Bot, Animation, Jump,
+ * Proximity, Lighting, Background, FixedCamera and Settings. Every
+ * section but Bot edits the world constants through `persistence`.
  */
 export function WorldPanels({
+  worldConstants,
+  persistence,
   settings,
   onBotCountChange,
   onBotModeChange,
 }: WorldPanelsProps) {
-  const { viewConfig, setSection, reset, exportJson } = settings;
+  const { edit } = persistence;
+  const setSection: SetSection = (key, update) =>
+    edit((prev) => ({ ...prev, [key]: update(prev[key]) }));
 
   return (
     <Panel>
+      <SaveStatus status={persistence.status} onRetry={persistence.retry} />
       <BotPanel
-        bot={viewConfig.bot}
-        setSection={setSection}
+        bot={settings.bot}
+        setBot={settings.setBot}
         onBotCountChange={onBotCountChange}
         onBotModeChange={onBotModeChange}
       />
       <AnimationPanel
-        animation={viewConfig.animation}
+        animation={worldConstants.animation}
         setSection={setSection}
       />
       <JumpPanel
-        jump={viewConfig.jump}
+        jump={worldConstants.jump}
         setSection={setSection}
       />
       <ProximityPanel
-        proximity={viewConfig.proximity}
+        proximity={worldConstants.proximity}
         setSection={setSection}
       />
       <LightingPanel
-        lighting={viewConfig.lighting}
+        lighting={worldConstants.lighting}
         setSection={setSection}
       />
       <BackgroundPanel
-        background={viewConfig.background}
+        background={worldConstants.background}
         setSection={setSection}
       />
       <FixedCameraPanel
-        fixedCamera={viewConfig.fixedCamera}
+        fixedCamera={worldConstants.fixedCamera}
         setSection={setSection}
       />
-      <SettingsPanel reset={reset} exportJson={exportJson} />
+      <SettingsPanel
+        reset={() => edit(() => DEFAULT_WORLD_CONSTANTS)}
+        exportJson={() => downloadJson(worldConstants)}
+      />
     </Panel>
   );
+}
+
+const STATUS_LABEL: Record<Exclude<PersistenceStatus['type'], 'failed'>, string> = {
+  loading: 'Loading…',
+  clean: 'Saved',
+  dirty: 'Unsaved changes',
+  saving: 'Saving…',
+};
+
+function SaveStatus({ status, onRetry }: { status: PersistenceStatus; onRetry: () => void }) {
+  return (
+    <div
+      data-testid="world-constants-status"
+      role="status"
+      className="flex items-center justify-between gap-2 px-3 py-1 text-xs text-neutral-400"
+    >
+      {status.type === 'failed' ? (
+        <>
+          <span className="text-red-400">{status.message}</span>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        </>
+      ) : (
+        <span>{STATUS_LABEL[status.type]}</span>
+      )}
+    </div>
+  );
+}
+
+function downloadJson(doc: WorldConstants): void {
+  const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'world-settings.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // --- Bot ----------------------------------------------------------
 
 interface BotPanelProps {
-  bot: ViewConfig['bot'];
-  setSection: UseStudioSettingsResult['setSection'];
+  bot: UseStudioSettingsResult['bot'];
+  setBot: UseStudioSettingsResult['setBot'];
   onBotCountChange: (count: number) => void;
   onBotModeChange: (mode: BotMode) => void;
 }
@@ -95,7 +155,7 @@ const BOT_MODES: ReadonlyArray<{ id: BotMode; label: string }> = [
 
 function BotPanel({
   bot,
-  setSection,
+  setBot,
   onBotCountChange,
   onBotModeChange,
 }: BotPanelProps) {
@@ -109,7 +169,7 @@ function BotPanel({
         step={1}
         digits={0}
         onChange={(count) => {
-          setSection('bot', (prev) => ({ ...prev, count }));
+          setBot((prev) => ({ ...prev, count }));
           onBotCountChange(count);
         }}
       />
@@ -120,7 +180,7 @@ function BotPanel({
             variant={bot.mode === mode.id ? 'default' : 'outline'}
             size="sm"
             onClick={() => {
-              setSection('bot', (prev) => ({ ...prev, mode: mode.id }));
+              setBot((prev) => ({ ...prev, mode: mode.id }));
               onBotModeChange(mode.id);
             }}
           >
@@ -134,17 +194,15 @@ function BotPanel({
 
 // --- Animation ----------------------------------------------------
 
-// ponytail: every non-bot section (Animation, Jump, Proximity, Lighting, Background, Fixed Camera) edits only local state; none reaches the store's worldConstants yet.
-
 interface AnimationPanelProps {
-  animation: ViewConfig['animation'];
-  setSection: UseStudioSettingsResult['setSection'];
+  animation: WorldConstants['animation'];
+  setSection: SetSection;
 }
 
 function AnimationPanel({ animation, setSection }: AnimationPanelProps) {
   const set =
-    <K extends keyof ViewConfig['animation']>(key: K) =>
-    (value: ViewConfig['animation'][K]) =>
+    <K extends keyof WorldConstants['animation']>(key: K) =>
+    (value: WorldConstants['animation'][K]) =>
       setSection('animation', (prev) => ({ ...prev, [key]: value }));
 
   return (
@@ -163,8 +221,8 @@ function AnimationPanel({ animation, setSection }: AnimationPanelProps) {
 // --- Jump ---------------------------------------------------------
 
 interface JumpPanelProps {
-  jump: ViewConfig['jump'];
-  setSection: UseStudioSettingsResult['setSection'];
+  jump: WorldConstants['jump'];
+  setSection: SetSection;
 }
 
 function JumpPanel({ jump, setSection }: JumpPanelProps) {
@@ -216,14 +274,14 @@ function JumpPanel({ jump, setSection }: JumpPanelProps) {
 // --- Proximity ----------------------------------------------------
 
 interface ProximityPanelProps {
-  proximity: ViewConfig['proximity'];
-  setSection: UseStudioSettingsResult['setSection'];
+  proximity: WorldConstants['proximity'];
+  setSection: SetSection;
 }
 
 function ProximityPanel({ proximity, setSection }: ProximityPanelProps) {
   const set =
-    <K extends keyof ViewConfig['proximity']>(key: K) =>
-    (value: ViewConfig['proximity'][K]) =>
+    <K extends keyof WorldConstants['proximity']>(key: K) =>
+    (value: WorldConstants['proximity'][K]) =>
       setSection('proximity', (prev) => ({ ...prev, [key]: value }));
 
   return (
@@ -251,8 +309,8 @@ function ProximityPanel({ proximity, setSection }: ProximityPanelProps) {
 // --- Lighting -----------------------------------------------------
 
 interface LightingPanelProps {
-  lighting: ViewConfig['lighting'];
-  setSection: UseStudioSettingsResult['setSection'];
+  lighting: WorldConstants['lighting'];
+  setSection: SetSection;
 }
 
 const SHADOW_MAP_SIZES: ReadonlyArray<{ value: '512' | '1024' | '2048' | '4096'; label: string }> = [
@@ -266,8 +324,8 @@ const AUX_LIGHT_TYPES: ReadonlyArray<AuxLightType> = ['none', 'spot', 'point'];
 
 function LightingPanel({ lighting, setSection }: LightingPanelProps) {
   const set =
-    <K extends keyof ViewConfig['lighting']>(key: K) =>
-    (value: ViewConfig['lighting'][K]) =>
+    <K extends keyof WorldConstants['lighting']>(key: K) =>
+    (value: WorldConstants['lighting'][K]) =>
       setSection('lighting', (prev) => ({ ...prev, [key]: value }));
 
   return (
@@ -315,12 +373,12 @@ function BackgroundPanel({
   background,
   setSection,
 }: {
-  background: ViewConfig['background'];
-  setSection: UseStudioSettingsResult['setSection'];
+  background: WorldConstants['background'];
+  setSection: SetSection;
 }) {
   const set =
-    <K extends keyof ViewConfig['background']>(key: K) =>
-    (value: ViewConfig['background'][K]) =>
+    <K extends keyof WorldConstants['background']>(key: K) =>
+    (value: WorldConstants['background'][K]) =>
       setSection('background', (prev) => ({ ...prev, [key]: value }));
   return (
     <Section title="Background" defaultOpen={false}>
@@ -336,12 +394,12 @@ function FixedCameraPanel({
   fixedCamera,
   setSection,
 }: {
-  fixedCamera: ViewConfig['fixedCamera'];
-  setSection: UseStudioSettingsResult['setSection'];
+  fixedCamera: WorldConstants['fixedCamera'];
+  setSection: SetSection;
 }) {
   const set =
-    <K extends keyof ViewConfig['fixedCamera']>(key: K) =>
-    (value: ViewConfig['fixedCamera'][K]) =>
+    <K extends keyof WorldConstants['fixedCamera']>(key: K) =>
+    (value: WorldConstants['fixedCamera'][K]) =>
       setSection('fixedCamera', (prev) => ({ ...prev, [key]: value }));
   return (
     <Section title="Fixed camera" defaultOpen={false}>

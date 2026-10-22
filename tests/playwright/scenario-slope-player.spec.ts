@@ -18,7 +18,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { waitForCanvasReady } from './helpers.ts';
-import { goToDebugWithMap } from './motion-helpers.ts';
+import { goToDebugWithMap, setFixedCamera } from './motion-helpers.ts';
 
 const SELF_ID = 'local-player';
 const SLOPE_INSTANCE_COUNT = 9;
@@ -49,17 +49,9 @@ test('slope: local player walks up the trimesh ramp under keyboard input', async
   test.setTimeout(120_000);
 
   // Azimuth 90° pins W to pure −X — same harness as the stairs walk.
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'officexr:studio:view-config',
-      JSON.stringify({
-        fixedCamera: { azimuthDeg: 90, movementYawOffsetDeg: 0 },
-      }),
-    );
-  });
-
   await goToDebugWithMap(page, 'scenario-slope');
   await waitForCanvasReady(page, 0, 30_000);
+  await setFixedCamera(page, { azimuthDeg: 90, movementYawOffsetDeg: 0 });
 
   await page.waitForFunction(
     ({ selfId, count }: { selfId: string; count: number }) => {

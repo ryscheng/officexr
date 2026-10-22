@@ -14,7 +14,6 @@ import {
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import { buildInMemoryStack, type ChannelStack } from '../../realtime/services.ts';
-import { DEFAULT_VIEW_CONFIG } from '../../panels/world/types.ts';
 
 const SELF_ID = 'mugshot-player';
 const OFFICE_ID = 'mugshot';
@@ -152,12 +151,12 @@ export interface MugshotManifest {
  * default lighting but with the visible sun disc hidden — a bright
  * disc in the sky would dominate any pixel diff. */
 const DEFAULT_MUGSHOT_LIGHTING: LightingViewConfig = {
-  ...DEFAULT_VIEW_CONFIG.lighting,
+  ...DEFAULT_WORLD_CONSTANTS.lighting,
   showSunDisc: false,
 };
 
 const DEFAULT_MUGSHOT_BACKGROUND: BackgroundViewConfig =
-  DEFAULT_VIEW_CONFIG.background;
+  DEFAULT_WORLD_CONSTANTS.background;
 
 /**
  * Mugshot mode: a deterministic 2×2 cube scene with a paused
@@ -352,7 +351,7 @@ export function MugshotApp() {
       lighting,
       background,
       fixedCamera: {
-        ...DEFAULT_VIEW_CONFIG.fixedCamera,
+        ...DEFAULT_WORLD_CONSTANTS.fixedCamera,
         azimuthDeg,
         pitchDeg: -8,
         height: cameraHeight,

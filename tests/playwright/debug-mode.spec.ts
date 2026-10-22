@@ -287,10 +287,8 @@ test('Rendered cube field actually tracks state.worldObjects (deterministic)', a
 
   await page.goto('/#debug', { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 });
-  // Reset persisted state so this test always starts from a clean
-  // default (no view-config overrides from earlier sessions).
+  // Pin the default map so this test always starts from the same scene.
   await page.evaluate(() => {
-    localStorage.removeItem('officexr:studio:view-config');
     localStorage.setItem('officexr:studio:lastMap', 'default');
   });
   await page.reload({ waitUntil: 'domcontentloaded' });

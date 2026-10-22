@@ -95,6 +95,10 @@ storages seeded from `window.__OFFICEXR_TEST_SEED__`. The
 `goToModeHermetic(page, mode, seed)` helper sets the seed via
 `addInitScript` and navigates. See `tests/playwright/map-editor-hermetic.spec.ts`.
 
+In test mode `window.__OFFICEXR_TEST_API__.worldConstantsSaves` lists every
+document saved to the world-constants storage, so a spec can assert what the
+Debug panels saved (see `tests/playwright/debug-world-constants-hermetic.spec.ts`).
+
 **CI** runs `pnpm test:e2e:ci`, now scoped to: `map-editor`,
 `map-editor-hermetic`, `object-editor`, `routing`, `room-editor`,
 `debug-mode`, and `character-on-surface`.
