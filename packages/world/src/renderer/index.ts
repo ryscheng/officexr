@@ -58,13 +58,10 @@ export {
   type CharacterName,
 } from './config.ts';
 
-// ViewConfig: the renderer-tweaker bag Scene takes. Editing UI for
-// these fields lives in the studio package
-// (`packages/studio/src/panels/world/`) — world stays panel-UI-free.
+// View section types for Scene's `view` prop; editing UI lives in the studio package.
 export type {
   AuxLightType,
   ViewConfig,
-  ViewOverride,
   ProximityViewConfig,
   LightingViewConfig,
   BackgroundViewConfig,

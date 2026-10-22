@@ -6,6 +6,7 @@ import { Scene } from '../renderer/Scene.tsx';
 import { ErrorBanner, FocusIndicator, WorldHud, type HudRealtime } from './hud.tsx';
 import { useCameraModeCycle } from './useCameraModeCycle.ts';
 import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
+import { useWorldConstants } from './useWorldConstants.ts';
 import { useWorldFocus } from './useWorldFocus.ts';
 
 export interface PlayViewProps {
@@ -39,6 +40,7 @@ export interface PlayViewProps {
 export function PlayView(props: PlayViewProps) {
   const cameraMode = useCameraModeCycle();
   const worldFocused = useWorldFocus();
+  const worldConstants = useWorldConstants(props.store);
   const session = usePlaySession({
     actions: props.actions,
     mapName: props.mapName,
@@ -60,6 +62,7 @@ export function PlayView(props: PlayViewProps) {
           bots={props.bots}
           selfId={props.selfId}
           cameraMode={cameraMode}
+          view={worldConstants}
           worldFocused={worldFocused}
           spawnPoints={session.spawnPoints}
           bakedLayoutPath={session.bakedLayoutPath}

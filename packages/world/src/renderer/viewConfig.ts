@@ -46,9 +46,3 @@ export interface ViewConfig {
   background: BackgroundViewConfig;
   fixedCamera: FixedCameraViewConfig;
 }
-
-// SRP violation: Scene reads the store for world constants and also accepts
-// this override. The mugshot harness pins lighting and camera values that are
-// not world constants and renders with a store whose constants must stay
-// default. Removing it means giving the harness its own composition root.
-export type ViewOverride = Partial<Pick<ViewConfig, 'lighting' | 'background' | 'fixedCamera'>>;

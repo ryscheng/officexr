@@ -1,10 +1,8 @@
-import { useSyncExternalStore } from 'react';
-import type { Store, WorldConstants } from '@officexr/sdk';
+import type { OfficeState, Store, WorldConstants } from '@officexr/sdk';
+import { useStoreSelector } from './useStoreSelector.ts';
 
-/** Subscribes to the store's `worldConstants`; re-renders only when the document is replaced. */
+const selectWorldConstants = (s: OfficeState) => s.worldConstants;
+
 export function useWorldConstants(store: Store): WorldConstants {
-  return useSyncExternalStore(
-    (onChange) => store.subscribe((s) => s.worldConstants, onChange),
-    () => store.getState().worldConstants,
-  );
+  return useStoreSelector(store, selectWorldConstants);
 }

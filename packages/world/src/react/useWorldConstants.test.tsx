@@ -10,9 +10,9 @@ describe('useWorldConstants', () => {
   it('re-renders with constants applied after mount, without remounting', () => {
     const store = createStore({ selfId: 'me', officeId: 'o' });
     const actions = createActions(store);
-    let mounts = 0;
+    let renders = 0;
     const { result } = renderHook(() => {
-      mounts += 1;
+      renders += 1;
       return useWorldConstants(store);
     });
     expect(result.current).toEqual(DEFAULT_WORLD_CONSTANTS);
@@ -26,6 +26,6 @@ describe('useWorldConstants', () => {
 
     expect(result.current.proximity.outerRadius).toBe(9);
     expect(result.current.lighting).toEqual(next.lighting);
-    expect(mounts).toBe(2);
+    expect(renders).toBe(2);
   });
 });

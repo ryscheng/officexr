@@ -6,8 +6,7 @@ export type { AuxLightType, JumpSettings } from '@officexr/sdk';
 /**
  * Every Debug-panel value: the world's constants plus the studio-local
  * bot controls. The studio's `useStudioSettings` hook owns this in
- * React state (with localStorage persistence); `<Scene>` takes it as a
- * `viewConfig` prop.
+ * React state (with localStorage persistence).
  */
 export type ViewConfig = Omit<WorldConstants, 'schemaVersion'> & {
   bot: BotSettings;

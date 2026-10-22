@@ -29,7 +29,7 @@ interface WorldPanelsProps {
  *   Bot, Settings.
  *
  * Each section is a fully-controlled React component: `setSection(...)`
- * updates the view-config and `<Scene>` re-reads it on every render.
+ * updates the studio-local view-config.
  */
 export function WorldPanels({
   settings,
@@ -134,7 +134,7 @@ function BotPanel({
 
 // --- Animation ----------------------------------------------------
 
-// ponytail: Animation, Jump and Proximity edit only local view state; they don't reach gameplay worldSettings yet.
+// ponytail: every non-bot section (Animation, Jump, Proximity, Lighting, Background, Fixed Camera) edits only local state; none reaches the store's worldConstants yet.
 
 interface AnimationPanelProps {
   animation: ViewConfig['animation'];

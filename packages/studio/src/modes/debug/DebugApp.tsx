@@ -126,10 +126,7 @@ export function DebugApp() {
     }
   };
 
-  // The renderer-tweaker bag. Studio owns the React state (persisted
-  // to localStorage) and passes the current value into <PlayView>; the
-  // editing UI lives in <WorldPanels> rendered in the SidePanel
-  // below.
+  // Studio-local panel state (persisted to localStorage), edited in <WorldPanels>.
   const studioSettings = useStudioSettings();
 
   return (
