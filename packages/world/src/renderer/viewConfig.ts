@@ -1,7 +1,7 @@
 /**
- * Section types `<Scene>` accepts as overrides of the store's
- * `WorldConstants`, plus optional mugshot-only fields that are never
- * part of the world's constants.
+ * The view `<Scene>` renders: the renderer's sections of `WorldConstants`,
+ * plus optional mugshot-only fields that are never part of the world's
+ * constants.
  */
 import {
   type BackgroundConstants,
