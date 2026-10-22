@@ -421,7 +421,6 @@ function makeSingleDocumentMiddleware<T = unknown>(
           const body = await readBody(req);
           let doc: T;
           try {
-            // The catalog's schema is not enforced here, only that it is JSON.
             const raw: unknown = JSON.parse(body);
             doc = opts.validate ? opts.validate(raw) : (raw as T);
           } catch (err) {
