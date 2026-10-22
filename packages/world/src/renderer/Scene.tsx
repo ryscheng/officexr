@@ -149,9 +149,9 @@ export function Scene(props: SceneProps) {
 
   // After Scene mounts, force-broadcast the current world state.
   // The regular `onStoreChange` diff path only fires when values
-  // *change* — without this, a bot spawned with default world
-  // settings would never receive the canonical values if the
-  // studio's persisted config happens to match the SDK defaults.
+  // *change* — without this, a bot spawned with the default map
+  // would never receive the canonical one if the studio's map
+  // happens to match the SDK defaults.
   // Fires once per channel-stack swap via the `sync` dependency.
   useEffect(() => {
     sync.broadcastWorldState();

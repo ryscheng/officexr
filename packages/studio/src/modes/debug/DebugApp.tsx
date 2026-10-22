@@ -177,7 +177,6 @@ export function DebugApp() {
           <div style={{ flex: 1, minHeight: 0 }}>
             <WorldPanels
               settings={studioSettings}
-              actions={local?.actions ?? null}
               onBotCountChange={onBotCountChange}
               onBotModeChange={onBotModeChange}
             />

@@ -7,7 +7,7 @@ import {
   SyncEngine,
   SnapshotHandshake,
 } from '@officexr/sdk';
-import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldObjects, WorldSettings } from '@officexr/sdk';
+import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldConstants, WorldObjects } from '@officexr/sdk';
 import type { Clock } from '@officexr/sdk/test-harness';
 import { routeContactEvent } from '../physics/bridge.ts';
 import {
@@ -56,7 +56,7 @@ export interface BotDriverOptions {
    * (bots spawned after the initial broadcast miss it via the in-memory
    * channel since there is no replay mechanism). */
   initialWorld?: {
-    worldSettings?: WorldSettings;
+    worldConstants?: WorldConstants;
     worldMap?: WorldMap;
     worldObjects?: WorldObjects;
   };
@@ -169,8 +169,8 @@ export class BotDriver {
 
     // Seed world state from the server snapshot if provided. Must happen
     // before SyncEngine.start so its baseline diffs use the right values.
-    if (this.initialWorld?.worldSettings) {
-      botActions.setWorldSettings(this.initialWorld.worldSettings);
+    if (this.initialWorld?.worldConstants) {
+      botActions.setWorldConstants(this.initialWorld.worldConstants);
     }
     if (this.initialWorld?.worldMap) {
       botActions.setWorldMap(this.initialWorld.worldMap);

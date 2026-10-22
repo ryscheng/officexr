@@ -1,4 +1,4 @@
-import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldObjects, WorldSettings } from '@officexr/sdk';
+import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldConstants, WorldObjects } from '@officexr/sdk';
 import { BotDriver, type BotMode } from './BotDriver.ts';
 
 interface BotPoolOptions {
@@ -14,7 +14,7 @@ interface BotPoolOptions {
    * join *after* the human player has tweaked Leva inherit the
    * current values instead of SDK defaults. */
   getInitialWorld?: () => {
-    worldSettings?: WorldSettings;
+    worldConstants?: WorldConstants;
     worldMap?: WorldMap;
     worldObjects?: WorldObjects;
   };

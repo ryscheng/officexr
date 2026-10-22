@@ -48,8 +48,8 @@ export function applyNetEventToStore(
     case 'zombie:state':
       actions.applyZombieState(event.state);
       return;
-    case 'world:settings':
-      actions.applyRemoteWorldSettings(event.settings);
+    case 'world:constants':
+      actions.setWorldConstants(event.constants);
       return;
     case 'world:map':
       actions.applyRemoteWorldMap(event.map);

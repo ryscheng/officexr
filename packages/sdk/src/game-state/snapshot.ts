@@ -1,8 +1,12 @@
 import type { OfficeState, PlayerState, ScreenShareSignal } from './types.ts';
 
 // JSON-shaped serialization of OfficeState. Sets become arrays. MediaStream
-// references are stripped (re-established via WebRTC after apply).
-export type SerializedOfficeState = Omit<OfficeState, 'proximity' | 'players' | 'screenShares'> & {
+// references are stripped (re-established via WebRTC after apply). World
+// constants/settings are left out: only the realtime server supplies them.
+export type SerializedOfficeState = Omit<
+  OfficeState,
+  'proximity' | 'players' | 'screenShares' | 'worldConstants' | 'worldSettings'
+> & {
   players: Record<string, Omit<PlayerState, 'tRecv'>>;
   proximity: Record<string, string[]>;
   screenShares: Record<string, Omit<ScreenShareSignal, 'stream'> & { stream: null }>;
@@ -37,7 +41,6 @@ export function serializeOfficeState(state: OfficeState): SerializedOfficeState 
     screenShares,
     realtime: state.realtime,
     runtime: state.runtime,
-    worldSettings: state.worldSettings,
     worldMap: state.worldMap,
     characterConfigs: state.characterConfigs,
     worldObjects: state.worldObjects,
@@ -80,7 +83,6 @@ export function applySnapshot(target: OfficeState, snap: SerializedOfficeState):
 
   target.realtime = { ...snap.realtime };
   target.runtime = { ...snap.runtime };
-  target.worldSettings = { ...snap.worldSettings };
   target.characterConfigs = {};
   for (const [id, cfg] of Object.entries(snap.characterConfigs ?? {})) {
     target.characterConfigs[id] = { ...cfg };

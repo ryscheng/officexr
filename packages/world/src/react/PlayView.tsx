@@ -46,7 +46,6 @@ export function PlayView(props: PlayViewProps) {
     mapName: props.mapName,
     storages: props.storages,
     reloadKey: props.reloadKey,
-    proximity: props.viewConfig.proximity,
     onMapApplied: props.onMapApplied,
   });
 

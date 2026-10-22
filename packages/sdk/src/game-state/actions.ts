@@ -14,9 +14,9 @@ import type {
   WorldMap,
   WorldMapLayer,
   WorldObjects,
-  WorldSettings,
   ZombieState,
 } from './types.ts';
+import { worldSettingsFromConstants, type WorldConstants } from './world-constants.ts';
 import { cloneWorldMap } from './world-map.ts';
 
 export interface Actions {
@@ -28,9 +28,9 @@ export interface Actions {
   applyHit(targetId: PlayerId, dmg: number, byId: PlayerId): void;
   addInventoryItem(item: InventoryItem): void;
   removeInventoryItem(itemId: string): void;
-  /** Update one or more world-level settings. Triggers a `world:settings`
-   * broadcast for peers to mirror. */
-  setWorldSettings(patch: Partial<WorldSettings>): void;
+  /** Replace the world constants (and so the derived `worldSettings`).
+   * Never broadcast: only the realtime server distributes constants. */
+  setWorldConstants(next: WorldConstants): void;
   /** Replace the world map. Triggers a `world:map` broadcast. */
   setWorldMap(map: WorldMap): void;
   /** Patch a single (i, j) cell in the world map to the given `kindId`,
@@ -62,7 +62,6 @@ export interface Actions {
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
   applyZombieState(z: ZombieState): void;
-  applyRemoteWorldSettings(settings: WorldSettings): void;
   applyRemoteWorldMap(map: WorldMap): void;
   applyRemoteCharacterConfigs(configs: CharacterConfigs): void;
   applyRemoteWorldObjects(objects: WorldObjects): void;
@@ -128,9 +127,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
       patchSelf({ jitsiRoom: roomId });
     },
 
-    setWorldSettings(patch) {
-      store.setState((s) => ({
-        worldSettings: { ...s.worldSettings, ...patch },
+    setWorldConstants(next) {
+      store.setState(() => ({
+        worldConstants: next,
+        worldSettings: worldSettingsFromConstants(next),
       }));
     },
 
@@ -276,10 +276,6 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     applyZombieState(z) {
       store.setState(() => ({ zombies: z }));
-    },
-
-    applyRemoteWorldSettings(settings) {
-      store.setState(() => ({ worldSettings: { ...settings } }));
     },
 
     applyRemoteWorldMap(map) {

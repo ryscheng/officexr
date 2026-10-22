@@ -119,15 +119,15 @@ export class SyncEngine {
   }
 
   /**
-   * Unconditionally broadcast the current `worldSettings` and `worldMap`
-   * from this peer's store. The regular `onStoreChange` diff path only
+   * Unconditionally broadcast the current `worldMap`, `characterConfigs`
+   * and `worldObjects` from this peer's store. The regular `onStoreChange` diff path only
    * broadcasts when the values *change* — but on first connect we want
    * to publish the canonical state even if it happens to equal the SDK
    * defaults, so a later-joining peer (e.g. a bot spawned in the
    * realtime-server's process) picks it up.
    *
    * Call this once after `start()` from the source-of-truth peer (the
-   * debug-app browser, which owns the Leva-driven settings).
+   * studio browser, which owns the map and scene edits).
    */
   broadcastWorldState(): void {
     this.stateDiff.broadcastWorldState();
@@ -183,14 +183,12 @@ export class SyncEngine {
 
   /**
    * Anti-echo: after the InboundRouter applies a remote
-   * `world:settings` / `world:map` / `world:characters`, tell the
+   * `world:map` / `world:characters` / `world:objects`, tell the
    * outbound StateDiff collaborator that this value was just received
    * so its next `onStoreChange` diff doesn't re-broadcast it.
    */
   private onInboundApplied(event: NetEvent): void {
-    if (event.kind === 'world:settings') {
-      this.stateDiff.markWorldSettings(event.settings);
-    } else if (event.kind === 'world:map') {
+    if (event.kind === 'world:map') {
       this.stateDiff.markWorldMap(event.map);
     } else if (event.kind === 'world:characters') {
       this.stateDiff.markCharacterConfigs(event.configs);

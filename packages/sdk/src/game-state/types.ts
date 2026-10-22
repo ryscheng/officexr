@@ -1,3 +1,5 @@
+import type { WorldConstants } from './world-constants.ts';
+
 export type PlayerId = string;
 
 export type Vec3 = { x: number; y: number; z: number };
@@ -152,41 +154,7 @@ export type CollisionSettings = {
 };
 
 /**
- * Camera framing tuning specific to the auto-engaged conversation view.
- */
-export type ConversationCameraSettings = {
-  /** Horizontal distance (world m) from the MeetingArea centroid at
-   * which the camera frames the conversation view. Bigger = more
-   * zoomed out; smaller = closer / tighter framing. Same knob is
-   * used by all camera modes (fixed/FP/3P) for consistency. */
-  conversationCameraDistance: number;
-  /** Vertical height (world m) of the camera above the MeetingArea
-   * centroid in the conversation view. Combined with
-   * `conversationCameraDistance` this determines both the offset
-   * length and the pitch angle of the conversation framing. */
-  conversationCameraHeight: number;
-};
-
-/**
- * Scene lighting / time-of-day. Sun position is broadcast so peers see
- * the same shadows.
- */
-export type LightingSettings = {
-  /** World-space position of the sun-like directional light. Drives both
-   * the shadow-casting light direction and the visible sun disc in the
-   * sky. Broadcast so peers see the same time-of-day. */
-  sunPositionX: number;
-  sunPositionY: number;
-  sunPositionZ: number;
-  /** Intensity of the sun-like directional light. */
-  sunIntensity: number;
-  /** Low ambient fill so shadow-side faces aren't pitch black. */
-  ambientIntensity: number;
-};
-
-/**
- * Player jump tunables. Broadcast via `world:settings` so all clients
- * (local player, peers, bots) share the same jump parameters.
+ * Player jump tunables, shared by the local player, peers and bots.
  */
 export type JumpSettings = {
   /** Vertical liftoff impulse (m/s). Applied identically for jump #1 and #2.
@@ -204,23 +172,18 @@ export type JumpSettings = {
 };
 
 /**
- * World-level movement & animation tunables. These live in OfficeState so
- * they can be broadcast to every client and used uniformly by the local
- * player, AI/bots, and any other agent — there's no "client-private"
- * version. Updating them via `setWorldSettings` triggers a `world:settings`
- * broadcast that peers apply to their stores via `applyRemoteWorldSettings`.
+ * World-level movement & animation tunables, used uniformly by the local
+ * player, AI/bots, and any other agent. Derived from the server-owned
+ * `WorldConstants` via `worldSettingsFromConstants`; never set directly.
  *
  * Composed as the intersection of focused sub-types (Animation,
- * Proximity, Collision, ConversationCamera, Lighting) so consumers can
- * declare narrower signatures (e.g. a movement function asks for
+ * Proximity, Collision, Jump) so consumers can declare narrower
+ * signatures (e.g. a movement function asks for
  * `AnimationSettings & CollisionSettings`) without taking the whole bag.
- * Wire format stays a flat object literal.
  */
 export type WorldSettings = AnimationSettings &
   ProximitySettings &
   CollisionSettings &
-  ConversationCameraSettings &
-  LightingSettings &
   JumpSettings;
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
@@ -235,14 +198,7 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   proximityOuterRadius: 6,
   bumpEasingMs: 180,
   proximityEnterDebounceMs: 500,
-  conversationCameraDistance: 7,
-  conversationCameraHeight: 5,
   movementBlockThreshold: 0.9,
-  sunPositionX: 20,
-  sunPositionY: 40,
-  sunPositionZ: 20,
-  sunIntensity: 1.4,
-  ambientIntensity: 0.15,
 
   // Jump
   jumpVelocity: 8,        // m/s
@@ -415,6 +371,8 @@ export type OfficeState = {
     lastTick: number;
     protocolVersion: number;
   };
+  worldConstants: WorldConstants;
+  /** Always `worldSettingsFromConstants(worldConstants)`. */
   worldSettings: WorldSettings;
   worldMap: WorldMap;
   /**

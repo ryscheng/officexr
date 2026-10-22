@@ -61,7 +61,7 @@ export class BotServer extends RealtimeServer {
       getInitialWorld: () => {
         const state = this.defaultRoom.store.getState();
         return {
-          worldSettings: { ...state.worldSettings },
+          worldConstants: state.worldConstants,
           worldMap: state.worldMap,
         };
       },
