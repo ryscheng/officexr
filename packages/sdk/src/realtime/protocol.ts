@@ -7,9 +7,9 @@ import type {
   Vec3,
   WorldMap,
   WorldObjects,
-  WorldSettings,
   ZombieState,
 } from '../game-state/types.ts';
+import { ZWorldConstants, type WorldConstants } from '../game-state/world-constants.ts';
 import type { SerializedOfficeState } from '../game-state/snapshot.ts';
 
 // --- Envelope ---
@@ -106,33 +106,6 @@ const ZRuntime = z.object({
   protocolVersion: z.number(),
 });
 
-const ZWorldSettings: z.ZodType<WorldSettings> = z.object({
-  playerSpeed: z.number(),
-  runSpeedMultiplier: z.number(),
-  walkAnimSpeed: z.number(),
-  runAnimSpeed: z.number(),
-  idleAnimSpeed: z.number(),
-  turnSpeed: z.number(),
-  charRadius: z.number(),
-  proximityRadius: z.number(),
-  proximityOuterRadius: z.number(),
-  bumpEasingMs: z.number(),
-  proximityEnterDebounceMs: z.number(),
-  conversationCameraDistance: z.number(),
-  conversationCameraHeight: z.number(),
-  movementBlockThreshold: z.number(),
-  sunPositionX: z.number(),
-  sunPositionY: z.number(),
-  sunPositionZ: z.number(),
-  sunIntensity: z.number(),
-  ambientIntensity: z.number(),
-  // Jump
-  jumpVelocity: z.number().positive(),
-  airControl: z.number().min(0).max(1),
-  maxJumps: z.number().int().min(1).max(10),
-  landingEaseMs: z.number().min(0),
-});
-
 const ZCubeAppearance = z.object({
   color: z.string().optional(),
   modelUrl: z.string().optional(),
@@ -200,7 +173,6 @@ const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
   screenShares: z.record(z.string(), ZScreenShareSignal),
   realtime: ZRealtimeState,
   runtime: ZRuntime,
-  worldSettings: ZWorldSettings,
   worldMap: ZWorldMap,
   characterConfigs: ZCharacterConfigs,
   worldObjects: ZWorldObjects,
@@ -215,7 +187,7 @@ const ZWhiteboardStroke = z.object({ stroke: ZStroke });
 const ZShotHit = z.object({ targetId: z.string(), dmg: z.number() });
 const ZZombieStatePayload = z.object({ state: ZZombieState });
 const ZSnapshotRequest = z.object({});
-const ZWorldSettingsPayload = z.object({ settings: ZWorldSettings });
+const ZWorldConstantsPayload = z.object({ constants: ZWorldConstants });
 const ZWorldMapPayload = z.object({ map: ZWorldMap });
 const ZWorldCharactersPayload = z.object({ configs: ZCharacterConfigs });
 const ZWorldObjectsPayload = z.object({ objects: ZWorldObjects });
@@ -248,7 +220,7 @@ export type NetEvent =
       1,
       { target: PlayerId; state: SerializedOfficeState; seqTable: Record<PlayerId, number> }
     >
-  | WithEnvelope<'world:settings', 1, { settings: WorldSettings }>
+  | WithEnvelope<'world:constants', 1, { constants: WorldConstants }>
   | WithEnvelope<'world:map', 1, { map: WorldMap }>
   | WithEnvelope<'world:characters', 1, { configs: CharacterConfigs }>
   | WithEnvelope<'world:objects', 1, { objects: WorldObjects }>;
@@ -257,7 +229,7 @@ export type NetEventKind = NetEvent['kind'];
 
 // --- PROTOCOL table (versions, schemas, authority) ---
 
-export type Authority = 'local' | 'host';
+export type Authority = 'local' | 'host' | 'server';
 
 export type ProtocolEntry = {
   v: number;
@@ -274,7 +246,8 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'zombie:state': { v: 1, schema: ZZombieStatePayload, authority: 'host' },
   'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local' },
   'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local' },
-  'world:settings': { v: 1, schema: ZWorldSettingsPayload, authority: 'local' },
+  // ponytail: 'server' authority isn't enforced on inbound yet, so any peer can still send this.
+  'world:constants': { v: 1, schema: ZWorldConstantsPayload, authority: 'server' },
   'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local' },
   'world:characters': { v: 1, schema: ZWorldCharactersPayload, authority: 'local' },
   'world:objects': { v: 1, schema: ZWorldObjectsPayload, authority: 'local' },

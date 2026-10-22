@@ -78,14 +78,13 @@ export async function buildInMemoryStack(
     instanceAABB,
     colliderShape,
     // Seed each new bot with the local-player store's current world
-    // state so a bot spawned after Leva has pushed user values
-    // doesn't fall back to SDK defaults. (Bots spawned *before* Leva
-    // mounts still pick up changes via the regular `world:settings` /
-    // `world:map` broadcast path.)
+    // state so it doesn't fall back to SDK defaults. (Bots spawned
+    // earlier still pick up map changes via the regular `world:map`
+    // broadcast path.)
     getInitialWorld: () => {
       const state = local.store.getState();
       return {
-        worldSettings: { ...state.worldSettings },
+        worldConstants: state.worldConstants,
         worldMap: state.worldMap,
         // Seed worldObjects so bots spawned after the initial world:objects
         // broadcast (which in-memory channels do not replay) still get floor

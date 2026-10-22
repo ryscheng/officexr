@@ -5,6 +5,7 @@ import {
   versionMismatch,
   type NetEvent,
 } from '../../realtime/protocol.ts';
+import { DEFAULT_WORLD_CONSTANTS } from '../../game-state/world-constants.ts';
 
 describe('PROTOCOL table', () => {
   const SAMPLE_EVENTS: NetEvent[] = [
@@ -95,31 +96,6 @@ describe('PROTOCOL table', () => {
         screenShares: {},
         realtime: { status: 'live', snapshotTarget: null, versionWarnings: {} },
         runtime: { tickRate: 60, lastTick: 0, protocolVersion: 1 },
-        worldSettings: {
-          playerSpeed: 3,
-          runSpeedMultiplier: 2,
-          walkAnimSpeed: 1,
-          runAnimSpeed: 1,
-          idleAnimSpeed: 1,
-          turnSpeed: 16,
-          charRadius: 0.4,
-          proximityRadius: 3,
-          proximityOuterRadius: 6,
-          bumpEasingMs: 180,
-          proximityEnterDebounceMs: 500,
-          conversationCameraDistance: 7,
-          conversationCameraHeight: 5,
-          movementBlockThreshold: 0.9,
-          sunPositionX: 20,
-          sunPositionY: 40,
-          sunPositionZ: 20,
-          sunIntensity: 1.4,
-          ambientIntensity: 0.15,
-          jumpVelocity: 8,
-          airControl: 0.2,
-          maxJumps: 2,
-          landingEaseMs: 120,
-        },
         worldMap: {
           gridSize: 50,
           cubeSize: 2,
@@ -133,36 +109,12 @@ describe('PROTOCOL table', () => {
       seqTable: { leader: 5 },
     },
     {
-      kind: 'world:settings',
+      kind: 'world:constants',
       v: 1,
-      actorId: 'a',
+      actorId: 'server',
       seq: 1,
       t: 0,
-      settings: {
-        playerSpeed: 4,
-        runSpeedMultiplier: 2.5,
-        walkAnimSpeed: 1.2,
-        runAnimSpeed: 1.0,
-        idleAnimSpeed: 0.8,
-        turnSpeed: 20,
-        charRadius: 0.4,
-        proximityRadius: 3,
-        proximityOuterRadius: 6,
-        bumpEasingMs: 180,
-        proximityEnterDebounceMs: 500,
-        conversationCameraDistance: 7,
-        conversationCameraHeight: 5,
-        movementBlockThreshold: 0.9,
-        sunPositionX: 20,
-        sunPositionY: 40,
-        sunPositionZ: 20,
-        sunIntensity: 1.4,
-        ambientIntensity: 0.15,
-        jumpVelocity: 8,
-        airControl: 0.2,
-        maxJumps: 2,
-        landingEaseMs: 120,
-      },
+      constants: DEFAULT_WORLD_CONSTANTS,
     },
     {
       kind: 'world:map',
@@ -223,7 +175,7 @@ describe('PROTOCOL table', () => {
     for (const [kind, def] of Object.entries(PROTOCOL)) {
       expect(def.v).toBeGreaterThan(0);
       expect(def.schema).toBeDefined();
-      expect(def.authority).toMatch(/^(local|host)$/);
+      expect(def.authority).toMatch(/^(local|host|server)$/);
       expect(protocolKinds.has(kind)).toBe(true);
     }
   });
@@ -280,118 +232,47 @@ describe('PROTOCOL table', () => {
   });
 });
 
-// Base world:settings object with all required fields (including jump).
-const BASE_WORLD_SETTINGS = {
-  playerSpeed: 3,
-  runSpeedMultiplier: 2,
-  walkAnimSpeed: 1,
-  runAnimSpeed: 1,
-  idleAnimSpeed: 1,
-  turnSpeed: 16,
-  charRadius: 0.4,
-  proximityRadius: 3,
-  proximityOuterRadius: 6,
-  bumpEasingMs: 180,
-  proximityEnterDebounceMs: 500,
-  conversationCameraDistance: 7,
-  conversationCameraHeight: 5,
-  movementBlockThreshold: 0.9,
-  sunPositionX: 20,
-  sunPositionY: 40,
-  sunPositionZ: 20,
-  sunIntensity: 1.4,
-  ambientIntensity: 0.15,
-  jumpVelocity: 8,
-  airControl: 0.2,
-  maxJumps: 2,
-  landingEaseMs: 120,
-};
-
-function makeWorldSettingsEvent(overrides: Record<string, unknown> = {}) {
-  return {
-    kind: 'world:settings',
-    v: 1,
-    actorId: 'a',
-    seq: 1,
-    t: 0,
-    settings: { ...BASE_WORLD_SETTINGS, ...overrides },
-  };
+function makeWorldConstantsEvent(constants: unknown) {
+  return { kind: 'world:constants', v: 1, actorId: 'server', seq: 1, t: 0, constants };
 }
 
-describe('ZWorldSettings — JumpSettings fields', () => {
-  it('accepts all four new fields at valid defaults', () => {
-    const r = validateNetEvent(makeWorldSettingsEvent());
-    expect(r.ok).toBe(true);
+function withSection(section: string, patch: Record<string, unknown>) {
+  const c = structuredClone(DEFAULT_WORLD_CONSTANTS) as unknown as Record<string, Record<string, unknown>>;
+  c[section] = { ...c[section], ...patch };
+  return c;
+}
+
+describe('world:constants', () => {
+  it('is the only world-settings carrier in the protocol', () => {
+    expect(PROTOCOL['world:constants'].authority).toBe('server');
+    expect(Object.keys(PROTOCOL)).not.toContain('world:settings');
   });
 
-  it('rejects airControl: 1.5 (out of range)', () => {
-    const r = validateNetEvent(makeWorldSettingsEvent({ airControl: 1.5 }));
+  it.each([
+    ['jump', { airControl: 1.5 }],
+    ['jump', { jumpVelocity: 0 }],
+    ['jump', { maxJumps: 0 }],
+    ['animation', { movementBlockThreshold: 2 }],
+    ['proximity', { enteredColor: 'green' }],
+    ['lighting', { sunPosition: [1, 2] }],
+    ['fixedCamera', { fov: 0 }],
+  ])('rejects out-of-range %s %o', (section, patch) => {
+    const r = validateNetEvent(makeWorldConstantsEvent(withSection(section, patch)));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('schema');
   });
 
-  it('rejects jumpVelocity: -1 (not positive)', () => {
-    const r = validateNetEvent(makeWorldSettingsEvent({ jumpVelocity: -1 }));
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('schema');
+  it('rejects a document missing a field', () => {
+    const c = structuredClone(DEFAULT_WORLD_CONSTANTS) as unknown as Record<string, Record<string, unknown>>;
+    delete c.lighting!.sunColor;
+    expect(validateNetEvent(makeWorldConstantsEvent(c)).ok).toBe(false);
   });
 
-  it('rejects jumpVelocity: 0 (not positive)', () => {
-    const r = validateNetEvent(makeWorldSettingsEvent({ jumpVelocity: 0 }));
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('schema');
-  });
-
-  it('rejects maxJumps: 0 (below min 1)', () => {
-    const r = validateNetEvent(makeWorldSettingsEvent({ maxJumps: 0 }));
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('schema');
-  });
-
-  it('accepts maxJumps: 3', () => {
-    const r = validateNetEvent(makeWorldSettingsEvent({ maxJumps: 3 }));
-    expect(r.ok).toBe(true);
-  });
-
-  it('rejects landingEaseMs: -1 (below zero)', () => {
-    const r = validateNetEvent(makeWorldSettingsEvent({ landingEaseMs: -1 }));
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('schema');
-  });
-
-  it('rejects old-format message missing all four jump fields', () => {
-    const oldSettings = {
-      playerSpeed: 3,
-      runSpeedMultiplier: 2,
-      walkAnimSpeed: 1,
-      runAnimSpeed: 1,
-      idleAnimSpeed: 1,
-      turnSpeed: 16,
-      charRadius: 0.4,
-      proximityRadius: 3,
-      proximityOuterRadius: 6,
-      bumpEasingMs: 180,
-      proximityEnterDebounceMs: 500,
-      conversationCameraDistance: 7,
-      conversationCameraHeight: 5,
-      movementBlockThreshold: 0.9,
-      sunPositionX: 20,
-      sunPositionY: 40,
-      sunPositionZ: 20,
-      sunIntensity: 1.4,
-      ambientIntensity: 0.15,
-      // no jump fields
-    };
-    const r = validateNetEvent({
-      kind: 'world:settings',
-      v: 1,
-      actorId: 'a',
-      seq: 1,
-      t: 0,
-      settings: oldSettings,
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('schema');
+  it('rejects a document missing a section or schemaVersion', () => {
+    const { background: _bg, ...noBackground } = DEFAULT_WORLD_CONSTANTS;
+    const { schemaVersion: _v, ...noVersion } = DEFAULT_WORLD_CONSTANTS;
+    expect(validateNetEvent(makeWorldConstantsEvent(noBackground)).ok).toBe(false);
+    expect(validateNetEvent(makeWorldConstantsEvent(noVersion)).ok).toBe(false);
   });
 });
 

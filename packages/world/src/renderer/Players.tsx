@@ -136,9 +136,6 @@ export function Players({
   paused,
   isAirborneRef,
 }: PlayersProps) {
-  // Read movement/animation params from the broadcast world state. Any peer
-  // (the local player here) that calls actions.setWorldSettings updates the
-  // store; the SyncEngine keeps it in sync across clients.
   const [worldSettings, setWorldSettings] = useState(
     () => store.getState().worldSettings,
   );

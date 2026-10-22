@@ -105,12 +105,11 @@ export class Room {
    * `presence:position` and (for players who have announced a name) the
    * equivalent `avatar:update` for every other present player.
    *
-   * We intentionally do **NOT** include `world:settings` or `world:map`
-   * here. The browser owns those values (driven by its Leva panel /
-   * localStorage); applying the server's copy on connect would
-   * silently overwrite the user's persisted settings with SDK
-   * defaults, breaking renderer/collision agreement on the floor
-   * extent. The browser broadcasts its own world state via
+   * We intentionally do **NOT** include `world:map` here. The browser
+   * owns it; applying the server's copy on connect would silently
+   * overwrite the user's map with SDK defaults, breaking
+   * renderer/collision agreement on the floor extent. The browser
+   * broadcasts its own world state via
    * `SyncEngine.broadcastWorldState()` after subscribing, and the
    * server's mirror channel + hub fan-out propagate it to bots; bots
    * spawned later inherit the current server state via the

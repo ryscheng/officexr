@@ -2,8 +2,6 @@ import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import type { Actions, Vec3 } from '@officexr/sdk';
 import { bakedLayoutUrl } from '../app/baked-layout-url.ts';
 import { loadMap, type LoadedMap, type MapLoaderDeps } from '../app/map-loader.ts';
-import { proximityWorldSettings } from '../renderer/viewConfig.ts';
-import type { ViewConfig } from '../renderer/viewConfig.ts';
 import { useApplication } from './application-context.tsx';
 
 /** Metres above the spawn point the local player is dropped from; gravity lands them. */
@@ -12,12 +10,11 @@ const SPAWN_DROP_HEIGHT = 4;
 export type PlayStorages = MapLoaderDeps['storages'];
 
 export interface UsePlaySessionOptions {
-  actions: Pick<Actions, 'setWorldObjects' | 'setSelfPosition' | 'setWorldSettings'>;
+  actions: Pick<Actions, 'setWorldObjects' | 'setSelfPosition'>;
   mapName: string;
   storages: PlayStorages;
   /** Changing this re-loads and re-applies `mapName` (reset & respawn). */
   reloadKey?: number;
-  proximity: ViewConfig['proximity'];
   onMapApplied?: (spawnPoints: readonly Vec3[]) => void;
 }
 
@@ -35,15 +32,13 @@ export interface PlaySession {
 
 /**
  * Loads `mapName` into the store through `actions`: pushes its world
- * objects, drops the local player above the first spawn point, and
- * applies the proximity world settings from `proximity`.
+ * objects and drops the local player above the first spawn point.
  */
 export function usePlaySession({
   actions,
   mapName,
   storages,
   reloadKey,
-  proximity,
   onMapApplied,
 }: UsePlaySessionOptions): PlaySession {
   const { catalog, rooms } = useApplication();
@@ -83,13 +78,6 @@ export function usePlaySession({
       cancelled = true;
     };
   }, [actions, mapName, storages, catalog, rooms, reloadKey]);
-
-  const { sensorRadius, outerRadius, enterDebounceMs, conversationDistance, conversationHeight } = proximity;
-  useEffect(() => {
-    actions.setWorldSettings(
-      proximityWorldSettings({ sensorRadius, outerRadius, enterDebounceMs, conversationDistance, conversationHeight }),
-    );
-  }, [actions, sensorRadius, outerRadius, enterDebounceMs, conversationDistance, conversationHeight]);
 
   const map = applied?.actions === actions ? applied.map : null;
   const spawnPoints = useMemo(() => (map ? toVec3s(map) : []), [map]);

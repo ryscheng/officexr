@@ -1,5 +1,4 @@
-import React, { useEffect } from 'react';
-import type { Actions } from '@officexr/sdk';
+import React from 'react';
 import type { BotMode } from '@officexr/world/bot';
 
 import { Button } from '../../components/ui/button.tsx';
@@ -17,7 +16,6 @@ import type { UseStudioSettingsResult } from './useStudioSettings.ts';
 
 interface WorldPanelsProps {
   settings: UseStudioSettingsResult;
-  actions: Actions | null;
   /** Page-level handlers — Debug app routes bot count to in-browser
    *  pool or promotes to WS mode + the Node CLI. */
   onBotCountChange: (count: number) => void;
@@ -30,22 +28,11 @@ interface WorldPanelsProps {
  *   Animation, Proximity, Lighting, Background, FixedCamera, World,
  *   Bot, Settings.
  *
- * Each section is a fully-controlled React component. Edits flow:
- *   - **Renderer-local fields** → `setSection(...)` updates the
- *     view-config; `<Scene>` re-reads it on every render.
- *   - **Synced fields** (animation speeds, sun intensity, world
- *     grid size) → ALSO call into the SDK
- *     `actions.setWorldSettings(...)` or `actions.setWorldMap(...)`
- *     so peers + bots see the updated values. Proximity radii are
- *     applied by `<PlayView>` from the view-config instead.
- *
- * The `WorldPanels` component itself is intentionally a render-only
- * wrapper — all the mirror-to-SDK effects live inside the inner
- * panel components so they can subscribe to just the fields they own.
+ * Each section is a fully-controlled React component: `setSection(...)`
+ * updates the view-config and `<Scene>` re-reads it on every render.
  */
 export function WorldPanels({
   settings,
-  actions,
   onBotCountChange,
   onBotModeChange,
 }: WorldPanelsProps) {
@@ -62,12 +49,10 @@ export function WorldPanels({
       <AnimationPanel
         animation={viewConfig.animation}
         setSection={setSection}
-        actions={actions}
       />
       <JumpPanel
         jump={viewConfig.jump}
         setSection={setSection}
-        actions={actions}
       />
       <ProximityPanel
         proximity={viewConfig.proximity}
@@ -76,7 +61,6 @@ export function WorldPanels({
       <LightingPanel
         lighting={viewConfig.lighting}
         setSection={setSection}
-        actions={actions}
       />
       <BackgroundPanel
         background={viewConfig.background}
@@ -150,35 +134,14 @@ function BotPanel({
 
 // --- Animation ----------------------------------------------------
 
+// ponytail: Animation, Jump and Proximity edit only local view state; they don't reach gameplay worldSettings yet.
+
 interface AnimationPanelProps {
   animation: ViewConfig['animation'];
   setSection: UseStudioSettingsResult['setSection'];
-  actions: Actions | null;
 }
 
-function AnimationPanel({ animation, setSection, actions }: AnimationPanelProps) {
-  useEffect(() => {
-    if (!actions) return;
-    actions.setWorldSettings({
-      playerSpeed: animation.playerSpeed,
-      runSpeedMultiplier: animation.runMultiplier,
-      walkAnimSpeed: animation.walkSpeed,
-      runAnimSpeed: animation.runSpeed,
-      idleAnimSpeed: animation.idleSpeed,
-      turnSpeed: animation.turnSpeed,
-      movementBlockThreshold: animation.movementBlockThreshold,
-    });
-  }, [
-    actions,
-    animation.playerSpeed,
-    animation.runMultiplier,
-    animation.walkSpeed,
-    animation.runSpeed,
-    animation.idleSpeed,
-    animation.turnSpeed,
-    animation.movementBlockThreshold,
-  ]);
-
+function AnimationPanel({ animation, setSection }: AnimationPanelProps) {
   const set =
     <K extends keyof ViewConfig['animation']>(key: K) =>
     (value: ViewConfig['animation'][K]) =>
@@ -202,26 +165,9 @@ function AnimationPanel({ animation, setSection, actions }: AnimationPanelProps)
 interface JumpPanelProps {
   jump: ViewConfig['jump'];
   setSection: UseStudioSettingsResult['setSection'];
-  actions: Actions | null;
 }
 
-function JumpPanel({ jump, setSection, actions }: JumpPanelProps) {
-  useEffect(() => {
-    if (!actions) return;
-    actions.setWorldSettings({
-      jumpVelocity: jump.jumpVelocity,
-      airControl: jump.airControl,
-      maxJumps: jump.maxJumps,
-      landingEaseMs: jump.landingEaseMs,
-    });
-  }, [
-    actions,
-    jump.jumpVelocity,
-    jump.airControl,
-    jump.maxJumps,
-    jump.landingEaseMs,
-  ]);
-
+function JumpPanel({ jump, setSection }: JumpPanelProps) {
   const set =
     <K extends keyof JumpSettingsType>(key: K) =>
     (value: JumpSettingsType[K]) =>
@@ -307,7 +253,6 @@ function ProximityPanel({ proximity, setSection }: ProximityPanelProps) {
 interface LightingPanelProps {
   lighting: ViewConfig['lighting'];
   setSection: UseStudioSettingsResult['setSection'];
-  actions: Actions | null;
 }
 
 const SHADOW_MAP_SIZES: ReadonlyArray<{ value: '512' | '1024' | '2048' | '4096'; label: string }> = [
@@ -319,24 +264,7 @@ const SHADOW_MAP_SIZES: ReadonlyArray<{ value: '512' | '1024' | '2048' | '4096';
 
 const AUX_LIGHT_TYPES: ReadonlyArray<AuxLightType> = ['none', 'spot', 'point'];
 
-function LightingPanel({ lighting, setSection, actions }: LightingPanelProps) {
-  useEffect(() => {
-    if (!actions) return;
-    const [sx, sy, sz] = lighting.sunPosition;
-    actions.setWorldSettings({
-      sunPositionX: sx,
-      sunPositionY: sy,
-      sunPositionZ: sz,
-      sunIntensity: lighting.sunIntensity,
-      ambientIntensity: lighting.ambientIntensity,
-    });
-  }, [
-    actions,
-    lighting.sunPosition,
-    lighting.sunIntensity,
-    lighting.ambientIntensity,
-  ]);
-
+function LightingPanel({ lighting, setSection }: LightingPanelProps) {
   const set =
     <K extends keyof ViewConfig['lighting']>(key: K) =>
     (value: ViewConfig['lighting'][K]) =>

@@ -1,10 +1,7 @@
 import { createStore as createZustandStore } from 'zustand/vanilla';
 import { subscribeWithSelector } from 'zustand/middleware';
-import {
-  DEFAULT_WORLD_MAP,
-  DEFAULT_WORLD_OBJECTS,
-  DEFAULT_WORLD_SETTINGS,
-} from './types.ts';
+import { DEFAULT_WORLD_MAP, DEFAULT_WORLD_OBJECTS } from './types.ts';
+import { DEFAULT_WORLD_CONSTANTS, worldSettingsFromConstants } from './world-constants.ts';
 import type { OfficeState, PlayerId } from './types.ts';
 import { cloneWorldMap } from './world-map.ts';
 
@@ -55,7 +52,8 @@ export function createInitialOfficeState(opts: {
     screenShares: {},
     realtime: { status: 'connecting', snapshotTarget: null, versionWarnings: {} },
     runtime: { tickRate: 60, lastTick: 0, protocolVersion: 1 },
-    worldSettings: { ...DEFAULT_WORLD_SETTINGS },
+    worldConstants: DEFAULT_WORLD_CONSTANTS,
+    worldSettings: worldSettingsFromConstants(DEFAULT_WORLD_CONSTANTS),
     worldMap: cloneWorldMap(DEFAULT_WORLD_MAP),
     characterConfigs: {},
     worldObjects: {

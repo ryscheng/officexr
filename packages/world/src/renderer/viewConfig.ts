@@ -1,60 +1,21 @@
 /**
- * Renderer-tweaker bag accepted by `<Scene>`. Lives here (in the
- * world package) because Scene's prop interface needs it, but the
- * editing UI for these fields lives in the studio package
- * (`packages/studio/src/panels/world/`).
- *
- * The studio owns the React state for this bag (with localStorage
- * persistence) and passes the current value into Scene each render.
- * Scene reads from `viewConfig.proximity.discRadius` etc. instead
- * of calling a Leva hook internally — the renderer stays UI-free
- * (SOLID: world doesn't depend on a UI library).
+ * Renderer-tweaker bag accepted by `<Scene>`: the renderer's sections of
+ * the SDK's `WorldConstants`, plus optional mugshot-only overrides that
+ * are never part of the world's constants.
  */
-import type { WorldSettings } from '@officexr/sdk';
-import { FIXED_CAMERA_DEFAULTS } from './config.ts';
+import {
+  DEFAULT_WORLD_CONSTANTS,
+  type BackgroundConstants,
+  type FixedCameraConstants,
+  type LightingConstants,
+  type ProximityConstants,
+} from '@officexr/sdk';
 
-export type AuxLightType = 'none' | 'spot' | 'point';
+export type { AuxLightType } from '@officexr/sdk';
+export type ProximityViewConfig = ProximityConstants;
+export type BackgroundViewConfig = BackgroundConstants;
 
-export interface ProximityViewConfig {
-  sensorRadius: number;
-  outerRadius: number;
-  enterDebounceMs: number;
-  discRadius: number;
-  pulseSpeed: number;
-  intensity: number;
-  enteringColor: string;
-  enteredColor: string;
-  exitingColor: string;
-  meetingBorderInset: number;
-  meetingBorderOutset: number;
-  sparkleSpeed: number;
-  sparkleFloatHeight: number;
-  conversationDistance: number;
-  conversationHeight: number;
-  sparkleSize: number;
-}
-
-export interface LightingViewConfig {
-  sunPosition: [number, number, number];
-  sunColor: string;
-  sunIntensity: number;
-  /** Intensity of the hemisphere fill light (sky-tinted from above,
-   * ground-tinted from below). Drives the natural-outdoor look. */
-  ambientIntensity: number;
-  castShadow: boolean;
-  shadowRange: number;
-  shadowMapSize: number;
-  shadowBias: number;
-  shadowNormalBias: number;
-  auxLightType: AuxLightType;
-  auxIntensity: number;
-  auxDistance: number;
-  auxAngle: number;
-  auxPenumbra: number;
-  auxDecay: number;
-  showSunDisc: boolean;
-  sunDiscRadius: number;
-  sunDiscIntensity: number;
+export type LightingViewConfig = LightingConstants & {
   /** Additive omnidirectional `<ambientLight>` intensity on top of
    * the sun + hemisphere. Distinct from `ambientIntensity` (which
    * drives the hemisphere) — this lifts shadowed faces uniformly
@@ -63,22 +24,9 @@ export interface LightingViewConfig {
    * touching the artistic lighting. Optional; undefined / 0 leaves
    * the scene unchanged. */
   ambientFillIntensity?: number;
-}
+};
 
-export interface BackgroundViewConfig {
-  topColor: string;
-  bottomColor: string;
-}
-
-export interface FixedCameraViewConfig {
-  azimuthDeg: number;
-  pitchDeg: number;
-  height: number;
-  maxOnScreenFrac: number;
-  minOnScreenFrac: number;
-  lateralFrac: number;
-  fov: number;
-  movementYawOffsetDeg: number;
+export type FixedCameraViewConfig = FixedCameraConstants & {
   /** Optional direct XZ distance (m) from character to camera. When
    * present, overrides the screen-fraction derivation in
    * `CameraRig` and pins the camera at exactly this distance with
@@ -91,7 +39,7 @@ export interface FixedCameraViewConfig {
    * happens to stand — two characters at different y heights
    * frame identically. */
   lookAt?: readonly [number, number, number];
-}
+};
 
 export interface ViewConfig {
   proximity: ProximityViewConfig;
@@ -101,73 +49,8 @@ export interface ViewConfig {
 }
 
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
-  proximity: {
-    sensorRadius: 3,
-    outerRadius: 6,
-    enterDebounceMs: 500,
-    discRadius: 1.6,
-    pulseSpeed: 0.8,
-    intensity: 1,
-    enteringColor: '#ffd24a',
-    enteredColor: '#7be67b',
-    exitingColor: '#ff8c42',
-    meetingBorderInset: 0.05,
-    meetingBorderOutset: 0.05,
-    sparkleSpeed: 1.5,
-    sparkleFloatHeight: 1.5,
-    conversationDistance: 7,
-    conversationHeight: 5,
-    sparkleSize: 1,
-  },
-  lighting: {
-    sunPosition: [20, 40, 20],
-    sunColor: '#ffffff',
-    sunIntensity: 1.4,
-    ambientIntensity: 0.15,
-    castShadow: true,
-    shadowRange: 40,
-    shadowMapSize: 2048,
-    shadowBias: -0.0005,
-    shadowNormalBias: 0.02,
-    auxLightType: 'none',
-    auxIntensity: 1,
-    auxDistance: 0,
-    auxAngle: Math.PI / 6,
-    auxPenumbra: 0.2,
-    auxDecay: 2,
-    showSunDisc: true,
-    sunDiscRadius: 3,
-    sunDiscIntensity: 2,
-    ambientFillIntensity: 0,
-  },
-  background: {
-    topColor: '#02030a',
-    bottomColor: '#1a1238',
-  },
-  fixedCamera: {
-    azimuthDeg: FIXED_CAMERA_DEFAULTS.azimuthDeg,
-    pitchDeg: FIXED_CAMERA_DEFAULTS.pitchDeg,
-    height: FIXED_CAMERA_DEFAULTS.height,
-    maxOnScreenFrac: FIXED_CAMERA_DEFAULTS.maxOnScreenFrac,
-    minOnScreenFrac: FIXED_CAMERA_DEFAULTS.minOnScreenFrac,
-    lateralFrac: FIXED_CAMERA_DEFAULTS.lateralFrac,
-    fov: FIXED_CAMERA_DEFAULTS.fov,
-    movementYawOffsetDeg: 0,
-  },
+  proximity: DEFAULT_WORLD_CONSTANTS.proximity,
+  lighting: DEFAULT_WORLD_CONSTANTS.lighting,
+  background: DEFAULT_WORLD_CONSTANTS.background,
+  fixedCamera: DEFAULT_WORLD_CONSTANTS.fixedCamera,
 };
-
-/** The gameplay half of the proximity config, as the world settings every client's sensors read. */
-export function proximityWorldSettings(
-  proximity: Pick<
-    ProximityViewConfig,
-    'sensorRadius' | 'outerRadius' | 'enterDebounceMs' | 'conversationDistance' | 'conversationHeight'
-  >,
-): Partial<WorldSettings> {
-  return {
-    proximityRadius: proximity.sensorRadius,
-    proximityOuterRadius: proximity.outerRadius,
-    proximityEnterDebounceMs: proximity.enterDebounceMs,
-    conversationCameraDistance: proximity.conversationDistance,
-    conversationCameraHeight: proximity.conversationHeight,
-  };
-}

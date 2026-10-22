@@ -11,7 +11,6 @@ import {
   emptyRoomDocument,
   newPlaceObject,
 } from '../scenes/index.ts';
-import { DEFAULT_VIEW_CONFIG } from '../renderer/viewConfig.ts';
 import { ApplicationProvider } from './application-context.tsx';
 import { usePlaySession, type UsePlaySessionOptions } from './usePlaySession.ts';
 
@@ -34,7 +33,6 @@ function setup() {
   const actions = {
     setWorldObjects: vi.fn(),
     setSelfPosition: vi.fn(),
-    setWorldSettings: vi.fn(),
   };
   const onMapApplied = vi.fn();
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -47,7 +45,6 @@ function setup() {
           actions,
           mapName,
           storages,
-          proximity: DEFAULT_VIEW_CONFIG.proximity,
           onMapApplied,
           ...opts,
         }),
@@ -104,13 +101,5 @@ describe('usePlaySession', () => {
     expect(result.current.spawnPoints).toEqual([]);
     expect(actions.setWorldObjects).not.toHaveBeenCalled();
     expect(onMapApplied).not.toHaveBeenCalled();
-  });
-
-  it('applies proximity world settings from the view config', () => {
-    const { actions, render } = setup();
-    render('office');
-    expect(actions.setWorldSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ proximityRadius: DEFAULT_VIEW_CONFIG.proximity.sensorRadius }),
-    );
   });
 });

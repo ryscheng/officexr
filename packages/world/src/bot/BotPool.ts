@@ -1,4 +1,4 @@
-import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldObjects, WorldSettings } from '@officexr/sdk';
+import type { Bus, Channel, PlayerId, Vec3, WorldMap, WorldConstants, WorldObjects } from '@officexr/sdk';
 import { BotDriver, type BotMode } from './BotDriver.ts';
 
 interface BotPoolOptions {
@@ -10,11 +10,10 @@ interface BotPoolOptions {
    * player in `walk-to-local` / `orbit` modes. */
   localPlayerId: PlayerId;
   /** Optional getter for the authoritative world state to seed each
-   * new bot's SDK store with. Called at bot-spawn time so bots that
-   * join *after* the human player has tweaked Leva inherit the
-   * current values instead of SDK defaults. */
+   * new bot's SDK store with. Called at bot-spawn time so late-joining
+   * bots start from the current world instead of SDK defaults. */
   getInitialWorld?: () => {
-    worldSettings?: WorldSettings;
+    worldConstants?: WorldConstants;
     worldMap?: WorldMap;
     worldObjects?: WorldObjects;
   };

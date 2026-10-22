@@ -6,13 +6,14 @@ import type { CharacterName } from '@officexr/world';
 import type {
   BackgroundViewConfig,
   LightingViewConfig,
+  ViewConfig,
 } from '@officexr/world/renderer';
 import {
   createPersistentLocalState,
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import { buildInMemoryStack, type ChannelStack } from '../../realtime/services.ts';
-import { DEFAULT_VIEW_CONFIG, type ViewConfig } from '../../panels/world/types.ts';
+import { DEFAULT_VIEW_CONFIG } from '../../panels/world/types.ts';
 
 const SELF_ID = 'mugshot-player';
 const OFFICE_ID = 'mugshot';
