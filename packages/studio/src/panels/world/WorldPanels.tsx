@@ -8,6 +8,7 @@ import {
 import type { BotMode } from '@officexr/world/bot';
 
 import { Button } from '../../components/ui/button.tsx';
+import { downloadBlob } from '../../lib/utils.ts';
 import {
   ColorInput,
   NumberInput,
@@ -30,7 +31,7 @@ type SetSection = <K extends Exclude<keyof WorldConstants, 'schemaVersion'>>(
 
 interface WorldPanelsProps {
   worldConstants: WorldConstants;
-  persistence: UseWorldConstantsPersistenceResult;
+  edit: UseWorldConstantsPersistenceResult['edit'];
   settings: UseStudioSettingsResult;
   /** Page-level handlers — Debug app routes bot count to in-browser
    *  pool or promotes to WS mode + the Node CLI. */
@@ -41,22 +42,20 @@ interface WorldPanelsProps {
 /**
  * Right-hand panel stack for Debug mode: Bot, Animation, Jump,
  * Proximity, Lighting, Background, FixedCamera and Settings. Every
- * section but Bot edits the world constants through `persistence`.
+ * section but Bot edits the world constants through `edit`.
  */
 export function WorldPanels({
   worldConstants,
-  persistence,
+  edit,
   settings,
   onBotCountChange,
   onBotModeChange,
 }: WorldPanelsProps) {
-  const { edit } = persistence;
   const setSection: SetSection = (key, update) =>
     edit((prev) => ({ ...prev, [key]: update(prev[key]) }));
 
   return (
     <Panel>
-      <SaveStatus status={persistence.status} onRetry={persistence.retry} />
       <BotPanel
         bot={settings.bot}
         setBot={settings.setBot}
@@ -102,7 +101,7 @@ const STATUS_LABEL: Record<Exclude<PersistenceStatus['type'], 'failed'>, string>
   saving: 'Saving…',
 };
 
-function SaveStatus({ status, onRetry }: { status: PersistenceStatus; onRetry: () => void }) {
+export function SaveStatus({ status, onRetry }: { status: PersistenceStatus; onRetry: () => void }) {
   return (
     <div
       data-testid="world-constants-status"
@@ -125,14 +124,7 @@ function SaveStatus({ status, onRetry }: { status: PersistenceStatus; onRetry: (
 
 function downloadJson(doc: WorldConstants): void {
   const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'world-settings.json';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, 'world-settings.json');
 }
 
 // --- Bot ----------------------------------------------------------

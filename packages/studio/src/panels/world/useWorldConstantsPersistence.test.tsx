@@ -11,7 +11,8 @@ import {
   InMemoryWorldConstantsStorage,
   WorldConstantsPushError,
 } from '@officexr/world/scenes';
-import { SAVE_DEBOUNCE_MS, useWorldConstantsPersistence } from './useWorldConstantsPersistence.ts';
+import { SAVE_DEBOUNCE_MS } from './saveDebounce.ts';
+import { useWorldConstantsPersistence } from './useWorldConstantsPersistence.ts';
 
 function withWalkSpeed(walkSpeed: number): WorldConstants {
   return {
@@ -130,14 +131,64 @@ describe('useWorldConstantsPersistence', () => {
 
     act(() => hook.result.current.edit(() => withWalkSpeed(6)));
     await act(() => vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS));
-    const status = hook.result.current.status;
-    expect(status.type).toBe('failed');
-    expect(status.type === 'failed' && status.message).toContain('http://realtime-a:8787');
+    expect(hook.result.current.status).toMatchObject({
+      type: 'failed',
+      op: 'save',
+      message: expect.stringContaining('http://realtime-a:8787'),
+    });
 
     act(() => hook.result.current.retry());
     await settle();
     expect(save).toHaveBeenCalledTimes(2);
     expect(hook.result.current.status.type).toBe('clean');
     expect((await storage.load())?.animation.walkSpeed).toBe(6);
+  });
+
+  it('ignores edits after a failed load and reloads on retry', async () => {
+    const storage = new InMemoryWorldConstantsStorage({ seed: withWalkSpeed(7) });
+    const load = vi.spyOn(storage, 'load').mockRejectedValueOnce(new Error('offline'));
+    const save = vi.spyOn(storage, 'save');
+    const { store, hook } = setup(storage);
+    await settle();
+    expect(hook.result.current.status).toMatchObject({ type: 'failed', op: 'load' });
+
+    act(() => hook.result.current.edit(() => withWalkSpeed(2)));
+    await act(() => vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS));
+    expect(save).not.toHaveBeenCalled();
+    expect(walkSpeedOf(store)).not.toBe(2);
+
+    act(() => hook.result.current.retry());
+    await settle();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(walkSpeedOf(store)).toBe(7);
+    expect(hook.result.current.status.type).toBe('clean');
+  });
+
+  it('names a plain save failure', async () => {
+    const storage = new InMemoryWorldConstantsStorage();
+    vi.spyOn(storage, 'save').mockRejectedValueOnce(new Error('disk full'));
+    const { hook } = setup(storage);
+    await settle();
+
+    act(() => hook.result.current.edit(() => withWalkSpeed(6)));
+    await act(() => vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS));
+    expect(hook.result.current.status).toEqual({
+      type: 'failed',
+      op: 'save',
+      message: 'save failed: disk full',
+    });
+  });
+
+  it('saves the pending edit once when unmounted before the debounce fires', async () => {
+    const storage = new InMemoryWorldConstantsStorage();
+    const save = vi.spyOn(storage, 'save');
+    const { hook } = setup(storage);
+    await settle();
+
+    act(() => hook.result.current.edit(() => withWalkSpeed(3)));
+    hook.unmount();
+    await act(() => vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS * 2));
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0]![0].animation.walkSpeed).toBe(3);
   });
 });

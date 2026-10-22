@@ -7,7 +7,6 @@ import {
   InMemoryLayoutStorage,
   InMemoryMapStorage,
   InMemoryRoomStorage,
-  InMemoryWorldConstantsStorage,
   type LayoutDocument,
   type MapDocumentV1,
   type RoomDocument,
@@ -16,6 +15,7 @@ import type { WorldConstants } from '@officexr/sdk';
 import { StudioPage } from './StudioPage.tsx';
 import { HeadlessApp } from './modes/headless/HeadlessApp.tsx';
 import { createTestApi } from './test-harness/createTestApi.ts';
+import { RecordingWorldConstantsStorage, testApi } from './test-harness/pageTestApi.ts';
 import {
   TestStorageProvider,
   type TestStorages,
@@ -31,33 +31,6 @@ interface TestSeed {
   rooms?: Array<{ name: string; doc: RoomDocument }>;
   layouts?: Array<{ name: string; doc: LayoutDocument }>;
   worldConstants?: WorldConstants;
-}
-
-/** Shape of `window.__OFFICEXR_TEST_API__`, which a Playwright spec reads. */
-interface TestApi {
-  /** Every document saved to the world-constants storage, oldest first. */
-  worldConstantsSaves: WorldConstants[];
-}
-
-class RecordingWorldConstantsStorage extends InMemoryWorldConstantsStorage {
-  constructor(
-    private readonly saves: WorldConstants[],
-    opts: { seed?: WorldConstants },
-  ) {
-    super(opts);
-  }
-
-  override async save(doc: WorldConstants): Promise<void> {
-    this.saves.push(structuredClone(doc));
-    await super.save(doc);
-  }
-}
-
-/** Created once per page: StrictMode builds the storages twice and keeps one. */
-function testApi(): TestApi {
-  const g = globalThis as { __OFFICEXR_TEST_API__?: TestApi };
-  g.__OFFICEXR_TEST_API__ ??= { worldConstantsSaves: [] };
-  return g.__OFFICEXR_TEST_API__;
 }
 
 /** Build the hermetic in-memory storages for `?test=1` mode, seeding

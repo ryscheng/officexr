@@ -98,10 +98,12 @@ storages seeded from `window.__OFFICEXR_TEST_SEED__`. The
 In test mode `window.__OFFICEXR_TEST_API__.worldConstantsSaves` lists every
 document saved to the world-constants storage, so a spec can assert what the
 Debug panels saved (see `tests/playwright/debug-world-constants-hermetic.spec.ts`).
+Non-hermetic Debug specs load the developer's gitignored
+`packages/world/world-settings.json` (if a dev session saved one), not the defaults.
 
 **CI** runs `pnpm test:e2e:ci`, now scoped to: `map-editor`,
 `map-editor-hermetic`, `object-editor`, `routing`, `room-editor`,
-`debug-mode`, and `character-on-surface`.
+`debug-mode`, `character-on-surface`, and `debug-world-constants-hermetic`.
 
 The previously-rotted specs are repaired:
 

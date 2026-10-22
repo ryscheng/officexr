@@ -7,6 +7,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { goToModeHermetic, waitForCanvasReady } from './helpers.ts';
 import { DEFAULT_WORLD_CONSTANTS, type WorldConstants } from '../../packages/sdk/src/index.ts';
+import { SAVE_DEBOUNCE_MS } from '../../packages/studio/src/panels/world/saveDebounce.ts';
 
 const RED = '#ff0000';
 
@@ -80,7 +81,7 @@ test('seeded world constants show in the panels, drive the scene and save once p
   await expect.poll(async () => (await storeConstants(page))?.animation.walkSpeed).toBe(5);
   await expect(page.getByTestId('world-constants-status')).toHaveText('Saved');
   // Past another debounce window, so a second save would have landed.
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(SAVE_DEBOUNCE_MS * 2);
   const saves = await savedDocs(page);
   expect(saves).toHaveLength(1);
   expect(saves[0]!.animation.walkSpeed).toBe(5);

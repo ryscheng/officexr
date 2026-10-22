@@ -130,8 +130,8 @@ export async function buildInMemoryStack(
 
 /**
  * Stands in for the realtime server on an in-memory hub: emits the local
- * store's world constants as the server actor now and whenever their
- * content changes, so in-browser bots take them through the same inbound
+ * store's world constants as the server actor now and whenever they
+ * change, so in-browser bots take them through the same inbound
  * `world:constants` path as over ws.
  */
 async function startWorldConstantsAuthority(
@@ -140,8 +140,7 @@ async function startWorldConstantsAuthority(
 ): Promise<() => void> {
   const channel = new InMemoryChannel(hub, SERVER_SELF_ID);
   await channel.subscribe();
-  // Clients drop an actor's seq at or below the last one seen, so it must
-  // keep rising across authorities, as the realtime server's does.
+  // Same seq scheme as the realtime server's own events.
   let seq = Date.now();
   const emit = (constants: WorldConstants) =>
     void channel.send({
@@ -153,17 +152,12 @@ async function startWorldConstantsAuthority(
       constants,
     });
   emit(store.getState().worldConstants);
-  // Compared by content: the local player's copy of each emission lands
-  // back in the store as a new object and must not be re-emitted.
-  const off = store.subscribe((s) => s.worldConstants, emit, sameContent);
+  const off = store.subscribe((s) => s.worldConstants, emit);
   return () => {
     off();
     channel.close();
   };
 }
-
-const sameContent = (a: WorldConstants, b: WorldConstants) =>
-  JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * Ws mode. Local-player talks to the custom realtime server (the

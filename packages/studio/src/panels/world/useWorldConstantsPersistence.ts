@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   DEFAULT_WORLD_CONSTANTS,
   type Actions,
@@ -11,15 +11,19 @@ import {
   type WorldConstantsStorage,
 } from '@officexr/world/scenes';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
-
-export const SAVE_DEBOUNCE_MS = 500;
+import { SAVE_DEBOUNCE_MS } from './saveDebounce.ts';
 
 export type PersistenceStatus =
   | { type: 'loading' }
   | { type: 'clean' }
   | { type: 'dirty' }
   | { type: 'saving' }
-  | { type: 'failed'; message: string };
+  | { type: 'failed'; op: 'load' | 'save'; message: string };
+
+/** False until a load has succeeded; edits are ignored until then. */
+export function isLoaded(status: PersistenceStatus): boolean {
+  return !(status.type === 'loading' || (status.type === 'failed' && status.op === 'load'));
+}
 
 /**
  * Loads the saved world constants into the store, then debounces local
@@ -51,6 +55,8 @@ class WorldConstantsPersistence {
 
   start(): () => void {
     this.active = true;
+    this.pending = null;
+    this.setStatus({ type: 'loading' });
     const off = this.store.subscribe(
       (s) => s.worldConstants,
       // Deferred so the re-apply never runs as a nested setState inside the
@@ -66,6 +72,9 @@ class WorldConstantsPersistence {
   }
 
   edit = (update: (prev: WorldConstants) => WorldConstants): void => {
+    if (!isLoaded(this.status)) {
+      return;
+    }
     const next = update(this.store.getState().worldConstants);
     this.pending = next;
     this.actions.setWorldConstants(next);
@@ -80,24 +89,25 @@ class WorldConstantsPersistence {
     if (this.status.type !== 'failed') {
       return;
     }
-    if (this.pending) {
-      this.flush();
-    } else {
+    if (this.status.op === 'load') {
       void this.load();
+    } else {
+      this.flush();
     }
   };
 
   private async load(): Promise<void> {
     const generation = ++this.loadGeneration;
-    this.setStatus({ type: 'loading' });
     const isCurrent = () =>
-      this.active && generation === this.loadGeneration && this.status.type === 'loading';
+      this.active && generation === this.loadGeneration && !isLoaded(this.status);
     let doc: WorldConstants | null;
     try {
+      // A save still in flight from a previous start must land before we read.
+      await this.saves;
       doc = await this.storage.load();
     } catch (err) {
       if (isCurrent()) {
-        this.setStatus({ type: 'failed', message: `load failed: ${errorMessage(err)}` });
+        this.setStatus({ type: 'failed', op: 'load', message: `load failed: ${errorMessage(err)}` });
       }
       return;
     }
@@ -123,7 +133,7 @@ class WorldConstantsPersistence {
       await this.storage.save(doc);
     } catch (err) {
       if (this.pending === doc) {
-        this.setStatus({ type: 'failed', message: describeSaveFailure(err) });
+        this.setStatus({ type: 'failed', op: 'save', message: describeSaveFailure(err) });
       }
       return;
     }
@@ -176,26 +186,27 @@ export interface UseWorldConstantsPersistenceResult {
   status: PersistenceStatus;
   /** Applies the update to the store now and saves the result once edits pause. */
   edit: (update: (prev: WorldConstants) => WorldConstants) => void;
-  /** Re-runs the failed save (or load). */
+  /** Re-runs the failed load or save. */
   retry: () => void;
 }
 
-/** Storage resolves as `storage` → the `?test=1` test storage → Filesystem. */
+/**
+ * Storage resolves as `storage` → the `?test=1` test storage → Filesystem.
+ * `store`, `actions` and `storage` are read once, on mount.
+ */
 export function useWorldConstantsPersistence(opts: {
   store: Store;
   actions: Actions;
   storage?: WorldConstantsStorage;
 }): UseWorldConstantsPersistenceResult {
-  const { store, actions } = opts;
   const testStorages = useTestStorages();
-  const storage = useMemo(
+  const [persistence] = useState(
     () =>
-      opts.storage ?? testStorages?.worldConstantsStorage ?? new FilesystemWorldConstantsStorage(),
-    [opts.storage, testStorages],
-  );
-  const persistence = useMemo(
-    () => new WorldConstantsPersistence(store, actions, storage),
-    [store, actions, storage],
+      new WorldConstantsPersistence(
+        opts.store,
+        opts.actions,
+        opts.storage ?? testStorages?.worldConstantsStorage ?? new FilesystemWorldConstantsStorage(),
+      ),
   );
   useEffect(() => persistence.start(), [persistence]);
   const status = useSyncExternalStore(persistence.subscribe, persistence.getStatus);

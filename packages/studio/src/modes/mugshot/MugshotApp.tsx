@@ -14,6 +14,7 @@ import {
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import { buildInMemoryStack, type ChannelStack } from '../../realtime/services.ts';
+import { downloadBlob } from '../../lib/utils.ts';
 
 const SELF_ID = 'mugshot-player';
 const OFFICE_ID = 'mugshot';
@@ -501,15 +502,8 @@ export function MugshotApp() {
       const blob = await zip.generateAsync({ type: 'blob' });
       const download = opts?.download !== false;
       if (download) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        a.href = url;
-        a.download = `mugshot-Barbarian-${stamp}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(blob, `mugshot-Barbarian-${stamp}.zip`);
       }
       (
         window as unknown as {

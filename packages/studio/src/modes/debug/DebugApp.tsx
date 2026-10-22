@@ -14,9 +14,12 @@ import {
   LocalStorageRoomStorage,
 } from '@officexr/world/scenes';
 import { SidePanel } from '../../ui/SidePanel.tsx';
-import { WorldPanels } from '../../panels/world/WorldPanels.tsx';
+import { SaveStatus, WorldPanels } from '../../panels/world/WorldPanels.tsx';
 import { useStudioSettings } from '../../panels/world/useStudioSettings.ts';
-import { useWorldConstantsPersistence } from '../../panels/world/useWorldConstantsPersistence.ts';
+import {
+  isLoaded,
+  useWorldConstantsPersistence,
+} from '../../panels/world/useWorldConstantsPersistence.ts';
 import { useStackSwitcher } from '../../realtime/useStackSwitcher.ts';
 import { MapPickerPanel } from './MapPickerPanel.tsx';
 import { useMapPicker } from './useMapPicker.ts';
@@ -61,7 +64,9 @@ export function DebugApp() {
     a.loop = true;
     a.volume = 0.4;
     setAudio(a);
+  }, []);
 
+  useEffect(() => {
     (window as unknown as { __OFFICE_STORE__: typeof local.store }).__OFFICE_STORE__ =
       local.store;
   }, [local]);
@@ -71,7 +76,7 @@ export function DebugApp() {
     store: local.store,
     actions: local.actions,
   });
-  const constantsLoaded = persistence.status.type !== 'loading';
+  const constantsSettled = persistence.status.type !== 'loading';
 
   // Canonical AABB lookup from the application layer's geometry service.
   // Threaded into useStackSwitcher → BotPool → BotPhysicsWorld so the
@@ -147,7 +152,7 @@ export function DebugApp() {
           overflow: 'hidden',
         }}
       >
-        {stack && constantsLoaded && (
+        {stack && constantsSettled && (
           <PlayView
             store={local.store}
             actions={local.actions}
@@ -174,10 +179,11 @@ export function DebugApp() {
             <MapPickerPanel picker={picker} />
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
-            {constantsLoaded && (
+            <SaveStatus status={persistence.status} onRetry={persistence.retry} />
+            {isLoaded(persistence.status) && (
               <WorldPanels
                 worldConstants={worldConstants}
-                persistence={persistence}
+                edit={persistence.edit}
                 settings={studioSettings}
                 onBotCountChange={onBotCountChange}
                 onBotModeChange={onBotModeChange}
