@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Actions, OfficeState, Store } from '@officexr/sdk';
 import { focusWorld } from '@officexr/world/react';
 import { useChatVisibility } from './useChatVisibility';
-import { useStoreSelector } from './useStoreSelector';
+import { useStoreSelector } from '@officexr/world/react';
 
 const MAX_MESSAGES = 50;
 const MAX_LENGTH = 500;

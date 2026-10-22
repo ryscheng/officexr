@@ -28,8 +28,7 @@ export interface UseStudioSettingsResult {
  * The shape is `ViewConfig`, partitioned by panel; the panels use
  * `setSection('proximity', prev => ({...prev, discRadius: v}))` to
  * apply edits. Every update is structurally a new ViewConfig object,
- * so consumers using shallow comparison (e.g. `<Scene>`'s memo'd
- * shadowCam) re-derive correctly.
+ * so consumers using shallow comparison re-derive correctly.
  */
 export function useStudioSettings(): UseStudioSettingsResult {
   const [viewConfig, setViewConfig] = useState<ViewConfig>(() => {

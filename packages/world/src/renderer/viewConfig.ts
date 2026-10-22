@@ -1,10 +1,9 @@
 /**
- * Renderer-tweaker bag accepted by `<Scene>`: the renderer's sections of
- * the SDK's `WorldConstants`, plus optional mugshot-only overrides that
- * are never part of the world's constants.
+ * The view `<Scene>` renders: the renderer's sections of `WorldConstants`,
+ * plus optional mugshot-only fields that are never part of the world's
+ * constants.
  */
 import {
-  DEFAULT_WORLD_CONSTANTS,
   type BackgroundConstants,
   type FixedCameraConstants,
   type LightingConstants,
@@ -47,10 +46,3 @@ export interface ViewConfig {
   background: BackgroundViewConfig;
   fixedCamera: FixedCameraViewConfig;
 }
-
-export const DEFAULT_VIEW_CONFIG: ViewConfig = {
-  proximity: DEFAULT_WORLD_CONSTANTS.proximity,
-  lighting: DEFAULT_WORLD_CONSTANTS.lighting,
-  background: DEFAULT_WORLD_CONSTANTS.background,
-  fixedCamera: DEFAULT_WORLD_CONSTANTS.fixedCamera,
-};

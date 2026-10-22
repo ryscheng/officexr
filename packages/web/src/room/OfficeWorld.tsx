@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, PlayView } from '@officexr/world/react';
-import { DEFAULT_VIEW_CONFIG } from '@officexr/world/renderer';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
@@ -65,7 +64,6 @@ function World({ office, me }: { office: Office; me: Identity }) {
           selfId={me.login}
           mapName={office.map_name ?? DEFAULT_MAP}
           storages={storages}
-          viewConfig={DEFAULT_VIEW_CONFIG}
           realtime="ws"
           error={saveError}
           onDismissError={() => setSaveError(null)}
