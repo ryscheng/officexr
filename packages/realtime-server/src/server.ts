@@ -295,8 +295,13 @@ export class RealtimeServer {
     });
 
     if (this.worldConstantsUrl) {
-      this.bootLoad = new AbortController();
-      void this.loadWorldConstants(this.worldConstantsUrl, this.bootLoad.signal);
+      const bootLoad = new AbortController();
+      this.bootLoad = bootLoad;
+      void fetchWorldConstants(this.worldConstantsUrl, this.fetch, bootLoad.signal).then((constants) => {
+        if (constants && !bootLoad.signal.aborted) {
+          this.setWorldConstants(constants);
+        }
+      });
     }
   }
 
@@ -322,43 +327,6 @@ export class RealtimeServer {
     this.worldConstants = constants;
     const seq = this.takeServerSeq();
     for (const room of this.rooms.values()) room.pushWorldConstants(constants, seq);
-  }
-
-  private async loadWorldConstants(url: string, signal: AbortSignal): Promise<void> {
-    for (let delayMs = BOOT_RETRY_MIN_MS; ; delayMs = Math.min(delayMs * 2, BOOT_RETRY_MAX_MS)) {
-      try {
-        const res = await this.fetch(url, { signal });
-        if (res.status === 404) {
-          return;
-        }
-        if (res.ok) {
-          const constants = parseWorldConstants(await res.json());
-          if (!signal.aborted) {
-            this.setWorldConstants(constants);
-          }
-          return;
-        }
-        if (res.status < 500) {
-          console.error(`[realtime-server] world constants load got ${res.status}; keeping defaults`);
-          return;
-        }
-        console.warn(`[realtime-server] world constants load got ${res.status}; retrying in ${delayMs}ms`);
-      } catch (err) {
-        if (signal.aborted) {
-          return;
-        }
-        if (err instanceof SyntaxError || (err instanceof Error && err.name === 'ZodError')) {
-          console.error('[realtime-server] invalid world constants doc; keeping defaults:', err);
-          return;
-        }
-        console.warn(`[realtime-server] world constants load failed; retrying in ${delayMs}ms:`, err);
-      }
-      try {
-        await sleep(delayMs, undefined, { signal });
-      } catch {
-        return;
-      }
-    }
   }
 
   private async putWorldConstants(
@@ -514,6 +482,46 @@ export class RealtimeServer {
         // hello / hello-ack / snapshot / presence are server-emitted (or
         // already handled in onConnection); ignore otherwise.
         return;
+    }
+  }
+}
+
+/** Fetches the boot constants doc, retrying network errors and 5xx with
+ * capped backoff. Resolves `null` (keep the defaults) on a 404, an
+ * invalid doc, any other status, or abort. */
+async function fetchWorldConstants(
+  url: string,
+  fetchFn: typeof fetch,
+  signal: AbortSignal,
+): Promise<WorldConstants | null> {
+  for (let delayMs = BOOT_RETRY_MIN_MS; ; delayMs = Math.min(delayMs * 2, BOOT_RETRY_MAX_MS)) {
+    try {
+      const res = await fetchFn(url, { signal });
+      if (res.status === 404) {
+        return null;
+      }
+      if (res.ok) {
+        return parseWorldConstants(await res.json());
+      }
+      if (res.status < 500) {
+        console.error(`[realtime-server] world constants load got ${res.status}; keeping defaults`);
+        return null;
+      }
+      console.warn(`[realtime-server] world constants load got ${res.status}; retrying in ${delayMs}ms`);
+    } catch (err) {
+      if (signal.aborted) {
+        return null;
+      }
+      if (err instanceof SyntaxError || (err instanceof Error && err.name === 'ZodError')) {
+        console.error('[realtime-server] invalid world constants doc; keeping defaults:', err);
+        return null;
+      }
+      console.warn(`[realtime-server] world constants load failed; retrying in ${delayMs}ms:`, err);
+    }
+    try {
+      await sleep(delayMs, undefined, { signal });
+    } catch {
+      return null;
     }
   }
 }

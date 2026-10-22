@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_WORLD_CONSTANTS, type WorldConstants } from '@officexr/sdk';
 import { BotServer } from './bot-server.ts';
 
@@ -9,15 +9,6 @@ function constantsWithSpeed(playerSpeed: number): WorldConstants {
     ...DEFAULT_WORLD_CONSTANTS,
     animation: { ...DEFAULT_WORLD_CONSTANTS.animation, playerSpeed },
   };
-}
-
-async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((r) => setTimeout(r, 10));
-  }
-  throw new Error('waitFor: predicate did not become true');
 }
 
 describe('BotServer world constants', () => {
@@ -42,7 +33,7 @@ describe('BotServer world constants', () => {
       body: JSON.stringify(constantsWithSpeed(9)),
     });
     expect(res.status).toBe(204);
-    await waitFor(() => speedOf(0) === 9);
+    await vi.waitFor(() => expect(speedOf(0)).toBe(9));
 
     await server.pool.setCount(2);
     expect(speedOf(1)).toBe(9);
