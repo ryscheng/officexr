@@ -37,7 +37,7 @@ const DEFAULT_PORT = 8787;
 const DEFAULT_PATH = '/ws';
 const DEFAULT_OFFICE_ID = 'debug-office';
 const MAX_ADMIN_BODY_BYTES = 1024 * 1024;
-const BOOT_RETRY_MIN_MS = 2_000;
+const DEFAULT_BOOT_RETRY_MS = 2_000;
 const BOOT_RETRY_MAX_MS = 30_000;
 
 export interface RealtimeServerOptions {
@@ -55,6 +55,8 @@ export interface RealtimeServerOptions {
   adminToken?: string;
   /** Used for the boot load. Default: global `fetch`. */
   fetch?: typeof fetch;
+  /** First boot-load retry delay; doubles per attempt up to 30 s. Default 2000. */
+  bootRetryMs?: number;
 }
 
 /**
@@ -90,10 +92,12 @@ export class Room {
   constructor(
     readonly officeId: string,
     private readonly takeServerSeq: () => number,
+    worldConstants: WorldConstants,
   ) {
     this.store = createStore({ selfId: SERVER_SELF_ID, officeId });
     this.bus = createBus();
     this.actions = createActions(this.store, this.bus);
+    this.actions.setWorldConstants(worldConstants);
 
     // The mirror receives every hub fan-out except its own broadcasts,
     // so server-originated events must also be applied to the store
@@ -221,6 +225,7 @@ export class RealtimeServer {
   private readonly worldConstantsUrl: string | undefined;
   private readonly adminToken: string | undefined;
   private readonly fetch: typeof fetch;
+  private readonly bootRetryMs: number;
   private worldConstants: WorldConstants = DEFAULT_WORLD_CONSTANTS;
   private bootLoad: AbortController | null = null;
   // Clients dedup on (actorId, seq) and keep their seq table across a
@@ -235,7 +240,12 @@ export class RealtimeServer {
     this.worldConstantsUrl = opts.worldConstantsUrl;
     this.adminToken = opts.adminToken;
     this.fetch = opts.fetch ?? globalThis.fetch;
-    this.defaultRoom = new Room(opts.officeId ?? DEFAULT_OFFICE_ID, this.takeServerSeq);
+    this.bootRetryMs = opts.bootRetryMs ?? DEFAULT_BOOT_RETRY_MS;
+    this.defaultRoom = new Room(
+      opts.officeId ?? DEFAULT_OFFICE_ID,
+      this.takeServerSeq,
+      this.worldConstants,
+    );
     this.rooms.set(this.defaultRoom.officeId, this.defaultRoom);
   }
 
@@ -297,7 +307,7 @@ export class RealtimeServer {
     if (this.worldConstantsUrl) {
       const bootLoad = new AbortController();
       this.bootLoad = bootLoad;
-      void fetchWorldConstants(this.worldConstantsUrl, this.fetch, bootLoad.signal).then((constants) => {
+      void fetchWorldConstants(this.worldConstantsUrl, this.fetch, this.bootRetryMs, bootLoad.signal).then((constants) => {
         if (constants && !bootLoad.signal.aborted) {
           this.setWorldConstants(constants);
         }
@@ -314,8 +324,6 @@ export class RealtimeServer {
       this.wss = null;
     }
     if (this.httpServer) {
-      // Keep-alive admin/health connections would otherwise hold close() open.
-      this.httpServer.closeIdleConnections();
       await new Promise<void>((resolve, reject) =>
         this.httpServer!.close((err) => (err ? reject(err) : resolve())),
       );
@@ -364,8 +372,7 @@ export class RealtimeServer {
     // ponytail: office ids and room count are unbounded; fine on a tailnet-only server.
     let room = this.rooms.get(id);
     if (!room) {
-      room = new Room(id, this.takeServerSeq);
-      room.actions.setWorldConstants(this.worldConstants);
+      room = new Room(id, this.takeServerSeq, this.worldConstants);
       this.rooms.set(id, room);
     }
     return room;
@@ -452,9 +459,11 @@ export class RealtimeServer {
     switch (frame.t) {
       case 'broadcast': {
         const v = validateNetEvent(frame.event);
-        // Only the server originates world constants. The retired
-        // `world:settings` kind already fails validation.
-        if (!v.ok || v.event.kind === 'world:constants') return;
+        // Only the server originates world constants, and a spoofed
+        // server actor with a high seq would make peers dedup away every
+        // later server push. The retired `world:settings` kind already
+        // fails validation.
+        if (!v.ok || v.event.kind === 'world:constants' || v.event.actorId === SERVER_SELF_ID) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
         room.hub.broadcast(client.userId, v.event);
@@ -492,31 +501,37 @@ export class RealtimeServer {
 async function fetchWorldConstants(
   url: string,
   fetchFn: typeof fetch,
+  firstRetryMs: number,
   signal: AbortSignal,
 ): Promise<WorldConstants | null> {
-  for (let delayMs = BOOT_RETRY_MIN_MS; ; delayMs = Math.min(delayMs * 2, BOOT_RETRY_MAX_MS)) {
-    try {
-      const res = await fetchFn(url, { signal });
-      if (res.status === 404) {
-        return null;
+  for (let delayMs = firstRetryMs; ; delayMs = Math.min(delayMs * 2, BOOT_RETRY_MAX_MS)) {
+    const res = await fetchFn(url, { signal }).catch((err: unknown) => {
+      if (!signal.aborted) {
+        console.warn(`[realtime-server] world constants load failed; retrying in ${delayMs}ms:`, err);
       }
-      if (res.ok) {
+      return null;
+    });
+    if (signal.aborted) {
+      return null;
+    }
+    if (res?.ok) {
+      try {
         return parseWorldConstants(await res.json());
+      } catch (err) {
+        if (!signal.aborted) {
+          console.error('[realtime-server] invalid world constants doc; keeping defaults:', err);
+        }
+        return null;
       }
-      if (res.status < 500) {
+    }
+    if (res && res.status < 500) {
+      if (res.status !== 404) {
         console.error(`[realtime-server] world constants load got ${res.status}; keeping defaults`);
-        return null;
       }
+      return null;
+    }
+    if (res) {
       console.warn(`[realtime-server] world constants load got ${res.status}; retrying in ${delayMs}ms`);
-    } catch (err) {
-      if (signal.aborted) {
-        return null;
-      }
-      if (err instanceof SyntaxError || (err instanceof Error && err.name === 'ZodError')) {
-        console.error('[realtime-server] invalid world constants doc; keeping defaults:', err);
-        return null;
-      }
-      console.warn(`[realtime-server] world constants load failed; retrying in ${delayMs}ms:`, err);
     }
     try {
       await sleep(delayMs, undefined, { signal });

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createActions,
   createBus,
@@ -13,7 +13,7 @@ import {
 import { WebSocket as RawWebSocket } from 'ws';
 import { RealtimeServer, type RealtimeServerOptions } from '../server.ts';
 import { WsChannel } from '../ws-channel.ts';
-import { ephemeralPort, waitFor } from './helpers.ts';
+import { ephemeralPort } from './helpers.ts';
 
 const TOKEN = 'secret-token';
 
@@ -40,6 +40,21 @@ function put(port: number, body: unknown, token: string | null = TOKEN): Promise
 
 function jsonResponse(status: number, body?: unknown): Response {
   return new Response(body === undefined ? null : JSON.stringify(body), { status });
+}
+
+/** A client store kept in sync over `channel`, so inbound seq dedup applies. */
+function syncedStore(channel: Channel): { speed: () => number; stop: () => void } {
+  const store = createStore({ selfId: 'client', officeId: 'debug-office' });
+  const bus = createBus();
+  const sync = new SyncEngine({
+    store,
+    actions: createActions(store, bus),
+    bus,
+    channel,
+    clock: { now: () => Date.now() },
+  });
+  sync.start();
+  return { speed: () => store.getState().worldConstants.animation.playerSpeed, stop: () => sync.stop() };
 }
 
 /** Forwards to a replaceable WsChannel so one SyncEngine can span a
@@ -117,16 +132,21 @@ describe('RealtimeServer world constants', () => {
     const { port } = await startServer();
     const inDefault = await join(port, 'A');
     const inOther = await join(port, 'B', 'other');
-    await waitFor(() => speedsSeen(inDefault).length === 1 && speedsSeen(inOther).length === 1);
+    await vi.waitFor(() => {
+      expect(speedsSeen(inDefault)).toHaveLength(1);
+      expect(speedsSeen(inOther)).toHaveLength(1);
+    });
     expect(speedsSeen(inDefault)).toEqual([DEFAULT_WORLD_CONSTANTS.animation.playerSpeed]);
 
     const res = await put(port, constantsWithSpeed(9));
     expect(res.status).toBe(204);
-    await waitFor(() => speedsSeen(inDefault).includes(9) && speedsSeen(inOther).includes(9));
+    await vi.waitFor(() => {
+      expect(speedsSeen(inDefault)).toContain(9);
+      expect(speedsSeen(inOther)).toContain(9);
+    });
 
     const late = await join(port, 'C', 'third');
-    await waitFor(() => late.length > 0);
-    expect(speedsSeen(late)).toEqual([9]);
+    await vi.waitFor(() => expect(speedsSeen(late)).toEqual([9]));
   });
 
   it('rejects a bad token (401) and an invalid body (400) without pushing', async () => {
@@ -144,15 +164,36 @@ describe('RealtimeServer world constants', () => {
     expect(server.defaultRoom.store.getState().worldConstants).toEqual(DEFAULT_WORLD_CONSTANTS);
   });
 
-  it('returns 404 when no admin token is configured', async () => {
-    const { port } = await startServer({ adminToken: undefined });
-    expect((await put(port, constantsWithSpeed(9))).status).toBe(404);
+  it('rejects an oversized body with 413', async () => {
+    const { port } = await startServer();
+    expect((await put(port, 'x'.repeat(1024 * 1024 + 1))).status).toBe(413);
   });
 
-  it('does not relay client-sent world:constants or world:settings', async () => {
+  it('returns 404 when no admin token, or an empty one, is configured', async () => {
+    for (const adminToken of [undefined, '']) {
+      const { port } = await startServer({ adminToken });
+      expect((await put(port, constantsWithSpeed(9), '')).status).toBe(404);
+    }
+  });
+
+  it("closes a connection whose hello claims the server's id", async () => {
+    const { port } = await startServer();
+    const ws = new RawWebSocket(`ws://127.0.0.1:${port}/ws`);
+    await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+    const closed = new Promise<void>((resolve) => ws.once('close', () => resolve()));
+    ws.send(JSON.stringify({ t: 'hello', userId: 'server' }));
+    await closed;
+  });
+
+  it('does not relay client-sent world events or a spoofed server actor', async () => {
     const { server, port } = await startServer();
     const url = `ws://127.0.0.1:${port}/ws`;
-    const atB = await join(port, 'B');
+    const bChannel = new WsChannel({ url, userId: 'B' });
+    channels.push(bChannel);
+    const atB: NetEvent[] = [];
+    bChannel.on((e) => atB.push(e));
+    const b = syncedStore(bChannel);
+    await bChannel.subscribe();
     const a = new RawWebSocket(url);
     await new Promise<void>((resolve) => a.once('open', () => resolve()));
     a.send(JSON.stringify({ t: 'hello', userId: 'A' }));
@@ -160,20 +201,26 @@ describe('RealtimeServer world constants', () => {
     const send = (event: object) => a.send(JSON.stringify({ t: 'broadcast', from: 'A', event }));
     send({ ...envelope, kind: 'world:constants', constants: constantsWithSpeed(9) });
     send({ ...envelope, seq: 2, kind: 'world:settings', settings: { playerSpeed: 9 } });
-    send({
-      ...envelope,
-      seq: 3,
+    const position = {
       kind: 'presence:position',
       pos: { x: 1, y: 0, z: 0 },
       vel: { x: 0, y: 0, z: 0 },
       yaw: 0,
       isAirborne: false,
-    });
+    };
+    send({ ...envelope, ...position, actorId: 'server', seq: Number.MAX_SAFE_INTEGER });
+    send({ ...envelope, ...position, seq: 3 });
 
-    await waitFor(() => atB.some((e) => e.kind === 'presence:position'));
-    expect(atB.map((e) => e.kind)).toEqual(['world:constants', 'presence:position']);
-    expect(speedsSeen(atB)).toEqual([DEFAULT_WORLD_CONSTANTS.animation.playerSpeed]);
+    await vi.waitFor(() => expect(atB.map((e) => e.kind)).toContain('presence:position'));
+    expect(atB.map((e) => [e.kind, e.actorId])).toEqual([
+      ['world:constants', 'server'],
+      ['presence:position', 'A'],
+    ]);
     expect(server.defaultRoom.store.getState().worldConstants).toEqual(DEFAULT_WORLD_CONSTANTS);
+
+    await put(port, constantsWithSpeed(6));
+    await vi.waitFor(() => expect(b.speed()).toBe(6));
+    b.stop();
     a.close();
   });
 
@@ -191,11 +238,12 @@ describe('RealtimeServer world constants', () => {
         },
       });
       const received = await join(port, 'A');
-      await waitFor(() => received.length > 0);
-      expect(speedsSeen(received)).toEqual([DEFAULT_WORLD_CONSTANTS.animation.playerSpeed]);
+      await vi.waitFor(() =>
+        expect(speedsSeen(received)).toEqual([DEFAULT_WORLD_CONSTANTS.animation.playerSpeed]),
+      );
 
       release();
-      await waitFor(() => speedsSeen(received).includes(7));
+      await vi.waitFor(() => expect(speedsSeen(received)).toContain(7));
       expect(server.defaultRoom.store.getState().worldConstants.animation.playerSpeed).toBe(7);
     });
 
@@ -208,7 +256,7 @@ describe('RealtimeServer world constants', () => {
           return jsonResponse(404);
         },
       });
-      await waitFor(() => calls.length === 1);
+      await vi.waitFor(() => expect(calls).toHaveLength(1));
       await new Promise((r) => setTimeout(r, 50));
       expect(calls).toEqual([URL]);
       expect(server.defaultRoom.store.getState().worldConstants).toEqual(DEFAULT_WORLD_CONSTANTS);
@@ -218,6 +266,7 @@ describe('RealtimeServer world constants', () => {
       let calls = 0;
       const { server } = await startServer({
         worldConstantsUrl: URL,
+        bootRetryMs: 10,
         fetch: async () => {
           calls += 1;
           if (calls === 1) {
@@ -226,28 +275,39 @@ describe('RealtimeServer world constants', () => {
           return jsonResponse(200, constantsWithSpeed(5));
         },
       });
-      await waitFor(
-        () => server.defaultRoom.store.getState().worldConstants.animation.playerSpeed === 5,
-        5000,
+      await vi.waitFor(() =>
+        expect(server.defaultRoom.store.getState().worldConstants.animation.playerSpeed).toBe(5),
       );
       expect(calls).toBe(2);
-    }, 10_000);
+    });
+
+    it('lets a PUT win over a boot load still in flight', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const { server, port } = await startServer({
+        worldConstantsUrl: URL,
+        fetch: async () => {
+          await gate;
+          return jsonResponse(200, constantsWithSpeed(7));
+        },
+      });
+      expect((await put(port, constantsWithSpeed(9))).status).toBe(204);
+      release();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(server.defaultRoom.store.getState().worldConstants.animation.playerSpeed).toBe(9);
+    });
   });
 
   it('a SyncEngine that outlives a server restart still applies the next push', async () => {
     let { port } = await startServer();
-    const store = createStore({ selfId: 'A', officeId: 'debug-office' });
-    const actions = createActions(store, createBus());
     const channel = new ReconnectingChannel(
       () => new WsChannel({ url: `ws://127.0.0.1:${port}/ws`, userId: 'A' }),
     );
-    const sync = new SyncEngine({ store, actions, bus: createBus(), channel, clock: { now: () => Date.now() } });
+    const client = syncedStore(channel);
     await channel.subscribe();
-    sync.start();
-    const speed = () => store.getState().worldConstants.animation.playerSpeed;
 
     await put(port, constantsWithSpeed(9));
-    await waitFor(() => speed() === 9);
+    await vi.waitFor(() => expect(client.speed()).toBe(9));
 
     await servers.pop()!.stop();
     // A fresh port keeps the restarted server clear of fetch's pooled
@@ -255,9 +315,9 @@ describe('RealtimeServer world constants', () => {
     ({ port } = await startServer());
     await channel.reconnect();
     await put(port, constantsWithSpeed(4));
-    await waitFor(() => speed() === 4);
+    await vi.waitFor(() => expect(client.speed()).toBe(4));
 
-    sync.stop();
+    client.stop();
     channel.close();
   });
 });

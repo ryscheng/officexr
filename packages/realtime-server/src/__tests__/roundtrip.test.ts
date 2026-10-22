@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyNetEventToStore,
   createActions,
@@ -9,7 +9,7 @@ import {
 import { WebSocket as RawWebSocket, WebSocketServer } from 'ws';
 import { RealtimeServer } from '../server.ts';
 import { WsChannel } from '../ws-channel.ts';
-import { ephemeralPort, waitFor } from './helpers.ts';
+import { ephemeralPort } from './helpers.ts';
 // Note: external consumers go via subpath exports:
 //   import { WsChannel } from '@officexr/realtime-server';
 //   import { RealtimeServer } from '@officexr/realtime-server/server';
@@ -56,7 +56,7 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     b.on((event) => received.push(event));
 
     await a.send(makeMoveEvent('A', 1.5));
-    await waitFor(() => received.length > 0);
+    await vi.waitFor(() => expect(received.length > 0).toBe(true));
 
     expect(received[0].kind).toBe('presence:position');
     expect(received[0].actorId).toBe('A');
@@ -83,12 +83,12 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     b.trackPresence({});
 
     // A should see B join.
-    await waitFor(() => aPresence.some((p) => p.joined.includes('B')));
+    await vi.waitFor(() => expect(aPresence.some((p) => p.joined.includes('B'))).toBe(true));
     expect(a.listPresent()).toContain('B');
 
     // B disconnects — A sees a leave.
     b.close();
-    await waitFor(() => aPresence.some((p) => p.left.includes('B')));
+    await vi.waitFor(() => expect(aPresence.some((p) => p.left.includes('B'))).toBe(true));
     expect(a.listPresent()).not.toContain('B');
 
     a.close();
@@ -100,17 +100,14 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     await a.subscribe();
     await a.send(makeMoveEvent('A', 7));
     // Give the server's mirror a moment to apply the event.
-    await waitFor(
-      () => server.defaultRoom.store.getState().players['A']?.pos.x === 7,
-      2000,
-    );
+    await vi.waitFor(() => expect(server.defaultRoom.store.getState().players['A']?.pos.x).toBe(7));
 
     const b = new WsChannel({ url, userId: 'B' });
     const received: NetEvent[] = [];
     b.on((ev) => received.push(ev));
     await b.subscribe();
 
-    await waitFor(() => received.some((e) => e.actorId === 'A'));
+    await vi.waitFor(() => expect(received.some((e) => e.actorId === 'A')).toBe(true));
     const snap = received.find((e) => e.actorId === 'A');
     expect(snap?.kind).toBe('presence:position');
     if (snap?.kind === 'presence:position') {
@@ -135,13 +132,13 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
       avatar: { model: 'gnome' },
       name: 'Alice',
     });
-    await waitFor(() => server.defaultRoom.store.getState().players['A']?.name === 'Alice');
+    await vi.waitFor(() => expect(server.defaultRoom.store.getState().players['A']?.name).toBe('Alice'));
 
     const b = new WsChannel({ url, userId: 'B' });
     const received: NetEvent[] = [];
     b.on((ev) => received.push(ev));
     await b.subscribe();
-    await waitFor(() => received.some((e) => e.kind === 'avatar:update'));
+    await vi.waitFor(() => expect(received.some((e) => e.kind === 'avatar:update')).toBe(true));
 
     const store = createStore({ selfId: 'B', officeId: 'test-office' });
     const actions = createActions(store, createBus());
@@ -171,11 +168,11 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     c2.onPresenceChange((joined, left) => presenceC.push(...joined, ...left));
 
     b1.trackPresence({});
-    await waitFor(() => a1.listPresent().includes('B'));
+    await vi.waitFor(() => expect(a1.listPresent().includes('B')).toBe(true));
 
     await a1.send(makeMoveEvent('A', 3));
     await a2.send(makeMoveEvent('A', 4));
-    await waitFor(() => atB.length > 0 && atC.length > 0);
+    await vi.waitFor(() => expect(atB.length > 0 && atC.length > 0).toBe(true));
 
     const xs = (events: NetEvent[]) =>
       events.map((e) => (e.kind === 'presence:position' ? e.pos.x : null));
@@ -213,7 +210,7 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     const received: NetEvent[] = [];
     b.on((e) => received.push(e));
     await a.send(makeMoveEvent('A', 5));
-    await waitFor(() => received.length > 0);
+    await vi.waitFor(() => expect(received.length > 0).toBe(true));
 
     a.close();
     b.close();
@@ -236,9 +233,9 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     inOther.onCustom('echo', (p) => atOther.push(p));
 
     inOther.sendCustom('ping', 'other');
-    await waitFor(() => atOther.length > 0);
+    await vi.waitFor(() => expect(atOther.length > 0).toBe(true));
     inDefault.sendCustom('ping', 'default');
-    await waitFor(() => atDefault.length > 0);
+    await vi.waitFor(() => expect(atDefault.length > 0).toBe(true));
 
     expect(atOther).toEqual(['other']);
     expect(atDefault).toEqual(['default']);
@@ -259,7 +256,7 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     await a.subscribe();
     a.sendCustom('bots:set-count', { n: 3 });
 
-    await waitFor(() => seen.length > 0);
+    await vi.waitFor(() => expect(seen.length > 0).toBe(true));
     expect(seen[0]).toEqual({ kind: 'bots:set-count', payload: { n: 3 } });
 
     a.close();

@@ -246,7 +246,7 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'zombie:state': { v: 1, schema: ZZombieStatePayload, authority: 'host' },
   'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local' },
   'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local' },
-  // The realtime server drops client-sent copies; the in-memory hub trusts every peer.
+  // ponytail: the inbound router doesn't check authority; only the realtime server filters client copies, so other channels trust every peer.
   'world:constants': { v: 1, schema: ZWorldConstantsPayload, authority: 'server' },
   'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local' },
   'world:characters': { v: 1, schema: ZWorldCharactersPayload, authority: 'local' },
