@@ -160,7 +160,6 @@ export function DebugApp() {
             mapName={picker.selected}
             reloadKey={picker.resetCount}
             storages={storages}
-            viewConfig={studioSettings.viewConfig}
             realtime={stack.mode}
             error={errorBanner}
             onDismissError={dismissError}

@@ -3,7 +3,6 @@ import type { Actions, Bus, RuleRegistry, Store, SyncEngine, SnapshotHandshake, 
 import type { BotPool } from '../bot/BotPool.ts';
 import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import { Scene } from '../renderer/Scene.tsx';
-import type { ViewConfig } from '../renderer/viewConfig.ts';
 import { ErrorBanner, FocusIndicator, WorldHud, type HudRealtime } from './hud.tsx';
 import { useCameraModeCycle } from './useCameraModeCycle.ts';
 import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
@@ -22,7 +21,6 @@ export interface PlayViewProps {
   /** Changing this re-loads and re-applies `mapName` without remounting the canvas. */
   reloadKey?: number;
   storages: PlayStorages;
-  viewConfig: ViewConfig;
   realtime: HudRealtime;
   /** Shown in place of a map-load error; dismissing it calls `onDismissError`. */
   error?: string | null;
@@ -62,7 +60,6 @@ export function PlayView(props: PlayViewProps) {
           bots={props.bots}
           selfId={props.selfId}
           cameraMode={cameraMode}
-          viewConfig={props.viewConfig}
           worldFocused={worldFocused}
           spawnPoints={session.spawnPoints}
           bakedLayoutPath={session.bakedLayoutPath}

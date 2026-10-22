@@ -1,10 +1,9 @@
 /**
- * Renderer-tweaker bag accepted by `<Scene>`: the renderer's sections of
- * the SDK's `WorldConstants`, plus optional mugshot-only overrides that
- * are never part of the world's constants.
+ * Section types `<Scene>` accepts as overrides of the store's
+ * `WorldConstants`, plus optional mugshot-only fields that are never
+ * part of the world's constants.
  */
 import {
-  DEFAULT_WORLD_CONSTANTS,
   type BackgroundConstants,
   type FixedCameraConstants,
   type LightingConstants,
@@ -48,9 +47,8 @@ export interface ViewConfig {
   fixedCamera: FixedCameraViewConfig;
 }
 
-export const DEFAULT_VIEW_CONFIG: ViewConfig = {
-  proximity: DEFAULT_WORLD_CONSTANTS.proximity,
-  lighting: DEFAULT_WORLD_CONSTANTS.lighting,
-  background: DEFAULT_WORLD_CONSTANTS.background,
-  fixedCamera: DEFAULT_WORLD_CONSTANTS.fixedCamera,
-};
+// SRP violation: Scene reads the store for world constants and also accepts
+// this override. The mugshot harness pins lighting and camera values that are
+// not world constants and renders with a store whose constants must stay
+// default. Removing it means giving the harness its own composition root.
+export type ViewOverride = Partial<Pick<ViewConfig, 'lighting' | 'background' | 'fixedCamera'>>;

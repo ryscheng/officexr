@@ -24,7 +24,8 @@ import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
 import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
 import type { CameraMode } from './config.ts';
-import type { ViewConfig } from './viewConfig.ts';
+import { useWorldConstants } from '../react/useWorldConstants.ts';
+import type { ViewConfig, ViewOverride } from './viewConfig.ts';
 
 /**
  * Each frame, anchor the sun (directional light + its target + the
@@ -80,13 +81,10 @@ interface SceneProps {
   bots?: BotPool;
   selfId: string;
   cameraMode: CameraMode;
-  /** Renderer-tweaker bag. Studio owns the React state for these
-   * fields and renders the editing UI in its SidePanel; Scene reads
-   * them here to drive the scene graph. Previously these values
-   * came from 8 Leva hooks called inside Scene; the new flow is
-   * fully controlled — see `packages/studio/src/panels/world/`
-   * for the editor. */
-  viewConfig: ViewConfig;
+  /** Replaces whole sections of the store's world constants. Only the
+   * mugshot harness uses it, to pin lighting/background/camera values
+   * that are not part of any office's constants. */
+  viewOverride?: ViewOverride;
   /** When false, keyboard input is released from the in-world
    * character so the user can interact with the side panel without
    * accidentally walking. Studio's `useWorldFocus` hook tracks this
@@ -127,7 +125,8 @@ interface SceneProps {
 }
 
 export function Scene(props: SceneProps) {
-  const { store, selfId, cameraMode, sync, viewConfig } = props;
+  const { store, selfId, cameraMode, sync } = props;
+  const worldConstants = useWorldConstants(store);
   const showLayout =
     Boolean(props.bakedLayoutPath) && Boolean(props.bakedLayoutName);
   // `hasBaked` is true when a pre-baked GLB is being rendered for this
@@ -144,7 +143,7 @@ export function Scene(props: SceneProps) {
   //     populated for baked rooms, so the gate prevents them from rendering
   //     duplicate geometry on top of the baked GLB.
   const hasBaked = showLayout;
-  const { proximity, lighting, background, fixedCamera } = viewConfig;
+  const { proximity, lighting, background, fixedCamera }: ViewConfig = { ...worldConstants, ...props.viewOverride };
   const worldFocused = props.worldFocused ?? true;
 
   // After Scene mounts, force-broadcast the current world state.

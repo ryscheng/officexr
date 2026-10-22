@@ -6,7 +6,7 @@ import type { CharacterName } from '@officexr/world';
 import type {
   BackgroundViewConfig,
   LightingViewConfig,
-  ViewConfig,
+  ViewOverride,
 } from '@officexr/world/renderer';
 import {
   createPersistentLocalState,
@@ -344,12 +344,11 @@ export function MugshotApp() {
     );
   }, [local, manualPlacement, yOffset]);
 
-  // Build the live viewConfig from current state. Memoized so Scene
+  // Build the live override from current state. Memoized so Scene
   // doesn't re-mount on every render — only when the tunables
   // actually change.
-  const viewConfig: ViewConfig = useMemo(
+  const viewOverride: ViewOverride = useMemo(
     () => ({
-      ...DEFAULT_VIEW_CONFIG,
       lighting,
       background,
       fixedCamera: {
@@ -460,7 +459,7 @@ export function MugshotApp() {
         await waitFrames(2);
         for (const angle of angles) {
           setAzimuthDeg(angle);
-          // Two RAFs: React commits the new viewConfig down to
+          // Two RAFs: React commits the new viewOverride down to
           // Scene → CameraRig; R3F renders the new frame at the
           // new camera. Without this the captured PNG is the
           // previous angle's frame.
@@ -605,7 +604,7 @@ export function MugshotApp() {
               bots={stack.bots}
               selfId={SELF_ID}
               cameraMode="fixed"
-              viewConfig={viewConfig}
+              viewOverride={viewOverride}
               worldFocused={false}
               paused={true}
               spawnPoints={[]}

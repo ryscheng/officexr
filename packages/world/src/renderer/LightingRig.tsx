@@ -20,9 +20,8 @@ export type LightingSettings = LightingViewConfig;
  *
  * Editors spread this and override the fields they care about
  * (sun position, intensities). The renderer's gameplay Scene gets
- * its lighting from `DEFAULT_VIEW_CONFIG.lighting` on the studio
- * side — those defaults are tuned for the lit world rather than
- * an editor preview.
+ * its lighting from the store's world constants — those defaults are
+ * tuned for the lit world rather than an editor preview.
  */
 export const DEFAULT_EDITOR_LIGHTING: LightingSettings = {
   sunPosition: [20, 40, 20],
