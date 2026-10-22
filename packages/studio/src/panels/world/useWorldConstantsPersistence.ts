@@ -188,10 +188,10 @@ export function useWorldConstantsPersistence(opts: {
 }): UseWorldConstantsPersistenceResult {
   const { store, actions } = opts;
   const testStorages = useTestStorages();
-  const explicitOrTest = opts.storage ?? testStorages?.worldConstantsStorage;
   const storage = useMemo(
-    () => explicitOrTest ?? new FilesystemWorldConstantsStorage(),
-    [explicitOrTest],
+    () =>
+      opts.storage ?? testStorages?.worldConstantsStorage ?? new FilesystemWorldConstantsStorage(),
+    [opts.storage, testStorages],
   );
   const persistence = useMemo(
     () => new WorldConstantsPersistence(store, actions, storage),
