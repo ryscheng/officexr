@@ -21,7 +21,12 @@ import {
   InMemoryMapStorage,
   InMemoryRoomStorage,
   InMemoryLayoutStorage,
+  InMemoryWorldConstantsStorage,
+  FilesystemWorldConstantsStorage,
+  WorldConstantsPushError,
+  type WorldConstantsStorage,
 } from './index.ts';
+import { DEFAULT_WORLD_CONSTANTS, type WorldConstants } from '@officexr/sdk';
 import { serializeRoom, serializeMap } from './serialize.ts';
 import { newPlaceCube } from './commands.ts';
 import { emptyLayoutDocument } from './layout-document.ts';
@@ -259,6 +264,62 @@ describe('LayoutStorage conformance', () => {
       makeDoc: makeLayoutDoc,
       identity: (d) => d.name,
     });
+  });
+});
+
+/** Fetch stub for the single-document `/api/world-settings` middleware. */
+function installWorldSettingsFetchMock(opts: { failPush?: boolean } = {}): void {
+  let stored: string | null = null;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method ?? 'GET') === 'PUT') {
+        stored = init!.body as string;
+        return opts.failPush
+          ? jsonResponse({ failed: [{ target: 'http://rt', status: 500 }] }, 502)
+          : new Response(null, { status: 204 });
+      }
+      return stored === null ? jsonResponse({ error: 'not found' }, 404) : new Response(stored);
+    }),
+  );
+}
+
+function runWorldConstantsContract(makeStorage: () => WorldConstantsStorage): void {
+  const doc: WorldConstants = {
+    ...DEFAULT_WORLD_CONSTANTS,
+    animation: { ...DEFAULT_WORLD_CONSTANTS.animation, playerSpeed: 9 },
+  };
+
+  it('load() is null before any save', async () => {
+    expect(await makeStorage().load()).toBeNull();
+  });
+
+  it('save() then load() round-trips', async () => {
+    const s = makeStorage();
+    await s.save(doc);
+    expect(await s.load()).toEqual(doc);
+  });
+}
+
+describe('WorldConstantsStorage conformance', () => {
+  describe('InMemoryWorldConstantsStorage', () => {
+    runWorldConstantsContract(() => new InMemoryWorldConstantsStorage());
+  });
+
+  describe('FilesystemWorldConstantsStorage (fetch-mocked)', () => {
+    beforeEach(() => installWorldSettingsFetchMock());
+    runWorldConstantsContract(() => new FilesystemWorldConstantsStorage());
+  });
+
+  it('Filesystem save() rejects with the failed targets on a 502', async () => {
+    installWorldSettingsFetchMock({ failPush: true });
+    const err = await new FilesystemWorldConstantsStorage()
+      .save(DEFAULT_WORLD_CONSTANTS)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WorldConstantsPushError);
+    expect((err as WorldConstantsPushError).failed).toEqual([
+      { target: 'http://rt', status: 500 },
+    ]);
   });
 });
 

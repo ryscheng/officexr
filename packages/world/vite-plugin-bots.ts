@@ -31,9 +31,12 @@ export interface BotsPluginOptions {
   /**
    * Environment variables passed to the spawned CLI. Merged on top of
    * the parent process env. Most useful keys: `REALTIME_PORT`,
-   * `REALTIME_PATH`, `OFFICE_ID`, `BOT_COUNT`, `BOT_MODE`.
+   * `REALTIME_PATH`, `OFFICE_ID`, `BOT_COUNT`, `BOT_MODE`. A function
+   * receives the dev server, for values that depend on its config.
    */
-  env?: NodeJS.ProcessEnv;
+  env?: NodeJS.ProcessEnv | ((server: ViteDevServer) => NodeJS.ProcessEnv);
+  /** Called once the CLI has been spawned (not when an external one was found). */
+  onSpawn?: () => void;
 }
 
 /**
@@ -103,9 +106,15 @@ export default function botsPlugin(opts: BotsPluginOptions = {}): Plugin {
       ];
       child = spawn(process.execPath, nodeArgs, {
         cwd: path.dirname(cliPath),
-        env: { ...process.env, FORCE_COLOR: '1', ...opts.env },
+        env: {
+          ...process.env,
+          FORCE_COLOR: '1',
+          ...(typeof opts.env === 'function' ? opts.env(server) : opts.env),
+        },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+
+      opts.onSpawn?.();
 
       // Prefix every line of child output so it's distinguishable from
       // Vite's own log stream. Buffer until newline so we don't split

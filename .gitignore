@@ -71,3 +71,6 @@ packages/world/baked-layouts/
 # generated `pw-test-<random>` name; these are throwaway artifacts.
 packages/world/maps/pw-test-*.json
 packages/world/rooms/pw-test-*.json
+
+# Dev saves of the world settings land here when OFFICEXR_STUDIO_DATA_DIR is unset.
+packages/world/world-settings.json

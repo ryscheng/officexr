@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { access, cp, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +7,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import studioStorage, { STORAGE_ENTRIES } from '@officexr/world/vite-plugin-storage';
 import bots from '@officexr/world/vite-plugin-bots';
+import { parsePushTargets, pushWorldConstants } from './server/push-world-constants.ts';
 
 /**
  * The custom realtime server (`@officexr/realtime-server`, started by
@@ -20,6 +22,12 @@ import bots from '@officexr/world/vite-plugin-bots';
  */
 const REALTIME_TARGET =
   process.env.REALTIME_SERVER_TARGET ?? 'http://127.0.0.1:8787';
+
+// Realtime servers the studio pushes saved world settings to. The bot server
+// the dev server spawns itself joins this list (see `bots` below) and gets a
+// per-start admin token; an externally run one is only pushed to when listed.
+const pushTargets = parsePushTargets(process.env.OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS);
+const adminToken = process.env.OFFICEXR_REALTIME_ADMIN_TOKEN ?? randomUUID();
 
 const WORLD_DIR = fileURLToPath(new URL('../world', import.meta.url));
 const DATA_DIR = process.env.OFFICEXR_STUDIO_DATA_DIR;
@@ -42,7 +50,11 @@ async function seedDataDir(dataDir: string): Promise<void> {
     return;
   }
   await mkdir(dataDir, { recursive: true });
-  for (const { kind, name } of Object.values(STORAGE_ENTRIES)) {
+  for (const [key, { kind, name }] of Object.entries(STORAGE_ENTRIES)) {
+    // No default document: absence means the sdk defaults.
+    if (key === 'worldSettings') {
+      continue;
+    }
     const src = path.join(WORLD_DIR, name);
     const dst = path.join(dataDir, name);
     if (await exists(src)) {
@@ -63,9 +75,15 @@ export default defineConfig({
     //   /api/rooms      → packages/world/rooms/      (FilesystemRoomStorage)
     //   /api/maps       → packages/world/maps/       (FilesystemMapStorage)
     //   /api/world-object-kinds → packages/world/world-object-kinds.json (Object editor catalog; Task 3)
+    //   /api/world-settings → packages/world/world-settings.json (saved world constants; pushed to realtime servers)
     //   /api/scenes     → packages/world/scenes/     (legacy back-compat for the
     //                                                 existing Scenes editor until Task 5)
-    studioStorage({ dataDir: DATA_DIR }),
+    studioStorage({
+      dataDir: DATA_DIR,
+      worldSettings: {
+        onSaved: (doc) => pushWorldConstants({ targets: pushTargets, token: adminToken, doc }),
+      },
+    }),
     {
       name: 'officexr:seed-data-dir',
       async configureServer() {
@@ -87,7 +105,14 @@ export default defineConfig({
     //
     // OFFICE_ID must match `StudioPage.tsx`'s `OFFICE_ID` constant so
     // the spawned bots and the browser join the same WS office.
-    bots({ env: { OFFICE_ID: 'studio-office' } }),
+    bots({
+      env: (server) => ({
+        OFFICE_ID: 'studio-office',
+        OFFICEXR_WORLD_CONSTANTS_URL: `http://127.0.0.1:${server.config.server.port}/api/world-settings`,
+        OFFICEXR_REALTIME_ADMIN_TOKEN: adminToken,
+      }),
+      onSpawn: () => pushTargets.push(REALTIME_TARGET),
+    }),
   ],
   // proxy and host are inherited from `server`.
   preview: {

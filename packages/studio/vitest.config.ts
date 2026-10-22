@@ -7,7 +7,7 @@ export default defineConfig({
     // DOM and don't mind running in jsdom either.
     environment: 'jsdom',
     globals: true,
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'server/**/*.test.ts'],
     passWithNoTests: true,
     setupFiles: [
       './src/__tests__/setup-rapier.ts',

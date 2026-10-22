@@ -7,10 +7,12 @@ import {
   InMemoryLayoutStorage,
   InMemoryMapStorage,
   InMemoryRoomStorage,
+  InMemoryWorldConstantsStorage,
   type LayoutDocument,
   type MapDocumentV1,
   type RoomDocument,
 } from '@officexr/world/scenes';
+import type { WorldConstants } from '@officexr/sdk';
 import { StudioPage } from './StudioPage.tsx';
 import { HeadlessApp } from './modes/headless/HeadlessApp.tsx';
 import { createTestApi } from './test-harness/createTestApi.ts';
@@ -28,6 +30,7 @@ interface TestSeed {
   maps?: Array<{ name: string; doc: MapDocumentV1 }>;
   rooms?: Array<{ name: string; doc: RoomDocument }>;
   layouts?: Array<{ name: string; doc: LayoutDocument }>;
+  worldConstants?: WorldConstants;
 }
 
 /** Build the hermetic in-memory storages for `?test=1` mode, seeding
@@ -39,6 +42,9 @@ function buildTestStorages(): TestStorages {
     mapStorage: new InMemoryMapStorage({ seed: seed?.maps }),
     roomStorage: new InMemoryRoomStorage({ seed: seed?.rooms }),
     layoutStorage: new InMemoryLayoutStorage({ seed: seed?.layouts }),
+    worldConstantsStorage: new InMemoryWorldConstantsStorage({
+      seed: seed?.worldConstants,
+    }),
   };
 }
 

@@ -3,6 +3,7 @@ import type {
   LayoutStorage,
   MapStorage,
   RoomStorage,
+  WorldConstantsStorage,
 } from '@officexr/world/scenes';
 
 /**
@@ -20,6 +21,7 @@ export interface TestStorages {
   mapStorage?: MapStorage;
   roomStorage?: RoomStorage;
   layoutStorage?: LayoutStorage;
+  worldConstantsStorage?: WorldConstantsStorage;
 }
 
 const TestStorageCtx = createContext<TestStorages | null>(null);
