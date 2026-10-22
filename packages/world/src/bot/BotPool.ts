@@ -10,9 +10,8 @@ interface BotPoolOptions {
    * player in `walk-to-local` / `orbit` modes. */
   localPlayerId: PlayerId;
   /** Optional getter for the authoritative world state to seed each
-   * new bot's SDK store with. Called at bot-spawn time so bots that
-   * join *after* the human player has tweaked Leva inherit the
-   * current values instead of SDK defaults. */
+   * new bot's SDK store with. Called at bot-spawn time so late-joining
+   * bots start from the current world instead of SDK defaults. */
   getInitialWorld?: () => {
     worldConstants?: WorldConstants;
     worldMap?: WorldMap;

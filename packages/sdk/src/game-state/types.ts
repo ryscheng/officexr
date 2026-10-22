@@ -1,4 +1,8 @@
-import type { WorldConstants } from './world-constants.ts';
+import {
+  DEFAULT_WORLD_CONSTANTS,
+  worldSettingsFromConstants,
+  type WorldConstants,
+} from './world-constants.ts';
 
 export type PlayerId = string;
 
@@ -102,7 +106,7 @@ export type AnimationSettings = {
   /** Character walking speed in world units per second. */
   playerSpeed: number;
   /** Run speed = playerSpeed × runSpeedMultiplier. Used when the local
-   * player holds Shift while moving; can be tuned live via Leva. */
+   * player holds Shift while moving. */
   runSpeedMultiplier: number;
   /** AnimationAction.timeScale for the walk clip (1 = authored). */
   walkAnimSpeed: number;
@@ -131,8 +135,7 @@ export type ProximitySettings = {
   proximityOuterRadius: number;
   /** Hold time before a pair's inner-ring overlap is promoted to
    * `proximity:entered` (admission to a MeetingArea). Prevents flickery
-   * conversations triggered by a momentary brush-past. Default 500 ms;
-   * tunable live from the Leva Proximity panel. */
+   * conversations triggered by a momentary brush-past. Default 500 ms. */
   proximityEnterDebounceMs: number;
 };
 
@@ -186,26 +189,7 @@ export type WorldSettings = AnimationSettings &
   CollisionSettings &
   JumpSettings;
 
-export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
-  playerSpeed: 3,
-  runSpeedMultiplier: 2,
-  walkAnimSpeed: 1,
-  runAnimSpeed: 1,
-  idleAnimSpeed: 1,
-  turnSpeed: 16,
-  charRadius: 0.4,
-  proximityRadius: 3,
-  proximityOuterRadius: 6,
-  bumpEasingMs: 180,
-  proximityEnterDebounceMs: 500,
-  movementBlockThreshold: 0.9,
-
-  // Jump
-  jumpVelocity: 8,        // m/s
-  airControl: 0.2,        // low-pass fraction per second
-  maxJumps: 2,            // double-jump enabled by default
-  landingEaseMs: 120,     // ~120 ms blend on landing
-};
+export const DEFAULT_WORLD_SETTINGS: WorldSettings = worldSettingsFromConstants(DEFAULT_WORLD_CONSTANTS);
 
 /**
  * Static map data: a square grid of cube cells, each tagged with a kind id.

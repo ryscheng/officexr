@@ -136,8 +136,6 @@ export function Players({
   paused,
   isAirborneRef,
 }: PlayersProps) {
-  // Read movement/animation params from the store's world settings, which
-  // are derived from the server-distributed world constants.
   const [worldSettings, setWorldSettings] = useState(
     () => store.getState().worldSettings,
   );

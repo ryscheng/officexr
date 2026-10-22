@@ -134,6 +134,8 @@ function BotPanel({
 
 // --- Animation ----------------------------------------------------
 
+// ponytail: Animation, Jump and Proximity edit only local view state; they don't reach gameplay worldSettings yet.
+
 interface AnimationPanelProps {
   animation: ViewConfig['animation'];
   setSection: UseStudioSettingsResult['setSection'];

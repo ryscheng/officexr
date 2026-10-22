@@ -246,6 +246,7 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'zombie:state': { v: 1, schema: ZZombieStatePayload, authority: 'host' },
   'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local' },
   'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local' },
+  // ponytail: 'server' authority isn't enforced on inbound yet, so any peer can still send this.
   'world:constants': { v: 1, schema: ZWorldConstantsPayload, authority: 'server' },
   'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local' },
   'world:characters': { v: 1, schema: ZWorldCharactersPayload, authority: 'local' },

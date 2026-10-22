@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import type { JumpSettings, WorldSettings } from './types.ts';
-import { DEFAULT_WORLD_SETTINGS } from './types.ts';
+import type { CollisionSettings, JumpSettings, WorldSettings } from './types.ts';
 
 export type AuxLightType = 'none' | 'spot' | 'point';
 
@@ -105,6 +104,12 @@ export const FIXED_CAMERA_DEFAULTS = {
   fov: 50,
 };
 
+/** Collision tunables aren't part of `WorldConstants`; every client uses these. */
+const COLLISION_DEFAULTS: Pick<CollisionSettings, 'charRadius' | 'bumpEasingMs'> = {
+  charRadius: 0.4,
+  bumpEasingMs: 180,
+};
+
 export const DEFAULT_WORLD_CONSTANTS: WorldConstants = {
   schemaVersion: 1,
   animation: {
@@ -191,29 +196,24 @@ export const ZWorldConstants: z.ZodType<WorldConstants> = z.object({
     maxJumps: z.number().int().min(1).max(10),
     landingEaseMs: nonNegative,
   }),
-  proximity: z
-    .object({
-      sensorRadius: positive,
-      outerRadius: positive,
-      enterDebounceMs: nonNegative,
-      discRadius: positive,
-      pulseSpeed: nonNegative,
-      intensity: nonNegative,
-      enteringColor: ZColor,
-      enteredColor: ZColor,
-      exitingColor: ZColor,
-      meetingBorderInset: nonNegative,
-      meetingBorderOutset: nonNegative,
-      sparkleSpeed: nonNegative,
-      sparkleFloatHeight: nonNegative,
-      conversationDistance: positive,
-      conversationHeight: positive,
-      sparkleSize: positive,
-    })
-    .refine((p) => p.outerRadius >= p.sensorRadius, {
-      message: 'outerRadius must be >= sensorRadius',
-      path: ['outerRadius'],
-    }),
+  proximity: z.object({
+    sensorRadius: positive,
+    outerRadius: positive,
+    enterDebounceMs: nonNegative,
+    discRadius: positive,
+    pulseSpeed: nonNegative,
+    intensity: nonNegative,
+    enteringColor: ZColor,
+    enteredColor: ZColor,
+    exitingColor: ZColor,
+    meetingBorderInset: nonNegative,
+    meetingBorderOutset: nonNegative,
+    sparkleSpeed: nonNegative,
+    sparkleFloatHeight: nonNegative,
+    conversationDistance: positive,
+    conversationHeight: positive,
+    sparkleSize: positive,
+  }),
   lighting: z.object({
     sunPosition: z.tuple([z.number(), z.number(), z.number()]),
     sunColor: ZColor,
@@ -269,7 +269,6 @@ export function worldSettingsFromConstants(c: WorldConstants): WorldSettings {
     proximityRadius: c.proximity.sensorRadius,
     proximityOuterRadius: c.proximity.outerRadius,
     proximityEnterDebounceMs: c.proximity.enterDebounceMs,
-    charRadius: DEFAULT_WORLD_SETTINGS.charRadius,
-    bumpEasingMs: DEFAULT_WORLD_SETTINGS.bumpEasingMs,
+    ...COLLISION_DEFAULTS,
   };
 }

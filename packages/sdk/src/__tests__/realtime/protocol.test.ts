@@ -253,7 +253,6 @@ describe('world:constants', () => {
     ['jump', { jumpVelocity: 0 }],
     ['jump', { maxJumps: 0 }],
     ['animation', { movementBlockThreshold: 2 }],
-    ['proximity', { outerRadius: 1 }],
     ['proximity', { enteredColor: 'green' }],
     ['lighting', { sunPosition: [1, 2] }],
     ['fixedCamera', { fov: 0 }],

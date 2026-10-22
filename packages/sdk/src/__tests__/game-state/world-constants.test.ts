@@ -8,8 +8,25 @@ import {
 import { createStore } from '../../game-state/store.ts';
 
 describe('WorldConstants', () => {
-  it('default constants derive the default world settings', () => {
-    expect(worldSettingsFromConstants(DEFAULT_WORLD_CONSTANTS)).toEqual(DEFAULT_WORLD_SETTINGS);
+  it('default constants derive the same gameplay settings as before', () => {
+    expect(worldSettingsFromConstants(DEFAULT_WORLD_CONSTANTS)).toEqual({
+      playerSpeed: 3,
+      runSpeedMultiplier: 2,
+      walkAnimSpeed: 1,
+      runAnimSpeed: 1,
+      idleAnimSpeed: 1,
+      turnSpeed: 16,
+      charRadius: 0.4,
+      proximityRadius: 3,
+      proximityOuterRadius: 6,
+      bumpEasingMs: 180,
+      proximityEnterDebounceMs: 500,
+      movementBlockThreshold: 0.9,
+      jumpVelocity: 8,
+      airControl: 0.2,
+      maxJumps: 2,
+      landingEaseMs: 120,
+    });
   });
 
   it('a fresh store derives its world settings from the default constants', () => {
