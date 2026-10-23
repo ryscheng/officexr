@@ -9,6 +9,9 @@ import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting
 import { CharacterPicker } from './CharacterPicker';
 import { OfficeSettings } from './OfficeSettings';
 import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
+import { JoinPrompt } from './JoinPrompt';
+import { playerIdFor } from './playerId';
+import { useJoinCheck } from './useJoinCheck';
 import { useOfficeSession } from './useOfficeSession';
 
 const storages = {
@@ -47,14 +50,18 @@ function usePlayerNames(store: Store | undefined): string {
 
 const isReplaced = (s: OfficeState) => s.realtime.status === 'replaced';
 
+const REPLACED_MESSAGE = 'This office was opened in another window. Reload to rejoin here.';
+
 function ReplacedBanner({ store }: { store: Store }) {
   const replaced = useStoreSelector(store, isReplaced);
-  return replaced ? <ErrorBanner message="This office was opened in another window. Reload to rejoin here." /> : null;
+  return replaced ? <ErrorBanner message={REPLACED_MESSAGE} /> : null;
 }
 
 function World({ office: initialOffice, me }: { office: Office; me: Identity }) {
   const [office, setOffice] = useState(initialOffice);
-  const session = useOfficeSession(office.id, me);
+  const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
+  const join = useJoinCheck(office.id, me.login);
+  const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const local = session.type === 'ready' ? session.local : undefined;
@@ -70,7 +77,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           bus={session.local.bus}
           sync={session.office.sync}
           handshake={session.office.handshake}
-          selfId={me.login}
+          selfId={session.local.selfId}
           mapName={office.map_name ?? DEFAULT_MAP}
           storages={storages}
           realtime="ws"
@@ -78,7 +85,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           onDismissError={() => setSaveError(null)}
         >
           {session.voice && <JaasMeeting voice={session.voice} />}
-          <ChatPanel store={session.local.store} actions={session.local.actions} selfId={me.login} />
+          <ChatPanel store={session.local.store} actions={session.local.actions} selfId={session.local.selfId} />
           {names && (
             <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-black/55 px-2.5 py-1.5 text-xs text-white">
               {office.name}: {names}
@@ -97,6 +104,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         </PlayView>
       )}
       {session.type === 'ready' && <ReplacedBanner store={session.local.store} />}
+      {join.state === 'prompt' && <JoinPrompt onJoin={join.join} onCancel={join.cancel} />}
+      {session.type === 'replaced' && <ErrorBanner message={REPLACED_MESSAGE} />}
       {session.type === 'error' && session.message !== dismissedError && (
         <ErrorBanner message={session.message} onDismiss={() => setDismissedError(session.message)} />
       )}

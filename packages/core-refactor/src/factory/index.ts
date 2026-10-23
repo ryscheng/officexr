@@ -20,6 +20,8 @@ export interface WsStackConfig {
    * through the Vite dev-server proxy, `${origin}/ws`). */
   url: string;
   selfId: string;
+  /** Login that `selfId` is a session of, when it isn't the login itself. */
+  login?: string;
   /** Office to join on the server. Omitted means the server's default
    * office. */
   officeId?: string;
@@ -60,6 +62,7 @@ export function createStack(config: StackConfig): Stack {
     const channel = new WsChannel({
       url: config.url,
       userId: config.selfId,
+      login: config.login,
       officeId: config.officeId,
     });
     const voiceAdapter =
