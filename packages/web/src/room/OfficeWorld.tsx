@@ -58,6 +58,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           handshake={session.office.handshake}
           selfId={session.local.selfId}
           mapName={office.map_name ?? DEFAULT_MAP}
+          title={office.name}
           storages={storages}
           realtime="ws"
           error={saveError}

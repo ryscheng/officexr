@@ -1,13 +1,17 @@
-import React from 'react';
+import React, { useEffect, useReducer } from 'react';
+import { useProgress } from '@react-three/drei';
 import type { Actions, Bus, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import { Scene } from '../renderer/Scene.tsx';
 import { ErrorBanner, FocusIndicator, WorldHud, type HudRealtime } from './hud.tsx';
+import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
 import { useCameraModeCycle } from './useCameraModeCycle.ts';
 import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
 import { useWorldConstants } from './useWorldConstants.ts';
+import { useSlowNotice } from './useSlowNotice.ts';
 import { useWorldFocus } from './useWorldFocus.ts';
+import { INITIAL_WORLD_READINESS, worldReadiness } from './world-readiness.ts';
 
 export interface PlayViewProps {
   store: Store;
@@ -19,6 +23,8 @@ export interface PlayViewProps {
   bots?: BotPool;
   selfId: string;
   mapName: string;
+  /** Heads the loading screen, e.g. the office name. */
+  title?: string;
   /** Changing this re-loads and re-applies `mapName` without remounting the canvas. */
   reloadKey?: number;
   storages: PlayStorages;
@@ -34,8 +40,10 @@ export interface PlayViewProps {
 
 /**
  * Plays a map: loads it into the store, renders `<Scene>` once it has
- * landed, and overlays the HUD, focus chip and error banner. Renders
- * into the caller's positioned container.
+ * landed, and overlays the HUD, focus chip and error banner. Until the
+ * first map's models and floor colliders have loaded, a loading screen
+ * covers everything and the self player is held out of the world.
+ * Renders into the caller's positioned container.
  */
 export function PlayView(props: PlayViewProps) {
   const cameraMode = useCameraModeCycle();
@@ -48,10 +56,29 @@ export function PlayView(props: PlayViewProps) {
     reloadKey: props.reloadKey,
     onMapApplied: props.onMapApplied,
   });
+  const [readiness, dispatch] = useReducer(worldReadiness, INITIAL_WORLD_READINESS);
+  const ready = readiness.type === 'ready';
+  const slow = useSlowNotice(readiness.type === 'loading');
+
+  useEffect(() => {
+    if (session.loaded) {
+      dispatch({ type: 'mapApplied', bakedColliders: session.bakedLayoutName !== undefined });
+    } else if (session.failed) {
+      dispatch({ type: 'mapFailed', message: session.error ?? 'Could not load the map' });
+    }
+  }, [session.loaded, session.failed, session.bakedLayoutName, session.error]);
+
+  const { sync } = props;
+  useEffect(() => {
+    if (ready) {
+      sync.releaseSelf();
+    }
+  }, [ready, sync]);
 
   return (
     <>
-      {session.ready && (
+      {/* Not before the map lands: Scene broadcasts world state on mount. */}
+      {session.loaded && (
         <Scene
           store={props.store}
           actions={props.actions}
@@ -68,6 +95,12 @@ export function PlayView(props: PlayViewProps) {
           bakedLayoutPath={session.bakedLayoutPath}
           bakedLayoutName={session.bakedLayoutName}
           onFrameStats={props.onFrameStats}
+          selfReady={ready}
+          onModelsReady={() => dispatch({ type: 'modelsReady' })}
+          onCollidersReady={() => dispatch({ type: 'collidersReady' })}
+          onCollidersError={(err) =>
+            dispatch({ type: 'collidersFailed', message: `Could not load the world: ${err.message}` })
+          }
         />
       )}
       <WorldHud cameraMode={cameraMode} realtime={props.realtime} bakedLayoutName={session.bakedLayoutName} />
@@ -78,6 +111,20 @@ export function PlayView(props: PlayViewProps) {
         session.error && <ErrorBanner message={session.error} onDismiss={session.dismissError} />
       )}
       {props.children}
+      {!ready && (
+        <LoadingScreenWithProgress
+          title={props.title}
+          step={session.loaded ? 'Loading world…' : 'Loading map…'}
+          error={readiness.type === 'failed' ? readiness.message : undefined}
+          slow={slow}
+        />
+      )}
     </>
   );
+}
+
+/** Subscribes to drei's load progress only while mounted, so the world doesn't re-render on later loads. */
+function LoadingScreenWithProgress(props: WorldLoadingScreenProps) {
+  const { progress } = useProgress();
+  return <WorldLoadingScreen {...props} progress={props.error ? undefined : progress} />;
 }

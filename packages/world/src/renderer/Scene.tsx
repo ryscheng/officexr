@@ -22,6 +22,7 @@ import { ObjectInstances } from './ObjectInstances.tsx';
 import { BakedLayout } from './BakedLayout.tsx';
 import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
+import { ModelsReady } from './ModelsReady.tsx';
 import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
 import type { CameraMode } from './config.ts';
 import type { ViewConfig } from './viewConfig.ts';
@@ -119,6 +120,15 @@ interface SceneProps {
    * final `null` on unmount). The studio's perf footer is the
    * intended consumer; omitting the prop adds zero per-frame work. */
   onFrameStats?: (sample: FrameStatsSample | null) => void;
+  /** When false, the self player is not rendered, so it has no body and
+   * neither moves nor falls. Default true. */
+  selfReady?: boolean;
+  /** Called once per mount when every model in the scene, plus the self
+   * player's, has loaded. */
+  onModelsReady?: () => void;
+  /** Called once a baked layout's colliders have mounted. */
+  onCollidersReady?: () => void;
+  onCollidersError?: (error: Error) => void;
 }
 
 export function Scene(props: SceneProps) {
@@ -253,6 +263,8 @@ export function Scene(props: SceneProps) {
             <BakedLayoutColliders
               gltfPath={props.bakedLayoutPath!}
               layoutName={props.bakedLayoutName}
+              onReady={props.onCollidersReady}
+              onError={props.onCollidersError}
             />
           </>
         )}
@@ -305,6 +317,7 @@ export function Scene(props: SceneProps) {
           selfBodyRef={selfBodyRef}
           paused={props.paused}
           isAirborneRef={isAirborneRef}
+          selfReady={props.selfReady}
         />
 
         <ProximityGlow
@@ -356,6 +369,9 @@ export function Scene(props: SceneProps) {
           spawnPoints={props.spawnPoints}
           isAirborneRef={isAirborneRef}
         />
+        {props.onModelsReady && (
+          <ModelsReady store={store} selfId={selfId} onReady={props.onModelsReady} />
+        )}
         </Physics>
       </Suspense>
     </Canvas>

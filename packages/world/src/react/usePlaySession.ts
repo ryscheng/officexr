@@ -4,8 +4,8 @@ import { bakedLayoutUrl } from '../app/baked-layout-url.ts';
 import { loadMap, type LoadedMap, type MapLoaderDeps } from '../app/map-loader.ts';
 import { useApplication } from './application-context.tsx';
 
-/** Metres above the spawn point the local player is dropped from; gravity lands them. */
-const SPAWN_DROP_HEIGHT = 4;
+/** Clearance above the spawn point the local player appears at; the floor is loaded by then. */
+const SPAWN_DROP_HEIGHT = 0.1;
 
 export type PlayStorages = MapLoaderDeps['storages'];
 
@@ -25,14 +25,17 @@ export interface PlaySession {
   bakedLayoutPath: string | undefined;
   error: string | null;
   dismissError: () => void;
-  /** True once the first load into the current `actions` has settled, so
-   * `<Scene>` (which broadcasts world state on mount) can mount. */
+  /** True once the first load into the current `actions` has settled, either way. */
   ready: boolean;
+  /** A map is applied for the current `actions`; a failed reload keeps it. */
+  loaded: boolean;
+  /** The first load into the current `actions` failed, so nothing is applied. */
+  failed: boolean;
 }
 
 /**
  * Loads `mapName` into the store through `actions`: pushes its world
- * objects and drops the local player above the first spawn point.
+ * objects and places the local player just above the first spawn point.
  */
 export function usePlaySession({
   actions,
@@ -82,13 +85,16 @@ export function usePlaySession({
   const map = applied?.actions === actions ? applied.map : null;
   const spawnPoints = useMemo(() => (map ? toVec3s(map) : []), [map]);
   const bakedLayoutName = map?.bakedLayoutName;
+  const ready = applied?.actions === actions;
   return {
     spawnPoints,
     bakedLayoutName,
     bakedLayoutPath: bakedLayoutName ? bakedLayoutUrl(bakedLayoutName) : undefined,
     error,
     dismissError: () => setError(null),
-    ready: applied?.actions === actions,
+    ready,
+    loaded: map !== null,
+    failed: ready && map === null,
   };
 }
 
