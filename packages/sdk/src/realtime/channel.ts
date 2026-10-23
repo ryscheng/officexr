@@ -17,6 +17,40 @@ export interface Channel {
   close(): void;
 }
 
+/** Status half of the {@link Channel} contract, shared so every implementation reports it identically. */
+export class ChannelStatusEmitter {
+  private status: ChannelStatus = 'connecting';
+  private readonly handlers = new Set<(status: ChannelStatus) => void>();
+
+  get current(): ChannelStatus {
+    return this.status;
+  }
+
+  set(status: ChannelStatus): void {
+    if (this.status === status) return;
+    this.status = status;
+    for (const h of [...this.handlers]) {
+      try {
+        h(status);
+      } catch (err) {
+        console.error('[channel] status handler threw:', err);
+      }
+    }
+  }
+
+  subscribe(handler: (status: ChannelStatus) => void): () => void {
+    this.handlers.add(handler);
+    handler(this.status);
+    return () => {
+      this.handlers.delete(handler);
+    };
+  }
+
+  clear(): void {
+    this.handlers.clear();
+  }
+}
+
 // --- In-memory implementation for tests / harness ---
 
 interface Hub {
@@ -87,8 +121,7 @@ export class InMemoryChannel implements Channel {
   private presenceHandlers = new Set<
     (joined: PlayerId[], left: PlayerId[]) => void
   >();
-  private status: ChannelStatus = 'connecting';
-  private statusHandlers = new Set<(status: ChannelStatus) => void>();
+  private readonly status = new ChannelStatusEmitter();
 
   constructor(hub: Hub, userId: PlayerId) {
     this.hub = hub;
@@ -99,7 +132,7 @@ export class InMemoryChannel implements Channel {
     if (this.subscribed || this.closed) return;
     this.subscribed = true;
     this.hub.attach(this);
-    this.setStatus('live');
+    this.status.set('live');
   }
 
   async send(event: NetEvent): Promise<void> {
@@ -133,11 +166,7 @@ export class InMemoryChannel implements Channel {
   }
 
   onStatusChange(handler: (status: ChannelStatus) => void): () => void {
-    this.statusHandlers.add(handler);
-    handler(this.status);
-    return () => {
-      this.statusHandlers.delete(handler);
-    };
+    return this.status.subscribe(handler);
   }
 
   close(): void {
@@ -145,17 +174,10 @@ export class InMemoryChannel implements Channel {
     this.closed = true;
     this.subscribed = false;
     this.hub.detach(this);
-    this.setStatus('closed');
+    this.status.set('closed');
     this.handlers.clear();
     this.presenceHandlers.clear();
-    this.statusHandlers.clear();
-  }
-
-  private setStatus(status: ChannelStatus): void {
-    this.status = status;
-    for (const h of [...this.statusHandlers]) {
-      h(status);
-    }
+    this.status.clear();
   }
 
   // hub-internal --------------------------------------------------

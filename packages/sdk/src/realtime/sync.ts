@@ -171,6 +171,7 @@ export class SyncEngine {
         if (id === selfId) continue; // never remove self
         this.actions.removePlayer(id);
         // A returning peer's join snapshot restarts its seqs at 1.
+        // ponytail: peers present across a client-only blip keep their seqs, so their re-sent snapshot is dropped until they next send.
         this.inbound.getInboundSeqTable().forget(id);
       }
     });

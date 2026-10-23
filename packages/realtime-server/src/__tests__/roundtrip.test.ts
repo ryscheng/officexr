@@ -1,3 +1,4 @@
+import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyNetEventToStore,
@@ -9,7 +10,6 @@ import {
 import { WebSocket as RawWebSocket, WebSocketServer } from 'ws';
 import { RealtimeServer } from '../server.ts';
 import { WsChannel } from '../ws-channel.ts';
-import { ephemeralPort } from './helpers.ts';
 // Note: external consumers go via subpath exports:
 //   import { WsChannel } from '@officexr/realtime-server';
 //   import { RealtimeServer } from '@officexr/realtime-server/server';
@@ -35,9 +35,9 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
   let server: RealtimeServer;
 
   beforeEach(async () => {
-    port = ephemeralPort();
-    server = new RealtimeServer({ port, officeId: 'test-office' });
+    server = new RealtimeServer({ port: 0, officeId: 'test-office' });
     await server.start();
+    port = server.boundPort;
   });
 
   afterEach(async () => {
@@ -265,10 +265,10 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
 
 describe('WsChannel handshake', () => {
   it('rejects subscribe() as soon as the socket closes before hello-ack', async () => {
-    const port = ephemeralPort();
-    const wss = new WebSocketServer({ port });
+    const wss = new WebSocketServer({ port: 0 });
     wss.on('connection', (ws) => ws.on('message', () => ws.close()));
     await new Promise<void>((resolve) => wss.once('listening', () => resolve()));
+    const { port } = wss.address() as AddressInfo;
     try {
       const channel = new WsChannel({ url: `ws://127.0.0.1:${port}/ws`, userId: 'A', handshakeTimeoutMs: 10_000 });
       const started = Date.now();

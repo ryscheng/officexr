@@ -5,6 +5,7 @@ import {
   type Server as HttpServer,
   type ServerResponse,
 } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
@@ -284,11 +285,13 @@ export class RealtimeServer {
 
     http.on('upgrade', (req, socket, head) => {
       const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
-      if (url.pathname !== this.path) {
+      // No wss once stop() is underway; an undestroyed socket would keep the http close waiting.
+      const wss = this.wss;
+      if (url.pathname !== this.path || !wss) {
         socket.destroy();
         return;
       }
-      this.wss!.handleUpgrade(req, socket, head, (ws) => {
+      wss.handleUpgrade(req, socket, head, (ws) => {
         this.onConnection(ws, req);
       });
     });
@@ -311,6 +314,11 @@ export class RealtimeServer {
         }
       });
     }
+  }
+
+  /** The port actually listened on; differs from the option when that was 0. */
+  get boundPort(): number {
+    return (this.httpServer!.address() as AddressInfo).port;
   }
 
   async stop(): Promise<void> {

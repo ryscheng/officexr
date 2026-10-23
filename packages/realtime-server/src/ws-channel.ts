@@ -1,5 +1,5 @@
 import type { Channel, ChannelStatus, NetEvent, PlayerId, PresenceData } from '@officexr/sdk';
-import { validateNetEvent } from '@officexr/sdk';
+import { ChannelStatusEmitter, validateNetEvent } from '@officexr/sdk';
 import {
   decodeFrame,
   encodeFrame,
@@ -48,11 +48,9 @@ const defaultFactory: WsFactory = (url) => {
 
 const WS_OPEN = 1;
 
-/** About 1 s, doubling per failed attempt up to 30 s, with ±20% jitter. */
-export function defaultReconnectDelayMs(attempt: number): number {
-  const base = Math.min(30_000, 1_000 * 2 ** attempt);
-  return base * (0.8 + Math.random() * 0.4);
-}
+const reconnectDelayMs = (attempt: number): number =>
+  // Jitter keeps a room's tabs from reconnecting in lockstep after a server restart.
+  Math.min(30_000, 1_000 * 2 ** attempt) * (0.8 + Math.random() * 0.4);
 
 export interface WsChannelOptions {
   /** Full WebSocket URL the channel connects to. */
@@ -65,7 +63,7 @@ export interface WsChannelOptions {
   wsFactory?: WsFactory;
   /** Timeout (ms) for each subscribe / reconnect handshake. Default 10000. */
   handshakeTimeoutMs?: number;
-  /** Delay before reconnect attempt `attempt` (0-based). Default {@link defaultReconnectDelayMs}. */
+  /** Delay before reconnect attempt `attempt` (0-based). Default: about 1 s, doubling up to 30 s, jittered. */
   reconnectDelayMs?: (attempt: number) => number;
 }
 
@@ -87,6 +85,8 @@ export interface WsChannelOptions {
  *     backoff, keeping every registered handler. A
  *     {@link REPLACED_CLOSE_CODE} close is final.
  *  7. `close()` ends the socket; the server fans out a leave to peers.
+ *
+ * ponytail: no heartbeat, so a half-open connection is only noticed when the OS closes it.
  */
 export class WsChannel implements Channel {
   public readonly userId: PlayerId;
@@ -98,7 +98,8 @@ export class WsChannel implements Channel {
 
   private ws: WsLike | null = null;
   private subscribed = false;
-  private status: ChannelStatus = 'connecting';
+  private readonly status = new ChannelStatusEmitter();
+  private pendingSubscribe: Promise<void> | null = null;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Settles the in-flight handshake; routed through handleFrame / the close listener. */
@@ -108,7 +109,6 @@ export class WsChannel implements Channel {
   private readonly presenceHandlers = new Set<
     (joined: PlayerId[], left: PlayerId[]) => void
   >();
-  private readonly statusHandlers = new Set<(status: ChannelStatus) => void>();
   /** Custom-frame listeners keyed by `kind`. Used by app-level
    * extensions like the debug-app's bot-control protocol. */
   private readonly customHandlers = new Map<
@@ -124,12 +124,17 @@ export class WsChannel implements Channel {
     this.officeId = opts.officeId;
     this.wsFactory = opts.wsFactory ?? defaultFactory;
     this.handshakeTimeoutMs = opts.handshakeTimeoutMs ?? 10_000;
-    this.reconnectDelayMs = opts.reconnectDelayMs ?? defaultReconnectDelayMs;
+    this.reconnectDelayMs = opts.reconnectDelayMs ?? reconnectDelayMs;
   }
 
-  async subscribe(): Promise<void> {
-    if (this.status !== 'connecting' || this.ws) return;
-    await this.connect();
+  subscribe(): Promise<void> {
+    if (this.pendingSubscribe) return this.pendingSubscribe;
+    if (this.status.current !== 'connecting') return Promise.resolve();
+    const pending = this.connect().finally(() => {
+      this.pendingSubscribe = null;
+    });
+    this.pendingSubscribe = pending;
+    return pending;
   }
 
   /** Opens a socket and resolves once its `hello-ack` has been applied. */
@@ -144,13 +149,12 @@ export class WsChannel implements Channel {
     });
     ws.addEventListener('close', (e: { code?: number }) => {
       if (this.ws !== ws) return;
-      this.ws = null;
-      this.subscribed = false;
+      this.dropSocket();
       this.handshake?.fail(new Error('WsChannel: closed before handshake'));
       if (e.code === REPLACED_CLOSE_CODE) {
-        this.setStatus('replaced');
-      } else if (this.status === 'live' || this.status === 'reconnecting') {
-        this.setStatus('reconnecting');
+        this.status.set('replaced');
+      } else if (this.status.current === 'live' || this.status.current === 'reconnecting') {
+        this.status.set('reconnecting');
         this.scheduleReconnect();
       }
     });
@@ -168,7 +172,10 @@ export class WsChannel implements Channel {
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.handshake?.fail(new Error('WsChannel: handshake timeout'));
-        ws.close();
+        if (this.ws !== ws) return;
+        // Don't wait for a close event: a black-holed socket may never send one.
+        this.dropSocket();
+        this.scheduleReconnect();
       }, this.handshakeTimeoutMs);
       this.handshake = {
         ack: (frame) => {
@@ -194,39 +201,44 @@ export class WsChannel implements Channel {
     if (this.myPresenceData) {
       ws.send(encodeFrame({ t: 'track-presence', data: this.myPresenceData }));
     }
-    if (this.status === 'reconnecting') {
+    if (this.status.current === 'reconnecting') {
       const joined = frame.present.filter((id) => !previous.has(id));
       const left = [...previous].filter((id) => !this.knownPresent.has(id));
       if (joined.length > 0 || left.length > 0) {
         this.firePresence(joined, left);
       }
     }
-    this.setStatus('live');
+    // A presence handler may have closed the channel.
+    if (this.ws !== ws) return;
+    this.status.set('live');
   }
 
+  /** Closes and forgets the current socket so its late events are ignored. */
+  private dropSocket(): void {
+    const ws = this.ws;
+    this.ws = null;
+    this.subscribed = false;
+    try {
+      ws?.close();
+    } catch {
+      // ignore
+    }
+  }
+
+  /** No-op unless still reconnecting: a status handler may have closed the channel. */
   private scheduleReconnect(): void {
+    if (this.status.current !== 'reconnecting') return;
     const delay = this.reconnectDelayMs(this.reconnectAttempt++);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
+      if (this.status.current !== 'reconnecting') return;
       try {
-        // A failed attempt closes its socket, which schedules the next one.
+        // A failed attempt closes or times out its socket, which schedules the next one.
         this.connect().catch(() => {});
       } catch {
         this.scheduleReconnect();
       }
     }, delay);
-  }
-
-  private setStatus(status: ChannelStatus): void {
-    if (this.status === status) return;
-    this.status = status;
-    for (const h of [...this.statusHandlers]) {
-      try {
-        h(status);
-      } catch (err) {
-        console.error('[ws-channel] status handler threw:', err);
-      }
-    }
   }
 
   async send(event: NetEvent): Promise<void> {
@@ -263,34 +275,21 @@ export class WsChannel implements Channel {
   }
 
   onStatusChange(handler: (status: ChannelStatus) => void): () => void {
-    this.statusHandlers.add(handler);
-    handler(this.status);
-    return () => {
-      this.statusHandlers.delete(handler);
-    };
+    return this.status.subscribe(handler);
   }
 
   close(): void {
-    if (this.status === 'closed') return;
+    if (this.status.current === 'closed') return;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.subscribed = false;
-    const ws = this.ws;
-    this.ws = null;
+    this.dropSocket();
     this.handshake?.fail(new Error('WsChannel: closed before handshake'));
-    if (ws) {
-      try {
-        ws.close();
-      } catch {
-        // ignore
-      }
-    }
-    this.setStatus('closed');
+    this.status.set('closed');
     this.handlers.clear();
     this.presenceHandlers.clear();
-    this.statusHandlers.clear();
+    this.status.clear();
     this.customHandlers.clear();
   }
 

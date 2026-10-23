@@ -13,7 +13,6 @@ import {
 import { WebSocket as RawWebSocket } from 'ws';
 import { RealtimeServer, type RealtimeServerOptions } from '../server.ts';
 import { WsChannel } from '../ws-channel.ts';
-import { ephemeralPort } from './helpers.ts';
 
 const TOKEN = 'secret-token';
 
@@ -62,11 +61,10 @@ describe('RealtimeServer world constants', () => {
   const channels: WsChannel[] = [];
 
   async function startServer(opts: RealtimeServerOptions = {}): Promise<{ server: RealtimeServer; port: number }> {
-    const port = opts.port ?? ephemeralPort();
-    const server = new RealtimeServer({ adminToken: TOKEN, ...opts, port });
+    const server = new RealtimeServer({ adminToken: TOKEN, ...opts, port: opts.port ?? 0 });
     await server.start();
     servers.push(server);
-    return { server, port };
+    return { server, port: server.boundPort };
   }
 
   async function join(port: number, userId: string, officeId?: string): Promise<NetEvent[]> {

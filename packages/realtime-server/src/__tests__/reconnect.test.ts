@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createActions,
   createBus,
@@ -12,7 +12,6 @@ import {
 import { RealtimeServer } from '../server.ts';
 import { REPLACED_CLOSE_CODE } from '../protocol.ts';
 import { WsChannel, type WsChannelOptions } from '../ws-channel.ts';
-import { ephemeralPort } from './helpers.ts';
 
 function moveEvent(actor: string, seq: number): NetEvent {
   return {
@@ -38,9 +37,11 @@ describe('WsChannel reconnect', () => {
   const channels: WsChannel[] = [];
   const stops: (() => void)[] = [];
 
+  /** Listens on `port`, or a free one while it is still 0, and keeps that port for restarts. */
   async function startServer(): Promise<void> {
     server = new RealtimeServer({ port });
     await server.start();
+    port = server.boundPort;
   }
 
   async function restartServer(): Promise<void> {
@@ -52,6 +53,19 @@ describe('WsChannel reconnect', () => {
     const c = new WsChannel({ url: `ws://127.0.0.1:${port}/ws`, userId, reconnectDelayMs: () => 20, ...opts });
     channels.push(c);
     return c;
+  }
+
+  /** A channel whose sockets are counted, to prove it stopped reconnecting. */
+  function countedChannel(userId: PlayerId, opts: Partial<WsChannelOptions> = {}): { c: WsChannel; sockets: () => number } {
+    let sockets = 0;
+    const c = channel(userId, {
+      ...opts,
+      wsFactory: (url) => {
+        sockets++;
+        return new WebSocket(url);
+      },
+    });
+    return { c, sockets: () => sockets };
   }
 
   function statusesOf(c: WsChannel): ChannelStatus[] {
@@ -78,6 +92,10 @@ describe('WsChannel reconnect', () => {
     return { store, statuses };
   }
 
+  beforeEach(() => {
+    port = 0;
+  });
+
   afterEach(async () => {
     for (const stop of stops.splice(0)) stop();
     for (const c of channels.splice(0)) c.close();
@@ -85,7 +103,6 @@ describe('WsChannel reconnect', () => {
   });
 
   it('reconnects after a server restart and receives peer broadcasts again', async () => {
-    port = ephemeralPort();
     await startServer();
     const a = channel('A');
     const b = channel('B');
@@ -107,7 +124,6 @@ describe('WsChannel reconnect', () => {
   });
 
   it('reports a peer that left during the gap as left after reconnecting', async () => {
-    port = ephemeralPort();
     await startServer();
     const a = channel('A');
     const b = channel('B');
@@ -138,7 +154,6 @@ describe('WsChannel reconnect', () => {
   });
 
   it('SyncEngine peers re-announce their names to a restarted server', async () => {
-    port = ephemeralPort();
     await startServer();
     const a = await namedPeer('A');
     const b = await namedPeer('B');
@@ -164,7 +179,6 @@ describe('WsChannel reconnect', () => {
   });
 
   it('stops for good when a newer socket with the same userId replaces it', async () => {
-    port = ephemeralPort();
     await startServer();
     const closeCodes: number[] = [];
     let sockets = 0;
@@ -186,5 +200,37 @@ describe('WsChannel reconnect', () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(sockets).toBe(1);
     expect(statuses).toEqual(['connecting', 'live', 'replaced']);
+  });
+
+  it('stays closed when a status handler closes it on reconnecting', async () => {
+    await startServer();
+    const { c, sockets } = countedChannel('A');
+    const statuses = statusesOf(c);
+    c.onStatusChange((s) => {
+      if (s === 'reconnecting') {
+        c.close();
+      }
+    });
+    await c.subscribe();
+
+    await restartServer();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(statuses).toEqual(['connecting', 'live', 'reconnecting', 'closed']);
+    expect(sockets()).toBe(1);
+  });
+
+  it('does not reconnect when closed while a reconnect is pending', async () => {
+    await startServer();
+    const { c, sockets } = countedChannel('A', { reconnectDelayMs: () => 50 });
+    const statuses = statusesOf(c);
+    await c.subscribe();
+
+    await server.stop();
+    await vi.waitFor(() => expect(statuses.at(-1)).toBe('reconnecting'));
+    c.close();
+    await startServer();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(statuses).toEqual(['connecting', 'live', 'reconnecting', 'closed']);
+    expect(sockets()).toBe(1);
   });
 });
