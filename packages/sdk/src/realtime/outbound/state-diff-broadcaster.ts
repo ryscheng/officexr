@@ -74,7 +74,7 @@ export class StateDiffBroadcaster {
     this.lastWorldObjectsJson = JSON.stringify(initial.worldObjects);
   }
 
-  onStoreChange(next: OfficeState, prev: OfficeState): void {
+  onStoreChange(next: OfficeState, prev: OfficeState, announceSelfAvatar = true): void {
     // chat: send any newly-appended messages whose author is self
     if (next.chat.length > prev.chat.length) {
       const added = next.chat.slice(this.lastChatLen);
@@ -114,7 +114,7 @@ export class StateDiffBroadcaster {
 
     const me = next.players[next.selfId];
     const prevMe = prev.players[prev.selfId];
-    if (me?.name !== prevMe?.name || me?.avatar !== prevMe?.avatar) {
+    if (announceSelfAvatar && (me?.name !== prevMe?.name || me?.avatar !== prevMe?.avatar)) {
       this.announceAvatar(next);
     }
 

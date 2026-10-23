@@ -32,6 +32,8 @@ interface SyncEngineOpts {
    * `clock`, which may restart near 0 on reload.
    */
   seqSeed?: () => number;
+  /** Start without announcing the self player until {@link SyncEngine.releaseSelf}. */
+  holdSelf?: boolean;
 }
 
 /**
@@ -54,6 +56,7 @@ export class SyncEngine {
   private inbound: InboundRouter;
 
   private started = false;
+  private heldSelf: boolean;
   private offStore: (() => void) | null = null;
   private offChannel: (() => void) | null = null;
   private offPresence: (() => void) | null = null;
@@ -67,6 +70,7 @@ export class SyncEngine {
     this.actions = opts.actions;
     this.channel = opts.channel;
     this.seqs = createSeqCounter(opts.seqSeed);
+    this.heldSelf = opts.holdSelf ?? false;
 
     const broadcast = (event: NetEvent) => this.broadcast(event);
     const takeSeq = () => this.takeSeq();
@@ -123,7 +127,19 @@ export class SyncEngine {
    * and the per-frame ticker so a stop-packet can fire even when no
    * store mutation happened this frame. */
   flushPosition(): void {
+    if (this.heldSelf) return;
     this.position.flushPosition();
+  }
+
+  isSelfHeld(): boolean {
+    return this.heldSelf;
+  }
+
+  /** Ends a `holdSelf` hold, announcing the current self pose and name once. No-op if not held. */
+  releaseSelf(): void {
+    if (!this.heldSelf) return;
+    this.heldSelf = false;
+    this.announceSelf();
   }
 
   /**
@@ -155,8 +171,7 @@ export class SyncEngine {
     // real change is treated as a delta, not absorbed into the
     // baseline.
     this.stateDiff.captureBaseline();
-    // Announce ourselves to peers already on the channel.
-    this.position.announceSelf();
+    if (!this.heldSelf) this.position.announceSelf();
 
     this.offStore = this.store.subscribeAll((next, prev) =>
       this.onStoreChange(next, prev),
@@ -180,8 +195,7 @@ export class SyncEngine {
     let prevStatus: ChannelStatus | null = null;
     this.offStatus = this.channel.onStatusChange((status) => {
       if (prevStatus === 'reconnecting' && status === 'live') {
-        this.position.announceSelf();
-        this.stateDiff.announceAvatar();
+        if (!this.heldSelf) this.announceSelf();
       }
       prevStatus = status;
     });
@@ -198,9 +212,14 @@ export class SyncEngine {
 
   // --- Internal -------------------------------------------------------
 
+  private announceSelf(): void {
+    this.position.announceSelf();
+    this.stateDiff.announceAvatar();
+  }
+
   private onStoreChange(next: OfficeState, prev: OfficeState): void {
-    this.stateDiff.onStoreChange(next, prev);
-    this.position.flushPosition();
+    this.stateDiff.onStoreChange(next, prev, !this.heldSelf);
+    this.flushPosition();
   }
 
   /**
