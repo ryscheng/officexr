@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
-import { ApplicationProvider, ErrorBanner, PlayView } from '@officexr/world/react';
+import { ApplicationProvider, ErrorBanner, PlayView, useStoreSelector } from '@officexr/world/react';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
@@ -42,6 +42,13 @@ function usePlayerNames(store: Store | undefined): string {
     return store.subscribe(playerNames, setNames);
   }, [store]);
   return names;
+}
+
+const isReplaced = (s: OfficeState) => s.realtime.status === 'replaced';
+
+function ReplacedBanner({ store }: { store: Store }) {
+  const replaced = useStoreSelector(store, isReplaced);
+  return replaced ? <ErrorBanner message="This office was opened in another window. Reload to rejoin here." /> : null;
 }
 
 function World({ office, me }: { office: Office; me: Identity }) {
@@ -86,6 +93,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
           </div>
         </PlayView>
       )}
+      {session.type === 'ready' && <ReplacedBanner store={session.local.store} />}
       {session.type === 'error' && session.message !== dismissedError && (
         <ErrorBanner message={session.message} onDismiss={() => setDismissedError(session.message)} />
       )}

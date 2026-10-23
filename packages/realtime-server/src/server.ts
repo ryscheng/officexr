@@ -28,6 +28,7 @@ import {
 import {
   decodeFrame,
   encodeFrame,
+  REPLACED_CLOSE_CODE,
   SERVER_SELF_ID,
   type CustomFrame,
   type Frame,
@@ -412,9 +413,8 @@ export class RealtimeServer {
   }
 
   private acceptClient(room: Room, ws: WebSocket, userId: PlayerId): WsClient {
-    // Honor identity-checked detach: if a stale client with the same id
-    // exists (rare — only on rapid reconnect), retire it first.
-    room.clients.get(userId)?.terminate();
+    // Newest socket per userId wins; the older one is told why so it stops.
+    room.clients.get(userId)?.replace();
 
     const channel = new InMemoryChannel(room.hub, userId);
     const client = new WsClient(userId, ws, channel);
@@ -605,10 +605,14 @@ export class WsClient {
     this.ws.send(raw);
   }
 
-  terminate(): void {
+  replace(): void {
+    this.terminate(REPLACED_CLOSE_CODE, 'replaced');
+  }
+
+  terminate(code?: number, reason?: string): void {
     this.detach();
     try {
-      this.ws.close();
+      this.ws.close(code, reason);
     } catch {
       // ignore
     }

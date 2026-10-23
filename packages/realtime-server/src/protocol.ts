@@ -25,6 +25,10 @@ export type Frame =
  * restarts. Clients must not use it as their `userId`. */
 export const SERVER_SELF_ID = 'server';
 
+/** Close code the server uses to retire a socket a newer one with the
+ * same `userId` has taken over. Clients must not reconnect after it. */
+export const REPLACED_CLOSE_CODE = 4001;
+
 /** Client → server, first frame after the websocket opens. Identifies
  * the caller; server uses it as the `selfId` for the attached hub
  * client. `officeId` picks the room; omitted means the server's default

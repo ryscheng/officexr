@@ -3,6 +3,8 @@ import type { NetEvent } from './protocol.ts';
 
 export type PresenceData = Record<string, unknown>;
 
+export type ChannelStatus = 'connecting' | 'live' | 'reconnecting' | 'replaced' | 'closed';
+
 export interface Channel {
   subscribe(): Promise<void>;
   send(event: NetEvent): Promise<void>;
@@ -10,6 +12,8 @@ export interface Channel {
   trackPresence(data: PresenceData): void;
   onPresenceChange(handler: (joined: PlayerId[], left: PlayerId[]) => void): () => void;
   listPresent(): PlayerId[];
+  /** Calls `handler` with the current status right away, then on every change. */
+  onStatusChange(handler: (status: ChannelStatus) => void): () => void;
   close(): void;
 }
 
@@ -83,6 +87,8 @@ export class InMemoryChannel implements Channel {
   private presenceHandlers = new Set<
     (joined: PlayerId[], left: PlayerId[]) => void
   >();
+  private status: ChannelStatus = 'connecting';
+  private statusHandlers = new Set<(status: ChannelStatus) => void>();
 
   constructor(hub: Hub, userId: PlayerId) {
     this.hub = hub;
@@ -93,6 +99,7 @@ export class InMemoryChannel implements Channel {
     if (this.subscribed || this.closed) return;
     this.subscribed = true;
     this.hub.attach(this);
+    this.setStatus('live');
   }
 
   async send(event: NetEvent): Promise<void> {
@@ -125,13 +132,30 @@ export class InMemoryChannel implements Channel {
     return this.hub.present();
   }
 
+  onStatusChange(handler: (status: ChannelStatus) => void): () => void {
+    this.statusHandlers.add(handler);
+    handler(this.status);
+    return () => {
+      this.statusHandlers.delete(handler);
+    };
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;
     this.subscribed = false;
     this.hub.detach(this);
+    this.setStatus('closed');
     this.handlers.clear();
     this.presenceHandlers.clear();
+    this.statusHandlers.clear();
+  }
+
+  private setStatus(status: ChannelStatus): void {
+    this.status = status;
+    for (const h of [...this.statusHandlers]) {
+      h(status);
+    }
   }
 
   // hub-internal --------------------------------------------------

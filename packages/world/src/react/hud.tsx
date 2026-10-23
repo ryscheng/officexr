@@ -82,7 +82,8 @@ WASD to move · Click to look · Esc to release mouse`}
   );
 }
 
-export function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+/** Without `onDismiss` the banner stays until its parent stops rendering it. */
+export function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
   return (
     <div
       role="alert"
@@ -96,11 +97,11 @@ export function ErrorBanner({ message, onDismiss }: { message: string; onDismiss
         color: '#fff',
         font: '12px system-ui, sans-serif',
         borderRadius: 6,
-        cursor: 'pointer',
+        cursor: onDismiss ? 'pointer' : undefined,
         maxWidth: '90vw',
       }}
       onClick={onDismiss}
-      title="click to dismiss"
+      title={onDismiss ? 'click to dismiss' : undefined}
     >
       {message}
     </div>

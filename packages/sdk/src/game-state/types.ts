@@ -86,7 +86,7 @@ export type ScreenShareSignal = {
   signalState: 'idle' | 'offering' | 'answering' | 'connected' | 'error';
 };
 
-export type RealtimeStatus = 'connecting' | 'live' | 'reconnecting' | 'snapshot-pending';
+export type RealtimeStatus = 'connecting' | 'live' | 'reconnecting' | 'replaced' | 'snapshot-pending';
 
 export type RealtimeState = {
   status: RealtimeStatus;

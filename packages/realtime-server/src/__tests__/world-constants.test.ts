@@ -6,8 +6,8 @@ import {
   DEFAULT_WORLD_CONSTANTS,
   SyncEngine,
   type Channel,
+  type ChannelStatus,
   type NetEvent,
-  type PlayerId,
   type WorldConstants,
 } from '@officexr/sdk';
 import { WebSocket as RawWebSocket } from 'ws';
@@ -55,51 +55,6 @@ function syncedStore(channel: Channel): { speed: () => number; stop: () => void 
   });
   sync.start();
   return { speed: () => store.getState().worldConstants.animation.playerSpeed, stop: () => sync.stop() };
-}
-
-/** Forwards to a replaceable WsChannel so one SyncEngine can span a
- * reconnect, the way a long-lived client would. */
-class ReconnectingChannel implements Channel {
-  private inner: WsChannel;
-  private readonly handlers = new Set<(event: NetEvent) => void>();
-
-  constructor(private readonly connect: () => WsChannel) {
-    this.inner = this.wire(connect());
-  }
-
-  async reconnect(): Promise<void> {
-    this.inner.close();
-    this.inner = this.wire(this.connect());
-    await this.inner.subscribe();
-  }
-
-  private wire(channel: WsChannel): WsChannel {
-    channel.on((event) => {
-      for (const h of this.handlers) h(event);
-    });
-    return channel;
-  }
-
-  subscribe(): Promise<void> {
-    return this.inner.subscribe();
-  }
-  send(event: NetEvent): Promise<void> {
-    return this.inner.send(event);
-  }
-  on(handler: (event: NetEvent) => void): () => void {
-    this.handlers.add(handler);
-    return () => this.handlers.delete(handler);
-  }
-  trackPresence(): void {}
-  onPresenceChange(): () => void {
-    return () => {};
-  }
-  listPresent(): PlayerId[] {
-    return [];
-  }
-  close(): void {
-    this.inner.close();
-  }
 }
 
 describe('RealtimeServer world constants', () => {
@@ -299,10 +254,11 @@ describe('RealtimeServer world constants', () => {
   });
 
   it('a SyncEngine that outlives a server restart still applies the next push', async () => {
-    let { port } = await startServer();
-    const channel = new ReconnectingChannel(
-      () => new WsChannel({ url: `ws://127.0.0.1:${port}/ws`, userId: 'A' }),
-    );
+    const { port } = await startServer();
+    const channel = new WsChannel({ url: `ws://127.0.0.1:${port}/ws`, userId: 'A', reconnectDelayMs: () => 20 });
+    channels.push(channel);
+    const statuses: ChannelStatus[] = [];
+    channel.onStatusChange((s) => statuses.push(s));
     const client = syncedStore(channel);
     await channel.subscribe();
 
@@ -310,14 +266,11 @@ describe('RealtimeServer world constants', () => {
     await vi.waitFor(() => expect(client.speed()).toBe(9));
 
     await servers.pop()!.stop();
-    // A fresh port keeps the restarted server clear of fetch's pooled
-    // keep-alive sockets to the old one.
-    ({ port } = await startServer());
-    await channel.reconnect();
+    await startServer({ port });
+    await vi.waitFor(() => expect(statuses).toEqual(['connecting', 'live', 'reconnecting', 'live']));
     await put(port, constantsWithSpeed(4));
     await vi.waitFor(() => expect(client.speed()).toBe(4));
 
     client.stop();
-    channel.close();
   });
 });
