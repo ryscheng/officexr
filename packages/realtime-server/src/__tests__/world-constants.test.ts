@@ -149,7 +149,9 @@ describe('RealtimeServer world constants', () => {
     await bChannel.subscribe();
     const a = new RawWebSocket(url);
     await new Promise<void>((resolve) => a.once('open', () => resolve()));
+    const acked = new Promise<void>((resolve) => a.once('message', () => resolve()));
     a.send(JSON.stringify({ t: 'hello', userId: 'A' }));
+    await acked;
     const envelope = { v: 1, actorId: 'A', seq: 1, t: 0 };
     const send = (event: object) => a.send(JSON.stringify({ t: 'broadcast', from: 'A', event }));
     send({ ...envelope, kind: 'world:constants', constants: constantsWithSpeed(9) });

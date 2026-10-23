@@ -4,3 +4,4 @@ export * from './sync.ts';
 export * from './seq-counter.ts';
 export * from './snapshot-handshake.ts';
 export * from './inbound-seq-table.ts';
+export * from './player-id.ts';
