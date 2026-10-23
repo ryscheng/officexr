@@ -18,9 +18,9 @@ const office = (over: Partial<Office>): Office => ({
 
 describe('playerIdFor', () => {
   it('gives the creator of a debug office a per-tab id that survives a remount', () => {
-    const id = playerIdFor(office({}), me);
-    expect(id).toMatch(/^a@example\.com#.+/);
-    expect(playerIdFor(office({}), me)).toBe(id);
+    sessionStorage.setItem('officexr.tab.o1', 'abc');
+    expect(playerIdFor(office({}), me)).toBe('a@example.com#abc');
+    expect(playerIdFor(office({}), me)).toBe('a@example.com#abc');
   });
 
   it('keeps the plain login without debug or for anyone but the creator', () => {

@@ -69,9 +69,7 @@ export function useOfficeSession(officeId: string, me: Identity, selfId: string,
           return;
         }
         // Losing the join race closes the socket as replaced before the handshake completes.
-        const statuses: string[] = [];
-        channel.onStatusChange((s) => statuses.push(s))();
-        if (statuses[0] === 'replaced') {
+        if (local.store.getState().realtime.status === 'replaced') {
           setSession({ type: 'replaced' });
         } else {
           setSession({ type: 'error', message: `Realtime server not reachable: ${err.message}` });

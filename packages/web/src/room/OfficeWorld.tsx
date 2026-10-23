@@ -7,12 +7,12 @@ import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
 import { CharacterPicker } from './CharacterPicker';
-import { OfficeSettings } from './OfficeSettings';
-import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 import { JoinPrompt } from './JoinPrompt';
+import { OfficeSettings } from './OfficeSettings';
 import { playerIdFor } from './playerId';
 import { useJoinCheck } from './useJoinCheck';
 import { useOfficeSession } from './useOfficeSession';
+import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 
 const storages = {
   maps: withDefaultMap(new FilesystemMapStorage()),

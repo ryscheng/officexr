@@ -57,6 +57,12 @@ describe('useJoinCheck', () => {
     await waitFor(() => expect(screen.getByText('Home')).toBeTruthy());
   });
 
+  it('navigates home on Escape', async () => {
+    setup(answer({ connected: true, allowMulti: false }));
+    fireEvent.keyDown(await screen.findByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(screen.getByText('Home')).toBeTruthy());
+  });
+
   it('joins without a prompt when the check fails', async () => {
     setup(vi.fn(async () => Promise.reject(new Error('down'))) as unknown as typeof fetch);
     await screen.findByText('state:go');
