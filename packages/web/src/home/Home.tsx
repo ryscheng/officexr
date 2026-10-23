@@ -1,11 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FilesystemMapStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
 import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
 import { Async } from '../Async';
 import { DEFAULT_MAP } from '../room/withDefaultMap';
 import { errorMessage, useApi, type ApiState } from '../useApi';
+import { useMapNames } from '../useMapNames';
 
 function OfficeList() {
   return (
@@ -33,31 +33,11 @@ function OfficeList() {
 
 function CreateOfficeForm({ identified }: { identified: boolean }) {
   const navigate = useNavigate();
-  const [maps, setMaps] = useState<string[]>([]);
-  const [mapName, setMapName] = useState('');
+  const { maps, error: mapsError } = useMapNames();
+  const [picked, setPicked] = useState('');
+  const mapName = picked || (maps.includes(DEFAULT_MAP) ? DEFAULT_MAP : (maps[0] ?? ''));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    new FilesystemMapStorage()
-      .list()
-      .then((list) => {
-        if (cancelled) {
-          return;
-        }
-        setMaps(list.map((m) => m.name));
-        setMapName((current) => current || (list.some((m) => m.name === DEFAULT_MAP) ? DEFAULT_MAP : (list[0]?.name ?? '')));
-      })
-      .catch((err: Error) => {
-        if (!cancelled) {
-          setError(err.message);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -99,7 +79,7 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
           <select
             required
             value={mapName}
-            onChange={(e) => setMapName(e.target.value)}
+            onChange={(e) => setPicked(e.target.value)}
             className="mt-1 block w-full rounded border p-2"
           >
             {maps.map((name) => (
@@ -113,9 +93,9 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
           Create office
         </button>
       </fieldset>
-      {error && (
+      {(error ?? mapsError) && (
         <p role="alert" className="text-red-600">
-          {error}
+          {error ?? mapsError}
         </p>
       )}
     </form>
