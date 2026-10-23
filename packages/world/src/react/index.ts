@@ -13,6 +13,7 @@ export { useWorldConstants } from './useWorldConstants.ts';
 export { useCameraModeCycle } from './useCameraModeCycle.ts';
 export { ErrorBanner, FocusIndicator, WorldHud, type HudRealtime } from './hud.tsx';
 export { PlayView, type PlayViewProps } from './PlayView.tsx';
+export { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
 export {
   usePlaySession,
   type PlaySession,
