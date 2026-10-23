@@ -14,6 +14,7 @@ import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
 import type { Bus, OfficeState, Store } from '@officexr/sdk';
 import { Adventurer } from './Adventurer.tsx';
 import type { CameraMode, CharacterName } from './config.ts';
+import { PlayerNameTag } from './PlayerNameTag.tsx';
 import { pickCharacterForPlayer } from '../characters/registry.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
@@ -506,6 +507,12 @@ export function Players({
                 fallbackWalkSpeed={walkAnimSpeed}
                 fallbackRunSpeed={runAnimSpeed}
                 paused={paused}
+              />
+              <PlayerNameTag
+                store={store}
+                playerId={p.id}
+                selfId={selfId}
+                paused={paused ?? false}
               />
             </group>
           </RigidBody>
