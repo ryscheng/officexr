@@ -1,4 +1,4 @@
-import { createInMemoryChannelHub, InMemoryChannel } from '@officexr/sdk';
+import { createInMemoryChannelHub, createSeqCounter, InMemoryChannel } from '@officexr/sdk';
 import type { Channel, SnapshotHandshake, Store, SyncEngine, WorldConstants } from '@officexr/sdk';
 import {
   createStack,
@@ -140,14 +140,13 @@ async function startWorldConstantsAuthority(
 ): Promise<() => void> {
   const channel = new InMemoryChannel(hub, SERVER_SELF_ID);
   await channel.subscribe();
-  // Same seq scheme as the realtime server's own events.
-  let seq = Date.now();
+  const seqs = createSeqCounter();
   const emit = (constants: WorldConstants) =>
     void channel.send({
       kind: 'world:constants',
       v: 1,
       actorId: SERVER_SELF_ID,
-      seq: ++seq,
+      seq: seqs.next(),
       t: Date.now(),
       constants,
     });

@@ -7,6 +7,7 @@ import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
 import { CharacterPicker } from './CharacterPicker';
+import { OfficeSettings } from './OfficeSettings';
 import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 import { useOfficeSession } from './useOfficeSession';
 
@@ -51,7 +52,8 @@ function ReplacedBanner({ store }: { store: Store }) {
   return replaced ? <ErrorBanner message="This office was opened in another window. Reload to rejoin here." /> : null;
 }
 
-function World({ office, me }: { office: Office; me: Identity }) {
+function World({ office: initialOffice, me }: { office: Office; me: Identity }) {
+  const [office, setOffice] = useState(initialOffice);
   const session = useOfficeSession(office.id, me);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -83,6 +85,7 @@ function World({ office, me }: { office: Office; me: Identity }) {
             </div>
           )}
           <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
+            <OfficeSettings office={office} me={me} onSaved={setOffice} />
             <CharacterPicker local={session.local} onSaveResult={setSaveError} />
             {session.voice && (
               <div className="flex gap-2">

@@ -233,7 +233,7 @@ function setupClient(
   const bus = createBus();
   const channel = new InMemoryChannel(hub, selfId);
   const clock = new FakeClock(0);
-  const sync = new SyncEngine({ store, actions, bus, channel, clock });
+  const sync = new SyncEngine({ store, actions, bus, channel, clock, seqSeed: () => 0 });
   const handshake = new SnapshotHandshake({
     selfId,
     store,

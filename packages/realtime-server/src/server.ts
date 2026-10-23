@@ -15,6 +15,7 @@ import {
   createStore,
   DEFAULT_WORLD_CONSTANTS,
   InMemoryChannel,
+  createSeqCounter,
   parseWorldConstants,
   validateNetEvent,
   type Actions,
@@ -229,11 +230,7 @@ export class RealtimeServer {
   private readonly bootRetryMs: number;
   private worldConstants: WorldConstants = DEFAULT_WORLD_CONSTANTS;
   private bootLoad: AbortController | null = null;
-  // Clients dedup on (actorId, seq) and keep their seq table across a
-  // reconnect, so seeding from the clock keeps a restarted server's
-  // events ahead of the previous instance's.
-  private serverSeq = Date.now();
-  private readonly takeServerSeq = (): number => ++this.serverSeq;
+  private readonly takeServerSeq = createSeqCounter().next;
 
   constructor(opts: RealtimeServerOptions = {}) {
     this.port = opts.port ?? DEFAULT_PORT;

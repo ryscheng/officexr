@@ -47,8 +47,8 @@ describe('Home', () => {
 
   it('renders office cards with name, description and map linking to the office', async () => {
     setup(ready, [
-      { id: 'o1', name: 'HQ', description: 'Main', map_name: 'hq' },
-      { id: 'o2', name: 'Annex', description: null, map_name: null },
+      { id: 'o1', name: 'HQ', description: 'Main', map_name: 'hq', created_by_login: null, debug_enabled: false },
+      { id: 'o2', name: 'Annex', description: null, map_name: null, created_by_login: null, debug_enabled: false },
     ]);
     const hq = (await screen.findByText('HQ')).closest('a');
     expect(hq?.getAttribute('href')).toBe('/room/o1');
@@ -63,7 +63,7 @@ describe('Home', () => {
   });
 
   it('still lists offices and disables the form when /api/me fails', async () => {
-    setup(unidentified, [{ id: 'o1', name: 'HQ', description: null, map_name: 'hq' }]);
+    setup(unidentified, [{ id: 'o1', name: 'HQ', description: null, map_name: 'hq', created_by_login: null, debug_enabled: false }]);
     expect(await screen.findByText('HQ')).toBeTruthy();
     expect(screen.getAllByText('Not identified via Tailscale').length).toBeGreaterThan(0);
     expect(screen.getByText(/requires being identified/)).toBeTruthy();
@@ -71,7 +71,7 @@ describe('Home', () => {
   });
 
   it('creates an office and navigates into it', async () => {
-    const post = vi.fn(() => json(201, { id: 'new', name: 'Lab', description: null, map_name: 'hq' }));
+    const post = vi.fn(() => json(201, { id: 'new', name: 'Lab', description: null, map_name: 'hq', created_by_login: null, debug_enabled: false }));
     setup(ready, [], post);
     await screen.findByRole('option', { name: 'hq' });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lab' } });
