@@ -127,9 +127,9 @@ export class WsChannel implements Channel {
     this.reconnectDelayMs = opts.reconnectDelayMs ?? reconnectDelayMs;
   }
 
-  subscribe(): Promise<void> {
+  async subscribe(): Promise<void> {
     if (this.pendingSubscribe) return this.pendingSubscribe;
-    if (this.status.current !== 'connecting') return Promise.resolve();
+    if (this.status.current !== 'connecting') return;
     const pending = this.connect().finally(() => {
       this.pendingSubscribe = null;
     });

@@ -325,9 +325,11 @@ export class RealtimeServer {
     this.bootLoad?.abort();
     for (const room of this.rooms.values()) room.close();
     this.rooms.clear();
-    if (this.wss) {
-      await new Promise<void>((resolve) => this.wss!.close(() => resolve()));
+    const wss = this.wss;
+    if (wss) {
+      // Cleared before awaiting so an upgrade arriving mid-close is destroyed, not accepted into a fresh room.
       this.wss = null;
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
     }
     if (this.httpServer) {
       await new Promise<void>((resolve, reject) =>
