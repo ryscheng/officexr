@@ -37,9 +37,10 @@ describe('SyncEngine reload', () => {
     );
     h.step(1000);
 
-    const seen = alice.store.getState().players['bob'];
-    expect(seen.name).toBe('Bobby');
-    expect(seen.pos).toEqual({ x: 4, y: 0, z: 2 });
+    expect(alice.store.getState().players['bob']).toMatchObject({
+      name: 'Bobby',
+      pos: { x: 4, y: 0, z: 2 },
+    });
     expect(alice.sync.getInboundSeqTable().snapshot()['bob']).toBeGreaterThan(oldMark);
   });
 });
