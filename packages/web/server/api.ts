@@ -11,6 +11,8 @@ export interface Office {
   name: string;
   description: string | null;
   map_name: string | null;
+  created_by_login: string | null;
+  debug_enabled: boolean;
 }
 
 /** Lists all offices, or just the one with `id` when given. */
@@ -20,9 +22,15 @@ export interface NewOffice {
   name: string;
   description: string | null;
   mapName: string;
+  createdByLogin: string;
 }
 
 export type CreateOffice = (input: NewOffice) => Promise<Office>;
+
+/** The settings a creator may change; only the keys present are written. */
+export type OfficeUpdate = Partial<Pick<NewOffice, 'name' | 'description' | 'mapName'>> & { debugEnabled?: boolean };
+
+export type UpdateOffice = (id: string, update: OfficeUpdate) => Promise<Office>;
 
 /** Whether a studio map with this name exists; must reject names that aren't plain slugs. */
 export type MapExists = (name: string) => Promise<boolean>;
@@ -83,30 +91,67 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   }
 }
 
+const NAME_ERROR = `name is required (max ${MAX_NAME} characters)`;
+
+/** The validated fields that are present, or the error to send back with a 400. */
+async function parseOfficeUpdate(body: unknown, mapExists: MapExists): Promise<OfficeUpdate | string> {
+  if (typeof body !== 'object' || body === null) {
+    return 'body must be a JSON object';
+  }
+  const raw = body as Record<string, unknown>;
+  const update: OfficeUpdate = {};
+  if (raw.name !== undefined) {
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    if (!name || name.length > MAX_NAME) {
+      return NAME_ERROR;
+    }
+    update.name = name;
+  }
+  if (raw.description !== undefined) {
+    if (typeof raw.description !== 'string') {
+      return 'description must be text';
+    }
+    const description = raw.description.trim();
+    if (description.length > MAX_DESCRIPTION) {
+      return `description is too long (max ${MAX_DESCRIPTION} characters)`;
+    }
+    update.description = description || null;
+  }
+  if (raw.mapName !== undefined) {
+    if (typeof raw.mapName !== 'string' || !(await mapExists(raw.mapName))) {
+      return 'Unknown map';
+    }
+    update.mapName = raw.mapName;
+  }
+  if (raw.debugEnabled !== undefined) {
+    if (typeof raw.debugEnabled !== 'boolean') {
+      return 'debugEnabled must be true or false';
+    }
+    update.debugEnabled = raw.debugEnabled;
+  }
+  return update;
+}
+
 /** The validated input, or the error to send back with a 400. */
-async function parseNewOffice(body: unknown, mapExists: MapExists): Promise<NewOffice | string> {
-  const raw = (body ?? {}) as Record<string, unknown>;
-  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-  if (!name || name.length > MAX_NAME) {
-    return `name is required (max ${MAX_NAME} characters)`;
+async function parseNewOffice(body: unknown, mapExists: MapExists): Promise<Omit<NewOffice, 'createdByLogin'> | string> {
+  const update = await parseOfficeUpdate(body, mapExists);
+  if (typeof update === 'string') {
+    return update;
   }
-  if (raw.description !== undefined && typeof raw.description !== 'string') {
-    return 'description must be text';
+  if (update.name === undefined) {
+    return NAME_ERROR;
   }
-  const description = raw.description?.trim() ?? '';
-  if (description.length > MAX_DESCRIPTION) {
-    return `description is too long (max ${MAX_DESCRIPTION} characters)`;
-  }
-  if (typeof raw.mapName !== 'string' || !(await mapExists(raw.mapName))) {
+  if (update.mapName === undefined) {
     return 'Unknown map';
   }
-  return { name, description: description || null, mapName: raw.mapName };
+  return { name: update.name, description: update.description ?? null, mapName: update.mapName };
 }
 
 export function apiMiddleware(
   queryOffices: QueryOffices,
   characters: OfficeCharacters,
   createOffice: CreateOffice,
+  updateOffice: UpdateOffice,
   mapExists: MapExists,
 ): Connect.NextHandleFunction {
   return async (req, res, next) => {
@@ -126,7 +171,8 @@ export function apiMiddleware(
       }
       if (path === '/api/offices') {
         if (req.method === 'POST') {
-          if (!tailscaleIdentity(req)) {
+          const me = tailscaleIdentity(req);
+          if (!me) {
             return send(401, { error: 'Not identified via Tailscale' });
           }
           const body = await readJson(req);
@@ -134,7 +180,7 @@ export function apiMiddleware(
             return send(413, { error: 'Body too large' });
           }
           const input = await parseNewOffice(body, mapExists);
-          return typeof input === 'string' ? send(400, { error: input }) : send(201, await createOffice(input));
+          return typeof input === 'string' ? send(400, { error: input }) : send(201, await createOffice({ ...input, createdByLogin: me.login }));
         }
         return req.method === 'GET' ? send(200, await queryOffices()) : send(405, { error: 'Method not allowed' });
       }
@@ -167,8 +213,32 @@ export function apiMiddleware(
       }
       const id = path.match(/^\/api\/offices\/([^/]+)$/)?.[1];
       if (id) {
+        if (req.method !== 'GET' && req.method !== 'PATCH') {
+          return send(405, { error: 'Method not allowed' });
+        }
+        const me = tailscaleIdentity(req);
+        if (req.method === 'PATCH' && !me) {
+          return send(401, { error: 'Not identified via Tailscale' });
+        }
         const [office] = UUID.test(id) ? await queryOffices(id) : [];
-        return office ? send(200, office) : send(404, { error: 'Office not found' });
+        if (!office) {
+          return send(404, { error: 'Office not found' });
+        }
+        if (req.method === 'GET') {
+          return send(200, office);
+        }
+        if (office.created_by_login !== me?.login) {
+          return send(403, { error: 'Only the office creator can change its settings' });
+        }
+        const body = await readJson(req);
+        if (body === TOO_LARGE) {
+          return send(413, { error: 'Body too large' });
+        }
+        const update = await parseOfficeUpdate(body, mapExists);
+        if (typeof update === 'string') {
+          return send(400, { error: update });
+        }
+        return send(200, Object.keys(update).length ? await updateOffice(office.id, update) : office);
       }
       return send(404, { error: 'Not found' });
     } catch (err) {
@@ -191,6 +261,7 @@ export interface ServerPluginOptions {
   queryOffices: QueryOffices;
   characters: OfficeCharacters;
   createOffice: CreateOffice;
+  updateOffice: UpdateOffice;
   /** Applied to the dev server only, never to preview. */
   devUser?: Identity;
   devEnv?: Record<string, string>;
@@ -204,13 +275,14 @@ export function officexrServer({
   queryOffices,
   characters,
   createOffice,
+  updateOffice,
   devUser,
   devEnv,
   studioDataDir,
   modelsDir,
 }: ServerPluginOptions): Plugin[] {
   const models = staticDirMiddleware('/models', modelsDir);
-  const api = apiMiddleware(queryOffices, characters, createOffice, studioMapExists(studioDataDir));
+  const api = apiMiddleware(queryOffices, characters, createOffice, updateOffice, studioMapExists(studioDataDir));
   return [
     // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
     studioStorage({ dataDir: studioDataDir, readOnly: true }),

@@ -3,7 +3,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import pg from 'pg';
-import { officexrServer, type CreateOffice, type Office, type OfficeCharacters } from './server/api';
+import { officexrServer, type CreateOffice, type Office, type OfficeCharacters, type OfficeUpdate, type UpdateOffice } from './server/api';
 
 export default defineConfig(({ mode }) => {
   const devEnv = loadEnv(mode, __dirname, '');
@@ -19,17 +19,32 @@ export default defineConfig(({ mode }) => {
     }
     return pool;
   };
+  const officeColumns = 'id, name, description, map_name, created_by_login, debug_enabled';
   const queryOffices = async (id?: string) => {
     const { rows } = await getPool().query<Office>(
-      `select id, name, description, map_name from offices ${id ? 'where id = $1' : ''} order by created_at`,
+      `select ${officeColumns} from offices ${id ? 'where id = $1' : ''} order by created_at`,
       id ? [id] : [],
     );
     return rows;
   };
-  const createOffice: CreateOffice = async ({ name, description, mapName }) => {
+  const createOffice: CreateOffice = async ({ name, description, mapName, createdByLogin }) => {
     const { rows } = await getPool().query<Office>(
-      'insert into offices (name, description, map_name) values ($1, $2, $3) returning id, name, description, map_name',
-      [name, description, mapName],
+      `insert into offices (name, description, map_name, created_by_login) values ($1, $2, $3, $4) returning ${officeColumns}`,
+      [name, description, mapName, createdByLogin],
+    );
+    return rows[0];
+  };
+  const updateColumns: Record<keyof OfficeUpdate, string> = {
+    name: 'name',
+    description: 'description',
+    mapName: 'map_name',
+    debugEnabled: 'debug_enabled',
+  };
+  const updateOffice: UpdateOffice = async (id, update) => {
+    const entries = Object.entries(update) as [keyof OfficeUpdate, unknown][];
+    const { rows } = await getPool().query<Office>(
+      `update offices set ${entries.map(([key], i) => `${updateColumns[key]} = $${i + 2}`).join(', ')} where id = $1 returning ${officeColumns}`,
+      [id, ...entries.map(([, value]) => value)],
     );
     return rows[0];
   };
@@ -74,6 +89,7 @@ export default defineConfig(({ mode }) => {
         queryOffices,
         characters,
         createOffice,
+        updateOffice,
         devUser: login ? { login, name: name ?? login } : undefined,
         devEnv,
         studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,
