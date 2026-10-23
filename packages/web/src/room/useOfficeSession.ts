@@ -27,8 +27,17 @@ function createJaasVoice(me: Identity, selfId: string): JaasVoiceAdapter | null 
   return new JaasVoiceAdapter({ appId: jaas.appId, jwt, displayName: me.name });
 }
 
-/** Joins `officeId` on the realtime server (proxied at `/ws`) as player `selfId` of `me`, once `enabled`, with JaaS voice when `/config.js` has keys. */
-export function useOfficeSession(officeId: string, me: Identity, selfId: string, enabled: boolean): OfficeSession {
+/**
+ * Joins `officeId` on the realtime server (proxied at `/ws`) as player `selfId` of `me`, once `enabled`, with JaaS
+ * voice when `/config.js` has keys. The self player stays unannounced until `office.sync.releaseSelf()`.
+ */
+export function useOfficeSession(
+  officeId: string,
+  me: Identity,
+  selfId: string,
+  enabled: boolean,
+  start: typeof startOfficeSync = startOfficeSync,
+): OfficeSession {
   const [session, setSession] = useState<OfficeSession>({ type: 'connecting' });
   useEffect(() => {
     if (!enabled) {
@@ -48,7 +57,7 @@ export function useOfficeSession(officeId: string, me: Identity, selfId: string,
     let cancelled = false;
     let office: OfficeSync | undefined;
     const character = loadCharacter(officeId, me.login);
-    startOfficeSync({ local, channel, voice: voiceAdapter }).then(
+    start({ local, channel, voice: voiceAdapter, holdSelf: true }).then(
       async (started) => {
         if (cancelled) {
           started.stop();
@@ -82,6 +91,6 @@ export function useOfficeSession(officeId: string, me: Identity, selfId: string,
       voiceAdapter.dispose();
       channel.close();
     };
-  }, [officeId, me.login, me.name, selfId, enabled]);
+  }, [officeId, me.login, me.name, selfId, enabled, start]);
   return session;
 }

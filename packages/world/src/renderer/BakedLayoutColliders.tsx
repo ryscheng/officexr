@@ -23,7 +23,7 @@
  * `three` IS allowed in renderer files per CLAUDE.md rules.
  */
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useEffectEvent } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import { RigidBody, CuboidCollider, TrimeshCollider } from '@react-three/rapier';
@@ -73,10 +73,16 @@ function extractMeshAABBs(scene: THREE.Object3D): MeshAABB[] {
 
 interface BakedLayoutCollidersInnerProps {
   effectiveUrl: string;
+  onReady?: () => void;
 }
 
-function BakedLayoutCollidersInner({ effectiveUrl }: BakedLayoutCollidersInnerProps) {
+function BakedLayoutCollidersInner({ effectiveUrl, onReady }: BakedLayoutCollidersInnerProps) {
   const gltf = useGLTF(effectiveUrl);
+  // Child effects run first, so the colliders below exist by the time this fires.
+  const notifyReady = useEffectEvent(() => onReady?.());
+  useEffect(() => {
+    notifyReady();
+  }, [effectiveUrl]);
 
   // Preferred path: the physics descriptors the bake embedded in the
   // scene extras (GLTFLoader surfaces glTF `extras` as `userData`).
@@ -148,6 +154,9 @@ export interface BakedLayoutCollidersProps {
    * cache-bust in lockstep.
    */
   layoutName?: string;
+  /** Fires once the colliders have mounted (also when there are none), again per new layout. */
+  onReady?: () => void;
+  onError?: (error: Error) => void;
 }
 
 /**
@@ -162,6 +171,8 @@ export interface BakedLayoutCollidersProps {
 export function BakedLayoutColliders({
   gltfPath,
   layoutName,
+  onReady,
+  onError,
 }: BakedLayoutCollidersProps) {
   const version = layoutName ? getVersion(layoutName) : 0;
   const effectiveUrl = version > 0 ? `${gltfPath}?v=${version}` : gltfPath;
@@ -171,9 +182,9 @@ export function BakedLayoutColliders({
   // player will pass through unbaked layouts until the bake lands;
   // that's preferable to a full app crash.
   return (
-    <BakedLayoutErrorBoundary resetKey={layoutName ?? gltfPath} fallback={null}>
+    <BakedLayoutErrorBoundary resetKey={layoutName ?? gltfPath} fallback={null} onError={onError}>
       <Suspense fallback={null}>
-        <BakedLayoutCollidersInner effectiveUrl={effectiveUrl} />
+        <BakedLayoutCollidersInner effectiveUrl={effectiveUrl} onReady={onReady} />
       </Suspense>
     </BakedLayoutErrorBoundary>
   );

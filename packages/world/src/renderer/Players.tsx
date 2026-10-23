@@ -40,6 +40,8 @@ interface PlayersProps {
    * timeScale updates). Used by the Mugshot mode to produce a
    * deterministic frame for snapshot testing. */
   paused?: boolean;
+  /** When false, the self player is not rendered. Default true. */
+  selfReady?: boolean;
   /** Ref mutated each frame by SceneFrame to reflect local player airborne
    * state. Used to override motion to 'jumping' for the self avatar without
    * a React re-render. Ref is created in Scene.tsx and threaded to both
@@ -136,6 +138,7 @@ export function Players({
   selfBodyRef,
   paused,
   isAirborneRef,
+  selfReady = true,
 }: PlayersProps) {
   const [worldSettings, setWorldSettings] = useState(
     () => store.getState().worldSettings,
@@ -398,7 +401,7 @@ export function Players({
 
   return (
     <>
-      {players.map((p) => {
+      {players.filter((p) => selfReady || p.id !== selfId).map((p) => {
         const isSelf = p.id === selfId;
         const bodyTag: ColliderTag = { kind: 'body', ownerId: p.id };
         const innerTag: ColliderTag = { kind: 'inner-sensor', ownerId: p.id };

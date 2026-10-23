@@ -54,17 +54,19 @@ function setup() {
 }
 
 describe('usePlaySession', () => {
-  it('pushes world objects, drops the player above the first spawn and reports spawn points', async () => {
+  it('pushes world objects, places the player just above the first spawn and reports spawn points', async () => {
     const { actions, onMapApplied, render } = setup();
     const { result } = render('office');
 
     await waitFor(() => expect(result.current.ready).toBe(true));
     expect(actions.setWorldObjects).toHaveBeenCalledOnce();
     expect(actions.setWorldObjects.mock.calls[0][0].instances).toHaveLength(1);
-    expect(actions.setSelfPosition).toHaveBeenCalledWith({ x: 1, y: 6, z: 3 }, { x: 0, y: 0, z: 0 }, 0, false);
+    expect(actions.setSelfPosition).toHaveBeenCalledWith({ x: 1, y: 2.1, z: 3 }, { x: 0, y: 0, z: 0 }, 0, false);
     expect(onMapApplied).toHaveBeenCalledWith([{ x: 1, y: 2, z: 3 }]);
     expect(result.current.spawnPoints).toEqual([{ x: 1, y: 2, z: 3 }]);
     expect(result.current.error).toBeNull();
+    expect(result.current.loaded).toBe(true);
+    expect(result.current.failed).toBe(false);
   });
 
   it('re-applies the map when reloadKey changes', async () => {
@@ -87,17 +89,21 @@ describe('usePlaySession', () => {
 
     await waitFor(() => expect(result.current.error).toMatch(/missing/));
     expect(result.current.ready).toBe(true);
+    expect(result.current.loaded).toBe(true);
+    expect(result.current.failed).toBe(false);
     expect(result.current.spawnPoints).toEqual([{ x: 1, y: 2, z: 3 }]);
     expect(actions.setWorldObjects).toHaveBeenCalledOnce();
     expect(onMapApplied).toHaveBeenCalledOnce();
   });
 
-  it('settles a failed first load so the scene can mount, with the error set', async () => {
+  it('settles a failed first load as failed, with the error set', async () => {
     const { actions, onMapApplied, render } = setup();
     const { result } = render('missing');
 
     await waitFor(() => expect(result.current.ready).toBe(true));
     expect(result.current.error).toMatch(/missing/);
+    expect(result.current.loaded).toBe(false);
+    expect(result.current.failed).toBe(true);
     expect(result.current.spawnPoints).toEqual([]);
     expect(actions.setWorldObjects).not.toHaveBeenCalled();
     expect(onMapApplied).not.toHaveBeenCalled();

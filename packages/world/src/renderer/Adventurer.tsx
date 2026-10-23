@@ -8,13 +8,15 @@ const ANIM_GENERAL = '/models/animations/Rig_Medium_General.glb';
 const ANIM_MOVEMENT = '/models/animations/Rig_Medium_MovementBasic.glb';
 const ANIM_MOVEMENT_ADV = '/models/animations/Rig_Medium_MovementAdvanced.glb';
 const ANIM_COMBAT_RANGED = '/models/animations/Rig_Medium_CombatRanged.glb';
+export const ANIMATION_URLS = [ANIM_GENERAL, ANIM_MOVEMENT, ANIM_MOVEMENT_ADV, ANIM_COMBAT_RANGED];
 
-useGLTF.preload(ANIM_GENERAL);
-useGLTF.preload(ANIM_MOVEMENT);
-useGLTF.preload(ANIM_MOVEMENT_ADV);
-useGLTF.preload(ANIM_COMBAT_RANGED);
+export const characterUrl = (character: CharacterName) => `/models/characters/${character}.glb`;
+
+for (const url of ANIMATION_URLS) {
+  useGLTF.preload(url);
+}
 for (const c of CHARACTERS) {
-  useGLTF.preload(`/models/characters/${c}.glb`);
+  useGLTF.preload(characterUrl(c));
 }
 
 /**
@@ -124,7 +126,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     },
     ref,
   ) {
-    const url = `/models/characters/${character}.glb`;
+    const url = characterUrl(character);
     const character_gltf = useGLTF(url);
     const general = useGLTF(ANIM_GENERAL);
     const movement = useGLTF(ANIM_MOVEMENT);
