@@ -58,10 +58,12 @@ export async function startOfficeSync({
   local,
   channel,
   voice,
+  holdSelf,
 }: {
   local: PersistentLocalState;
   channel: Channel;
   voice: VoiceAdapter;
+  holdSelf?: boolean;
 }): Promise<OfficeSync> {
   const clock = { now: () => performance.now() };
   const sync = new SyncEngine({
@@ -70,6 +72,7 @@ export async function startOfficeSync({
     bus: local.bus,
     channel,
     clock,
+    holdSelf,
   });
   const handshake = new SnapshotHandshake({
     selfId: local.selfId,
@@ -78,7 +81,12 @@ export async function startOfficeSync({
     sync,
     channel,
     clock,
-    serialize: () => serializeOfficeState(local.store.getState()),
+    serialize: () => {
+      const state = local.store.getState();
+      if (!sync.isSelfHeld()) return serializeOfficeState(state);
+      const { [local.selfId]: _self, ...players } = state.players;
+      return serializeOfficeState({ ...state, players });
+    },
   });
   const comm = new Communication({
     officeId: local.officeId,

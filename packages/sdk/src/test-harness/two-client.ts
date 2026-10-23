@@ -29,7 +29,7 @@ export interface MultiClientHarness {
   hub: ReturnType<typeof createInMemoryChannelHub>;
   clock: FakeClock;
   clients: Map<PlayerId, ClientHandle>;
-  add(id: PlayerId, opts?: { seedSelf?: boolean }): Promise<ClientHandle>;
+  add(id: PlayerId, opts?: { seedSelf?: boolean; holdSelf?: boolean }): Promise<ClientHandle>;
   remove(id: PlayerId): void;
   /** Run the per-client tick (rules) once on every client. */
   tick(): void;
@@ -67,7 +67,7 @@ export function createMultiClientHarness(opts?: {
   // at the moment the client is created.
   const lastTickState = new Map<PlayerId, ReturnType<Store['getState']>>();
 
-  async function add(id: PlayerId, addOpts?: { seedSelf?: boolean }): Promise<ClientHandle> {
+  async function add(id: PlayerId, addOpts?: { seedSelf?: boolean; holdSelf?: boolean }): Promise<ClientHandle> {
     const seedSelf = addOpts?.seedSelf ?? true;
     const store = createStore({ selfId: id, officeId });
     const bus = createBus();
@@ -81,7 +81,7 @@ export function createMultiClientHarness(opts?: {
     // proximity events should emit them on `bus` themselves.
     const rules = createRuleRegistry();
     const detachProximity = attachProximityReducer(store, bus);
-    const sync = new SyncEngine({ store, actions, bus, channel, clock });
+    const sync = new SyncEngine({ store, actions, bus, channel, clock, holdSelf: addOpts?.holdSelf });
     lastTickState.set(id, store.getState());
     const handshake = new SnapshotHandshake({
       selfId: id,

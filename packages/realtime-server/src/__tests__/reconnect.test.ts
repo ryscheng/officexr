@@ -75,21 +75,24 @@ describe('WsChannel reconnect', () => {
   }
 
   /** A SyncEngine-driven peer that names itself once connected, as the web app does. */
-  async function namedPeer(userId: PlayerId): Promise<{ store: Store; statuses: ChannelStatus[] }> {
+  async function namedPeer(
+    userId: PlayerId,
+    holdSelf = false,
+  ): Promise<{ store: Store; statuses: ChannelStatus[]; sync: SyncEngine }> {
     const c = channel(userId);
     const statuses = statusesOf(c);
     const store = createStore({ selfId: userId, officeId: 'debug-office' });
     const bus = createBus();
     const actions = createActions(store, bus);
     actions.upsertPlayer({ id: userId, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0 });
-    const sync = new SyncEngine({ store, actions, bus, channel: c, clock: { now: () => Date.now() } });
+    const sync = new SyncEngine({ store, actions, bus, channel: c, clock: { now: () => Date.now() }, holdSelf });
     // Started first so the join snapshot, which can arrive in the same tick as hello-ack, isn't missed.
     sync.start();
     stops.push(() => sync.stop());
     await c.subscribe();
     c.trackPresence({});
     actions.upsertPlayer({ id: userId, name: `name-${userId}` });
-    return { store, statuses };
+    return { store, statuses, sync };
   }
 
   beforeEach(() => {
@@ -176,6 +179,25 @@ describe('WsChannel reconnect', () => {
       expect(nameOf(c.store, 'A')).toBe('name-A');
       expect(nameOf(c.store, 'B')).toBe('name-B');
     });
+  });
+
+  it('a held peer stays unannounced across a reconnect until released', async () => {
+    await startServer();
+    const a = await namedPeer('A');
+    const b = await namedPeer('B', true);
+    await vi.waitFor(() => expect(nameOf(b.store, 'A')).toBe('name-A'));
+
+    await restartServer();
+    await vi.waitFor(() => {
+      expect(a.statuses.at(-1)).toBe('live');
+      expect(b.statuses.at(-1)).toBe('live');
+      expect(nameOf(b.store, 'A')).toBe('name-A');
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(a.store.getState().players['B']).toBeUndefined();
+
+    b.sync.releaseSelf();
+    await vi.waitFor(() => expect(nameOf(a.store, 'B')).toBe('name-B'));
   });
 
   it('stops for good when a newer socket with the same userId replaces it', async () => {
