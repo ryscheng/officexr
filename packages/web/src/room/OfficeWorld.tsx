@@ -8,9 +8,12 @@ import { ChatPanel } from '../hud/ChatPanel';
 import { PresenceList } from '../hud/PresenceList';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
 import { CharacterPicker } from './CharacterPicker';
+import { JoinPrompt } from './JoinPrompt';
 import { OfficeSettings } from './OfficeSettings';
-import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
+import { playerIdFor } from './playerId';
+import { useJoinCheck } from './useJoinCheck';
 import { useOfficeSession } from './useOfficeSession';
+import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 
 const storages = {
   maps: withDefaultMap(new FilesystemMapStorage()),
@@ -29,14 +32,18 @@ export function OfficeWorld(props: { office: Office; me: Identity }) {
 
 const isReplaced = (s: OfficeState) => s.realtime.status === 'replaced';
 
+const REPLACED_MESSAGE = 'This office was opened in another window. Reload to rejoin here.';
+
 function ReplacedBanner({ store }: { store: Store }) {
   const replaced = useStoreSelector(store, isReplaced);
-  return replaced ? <ErrorBanner message="This office was opened in another window. Reload to rejoin here." /> : null;
+  return replaced ? <ErrorBanner message={REPLACED_MESSAGE} /> : null;
 }
 
 function World({ office: initialOffice, me }: { office: Office; me: Identity }) {
   const [office, setOffice] = useState(initialOffice);
-  const session = useOfficeSession(office.id, me);
+  const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
+  const join = useJoinCheck(office.id, me.login);
+  const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -50,7 +57,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           bus={session.local.bus}
           sync={session.office.sync}
           handshake={session.office.handshake}
-          selfId={me.login}
+          selfId={session.local.selfId}
           mapName={office.map_name ?? DEFAULT_MAP}
           storages={storages}
           realtime="ws"
@@ -58,7 +65,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           onDismissError={() => setSaveError(null)}
         >
           {session.voice && <JaasMeeting voice={session.voice} />}
-          <ChatPanel store={session.local.store} actions={session.local.actions} selfId={me.login} />
+          <ChatPanel store={session.local.store} actions={session.local.actions} selfId={session.local.selfId} />
           <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
           <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
             <OfficeSettings office={office} me={me} onSaved={setOffice} />
@@ -73,6 +80,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         </PlayView>
       )}
       {session.type === 'ready' && <ReplacedBanner store={session.local.store} />}
+      {join.state === 'prompt' && <JoinPrompt onJoin={join.join} onCancel={join.cancel} />}
+      {session.type === 'replaced' && <ErrorBanner message={REPLACED_MESSAGE} />}
       {session.type === 'error' && session.message !== dismissedError && (
         <ErrorBanner message={session.message} onDismiss={() => setDismissedError(session.message)} />
       )}

@@ -15,28 +15,33 @@ import { loadCharacter } from './character';
 export type OfficeSession =
   | { type: 'connecting' }
   | { type: 'ready'; local: PersistentLocalState; office: OfficeSync; voice: JaasVoiceAdapter | null }
+  | { type: 'replaced' }
   | { type: 'error'; message: string };
 
-function createJaasVoice(me: Identity): JaasVoiceAdapter | null {
+function createJaasVoice(me: Identity, selfId: string): JaasVoiceAdapter | null {
   const jaas = getJaasConfig();
   if (!jaas) {
     return null;
   }
-  const jwt = generateJaaSJwt(jaas.appId, jaas.apiKeyId, jaas.privateKeyPem, { id: me.login, name: me.name, email: '' });
+  const jwt = generateJaaSJwt(jaas.appId, jaas.apiKeyId, jaas.privateKeyPem, { id: selfId, name: me.name, email: '' });
   return new JaasVoiceAdapter({ appId: jaas.appId, jwt, displayName: me.name });
 }
 
-/** Joins `officeId` on the realtime server (proxied at `/ws`) as `me`, with JaaS voice when `/config.js` has keys. */
-export function useOfficeSession(officeId: string, me: Identity): OfficeSession {
+/** Joins `officeId` on the realtime server (proxied at `/ws`) as player `selfId` of `me`, once `enabled`, with JaaS voice when `/config.js` has keys. */
+export function useOfficeSession(officeId: string, me: Identity, selfId: string, enabled: boolean): OfficeSession {
   const [session, setSession] = useState<OfficeSession>({ type: 'connecting' });
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     setSession({ type: 'connecting' });
-    const local = createPersistentLocalState({ selfId: me.login, officeId });
-    const voice = createJaasVoice(me);
+    const local = createPersistentLocalState({ selfId, officeId });
+    const voice = createJaasVoice(me, selfId);
     const { channel, voiceAdapter } = createStack({
       mode: 'ws',
       url: `${window.location.origin.replace(/^http/, 'ws')}/ws`,
-      selfId: me.login,
+      selfId,
+      login: me.login,
       officeId,
       voiceAdapter: voice ?? undefined,
     });
@@ -56,11 +61,17 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
           return;
         }
         // After start, so the sync engine announces the name and character to the office.
-        local.actions.upsertPlayer({ id: me.login, name: me.name, avatar: { model } });
+        local.actions.upsertPlayer({ id: selfId, name: me.name, avatar: { model } });
         setSession({ type: 'ready', local, office: started, voice });
       },
       (err: Error) => {
-        if (!cancelled) {
+        if (cancelled) {
+          return;
+        }
+        // Losing the join race closes the socket as replaced before the handshake completes.
+        if (local.store.getState().realtime.status === 'replaced') {
+          setSession({ type: 'replaced' });
+        } else {
           setSession({ type: 'error', message: `Realtime server not reachable: ${err.message}` });
         }
       },
@@ -71,6 +82,6 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
       voiceAdapter.dispose();
       channel.close();
     };
-  }, [officeId, me.login, me.name]);
+  }, [officeId, me.login, me.name, selfId, enabled]);
   return session;
 }

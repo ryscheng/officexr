@@ -9,6 +9,7 @@ import {
 } from '@officexr/sdk';
 import { WebSocket as RawWebSocket, WebSocketServer } from 'ws';
 import { RealtimeServer } from '../server.ts';
+import { REPLACED_CLOSE_CODE } from '../protocol.ts';
 import { WsChannel } from '../ws-channel.ts';
 // Note: external consumers go via subpath exports:
 //   import { WsChannel } from '@officexr/realtime-server';
@@ -274,6 +275,26 @@ describe('WsChannel handshake', () => {
       const started = Date.now();
       await expect(channel.subscribe()).rejects.toThrow('closed before handshake');
       expect(Date.now() - started).toBeLessThan(2000);
+    } finally {
+      await new Promise((resolve) => wss.close(resolve));
+    }
+  });
+
+  it('has status replaced by the time subscribe() rejects after a replaced close before hello-ack', async () => {
+    const wss = new WebSocketServer({ port: 0 });
+    wss.on('connection', (ws) => ws.on('message', () => ws.close(REPLACED_CLOSE_CODE, 'replaced')));
+    await new Promise<void>((resolve) => wss.once('listening', () => resolve()));
+    const { port } = wss.address() as AddressInfo;
+    try {
+      const channel = new WsChannel({ url: `ws://127.0.0.1:${port}/ws`, userId: 'A' });
+      let statusInCatch: string | undefined;
+      await expect(
+        channel.subscribe().catch((err) => {
+          channel.onStatusChange((s) => (statusInCatch = s))();
+          throw err;
+        }),
+      ).rejects.toThrow();
+      expect(statusInCatch).toBe('replaced');
     } finally {
       await new Promise((resolve) => wss.close(resolve));
     }
