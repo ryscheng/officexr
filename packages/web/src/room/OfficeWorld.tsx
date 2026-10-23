@@ -8,8 +8,8 @@ import { ChatPanel } from '../hud/ChatPanel';
 import { PresenceList } from '../hud/PresenceList';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
 import { CharacterPicker } from './CharacterPicker';
-import { JoinPrompt } from './JoinPrompt';
 import { OfficeSettings } from './OfficeSettings';
+import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
 import { useJoinCheck } from './useJoinCheck';
 import { useOfficeSession } from './useOfficeSession';
@@ -44,7 +44,6 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
   const join = useJoinCheck(office.id, me.login);
   const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
-  const [dismissedError, setDismissedError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   return (
@@ -80,11 +79,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         </PlayView>
       )}
       {session.type === 'ready' && <ReplacedBanner store={session.local.store} />}
-      {join.state === 'prompt' && <JoinPrompt onJoin={join.join} onCancel={join.cancel} />}
+      <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onCancel={join.cancel} />
       {session.type === 'replaced' && <ErrorBanner message={REPLACED_MESSAGE} />}
-      {session.type === 'error' && session.message !== dismissedError && (
-        <ErrorBanner message={session.message} onDismiss={() => setDismissedError(session.message)} />
-      )}
     </div>
   );
 }
