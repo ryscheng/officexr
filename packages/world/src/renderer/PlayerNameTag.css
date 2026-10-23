@@ -1,0 +1,11 @@
+.player-name-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  font: 12px/1.4 sans-serif;
+  white-space: nowrap;
+  user-select: none;
+  opacity: 0.5;
+}
+.player-name-tag:hover { opacity: 1; }

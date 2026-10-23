@@ -108,4 +108,19 @@ describe('BotDriver', () => {
     spyChannel.close();
     expect(received.length).toBeGreaterThan(0);
   });
+
+  it('announces the bot name to peers', async () => {
+    const spyChannel = new InMemoryChannel(hub, 'spy-client');
+    const received: { kind: string; name?: string }[] = [];
+    await spyChannel.subscribe();
+    spyChannel.on((event) => {
+      received.push(event as { kind: string; name?: string });
+    });
+
+    await bot.start();
+    await new Promise((r) => setTimeout(r, 0));
+
+    spyChannel.close();
+    expect(received.some((e) => e.kind === 'avatar:update' && !!e.name)).toBe(true);
+  });
 });
