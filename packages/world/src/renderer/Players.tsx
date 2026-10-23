@@ -511,7 +511,7 @@ export function Players({
               <PlayerNameTag
                 store={store}
                 playerId={p.id}
-                selfId={selfId}
+                isSelf={isSelf}
                 paused={paused ?? false}
               />
             </group>

@@ -10,7 +10,7 @@ export {
   type AnimationState,
 } from './Adventurer.tsx';
 export { Players } from './Players.tsx';
-export { PlayerNameTag, shouldShowNameTag } from './PlayerNameTag.tsx';
+export { PlayerNameTag } from './PlayerNameTag.tsx';
 export { CharacterPreviewCanvas } from './CharacterPreviewCanvas.tsx';
 export { MapColliders } from './MapColliders.tsx';
 export { BakedLayout, type BakedLayoutProps } from './BakedLayout.tsx';

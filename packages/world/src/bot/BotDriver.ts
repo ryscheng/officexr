@@ -181,7 +181,6 @@ export class BotDriver {
 
     botActions.upsertPlayer({
       id: botId,
-      name: this.botId,
       pos: { ...this.startPos },
       vel: { x: 0, y: 0, z: 0 },
       yaw: 0,
@@ -223,6 +222,8 @@ export class BotDriver {
     await botChannel.subscribe();
     botChannel.trackPresence({});
     botSync.start();
+    // Named after start(): the state-diff broadcaster only announces a name on change, so a name set before start() never reaches peers.
+    botActions.upsertPlayer({ id: botId, name: this.botId });
 
     const botHandshake = new SnapshotHandshake({
       selfId: botId,
