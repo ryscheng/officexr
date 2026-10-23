@@ -30,7 +30,8 @@ export type CreateOffice = (input: NewOffice) => Promise<Office>;
 /** The settings a creator may change; only the keys present are written. */
 export type OfficeUpdate = Partial<Pick<NewOffice, 'name' | 'description' | 'mapName'>> & { debugEnabled?: boolean };
 
-export type UpdateOffice = (id: string, update: OfficeUpdate) => Promise<Office>;
+/** Resolves to `undefined` when the office no longer exists. */
+export type UpdateOffice = (id: string, update: OfficeUpdate) => Promise<Office | undefined>;
 
 /** Whether a studio map with this name exists; must reject names that aren't plain slugs. */
 export type MapExists = (name: string) => Promise<boolean>;
@@ -134,6 +135,10 @@ async function parseOfficeUpdate(body: unknown, mapExists: MapExists): Promise<O
 
 /** The validated input, or the error to send back with a 400. */
 async function parseNewOffice(body: unknown, mapExists: MapExists): Promise<Omit<NewOffice, 'createdByLogin'> | string> {
+  // Before parsing, so a missing name never costs a map lookup.
+  if ((body as { name?: unknown } | null)?.name === undefined) {
+    return NAME_ERROR;
+  }
   const update = await parseOfficeUpdate(body, mapExists);
   if (typeof update === 'string') {
     return update;
@@ -238,7 +243,8 @@ export function apiMiddleware(
         if (typeof update === 'string') {
           return send(400, { error: update });
         }
-        return send(200, Object.keys(update).length ? await updateOffice(office.id, update) : office);
+        const updated = Object.keys(update).length ? await updateOffice(office.id, update) : office;
+        return updated ? send(200, updated) : send(404, { error: 'Office not found' });
       }
       return send(404, { error: 'Not found' });
     } catch (err) {

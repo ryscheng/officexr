@@ -158,7 +158,6 @@ describe('/api/offices', () => {
     const base = await start('configurePreviewServer');
     const office = await (await fetch(`${base}/api/offices/${ID}`)).json();
     expect(office).toEqual(offices[0]);
-    expect(office).toMatchObject({ created_by_login: 'a@example.com', debug_enabled: false });
     expect((await fetch(`${base}/api/offices/22222222-2222-4222-8222-222222222222`)).status).toBe(404);
     expect((await fetch(`${base}/api/offices/not-a-uuid`)).status).toBe(404);
   });
@@ -219,6 +218,11 @@ describe('POST /api/offices', () => {
     expect(calls).not.toContain('createOffice');
   });
 
+  it('is 400 for a missing name without checking the map', async () => {
+    expect((await post({ mapName: 'hq' })).status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
   it('is 400 for an unknown map without creating', async () => {
     expect((await post({ name: 'Lab', mapName: 'nope' })).status).toBe(400);
     expect(calls).toEqual(['mapExists:nope']);
@@ -238,14 +242,17 @@ describe('POST /api/offices', () => {
 describe('PATCH /api/offices/:id', () => {
   const bob = { 'Tailscale-User-Login': 'b@example.com', 'Tailscale-User-Name': 'Bob' };
   const calls: string[] = [];
+  const updates: unknown[] = [];
   const spyUpdate: UpdateOffice = async (id, update) => {
     calls.push('updateOffice');
+    updates.push(update);
     return updateOffice(id, update);
   };
   const middleware = apiMiddleware(queryOffices, characters, createOffice, spyUpdate, async (name) => name === 'hq' || name === 'default');
 
   const patch = async (id: string, body: unknown, headers: Record<string, string> = tailscale) => {
     calls.length = 0;
+    updates.length = 0;
     server = createServer((req, res) => middleware(req, res, () => res.end()));
     await new Promise<void>((resolve) => server!.listen(0, resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -270,6 +277,7 @@ describe('PATCH /api/offices/:id', () => {
 
   it('accepts a subset of fields', async () => {
     const res = await patch(ID, { debugEnabled: true });
+    expect(updates).toEqual([{ debugEnabled: true }]);
     expect(await res.json()).toEqual({ ...offices[0], debug_enabled: true });
   });
 
@@ -301,6 +309,15 @@ describe('PATCH /api/offices/:id', () => {
   ])('is 400 for %s without updating', async (_label, body) => {
     expect((await patch(ID, body)).status).toBe(400);
     expect(calls).toEqual([]);
+  });
+
+  it('is 404 when the office vanishes before the update', async () => {
+    const gone = apiMiddleware(queryOffices, characters, createOffice, async () => undefined, async () => true);
+    server = createServer((req, res) => gone(req, res, () => res.end()));
+    await new Promise<void>((resolve) => server!.listen(0, resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const res = await fetch(`${base}/api/offices/${ID}`, { method: 'PATCH', headers: tailscale, body: '{"name":"Lab"}' });
+    expect(res.status).toBe(404);
   });
 
   it('is 413 past the body limit without updating', async () => {

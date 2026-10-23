@@ -53,12 +53,25 @@ describe('OfficeSettings', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(updated));
     const [url, init] = fetchMock.mock.calls.find(([, i]) => i?.method === 'PATCH')!;
     expect(url).toBe('/api/offices/o1');
-    expect(JSON.parse(init!.body as string)).toEqual({
-      name: 'Lab',
-      description: 'Main',
-      mapName: 'default',
-      debugEnabled: true,
-    });
+    expect(JSON.parse(init!.body as string)).toEqual({ name: 'Lab', mapName: 'default', debugEnabled: true });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('sends nothing for untouched fields', async () => {
+    const { fetchMock } = setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByLabelText(/Debug mode/));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const [, init] = fetchMock.mock.calls.find(([, i]) => i?.method === 'PATCH')!;
+    expect(JSON.parse(init!.body as string)).toEqual({ debugEnabled: true });
+  });
+
+  it('moves focus into the dialog and closes on Escape', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(document.activeElement).toBe(screen.getByRole('dialog'));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 

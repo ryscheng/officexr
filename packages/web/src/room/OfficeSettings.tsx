@@ -1,10 +1,21 @@
 import { useState, type FormEvent } from 'react';
-import type { Identity, Office } from '../../server/api';
+import type { Identity, Office, OfficeUpdate } from '../../server/api';
 import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
 import { Dialog } from '../Dialog';
 import { errorMessage } from '../useApi';
 import { useMapNames } from '../useMapNames';
 import { DEFAULT_MAP } from './withDefaultMap';
+
+/** Only the fields that differ, so an untouched map (or one since removed) can't fail the save. */
+function changedFields(office: Office, next: Required<OfficeUpdate>): OfficeUpdate {
+  const current = {
+    name: office.name,
+    description: office.description ?? '',
+    mapName: office.map_name ?? DEFAULT_MAP,
+    debugEnabled: office.debug_enabled,
+  };
+  return Object.fromEntries(Object.entries(next).filter(([key, value]) => value !== current[key as keyof typeof current]));
+}
 
 function SettingsForm({ office, onSaved, onClose }: { office: Office; onSaved: (office: Office) => void; onClose: () => void }) {
   const { maps, error: mapsError } = useMapNames();
@@ -21,12 +32,12 @@ function SettingsForm({ office, onSaved, onClose }: { office: Office; onSaved: (
       const res = await fetch(`/api/offices/${encodeURIComponent(office.id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: form.get('name'),
-          description: form.get('description'),
+        body: JSON.stringify(changedFields(office, {
+          name: form.get('name') as string,
+          description: form.get('description') as string,
           mapName,
           debugEnabled: form.has('debugEnabled'),
-        }),
+        })),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) {

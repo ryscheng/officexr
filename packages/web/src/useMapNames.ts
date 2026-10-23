@@ -8,8 +8,16 @@ export function useMapNames(): { maps: string[]; error: string | null } {
     let cancelled = false;
     new FilesystemMapStorage()
       .list()
-      .then((list) => !cancelled && setState({ maps: list.map((m) => m.name), error: null }))
-      .catch((err: Error) => !cancelled && setState({ maps: [], error: err.message }));
+      .then((list) => {
+        if (!cancelled) {
+          setState({ maps: list.map((m) => m.name), error: null });
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setState({ maps: [], error: err.message });
+        }
+      });
     return () => {
       cancelled = true;
     };
