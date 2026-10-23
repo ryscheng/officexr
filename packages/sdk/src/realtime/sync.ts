@@ -7,6 +7,7 @@ import type { NetEvent } from './protocol.ts';
 import type { Clock } from '../test-harness/time.ts';
 import { applyNetEventToStore } from './apply-net-event.ts';
 import { InboundSeqTable } from './inbound-seq-table.ts';
+import { createSeqCounter, type SeqCounter } from './seq-counter.ts';
 import { InboundRouter } from './inbound/router.ts';
 import {
   PositionBroadcaster,
@@ -26,6 +27,11 @@ interface SyncEngineOpts {
   clock: Clock;
   /** Optional shared seq table so other modules (e.g. SnapshotHandshake) can read/seed it. */
   inboundSeqs?: InboundSeqTable;
+  /**
+   * Wall-clock source for the initial outbound seq. Deliberately separate from
+   * `clock`, which may restart near 0 on reload.
+   */
+  seqSeed?: () => number;
 }
 
 /**
@@ -53,12 +59,13 @@ export class SyncEngine {
   private offPresence: (() => void) | null = null;
 
   // outbound seq counter (per local actor); shared between collaborators
-  private nextSeq = 1;
+  private seqs: SeqCounter;
 
   constructor(opts: SyncEngineOpts) {
     this.store = opts.store;
     this.actions = opts.actions;
     this.channel = opts.channel;
+    this.seqs = createSeqCounter(opts.seqSeed);
 
     const broadcast = (event: NetEvent) => this.broadcast(event);
     const takeSeq = () => this.takeSeq();
@@ -92,9 +99,9 @@ export class SyncEngine {
     return this.inbound.getInboundSeqTable();
   }
 
-  /** Highest outbound seq we've emitted from self. 0 if we've sent nothing. */
+  /** Highest outbound seq emitted from self (the clock-derived seed if none yet). */
   lastOutboundSeq(): number {
-    return this.nextSeq - 1;
+    return this.seqs.last();
   }
 
   /**
@@ -202,6 +209,6 @@ export class SyncEngine {
   }
 
   private takeSeq(): number {
-    return this.nextSeq++;
+    return this.seqs.next();
   }
 }
