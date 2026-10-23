@@ -42,7 +42,6 @@ export function useOfficeSession(officeId: string, me: Identity): OfficeSession 
     });
     let cancelled = false;
     let office: OfficeSync | undefined;
-    // ponytail: a server-initiated close (same login in another tab, sidecar restart) isn't surfaced or retried.
     const character = loadCharacter(officeId, me.login);
     startOfficeSync({ local, channel, voice: voiceAdapter }).then(
       async (started) => {

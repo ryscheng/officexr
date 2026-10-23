@@ -3,6 +3,8 @@ import type { NetEvent } from './protocol.ts';
 
 export type PresenceData = Record<string, unknown>;
 
+export type ChannelStatus = 'connecting' | 'live' | 'reconnecting' | 'replaced' | 'closed';
+
 export interface Channel {
   subscribe(): Promise<void>;
   send(event: NetEvent): Promise<void>;
@@ -10,7 +12,43 @@ export interface Channel {
   trackPresence(data: PresenceData): void;
   onPresenceChange(handler: (joined: PlayerId[], left: PlayerId[]) => void): () => void;
   listPresent(): PlayerId[];
+  /** Calls `handler` with the current status right away, then on every change. */
+  onStatusChange(handler: (status: ChannelStatus) => void): () => void;
   close(): void;
+}
+
+/** Status half of the {@link Channel} contract, shared so every implementation reports it identically. */
+export class ChannelStatusEmitter {
+  private status: ChannelStatus = 'connecting';
+  private readonly handlers = new Set<(status: ChannelStatus) => void>();
+
+  get current(): ChannelStatus {
+    return this.status;
+  }
+
+  set(status: ChannelStatus): void {
+    if (this.status === status) return;
+    this.status = status;
+    for (const h of [...this.handlers]) {
+      try {
+        h(status);
+      } catch (err) {
+        console.error('[channel] status handler threw:', err);
+      }
+    }
+  }
+
+  subscribe(handler: (status: ChannelStatus) => void): () => void {
+    this.handlers.add(handler);
+    handler(this.status);
+    return () => {
+      this.handlers.delete(handler);
+    };
+  }
+
+  clear(): void {
+    this.handlers.clear();
+  }
 }
 
 // --- In-memory implementation for tests / harness ---
@@ -83,6 +121,7 @@ export class InMemoryChannel implements Channel {
   private presenceHandlers = new Set<
     (joined: PlayerId[], left: PlayerId[]) => void
   >();
+  private readonly status = new ChannelStatusEmitter();
 
   constructor(hub: Hub, userId: PlayerId) {
     this.hub = hub;
@@ -93,6 +132,7 @@ export class InMemoryChannel implements Channel {
     if (this.subscribed || this.closed) return;
     this.subscribed = true;
     this.hub.attach(this);
+    this.status.set('live');
   }
 
   async send(event: NetEvent): Promise<void> {
@@ -125,13 +165,19 @@ export class InMemoryChannel implements Channel {
     return this.hub.present();
   }
 
+  onStatusChange(handler: (status: ChannelStatus) => void): () => void {
+    return this.status.subscribe(handler);
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;
     this.subscribed = false;
     this.hub.detach(this);
+    this.status.set('closed');
     this.handlers.clear();
     this.presenceHandlers.clear();
+    this.status.clear();
   }
 
   // hub-internal --------------------------------------------------

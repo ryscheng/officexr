@@ -89,6 +89,12 @@ export async function startOfficeSync({
     voice,
   });
 
+  // `closed` only follows our own close() on unmount; there is nothing left to show.
+  const offStatus = channel.onStatusChange((status) => {
+    if (status !== 'closed') {
+      local.actions.setRealtimeStatus(status);
+    }
+  });
   await channel.subscribe();
   channel.trackPresence({});
   sync.start();
@@ -100,6 +106,7 @@ export async function startOfficeSync({
     handshake,
     comm,
     stop: () => {
+      offStatus();
       comm.stop();
       sync.stop();
       handshake.stop();

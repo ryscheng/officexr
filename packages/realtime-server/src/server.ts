@@ -5,6 +5,7 @@ import {
   type Server as HttpServer,
   type ServerResponse,
 } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
@@ -29,6 +30,7 @@ import {
 import {
   decodeFrame,
   encodeFrame,
+  REPLACED_CLOSE_CODE,
   SERVER_SELF_ID,
   type CustomFrame,
   type Frame,
@@ -283,11 +285,13 @@ export class RealtimeServer {
 
     http.on('upgrade', (req, socket, head) => {
       const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
-      if (url.pathname !== this.path) {
+      // No wss once stop() is underway; an undestroyed socket would keep the http close waiting.
+      const wss = this.wss;
+      if (url.pathname !== this.path || !wss) {
         socket.destroy();
         return;
       }
-      this.wss!.handleUpgrade(req, socket, head, (ws) => {
+      wss.handleUpgrade(req, socket, head, (ws) => {
         this.onConnection(ws, req);
       });
     });
@@ -312,13 +316,20 @@ export class RealtimeServer {
     }
   }
 
+  /** The port actually listened on; differs from the option when that was 0. */
+  get boundPort(): number {
+    return (this.httpServer!.address() as AddressInfo).port;
+  }
+
   async stop(): Promise<void> {
     this.bootLoad?.abort();
     for (const room of this.rooms.values()) room.close();
     this.rooms.clear();
-    if (this.wss) {
-      await new Promise<void>((resolve) => this.wss!.close(() => resolve()));
+    const wss = this.wss;
+    if (wss) {
+      // Cleared before awaiting so an upgrade arriving mid-close is destroyed, not accepted into a fresh room.
       this.wss = null;
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
     }
     if (this.httpServer) {
       await new Promise<void>((resolve, reject) =>
@@ -409,9 +420,8 @@ export class RealtimeServer {
   }
 
   private acceptClient(room: Room, ws: WebSocket, userId: PlayerId): WsClient {
-    // Honor identity-checked detach: if a stale client with the same id
-    // exists (rare — only on rapid reconnect), retire it first.
-    room.clients.get(userId)?.terminate();
+    // Newest socket per userId wins; the older one is told why so it stops.
+    room.clients.get(userId)?.replace();
 
     const channel = new InMemoryChannel(room.hub, userId);
     const client = new WsClient(userId, ws, channel);
@@ -602,10 +612,14 @@ export class WsClient {
     this.ws.send(raw);
   }
 
-  terminate(): void {
+  replace(): void {
+    this.terminate(REPLACED_CLOSE_CODE, 'replaced');
+  }
+
+  terminate(code?: number, reason?: string): void {
     this.detach();
     try {
-      this.ws.close();
+      this.ws.close(code, reason);
     } catch {
       // ignore
     }

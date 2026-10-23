@@ -24,6 +24,10 @@ export class InboundSeqTable {
     if (seq > last) this.table.set(actorId, seq);
   }
 
+  forget(actorId: PlayerId): void {
+    this.table.delete(actorId);
+  }
+
   /**
    * Merge a snapshot's seq table in. Each entry only advances forward —
    * an older `seq` from the snapshot doesn't override a higher one we've

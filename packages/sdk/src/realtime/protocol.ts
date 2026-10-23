@@ -89,7 +89,7 @@ const ZWhiteboardState = z.object({
 });
 
 const ZRealtimeState = z.object({
-  status: z.enum(['connecting', 'live', 'reconnecting', 'snapshot-pending']),
+  status: z.enum(['connecting', 'live', 'reconnecting', 'replaced', 'snapshot-pending']),
   snapshotTarget: z.string().nullable(),
   versionWarnings: z.record(z.string(), z.number()),
 });

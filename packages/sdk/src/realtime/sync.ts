@@ -2,7 +2,7 @@ import type { Actions } from '../game-state/actions.ts';
 import type { Bus } from '../game-state/bus.ts';
 import type { Store } from '../game-state/store.ts';
 import type { OfficeState } from '../game-state/types.ts';
-import type { Channel } from './channel.ts';
+import type { Channel, ChannelStatus } from './channel.ts';
 import type { NetEvent } from './protocol.ts';
 import type { Clock } from '../test-harness/time.ts';
 import { applyNetEventToStore } from './apply-net-event.ts';
@@ -57,6 +57,7 @@ export class SyncEngine {
   private offStore: (() => void) | null = null;
   private offChannel: (() => void) | null = null;
   private offPresence: (() => void) | null = null;
+  private offStatus: (() => void) | null = null;
 
   // outbound seq counter (per local actor); shared between collaborators
   private seqs: SeqCounter;
@@ -169,7 +170,20 @@ export class SyncEngine {
       for (const id of left) {
         if (id === selfId) continue; // never remove self
         this.actions.removePlayer(id);
+        // A returning peer's join snapshot restarts its seqs at 1.
+        // ponytail: peers present across a client-only blip keep their seqs, so their re-sent snapshot is dropped until they next send.
+        this.inbound.getInboundSeqTable().forget(id);
       }
+    });
+    // A restarted server, or a peer that forgot us while we were away,
+    // only learns our pose and name from a fresh announce.
+    let prevStatus: ChannelStatus | null = null;
+    this.offStatus = this.channel.onStatusChange((status) => {
+      if (prevStatus === 'reconnecting' && status === 'live') {
+        this.position.announceSelf();
+        this.stateDiff.announceAvatar();
+      }
+      prevStatus = status;
     });
   }
 
@@ -178,6 +192,7 @@ export class SyncEngine {
     this.offStore?.();
     this.offChannel?.();
     this.offPresence?.();
+    this.offStatus?.();
     this.started = false;
   }
 

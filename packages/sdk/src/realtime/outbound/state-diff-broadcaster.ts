@@ -112,19 +112,10 @@ export class StateDiffBroadcaster {
       this.lastStrokeCount = nextStrokes.length;
     }
 
-    // Peers only learn names from avatar:update, which requires one.
     const me = next.players[next.selfId];
     const prevMe = prev.players[prev.selfId];
-    if (me?.name && (me.name !== prevMe?.name || me.avatar !== prevMe?.avatar)) {
-      this.broadcast({
-        kind: 'avatar:update',
-        v: 1,
-        actorId: next.selfId,
-        seq: this.takeSeq(),
-        t: this.clock.now(),
-        avatar: me.avatar,
-        name: me.name,
-      });
+    if (me?.name !== prevMe?.name || me?.avatar !== prevMe?.avatar) {
+      this.announceAvatar(next);
     }
 
     // worldMap: broadcast on any change. Same JSON-equality dedupe; the map
@@ -213,6 +204,22 @@ export class StateDiffBroadcaster {
       seq: this.takeSeq(),
       t: this.clock.now(),
       objects: state.worldObjects,
+    });
+  }
+
+  /** Broadcast the local player's name + avatar, if it has a name. */
+  announceAvatar(state: OfficeState = this.store.getState()): void {
+    const me = state.players[state.selfId];
+    // Peers only learn names from avatar:update, which requires one.
+    if (!me?.name) return;
+    this.broadcast({
+      kind: 'avatar:update',
+      v: 1,
+      actorId: state.selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      avatar: me.avatar,
+      name: me.name,
     });
   }
 
