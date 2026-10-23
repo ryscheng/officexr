@@ -26,6 +26,11 @@ interface SyncEngineOpts {
   clock: Clock;
   /** Optional shared seq table so other modules (e.g. SnapshotHandshake) can read/seed it. */
   inboundSeqs?: InboundSeqTable;
+  /**
+   * Wall-clock source for the initial outbound seq. Deliberately separate from
+   * `clock`, which may restart near 0 on reload.
+   */
+  seqSeed?: () => number;
 }
 
 /**
@@ -52,13 +57,16 @@ export class SyncEngine {
   private offChannel: (() => void) | null = null;
   private offPresence: (() => void) | null = null;
 
-  // outbound seq counter (per local actor); shared between collaborators
-  private nextSeq = 1;
+  // outbound seq counter (per local actor); shared between collaborators.
+  // Peers keep their dedup table across our reload, so the counter must start
+  // above anything a previous instance of this actor sent.
+  private nextSeq: number;
 
   constructor(opts: SyncEngineOpts) {
     this.store = opts.store;
     this.actions = opts.actions;
     this.channel = opts.channel;
+    this.nextSeq = (opts.seqSeed ?? Date.now)() + 1;
 
     const broadcast = (event: NetEvent) => this.broadcast(event);
     const takeSeq = () => this.takeSeq();
