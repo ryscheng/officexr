@@ -14,6 +14,7 @@ export async function fetchSessionPolicy(
       signal: AbortSignal.timeout(POLICY_TIMEOUT_MS),
     });
     if (res.status !== 200) {
+      await res.body?.cancel();
       return false;
     }
     const office: unknown = await res.json();

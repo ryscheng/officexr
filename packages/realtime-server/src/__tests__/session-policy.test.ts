@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelStatus, PlayerId } from '@officexr/sdk';
 import { WebSocket as RawWebSocket } from 'ws';
 import { RealtimeServer } from '../server.ts';
-import { decodeFrame, encodeFrame, REPLACED_CLOSE_CODE, type HelloFrame } from '../protocol.ts';
+import { decodeFrame, encodeFrame, REPLACED_CLOSE_CODE, type Frame, type HelloFrame } from '../protocol.ts';
 import { WsChannel, type WsChannelOptions } from '../ws-channel.ts';
 
 const OFFICE = 'office-1';
@@ -15,6 +15,23 @@ function officeFetch(office: unknown, status = 200): FakeFetch {
 }
 
 const debugOfficeOf = (login: string): FakeFetch => officeFetch({ debug_enabled: true, created_by_login: login });
+
+/** A fetch whose lookups each wait until the test releases them, in any order. */
+function heldFetch(): { fn: FakeFetch; release: (call: number) => void; calls: () => number } {
+  const resolvers: ((res: Response) => void)[] = [];
+  return {
+    fn: () => new Promise((resolve) => resolvers.push(resolve)),
+    release: (call) => resolvers[call](new Response(JSON.stringify({ debug_enabled: false }), { status: 200 })),
+    calls: () => resolvers.length,
+  };
+}
+
+interface RawPeer {
+  ws: RawWebSocket;
+  frames: Frame[];
+  closeCode: () => number | null;
+  send: (frame: Frame) => void;
+}
 
 describe('RealtimeServer sessions per login', () => {
   let server: RealtimeServer;
@@ -51,6 +68,24 @@ describe('RealtimeServer sessions per login', () => {
       ws.once('error', reject);
     });
   }
+
+  async function rawPeer(): Promise<RawPeer> {
+    const ws = await rawSocket();
+    const frames: Frame[] = [];
+    let code: number | null = null;
+    ws.on('message', (raw) => {
+      const frame = decodeFrame(String(raw));
+      if (frame) {
+        frames.push(frame);
+      }
+    });
+    ws.on('close', (c) => {
+      code = c;
+    });
+    return { ws, frames, closeCode: () => code, send: (frame) => ws.send(encodeFrame(frame)) };
+  }
+
+  const hello = (userId: string): HelloFrame => ({ t: 'hello', userId, officeId: OFFICE });
 
   function sessions(officeId: string, query: string): Promise<Response> {
     return fetch(`http://127.0.0.1:${port}/rooms/${officeId}/sessions${query}`);
@@ -152,6 +187,97 @@ describe('RealtimeServer sessions per login', () => {
 
     await closed;
     expect(await offices()).not.toContain(OFFICE);
+  });
+
+  it('rejects a session id with an empty tab', async () => {
+    await startServer();
+    const peer = await rawPeer();
+    peer.send({ ...hello('ann#'), login: 'ann' });
+
+    await vi.waitFor(() => expect(peer.closeCode()).not.toBeNull());
+    expect(peer.frames).toEqual([]);
+  });
+
+  it('lets the later hello win when lookups finish out of order', async () => {
+    const lookups = heldFetch();
+    await startServer(lookups.fn);
+    const older = await rawPeer();
+    const newer = await rawPeer();
+    older.send(hello('ann#t1'));
+    await vi.waitFor(() => expect(lookups.calls()).toBe(1));
+    newer.send(hello('ann#t2'));
+    await vi.waitFor(() => expect(lookups.calls()).toBe(2));
+
+    lookups.release(1);
+    await vi.waitFor(() => expect(newer.frames[0]?.t).toBe('hello-ack'));
+    lookups.release(0);
+
+    await vi.waitFor(() => expect(older.closeCode()).toBe(REPLACED_CLOSE_CODE));
+    expect(older.frames).toEqual([]);
+    expect(newer.closeCode()).toBeNull();
+  });
+
+  it('ignores frames a replaced socket sends before it learns it was replaced', async () => {
+    const lookups = heldFetch();
+    await startServer(lookups.fn);
+    const older = await rawPeer();
+    older.send(hello('ann#t1'));
+    await vi.waitFor(() => expect(lookups.calls()).toBe(1));
+    lookups.release(0);
+    await vi.waitFor(() => expect(older.frames[0]?.t).toBe('hello-ack'));
+
+    const newer = await rawPeer();
+    newer.send(hello('ann#t2'));
+    await vi.waitFor(() => expect(lookups.calls()).toBe(2));
+    lookups.release(1);
+    older.send({ t: 'track-presence', data: {} });
+    await vi.waitFor(() => expect(older.closeCode()).toBe(REPLACED_CLOSE_CODE));
+
+    const observer = await rawPeer();
+    observer.send(hello('bob'));
+    await vi.waitFor(() => expect(lookups.calls()).toBe(3));
+    lookups.release(2);
+    await vi.waitFor(() => expect(observer.frames[0]).toEqual({ t: 'hello-ack', present: [] }));
+  });
+
+  it('ignores a second hello and other frames while the first hello is pending', async () => {
+    const lookups = heldFetch();
+    await startServer(lookups.fn);
+    const observer = await rawPeer();
+    observer.send(hello('bob'));
+    await vi.waitFor(() => expect(lookups.calls()).toBe(1));
+    lookups.release(0);
+    await vi.waitFor(() => expect(observer.frames).toHaveLength(2));
+
+    const peer = await rawPeer();
+    peer.send(hello('ann'));
+    peer.send(hello('carl'));
+    peer.send({ t: 'track-presence', data: {} });
+    await vi.waitFor(() => expect(lookups.calls()).toBe(2));
+    lookups.release(1);
+    await vi.waitFor(() => expect(peer.frames[0]?.t).toBe('hello-ack'));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(lookups.calls()).toBe(2);
+    expect(observer.frames.slice(2)).toEqual([]);
+
+    peer.send({ t: 'track-presence', data: {} });
+    await vi.waitFor(() => expect(observer.frames.slice(2)).toEqual([{ t: 'presence', joined: ['ann'], left: [] }]));
+  });
+
+  it('stops without registering a socket whose hello is still pending', async () => {
+    const lookups = heldFetch();
+    await startServer(lookups.fn);
+    const peer = await rawPeer();
+    peer.send(hello('ann'));
+    await vi.waitFor(() => expect(lookups.calls()).toBe(1));
+
+    await server.stop();
+    lookups.release(0);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(peer.frames).toEqual([]);
+    expect(peer.closeCode()).not.toBeNull();
   });
 
   it('never registers a socket that closed during the office lookup', async () => {
