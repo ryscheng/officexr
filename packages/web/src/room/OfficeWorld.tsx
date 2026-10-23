@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, PlayView, useStoreSelector } from '@officexr/world/react';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
+import { PresenceList } from '../hud/PresenceList';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
 import { CharacterPicker } from './CharacterPicker';
 import { OfficeSettings } from './OfficeSettings';
@@ -26,25 +27,6 @@ export function OfficeWorld(props: { office: Office; me: Identity }) {
   );
 }
 
-const playerNames = (s: OfficeState) =>
-  Object.values(s.players)
-    .map((p) => p.name)
-    .filter(Boolean)
-    .sort()
-    .join(', ');
-
-function usePlayerNames(store: Store | undefined): string {
-  const [names, setNames] = useState('');
-  useEffect(() => {
-    if (!store) {
-      return;
-    }
-    setNames(playerNames(store.getState()));
-    return store.subscribe(playerNames, setNames);
-  }, [store]);
-  return names;
-}
-
 const isReplaced = (s: OfficeState) => s.realtime.status === 'replaced';
 
 function ReplacedBanner({ store }: { store: Store }) {
@@ -57,8 +39,6 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const session = useOfficeSession(office.id, me);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const local = session.type === 'ready' ? session.local : undefined;
-  const names = usePlayerNames(local?.store);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -79,11 +59,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         >
           {session.voice && <JaasMeeting voice={session.voice} />}
           <ChatPanel store={session.local.store} actions={session.local.actions} selfId={me.login} />
-          {names && (
-            <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-black/55 px-2.5 py-1.5 text-xs text-white">
-              {office.name}: {names}
-            </div>
-          )}
+          <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
           <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
             <OfficeSettings office={office} me={me} onSaved={setOffice} />
             <CharacterPicker local={session.local} onSaveResult={setSaveError} />
