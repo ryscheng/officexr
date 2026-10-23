@@ -101,6 +101,7 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/ws': { target: realtimeTarget, changeOrigin: true, ws: true },
         '/health': { target: realtimeTarget, changeOrigin: true },
+        '/rooms': { target: realtimeTarget, changeOrigin: true },
       },
     },
     preview: {

@@ -25,8 +25,8 @@ export type Frame =
  * restarts. Clients must not use it as their `userId`. */
 export const SERVER_SELF_ID = 'server';
 
-/** Close code the server uses to retire a socket a newer one with the
- * same `userId` has taken over. Clients must not reconnect after it. */
+/** Close code the server uses to retire a socket a newer session of the
+ * same login has taken over. Clients must not reconnect after it. */
 export const REPLACED_CLOSE_CODE = 4001;
 
 /** Client → server, first frame after the websocket opens. Identifies
@@ -37,6 +37,9 @@ export interface HelloFrame {
   t: 'hello';
   userId: PlayerId;
   officeId?: string;
+  /** Account behind `userId`, which must be the login itself or one of
+   * its `sessionPlayerId`s. Omitted means `loginOf(userId)`. */
+  login?: string;
 }
 
 /** Server → client, immediately after `hello`. Confirms the join and

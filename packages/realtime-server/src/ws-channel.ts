@@ -59,6 +59,8 @@ export interface WsChannelOptions {
   userId: PlayerId;
   /** Office to join. Omitted means the server's default office. */
   officeId?: string;
+  /** Login `userId` is a session of. Omitted means `loginOf(userId)`. */
+  login?: string;
   /** Override the WebSocket constructor. Default uses the global. */
   wsFactory?: WsFactory;
   /** Timeout (ms) for each subscribe / reconnect handshake. Default 10000. */
@@ -92,6 +94,7 @@ export class WsChannel implements Channel {
   public readonly userId: PlayerId;
   private readonly url: string;
   private readonly officeId?: string;
+  private readonly login?: string;
   private readonly wsFactory: WsFactory;
   private readonly handshakeTimeoutMs: number;
   private readonly reconnectDelayMs: (attempt: number) => number;
@@ -122,6 +125,7 @@ export class WsChannel implements Channel {
     this.url = opts.url;
     this.userId = opts.userId;
     this.officeId = opts.officeId;
+    this.login = opts.login;
     this.wsFactory = opts.wsFactory ?? defaultFactory;
     this.handshakeTimeoutMs = opts.handshakeTimeoutMs ?? 10_000;
     this.reconnectDelayMs = opts.reconnectDelayMs ?? reconnectDelayMs;
@@ -162,7 +166,7 @@ export class WsChannel implements Channel {
       // Don't tear down here; the close event will follow.
     });
     const sendHello = () =>
-      ws.send(encodeFrame({ t: 'hello', userId: this.userId, officeId: this.officeId }));
+      ws.send(encodeFrame({ t: 'hello', userId: this.userId, officeId: this.officeId, login: this.login }));
     if (ws.readyState === WS_OPEN) {
       sendHello();
     } else {

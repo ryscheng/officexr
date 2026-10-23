@@ -17,6 +17,7 @@ import {
   DEFAULT_WORLD_CONSTANTS,
   InMemoryChannel,
   createSeqCounter,
+  loginOf,
   parseWorldConstants,
   validateNetEvent,
   type Actions,
@@ -34,7 +35,9 @@ import {
   SERVER_SELF_ID,
   type CustomFrame,
   type Frame,
+  type HelloFrame,
 } from './protocol.ts';
+import { fetchSessionPolicy } from './office-policy.ts';
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_PATH = '/ws';
@@ -56,7 +59,11 @@ export interface RealtimeServerOptions {
   /** Bearer token for `PUT /admin/world-constants`. Unset or empty
    * disables the route (404). */
   adminToken?: string;
-  /** Used for the boot load. Default: global `fetch`. */
+  /** Office JSON endpoint with an `{id}` placeholder, consulted on each
+   * join for whether the login may hold several sessions. Unset means
+   * never. */
+  officeUrl?: string;
+  /** Used for the boot load and office lookups. Default: global `fetch`. */
   fetch?: typeof fetch;
   /** First boot-load retry delay; doubles per attempt up to 30 s. Default 2000. */
   bootRetryMs?: number;
@@ -117,6 +124,10 @@ export class Room {
       off();
       mirror.close();
     };
+  }
+
+  sessionsOf(login: string): WsClient[] {
+    return [...this.clients.values()].filter((c) => loginOf(c.userId) === login);
   }
 
   close(): void {
@@ -227,17 +238,20 @@ export class RealtimeServer {
   private customHandlers: CustomFrameHandler[] = [];
   private readonly worldConstantsUrl: string | undefined;
   private readonly adminToken: string | undefined;
+  private readonly officeUrl: string | undefined;
   private readonly fetch: typeof fetch;
   private readonly bootRetryMs: number;
   private worldConstants: WorldConstants = DEFAULT_WORLD_CONSTANTS;
   private bootLoad: AbortController | null = null;
   private readonly takeServerSeq = createSeqCounter().next;
+  private helloSeq = 0;
 
   constructor(opts: RealtimeServerOptions = {}) {
     this.port = opts.port ?? DEFAULT_PORT;
     this.path = opts.path ?? DEFAULT_PATH;
     this.worldConstantsUrl = opts.worldConstantsUrl;
     this.adminToken = opts.adminToken;
+    this.officeUrl = opts.officeUrl;
     this.fetch = opts.fetch ?? globalThis.fetch;
     this.bootRetryMs = opts.bootRetryMs ?? DEFAULT_BOOT_RETRY_MS;
     this.defaultRoom = new Room(
@@ -275,6 +289,12 @@ export class RealtimeServer {
       }
       if (req.url === '/admin/world-constants' && req.method === 'PUT' && this.adminToken) {
         this.putWorldConstants(req, res, this.adminToken).catch(() => res.destroy());
+        return;
+      }
+      const sessionsRoute = req.method === 'GET' && req.url?.match(SESSIONS_ROUTE);
+      if (sessionsRoute) {
+        const login = new URLSearchParams(sessionsRoute[2]).get('login');
+        this.getSessions(sessionsRoute[1], login, res).catch(() => res.destroy());
         return;
       }
       res.writeHead(404);
@@ -329,6 +349,8 @@ export class RealtimeServer {
     if (wss) {
       // Cleared before awaiting so an upgrade arriving mid-close is destroyed, not accepted into a fresh room.
       this.wss = null;
+      // ws 8's close() leaves accepted sockets open, including ones whose hello is still pending.
+      for (const ws of wss.clients) ws.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
     }
     if (this.httpServer) {
@@ -372,11 +394,30 @@ export class RealtimeServer {
     res.writeHead(204).end();
   }
 
+  private async getSessions(rawOfficeId: string, login: string | null, res: ServerResponse): Promise<void> {
+    const officeId = decodeOrNull(rawOfficeId);
+    if (officeId === null || !isLogin(login)) {
+      res.writeHead(400).end();
+      return;
+    }
+    const connected = (this.rooms.get(officeId)?.sessionsOf(login).length ?? 0) > 0;
+    const allowMulti = await this.allowsMultiSession(officeId, login);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ connected, allowMulti }));
+  }
+
+  private allowsMultiSession(officeId: string, login: string): Promise<boolean> {
+    return this.officeUrl
+      ? fetchSessionPolicy(this.officeUrl, officeId, login, this.fetch)
+      : Promise.resolve(false);
+  }
+
+  private officeIdOf(officeId: unknown): string {
+    return typeof officeId === 'string' && officeId !== '' ? officeId : this.defaultRoom.officeId;
+  }
+
   private roomFor(officeId: unknown): Room {
-    const id =
-      typeof officeId === 'string' && officeId !== ''
-        ? officeId
-        : this.defaultRoom.officeId;
+    const id = this.officeIdOf(officeId);
     // ponytail: office ids and room count are unbounded; fine on a tailnet-only server.
     let room = this.rooms.get(id);
     if (!room) {
@@ -389,6 +430,7 @@ export class RealtimeServer {
   private onConnection(ws: WebSocket, _req: IncomingMessage): void {
     let client: WsClient | null = null;
     let room: Room | null = null;
+    let helloPending = false;
 
     ws.on('message', (raw) => {
       const text = typeof raw === 'string' ? raw : raw.toString('utf8');
@@ -396,16 +438,29 @@ export class RealtimeServer {
       if (!frame) return;
 
       if (frame.t === 'hello') {
-        if (client) return; // already greeted
-        if (frame.userId === SERVER_SELF_ID) {
+        if (client || helloPending) return;
+        const login = helloLogin(frame);
+        if (login === null) {
           ws.close();
           return;
         }
-        room = this.roomFor(frame.officeId);
-        client = this.acceptClient(room, ws, frame.userId);
+        helloPending = true;
+        const helloSeq = ++this.helloSeq;
+        const officeId = this.officeIdOf(frame.officeId);
+        this.allowsMultiSession(officeId, login)
+          .then((allowMulti) => {
+            if (ws.readyState !== ws.OPEN || !this.wss) return;
+            room = this.roomFor(officeId);
+            client = this.acceptClient(room, ws, { userId: frame.userId, login, helloSeq }, allowMulti);
+          })
+          .catch((err: unknown) => {
+            console.error('[realtime-server] join failed:', err);
+            ws.close();
+          });
         return;
       }
-      if (!client || !room) return; // any other frame before hello is dropped
+      // Drops frames before the join completes and from a replaced socket still closing.
+      if (!client || !room || room.clients.get(client.userId) !== client) return;
 
       this.handleFrame(room, client, frame);
     });
@@ -419,12 +474,28 @@ export class RealtimeServer {
     });
   }
 
-  private acceptClient(room: Room, ws: WebSocket, userId: PlayerId): WsClient {
-    // Newest socket per userId wins; the older one is told why so it stops.
-    room.clients.get(userId)?.replace();
+  /** Registers the joiner, or returns `null` after retiring its socket
+   * when a later hello of the same session already joined. */
+  private acceptClient(
+    room: Room,
+    ws: WebSocket,
+    { userId, login, helloSeq }: { userId: PlayerId; login: string; helloSeq: number },
+    allowMulti: boolean,
+  ): WsClient | null {
+    // The session that said hello last wins, whichever policy lookup
+    // finishes first; the losers are told why so they stop.
+    const rivals = room.sessionsOf(login).filter((c) => !allowMulti || c.userId === userId);
+    if (rivals.some((c) => c.helloSeq > helloSeq)) {
+      ws.close(REPLACED_CLOSE_CODE, 'replaced');
+      return null;
+    }
+    for (const rival of rivals) {
+      room.clients.delete(rival.userId);
+      rival.replace();
+    }
 
     const channel = new InMemoryChannel(room.hub, userId);
-    const client = new WsClient(userId, ws, channel);
+    const client = new WsClient(userId, ws, channel, helloSeq);
     room.clients.set(userId, client);
 
     // Wire the channel into the hub. _deliver routes hub broadcasts
@@ -548,6 +619,31 @@ async function fetchWorldConstants(
   }
 }
 
+const SESSIONS_ROUTE = /^\/rooms\/([^/?]+)\/sessions(?:\?(.*))?$/;
+
+function decodeOrNull(component: string): string | null {
+  try {
+    return decodeURIComponent(component);
+  } catch {
+    return null;
+  }
+}
+
+function isLogin(login: unknown): login is string {
+  return typeof login === 'string' && login !== '' && !login.includes('#');
+}
+
+/** The login a `hello` speaks for, or `null` when its `userId` isn't
+ * one of that login's player ids. */
+function helloLogin(frame: HelloFrame): string | null {
+  if (typeof frame.userId !== 'string' || frame.userId === SERVER_SELF_ID) {
+    return null;
+  }
+  const login = frame.login ?? loginOf(frame.userId);
+  const ownsId = frame.userId === login || (frame.userId.startsWith(`${login}#`) && frame.userId.length > login.length + 1);
+  return isLogin(login) && ownsId ? login : null;
+}
+
 function bearerMatches(header: string | undefined, token: string): boolean {
   // Hashing equalises lengths, which timingSafeEqual requires.
   const digest = (s: string) => createHash('sha256').update(s).digest();
@@ -584,7 +680,12 @@ export class WsClient {
   private offBroadcast: (() => void) | null = null;
   private offPresence: (() => void) | null = null;
 
-  constructor(userId: PlayerId, ws: WebSocket, channel: InMemoryChannel) {
+  constructor(
+    userId: PlayerId,
+    ws: WebSocket,
+    channel: InMemoryChannel,
+    readonly helloSeq: number,
+  ) {
     this.userId = userId;
     this.ws = ws;
     this.channel = channel;
