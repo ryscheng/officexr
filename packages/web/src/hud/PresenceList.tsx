@@ -3,25 +3,25 @@ import { loginOf } from '@officexr/sdk';
 import { useStoreSelector } from '@officexr/world/react';
 
 type PresencePlayer = { id: PlayerId; name: string };
-type PresenceRow = { id: PlayerId; label: string; isSelf: boolean };
+type PresenceRow = { id: PlayerId; name: string; label: string; isSelf: boolean };
 type Presence = { players: PresencePlayer[]; status: OfficeState['realtime']['status'] };
 
 /** `players` must be in join order; windows sharing a login are numbered by it. */
 export function presenceRows(players: PresencePlayer[], selfId: PlayerId): PresenceRow[] {
   const seen = new Map<string, number>();
-  const rows = players.map(({ id, name }) => {
-    const n = (seen.get(loginOf(id)) ?? 0) + 1;
-    seen.set(loginOf(id), n);
-    return {
-      id,
-      name: name || 'Joining…',
-      label: `${name || 'Joining…'}${n > 1 ? ` (${n})` : ''}`,
-      isSelf: id === selfId,
-    };
-  });
-  return rows
-    .sort((a, b) => Number(b.isSelf) - Number(a.isSelf) || a.name.localeCompare(b.name))
-    .map(({ id, label, isSelf }) => ({ id, label, isSelf }));
+  return players
+    .map(({ id, name }) => {
+      const login = loginOf(id);
+      const n = (seen.get(login) ?? 0) + 1;
+      seen.set(login, n);
+      return { id, name, label: name ? `${name}${n > 1 ? ` (${n})` : ''}` : 'Joining…', isSelf: id === selfId };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.isSelf) - Number(a.isSelf) ||
+        Number(!a.name) - Number(!b.name) ||
+        a.name.localeCompare(b.name),
+    );
 }
 
 const STATUS = {
@@ -47,20 +47,20 @@ export function PresenceList({ store, selfId, officeName }: { store: Store; self
   return (
     <div
       data-studio-panel
-      className="pointer-events-auto absolute bottom-3 left-3 max-h-60 overflow-y-auto rounded bg-black/70 p-2 text-xs text-white"
+      className="pointer-events-auto absolute bottom-3 left-3 max-h-60 max-w-64 overflow-y-auto rounded bg-black/70 p-2 text-xs text-white"
     >
       <div className="mb-1 flex items-center justify-between gap-3 font-medium">
-        <span>
+        <span className="truncate">
           {officeName} ({players.length})
         </span>
-        <span className="flex items-center gap-1 font-normal">
+        <span role="status" className="flex shrink-0 items-center gap-1 font-normal">
           <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${dot}`} />
           {text}
         </span>
       </div>
-      <ul>
+      <ul aria-label={`People in ${officeName}`}>
         {presenceRows(players, selfId).map((row) => (
-          <li key={row.id}>
+          <li key={row.id} className="truncate">
             {row.label}
             {row.isSelf && ' (you)'}
           </li>

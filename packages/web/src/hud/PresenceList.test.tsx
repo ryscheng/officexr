@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from '@testing-library/react';
+import type { OfficeState } from '@officexr/sdk';
 import { createMultiClientHarness } from '@officexr/sdk/test-harness';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PresenceList, presenceRows } from './PresenceList';
@@ -27,6 +28,18 @@ describe('presenceRows', () => {
     expect(presenceRows([{ id: 'bob', name: '' }], 'me').map((r) => r.label)).toEqual(['Joining…']);
   });
 
+  it('puts unnamed rows last and never numbers them', () => {
+    const rows = presenceRows(
+      [
+        { id: 'a#1', name: '' },
+        { id: 'a#2', name: '' },
+        { id: 'amy', name: 'Amy' },
+      ],
+      'me',
+    );
+    expect(rows.map((r) => r.label)).toEqual(['Amy', 'Joining…', 'Joining…']);
+  });
+
   it('numbers windows sharing a login in join order', () => {
     const rows = presenceRows(
       [
@@ -52,12 +65,14 @@ describe('PresenceList between clients', () => {
     expect(screen.getByText('HQ (1)')).toBeTruthy();
 
     const bob = await harness.add('bob');
+    expect(screen.getByText('Joining…')).toBeTruthy();
     act(() => bob.actions.upsertPlayer({ id: 'bob', name: 'Bob' }));
     expect(screen.getByText('Bob')).toBeTruthy();
     expect(screen.getByText('HQ (2)')).toBeTruthy();
 
     act(() => harness.remove('bob'));
     expect(screen.queryByText('Bob')).toBeNull();
+    expect(screen.getByText('HQ (1)')).toBeTruthy();
   });
 
   it('shows the connection status as text', async () => {
@@ -69,7 +84,7 @@ describe('PresenceList between clients', () => {
       reconnecting: 'Reconnecting…',
       'snapshot-pending': 'Connecting…',
       replaced: 'Disconnected',
-    } as const;
+    } satisfies Record<OfficeState['realtime']['status'], string>;
     for (const [status, text] of Object.entries(expected)) {
       act(() => alice.actions.setRealtimeStatus(status as keyof typeof expected));
       expect(screen.getByText(text)).toBeTruthy();
