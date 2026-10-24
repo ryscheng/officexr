@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
+import { modelUrl } from '../app/asset-url.ts';
 import { useApplication, useCatalog } from '../react/application-context.tsx';
 import {
   validateWorldObjectKindCatalog,
@@ -49,7 +50,7 @@ const PRIMITIVE_FALLBACK_COLOR = '#ff00ff';
 // catalog hydration are preloaded lazily inside `KindInstanceGroup`
 // via `useGLTF`, which caches by URL.
 for (const kind of validateWorldObjectKindCatalog(defaultCatalogJson).kinds) {
-  useGLTF.preload(kind.gltfPath);
+  useGLTF.preload(modelUrl(kind.gltfPath));
 }
 
 /**
@@ -291,7 +292,7 @@ function KindInstanceGroup({
   materialOverride,
 }: KindInstanceGroupProps) {
   const { geometry } = useApplication();
-  const gltf = useGLTF(kind.gltfPath);
+  const gltf = useGLTF(modelUrl(kind.gltfPath));
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
   // Clone the GLTF material per kind so per-kind override edits are
   // isolated from any other <ObjectInstances> mount sharing the same

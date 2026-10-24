@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import type { Actions, Vec3 } from '@officexr/sdk';
-import { bakedLayoutUrl } from '../app/baked-layout-url.ts';
+import { bakedLayoutAssetUrl } from '../app/asset-url.ts';
 import { loadMap, type LoadedMap, type MapLoaderDeps } from '../app/map-loader.ts';
 import { useApplication } from './application-context.tsx';
 
@@ -89,7 +89,7 @@ export function usePlaySession({
   return {
     spawnPoints,
     bakedLayoutName,
-    bakedLayoutPath: bakedLayoutName ? bakedLayoutUrl(bakedLayoutName) : undefined,
+    bakedLayoutPath: bakedLayoutName ? bakedLayoutAssetUrl(bakedLayoutName) : undefined,
     error,
     dismissError: () => setError(null),
     ready,

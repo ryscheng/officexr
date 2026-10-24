@@ -67,5 +67,6 @@ export { createDefaultApi } from './create-default-api.ts';
 export type { CreateDefaultApiOptions } from './create-default-api.ts';
 
 export { bakedLayoutUrl } from './baked-layout-url.ts';
+export { bakedLayoutAssetUrl, modelUrl, setAssetBaseUrl } from './asset-url.ts';
 export { loadMap, MapNotFoundError } from './map-loader.ts';
 export type { LoadedMap, MapLoaderDeps } from './map-loader.ts';
