@@ -6,6 +6,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { Document, WebIO } from '@gltf-transform/core';
+import { MeshoptDecoder } from 'meshoptimizer';
+import { registerCompressionCodecs } from '../glb-compression.ts';
 import { bakeLayout } from '../layout-bake-service.ts';
 import type { KindLookup } from '../layout-bake-service.ts';
 import { createInstanceGeometry } from '../geometry-service.ts';
@@ -27,7 +29,9 @@ function makeGeometry(kindMap: Map<string, WorldObjectKind>, voxelSize = 0.5) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const io = new WebIO();
+const io = (await registerCompressionCodecs(new WebIO())).registerDependencies({
+  'meshopt.decoder': MeshoptDecoder,
+});
 
 /** Build a trivial GLB (one mesh, one primitive, no textures). */
 async function makeTrivialGlb(name: string): Promise<Uint8Array> {

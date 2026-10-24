@@ -28,6 +28,7 @@ import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
 import type { PlaceObjectCommand } from '../scenes/commands.ts';
 import type { InstanceGeometryService } from './types.ts';
 import { worldObjectsToColliders } from '../physics/rules.ts';
+import { compressDocument, registerCompressionCodecs } from './glb-compression.ts';
 import { buildColliderExtras } from './baked-collider-extras.ts';
 import {
   defaultOptimizer,
@@ -46,11 +47,6 @@ export interface KindLookup {
 
 /** Options for the bake pass. */
 export interface BakeOptions {
-  /**
-   * Whether to apply Draco compression to the output GLB.
-   * Default: false (off).  Enabling it adds a runtime decoder requirement.
-   */
-  compress?: false | 'draco';
   /**
    * Custom IO instance to use for reading/writing GLBs.
    * When omitted a `WebIO` instance is created internally.
@@ -102,7 +98,7 @@ export interface BakeResultBytes {
  *                    baked GLB matches the runtime renderer's positioning
  *                    exactly. This is the SAME service the runtime
  *                    `<ObjectInstances>` consumes — no bespoke math here.
- * @param options     Optional bake options (IO instance, compression).
+ * @param options     Optional bake options (IO instance, optimizer).
  */
 export async function bakeLayout(
   doc: LayoutDocument,
@@ -281,18 +277,8 @@ export async function bakeLayout(
     }
   }
 
-  // Draco compression is opt-in (off by default) to avoid mandatory decoder
-  // dependencies on the consuming side.  When enabled the caller is
-  // responsible for registering the Draco encoder dependency on the IO
-  // instance before passing it in `options.io`.
-  if (options?.compress === 'draco') {
-    // DIP note: draco() is imported conditionally to avoid pulling the
-    // encoder WASM into every bundle.  The caller must set up the encoder
-    // on the IO instance themselves; we call the transform unconditionally
-    // once the compress flag is set.
-    const { draco } = await import('@gltf-transform/functions');
-    await outDoc.transform(draco());
-  }
+  await registerCompressionCodecs(io);
+  await outDoc.transform(compressDocument);
 
   const glb = await io.writeBinary(outDoc);
 

@@ -66,16 +66,30 @@ export function extractMaterialFromGltf(scene: THREE.Object3D): THREE.Material {
   return mat;
 }
 
-/** Extract the first mesh geometry from a GLTF scene root. */
+/** Extract the first mesh geometry from a GLTF scene root, with the mesh's
+ * scene-relative transform baked into a clone (quantized models keep their
+ * dequantization scale/offset on the node, not in the vertices). */
 export function extractGeometryFromGltf(
   scene: THREE.Object3D,
 ): THREE.BufferGeometry {
-  let geom: THREE.BufferGeometry | null = null;
+  let mesh: THREE.Mesh | null = null;
   scene.traverse((o) => {
-    if (!geom && (o as THREE.Mesh).isMesh) geom = (o as THREE.Mesh).geometry;
+    if (!mesh && (o as THREE.Mesh).isMesh) mesh = o as THREE.Mesh;
   });
-  if (!geom) throw new Error('No mesh geometry in cube GLTF');
-  return geom;
+  if (!mesh) throw new Error('No mesh geometry in cube GLTF');
+  scene.updateMatrixWorld();
+  const { geometry, matrixWorld } = mesh as THREE.Mesh;
+  const out = geometry.clone();
+  // Normalized integer positions would clamp to [-1, 1] when transformed in place.
+  const position = out.getAttribute('position');
+  if (!(position.array instanceof Float32Array)) {
+    const floats = new THREE.Float32BufferAttribute(position.count * 3, 3);
+    for (let i = 0; i < position.count; i++) {
+      floats.setXYZ(i, position.getX(i), position.getY(i), position.getZ(i));
+    }
+    out.setAttribute('position', floats);
+  }
+  return out.applyMatrix4(matrixWorld);
 }
 
 export interface KindBoundingDimensions {
