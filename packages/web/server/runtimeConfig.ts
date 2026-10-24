@@ -4,6 +4,7 @@ export const RUNTIME_CONFIG_KEYS = [
   'VITE_JAAS_APP_ID',
   'VITE_JAAS_API_KEY_ID',
   'VITE_JAAS_PRIVATE_KEY',
+  'OFFICEXR_ASSET_BASE_URL',
 ] as const;
 
 /** Serves `/config.js` from env at request time so one build can be configured per deployment. */

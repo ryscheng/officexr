@@ -408,3 +408,16 @@ describe('/models', () => {
     expect((await fetch(`${base}/models/characters/Mage.glb`)).status).toBe(200);
   });
 });
+
+describe('/config.js', () => {
+  it('serves OFFICEXR_ASSET_BASE_URL from the environment', async () => {
+    process.env.OFFICEXR_ASSET_BASE_URL = 'https://cdn.example.com';
+    try {
+      const base = await start('configurePreviewServer');
+      const res = await fetch(`${base}/config.js`);
+      expect(await res.text()).toContain('"OFFICEXR_ASSET_BASE_URL":"https://cdn.example.com"');
+    } finally {
+      delete process.env.OFFICEXR_ASSET_BASE_URL;
+    }
+  });
+});

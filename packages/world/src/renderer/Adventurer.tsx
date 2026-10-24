@@ -2,15 +2,16 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useGLTF, useAnimations } from '@react-three/drei';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { modelUrl } from '../app/asset-url.ts';
 import { CHARACTERS, type CharacterName } from './config.ts';
 
-const ANIM_GENERAL = '/models/animations/Rig_Medium_General.glb';
-const ANIM_MOVEMENT = '/models/animations/Rig_Medium_MovementBasic.glb';
-const ANIM_MOVEMENT_ADV = '/models/animations/Rig_Medium_MovementAdvanced.glb';
-const ANIM_COMBAT_RANGED = '/models/animations/Rig_Medium_CombatRanged.glb';
+const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
+const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
+const ANIM_MOVEMENT_ADV = modelUrl('/models/animations/Rig_Medium_MovementAdvanced.glb');
+const ANIM_COMBAT_RANGED = modelUrl('/models/animations/Rig_Medium_CombatRanged.glb');
 export const ANIMATION_URLS = [ANIM_GENERAL, ANIM_MOVEMENT, ANIM_MOVEMENT_ADV, ANIM_COMBAT_RANGED];
 
-export const characterUrl = (character: CharacterName) => `/models/characters/${character}.glb`;
+export const characterUrl = (character: CharacterName) => modelUrl(`/models/characters/${character}.glb`);
 
 for (const url of ANIMATION_URLS) {
   useGLTF.preload(url);
