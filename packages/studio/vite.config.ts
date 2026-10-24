@@ -8,7 +8,7 @@ import tailwindcss from '@tailwindcss/vite';
 import studioStorage, { STORAGE_ENTRIES, type StorageEntry } from '@officexr/world/vite-plugin-storage';
 import bots from '@officexr/world/vite-plugin-bots';
 import { pushWorldConstants } from './server/push-world-constants.ts';
-import { createR2Publisher, r2ConfigFromEnv } from './server/r2-publisher.ts';
+import { createR2Publisher, r2ConfigFromEnv, type R2Publisher } from './server/r2-publisher.ts';
 
 /**
  * The custom realtime server (`@officexr/realtime-server`, started by
@@ -37,18 +37,28 @@ const adminToken = process.env.OFFICEXR_REALTIME_ADMIN_TOKEN ?? randomUUID();
 const WORLD_DIR = fileURLToPath(new URL('../world', import.meta.url));
 const DATA_DIR = process.env.OFFICEXR_STUDIO_DATA_DIR;
 
-const r2Config = r2ConfigFromEnv(process.env);
-const publisher = r2Config ? createR2Publisher(r2Config) : null;
-console.log(
-  r2Config
-    ? `[r2-publisher] publishing assets to bucket ${r2Config.bucket}`
-    : '[r2-publisher] off: OFFICEXR_R2_ENDPOINT/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY not all set',
-);
-const syncAssets = () =>
-  publisher?.sync({
+// Created on first server start or layout hook, so `vite build` never builds one.
+let publisher: R2Publisher | null | undefined;
+function r2Publisher(): R2Publisher | null {
+  if (publisher === undefined) {
+    const config = r2ConfigFromEnv(process.env);
+    publisher = config ? createR2Publisher(config) : null;
+  }
+  return publisher;
+}
+
+function startR2Sync(): void {
+  const bucket = r2ConfigFromEnv(process.env)?.bucket;
+  console.log(
+    bucket
+      ? `[r2-publisher] publishing assets to bucket ${bucket}`
+      : '[r2-publisher] off: OFFICEXR_R2_ENDPOINT/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY not all set',
+  );
+  void r2Publisher()?.sync({
     modelsDir: fileURLToPath(new URL('./public/models', import.meta.url)),
     bakedLayoutsDir: path.join(DATA_DIR ?? WORLD_DIR, STORAGE_ENTRIES.bakedLayouts.name),
   });
+}
 
 const exists = (p: string) =>
   access(p).then(
@@ -100,7 +110,10 @@ export default defineConfig({
       worldSettings: {
         onSaved: (doc) => pushWorldConstants({ targets: [...pushTargets], token: adminToken, doc }),
       },
-      bakedLayouts: publisher?.bakedLayoutHooks,
+      bakedLayouts: {
+        onSaved: async (name, bytes) => r2Publisher()?.bakedLayoutHooks.onSaved(name, bytes),
+        onDeleted: async (name) => r2Publisher()?.bakedLayoutHooks.onDeleted(name),
+      },
     }),
     {
       name: 'officexr:seed-data-dir',
@@ -115,16 +128,11 @@ export default defineConfig({
         }
       },
     },
-    // After the seed, so the sync sees seeded layouts. Not awaited: the sync
-    // runs in the background while the server serves.
+    // After the seed, so the sync sees seeded layouts.
     {
       name: 'officexr:r2-publish',
-      configureServer() {
-        void syncAssets();
-      },
-      configurePreviewServer() {
-        void syncAssets();
-      },
+      configureServer: startR2Sync,
+      configurePreviewServer: startR2Sync,
     },
     // Spawns the Node bot CLI as a child process for the lifetime of
     // the dev server, so `pnpm dev:studio` is one-command. If you'd

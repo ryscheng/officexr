@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { AwsClient } from 'aws4fetch';
-import { Logger, NodeIO } from '@gltf-transform/core';
+import { Logger, NodeIO, type JSONDocument } from '@gltf-transform/core';
+import { assetContentType } from '@officexr/world/asset-content-type';
 import { compressDocument, registerCompressionCodecs } from '@officexr/world/glb-compression';
 
 /** Bump to republish every unit, e.g. after changing compression settings. */
@@ -10,14 +11,6 @@ export const PUBLISHER_FORMAT_VERSION = '1';
 
 const SOURCE_SHA_HEADER = 'x-amz-meta-source-sha256';
 const CACHE_CONTROL = 'public, max-age=300';
-const CONTENT_TYPES: Record<string, string> = {
-  '.glb': 'model/gltf-binary',
-  '.gltf': 'model/gltf+json',
-  '.bin': 'application/octet-stream',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-};
 const UNCOMPRESSED_MODEL_DIRS = ['models/characters/', 'models/animations/'];
 
 export interface R2Config {
@@ -28,9 +21,12 @@ export interface R2Config {
 }
 
 type File = { key: string; path: string };
+/** A file a `.gltf` references, by the URI as written in the `.gltf`. */
+type Resource = File & { uri: string };
+type GltfUnit = { type: 'gltf'; resources: Resource[] } & File;
 
 /** A set of files published together; `key` is the file uploaded last, carrying the source hash. */
-type Unit = { type: 'gltf'; key: string; path: string; resources: File[] } | ({ type: 'file' } & File);
+type Unit = GltfUnit | ({ type: 'file' } & File) | { type: 'invalid'; key: string; error: unknown };
 
 type Upload = { key: string; bytes: Uint8Array };
 
@@ -38,6 +34,8 @@ interface SyncDirs {
   modelsDir: string;
   bakedLayoutsDir: string;
 }
+
+export type R2Publisher = ReturnType<typeof createR2Publisher>;
 
 /** Reads the four `OFFICEXR_R2_*` vars; `null` (publishing off) unless all are set. */
 export function r2ConfigFromEnv(env: NodeJS.ProcessEnv): R2Config | null {
@@ -58,7 +56,9 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
     service: 's3',
     region: 'auto',
   });
-  const ioReady = registerCompressionCodecs(new NodeIO().setLogger(new Logger(Logger.Verbosity.WARN)));
+  let ioReady: Promise<NodeIO> | undefined;
+  const compressionIo = () =>
+    (ioReady ??= registerCompressionCodecs(new NodeIO().setLogger(new Logger(Logger.Verbosity.WARN))));
 
   // Every operation runs one at a time, so a sync unit that read a layout
   // earlier can never land after a newer rebake's upload of it.
@@ -78,6 +78,8 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
     if (!res.ok && !(method === 'HEAD' && res.status === 404)) {
       throw new Error(`${method} ${key}: ${res.status} ${await res.text()}`);
     }
+    // Release the connection; only the headers are used.
+    await res.body?.cancel();
     return res;
   }
 
@@ -85,7 +87,7 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
     return send('PUT', key, {
       body: bytes as Uint8Array<ArrayBuffer>,
       headers: {
-        'content-type': CONTENT_TYPES[path.extname(key).toLowerCase()] ?? 'application/octet-stream',
+        'content-type': assetContentType(key),
         'cache-control': CACHE_CONTROL,
         ...(sourceSha ? { [SOURCE_SHA_HEADER]: sourceSha } : {}),
       },
@@ -111,23 +113,27 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
   }
 
   async function compressGlb(bytes: Uint8Array) {
-    const io = await ioReady;
+    const io = await compressionIo();
     const doc = await io.readBinary(bytes);
     await doc.transform(compressDocument);
     return io.writeBinary(doc);
   }
 
-  async function publishGltf(unit: Extract<Unit, { type: 'gltf' }>, uploaded: Set<string>): Promise<boolean> {
+  async function publishGltf(unit: GltfUnit, uploaded: Set<string>): Promise<boolean> {
     const gltfBytes = await readFile(unit.path);
     const resourceBytes = await Promise.all(unit.resources.map((r) => readFile(r.path)));
     const sourceSha = sourceHash([gltfBytes, ...resourceBytes]);
     if (await isPublished(unit.key, sourceSha)) {
       return false;
     }
-    const compress = isCompressible(unit.key) && !declaresMeshopt(JSON.parse(gltfBytes.toString('utf8')));
-    const { gltf, resources } = compress
-      ? await compressGltf(unit)
-      : { gltf: gltfBytes, resources: unit.resources.map((r, i) => ({ key: r.key, bytes: resourceBytes[i] })) };
+    const json = JSON.parse(gltfBytes.toString('utf8'));
+    const { gltf, resources } =
+      isCompressible(unit.key) && !declaresMeshopt(json)
+        ? await compressGltf(unit, {
+            json,
+            resources: Object.fromEntries(unit.resources.map((r, i) => [r.uri, resourceBytes[i]])),
+          })
+        : { gltf: gltfBytes, resources: unit.resources.map((r, i) => ({ key: r.key, bytes: resourceBytes[i] })) };
     // Resources first, so a client never pairs the new .gltf with old buffers.
     for (const resource of resources) {
       if (!uploaded.has(resource.key)) {
@@ -139,23 +145,24 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
     return true;
   }
 
-  async function compressGltf(unit: Extract<Unit, { type: 'gltf' }>) {
-    const io = await ioReady;
-    const doc = await io.read(unit.path);
+  async function compressGltf(unit: GltfUnit, source: JSONDocument) {
+    const io = await compressionIo();
+    const doc = await io.readJSON(source);
     await doc.transform(compressDocument);
-    const sourceUris = new Set(unit.resources.map((r) => path.posix.relative(path.posix.dirname(unit.key), r.key)));
-    const stem = path.basename(unit.key, '.gltf');
-    // ponytail: assumes each .bin belongs to one .gltf; a buffer shared between .gltfs would be overwritten per model.
+    const sourceUris = new Set(unit.resources.map((r) => r.uri));
+    const stem = path.posix.basename(unit.key, '.gltf');
+    // ponytail: assumes no .bin or uri-less image is shared between .gltfs in one directory.
     doc.getRoot().listBuffers().forEach((buffer, i) => {
       if (!sourceUris.has(buffer.getURI())) {
         buffer.setURI(`${stem}_${i}.bin`);
       }
     });
     const { json, resources } = await io.writeJSON(doc);
+    const dir = path.posix.dirname(unit.key);
     return {
       gltf: new TextEncoder().encode(JSON.stringify(json)),
       resources: Object.entries(resources).map(([uri, bytes]) => ({
-        key: path.posix.join(path.posix.dirname(unit.key), uri),
+        key: path.posix.join(dir, decodeURIComponent(uri)),
         bytes,
       })),
     };
@@ -167,9 +174,11 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
         return publishGltf(unit, uploaded);
       case 'file':
         return publishBytes(unit.key, await readFile(unit.path));
-      default:
-        return assertNever(unit);
+      case 'invalid':
+        throw unit.error;
     }
+    const _exhaustive: never = unit;
+    return _exhaustive;
   }
 
   /** Publishes every model and baked layout that changed since its last upload; never rejects. */
@@ -249,13 +258,13 @@ async function modelUnits(modelsDir: string): Promise<Unit[]> {
   const units: Unit[] = [];
   const referenced = new Set<string>();
   for (const rel of files.filter((f) => f.endsWith('.gltf'))) {
-    const json = JSON.parse(await readFile(path.join(modelsDir, rel), 'utf8'));
-    const resources = [...(json.buffers ?? []), ...(json.images ?? [])]
-      .map((r: { uri?: string }) => r.uri)
-      .filter((uri): uri is string => !!uri && !uri.startsWith('data:'))
-      .map((uri) => path.posix.join(path.posix.dirname(rel), decodeURIComponent(uri)));
-    resources.forEach((r) => referenced.add(r));
-    units.push({ type: 'gltf', ...toFile(rel), resources: [...new Set(resources)].map(toFile) });
+    try {
+      const resources = gltfResources(rel, JSON.parse(await readFile(path.join(modelsDir, rel), 'utf8')));
+      resources.forEach((r) => referenced.add(r.rel));
+      units.push({ type: 'gltf', ...toFile(rel), resources: resources.map((r) => ({ uri: r.uri, ...toFile(r.rel) })) });
+    } catch (error) {
+      units.push({ type: 'invalid', key: `models/${rel}`, error });
+    }
   }
   for (const rel of files) {
     if (!rel.endsWith('.gltf') && !referenced.has(rel)) {
@@ -263,6 +272,22 @@ async function modelUnits(modelsDir: string): Promise<Unit[]> {
     }
   }
   return units;
+}
+
+/** The distinct external files a `.gltf` at `rel` references, as written and resolved under the models dir. */
+function gltfResources(rel: string, json: { buffers?: { uri?: string }[]; images?: { uri?: string }[] }) {
+  const uris = new Set(
+    [...(json.buffers ?? []), ...(json.images ?? [])]
+      .map((r) => r.uri)
+      .filter((uri): uri is string => !!uri && !uri.startsWith('data:')),
+  );
+  return [...uris].map((uri) => {
+    const resolved = path.posix.join(path.posix.dirname(rel), decodeURIComponent(uri));
+    if (resolved.startsWith('../')) {
+      throw new Error(`resource ${uri} escapes the models dir`);
+    }
+    return { uri, rel: resolved };
+  });
 }
 
 async function bakedLayoutUnits(dir: string): Promise<Unit[]> {
@@ -275,8 +300,4 @@ async function bakedLayoutUnits(dir: string): Promise<Unit[]> {
   return names
     .filter((name) => name.endsWith('.glb'))
     .map((name) => ({ type: 'file', key: bakedLayoutKey(path.basename(name, '.glb')), path: path.join(dir, name) }));
-}
-
-function assertNever(value: never): never {
-  throw new Error(`unexpected value: ${JSON.stringify(value)}`);
 }

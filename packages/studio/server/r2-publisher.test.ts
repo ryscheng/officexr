@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AwsV4Signer } from 'aws4fetch';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { registerCompressionCodecs } from '@officexr/world/glb-compression';
 import studioStorage from '@officexr/world/vite-plugin-storage';
@@ -17,10 +18,32 @@ import {
 } from './r2-publisher.ts';
 
 const BUCKET = 'assets';
+const ACCESS_KEY_ID = 'id';
+const SECRET = 'secret';
 const META = 'x-amz-meta-source-sha256';
 
 type StoredObject = { body: Buffer; headers: Record<string, string> };
 type Held = { reached: Promise<void>; release: () => void };
+
+/** Whether `req` carries a valid SigV4 signature for SECRET, recomputed over the headers it says it signed. */
+async function signatureValid(req: IncomingMessage, origin: string) {
+  const auth = req.headers.authorization ?? '';
+  const signed = /SignedHeaders=([^,]+)/.exec(auth)?.[1].split(';') ?? [];
+  const headers = Object.fromEntries(
+    signed.filter((name) => name !== 'host').map((name) => [name, String(req.headers[name])]),
+  );
+  const expected = await new AwsV4Signer({
+    method: req.method,
+    url: `${origin}${req.url}`,
+    headers,
+    accessKeyId: ACCESS_KEY_ID,
+    secretAccessKey: SECRET,
+    service: 's3',
+    region: 'auto',
+    datetime: String(req.headers['x-amz-date']),
+  }).authHeader();
+  return auth === expected;
+}
 
 /** Path-style S3 endpoint keeping objects in memory and logging every request. */
 async function startFakeS3() {
@@ -36,7 +59,7 @@ async function startFakeS3() {
     }
     const [bucket, ...rest] = new URL(req.url!, 'http://x').pathname.slice(1).split('/');
     const key = rest.map(decodeURIComponent).join('/');
-    if (bucket !== BUCKET || !req.headers.authorization?.startsWith('AWS4-HMAC-SHA256')) {
+    if (bucket !== BUCKET || !(await signatureValid(req, origin))) {
       res.writeHead(403).end();
       return;
     }
@@ -71,12 +94,13 @@ async function startFakeS3() {
     }
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return {
     server,
     objects,
     log,
     failing,
-    endpoint: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    endpoint: origin,
     puts: () => log.filter((r) => r.method === 'PUT').map((r) => r.key),
     /** Holds the next PUT of `key` until `release()`; `reached` resolves once it arrives. */
     hold(key: string): Held {
@@ -150,7 +174,7 @@ describe('r2 publisher', () => {
     await writeFile(path.join(bakedLayoutsDir, 'office.glb'), await glb(4));
     s3 = await startFakeS3();
     servers.push(s3.server);
-    config = { endpoint: s3.endpoint, bucket: BUCKET, accessKeyId: 'id', secretAccessKey: 'secret' };
+    config = { endpoint: s3.endpoint, bucket: BUCKET, accessKeyId: ACCESS_KEY_ID, secretAccessKey: SECRET };
   });
 
   afterEach(async () => {
@@ -214,6 +238,45 @@ describe('r2 publisher', () => {
       'cache-control': 'public, max-age=300',
       [META]: sha(await read('baked-layouts/office.glb')),
     });
+  });
+
+  it('a wrong secret uploads nothing', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await createR2Publisher({ ...config, secretAccessKey: 'wrong' }).sync(dirs());
+    expect(s3.objects.size).toBe(0);
+    expect(error).toHaveBeenCalled();
+  });
+
+  it('a broken .gltf fails alone while the other units publish', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await writeFile(path.join(modelsDir, 'blocks', 'broken.gltf'), '{ not json');
+    await writeFile(
+      path.join(modelsDir, 'blocks', 'escapes.gltf'),
+      JSON.stringify({ asset: { version: '2.0' }, buffers: [{ uri: '../../outside.bin', byteLength: 1 }] }),
+    );
+    await createR2Publisher(config).sync(dirs());
+    const failed = error.mock.calls.map(([message]) => message);
+    expect(failed).toEqual([
+      '[r2-publisher] models/blocks/broken.gltf failed:',
+      '[r2-publisher] models/blocks/escapes.gltf failed:',
+    ]);
+    expect(s3.objects.has('models/blocks/a.gltf')).toBe(true);
+    expect(s3.objects.has('baked-layouts/office.glb')).toBe(true);
+    expect([...s3.objects.keys()].some((k) => k.includes('broken') || k.includes('outside'))).toBe(false);
+  });
+
+  it('keeps percent-encoded resource URIs resolving to their decoded keys', async () => {
+    const dir = path.join(modelsDir, 'fbx(unity)');
+    await mkdir(dir);
+    const { json, resources } = await new NodeIO().writeJSON(triangleDoc(8, { bin: 'c%20d.bin' }));
+    await writeFile(path.join(dir, 'c d.gltf'), JSON.stringify(json));
+    await writeFile(path.join(dir, 'c d.bin'), resources['c%20d.bin']);
+    await createR2Publisher(config).sync(dirs());
+    const published = JSON.parse(s3.objects.get('models/fbx(unity)/c d.gltf')!.body.toString());
+    expect(published.extensionsUsed).toContain('EXT_meshopt_compression');
+    expect(published.buffers[0].uri).toBe('c%20d.bin');
+    expect(s3.objects.has('models/fbx(unity)/c d.bin')).toBe(true);
+    expect([...s3.objects.keys()].filter((k) => k.includes('%'))).toEqual([]);
   });
 
   it('a second sync uploads nothing', async () => {
