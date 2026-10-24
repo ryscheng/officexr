@@ -66,9 +66,11 @@ export function extractMaterialFromGltf(scene: THREE.Object3D): THREE.Material {
   return mat;
 }
 
-/** Extract the first mesh geometry from a GLTF scene root, with the mesh's
+/**
+ * Extract the first mesh geometry from a GLTF scene root, with the mesh's
  * scene-relative transform baked into a clone (quantized models keep their
- * dequantization scale/offset on the node, not in the vertices). */
+ * dequantization scale/offset on the node, not in the vertices).
+ */
 export function extractGeometryFromGltf(
   scene: THREE.Object3D,
 ): THREE.BufferGeometry {

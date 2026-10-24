@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { Document, NodeIO } from '@gltf-transform/core';
+import { compressDocument, registerCompressionCodecs } from '../app/glb-compression.ts';
 import {
   buildMaterialForKind,
   extractGeometryFromGltf,
@@ -154,5 +160,65 @@ describe('getKindBoundingDimensions', () => {
     expect(dims.width).toBeCloseTo(2);
     expect(dims.height).toBeCloseTo(0.5);
     expect(dims.depth).toBeCloseTo(4);
+  });
+});
+
+describe('extractGeometryFromGltf with compressed models', () => {
+  const blocksDir = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../studio/public/models/blocks',
+  );
+
+  /** A box far from the origin, so an ignored node transform shifts it by metres. */
+  function makeOffCentreDoc(): Document {
+    const doc = new Document();
+    const buffer = doc.createBuffer();
+    const x = [10, 12.5];
+    const y = [0, 3];
+    const z = [-8, -2];
+    const corners = [0, 1].flatMap((i) => [0, 1].flatMap((j) => [0, 1].map((k) => [x[i], y[j], z[k]])));
+    const position = doc
+      .createAccessor()
+      .setType('VEC3')
+      .setArray(new Float32Array(corners.flat()))
+      .setBuffer(buffer);
+    const indices = doc
+      .createAccessor()
+      .setType('SCALAR')
+      .setArray(new Uint16Array([0, 1, 2, 1, 3, 2, 4, 6, 5, 5, 6, 7, 0, 2, 4, 2, 6, 4]))
+      .setBuffer(buffer);
+    const prim = doc.createPrimitive().setAttribute('POSITION', position).setIndices(indices);
+    const node = doc.createNode('off-centre').setMesh(doc.createMesh('m').addPrimitive(prim));
+    doc.createScene('s').addChild(node);
+    return doc;
+  }
+
+  async function bounds(doc: Document, compress: boolean): Promise<THREE.Box3> {
+    const io = new NodeIO();
+    // three's GLTFLoader needs DOM image decoding; only geometry is compared.
+    doc.getRoot().listTextures().forEach((t) => t.dispose());
+    if (compress) {
+      await registerCompressionCodecs(io);
+      await doc.transform(compressDocument);
+    }
+    const bytes = await io.writeBinary(doc);
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    const { scene } = await loader.parseAsync(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      '',
+    );
+    return new THREE.Box3().setFromBufferAttribute(
+      extractGeometryFromGltf(scene).getAttribute('position') as THREE.BufferAttribute,
+    );
+  }
+
+  it.each([
+    ['stone.gltf', async () => new NodeIO().read(path.join(blocksDir, 'stone.gltf'))],
+    ['off-centre box', async () => makeOffCentreDoc()],
+  ])('%s keeps its bounds within 1 mm once compressed', async (_name, load) => {
+    const before = await bounds(await load(), false);
+    const after = await bounds(await load(), true);
+    expect(after.min.distanceTo(before.min)).toBeLessThan(0.001);
+    expect(after.max.distanceTo(before.max)).toBeLessThan(0.001);
   });
 });

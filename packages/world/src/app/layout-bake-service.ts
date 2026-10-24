@@ -53,6 +53,7 @@ export interface BakeOptions {
    * Inject `NodeIO` when running under Node if you need filesystem reads
    * (the bake function itself only uses `readBinary`/`writeBinary`, so
    * WebIO is sufficient for bytes-in / bytes-out usage).
+   * `bakeLayout` registers the compression codecs on it.
    */
   io?: PlatformIO;
   /**

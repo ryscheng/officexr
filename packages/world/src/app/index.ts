@@ -28,6 +28,7 @@ export type { GltfHandle, GltfLoader } from './bake-service.ts';
 export { createSceneService } from './scene-service.ts';
 
 export { bakeLayout } from './layout-bake-service.ts';
+export { compressDocument, registerCompressionCodecs } from './glb-compression.ts';
 export type {
   KindLookup,
   BakeOptions,
