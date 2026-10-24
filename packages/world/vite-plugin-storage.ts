@@ -77,6 +77,11 @@ export function studioMapExists(dataDir?: string): (name: string) => Promise<boo
   };
 }
 
+export interface BakedLayoutHooks {
+  onSaved?: (name: string, bytes: Buffer) => Promise<void>;
+  onDeleted?: (name: string) => Promise<void>;
+}
+
 export interface StudioStoragePluginOptions {
   /** Root of a studio data dir; expands to every entry's dir/file. Explicit
    * per-entry options win over it. */
@@ -104,12 +109,7 @@ export interface StudioStoragePluginOptions {
    * `onDeleted` run after the file is written / removed; the response does
    * not wait for them and a rejection is only logged.
    */
-  bakedLayouts?: {
-    dir?: string;
-    basePath?: string;
-    onSaved?: (name: string, bytes: Buffer) => Promise<void>;
-    onDeleted?: (name: string) => Promise<void>;
-  };
+  bakedLayouts?: { dir?: string; basePath?: string } & BakedLayoutHooks;
   /**
    * Back-compat: the legacy `/api/scenes` endpoint serves
    * `packages/world/scenes/` so the existing Scenes editor keeps
@@ -230,11 +230,7 @@ export default function studioStoragePlugin(
     );
     use(
       bakedLayoutsBase,
-      makeBinaryResourceMiddleware({
-        dir: bakedLayoutsDir,
-        onSaved: opts.bakedLayouts.onSaved,
-        onDeleted: opts.bakedLayouts.onDeleted,
-      }),
+      makeBinaryResourceMiddleware({ ...opts.bakedLayouts, dir: bakedLayoutsDir }),
     );
     if (mountLegacy) {
       use(
@@ -306,10 +302,8 @@ function makeJsonResourceMiddleware(
   };
 }
 
-interface BinaryResourceOpts {
+interface BinaryResourceOpts extends BakedLayoutHooks {
   dir: string;
-  onSaved?: (name: string, bytes: Buffer) => Promise<void>;
-  onDeleted?: (name: string) => Promise<void>;
 }
 
 /**

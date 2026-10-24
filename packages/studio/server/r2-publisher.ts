@@ -17,8 +17,6 @@ const CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.ktx2': 'image/ktx2',
 };
 const UNCOMPRESSED_MODEL_DIRS = ['models/characters/', 'models/animations/'];
 
@@ -36,12 +34,10 @@ type Unit = { type: 'gltf'; key: string; path: string; resources: File[] } | ({ 
 
 type Upload = { key: string; bytes: Uint8Array };
 
-export interface SyncDirs {
+interface SyncDirs {
   modelsDir: string;
   bakedLayoutsDir: string;
 }
-
-export type R2Publisher = ReturnType<typeof createR2Publisher>;
 
 /** Reads the four `OFFICEXR_R2_*` vars; `null` (publishing off) unless all are set. */
 export function r2ConfigFromEnv(env: NodeJS.ProcessEnv): R2Config | null {
@@ -134,10 +130,9 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
       : { gltf: gltfBytes, resources: unit.resources.map((r, i) => ({ key: r.key, bytes: resourceBytes[i] })) };
     // Resources first, so a client never pairs the new .gltf with old buffers.
     for (const resource of resources) {
-      const id = `${resource.key}:${sourceHash([resource.bytes])}`;
-      if (!uploaded.has(id)) {
+      if (!uploaded.has(resource.key)) {
         await put(resource);
-        uploaded.add(id);
+        uploaded.add(resource.key);
       }
     }
     await put({ key: unit.key, bytes: gltf }, sourceSha);
@@ -279,7 +274,7 @@ async function bakedLayoutUnits(dir: string): Promise<Unit[]> {
   });
   return names
     .filter((name) => name.endsWith('.glb'))
-    .map((name) => ({ type: 'file', key: `baked-layouts/${name}`, path: path.join(dir, name) }));
+    .map((name) => ({ type: 'file', key: bakedLayoutKey(path.basename(name, '.glb')), path: path.join(dir, name) }));
 }
 
 function assertNever(value: never): never {
