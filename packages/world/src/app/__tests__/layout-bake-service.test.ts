@@ -5,11 +5,16 @@
  * filesystem dependency and the tests remain pure / hermetic.
  */
 import { describe, it, expect } from 'vitest';
-import { Document, WebIO } from '@gltf-transform/core';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Document, NodeIO, WebIO } from '@gltf-transform/core';
+import { dequantize } from '@gltf-transform/functions';
+import { registerCompressionCodecs } from '../glb-compression.ts';
 import { bakeLayout } from '../layout-bake-service.ts';
 import type { KindLookup } from '../layout-bake-service.ts';
 import { createInstanceGeometry } from '../geometry-service.ts';
-import { parseEmbeddedColliders } from '../baked-collider-extras.ts';
+import { buildColliderExtras, parseEmbeddedColliders } from '../baked-collider-extras.ts';
+import { worldObjectsToColliders } from '../../physics/rules.ts';
 import type { WorldObjectKind } from '../../scenes/world-object-kinds-schema.ts';
 import type { LayoutDocument } from '../../scenes/layout-document.ts';
 
@@ -27,7 +32,7 @@ function makeGeometry(kindMap: Map<string, WorldObjectKind>, voxelSize = 0.5) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const io = new WebIO();
+const io = await registerCompressionCodecs(new WebIO());
 
 /** Build a trivial GLB (one mesh, one primitive, no textures). */
 async function makeTrivialGlb(name: string): Promise<Uint8Array> {
@@ -512,5 +517,67 @@ describe('bakeLayout', () => {
       expect(bottom).toBeCloseTo(base, 6);
       expect(top).toBeCloseTo(base + (i + 1) * stepRise, 6);
     }
+  });
+});
+
+describe('bakeLayout compression', () => {
+  const blocksDir = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../studio/public/models/blocks',
+  );
+
+  it('writes a smaller meshopt + quantized GLB with the baked collider extras', async () => {
+    const kindMap = new Map([
+      ['stone', makeKind('stone', 'stone.gltf')],
+      ['red', makeKind('red', 'colored_block_red.gltf')],
+    ]);
+    const placements: Array<[string, [number, number, number]]> = [
+      ['stone', [0, 0, 0]],
+      ['red', [3, 0, 0]],
+    ];
+    const doc = makeLayoutDoc(
+      'compress',
+      placements.map(([kindId, position], i) => ({
+        id: `c${i}`,
+        op: 'placeObject' as const,
+        kindId,
+        position,
+      })),
+    );
+    const geometry = makeGeometry(kindMap);
+    const nodeIo = new NodeIO();
+    const loader = async (url: string) =>
+      nodeIo.writeBinary(await nodeIo.read(path.join(blocksDir, url)));
+
+    const { glb } = await bakeLayout(doc, (id) => kindMap.get(id), loader, geometry, { io });
+
+    const parsed = await io.readBinary(glb);
+    const used = new Map(
+      parsed.getRoot().listExtensionsUsed().map((ext) => [ext.extensionName, ext]),
+    );
+    expect(used.has('KHR_mesh_quantization')).toBe(true);
+    expect(used.get('EXT_meshopt_compression')?.isRequired()).toBe(true);
+
+    const expected = buildColliderExtras(
+      worldObjectsToColliders(
+        {
+          cubeSize: geometry.voxelSize,
+          instances: doc.commands.flatMap((c) =>
+            c.op === 'placeObject'
+              ? [{ id: c.id, sourceCommandId: c.id, kindId: c.kindId, position: c.position }]
+              : [],
+          ),
+        },
+        (position, kindId) => geometry.worldAABB(position, kindId),
+        (kindId) => kindMap.get(kindId)?.colliderShape,
+      ),
+    );
+    expect(parsed.getRoot().listScenes()[0].getExtras()).toEqual(expected);
+
+    // Uncompressed reference: the same content, dequantized and written without the extensions.
+    await parsed.transform(dequantize());
+    parsed.getRoot().listExtensionsUsed().forEach((ext) => ext.dispose());
+    const uncompressed = await new WebIO().writeBinary(parsed);
+    expect(glb.length).toBeLessThan(uncompressed.length);
   });
 });
