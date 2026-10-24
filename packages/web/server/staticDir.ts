@@ -4,14 +4,7 @@ import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Connect } from 'vite';
-
-const CONTENT_TYPES: Record<string, string> = {
-  '.glb': 'model/gltf-binary',
-  '.gltf': 'model/gltf+json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-};
+import { assetContentType } from '@officexr/world/asset-content-type';
 
 function decodePath(urlPath: string): string | null {
   try {
@@ -36,7 +29,7 @@ async function serveFile(root: string, prefix: string, req: Connect.IncomingMess
   if (!info?.isFile()) {
     return false;
   }
-  res.setHeader('Content-Type', CONTENT_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream');
+  res.setHeader('Content-Type', assetContentType(file));
   res.setHeader('Content-Length', info.size);
   res.setHeader('Cache-Control', 'public, max-age=3600');
   if (req.method === 'HEAD') {

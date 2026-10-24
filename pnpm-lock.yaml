@@ -86,6 +86,9 @@ importers:
       '@dimforge/rapier3d-compat':
         specifier: 0.19.2
         version: 0.19.2
+      '@gltf-transform/core':
+        specifier: ^4.1.2
+        version: 4.3.0
       '@officexr/core-refactor':
         specifier: workspace:*
         version: link:../core-refactor
@@ -134,6 +137,9 @@ importers:
       '@react-three/rapier':
         specifier: ^2.2.0
         version: 2.2.0(@react-three/fiber@9.6.1(4cef1d60f6603e4c9948bae2bbba478a))(react@19.2.3)(three@0.182.0)
+      aws4fetch:
+        specifier: ^1.0.20
+        version: 1.0.20
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -2816,6 +2822,9 @@ packages:
 
   asynckit@0.4.0:
     resolution: {integrity: sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==}
+
+  aws4fetch@1.0.20:
+    resolution: {integrity: sha512-/djoAN709iY65ETD6LKCtyyEI04XIBP5xVvfmNxsEP0uJB5tyaGBztSryRr4HqMStr9R06PisQE7m9zDTXKu6g==}
 
   babel-jest@29.7.0:
     resolution: {integrity: sha512-BrvGY3xZSwEcCzKvKsCi2GgHqDqsYkOP4/by5xCgIwGXQxIEh+8ew3gmrE1y7XRR6LHZIj6yLYnUi/mm2KXKBg==}
@@ -8305,6 +8314,8 @@ snapshots:
     optional: true
 
   asynckit@0.4.0: {}
+
+  aws4fetch@1.0.20: {}
 
   babel-jest@29.7.0(@babel/core@7.29.0):
     dependencies:

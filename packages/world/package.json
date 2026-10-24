@@ -14,7 +14,9 @@
     "./scenes": "./src/scenes/index.ts",
     "./vite-plugin-storage": "./vite-plugin-storage.ts",
     "./vite-plugin-scene-storage": "./vite-plugin-scene-storage.ts",
-    "./vite-plugin-bots": "./vite-plugin-bots.ts"
+    "./vite-plugin-bots": "./vite-plugin-bots.ts",
+    "./glb-compression": "./src/app/glb-compression.ts",
+    "./asset-content-type": "./src/app/asset-content-type.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

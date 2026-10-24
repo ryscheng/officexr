@@ -77,6 +77,11 @@ export function studioMapExists(dataDir?: string): (name: string) => Promise<boo
   };
 }
 
+export interface BakedLayoutHooks {
+  onSaved?: (name: string, bytes: Buffer) => Promise<void>;
+  onDeleted?: (name: string) => Promise<void>;
+}
+
 export interface StudioStoragePluginOptions {
   /** Root of a studio data dir; expands to every entry's dir/file. Explicit
    * per-entry options win over it. */
@@ -99,8 +104,12 @@ export interface StudioStoragePluginOptions {
   };
   /** Layout JSON docs. Default dir: `packages/world/layouts/`. */
   layouts?: { dir?: string; basePath?: string };
-  /** Baked GLBs. Default dir: `packages/world/baked-layouts/`. */
-  bakedLayouts?: { dir?: string; basePath?: string };
+  /**
+   * Baked GLBs. Default dir: `packages/world/baked-layouts/`. `onSaved` /
+   * `onDeleted` run after the file is written / removed; the response does
+   * not wait for them and a rejection is only logged.
+   */
+  bakedLayouts?: { dir?: string; basePath?: string } & BakedLayoutHooks;
   /**
    * Back-compat: the legacy `/api/scenes` endpoint serves
    * `packages/world/scenes/` so the existing Scenes editor keeps
@@ -221,7 +230,7 @@ export default function studioStoragePlugin(
     );
     use(
       bakedLayoutsBase,
-      makeBinaryResourceMiddleware({ dir: bakedLayoutsDir }),
+      makeBinaryResourceMiddleware({ ...opts.bakedLayouts, dir: bakedLayoutsDir }),
     );
     if (mountLegacy) {
       use(
@@ -293,7 +302,7 @@ function makeJsonResourceMiddleware(
   };
 }
 
-interface BinaryResourceOpts {
+interface BinaryResourceOpts extends BakedLayoutHooks {
   dir: string;
 }
 
@@ -372,6 +381,7 @@ function makeBinaryResourceMiddleware(
           await fs.writeFile(file, data);
           res.statusCode = 204;
           res.end();
+          opts.onSaved?.(bareName, data).catch(logHookError);
           return;
         }
         case 'DELETE': {
@@ -382,6 +392,7 @@ function makeBinaryResourceMiddleware(
           }
           res.statusCode = 204;
           res.end();
+          opts.onDeleted?.(bareName).catch(logHookError);
           return;
         }
         default:
@@ -393,6 +404,10 @@ function makeBinaryResourceMiddleware(
       next?.();
     }
   };
+}
+
+function logHookError(err: unknown): void {
+  console.error('[studio-storage:baked-layouts] hook failed:', err);
 }
 
 interface SingleDocOpts<T> {
