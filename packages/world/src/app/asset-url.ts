@@ -4,7 +4,7 @@ const MODELS_PREFIX = '/models/';
 
 let assetBase: string | null = null;
 
-/** Origin (e.g. a CDN) serving `/models/...` and baked layouts; `null` keeps same-origin paths. */
+/** Base URL (e.g. a CDN) serving `/models/...` and baked layouts. A trailing slash is stripped; `null` or `''` means unset. */
 export function setAssetBaseUrl(base: string | null): void {
   assetBase = base ? base.replace(/\/$/, '') : null;
 }

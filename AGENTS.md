@@ -23,7 +23,7 @@ officexr/
 │   │   │                 # hud/ (chat), voice/ (JaaS proximity voice)
 │   │   ├── server/       # /api/me, /api/offices (list + create), /api/offices/:id/character (pg), /config.js; vitest specs
 │   │   ├── vite.config.ts
-│   │   └── .env.example  # SUPABASE_DB_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*
+│   │   └── .env.example  # SUPABASE_DB_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
 │   ├── sdk/              # @officexr/sdk — headless game state, realtime protocol, Channel
@@ -87,6 +87,8 @@ For local dev set `OFFICEXR_DEV_USER_LOGIN` / `OFFICEXR_DEV_USER_NAME`; the dev 
 injects them as the Tailscale headers (never in preview).
 The identity headers are trusted only because the server is reachable solely through the
 Tailscale ingress; direct access to the pod port would allow spoofing them.
+Optional `OFFICEXR_ASSET_BASE_URL` (served at `/config.js`) loads `/models` assets and baked
+layouts from that base URL (e.g. a CDN); unset keeps same-origin paths.
 
 Copy from `packages/web/.env.example`. Vite loads `.env` from `packages/web/` when
 `pnpm dev` / `pnpm build` are run inside that package.
