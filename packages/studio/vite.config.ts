@@ -8,6 +8,7 @@ import tailwindcss from '@tailwindcss/vite';
 import studioStorage, { STORAGE_ENTRIES, type StorageEntry } from '@officexr/world/vite-plugin-storage';
 import bots from '@officexr/world/vite-plugin-bots';
 import { pushWorldConstants } from './server/push-world-constants.ts';
+import { createR2Publisher, r2ConfigFromEnv } from './server/r2-publisher.ts';
 
 /**
  * The custom realtime server (`@officexr/realtime-server`, started by
@@ -35,6 +36,19 @@ const adminToken = process.env.OFFICEXR_REALTIME_ADMIN_TOKEN ?? randomUUID();
 
 const WORLD_DIR = fileURLToPath(new URL('../world', import.meta.url));
 const DATA_DIR = process.env.OFFICEXR_STUDIO_DATA_DIR;
+
+const r2Config = r2ConfigFromEnv(process.env);
+const publisher = r2Config ? createR2Publisher(r2Config) : null;
+console.log(
+  r2Config
+    ? `[r2-publisher] publishing assets to bucket ${r2Config.bucket}`
+    : '[r2-publisher] off: OFFICEXR_R2_ENDPOINT/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY not all set',
+);
+const syncAssets = () =>
+  publisher?.sync({
+    modelsDir: fileURLToPath(new URL('./public/models', import.meta.url)),
+    bakedLayoutsDir: path.join(DATA_DIR ?? WORLD_DIR, STORAGE_ENTRIES.bakedLayouts.name),
+  });
 
 const exists = (p: string) =>
   access(p).then(
@@ -86,6 +100,7 @@ export default defineConfig({
       worldSettings: {
         onSaved: (doc) => pushWorldConstants({ targets: [...pushTargets], token: adminToken, doc }),
       },
+      bakedLayouts: publisher?.bakedLayoutHooks,
     }),
     {
       name: 'officexr:seed-data-dir',
@@ -98,6 +113,17 @@ export default defineConfig({
         if (DATA_DIR) {
           await seedDataDir(DATA_DIR);
         }
+      },
+    },
+    // After the seed, so the sync sees seeded layouts. Not awaited: the sync
+    // runs in the background while the server serves.
+    {
+      name: 'officexr:r2-publish',
+      configureServer() {
+        void syncAssets();
+      },
+      configurePreviewServer() {
+        void syncAssets();
       },
     },
     // Spawns the Node bot CLI as a child process for the lifetime of
