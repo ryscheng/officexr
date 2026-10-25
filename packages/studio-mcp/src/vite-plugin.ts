@@ -4,10 +4,32 @@ import {
   FilesystemMapStorage,
   FilesystemRoomStorage,
   FilesystemWorldConstantsStorage,
+  httpError,
 } from '@officexr/world/scenes';
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
-import { handleMcpRequest } from './server.ts';
-import type { StudioDocuments } from './studio-documents.ts';
+import { handleMcpRequest, type StudioMcpOptions } from './server.ts';
+import type { BakedLayoutStorage, BakedLayoutSummary, StudioDocuments } from './studio-documents.ts';
+
+function loopbackBakedLayouts(origin: string): BakedLayoutStorage {
+  const base = `${origin}/api/baked-layouts`;
+  const send = async (op: string, name: string, init: RequestInit) => {
+    const r = await fetch(`${base}/${encodeURIComponent(name)}`, init);
+    if (!r.ok) {
+      throw await httpError(`baked-layout ${op}`, r);
+    }
+  };
+  return {
+    async list() {
+      const r = await fetch(base);
+      if (!r.ok) {
+        throw await httpError('baked-layout list', r);
+      }
+      return ((await r.json()) as { bakedLayouts: BakedLayoutSummary[] }).bakedLayouts;
+    },
+    save: (name, glb) => send('save', name, { method: 'PUT', headers: { 'content-type': 'application/octet-stream' }, body: glb }),
+    delete: (name) => send('delete', name, { method: 'DELETE' }),
+  };
+}
 
 /** Clients for the studio's own REST surface, so validation, hooks and disk I/O stay in `vite-plugin-storage.ts`. */
 function loopbackDocuments(origin: string): StudioDocuments {
@@ -17,6 +39,7 @@ function loopbackDocuments(origin: string): StudioDocuments {
     layouts: new FilesystemLayoutStorage({ basePath: `${origin}/api/layouts` }),
     catalog: new FilesystemCatalogStorage({ basePath: `${origin}/api/world-object-kinds` }),
     worldSettings: new FilesystemWorldConstantsStorage({ basePath: `${origin}/api/world-settings` }),
+    bakedLayouts: loopbackBakedLayouts(origin),
   };
 }
 
@@ -24,7 +47,10 @@ function loopbackDocuments(origin: string): StudioDocuments {
  * The POST handler mounts from the post hook so Vite's host check runs first; the 405 stays in front
  * so the SPA fallback can't answer a GET.
  */
-function mountMcp({ middlewares, httpServer }: Pick<ViteDevServer | PreviewServer, 'middlewares' | 'httpServer'>) {
+function mountMcp(
+  { middlewares, httpServer }: Pick<ViteDevServer | PreviewServer, 'middlewares' | 'httpServer'>,
+  options: StudioMcpOptions,
+) {
   middlewares.use('/mcp', (req, res, next) => {
     if (req.method === 'POST') {
       next();
@@ -41,7 +67,7 @@ function mountMcp({ middlewares, httpServer }: Pick<ViteDevServer | PreviewServe
       if (!address || typeof address === 'string') {
         throw new Error('server is not listening on a TCP port');
       }
-      await handleMcpRequest(loopbackDocuments(`http://127.0.0.1:${address.port}`), req, res);
+      await handleMcpRequest(loopbackDocuments(`http://127.0.0.1:${address.port}`), options, req, res);
     } catch (err) {
       console.error('[studio-mcp] request failed:', err);
       if (!res.headersSent) {
@@ -54,10 +80,10 @@ function mountMcp({ middlewares, httpServer }: Pick<ViteDevServer | PreviewServe
 }
 
 /** Mounts the studio's MCP server at `POST /mcp` on the dev and preview servers. */
-export default function studioMcpPlugin(): Plugin {
+export default function studioMcpPlugin(options: StudioMcpOptions): Plugin {
   return {
     name: 'officexr:studio-mcp',
-    configureServer: mountMcp,
-    configurePreviewServer: mountMcp,
+    configureServer: (server) => mountMcp(server, options),
+    configurePreviewServer: (server) => mountMcp(server, options),
   };
 }

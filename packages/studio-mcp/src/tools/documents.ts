@@ -19,9 +19,9 @@ export interface DocumentToolSpec {
   beforeSave?: (doc: unknown) => Promise<void>;
 }
 
-const nameSchema = z.string().describe('Document name: letters, digits, ".", "_" or "-", at most 64 characters.');
+export const nameSchema = z.string().describe('Document name: letters, digits, ".", "_" or "-", at most 64 characters.');
 
-function checkedName(name: string): string {
+export function checkedName(name: string): string {
   if (!isValidSceneName(name)) {
     throw new Error(`invalid name "${name}": use letters, digits, ".", "_" or "-", at most 64 characters`);
   }

@@ -116,7 +116,7 @@ export default defineConfig({
         onDeleted: async (name) => r2Publisher()?.bakedLayoutHooks.onDeleted(name),
       },
     }),
-    studioMcp(),
+    studioMcp({ modelRoot: fileURLToPath(new URL('./public', import.meta.url)) }),
     {
       name: 'officexr:seed-data-dir',
       async configureServer() {

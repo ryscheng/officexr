@@ -3,6 +3,7 @@ export {
   type SceneSummary,
   isValidSceneName,
   SCENE_NAME_RE,
+  httpError,
 } from './storage.ts';
 export {
   type LayoutDocument,

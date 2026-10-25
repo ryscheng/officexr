@@ -312,6 +312,7 @@ interface BinaryResourceOpts extends BakedLayoutHooks {
  *   GET  /api/baked-layouts/:name  → application/octet-stream or 404
  *   PUT  /api/baked-layouts/:name  → 204 (body = binary GLB)
  *   DELETE /api/baked-layouts/:name → 204
+ *   GET  /api/baked-layouts         → { bakedLayouts: [{ name, size, updatedAt }] }
  *
  * Names must end with `.glb` — `isValidSceneName` is checked after
  * stripping the `.glb` suffix.
@@ -325,7 +326,10 @@ function makeBinaryResourceMiddleware(
       const slug = url.pathname.replace(/^\/+/, '');
 
       if (!slug) {
-        return badMethod(res, ['GET', 'PUT', 'DELETE']);
+        if (req.method === 'GET') {
+          return await handleListBaked(opts.dir, res);
+        }
+        return badMethod(res, ['GET']);
       }
 
       // Names look like "foo" or "foo.glb". Normalise to bare name for
@@ -404,6 +408,26 @@ function makeBinaryResourceMiddleware(
       next?.();
     }
   };
+}
+
+async function handleListBaked(dir: string, res: ServerResponse): Promise<void> {
+  let files: string[] = [];
+  try {
+    files = await fs.readdir(dir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw err;
+    }
+  }
+  const bakedLayouts = await Promise.all(
+    files
+      .filter((f) => f.endsWith('.glb'))
+      .map(async (f) => {
+        const stat = await fs.stat(path.join(dir, f));
+        return { name: f.slice(0, -4), size: stat.size, updatedAt: stat.mtimeMs };
+      }),
+  );
+  jsonResponse(res, 200, { bakedLayouts });
 }
 
 function logHookError(err: unknown): void {
