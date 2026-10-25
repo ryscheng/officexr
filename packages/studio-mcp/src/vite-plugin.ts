@@ -1,4 +1,5 @@
 import {
+  FilesystemBakedLayoutStorage,
   FilesystemCatalogStorage,
   FilesystemLayoutStorage,
   FilesystemMapStorage,
@@ -6,7 +7,7 @@ import {
   FilesystemWorldConstantsStorage,
 } from '@officexr/world/scenes';
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
-import { handleMcpRequest } from './server.ts';
+import { handleMcpRequest, type StudioMcpOptions } from './server.ts';
 import type { StudioDocuments } from './studio-documents.ts';
 
 /** Clients for the studio's own REST surface, so validation, hooks and disk I/O stay in `vite-plugin-storage.ts`. */
@@ -17,6 +18,7 @@ function loopbackDocuments(origin: string): StudioDocuments {
     layouts: new FilesystemLayoutStorage({ basePath: `${origin}/api/layouts` }),
     catalog: new FilesystemCatalogStorage({ basePath: `${origin}/api/world-object-kinds` }),
     worldSettings: new FilesystemWorldConstantsStorage({ basePath: `${origin}/api/world-settings` }),
+    bakedLayouts: new FilesystemBakedLayoutStorage({ basePath: `${origin}/api/baked-layouts` }),
   };
 }
 
@@ -24,7 +26,10 @@ function loopbackDocuments(origin: string): StudioDocuments {
  * The POST handler mounts from the post hook so Vite's host check runs first; the 405 stays in front
  * so the SPA fallback can't answer a GET.
  */
-function mountMcp({ middlewares, httpServer }: Pick<ViteDevServer | PreviewServer, 'middlewares' | 'httpServer'>) {
+function mountMcp(
+  { middlewares, httpServer }: Pick<ViteDevServer | PreviewServer, 'middlewares' | 'httpServer'>,
+  options: StudioMcpOptions,
+) {
   middlewares.use('/mcp', (req, res, next) => {
     if (req.method === 'POST') {
       next();
@@ -41,7 +46,7 @@ function mountMcp({ middlewares, httpServer }: Pick<ViteDevServer | PreviewServe
       if (!address || typeof address === 'string') {
         throw new Error('server is not listening on a TCP port');
       }
-      await handleMcpRequest(loopbackDocuments(`http://127.0.0.1:${address.port}`), req, res);
+      await handleMcpRequest(loopbackDocuments(`http://127.0.0.1:${address.port}`), options, req, res);
     } catch (err) {
       console.error('[studio-mcp] request failed:', err);
       if (!res.headersSent) {
@@ -54,10 +59,11 @@ function mountMcp({ middlewares, httpServer }: Pick<ViteDevServer | PreviewServe
 }
 
 /** Mounts the studio's MCP server at `POST /mcp` on the dev and preview servers. */
-export default function studioMcpPlugin(): Plugin {
+export default function studioMcpPlugin({ modelRoot }: Pick<StudioMcpOptions, 'modelRoot'>): Plugin {
+  const options: StudioMcpOptions = { modelRoot, bakeLock: { busy: false } };
   return {
     name: 'officexr:studio-mcp',
-    configureServer: mountMcp,
-    configurePreviewServer: mountMcp,
+    configureServer: (server) => mountMcp(server, options),
+    configurePreviewServer: (server) => mountMcp(server, options),
   };
 }

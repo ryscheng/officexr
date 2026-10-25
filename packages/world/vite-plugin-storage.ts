@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
@@ -312,6 +312,7 @@ interface BinaryResourceOpts extends BakedLayoutHooks {
  *   GET  /api/baked-layouts/:name  → application/octet-stream or 404
  *   PUT  /api/baked-layouts/:name  → 204 (body = binary GLB)
  *   DELETE /api/baked-layouts/:name → 204
+ *   GET  /api/baked-layouts         → { bakedLayouts: [{ name, size, updatedAt }] }
  *
  * Names must end with `.glb` — `isValidSceneName` is checked after
  * stripping the `.glb` suffix.
@@ -325,7 +326,10 @@ function makeBinaryResourceMiddleware(
       const slug = url.pathname.replace(/^\/+/, '');
 
       if (!slug) {
-        return badMethod(res, ['GET', 'PUT', 'DELETE']);
+        if (req.method === 'GET') {
+          return await handleListBaked(opts.dir, res);
+        }
+        return badMethod(res, ['GET']);
       }
 
       // Names look like "foo" or "foo.glb". Normalise to bare name for
@@ -404,6 +408,31 @@ function makeBinaryResourceMiddleware(
       next?.();
     }
   };
+}
+
+async function handleListBaked(dir: string, res: ServerResponse): Promise<void> {
+  let entries: Dirent[] = [];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw err;
+    }
+  }
+  const bakedLayouts: Array<{ name: string; size: number; updatedAt: number }> = [];
+  for (const entry of entries) {
+    const name = entry.name.slice(0, -4);
+    if (!entry.isFile() || !entry.name.endsWith('.glb') || !isValidSceneName(name)) {
+      continue;
+    }
+    try {
+      const stat = await fs.stat(path.join(dir, entry.name));
+      bakedLayouts.push({ name, size: stat.size, updatedAt: stat.mtimeMs });
+    } catch (err) {
+      console.warn(`[studio-storage:baked-layouts] skipping ${entry.name}:`, (err as Error).message);
+    }
+  }
+  jsonResponse(res, 200, { bakedLayouts });
 }
 
 function logHookError(err: unknown): void {

@@ -21,7 +21,7 @@
 import { WebIO } from '@gltf-transform/core';
 import type { CatalogService, InstanceGeometryService } from './types.ts';
 import type { BakeDeps } from './bake-registry.ts';
-import { bakedLayoutUrl } from './baked-layout-url.ts';
+import { FilesystemBakedLayoutStorage } from '../scenes/filesystem-baked-layout-storage.ts';
 
 /**
  * Build a `BakeDeps` object suitable for use in the browser.
@@ -61,24 +61,8 @@ export function createBrowserBakeDeps(
     return await webio.writeBinary(doc);
   };
 
-  const publish: BakeDeps['publish'] = async (
-    layoutName: string,
-    glb: Uint8Array,
-  ) => {
-    const url = bakedLayoutUrl(layoutName);
-    // Send a copy of the underlying buffer; fetch() accepts ArrayBuffer as body.
-    const body: BodyInit = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer;
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'model/gltf-binary' },
-      body,
-    });
-    if (!res.ok) {
-      throw new Error(
-        `createBrowserBakeDeps publish: PUT ${url} → ${res.status} ${res.statusText}`,
-      );
-    }
-  };
+  const baked = new FilesystemBakedLayoutStorage();
+  const publish: BakeDeps['publish'] = (layoutName, glb) => baked.save(layoutName, glb);
 
   return { kindLookup, gltfLoader, publish, geometry };
 }

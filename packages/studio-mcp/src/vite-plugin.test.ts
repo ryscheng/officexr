@@ -2,9 +2,10 @@ import { request } from 'node:http';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { emptyMapDocument, emptyRoomDocument } from '@officexr/world/scenes';
+import { emptyLayoutDocument, emptyMapDocument, emptyRoomDocument } from '@officexr/world/scenes';
 import studioStorage from '@officexr/world/vite-plugin-storage';
 import { createServer, type ViteDevServer } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -13,13 +14,25 @@ import studioMcp from './vite-plugin.ts';
 let dataDir: string;
 let vite: ViteDevServer;
 let url: string;
+const saved: string[] = [];
+const deleted: string[] = [];
+const modelRoot = fileURLToPath(new URL('../../studio/public', import.meta.url));
 
 beforeAll(async () => {
   dataDir = await mkdtemp(path.join(tmpdir(), 'studio-mcp-'));
   vite = await createServer({
     configFile: false,
     logLevel: 'silent',
-    plugins: [studioStorage({ dataDir }), studioMcp()],
+    plugins: [
+      studioStorage({
+        dataDir,
+        bakedLayouts: {
+          onSaved: async (name) => void saved.push(name),
+          onDeleted: async (name) => void deleted.push(name),
+        },
+      }),
+      studioMcp({ modelRoot }),
+    ],
     server: { port: 0, host: '127.0.0.1' },
   });
   await vite.listen();
@@ -31,16 +44,21 @@ afterAll(async () => {
   await rm(dataDir, { recursive: true, force: true });
 });
 
+async function connectMcp() {
+  const client = new Client({ name: 'test', version: '0' });
+  await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const r = await client.callTool({ name, arguments: args });
+    return { isError: r.isError === true, text: (r.content as { text: string }[])[0].text };
+  };
+  return { client, call };
+}
+
 describe('POST /mcp over HTTP', () => {
   it('writes through the REST surface and rejects what it rejects', async () => {
-    const client = new Client({ name: 'test', version: '0' });
-    await client.connect(new StreamableHTTPClientTransport(new URL(url)));
-    const call = async (name: string, args: Record<string, unknown>) => {
-      const r = await client.callTool({ name, arguments: args });
-      return { isError: r.isError === true, text: (r.content as { text: string }[])[0].text };
-    };
+    const { client, call } = await connectMcp();
 
-    expect((await client.listTools()).tools).toHaveLength(16);
+    expect((await client.listTools()).tools).toHaveLength(19);
     expect((await call('put_room', { name: 'hall', room: emptyRoomDocument('hall') })).isError).toBe(false);
     const map = { ...emptyMapDocument('town'), rooms: [{ id: 'a', roomName: 'hall', position: [0, 0, 0] }] };
     expect((await call('put_map', { name: 'town', map })).isError).toBe(false);
@@ -76,5 +94,25 @@ describe('POST /mcp over HTTP', () => {
   it('answers GET and DELETE with 405', async () => {
     expect((await fetch(url)).status).toBe(405);
     expect((await fetch(url, { method: 'DELETE' })).status).toBe(405);
+  });
+
+  it('bakes, lists and deletes a layout through the storage hooks', async () => {
+    const { client, call } = await connectMcp();
+    const layout = {
+      ...emptyLayoutDocument('hall'),
+      commands: [{ id: 'p1', op: 'placeObject', kindId: 'colored_block_blue', position: [0, 0, 0] }],
+    };
+    await call('put_layout', { name: 'hall', layout });
+
+    const baked = JSON.parse((await call('bake_layout', { name: 'hall' })).text);
+    expect(baked).toMatchObject({ name: 'hall', optimizer: expect.any(String) });
+    const [listed] = JSON.parse((await call('list_baked_layouts')).text);
+    expect(listed).toMatchObject({ name: 'hall', size: baked.bytes });
+    expect(saved).toEqual(['hall']);
+
+    expect((await call('delete_baked_layout', { name: 'hall' })).isError).toBe(false);
+    expect(deleted).toEqual(['hall']);
+    expect(JSON.parse((await call('list_baked_layouts')).text)).toEqual([]);
+    await client.close();
   });
 });

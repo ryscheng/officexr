@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
 import {
+  emptyLayoutDocument,
   emptyMapDocument,
   emptyRoomDocument,
   InMemoryLayoutStorage,
@@ -9,7 +10,9 @@ import {
   InMemoryRoomStorage,
   InMemoryWorldConstantsStorage,
   WorldConstantsPushError,
+  type BakedLayoutStorage,
   type CatalogStorage,
+  type LayoutDocument,
   type WorldConstantsStorage,
 } from '@officexr/world/scenes';
 import { describe, expect, it } from 'vitest';
@@ -26,6 +29,19 @@ class InMemoryCatalogStorage implements CatalogStorage {
   }
 }
 
+class InMemoryBakedLayouts implements BakedLayoutStorage {
+  files = new Map<string, Uint8Array>();
+  async list() {
+    return [...this.files].map(([name, glb]) => ({ name, size: glb.length, updatedAt: 0 }));
+  }
+  async save(name: string, glb: Uint8Array) {
+    this.files.set(name, glb);
+  }
+  async delete(name: string) {
+    this.files.delete(name);
+  }
+}
+
 async function connect(overrides: Partial<StudioDocuments> = {}) {
   const docs: StudioDocuments = {
     rooms: new InMemoryRoomStorage(),
@@ -33,10 +49,11 @@ async function connect(overrides: Partial<StudioDocuments> = {}) {
     layouts: new InMemoryLayoutStorage(),
     catalog: new InMemoryCatalogStorage(),
     worldSettings: new InMemoryWorldConstantsStorage(),
+    bakedLayouts: new InMemoryBakedLayouts(),
     ...overrides,
   };
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await createStudioMcpServer(docs).connect(serverSide);
+  await createStudioMcpServer(docs, { modelRoot: '/nonexistent', bakeLock: { busy: false } }).connect(serverSide);
   const client = new Client({ name: 'test', version: '0' });
   await client.connect(clientSide);
   const call = async (name: string, args: Record<string, unknown> = {}) => {
@@ -47,12 +64,15 @@ async function connect(overrides: Partial<StudioDocuments> = {}) {
 }
 
 describe('studio MCP tools', () => {
-  it('lists the 16 tools', async () => {
+  it('lists the 19 tools', async () => {
     const { client } = await connect();
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
         ...['room', 'map', 'layout'].flatMap((n) => [`list_${n}s`, `get_${n}`, `put_${n}`, `delete_${n}`]),
+        'bake_layout',
+        'list_baked_layouts',
+        'delete_baked_layout',
         'get_world_object_kinds',
         'put_world_object_kinds',
         'get_world_settings',
@@ -115,5 +135,60 @@ describe('studio MCP tools', () => {
     const r = await call('put_world_settings', { settings: DEFAULT_WORLD_CONSTANTS });
     expect(r.isError).toBe(true);
     expect(r.text).toContain('http://bots:8787');
+  });
+
+  it('stores nothing when the layout is missing or a kind model is absent', async () => {
+    const { docs, call } = await connect();
+    const missing = await call('bake_layout', { name: 'nope' });
+    expect(missing).toEqual({ isError: true, text: 'layout "nope" not found' });
+
+    await docs.layouts.save('hall', {
+      ...emptyLayoutDocument('hall'),
+      commands: [{ op: 'placeObject', id: 'p1', kindId: 'colored_block_blue', position: [0, 0, 0] }],
+    } as LayoutDocument);
+    const failed = await call('bake_layout', { name: 'hall' });
+    expect(failed.isError).toBe(true);
+    expect(failed.text).toContain('/nonexistent/models/');
+    expect(await call('list_baked_layouts')).toEqual({ isError: false, text: '[]' });
+  });
+
+  it('lists and deletes baked layouts', async () => {
+    const baked = new InMemoryBakedLayouts();
+    await baked.save('hall', new Uint8Array(3));
+    const { call } = await connect({ bakedLayouts: baked });
+    expect(JSON.parse((await call('list_baked_layouts')).text)).toEqual([{ name: 'hall', size: 3, updatedAt: 0 }]);
+    expect((await call('delete_baked_layout', { name: 'hall' })).isError).toBe(false);
+    expect(baked.files.size).toBe(0);
+    expect((await call('delete_baked_layout', { name: '../x' })).isError).toBe(true);
+  });
+
+  it('rejects a bake while another is running and frees the lock afterwards', async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((r) => (entered = r));
+    const gate = new Promise<void>((r) => (release = r));
+    const catalog: CatalogStorage = {
+      load: async () => {
+        entered();
+        await gate;
+        return null;
+      },
+      save: async () => {},
+    };
+    const { docs, call } = await connect({ catalog });
+    await docs.layouts.save('hall', {
+      ...emptyLayoutDocument('hall'),
+      commands: [{ op: 'placeObject', id: 'p1', kindId: 'colored_block_blue', position: [0, 0, 0] }],
+    } as LayoutDocument);
+
+    const first = call('bake_layout', { name: 'hall' });
+    await started;
+    expect(await call('bake_layout', { name: 'hall' })).toEqual({
+      isError: true,
+      text: 'a bake is already in progress; retry shortly',
+    });
+    release();
+    await first;
+    expect((await call('bake_layout', { name: 'hall' })).text).not.toContain('already in progress');
   });
 });
