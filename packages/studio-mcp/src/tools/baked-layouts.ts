@@ -3,13 +3,16 @@ import type { StudioDocuments } from '../studio-documents.ts';
 import { checkedName, nameSchema } from './documents.ts';
 import { errorResult, guard, jsonResult } from './shared.ts';
 
-// Per process, not per server: each MCP request builds a fresh server, and a bake peaks near 290 MB.
-let baking = false;
+export interface BakeLock {
+  busy: boolean;
+}
+
 
 export function registerBakedLayoutTools(
   server: McpServer,
   { layouts, catalog, bakedLayouts }: StudioDocuments,
   modelRoot: string,
+  lock: BakeLock,
 ): void {
   server.registerTool(
     'bake_layout',
@@ -22,10 +25,10 @@ export function registerBakedLayoutTools(
     },
     ({ name }) =>
       guard(async () => {
-        if (baking) {
+        if (lock.busy) {
           return errorResult('a bake is already in progress; retry shortly');
         }
-        baking = true;
+        lock.busy = true;
         try {
           const layout = await layouts.load(checkedName(name));
           if (!layout) {
@@ -37,7 +40,7 @@ export function registerBakedLayoutTools(
           await bakedLayouts.save(name, glb);
           return jsonResult({ name, bytes: glb.length, optimizer: meta.optimizerId });
         } finally {
-          baking = false;
+          lock.busy = false;
         }
       }),
   );

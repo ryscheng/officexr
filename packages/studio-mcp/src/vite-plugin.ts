@@ -59,7 +59,8 @@ function mountMcp(
 }
 
 /** Mounts the studio's MCP server at `POST /mcp` on the dev and preview servers. */
-export default function studioMcpPlugin(options: StudioMcpOptions): Plugin {
+export default function studioMcpPlugin({ modelRoot }: Pick<StudioMcpOptions, 'modelRoot'>): Plugin {
+  const options: StudioMcpOptions = { modelRoot, bakeLock: { busy: false } };
   return {
     name: 'officexr:studio-mcp',
     configureServer: (server) => mountMcp(server, options),

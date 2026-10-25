@@ -1,4 +1,4 @@
-import { bakedLayoutUrl } from '../app/baked-layout-url.ts';
+import { bakedLayoutUrl } from './baked-layout-url.ts';
 import { httpError, isValidSceneName } from './storage.ts';
 
 export interface BakedLayoutSummary {
@@ -7,8 +7,14 @@ export interface BakedLayoutSummary {
   updatedAt: number;
 }
 
+export interface BakedLayoutStorage {
+  list(): Promise<BakedLayoutSummary[]>;
+  save(name: string, glb: Uint8Array): Promise<void>;
+  delete(name: string): Promise<void>;
+}
+
 /** Talks to the Vite middleware at `/api/baked-layouts`. */
-export class FilesystemBakedLayoutStorage {
+export class FilesystemBakedLayoutStorage implements BakedLayoutStorage {
   private base: string;
 
   constructor(opts: { basePath?: string } = {}) {
@@ -29,7 +35,7 @@ export class FilesystemBakedLayoutStorage {
     const r = await fetch(bakedLayoutUrl(name, this.base), {
       method: 'PUT',
       headers: { 'content-type': 'model/gltf-binary' },
-      // Uint8Array<ArrayBufferLike> isn't assignable to a fetch body type; runtime accepts it.
+      // The cast relies on callers passing ArrayBuffer-backed bytes, as gltf-transform output is.
       body: glb as Uint8Array<ArrayBuffer>,
     });
     if (!r.ok) {

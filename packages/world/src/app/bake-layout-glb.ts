@@ -54,7 +54,8 @@ export async function bakeLayoutGlb({
   const loadGltf = async (url: string) => {
     const file = path.resolve(modelRoot, url.replace(/^\//, ''));
     const rel = path.relative(modelRoot, file);
-    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    // ponytail: lexical check only; symlinks and a .gltf's external buffer/image URIs aren't contained, fine while models are repo assets.
+    if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
       throw new Error(`model path "${url}" is outside the model root`);
     }
     return io.writeBinary(await io.read(file));

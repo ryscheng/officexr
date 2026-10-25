@@ -112,6 +112,7 @@ export {
   FilesystemLayoutStorage,
 } from './filesystem-layout-storage.ts';
 export {
+  type BakedLayoutStorage,
   type BakedLayoutSummary,
   FilesystemBakedLayoutStorage,
 } from './filesystem-baked-layout-storage.ts';

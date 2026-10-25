@@ -1,5 +1,5 @@
 import type {
-  BakedLayoutSummary,
+  BakedLayoutStorage,
   CatalogStorage,
   LayoutStorage,
   MapStorage,
@@ -7,13 +7,7 @@ import type {
   WorldConstantsStorage,
 } from '@officexr/world/scenes';
 
-export interface BakedLayoutStorage {
-  list(): Promise<BakedLayoutSummary[]>;
-  save(name: string, glb: Uint8Array): Promise<void>;
-  delete(name: string): Promise<void>;
-}
-
-/** Everything the tools read and write; the `Filesystem*` clients and the in-memory storages satisfy it. */
+/** Everything the tools read and write The `Filesystem*` clients satisfy it; in-memory storages cover everything but `bakedLayouts`. */
 export interface StudioDocuments {
   rooms: RoomStorage;
   maps: MapStorage;

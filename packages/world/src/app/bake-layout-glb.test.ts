@@ -8,16 +8,26 @@ const defaults = JSON.parse(
   await readFile(new URL('../../world-object-kinds.default.json', import.meta.url), 'utf-8'),
 ) as WorldObjectKindCatalogV1;
 
+const layout = {
+  ...emptyLayoutDocument('hall'),
+  commands: [{ op: 'placeObject', id: 'p1', kindId: 'colored_block_blue', position: [0, 0, 0] }],
+} as LayoutDocument;
+
+const withGltfPath = (gltfPath: string): WorldObjectKindCatalogV1 => ({
+  ...defaults,
+  kinds: defaults.kinds.map((k) => (k.id === 'colored_block_blue' ? { ...k, gltfPath } : k)),
+});
+
 describe('bakeLayoutGlb', () => {
   it('refuses a kind model path that escapes the model root', async () => {
-    const catalog = {
-      ...defaults,
-      kinds: defaults.kinds.map((k) => (k.id === 'colored_block_blue' ? { ...k, gltfPath: '/../../../etc/passwd' } : k)),
-    };
-    const layout = {
-      ...emptyLayoutDocument('hall'),
-      commands: [{ op: 'placeObject', id: 'p1', kindId: 'colored_block_blue', position: [0, 0, 0] }],
-    } as LayoutDocument;
-    await expect(bakeLayoutGlb({ layout, modelRoot: '/srv/public', catalog })).rejects.toThrow('outside the model root');
+    await expect(
+      bakeLayoutGlb({ layout, modelRoot: '/srv/public', catalog: withGltfPath('/../../../etc/passwd') }),
+    ).rejects.toThrow('outside the model root');
+  });
+
+  it('does not mistake a name starting with two dots for an escape', async () => {
+    await expect(
+      bakeLayoutGlb({ layout, modelRoot: '/srv/public', catalog: withGltfPath('/models/..foo.gltf') }),
+    ).rejects.not.toThrow('outside the model root');
   });
 });

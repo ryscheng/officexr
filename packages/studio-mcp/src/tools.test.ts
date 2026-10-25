@@ -10,13 +10,14 @@ import {
   InMemoryRoomStorage,
   InMemoryWorldConstantsStorage,
   WorldConstantsPushError,
+  type BakedLayoutStorage,
   type CatalogStorage,
   type LayoutDocument,
   type WorldConstantsStorage,
 } from '@officexr/world/scenes';
 import { describe, expect, it } from 'vitest';
 import { createStudioMcpServer } from './server.ts';
-import type { BakedLayoutStorage, StudioDocuments } from './studio-documents.ts';
+import type { StudioDocuments } from './studio-documents.ts';
 
 class InMemoryCatalogStorage implements CatalogStorage {
   saved = 0;
@@ -52,7 +53,7 @@ async function connect(overrides: Partial<StudioDocuments> = {}) {
     ...overrides,
   };
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await createStudioMcpServer(docs, { modelRoot: '/nonexistent' }).connect(serverSide);
+  await createStudioMcpServer(docs, { modelRoot: '/nonexistent', bakeLock: { busy: false } }).connect(serverSide);
   const client = new Client({ name: 'test', version: '0' });
   await client.connect(clientSide);
   const call = async (name: string, args: Record<string, unknown> = {}) => {
@@ -161,13 +162,33 @@ describe('studio MCP tools', () => {
     expect((await call('delete_baked_layout', { name: '../x' })).isError).toBe(true);
   });
 
-  it('rejects a second concurrent bake', async () => {
-    const { docs, call } = await connect();
+  it('rejects a bake while another is running and frees the lock afterwards', async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((r) => (entered = r));
+    const gate = new Promise<void>((r) => (release = r));
+    const catalog: CatalogStorage = {
+      load: async () => {
+        entered();
+        await gate;
+        return null;
+      },
+      save: async () => {},
+    };
+    const { docs, call } = await connect({ catalog });
     await docs.layouts.save('hall', {
       ...emptyLayoutDocument('hall'),
       commands: [{ op: 'placeObject', id: 'p1', kindId: 'colored_block_blue', position: [0, 0, 0] }],
     } as LayoutDocument);
-    const results = await Promise.all([call('bake_layout', { name: 'hall' }), call('bake_layout', { name: 'hall' })]);
-    expect(results.map((r) => r.text)).toContain('a bake is already in progress; retry shortly');
+
+    const first = call('bake_layout', { name: 'hall' });
+    await started;
+    expect(await call('bake_layout', { name: 'hall' })).toEqual({
+      isError: true,
+      text: 'a bake is already in progress; retry shortly',
+    });
+    release();
+    await first;
+    expect((await call('bake_layout', { name: 'hall' })).text).not.toContain('already in progress');
   });
 });
