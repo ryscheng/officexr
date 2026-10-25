@@ -10,8 +10,11 @@ export type WorldConstantsPushFailure = {
 
 /** Thrown by `save` when the document was written but not every target accepted it. */
 export class WorldConstantsPushError extends Error {
-  constructor(readonly failed: WorldConstantsPushFailure[]) {
+  readonly failed: WorldConstantsPushFailure[];
+
+  constructor(failed: WorldConstantsPushFailure[]) {
     super(`world-constants push failed: ${failed.map((f) => f.target).join(', ')}`);
+    this.failed = failed;
     this.name = 'WorldConstantsPushError';
   }
 }

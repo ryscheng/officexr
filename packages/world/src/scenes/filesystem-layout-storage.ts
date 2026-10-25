@@ -1,5 +1,5 @@
 import { deserializeLayout } from './layout-document.ts';
-import { isValidSceneName, type SceneSummary } from './storage.ts';
+import { httpError, isValidSceneName, type SceneSummary } from './storage.ts';
 import type { LayoutDocument } from './layout-document.ts';
 
 export type LayoutSummary = SceneSummary;
@@ -51,7 +51,7 @@ export class FilesystemLayoutStorage implements LayoutStorage {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(layout),
     });
-    if (!r.ok) throw new Error(`layout-storage save: ${r.status}`);
+    if (!r.ok) throw await httpError('layout-storage save', r);
   }
 
   async delete(name: string): Promise<void> {

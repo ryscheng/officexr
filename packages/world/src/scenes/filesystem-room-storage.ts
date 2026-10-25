@@ -4,7 +4,7 @@ import {
   migrateToV5,
   type SerializedScene,
 } from './serialize.ts';
-import { isValidSceneName } from './storage.ts';
+import { httpError, isValidSceneName } from './storage.ts';
 import type { RoomDocument } from './commands.ts';
 import type { SceneSummary } from './storage.ts';
 
@@ -63,7 +63,7 @@ export class FilesystemRoomStorage implements RoomStorage {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(room),
     });
-    if (!r.ok) throw new Error(`room-storage save: ${r.status}`);
+    if (!r.ok) throw await httpError('room-storage save', r);
   }
 
   async delete(name: string): Promise<void> {

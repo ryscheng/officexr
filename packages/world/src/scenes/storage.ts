@@ -52,3 +52,11 @@ export function isValidSceneName(name: string): boolean {
   if (name === '.' || name === '..') return false;
   return true;
 }
+
+/** `prefix: status`, followed by the server's `error` message when the body carries one. */
+export async function httpError(prefix: string, r: Response): Promise<Error> {
+  const body = (await r.json().catch(() => null)) as { error?: unknown } | null;
+  return new Error(
+    typeof body?.error === 'string' ? `${prefix}: ${r.status} ${body.error}` : `${prefix}: ${r.status}`,
+  );
+}

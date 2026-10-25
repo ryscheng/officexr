@@ -6,6 +6,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import studioStorage, { STORAGE_ENTRIES, type StorageEntry } from '@officexr/world/vite-plugin-storage';
+import studioMcp from '@officexr/studio-mcp';
 import bots from '@officexr/world/vite-plugin-bots';
 import { pushWorldConstants } from './server/push-world-constants.ts';
 import { createR2Publisher, r2ConfigFromEnv, type R2Publisher } from './server/r2-publisher.ts';
@@ -115,6 +116,7 @@ export default defineConfig({
         onDeleted: async (name) => r2Publisher()?.bakedLayoutHooks.onDeleted(name),
       },
     }),
+    studioMcp(),
     {
       name: 'officexr:seed-data-dir',
       async configureServer() {
