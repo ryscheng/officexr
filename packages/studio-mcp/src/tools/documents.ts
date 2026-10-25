@@ -1,10 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { isValidSceneName } from '@officexr/world/scenes';
+import { isValidSceneName, type SceneSummary } from '@officexr/world/scenes';
 import { z } from 'zod';
 import { documentSchema, errorResult, guard, jsonResult } from './shared.ts';
 
 export interface DocumentStore<T> {
-  list(): Promise<unknown[]>;
+  list(): Promise<SceneSummary[]>;
   load(name: string): Promise<T | null>;
   save(name: string, doc: T): Promise<void>;
   delete(name: string): Promise<void>;

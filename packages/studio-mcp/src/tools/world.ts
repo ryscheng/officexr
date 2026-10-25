@@ -16,7 +16,8 @@ export function registerWorldTools(
     {
       description:
         'Read the catalog of world-object kinds (id, label, model path, swatch, walkable, scale, material ' +
-        'overrides). Rooms and layouts reference kinds by id.',
+        'overrides). Rooms and layouts reference kinds by id. `scale` is a unitless uniform multiplier (1 = model ' +
+        'size unchanged); dimensions are in metres, and a voxel position puts the model\'s bounding-box minimum corner at that voxel cell.',
     },
     () =>
       guard(async () => {
@@ -29,7 +30,7 @@ export function registerWorldTools(
     {
       description:
         'Replace the whole world-object-kind catalog; it is validated and nothing is written if invalid. ' +
-        'Call get_world_object_kinds first and edit that document.',
+        'Call get_world_object_kinds first and edit that document; `scale` is a unitless multiplier (1 = unchanged).',
       inputSchema: { catalog: documentSchema },
     },
     (args) =>

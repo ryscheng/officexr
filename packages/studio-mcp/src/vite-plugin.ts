@@ -1,4 +1,3 @@
-import type { AddressInfo } from 'node:net';
 import {
   FilesystemCatalogStorage,
   FilesystemLayoutStorage,
@@ -21,18 +20,28 @@ function loopbackDocuments(origin: string): StudioDocuments {
   };
 }
 
+/**
+ * The POST handler mounts from the post hook so Vite's host check runs first; the 405 stays in front
+ * so the SPA fallback can't answer a GET.
+ */
 function mountMcp({ middlewares, httpServer }: Pick<ViteDevServer | PreviewServer, 'middlewares' | 'httpServer'>) {
-  middlewares.use('/mcp', async (req, res) => {
-    if (req.method !== 'POST') {
-      res.statusCode = 405;
-      res.setHeader('allow', 'POST');
-      res.end();
+  middlewares.use('/mcp', (req, res, next) => {
+    if (req.method === 'POST') {
+      next();
       return;
     }
+    res.statusCode = 405;
+    res.setHeader('allow', 'POST');
+    res.end();
+  });
+  return () => middlewares.use('/mcp', async (req, res) => {
     try {
       // Read per request: the port is only known once the server is listening.
-      const { port } = httpServer?.address() as AddressInfo;
-      await handleMcpRequest(loopbackDocuments(`http://127.0.0.1:${port}`), req, res);
+      const address = httpServer?.address();
+      if (!address || typeof address === 'string') {
+        throw new Error('server is not listening on a TCP port');
+      }
+      await handleMcpRequest(loopbackDocuments(`http://127.0.0.1:${address.port}`), req, res);
     } catch (err) {
       console.error('[studio-mcp] request failed:', err);
       if (!res.headersSent) {

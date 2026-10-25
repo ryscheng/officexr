@@ -14,7 +14,7 @@
     "@modelcontextprotocol/sdk": "1.32.0",
     "@officexr/sdk": "workspace:*",
     "@officexr/world": "workspace:*",
-    "zod": "^3.23.8"
+    "zod": "^3.25"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",

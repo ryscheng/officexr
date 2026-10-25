@@ -1,3 +1,4 @@
+import { request } from 'node:http';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -47,11 +48,29 @@ describe('POST /mcp over HTTP', () => {
 
     const bad = await call('put_room', { name: 'bad', room: { nope: true } });
     expect(bad.isError).toBe(true);
+    expect(bad.text).toContain('room-storage save: 400');
+    expect(bad.text).toContain('missing string `name`');
     expect((await call('put_layout', { name: 'bad', layout: { nope: true } })).isError).toBe(true);
     expect((await call('put_room', { name: '../evil', room: emptyRoomDocument('x') })).isError).toBe(true);
     expect(await readdir(path.join(dataDir, 'rooms'))).toEqual(['hall.json']);
     expect(await readdir(dataDir)).not.toContain('layouts');
     await client.close();
+  });
+
+  it('rejects a foreign Host header', async () => {
+    const { port } = vite.httpServer!.address() as { port: number };
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const req = request(
+        { port, host: '127.0.0.1', path: '/mcp', method: 'POST', headers: { host: 'evil.example:5174' } },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        },
+      );
+      req.on('error', reject);
+      req.end('{}');
+    });
+    expect(status).toBe(403);
   });
 
   it('answers GET and DELETE with 405', async () => {

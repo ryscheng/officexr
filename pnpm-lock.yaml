@@ -229,7 +229,7 @@ importers:
         specifier: workspace:*
         version: link:../world
       zod:
-        specifier: ^3.23.8
+        specifier: ^3.25
         version: 3.25.76
     devDependencies:
       '@types/node':
