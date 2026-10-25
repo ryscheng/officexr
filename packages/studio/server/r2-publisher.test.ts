@@ -202,6 +202,30 @@ describe('r2 publisher', () => {
     });
   });
 
+  it('trims surrounding whitespace from the env values', () => {
+    expect(
+      r2ConfigFromEnv({
+        OFFICEXR_R2_ENDPOINT: ' https://acct.r2.cloudflarestorage.com/\n',
+        OFFICEXR_R2_BUCKET: 'b\n',
+        OFFICEXR_R2_ACCESS_KEY_ID: 'k\n',
+        OFFICEXR_R2_SECRET_ACCESS_KEY: 's\r\n',
+      }),
+    ).toEqual({
+      endpoint: 'https://acct.r2.cloudflarestorage.com',
+      bucket: 'b',
+      accessKeyId: 'k',
+      secretAccessKey: 's',
+    });
+    expect(
+      r2ConfigFromEnv({
+        OFFICEXR_R2_ENDPOINT: 'e',
+        OFFICEXR_R2_BUCKET: 'b',
+        OFFICEXR_R2_ACCESS_KEY_ID: 'k',
+        OFFICEXR_R2_SECRET_ACCESS_KEY: '\n',
+      }),
+    ).toBeNull();
+  });
+
   it('first sync uploads every file with keys, headers and source hash', async () => {
     await createR2Publisher(config).sync(dirs());
     const read = (rel: string) => readFile(path.join(root, rel));

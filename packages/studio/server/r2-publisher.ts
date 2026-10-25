@@ -39,10 +39,11 @@ export type R2Publisher = ReturnType<typeof createR2Publisher>;
 
 /** Reads the four `OFFICEXR_R2_*` vars; `null` (publishing off) unless all are set. */
 export function r2ConfigFromEnv(env: NodeJS.ProcessEnv): R2Config | null {
-  const endpoint = env.OFFICEXR_R2_ENDPOINT;
-  const bucket = env.OFFICEXR_R2_BUCKET;
-  const accessKeyId = env.OFFICEXR_R2_ACCESS_KEY_ID;
-  const secretAccessKey = env.OFFICEXR_R2_SECRET_ACCESS_KEY;
+  // Secret-manager values often carry a trailing newline, which silently breaks SigV4 signing.
+  const endpoint = env.OFFICEXR_R2_ENDPOINT?.trim();
+  const bucket = env.OFFICEXR_R2_BUCKET?.trim();
+  const accessKeyId = env.OFFICEXR_R2_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = env.OFFICEXR_R2_SECRET_ACCESS_KEY?.trim();
   if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
     return null;
   }
