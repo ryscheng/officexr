@@ -3,7 +3,9 @@ import type { StudioDocuments } from '../studio-documents.ts';
 import { checkedName, nameSchema } from './documents.ts';
 import { errorResult, guard, jsonResult } from './shared.ts';
 
-/** `modelRoot` is the directory the catalog's `/models/...` paths resolve against. */
+// Per process, not per server: each MCP request builds a fresh server, and a bake peaks near 290 MB.
+let baking = false;
+
 export function registerBakedLayoutTools(
   server: McpServer,
   { layouts, catalog, bakedLayouts }: StudioDocuments,
@@ -20,15 +22,23 @@ export function registerBakedLayoutTools(
     },
     ({ name }) =>
       guard(async () => {
-        const layout = await layouts.load(checkedName(name));
-        if (!layout) {
-          return errorResult(`layout "${name}" not found`);
+        if (baking) {
+          return errorResult('a bake is already in progress; retry shortly');
         }
-        // Lazy so vite.config.ts doesn't load the bake pipeline (three, gltf-transform) at startup.
-        const { bakeLayoutGlb } = await import('@officexr/world/bake-layout-glb');
-        const { glb, meta } = await bakeLayoutGlb({ layout, modelRoot, catalog: await catalog.load() });
-        await bakedLayouts.save(name, glb);
-        return jsonResult({ name, bytes: glb.length, optimizer: meta.optimizerId });
+        baking = true;
+        try {
+          const layout = await layouts.load(checkedName(name));
+          if (!layout) {
+            return errorResult(`layout "${name}" not found`);
+          }
+          // Lazy so vite.config.ts doesn't load the bake pipeline (three, gltf-transform) at startup.
+          const { bakeLayoutGlb } = await import('@officexr/world/bake-layout-glb');
+          const { glb, meta } = await bakeLayoutGlb({ layout, modelRoot, catalog: await catalog.load() });
+          await bakedLayouts.save(name, glb);
+          return jsonResult({ name, bytes: glb.length, optimizer: meta.optimizerId });
+        } finally {
+          baking = false;
+        }
       }),
   );
   server.registerTool(

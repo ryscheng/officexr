@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
@@ -411,22 +411,27 @@ function makeBinaryResourceMiddleware(
 }
 
 async function handleListBaked(dir: string, res: ServerResponse): Promise<void> {
-  let files: string[] = [];
+  let entries: Dirent[] = [];
   try {
-    files = await fs.readdir(dir);
+    entries = await fs.readdir(dir, { withFileTypes: true });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw err;
     }
   }
-  const bakedLayouts = await Promise.all(
-    files
-      .filter((f) => f.endsWith('.glb'))
-      .map(async (f) => {
-        const stat = await fs.stat(path.join(dir, f));
-        return { name: f.slice(0, -4), size: stat.size, updatedAt: stat.mtimeMs };
-      }),
-  );
+  const bakedLayouts: Array<{ name: string; size: number; updatedAt: number }> = [];
+  for (const entry of entries) {
+    const name = entry.name.slice(0, -4);
+    if (!entry.isFile() || !entry.name.endsWith('.glb') || !isValidSceneName(name)) {
+      continue;
+    }
+    try {
+      const stat = await fs.stat(path.join(dir, entry.name));
+      bakedLayouts.push({ name, size: stat.size, updatedAt: stat.mtimeMs });
+    } catch (err) {
+      console.warn(`[studio-storage:baked-layouts] skipping ${entry.name}:`, (err as Error).message);
+    }
+  }
   jsonResponse(res, 200, { bakedLayouts });
 }
 

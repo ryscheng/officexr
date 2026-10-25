@@ -145,7 +145,9 @@ describe('studio MCP tools', () => {
       ...emptyLayoutDocument('hall'),
       commands: [{ op: 'placeObject', id: 'p1', kindId: 'colored_block_blue', position: [0, 0, 0] }],
     } as LayoutDocument);
-    expect((await call('bake_layout', { name: 'hall' })).isError).toBe(true);
+    const failed = await call('bake_layout', { name: 'hall' });
+    expect(failed.isError).toBe(true);
+    expect(failed.text).toContain('/nonexistent/models/');
     expect(await call('list_baked_layouts')).toEqual({ isError: false, text: '[]' });
   });
 
@@ -157,5 +159,15 @@ describe('studio MCP tools', () => {
     expect((await call('delete_baked_layout', { name: 'hall' })).isError).toBe(false);
     expect(baked.files.size).toBe(0);
     expect((await call('delete_baked_layout', { name: '../x' })).isError).toBe(true);
+  });
+
+  it('rejects a second concurrent bake', async () => {
+    const { docs, call } = await connect();
+    await docs.layouts.save('hall', {
+      ...emptyLayoutDocument('hall'),
+      commands: [{ op: 'placeObject', id: 'p1', kindId: 'colored_block_blue', position: [0, 0, 0] }],
+    } as LayoutDocument);
+    const results = await Promise.all([call('bake_layout', { name: 'hall' }), call('bake_layout', { name: 'hall' })]);
+    expect(results.map((r) => r.text)).toContain('a bake is already in progress; retry shortly');
   });
 });

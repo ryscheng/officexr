@@ -27,19 +27,11 @@ import { fileURLToPath } from 'node:url';
 import { bakeLayoutGlb } from '../src/app/bake-layout-glb.ts';
 import { deserializeLayout } from '../src/scenes/layout-document.ts';
 
-// ---------------------------------------------------------------------------
-// Path setup
-// ---------------------------------------------------------------------------
-
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WORLD_ROOT = path.resolve(HERE, '..');
 const STUDIO_PUBLIC = path.resolve(WORLD_ROOT, '../../packages/studio/public');
 const LAYOUTS_DIR = path.resolve(WORLD_ROOT, 'layouts');
 const BAKED_DIR = path.resolve(WORLD_ROOT, 'baked-layouts');
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 async function loadLayout(name: string) {
   const filePath = path.resolve(LAYOUTS_DIR, `${name}.json`);
@@ -80,10 +72,6 @@ async function listLayouts(): Promise<string[]> {
     .filter((f) => f.endsWith('.json'))
     .map((f) => f.slice(0, -5));
 }
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);

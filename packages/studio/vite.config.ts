@@ -36,6 +36,7 @@ const pushTargets = new Set(
 const adminToken = process.env.OFFICEXR_REALTIME_ADMIN_TOKEN ?? randomUUID();
 
 const WORLD_DIR = fileURLToPath(new URL('../world', import.meta.url));
+const PUBLIC_DIR = fileURLToPath(new URL('./public', import.meta.url));
 const DATA_DIR = process.env.OFFICEXR_STUDIO_DATA_DIR;
 
 // Created on first server start or layout hook, so `vite build` never builds one.
@@ -56,7 +57,7 @@ function startR2Sync(): void {
       : '[r2-publisher] off: OFFICEXR_R2_ENDPOINT/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY not all set',
   );
   void r2Publisher()?.sync({
-    modelsDir: fileURLToPath(new URL('./public/models', import.meta.url)),
+    modelsDir: path.join(PUBLIC_DIR, 'models'),
     bakedLayoutsDir: path.join(DATA_DIR ?? WORLD_DIR, STORAGE_ENTRIES.bakedLayouts.name),
   });
 }
@@ -116,7 +117,7 @@ export default defineConfig({
         onDeleted: async (name) => r2Publisher()?.bakedLayoutHooks.onDeleted(name),
       },
     }),
-    studioMcp({ modelRoot: fileURLToPath(new URL('./public', import.meta.url)) }),
+    studioMcp({ modelRoot: PUBLIC_DIR }),
     {
       name: 'officexr:seed-data-dir',
       async configureServer() {

@@ -1,35 +1,14 @@
 import {
+  FilesystemBakedLayoutStorage,
   FilesystemCatalogStorage,
   FilesystemLayoutStorage,
   FilesystemMapStorage,
   FilesystemRoomStorage,
   FilesystemWorldConstantsStorage,
-  httpError,
 } from '@officexr/world/scenes';
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
 import { handleMcpRequest, type StudioMcpOptions } from './server.ts';
-import type { BakedLayoutStorage, BakedLayoutSummary, StudioDocuments } from './studio-documents.ts';
-
-function loopbackBakedLayouts(origin: string): BakedLayoutStorage {
-  const base = `${origin}/api/baked-layouts`;
-  const send = async (op: string, name: string, init: RequestInit) => {
-    const r = await fetch(`${base}/${encodeURIComponent(name)}`, init);
-    if (!r.ok) {
-      throw await httpError(`baked-layout ${op}`, r);
-    }
-  };
-  return {
-    async list() {
-      const r = await fetch(base);
-      if (!r.ok) {
-        throw await httpError('baked-layout list', r);
-      }
-      return ((await r.json()) as { bakedLayouts: BakedLayoutSummary[] }).bakedLayouts;
-    },
-    save: (name, glb) => send('save', name, { method: 'PUT', headers: { 'content-type': 'application/octet-stream' }, body: glb }),
-    delete: (name) => send('delete', name, { method: 'DELETE' }),
-  };
-}
+import type { StudioDocuments } from './studio-documents.ts';
 
 /** Clients for the studio's own REST surface, so validation, hooks and disk I/O stay in `vite-plugin-storage.ts`. */
 function loopbackDocuments(origin: string): StudioDocuments {
@@ -39,7 +18,7 @@ function loopbackDocuments(origin: string): StudioDocuments {
     layouts: new FilesystemLayoutStorage({ basePath: `${origin}/api/layouts` }),
     catalog: new FilesystemCatalogStorage({ basePath: `${origin}/api/world-object-kinds` }),
     worldSettings: new FilesystemWorldConstantsStorage({ basePath: `${origin}/api/world-settings` }),
-    bakedLayouts: loopbackBakedLayouts(origin),
+    bakedLayouts: new FilesystemBakedLayoutStorage({ basePath: `${origin}/api/baked-layouts` }),
   };
 }
 

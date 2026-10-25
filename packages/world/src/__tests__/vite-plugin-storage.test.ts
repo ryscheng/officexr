@@ -166,3 +166,36 @@ describe('studio storage plugin: /api/world-settings', () => {
     expect((await put(url, DEFAULT_WORLD_CONSTANTS)).status).toBe(405);
   });
 });
+
+describe('studio storage plugin: GET /api/baked-layouts', () => {
+  let dir: string;
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    await new Promise((r) => (server ? server.close(r) : r(undefined)));
+    server = undefined;
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function list(bakedDir: string) {
+    const s = await serve({ dataDir: dir, bakedLayouts: { dir: bakedDir } });
+    server = s.server;
+    return (await (await fetch(`${s.url}/api/baked-layouts`)).json()) as { bakedLayouts: Array<{ name: string; size: number }> };
+  }
+
+  it('is empty when the directory is missing', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'studio-baked-'));
+    expect(await list(path.join(dir, 'absent'))).toEqual({ bakedLayouts: [] });
+  });
+
+  it('lists only regular .glb files with valid names', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'studio-baked-'));
+    const baked = path.join(dir, 'baked');
+    await mkdir(path.join(baked, 'dir.glb'), { recursive: true });
+    await writeFile(path.join(baked, 'hall.glb'), 'abc');
+    await writeFile(path.join(baked, 'has space.glb'), 'x');
+    await writeFile(path.join(baked, 'notes.txt'), 'x');
+    const { bakedLayouts } = await list(baked);
+    expect(bakedLayouts.map(({ name, size }) => ({ name, size }))).toEqual([{ name: 'hall', size: 3 }]);
+  });
+});

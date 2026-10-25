@@ -1,5 +1,5 @@
 import { request } from 'node:http';
-import { access, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,6 @@ let url: string;
 const saved: string[] = [];
 const deleted: string[] = [];
 const modelRoot = fileURLToPath(new URL('../../studio/public', import.meta.url));
-const hasModels = await access(path.join(modelRoot, 'models/blocks')).then(() => true, () => false);
 
 beforeAll(async () => {
   dataDir = await mkdtemp(path.join(tmpdir(), 'studio-mcp-'));
@@ -45,14 +44,19 @@ afterAll(async () => {
   await rm(dataDir, { recursive: true, force: true });
 });
 
+async function connectMcp() {
+  const client = new Client({ name: 'test', version: '0' });
+  await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const r = await client.callTool({ name, arguments: args });
+    return { isError: r.isError === true, text: (r.content as { text: string }[])[0].text };
+  };
+  return { client, call };
+}
+
 describe('POST /mcp over HTTP', () => {
   it('writes through the REST surface and rejects what it rejects', async () => {
-    const client = new Client({ name: 'test', version: '0' });
-    await client.connect(new StreamableHTTPClientTransport(new URL(url)));
-    const call = async (name: string, args: Record<string, unknown>) => {
-      const r = await client.callTool({ name, arguments: args });
-      return { isError: r.isError === true, text: (r.content as { text: string }[])[0].text };
-    };
+    const { client, call } = await connectMcp();
 
     expect((await client.listTools()).tools).toHaveLength(19);
     expect((await call('put_room', { name: 'hall', room: emptyRoomDocument('hall') })).isError).toBe(false);
@@ -92,13 +96,8 @@ describe('POST /mcp over HTTP', () => {
     expect((await fetch(url, { method: 'DELETE' })).status).toBe(405);
   });
 
-  it.skipIf(!hasModels)('bakes, lists and deletes a layout through the storage hooks', async () => {
-    const client = new Client({ name: 'test', version: '0' });
-    await client.connect(new StreamableHTTPClientTransport(new URL(url)));
-    const call = async (name: string, args: Record<string, unknown> = {}) => {
-      const r = await client.callTool({ name, arguments: args });
-      return { isError: r.isError === true, text: (r.content as { text: string }[])[0].text };
-    };
+  it('bakes, lists and deletes a layout through the storage hooks', async () => {
+    const { client, call } = await connectMcp();
     const layout = {
       ...emptyLayoutDocument('hall'),
       commands: [{ id: 'p1', op: 'placeObject', kindId: 'colored_block_blue', position: [0, 0, 0] }],

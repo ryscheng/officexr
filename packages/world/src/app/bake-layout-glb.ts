@@ -9,14 +9,13 @@ import {
   type WorldObjectKind,
   type WorldObjectKindCatalogV1,
 } from '../scenes/world-object-kinds-schema.ts';
+import { VOXEL_SIZE } from '../renderer/config.ts';
 import { createInstanceGeometry } from './geometry-service.ts';
 import { bakeLayout, type BakeResultBytes } from './layout-bake-service.ts';
 
-// Matches the runtime convention `createDefaultApi` passes to the geometry service.
-const VOXEL_SIZE = 0.5;
-
 const WORLD_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
+// ponytail: reads the repo's catalog file, not the data dir's, unlike the editor's bundled-default fallback.
 async function readCatalogFile(): Promise<WorldObjectKindCatalogV1> {
   let raw: string;
   try {
@@ -27,7 +26,7 @@ async function readCatalogFile(): Promise<WorldObjectKindCatalogV1> {
   return validateWorldObjectKindCatalog(JSON.parse(raw) as unknown);
 }
 
-export interface BakeLayoutGlbOptions {
+interface BakeLayoutGlbOptions {
   layout: LayoutDocument;
   /** Directory that a kind's `/models/...` gltfPath resolves against (the studio's `public/`). */
   modelRoot: string;
@@ -52,8 +51,14 @@ export async function bakeLayoutGlb({
 
   // Re-emitting as a GLB lets catalog entries stay multi-file .gltf bundles.
   const io = new NodeIO();
-  const loadGltf = async (url: string) =>
-    io.writeBinary(await io.read(path.resolve(modelRoot, url.replace(/^\//, ''))));
+  const loadGltf = async (url: string) => {
+    const file = path.resolve(modelRoot, url.replace(/^\//, ''));
+    const rel = path.relative(modelRoot, file);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      throw new Error(`model path "${url}" is outside the model root`);
+    }
+    return io.writeBinary(await io.read(file));
+  };
 
   return bakeLayout(layout, (id) => kinds.get(id), loadGltf, geometry, { optimizer: optimizer ?? layout.optimizer });
 }
