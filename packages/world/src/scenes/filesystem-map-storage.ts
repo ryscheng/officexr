@@ -1,5 +1,5 @@
 import { deserializeMap } from './serialize.ts';
-import { isValidSceneName, type SceneSummary } from './storage.ts';
+import { httpError, isValidSceneName, type SceneSummary } from './storage.ts';
 import type { MapDocumentV1 } from './map-document.ts';
 
 export type MapSummary = SceneSummary;
@@ -50,7 +50,7 @@ export class FilesystemMapStorage implements MapStorage {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(map),
     });
-    if (!r.ok) throw new Error(`map-storage save: ${r.status}`);
+    if (!r.ok) throw await httpError('map-storage save', r);
   }
 
   async delete(name: string): Promise<void> {
