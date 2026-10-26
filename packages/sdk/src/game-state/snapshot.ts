@@ -5,7 +5,7 @@ import type { OfficeState, PlayerState, ScreenShareSignal } from './types.ts';
 // constants/settings are left out: only the realtime server supplies them.
 export type SerializedOfficeState = Omit<
   OfficeState,
-  'proximity' | 'players' | 'screenShares' | 'worldConstants' | 'worldSettings'
+  'proximity' | 'players' | 'screenShares' | 'worldConstants' | 'worldSettings' | 'voiceZones'
 > & {
   players: Record<string, Omit<PlayerState, 'tRecv'>>;
   proximity: Record<string, string[]>;

@@ -1,5 +1,10 @@
 import type { PlayerId } from '@officexr/sdk';
 
+/** Shared conference name for a voice zone; every client derives it from the office and zone id alone. */
+export function deriveZoneRoom(officeId: string, zoneId: string): string {
+  return `zone-${officeId}-${zoneId}`;
+}
+
 /**
  * Lex-min room derivation: given the office, the local user's id and the set
  * of nearby peer ids, returns a deterministic shared room id all parties will
