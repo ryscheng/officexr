@@ -1,4 +1,11 @@
-import { voiceZoneAt, type Actions, type Bus, type OfficeState, type PlayerId, type Store } from '@officexr/sdk';
+import {
+  voiceZoneAt,
+  type Actions,
+  type Bus,
+  type OfficeState,
+  type PlayerId,
+  type Store,
+} from '@officexr/sdk';
 import { deriveJitsiRoom, deriveZoneRoom } from './jitsi-room.ts';
 import type { VoiceAdapter } from './types.ts';
 
@@ -86,7 +93,7 @@ export class Communication {
     });
     const selectZone = (s: OfficeState): string | null => {
       const pos = s.players[this.selfId]?.pos;
-      return (pos && voiceZoneAt(s.voiceZones, pos)?.id) || null;
+      return pos ? (voiceZoneAt(s.voiceZones, pos)?.id ?? null) : null;
     };
     this.offZone = this.store.subscribe(selectZone, (zoneId) => this.onZoneChange(zoneId));
     this.onZoneChange(selectZone(this.store.getState()));
@@ -106,9 +113,8 @@ export class Communication {
     this.offZone?.();
     this.started = false;
     this.cancelPendingLeave();
-    this.cancelDwell?.();
-    this.cancelDwell = null;
-    this.clearZoneExit();
+    this.cancelPendingDwell();
+    this.cancelPendingZoneExit();
     this.zoneRoom = null;
     void this.voice.leaveRoom();
     this.currentRoom = null;
@@ -125,8 +131,7 @@ export class Communication {
   }
 
   private onZoneChange(zoneId: string | null): void {
-    this.cancelDwell?.();
-    this.cancelDwell = null;
+    this.cancelPendingDwell();
     if (zoneId === null) {
       if (this.zoneRoom !== null && !this.cancelZoneExit) {
         this.cancelZoneExit = this.schedule(() => {
@@ -137,14 +142,11 @@ export class Communication {
       }
       return;
     }
+    this.cancelPendingZoneExit();
     const room = deriveZoneRoom(this.officeId, zoneId);
-    if (room === this.zoneRoom) {
-      this.clearZoneExit();
-      return;
-    }
+    if (room === this.zoneRoom) return;
     this.cancelDwell = this.schedule(() => {
       this.cancelDwell = null;
-      this.clearZoneExit();
       this.zoneRoom = room;
       void this.recompute();
     }, ZONE_ENTER_DWELL_MS);
@@ -155,7 +157,6 @@ export class Communication {
     const target = this.zoneRoom ?? deriveJitsiRoom(this.officeId, this.selfId, this.nearby);
     if (target === null) {
       if (leaveNow) {
-        this.cancelPendingLeave();
         if (this.currentRoom !== null) {
           await this.leave();
         }
@@ -173,7 +174,12 @@ export class Communication {
     await this.voice.joinRoom(target, { selfId: this.selfId });
   }
 
-  private clearZoneExit(): void {
+  private cancelPendingDwell(): void {
+    this.cancelDwell?.();
+    this.cancelDwell = null;
+  }
+
+  private cancelPendingZoneExit(): void {
     this.cancelZoneExit?.();
     this.cancelZoneExit = null;
   }

@@ -11,10 +11,10 @@ import type {
   RealtimeStatus,
   Stroke,
   Vec3,
+  VoiceZone,
   WorldMap,
   WorldMapLayer,
   WorldObjects,
-  VoiceZone,
   ZombieState,
 } from './types.ts';
 import { worldSettingsFromConstants, type WorldConstants } from './world-constants.ts';
@@ -50,7 +50,7 @@ export interface Actions {
    * mode calls this whenever its command list re-compiles. Triggers
    * a `world:objects` broadcast. */
   setWorldObjects(objects: WorldObjects): void;
-  /** Replace the voice zones. Local-only: never broadcast. */
+  /** Local-only: never broadcast. */
   setVoiceZones(zones: VoiceZone[]): void;
 
   // remote applications (called by sync engine)

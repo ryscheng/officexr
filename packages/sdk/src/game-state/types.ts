@@ -380,7 +380,7 @@ export type OfficeState = {
    * Broadcast via the `world:objects` NetEvent.
    */
   worldObjects: WorldObjects;
-  /** Local-only: filled from the loaded map, never snapshotted or broadcast. */
+  /** Local-only: never snapshotted or broadcast. */
   voiceZones: VoiceZone[];
 };
 

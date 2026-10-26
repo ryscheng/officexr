@@ -1,6 +1,6 @@
 import type { PlayerId } from '@officexr/sdk';
 
-/** Shared conference name for a voice zone; every client derives it from the office and zone id alone. */
+/** Every client must derive the same name from the office and zone id alone. */
 export function deriveZoneRoom(officeId: string, zoneId: string): string {
   return `zone-${officeId}-${zoneId}`;
 }
