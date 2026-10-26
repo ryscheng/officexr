@@ -135,52 +135,64 @@ describe('compileMap', () => {
     );
   });
 
-  it.each([1, 2, 3] as const)(
-    'rotationY=%i places multi-voxel objects at the Ry-rotated footprint AABB',
-    (rotationY) => {
-      const size = [2, 1, 3] as const;
-      const footprint = (p: readonly [number, number, number]) => ({
-        min: p,
-        max: [p[0] + size[0], p[1] + size[1], p[2] + size[2]] as const,
-      });
+  describe.each([
+    {
+      label: 'square multi-voxel footprint: compiled AABB equals the Ry-rotated room AABB',
+      size: [2, 3, 2],
+      squareXZ: true,
+    },
+    {
+      label: 'non-square footprint: anchor at rotated min corner',
+      size: [2, 1, 3],
+      squareXZ: false,
+    },
+  ] as const)('$label', ({ size, squareXZ }) => {
+    const footprint = (p: readonly [number, number, number]) => ({
+      min: p,
+      max: [p[0] + size[0], p[1] + size[1], p[2] + size[2]] as const,
+    });
+    const placement: [number, number, number] = [7, 2, -4];
+
+    it.each([1, 2, 3] as const)('rotationY=%i', (rotationY) => {
       const room = roomWithCubes('r', [
         [1, 0, 2],
         [-3, 0, 1],
       ]);
-      const placement: [number, number, number] = [7, 2, -4];
       const map: MapDocumentV1 = {
         ...emptyMapDocument('m'),
         rooms: [{ id: 'i', roomName: 'r', position: placement, rotationY }],
       };
-      const compiled = compileMap(
-        map,
-        new Map([['r', room]]),
-        2,
-        undefined,
-        undefined,
-        footprint,
-      );
+      const compiled = compileMap(map, new Map([['r', room]]), 2, undefined, undefined, footprint);
 
       const angle = (rotationY * Math.PI) / 2;
       const ry = (x: number, z: number): [number, number] => [
         Math.round(x * Math.cos(angle) + z * Math.sin(angle)),
         Math.round(-x * Math.sin(angle) + z * Math.cos(angle)),
       ];
-      const expected = compileScene(room, 2).instances.map((inst) => {
-        const { min, max } = footprint(inst.position);
+      const byId = new Map(compiled.instances.map((i) => [i.id, i]));
+      for (const src of compileScene(room, 2).instances) {
+        const { min, max } = footprint(src.position);
         const [ax, az] = ry(min[0], min[2]);
         const [bx, bz] = ry(max[0], max[2]);
-        return [
+        const expectedMin = [
           Math.min(ax, bx) + placement[0],
           min[1] + placement[1],
           Math.min(az, bz) + placement[2],
         ];
-      });
-      expect(compiled.instances.map((i) => i.position).sort()).toEqual(
-        expected.sort(),
-      );
-    },
-  );
+        const out = byId.get(`i/${src.id}`);
+        expect(out?.position).toEqual(expectedMin);
+        if (squareXZ) {
+          const got = footprint(out!.position);
+          expect(got.min).toEqual(expectedMin);
+          expect(got.max).toEqual([
+            Math.max(ax, bx) + placement[0],
+            max[1] + placement[1],
+            Math.max(az, bz) + placement[2],
+          ]);
+        }
+      }
+    });
+  });
 
   it('skips RoomInstance with a missing room ref and warns', () => {
     const warn = console.warn;

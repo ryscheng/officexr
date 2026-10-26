@@ -20,11 +20,13 @@ import { compileScene, type KindStrideLookup } from './compile.ts';
  */
 export type LayoutResolver = (layoutName: string) => { commands: SceneCommand[] } | undefined;
 
-/** Room-local voxel footprint (half-open) of an object at `position`; mirrors `InstanceGeometryService.voxelFootprint`. */
-export type VoxelFootprintLookup = (
-  position: readonly [number, number, number],
-  kindId: string,
-) => { min: readonly [number, number, number]; max: readonly [number, number, number] };
+type Vec3 = readonly [number, number, number];
+
+/**
+ * Room-local, half-open voxel footprint of an object at `position`
+ * (mirrors `InstanceGeometryService.voxelFootprint`).
+ */
+type VoxelFootprintLookup = (position: Vec3, kindId: string) => { min: Vec3; max: Vec3 };
 
 /**
  * Pure replay of a `MapDocumentV1` against the rooms it references.
@@ -103,7 +105,7 @@ export function compileMap(
   return { cubeSize: voxelSize, instances };
 }
 
-/** Rotates a room-local (x,z) by `rot` quarter-turns of Ry: rot1 is (x,z) → (z,-x). */
+/** Same sense as three.js `rotation.y = rot·π/2` (the map editor's room group). */
 function rotateXZ(rot: 0 | 1 | 2 | 3, x: number, z: number): [number, number] {
   return rot === 0 ? [x, z] : rot === 1 ? [z, -x] : rot === 2 ? [-x, -z] : [-z, x];
 }
@@ -121,7 +123,7 @@ function applyRoomInstance(
       min: inst.position,
       max: [x + 1, y + 1, z + 1],
     };
-    // ponytail: ObjectInstance has no rotation, so non-square footprints keep their unrotated extents at the rotated min corner.
+    // ponytail: non-square XZ footprints keep unrotated extents (ObjectInstance has no rotation).
     const [ax, az] = rotateXZ(rot, min[0], min[2]);
     const [bx, bz] = rotateXZ(rot, max[0], max[2]);
     return {
