@@ -75,9 +75,9 @@ describe('compileMap', () => {
 
   it('rotationY=1 rotates +90° about Y around the room-local origin', () => {
     // A two-cube room along +X: (0,0,0) and (1,0,0).
-    // rotationY=1 (+90° about Y): (x,z)→(z,-x), so (0,0,0)→(0,0,0),
-    // (1,0,0)→(0,0,-1). Then translate by (5,0,5) →
-    // (5,0,5) and (5,0,4).
+    // rotationY=1 (+90° about Y): (x,z)→(z,-x) applied to each 1-voxel
+    // cell's footprint, so the cells land at (0,0,-1) and (0,0,-2).
+    // Then translate by (5,0,5).
     const room = roomWithCubes('r', [
       [0, 0, 0],
       [1, 0, 0],
@@ -90,8 +90,8 @@ describe('compileMap', () => {
     const positions = compiled.instances.map((i) => i.position).sort();
     expect(positions).toEqual(
       [
-        [5, 0, 5],
         [5, 0, 4],
+        [5, 0, 3],
       ].sort(),
     );
   });
@@ -109,14 +109,14 @@ describe('compileMap', () => {
     const positions = compiled.instances.map((i) => i.position).sort();
     expect(positions).toEqual(
       [
-        [0, 0, 0],
-        [-1, 0, 0],
+        [-1, 0, -1],
+        [-2, 0, -1],
       ].sort(),
     );
   });
 
   it('rotationY=3 rotates -90° (or +270°) about Y', () => {
-    // (x,z)→(-z,x). (1,0,0)→(0,0,1). (0,0,1)→(-1,0,0).
+    // (x,z)→(-z,x) on the cell footprints: (1,0,0)→(-1,0,1), (0,0,1)→(-2,0,0).
     const room = roomWithCubes('r', [
       [1, 0, 0],
       [0, 0, 1],
@@ -129,11 +129,58 @@ describe('compileMap', () => {
     const positions = compiled.instances.map((i) => i.position).sort();
     expect(positions).toEqual(
       [
-        [0, 0, 1],
-        [-1, 0, 0],
+        [-1, 0, 1],
+        [-2, 0, 0],
       ].sort(),
     );
   });
+
+  it.each([1, 2, 3] as const)(
+    'rotationY=%i places multi-voxel objects at the Ry-rotated footprint AABB',
+    (rotationY) => {
+      const size = [2, 1, 3] as const;
+      const footprint = (p: readonly [number, number, number]) => ({
+        min: p,
+        max: [p[0] + size[0], p[1] + size[1], p[2] + size[2]] as const,
+      });
+      const room = roomWithCubes('r', [
+        [1, 0, 2],
+        [-3, 0, 1],
+      ]);
+      const placement: [number, number, number] = [7, 2, -4];
+      const map: MapDocumentV1 = {
+        ...emptyMapDocument('m'),
+        rooms: [{ id: 'i', roomName: 'r', position: placement, rotationY }],
+      };
+      const compiled = compileMap(
+        map,
+        new Map([['r', room]]),
+        2,
+        undefined,
+        undefined,
+        footprint,
+      );
+
+      const angle = (rotationY * Math.PI) / 2;
+      const ry = (x: number, z: number): [number, number] => [
+        Math.round(x * Math.cos(angle) + z * Math.sin(angle)),
+        Math.round(-x * Math.sin(angle) + z * Math.cos(angle)),
+      ];
+      const expected = compileScene(room, 2).instances.map((inst) => {
+        const { min, max } = footprint(inst.position);
+        const [ax, az] = ry(min[0], min[2]);
+        const [bx, bz] = ry(max[0], max[2]);
+        return [
+          Math.min(ax, bx) + placement[0],
+          min[1] + placement[1],
+          Math.min(az, bz) + placement[2],
+        ];
+      });
+      expect(compiled.instances.map((i) => i.position).sort()).toEqual(
+        expected.sort(),
+      );
+    },
+  );
 
   it('skips RoomInstance with a missing room ref and warns', () => {
     const warn = console.warn;
@@ -281,8 +328,8 @@ describe('compileMap — layout resolution (task-13)', () => {
   });
 
   it('layout instances apply the same room-instance rotation as inline rooms', () => {
-    // A single layout cube at (1,0,0). rotationY=1 (+90°): (x,z)→(z,-x) → (0,0,-1).
-    // Translated by instance position (5,0,5) → (5,0,4).
+    // A single layout cube at (1,0,0). rotationY=1 (+90°): its footprint cell
+    // rotates to (0,0,-2). Translated by instance position (5,0,5) → (5,0,3).
     const room = bakedRoom('baked-r', 'my-layout');
     const layout = layoutWithCubes([[1, 0, 0]]);
     const getLayout: LayoutResolver = (name) =>
@@ -293,7 +340,7 @@ describe('compileMap — layout resolution (task-13)', () => {
     };
     const compiled = compileMap(map, new Map([['baked-r', room]]), 2, undefined, getLayout);
     expect(compiled.instances).toHaveLength(1);
-    expect(compiled.instances[0].position).toEqual([5, 0, 4]);
+    expect(compiled.instances[0].position).toEqual([5, 0, 3]);
   });
 
   it('layout resolution + translation mirrors corridor layout exactly', () => {

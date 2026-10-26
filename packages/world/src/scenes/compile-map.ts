@@ -20,6 +20,12 @@ import { compileScene, type KindStrideLookup } from './compile.ts';
  */
 export type LayoutResolver = (layoutName: string) => { commands: SceneCommand[] } | undefined;
 
+/** Room-local voxel footprint (half-open) of an object at `position`; mirrors `InstanceGeometryService.voxelFootprint`. */
+export type VoxelFootprintLookup = (
+  position: readonly [number, number, number],
+  kindId: string,
+) => { min: readonly [number, number, number]; max: readonly [number, number, number] };
+
 /**
  * Pure replay of a `MapDocumentV1` against the rooms it references.
  * For each `RoomInstance`:
@@ -28,8 +34,8 @@ export type LayoutResolver = (layoutName: string) => { commands: SceneCommand[] 
  *      coords relative to the room's origin).
  *      - If the room has no inline commands but names a layout AND
  *        `getLayout` is provided, compile the layout's commands instead.
- *   2. Apply the quarter-turn yaw rotation around the room-local
- *      origin (`rotationY`: 0=identity, 1=+90° about Y, 2=180°, 3=270°).
+ *   2. Rotate each object's voxel footprint by a quarter-turn yaw around the
+ *      room-local origin (`rotationY`: 0=identity, 1=+90° about Y, 2=180°, 3=270°).
  *   3. Translate by the instance position (voxel coords).
  *   4. Namespace each instance's id and sourceCommandId with the
  *      `RoomInstance.id` so two placements of the same room don't
@@ -48,6 +54,7 @@ export function compileMap(
   voxelSize: number,
   kindStride?: KindStrideLookup,
   getLayout?: LayoutResolver,
+  voxelFootprint?: VoxelFootprintLookup,
 ): WorldObjects {
   const instances: ObjectInstance[] = [];
 
@@ -85,7 +92,7 @@ export function compileMap(
     }
 
     const compiled = compileScene(compileInput, voxelSize, kindStride);
-    const rotated = applyRoomInstance(compiled.instances, ri);
+    const rotated = applyRoomInstance(compiled.instances, ri, voxelFootprint);
     instances.push(...rotated);
   }
 
@@ -96,43 +103,32 @@ export function compileMap(
   return { cubeSize: voxelSize, instances };
 }
 
+/** Rotates a room-local (x,z) by `rot` quarter-turns of Ry: rot1 is (x,z) → (z,-x). */
+function rotateXZ(rot: 0 | 1 | 2 | 3, x: number, z: number): [number, number] {
+  return rot === 0 ? [x, z] : rot === 1 ? [z, -x] : rot === 2 ? [-x, -z] : [-z, x];
+}
+
 function applyRoomInstance(
   src: ObjectInstance[],
   ri: RoomInstance,
+  voxelFootprint?: VoxelFootprintLookup,
 ): ObjectInstance[] {
   const rot = ri.rotationY ?? 0;
   const [ox, oy, oz] = ri.position;
-  const out: ObjectInstance[] = new Array(src.length);
-  for (let i = 0; i < src.length; i++) {
-    const inst = src[i];
+  return src.map((inst) => {
     const [x, y, z] = inst.position;
-    let rx = x;
-    let rz = z;
-    switch (rot) {
-      case 0:
-        rx = x;
-        rz = z;
-        break;
-      case 1:
-        // +90° about +Y (right-handed, Y up): (x,z) → (z, -x)
-        rx = z;
-        rz = -x;
-        break;
-      case 2:
-        rx = -x;
-        rz = -z;
-        break;
-      case 3:
-        rx = -z;
-        rz = x;
-        break;
-    }
-    out[i] = {
+    const { min, max } = voxelFootprint?.(inst.position, inst.kindId) ?? {
+      min: inst.position,
+      max: [x + 1, y + 1, z + 1],
+    };
+    // ponytail: ObjectInstance has no rotation, so non-square footprints keep their unrotated extents at the rotated min corner.
+    const [ax, az] = rotateXZ(rot, min[0], min[2]);
+    const [bx, bz] = rotateXZ(rot, max[0], max[2]);
+    return {
       id: `${ri.id}/${inst.id}`,
       sourceCommandId: `${ri.id}/${inst.sourceCommandId}`,
       kindId: inst.kindId,
-      position: [rx + ox, y + oy, rz + oz],
+      position: [Math.min(ax, bx) + ox, y + oy, Math.min(az, bz) + oz],
     };
-  }
-  return out;
+  });
 }
