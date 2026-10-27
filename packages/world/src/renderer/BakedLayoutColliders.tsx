@@ -51,16 +51,12 @@ function extractMeshAABBs(scene: THREE.Object3D): MeshAABB[] {
   // Force a matrix update so `setFromObject(mesh)` sees current
   // transforms even though we haven't rendered yet.
   scene.updateMatrixWorld(true);
-  // Boxes are layout-local, relative to the parent placement group:
-  // `<BakedLayout>` mounts this same cached scene under that group,
-  // which the collider body already follows, so drop its transform.
-  const worldToParent = scene.parent ? scene.parent.matrixWorld.clone().invert() : new THREE.Matrix4();
 
   scene.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
     if (!child.geometry) return;
 
-    box.setFromObject(child).applyMatrix4(worldToParent);
+    box.setFromObject(child);
     if (box.isEmpty()) return;
 
     box.getCenter(center);
