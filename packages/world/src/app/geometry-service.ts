@@ -115,14 +115,6 @@ function rotatedExtentsXZ(x: number, z: number, yawDeg: number): [number, number
   return [x * cos + z * sin, x * sin + z * cos];
 }
 
-export type QuarterTurns = 0 | 1 | 2 | 3;
-
-/** Turns an X/Z offset about +Y in the same sense as three.js
- * `rotation.y = rot·π/2` (and a map room's `rotationY`). */
-export function rotateXZ(rot: QuarterTurns, x: number, z: number): [number, number] {
-  return rot === 0 ? [x, z] : rot === 1 ? [z, -x] : rot === 2 ? [-x, -z] : [-z, x];
-}
-
 export function createInstanceGeometry(deps: {
   catalog: KindResolver;
   voxelSize: number;

@@ -1,7 +1,6 @@
 import type { ObjectInstance, Vec3, WorldObjects } from '@officexr/sdk';
 import type { ColliderShapeSpec } from '../scenes/world-object-kinds-schema.ts';
-import { normalizeYawDeg } from '../scenes/commands.ts';
-import { rotateXZ, type QuarterTurns } from '../app/geometry-service.ts';
+import { normalizeYawDeg, rotateXZ, type QuarterTurns } from '../scenes/commands.ts';
 import type { WorldAABB } from '../app/types.ts';
 
 /**
@@ -298,7 +297,7 @@ function instanceColliders(
 ): ColliderDescriptor[] {
   const yawDeg = normalizeYawDeg(inst.yawDeg ?? 0);
   if (!shapeSpec || yawDeg % 90 !== 0) {
-    // ponytail: off-quarter-turn stairs/scans/slopes collide as one box; inadequate once such a kind allows a sub-90° rotationStepDeg.
+    // ponytail: off-quarter-turn stairs/scans/slopes collide as one box; inadequate once such a kind's rotationStepDeg isn't a multiple of 90.
     return [{ type: 'cuboid', ...cuboidOver(aabbLookup(inst.position, inst.kindId, yawDeg)) }];
   }
   const aabb = aabbLookup(inst.position, inst.kindId);

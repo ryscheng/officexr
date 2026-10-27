@@ -2,11 +2,11 @@ import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { MapDocumentV2, RoomInstance } from './map-document.ts';
 import {
   normalizeYawDeg,
+  rotateXZ,
   type RoomDocument,
   type SceneCommand,
 } from './commands.ts';
 import { compileScene, type KindStrideLookup } from './compile.ts';
-import { rotateXZ } from '../app/geometry-service.ts';
 
 /**
  * Optional layout resolver. When provided, a room that links a layout also
