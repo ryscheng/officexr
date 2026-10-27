@@ -2,7 +2,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'reac
 import { Canvas } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { bakedLayoutUrl } from '@officexr/world/app';
-import { useApplication, useCatalogReady } from '@officexr/world/react';
+import { useApplication } from '@officexr/world/react';
 import {
   FilesystemLayoutStorage,
   FilesystemMapStorage,
@@ -119,8 +119,6 @@ function RenderCanvas({
     () => [...bakedLayoutNames(content).map((n) => bakedLayoutUrl(n)), ...content.modelUrls],
     [content],
   );
-  // Rooms mount their objects only once the catalog hook flips, so the ready signal waits for it too.
-  const catalogReady = useCatalogReady();
   const onAssetError = (err: Error) => onError(`failed to load asset: ${err.message}`);
 
   return (
@@ -146,7 +144,7 @@ function RenderCanvas({
             <PreloadGlbs urls={glbUrls} />
             <RenderedContent content={content} onAssetError={onAssetError} />
           </BakedLayoutErrorBoundary>
-          {catalogReady ? <ReadySignal onReady={() => reportReady(content.bounds, setup)} /> : null}
+          <ReadySignal onReady={() => reportReady(content.bounds, setup)} />
         </Suspense>
       </Canvas>
     </div>

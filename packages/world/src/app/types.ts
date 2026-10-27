@@ -69,6 +69,8 @@ export interface CatalogService {
   subscribe(listener: () => void): () => void;
   /** Resolves once the upstream fetch has completed (success OR fallback). */
   ready(): Promise<void>;
+  /** Synchronous `ready()`: true once the upstream fetch has completed. */
+  isReady(): boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -61,20 +61,33 @@ export async function loadRenderContent(
     );
     // The map draws a room's baked layout as well as its commands, but loadMap only
     // compiles layouts for baked-only rooms; compile every room's layout for bounds.
+    const layoutNames = new Set<string>();
+    for (const room of map.rooms.values()) {
+      if (room.layoutName) {
+        layoutNames.add(room.layoutName);
+      }
+    }
     const layouts = new Map<string, LayoutDocument>();
+    await Promise.all(
+      [...layoutNames].map(async (layoutName) => {
+        const layout = await storages.layouts.load(layoutName);
+        if (layout) {
+          layouts.set(layoutName, layout);
+        }
+      }),
+    );
     const layoutRooms = new Map<string, RoomDocument>();
     for (const [roomName, room] of map.rooms) {
-      if (!room.layoutName) {
-        continue;
-      }
-      const layout = layouts.get(room.layoutName) ?? (await storages.layouts.load(room.layoutName));
+      const layout = room.layoutName ? layouts.get(room.layoutName) : undefined;
       if (layout) {
-        layouts.set(room.layoutName, layout);
         layoutRooms.set(roomName, { ...room, commands: layout.commands });
       }
     }
     const roomObjects = api.rooms.compileMap(map.mapDoc, map.rooms);
-    const layoutObjects = api.rooms.compileMap(map.mapDoc, layoutRooms);
+    const layoutObjects = api.rooms.compileMap(
+      { ...map.mapDoc, rooms: map.mapDoc.rooms.filter((ri) => layoutRooms.has(ri.roomName)) },
+      layoutRooms,
+    );
     const bounds = boundsOf([...roomObjects.instances, ...layoutObjects.instances]);
     if (!bounds) {
       throw nothingToRender(params);
