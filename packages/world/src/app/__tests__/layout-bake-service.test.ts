@@ -277,16 +277,11 @@ describe('bakeLayout', () => {
   });
 
   it('positions instances via geometry.meshTransform (matches runtime renderer)', async () => {
-    // Regression: the bake service must NOT reimplement the voxel→world
-    // transform. It must call geometry.meshTransform(position, kindId, yawDeg) for
-    // every instance so the baked GLB places meshes exactly where
-    // <ObjectInstances> would at runtime. A prior bug treated voxel
-    // coordinates as world coordinates, producing visibly spaced-out
-    // cubes (e.g. 2 m cubes 4 m apart on a 0.5 m voxel grid).
-    //
-    // The optimization pass can collapse wrapper nodes, so this test
-    // verifies the contract directly via a spy on `meshTransform`: every
-    // command's (position, kindId) must reach the geometry service.
+    // The bake must not reimplement the voxel→world transform: every
+    // command's (position, kindId, yawDeg) goes through geometry.meshTransform,
+    // so baked meshes land exactly where <ObjectInstances> draws them. The
+    // optimizer can collapse wrapper nodes, hence the spy rather than reading
+    // node transforms back.
     const blockBytes = await makeTrivialGlb('cube');
     const kindMap = new Map<string, WorldObjectKind>([
       [
@@ -305,16 +300,17 @@ describe('bakeLayout', () => {
     const gltfLoader = async () => blockBytes;
 
     const baseGeometry = makeGeometry(kindMap, 0.5);
-    const meshOriginCalls: Array<{
+    const meshTransformCalls: Array<{
       position: readonly [number, number, number];
       kindId: string;
-      result: readonly [number, number, number];
+      yawDeg: number | undefined;
+      translation: readonly [number, number, number];
     }> = [];
     const geometry: typeof baseGeometry = {
       ...baseGeometry,
       meshTransform(position, kindId, yawDeg) {
         const transform = baseGeometry.meshTransform(position, kindId, yawDeg);
-        meshOriginCalls.push({ position, kindId, result: transform.position });
+        meshTransformCalls.push({ position, kindId, yawDeg, translation: transform.position });
         return transform;
       },
     };
@@ -323,7 +319,7 @@ describe('bakeLayout', () => {
     // world step, exactly the cube width, so the cubes should touch).
     const doc = makeLayoutDoc('adjacency', [
       { id: 'c1', op: 'placeObject', kindId: 'cube', position: [0, 0, 0] },
-      { id: 'c2', op: 'placeObject', kindId: 'cube', position: [4, 0, 0] },
+      { id: 'c2', op: 'placeObject', kindId: 'cube', position: [4, 0, 0], yawDeg: 90 },
     ]);
 
     await bakeLayout(doc, kindLookup, gltfLoader, geometry, { io });
@@ -332,15 +328,16 @@ describe('bakeLayout', () => {
     // command. Two cubes → two calls, one per command (cubes share a
     // kind so the gltf loader runs once via caching, but meshTransform must
     // run per instance for correct positioning).
-    expect(meshOriginCalls.length).toBe(2);
-    expect(meshOriginCalls[0].position).toEqual([0, 0, 0]);
-    expect(meshOriginCalls[1].position).toEqual([4, 0, 0]);
-    expect(meshOriginCalls.every((c) => c.kindId === 'cube')).toBe(true);
+    expect(meshTransformCalls.length).toBe(2);
+    expect(meshTransformCalls[0].position).toEqual([0, 0, 0]);
+    expect(meshTransformCalls[1].position).toEqual([4, 0, 0]);
+    expect(meshTransformCalls.map((c) => c.yawDeg)).toEqual([undefined, 90]);
+    expect(meshTransformCalls.every((c) => c.kindId === 'cube')).toBe(true);
 
     // The world-space step between two adjacent voxel cells must equal
     // one cube width (the test's whole point — no spacing, no gap).
-    const [t0x] = meshOriginCalls[0].result;
-    const [t1x] = meshOriginCalls[1].result;
+    const [t0x] = meshTransformCalls[0].translation;
+    const [t1x] = meshTransformCalls[1].translation;
     expect(t1x - t0x).toBeCloseTo(2, 6);
   });
 

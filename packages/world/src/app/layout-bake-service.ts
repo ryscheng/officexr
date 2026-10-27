@@ -191,9 +191,7 @@ export async function bakeLayout(
       cmd.yawDeg,
     );
     wrapperNode.setTranslation([...position]);
-    if (rotationY !== 0) {
-      wrapperNode.setRotation([0, Math.sin(rotationY / 2), 0, Math.cos(rotationY / 2)]);
-    }
+    wrapperNode.setRotation([0, Math.sin(rotationY / 2), 0, Math.cos(rotationY / 2)]);
 
     // Apply the kind's uniform scale (most kinds have scale=1).
     if (kind.scale !== 1) {
