@@ -257,7 +257,7 @@ export function RoomsLayer(props: RoomsLayerProps) {
   const catalogReady = useCatalogReady();
 
   const { doc, rooms, layouts } = props;
-  // Compiled once per rooms/library/layouts change, not per drag frame. v1 docs get none.
+  // Recomputed when placements, the library or layouts change, not on environment/spawn edits. v1 docs get none.
   const allAabbs = useMemo<readonly RoomAABBVoxel[]>(
     () =>
       catalogReady && doc.schemaVersion === 2
@@ -305,7 +305,8 @@ interface RoomInstanceMeshProps {
   tool: MapTool;
   onPlaceSpawn: (position: [number, number, number]) => void;
   /** Room's own world voxel AABB at its current position (null until
-   *  the catalog is ready). The Move tool re-bases this each drag
+   *  the catalog is ready, for v1 docs, and for rooms with no compiled
+   *  geometry). The Move tool re-bases this each drag
    *  frame against the cursor's proposed voxel position. */
   selfAabb: RoomAABBVoxel | null;
   /** Every other room's world voxel AABB. Used by the Move tool to
@@ -421,7 +422,11 @@ function RoomInstanceMesh({
         vz += dz;
       }
 
-      onMove([vx, instance.position[1], vz]);
+      const curPos = instancePosRef.current;
+      if (vx === curPos[0] && vz === curPos[2]) {
+        return;
+      }
+      onMove([vx, curPos[1], vz]);
     };
     const handlePointerUp = () => {
       dragging.current = false;

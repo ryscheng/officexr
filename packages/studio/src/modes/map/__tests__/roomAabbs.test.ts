@@ -19,7 +19,11 @@ const commands = [
   newPlaceObject({ kindId: KIND, position: [2, 0, 1] }),
 ];
 
-function aabbs(rotationY: RoomInstance['rotationY'], baked = false) {
+function aabbs(
+  rotationY: RoomInstance['rotationY'],
+  baked = false,
+  extraPlacements: RoomInstance[] = [],
+) {
   const api = createTestApi();
   const room = emptyRoomDocument('r');
   const layout = emptyLayoutDocument('l');
@@ -31,7 +35,7 @@ function aabbs(rotationY: RoomInstance['rotationY'], baked = false) {
   }
   const map = {
     ...emptyMapDocument('m'),
-    rooms: [{ id: 'p', roomName: 'r', position: POSITION, rotationY }],
+    rooms: [{ id: 'p', roomName: 'r', position: POSITION, rotationY }, ...extraPlacements],
   };
   return computeRoomAabbs(
     map,
@@ -65,5 +69,11 @@ describe('computeRoomAabbs', () => {
 
   it('gives a baked room the same box via its layout', () => {
     expect(aabbs(1, true)).toEqual(aabbs(1));
+  });
+
+  it('gives each placement only its own box', () => {
+    const [p, q] = aabbs(0, false, [{ id: 'q', roomName: 'r', position: [100, 0, 100], rotationY: 0 }]);
+    expect(p).toEqual({ id: 'p', min: [10, 1, 20], max: [15, 4, 24] });
+    expect(q).toEqual({ id: 'q', min: [100, 0, 100], max: [105, 3, 104] });
   });
 });

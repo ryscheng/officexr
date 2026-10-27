@@ -3,9 +3,9 @@ import type { LayoutDocument, MapDocumentV2, RoomDocument } from '@officexr/worl
 import type { RoomAABBVoxel } from './roomBoundarySnap.ts';
 
 /**
- * One inclusive world-voxel AABB per placement, from the same `compileMap`
- * output the renderer shows (so rotation and baked layouts match what is drawn).
- * Placements with no compiled instances get none.
+ * Inclusive world-voxel AABB per placement from `compileMap`, whose rotation
+ * matches `placementTransform`, baked layouts included. Placements with no
+ * compiled instances get none.
  */
 export function computeRoomAabbs(
   map: MapDocumentV2,
