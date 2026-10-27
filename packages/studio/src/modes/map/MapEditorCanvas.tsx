@@ -3,12 +3,13 @@ import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Sky, Stars } from '@react-three/drei';
 import {
+  type LayoutDocument,
   type SerializedMap,
   type RoomDocument,
   type RoomInstance,
   type SpawnPoint,
 } from '@officexr/world/scenes';
-import { bakedLayoutUrl } from '@officexr/world/app';
+import { bakedLayoutUrl, computeVoiceZones } from '@officexr/world/app';
 import { useApplication, useCatalogReady } from '@officexr/world/react';
 import {
   BakedLayout,
@@ -64,6 +65,7 @@ function mapDocToLighting(
 interface MapEditorCanvasProps {
   doc: SerializedMap;
   rooms: ReadonlyMap<string, RoomDocument>;
+  layouts: ReadonlyMap<string, LayoutDocument>;
   selection: MapSelection;
   onSelect: (sel: MapSelection) => void;
   onMoveRoom: (id: string, position: [number, number, number]) => void;
@@ -113,6 +115,7 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
         tool={props.tool}
         onPlaceSpawn={props.onPlaceSpawn}
       />
+      <VoiceZoneLayer doc={props.doc} rooms={props.rooms} layouts={props.layouts} />
       <SpawnLayer
         spawns={props.doc.spawnPoints}
         selection={props.selection}
@@ -651,6 +654,57 @@ function SelectionOutline({
     <lineSegments position={center} geometry={geom}>
       <lineBasicMaterial color="#fde047" linewidth={2} />
     </lineSegments>
+  );
+}
+
+// --- Voice zone footprints ---------------------------------------
+
+const VOICE_ZONE_Y = 0.05;
+const VOICE_ZONE_COLOR = '#ff00ff';
+
+function VoiceZoneLayer({
+  doc,
+  rooms,
+  layouts,
+}: {
+  doc: SerializedMap;
+  rooms: ReadonlyMap<string, RoomDocument>;
+  layouts: ReadonlyMap<string, LayoutDocument>;
+}) {
+  const { geometry, rooms: roomService } = useApplication();
+  const catalogReady = useCatalogReady();
+  // v1 docs (only the LocalStorage fallback can hand the editor one) show no overlay.
+  // Keyed on rooms, not the whole doc, so environment and spawn edits don't recompile the map.
+  const zones = useMemo(
+    () =>
+      catalogReady && doc.schemaVersion === 2
+        ? computeVoiceZones(doc, rooms, layouts, roomService, geometry)
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [catalogReady, doc.rooms, doc.schemaVersion, rooms, layouts, roomService, geometry],
+  );
+  return (
+    <>
+      {zones.map((z) => (
+        <mesh
+          key={z.id}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[(z.min.x + z.max.x) / 2, VOICE_ZONE_Y, (z.min.z + z.max.z) / 2]}
+          renderOrder={1}
+        >
+          <planeGeometry args={[z.max.x - z.min.x, z.max.z - z.min.z]} />
+          {/* No depth test: floors and room cubes at y=0 would otherwise hide the footprint. */}
+          <meshBasicMaterial
+            color={VOICE_ZONE_COLOR}
+            transparent
+            opacity={0.4}
+            depthTest={false}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+    </>
   );
 }
 

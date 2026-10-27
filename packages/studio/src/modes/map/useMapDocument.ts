@@ -72,6 +72,7 @@ export interface UseMapDocumentResult {
   removeRoom: (id: string) => void;
   setRoomPosition: (id: string, position: [number, number, number]) => void;
   setRoomRotation: (id: string, rotationY: 0 | 1 | 2 | 3) => void;
+  setRoomVoiceZone: (id: string, enabled: boolean) => void;
   addSpawn: (position: [number, number, number], label?: string) => string;
   removeSpawn: (id: string) => void;
   setSpawnLabel: (id: string, label: string) => void;
@@ -219,6 +220,25 @@ export function useMapDocument(
     [stampUpdated],
   );
 
+  const setRoomVoiceZone = useCallback(
+    (id: string, enabled: boolean) => {
+      stampUpdated((prev) => ({
+        ...prev,
+        rooms: prev.rooms.map((r) => {
+          if (r.id !== id) {
+            return r;
+          }
+          if (enabled) {
+            return { ...r, voiceZone: true };
+          }
+          const { voiceZone: _, ...rest } = r;
+          return rest;
+        }),
+      }));
+    },
+    [stampUpdated],
+  );
+
   const addSpawn = useCallback(
     (position: [number, number, number], label?: string) => {
       const id = mintInstanceId('spawn');
@@ -303,6 +323,7 @@ export function useMapDocument(
     removeRoom,
     setRoomPosition,
     setRoomRotation,
+    setRoomVoiceZone,
     addSpawn,
     removeSpawn,
     setSpawnLabel,

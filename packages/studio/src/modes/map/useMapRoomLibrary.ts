@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  FilesystemLayoutStorage,
   FilesystemRoomStorage,
+  LocalStorageLayoutStorage,
   LocalStorageRoomStorage,
+  isBakedRoom,
+  type LayoutDocument,
+  type LayoutStorage,
   type RoomDocument,
   type RoomStorage,
 } from '@officexr/world/scenes';
+import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 
 /**
  * Loads the set of `RoomDocument`s referenced by the Map editor's
@@ -24,6 +30,8 @@ import {
  */
 export interface UseMapRoomLibraryResult {
   rooms: ReadonlyMap<string, RoomDocument>;
+  /** Layouts of the loaded baked rooms, which `compileMap` needs for their geometry. */
+  layouts: ReadonlyMap<string, LayoutDocument>;
   allRoomNames: readonly string[];
   loading: boolean;
   /** Refresh the room-name listing (used by RoomPalette's reload). */
@@ -33,19 +41,25 @@ export interface UseMapRoomLibraryResult {
 export function useMapRoomLibrary(
   referenced: ReadonlySet<string>,
 ): UseMapRoomLibraryResult {
-  const storage = useMemo<RoomStorage>(() => {
+  const testStorages = useTestStorages();
+  const fallbackRoomStorage = useMemo<RoomStorage>(() => {
     try {
       return new FilesystemRoomStorage();
     } catch {
       return new LocalStorageRoomStorage();
     }
   }, []);
+  const storage = testStorages?.roomStorage ?? fallbackRoomStorage;
+  const fallbackLayoutStorage = useMemo<LayoutStorage>(() => {
+    try {
+      return new FilesystemLayoutStorage();
+    } catch {
+      return new LocalStorageLayoutStorage();
+    }
+  }, []);
+  const layoutStorage = testStorages?.layoutStorage ?? fallbackLayoutStorage;
 
-  const [rooms, setRooms] = useState<ReadonlyMap<string, RoomDocument>>(
-    () => new Map(),
-  );
   const [allRoomNames, setAllRoomNames] = useState<readonly string[]>([]);
-  const [loading, setLoading] = useState(false);
 
   // Fetch the room listing once on mount and on refresh.
   const refreshList = useMemo(
@@ -64,13 +78,39 @@ export function useMapRoomLibrary(
     void refreshList();
   }, [refreshList]);
 
-  // Fetch each referenced room that we don't already have. Pulling
-  // them into a fresh Map each pass keeps the consumer's reference
-  // equality crisp — a single mutated Map would make `useMemo`s
-  // downstream miss changes.
+  const { docs: rooms, loading } = useLoadedDocs(referenced, storage, 'room');
+
+  const layoutNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const room of rooms.values()) {
+      if (isBakedRoom(room)) {
+        names.add(room.layoutName);
+      }
+    }
+    return names;
+  }, [rooms]);
+  const { docs: layouts } = useLoadedDocs(layoutNames, layoutStorage, 'layout');
+
+  return { rooms, layouts, allRoomNames, loading, refreshList };
+}
+
+/**
+ * Loads each of `names` once. Each pass builds a fresh Map so downstream
+ * `useMemo`s see the change; names that fail or come back null are not
+ * retried, which would otherwise refetch them forever.
+ */
+function useLoadedDocs<T>(
+  names: ReadonlySet<string>,
+  storage: { load(name: string): Promise<T | null> },
+  kind: string,
+): { docs: ReadonlyMap<string, T>; loading: boolean } {
+  const [docs, setDocs] = useState<ReadonlyMap<string, T>>(() => new Map());
+  const [loading, setLoading] = useState(false);
+  const tried = useRef(new Set<string>());
+
   useEffect(() => {
     let cancelled = false;
-    const missing = Array.from(referenced).filter((name) => !rooms.has(name));
+    const missing = Array.from(names).filter((name) => !tried.current.has(name));
     if (missing.length === 0) {
       setLoading(false);
       return;
@@ -82,13 +122,16 @@ export function useMapRoomLibrary(
           .load(name)
           .then((doc) => ({ name, doc }))
           .catch((err) => {
-            console.warn(`[map] room load("${name}") failed:`, err);
+            console.warn(`[map] ${kind} load("${name}") failed:`, err);
             return { name, doc: null };
           }),
       ),
     ).then((results) => {
       if (cancelled) return;
-      setRooms((prev) => {
+      for (const { name } of results) {
+        tried.current.add(name);
+      }
+      setDocs((prev) => {
         const next = new Map(prev);
         for (const { name, doc } of results) {
           if (doc) next.set(name, doc);
@@ -100,7 +143,7 @@ export function useMapRoomLibrary(
     return () => {
       cancelled = true;
     };
-  }, [referenced, rooms, storage]);
+  }, [names, storage, kind]);
 
-  return { rooms, allRoomNames, loading, refreshList };
+  return { docs, loading };
 }

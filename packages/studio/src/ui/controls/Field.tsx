@@ -13,6 +13,8 @@ interface FieldProps {
    *  full row (good for sliders that need horizontal space). */
   layout?: 'inline' | 'stacked';
   className?: string;
+  /** `id` of the control, so the label names it for assistive tech. */
+  htmlFor?: string;
 }
 
 /**
@@ -32,11 +34,13 @@ export function Field({
   hint,
   layout = 'inline',
   className,
+  htmlFor,
 }: FieldProps) {
   if (layout === 'stacked') {
     return (
       <div className={cn('flex flex-col gap-1 px-3 py-1.5', className)}>
         <label
+          htmlFor={htmlFor}
           title={hint}
           className="text-[10px] uppercase tracking-wider text-muted-foreground"
         >
@@ -54,6 +58,7 @@ export function Field({
       )}
     >
       <label
+        htmlFor={htmlFor}
         title={hint}
         className="w-[35%] shrink-0 text-[11px] text-muted-foreground"
       >

@@ -93,6 +93,7 @@ export function MapApp() {
         <MapEditorCanvas
           doc={map.doc}
           rooms={library.rooms}
+          layouts={library.layouts}
           selection={map.selection}
           onSelect={map.setSelection}
           onMoveRoom={map.setRoomPosition}
@@ -121,6 +122,7 @@ export function MapApp() {
                 const next = (((r.rotationY ?? 0) + 1) % 4) as 0 | 1 | 2 | 3;
                 map.setRoomRotation(id, next);
               }}
+              onToggleVoiceZone={map.setRoomVoiceZone}
               onRemove={map.removeRoom}
             />
             <SpawnList

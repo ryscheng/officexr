@@ -22,10 +22,11 @@ export function Toggle({
   hint,
   className,
 }: ToggleProps) {
+  const id = React.useId();
   return (
-    <Field label={label} hint={hint} className={className}>
+    <Field label={label} hint={hint} className={className} htmlFor={id}>
       <div className="flex w-full justify-end">
-        <Switch checked={value} onCheckedChange={onChange} />
+        <Switch id={id} checked={value} onCheckedChange={onChange} />
       </div>
     </Field>
   );

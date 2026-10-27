@@ -1,5 +1,6 @@
 import React from 'react';
 import type { RoomInstance } from '@officexr/world/scenes';
+import { Toggle } from '../../ui/controls/index.ts';
 import type { MapSelection } from './useMapDocument.ts';
 
 interface RoomInstanceListProps {
@@ -7,6 +8,7 @@ interface RoomInstanceListProps {
   selection: MapSelection;
   onSelect: (sel: MapSelection) => void;
   onRotate: (id: string) => void;
+  onToggleVoiceZone: (id: string, enabled: boolean) => void;
   onRemove: (id: string) => void;
 }
 
@@ -16,6 +18,7 @@ interface RoomInstanceListProps {
  *   - room name + current position
  *   - "↻" rotate button (cycles `rotationY` through 0→1→2→3→0)
  *   - "✕" delete button
+ *   - "Voice zone" toggle
  *
  * Clicking the row selects the instance so the TransformControls in
  * the canvas attach to it.
@@ -25,6 +28,7 @@ export function RoomInstanceList({
   selection,
   onSelect,
   onRotate,
+  onToggleVoiceZone,
   onRemove,
 }: RoomInstanceListProps) {
   return (
@@ -61,8 +65,10 @@ export function RoomInstanceList({
           return (
             <div
               key={r.id}
+              data-testid={`room-row-${r.id}`}
               style={{
                 display: 'flex',
+                flexWrap: 'wrap',
                 alignItems: 'center',
                 gap: 4,
                 padding: '4px 6px',
@@ -110,6 +116,12 @@ export function RoomInstanceList({
               >
                 ✕
               </button>
+              <Toggle
+                label="Voice zone"
+                value={r.voiceZone === true}
+                onChange={(enabled) => onToggleVoiceZone(r.id, enabled)}
+                className="basis-full px-0"
+              />
             </div>
           );
         })
