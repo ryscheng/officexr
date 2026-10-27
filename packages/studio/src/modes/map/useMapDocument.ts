@@ -8,6 +8,7 @@ import {
   type RoomInstance,
   type SpawnPoint,
 } from '@officexr/world/scenes';
+import { useDebouncedSave } from '../useDebouncedSave.ts';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 
 /**
@@ -120,11 +121,30 @@ export function useMapDocument(
   // would clobber the seed file with an empty doc.
   const lastSavedJsonRef = useRef<string>('');
   const loadedForRef = useRef<string | null>(null);
+  const saveMap = useCallback(
+    (pending: {
+      mapName: string;
+      storage: MapStorage;
+      doc: SerializedMap;
+      json: string;
+    }) => {
+      lastSavedJsonRef.current = pending.json;
+      return pending.storage.save(pending.mapName, pending.doc).catch((err) => {
+        console.warn(`[map] save("${pending.mapName}") failed:`, err);
+      });
+    },
+    [],
+  );
+  const { schedule: scheduleSave, settled } = useDebouncedSave(saveMap, [
+    mapName,
+    storage,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
     loadedForRef.current = null;
-    storage
-      .load(mapName)
+    settled()
+      .then(() => storage.load(mapName))
       .then((loaded) => {
         if (cancelled) return;
         if (!loaded) {
@@ -153,20 +173,16 @@ export function useMapDocument(
     return () => {
       cancelled = true;
     };
-  }, [storage, mapName]);
+  }, [storage, mapName, settled]);
 
   useEffect(() => {
-    if (loadedForRef.current !== mapName) return;
     const json = JSON.stringify(doc);
-    if (json === lastSavedJsonRef.current) return;
-    const t = setTimeout(() => {
-      lastSavedJsonRef.current = json;
-      storage.save(mapName, doc).catch((err) => {
-        console.warn(`[map] save("${mapName}") failed:`, err);
-      });
-    }, 500);
-    return () => clearTimeout(t);
-  }, [doc, mapName, storage]);
+    scheduleSave(
+      loadedForRef.current !== mapName || json === lastSavedJsonRef.current
+        ? null
+        : { mapName, storage, doc, json },
+    );
+  }, [doc, mapName, storage, scheduleSave]);
 
   const stampUpdated = useCallback(
     (mut: (prev: SerializedMap) => SerializedMap) =>
