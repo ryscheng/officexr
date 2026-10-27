@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { checkMoveOccupancy } from './moveOccupancy.ts';
 import { emptyRoomDocument } from '@officexr/world/scenes';
 import type { RoomDocument, PlaceObjectCommand } from '@officexr/world/scenes';
+import { BEAM, PEG, WALL, footprintOf } from './__tests__/yawedKinds.ts';
 
 function makeCmd(id: string, position: [number, number, number]): PlaceObjectCommand {
   return { id, op: 'placeObject', kindId: 'block-grass', position };
@@ -113,5 +114,77 @@ describe('checkMoveOccupancy', () => {
     const movingIds = new Set(['a']);
     const proposedPositions = new Map([['a', [1, 0, 0] as [number, number, number]]]);
     expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('blocked');
+  });
+});
+
+describe('checkMoveOccupancy with yawed footprints', () => {
+  const place = (
+    id: string,
+    kindId: string,
+    position: [number, number, number],
+    yawDeg?: number,
+  ): PlaceObjectCommand => ({
+    id,
+    op: 'placeObject',
+    kindId,
+    position,
+    ...(yawDeg !== undefined && { yawDeg }),
+  });
+  /** Moves `mover` to `to` among the other commands. */
+  const moveTo = (
+    commands: PlaceObjectCommand[],
+    to: [number, number, number],
+  ) =>
+    checkMoveOccupancy(
+      makeDoc(commands),
+      new Set(['mover']),
+      new Map([['mover', to]]),
+      undefined,
+      footprintOf,
+    );
+  const FAR: [number, number, number] = [40, 0, 40];
+
+  it('a 4×1 wall at yaw 0 blocks along x, not along z', () => {
+    const doc = [place('static', WALL.id, [0, 0, 0]), place('mover', PEG.id, FAR)];
+    expect(moveTo(doc, [3, 0, 0])).toBe('blocked');
+    expect(moveTo(doc, [4, 0, 0])).toBe('ok');
+    expect(moveTo(doc, [0, 0, 1])).toBe('ok');
+  });
+
+  it('a 4×1 wall at yaw 90 occupies 1×4: blocks along z, not along x', () => {
+    // Footprint of the wall at the origin turned 90 degrees: x [2,3), z [-1,3).
+    const doc = [place('static', WALL.id, [0, 0, 0], 90), place('mover', PEG.id, FAR)];
+    expect(moveTo(doc, [2, 0, -1])).toBe('blocked');
+    expect(moveTo(doc, [2, 0, 2])).toBe('blocked');
+    expect(moveTo(doc, [2, 0, 3])).toBe('ok');
+    expect(moveTo(doc, [1, 0, 0])).toBe('ok');
+    expect(moveTo(doc, [3, 0, 0])).toBe('ok');
+  });
+
+  it('a moving wall is checked at its own yaw', () => {
+    const peg = place('static', PEG.id, [2, 0, 2]);
+    // Unrotated at [0,0,2] it spans x [0,4), z [2,3), which covers the peg.
+    expect(moveTo([peg, place('mover', WALL.id, FAR, 0)], [0, 0, 2])).toBe('blocked');
+    // Turned 90 degrees at [0,0,2] it spans x [2,3), z [1,5), which also covers it.
+    expect(moveTo([peg, place('mover', WALL.id, FAR, 90)], [0, 0, 2])).toBe('blocked');
+    // Turned 90 degrees at [-1,0,2] it spans x [1,2), z [1,5): clear of the peg.
+    expect(moveTo([peg, place('mover', WALL.id, FAR, 90)], [-1, 0, 2])).toBe('ok');
+    expect(moveTo([peg, place('mover', WALL.id, FAR, 0)], [-1, 0, 2])).toBe('blocked');
+  });
+
+  it('two walls at yaw 90 can sit one voxel apart', () => {
+    const doc = [place('a', WALL.id, [0, 0, 0], 90), place('mover', WALL.id, FAR, 90)];
+    expect(moveTo(doc, [1, 0, 0])).toBe('ok');
+    expect(moveTo(doc, [0, 0, 2])).toBe('blocked');
+  });
+
+  it('a 4×2 beam at yaw 90 occupies exactly 2×4', () => {
+    // Footprint of the beam at the origin turned 90 degrees: x [1,3), z [-1,3).
+    const doc = [place('static', BEAM.id, [0, 0, 0], 90), place('mover', PEG.id, FAR)];
+    expect(moveTo(doc, [1, 0, -1])).toBe('blocked');
+    expect(moveTo(doc, [2, 0, 2])).toBe('blocked');
+    expect(moveTo(doc, [0, 0, 0])).toBe('ok');
+    expect(moveTo(doc, [3, 0, 0])).toBe('ok');
+    expect(moveTo(doc, [1, 0, 3])).toBe('ok');
   });
 });

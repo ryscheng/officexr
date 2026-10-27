@@ -287,6 +287,11 @@ export interface NewObjectShape {
    * to the nearest multiple of step so two same-kind cubes line up on
    * the same grid. */
   step: { x: number; y: number; z: number };
+  /** Voxel offset from the object's `position` to the min corner of its
+   * box: non-zero for a yawed object, whose box is the rotated one. The
+   * returned voxel is a `position`, so this is subtracted from the snapped
+   * box corner. Defaults to 0. */
+  originOffset?: readonly [number, number, number];
 }
 
 type Face = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
@@ -472,10 +477,11 @@ export function snapToNearestFace(
     }
 
     bestDist = aabbDist;
+    const [ox, oy, oz] = newObject.originOffset ?? [0, 0, 0];
     bestVoxel = [
-      Math.round(anchor[0] / voxelSize),
-      Math.round(anchor[1] / voxelSize),
-      Math.round(anchor[2] / voxelSize),
+      Math.round(anchor[0] / voxelSize) - ox,
+      Math.round(anchor[1] / voxelSize) - oy,
+      Math.round(anchor[2] / voxelSize) - oz,
     ];
   }
 

@@ -11,6 +11,7 @@ import {
   type NearbyObjectInfo,
   type TileableObjectInfo,
 } from './roomSnap.ts';
+import { BEAM, WALL, footprintOf, geometry } from './__tests__/yawedKinds.ts';
 
 describe('computeTileStep', () => {
   it('2m object on 0.5m grid → step 4', () => {
@@ -503,5 +504,64 @@ describe('snapToNearestFace — anchor-convention face snap', () => {
     expect(result).not.toBeNull();
     // anchor.x = rightBlue.max.x = 6 → voxel x = 12.
     expect(result![0]).toBe(12);
+  });
+});
+
+describe('snapToNearestFace — yawed new object', () => {
+  const VS = 0.5;
+  const blueAtOrigin: NearbyObjectInfo = {
+    position: [0, 0, 0],
+    aabb: { min: [0, 0, 0], max: [2, 2, 2] },
+  };
+  const shapeOf = (kindId: string, yawDeg: number) => {
+    const { min, max } = geometry.worldAABB([0, 0, 0], kindId, yawDeg);
+    const [x, y, z] = geometry.tileStep(kindId, yawDeg);
+    return {
+      width: max[0] - min[0],
+      height: max[1] - min[1],
+      depth: max[2] - min[2],
+      step: { x, y, z },
+      originOffset: footprintOf([0, 0, 0], kindId, yawDeg).min,
+    };
+  };
+
+  it.each([
+    { kind: WALL, size: [1, 3, 4] },
+    { kind: BEAM, size: [2, 3, 4] },
+  ])('$kind.id at yaw 90 lands as $size flush against the +X face', ({ kind, size }) => {
+    const voxel = snapToNearestFace(
+      { x: 2.2, y: 0.5, z: 1 },
+      shapeOf(kind.id, 90),
+      [blueAtOrigin],
+      VS,
+      1.5,
+    )!;
+    const box = footprintOf(voxel, kind.id, 90);
+    expect(box.min[0]).toBe(4);
+    expect([box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]]).toEqual(size);
+    // Centred on the cursor along the face: z from 0 to 4 voxels.
+    expect([box.min[2], box.max[2]]).toEqual([0, 4]);
+  });
+
+  it('a wall at yaw 90 lands flush against the -X face', () => {
+    const voxel = snapToNearestFace(
+      { x: -0.2, y: 0.5, z: 1 },
+      shapeOf(WALL.id, 90),
+      [blueAtOrigin],
+      VS,
+      1.5,
+    )!;
+    expect(footprintOf(voxel, WALL.id, 90).max[0]).toBe(0);
+  });
+
+  it('a wall at yaw 0 keeps position as the box corner', () => {
+    const voxel = snapToNearestFace(
+      { x: 2.2, y: 0.5, z: 1 },
+      shapeOf(WALL.id, 0),
+      [blueAtOrigin],
+      VS,
+      1.5,
+    )!;
+    expect(voxel).toEqual([4, 1, 2]);
   });
 });

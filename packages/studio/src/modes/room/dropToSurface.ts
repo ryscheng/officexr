@@ -1,3 +1,5 @@
+import { unitFootprint, type FootprintOf } from './footprint.ts';
+
 /**
  * Pure gravity-placement helper for the Room editor.
  *
@@ -32,21 +34,9 @@
  * @param worldObjects - The current compiled scene (existing placed objects).
  *   `voxelSize` is carried for future compatibility but not used here —
  *   all arithmetic is in voxel coords.
+ * @param footprintOf - Footprint of each existing instance at its yaw;
+ *   defaults to one voxel at its anchor.
  */
-/** Footprint lookup matching `InstanceGeometryService.voxelFootprint`.
- * Callers with an application api in scope pass it through; the legacy
- * default treats every existing instance as one voxel — preserved for
- * tests that don't have a catalog. */
-export interface InstanceFootprintLookup {
-  (
-    position: readonly [number, number, number],
-    kindId: string,
-  ): {
-    min: readonly [number, number, number];
-    max: readonly [number, number, number]; // exclusive
-  };
-}
-
 export function dropToSurface(
   proposedVoxel: [number, number, number],
   objectFootprint: { w: number; d: number },
@@ -54,9 +44,10 @@ export function dropToSurface(
     instances: ReadonlyArray<{
       position: readonly [number, number, number];
       kindId: string;
+      yawDeg?: number;
     }>;
   },
-  footprintOf?: InstanceFootprintLookup,
+  footprintOf: FootprintOf = unitFootprint,
 ): [number, number, number] | null {
   const [px, py, pz] = proposedVoxel;
   const { w, d } = objectFootprint;
@@ -70,18 +61,7 @@ export function dropToSurface(
   let maxSupportTop = -Infinity;
 
   for (const inst of worldObjects.instances) {
-    const fp = footprintOf
-      ? footprintOf(inst.position, inst.kindId)
-      : {
-          // Legacy fallback: treat the existing instance as a single
-          // voxel at its anchor position.
-          min: [inst.position[0], inst.position[1], inst.position[2]] as const,
-          max: [
-            inst.position[0] + 1,
-            inst.position[1] + 1,
-            inst.position[2] + 1,
-          ] as const,
-        };
+    const fp = footprintOf(inst.position, inst.kindId, inst.yawDeg);
     // Only look downward — the instance's top face must be at or
     // below the proposed Y.
     if (fp.max[1] > py) continue;
