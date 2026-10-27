@@ -25,9 +25,23 @@ function setup() {
   const map = emptyMapDocument('office');
   map.rooms = [{ id: 'a', roomName: 'room', position: [0, 0, 0] }];
   map.spawnPoints = [{ id: 's', position: [1, 2, 3] }];
+  const bakedRoom = emptyRoomDocument('baked-room');
+  bakedRoom.layoutName = 'hall';
+  const bakedMap = emptyMapDocument('baked');
+  bakedMap.rooms = [{ id: 'b', roomName: 'baked-room', position: [4, 0, -2], rotationY: 3 }];
   const storages = {
-    maps: new InMemoryMapStorage({ seed: [{ name: 'office', doc: map }] }),
-    rooms: new InMemoryRoomStorage({ seed: [{ name: 'room', doc: room }] }),
+    maps: new InMemoryMapStorage({
+      seed: [
+        { name: 'office', doc: map },
+        { name: 'baked', doc: bakedMap },
+      ],
+    }),
+    rooms: new InMemoryRoomStorage({
+      seed: [
+        { name: 'room', doc: room },
+        { name: 'baked-room', doc: bakedRoom },
+      ],
+    }),
     layouts: new InMemoryLayoutStorage(),
   };
   const actions = {
@@ -67,6 +81,15 @@ describe('usePlaySession', () => {
     expect(result.current.error).toBeNull();
     expect(result.current.loaded).toBe(true);
     expect(result.current.failed).toBe(false);
+  });
+
+  it('passes the baked layout and its placement through', async () => {
+    const { render } = setup();
+    const { result } = render('baked');
+
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(result.current.bakedLayoutName).toBe('hall');
+    expect(result.current.bakedPlacement).toMatchObject({ position: [4, 0, -2], rotationY: 3 });
   });
 
   it('re-applies the map when reloadKey changes', async () => {

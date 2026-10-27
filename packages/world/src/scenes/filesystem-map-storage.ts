@@ -1,18 +1,18 @@
 import { deserializeMap } from './serialize.ts';
 import { httpError, isValidSceneName, type SceneSummary } from './storage.ts';
-import type { MapDocumentV1 } from './map-document.ts';
+import type { SerializedMap } from './map-document.ts';
 
 export type MapSummary = SceneSummary;
 
 /**
- * Pluggable map storage. Symmetric with `RoomStorage` but typed for
- * `MapDocumentV1`. Maps have a single schemaVersion so no migration
- * step is needed.
+ * Pluggable map storage. Symmetric with `RoomStorage`, but loads return
+ * the stored version: migrating a v1 map needs its room docs, so the
+ * storage server and `loadMap` do it.
  */
 export interface MapStorage {
   list(): Promise<MapSummary[]>;
-  load(name: string): Promise<MapDocumentV1 | null>;
-  save(name: string, map: MapDocumentV1): Promise<void>;
+  load(name: string): Promise<SerializedMap | null>;
+  save(name: string, map: SerializedMap): Promise<void>;
   delete(name: string): Promise<void>;
 }
 
@@ -31,7 +31,7 @@ export class FilesystemMapStorage implements MapStorage {
     return Array.isArray(json.maps) ? json.maps : [];
   }
 
-  async load(name: string): Promise<MapDocumentV1 | null> {
+  async load(name: string): Promise<SerializedMap | null> {
     if (!isValidSceneName(name)) {
       throw new Error(`map-storage load: invalid name "${name}"`);
     }
@@ -41,7 +41,7 @@ export class FilesystemMapStorage implements MapStorage {
     return deserializeMap((await r.json()) as unknown);
   }
 
-  async save(name: string, map: MapDocumentV1): Promise<void> {
+  async save(name: string, map: SerializedMap): Promise<void> {
     if (!isValidSceneName(name)) {
       throw new Error(`map-storage save: invalid name "${name}"`);
     }

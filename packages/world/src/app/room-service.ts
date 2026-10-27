@@ -8,7 +8,7 @@
 import { compileScene as compileSceneRaw } from '../scenes/compile.ts';
 import { compileMap as compileMapRaw } from '../scenes/compile-map.ts';
 import type { RoomDocument } from '../scenes/commands.ts';
-import type { MapDocumentV1 } from '../scenes/map-document.ts';
+import type { MapDocumentV2 } from '../scenes/map-document.ts';
 import type { WorldObjects } from '@officexr/sdk';
 import type { InstanceGeometryService, LayoutCommandSource, RoomService } from './types.ts';
 
@@ -26,7 +26,7 @@ export function createRoomService(deps: {
       return compileSceneRaw(doc, geometry.voxelSize, stride);
     },
     compileMap(
-      map: MapDocumentV1,
+      map: MapDocumentV2,
       rooms: ReadonlyMap<string, RoomDocument>,
       layouts?: ReadonlyMap<string, LayoutCommandSource>,
     ): WorldObjects {

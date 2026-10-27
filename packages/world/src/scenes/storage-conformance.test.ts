@@ -30,7 +30,7 @@ import { DEFAULT_WORLD_CONSTANTS, type WorldConstants } from '@officexr/sdk';
 import { serializeRoom, serializeMap } from './serialize.ts';
 import { newPlaceCube } from './commands.ts';
 import { emptyLayoutDocument } from './layout-document.ts';
-import { DEFAULT_MAP_ENVIRONMENT, type MapDocumentV1 } from './map-document.ts';
+import { DEFAULT_MAP_ENVIRONMENT, type SerializedMap } from './map-document.ts';
 import type { RoomDocument } from './commands.ts';
 import type { LayoutDocument } from './layout-document.ts';
 
@@ -172,7 +172,7 @@ function runStorageContract<TDoc>(label: string, c: ContractCase<TDoc>): void {
 // Document factories
 // ---------------------------------------------------------------------------
 
-function makeMapDoc(name: string): MapDocumentV1 {
+function makeMapDoc(name: string): SerializedMap {
   return serializeMap({
     name,
     title: name,
@@ -207,7 +207,7 @@ afterEach(() => {
 });
 
 describe('MapStorage conformance', () => {
-  runStorageContract<MapDocumentV1>('InMemoryMapStorage', {
+  runStorageContract<SerializedMap>('InMemoryMapStorage', {
     makeStorage: () => new InMemoryMapStorage(),
     makeDoc: makeMapDoc,
     identity: (d) => d.name,
@@ -217,7 +217,7 @@ describe('MapStorage conformance', () => {
     beforeEach(() => {
       installFetchMock({ files: new Map(), listKey: 'maps', basePath: '/api/maps' });
     });
-    runStorageContract<MapDocumentV1>('contract', {
+    runStorageContract<SerializedMap>('contract', {
       makeStorage: () => new FilesystemMapStorage(),
       makeDoc: makeMapDoc,
       identity: (d) => d.name,

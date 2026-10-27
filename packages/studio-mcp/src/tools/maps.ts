@@ -7,8 +7,8 @@ export function registerMapTools(server: McpServer, { maps, rooms }: StudioDocum
   registerDocumentTools(server, maps, {
     noun: 'map',
     description:
-      'A map composes rooms into a world: "rooms" are instances {id, roomName, position, rotationY} ' +
-      'with integer voxel offsets and rotationY a quarter-turn count (0-3); "spawnPoints" use continuous ' +
+      'A map (schemaVersion: 2) composes rooms into a world: "rooms" are instances {id, roomName, position, rotationY} ' +
+      'with integer voxel offsets and rotationY a quarter-turn count (0-3), applied to baked layouts too; "spawnPoints" use continuous ' +
       'world coordinates [x, y, z]; "environment" sets sun, sky and lighting. Every roomName must be an existing room.',
     beforeSave: async (doc) => {
       const known = new Set((await rooms.list()).map((r) => r.name));

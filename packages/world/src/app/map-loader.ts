@@ -1,12 +1,15 @@
 import type { WorldObjects } from '@officexr/sdk';
-import type {
-  LayoutDocument,
-  LayoutStorage,
-  MapDocumentV1,
-  MapStorage,
-  RoomDocument,
-  RoomStorage,
-  SpawnPoint,
+import {
+  isBakedRoom,
+  migrateMapV1toV2,
+  type LayoutDocument,
+  type LayoutStorage,
+  type MapDocumentV2,
+  type MapStorage,
+  type RoomDocument,
+  type RoomInstance,
+  type RoomStorage,
+  type SpawnPoint,
 } from '../scenes/index.ts';
 import type { CatalogService, RoomService } from './types.ts';
 
@@ -24,12 +27,14 @@ export interface MapLoaderDeps {
 }
 
 export interface LoadedMap {
-  mapDoc: MapDocumentV1;
+  mapDoc: MapDocumentV2;
   rooms: ReadonlyMap<string, RoomDocument>;
   worldObjects: WorldObjects;
   spawnPoints: readonly SpawnPoint[];
   /** Set only when exactly one distinct layout is referenced by the map's rooms. */
   bakedLayoutName?: string;
+  /** Where `bakedLayoutName` renders: its baked room's placement, in voxels. */
+  bakedPlacement?: Pick<RoomInstance, 'position' | 'rotationY'>;
 }
 
 async function loadAll<T>(
@@ -61,18 +66,23 @@ export async function loadMap(
 ): Promise<LoadedMap> {
   // Kind strides are only correct once the catalog has landed.
   await catalog.ready();
-  const mapDoc = await storages.maps.load(name);
-  if (!mapDoc) {
+  const stored = await storages.maps.load(name);
+  if (!stored) {
     throw new MapNotFoundError(name);
   }
   const rooms = await loadAll(
-    new Set(mapDoc.rooms.map((ri) => ri.roomName)),
+    new Set(stored.rooms.map((ri) => ri.roomName)),
     (n) => storages.rooms.load(n),
     'room',
   );
+  const isBaked = (roomName: string) => {
+    const room = rooms.get(roomName);
+    return room !== undefined && isBakedRoom(room);
+  };
+  const mapDoc = stored.schemaVersion === 1 ? migrateMapV1toV2(stored, isBaked) : stored;
   const layoutNames = new Set<string>();
   for (const room of rooms.values()) {
-    if (room.commands.length === 0 && room.layoutName !== undefined) {
+    if (isBakedRoom(room)) {
       layoutNames.add(room.layoutName);
     }
   }
@@ -89,11 +99,18 @@ export async function loadMap(
       bakedLayoutNames.add(layoutName);
     }
   }
-  // ponytail: <Scene> renders one baked layout; multi-layout maps need a bakedLayouts array prop.
+  const bakedLayoutName = bakedLayoutNames.size === 1 ? [...bakedLayoutNames][0] : undefined;
+  const bakedPlacements = bakedLayoutName ? mapDoc.rooms.filter((ri) => isBaked(ri.roomName)) : [];
+  // ponytail: <Scene> renders one baked layout at one placement; more need a bakedLayouts array prop.
   if (bakedLayoutNames.size > 1) {
     console.warn(
       `[map-loader] map "${mapDoc.name}" references multiple layouts; baked-layout rendering supports one`,
       [...bakedLayoutNames],
+    );
+  }
+  if (bakedPlacements.length > 1) {
+    console.warn(
+      `[map-loader] map "${mapDoc.name}" places its baked layout ${bakedPlacements.length} times; rendering the first`,
     );
   }
 
@@ -102,7 +119,7 @@ export async function loadMap(
     rooms,
     worldObjects: roomService.compileMap(mapDoc, rooms, layouts),
     spawnPoints: mapDoc.spawnPoints,
-    bakedLayoutName:
-      bakedLayoutNames.size === 1 ? [...bakedLayoutNames][0] : undefined,
+    bakedLayoutName,
+    bakedPlacement: bakedPlacements[0],
   };
 }

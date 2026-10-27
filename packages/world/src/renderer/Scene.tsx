@@ -24,7 +24,8 @@ import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
 import { ModelsReady } from './ModelsReady.tsx';
 import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
-import type { CameraMode } from './config.ts';
+import { VOXEL_SIZE, type CameraMode } from './config.ts';
+import type { RoomInstance } from '../scenes/map-document.ts';
 import type { ViewConfig } from './viewConfig.ts';
 
 /**
@@ -105,6 +106,8 @@ interface SceneProps {
    * Required alongside `bakedLayoutPath` for the layout to render.
    */
   bakedLayoutName?: string;
+  /** Map placement of the baked layout, in voxels; the world origin when unset. */
+  bakedPlacement?: Pick<RoomInstance, 'position' | 'rotationY'>;
   /** When true, every character rendered in this scene is frozen at
    * its bind pose (no animation mixer activity). Used by the Mugshot
    * mode to produce deterministic snapshot tests. */
@@ -149,6 +152,7 @@ export function Scene(props: SceneProps) {
   //     populated for baked rooms, so the gate prevents them from rendering
   //     duplicate geometry on top of the baked GLB.
   const hasBaked = showLayout;
+  const [bakedX, bakedY, bakedZ] = props.bakedPlacement?.position ?? [0, 0, 0];
   const { proximity, lighting, background, fixedCamera } = props.view;
   const worldFocused = props.worldFocused ?? true;
 
@@ -255,7 +259,10 @@ export function Scene(props: SceneProps) {
         */}
         {!hasBaked && <MapColliders store={store} />}
         {showLayout && (
-          <>
+          <group
+            position={[bakedX * VOXEL_SIZE, bakedY * VOXEL_SIZE, bakedZ * VOXEL_SIZE]}
+            rotation={[0, ((props.bakedPlacement?.rotationY ?? 0) * Math.PI) / 2, 0]}
+          >
             <BakedLayout
               gltfPath={props.bakedLayoutPath!}
               layoutName={props.bakedLayoutName}
@@ -266,7 +273,7 @@ export function Scene(props: SceneProps) {
               onReady={props.onCollidersReady}
               onError={props.onCollidersError}
             />
-          </>
+          </group>
         )}
         {/* Lighting: shared LightingRig + a per-frame SunFollower
             that mutates the sun's position/target/disc to track the

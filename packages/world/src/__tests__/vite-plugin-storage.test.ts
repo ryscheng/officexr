@@ -9,13 +9,16 @@ import studioStorage, {
   STORAGE_ENTRIES,
   dataDirOptions,
 } from '../../vite-plugin-storage.ts';
+import { newPlaceObject } from '../scenes/commands.ts';
+import { emptyMapDocument, type MapDocumentV1 } from '../scenes/map-document.ts';
+import { serializeRoom } from '../scenes/serialize.ts';
 
 type Handler = (req: IncomingMessage, res: ServerResponse, next: () => void) => unknown;
 
 async function serve(options: Parameters<typeof studioStorage>[0]) {
   const mounts: Array<[string, Handler]> = [];
   const plugin = studioStorage(options);
-  (plugin.configureServer as (s: unknown) => void)({
+  await (plugin.configureServer as (s: unknown) => Promise<void>)({
     middlewares: { use: (base: string, h: Handler) => mounts.push([base, h]) },
   });
   const server: Server = createServer((req, res) => {
@@ -197,5 +200,84 @@ describe('studio storage plugin: GET /api/baked-layouts', () => {
     await writeFile(path.join(baked, 'notes.txt'), 'x');
     const { bakedLayouts } = await list(baked);
     expect(bakedLayouts.map(({ name, size }) => ({ name, size }))).toEqual([{ name: 'hall', size: 3 }]);
+  });
+});
+
+describe('studio storage plugin: map schema v2 migration', () => {
+  let dataDir: string;
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    await new Promise((r) => (server ? server.close(r) : r(undefined)));
+    server = undefined;
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  const v1Map: MapDocumentV1 = {
+    ...emptyMapDocument('old'),
+    schemaVersion: 1,
+    rooms: [
+      { id: 'baked', roomName: 'hall', position: [-24, 0, -23], rotationY: 3 },
+      { id: 'cubes', roomName: 'kitchen', position: [10, 0, 5], rotationY: 1 },
+      { id: 'ghost', roomName: 'missing', position: [3, 0, 3] },
+    ],
+    spawnPoints: [{ id: 's', position: [1.5, 0, 1.5] }],
+  };
+  const v2Text = JSON.stringify({
+    ...emptyMapDocument('new'),
+    rooms: [{ id: 'baked', roomName: 'hall', position: [4, 0, 4], rotationY: 1 }],
+  });
+  const readMap = async (name: string) => readFile(path.join(dataDir, 'maps', `${name}.json`), 'utf8');
+
+  async function boot(readOnly: boolean) {
+    await new Promise((r) => (server ? server.close(r) : r(undefined)));
+    const s = await serve({ dataDir, readOnly });
+    server = s.server;
+    return s.url;
+  }
+
+  async function setup() {
+    dataDir = await mkdtemp(path.join(tmpdir(), 'studio-map-migration-'));
+    await mkdir(path.join(dataDir, 'rooms'));
+    await mkdir(path.join(dataDir, 'maps'));
+    const room = (name: string, commands: ReturnType<typeof newPlaceObject>[], layoutName?: string) =>
+      writeFile(path.join(dataDir, 'rooms', `${name}.json`), JSON.stringify(serializeRoom({ name, commands, layoutName })));
+    await room('hall', [], 'hall');
+    await room('kitchen', [newPlaceObject({ kindId: 'stone', position: [0, 0, 0] })]);
+    await writeFile(path.join(dataDir, 'maps', 'old.json'), JSON.stringify(v1Map));
+    await writeFile(path.join(dataDir, 'maps', 'new.json'), v2Text);
+  }
+
+  it('rewrites v1 maps to v2 on boot, even read-only, resetting only baked placements', async () => {
+    await setup();
+    await boot(true);
+    const migrated = JSON.parse(await readMap('old'));
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.rooms).toEqual([
+      { id: 'baked', roomName: 'hall', position: [0, 0, 0], rotationY: 0 },
+      v1Map.rooms[1],
+      v1Map.rooms[2],
+    ]);
+    expect(migrated.spawnPoints).toEqual(v1Map.spawnPoints);
+    expect(await readMap('new')).toBe(v2Text);
+  });
+
+  it('is idempotent across boots', async () => {
+    await setup();
+    await boot(true);
+    const once = await readMap('old');
+    await boot(true);
+    expect(await readMap('old')).toBe(once);
+  });
+
+  it('stores a v1 PUT as migrated v2', async () => {
+    await setup();
+    const url = await boot(false);
+    const res = await fetch(`${url}/api/maps/put`, { method: 'PUT', body: JSON.stringify(v1Map) });
+    expect(res.status).toBe(204);
+    const stored = JSON.parse(await readMap('put'));
+    expect(stored.schemaVersion).toBe(2);
+    expect(stored.rooms[0]).toEqual({ id: 'baked', roomName: 'hall', position: [0, 0, 0], rotationY: 0 });
+    expect(stored.rooms[1]).toEqual(v1Map.rooms[1]);
   });
 });

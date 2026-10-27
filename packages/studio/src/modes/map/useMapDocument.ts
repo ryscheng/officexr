@@ -3,7 +3,7 @@ import {
   FilesystemMapStorage,
   LocalStorageMapStorage,
   emptyMapDocument,
-  type MapDocumentV1,
+  type SerializedMap,
   type MapStorage,
   type RoomInstance,
   type SpawnPoint,
@@ -61,7 +61,7 @@ export type MapSelection =
  * map shows up in subsequent `/api/maps` listings.
  */
 export interface UseMapDocumentResult {
-  doc: MapDocumentV1;
+  doc: SerializedMap;
   mapName: string;
   selection: MapSelection;
   setSelection: (s: MapSelection) => void;
@@ -77,7 +77,7 @@ export interface UseMapDocumentResult {
   setSpawnLabel: (id: string, label: string) => void;
   setSpawnPosition: (id: string, position: [number, number, number]) => void;
   setEnvironment: (
-    update: (env: MapDocumentV1['environment']) => MapDocumentV1['environment'],
+    update: (env: SerializedMap['environment']) => SerializedMap['environment'],
   ) => void;
   loadMap: (name: string) => Promise<void>;
   newMap: (name: string) => void;
@@ -108,7 +108,7 @@ export function useMapDocument(
       return DEFAULT_MAP_NAME;
     }
   });
-  const [doc, setDoc] = useState<MapDocumentV1>(() => emptyMapDocument(mapName));
+  const [doc, setDoc] = useState<SerializedMap>(() => emptyMapDocument(mapName));
   const [selection, setSelection] = useState<MapSelection>(null);
 
   // Same load+save pattern as useRoomDocument — track the last-saved
@@ -168,7 +168,7 @@ export function useMapDocument(
   }, [doc, mapName, storage]);
 
   const stampUpdated = useCallback(
-    (mut: (prev: MapDocumentV1) => MapDocumentV1) =>
+    (mut: (prev: SerializedMap) => SerializedMap) =>
       setDoc((prev) => ({ ...mut(prev), updatedAt: Date.now() })),
     [],
   );
@@ -268,7 +268,7 @@ export function useMapDocument(
   );
 
   const setEnvironment = useCallback(
-    (update: (env: MapDocumentV1['environment']) => MapDocumentV1['environment']) => {
+    (update: (env: SerializedMap['environment']) => SerializedMap['environment']) => {
       stampUpdated((prev) => ({ ...prev, environment: update(prev.environment) }));
     },
     [stampUpdated],

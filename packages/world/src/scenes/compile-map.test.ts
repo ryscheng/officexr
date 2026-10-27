@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { compileMap, type LayoutResolver } from './compile-map.ts';
 import { compileScene } from './compile.ts';
 import { newPlaceObject, type RoomDocument, type SceneCommand } from './commands.ts';
-import { emptyMapDocument, type MapDocumentV1 } from './map-document.ts';
+import { emptyMapDocument, type MapDocumentV2 } from './map-document.ts';
 
 function roomWithCubes(
   name: string,
@@ -32,7 +32,7 @@ describe('compileMap', () => {
       [1, 0, 0],
     ]);
     const direct = compileScene(room, 2);
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'inst-1', roomName: 'r1', position: [0, 0, 0] }],
     };
@@ -53,7 +53,7 @@ describe('compileMap', () => {
       [0, 0, 0],
       [1, 0, 0],
     ]);
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [
         { id: 'a', roomName: 'r', position: [0, 0, 0] },
@@ -82,7 +82,7 @@ describe('compileMap', () => {
       [0, 0, 0],
       [1, 0, 0],
     ]);
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'i', roomName: 'r', position: [5, 0, 5], rotationY: 1 }],
     };
@@ -101,7 +101,7 @@ describe('compileMap', () => {
       [0, 0, 0],
       [1, 0, 0],
     ]);
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'i', roomName: 'r', position: [0, 0, 0], rotationY: 2 }],
     };
@@ -121,7 +121,7 @@ describe('compileMap', () => {
       [1, 0, 0],
       [0, 0, 1],
     ]);
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'i', roomName: 'r', position: [0, 0, 0], rotationY: 3 }],
     };
@@ -158,7 +158,7 @@ describe('compileMap', () => {
         [1, 0, 2],
         [-3, 0, 1],
       ]);
-      const map: MapDocumentV1 = {
+      const map: MapDocumentV2 = {
         ...emptyMapDocument('m'),
         rooms: [{ id: 'i', roomName: 'r', position: placement, rotationY }],
       };
@@ -199,7 +199,7 @@ describe('compileMap', () => {
     const calls: string[] = [];
     console.warn = (msg: string) => calls.push(String(msg));
     try {
-      const map: MapDocumentV1 = {
+      const map: MapDocumentV2 = {
         ...emptyMapDocument('m'),
         rooms: [
           { id: 'orphan', roomName: 'missing', position: [0, 0, 0] },
@@ -225,7 +225,7 @@ describe('compileMap', () => {
       ],
       groups: {},
     };
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'i', roomName: 'r', position: [0, 0, 0] }],
     };
@@ -265,7 +265,7 @@ describe('compileMap — layout resolution (task-13)', () => {
   it('without getLayout, a baked-only room yields no instances (back-compat)', () => {
     const room = bakedRoom('baked-r', 'my-layout');
     const layout = layoutWithCubes([[0, 0, 0], [1, 0, 0]]);
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'inst', roomName: 'baked-r', position: [0, 0, 0] }],
     };
@@ -282,7 +282,7 @@ describe('compileMap — layout resolution (task-13)', () => {
     const layout = layoutWithCubes([[0, 0, 0], [1, 0, 0]]);
     const getLayout: LayoutResolver = (name) =>
       name === 'my-layout' ? layout : undefined;
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'inst', roomName: 'baked-r', position: [0, 0, 0] }],
     };
@@ -310,7 +310,7 @@ describe('compileMap — layout resolution (task-13)', () => {
     };
     const layout = layoutWithCubes([[0, 0, 0], [1, 0, 0]]);
     const getLayout: LayoutResolver = () => layout;
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'inst', roomName: 'inline-r', position: [0, 0, 0] }],
     };
@@ -327,7 +327,7 @@ describe('compileMap — layout resolution (task-13)', () => {
     const origWarn = console.warn;
     console.warn = (...args: unknown[]) => warnCalls.push(String(args[0]));
     try {
-      const map: MapDocumentV1 = {
+      const map: MapDocumentV2 = {
         ...emptyMapDocument('m'),
         rooms: [{ id: 'inst', roomName: 'baked-r', position: [0, 0, 0] }],
       };
@@ -346,7 +346,7 @@ describe('compileMap — layout resolution (task-13)', () => {
     const layout = layoutWithCubes([[1, 0, 0]]);
     const getLayout: LayoutResolver = (name) =>
       name === 'my-layout' ? layout : undefined;
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'inst', roomName: 'baked-r', position: [5, 0, 5], rotationY: 1 }],
     };
@@ -367,7 +367,7 @@ describe('compileMap — layout resolution (task-13)', () => {
     const layout = layoutWithCubes(corridorPositions);
     const getLayout: LayoutResolver = (name) =>
       name === 'scenario-corridor' ? layout : undefined;
-    const map: MapDocumentV1 = {
+    const map: MapDocumentV2 = {
       ...emptyMapDocument('m'),
       rooms: [{ id: 'room-corridor-1', roomName: 'scenario-corridor', position: [0, 0, 0] }],
     };

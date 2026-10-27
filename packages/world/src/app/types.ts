@@ -20,7 +20,7 @@
  */
 
 import type { RoomDocument, SceneCommand } from '../scenes/commands.ts';
-import type { MapDocumentV1 } from '../scenes/map-document.ts';
+import type { MapDocumentV2 } from '../scenes/map-document.ts';
 import type {
   WorldObjectKind,
   WorldObjectKindCatalogV1,
@@ -131,7 +131,7 @@ export interface RoomService {
    * paths) get exactly the same behavior as before this parameter existed.
    */
   compileMap(
-    map: MapDocumentV1,
+    map: MapDocumentV2,
     rooms: ReadonlyMap<string, RoomDocument>,
     layouts?: ReadonlyMap<string, LayoutCommandSource>,
   ): WorldObjects;

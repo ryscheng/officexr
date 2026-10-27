@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "long_corridor",
   "updatedAt": 1778816837715,
   "rooms": [
@@ -7,9 +7,9 @@
       "id": "room-1-ztq1",
       "roomName": "default-v2",
       "position": [
-        1,
         0,
-        -2
+        0,
+        0
       ],
       "rotationY": 0
     }

@@ -30,6 +30,7 @@ export {
   serializeMap,
   deserializeScene,
   deserializeMap,
+  migrateMapV1toV2,
   migrateToV2,
   migrateToV3,
   migrateToV4,
@@ -52,9 +53,12 @@ export {
   newExtrude,
   emptyDocument,
   emptyRoomDocument,
+  isBakedRoom,
 } from './commands.ts';
 export {
   type MapDocumentV1,
+  type MapDocumentV2,
+  type SerializedMap,
   type RoomInstance,
   type SpawnPoint,
   type MapEnvironment,

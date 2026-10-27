@@ -1,6 +1,6 @@
 import { deserializeMap } from './serialize.ts';
 import { isValidSceneName } from './storage.ts';
-import type { MapDocumentV1 } from './map-document.ts';
+import type { SerializedMap } from './map-document.ts';
 import type { MapStorage, MapSummary } from './filesystem-map-storage.ts';
 
 const KEY_PREFIX = 'officexr:map:';
@@ -52,7 +52,7 @@ export class LocalStorageMapStorage implements MapStorage {
     }));
   }
 
-  async load(name: string): Promise<MapDocumentV1 | null> {
+  async load(name: string): Promise<SerializedMap | null> {
     if (!isValidSceneName(name)) {
       throw new Error(`map-storage load: invalid name "${name}"`);
     }
@@ -65,7 +65,7 @@ export class LocalStorageMapStorage implements MapStorage {
     }
   }
 
-  async save(name: string, map: MapDocumentV1): Promise<void> {
+  async save(name: string, map: SerializedMap): Promise<void> {
     if (!isValidSceneName(name)) {
       throw new Error(`map-storage save: invalid name "${name}"`);
     }

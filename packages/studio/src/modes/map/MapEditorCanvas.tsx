@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Sky, Stars } from '@react-three/drei';
 import {
-  type MapDocumentV1,
+  type SerializedMap,
   type RoomDocument,
   type RoomInstance,
   type SpawnPoint,
@@ -61,7 +61,7 @@ function mapDocToLighting(
 }
 
 interface MapEditorCanvasProps {
-  doc: MapDocumentV1;
+  doc: SerializedMap;
   rooms: ReadonlyMap<string, RoomDocument>;
   selection: MapSelection;
   onSelect: (sel: MapSelection) => void;

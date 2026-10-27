@@ -111,7 +111,7 @@ restructured into five purpose-built modes, each a separate App under
 
 Storage endpoints (Vite middleware):
 - `/api/rooms/:name` — RoomDocument JSON
-- `/api/maps/:name` — MapDocumentV1 JSON
+- `/api/maps/:name` — MapDocumentV2 JSON (v1 maps are migrated on server start and on PUT)
 - `/api/cube-kinds` — single-doc catalog GET/PUT
 - `/api/world-settings` — single-doc `WorldConstants` GET/PUT; a save is pushed to the realtime servers (502 `{failed}` when some push fails)
 

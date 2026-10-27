@@ -8,7 +8,7 @@ import {
   InMemoryMapStorage,
   InMemoryRoomStorage,
   type LayoutDocument,
-  type MapDocumentV1,
+  type SerializedMap,
   type RoomDocument,
 } from '@officexr/world/scenes';
 import type { WorldConstants } from '@officexr/sdk';
@@ -27,7 +27,7 @@ import {
  * matching in-memory storage so an editor opens with known content.
  */
 interface TestSeed {
-  maps?: Array<{ name: string; doc: MapDocumentV1 }>;
+  maps?: Array<{ name: string; doc: SerializedMap }>;
   rooms?: Array<{ name: string; doc: RoomDocument }>;
   layouts?: Array<{ name: string; doc: LayoutDocument }>;
   worldConstants?: WorldConstants;
