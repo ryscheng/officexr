@@ -12,6 +12,9 @@ export const CUBE_SIZE = VOXEL_SIZE;
 export const PLAYER_HEIGHT = 1.7;
 export const EYE_HEIGHT = 1.6;
 
+/** Default vertical fov (degrees) of the gameplay camera. */
+export const GAMEPLAY_FOV = 75;
+
 export { FIXED_CAMERA_DEFAULTS } from '@officexr/sdk';
 
 /** Used by the screen-fraction → distance formula. */
