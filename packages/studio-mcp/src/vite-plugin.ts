@@ -7,6 +7,8 @@ import {
   FilesystemWorldConstantsStorage,
 } from '@officexr/world/scenes';
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
+import { HeavyWorkLock } from './heavy-work-lock.ts';
+import { createChromiumRenderer } from './renderer.ts';
 import { handleMcpRequest, type StudioMcpOptions } from './server.ts';
 import type { StudioDocuments } from './studio-documents.ts';
 
@@ -46,7 +48,8 @@ function mountMcp(
       if (!address || typeof address === 'string') {
         throw new Error('server is not listening on a TCP port');
       }
-      await handleMcpRequest(loopbackDocuments(`http://127.0.0.1:${address.port}`), options, req, res);
+      const origin = `http://127.0.0.1:${address.port}`;
+      await handleMcpRequest(loopbackDocuments(origin), options, origin, req, res);
     } catch (err) {
       console.error('[studio-mcp] request failed:', err);
       if (!res.headersSent) {
@@ -59,8 +62,18 @@ function mountMcp(
 }
 
 /** Mounts the studio's MCP server at `POST /mcp` on the dev and preview servers. */
-export default function studioMcpPlugin({ modelRoot }: Pick<StudioMcpOptions, 'modelRoot'>): Plugin {
-  const options: StudioMcpOptions = { modelRoot, bakeLock: { busy: false } };
+export default function studioMcpPlugin({
+  modelRoot,
+  chromiumPath,
+}: Pick<StudioMcpOptions, 'modelRoot'> & {
+  /** Chromium that `render_view` launches; Playwright's own download when unset. */
+  chromiumPath?: string;
+}): Plugin {
+  const options: StudioMcpOptions = {
+    modelRoot,
+    heavyWorkLock: new HeavyWorkLock('a bake or render'),
+    renderer: createChromiumRenderer({ executablePath: chromiumPath }),
+  };
   return {
     name: 'officexr:studio-mcp',
     configureServer: (server) => mountMcp(server, options),
