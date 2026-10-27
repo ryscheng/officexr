@@ -189,6 +189,14 @@ describe('serializeMap + deserializeMap', () => {
     expect(back).toEqual(m);
   });
 
+  it('round-trips voiceZone and rejects a non-boolean one', () => {
+    const m = makeFullMap();
+    m.rooms[1].voiceZone = true;
+    expect(deserializeMap(JSON.parse(JSON.stringify(m))).rooms[1].voiceZone).toBe(true);
+    m.rooms[1].voiceZone = 'yes' as unknown as boolean;
+    expect(() => deserializeMap(JSON.parse(JSON.stringify(m)))).toThrow(/voiceZone/);
+  });
+
   it('preserves null sky/stars/hdri across round-trip', () => {
     const m = serializeMap({
       name: 'plain',

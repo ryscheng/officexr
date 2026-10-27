@@ -2,6 +2,7 @@
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
+import { createActions, createStore } from '@officexr/sdk';
 import { createDefaultApi } from '../app/create-default-api.ts';
 import {
   InMemoryLayoutStorage,
@@ -23,7 +24,7 @@ function setup() {
   const room = emptyRoomDocument('room');
   room.commands.push(newPlaceObject({ kindId: 'colored_block_blue', position: [0, 0, 0] }));
   const map = emptyMapDocument('office');
-  map.rooms = [{ id: 'a', roomName: 'room', position: [0, 0, 0] }];
+  map.rooms = [{ id: 'a', roomName: 'room', position: [0, 0, 0], voiceZone: true }];
   map.spawnPoints = [{ id: 's', position: [1, 2, 3] }];
   const bakedRoom = emptyRoomDocument('baked-room');
   bakedRoom.layoutName = 'hall';
@@ -46,13 +47,14 @@ function setup() {
   };
   const actions = {
     setWorldObjects: vi.fn(),
+    setVoiceZones: vi.fn(),
     setSelfPosition: vi.fn(),
   };
   const onMapApplied = vi.fn();
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ApplicationProvider api={api}>{children}</ApplicationProvider>
   );
-  const render = (mapName: string) =>
+  const render = (mapName: string, initial: Partial<UsePlaySessionOptions> = {}) =>
     renderHook(
       (opts: Partial<UsePlaySessionOptions>) =>
         usePlaySession({
@@ -62,7 +64,7 @@ function setup() {
           onMapApplied,
           ...opts,
         }),
-      { wrapper, initialProps: {} },
+      { wrapper, initialProps: initial },
     );
   return { actions, onMapApplied, render };
 }
@@ -81,6 +83,18 @@ describe('usePlaySession', () => {
     expect(result.current.error).toBeNull();
     expect(result.current.loaded).toBe(true);
     expect(result.current.failed).toBe(false);
+  });
+
+  it('puts the map\'s voice zones in the store, none for a map without any', async () => {
+    const { render } = setup();
+    const store = createStore({ selfId: 'me', officeId: 'o' });
+    const actions = createActions(store);
+    const { result, rerender } = render('office', { actions });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(store.getState().voiceZones.map((z) => z.id)).toEqual(['a']);
+
+    rerender({ actions, mapName: 'baked' });
+    await waitFor(() => expect(store.getState().voiceZones).toEqual([]));
   });
 
   it('passes the baked layout and its placement through', async () => {

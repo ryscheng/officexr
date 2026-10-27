@@ -27,7 +27,7 @@ function setup() {
 
   const map = emptyMapDocument('office');
   map.rooms = [
-    { id: 'a', roomName: 'command-room', position: [0, 0, 0] },
+    { id: 'a', roomName: 'command-room', position: [0, 0, 0], voiceZone: true },
     { id: 'b', roomName: 'baked-room', position: [10, 0, 0], rotationY: 1 },
   ];
   map.spawnPoints = [{ id: 's', position: [1, 2, 3] }];
@@ -56,6 +56,7 @@ function setup() {
     },
     catalog: api.catalog,
     roomService: api.rooms,
+    geometry: api.geometry,
   };
   return deps;
 }
@@ -69,6 +70,20 @@ describe('loadMap', () => {
     expect(loaded.spawnPoints).toEqual([{ id: 's', position: [1, 2, 3] }]);
     expect(loaded.bakedLayoutName).toBe('hall');
     expect(loaded.bakedPlacement).toMatchObject({ position: [10, 0, 0], rotationY: 1 });
+  });
+
+  it('computes voice zones from the compile it returns, compiling once', async () => {
+    const deps = setup();
+    let compiles = 0;
+    const roomService = {
+      compileMap: (...args: Parameters<typeof deps.roomService.compileMap>) => {
+        compiles += 1;
+        return deps.roomService.compileMap(...args);
+      },
+    };
+    const loaded = await loadMap({ ...deps, roomService }, 'office');
+    expect(loaded.voiceZones.map((z) => z.id)).toEqual(['a']);
+    expect(compiles).toBe(1);
   });
 
   it('migrates a v1 map, moving its baked placement to where v1 rendered it', async () => {

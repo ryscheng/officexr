@@ -26,7 +26,7 @@ export function twoRoomMapSeed(name = 'two-room-map'): TwoRoomMapSeed {
   const room = simpleRoomSeed('snap-room');
   const map = emptyMapDocument(name, name);
   map.rooms = [
-    { id: 'inst-a', roomName: 'snap-room', position: [0, 0, 0], rotationY: 0 },
+    { id: 'inst-a', roomName: 'snap-room', position: [0, 0, 0], rotationY: 0, voiceZone: true },
     { id: 'inst-b', roomName: 'snap-room', position: [6, 0, 0], rotationY: 0 },
   ];
   return {

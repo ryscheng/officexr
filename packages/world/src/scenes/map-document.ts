@@ -35,6 +35,8 @@ export interface RoomInstance {
   roomName: string;
   position: [number, number, number];
   rotationY?: 0 | 1 | 2 | 3;
+  /** Everyone inside this placed room shares one voice + screenshare call. */
+  voiceZone?: boolean;
 }
 
 /**

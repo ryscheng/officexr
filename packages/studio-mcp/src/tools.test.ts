@@ -87,6 +87,9 @@ describe('studio MCP tools', () => {
     const map = { ...emptyMapDocument('town'), rooms: [{ id: 'a', roomName: 'hall', position: [0, 0, 0] }] };
     expect((await call('put_map', { name: 'town', map })).isError).toBe(false);
     expect(JSON.parse((await call('get_map', { name: 'town' })).text).rooms[0].roomName).toBe('hall');
+    const zoned = { ...map, rooms: [{ ...map.rooms[0], voiceZone: true }] };
+    expect((await call('put_map', { name: 'town', map: zoned })).isError).toBe(false);
+    expect(JSON.parse((await call('get_map', { name: 'town' })).text).rooms[0].voiceZone).toBe(true);
     expect(JSON.parse((await call('list_rooms')).text)).toHaveLength(1);
     await call('delete_room', { name: 'hall' });
     expect(JSON.parse((await call('list_rooms')).text)).toHaveLength(0);

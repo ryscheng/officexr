@@ -1,4 +1,4 @@
-import type { WorldObjects } from '@officexr/sdk';
+import type { VoiceZone, WorldObjects } from '@officexr/sdk';
 import {
   isBakedRoom,
   migrateMapV1toV2,
@@ -11,7 +11,8 @@ import {
   type RoomStorage,
   type SpawnPoint,
 } from '../scenes/index.ts';
-import type { CatalogService, RoomService } from './types.ts';
+import type { CatalogService, InstanceGeometryService, RoomService } from './types.ts';
+import { computeVoiceZones } from './voice-zones.ts';
 
 export class MapNotFoundError extends Error {
   constructor(readonly mapName: string) {
@@ -24,12 +25,14 @@ export interface MapLoaderDeps {
   storages: { maps: Pick<MapStorage, 'load'>; rooms: RoomStorage; layouts: LayoutStorage };
   catalog: Pick<CatalogService, 'ready'>;
   roomService: Pick<RoomService, 'compileMap'>;
+  geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>;
 }
 
 export interface LoadedMap {
   mapDoc: MapDocumentV2;
   rooms: ReadonlyMap<string, RoomDocument>;
   worldObjects: WorldObjects;
+  voiceZones: VoiceZone[];
   spawnPoints: readonly SpawnPoint[];
   /** Set only when exactly one distinct layout is referenced by the map's rooms. */
   bakedLayoutName?: string;
@@ -61,7 +64,7 @@ async function loadAll<T>(
  * compiles it. Throws `MapNotFoundError` when the map doesn't exist.
  */
 export async function loadMap(
-  { storages, catalog, roomService }: MapLoaderDeps,
+  { storages, catalog, roomService, geometry }: MapLoaderDeps,
   name: string,
 ): Promise<LoadedMap> {
   // Kind strides are only correct once the catalog has landed.
@@ -107,10 +110,15 @@ export async function loadMap(
     );
   }
 
+  const worldObjects = roomService.compileMap(mapDoc, rooms, layouts);
+  // Hands the zone helper the compile above rather than compiling the map twice.
+  const voiceZones = computeVoiceZones(mapDoc, rooms, layouts, { compileMap: () => worldObjects }, geometry);
+
   return {
     mapDoc,
     rooms,
-    worldObjects: roomService.compileMap(mapDoc, rooms, layouts),
+    worldObjects,
+    voiceZones,
     spawnPoints: mapDoc.spawnPoints,
     bakedLayoutName,
     bakedPlacement: bakedPlacements[0],
