@@ -5,6 +5,7 @@ import { Physics, type RapierRigidBody } from '@react-three/rapier';
 import { GradientBackground } from './GradientBackground.tsx';
 import { LightingRig } from './LightingRig.tsx';
 import { MapColliders } from './MapColliders.tsx';
+import { excludeLayoutInstances } from './useStoreWorldObjects.ts';
 import type {
   Actions,
   Bus,
@@ -26,7 +27,7 @@ import { ModelsReady } from './ModelsReady.tsx';
 import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
 import type { CameraMode } from './config.ts';
 import { placementTransform } from './placement-transform.ts';
-import type { RoomInstance } from '../scenes/map-document.ts';
+import type { BakedLayoutPlacement } from '../app/map-loader.ts';
 import type { ViewConfig } from './viewConfig.ts';
 
 /**
@@ -73,6 +74,11 @@ function SunFollower(props: {
   return null;
 }
 
+/** A layout placement with the URL of its baked GLB, e.g. `/api/baked-layouts/lobby`. */
+export interface SceneBakedLayout extends BakedLayoutPlacement {
+  gltfPath: string;
+}
+
 interface SceneProps {
   store: Store;
   actions: Actions;
@@ -97,18 +103,11 @@ interface SceneProps {
    * disables respawn (the player floats in the void instead). */
   spawnPoints?: readonly Vec3[];
   /**
-   * URL of the pre-baked layout GLB to render as this room's structural
-   * base, e.g. `/api/baked-layouts/lobby`.  Requires `bakedLayoutName`.
+   * Layout placements to draw from their baked GLBs, with their colliders.
+   * The store's instances compiled from these layouts are then left out
+   * of `ObjectInstances` and `MapColliders`; bots still collide with them.
    */
-  bakedLayoutPath?: string;
-  /**
-   * Registry key for the layout (used for cache-busting and collider sync).
-   * Must match the `LayoutDocument.name` used when baking.
-   * Required alongside `bakedLayoutPath` for the layout to render.
-   */
-  bakedLayoutName?: string;
-  /** Map placement of the baked layout, in voxels; the world origin when unset. */
-  bakedPlacement?: Pick<RoomInstance, 'position' | 'rotationY'>;
+  bakedLayouts?: readonly SceneBakedLayout[];
   /** When true, every character rendered in this scene is frozen at
    * its bind pose (no animation mixer activity). Used by the Mugshot
    * mode to produce deterministic snapshot tests. */
@@ -130,29 +129,14 @@ interface SceneProps {
   /** Called once per mount when every model in the scene, plus the self
    * player's, has loaded. */
   onModelsReady?: () => void;
-  /** Called once a baked layout's colliders have mounted. */
-  onCollidersReady?: () => void;
+  /** Called once each baked layout's colliders have mounted, with its room instance id. */
+  onCollidersReady?: (roomInstanceId: string) => void;
   onCollidersError?: (error: Error) => void;
 }
 
 export function Scene(props: SceneProps) {
-  const { store, selfId, cameraMode, sync } = props;
-  const showLayout =
-    Boolean(props.bakedLayoutPath) && Boolean(props.bakedLayoutName);
-  // `hasBaked` is true when a pre-baked GLB is being rendered for this
-  // room. When true, we suppress MapColliders and ObjectInstances to avoid
-  // double geometry: the baked GLB provides the visual mesh (BakedLayout)
-  // and the player colliders (BakedLayoutColliders). The worldObjects
-  // instances compiled from the layout commands are ONLY used by
-  // BotPhysicsWorld.syncCubes — they are NOT rendered by the React tree.
-  //
-  // This gate is a strict no-op for all maps that existed before task-13:
-  //   - Non-baked rooms: hasBaked === false → MapColliders/ObjectInstances render as always.
-  //   - Baked rooms (pre-task-13): worldObjects was empty → MapColliders/
-  //     ObjectInstances rendered nothing. With task-13, worldObjects is now
-  //     populated for baked rooms, so the gate prevents them from rendering
-  //     duplicate geometry on top of the baked GLB.
-  const hasBaked = showLayout;
+  const { store, selfId, cameraMode, sync, bakedLayouts } = props;
+  const excludeBakedInstance = useMemo(() => excludeLayoutInstances(bakedLayouts), [bakedLayouts]);
   const { proximity, lighting, background, fixedCamera } = props.view;
   const worldFocused = props.worldFocused ?? true;
 
@@ -247,31 +231,24 @@ export function Scene(props: SceneProps) {
           Rapier sub-step at the real frame delta.
         */}
         <Physics gravity={[0, -20, 0]} timeStep="vary">
-        {/*
-          For non-baked rooms: MapColliders provides Rapier colliders
-          from worldObjects, and ObjectInstances renders the cube meshes.
-          For baked rooms (hasBaked === true): the baked GLB provides both
-          the visual mesh (BakedLayout) and the player colliders
-          (BakedLayoutColliders). worldObjects is populated by task-13's
-          layout resolution and consumed by BotPhysicsWorld.syncCubes —
-          but we must NOT also render MapColliders/ObjectInstances, or the
-          player would experience double colliders and z-fighting meshes.
-        */}
-        {!hasBaked && <MapColliders store={store} />}
-        {showLayout && (
-          <group {...placementTransform(props.bakedPlacement)}>
-            <BakedLayout
-              gltfPath={props.bakedLayoutPath!}
-              layoutName={props.bakedLayoutName}
-            />
-            <BakedLayoutColliders
-              gltfPath={props.bakedLayoutPath!}
-              layoutName={props.bakedLayoutName}
-              onReady={props.onCollidersReady}
-              onError={props.onCollidersError}
-            />
-          </group>
-        )}
+        <MapColliders store={store} exclude={excludeBakedInstance} />
+        {bakedLayouts?.map((p) => {
+          const transform = placementTransform(p);
+          return (
+            <React.Fragment key={p.roomInstanceId}>
+              <group {...transform}>
+                <BakedLayout gltfPath={p.gltfPath} layoutName={p.layoutName} />
+              </group>
+              <BakedLayoutColliders
+                gltfPath={p.gltfPath}
+                layoutName={p.layoutName}
+                transform={transform}
+                onReady={() => props.onCollidersReady?.(p.roomInstanceId)}
+                onError={props.onCollidersError}
+              />
+            </React.Fragment>
+          );
+        })}
         {/* Lighting: shared LightingRig + a per-frame SunFollower
             that mutates the sun's position/target/disc to track the
             local player. The follower keeps the orthographic shadow
@@ -297,20 +274,7 @@ export function Scene(props: SceneProps) {
           bottomColor={background.bottomColor}
         />
 
-        {/* Per-map cubes — the ONLY visible world content for non-baked
-            rooms. Gated behind !hasBaked: for baked rooms, the visual
-            comes from BakedLayout (the GLB); ObjectInstances must be
-            suppressed to avoid z-fighting with the baked mesh. The Map
-            Editor is the source of truth; the picker pushes a fresh
-            WorldObjects snapshot via `actions.setWorldObjects(
-            compileMap(...))` on every map switch, and this
-            re-renders one InstancedMesh per cube kind in response.
-            The legacy `<Floor>` (a default 27×27 blue platform
-            rendered underneath these cubes) was removed because it
-            visually competed with map-authored content — authors saw
-            a stripe of "default" cubes peeking around the edges of
-            their own map and assumed map switching was broken. */}
-        {!hasBaked && <ObjectInstances store={store} />}
+        <ObjectInstances store={store} exclude={excludeBakedInstance} />
 
         <Players
           store={store}

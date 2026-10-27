@@ -1,12 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { RigidBody, CuboidCollider, TrimeshCollider } from '@react-three/rapier';
-import type { Store, WorldObjects } from '@officexr/sdk';
+import type { Store } from '@officexr/sdk';
 import { useApplication } from '../react/application-context.tsx';
 import { WALL_GROUPS } from '../physics/groups.ts';
 import { worldObjectsToColliders } from '../physics/rules.ts';
+import { useStoreWorldObjects, type ExcludeInstance } from './useStoreWorldObjects.ts';
 
 interface MapCollidersProps {
   store: Store;
+  /** Instances to leave out, e.g. those a baked layout already collides. */
+  exclude?: ExcludeInstance;
 }
 
 /**
@@ -30,18 +33,9 @@ interface MapCollidersProps {
  * Future shape variants (slope, hollow, etc.) would add new branches in
  * `worldObjectsToCuboids` without touching this component.
  */
-export function MapColliders({ store }: MapCollidersProps) {
+export function MapColliders({ store, exclude }: MapCollidersProps) {
   const { geometry, catalog } = useApplication();
-  const [snapshot, setSnapshot] = useState<WorldObjects>(
-    () => store.getState().worldObjects,
-  );
-  useEffect(() => {
-    setSnapshot(store.getState().worldObjects);
-    return store.subscribe(
-      (s) => s.worldObjects,
-      (next) => setSnapshot(next),
-    );
-  }, [store]);
+  const snapshot = useStoreWorldObjects(store, exclude);
 
   // Build collider descriptors using the shared helper so the browser
   // collider layout exactly mirrors what BotPhysicsWorld.syncCubes
