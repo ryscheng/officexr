@@ -121,11 +121,30 @@ export function useMapDocument(
   // would clobber the seed file with an empty doc.
   const lastSavedJsonRef = useRef<string>('');
   const loadedForRef = useRef<string | null>(null);
+  const saveMap = useCallback(
+    (pending: {
+      mapName: string;
+      storage: MapStorage;
+      doc: SerializedMap;
+      json: string;
+    }) => {
+      lastSavedJsonRef.current = pending.json;
+      return pending.storage.save(pending.mapName, pending.doc).catch((err) => {
+        console.warn(`[map] save("${pending.mapName}") failed:`, err);
+      });
+    },
+    [],
+  );
+  const { schedule: scheduleSave, settled } = useDebouncedSave(saveMap, [
+    mapName,
+    storage,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
     loadedForRef.current = null;
-    storage
-      .load(mapName)
+    settled()
+      .then(() => storage.load(mapName))
       .then((loaded) => {
         if (cancelled) return;
         if (!loaded) {
@@ -154,27 +173,15 @@ export function useMapDocument(
     return () => {
       cancelled = true;
     };
-  }, [storage, mapName]);
-
-  const saveMap = useCallback(
-    (pending: { mapName: string; storage: MapStorage; doc: SerializedMap }) => {
-      lastSavedJsonRef.current = JSON.stringify(pending.doc);
-      pending.storage.save(pending.mapName, pending.doc).catch((err) => {
-        console.warn(`[map] save("${pending.mapName}") failed:`, err);
-      });
-    },
-    [],
-  );
-  const scheduleSave = useDebouncedSave(saveMap, [mapName, storage]);
+  }, [storage, mapName, settled]);
 
   useEffect(() => {
-    if (
-      loadedForRef.current !== mapName ||
-      JSON.stringify(doc) === lastSavedJsonRef.current
-    ) {
-      return scheduleSave(null);
-    }
-    return scheduleSave({ mapName, storage, doc });
+    const json = JSON.stringify(doc);
+    scheduleSave(
+      loadedForRef.current !== mapName || json === lastSavedJsonRef.current
+        ? null
+        : { mapName, storage, doc, json },
+    );
   }, [doc, mapName, storage, scheduleSave]);
 
   const stampUpdated = useCallback(

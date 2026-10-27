@@ -165,6 +165,58 @@ describe('useMapDocument', () => {
       expect((await storage.load('other'))?.rooms).toHaveLength(0);
     });
 
+    it('flushes an edit to the old storage when the storage changes', async () => {
+      const first = makeStorage();
+      const second = makeStorage();
+      const { result, rerender } = renderHook(
+        ({ storage }) => useMapDocument({ storage }),
+        { initialProps: { storage: first } },
+      );
+      await waitFor(() => expect(result.current.doc.name).toBe('default'));
+      const firstSave = vi.spyOn(first, 'save');
+      const secondSave = vi.spyOn(second, 'save');
+
+      act(() => {
+        result.current.addRoom('snap-room');
+      });
+      rerender({ storage: second });
+
+      expect(firstSave).toHaveBeenCalledTimes(1);
+      expect(firstSave.mock.calls[0][1].rooms).toHaveLength(1);
+      expect(secondSave).not.toHaveBeenCalled();
+    });
+
+    it('reloads a map only after its flushed save has landed (A -> B -> A)', async () => {
+      const { storage, result } = await renderLoaded();
+      vi.useRealTimers();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const realSave = storage.save.bind(storage);
+      vi.spyOn(storage, 'save').mockImplementation(async (name, doc) => {
+        await gate;
+        return realSave(name, doc);
+      });
+      const load = vi.spyOn(storage, 'load');
+
+      act(() => {
+        result.current.addRoom('snap-room');
+      });
+      await act(async () => {
+        await result.current.loadMap('other');
+      });
+      await act(async () => {
+        await result.current.loadMap('default');
+      });
+      expect(load).not.toHaveBeenCalled();
+
+      await act(async () => {
+        release();
+      });
+      await waitFor(() => expect(result.current.doc.rooms).toHaveLength(1));
+    });
+
     it('flushes an edit when the hook unmounts within the debounce', async () => {
       const { storage, result, unmount } = await renderLoaded();
       const save = vi.spyOn(storage, 'save');

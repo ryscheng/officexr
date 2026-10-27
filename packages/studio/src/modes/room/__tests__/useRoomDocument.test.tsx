@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { InMemoryRoomStorage, emptyRoomDocument } from '@officexr/world/scenes';
+import {
+  InMemoryRoomStorage,
+  emptyRoomDocument,
+  type RoomDocument,
+} from '@officexr/world/scenes';
 import { StudioHarness } from '../../../test-harness/index.ts';
 import { useRoomDocument } from '../useRoomDocument.ts';
 
@@ -96,14 +100,14 @@ describe('useRoomDocument', () => {
       vi.useRealTimers();
     });
 
-    async function renderLoaded() {
+    async function renderLoaded(afterSave?: (name: string, doc: RoomDocument) => void) {
       const storage = new InMemoryRoomStorage({
         seed: [
           { name: 'default-v2', doc: emptyRoomDocument('default-v2') },
           { name: 'other', doc: emptyRoomDocument('other') },
         ],
       });
-      const view = renderHook(() => useRoomDocument({ storage }), {
+      const view = renderHook(() => useRoomDocument({ storage, afterSave }), {
         wrapper: StudioHarness,
       });
       await waitFor(() => expect(view.result.current.roomName).toBe('default-v2'));
@@ -112,7 +116,8 @@ describe('useRoomDocument', () => {
     }
 
     it('flushes an edit to the old room when the room is switched within the debounce', async () => {
-      const { storage, result } = await renderLoaded();
+      const afterSave = vi.fn();
+      const { storage, result } = await renderLoaded(afterSave);
       const save = vi.spyOn(storage, 'save');
 
       act(() => {
@@ -125,6 +130,8 @@ describe('useRoomDocument', () => {
       expect(save).toHaveBeenCalledTimes(1);
       expect(save.mock.calls[0][0]).toBe('default-v2');
       expect(save.mock.calls[0][1].commands).toHaveLength(1);
+      expect(afterSave).toHaveBeenCalledTimes(1);
+      expect(afterSave).toHaveBeenCalledWith('default-v2', save.mock.calls[0][1]);
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1000);

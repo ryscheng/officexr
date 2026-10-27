@@ -257,11 +257,47 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   // (That race was clobbering hand-authored rooms during e2e runs
   // and casual editor sessions.)
   const loadedForRef = useRef<string | null>(null);
+  const saveRoom = useCallback(
+    (pending: {
+      roomName: string;
+      storage: RoomStorage;
+      doc: RoomDocument;
+      json: string;
+      afterSave: UseRoomDocumentOptions['afterSave'];
+    }) => {
+      const { roomName, storage, doc, json, afterSave } = pending;
+      lastSavedJsonRef.current = json;
+      const serialized = serializeRoom({
+        name: roomName,
+        title: doc.title ?? roomName,
+        commands: doc.commands,
+        groups: doc.groups,
+        layoutName: doc.layoutName,
+      }) as RoomDocument;
+      return storage
+        .save(roomName, serialized)
+        .then(() => {
+          // afterSave fires only on successful persistence. Layout mode
+          // uses this to schedule a bake of the just-saved doc; in Room
+          // mode it's undefined and we skip.
+          afterSave?.(roomName, serialized);
+        })
+        .catch((err) => {
+          console.warn(`[room] save("${roomName}") failed:`, err);
+        });
+    },
+    [],
+  );
+  const { schedule: scheduleSave, settled } = useDebouncedSave(saveRoom, [
+    roomName,
+    storage,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
     loadedForRef.current = null;
-    storage
-      .load(roomName)
+    settled()
+      .then(() => storage.load(roomName))
       .then((loaded) => {
         if (cancelled) return;
         if (!loaded) {
@@ -306,7 +342,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
     return () => {
       cancelled = true;
     };
-  }, [storage, roomName]);
+  }, [storage, roomName, settled]);
 
   // Auto-save on doc change (debounced). Gated on load completion
   // so the initial empty placeholder never reaches storage. The
@@ -314,49 +350,17 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   // layout via the Inspector picks up the autosave — and so the
   // saved JSON ALSO includes the field (the earlier version dropped
   // it on every save, which silently unlinked layouts).
-  const saveRoom = useCallback(
-    (pending: {
-      roomName: string;
-      storage: RoomStorage;
-      doc: RoomDocument;
-      json: string;
-      afterSave: UseRoomDocumentOptions['afterSave'];
-    }) => {
-      const { roomName, storage, doc, json, afterSave } = pending;
-      lastSavedJsonRef.current = json;
-      const serialized = serializeRoom({
-        name: roomName,
-        title: doc.title ?? roomName,
-        commands: doc.commands,
-        groups: doc.groups,
-        layoutName: doc.layoutName,
-      }) as RoomDocument;
-      storage
-        .save(roomName, serialized)
-        .then(() => {
-          // afterSave fires only on successful persistence. Layout mode
-          // uses this to schedule a bake of the just-saved doc; in Room
-          // mode it's undefined and we skip.
-          afterSave?.(roomName, serialized);
-        })
-        .catch((err) => {
-          console.warn(`[room] save("${roomName}") failed:`, err);
-        });
-    },
-    [],
-  );
-  const scheduleSave = useDebouncedSave(saveRoom, [roomName, storage]);
-
   useEffect(() => {
     const json = JSON.stringify({
       commands: doc.commands,
       groups: doc.groups,
       layoutName: doc.layoutName,
     });
-    if (loadedForRef.current !== roomName || json === lastSavedJsonRef.current) {
-      return scheduleSave(null);
-    }
-    return scheduleSave({ roomName, storage, doc, json, afterSave });
+    scheduleSave(
+      loadedForRef.current !== roomName || json === lastSavedJsonRef.current
+        ? null
+        : { roomName, storage, doc, json, afterSave },
+    );
   }, [doc, roomName, storage, afterSave, scheduleSave]);
 
   // --- Selection -------------------------------------------------
