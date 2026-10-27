@@ -12,9 +12,6 @@ import { compileScene, type KindStrideLookup } from './compile.ts';
  * compiles the layout's commands, alongside the room's own, so
  * `BotPhysicsWorld.syncCubes` gets per-cube colliders derived from the same
  * authored geometry as the baked GLB.
- *
- * Only the runtime map loader (`loadMap`) passes it. Editors that draw the
- * baked GLB themselves compile just the room's own commands.
  */
 export type LayoutResolver = (layoutName: string) => { commands: SceneCommand[] } | undefined;
 
@@ -66,20 +63,20 @@ export function compileMap(
       continue;
     }
 
-    const compiled = compileScene(room, voxelSize, kindStride).instances;
+    const own = compileScene(room, voxelSize, kindStride).instances;
+    instances.push(...applyRoomInstance(own, ri, `${ri.id}/`, voxelSize, worldAABB));
     if (getLayout !== undefined && room.layoutName !== undefined) {
       const layout = getLayout(room.layoutName);
       if (layout !== undefined) {
-        const layoutInstances = compileScene(layout, voxelSize, kindStride).instances;
-        compiled.push(...namespaceLayoutInstances(layoutInstances));
+        // Separate id namespace: the room's command ids are minted per document and could collide.
+        const fromLayout = compileScene(layout, voxelSize, kindStride).instances;
+        instances.push(...applyRoomInstance(fromLayout, ri, `${ri.id}/layout/`, voxelSize, worldAABB));
       } else {
         console.warn(
           `[compile-map] room "${ri.roomName}" has layoutName "${room.layoutName}" but getLayout returned undefined`,
         );
       }
     }
-    const rotated = applyRoomInstance(compiled, ri, voxelSize, worldAABB);
-    instances.push(...rotated);
   }
 
   // Keep iteration order deterministic so the diff broadcaster sees a
@@ -87,15 +84,6 @@ export function compileMap(
   instances.sort((a, b) => a.id.localeCompare(b.id));
   // cubeSize key is required by the SDK WorldObjects type — kept as-is.
   return { cubeSize: voxelSize, instances };
-}
-
-/** Keeps layout ids apart from the room's own command ids, which are minted per document. */
-function namespaceLayoutInstances(src: ObjectInstance[]): ObjectInstance[] {
-  return src.map((inst) => ({
-    ...inst,
-    id: `layout/${inst.id}`,
-    sourceCommandId: `layout/${inst.sourceCommandId}`,
-  }));
 }
 
 /** Same sense as three.js `rotation.y = rot·π/2` (the map editor's room group). */
@@ -106,6 +94,7 @@ function rotateXZ(rot: 0 | 1 | 2 | 3, x: number, z: number): [number, number] {
 function applyRoomInstance(
   src: ObjectInstance[],
   ri: RoomInstance,
+  idPrefix: string,
   voxelSize: number,
   worldAABB?: WorldAABBLookup,
 ): ObjectInstance[] {
@@ -124,8 +113,8 @@ function applyRoomInstance(
     const [hx, hz] = rotateXZ(rot, halfW, halfD);
     const yawDeg = normalizeYawDeg((inst.yawDeg ?? 0) + 90 * rot);
     return {
-      id: `${ri.id}/${inst.id}`,
-      sourceCommandId: `${ri.id}/${inst.sourceCommandId}`,
+      id: `${idPrefix}${inst.id}`,
+      sourceCommandId: `${idPrefix}${inst.sourceCommandId}`,
       kindId: inst.kindId,
       position: [rx + (hx - halfW) + ox, y + oy, rz + (hz - halfD) + oz],
       ...(yawDeg !== 0 && { yawDeg }),

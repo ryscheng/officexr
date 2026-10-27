@@ -33,7 +33,7 @@ export interface BakedLayoutPlacement {
   roomInstanceId: string;
   layoutName: string;
   position: RoomInstance['position'];
-  rotationY: 0 | 1 | 2 | 3;
+  rotationY: NonNullable<RoomInstance['rotationY']>;
 }
 
 export interface LoadedMap {
@@ -42,12 +42,12 @@ export interface LoadedMap {
   worldObjects: WorldObjects;
   voiceZones: VoiceZone[];
   spawnPoints: readonly SpawnPoint[];
-  /** Set only when exactly one distinct layout is referenced by the map's rooms. */
+  /** Set only when exactly one distinct layout is referenced by the map's command-less (baked) rooms. */
   bakedLayoutName?: string;
   /** Where `bakedLayoutName` renders: its baked room's placement, in voxels. */
   bakedPlacement?: Pick<RoomInstance, 'position' | 'rotationY'>;
   /** Every room placement that links a layout, whether or not the room has commands. */
-  bakedLayouts: BakedLayoutPlacement[];
+  bakedLayouts: readonly BakedLayoutPlacement[];
 }
 
 async function loadAll<T>(
@@ -111,7 +111,7 @@ export async function loadMap(
 
   const bakedLayoutName = bakedRoomLayoutNames.size === 1 ? [...bakedRoomLayoutNames][0] : undefined;
   const bakedPlacements = bakedLayoutName ? mapDoc.rooms.filter((ri) => isBaked(ri.roomName)) : [];
-  // ponytail: <Scene> renders one baked layout at one placement; more need a bakedLayouts array prop.
+  // ponytail(OSO-7186): <Scene> renders one baked layout at one placement; more need a bakedLayouts array prop.
   if (bakedRoomLayoutNames.size > 1) {
     console.warn(
       `[map-loader] map "${mapDoc.name}" references multiple layouts; baked-layout rendering supports one`,

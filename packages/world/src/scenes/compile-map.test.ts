@@ -326,7 +326,7 @@ describe('compileMap — layout resolution (task-13)', () => {
     expect(own.map((i) => i.position)).toEqual([[5, 0, 0]]);
     expect(fromLayout.map((i) => i.position).sort()).toEqual([[0, 0, 0], [1, 0, 0]]);
     for (const i of fromLayout) {
-      expect(i.sourceCommandId.startsWith('inst/layout/')).toBe(true);
+      expect(i.sourceCommandId).toMatch(/^inst\/layout\//);
     }
     expect(new Set(compiled.instances.map((i) => i.id)).size).toBe(3);
   });

@@ -41,6 +41,10 @@ function setup() {
     { id: 'b', roomName: 'baked-room', position: [10, 0, 0], rotationY: 1 },
     { id: 'm', roomName: 'mixed-room', position: [30, 0, 0] },
   ];
+  const ghostRoom = emptyRoomDocument('ghost-room');
+  ghostRoom.layoutName = 'ghost';
+  const missing = emptyMapDocument('missing');
+  missing.rooms = [{ id: 'g', roomName: 'ghost-room', position: [5, 0, 0] }];
   const legacy = { ...map, name: 'legacy', schemaVersion: 1 as const };
   const twice = emptyMapDocument('twice');
   twice.rooms = [...map.rooms, { id: 'c', roomName: 'baked-room', position: [20, 0, 0] }];
@@ -53,6 +57,7 @@ function setup() {
           { name: 'legacy', doc: legacy },
           { name: 'twice', doc: twice },
           { name: 'mixed', doc: mixed },
+          { name: 'missing', doc: missing },
         ],
       }),
       rooms: new InMemoryRoomStorage({
@@ -60,6 +65,7 @@ function setup() {
           { name: 'command-room', doc: commandRoom },
           { name: 'baked-room', doc: bakedRoom },
           { name: 'mixed-room', doc: mixedRoom },
+          { name: 'ghost-room', doc: ghostRoom },
         ],
       }),
       layouts: new InMemoryLayoutStorage({
@@ -103,6 +109,16 @@ describe('loadMap', () => {
     expect(loaded.bakedLayoutName).toBe('hall');
   });
 
+  it('still lists the placement of a room whose layout fails to load', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const loaded = await loadMap(setup(), 'missing');
+    expect(loaded.worldObjects.instances).toEqual([]);
+    expect(loaded.bakedLayouts).toEqual([
+      { roomInstanceId: 'g', layoutName: 'ghost', position: [5, 0, 0], rotationY: 0 },
+    ]);
+    warn.mockRestore();
+  });
+
   it('has no placements when no room links a layout', async () => {
     const deps = setup();
     const plain = emptyMapDocument('plain');
@@ -136,6 +152,10 @@ describe('loadMap', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const loaded = await loadMap(setup(), 'twice');
     expect(loaded.bakedPlacement).toMatchObject({ position: [10, 0, 0] });
+    expect(loaded.bakedLayouts.map((p) => [p.roomInstanceId, p.layoutName])).toEqual([
+      ['b', 'hall'],
+      ['c', 'hall'],
+    ]);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('2 times'));
     warn.mockRestore();
   });
