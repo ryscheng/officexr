@@ -59,39 +59,23 @@ export async function loadRenderContent(
       { storages, catalog: api.catalog, roomService: api.rooms, geometry: api.geometry },
       name,
     );
-    // The map draws a room's baked layout as well as its commands, but loadMap only
-    // compiles layouts for baked-only rooms; compile every room's layout for bounds.
-    const layoutNames = new Set<string>();
-    for (const room of map.rooms.values()) {
-      if (room.layoutName) {
-        layoutNames.add(room.layoutName);
-      }
+    // loadMap's compile already holds every linked layout's instances, which bound the baked GLBs.
+    const bounds = boundsOf(map.worldObjects.instances);
+    if (!bounds) {
+      throw nothingToRender(params);
     }
+    // Only for RoomsLayer's editor-side AABBs; loadMap doesn't hand back the documents.
     const layouts = new Map<string, LayoutDocument>();
     await Promise.all(
-      [...layoutNames].map(async (layoutName) => {
+      [...new Set(map.bakedLayouts.map((b) => b.layoutName))].map(async (layoutName) => {
         const layout = await storages.layouts.load(layoutName);
         if (layout) {
           layouts.set(layoutName, layout);
         }
       }),
     );
-    const layoutRooms = new Map<string, RoomDocument>();
-    for (const [roomName, room] of map.rooms) {
-      const layout = room.layoutName ? layouts.get(room.layoutName) : undefined;
-      if (layout) {
-        layoutRooms.set(roomName, { ...room, commands: layout.commands });
-      }
-    }
+    // Layout instances aren't drawn as models (their GLB is), so preload only the rooms' own kinds.
     const roomObjects = api.rooms.compileMap(map.mapDoc, map.rooms);
-    const layoutObjects = api.rooms.compileMap(
-      { ...map.mapDoc, rooms: map.mapDoc.rooms.filter((ri) => layoutRooms.has(ri.roomName)) },
-      layoutRooms,
-    );
-    const bounds = boundsOf([...roomObjects.instances, ...layoutObjects.instances]);
-    if (!bounds) {
-      throw nothingToRender(params);
-    }
     return {
       type: 'map',
       bounds,
