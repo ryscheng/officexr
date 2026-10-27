@@ -39,7 +39,7 @@ export interface ChromiumRendererOptions {
   executablePath?: string;
   /** Budget for one render, from launch until the browser is gone. */
   timeoutMs?: number;
-  /** Part of the budget a graceful close may take before the process is killed; the kill gets the same again. */
+  /** Part of the budget a graceful close may take before the process is killed; the kill gets the same again, also inside the budget. */
   closeGraceMs?: number;
   launch?: (options: LaunchOptions & { timeout: number }) => Promise<ChromiumProcess>;
 }
@@ -146,7 +146,7 @@ export function createChromiumRenderer({
   closeGraceMs = 3_000,
   launch = launchChromium,
 }: ChromiumRendererOptions = {}): ViewRenderer {
-  const budgetMs = timeoutMs - closeGraceMs;
+  const budgetMs = timeoutMs - 2 * closeGraceMs;
   return {
     async render(origin, request) {
       const deadline = Date.now() + budgetMs;

@@ -138,7 +138,7 @@ describe('createChromiumRenderer', () => {
     const chromium = new FakeChromium();
     chromium.goto = never;
     const started = Date.now();
-    await expect(rendererWith(chromium, 300).render(ORIGIN, REQUEST)).rejects.toThrow('render timed out after 0.25 s');
+    await expect(rendererWith(chromium, 300).render(ORIGIN, REQUEST)).rejects.toThrow('render timed out after 0.2 s');
     expect(Date.now() - started).toBeLessThan(1_000);
     expect(chromium.closed).toBe(true);
   });
@@ -154,7 +154,7 @@ describe('createChromiumRenderer', () => {
     const renderer = createChromiumRenderer({ timeoutMs: 300, closeGraceMs: 50, launch: never });
     const started = Date.now();
     await expect(renderer.render(ORIGIN, REQUEST)).rejects.toThrow(
-      /^could not start Chromium \(Playwright's default\): no response after 0\.25 s$/,
+      /^could not start Chromium \(Playwright's default\): no response after 0\.2 s$/,
     );
     expect(Date.now() - started).toBeLessThan(1_000);
   });
