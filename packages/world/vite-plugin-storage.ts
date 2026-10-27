@@ -16,12 +16,10 @@ import {
   deserializeScene,
   migrateMapV1toV2,
   migrateToV5,
-  type SerializedScene,
 } from './src/scenes/serialize.ts';
 import { isBakedRoom } from './src/scenes/commands.ts';
 import { deserializeLayout } from './src/scenes/layout-document.ts';
 import type { MapDocumentV2, SerializedMap } from './src/scenes/map-document.ts';
-import type { LayoutDocument } from './src/scenes/layout-document.ts';
 import { parseWorldConstants, type WorldConstants } from '@officexr/sdk';
 import type { WorldConstantsPushFailure } from './src/scenes/world-constants-storage.ts';
 
@@ -209,7 +207,7 @@ export default function studioStoragePlugin(
         dir: mapsDir,
         listKey: 'maps',
         validate: (raw: unknown) => deserializeMap(raw),
-        migrate: (doc) => migrateMap(doc as SerializedMap, roomsDir),
+        migrate: (doc) => migrateMap(doc, roomsDir),
       }),
     );
     use(
@@ -260,17 +258,25 @@ export default function studioStoragePlugin(
   };
 }
 
-/** Whether `roomName` names a readable baked-only room; anything else keeps its v1 placement. */
+/**
+ * Whether `roomName` names a baked-only room; a missing room (or an invalid
+ * name) keeps its v1 placement. Throws when the room can't be read, so the
+ * map is left at v1 rather than stamped v2 with a guessed placement.
+ */
 async function isBakedRoomFile(roomsDir: string, roomName: string): Promise<boolean> {
   if (!isValidSceneName(roomName)) {
     return false;
   }
+  let raw: string;
   try {
-    const raw = await fs.readFile(path.join(roomsDir, `${roomName}.json`), 'utf8');
-    return isBakedRoom(migrateToV5(deserializeScene(JSON.parse(raw))));
-  } catch {
-    return false;
+    raw = await fs.readFile(path.join(roomsDir, `${roomName}.json`), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return false;
+    }
+    throw err;
   }
+  return isBakedRoom(migrateToV5(deserializeScene(JSON.parse(raw))));
 }
 
 async function migrateMap(map: SerializedMap, roomsDir: string): Promise<MapDocumentV2> {
@@ -292,10 +298,10 @@ async function migrateMapsDir(mapsDir: string, roomsDir: string): Promise<void> 
     try {
       const map = deserializeMap(JSON.parse(await fs.readFile(file, 'utf8')));
       if (map.schemaVersion === 1) {
-        await writeFileAtomic(file, toJsonFile(await migrateMap(map, roomsDir)));
+        await writeFileAtomic(file, JSON.stringify(await migrateMap(map, roomsDir), null, 2) + '\n');
       }
     } catch (err) {
-      console.warn(`[studio-storage:maps] not migrating ${name}.json:`, (err as Error).message);
+      console.warn(`[studio-storage:maps] leaving ${name}.json at v1 until the next start:`, (err as Error).message);
     }
   }
 }
@@ -306,16 +312,16 @@ interface ResourceSummary {
   updatedAt?: number;
 }
 
-interface JsonResourceOpts {
+interface JsonResourceOpts<T extends ResourceSummary> {
   dir: string;
   listKey: string;
-  validate: (raw: unknown) => { name: string; title?: string; updatedAt?: number };
+  validate: (raw: unknown) => T;
   /** Upgrades a validated PUT body before it is written. */
-  migrate?: (doc: unknown) => Promise<unknown>;
+  migrate?: (doc: T) => Promise<T>;
 }
 
-function makeJsonResourceMiddleware(
-  opts: JsonResourceOpts,
+function makeJsonResourceMiddleware<T extends ResourceSummary>(
+  opts: JsonResourceOpts<T>,
 ): Connect.NextHandleFunction {
   return async (req, res, next) => {
     try {
@@ -563,10 +569,6 @@ async function writeFileAtomic(file: string, data: string): Promise<void> {
   }
 }
 
-function toJsonFile(doc: unknown): string {
-  return JSON.stringify(doc, null, 2) + '\n';
-}
-
 /** Names of the `<name>.json` files in `dir` with a valid name; none when `dir` is missing. */
 async function listJsonNames(dir: string): Promise<string[]> {
   let files: string[];
@@ -584,8 +586,8 @@ async function listJsonNames(dir: string): Promise<string[]> {
     .filter(isValidSceneName);
 }
 
-async function handleList(
-  opts: JsonResourceOpts,
+async function handleList<T extends ResourceSummary>(
+  opts: JsonResourceOpts<T>,
   res: ServerResponse,
 ): Promise<void> {
   await ensureDir(opts.dir);
@@ -631,21 +633,21 @@ async function handleGet(
   res.end(raw);
 }
 
-async function handlePut(
+async function handlePut<T extends ResourceSummary>(
   req: IncomingMessage,
-  opts: JsonResourceOpts,
+  opts: JsonResourceOpts<T>,
   slug: string,
   res: ServerResponse,
 ): Promise<void> {
   const body = await readBody(req);
-  let parsed: SerializedScene | SerializedMap | LayoutDocument;
+  let parsed: T;
   try {
-    parsed = opts.validate(JSON.parse(body)) as SerializedScene | SerializedMap | LayoutDocument;
+    parsed = opts.validate(JSON.parse(body));
   } catch (err) {
     return jsonResponse(res, 400, { error: (err as Error).message });
   }
   if (opts.migrate) {
-    parsed = (await opts.migrate(parsed)) as typeof parsed;
+    parsed = await opts.migrate(parsed);
   }
   // Force the on-disk slug to match the URL so a save under
   // /api/rooms/kitchen can't land a doc with internal `name: "bedroom"`.
@@ -653,7 +655,7 @@ async function handlePut(
   (parsed as { updatedAt?: number }).updatedAt = Date.now();
   await ensureDir(opts.dir);
   const file = path.join(opts.dir, `${slug}.json`);
-  await fs.writeFile(file, toJsonFile(parsed), 'utf8');
+  await writeFileAtomic(file, JSON.stringify(parsed, null, 2) + '\n');
   res.statusCode = 204;
   res.end();
 }

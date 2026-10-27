@@ -29,7 +29,6 @@ import { compileMap } from './compile-map.ts';
 import { deserializeScene, deserializeMap, migrateToV5 } from './serialize.ts';
 import { deserializeLayout, type LayoutDocument } from './layout-document.ts';
 import type { RoomDocument } from './commands.ts';
-import type { MapDocumentV2 } from './map-document.ts';
 import type { ObjectInstance } from '@officexr/sdk';
 import {
   validateWorldObjectKindCatalog,
@@ -203,7 +202,10 @@ describe('room render bounds', () => {
   });
 
   it('long_corridor map composes to the same 8 m × 4 m × 2 m AABB', () => {
-    const map = deserializeMap(longCorridorMapJson) as MapDocumentV2;
+    const map = deserializeMap(longCorridorMapJson);
+    if (map.schemaVersion !== 2) {
+      throw new Error('committed long_corridor map is not v2');
+    }
     const room = migrateToV5(deserializeScene(defaultV2RoomJson));
     const layout = deserializeLayout(longCorridorLayoutJson);
     const rooms = new Map([[room.name, room]]);

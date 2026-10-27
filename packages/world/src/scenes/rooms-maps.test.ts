@@ -216,6 +216,15 @@ describe('serializeMap + deserializeMap', () => {
     ).toThrow(/environment/);
   });
 
+  it('rejects rooms without a string roomName or with a rotationY outside 0-3', () => {
+    const map = (room: unknown) => ({ ...emptyMapDocument('x'), rooms: [room] });
+    expect(() => deserializeMap(map(null))).toThrow(/roomName/);
+    expect(() => deserializeMap(map({ id: 'a', position: [0, 0, 0] }))).toThrow(/roomName/);
+    expect(() => deserializeMap(map({ id: 'a', roomName: 'k', position: [0, 0, 0], rotationY: 4 }))).toThrow(/rotationY/);
+    expect(() => deserializeMap(map({ id: 'a', roomName: 'k', position: [0, 0, 0], rotationY: 1.5 }))).toThrow(/rotationY/);
+    expect(deserializeMap(map({ id: 'a', roomName: 'k', position: [0, 0, 0], rotationY: 3 })).rooms).toHaveLength(1);
+  });
+
   it('emptyMapDocument produces a valid deserializable map', () => {
     const m = emptyMapDocument('blank');
     const back = deserializeMap(JSON.parse(JSON.stringify(m)));
@@ -270,7 +279,8 @@ describe('committed maps', () => {
   const readJson = (dir: string, name: string): unknown =>
     JSON.parse(readFileSync(path.join(worldDir, dir, `${name}.json`), 'utf8'));
   const mapNames = readdirSync(path.join(worldDir, 'maps'))
-    .filter((f) => f.endsWith('.json'))
+    // `pw-test-*` maps are gitignored e2e leftovers.
+    .filter((f) => f.endsWith('.json') && !f.startsWith('pw-test-'))
     .map((f) => f.slice(0, -'.json'.length));
 
   it.each(mapNames)('%s is v2 with every baked placement at identity, as v1 rendered it', (name) => {

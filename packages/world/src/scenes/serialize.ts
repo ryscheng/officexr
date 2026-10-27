@@ -517,6 +517,15 @@ export function deserializeMap(raw: unknown): SerializedMap {
   if (!Array.isArray(obj.rooms)) {
     throw new Error('map: missing `rooms` array');
   }
+  for (const ri of obj.rooms as unknown[]) {
+    if (!ri || typeof ri !== 'object' || typeof (ri as { roomName?: unknown }).roomName !== 'string') {
+      throw new Error('map: every room needs a string `roomName`');
+    }
+    const rot = (ri as { rotationY?: unknown }).rotationY;
+    if (rot !== undefined && rot !== 0 && rot !== 1 && rot !== 2 && rot !== 3) {
+      throw new Error(`map: room rotationY must be 0-3, got ${String(rot)}`);
+    }
+  }
   if (!Array.isArray(obj.spawnPoints)) {
     throw new Error('map: missing `spawnPoints` array');
   }

@@ -92,20 +92,13 @@ export async function loadMap(
     'layout',
   );
 
-  const bakedLayoutNames = new Set<string>();
-  for (const ri of mapDoc.rooms) {
-    const layoutName = rooms.get(ri.roomName)?.layoutName;
-    if (layoutName) {
-      bakedLayoutNames.add(layoutName);
-    }
-  }
-  const bakedLayoutName = bakedLayoutNames.size === 1 ? [...bakedLayoutNames][0] : undefined;
+  const bakedLayoutName = layoutNames.size === 1 ? [...layoutNames][0] : undefined;
   const bakedPlacements = bakedLayoutName ? mapDoc.rooms.filter((ri) => isBaked(ri.roomName)) : [];
   // ponytail: <Scene> renders one baked layout at one placement; more need a bakedLayouts array prop.
-  if (bakedLayoutNames.size > 1) {
+  if (layoutNames.size > 1) {
     console.warn(
       `[map-loader] map "${mapDoc.name}" references multiple layouts; baked-layout rendering supports one`,
-      [...bakedLayoutNames],
+      [...layoutNames],
     );
   }
   if (bakedPlacements.length > 1) {

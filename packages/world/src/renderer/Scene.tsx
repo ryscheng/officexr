@@ -24,7 +24,8 @@ import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
 import { ModelsReady } from './ModelsReady.tsx';
 import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
-import { VOXEL_SIZE, type CameraMode } from './config.ts';
+import type { CameraMode } from './config.ts';
+import { placementTransform } from './placement-transform.ts';
 import type { RoomInstance } from '../scenes/map-document.ts';
 import type { ViewConfig } from './viewConfig.ts';
 
@@ -152,7 +153,6 @@ export function Scene(props: SceneProps) {
   //     populated for baked rooms, so the gate prevents them from rendering
   //     duplicate geometry on top of the baked GLB.
   const hasBaked = showLayout;
-  const [bakedX, bakedY, bakedZ] = props.bakedPlacement?.position ?? [0, 0, 0];
   const { proximity, lighting, background, fixedCamera } = props.view;
   const worldFocused = props.worldFocused ?? true;
 
@@ -259,10 +259,7 @@ export function Scene(props: SceneProps) {
         */}
         {!hasBaked && <MapColliders store={store} />}
         {showLayout && (
-          <group
-            position={[bakedX * VOXEL_SIZE, bakedY * VOXEL_SIZE, bakedZ * VOXEL_SIZE]}
-            rotation={[0, ((props.bakedPlacement?.rotationY ?? 0) * Math.PI) / 2, 0]}
-          >
+          <group {...placementTransform(props.bakedPlacement)}>
             <BakedLayout
               gltfPath={props.bakedLayoutPath!}
               layoutName={props.bakedLayoutName}

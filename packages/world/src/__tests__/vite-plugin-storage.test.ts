@@ -270,6 +270,16 @@ describe('studio storage plugin: map schema v2 migration', () => {
     expect(await readMap('old')).toBe(once);
   });
 
+  it('leaves a map at v1, and refuses its PUT, while a room it places is unreadable', async () => {
+    await setup();
+    await writeFile(path.join(dataDir, 'rooms', 'hall.json'), '{ not json');
+    const url = await boot(false);
+    expect(JSON.parse(await readMap('old')).schemaVersion).toBe(1);
+    const res = await fetch(`${url}/api/maps/put`, { method: 'PUT', body: JSON.stringify(v1Map) });
+    expect(res.status).toBe(500);
+    await expect(readMap('put')).rejects.toThrow(/ENOENT/);
+  });
+
   it('stores a v1 PUT as migrated v2', async () => {
     await setup();
     const url = await boot(false);

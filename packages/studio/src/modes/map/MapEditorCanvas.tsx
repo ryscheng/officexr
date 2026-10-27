@@ -17,6 +17,7 @@ import {
   LightingRig,
   ObjectInstances,
   VOXEL_SIZE,
+  placementTransform,
   type LightingSettings,
 } from '@officexr/world/renderer';
 import type { WorldObjects } from '@officexr/sdk';
@@ -528,11 +529,7 @@ function RoomInstanceMesh({
     return { min, max };
   }, [compiled, geomService]);
 
-  const groupPos: [number, number, number] = [
-    instance.position[0] * VOXEL_SIZE,
-    instance.position[1] * VOXEL_SIZE,
-    instance.position[2] * VOXEL_SIZE,
-  ];
+  const { position: groupPos, rotation } = placementTransform(instance);
 
   if (!room) {
     // Missing room — render a placeholder box so the author can see
@@ -563,8 +560,6 @@ function RoomInstanceMesh({
     );
   }
 
-  const rotationY = (instance.rotationY ?? 0) * (Math.PI / 2);
-
   // Wrap <ObjectInstances> in a <group> that:
   //   - applies the room's world transform (position + rotationY)
   //   - catches pointer events from any of the rendered
@@ -582,7 +577,7 @@ function RoomInstanceMesh({
   return (
     <group
       position={groupPos}
-      rotation={[0, rotationY, 0]}
+      rotation={rotation}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         // Any pointer-down on a descendant of this group counts —
