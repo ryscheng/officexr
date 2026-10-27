@@ -95,7 +95,7 @@ export interface BakeResultBytes {
  * @param kindLookup  Resolver for kind IDs → `WorldObjectKind`.
  * @param gltfLoader  Async loader that returns raw GLB bytes for a URL.
  * @param geometry    Canonical voxel→world transform service. The bake
- *                    uses `geometry.meshOrigin(position, kindId)` so the
+ *                    uses `geometry.meshTransform(position, kindId, yawDeg)` so the
  *                    baked GLB matches the runtime renderer's positioning
  *                    exactly. This is the SAME service the runtime
  *                    `<ObjectInstances>` consumes — no bespoke math here.
@@ -182,13 +182,18 @@ export async function bakeLayout(
 
     // Apply the canonical voxel→world transform via the geometry service.
     // PlaceObjectCommand.position is in VOXEL coordinates (integer voxel
-    // anchors); the geometry service converts these to the mesh-root
-    // translation that matches the runtime renderer's <ObjectInstances>.
-    // Using the same service here keeps bake and runtime in lockstep —
-    // any change to voxelSize / mesh-origin convention propagates to both
-    // automatically. No bespoke math in the bake service.
-    const [tx, ty, tz] = geometry.meshOrigin(cmd.position, cmd.kindId);
-    wrapperNode.setTranslation([tx, ty, tz]);
+    // anchors); the geometry service converts these (and the yaw about the
+    // footprint centre) to the mesh-root transform that matches the runtime
+    // renderer's <ObjectInstances>, so bake and runtime stay in lockstep.
+    const { position, rotationY } = geometry.meshTransform(
+      cmd.position,
+      cmd.kindId,
+      cmd.yawDeg,
+    );
+    wrapperNode.setTranslation([...position]);
+    if (rotationY !== 0) {
+      wrapperNode.setRotation([0, Math.sin(rotationY / 2), 0, Math.cos(rotationY / 2)]);
+    }
 
     // Apply the kind's uniform scale (most kinds have scale=1).
     if (kind.scale !== 1) {
@@ -247,9 +252,10 @@ export async function bakeLayout(
         sourceCommandId: c.id,
         kindId: c.kindId,
         position: c.position,
+        yawDeg: c.yawDeg,
       })),
     },
-    (position, kindId) => geometry.worldAABB(position, kindId),
+    geometry.worldAABB,
     (kindId) => kindLookup(kindId)?.colliderShape,
   );
   // Re-resolve the scene from the root rather than trusting the
