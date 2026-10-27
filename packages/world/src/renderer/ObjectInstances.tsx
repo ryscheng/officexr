@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
+import { useStoreWorldObjects, type ExcludeInstance } from './useStoreWorldObjects.ts';
 import { modelUrl } from '../app/asset-url.ts';
 import type { InstanceGeometryService } from '../app/types.ts';
 import { useApplication, useCatalog } from '../react/application-context.tsx';
@@ -69,13 +70,19 @@ export type MaterialOverride = (
 type ObjectInstancesProps =
   // Gameplay use: subscribe to a Store and follow its worldObjects.
   // Publishes the `__OFFICE_OBJECT_INSTANCES__` window marker that
-  // gameplay regression tests assert on.
-  | { store: Store; worldObjects?: undefined; materialOverride?: MaterialOverride }
+  // gameplay regression tests assert on. `exclude` leaves out
+  // instances drawn some other way, e.g. by a baked layout.
+  | {
+      store: Store;
+      worldObjects?: undefined;
+      exclude?: ExcludeInstance;
+      materialOverride?: MaterialOverride;
+    }
   // Editor use: render a static snapshot directly. No store
   // subscription, no window marker — editors mount their own
   // ObjectInstances per scene/room and don't need the gameplay
   // diagnostic.
-  | { store?: undefined; worldObjects: WorldObjects; materialOverride?: MaterialOverride };
+  | { store?: undefined; worldObjects: WorldObjects; exclude?: undefined; materialOverride?: MaterialOverride };
 
 /**
  * Renders a `WorldObjects` snapshot as one InstancedMesh per `kindId`.
@@ -113,6 +120,7 @@ export function ObjectInstances(props: ObjectInstancesProps) {
   ) : (
     <ObjectInstancesFromStore
       store={props.store}
+      exclude={props.exclude}
       materialOverride={props.materialOverride}
     />
   );
@@ -120,27 +128,12 @@ export function ObjectInstances(props: ObjectInstancesProps) {
 
 interface FromStoreProps {
   store: Store;
+  exclude?: ExcludeInstance;
   materialOverride?: MaterialOverride;
 }
 
-function ObjectInstancesFromStore({ store, materialOverride }: FromStoreProps) {
-  const [snapshot, setSnapshot] = useState<WorldObjects>(
-    () => store.getState().worldObjects,
-  );
-  useEffect(() => {
-    // Re-read the store before installing the subscription. If a
-    // setWorldObjects landed between the lazy useState init (which
-    // ran during render) and this effect (which ran after commit),
-    // the subscription would miss it and `snapshot` would stay
-    // pinned to the empty default. The picker's bootstrap fires
-    // through this gap on first paint — the rendered cube field
-    // was permanently empty even though the store carried the map.
-    setSnapshot(store.getState().worldObjects);
-    return store.subscribe(
-      (s) => s.worldObjects,
-      (next) => setSnapshot(next),
-    );
-  }, [store]);
+function ObjectInstancesFromStore({ store, exclude, materialOverride }: FromStoreProps) {
+  const snapshot = useStoreWorldObjects(store, exclude);
 
   // Publish a render-marker on the window for regression tests.
   // If <ObjectInstances> is ever again forgotten in Scene.tsx (as

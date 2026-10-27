@@ -9,9 +9,14 @@ import {
 const run = (events: WorldReadinessEvent[], from: WorldReadiness = INITIAL_WORLD_READINESS) =>
   events.reduce(worldReadiness, from);
 
-const MAP: WorldReadinessEvent = { type: 'mapApplied', bakedColliders: true };
+const mapApplied = (...ids: string[]): WorldReadinessEvent => ({
+  type: 'mapApplied',
+  bakedLayouts: ids.map((roomInstanceId) => ({ roomInstanceId })),
+});
+const MAP = mapApplied('a');
 const MODELS: WorldReadinessEvent = { type: 'modelsReady' };
-const COLLIDERS: WorldReadinessEvent = { type: 'collidersReady' };
+const colliders = (roomInstanceId: string): WorldReadinessEvent => ({ type: 'collidersReady', roomInstanceId });
+const COLLIDERS = colliders('a');
 
 describe('worldReadiness', () => {
   it.each([
@@ -23,8 +28,27 @@ describe('worldReadiness', () => {
     expect(run(events)).toEqual({ type: 'ready' });
   });
 
-  it('treats a map without baked colliders as having its colliders', () => {
-    expect(run([{ type: 'mapApplied', bakedColliders: false }, MODELS])).toEqual({ type: 'ready' });
+  it('treats a map without baked layouts as having its colliders', () => {
+    expect(run([mapApplied(), MODELS])).toEqual({ type: 'ready' });
+  });
+
+  it('waits for the colliders of every placement, in any order', () => {
+    const map = mapApplied('a', 'b', 'c');
+    expect(run([map, MODELS, colliders('c'), colliders('a')]).type).toBe('loading');
+    expect(run([colliders('b'), map, MODELS, colliders('c'), colliders('a')])).toEqual({ type: 'ready' });
+  });
+
+  it('does not count one placement ready twice for another', () => {
+    const map = mapApplied('a', 'b');
+    expect(run([map, MODELS, colliders('a'), colliders('a')]).type).toBe('loading');
+  });
+
+  it('fails when any placement fails, even after others are ready', () => {
+    const map = mapApplied('a', 'b');
+    expect(run([map, MODELS, colliders('a'), { type: 'collidersFailed', message: '404' }])).toEqual({
+      type: 'failed',
+      message: '404',
+    });
   });
 
   it.each([

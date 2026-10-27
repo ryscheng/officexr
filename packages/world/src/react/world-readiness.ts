@@ -1,20 +1,30 @@
+import type { BakedLayoutPlacement } from '../app/map-loader.ts';
+
 export type WorldReadiness =
-  | { type: 'loading'; map: boolean; models: boolean; colliders: boolean }
+  | {
+      type: 'loading';
+      map: boolean;
+      models: boolean;
+      /** Room instance ids of the baked layouts whose colliders must mount; known once the map applies. */
+      bakedLayouts: readonly string[];
+      collidersReady: readonly string[];
+    }
   | { type: 'ready' }
   | { type: 'failed'; message: string };
 
 export type WorldReadinessEvent =
-  | { type: 'mapApplied'; bakedColliders: boolean }
+  | { type: 'mapApplied'; bakedLayouts: readonly Pick<BakedLayoutPlacement, 'roomInstanceId'>[] }
   | { type: 'mapFailed'; message: string }
   | { type: 'modelsReady' }
-  | { type: 'collidersReady' }
+  | { type: 'collidersReady'; roomInstanceId: string }
   | { type: 'collidersFailed'; message: string };
 
 export const INITIAL_WORLD_READINESS: WorldReadiness = {
   type: 'loading',
   map: false,
   models: false,
-  colliders: false,
+  bakedLayouts: [],
+  collidersReady: [],
 };
 
 /** Settles once, on the first load: after `ready` or `failed`, every event is ignored. */
@@ -27,9 +37,11 @@ export function worldReadiness(state: WorldReadiness, event: WorldReadinessEvent
   }
   const next =
     event.type === 'mapApplied'
-      ? { ...state, map: true, colliders: state.colliders || !event.bakedColliders }
+      ? { ...state, map: true, bakedLayouts: event.bakedLayouts.map((p) => p.roomInstanceId) }
       : event.type === 'modelsReady'
         ? { ...state, models: true }
-        : { ...state, colliders: true };
-  return next.map && next.models && next.colliders ? { type: 'ready' } : next;
+        : { ...state, collidersReady: [...state.collidersReady, event.roomInstanceId] };
+  return next.map && next.models && next.bakedLayouts.every((id) => next.collidersReady.includes(id))
+    ? { type: 'ready' }
+    : next;
 }

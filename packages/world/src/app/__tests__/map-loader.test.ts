@@ -89,8 +89,6 @@ describe('loadMap', () => {
     expect([...loaded.rooms.keys()].sort()).toEqual(['baked-room', 'command-room']);
     expect(loaded.worldObjects.instances).toHaveLength(3);
     expect(loaded.spawnPoints).toEqual([{ id: 's', position: [1, 2, 3] }]);
-    expect(loaded.bakedLayoutName).toBe('hall');
-    expect(loaded.bakedPlacement).toMatchObject({ position: [10, 0, 0], rotationY: 1 });
     expect(loaded.bakedLayouts).toEqual([
       { roomInstanceId: 'b', layoutName: 'hall', position: [10, 0, 0], rotationY: 1 },
     ]);
@@ -106,7 +104,6 @@ describe('loadMap', () => {
     expect(ids.filter((id) => id.startsWith('m/layout/'))).toHaveLength(1);
     expect(ids.filter((id) => id.startsWith('m/') && !id.startsWith('m/layout/'))).toHaveLength(1);
     expect(ids.filter((id) => id.startsWith('b/layout/'))).toHaveLength(2);
-    expect(loaded.bakedLayoutName).toBe('hall');
   });
 
   it('still lists the placement of a room whose layout fails to load', async () => {
@@ -144,20 +141,16 @@ describe('loadMap', () => {
   it('migrates a v1 map, moving its baked placement to where v1 rendered it', async () => {
     const loaded = await loadMap(setup(), 'legacy');
     expect(loaded.mapDoc.schemaVersion).toBe(2);
-    expect(loaded.bakedPlacement).toMatchObject({ position: [0, 0, 0], rotationY: 0 });
+    expect(loaded.bakedLayouts).toMatchObject([{ position: [0, 0, 0], rotationY: 0 }]);
     expect(loaded.mapDoc.rooms[0].position).toEqual([0, 0, 0]);
   });
 
-  it('renders the first of several baked placements, with a warning', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('lists every placement of a layout placed twice', async () => {
     const loaded = await loadMap(setup(), 'twice');
-    expect(loaded.bakedPlacement).toMatchObject({ position: [10, 0, 0] });
     expect(loaded.bakedLayouts.map((p) => [p.roomInstanceId, p.layoutName])).toEqual([
       ['b', 'hall'],
       ['c', 'hall'],
     ]);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('2 times'));
-    warn.mockRestore();
   });
 
   it('throws MapNotFoundError for a missing map', async () => {

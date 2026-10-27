@@ -22,6 +22,11 @@ type Vec3 = readonly [number, number, number];
  * `InstanceGeometryService.worldAABB`). */
 type WorldAABBLookup = (position: Vec3, kindId: string) => { min: Vec3; max: Vec3 };
 
+/** Id prefix of the instances `compileMap` compiles from a room placement's linked layout. */
+export function layoutIdPrefix(roomInstanceId: string): string {
+  return `${roomInstanceId}/layout/`;
+}
+
 /**
  * Pure replay of a `MapDocumentV2` against the rooms it references.
  * For each `RoomInstance`:
@@ -71,7 +76,7 @@ export function compileMap(
       if (layout !== undefined) {
         // Separate id namespace: the room's command ids are minted per document and could collide.
         const fromLayout = compileScene(layout, voxelSize, kindStride).instances;
-        instances.push(...applyRoomInstance(fromLayout, ri, `${ri.id}/layout/`, voxelSize, worldAABB));
+        instances.push(...applyRoomInstance(fromLayout, ri, layoutIdPrefix(ri.id), voxelSize, worldAABB));
       } else {
         console.warn(
           `[compile-map] room "${ri.roomName}" has layoutName "${room.layoutName}" but getLayout returned undefined`,
