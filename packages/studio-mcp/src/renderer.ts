@@ -39,7 +39,7 @@ export interface ChromiumRendererOptions {
   executablePath?: string;
   /** Budget for one render, from launch until the browser is gone. */
   timeoutMs?: number;
-  /** Part of the budget a graceful close may take before the process is killed. */
+  /** Part of the budget a graceful close may take before the process is killed; the kill gets the same again. */
   closeGraceMs?: number;
   launch?: (options: LaunchOptions & { timeout: number }) => Promise<ChromiumProcess>;
 }
@@ -81,7 +81,7 @@ function renderUrl(origin: string, { target, camera, width, height }: RenderRequ
   return url.toString();
 }
 
-/** `options.timeout` bounds the launch and the connection together. */
+/** `launchServer` ignores `options.timeout`, so only the connection is bounded here; the caller bounds the launch. */
 async function launchChromium(options: LaunchOptions & { timeout: number }): Promise<ChromiumProcess> {
   const deadline = Date.now() + options.timeout;
   const { chromium } = await import('playwright-core');
@@ -101,12 +101,14 @@ async function capture(browser: ChromiumProcess['browser'], origin: string, requ
   const context = await browser.newContext({
     viewport: { width: request.width, height: request.height },
     deviceScaleFactor: 1,
+    serviceWorkers: 'block',
   });
   // Documents name their own asset URLs, so only the studio may be fetched from this server-side browser.
   const studioOrigin = new URL(origin).origin;
   await context.route('**/*', (route) =>
     new URL(route.request().url()).origin === studioOrigin ? route.continue() : route.abort('blockedbyclient'),
   );
+  await context.routeWebSocket((url) => url.host !== new URL(origin).host, (ws) => ws.close());
   const page = await context.newPage();
   await page.goto(renderUrl(origin, request), { waitUntil: 'domcontentloaded', timeout: 0 });
   const settled = await page.waitForFunction(
@@ -131,7 +133,9 @@ async function stop(chromium: ChromiumProcess, graceMs: number): Promise<void> {
     () => false,
   );
   if (!closed) {
-    await chromium.kill();
+    await withDeadline(chromium.kill(), graceMs, 'kill timed out').catch((err) => {
+      console.error('[studio-mcp] leaked a Chromium process:', err);
+    });
   }
 }
 
@@ -146,11 +150,15 @@ export function createChromiumRenderer({
   return {
     async render(origin, request) {
       const deadline = Date.now() + budgetMs;
-      const chromium = await launch({
+      const launching = launch({
         executablePath,
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
         timeout: budgetMs,
-      }).catch((err) => {
+      });
+      const chromium = await withDeadline(launching, budgetMs, `no response after ${budgetMs / 1000} s`).catch((err) => {
+        console.error('[studio-mcp] Chromium launch failed:', err);
+        // A Chromium that comes up after the deadline would otherwise outlive this render.
+        void launching.then((late) => late.kill(), () => {});
         throw new Error(`could not start Chromium (${executablePath ?? "Playwright's default"}): ${firstLine(err)}`);
       });
       try {
@@ -160,6 +168,7 @@ export function createChromiumRenderer({
           `render timed out after ${budgetMs / 1000} s`,
         );
       } catch (err) {
+        console.error('[studio-mcp] render failed:', err);
         throw new Error(firstLine(err));
       } finally {
         await stop(chromium, closeGraceMs);

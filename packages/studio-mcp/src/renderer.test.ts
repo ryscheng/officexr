@@ -17,6 +17,8 @@ const never = () => new Promise<never>(() => {});
 class FakeChromium implements ChromiumProcess {
   urls: string[] = [];
   routeHandler?: RouteHandler;
+  webSocketRoutes: { matches: (url: URL) => boolean; handler: (ws: { close(): void }) => void }[] = [];
+  contextOptions?: object;
   sentinel: { ready?: object; error?: string } = { ready: { bounds: { min: [0, 0, 0], max: [1, 1, 1] } } };
   goto: () => Promise<unknown> = async () => null;
   closed = false;
@@ -28,7 +30,11 @@ class FakeChromium implements ChromiumProcess {
     this.killed = true;
   };
   browser = {
-    newContext: async () => ({
+    newContext: async (options: object) => ({
+      routeWebSocket: async (matches: (url: URL) => boolean, handler: (ws: { close(): void }) => void) => {
+        this.contextOptions = options;
+        this.webSocketRoutes.push({ matches, handler });
+      },
       route: async (_pattern: string, handler: RouteHandler) => {
         this.routeHandler = handler;
       },
@@ -95,6 +101,20 @@ describe('createChromiumRenderer', () => {
     }
   });
 
+  it('blocks service workers and WebSockets to any other host', async () => {
+    const chromium = new FakeChromium();
+    await rendererWith(chromium).render(ORIGIN, REQUEST);
+    expect(chromium.contextOptions).toMatchObject({ serviceWorkers: 'block' });
+
+    const [{ matches, handler }] = chromium.webSocketRoutes;
+    expect(matches(new URL('ws://127.0.0.1:5174/'))).toBe(false);
+    expect(matches(new URL('ws://127.0.0.1:8787/'))).toBe(true);
+    expect(matches(new URL('wss://evil.example.com/'))).toBe(true);
+    let closed = false;
+    handler({ close: () => { closed = true; } });
+    expect(closed).toBe(true);
+  });
+
   it('reports the page error sentinel and still closes the browser', async () => {
     const chromium = new FakeChromium();
     chromium.sentinel = { error: 'room "hall" has nothing to render' };
@@ -128,6 +148,37 @@ describe('createChromiumRenderer', () => {
     chromium.close = never;
     await rendererWith(chromium).render(ORIGIN, REQUEST);
     expect(chromium.killed).toBe(true);
+  });
+
+  it('gives up on a launch that never answers within the budget', async () => {
+    const renderer = createChromiumRenderer({ timeoutMs: 300, closeGraceMs: 50, launch: never });
+    const started = Date.now();
+    await expect(renderer.render(ORIGIN, REQUEST)).rejects.toThrow(
+      /^could not start Chromium \(Playwright's default\): no response after 0\.25 s$/,
+    );
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it('kills a Chromium that finishes launching after the deadline', async () => {
+    const chromium = new FakeChromium();
+    const renderer = createChromiumRenderer({
+      timeoutMs: 300,
+      closeGraceMs: 50,
+      launch: () => new Promise((resolve) => setTimeout(() => resolve(chromium), 400)),
+    });
+    await expect(renderer.render(ORIGIN, REQUEST)).rejects.toThrow('could not start Chromium');
+    expect(chromium.killed).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(chromium.killed).toBe(true);
+  });
+
+  it('still returns when the kill itself hangs', async () => {
+    const chromium = new FakeChromium();
+    chromium.close = never;
+    chromium.kill = never;
+    const started = Date.now();
+    await rendererWith(chromium).render(ORIGIN, REQUEST);
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it('names the Chromium it tried when the launch fails', async () => {

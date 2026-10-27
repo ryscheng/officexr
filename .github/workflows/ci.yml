@@ -37,9 +37,9 @@ jobs:
 
       - name: E2E (editor interaction, hermetic)
         # Scoped to the specs that run hermetically: ?test=1 (in-memory
-        # storage, bundled catalog — no database), or, for render_view
-        # over /mcp, the dev server's scratch data dir that
-        # playwright.config.ts seeds per run. The broader Playwright suite has
+        # storage, bundled catalog — no database), or the dev server's
+        # per-run scratch data dir (OFFICEXR_STUDIO_DATA_DIR, seeded by the
+        # dev server), which every dev-server spec uses. The broader Playwright suite has
         # pre-existing rot (stale /api/cube-kinds endpoint, drifted
         # room-editor selectors) and is fixed/expanded in a follow-up;
         # see packages/studio/src/test-harness/README.md.
