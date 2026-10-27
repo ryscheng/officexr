@@ -99,7 +99,8 @@ export function useCatalog(): readonly WorldObjectKind[] {
  */
 export function useCatalogReady(): boolean {
   const api = useApplication();
-  const [ready, setReady] = useState(false);
+  // Seeded synchronously so a mount after the catalog loaded renders ready on its first pass.
+  const [ready, setReady] = useState(() => api.catalog.isReady());
   useEffect(() => {
     let cancelled = false;
     void api.catalog.ready().then(() => {
@@ -138,14 +139,14 @@ export function useKind(id: string | null | undefined): WorldObjectKind | undefi
  * `geometry.worldAABB(...)` allocates a fresh `{min, max}` object;
  * uSES would warn about returning non-identity-stable snapshots.
  */
-export function useInstanceAABB(position: Vec3, kindId: string): WorldAABB {
+export function useInstanceAABB(position: Vec3, kindId: string, yawDeg = 0): WorldAABB {
   const api = useApplication();
   // Re-render trigger: subscribe to the catalog and recompute on
   // every notification.
   const catalogSnapshot = useCatalogSnapshot(api.catalog, (c) => c.getCatalog());
   const [px, py, pz] = position;
   return useMemo(
-    () => api.geometry.worldAABB([px, py, pz], kindId),
-    [api.geometry, px, py, pz, kindId, catalogSnapshot],
+    () => api.geometry.worldAABB([px, py, pz], kindId, yawDeg),
+    [api.geometry, px, py, pz, kindId, yawDeg, catalogSnapshot],
   );
 }

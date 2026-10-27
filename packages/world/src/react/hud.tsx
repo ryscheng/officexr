@@ -1,3 +1,4 @@
+import type { BakedLayoutPlacement } from '../app/map-loader.ts';
 import type { CameraMode } from '../renderer/config.ts';
 
 export type HudRealtime = 'in-memory' | 'ws';
@@ -51,16 +52,16 @@ export function FocusIndicator({ focused }: { focused: boolean }) {
 export function WorldHud({
   cameraMode,
   realtime,
-  bakedLayoutName,
+  bakedLayouts = [],
 }: {
   cameraMode: CameraMode;
   realtime: HudRealtime;
-  /** Shown because the unbaked fallback is otherwise silent (a console.warn). */
-  bakedLayoutName?: string;
+  bakedLayouts?: readonly Pick<BakedLayoutPlacement, 'layoutName'>[];
 }) {
-  const layoutLine = bakedLayoutName
-    ? `Layout: baked "${bakedLayoutName}"`
-    : 'Layout: unbaked (instanced objects)';
+  const layoutNames = [...new Set(bakedLayouts.map((p) => `"${p.layoutName}"`))];
+  const layoutLine = layoutNames.length
+    ? `Layouts: baked ${layoutNames.join(', ')}`
+    : 'Layouts: none baked (instanced objects)';
   return (
     <div
       style={{

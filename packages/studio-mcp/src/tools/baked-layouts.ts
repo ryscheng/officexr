@@ -1,18 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { HeavyWorkLock } from '../heavy-work-lock.ts';
 import type { StudioDocuments } from '../studio-documents.ts';
 import { checkedName, nameSchema } from './documents.ts';
 import { errorResult, guard, jsonResult } from './shared.ts';
-
-export interface BakeLock {
-  busy: boolean;
-}
-
 
 export function registerBakedLayoutTools(
   server: McpServer,
   { layouts, catalog, bakedLayouts }: StudioDocuments,
   modelRoot: string,
-  lock: BakeLock,
+  lock: HeavyWorkLock,
 ): void {
   server.registerTool(
     'bake_layout',
@@ -24,12 +20,8 @@ export function registerBakedLayoutTools(
       inputSchema: { name: nameSchema },
     },
     ({ name }) =>
-      guard(async () => {
-        if (lock.busy) {
-          return errorResult('a bake is already in progress; retry shortly');
-        }
-        lock.busy = true;
-        try {
+      guard(() =>
+        lock.run(async () => {
           const layout = await layouts.load(checkedName(name));
           if (!layout) {
             return errorResult(`layout "${name}" not found`);
@@ -39,10 +31,8 @@ export function registerBakedLayoutTools(
           const { glb, meta } = await bakeLayoutGlb({ layout, modelRoot, catalog: await catalog.load() });
           await bakedLayouts.save(name, glb);
           return jsonResult({ name, bytes: glb.length, optimizer: meta.optimizerId });
-        } finally {
-          lock.busy = false;
-        }
-      }),
+        }),
+      ),
   );
   server.registerTool(
     'list_baked_layouts',

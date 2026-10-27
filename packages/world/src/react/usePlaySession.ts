@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import type { Actions, Vec3 } from '@officexr/sdk';
 import { bakedLayoutAssetUrl } from '../app/asset-url.ts';
 import { loadMap, type LoadedMap, type MapLoaderDeps } from '../app/map-loader.ts';
+import type { SceneBakedLayout } from '../renderer/Scene.tsx';
 import { useApplication } from './application-context.tsx';
 
 /** Clearance above the spawn point the local player appears at; the floor is loaded by then. */
@@ -21,9 +22,8 @@ export interface UsePlaySessionOptions {
 export interface PlaySession {
   /** Of the last map applied, which a failed later load leaves in place. */
   spawnPoints: readonly Vec3[];
-  bakedLayoutName: string | undefined;
-  bakedLayoutPath: string | undefined;
-  bakedPlacement: LoadedMap['bakedPlacement'];
+  /** Every layout placement of the applied map, none before one applies. */
+  bakedLayouts: readonly SceneBakedLayout[];
   error: string | null;
   dismissError: () => void;
   /** True once the first load into the current `actions` has settled, either way. */
@@ -86,13 +86,14 @@ export function usePlaySession({
 
   const map = applied?.actions === actions ? applied.map : null;
   const spawnPoints = useMemo(() => (map ? toVec3s(map) : []), [map]);
-  const bakedLayoutName = map?.bakedLayoutName;
+  const bakedLayouts = useMemo(
+    () => (map?.bakedLayouts ?? []).map((p) => ({ ...p, gltfPath: bakedLayoutAssetUrl(p.layoutName) })),
+    [map],
+  );
   const ready = applied?.actions === actions;
   return {
     spawnPoints,
-    bakedLayoutName,
-    bakedLayoutPath: bakedLayoutName ? bakedLayoutAssetUrl(bakedLayoutName) : undefined,
-    bakedPlacement: map?.bakedPlacement,
+    bakedLayouts,
     error,
     dismissError: () => setError(null),
     ready,

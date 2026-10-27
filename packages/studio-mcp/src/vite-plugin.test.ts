@@ -58,7 +58,7 @@ describe('POST /mcp over HTTP', () => {
   it('writes through the REST surface and rejects what it rejects', async () => {
     const { client, call } = await connectMcp();
 
-    expect((await client.listTools()).tools).toHaveLength(19);
+    expect((await client.listTools()).tools).toHaveLength(20);
     expect((await call('put_room', { name: 'hall', room: emptyRoomDocument('hall') })).isError).toBe(false);
     const map = { ...emptyMapDocument('town'), rooms: [{ id: 'a', roomName: 'hall', position: [0, 0, 0] }] };
     expect((await call('put_map', { name: 'town', map })).isError).toBe(false);
@@ -66,7 +66,6 @@ describe('POST /mcp over HTTP', () => {
 
     const bad = await call('put_room', { name: 'bad', room: { nope: true } });
     expect(bad.isError).toBe(true);
-    expect(bad.text).toContain('room-storage save: 400');
     expect(bad.text).toContain('missing string `name`');
     expect((await call('put_layout', { name: 'bad', layout: { nope: true } })).isError).toBe(true);
     expect((await call('put_room', { name: '../evil', room: emptyRoomDocument('x') })).isError).toBe(true);

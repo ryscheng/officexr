@@ -1,11 +1,12 @@
 import React, { Suspense, useEffect, useMemo } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { WorldObjects } from '@officexr/sdk';
+import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import { createStore, createActions } from '@officexr/sdk';
 import { LightingRig, ObjectInstances } from '@officexr/world/renderer';
 import { useApplication } from '@officexr/world/react';
 import { outlineEdgePositions } from '../room/selectionOutline.ts';
+import { ReadySignal } from './ReadySignal.tsx';
 
 interface BoundsSceneProps {
   sceneId: string;
@@ -114,7 +115,11 @@ export function BoundsScene({ sceneId }: BoundsSceneProps) {
               the global ready sentinel after a safe number of frames
               (enough for InstancedMesh.setMatrixAt to have run AND
               the GL framebuffer to have settled). */}
-          <ReadySignal />
+          <ReadySignal
+            onReady={() => {
+              (window as unknown as { __officexrBoundsReady?: boolean }).__officexrBoundsReady = true;
+            }}
+          />
         </Suspense>
         {/* Wireframe overlay for every selected instance. Pins the
             "wireframe wraps the visible mesh exactly" invariant. */}
@@ -128,7 +133,7 @@ export function BoundsScene({ sceneId }: BoundsSceneProps) {
 }
 
 interface SelectionWireframeProps {
-  instances: readonly { id: string; position: readonly [number, number, number]; kindId: string }[];
+  instances: readonly Pick<ObjectInstance, 'id' | 'position' | 'kindId' | 'yawDeg'>[];
   selection: ReadonlySet<string>;
 }
 
@@ -143,7 +148,7 @@ function SelectionWireframe({ instances, selection }: SelectionWireframeProps) {
     const aabbs = [];
     for (const inst of instances) {
       if (!selection.has(inst.id)) continue;
-      aabbs.push(geometry.worldAABB(inst.position, inst.kindId));
+      aabbs.push(geometry.worldAABB(inst.position, inst.kindId, inst.yawDeg));
     }
     const positions = outlineEdgePositions(aabbs);
     if (positions.length === 0) return null;
@@ -163,29 +168,4 @@ function SelectionWireframe({ instances, selection }: SelectionWireframeProps) {
       />
     </lineSegments>
   );
-}
-
-/**
- * Frame counter that flips `window.__officexrBoundsReady` after a few
- * rendered frames. Mounts only after the parent's Suspense boundary
- * resolves, so GLTFs are guaranteed to be loaded by the time the
- * sentinel is set.
- */
-function ReadySignal() {
-  const framesRef = React.useRef(0);
-  const flippedRef = React.useRef(false);
-  // 3 frames is enough for InstancedMesh.setMatrixAt to have run
-  // (one frame for mount, one for the matrix update effect, one for
-  // the next paint pass).
-  const FRAMES_BEFORE_READY = 3;
-  useFrame(() => {
-    if (flippedRef.current) return;
-    framesRef.current += 1;
-    if (framesRef.current >= FRAMES_BEFORE_READY) {
-      flippedRef.current = true;
-      (window as unknown as { __officexrBoundsReady?: boolean })
-        .__officexrBoundsReady = true;
-    }
-  });
-  return null;
 }

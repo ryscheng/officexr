@@ -1,4 +1,12 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
+
+// The dev server seeds a scratch data dir from packages/world, so specs that write documents
+// (e.g. through `/mcp`) never touch the checked-in ones. Set on process.env so workers,
+// which reload this config, inherit the same dir instead of making their own.
+process.env.OFFICEXR_E2E_STUDIO_DATA_DIR ??= mkdtempSync(path.join(tmpdir(), 'officexr-e2e-studio-'));
 
 /**
  * Studio end-to-end regression suite. Boots `pnpm dev:studio` once,
@@ -36,6 +44,7 @@ export default defineConfig({
     command: 'pnpm --filter @officexr/studio dev',
     url: 'http://localhost:5174',
     reuseExistingServer: !process.env.CI,
+    env: { OFFICEXR_STUDIO_DATA_DIR: process.env.OFFICEXR_E2E_STUDIO_DATA_DIR },
     timeout: 60_000,
     stdout: 'pipe',
     stderr: 'pipe',

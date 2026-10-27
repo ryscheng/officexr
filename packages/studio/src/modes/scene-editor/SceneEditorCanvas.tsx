@@ -382,7 +382,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
   const nearbyObjects = useMemo(() => {
     return props.compiled.instances.map((inst) => ({
       position: inst.position,
-      aabb: geomService.worldAABB(inst.position, inst.kindId),
+      aabb: geomService.worldAABB(inst.position, inst.kindId, inst.yawDeg),
     }));
   }, [props.compiled.instances, geomService]);
 
@@ -1220,7 +1220,7 @@ function ContextMenuListener({
       // for one-voxel kinds; right-clicks on multi-voxel kinds missed
       // most of the visible mesh.
       for (const inst of instances) {
-        const aabb = geomService.worldAABB(inst.position, inst.kindId);
+        const aabb = geomService.worldAABB(inst.position, inst.kindId, inst.yawDeg);
         const t = rayHitAabb(
           raycaster.ray.origin,
           raycaster.ray.direction,
@@ -1307,7 +1307,7 @@ function SelectionOutline({ instances, selection }: SelectionOutlineProps) {
     const aabbs = [];
     for (const inst of instances) {
       if (!selection.has(inst.sourceCommandId)) continue;
-      aabbs.push(geomService.worldAABB(inst.position, inst.kindId));
+      aabbs.push(geomService.worldAABB(inst.position, inst.kindId, inst.yawDeg));
     }
     const positions = outlineEdgePositions(aabbs);
     if (positions.length === 0) return null;
@@ -2034,7 +2034,7 @@ function MoveController({
       let bestT = Infinity;
       let bestInst: ObjectInstance | null = null;
       for (const inst of compiledRef.current.instances) {
-        const aabb = geomService.worldAABB(inst.position, inst.kindId);
+        const aabb = geomService.worldAABB(inst.position, inst.kindId, inst.yawDeg);
         const t = rayHitAabb(
           raycaster.ray.origin,
           raycaster.ray.direction,

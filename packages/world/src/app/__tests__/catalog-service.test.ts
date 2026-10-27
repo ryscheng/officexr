@@ -95,4 +95,22 @@ describe('CatalogService', () => {
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 100)),
     ])).resolves.toBeUndefined();
   });
+
+  it('isReady() flips once the bootstrap fetch settles, even when it fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const svc = createCatalogService({
+      defaultCatalog: makeCatalog([makeKind('a')]),
+      apiPath: '/api/world-object-kinds',
+      fetcher: async () => new Response('boom', { status: 500 }),
+    });
+    expect(svc.isReady()).toBe(false);
+    await svc.ready();
+    expect(svc.isReady()).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('isReady() is true straight away when the fetch is disabled', () => {
+    const svc = createCatalogService({ defaultCatalog: makeCatalog([makeKind('a')]), apiPath: '' });
+    expect(svc.isReady()).toBe(true);
+  });
 });

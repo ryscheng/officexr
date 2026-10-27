@@ -69,6 +69,8 @@ export interface CatalogService {
   subscribe(listener: () => void): () => void;
   /** Resolves once the upstream fetch has completed (success OR fallback). */
   ready(): Promise<void>;
+  /** Synchronous `ready()`: true once the upstream fetch has completed. */
+  isReady(): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,13 +131,11 @@ export type LayoutCommandSource = { commands: SceneCommand[] };
  * tile step. Pure functions; no internal state.
  */
 export interface RoomService {
-  compileScene(doc: RoomDocument): WorldObjects;
+  compileScene(doc: LayoutCommandSource): WorldObjects;
   /**
-   * Compile a map into a flat WorldObjects. The optional `layouts` map
-   * enables baked-layout resolution: when a room has empty `commands`
-   * and a `layoutName`, the room's geometry is sourced from the matching
-   * layout's commands instead. Callers that omit `layouts` (all editor
-   * paths) get exactly the same behavior as before this parameter existed.
+   * Compile a map into a flat WorldObjects. When the optional `layouts` map
+   * is given, a room that links a layout also compiles that layout's
+   * commands, with ids under `<roomInstanceId>/layout/`.
    */
   compileMap(
     map: MapDocumentV2,

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useApplication } from '@officexr/world/react';
 import { BakeRunner } from './BakeRunner.tsx';
 import { BoundsScene } from './BoundsScene.tsx';
+import { RenderPage } from './RenderPage.tsx';
 
 /**
  * Headless test harness. Routed by App when `?op=...` is present in
@@ -32,6 +33,9 @@ export function HeadlessApp({ op, sceneId }: { op: string; sceneId?: string }) {
   if (op === 'bounds-scene') {
     return <BoundsScene sceneId={sceneId ?? 'blue-and-large-a'} />;
   }
+  if (op === 'render') {
+    return <RenderPage />;
+  }
   return (
     <div
       style={{
@@ -44,7 +48,7 @@ export function HeadlessApp({ op, sceneId }: { op: string; sceneId?: string }) {
       }}
     >
       <h1>Unknown headless op</h1>
-      <p>Got `?op={op}`. Known: bake, bounds-scene.</p>
+      <p>Got `?op={op}`. Known: bake, bounds-scene, render.</p>
     </div>
   );
 }
