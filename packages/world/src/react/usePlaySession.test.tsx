@@ -4,12 +4,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { createActions, createStore } from '@officexr/sdk';
 import { createDefaultApi } from '../app/create-default-api.ts';
+import { computeVoiceZones } from '../app/voice-zones.ts';
 import {
   InMemoryLayoutStorage,
   InMemoryMapStorage,
   InMemoryRoomStorage,
   emptyMapDocument,
   emptyRoomDocument,
+  type MapDocumentV2,
+  type RoomDocument,
   newPlaceObject,
 } from '../scenes/index.ts';
 import { ApplicationProvider } from './application-context.tsx';
@@ -66,7 +69,7 @@ function setup() {
         }),
       { wrapper, initialProps: initial },
     );
-  return { actions, onMapApplied, render };
+  return { api, actions, onMapApplied, render, storages };
 }
 
 describe('usePlaySession', () => {
@@ -86,12 +89,22 @@ describe('usePlaySession', () => {
   });
 
   it('puts the map\'s voice zones in the store, none for a map without any', async () => {
-    const { render } = setup();
+    const { api, render, storages } = setup();
     const store = createStore({ selfId: 'me', officeId: 'o' });
     const actions = createActions(store);
     const { result, rerender } = render('office', { actions });
     await waitFor(() => expect(result.current.ready).toBe(true));
-    expect(store.getState().voiceZones.map((z) => z.id)).toEqual(['a']);
+    const zones = store.getState().voiceZones;
+    expect(zones.map((z) => z.id)).toEqual(['a']);
+    expect(zones).toEqual(
+      computeVoiceZones(
+        (await storages.maps.load('office'))! as MapDocumentV2,
+        new Map([['room', await storages.rooms.load('room') as RoomDocument]]),
+        new Map(),
+        api.rooms,
+        api.geometry,
+      ),
+    );
 
     rerender({ actions, mapName: 'baked' });
     await waitFor(() => expect(store.getState().voiceZones).toEqual([]));

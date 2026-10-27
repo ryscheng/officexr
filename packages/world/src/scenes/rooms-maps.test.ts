@@ -166,7 +166,7 @@ describe('serializeMap + deserializeMap', () => {
       title: 'Town',
       rooms: [
         { id: 'r-1', roomName: 'default-v2', position: [0, 0, 0] },
-        { id: 'r-2', roomName: 'default-v2', position: [10, 0, 0], rotationY: 1 },
+        { id: 'r-2', roomName: 'default-v2', position: [10, 0, 0], rotationY: 1, voiceZone: true },
       ],
       spawnPoints: [
         { id: 's-1', label: 'front-door', position: [1.5, 0, 1.5] },
@@ -191,7 +191,7 @@ describe('serializeMap + deserializeMap', () => {
 
   it('round-trips voiceZone and rejects a non-boolean one', () => {
     const m = makeFullMap();
-    m.rooms[1].voiceZone = true;
+    expect(m.rooms[1].voiceZone).toBe(true);
     expect(deserializeMap(JSON.parse(JSON.stringify(m))).rooms[1].voiceZone).toBe(true);
     m.rooms[1].voiceZone = 'yes' as unknown as boolean;
     expect(() => deserializeMap(JSON.parse(JSON.stringify(m)))).toThrow(/voiceZone/);

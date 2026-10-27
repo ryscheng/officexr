@@ -48,8 +48,8 @@ describe('computeVoiceZones', () => {
     expect(zone.label).toBe('Big Hall');
     near(zone.min.x, 10 * vs);
     near(zone.min.z, 4 * vs);
-    expect(zone.max.x).toBeGreaterThan(13 * vs);
-    expect(zone.max.z).toBeGreaterThan(zone.min.z);
+    near(zone.max.x, 14 * vs);
+    near(zone.max.z, 5 * vs);
   });
 
   it('rotates the footprint with the placement', () => {
@@ -68,7 +68,7 @@ describe('computeVoiceZones', () => {
     layout.commands.push(newPlaceObject({ kindId, position: [0, 0, 0] }), newPlaceObject({ kindId, position: [2, 0, 0] }));
     const [zone] = zonesFor([{ id: 'b', roomName: 'baked', position: [0, 0, 0], voiceZone: true }], [baked], [layout]);
     expect(zone.id).toBe('b');
-    expect(zone.max.x - zone.min.x).toBeGreaterThan(2 * api.voxelSize);
+    near(zone.max.x - zone.min.x, 3 * api.voxelSize);
   });
 
   it('emits only flagged placements, one per placement of the same room', () => {

@@ -61,7 +61,7 @@ async function loadAll<T>(
 
 /**
  * Loads a map, its rooms, and the layouts of rooms without commands, then
- * compiles it. Throws `MapNotFoundError` when the map doesn't exist.
+ * compiles it and derives its voice zones. Throws `MapNotFoundError` when the map doesn't exist.
  */
 export async function loadMap(
   { storages, catalog, roomService, geometry }: MapLoaderDeps,
