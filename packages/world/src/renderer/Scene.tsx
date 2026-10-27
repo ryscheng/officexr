@@ -25,7 +25,7 @@ import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
 import { ModelsReady } from './ModelsReady.tsx';
 import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
-import type { CameraMode } from './config.ts';
+import { GAMEPLAY_FOV, type CameraMode } from './config.ts';
 import { placementTransform } from './placement-transform.ts';
 import type { BakedLayoutPlacement } from '../app/map-loader.ts';
 import type { ViewConfig } from './viewConfig.ts';
@@ -212,7 +212,7 @@ export function Scene(props: SceneProps) {
   return (
     <Canvas
       shadows={{ type: THREE.PCFShadowMap }}
-      camera={{ position: [0, 1.6, 0], fov: 75, near: 0.1, far: 2000 }}
+      camera={{ position: [0, 1.6, 0], fov: GAMEPLAY_FOV, near: 0.1, far: 2000 }}
       style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
       dpr={props.dpr}
       // `preserveDrawingBuffer: true` lets `canvas.toDataURL()` read

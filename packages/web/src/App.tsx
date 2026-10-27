@@ -13,13 +13,19 @@ function Room({ me }: { me: Identity }) {
   const { id } = useParams();
   // Safari reports pinches as gesture events and zooms the page unless they
   // are cancelled; touch-action alone doesn't stop it over the overlays.
+  // overscroll-behavior stops iOS rubber-banding the fixed room.
   useEffect(() => {
     const cancel = (e: Event) => e.preventDefault();
+    const { documentElement, body } = document;
+    const prevOverscroll = [documentElement.style.overscrollBehavior, body.style.overscrollBehavior];
+    documentElement.style.overscrollBehavior = 'none';
+    body.style.overscrollBehavior = 'none';
     document.addEventListener('gesturestart', cancel);
     document.addEventListener('gesturechange', cancel);
     return () => {
       document.removeEventListener('gesturestart', cancel);
       document.removeEventListener('gesturechange', cancel);
+      [documentElement.style.overscrollBehavior, body.style.overscrollBehavior] = prevOverscroll;
     };
   }, []);
   return (

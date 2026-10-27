@@ -109,7 +109,7 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
       data-studio-panel="true"
       className="absolute bottom-14 left-1/2 z-20 w-[500px] max-w-[90vw] -translate-x-1/2 text-sm text-white"
     >
-      <div ref={listRef} className="max-h-[50vh] overflow-y-auto rounded-t-lg bg-black/75 px-3 py-2">
+      <div ref={listRef} className="max-h-[50vh] overflow-y-auto overscroll-contain rounded-t-lg bg-black/75 px-3 py-2">
         {chat.slice(-MAX_MESSAGES).map((m) => (
           <div key={m.id} className="mb-1 break-words">
             <span className="mr-1.5 text-xs text-gray-500">

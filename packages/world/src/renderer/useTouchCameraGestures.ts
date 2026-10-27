@@ -4,10 +4,12 @@ import type { CameraMode } from './config.ts';
 import {
   applyLookDelta,
   applyZoom,
+  isLookMode,
   pinchFactor,
-  TOUCH_SENSITIVITY,
   type LookRefs,
 } from './lookControls.ts';
+
+const TOUCH_SENSITIVITY = 0.005;
 
 interface Point {
   x: number;
@@ -24,7 +26,7 @@ export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs): void {
   const canvas = useThree((s) => s.gl.domElement);
 
   useEffect(() => {
-    if (mode !== 'first-person' && mode !== 'third-person' && mode !== 'fixed') {
+    if (!isLookMode(mode)) {
       return;
     }
     const pointers = new Map<number, Point>();
@@ -67,11 +69,14 @@ export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs): void {
     canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('pointerup', onEnd);
     canvas.addEventListener('pointercancel', onEnd);
+    // A released capture without a pointerup must not leave a stale pointer.
+    canvas.addEventListener('lostpointercapture', onEnd);
     return () => {
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onEnd);
       canvas.removeEventListener('pointercancel', onEnd);
+      canvas.removeEventListener('lostpointercapture', onEnd);
     };
   }, [mode, canvas, refs]);
 }

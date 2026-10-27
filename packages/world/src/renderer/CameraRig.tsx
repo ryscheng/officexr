@@ -4,13 +4,15 @@ import { useThree, useFrame } from '@react-three/fiber';
 import {
   CHAR_HEIGHT_M,
   EYE_HEIGHT,
+  GAMEPLAY_FOV,
   FREE_FLY_DEFAULTS,
   TOP_DOWN_CAMERA_DEFAULTS,
   type CameraMode,
 } from './config.ts';
 import {
   applyLookDelta,
-  fixedOrbit,
+  fixedLeash,
+  isYawPitchMode,
   MOUSE_SENSITIVITY,
   PITCH_MAX,
   PITCH_MIN,
@@ -21,7 +23,6 @@ import {
 import { useTouchCameraGestures } from './useTouchCameraGestures.ts';
 
 const THIRD_PERSON_RADIUS = 6;
-const GAMEPLAY_FOV = 75;
 
 interface CameraRigProps {
   mode: CameraMode;
@@ -107,7 +108,7 @@ export function CameraRig({
 
   // Pointer-lock + mouse-look — only active in first/third person modes.
   useEffect(() => {
-    const wantsLook = mode === 'first-person' || mode === 'third-person';
+    const wantsLook = isYawPitchMode(mode);
     const canvas = gl.domElement;
 
     if (!wantsLook) {
@@ -165,6 +166,7 @@ export function CameraRig({
   // True when fixed-mode just became active and the camera position needs to
   // snap to a sensible starting point relative to the character.
   const fixedNeedsInit = useRef(false);
+  const appliedAzimuthOffset = useRef(0);
 
   useEffect(() => {
     if (mode === 'fixed') fixedNeedsInit.current = true;
@@ -470,11 +472,13 @@ export function CameraRig({
       camera.lookAt(target.current);
     } else {
       // Fixed-orientation leash camera.
-      //   - Orientation comes ONLY from azimuth + pitch — never tracks the
-      //     character. The camera does not rotate as the player moves.
-      //   - Y is locked at reference.y + height (no bobbing).
+      //   - Orientation comes ONLY from azimuth + pitch (plus the local
+      //     touch orbit offsets) — never tracks the character. The camera
+      //     does not rotate as the player moves.
+      //   - Y is locked at reference.y + height (no bobbing), scaled by the
+      //     local orbit elevation and pinch zoom.
       //   - XZ position is moved only when XZ distance to the reference
-      //     leaves [minDistance, maxDistance]. Within bounds the camera
+      //     leaves [minLeash, maxLeash]. Within bounds the camera
       //     stays put while the character wanders.
       //
       // The "reference point" the camera orbits and looks toward is
@@ -485,87 +489,38 @@ export function CameraRig({
       const reference = fixed.lookAt
         ? { x: fixed.lookAt[0], y: fixed.lookAt[1], z: fixed.lookAt[2] }
         : pos;
+      const view = viewOffsetsRef.current;
+      const leash = fixedLeash(THREE.MathUtils.degToRad(fixed.pitchDeg), fixed, view);
       // Writing the clamped offset back stops a drag past the elevation
       // limit from winding up an offset the user must drag back out of.
-      const view = viewOffsetsRef.current;
-      const orbit = fixedOrbit(
-        THREE.MathUtils.degToRad(fixed.pitchDeg),
-        fixed.height,
-        view,
-      );
-      view.fixedPitchOffsetRad = orbit.pitchOffsetRad;
-      const az = THREE.MathUtils.degToRad(fixed.azimuthDeg) + orbit.azimuthOffsetRad;
-      const pitch = orbit.pitchRad;
-      const cameraHeight = orbit.orbitHeight / view.zoom;
-
-      // Derive leash distances from screen fractions. The character should
-      // occupy ~maxOnScreenFrac of the screen at the near bound, dwindling
-      // to ~minOnScreenFrac at the far bound.
-      //   screenFrac ≈ charHeight / (2 · distance3D · tan(fov/2))
-      //   ⇒ distance3D = charHeight / (2 · frac · tan(fov/2))
-      // Then project to XZ depth using the camera's height above the
-      // character's center: depth = sqrt(distance3D² − heightOffset²).
-      const fovRad = THREE.MathUtils.degToRad(fixed.fov);
-      const tanHalfFov = Math.tan(fovRad / 2);
-      const heightOffset = Math.max(0, orbit.orbitHeight - CHAR_HEIGHT_M / 2);
-      const safeMaxFrac = Math.max(0.005, fixed.maxOnScreenFrac);
-      const safeMinFrac = Math.max(0.001, fixed.minOnScreenFrac);
-      const dNear3D = CHAR_HEIGHT_M / (2 * safeMaxFrac * tanHalfFov);
-      const dFar3D = CHAR_HEIGHT_M / (2 * safeMinFrac * tanHalfFov);
-
-      // The XZ distance the camera should sit at, derived from the
-      // 3D distance + the camera's height above the character. When
-      // `heightOffset >= dNear3D`, the requested screen-fraction is
-      // geometrically impossible at this height (the camera can't
-      // physically get closer than `heightOffset` in 3D), so the
-      // formula falls back to a pitch-based XZ that keeps the
-      // character along the camera's look direction. Without this
-      // fallback the leash clamps the camera to XZ=1m from the
-      // player, which puts the character at ~87° below the look
-      // direction — far outside the FOV.
-      const pitchRad = Math.abs(pitch);
-      const tanPitch = Math.tan(pitchRad);
-      const pitchAlignedXZ =
-        tanPitch > 0.01 ? heightOffset / tanPitch : heightOffset;
-
-      // Direct-distance mode: the caller has pinned the camera to a
-      // specific XZ distance, so we collapse the [min, max] leash to
-      // that single value. Lateral leash also collapses — the camera
-      // stays exactly at the configured pose regardless of where the
-      // character drifts (the character won't be drifting in Mugshot
-      // anyway, but determinism here is the whole point).
-      const directXZ = fixed.distanceM;
-      const minXZ =
-        directXZ !== undefined
-          ? directXZ
-          : dNear3D > heightOffset
-            ? Math.sqrt(dNear3D * dNear3D - heightOffset * heightOffset)
-            : pitchAlignedXZ * 0.6;
-      const maxXZ =
-        directXZ !== undefined
-          ? directXZ
-          : dFar3D > heightOffset
-            ? Math.sqrt(dFar3D * dFar3D - heightOffset * heightOffset)
-            : pitchAlignedXZ * 1.6;
-      const minDistance = Math.max(0.1, minXZ);
-      const maxDistance =
-        directXZ !== undefined ? minDistance : Math.max(minDistance + 0.5, maxXZ);
-      const maxLateral =
-        directXZ !== undefined ? 0 : fixed.lateralFrac * maxDistance * tanHalfFov;
-      const minLeash = minDistance / view.zoom;
-      const maxLeash = maxDistance / view.zoom;
-      const lateralLeash = maxLateral / view.zoom;
+      view.fixedPitchOffsetRad = leash.pitchOffsetRad;
+      const az = THREE.MathUtils.degToRad(fixed.azimuthDeg) + view.fixedAzimuthOffsetRad;
+      const pitch = leash.pitchRad;
+      const cameraHeight = leash.height;
+      const { minDistance: minLeash, maxDistance: maxLeash, maxLateral: lateralLeash } = leash;
 
       // Initialize position on entry into fixed mode so the reference
       // point is visible at the default leash distance.
       if (fixedNeedsInit.current) {
         fixedNeedsInit.current = false;
         const initialDist = (minLeash + maxLeash) / 2;
+        appliedAzimuthOffset.current = view.fixedAzimuthOffsetRad;
         camera.position.set(
           reference.x + Math.sin(az) * initialDist,
           reference.y + cameraHeight,
           reference.z - Math.cos(az) * initialDist,
         );
+      }
+
+      // An azimuth drag swings the camera around the reference instead of
+      // panning the view until the lateral leash catches up.
+      const dAz = view.fixedAzimuthOffsetRad - appliedAzimuthOffset.current;
+      if (dAz !== 0) {
+        appliedAzimuthOffset.current = view.fixedAzimuthOffsetRad;
+        const ox = camera.position.x - reference.x;
+        const oz = camera.position.z - reference.z;
+        camera.position.x = reference.x + ox * Math.cos(dAz) - oz * Math.sin(dAz);
+        camera.position.z = reference.z + ox * Math.sin(dAz) + oz * Math.cos(dAz);
       }
 
       // Lock Y to the reference's height each frame.

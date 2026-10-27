@@ -3,7 +3,9 @@ import {
   applyLookDelta,
   applyZoom,
   fixedMovementYaw,
-  fixedOrbit,
+  fixedLeash,
+  isLookMode,
+  isYawPitchMode,
   pinchFactor,
   PITCH_MAX,
   PITCH_MIN,
@@ -13,6 +15,7 @@ import {
   type LookRefs,
   type ViewOffsets,
 } from './lookControls.ts';
+import { CHAR_HEIGHT_M, type CameraMode } from './config.ts';
 
 const deg = (d: number) => (d * Math.PI) / 180;
 
@@ -92,43 +95,107 @@ describe('pinchFactor', () => {
 });
 
 describe('zoomedFov', () => {
-  it('narrows the fov as the zoom grows, within bounds', () => {
+  it('maps the zoom range onto the fov bounds without a dead zone', () => {
     expect(zoomedFov(75, 1)).toBe(75);
-    expect(zoomedFov(75, 1.5)).toBe(50);
-    expect(zoomedFov(75, ZOOM_MAX)).toBe(30);
-    expect(zoomedFov(75, ZOOM_MIN)).toBe(100);
+    expect(zoomedFov(75, ZOOM_MIN)).toBeCloseTo(100);
+    expect(zoomedFov(75, ZOOM_MAX)).toBeCloseTo(30);
+    let prev = Infinity;
+    for (let z = ZOOM_MIN; z <= ZOOM_MAX; z += 0.1) {
+      const fov = zoomedFov(75, z);
+      expect(fov).toBeLessThan(prev);
+      prev = fov;
+    }
   });
 });
 
-describe('fixedOrbit', () => {
-  const basePitch = deg(-35);
+describe('look modes', () => {
+  it('knows which modes take look input', () => {
+    expect(['first-person', 'third-person'].every((m) => isYawPitchMode(m as CameraMode))).toBe(true);
+    expect(isYawPitchMode('fixed')).toBe(false);
+    expect(isLookMode('fixed')).toBe(true);
+    expect(isLookMode('top-down')).toBe(false);
+    expect(isLookMode('free-fly')).toBe(false);
+  });
+});
 
-  it('returns the inputs unchanged with zero offsets', () => {
-    const o = fixedOrbit(basePitch, 25, offsets());
-    expect(o.pitchRad).toBe(basePitch);
-    expect(o.orbitHeight).toBe(25);
-    expect(o.azimuthOffsetRad).toBe(0);
+describe('fixedLeash', () => {
+  const basePitch = deg(-35);
+  const defaults = {
+    height: 25,
+    maxOnScreenFrac: 0.25,
+    minOnScreenFrac: 0.08,
+    lateralFrac: 0.4,
+    fov: 50,
+  };
+  const baseLeash = fixedLeash(basePitch, defaults, offsets());
+
+  it('reproduces the unrotated screen-fraction leash with zero offsets and zoom 1', () => {
+    const tanHalfFov = Math.tan(deg(25));
+    const hOff = 25 - CHAR_HEIGHT_M / 2;
+    const near3D = CHAR_HEIGHT_M / (2 * 0.25 * tanHalfFov);
+    const far3D = CHAR_HEIGHT_M / (2 * 0.08 * tanHalfFov);
+    const min = (hOff / Math.tan(deg(35))) * 0.6;
+    const max = Math.sqrt(far3D ** 2 - hOff ** 2);
+    expect(baseLeash.height).toBe(25);
+    expect(baseLeash.pitchRad).toBe(basePitch);
+    expect(near3D).toBeLessThan(hOff);
+    expect(far3D).toBeGreaterThan(hOff);
+    expect(baseLeash.minDistance).toBeCloseTo(min);
+    expect(baseLeash.maxDistance).toBeCloseTo(Math.max(min + 0.5, max));
+    expect(baseLeash.maxLateral).toBeCloseTo(0.4 * baseLeash.maxDistance * tanHalfFov);
   });
 
-  it('raises the camera and steepens the pitch for a positive offset', () => {
-    const o = fixedOrbit(basePitch, 25, offsets({ fixedPitchOffsetRad: deg(20) }));
-    expect(o.pitchRad).toBeCloseTo(deg(-55));
-    expect(o.orbitHeight).toBeCloseTo((25 * Math.sin(deg(55))) / Math.sin(deg(35)));
+  it('keeps the avatar within the fov across the elevation and zoom clamps', () => {
+    for (const elevation of [deg(10), deg(35), deg(85)]) {
+      for (const zoom of [ZOOM_MIN, 1, ZOOM_MAX]) {
+        const leash = fixedLeash(
+          basePitch,
+          defaults,
+          offsets({ fixedPitchOffsetRad: elevation - deg(35), zoom }),
+        );
+        expect(leash.pitchRad).toBeCloseTo(-elevation);
+        for (const depth of [leash.minDistance, leash.maxDistance]) {
+          for (const y of [0, CHAR_HEIGHT_M / 2, CHAR_HEIGHT_M]) {
+            const below = Math.atan2(leash.height - y, depth);
+            expect(Math.abs(below - elevation)).toBeLessThan(deg(defaults.fov / 2));
+          }
+        }
+      }
+    }
+  });
+
+  it('rotates a pinned distance with the elevation and keeps the reference on the look axis', () => {
+    const base = deg(8);
+    const pinned = { ...defaults, height: 4 * Math.tan(base), distanceM: 4 };
+    const flat = fixedLeash(-base, pinned, offsets());
+    expect(flat.minDistance).toBe(4);
+    expect(flat.maxDistance).toBe(4);
+    expect(flat.maxLateral).toBe(0);
+    const steep = fixedLeash(-base, pinned, offsets({ fixedPitchOffsetRad: deg(90) }));
+    expect(steep.pitchRad).toBeCloseTo(deg(-85));
+    expect(steep.minDistance).toBeCloseTo((4 * Math.cos(deg(85))) / Math.cos(base));
+    expect(Math.atan2(steep.height, steep.minDistance)).toBeCloseTo(deg(85));
   });
 
   it('clamps the elevation to 10-85 degrees and reports the offset in effect', () => {
-    const top = fixedOrbit(basePitch, 25, offsets({ fixedPitchOffsetRad: deg(90) }));
+    const top = fixedLeash(basePitch, defaults, offsets({ fixedPitchOffsetRad: deg(90) }));
     expect(top.pitchRad).toBeCloseTo(deg(-85));
     expect(top.pitchOffsetRad).toBeCloseTo(deg(50));
-    const bottom = fixedOrbit(basePitch, 25, offsets({ fixedPitchOffsetRad: deg(-90) }));
+    const bottom = fixedLeash(basePitch, defaults, offsets({ fixedPitchOffsetRad: deg(-90) }));
     expect(bottom.pitchRad).toBeCloseTo(deg(-10));
     expect(bottom.pitchOffsetRad).toBeCloseTo(deg(-25));
   });
 
   it('keeps a base elevation outside the clamp reachable and unchanged', () => {
-    const shallow = deg(-8);
-    expect(fixedOrbit(shallow, 3, offsets()).pitchRad).toBe(shallow);
-    expect(fixedOrbit(shallow, 3, offsets({ fixedPitchOffsetRad: deg(-5) })).pitchRad).toBe(shallow);
+    const shallow = fixedLeash(deg(-8), defaults, offsets({ fixedPitchOffsetRad: deg(-5) }));
+    expect(shallow.pitchRad).toBe(deg(-8));
+    expect(shallow.pitchOffsetRad).toBe(0);
+  });
+
+  it('does not orbit a camera that does not look down', () => {
+    const level = fixedLeash(0, defaults, offsets({ fixedPitchOffsetRad: deg(30) }));
+    expect(level.pitchOffsetRad).toBe(0);
+    expect(level.height).toBe(25);
   });
 });
 
