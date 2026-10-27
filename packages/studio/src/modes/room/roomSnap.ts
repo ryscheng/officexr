@@ -29,8 +29,10 @@ export interface FloorHit {
 
 export interface CubeHit {
   kind: 'cube';
-  /** Voxel position of the object that was hit. */
+  /** Min voxel corner of the hit object's footprint. */
   cubePosition: readonly [number, number, number];
+  /** Yaw of the hit object, for its tile step. */
+  yawDeg?: number;
   /** Face normal in world space. May have floating-point noise; we
    * quantize internally before use. */
   faceNormal: readonly [number, number, number];
@@ -290,7 +292,7 @@ export interface NewObjectShape {
   /** Voxel offset from the object's `position` to the min corner of its
    * box: non-zero for a yawed object, whose box is the rotated one. The
    * returned voxel is a `position`, so this is subtracted from the snapped
-   * box corner. Defaults to 0. */
+   * box corner. */
   originOffset?: readonly [number, number, number];
 }
 

@@ -36,7 +36,10 @@ export const BEAM = kind('beam', 2, 1.5, 1);
 // One voxel, as a probe.
 export const PEG = kind('peg', 0.5, 0.5, 0.5);
 
-const kinds = [WALL, BEAM, PEG];
+// 4×4×4 voxels.
+export const CUBE = kind('cube', 2, 2, 2);
+
+const kinds = [WALL, BEAM, PEG, CUBE];
 
 export const geometry = createInstanceGeometry({
   catalog: { getKind: (id) => kinds.find((k) => k.id === id) },

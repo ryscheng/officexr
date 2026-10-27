@@ -5,15 +5,29 @@ import { describe, it, expect } from 'vitest';
 import { checkMoveOccupancy } from './moveOccupancy.ts';
 import { emptyRoomDocument } from '@officexr/world/scenes';
 import type { RoomDocument, PlaceObjectCommand } from '@officexr/world/scenes';
-import { BEAM, PEG, WALL, footprintOf } from './__tests__/yawedKinds.ts';
+import { BEAM, CUBE, PEG, WALL, footprintOf } from './__tests__/yawedKinds.ts';
+
+function cmd(
+  id: string,
+  kind: { id: string },
+  position: [number, number, number],
+): PlaceObjectCommand {
+  return { id, op: 'placeObject', kindId: kind.id, position };
+}
 
 function makeCmd(id: string, position: [number, number, number]): PlaceObjectCommand {
-  return { id, op: 'placeObject', kindId: 'block-grass', position };
+  return cmd(id, PEG, position);
 }
 
 function makeDoc(commands: PlaceObjectCommand[]): RoomDocument {
   return { ...emptyRoomDocument('test'), commands };
 }
+
+const check = (
+  doc: RoomDocument,
+  movingIds: ReadonlySet<string>,
+  proposed: ReadonlyMap<string, [number, number, number]>,
+) => checkMoveOccupancy(doc, movingIds, proposed, footprintOf);
 
 describe('checkMoveOccupancy', () => {
   // 1. no collision
@@ -21,7 +35,7 @@ describe('checkMoveOccupancy', () => {
     const doc = makeDoc([makeCmd('a', [0, 0, 0])]);
     const movingIds = new Set(['a']);
     const proposedPositions = new Map([['a', [5, 0, 5] as [number, number, number]]]);
-    expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('ok');
+    expect(check(doc, movingIds, proposedPositions)).toBe('ok');
   });
 
   // 2. self-exclusion
@@ -30,7 +44,7 @@ describe('checkMoveOccupancy', () => {
     const movingIds = new Set(['a']);
     // Propose moving 'a' back to its own position (no actual move, but still valid)
     const proposedPositions = new Map([['a', [3, 0, 3] as [number, number, number]]]);
-    expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('ok');
+    expect(check(doc, movingIds, proposedPositions)).toBe('ok');
   });
 
   // 3. collision with static
@@ -38,7 +52,7 @@ describe('checkMoveOccupancy', () => {
     const doc = makeDoc([makeCmd('a', [0, 0, 0]), makeCmd('static-b', [1, 0, 0])]);
     const movingIds = new Set(['a']);
     const proposedPositions = new Map([['a', [1, 0, 0] as [number, number, number]]]);
-    expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('blocked');
+    expect(check(doc, movingIds, proposedPositions)).toBe('blocked');
   });
 
   // 4. multi-select no collision
@@ -54,7 +68,7 @@ describe('checkMoveOccupancy', () => {
       ['b', [11, 0, 0]],
       ['c', [12, 0, 0]],
     ]);
-    expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('ok');
+    expect(check(doc, movingIds, proposedPositions)).toBe('ok');
   });
 
   // 5. multi-select partial collision
@@ -71,7 +85,7 @@ describe('checkMoveOccupancy', () => {
       ['b', [11, 0, 0]],
       ['c', [20, 0, 0]], // lands on static-x
     ]);
-    expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('blocked');
+    expect(check(doc, movingIds, proposedPositions)).toBe('blocked');
   });
 
   // 6. multi-select swap — two selected objects swapping positions → ok
@@ -83,37 +97,29 @@ describe('checkMoveOccupancy', () => {
       ['b', [0, 0, 0]], // moves to a's original spot
     ]);
     // Both are moving, neither collides with any STATIC object
-    expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('ok');
+    expect(check(doc, movingIds, proposedPositions)).toBe('ok');
   });
 
   // 7. multi-voxel footprint catches overlap
-  it('multi-voxel footprint {w:4,h:4,d:4} catches overlap with static at [0,0,0]', () => {
-    // Static object at [0,0,0]. Propose a 4×4×4 footprint at [-1,0,-1].
-    // The footprint covers [-1..2, 0..3, -1..2] which includes [0,0,0].
-    const doc = makeDoc([makeCmd('static', [0, 0, 0])]);
-    const movingIds = new Set<string>(['mover']);
-    const proposedPositions = new Map<string, [number, number, number]>([
-      ['mover', [-1, 0, -1]],
-    ]);
-    expect(checkMoveOccupancy(doc, movingIds, proposedPositions, { w: 4, h: 4, d: 4 })).toBe('blocked');
+  it('a 4×4×4 mover overlapping a static voxel in its footprint → blocked', () => {
+    // Static voxel at [0,0,0]; the mover proposed at [-1,0,-1] covers [-1..2, 0..3, -1..2].
+    const doc = makeDoc([cmd('static', PEG, [0, 0, 0]), cmd('mover', CUBE, [20, 0, 20])]);
+    const proposedPositions = new Map<string, [number, number, number]>([['mover', [-1, 0, -1]]]);
+    expect(check(doc, new Set(['mover']), proposedPositions)).toBe('blocked');
   });
 
   // 8. multi-voxel footprint ok when no overlap
-  it('multi-voxel footprint {w:4,h:4,d:4} ok when static is far away', () => {
-    const doc = makeDoc([makeCmd('static', [10, 0, 10])]);
-    const movingIds = new Set<string>(['mover']);
-    const proposedPositions = new Map<string, [number, number, number]>([
-      ['mover', [0, 0, 0]],
-    ]);
-    expect(checkMoveOccupancy(doc, movingIds, proposedPositions, { w: 4, h: 4, d: 4 })).toBe('ok');
+  it('a 4×4×4 mover ok when the static voxel is far away', () => {
+    const doc = makeDoc([cmd('static', PEG, [10, 0, 10]), cmd('mover', CUBE, [20, 0, 20])]);
+    const proposedPositions = new Map<string, [number, number, number]>([['mover', [0, 0, 0]]]);
+    expect(check(doc, new Set(['mover']), proposedPositions)).toBe('ok');
   });
 
-  // 9. default footprint still 1-voxel (no footprint arg)
-  it('default footprint is still 1-voxel (backward compat)', () => {
-    const doc = makeDoc([makeCmd('a', [0, 0, 0]), makeCmd('static-b', [1, 0, 0])]);
-    const movingIds = new Set(['a']);
-    const proposedPositions = new Map([['a', [1, 0, 0] as [number, number, number]]]);
-    expect(checkMoveOccupancy(doc, movingIds, proposedPositions)).toBe('blocked');
+  // 9. self-overlap is not a collision
+  it('a 4×4×4 mover moved one voxel, overlapping its own old footprint → ok', () => {
+    const doc = makeDoc([cmd('mover', CUBE, [0, 0, 0])]);
+    const proposedPositions = new Map<string, [number, number, number]>([['mover', [1, 0, 0]]]);
+    expect(check(doc, new Set(['mover']), proposedPositions)).toBe('ok');
   });
 });
 
@@ -130,7 +136,6 @@ describe('checkMoveOccupancy with yawed footprints', () => {
     position,
     ...(yawDeg !== undefined && { yawDeg }),
   });
-  /** Moves `mover` to `to` among the other commands. */
   const moveTo = (
     commands: PlaceObjectCommand[],
     to: [number, number, number],
@@ -139,7 +144,6 @@ describe('checkMoveOccupancy with yawed footprints', () => {
       makeDoc(commands),
       new Set(['mover']),
       new Map([['mover', to]]),
-      undefined,
       footprintOf,
     );
   const FAR: [number, number, number] = [40, 0, 40];

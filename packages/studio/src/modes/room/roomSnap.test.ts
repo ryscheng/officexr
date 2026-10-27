@@ -11,6 +11,7 @@ import {
   type NearbyObjectInfo,
   type TileableObjectInfo,
 } from './roomSnap.ts';
+import { newObjectShape } from './footprint.ts';
 import { BEAM, WALL, footprintOf, geometry } from './__tests__/yawedKinds.ts';
 
 describe('computeTileStep', () => {
@@ -513,17 +514,7 @@ describe('snapToNearestFace — yawed new object', () => {
     position: [0, 0, 0],
     aabb: { min: [0, 0, 0], max: [2, 2, 2] },
   };
-  const shapeOf = (kindId: string, yawDeg: number) => {
-    const { min, max } = geometry.worldAABB([0, 0, 0], kindId, yawDeg);
-    const [x, y, z] = geometry.tileStep(kindId, yawDeg);
-    return {
-      width: max[0] - min[0],
-      height: max[1] - min[1],
-      depth: max[2] - min[2],
-      step: { x, y, z },
-      originOffset: footprintOf([0, 0, 0], kindId, yawDeg).min,
-    };
-  };
+  const shapeOf = (kindId: string, yawDeg: number) => newObjectShape(geometry, kindId, yawDeg);
 
   it.each([
     { kind: WALL, size: [1, 3, 4] },
@@ -563,5 +554,21 @@ describe('snapToNearestFace — yawed new object', () => {
       1.5,
     )!;
     expect(voxel).toEqual([4, 1, 2]);
+  });
+});
+
+describe('snapToVoxel — cube hit on a yawed target', () => {
+  it('steps past the rotated footprint of a wall at yaw 90', () => {
+    // Footprint of the wall at the origin turned 90 degrees: x [2,3), z [-1,3).
+    const [x, y, z] = geometry.tileStep(WALL.id, 90);
+    const hit: CubeHit = {
+      kind: 'cube',
+      cubePosition: footprintOf([0, 0, 0], WALL.id, 90).min,
+      yawDeg: 90,
+      faceNormal: [0, 0, 1],
+      kindId: WALL.id,
+      point: { x: 1.25, y: 0.5, z: 1.5 },
+    };
+    expect(snapToVoxel(hit, 0.5, undefined, { x, y, z })).toEqual([2, 0, 3]);
   });
 });

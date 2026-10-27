@@ -33,7 +33,7 @@ import { outlineEdgePositions } from '../room/selectionOutline.ts';
 import { computeMovedPositions } from '../room/moveDelta.ts';
 import { checkMoveOccupancy } from '../room/moveOccupancy.ts';
 import { dropToSurface } from '../room/dropToSurface.ts';
-import { createFootprintOf, type FootprintOf } from '../room/footprint.ts';
+import { createFootprintOf, newObjectShape, type FootprintOf } from '../room/footprint.ts';
 import {
   computeTileGhosts,
   resolveAvailableAxes,
@@ -343,7 +343,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
   }, []);
 
   /**
-   * Per-axis voxel step for a kind, derived from its baked dimensions.
+   * Per-axis voxel step for a kind at `yawDeg`, derived from its baked dimensions.
    * Used everywhere the tile tool or Add tool needs to know "how many
    * voxels does one of these objects span?" so we can snap and step in
    * multiples of the object's own size rather than the global 0.5 m
@@ -372,7 +372,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
    */
   const targetStrideFor = useCallback(
     (hit: SnapHit) =>
-      hit.kind === 'cube' ? stepForKind(hit.kindId) : undefined,
+      hit.kind === 'cube' ? stepForKind(hit.kindId, hit.yawDeg) : undefined,
     [stepForKind],
   );
 
@@ -393,19 +393,6 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
   // the cursor floats ~1m off the corner. 2.5m fits 4m-cubes and
   // smaller without overcommitting on floor clicks 5m+ from a cube.
   const FACE_SNAP_PULL_RADIUS_M = 2.5;
-
-  /** Metre extents of the staged object's yawed bounding box. */
-  const placingBoxSize = useCallback(
-    (kindId: string, yawDeg: number) => {
-      const { min, max } = geomService.worldAABB([0, 0, 0], kindId, yawDeg);
-      return {
-        width: max[0] - min[0],
-        height: max[1] - min[1],
-        depth: max[2] - min[2],
-      };
-    },
-    [geomService],
-  );
 
   // Snap a world-space hit to a voxel position for ORIGIN PLACEMENT
   // (Add tool, Tile tool click 1, and their hover ghosts).
@@ -439,11 +426,9 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       // dominant-axis pick always picked -Y. That was the bug.)
       const cursorPoint = hit.point;
 
-      if (kindId) {
-        const dims = {
-          ...placingBoxSize(kindId, yawDeg),
-          originOffset: footprintOf([0, 0, 0], kindId, yawDeg).min,
-        };
+      const dims = kindId ? newObjectShape(geomService, kindId, yawDeg) : null;
+
+      if (dims) {
         // Face-snap considers ALL nearby objects, including the one
         // the cursor is currently on. When the cursor is directly on a
         // cube the dominant-axis face naturally points OUT of that
@@ -451,7 +436,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
         // to stacking on top.
         const facePull = snapToNearestFace(
           cursorPoint,
-          { ...dims, step: placingStep },
+          dims,
           nearbyObjects,
           voxelSize,
           FACE_SNAP_PULL_RADIUS_M,
@@ -472,9 +457,8 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
         placingStep,
         targetStrideFor(hit),
       );
-      if (kindId) {
-        const dims = placingBoxSize(kindId, yawDeg);
-        const [offX, , offZ] = footprintOf([0, 0, 0], kindId, yawDeg).min;
+      if (dims) {
+        const [offX, , offZ] = dims.originOffset;
         const aax = (gridVoxel[0] + offX) * voxelSize;
         const aay = gridVoxel[1] * voxelSize;
         const aaz = (gridVoxel[2] + offZ) * voxelSize;
@@ -510,8 +494,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       nearbyObjects,
       stepForKind,
       targetStrideFor,
-      placingBoxSize,
-      footprintOf,
+      geomService,
     ],
   );
 
@@ -1591,6 +1574,7 @@ interface CubesLayerProps {
 }
 
 function CubesLayer(props: CubesLayerProps) {
+  const footprintOf = useFootprintOf();
   // Compose the shared <ObjectInstances> renderer with the editor's
   // tool dispatch. The wrapper <group>'s pointer events catch all
   // hits on any InstancedMesh ObjectInstances renders; we then read
@@ -1653,7 +1637,8 @@ function CubesLayer(props: CubesLayerProps) {
     const cubeHit: SnapHit | null = normal
       ? {
           kind: 'cube',
-          cubePosition: inst.position,
+          cubePosition: footprintOf(inst.position, inst.kindId, inst.yawDeg).min,
+          yawDeg: inst.yawDeg,
           faceNormal: [normal.x, normal.y, normal.z],
           kindId: inst.kindId,
           point: { x: e.point.x, y: e.point.y, z: e.point.z },
@@ -1696,7 +1681,8 @@ function CubesLayer(props: CubesLayerProps) {
       if (!n) return;
       onHoverCube({
         kind: 'cube',
-        cubePosition: inst.position,
+        cubePosition: footprintOf(inst.position, inst.kindId, inst.yawDeg).min,
+        yawDeg: inst.yawDeg,
         faceNormal: [n.x, n.y, n.z],
         kindId: inst.kindId,
         point: { x: e.point.x, y: e.point.y, z: e.point.z },
@@ -2160,7 +2146,7 @@ function MoveController({
       // Expand existing instances by their per-kind voxel footprint so a
       // moving 2 m cube is rejected when it would overlap a 2×2×2 block
       // anywhere in its 4³ voxel envelope.
-      const occupancyResult = checkMoveOccupancy(doc, sel, proposed, undefined, footprintOf);
+      const occupancyResult = checkMoveOccupancy(doc, sel, proposed, footprintOf);
 
       setMoveState((prev) =>
         prev.stage === 'dragging'

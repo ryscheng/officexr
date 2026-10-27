@@ -1,4 +1,4 @@
-import { unitFootprint, type FootprintOf } from './footprint.ts';
+import type { FootprintOf } from './footprint.ts';
 
 /**
  * Pure gravity-placement helper for the Room editor.
@@ -34,8 +34,7 @@ import { unitFootprint, type FootprintOf } from './footprint.ts';
  * @param worldObjects - The current compiled scene (existing placed objects).
  *   `voxelSize` is carried for future compatibility but not used here —
  *   all arithmetic is in voxel coords.
- * @param footprintOf - Footprint of each existing instance at its yaw;
- *   defaults to one voxel at its anchor.
+ * @param footprintOf - Footprint of each existing instance at its yaw.
  */
 export function dropToSurface(
   proposedVoxel: [number, number, number],
@@ -47,7 +46,7 @@ export function dropToSurface(
       yawDeg?: number;
     }>;
   },
-  footprintOf: FootprintOf = unitFootprint,
+  footprintOf: FootprintOf,
 ): [number, number, number] | null {
   const [px, py, pz] = proposedVoxel;
   const { w, d } = objectFootprint;
