@@ -56,6 +56,7 @@ export function createInitialOfficeState(opts: {
     worldSettings: worldSettingsFromConstants(DEFAULT_WORLD_CONSTANTS),
     worldMap: cloneWorldMap(DEFAULT_WORLD_MAP),
     characterConfigs: {},
+    voiceZones: [],
     worldObjects: {
       cubeSize: DEFAULT_WORLD_OBJECTS.cubeSize,
       instances: [...DEFAULT_WORLD_OBJECTS.instances],

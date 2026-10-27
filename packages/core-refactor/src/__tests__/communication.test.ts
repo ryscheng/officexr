@@ -170,4 +170,147 @@ describe('Communication', () => {
     const lastLeave = [...ctx.voice.calls].reverse().find((c) => c.type === 'leaveRoom');
     expect(lastLeave).toBeDefined();
   });
+
+  describe('voice zones', () => {
+    const zone = (id: string, x0: number, x1: number) => ({
+      id,
+      label: id,
+      min: { x: x0, z: 0 },
+      max: { x: x1, z: 10 },
+    });
+    const walkTo = (x: number): void =>
+      ctx.actions.setSelfPosition({ x, y: 0, z: 5 }, { x: 0, y: 0, z: 0 }, 0, false);
+    const joins = (): string[] =>
+      ctx.voice.calls.flatMap((c) => (c.type === 'joinRoom' ? [String(c.roomId)] : []));
+
+    beforeEach(() => {
+      ctx.actions.setVoiceZones([zone('lounge', 0, 10), zone('boardroom', 20, 30)]);
+      walkTo(100);
+    });
+
+    it('joins the zone room only after the dwell', () => {
+      walkTo(5);
+      ctx.timer.advance(499);
+      expect(ctx.voice.calls).toHaveLength(0);
+      ctx.timer.advance(1);
+      expect(joins()).toEqual(['zone-o1-lounge']);
+      expect(ctx.store.getState().players['alice'].jitsiRoom).toBe('zone-o1-lounge');
+    });
+
+    it('overrides proximity peers, before and after the dwell', () => {
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      walkTo(5);
+      ctx.timer.advance(500);
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'aaron' });
+      expect(joins()).toEqual(['room-o1-alice', 'zone-o1-lounge']);
+      expect(ctx.comm.getCurrentRoom()).toBe('zone-o1-lounge');
+    });
+
+    it('falls back to the proximity room 1.5s after leaving the zone', () => {
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      walkTo(5);
+      ctx.timer.advance(500);
+      ctx.voice.clearCalls();
+      walkTo(100);
+      ctx.timer.advance(1499);
+      expect(ctx.voice.calls).toHaveLength(0);
+      ctx.timer.advance(1);
+      expect(joins()).toEqual(['room-o1-alice']);
+    });
+
+    it('leaves 1.5s after leaving the zone when nobody is nearby', () => {
+      walkTo(5);
+      ctx.timer.advance(500);
+      ctx.voice.clearCalls();
+      walkTo(100);
+      ctx.timer.advance(1499);
+      expect(ctx.voice.calls).toHaveLength(0);
+      ctx.timer.advance(1);
+      expect(ctx.voice.calls).toEqual([{ type: 'leaveRoom' }]);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+    });
+
+    it('keeps the call, without rejoining, when re-entering within 1.5s', () => {
+      walkTo(5);
+      ctx.timer.advance(500);
+      ctx.voice.clearCalls();
+      walkTo(100);
+      ctx.timer.advance(1000);
+      walkTo(5);
+      ctx.timer.advance(5000);
+      expect(ctx.voice.calls).toHaveLength(0);
+      expect(ctx.comm.getCurrentRoom()).toBe('zone-o1-lounge');
+    });
+
+    it('never joins when passing through a zone in under 500ms', () => {
+      for (let i = 0; i < 3; i++) {
+        walkTo(5);
+        ctx.timer.advance(499);
+        walkTo(100);
+        ctx.timer.advance(499);
+      }
+      ctx.timer.advance(5000);
+      expect(ctx.voice.calls).toHaveLength(0);
+    });
+
+    it('stays in the old zone call while dwelling in the next, then switches', () => {
+      walkTo(5);
+      ctx.timer.advance(500);
+      ctx.voice.clearCalls();
+      walkTo(25);
+      ctx.timer.advance(499);
+      expect(ctx.comm.getCurrentRoom()).toBe('zone-o1-lounge');
+      ctx.timer.advance(1);
+      expect(joins()).toEqual(['zone-o1-boardroom']);
+      ctx.timer.advance(5000);
+      expect(joins()).toEqual(['zone-o1-boardroom']);
+    });
+
+    it('keeps the old zone call through a gap, then switches to the next zone', () => {
+      walkTo(5);
+      ctx.timer.advance(500);
+      ctx.voice.clearCalls();
+      walkTo(15);
+      ctx.timer.advance(1000);
+      walkTo(25);
+      ctx.timer.advance(499);
+      expect(ctx.voice.calls).toHaveLength(0);
+      ctx.timer.advance(1);
+      expect(ctx.voice.calls).toEqual([
+        { type: 'joinRoom', roomId: 'zone-o1-boardroom', selfId: 'alice' },
+      ]);
+      ctx.timer.advance(5000);
+      expect(ctx.voice.calls).toHaveLength(1);
+    });
+
+    it('stop() cancels a pending exit hold', () => {
+      walkTo(5);
+      ctx.timer.advance(500);
+      walkTo(100);
+      ctx.comm.stop();
+      ctx.voice.clearCalls();
+      ctx.timer.advance(5000);
+      expect(ctx.voice.calls).toHaveLength(0);
+    });
+
+    it('clearing the zones while inside holds the call, then falls back', () => {
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      walkTo(5);
+      ctx.timer.advance(500);
+      ctx.voice.clearCalls();
+      ctx.actions.setVoiceZones([]);
+      ctx.timer.advance(1499);
+      expect(ctx.voice.calls).toHaveLength(0);
+      ctx.timer.advance(1);
+      expect(joins()).toEqual(['room-o1-alice']);
+    });
+
+    it('stop() cancels a pending dwell', () => {
+      walkTo(5);
+      ctx.comm.stop();
+      ctx.voice.clearCalls();
+      ctx.timer.advance(5000);
+      expect(ctx.voice.calls).toHaveLength(0);
+    });
+  });
 });

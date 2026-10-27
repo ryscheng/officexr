@@ -7,3 +7,4 @@ export {
   type TrackerOptions,
   type TrackerOutput,
 } from './pair-tracker.ts';
+export { voiceZoneAt } from './voice-zone.ts';

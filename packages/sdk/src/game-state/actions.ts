@@ -11,6 +11,7 @@ import type {
   RealtimeStatus,
   Stroke,
   Vec3,
+  VoiceZone,
   WorldMap,
   WorldMapLayer,
   WorldObjects,
@@ -49,6 +50,8 @@ export interface Actions {
    * mode calls this whenever its command list re-compiles. Triggers
    * a `world:objects` broadcast. */
   setWorldObjects(objects: WorldObjects): void;
+  /** Local-only: never broadcast. */
+  setVoiceZones(zones: VoiceZone[]): void;
 
   // remote applications (called by sync engine)
   applyRemotePosition(
@@ -181,6 +184,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     setCharacterConfigs(configs) {
       store.setState(() => ({ characterConfigs: { ...configs } }));
+    },
+
+    setVoiceZones(zones) {
+      store.setState(() => ({ voiceZones: zones }));
     },
 
     setWorldObjects(objects) {

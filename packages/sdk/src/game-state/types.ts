@@ -339,6 +339,14 @@ export const DEFAULT_WORLD_OBJECTS: WorldObjects = {
   instances: [],
 };
 
+/** A rectangle on the XZ plane (world metres) whose occupants share one voice call. */
+export type VoiceZone = {
+  id: string;
+  label: string;
+  min: { x: number; z: number };
+  max: { x: number; z: number };
+};
+
 export type OfficeState = {
   selfId: PlayerId;
   officeId: string;
@@ -372,6 +380,8 @@ export type OfficeState = {
    * Broadcast via the `world:objects` NetEvent.
    */
   worldObjects: WorldObjects;
+  /** Local-only: never snapshotted or broadcast. */
+  voiceZones: VoiceZone[];
 };
 
 export type GameEvent =
