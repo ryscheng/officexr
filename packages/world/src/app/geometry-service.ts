@@ -7,7 +7,7 @@
  * outline / occupancy / snap / drop):
  *
  *   - voxel position * voxelSize = the world-space lower-left-bottom
- *     corner of the object's AABB. So a 2 m Blue cube at voxel
+ *     corner of the object's unrotated AABB. So a 2 m Blue cube at voxel
  *     (0, 0, 0) on a 0.5 m grid occupies world (0, 0, 0) → (2, 2, 2).
  *     Two cubes at voxel.x = 0 and voxel.x = 4 are flush adjacent at
  *     world x = 2.
@@ -27,12 +27,14 @@
 
 import type {
   InstanceGeometryService,
+  MeshTransform,
   Vec3,
   VoxelFootprint,
   WorldAABB,
 } from './types.ts';
 import type { ObjectInstance } from '@officexr/sdk';
 import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
+import { normalizeYawDeg } from '../scenes/commands.ts';
 
 /**
  * Minimum-surface dependency the geometry service needs from a catalog.
@@ -82,6 +84,37 @@ function localAABBFor(kind: WorldObjectKind | undefined, voxelSize: number): Loc
   };
 }
 
+/** Size (m) the tile step derives from: `dimensions`, else `localAABB`. */
+function kindSize(kind: WorldObjectKind | undefined): Vec3 | undefined {
+  if (kind?.dimensions) {
+    const { width, height, depth } = kind.dimensions;
+    return [width, height, depth];
+  }
+  if (kind?.localAABB) {
+    const { min, max } = kind.localAABB;
+    return [max.x - min.x, max.y - min.y, max.z - min.z];
+  }
+  return undefined;
+}
+
+function yawRadians(yawDeg: number): number {
+  return (normalizeYawDeg(yawDeg) * Math.PI) / 180;
+}
+
+/** cos and sin of a yaw, rounded so quarter turns come out exact. */
+function cosSin(yawDeg: number): [number, number] {
+  const rad = yawRadians(yawDeg);
+  const round = (v: number) => Math.round(v * 1e12) / 1e12;
+  return [round(Math.cos(rad)), round(Math.sin(rad))];
+}
+
+/** X/Z extents of the axis-aligned box around an `x` × `z` rectangle
+ * yawed by `yawDeg`. Works on half or full extents alike. */
+function rotatedExtentsXZ(x: number, z: number, yawDeg: number): [number, number] {
+  const [cos, sin] = cosSin(yawDeg).map(Math.abs);
+  return [x * cos + z * sin, x * sin + z * cos];
+}
+
 export function createInstanceGeometry(deps: {
   catalog: KindResolver;
   voxelSize: number;
@@ -91,23 +124,23 @@ export function createInstanceGeometry(deps: {
     throw new Error(`createInstanceGeometry: voxelSize must be > 0, got ${voxelSize}`);
   }
 
-  function worldAABB(position: Vec3, kindId: string): WorldAABB {
+  function localAABBOf(kindId: string): LocalAABB {
+    // Mugshot primitive-box diagnostic: the box isn't a catalog kind,
+    // so derive its box straight from PRIMITIVE_BLOCK_SIZE (the same
+    // size the mesh renders, centred on its root) instead of the
+    // one-voxel fallback, so colliders match across cube modes.
+    if (kindId.startsWith(PRIMITIVE_KIND_PREFIX)) {
+      const half = PRIMITIVE_BLOCK_SIZE / 2;
+      return { min: { x: -half, y: -half, z: -half }, max: { x: half, y: half, z: half } };
+    }
+    return localAABBFor(catalog.getKind(kindId), voxelSize);
+  }
+
+  function unrotatedAABB(position: Vec3, kindId: string): WorldAABB {
     const ox = position[0] * voxelSize;
     const oy = position[1] * voxelSize;
     const oz = position[2] * voxelSize;
-    // Mugshot primitive-box diagnostic: the box isn't a catalog kind,
-    // so derive its collider straight from PRIMITIVE_BLOCK_SIZE (the
-    // same size the mesh renders) instead of the one-voxel fallback.
-    // Anchored lower-left-bottom at position*voxelSize, identical to
-    // the GLB-cube convention so colliders match across cube modes.
-    if (kindId.startsWith(PRIMITIVE_KIND_PREFIX)) {
-      return {
-        min: [ox, oy, oz],
-        max: [ox + PRIMITIVE_BLOCK_SIZE, oy + PRIMITIVE_BLOCK_SIZE, oz + PRIMITIVE_BLOCK_SIZE],
-      };
-    }
-    const kind = catalog.getKind(kindId);
-    const local = localAABBFor(kind, voxelSize);
+    const local = localAABBOf(kindId);
     // Anchor lower-left-bottom: the world AABB's MIN sits at position*vs.
     return {
       min: [ox, oy, oz],
@@ -119,13 +152,28 @@ export function createInstanceGeometry(deps: {
     };
   }
 
+  function worldAABB(position: Vec3, kindId: string, yawDeg = 0): WorldAABB {
+    const box = unrotatedAABB(position, kindId);
+    if (normalizeYawDeg(yawDeg) === 0) return box;
+    const cx = (box.min[0] + box.max[0]) / 2;
+    const cz = (box.min[2] + box.max[2]) / 2;
+    const [hx, hz] = rotatedExtentsXZ(
+      (box.max[0] - box.min[0]) / 2,
+      (box.max[2] - box.min[2]) / 2,
+      yawDeg,
+    );
+    return {
+      min: [cx - hx, box.min[1], cz - hz],
+      max: [cx + hx, box.max[1], cz + hz],
+    };
+  }
+
   function worldAABBOfInstance(instance: ObjectInstance): WorldAABB {
-    return worldAABB(instance.position, instance.kindId);
+    return worldAABB(instance.position, instance.kindId, instance.yawDeg);
   }
 
   function meshOrigin(position: Vec3, kindId: string): Vec3 {
-    const kind = catalog.getKind(kindId);
-    const local = localAABBFor(kind, voxelSize);
+    const local = localAABBOf(kindId);
     // The mesh's local-AABB lower-left-bottom = `local.min`. To place
     // it at world position*vs, the mesh root must be at:
     //   meshRoot = world_lower_left - local.min
@@ -135,8 +183,28 @@ export function createInstanceGeometry(deps: {
     return [ox - local.min.x, oy - local.min.y, oz - local.min.z];
   }
 
-  function voxelFootprint(position: Vec3, kindId: string): VoxelFootprint {
-    const aabb = worldAABB(position, kindId);
+  function meshTransform(position: Vec3, kindId: string, yawDeg = 0): MeshTransform {
+    const rotationY = yawRadians(yawDeg);
+    const origin = meshOrigin(position, kindId);
+    if (rotationY === 0) return { position: origin, rotationY };
+    // Spin the mesh root about the unrotated footprint's centre: the
+    // centre's offset from the root, rotated, must still land on it.
+    const local = localAABBOf(kindId);
+    const lx = (local.min.x + local.max.x) / 2;
+    const lz = (local.min.z + local.max.z) / 2;
+    const [cos, sin] = cosSin(yawDeg);
+    return {
+      position: [
+        origin[0] + lx - (lx * cos + lz * sin),
+        origin[1],
+        origin[2] + lz - (-lx * sin + lz * cos),
+      ],
+      rotationY,
+    };
+  }
+
+  function voxelFootprint(position: Vec3, kindId: string, yawDeg = 0): VoxelFootprint {
+    const aabb = worldAABB(position, kindId, yawDeg);
     const EPS = 1e-9;
     return {
       min: [
@@ -152,24 +220,15 @@ export function createInstanceGeometry(deps: {
     };
   }
 
-  function tileStep(kindId: string): Vec3 {
-    const kind = catalog.getKind(kindId);
-    if (kind?.dimensions) {
-      return [
-        Math.max(1, Math.round(kind.dimensions.width / voxelSize)),
-        Math.max(1, Math.round(kind.dimensions.height / voxelSize)),
-        Math.max(1, Math.round(kind.dimensions.depth / voxelSize)),
-      ];
-    }
-    if (kind?.localAABB) {
-      const { min, max } = kind.localAABB;
-      return [
-        Math.max(1, Math.round((max.x - min.x) / voxelSize)),
-        Math.max(1, Math.round((max.y - min.y) / voxelSize)),
-        Math.max(1, Math.round((max.z - min.z) / voxelSize)),
-      ];
-    }
-    return [1, 1, 1];
+  function tileStep(kindId: string, yawDeg = 0): Vec3 {
+    const size = kindSize(catalog.getKind(kindId));
+    if (!size) return [1, 1, 1];
+    const [w, d] = rotatedExtentsXZ(size[0], size[2], yawDeg);
+    return [
+      Math.max(1, Math.round(w / voxelSize)),
+      Math.max(1, Math.round(size[1] / voxelSize)),
+      Math.max(1, Math.round(d / voxelSize)),
+    ];
   }
 
   return {
@@ -177,6 +236,7 @@ export function createInstanceGeometry(deps: {
     worldAABB,
     worldAABBOfInstance,
     meshOrigin,
+    meshTransform,
     voxelFootprint,
     tileStep,
   };

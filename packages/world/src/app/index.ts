@@ -7,6 +7,7 @@ export type {
   KindDimensions,
   KindLocalAABB,
   KindMeasurement,
+  MeshTransform,
   ProgrammaticScene,
   RoomService,
   SceneService,

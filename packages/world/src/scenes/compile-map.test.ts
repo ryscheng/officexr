@@ -135,63 +135,70 @@ describe('compileMap', () => {
     );
   });
 
-  describe.each([
-    {
-      label: 'square multi-voxel footprint: compiled AABB equals the Ry-rotated room AABB',
-      size: [2, 3, 2],
-      squareXZ: true,
-    },
-    {
-      label: 'non-square footprint: anchor at rotated min corner',
-      size: [2, 1, 3],
-      squareXZ: false,
-    },
-  ] as const)('$label', ({ size, squareXZ }) => {
-    const footprint = (p: readonly [number, number, number]) => ({
-      min: p,
-      max: [p[0] + size[0], p[1] + size[1], p[2] + size[2]] as const,
+  describe('rotates footprint centres and adds the turn to yaw', () => {
+    // A 2×1×3-voxel kind at voxel size 0.5: width − depth is odd, so a
+    // quarter turn leaves the min corner on a half voxel.
+    const voxelSize = 0.5;
+    const worldAABB = (p: readonly [number, number, number]) => ({
+      min: [p[0] * voxelSize, p[1] * voxelSize, p[2] * voxelSize] as const,
+      max: [(p[0] + 2) * voxelSize, (p[1] + 1) * voxelSize, (p[2] + 3) * voxelSize] as const,
     });
-    const placement: [number, number, number] = [7, 2, -4];
+    const room: RoomDocument = {
+      schemaVersion: 5,
+      name: 'r',
+      title: 'r',
+      updatedAt: 0,
+      commands: [
+        newPlaceObject({ id: 'a', kindId: 'desk', position: [1, 0, 2] }),
+        newPlaceObject({ id: 'b', kindId: 'desk', position: [1, 4, 2], yawDeg: 270 }),
+      ],
+      groups: {},
+    };
+    const compileAt = (rotationY: 0 | 1 | 2 | 3) =>
+      compileMap(
+        {
+          ...emptyMapDocument('m'),
+          rooms: [{ id: 'i', roomName: 'r', position: [7, 2, -4], rotationY }],
+        },
+        new Map([['r', room]]),
+        voxelSize,
+        undefined,
+        undefined,
+        worldAABB,
+      );
 
-    it.each([1, 2, 3] as const)('rotationY=%i', (rotationY) => {
-      const room = roomWithCubes('r', [
-        [1, 0, 2],
-        [-3, 0, 1],
-      ]);
-      const map: MapDocumentV2 = {
-        ...emptyMapDocument('m'),
-        rooms: [{ id: 'i', roomName: 'r', position: placement, rotationY }],
-      };
-      const compiled = compileMap(map, new Map([['r', room]]), 2, undefined, undefined, footprint);
-
-      const angle = (rotationY * Math.PI) / 2;
-      const ry = (x: number, z: number): [number, number] => [
-        Math.round(x * Math.cos(angle) + z * Math.sin(angle)),
-        Math.round(-x * Math.sin(angle) + z * Math.cos(angle)),
-      ];
-      const byId = new Map(compiled.instances.map((i) => [i.id, i]));
-      for (const src of compileScene(room, 2).instances) {
-        const { min, max } = footprint(src.position);
-        const [ax, az] = ry(min[0], min[2]);
-        const [bx, bz] = ry(max[0], max[2]);
-        const expectedMin = [
-          Math.min(ax, bx) + placement[0],
-          min[1] + placement[1],
-          Math.min(az, bz) + placement[2],
-        ];
-        const out = byId.get(`i/${src.id}`);
-        expect(out?.position).toEqual(expectedMin);
-        if (squareXZ) {
-          const got = footprint(out!.position);
-          expect(got.min).toEqual(expectedMin);
-          expect(got.max).toEqual([
-            Math.max(ax, bx) + placement[0],
-            max[1] + placement[1],
-            Math.max(az, bz) + placement[2],
-          ]);
-        }
-      }
+    // Footprint centre (2, 3.5) rotates to (3.5, -2), (-2, -3.5), (-3.5, 2).
+    it.each([
+      { rotationY: 1, position: [9.5, 2, -7.5], yawA: 90, yawB: undefined },
+      { rotationY: 2, position: [4, 2, -9], yawA: 180, yawB: 90 },
+      { rotationY: 3, position: [2.5, 2, -3.5], yawA: 270, yawB: 180 },
+    ] as const)('rotationY=$rotationY', ({ rotationY, position, yawA, yawB }) => {
+      const byId = new Map(compileAt(rotationY).instances.map((i) => [i.sourceCommandId, i]));
+      expect(byId.get('i/a')).toMatchObject({ position, yawDeg: yawA });
+      expect(byId.get('i/b')?.position).toEqual([position[0], 6, position[2]]);
+      expect(byId.get('i/b')?.yawDeg).toBe(yawB);
     });
+
+    it('rotationY=0 only translates and keeps the yaw', () => {
+      const byId = new Map(compileAt(0).instances.map((i) => [i.sourceCommandId, i]));
+      expect(byId.get('i/a')).not.toHaveProperty('yawDeg');
+      expect(byId.get('i/b')).toMatchObject({ position: [8, 6, -2], yawDeg: 270 });
+    });
+  });
+
+  it('rotationY=0 adds the offset exactly for sizes that are not whole voxels', () => {
+    // 0.6 × 0.2 m: half sizes of 0.6 and 0.2 voxels used to leave float noise.
+    const worldAABB = (p: readonly [number, number, number]) => ({
+      min: [p[0] * 0.5, p[1] * 0.5, p[2] * 0.5] as const,
+      max: [p[0] * 0.5 + 0.6, p[1] * 0.5 + 0.5, p[2] * 0.5 + 0.2] as const,
+    });
+    const room = roomWithCubes('r', [[3, 0, 8]]);
+    const map: MapDocumentV2 = {
+      ...emptyMapDocument('m'),
+      rooms: [{ id: 'i', roomName: 'r', position: [10, 0, 0], rotationY: 0 }],
+    };
+    const [inst] = compileMap(map, new Map([['r', room]]), 0.5, undefined, undefined, worldAABB).instances;
+    expect(inst.position).toEqual([13, 0, 8]);
   });
 
   it('skips RoomInstance with a missing room ref and warns', () => {

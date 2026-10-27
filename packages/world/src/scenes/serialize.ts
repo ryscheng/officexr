@@ -2,6 +2,7 @@ import type { CharacterConfigs, Vec3, WorldMap } from '@officexr/sdk';
 import {
   emptyDocument,
   newPlaceCube,
+  parseCommandYaws,
   type PlaceObjectCommand,
   type RoomDocument,
   type CommandGroup,
@@ -182,9 +183,12 @@ export function deserializeScene(raw: unknown): SerializedScene {
   if (!raw || typeof raw !== 'object') {
     throw new Error('scene: not an object');
   }
-  const obj = raw as Record<string, unknown>;
+  const obj = { ...(raw as Record<string, unknown>) };
   if (typeof obj.name !== 'string') {
     throw new Error('scene: missing string `name`');
+  }
+  if (Array.isArray(obj.commands)) {
+    obj.commands = parseCommandYaws(obj.commands, 'scene');
   }
   switch (obj.schemaVersion) {
     case 1:

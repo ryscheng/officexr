@@ -206,3 +206,82 @@ describe('InstanceGeometry — constructor validation', () => {
     expect(() => createInstanceGeometry({ catalog, voxelSize: -1 })).toThrow();
   });
 });
+
+describe('InstanceGeometry — yaw', () => {
+  // A 4×1-voxel wall whose GLTF origin sits at its local min corner, so
+  // meshTransform has a non-zero pivot offset to correct for.
+  const wall = makeKind(
+    'wall',
+    { width: 2, height: 1.5, depth: 0.5 },
+    { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 1.5, z: 0.5 } },
+  );
+  const geom = createInstanceGeometry({ catalog: makeCatalog([wall]), voxelSize: VS });
+  const r = Math.SQRT1_2 * 1.25;
+
+  it.each([
+    { yaw: 0, min: [0, 0, 0], max: [2, 1.5, 0.5], fpMin: [0, 0, 0], fpMax: [4, 3, 1] },
+    { yaw: 90, min: [0.75, 0, -0.75], max: [1.25, 1.5, 1.25], fpMin: [1, 0, -2], fpMax: [3, 3, 3] },
+    { yaw: 180, min: [0, 0, 0], max: [2, 1.5, 0.5], fpMin: [0, 0, 0], fpMax: [4, 3, 1] },
+    { yaw: 270, min: [0.75, 0, -0.75], max: [1.25, 1.5, 1.25], fpMin: [1, 0, -2], fpMax: [3, 3, 3] },
+    { yaw: 45, min: [1 - r, 0, 0.25 - r], max: [1 + r, 1.5, 0.25 + r], fpMin: [0, 0, -2], fpMax: [4, 3, 3] },
+  ])('yaw $yaw rotates the footprint about its centre', ({ yaw, min, max, fpMin, fpMax }) => {
+    const aabb = geom.worldAABB([0, 0, 0], 'wall', yaw);
+    aabb.min.forEach((v, i) => expect(v).toBeCloseTo(min[i], 9));
+    aabb.max.forEach((v, i) => expect(v).toBeCloseTo(max[i], 9));
+    expect(geom.voxelFootprint([0, 0, 0], 'wall', yaw)).toEqual({ min: fpMin, max: fpMax });
+  });
+
+  it('yaw 0 and multiples of 360 match the unrotated results exactly', () => {
+    for (const yaw of [0, 360, -360]) {
+      expect(geom.worldAABB([3, 1, 5], 'wall', yaw)).toEqual(geom.worldAABB([3, 1, 5], 'wall'));
+      expect(geom.meshTransform([3, 1, 5], 'wall', yaw)).toEqual({
+        position: geom.meshOrigin([3, 1, 5], 'wall'),
+        rotationY: 0,
+      });
+    }
+  });
+
+  it('worldAABBOfInstance passes the instance yaw', () => {
+    const inst = { id: 'i', sourceCommandId: 'c', kindId: 'wall', position: [0, 0, 0] as [number, number, number] };
+    expect(geom.worldAABBOfInstance({ ...inst, yawDeg: 90 })).toEqual(geom.worldAABB([0, 0, 0], 'wall', 90));
+  });
+
+  it('tileStep follows the rotated AABB size', () => {
+    expect(geom.tileStep('wall')).toEqual([4, 3, 1]);
+    expect(geom.tileStep('wall', 90)).toEqual([1, 3, 4]);
+    expect(geom.tileStep('wall', 45)).toEqual([4, 3, 4]);
+  });
+
+  it.each([0, 45, 90, 180, 270, 30])('meshTransform at yaw %i lands the mesh in its AABB', (yaw) => {
+    const { position, rotationY } = geom.meshTransform([2, 1, 6], 'wall', yaw);
+    expect(rotationY).toBeCloseTo((yaw * Math.PI) / 180, 12);
+    // Rotate the local AABB corners the way three.js `rotation.y` does.
+    const cos = Math.cos(rotationY);
+    const sin = Math.sin(rotationY);
+    const xs: number[] = [];
+    const zs: number[] = [];
+    for (const x of [0, 2]) {
+      for (const z of [0, 0.5]) {
+        xs.push(position[0] + x * cos + z * sin);
+        zs.push(position[2] - x * sin + z * cos);
+      }
+    }
+    const aabb = geom.worldAABB([2, 1, 6], 'wall', yaw);
+    expect(Math.min(...xs)).toBeCloseTo(aabb.min[0], 9);
+    expect(Math.max(...xs)).toBeCloseTo(aabb.max[0], 9);
+    expect(Math.min(...zs)).toBeCloseTo(aabb.min[2], 9);
+    expect(Math.max(...zs)).toBeCloseTo(aabb.max[2], 9);
+    expect(position[1]).toBe(aabb.min[1]);
+  });
+});
+
+describe('InstanceGeometry — primitive diagnostic boxes', () => {
+  const geom = createInstanceGeometry({ catalog: makeCatalog([]), voxelSize: VS });
+
+  it('pivots meshTransform on the same 2 m box worldAABB uses', () => {
+    // The primitive mesh is a 2 m box centred on its root.
+    const { position } = geom.meshTransform([0, 0, 0], '__primitive_blue', 90);
+    const aabb = geom.worldAABB([0, 0, 0], '__primitive_blue', 90);
+    expect(position.map((v, i) => v - (aabb.min[i] + aabb.max[i]) / 2)).toEqual([0, 0, 0]);
+  });
+});
