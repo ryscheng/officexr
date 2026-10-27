@@ -130,7 +130,7 @@ export interface WorldObjectKind {
   rotationStepDeg?: number;
 }
 
-const DEFAULT_ROTATION_STEP_DEG = 90;
+export const DEFAULT_ROTATION_STEP_DEG = 90;
 
 /** Whether `yawDeg` is a multiple of the kind's rotation step, to float
  * tolerance. An unknown kind gets the default step. */
