@@ -178,8 +178,9 @@ function RenderedContent({
   if (content.type === 'map') {
     return (
       <RoomsLayer
-        instances={content.placements}
+        doc={content.doc}
         rooms={content.rooms}
+        layouts={content.layouts}
         selection={null}
         onSelect={noop}
         onMove={noop}
