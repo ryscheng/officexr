@@ -5,7 +5,7 @@ import {
   emptyRoomDocument,
   type RoomDocument,
 } from '@officexr/world/scenes';
-import { StudioHarness } from '../../../test-harness/index.ts';
+import { StudioHarness, createTestApi } from '../../../test-harness/index.ts';
 import { useRoomDocument } from '../useRoomDocument.ts';
 
 /**
@@ -44,6 +44,31 @@ describe('useRoomDocument', () => {
 
     act(() => result.current.redo());
     expect(result.current.doc.commands).toHaveLength(1);
+  });
+
+  it('rotateSelection turns each selected object by its kind step in one undo step', async () => {
+    const api = createTestApi();
+    api.catalog.patchKind('colored_block_blue', { rotationStepDeg: 45 });
+    const { result } = renderHook(() => useRoomDocument({ storage: makeStorage() }), {
+      wrapper: ({ children }) => <StudioHarness api={api}>{children}</StudioHarness>,
+    });
+    await waitFor(() => expect(result.current.roomName).toBe('default-v2'));
+
+    const ids: string[] = [];
+    act(() => {
+      ids.push(result.current.placeObject('colored_block_blue', [0, 0, 0], 315));
+    });
+    act(() => {
+      ids.push(result.current.placeObject('unknown-kind', [8, 0, 0]));
+    });
+    act(() => result.current.setSelection(ids));
+    act(() => result.current.rotateSelection());
+    const yaws = () =>
+      result.current.doc.commands.map((c) => (c.op === 'placeObject' ? c.yawDeg : null));
+    expect(yaws()).toEqual([0, 90]);
+
+    act(() => result.current.undo());
+    expect(yaws()).toEqual([315, undefined]);
   });
 
   it('placeMany then groupCommands in one tick groups every placed command', async () => {

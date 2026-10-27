@@ -109,6 +109,7 @@ describe('SceneEditorBackend contract', () => {
       selection: new Set(),
       tool: 'select',
       stagedKindId: null,
+      stagedYawDeg: 0,
       buildHeight: 0,
       commandToGroup: new Map(),
       groupMembers: new Map(),

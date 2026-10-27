@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useCatalog } from '@officexr/world/react';
+import { isYawAllowed } from '@officexr/world/scenes';
 import {
   bakedLayoutUrl,
   getBakeState,
@@ -303,6 +304,14 @@ function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
   // available options reflect the live list.
   const kinds = useCatalog();
   const kindOptions = useMemo(() => kinds.map((k) => k.id), [kinds]);
+  const kind = kinds.find((k) => k.id === command.kindId);
+  const yawOptions = useMemo(
+    () =>
+      Array.from({ length: 360 }, (_, deg) => deg)
+        .filter((deg) => isYawAllowed(kind, deg))
+        .map(String),
+    [kind],
+  );
 
   return (
     <Panel>
@@ -327,6 +336,12 @@ function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
               Math.round(pos[2]),
             ])
           }
+        />
+        <SelectInput
+          label="yaw°"
+          value={String(command.yawDeg ?? 0)}
+          options={yawOptions}
+          onChange={(yaw) => roomDoc.setYawForCommand(command.id, Number(yaw))}
         />
       </Section>
 

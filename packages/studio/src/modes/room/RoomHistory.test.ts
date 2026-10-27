@@ -200,4 +200,37 @@ describe('RoomHistory', () => {
     expect(history.getNodes()).toHaveLength(4); // node list unchanged after undo
     expect(history.currentDoc.commands.find((c) => c.id === 'cmd-1')).toBeDefined();
   });
+
+  it('setYaw / setYawMany — undo restores the prior yaws and redo reapplies them', () => {
+    const history = new RoomHistory(baseDoc);
+    history.push({ type: 'place', commandId: 'cmd-1', kindId: 'block-grass', position: [0, 0, 0], yawDeg: 90 });
+    history.push(makePlaceAction2('cmd-2'));
+    const yaws = () =>
+      history.currentDoc.commands.map((c) => (c.op === 'placeObject' ? c.yawDeg : null));
+
+    history.push({ type: 'setYaw', commandId: 'cmd-1', yawDeg: 180 });
+    history.push({
+      type: 'setYawMany',
+      yaws: [
+        { commandId: 'cmd-1', yawDeg: 270 },
+        { commandId: 'cmd-2', yawDeg: 90 },
+      ],
+    });
+    expect(yaws()).toEqual([270, 90]);
+
+    history.undo();
+    expect(yaws()).toEqual([180, undefined]);
+    history.undo();
+    expect(yaws()).toEqual([90, undefined]);
+
+    history.redo();
+    expect(yaws()).toEqual([180, undefined]);
+    history.redo();
+    expect(yaws()).toEqual([270, 90]);
+    expect(history.getNodes().map((n) => n.label).slice(2)).toEqual([
+      'Rotate to 180°',
+      'Rotate 2 objects',
+    ]);
+  });
 });
+

@@ -10,7 +10,7 @@
  * `useRoomDocument.ts` exactly.
  */
 import type { RoomDocument, PlaceObjectCommand, CommandGroup } from '@officexr/world/scenes';
-import { newPlaceObject } from '@officexr/world/scenes';
+import { newPlaceObject, normalizeYawDeg } from '@officexr/world/scenes';
 import type { EditAction } from './EditAction.ts';
 
 export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument {
@@ -20,6 +20,7 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
         kindId: action.kindId,
         position: action.position,
         id: action.commandId,
+        yawDeg: action.yawDeg,
       });
       return {
         ...doc,
@@ -34,6 +35,7 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
           kindId: action.kindId,
           position: action.positions[i],
           id,
+          yawDeg: action.yawDeg,
         }),
       );
 
@@ -127,6 +129,23 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
           }
           return c;
         }),
+      };
+    }
+
+    case 'setYaw':
+    case 'setYawMany': {
+      const yaws =
+        action.type === 'setYaw'
+          ? new Map([[action.commandId, action.yawDeg]])
+          : new Map(action.yaws.map((y) => [y.commandId, y.yawDeg]));
+      return {
+        ...doc,
+        updatedAt: Date.now(),
+        commands: doc.commands.map((c) =>
+          c.op === 'placeObject' && yaws.has(c.id)
+            ? { ...c, yawDeg: normalizeYawDeg(yaws.get(c.id)!) }
+            : c,
+        ),
       };
     }
 

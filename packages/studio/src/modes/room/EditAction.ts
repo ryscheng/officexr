@@ -15,6 +15,7 @@ export type EditAction =
       commandId: string;
       kindId: string;
       position: [number, number, number];
+      yawDeg?: number;
     }
   | {
       type: 'placeMany';
@@ -22,6 +23,7 @@ export type EditAction =
       kindId: string;
       positions: [number, number, number][];
       groupId: string | null;
+      yawDeg?: number;
     }
   | {
       type: 'delete';
@@ -37,6 +39,8 @@ export type EditAction =
       type: 'setPositionMany';
       moves: Array<{ commandId: string; position: [number, number, number] }>;
     }
+  | { type: 'setYaw'; commandId: string; yawDeg: number }
+  | { type: 'setYawMany'; yaws: Array<{ commandId: string; yawDeg: number }> }
   | { type: 'group'; groupId: string; commandIds: string[]; label?: string }
   | { type: 'ungroup'; groupId: string; commandIds: string[]; label?: string }
   | { type: 'addToGroup'; groupId: string; commandIds: string[] };
@@ -69,6 +73,10 @@ export function actionLabel(action: EditAction): string {
       return `Move to [${action.position.join(',')}]`;
     case 'setPositionMany':
       return `Move ${action.moves.length} objects`;
+    case 'setYaw':
+      return `Rotate to ${action.yawDeg}°`;
+    case 'setYawMany':
+      return `Rotate ${action.yaws.length} objects`;
     case 'group':
       return `Group ${action.commandIds.length} objects`;
     case 'ungroup':

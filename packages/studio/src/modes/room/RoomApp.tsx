@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { bakedLayoutUrl } from '@officexr/world/app';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
@@ -10,6 +10,7 @@ import { RoomPicker } from './RoomPicker.tsx';
 import { SceneEditorCanvas } from '../scene-editor/SceneEditorCanvas.tsx';
 import { Toolbar } from '../scene-editor/Toolbar.tsx';
 import { useRoomDocument } from './useRoomDocument.ts';
+import { useEditorShortcuts } from '../scene-editor/useEditorShortcuts.ts';
 import { selectionIsExactlyOneGroup } from './room-selection.ts';
 import type { Tool } from '../scene-editor/tools.ts';
 import type { SceneEditorBackend } from '../scene-editor/SceneEditorBackend.ts';
@@ -38,11 +39,14 @@ export function RoomApp() {
   // y=0 (negative voxels) by pressing Q, or stack high in the sky by
   // pressing E.
   const [buildHeight, setBuildHeight] = useState<number>(0);
+  const [stagedYawDeg, setStagedYawDeg] = useState<number>(0);
 
   // Picking a kind in the palette implies "I want to place this".
   // Switch to Add automatically; un-pick reverts to Select.
   const handleStage = useCallback((kindId: string | null) => {
     setStagedKindId(kindId);
+    // A new kind may have a coarser rotation step than the current yaw.
+    setStagedYawDeg(0);
     setTool(kindId ? 'add' : 'select');
   }, []);
 
@@ -53,97 +57,19 @@ export function RoomApp() {
   const handlePlace = useCallback(
     (position: [number, number, number]) => {
       if (!stagedKindId) return;
-      roomDoc.placeObject(stagedKindId, position);
+      roomDoc.placeObject(stagedKindId, position, stagedYawDeg);
     },
-    [stagedKindId, roomDoc],
+    [stagedKindId, stagedYawDeg, roomDoc],
   );
 
-  // Keyboard shortcuts.
-  //   Esc returns to Select + clears selection (per spec: "Esc
-  //     automatically returns to select tool").
-  //   Q / E shift the Add tool's build height down / up by one voxel.
-  //     The grid plane is a visual reference only — Q/E let the user
-  //     place cubes below or above it without needing an existing
-  //     cube to snap off.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-      if (e.key === 'Escape') {
-        setTool('select');
-        roomDoc.clearSelection();
-        return;
-      }
-      // Ctrl/Cmd shortcuts FIRST — they overlap with the bare letter
-      // shortcuts below.
-      if (e.ctrlKey || e.metaKey) {
-        const k = e.key.toLowerCase();
-        if (k === 'g' && e.shiftKey) {
-          e.preventDefault();
-          const exact = selectionIsExactlyOneGroup(
-            roomDoc.selection,
-            roomDoc.lookup.groupMembers,
-          );
-          if (exact) roomDoc.ungroupCommands(exact);
-          return;
-        }
-        if (k === 'g') {
-          e.preventDefault();
-          if (roomDoc.selection.size >= 2) {
-            roomDoc.groupCommands(roomDoc.selection);
-          }
-          return;
-        }
-        // Ctrl/Cmd+Shift+Z = redo (must come BEFORE plain Z to avoid misfire)
-        if (k === 'z' && e.shiftKey) {
-          e.preventDefault();
-          roomDoc.redo();
-          return;
-        }
-        // Ctrl/Cmd+Z = undo
-        if (k === 'z') {
-          e.preventDefault();
-          roomDoc.undo();
-          return;
-        }
-        // Ctrl+Y = redo (Windows convention). metaKey+Y is uncommon on Mac, skip it.
-        if (k === 'y' && !e.metaKey) {
-          e.preventDefault();
-          roomDoc.redo();
-          return;
-        }
-        return;
-      }
-      // Delete / Backspace removes the current selection.
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (roomDoc.selection.size > 0) {
-          e.preventDefault();
-          roomDoc.deleteSelection();
-        }
-        return;
-      }
-      if (e.altKey || e.shiftKey) return;
-      const k = e.key.toLowerCase();
-      if (k === 'q') {
-        setBuildHeight((y) => y - 1);
-      } else if (k === 'e') {
-        setBuildHeight((y) => y + 1);
-      } else if (k === 'v') {
-        setTool('select');
-      } else if (k === 'b') {
-        // Add tool needs a staged kind to do anything useful.
-        if (stagedKindId) setTool('add');
-      } else if (k === 'x') {
-        setTool('delete');
-      } else if (k === 't') {
-        if (stagedKindId) setTool('tile');
-      } else if (k === 'm') {
-        setTool('move');
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [roomDoc, stagedKindId]);
+  useEditorShortcuts({
+    doc: roomDoc,
+    tool,
+    stagedKindId,
+    setTool,
+    setBuildHeight,
+    setStagedYawDeg,
+  });
 
   // Context menu open/closed state. `null` = closed.
   const [contextMenu, setContextMenu] = useState<{
@@ -270,6 +196,7 @@ export function RoomApp() {
       selection: roomDoc.selection,
       tool,
       stagedKindId,
+      stagedYawDeg,
       buildHeight,
       commandToGroup: roomDoc.lookup.commandToGroup,
       groupMembers: roomDoc.lookup.groupMembers,
@@ -293,6 +220,7 @@ export function RoomApp() {
       roomDoc.selection,
       tool,
       stagedKindId,
+      stagedYawDeg,
       buildHeight,
       roomDoc.lookup.commandToGroup,
       roomDoc.lookup.groupMembers,

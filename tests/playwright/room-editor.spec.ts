@@ -11,10 +11,12 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { PNG } from 'pngjs';
 import {
   captureConsole,
   distinctColorsInCanvas,
   goToMode,
+  goToModeHermetic,
   waitForCanvasReady,
 } from './helpers.ts';
 
@@ -178,3 +180,67 @@ test('Add tool ghost preview renders a blue ghost cube under the cursor', async 
     'expected a distinctly-blue ghost pixel near the cursor',
   ).toBe(true);
 });
+
+test('R rotates the selected object by its kind step and undo restores it', async ({ page }) => {
+  // One 2 m primitive block, which renders without a GLTF fetch.
+  await goToModeHermetic(page, 'room', {
+    rooms: [
+      {
+        name: 'default-v2',
+        doc: {
+          schemaVersion: 5,
+          name: 'default-v2',
+          title: 'default-v2',
+          updatedAt: 0,
+          commands: [
+            { id: 'c1', op: 'placeObject', kindId: '__primitive_blue', position: [-2, 0, -2] },
+          ],
+          groups: {},
+        },
+      },
+    ],
+  });
+  const canvas = await waitForCanvasReady(page, 1200);
+  const box = await canvas.boundingBox();
+  if (!box) {
+    throw new Error('canvas has no bounding box');
+  }
+  const block = blueCentroid(await canvas.screenshot());
+  const selectBlock = async () => {
+    // R3F raycasts on pointer moves, so hover before pressing.
+    await page.mouse.move(box.x + block.x, box.y + block.y);
+    await page.waitForTimeout(200);
+    await page.mouse.down();
+    await page.mouse.up();
+  };
+  const yaw = page.locator('div:has(> label:text-is("yaw°")) button[role="combobox"]');
+
+  await selectBlock();
+  await expect(yaw).toHaveText('0');
+
+  await page.keyboard.press('r');
+  await expect(yaw).toHaveText('90');
+
+  await page.keyboard.press('Control+z');
+  await selectBlock();
+  await expect(yaw).toHaveText('0');
+});
+
+/** Centroid, in canvas pixels, of the distinctly blue pixels in a screenshot. */
+function blueCentroid(png: Buffer): { x: number; y: number } {
+  const { data, width } = PNG.sync.read(png);
+  let count = 0;
+  let sumX = 0;
+  let sumY = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 2] > 100 && data[i + 2] > data[i] + 30 && data[i + 2] > data[i + 1]) {
+      count += 1;
+      sumX += (i / 4) % width;
+      sumY += Math.floor(i / 4 / width);
+    }
+  }
+  if (count === 0) {
+    throw new Error('no blue block on the canvas');
+  }
+  return { x: sumX / count, y: sumY / count };
+}

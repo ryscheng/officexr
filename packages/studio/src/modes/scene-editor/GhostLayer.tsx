@@ -22,6 +22,7 @@ export interface GhostSpec {
   mode: GhostMode;
   kindId: string;
   voxel: [number, number, number];
+  yawDeg?: number;
 }
 
 interface GhostLayerProps {
@@ -47,16 +48,16 @@ export function GhostLayer({ ghosts, voxelSize }: GhostLayerProps) {
   const groups = useMemo(() => {
     const m = new Map<
       string,
-      { mode: GhostMode; kindId: string; voxels: [number, number, number][] }
+      { mode: GhostMode; kindId: string; poses: GhostSpec[] }
     >();
     for (const g of ghosts) {
       const key = `${g.mode}:${g.kindId}`;
       let bucket = m.get(key);
       if (!bucket) {
-        bucket = { mode: g.mode, kindId: g.kindId, voxels: [] };
+        bucket = { mode: g.mode, kindId: g.kindId, poses: [] };
         m.set(key, bucket);
       }
-      bucket.voxels.push([...g.voxel]);
+      bucket.poses.push(g);
     }
     return Array.from(m.values());
   }, [ghosts]);
@@ -73,7 +74,7 @@ export function GhostLayer({ ghosts, voxelSize }: GhostLayerProps) {
           key={`${g.mode}:${g.kindId}`}
           mode={g.mode}
           kindId={g.kindId}
-          voxels={g.voxels}
+          poses={g.poses}
           voxelSize={voxelSize}
           pulseOpacityRef={pulseOpacityRef}
         />
@@ -86,7 +87,7 @@ export function GhostLayer({ ghosts, voxelSize }: GhostLayerProps) {
 interface GhostGroupProps {
   mode: GhostMode;
   kindId: string;
-  voxels: [number, number, number][];
+  poses: GhostSpec[];
   voxelSize: number;
   pulseOpacityRef: React.MutableRefObject<number>;
 }
@@ -100,7 +101,7 @@ interface GhostGroupProps {
 function GhostGroup({
   mode,
   kindId,
-  voxels,
+  poses,
   voxelSize,
   pulseOpacityRef,
 }: GhostGroupProps) {
@@ -110,15 +111,16 @@ function GhostGroup({
   // shape so ObjectInstances can render them. ids are synthesised
   // (ghost instances have no source command).
   const worldObjects = useMemo<WorldObjects>(() => {
-    const instances: ObjectInstance[] = voxels.map((v, i) => ({
+    const instances: ObjectInstance[] = poses.map(({ voxel, yawDeg }, i) => ({
       id: `ghost-${mode}-${kindId}-${i}`,
       sourceCommandId: `ghost-${mode}-${kindId}-${i}`,
       kindId,
-      position: v,
+      position: [...voxel],
+      yawDeg,
     }));
     // cubeSize key is required by the SDK WorldObjects type — kept as-is.
     return { cubeSize: voxelSize, instances };
-  }, [voxels, voxelSize, kindId, mode]);
+  }, [poses, voxelSize, kindId, mode]);
 
   // The override holds the cloned material in a ref so the pulse
   // driver can mutate its `opacity` per frame without triggering
@@ -163,7 +165,7 @@ function GhostGroup({
     if (matRef.current) matRef.current.opacity = pulseOpacityRef.current;
   });
 
-  if (!kind || voxels.length === 0) return null;
+  if (!kind || poses.length === 0) return null;
 
   // The wrapper group's `raycast` is a no-op so ghost cubes never
   // enter the pointer-event raycaster — the Add/Tile tools would

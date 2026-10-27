@@ -513,8 +513,13 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
   const ghosts = useMemo<GhostSpec[]>(() => {
     const out: GhostSpec[] = [];
     if (props.tool === 'add' && props.stagedKindId && hover) {
-      const voxel = snapForPlacement(hover, props.stagedKindId);
-      out.push({ mode: 'solid', kindId: props.stagedKindId, voxel });
+      const voxel = snapForPlacement(hover, props.stagedKindId, props.stagedYawDeg);
+      out.push({
+        mode: 'solid',
+        kindId: props.stagedKindId,
+        voxel,
+        yawDeg: props.stagedYawDeg,
+      });
     }
     if (props.tool === 'delete' && hoverCommandId) {
       const groupId = props.commandToGroup.get(hoverCommandId);
@@ -528,6 +533,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
           mode: 'pulse',
           kindId: inst.kindId,
           voxel: [inst.position[0], inst.position[1], inst.position[2]],
+          yawDeg: inst.yawDeg,
         });
       }
     }
@@ -548,11 +554,11 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       //     `snapToVoxel` is correct here — face-snapping into a
       //     different object's edge would derail the extrusion.
       const kindId = tileState.stage !== 'idle' ? tileState.kindId : props.stagedKindId;
-      const tileStep = stepForKind(kindId);
+      const tileStep = stepForKind(kindId, props.stagedYawDeg);
       let tileHoverVoxel: Vec3 | null = null;
       if (hover) {
         if (tileState.stage === 'idle') {
-          tileHoverVoxel = snapForPlacement(hover, props.stagedKindId);
+          tileHoverVoxel = snapForPlacement(hover, props.stagedKindId, props.stagedYawDeg);
         } else {
           const v = snapToVoxel(hover, voxelSize, tileStep, targetStrideFor(hover));
           // Y-axis extrusion: hover X/Z come from the raycast, Y comes
@@ -570,7 +576,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       if (kindId) {
         const ghostVoxels = computeTileGhosts(tileState, tileHoverVoxel, tileStep);
         for (const v of ghostVoxels) {
-          out.push({ mode: 'solid', kindId, voxel: v });
+          out.push({ mode: 'solid', kindId, voxel: v, yawDeg: props.stagedYawDeg });
         }
       }
     }
@@ -584,6 +590,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
   }, [
     props.tool,
     props.stagedKindId,
+    props.stagedYawDeg,
     hover,
     hoverCommandId,
     voxelSize,
@@ -604,7 +611,8 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
   const handleAddClick = useCallback(
     (hit: SnapHit) => {
       if (props.tool !== 'add' || !props.stagedKindId) return;
-      let voxel = snapForPlacement(hit, props.stagedKindId);
+      const yawDeg = props.stagedYawDeg;
+      let voxel = snapForPlacement(hit, props.stagedKindId, yawDeg);
 
       // Gravity: if the staged kind has gravity = true, drop to the
       // nearest surface below. Reject placement when no support exists.
@@ -612,7 +620,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       if (addKind?.gravity) {
         const settled = dropToSurface(
           voxel,
-          { kindId: props.stagedKindId },
+          { kindId: props.stagedKindId, yawDeg },
           props.compiled,
           footprintOf,
         );
@@ -625,7 +633,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       // a click slightly off-grid could pile a second cube on top of
       // the existing one — confusing the user into thinking multiple
       // cubes were placed per click.
-      const proposed = footprintOf(voxel, props.stagedKindId);
+      const proposed = footprintOf(voxel, props.stagedKindId, yawDeg);
       if (overlapsAnyInstance(proposed, props.compiled.instances, footprintOf)) {
         return;
       }
@@ -658,6 +666,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
     (hit: SnapHit) => {
       if (props.tool !== 'tile' || !props.stagedKindId) return;
       const stagedKindId = props.stagedKindId;
+      const yawDeg = props.stagedYawDeg;
 
       if (tileState.stage === 'idle') {
         // Click 1: place the origin cube via the SAME snap pipeline
@@ -665,7 +674,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
         // The ghost the user saw before clicking was computed with
         // `snapForPlacement` (see the tile ghost branch above), so
         // the commit position is guaranteed to match the preview.
-        let voxel = snapForPlacement(hit, stagedKindId);
+        let voxel = snapForPlacement(hit, stagedKindId, yawDeg);
 
         // Gravity: if the staged kind has gravity = true, drop to the
         // nearest surface below. Reject placement when no support exists.
@@ -673,7 +682,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
         if (tileKind?.gravity) {
           const settled = dropToSurface(
             voxel,
-            { kindId: stagedKindId },
+            { kindId: stagedKindId, yawDeg },
             props.compiled,
             footprintOf,
           );
@@ -681,7 +690,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
           voxel = settled;
         }
 
-        const ids = props.onPlaceMany(stagedKindId, [voxel]);
+        const ids = props.onPlaceMany(stagedKindId, [voxel], null, yawDeg);
         if (ids.length === 0) return;
 
         // Resolve available axes for this kind
@@ -711,7 +720,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
         // Click N: commit the extrusion row along nextAxis (if any).
         const nextAxis = tileState.nextAxis;
         const axisIndex = nextAxis === 'x' ? 0 : nextAxis === 'y' ? 1 : 2;
-        const tileStep = stepForKind(tileState.kindId);
+        const tileStep = stepForKind(tileState.kindId, yawDeg);
         const axisStep =
           nextAxis === 'x' ? tileStep.x : nextAxis === 'y' ? tileStep.y : tileStep.z;
 
@@ -736,7 +745,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
           extrudedRow.push(v);
         }
 
-        const newIds = props.onPlaceMany(stagedKindId, extrudedRow);
+        const newIds = props.onPlaceMany(stagedKindId, extrudedRow, null, yawDeg);
         const groupId = props.onCreateGroup([tileState.originCommandId, ...newIds]);
         if (!groupId) return;
 
@@ -774,7 +783,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
 
         const nextAxis = tileState.nextAxis;
         const axisIndex = nextAxis === 'x' ? 0 : nextAxis === 'y' ? 1 : 2;
-        const tileStep = stepForKind(tileState.kindId);
+        const tileStep = stepForKind(tileState.kindId, yawDeg);
         const axisStep =
           nextAxis === 'x' ? tileStep.x : nextAxis === 'y' ? tileStep.y : tileStep.z;
 
@@ -809,7 +818,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
         }
 
         if (replicas.length > 0) {
-          props.onPlaceMany(stagedKindId, replicas, tileState.groupId);
+          props.onPlaceMany(stagedKindId, replicas, tileState.groupId, yawDeg);
         }
 
         const consumed = nextAxis;
@@ -2155,7 +2164,7 @@ function MoveController({
           (i) => i.sourceCommandId === cmdId,
         );
         if (inst) {
-          newGhosts.push({ mode, kindId: inst.kindId, voxel: pos });
+          newGhosts.push({ mode, kindId: inst.kindId, voxel: pos, yawDeg: inst.yawDeg });
         }
       }
       setMoveGhosts(newGhosts);

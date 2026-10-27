@@ -4,7 +4,9 @@ import {
   LocalStorageRoomStorage,
   emptyRoomDocument,
   newPlaceObject,
+  normalizeYawDeg,
   serializeRoom,
+  DEFAULT_ROTATION_STEP_DEG,
   type PlaceObjectCommand,
   type RoomDocument,
   type CommandGroup,
@@ -119,11 +121,16 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   pickFromClick: (commandId: string) => void;
   toggleFromClick: (commandId: string) => void;
   lookup: RoomDocLookup;
-  placeObject: (kindId: string, position?: [number, number, number]) => string;
+  placeObject: (
+    kindId: string,
+    position?: [number, number, number],
+    yawDeg?: number,
+  ) => string;
   placeMany: (
     kindId: string,
     positions: ReadonlyArray<[number, number, number]>,
     groupId?: string | null,
+    yawDeg?: number,
   ) => string[];
   setKindForCommand: (commandId: string, kindId: string) => void;
   setPositionForCommand: (
@@ -133,6 +140,9 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   setPositionMany: (
     moves: Array<{ commandId: string; position: [number, number, number] }>,
   ) => void;
+  setYawForCommand: (commandId: string, yawDeg: number) => void;
+  /** Turns each selected object counter-clockwise by its kind's rotation step. */
+  rotateSelection: () => void;
   deleteCommand: (commandId: string) => void;
   deleteSelection: () => void;
   groupCommands: (commandIds: Iterable<string>, label?: string) => string | null;
@@ -416,13 +426,14 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   // Pattern: construct EditAction → push to history → setDoc(history.currentDoc)
 
   const placeObject = useCallback(
-    (kindId: string, position?: [number, number, number]) => {
+    (kindId: string, position?: [number, number, number], yawDeg?: number) => {
       const cmd = newPlaceObject({ kindId, position });
       const action: EditAction = {
         type: 'place',
         commandId: cmd.id,
         kindId,
         position: position ?? [0, 0, 0],
+        yawDeg,
       };
       const h = getHistory(doc);
       h.push(action);
@@ -439,6 +450,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
       kindId: string,
       positions: ReadonlyArray<[number, number, number]>,
       groupId: string | null = null,
+      yawDeg?: number,
     ) => {
       // Pre-mint command IDs before constructing the action so the EditAction
       // carries stable ids that match what applyAction will create.
@@ -451,6 +463,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
         kindId,
         positions: positions as [number, number, number][],
         groupId: groupId ?? null,
+        yawDeg,
       };
       const h = getHistory(doc);
       h.push(action);
@@ -493,6 +506,37 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [doc],
+  );
+
+  const setYawForCommand = useCallback(
+    (commandId: string, yawDeg: number) => {
+      const action: EditAction = { type: 'setYaw', commandId, yawDeg };
+      const h = getHistory(doc);
+      h.push(action);
+      setDoc(h.currentDoc);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
+  );
+
+  const rotateSelection = useCallback(
+    () => {
+      const yaws = doc.commands
+        .filter((c): c is PlaceObjectCommand => c.op === 'placeObject' && selection.has(c.id))
+        .map((c) => ({
+          commandId: c.id,
+          yawDeg: normalizeYawDeg(
+            (c.yawDeg ?? 0) +
+              (catalog.getKind(c.kindId)?.rotationStepDeg ?? DEFAULT_ROTATION_STEP_DEG),
+          ),
+        }));
+      if (yaws.length === 0) return;
+      const h = getHistory(doc);
+      h.push({ type: 'setYawMany', yaws });
+      setDoc(h.currentDoc);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc, selection, catalog],
   );
 
   // Internal helper: record a delete action to history, then update doc.
@@ -724,6 +768,8 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
     setKindForCommand,
     setPositionForCommand,
     setPositionMany,
+    setYawForCommand,
+    rotateSelection,
     deleteCommand,
     deleteSelection,
     groupCommands,
