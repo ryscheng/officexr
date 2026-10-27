@@ -20,15 +20,8 @@
  * reference the same `roomName` so the same authored room can be
  * placed twice (e.g. mirrored east/west wings).
  *
- * `position` is in INTEGER VOXEL COORDS — the same unit room
- * `placeCube` commands use. This keeps the compiled cube positions
- * integer after `compileMap` adds the offset, preserving voxel-grid
- * collision math.
- *
- * `rotationY` is a quarter-turn discriminator (0|1|2|3). Free yaw is
- * not supported because rotating a voxel-aligned room by an
- * arbitrary angle would break the integer-coord invariant; quarter
- * turns map integer voxels to integer voxels exactly.
+ * `position` is in voxel coords, the unit room commands use.
+ * `rotationY` is a quarter turn (0|1|2|3) about +Y around the room origin.
  */
 export interface RoomInstance {
   id: string;

@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  isYawAllowed,
   normalizeKind,
   validateWorldObjectKindCatalog,
 } from './world-object-kinds-schema.ts';
@@ -137,6 +138,41 @@ describe('normalizeKind — isLayoutObject', () => {
     // Handles corrupted/old catalog entries gracefully
     const kind = normalizeKind(minimalRaw('block', { isLayoutObject: 1 }), 0);
     expect(kind.isLayoutObject).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rotationStepDeg + isYawAllowed
+// ---------------------------------------------------------------------------
+
+describe('normalizeKind — rotationStepDeg', () => {
+  it('is absent by default and kept when valid', () => {
+    expect(normalizeKind(minimalRaw(), 0).rotationStepDeg).toBeUndefined();
+    for (const step of [1, 15, 45, 90, 180, 360]) {
+      expect(normalizeKind(minimalRaw('block', { rotationStepDeg: step }), 0).rotationStepDeg).toBe(step);
+    }
+  });
+
+  it.each([0, 7, -90, 22.5, '90', null])('rejects %s', (step) => {
+    expect(() => normalizeKind(minimalRaw('block', { rotationStepDeg: step }), 3)).toThrow(
+      /kinds\[3\]\.rotationStepDeg/,
+    );
+  });
+});
+
+describe('isYawAllowed', () => {
+  it('defaults to 90° steps', () => {
+    expect(isYawAllowed(undefined, 270)).toBe(true);
+    expect(isYawAllowed({}, -90)).toBe(true);
+    expect(isYawAllowed({}, 45)).toBe(false);
+  });
+
+  it('uses the kind step with float tolerance', () => {
+    expect(isYawAllowed({ rotationStepDeg: 15 }, 45)).toBe(true);
+    expect(isYawAllowed({ rotationStepDeg: 15 }, 0.1 + 0.2 + 44.7)).toBe(true);
+    expect(isYawAllowed({ rotationStepDeg: 15 }, 359.9999999)).toBe(true);
+    expect(isYawAllowed({ rotationStepDeg: 15 }, 50)).toBe(false);
+    expect(isYawAllowed({ rotationStepDeg: 15 }, Number.NaN)).toBe(false);
   });
 });
 

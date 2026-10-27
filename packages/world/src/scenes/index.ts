@@ -50,6 +50,7 @@ export {
   CUBE_FACES,
   newPlaceObject,
   newPlaceCube,
+  normalizeYawDeg,
   newExtrude,
   emptyDocument,
   emptyRoomDocument,
@@ -91,6 +92,7 @@ export {
   validateWorldObjectKindCatalog,
   validateCubeKindCatalog,
   normalizeKind,
+  isYawAllowed,
 } from './world-object-kinds-schema.ts';
 // Module-globals for the kind catalog were removed in the three-layer
 // architecture refactor. Consume the catalog through the application

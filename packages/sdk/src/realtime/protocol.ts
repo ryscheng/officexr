@@ -149,6 +149,7 @@ const ZObjectInstance = z.object({
   sourceCommandId: z.string(),
   kindId: z.string(),
   position: z.tuple([z.number(), z.number(), z.number()]),
+  yawDeg: z.number().optional(),
 });
 
 const ZWorldObjects: z.ZodType<WorldObjects> = z.object({

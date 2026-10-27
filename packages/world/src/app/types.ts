@@ -83,28 +83,35 @@ export interface CatalogService {
  * ad-hoc per-axis math elsewhere.
  *
  * Conventions baked into the default implementation:
- *   - `position[i]` is an integer voxel anchor.
- *   - **X / Z**: the AABB is *centered* on `position * voxelSize`.
- *     (GLTF meshes for KayKit kinds have a bottom-center origin, so
- *     the renderer's translation is exactly `(cx, by, cz)`.)
- *   - **Y**: the *bottom* of the AABB sits at `position[1] * voxelSize`.
- *     Floor convention. No `+ voxelSize / 2` legacy offset.
+ *   - `position * voxelSize` is the min corner of the object's
+ *     unrotated AABB.
+ *   - `yawDeg` (default 0) rotates the object about +Y in the sense of
+ *     three.js `rotation.y`, pivoting on the unrotated AABB's centre.
+ *     Results describe the axis-aligned box around the rotated footprint.
  *   - When `kind.dimensions` is undefined, fall back to a one-voxel cube
  *     (`{width: vs, height: vs, depth: vs}`). One canonical fallback.
  */
 export interface InstanceGeometryService {
   readonly voxelSize: number;
   /** AABB of the instance. */
-  worldAABB(position: Vec3, kindId: string): WorldAABB;
-  /** Convenience: same as `worldAABB(inst.position, inst.kindId)`. */
+  worldAABB(position: Vec3, kindId: string, yawDeg?: number): WorldAABB;
+  /** Convenience: same as `worldAABB(inst.position, inst.kindId, inst.yawDeg)`. */
   worldAABBOfInstance(instance: ObjectInstance): WorldAABB;
-  /** Translation to apply to the GLTF mesh root so it lands in the AABB.
-   * For bottom-center-origin meshes, equals `(cx, aabb.min.y, cz)`. */
+  /** Translation to apply to the unrotated GLTF mesh root so it lands in the AABB. */
   meshOrigin(position: Vec3, kindId: string): Vec3;
+  /** Mesh-root transform that lands the mesh in its AABB, yawed about its
+   * unrotated footprint's centre. */
+  meshTransform(position: Vec3, kindId: string, yawDeg?: number): MeshTransform;
   /** Integer voxel-grid footprint. `max` is exclusive. Used by occupancy. */
-  voxelFootprint(position: Vec3, kindId: string): VoxelFootprint;
+  voxelFootprint(position: Vec3, kindId: string, yawDeg?: number): VoxelFootprint;
   /** Per-axis voxel tile step for extrude / tile-tool stepping. */
-  tileStep(kindId: string): Vec3;
+  tileStep(kindId: string, yawDeg?: number): Vec3;
+}
+
+/** A mesh root's translation (m) and `rotation.y` (radians). */
+export interface MeshTransform {
+  readonly position: Vec3;
+  readonly rotationY: number;
 }
 
 // ---------------------------------------------------------------------------

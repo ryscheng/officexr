@@ -142,6 +142,32 @@ describe('compileScene', () => {
     const b = JSON.stringify(compileScene(doc, 2));
     expect(a).toEqual(b);
   });
+
+  it('copies yawDeg onto instances and leaves it off when omitted', () => {
+    const doc = emptyDocument('yaw');
+    doc.commands.push(newPlaceObject({ id: 'a', kindId: 'wall', position: [0, 0, 0], yawDeg: 90 }));
+    doc.commands.push(newPlaceObject({ id: 'b', kindId: 'wall', position: [8, 0, 0] }));
+    const [rotated, plain] = compileScene(doc, 0.5).instances;
+    expect(rotated.yawDeg).toBe(90);
+    expect(plain).not.toHaveProperty('yawDeg');
+  });
+
+  it('extrudes a rotated target with its yaw and rotated stride', () => {
+    // A 4×1 wall: at yaw 90 its AABB is 1 voxel wide in X and 4 deep in Z.
+    const stride = (_kindId: string, yawDeg = 0): [number, number, number] =>
+      yawDeg % 180 === 0 ? [4, 3, 1] : [1, 3, 4];
+    const doc = emptyDocument('yaw-extrude');
+    const place = newPlaceObject({ kindId: 'wall', position: [0, 0, 0], yawDeg: 90 });
+    doc.commands.push(place);
+    doc.commands.push(newExtrude({ targetCommandId: place.id, face: 'pz', count: 3 }));
+    const out = compileScene(doc, 0.5, stride);
+    const byZ = [...out.instances].sort((a, b) => a.position[2] - b.position[2]);
+    expect(byZ.map((i) => [i.position, i.yawDeg])).toEqual([
+      [[0, 0, 0], 90],
+      [[0, 0, 4], 90],
+      [[0, 0, 8], 90],
+    ]);
+  });
 });
 
 describe('commandBounds', () => {

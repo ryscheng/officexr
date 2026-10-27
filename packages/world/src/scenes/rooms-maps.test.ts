@@ -14,6 +14,7 @@ import {
   migrateToV5,
 } from './serialize.ts';
 import { isBakedRoom, newPlaceObject } from './commands.ts';
+import { deserializeLayout } from './layout-document.ts';
 import {
   DEFAULT_MAP_ENVIRONMENT,
   emptyMapDocument,
@@ -69,6 +70,38 @@ describe('serializeRoom + deserializeScene (v5 RoomDocument)', () => {
     expect(() =>
       deserializeScene({ schemaVersion: 4, name: 'x', groups: {} }),
     ).toThrow(/commands/);
+  });
+});
+
+describe('placeObject yawDeg parsing', () => {
+  const place = (yawDeg: unknown) => ({
+    id: 'p',
+    op: 'placeObject',
+    kindId: 'wall',
+    position: [0, 0, 0],
+    yawDeg,
+  });
+  const parsers = {
+    deserializeScene: (commands: unknown[]) =>
+      migrateToV5(deserializeScene({ schemaVersion: 5, name: 'r', commands, groups: {} })).commands,
+    deserializeLayout: (commands: unknown[]) =>
+      deserializeLayout({ schemaVersion: 1, name: 'l', commands }).commands,
+  };
+
+  describe.each(Object.entries(parsers))('%s', (_name, parse) => {
+    it('normalises yawDeg to [0, 360)', () => {
+      expect(parse([place(450)])[0]).toMatchObject({ yawDeg: 90 });
+      expect(parse([place(-90)])[0]).toMatchObject({ yawDeg: 270 });
+    });
+
+    it.each(['90', null, Number.NaN, Number.POSITIVE_INFINITY])('rejects yawDeg %s', (yaw) => {
+      expect(() => parse([place(yaw)])).toThrow(/yawDeg/);
+    });
+
+    it('leaves an omitted yawDeg off', () => {
+      const { yawDeg: _omitted, ...plain } = place(undefined);
+      expect(parse([plain])[0]).not.toHaveProperty('yawDeg');
+    });
   });
 });
 

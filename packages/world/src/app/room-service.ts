@@ -16,8 +16,8 @@ export function createRoomService(deps: {
   geometry: InstanceGeometryService;
 }): RoomService {
   const { geometry } = deps;
-  const stride = (id: string): [number, number, number] => {
-    const [x, y, z] = geometry.tileStep(id);
+  const stride = (id: string, yawDeg?: number): [number, number, number] => {
+    const [x, y, z] = geometry.tileStep(id, yawDeg);
     return [x, y, z];
   };
 
@@ -42,7 +42,7 @@ export function createRoomService(deps: {
         geometry.voxelSize,
         stride,
         getLayout,
-        geometry.voxelFootprint,
+        geometry.worldAABB,
       );
     },
   };

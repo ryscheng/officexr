@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RoomsLayer } from '../MapEditorCanvas.tsx';
 import { renderEditorScene } from '../../../test-harness/renderEditorScene.tsx';
 import {
+  emptyMapDocument,
   emptyRoomDocument,
   newPlaceObject,
   type RoomDocument,
@@ -29,9 +30,12 @@ function roomLibrary(): ReadonlyMap<string, RoomDocument> {
   return new Map([[ROOM_NAME, doc]]);
 }
 
-const instances = [
-  { id: 'r1', roomName: ROOM_NAME, position: [0, 0, 0] as [number, number, number], rotationY: 0 as const },
-];
+const doc = {
+  ...emptyMapDocument('m'),
+  rooms: [
+    { id: 'r1', roomName: ROOM_NAME, position: [0, 0, 0] as [number, number, number], rotationY: 0 as const },
+  ],
+};
 
 async function settle(ms = 50) {
   await new Promise((r) => setTimeout(r, ms));
@@ -53,8 +57,9 @@ describe('Map editor scenarios', () => {
     const onSelect = vi.fn();
     const renderer = await renderEditorScene(
       <RoomsLayer
-        instances={instances}
+        doc={doc}
         rooms={roomLibrary()}
+        layouts={new Map()}
         selection={null}
         onSelect={onSelect}
         onMove={vi.fn()}
@@ -83,8 +88,9 @@ describe('Map editor scenarios', () => {
     const onSelect = vi.fn();
     const renderer = await renderEditorScene(
       <RoomsLayer
-        instances={instances}
+        doc={doc}
         rooms={roomLibrary()}
+        layouts={new Map()}
         selection={null}
         onSelect={onSelect}
         onMove={vi.fn()}
