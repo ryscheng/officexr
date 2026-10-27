@@ -143,6 +143,16 @@ export function isYawAllowed(
   return Math.min(remainder, step - remainder) < 1e-6;
 }
 
+/** The next allowed yaw counter-clockwise of `yawDeg`: one step past the
+ * allowed yaw at or below it, so an off-grid yaw lands back on the grid. */
+export function nextAllowedYaw(
+  kind: Pick<WorldObjectKind, 'rotationStepDeg'> | undefined,
+  yawDeg: number,
+): number {
+  const step = kind?.rotationStepDeg ?? DEFAULT_ROTATION_STEP_DEG;
+  return normalizeYawDeg((Math.floor(yawDeg / step + 1e-6) + 1) * step);
+}
+
 /**
  * Discriminated union of optional collider-shape overrides for kinds
  * that cannot be accurately represented by a single AABB cuboid.

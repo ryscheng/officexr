@@ -45,6 +45,8 @@ export interface SceneEditorBackend {
   tool: Tool;
   /** Kind id staged for the Add / Tile tools (palette selection). */
   stagedKindId: string | null;
+  /** Yaw (degrees) the Add / Tile tools place the staged kind at. */
+  stagedYawDeg: number;
   /** Integer voxel Y the Add-tool floor picker sits at. */
   buildHeight: number;
 
@@ -84,12 +86,13 @@ export interface SceneEditorBackend {
 
   /** Place a single cube at an integer voxel position. */
   onPlaceAt(position: [number, number, number]): void;
-  /** Batch-place N cubes. If `groupId` is provided, all are added to
-   *  that group. Returns the new commandIds in insertion order. */
+  /** Batch-place N cubes at one yaw. If `groupId` is provided, all are
+   *  added to that group. Returns the new commandIds in insertion order. */
   onPlaceMany(
     kindId: string,
     positions: ReadonlyArray<[number, number, number]>,
     groupId?: string | null,
+    yawDeg?: number,
   ): string[];
 
   // -------------------------------------------------------------------------

@@ -20,6 +20,8 @@ import { Toolbar } from '../scene-editor/Toolbar.tsx';
 import type { Tool } from '../scene-editor/tools.ts';
 import { SceneEditorCanvas } from '../scene-editor/SceneEditorCanvas.tsx';
 import type { SceneEditorBackend } from '../scene-editor/SceneEditorBackend.ts';
+import { useEditorShortcuts } from '../scene-editor/useEditorShortcuts.ts';
+import { useStagedObject } from '../scene-editor/useStagedObject.ts';
 import { selectionIsExactlyOneGroup } from '../room/room-selection.ts';
 import { LayoutPicker } from './LayoutPicker.tsx';
 import { useLayoutDocument } from './useLayoutDocument.ts';
@@ -150,20 +152,20 @@ function BakeStatusPill({ layoutName }: { layoutName: string }) {
 export function LayoutApp() {
   const layoutDoc = useLayoutDocument();
   const [tool, setTool] = useState<Tool>('select');
-  const [stagedKindId, setStagedKindId] = useState<string | null>(null);
+  const { stagedKindId, stagedYawDeg, setStagedYawDeg, stageKind } = useStagedObject();
   const [buildHeight, setBuildHeight] = useState<number>(0);
 
   const handleStage = useCallback((kindId: string | null) => {
-    setStagedKindId(kindId);
+    stageKind(kindId);
     setTool(kindId ? 'add' : 'select');
-  }, []);
+  }, [stageKind]);
 
   const handlePlace = useCallback(
     (position: [number, number, number]) => {
       if (!stagedKindId) return;
-      layoutDoc.placeObject(stagedKindId, position);
+      layoutDoc.placeObject(stagedKindId, position, stagedYawDeg);
     },
-    [stagedKindId, layoutDoc],
+    [stagedKindId, stagedYawDeg, layoutDoc],
   );
 
   // Group-aware click: clicking a tile-grouped cube selects the whole
@@ -270,82 +272,14 @@ export function LayoutApp() {
     [layoutDoc],
   );
 
-  // Keyboard shortcuts mirroring RoomApp (Esc, Q/E, Ctrl+Z/Y/Shift+Z).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-
-      if (e.key === 'Escape') {
-        setTool('select');
-        layoutDoc.clearSelection();
-        return;
-      }
-
-      if (e.ctrlKey || e.metaKey) {
-        const k = e.key.toLowerCase();
-        // Ctrl+Shift+G ungroups — matches Room. Must come BEFORE the
-        // plain `g` branch so the shift modifier is checked first.
-        if (k === 'g' && e.shiftKey) {
-          e.preventDefault();
-          const exact = selectionIsExactlyOneGroup(
-            layoutDoc.selection,
-            layoutDoc.lookup.groupMembers,
-          );
-          if (exact) layoutDoc.ungroupCommands(exact);
-          return;
-        }
-        if (k === 'g') {
-          e.preventDefault();
-          if (layoutDoc.selection.size >= 2) {
-            layoutDoc.groupCommands(layoutDoc.selection);
-          }
-          return;
-        }
-        if (k === 'z' && e.shiftKey) {
-          e.preventDefault();
-          layoutDoc.redo();
-          return;
-        }
-        if (k === 'z') {
-          e.preventDefault();
-          layoutDoc.undo();
-          return;
-        }
-        if (k === 'y' && !e.metaKey) {
-          e.preventDefault();
-          layoutDoc.redo();
-          return;
-        }
-        return;
-      }
-
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (layoutDoc.selection.size > 0) {
-          e.preventDefault();
-          layoutDoc.deleteSelection();
-        }
-        return;
-      }
-
-      if (e.altKey || e.shiftKey) return;
-      const k = e.key.toLowerCase();
-      if (k === 'q') setBuildHeight((y) => y - 1);
-      else if (k === 'e') setBuildHeight((y) => y + 1);
-      else if (k === 'v') setTool('select');
-      else if (k === 'b' && stagedKindId) setTool('add');
-      else if (k === 'x') setTool('delete');
-      else if (k === 't') {
-        // Tile tool — same shortcut + same staged-kind requirement as
-        // RoomApp. Without a staged kind the tile tool has nothing to
-        // place, so silently ignore the keypress in that case.
-        if (stagedKindId) setTool('tile');
-      }
-      else if (k === 'm') setTool('move');
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [layoutDoc, stagedKindId]);
+  useEditorShortcuts({
+    doc: layoutDoc,
+    tool,
+    stagedKindId,
+    setTool,
+    setBuildHeight,
+    setStagedYawDeg,
+  });
 
   // Canvas backend: every field SceneEditorCanvas needs, sourced from
   // useLayoutDocument + the editor's UI state. Mirrors how RoomApp
@@ -357,6 +291,7 @@ export function LayoutApp() {
       selection: layoutDoc.selection,
       tool,
       stagedKindId,
+      stagedYawDeg,
       buildHeight,
       commandToGroup: layoutDoc.lookup.commandToGroup,
       groupMembers: layoutDoc.lookup.groupMembers,
@@ -381,6 +316,7 @@ export function LayoutApp() {
       layoutDoc.selection,
       tool,
       stagedKindId,
+      stagedYawDeg,
       buildHeight,
       layoutDoc.lookup.commandToGroup,
       layoutDoc.lookup.groupMembers,

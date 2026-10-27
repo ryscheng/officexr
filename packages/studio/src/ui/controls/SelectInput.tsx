@@ -40,10 +40,12 @@ export function SelectInput<V extends string>({
     typeof o === 'string' ? { value: o as V, label: o } : (o as SelectOption<V>),
   );
 
+  const id = React.useId();
+
   return (
-    <Field label={label} hint={hint} className={className}>
+    <Field label={label} hint={hint} className={className} htmlFor={id}>
       <Select value={value} onValueChange={(v) => onChange(v as V)}>
-        <SelectTrigger>
+        <SelectTrigger id={id}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

@@ -246,4 +246,39 @@ describe('applyAction', () => {
     expect(doc.commands).toBe(originalCommands); // same reference
     expect(doc.commands).toHaveLength(originalCommandsLength); // same length
   });
+
+  it('place / placeMany — keep the action yaw on the new commands', () => {
+    let doc = applyAction(makeDoc(), {
+      type: 'place',
+      commandId: 'p',
+      kindId: 'desk',
+      position: [0, 0, 0],
+      yawDeg: 90,
+    });
+    doc = applyAction(doc, {
+      type: 'placeMany',
+      commandIds: ['m1', 'm2'],
+      kindId: 'desk',
+      positions: [[2, 0, 0], [4, 0, 0]],
+      groupId: null,
+      yawDeg: 270,
+    });
+    expect(doc.commands.map((c) => (c as PlaceObjectCommand).yawDeg)).toEqual([90, 270, 270]);
+  });
+
+  it('setYaw / setYawMany — set normalised yaws on only the targeted commands', () => {
+    const doc = makeDoc({ commands: [makePlaceCmd('a'), makePlaceCmd('b'), makePlaceCmd('c')] });
+    const one = applyAction(doc, { type: 'setYaw', commandId: 'b', yawDeg: -90 });
+    expect((one.commands[1] as PlaceObjectCommand).yawDeg).toBe(270);
+    expect(one.commands[0]).not.toHaveProperty('yawDeg');
+
+    const many = applyAction(doc, {
+      type: 'setYawMany',
+      yaws: [
+        { commandId: 'a', yawDeg: 90 },
+        { commandId: 'c', yawDeg: 450 },
+      ],
+    });
+    expect(many.commands.map((c) => (c as PlaceObjectCommand).yawDeg)).toEqual([90, undefined, 90]);
+  });
 });

@@ -5,8 +5,9 @@ import {
   emptyRoomDocument,
   type RoomDocument,
 } from '@officexr/world/scenes';
-import { StudioHarness } from '../../../test-harness/index.ts';
+import { StudioHarness, createTestApi } from '../../../test-harness/index.ts';
 import { useRoomDocument } from '../useRoomDocument.ts';
+import { BEAM } from './yawedKinds.ts';
 
 /**
  * Tier 2 integration test for `useRoomDocument`. Wrapped in
@@ -44,6 +45,79 @@ describe('useRoomDocument', () => {
 
     act(() => result.current.redo());
     expect(result.current.doc.commands).toHaveLength(1);
+  });
+
+  it('rotateSelection turns each selected object by its kind step in one undo step', async () => {
+    const api = createTestApi();
+    api.catalog.patchKind('colored_block_blue', { rotationStepDeg: 45 });
+    const { result } = renderHook(() => useRoomDocument({ storage: makeStorage() }), {
+      wrapper: ({ children }) => <StudioHarness api={api}>{children}</StudioHarness>,
+    });
+    await waitFor(() => expect(result.current.roomName).toBe('default-v2'));
+
+    const ids: string[] = [];
+    act(() => {
+      ids.push(result.current.placeObject('colored_block_blue', [0, 0, 0], 315));
+    });
+    act(() => {
+      ids.push(result.current.placeObject('unknown-kind', [8, 0, 0]));
+    });
+    act(() => result.current.setSelection(ids));
+    act(() => result.current.rotateSelection());
+    const yaws = () =>
+      result.current.doc.commands.map((c) => (c.op === 'placeObject' ? c.yawDeg : null));
+    expect(yaws()).toEqual([0, 90]);
+
+    act(() => result.current.undo());
+    expect(yaws()).toEqual([315, undefined]);
+  });
+
+  it('rotateSelection lands an off-step yaw on the kind grid', async () => {
+    const { result } = renderHook(() => useRoomDocument({ storage: makeStorage() }), {
+      wrapper: StudioHarness,
+    });
+    await waitFor(() => expect(result.current.roomName).toBe('default-v2'));
+
+    act(() => {
+      result.current.placeObject('__primitive_blue', [0, 0, 0], 45);
+    });
+    act(() => result.current.rotateSelection());
+    const cmd = result.current.doc.commands[0];
+    expect(cmd.op === 'placeObject' && cmd.yawDeg).toBe(90);
+
+    const nodes = result.current.historyNodes.length;
+    act(() => result.current.setYawForCommand(cmd.id, 450));
+    expect(result.current.historyNodes).toHaveLength(nodes);
+  });
+
+  it('rotateSelection refuses a turn that would overlap an unselected object', async () => {
+    const api = createTestApi();
+    api.catalog.replaceCatalog({ schemaVersion: 1, updatedAt: 0, kinds: [BEAM] });
+    const { result } = renderHook(() => useRoomDocument({ storage: makeStorage() }), {
+      wrapper: ({ children }) => <StudioHarness api={api}>{children}</StudioHarness>,
+    });
+    await waitFor(() => expect(result.current.roomName).toBe('default-v2'));
+
+    // The 4×2-voxel beam only touches the block behind it; a quarter turn
+    // about its centre makes it 2×4 and pushes it into the block.
+    act(() => {
+      result.current.placeMany('__primitive_blue', [[1, 0, 2]]);
+    });
+    act(() => {
+      result.current.placeObject('beam', [0, 0, 0]);
+    });
+    const before = result.current.historyNodes.length;
+    act(() => result.current.rotateSelection());
+    expect(result.current.historyNodes).toHaveLength(before);
+
+    act(() => result.current.undo());
+    act(() => result.current.undo());
+    act(() => {
+      result.current.placeObject('beam', [0, 0, 0]);
+    });
+    act(() => result.current.rotateSelection());
+    const beam = result.current.doc.commands[0];
+    expect(beam.op === 'placeObject' && beam.yawDeg).toBe(90);
   });
 
   it('placeMany then groupCommands in one tick groups every placed command', async () => {

@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isYawAllowed,
+  nextAllowedYaw,
   normalizeKind,
   validateWorldObjectKindCatalog,
 } from './world-object-kinds-schema.ts';
@@ -173,6 +174,19 @@ describe('isYawAllowed', () => {
     expect(isYawAllowed({ rotationStepDeg: 15 }, 359.9999999)).toBe(true);
     expect(isYawAllowed({ rotationStepDeg: 15 }, 50)).toBe(false);
     expect(isYawAllowed({ rotationStepDeg: 15 }, Number.NaN)).toBe(false);
+  });
+});
+
+describe('nextAllowedYaw', () => {
+  it('turns one kind step counter-clockwise, wrapping at 360', () => {
+    expect(nextAllowedYaw(undefined, 0)).toBe(90);
+    expect(nextAllowedYaw({ rotationStepDeg: 45 }, 315)).toBe(0);
+    expect(nextAllowedYaw({ rotationStepDeg: 15 }, 359.9999999)).toBe(15);
+  });
+
+  it('lands an off-grid yaw on the next grid value', () => {
+    expect(nextAllowedYaw({}, 45)).toBe(90);
+    expect(nextAllowedYaw({ rotationStepDeg: 180 }, 90)).toBe(180);
   });
 });
 

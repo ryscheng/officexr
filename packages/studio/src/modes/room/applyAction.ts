@@ -10,7 +10,7 @@
  * `useRoomDocument.ts` exactly.
  */
 import type { RoomDocument, PlaceObjectCommand, CommandGroup } from '@officexr/world/scenes';
-import { newPlaceObject } from '@officexr/world/scenes';
+import { newPlaceObject, normalizeYawDeg } from '@officexr/world/scenes';
 import type { EditAction } from './EditAction.ts';
 
 export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument {
@@ -20,6 +20,7 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
         kindId: action.kindId,
         position: action.position,
         id: action.commandId,
+        yawDeg: action.yawDeg,
       });
       return {
         ...doc,
@@ -34,6 +35,7 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
           kindId: action.kindId,
           position: action.positions[i],
           id,
+          yawDeg: action.yawDeg,
         }),
       );
 
@@ -126,6 +128,25 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
             return { ...c, position: moveMap.get(c.id)! };
           }
           return c;
+        }),
+      };
+    }
+
+    case 'setYaw':
+    case 'setYawMany': {
+      const yaws = new Map(
+        action.type === 'setYaw'
+          ? [[action.commandId, action.yawDeg]]
+          : action.yaws.map((y) => [y.commandId, y.yawDeg]),
+      );
+      return {
+        ...doc,
+        updatedAt: Date.now(),
+        commands: doc.commands.map((c) => {
+          const yawDeg = yaws.get(c.id);
+          return c.op === 'placeObject' && yawDeg !== undefined
+            ? { ...c, yawDeg: normalizeYawDeg(yawDeg) }
+            : c;
         }),
       };
     }

@@ -11,10 +11,12 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { PNG } from 'pngjs';
 import {
   captureConsole,
   distinctColorsInCanvas,
   goToMode,
+  goToModeHermetic,
   waitForCanvasReady,
 } from './helpers.ts';
 
@@ -178,3 +180,85 @@ test('Add tool ghost preview renders a blue ghost cube under the cursor', async 
     'expected a distinctly-blue ghost pixel near the cursor',
   ).toBe(true);
 });
+
+test('R rotates the selected object by its kind step and undo restores it', async ({ page }) => {
+  // One 2 m primitive block, which renders without a GLTF fetch.
+  await goToModeHermetic(page, 'room', {
+    rooms: [
+      {
+        name: 'default-v2',
+        doc: {
+          schemaVersion: 5,
+          name: 'default-v2',
+          title: 'default-v2',
+          updatedAt: 0,
+          commands: [
+            { id: 'c1', op: 'placeObject', kindId: '__primitive_blue', position: [-2, 0, -2] },
+          ],
+          groups: {},
+        },
+      },
+    ],
+  });
+  const canvas = await waitForCanvasReady(page, 1200);
+  const box = await canvas.boundingBox();
+  if (!box) {
+    throw new Error('canvas has no bounding box');
+  }
+  const block = blueCentroid(await canvas.screenshot());
+  const yaw = page.getByRole('combobox', { name: 'yaw°' });
+  // R3F raycasts on pointer moves, and a click can land before the scene
+  // has picked up the hover, so retry until the inspector shows the block.
+  const selectBlock = () =>
+    expect(async () => {
+      await page.mouse.move(box.x + block.x, box.y + block.y);
+      await page.mouse.down();
+      await page.mouse.up();
+      await expect(yaw).toBeVisible({ timeout: 500 });
+    }).toPass();
+
+  await selectBlock();
+  await expect(yaw).toHaveText('0');
+
+  await page.keyboard.press('r');
+  await expect(yaw).toHaveText('90');
+
+  await page.keyboard.press('Control+z');
+  await expect(yaw).toBeHidden();
+  await selectBlock();
+  await expect(yaw).toHaveText('0');
+
+  // With the Add tool, R turns the staged object, and placing keeps that yaw
+  // (the placed object is selected, so the inspector shows it).
+  await page.check('#room-show-layout-objects');
+  await page.click('button[title="Blue block"]');
+  await page.keyboard.press('r');
+  await expect(async () => {
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.8);
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect(page.getByRole('combobox', { name: 'kind' })).toHaveText('colored_block_blue', {
+      timeout: 500,
+    });
+  }).toPass();
+  await expect(yaw).toHaveText('90');
+});
+
+/** Centroid, in canvas pixels, of the distinctly blue pixels in a screenshot. */
+function blueCentroid(png: Buffer): { x: number; y: number } {
+  const { data, width } = PNG.sync.read(png);
+  let count = 0;
+  let sumX = 0;
+  let sumY = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 2] > 100 && data[i + 2] > data[i] + 30 && data[i + 2] > data[i + 1]) {
+      count += 1;
+      sumX += (i / 4) % width;
+      sumY += Math.floor(i / 4 / width);
+    }
+  }
+  if (count === 0) {
+    throw new Error('no blue block on the canvas');
+  }
+  return { x: sumX / count, y: sumY / count };
+}

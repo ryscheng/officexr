@@ -4,6 +4,8 @@ import {
   LocalStorageRoomStorage,
   emptyRoomDocument,
   newPlaceObject,
+  nextAllowedYaw,
+  normalizeYawDeg,
   serializeRoom,
   type PlaceObjectCommand,
   type RoomDocument,
@@ -18,6 +20,7 @@ import {
   type GroupLookup,
 } from './room-selection.ts';
 import { RoomHistory } from './RoomHistory.ts';
+import { createFootprintOf, overlapsAnyInstance } from './footprint.ts';
 import type { EditAction } from './EditAction.ts';
 import { useDebouncedSave } from '../useDebouncedSave.ts';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
@@ -119,11 +122,16 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   pickFromClick: (commandId: string) => void;
   toggleFromClick: (commandId: string) => void;
   lookup: RoomDocLookup;
-  placeObject: (kindId: string, position?: [number, number, number]) => string;
+  placeObject: (
+    kindId: string,
+    position?: [number, number, number],
+    yawDeg?: number,
+  ) => string;
   placeMany: (
     kindId: string,
     positions: ReadonlyArray<[number, number, number]>,
     groupId?: string | null,
+    yawDeg?: number,
   ) => string[];
   setKindForCommand: (commandId: string, kindId: string) => void;
   setPositionForCommand: (
@@ -133,6 +141,10 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   setPositionMany: (
     moves: Array<{ commandId: string; position: [number, number, number] }>,
   ) => void;
+  setYawForCommand: (commandId: string, yawDeg: number) => void;
+  /** Turns each selected object counter-clockwise by its kind's rotation
+   *  step; does nothing if any turned object would overlap an unselected one. */
+  rotateSelection: () => void;
   deleteCommand: (commandId: string) => void;
   deleteSelection: () => void;
   groupCommands: (commandIds: Iterable<string>, label?: string) => string | null;
@@ -213,6 +225,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
     () => roomService.compileScene(doc),
     [doc, roomService],
   );
+  const footprintOf = useMemo(() => createFootprintOf(geometry), [geometry]);
 
   // Derived selection / delete lookups. Recomputed whenever the doc
   // or compiled snapshot changes (Maps fully replaced — components
@@ -416,13 +429,14 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   // Pattern: construct EditAction → push to history → setDoc(history.currentDoc)
 
   const placeObject = useCallback(
-    (kindId: string, position?: [number, number, number]) => {
+    (kindId: string, position?: [number, number, number], yawDeg?: number) => {
       const cmd = newPlaceObject({ kindId, position });
       const action: EditAction = {
         type: 'place',
         commandId: cmd.id,
         kindId,
         position: position ?? [0, 0, 0],
+        yawDeg,
       };
       const h = getHistory(doc);
       h.push(action);
@@ -439,6 +453,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
       kindId: string,
       positions: ReadonlyArray<[number, number, number]>,
       groupId: string | null = null,
+      yawDeg?: number,
     ) => {
       // Pre-mint command IDs before constructing the action so the EditAction
       // carries stable ids that match what applyAction will create.
@@ -451,6 +466,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
         kindId,
         positions: positions as [number, number, number][],
         groupId: groupId ?? null,
+        yawDeg,
       };
       const h = getHistory(doc);
       h.push(action);
@@ -493,6 +509,44 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [doc],
+  );
+
+  const setYawForCommand = useCallback(
+    (commandId: string, yawDeg: number) => {
+      const current = doc.commands.find((c) => c.id === commandId);
+      if (current?.op === 'placeObject' && (current.yawDeg ?? 0) === normalizeYawDeg(yawDeg)) {
+        return;
+      }
+      const action: EditAction = { type: 'setYaw', commandId, yawDeg };
+      const h = getHistory(doc);
+      h.push(action);
+      setDoc(h.currentDoc);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
+  );
+
+  const rotateSelection = useCallback(
+    () => {
+      const turned = doc.commands
+        .filter((c): c is PlaceObjectCommand => c.op === 'placeObject' && selection.has(c.id))
+        .map((c) => ({ ...c, yawDeg: nextAllowedYaw(catalog.getKind(c.kindId), c.yawDeg ?? 0) }));
+      if (turned.length === 0) return;
+      // ponytail: a turned gravity object can lose its support; only overlap is checked.
+      const others = compiled.instances.filter((i) => !selection.has(i.sourceCommandId));
+      const blocked = turned.some((c) =>
+        overlapsAnyInstance(footprintOf(c.position, c.kindId, c.yawDeg), others, footprintOf),
+      );
+      if (blocked) return;
+      const h = getHistory(doc);
+      h.push({
+        type: 'setYawMany',
+        yaws: turned.map((c) => ({ commandId: c.id, yawDeg: c.yawDeg })),
+      });
+      setDoc(h.currentDoc);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc, selection, catalog, compiled, footprintOf],
   );
 
   // Internal helper: record a delete action to history, then update doc.
@@ -724,6 +778,8 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
     setKindForCommand,
     setPositionForCommand,
     setPositionMany,
+    setYawForCommand,
+    rotateSelection,
     deleteCommand,
     deleteSelection,
     groupCommands,
