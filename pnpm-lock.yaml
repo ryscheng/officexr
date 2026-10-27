@@ -231,6 +231,9 @@ importers:
       '@officexr/world':
         specifier: workspace:*
         version: link:../world
+      playwright-core:
+        specifier: 1.60.0
+        version: 1.60.0
       zod:
         specifier: ^3.25
         version: 3.25.76

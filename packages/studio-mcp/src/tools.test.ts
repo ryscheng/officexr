@@ -18,6 +18,8 @@ import {
   validateWorldObjectKindCatalog,
 } from '@officexr/world/scenes';
 import { describe, expect, it } from 'vitest';
+import { HeavyWorkLock } from './heavy-work-lock.ts';
+import type { RenderRequest, RenderResult, ViewRenderer } from './renderer.ts';
 import { createStudioMcpServer } from './server.ts';
 import type { StudioDocuments } from './studio-documents.ts';
 
@@ -45,7 +47,23 @@ class InMemoryBakedLayouts implements BakedLayoutStorage {
   }
 }
 
-async function connect(overrides: Partial<StudioDocuments> = {}) {
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+
+class FakeRenderer implements ViewRenderer {
+  requests: { origin: string; request: RenderRequest }[] = [];
+  render: ViewRenderer['render'] = async (origin, request) => {
+    this.requests.push({ origin, request });
+    return { png: PNG_BYTES, bounds: { min: [0, 0, 0], max: [4, 2, 4] }, metresPerPixel: 0.02 };
+  };
+}
+
+async function connect(overrides: Partial<StudioDocuments> = {}, renderer: ViewRenderer = new FakeRenderer()) {
   const docs: StudioDocuments = {
     rooms: new InMemoryRoomStorage(),
     maps: new InMemoryMapStorage(),
@@ -56,7 +74,8 @@ async function connect(overrides: Partial<StudioDocuments> = {}) {
     ...overrides,
   };
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await createStudioMcpServer(docs, { modelRoot: '/nonexistent', bakeLock: { busy: false } }).connect(serverSide);
+  const options = { modelRoot: '/nonexistent', heavyWorkLock: new HeavyWorkLock(), renderer };
+  await createStudioMcpServer(docs, options, 'http://studio.test').connect(serverSide);
   const client = new Client({ name: 'test', version: '0' });
   await client.connect(clientSide);
   const call = async (name: string, args: Record<string, unknown> = {}) => {
@@ -67,7 +86,7 @@ async function connect(overrides: Partial<StudioDocuments> = {}) {
 }
 
 describe('studio MCP tools', () => {
-  it('lists the 19 tools', async () => {
+  it('lists the 20 tools', async () => {
     const { client } = await connect();
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(
@@ -76,6 +95,7 @@ describe('studio MCP tools', () => {
         'bake_layout',
         'list_baked_layouts',
         'delete_baked_layout',
+        'render_view',
         'get_world_object_kinds',
         'put_world_object_kinds',
         'get_world_settings',
@@ -232,7 +252,7 @@ describe('studio MCP tools', () => {
     expect((await call('delete_baked_layout', { name: '../x' })).isError).toBe(true);
   });
 
-  it('rejects a bake while another is running and frees the lock afterwards', async () => {
+  it('rejects a bake while another heavy operation is running and frees the lock afterwards', async () => {
     let release!: () => void;
     let entered!: () => void;
     const started = new Promise<void>((r) => (entered = r));
@@ -255,10 +275,119 @@ describe('studio MCP tools', () => {
     await started;
     expect(await call('bake_layout', { name: 'hall' })).toEqual({
       isError: true,
-      text: 'a bake is already in progress; retry shortly',
+      text: 'a bake or render is already in progress; retry shortly',
     });
     release();
     await first;
     expect((await call('bake_layout', { name: 'hall' })).text).not.toContain('already in progress');
+  });
+
+  describe('render_view', () => {
+    const hall = { type: 'room', name: 'hall' };
+
+    async function connectWithRoom(renderer: FakeRenderer = new FakeRenderer()) {
+      const connected = await connect({}, renderer);
+      await connected.docs.rooms.save('hall', emptyRoomDocument('hall'));
+      const render = (args: Record<string, unknown>) => connected.client.callTool({ name: 'render_view', arguments: args });
+      return { ...connected, renderer, render };
+    }
+
+    it('returns the PNG and a text block with the target, camera and bounds', async () => {
+      const { render, renderer } = await connectWithRoom();
+      const camera = { position: [4, 6, 8], lookAt: [0, 0, 0] };
+      const result = await render({ target: hall, camera, width: 320 });
+
+      expect(result.isError).toBeFalsy();
+      const [image, text] = result.content as { type: string; data?: string; mimeType?: string; text?: string }[];
+      expect(image).toEqual({ type: 'image', mimeType: 'image/png', data: Buffer.from(PNG_BYTES).toString('base64') });
+      expect(JSON.parse(text.text!)).toMatchObject({
+        target: hall,
+        camera,
+        width: 320,
+        height: 768,
+        bounds: { min: [0, 0, 0], max: [4, 2, 4] },
+        metresPerPixel: 0.02,
+      });
+      expect(renderer.requests).toEqual([
+        { origin: 'http://studio.test', request: { target: hall, camera, width: 320, height: 768 } },
+      ]);
+    });
+
+    it('reports a missing document without starting the renderer', async () => {
+      const { render, renderer } = await connectWithRoom();
+      const result = await render({ target: { type: 'map', name: 'nowhere' }, camera: 'top' });
+      expect(result).toMatchObject({ isError: true, content: [{ text: 'map "nowhere" not found' }] });
+      expect(renderer.requests).toEqual([]);
+    });
+
+    it.each([
+      ['a width over the cap', { camera: 'top', width: 2048 }],
+      ['a fractional height', { camera: 'top', height: 100.5 }],
+      ['an unknown camera', { camera: 'side' }],
+      ['a camera looking at itself', { camera: { position: [1, 2, 3], lookAt: [1, 2, 3] } }],
+      ['a non-finite camera coordinate', { camera: { position: [1, 2, null], lookAt: [0, 0, 0] } }],
+      ['an unexpected camera key', { camera: { position: [1, 2, 3], lookAt: [0, 0, 0], fov: 90 } }],
+    ])('rejects %s', async (_label, args) => {
+      const { render, renderer } = await connectWithRoom();
+      expect((await render({ target: hall, ...args })).isError).toBe(true);
+      expect(renderer.requests).toEqual([]);
+    });
+
+    it('rejects an invalid target name', async () => {
+      const { render, renderer } = await connectWithRoom();
+      expect((await render({ target: { type: 'room', name: '../evil' }, camera: 'iso' })).isError).toBe(true);
+      expect(renderer.requests).toEqual([]);
+    });
+
+    it.each(['render failed: ghost-layout has no baked GLB', 'render timed out after 45 s'])(
+      'surfaces the renderer error "%s" as a tool error',
+      async (message) => {
+        const { render, renderer } = await connectWithRoom();
+        renderer.render = async () => {
+          throw new Error(message);
+        };
+        expect(await render({ target: hall, camera: 'iso' })).toMatchObject({ isError: true, content: [{ text: message }] });
+        // The lock is released, so the next render is attempted rather than refused.
+        renderer.render = async () => ({ png: PNG_BYTES, bounds: { min: [0], max: [1] } });
+        expect((await render({ target: hall, camera: 'iso' })).isError).toBeFalsy();
+      },
+    );
+
+    it('never overlaps a bake and a render, in either order', async () => {
+      const gate = deferred();
+      const renderEntered = deferred();
+      const bakeEntered = deferred();
+      const renderer = new FakeRenderer();
+      const { docs, call, render } = await connectWithRoom(renderer);
+      const busy = { isError: true, text: 'a bake or render is already in progress; retry shortly' };
+
+      renderer.render = async () => {
+        renderEntered.resolve();
+        await gate.promise;
+        return { png: PNG_BYTES, bounds: { min: [0], max: [1] } } satisfies RenderResult;
+      };
+      const rendering = render({ target: hall, camera: 'iso' });
+      await renderEntered.promise;
+      expect(await call('bake_layout', { name: 'hall' })).toEqual(busy);
+      gate.resolve();
+      await rendering;
+
+      const bakeGate = deferred();
+      await docs.layouts.save('hall', {
+        ...emptyLayoutDocument('hall'),
+        commands: [{ op: 'placeObject', id: 'p1', kindId: 'colored_block_blue', position: [0, 0, 0] }],
+      } as LayoutDocument);
+      docs.catalog.load = async () => {
+        bakeEntered.resolve();
+        await bakeGate.promise;
+        return null;
+      };
+      const baking = call('bake_layout', { name: 'hall' });
+      await bakeEntered.promise;
+      const refused = await render({ target: hall, camera: 'iso' });
+      expect(refused).toMatchObject({ isError: true, content: [{ text: busy.text }] });
+      bakeGate.resolve();
+      await baking;
+    });
   });
 });
