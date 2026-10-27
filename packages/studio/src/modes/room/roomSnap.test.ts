@@ -5,12 +5,22 @@ import {
   quantizeAxisAlignedNormal,
   snapToNearestFace,
   snapToNearestTileableFace,
+  snapToGridOrStack,
   snapToVoxel,
   type CubeHit,
   type FloorHit,
   type NearbyObjectInfo,
   type TileableObjectInfo,
 } from './roomSnap.ts';
+import { newObjectShape, overlapsAnyInstance } from './footprint.ts';
+import {
+  BEAM,
+  NOISY_WALL,
+  PEG,
+  WALL,
+  footprintOf,
+  geometry,
+} from './__tests__/yawedKinds.ts';
 
 describe('computeTileStep', () => {
   it('2m object on 0.5m grid → step 4', () => {
@@ -503,5 +513,125 @@ describe('snapToNearestFace — anchor-convention face snap', () => {
     expect(result).not.toBeNull();
     // anchor.x = rightBlue.max.x = 6 → voxel x = 12.
     expect(result![0]).toBe(12);
+  });
+});
+
+describe('snapToNearestFace — yawed new object', () => {
+  const VS = 0.5;
+  const blueAtOrigin: NearbyObjectInfo = {
+    position: [0, 0, 0],
+    aabb: { min: [0, 0, 0], max: [2, 2, 2] },
+  };
+  const shapeOf = (kindId: string, yawDeg: number) => newObjectShape(geometry, kindId, yawDeg);
+
+  it.each([
+    { kind: WALL, size: [1, 3, 4] },
+    { kind: BEAM, size: [2, 3, 4] },
+  ])('$kind.id at yaw 90 lands as $size flush against the +X face', ({ kind, size }) => {
+    const voxel = snapToNearestFace(
+      { x: 2.2, y: 0.5, z: 1 },
+      shapeOf(kind.id, 90),
+      [blueAtOrigin],
+      VS,
+      1.5,
+    )!;
+    const box = footprintOf(voxel, kind.id, 90);
+    expect(box.min[0]).toBe(4);
+    expect([box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]]).toEqual(size);
+    // Centred on the cursor along the face: z from 0 to 4 voxels.
+    expect([box.min[2], box.max[2]]).toEqual([0, 4]);
+  });
+
+  it('a wall at yaw 90 lands flush against the -X face', () => {
+    const voxel = snapToNearestFace(
+      { x: -0.2, y: 0.5, z: 1 },
+      shapeOf(WALL.id, 90),
+      [blueAtOrigin],
+      VS,
+      1.5,
+    )!;
+    expect(footprintOf(voxel, WALL.id, 90).max[0]).toBe(0);
+  });
+
+  it('a wall at yaw 0 keeps position as the box corner', () => {
+    const voxel = snapToNearestFace(
+      { x: 2.2, y: 0.5, z: 1 },
+      shapeOf(WALL.id, 0),
+      [blueAtOrigin],
+      VS,
+      1.5,
+    )!;
+    expect(voxel).toEqual([4, 1, 2]);
+  });
+});
+
+describe('snapToVoxel — cube hit on a yawed target', () => {
+  it('steps past the rotated footprint of a wall at yaw 90', () => {
+    // Footprint of the wall at the origin turned 90 degrees: x [2,3), z [-1,3).
+    const [x, y, z] = geometry.tileStep(WALL.id, 90);
+    const hit: CubeHit = {
+      kind: 'cube',
+      cubePosition: footprintOf([0, 0, 0], WALL.id, 90).min,
+      yawDeg: 90,
+      faceNormal: [0, 0, 1],
+      kindId: WALL.id,
+      point: { x: 1.25, y: 0.5, z: 1.5 },
+    };
+    expect(snapToVoxel(hit, 0.5, undefined, { x, y, z })).toEqual([2, 0, 3]);
+  });
+});
+
+describe('face-snapped placement agrees with the footprint overlap guard', () => {
+  it('a yawed odd-sized kind with float noise lands flush beside itself, not inside', () => {
+    // Turned 90 degrees at the origin the neighbour covers x [2,3); its AABB's
+    // +X face sits just under a half voxel, at 1.2499999 m.
+    const placed = [{ position: [0, 0, 0] as const, kindId: NOISY_WALL.id, yawDeg: 90 }];
+    const voxel = snapToNearestFace(
+      { x: 1.4, y: 0.5, z: 0.5 },
+      newObjectShape(geometry, NOISY_WALL.id, 90),
+      [{ position: [0, 0, 0], aabb: geometry.worldAABB([0, 0, 0], NOISY_WALL.id, 90) }],
+      0.5,
+      1.5,
+    )!;
+    const box = footprintOf(voxel, NOISY_WALL.id, 90);
+    expect(box.min[0]).toBe(3);
+    expect(overlapsAnyInstance(box, placed, footprintOf)).toBe(false);
+  });
+});
+
+describe('snapToGridOrStack', () => {
+  const VS = 0.5;
+  const pegAtOrigin: NearbyObjectInfo = {
+    position: [0, 0, 0],
+    aabb: geometry.worldAABB([0, 0, 0], PEG.id),
+  };
+
+  it('a wall at yaw 90 on a cube +X face puts its box just past the face', () => {
+    const hit: CubeHit = {
+      kind: 'cube',
+      cubePosition: [0, 0, 0],
+      faceNormal: [1, 0, 0],
+      kindId: PEG.id,
+      point: { x: 0.5, y: 0.25, z: 0.25 },
+    };
+    const shape = newObjectShape(geometry, WALL.id, 90);
+    const voxel = snapToGridOrStack(hit, shape, [pegAtOrigin], VS, { x: 1, y: 1, z: 1 }, 10);
+    expect(footprintOf(voxel, WALL.id, 90).min).toEqual([1, 0, 0]);
+  });
+
+  it('a wall at yaw 90 on the floor snaps its box corner to its rotated step', () => {
+    const hit: FloorHit = { kind: 'floor', point: { x: 1.2, y: 0, z: 2.1 } };
+    const shape = newObjectShape(geometry, WALL.id, 90);
+    const voxel = snapToGridOrStack(hit, shape, [], VS, undefined, 10);
+    // Rotated step is 1×3×4: x snaps per voxel, z to a multiple of 4.
+    expect(footprintOf(voxel, WALL.id, 90).min).toEqual([2, 0, 4]);
+  });
+
+  it('stacks on top of the object the snapped box would sit inside', () => {
+    const cube: NearbyObjectInfo = { position: [0, 0, 0], aabb: { min: [0, 0, 0], max: [2, 2, 2] } };
+    const hit: FloorHit = { kind: 'floor', point: { x: 0.6, y: 0, z: 0.6 } };
+    const shape = newObjectShape(geometry, PEG.id);
+    expect(snapToGridOrStack(hit, shape, [cube], VS, undefined, 10)).toEqual([1, 4, 1]);
+    expect(snapToGridOrStack(hit, shape, [cube], VS, undefined, -10)).toEqual([1, -1, 1]);
   });
 });

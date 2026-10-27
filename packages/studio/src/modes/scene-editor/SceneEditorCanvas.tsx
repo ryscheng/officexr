@@ -25,6 +25,7 @@ import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
 import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 import {
   snapToNearestFace,
+  snapToGridOrStack,
   snapToVoxel,
   type NearbyObjectInfo,
   type SnapHit,
@@ -34,6 +35,12 @@ import { computeMovedPositions } from '../room/moveDelta.ts';
 import { checkMoveOccupancy } from '../room/moveOccupancy.ts';
 import { dropToSurface } from '../room/dropToSurface.ts';
 import {
+  createFootprintOf,
+  newObjectShape,
+  overlapsAnyInstance,
+  type FootprintOf,
+} from '../room/footprint.ts';
+import {
   computeTileGhosts,
   resolveAvailableAxes,
   switchNextAxis,
@@ -42,6 +49,11 @@ import {
 } from './tileStateMachine.ts';
 
 type Vec3 = [number, number, number];
+
+function useFootprintOf(): FootprintOf {
+  const { geometry } = useApplication();
+  return useMemo(() => createFootprintOf(geometry), [geometry]);
+}
 
 // TileState is now TileMachineState from tileStateMachine.ts.
 // The generalized machine supports per-kind axis order driven by
@@ -337,17 +349,21 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
   }, []);
 
   /**
-   * Per-axis voxel step for a kind, derived from its baked dimensions.
+   * Per-axis voxel step for a kind at `yawDeg`, derived from its baked dimensions.
    * Used everywhere the tile tool or Add tool needs to know "how many
    * voxels does one of these objects span?" so we can snap and step in
    * multiples of the object's own size rather than the global 0.5 m
    * grid. Defaults to {1,1,1} when the kind has not been baked yet.
    */
   const { geometry: geomService, catalog: catalogService } = useApplication();
+  const footprintOf = useFootprintOf();
   const stepForKind = useCallback(
-    (kindId: string | null | undefined): { x: number; y: number; z: number } => {
+    (
+      kindId: string | null | undefined,
+      yawDeg?: number,
+    ): { x: number; y: number; z: number } => {
       if (!kindId) return { x: 1, y: 1, z: 1 };
-      const [x, y, z] = geomService.tileStep(kindId);
+      const [x, y, z] = geomService.tileStep(kindId, yawDeg);
       return { x, y, z };
     },
     [geomService],
@@ -362,7 +378,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
    */
   const targetStrideFor = useCallback(
     (hit: SnapHit) =>
-      hit.kind === 'cube' ? stepForKind(hit.kindId) : undefined,
+      hit.kind === 'cube' ? stepForKind(hit.kindId, hit.yawDeg) : undefined,
     [stepForKind],
   );
 
@@ -405,96 +421,40 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
   //   3. Overlap stack: if the grid snap lands in an existing cube's
   //      footprint, stack above or below depending on camera angle.
   const snapForPlacement = useCallback(
-    (hit: SnapHit, kindId: string | null): [number, number, number] => {
-      const placingStep = stepForKind(kindId);
+    (hit: SnapHit, kindId: string | null, yawDeg = 0): [number, number, number] => {
+      if (!kindId) {
+        return snapToVoxel(hit, voxelSize, undefined, targetStrideFor(hit));
+      }
+      const shape = newObjectShape(geomService, kindId, yawDeg);
 
-      // World-space cursor point — always use the actual raycast hit
-      // position. Floor hits already carry it; cube hits carry the
-      // hit point on the cube's face. (We previously synthesised the
-      // cube's anchor instead, which always reads as the cube's
-      // BOTTOM regardless of which face was clicked — so the snap
-      // dominant-axis pick always picked -Y. That was the bug.)
-      const cursorPoint = hit.point;
-
-      if (kindId) {
-        const kind = catalogService.getKind(kindId);
-        const dims = kind?.dimensions ?? {
-          width: voxelSize,
-          height: voxelSize,
-          depth: voxelSize,
-        };
-        // Face-snap considers ALL nearby objects, including the one
-        // the cursor is currently on. When the cursor is directly on a
-        // cube the dominant-axis face naturally points OUT of that
-        // cube; if it would overlap a neighbour, the snap falls back
-        // to stacking on top.
-        const facePull = snapToNearestFace(
-          cursorPoint,
-          { ...dims, step: placingStep },
+      // Always snap from the actual raycast hit point: floor hits carry
+      // it, cube hits carry the point on the clicked face. Snapping from
+      // the cube's anchor instead always reads as its bottom, so the
+      // dominant-axis pick would always choose -Y.
+      //
+      // Face-snap considers ALL nearby objects, including the one the
+      // cursor is on: the dominant-axis face points OUT of that cube,
+      // and if that would overlap a neighbour the snap stacks instead.
+      return (
+        snapToNearestFace(
+          hit.point,
+          shape,
           nearbyObjects,
           voxelSize,
           FACE_SNAP_PULL_RADIUS_M,
           { cameraY: cameraYRef.current },
-        );
-        if (facePull) return facePull;
-      }
-
-      // No nearby object → grid snap. Then check overlap one last
-      // time: if the grid snap happens to land at an overlapping
-      // position (cursor just inside an existing cube's XZ footprint),
-      // stack the new object on top of the overlapping cube. This is
-      // the same "never produce a merged ghost" promise the face
-      // snap honours.
-      const gridVoxel = snapToVoxel(
-        hit,
-        voxelSize,
-        placingStep,
-        targetStrideFor(hit),
+        ) ??
+        snapToGridOrStack(
+          hit,
+          shape,
+          nearbyObjects,
+          voxelSize,
+          targetStrideFor(hit),
+          cameraYRef.current,
+        )
       );
-      if (kindId) {
-        const kind = catalogService.getKind(kindId);
-        const dims = kind?.dimensions ?? {
-          width: voxelSize,
-          height: voxelSize,
-          depth: voxelSize,
-        };
-        const aax = gridVoxel[0] * voxelSize;
-        const aay = gridVoxel[1] * voxelSize;
-        const aaz = gridVoxel[2] * voxelSize;
-        const bbx = aax + dims.width;
-        const bby = aay + dims.height;
-        const bbz = aaz + dims.depth;
-        for (const obj of nearbyObjects) {
-          const o = obj.aabb;
-          if (
-            bbx > o.min[0] + 1e-6 &&
-            aax < o.max[0] - 1e-6 &&
-            bby > o.min[1] + 1e-6 &&
-            aay < o.max[1] - 1e-6 &&
-            bbz > o.min[2] + 1e-6 &&
-            aaz < o.max[2] - 1e-6
-          ) {
-            // Overlap → stack above or below this cube based on the
-            // camera direction: looking DOWN at the cube prefers
-            // above (closer to camera); looking UP prefers below.
-            const cy = (o.min[1] + o.max[1]) / 2;
-            const stackAbove = cameraYRef.current >= cy;
-            const stackedY = stackAbove
-              ? Math.round(o.max[1] / voxelSize)
-              : Math.round((o.min[1] - dims.height) / voxelSize);
-            return [gridVoxel[0], stackedY, gridVoxel[2]];
-          }
-        }
-      }
-      return gridVoxel;
     },
-    [
-      voxelSize,
-      nearbyObjects,
-      stepForKind,
-      targetStrideFor,
-      catalogService,
-    ],
+    [voxelSize, nearbyObjects, targetStrideFor, geomService],
   );
 
   // Compute the ghost specs the GhostLayer should render this frame.
@@ -606,9 +566,9 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       if (addKind?.gravity) {
         const settled = dropToSurface(
           voxel,
-          { w: 1, d: 1 },
+          { kindId: props.stagedKindId },
           props.compiled,
-          (pos, kindId) => geomService.voxelFootprint(pos, kindId),
+          footprintOf,
         );
         if (!settled) return; // No support → reject placement
         voxel = settled;
@@ -619,27 +579,14 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       // a click slightly off-grid could pile a second cube on top of
       // the existing one — confusing the user into thinking multiple
       // cubes were placed per click.
-      if (props.stagedKindId) {
-        const proposed = geomService.voxelFootprint(voxel, props.stagedKindId);
-        for (const inst of props.compiled.instances) {
-          const fp = geomService.voxelFootprint(inst.position, inst.kindId);
-          // Half-open AABB overlap on the voxel grid.
-          if (
-            proposed.max[0] > fp.min[0] &&
-            proposed.min[0] < fp.max[0] &&
-            proposed.max[1] > fp.min[1] &&
-            proposed.min[1] < fp.max[1] &&
-            proposed.max[2] > fp.min[2] &&
-            proposed.min[2] < fp.max[2]
-          ) {
-            return; // refuse — would overlap
-          }
-        }
+      const proposed = footprintOf(voxel, props.stagedKindId);
+      if (overlapsAnyInstance(proposed, props.compiled.instances, footprintOf)) {
+        return;
       }
 
       props.onPlaceAt(voxel);
     },
-    [props, snapForPlacement, geomService],
+    [props, snapForPlacement, catalogService, footprintOf],
   );
 
   // Delete-tool click on a cube routes to the parent's delete (which
@@ -679,13 +626,18 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
         const tileKind = catalogService.getKind(stagedKindId);
         if (tileKind?.gravity) {
           const settled = dropToSurface(
-          voxel,
-          { w: 1, d: 1 },
-          props.compiled,
-          (pos, kindId) => geomService.voxelFootprint(pos, kindId),
-        );
+            voxel,
+            { kindId: stagedKindId },
+            props.compiled,
+            footprintOf,
+          );
           if (!settled) return; // No support → reject placement
           voxel = settled;
+        }
+
+        const proposed = footprintOf(voxel, stagedKindId);
+        if (overlapsAnyInstance(proposed, props.compiled.instances, footprintOf)) {
+          return;
         }
 
         const ids = props.onPlaceMany(stagedKindId, [voxel]);
@@ -851,7 +803,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       stepForKind,
       targetStrideFor,
       catalogService,
-      geomService,
+      footprintOf,
     ],
   );
 
@@ -1573,6 +1525,7 @@ interface CubesLayerProps {
 }
 
 function CubesLayer(props: CubesLayerProps) {
+  const footprintOf = useFootprintOf();
   // Compose the shared <ObjectInstances> renderer with the editor's
   // tool dispatch. The wrapper <group>'s pointer events catch all
   // hits on any InstancedMesh ObjectInstances renders; we then read
@@ -1635,7 +1588,8 @@ function CubesLayer(props: CubesLayerProps) {
     const cubeHit: SnapHit | null = normal
       ? {
           kind: 'cube',
-          cubePosition: inst.position,
+          cubePosition: footprintOf(inst.position, inst.kindId, inst.yawDeg).min,
+          yawDeg: inst.yawDeg,
           faceNormal: [normal.x, normal.y, normal.z],
           kindId: inst.kindId,
           point: { x: e.point.x, y: e.point.y, z: e.point.z },
@@ -1678,7 +1632,8 @@ function CubesLayer(props: CubesLayerProps) {
       if (!n) return;
       onHoverCube({
         kind: 'cube',
-        cubePosition: inst.position,
+        cubePosition: footprintOf(inst.position, inst.kindId, inst.yawDeg).min,
+        yawDeg: inst.yawDeg,
         faceNormal: [n.x, n.y, n.z],
         kindId: inst.kindId,
         point: { x: e.point.x, y: e.point.y, z: e.point.z },
@@ -1948,6 +1903,7 @@ function MoveController({
 }: MoveControllerProps) {
   const { gl, camera, raycaster, pointer } = useThree();
   const { geometry: geomService } = useApplication();
+  const footprintOf = useFootprintOf();
 
   // Keep a ref to the latest state so the raw pointer listeners can
   // read it without closing over a stale version. These listeners are
@@ -2141,16 +2097,7 @@ function MoveController({
       // Expand existing instances by their per-kind voxel footprint so a
       // moving 2 m cube is rejected when it would overlap a 2×2×2 block
       // anywhere in its 4³ voxel envelope.
-      const occupancyResult = checkMoveOccupancy(
-        doc,
-        sel,
-        proposed,
-        undefined,
-        (kindId) => {
-          const [w, h, d] = geomService.tileStep(kindId);
-          return { w, h, d };
-        },
-      );
+      const occupancyResult = checkMoveOccupancy(doc, sel, proposed, footprintOf);
 
       setMoveState((prev) =>
         prev.stage === 'dragging'
@@ -2213,6 +2160,7 @@ function MoveController({
     onMoveSelection,
     setMoveState,
     setMoveGhosts,
+    footprintOf,
   ]);
 
   return null;

@@ -104,7 +104,7 @@ export interface InstanceGeometryService {
   /** Mesh-root transform that lands the mesh in its AABB, yawed about its
    * unrotated footprint's centre. */
   meshTransform(position: Vec3, kindId: string, yawDeg?: number): MeshTransform;
-  /** Integer voxel-grid footprint. `max` is exclusive. Used by occupancy. */
+  /** Integer voxel-grid footprint of the yawed AABB, rounded outward. `max` is exclusive. */
   voxelFootprint(position: Vec3, kindId: string, yawDeg?: number): VoxelFootprint;
   /** Per-axis voxel tile step for extrude / tile-tool stepping. */
   tileStep(kindId: string, yawDeg?: number): Vec3;

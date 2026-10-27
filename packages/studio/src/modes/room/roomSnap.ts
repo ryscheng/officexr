@@ -10,9 +10,9 @@
  *
  *   - Floor hit  → `(round(x / voxelSize), 0, round(z / voxelSize))`.
  *     Used for placing the first object in an empty room.
- *   - Cube hit   → `cubePosition + quantizedFaceNormal`. The face
- *     normal gets quantized to the nearest cardinal axis to defend
- *     against floating-point noise from chained transforms.
+ *   - Cube hit   → footprint min + face normal × the target's yawed
+ *     tile step. The face normal gets quantized to the nearest cardinal
+ *     axis to defend against floating-point noise from chained transforms.
  *
  * The user spec says "Once a single object is placed on the editor,
  * additional objects being placed should snap to other objects."
@@ -20,6 +20,8 @@
  * closest hit can be either the object or the floor; whichever wins,
  * `snapToVoxel` produces a reasonable target.
  */
+
+import { metresToVoxel } from './footprint.ts';
 
 export interface FloorHit {
   kind: 'floor';
@@ -29,8 +31,10 @@ export interface FloorHit {
 
 export interface CubeHit {
   kind: 'cube';
-  /** Voxel position of the object that was hit. */
+  /** Min voxel corner of the hit object's footprint. */
   cubePosition: readonly [number, number, number];
+  /** Yaw of the hit object, for its tile step. */
+  yawDeg?: number;
   /** Face normal in world space. May have floating-point noise; we
    * quantize internally before use. */
   faceNormal: readonly [number, number, number];
@@ -82,9 +86,8 @@ export function computeKindTileSteps(
  * @param targetStride - Optional per-axis voxel stride of the *target*
  *   object when `hit.kind === 'cube'`. Used to offset the new position
  *   past the target's full footprint along the face normal. Defaults
- *   to {x:1, y:1, z:1} (the pre-stride behaviour, which is wrong for
- *   any kind larger than one voxel — pass the lookup-derived stride
- *   from `getKindStride(hit.kindId, voxelSize)`).
+ *   to {x:1, y:1, z:1}, which is wrong for any kind larger than one
+ *   voxel — pass the target's yawed tile step.
  */
 export function snapToVoxel(
   hit: SnapHit,
@@ -287,6 +290,11 @@ export interface NewObjectShape {
    * to the nearest multiple of step so two same-kind cubes line up on
    * the same grid. */
   step: { x: number; y: number; z: number };
+  /** Voxel offset from the object's `position` to the min corner of its
+   * box: non-zero for a yawed object, whose box is the rotated one. The
+   * returned voxel is a `position`, so this is subtracted from the snapped
+   * box corner. */
+  originOffset?: readonly [number, number, number];
 }
 
 type Face = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
@@ -407,25 +415,8 @@ export function snapToNearestFace(
 ): [number, number, number] | null {
   if (nearbyObjects.length === 0) return null;
 
-  const wouldOverlap = (anchor: [number, number, number]): boolean => {
-    const bx = anchor[0] + newObject.width;
-    const by = anchor[1] + newObject.height;
-    const bz = anchor[2] + newObject.depth;
-    for (const obj of nearbyObjects) {
-      const o = obj.aabb;
-      if (
-        bx > o.min[0] + EPS &&
-        anchor[0] < o.max[0] - EPS &&
-        by > o.min[1] + EPS &&
-        anchor[1] < o.max[1] - EPS &&
-        bz > o.min[2] + EPS &&
-        anchor[2] < o.max[2] - EPS
-      ) {
-        return true;
-      }
-    }
-    return false;
-  };
+  const wouldOverlap = (anchor: [number, number, number]) =>
+    findOverlapping(anchor, newObject, nearbyObjects) !== undefined;
 
   let bestVoxel: [number, number, number] | null = null;
   let bestDist = pullRadiusM;
@@ -472,14 +463,71 @@ export function snapToNearestFace(
     }
 
     bestDist = aabbDist;
-    bestVoxel = [
-      Math.round(anchor[0] / voxelSize),
-      Math.round(anchor[1] / voxelSize),
-      Math.round(anchor[2] / voxelSize),
-    ];
+    bestVoxel = positionOfBox(
+      [
+        metresToVoxel(anchor[0], voxelSize),
+        metresToVoxel(anchor[1], voxelSize),
+        metresToVoxel(anchor[2], voxelSize),
+      ],
+      newObject,
+    );
   }
 
   return bestVoxel;
+}
+
+/** The nearby object whose AABB the new object's box at metre `anchor` (its min corner) would overlap. */
+function findOverlapping(
+  anchor: readonly [number, number, number],
+  newObject: NewObjectShape,
+  nearbyObjects: readonly NearbyObjectInfo[],
+): NearbyObjectInfo | undefined {
+  const size = [newObject.width, newObject.height, newObject.depth];
+  return nearbyObjects.find(({ aabb }) =>
+    [0, 1, 2].every(
+      (i) => anchor[i] + size[i] > aabb.min[i] + EPS && anchor[i] < aabb.max[i] - EPS,
+    ),
+  );
+}
+
+/** The `position` whose box has min corner `box` (in voxels). */
+function positionOfBox(
+  box: readonly [number, number, number],
+  newObject: NewObjectShape,
+): [number, number, number] {
+  const [ox, oy, oz] = newObject.originOffset ?? [0, 0, 0];
+  return [box[0] - ox, box[1] - oy, box[2] - oz];
+}
+
+/**
+ * Grid fallback for placing a new object: snaps its box with `snapToVoxel`
+ * (a floor hit puts the box corner on a multiple of the new object's step; a
+ * cube hit puts it past the target's face) and returns the matching
+ * `position`. A box that would overlap a nearby object is stacked on top of
+ * that object when the camera is at or above its middle, else below it.
+ */
+export function snapToGridOrStack(
+  hit: SnapHit,
+  newObject: NewObjectShape,
+  nearbyObjects: readonly NearbyObjectInfo[],
+  voxelSize: number,
+  targetStride: { x: number; y: number; z: number } | undefined,
+  cameraY: number,
+): [number, number, number] {
+  const box = snapToVoxel(hit, voxelSize, newObject.step, targetStride);
+  const overlapped = findOverlapping(
+    [box[0] * voxelSize, box[1] * voxelSize, box[2] * voxelSize],
+    newObject,
+    nearbyObjects,
+  );
+  if (overlapped) {
+    const { min, max } = overlapped.aabb;
+    box[1] =
+      cameraY >= (min[1] + max[1]) / 2
+        ? metresToVoxel(max[1], voxelSize)
+        : metresToVoxel(min[1] - newObject.height, voxelSize);
+  }
+  return positionOfBox(box, newObject);
 }
 
 /**
