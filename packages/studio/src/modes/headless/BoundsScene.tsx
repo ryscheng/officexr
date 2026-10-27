@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { WorldObjects } from '@officexr/sdk';
+import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import { createStore, createActions } from '@officexr/sdk';
 import { LightingRig, ObjectInstances } from '@officexr/world/renderer';
 import { useApplication } from '@officexr/world/react';
@@ -133,7 +133,7 @@ export function BoundsScene({ sceneId }: BoundsSceneProps) {
 }
 
 interface SelectionWireframeProps {
-  instances: readonly { id: string; position: readonly [number, number, number]; kindId: string }[];
+  instances: readonly Pick<ObjectInstance, 'id' | 'position' | 'kindId' | 'yawDeg'>[];
   selection: ReadonlySet<string>;
 }
 
@@ -148,7 +148,7 @@ function SelectionWireframe({ instances, selection }: SelectionWireframeProps) {
     const aabbs = [];
     for (const inst of instances) {
       if (!selection.has(inst.id)) continue;
-      aabbs.push(geometry.worldAABB(inst.position, inst.kindId));
+      aabbs.push(geometry.worldAABB(inst.position, inst.kindId, inst.yawDeg));
     }
     const positions = outlineEdgePositions(aabbs);
     if (positions.length === 0) return null;

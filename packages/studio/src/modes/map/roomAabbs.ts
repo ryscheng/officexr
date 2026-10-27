@@ -23,7 +23,7 @@ export function computeRoomAabbs(
       if (!inst.id.startsWith(prefix)) {
         continue;
       }
-      const fp = geometry.voxelFootprint(inst.position, inst.kindId);
+      const fp = geometry.voxelFootprint(inst.position, inst.kindId, inst.yawDeg);
       for (let axis = 0; axis < 3; axis++) {
         min[axis] = Math.min(min[axis], fp.min[axis]);
         // VoxelFootprint.max is exclusive; RoomAABBVoxel.max is inclusive.

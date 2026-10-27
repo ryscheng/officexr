@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
 import { modelUrl } from '../app/asset-url.ts';
+import type { InstanceGeometryService } from '../app/types.ts';
 import { useApplication, useCatalog } from '../react/application-context.tsx';
 import {
   validateWorldObjectKindCatalog,
@@ -256,7 +257,6 @@ function ObjectInstancesView({
           key={kind.id}
           kind={kind}
           instances={instances}
-          voxelSize={worldObjects.cubeSize}
           materialOverride={materialOverride}
         />
       ))}
@@ -266,17 +266,28 @@ function ObjectInstancesView({
           kindId={kindId}
           color={color}
           instances={instances}
-          voxelSize={worldObjects.cubeSize}
         />
       ))}
     </>
   );
 }
 
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+
+function setInstancePose(
+  geometry: InstanceGeometryService,
+  inst: ObjectInstance,
+  pos: THREE.Vector3,
+  quat: THREE.Quaternion,
+): void {
+  const { position, rotationY } = geometry.meshTransform(inst.position, inst.kindId, inst.yawDeg);
+  pos.set(position[0], position[1], position[2]);
+  quat.setFromAxisAngle(Y_AXIS, rotationY);
+}
+
 interface KindInstanceGroupProps {
   kind: WorldObjectKind;
   instances: ObjectInstance[];
-  voxelSize: number;
   materialOverride?: MaterialOverride;
 }
 
@@ -288,7 +299,6 @@ interface KindInstanceGroupProps {
 function KindInstanceGroup({
   kind,
   instances,
-  voxelSize,
   materialOverride,
 }: KindInstanceGroupProps) {
   const { geometry } = useApplication();
@@ -330,13 +340,7 @@ function KindInstanceGroup({
     const s = kind.scale;
     const scale = new THREE.Vector3(s, s, s);
     for (let i = 0; i < instances.length; i++) {
-      const inst = instances[i];
-      // Single source of truth for "where does this instance live?"
-      // The geometry service applies the canonical convention:
-      //   X/Z centered on position * voxelSize
-      //   Y bottom at position * voxelSize (no +vs/2 legacy offset)
-      const [ox, oy, oz] = geometry.meshOrigin(inst.position, inst.kindId);
-      pos.set(ox, oy, oz);
+      setInstancePose(geometry, instances[i], pos, quat);
       m.compose(pos, quat, scale);
       mesh.setMatrixAt(i, m);
     }
@@ -349,7 +353,7 @@ function KindInstanceGroup({
     // uninitialized matrices. Re-running this effect refills them so a
     // live tint/opacity edit from the Object editor doesn't scramble
     // object positions.
-  }, [instances, voxelSize, kind.scale, mat, geometry]);
+  }, [instances, kind.scale, mat, geometry]);
 
   // userData lets the editor's R3F overlay raycast and identify which
   // kind / instance was hit. The caller can read `intersection.object.userData.kindId`
@@ -369,7 +373,6 @@ interface PrimitiveInstanceGroupProps {
   kindId: string;
   color: string;
   instances: ObjectInstance[];
-  voxelSize: number;
 }
 
 /**
@@ -388,8 +391,8 @@ function PrimitiveInstanceGroup({
   kindId,
   color,
   instances,
-  voxelSize,
 }: PrimitiveInstanceGroupProps) {
+  const { geometry } = useApplication();
   const geom = useMemo(
     () =>
       new THREE.BoxGeometry(
@@ -421,26 +424,15 @@ function PrimitiveInstanceGroup({
     // geometry from `kind.scale` tweaks. If someone later wants
     // scale support here, the answer is "use the GLB path".
     const scale = new THREE.Vector3(1, 1, 1);
-    const half = PRIMITIVE_BLOCK_SIZE / 2;
     for (let i = 0; i < instances.length; i++) {
-      const inst = instances[i];
-      // Place the box centre `+half` past the world anchor on every
-      // axis so the box's lower-left corner sits at
-      // `position * voxelSize` — same convention as the GLTF path's
-      // `geometry.meshOrigin` for fully-centred kinds like
-      // `colored_block_blue` (localAABB.min = -half on each axis).
-      pos.set(
-        inst.position[0] * voxelSize + half,
-        inst.position[1] * voxelSize + half,
-        inst.position[2] * voxelSize + half,
-      );
+      setInstancePose(geometry, instances[i], pos, quat);
       m.compose(pos, quat, scale);
       mesh.setMatrixAt(i, m);
     }
     mesh.count = instances.length;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [instances, voxelSize, mat]);
+  }, [instances, mat, geometry]);
 
   return (
     <instancedMesh

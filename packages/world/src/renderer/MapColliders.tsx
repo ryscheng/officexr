@@ -49,7 +49,7 @@ export function MapColliders({ store }: MapCollidersProps) {
   // geometry. Cuboids for boxes/stairs; trimeshes for slope kinds.
   const colliders = worldObjectsToColliders(
     snapshot,
-    (pos, kindId) => geometry.worldAABB(pos, kindId),
+    geometry.worldAABB,
     (kindId) => catalog.getKind(kindId)?.colliderShape,
   );
 
