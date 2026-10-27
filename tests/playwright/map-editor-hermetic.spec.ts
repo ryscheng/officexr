@@ -213,8 +213,6 @@ test('voice zone toggle previews the footprint, follows rotate and move, and sur
     })
     .toBeGreaterThan(20);
 
-  // Autosave is debounced 500 ms and a map switch cancels a pending save.
-  await page.waitForTimeout(1500);
   await page.locator('select').selectOption('other');
   await expect(page.getByText(/Placed rooms \(0\)/)).toBeVisible();
   await page.locator('select').selectOption('default');

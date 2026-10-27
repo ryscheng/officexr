@@ -124,4 +124,84 @@ describe('useMapDocument', () => {
       { timeout: 2000 },
     );
   });
+
+  describe('pending autosave', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function renderLoaded() {
+      const storage = new InMemoryMapStorage({
+        seed: [
+          { name: 'default', doc: emptyMapDocument('default') },
+          { name: 'other', doc: emptyMapDocument('other') },
+        ],
+      });
+      const view = renderHook(() => useMapDocument({ storage }));
+      await waitFor(() => expect(view.result.current.doc.name).toBe('default'));
+      vi.useFakeTimers();
+      return { storage, ...view };
+    }
+
+    it('flushes an edit to the old map when the map is switched within the debounce', async () => {
+      const { storage, result } = await renderLoaded();
+      const save = vi.spyOn(storage, 'save');
+
+      act(() => {
+        result.current.addRoom('snap-room');
+      });
+      await act(async () => {
+        await result.current.loadMap('other');
+      });
+
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0][0]).toBe('default');
+      expect(save.mock.calls[0][1].rooms).toHaveLength(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(save).toHaveBeenCalledTimes(1);
+      expect((await storage.load('other'))?.rooms).toHaveLength(0);
+    });
+
+    it('flushes an edit when the hook unmounts within the debounce', async () => {
+      const { storage, result, unmount } = await renderLoaded();
+      const save = vi.spyOn(storage, 'save');
+
+      act(() => {
+        result.current.addRoom('snap-room');
+      });
+      unmount();
+
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0][0]).toBe('default');
+      expect(save.mock.calls[0][1].rooms).toHaveLength(1);
+    });
+
+    it('debounces rapid edits into one save 500 ms after the last', async () => {
+      const { storage, result } = await renderLoaded();
+      const save = vi.spyOn(storage, 'save');
+
+      act(() => {
+        result.current.addRoom('a');
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      act(() => {
+        result.current.addRoom('b');
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(499);
+      });
+      expect(save).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0][1].rooms).toHaveLength(2);
+    });
+  });
 });

@@ -155,18 +155,39 @@ export function useMapDocument(
     };
   }, [storage, mapName]);
 
+  // Carries the map and storage the edit was made against so a flush can't misroute it.
+  const pendingSaveRef = useRef<{
+    mapName: string;
+    storage: MapStorage;
+    doc: SerializedMap;
+  } | null>(null);
+  const flushPendingSave = useCallback(() => {
+    const pending = pendingSaveRef.current;
+    if (!pending) {
+      return;
+    }
+    pendingSaveRef.current = null;
+    lastSavedJsonRef.current = JSON.stringify(pending.doc);
+    pending.storage.save(pending.mapName, pending.doc).catch((err) => {
+      console.warn(`[map] save("${pending.mapName}") failed:`, err);
+    });
+  }, []);
+
   useEffect(() => {
-    if (loadedForRef.current !== mapName) return;
-    const json = JSON.stringify(doc);
-    if (json === lastSavedJsonRef.current) return;
-    const t = setTimeout(() => {
-      lastSavedJsonRef.current = json;
-      storage.save(mapName, doc).catch((err) => {
-        console.warn(`[map] save("${mapName}") failed:`, err);
-      });
-    }, 500);
+    pendingSaveRef.current = null;
+    if (
+      loadedForRef.current !== mapName ||
+      JSON.stringify(doc) === lastSavedJsonRef.current
+    ) {
+      return;
+    }
+    pendingSaveRef.current = { mapName, storage, doc };
+    const t = setTimeout(flushPendingSave, 500);
     return () => clearTimeout(t);
-  }, [doc, mapName, storage]);
+  }, [doc, mapName, storage, flushPendingSave]);
+
+  // Flush runs as the cleanup: on mapName/storage change and on unmount.
+  useEffect(() => flushPendingSave, [mapName, storage, flushPendingSave]);
 
   const stampUpdated = useCallback(
     (mut: (prev: SerializedMap) => SerializedMap) =>
