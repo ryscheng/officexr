@@ -98,4 +98,30 @@ describe('useMapDocument', () => {
     const persisted = await storage.load('default');
     expect(persisted?.rooms).toHaveLength(1);
   });
+
+  it('setRoomVoiceZone persists voiceZone: true, and turning it off removes the field', async () => {
+    const storage = makeStorage();
+    const { result } = renderHook(() => useMapDocument({ storage }));
+    await waitFor(() => expect(result.current.doc.name).toBe('default'));
+
+    let id = '';
+    act(() => {
+      id = result.current.addRoom('snap-room');
+    });
+    act(() => {
+      result.current.setRoomVoiceZone(id, true);
+    });
+    await waitFor(
+      async () => expect((await storage.load('default'))?.rooms[0].voiceZone).toBe(true),
+      { timeout: 2000 },
+    );
+
+    act(() => {
+      result.current.setRoomVoiceZone(id, false);
+    });
+    await waitFor(
+      async () => expect((await storage.load('default'))?.rooms[0]).not.toHaveProperty('voiceZone'),
+      { timeout: 2000 },
+    );
+  });
 });
