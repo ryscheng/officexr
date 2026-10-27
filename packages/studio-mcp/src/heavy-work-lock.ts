@@ -4,10 +4,16 @@
  */
 export class HeavyWorkLock {
   private busy = false;
+  private readonly work: string;
+
+  /** `work` names what the lock guards in the busy message, e.g. "a bake or render". */
+  constructor(work: string) {
+    this.work = work;
+  }
 
   async run<T>(work: () => Promise<T>): Promise<T> {
     if (this.busy) {
-      throw new Error('a bake or render is already in progress; retry shortly');
+      throw new Error(`${this.work} is already in progress; retry shortly`);
     }
     this.busy = true;
     try {

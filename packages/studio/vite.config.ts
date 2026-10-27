@@ -117,7 +117,7 @@ export default defineConfig({
         onDeleted: async (name) => r2Publisher()?.bakedLayoutHooks.onDeleted(name),
       },
     }),
-    studioMcp({ modelRoot: PUBLIC_DIR }),
+    studioMcp({ modelRoot: PUBLIC_DIR, chromiumPath: process.env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined }),
     {
       name: 'officexr:seed-data-dir',
       async configureServer() {

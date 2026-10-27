@@ -1,8 +1,8 @@
 /**
  * `render_view` over the studio dev server's `POST /mcp`: the tool launches its own
  * headless Chromium against the dev server's `?op=render` page and returns a PNG.
- * Documents are written through the same endpoint and deleted afterwards, because the
- * dev server stores them on disk.
+ * Documents are written through the same endpoint, into the suite's scratch data dir, and
+ * deleted afterwards in case the run reused a developer's dev server.
  */
 
 import { expect, test, type APIRequestContext } from '@playwright/test';
@@ -11,9 +11,11 @@ import { PNG } from 'pngjs';
 const PREFIX = 'e2e-render-view';
 const ROOM = `${PREFIX}-room`;
 const MAP = `${PREFIX}-map`;
+const EMPTY_ROOM = `${PREFIX}-empty`;
 
 const blueBlock = (id: string, position: number[]) => ({ id, op: 'placeObject', kindId: '__primitive_blue', position });
-const roomDoc = { schemaVersion: 5, name: ROOM, title: ROOM, updatedAt: 0, commands: [blueBlock('b1', [0, 0, 0]), blueBlock('b2', [4, 0, 0])], groups: {} };
+const room = (name: string, commands: object[]) => ({ schemaVersion: 5, name, title: name, updatedAt: 0, commands, groups: {} });
+const roomDoc = room(ROOM, [blueBlock('b1', [0, 0, 0]), blueBlock('b2', [4, 0, 0])]);
 const mapDoc = {
   schemaVersion: 2,
   name: MAP,
@@ -39,6 +41,7 @@ let nextId = 1;
 const mcp = async (request: APIRequestContext, name: string, args: object): Promise<ToolResult> => {
   const response = await request.post('/mcp', {
     headers: { accept: 'application/json, text/event-stream' },
+    timeout: 60_000,
     data: { jsonrpc: '2.0', id: nextId++, method: 'tools/call', params: { name, arguments: args } },
   });
   expect(response.ok()).toBe(true);
@@ -60,11 +63,13 @@ test.setTimeout(90_000);
 test.beforeAll(async ({ request }) => {
   expect((await mcp(request, 'put_room', { name: ROOM, room: roomDoc })).isError).toBeFalsy();
   expect((await mcp(request, 'put_map', { name: MAP, map: mapDoc })).isError).toBeFalsy();
+  expect((await mcp(request, 'put_room', { name: EMPTY_ROOM, room: room(EMPTY_ROOM, []) })).isError).toBeFalsy();
 });
 
 test.afterAll(async ({ request }) => {
   await mcp(request, 'delete_map', { name: MAP });
   await mcp(request, 'delete_room', { name: ROOM });
+  await mcp(request, 'delete_room', { name: EMPTY_ROOM });
 });
 
 const CAMERAS: Array<[string, unknown]> = [
@@ -96,4 +101,10 @@ test('an unknown document is a tool error', async ({ request }) => {
   const result = await mcp(request, 'render_view', { target: { type: 'map', name: `${PREFIX}-nowhere` }, camera: 'top' });
   expect(result.isError).toBe(true);
   expect(result.content[0].text).toContain('not found');
+});
+
+test('a page error comes back as a tool error', async ({ request }) => {
+  const result = await mcp(request, 'render_view', { target: { type: 'room', name: EMPTY_ROOM }, camera: 'iso' });
+  expect(result.isError).toBe(true);
+  expect(result.content[0].text).toBe(`render failed: room "${EMPTY_ROOM}" has nothing to render`);
 });

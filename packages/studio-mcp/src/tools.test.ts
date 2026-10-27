@@ -74,7 +74,7 @@ async function connect(overrides: Partial<StudioDocuments> = {}, renderer: ViewR
     ...overrides,
   };
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  const options = { modelRoot: '/nonexistent', heavyWorkLock: new HeavyWorkLock(), renderer };
+  const options = { modelRoot: '/nonexistent', heavyWorkLock: new HeavyWorkLock('a bake or render'), renderer };
   await createStudioMcpServer(docs, options, 'http://studio.test').connect(serverSide);
   const client = new Client({ name: 'test', version: '0' });
   await client.connect(clientSide);
@@ -253,14 +253,12 @@ describe('studio MCP tools', () => {
   });
 
   it('rejects a bake while another heavy operation is running and frees the lock afterwards', async () => {
-    let release!: () => void;
-    let entered!: () => void;
-    const started = new Promise<void>((r) => (entered = r));
-    const gate = new Promise<void>((r) => (release = r));
+    const started = deferred();
+    const gate = deferred();
     const catalog: CatalogStorage = {
       load: async () => {
-        entered();
-        await gate;
+        started.resolve();
+        await gate.promise;
         return null;
       },
       save: async () => {},
@@ -272,12 +270,12 @@ describe('studio MCP tools', () => {
     } as LayoutDocument);
 
     const first = call('bake_layout', { name: 'hall' });
-    await started;
+    await started.promise;
     expect(await call('bake_layout', { name: 'hall' })).toEqual({
       isError: true,
       text: 'a bake or render is already in progress; retry shortly',
     });
-    release();
+    gate.resolve();
     await first;
     expect((await call('bake_layout', { name: 'hall' })).text).not.toContain('already in progress');
   });
@@ -309,7 +307,10 @@ describe('studio MCP tools', () => {
         metresPerPixel: 0.02,
       });
       expect(renderer.requests).toEqual([
-        { origin: 'http://studio.test', request: { target: hall, camera, width: 320, height: 768 } },
+        {
+          origin: 'http://studio.test',
+          request: { target: hall, camera: { type: 'custom', ...camera }, width: 320, height: 768 },
+        },
       ]);
     });
 
@@ -339,19 +340,23 @@ describe('studio MCP tools', () => {
       expect(renderer.requests).toEqual([]);
     });
 
-    it.each(['render failed: ghost-layout has no baked GLB', 'render timed out after 45 s'])(
-      'surfaces the renderer error "%s" as a tool error',
-      async (message) => {
-        const { render, renderer } = await connectWithRoom();
-        renderer.render = async () => {
-          throw new Error(message);
-        };
-        expect(await render({ target: hall, camera: 'iso' })).toMatchObject({ isError: true, content: [{ text: message }] });
-        // The lock is released, so the next render is attempted rather than refused.
-        renderer.render = async () => ({ png: PNG_BYTES, bounds: { min: [0], max: [1] } });
-        expect((await render({ target: hall, camera: 'iso' })).isError).toBeFalsy();
-      },
-    );
+    it('surfaces a renderer error as a tool error and frees the lock', async () => {
+      const { render, renderer } = await connectWithRoom();
+      const message = 'render failed: ghost-layout has no baked GLB';
+      renderer.render = async () => {
+        throw new Error(message);
+      };
+      expect(await render({ target: hall, camera: 'iso' })).toMatchObject({ isError: true, content: [{ text: message }] });
+      renderer.render = async () => ({ png: PNG_BYTES, bounds: { min: [0], max: [1] } });
+      expect((await render({ target: hall, camera: 'iso' })).isError).toBeFalsy();
+    });
+
+    it('passes the top and iso cameras as their own variants', async () => {
+      const { render, renderer } = await connectWithRoom();
+      await render({ target: hall, camera: 'top' });
+      await render({ target: hall, camera: 'iso' });
+      expect(renderer.requests.map(({ request }) => request.camera)).toEqual([{ type: 'top' }, { type: 'iso' }]);
+    });
 
     it('never overlaps a bake and a render, in either order', async () => {
       const gate = deferred();
