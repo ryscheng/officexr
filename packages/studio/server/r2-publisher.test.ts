@@ -410,7 +410,7 @@ describe('r2 publisher', () => {
       const publisher = createR2Publisher(config);
       const mounts: Array<[string, (req: IncomingMessage, res: ServerResponse, next: () => void) => void]> = [];
       const plugin = studioStorage({ dataDir: root, bakedLayouts: publisher.bakedLayoutHooks });
-      (plugin.configureServer as (s: unknown) => void)({
+      await (plugin.configureServer as (s: unknown) => Promise<void>)({
         middlewares: { use: (base: string, h: (typeof mounts)[number][1]) => mounts.push([base, h]) },
       });
       const server = createServer((req, res) => {
