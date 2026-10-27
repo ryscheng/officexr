@@ -66,6 +66,7 @@ function makeCatalog(kinds: WorldObjectKind[]): CatalogService {
     patchKind: () => cat,
     subscribe: () => () => {},
     ready: async () => undefined,
+    isReady: () => true,
   };
 }
 

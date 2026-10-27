@@ -22,7 +22,7 @@ export function createRoomService(deps: {
   };
 
   return {
-    compileScene(doc: RoomDocument): WorldObjects {
+    compileScene(doc: LayoutCommandSource): WorldObjects {
       return compileSceneRaw(doc, geometry.voxelSize, stride);
     },
     compileMap(

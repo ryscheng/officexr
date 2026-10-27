@@ -13,7 +13,7 @@ export { Players } from './Players.tsx';
 export { PlayerNameTag } from './PlayerNameTag.tsx';
 export { CharacterPreviewCanvas } from './CharacterPreviewCanvas.tsx';
 export { MapColliders } from './MapColliders.tsx';
-export { BakedLayout, type BakedLayoutProps } from './BakedLayout.tsx';
+export { BakedLayout, BakedLayoutErrorBoundary, type BakedLayoutProps } from './BakedLayout.tsx';
 export { BakedLayoutColliders, type BakedLayoutCollidersProps } from './BakedLayoutColliders.tsx';
 export { GradientBackground } from './GradientBackground.tsx';
 export { ProximityGlow } from './ProximityGlow.tsx';

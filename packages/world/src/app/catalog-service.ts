@@ -41,6 +41,7 @@ export function createCatalogService(
   let current: WorldObjectKindCatalogV1 = opts.defaultCatalog;
   const listeners = new Set<() => void>();
   let readyPromise: Promise<void> | null = null;
+  let loaded = false;
 
   function emit() {
     for (const l of listeners) l();
@@ -50,6 +51,7 @@ export function createCatalogService(
     if (readyPromise) return readyPromise;
     if (!apiPath || !fetcher) {
       // Fetch disabled — already ready on the bundled default.
+      loaded = true;
       readyPromise = Promise.resolve();
       return readyPromise;
     }
@@ -65,6 +67,8 @@ export function createCatalogService(
         // Fall back to the bundled default with a warning. The renderer
         // keeps rendering, just without the user's authored edits.
         console.warn('[catalog-service] bootstrap fallback to default:', err);
+      } finally {
+        loaded = true;
       }
     })();
     return readyPromise;
@@ -102,5 +106,6 @@ export function createCatalogService(
       };
     },
     ready: () => bootstrap(),
+    isReady: () => loaded,
   };
 }

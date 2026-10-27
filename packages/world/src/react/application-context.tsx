@@ -99,7 +99,8 @@ export function useCatalog(): readonly WorldObjectKind[] {
  */
 export function useCatalogReady(): boolean {
   const api = useApplication();
-  const [ready, setReady] = useState(false);
+  // Seeded synchronously so a mount after the catalog loaded renders ready on its first pass.
+  const [ready, setReady] = useState(() => api.catalog.isReady());
   useEffect(() => {
     let cancelled = false;
     void api.catalog.ready().then(() => {
