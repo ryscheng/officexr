@@ -71,6 +71,16 @@ describe('computeVoiceZones', () => {
     near(zone.max.x - zone.min.x, 3 * api.voxelSize);
   });
 
+  it('spans both the own commands and the linked layout of a room that has both', () => {
+    const room = hall('both');
+    room.layoutName = 'wing';
+    const layout = emptyLayoutDocument('wing');
+    layout.commands.push(newPlaceObject({ kindId, position: [0, 0, 8] }));
+    const [zone] = zonesFor([{ id: 'z', roomName: 'both', position: [0, 0, 0], voiceZone: true }], [room], [layout]);
+    near(zone.max.x - zone.min.x, 4 * api.voxelSize);
+    near(zone.max.z - zone.min.z, 9 * api.voxelSize);
+  });
+
   it('emits only flagged placements, one per placement of the same room', () => {
     const zones = zonesFor(
       [
