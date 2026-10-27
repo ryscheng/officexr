@@ -18,6 +18,7 @@ import React, {
   Suspense,
   useState,
   useEffect,
+  useMemo,
   type ErrorInfo,
   type ReactNode,
 } from 'react';
@@ -43,30 +44,30 @@ interface BakedLayoutMeshProps {
 
 function BakedLayoutMesh({ effectiveUrl, materialOverride }: BakedLayoutMeshProps) {
   const gltf = useGLTF(effectiveUrl);
+  // useGLTF caches one scene per URL; a three.js object has a single
+  // parent, so each mount draws its own clone (geometry and materials
+  // stay shared).
+  const scene = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
 
   // Make the baked layout participate in the shadow pipeline the same
   // way `<ObjectInstances>` does for per-instance kinds. Without this,
   // structural walls/floors loaded from a baked GLB don't cast or
   // receive shadows — characters end up looking shadow-less in Debug
   // mode the moment a map's structural geometry moves into a bake.
-  // The patch runs as a render-time traversal (not a mutation of the
-  // cached GLTF asset) so it doesn't leak into other consumers.
   useEffect(() => {
-    gltf.scene.traverse((child) => {
+    scene.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const m = child as THREE.Mesh;
         m.castShadow = true;
         m.receiveShadow = true;
       }
     });
-  }, [gltf]);
+  }, [scene]);
 
   // If a material override is provided, apply it to every mesh in the scene.
-  // This is intentionally a "render-time patch" (not mutating the GLTF asset)
-  // so the override is ephemeral and doesn't bleed into other consumers.
   useEffect(() => {
     if (!materialOverride) return;
-    gltf.scene.traverse((child) => {
+    scene.traverse((child) => {
       if ('material' in child) {
         const mesh = child as { material: THREE.Material };
         // DIP note: `materialOverride` is injected from the editor layer so
@@ -74,9 +75,9 @@ function BakedLayoutMesh({ effectiveUrl, materialOverride }: BakedLayoutMeshProp
         mesh.material = materialOverride(mesh.material);
       }
     });
-  }, [gltf, materialOverride]);
+  }, [scene, materialOverride]);
 
-  return <primitive object={gltf.scene} />;
+  return <primitive object={scene} />;
 }
 
 // ---------------------------------------------------------------------------

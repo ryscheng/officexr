@@ -122,7 +122,7 @@ export type LayoutCommandSource = { commands: SceneCommand[] };
  * tile step. Pure functions; no internal state.
  */
 export interface RoomService {
-  compileScene(doc: RoomDocument): WorldObjects;
+  compileScene(doc: LayoutCommandSource): WorldObjects;
   /**
    * Compile a map into a flat WorldObjects. The optional `layouts` map
    * enables baked-layout resolution: when a room has empty `commands`
