@@ -1,10 +1,12 @@
-import type { Channel, NetEvent, PlayerId, PresenceData } from '@officexr/sdk';
-import { validateNetEvent } from '@officexr/sdk';
+import type { Channel, ChannelStatus, NetEvent, PlayerId, PresenceData } from '@officexr/sdk';
+import { ChannelStatusEmitter, validateNetEvent } from '@officexr/sdk';
 import {
   decodeFrame,
   encodeFrame,
+  REPLACED_CLOSE_CODE,
   type CustomFrame,
   type Frame,
+  type HelloAckFrame,
 } from './protocol.ts';
 
 /**
@@ -46,15 +48,25 @@ const defaultFactory: WsFactory = (url) => {
 
 const WS_OPEN = 1;
 
+const reconnectDelayMs = (attempt: number): number =>
+  // Jitter keeps a room's tabs from reconnecting in lockstep after a server restart.
+  Math.min(30_000, 1_000 * 2 ** attempt) * (0.8 + Math.random() * 0.4);
+
 export interface WsChannelOptions {
   /** Full WebSocket URL the channel connects to. */
   url: string;
   /** PlayerId the server should associate with this connection. */
   userId: PlayerId;
+  /** Office to join. Omitted means the server's default office. */
+  officeId?: string;
+  /** Login `userId` is a session of. Omitted means `loginOf(userId)`. */
+  login?: string;
   /** Override the WebSocket constructor. Default uses the global. */
   wsFactory?: WsFactory;
-  /** Timeout (ms) for the initial subscribe handshake. Default 10000. */
+  /** Timeout (ms) for each subscribe / reconnect handshake. Default 10000. */
   handshakeTimeoutMs?: number;
+  /** Delay before reconnect attempt `attempt` (0-based). Default: about 1 s, doubling up to 30 s, jittered. */
+  reconnectDelayMs?: (attempt: number) => number;
 }
 
 /**
@@ -71,17 +83,30 @@ export interface WsChannelOptions {
  *  3. `send(event)` becomes a `broadcast` frame on the wire.
  *  4. `trackPresence(data)` becomes a `track-presence` frame.
  *  5. Inbound `presence` frames fire the registered presence handler.
- *  6. `close()` ends the socket; the server fans out a leave to peers.
+ *  6. Once live, an unexpected close reconnects on a fresh socket with
+ *     backoff, keeping every registered handler. A
+ *     {@link REPLACED_CLOSE_CODE} close is final.
+ *  7. `close()` ends the socket; the server fans out a leave to peers.
+ *
+ * ponytail: no heartbeat, so a half-open connection is only noticed when the OS closes it.
  */
 export class WsChannel implements Channel {
   public readonly userId: PlayerId;
   private readonly url: string;
+  private readonly officeId?: string;
+  private readonly login?: string;
   private readonly wsFactory: WsFactory;
   private readonly handshakeTimeoutMs: number;
+  private readonly reconnectDelayMs: (attempt: number) => number;
 
   private ws: WsLike | null = null;
   private subscribed = false;
-  private closed = false;
+  private readonly status = new ChannelStatusEmitter();
+  private pendingSubscribe: Promise<void> | null = null;
+  private reconnectAttempt = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Settles the in-flight handshake; routed through handleFrame / the close listener. */
+  private handshake: { ack: (frame: HelloAckFrame) => void; fail: (err: Error) => void } | null = null;
 
   private readonly handlers = new Set<(event: NetEvent) => void>();
   private readonly presenceHandlers = new Set<
@@ -99,71 +124,129 @@ export class WsChannel implements Channel {
   constructor(opts: WsChannelOptions) {
     this.url = opts.url;
     this.userId = opts.userId;
+    this.officeId = opts.officeId;
+    this.login = opts.login;
     this.wsFactory = opts.wsFactory ?? defaultFactory;
     this.handshakeTimeoutMs = opts.handshakeTimeoutMs ?? 10_000;
+    this.reconnectDelayMs = opts.reconnectDelayMs ?? reconnectDelayMs;
   }
 
   async subscribe(): Promise<void> {
-    if (this.subscribed || this.closed) return;
+    if (this.pendingSubscribe) return this.pendingSubscribe;
+    if (this.status.current !== 'connecting') return;
+    const pending = this.connect().finally(() => {
+      this.pendingSubscribe = null;
+    });
+    this.pendingSubscribe = pending;
+    return pending;
+  }
+
+  /** Opens a socket and resolves once its `hello-ack` has been applied. */
+  private connect(): Promise<void> {
     const ws = this.wsFactory(this.url);
     this.ws = ws;
 
-    ws.addEventListener('message', (e: MessageEvent | { data: unknown }) => {
-      const data = (e as { data?: unknown }).data;
-      if (typeof data !== 'string') return;
-      const frame = decodeFrame(data);
-      if (!frame) return;
-      this.handleFrame(frame);
+    ws.addEventListener('message', (e: { data?: unknown }) => {
+      if (this.ws !== ws || typeof e.data !== 'string') return;
+      const frame = decodeFrame(e.data);
+      if (frame) this.handleFrame(frame);
     });
-    ws.addEventListener('close', () => {
-      this.subscribed = false;
-      if (!this.closed) {
-        // Server-initiated close — surface as a presence-leave for self
-        // so the local store doesn't keep stale state. Consumers can
-        // reconnect by constructing a new WsChannel.
-        this.closed = true;
+    ws.addEventListener('close', (e: { code?: number }) => {
+      if (this.ws !== ws) return;
+      this.dropSocket();
+      this.handshake?.fail(new Error('WsChannel: closed before handshake'));
+      if (e.code === REPLACED_CLOSE_CODE) {
+        this.status.set('replaced');
+      } else if (this.status.current === 'live' || this.status.current === 'reconnecting') {
+        this.status.set('reconnecting');
+        this.scheduleReconnect();
       }
     });
     ws.addEventListener('error', () => {
       // Don't tear down here; the close event will follow.
     });
+    const sendHello = () =>
+      ws.send(encodeFrame({ t: 'hello', userId: this.userId, officeId: this.officeId, login: this.login }));
+    if (ws.readyState === WS_OPEN) {
+      sendHello();
+    } else {
+      ws.addEventListener('open', sendHello);
+    }
 
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error('WsChannel: handshake timeout')),
-        this.handshakeTimeoutMs,
-      );
-      const onOpen = () => {
-        ws.send(encodeFrame({ t: 'hello', userId: this.userId }));
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.handshake?.fail(new Error('WsChannel: handshake timeout'));
+        if (this.ws !== ws) return;
+        // Don't wait for a close event: a black-holed socket may never send one.
+        this.dropSocket();
+        this.scheduleReconnect();
+      }, this.handshakeTimeoutMs);
+      this.handshake = {
+        ack: (frame) => {
+          clearTimeout(timer);
+          this.handshake = null;
+          this.onHelloAck(ws, frame);
+          resolve();
+        },
+        fail: (err) => {
+          clearTimeout(timer);
+          this.handshake = null;
+          reject(err);
+        },
       };
-      const onAck = (frame: Frame) => {
-        if (frame.t !== 'hello-ack') return;
-        this.knownPresent = new Set(frame.present);
-        this.subscribed = true;
-        if (this.myPresenceData) {
-          ws.send(encodeFrame({ t: 'track-presence', data: this.myPresenceData }));
-        }
-        clearTimeout(timer);
-        ws.removeEventListener('open', onOpen);
-        this.offHelloAck = null;
-        resolve();
-      };
-      this.offHelloAck = onAck;
-
-      if (ws.readyState === WS_OPEN) {
-        onOpen();
-      } else {
-        ws.addEventListener('open', onOpen);
-      }
     });
   }
 
-  /** Set during subscribe(); handleFrame routes hello-ack through this
-   * so we can resolve the subscribe promise from a frame handler. */
-  private offHelloAck: ((frame: Frame) => void) | null = null;
+  private onHelloAck(ws: WsLike, frame: HelloAckFrame): void {
+    const previous = this.knownPresent;
+    this.knownPresent = new Set(frame.present);
+    this.subscribed = true;
+    this.reconnectAttempt = 0;
+    if (this.myPresenceData) {
+      ws.send(encodeFrame({ t: 'track-presence', data: this.myPresenceData }));
+    }
+    if (this.status.current === 'reconnecting') {
+      const joined = frame.present.filter((id) => !previous.has(id));
+      const left = [...previous].filter((id) => !this.knownPresent.has(id));
+      if (joined.length > 0 || left.length > 0) {
+        this.firePresence(joined, left);
+      }
+    }
+    // A presence handler may have closed the channel.
+    if (this.ws !== ws) return;
+    this.status.set('live');
+  }
+
+  /** Closes and forgets the current socket so its late events are ignored. */
+  private dropSocket(): void {
+    const ws = this.ws;
+    this.ws = null;
+    this.subscribed = false;
+    try {
+      ws?.close();
+    } catch {
+      // ignore
+    }
+  }
+
+  /** No-op unless still reconnecting: a status handler may have closed the channel. */
+  private scheduleReconnect(): void {
+    if (this.status.current !== 'reconnecting') return;
+    const delay = this.reconnectDelayMs(this.reconnectAttempt++);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.status.current !== 'reconnecting') return;
+      try {
+        // A failed attempt closes or times out its socket, which schedules the next one.
+        this.connect().catch(() => {});
+      } catch {
+        this.scheduleReconnect();
+      }
+    }, delay);
+  }
 
   async send(event: NetEvent): Promise<void> {
-    if (this.closed || !this.subscribed || !this.ws) return;
+    if (!this.subscribed || !this.ws) return;
     if (this.ws.readyState !== WS_OPEN) return;
     this.ws.send(encodeFrame({ t: 'broadcast', from: this.userId, event }));
   }
@@ -195,20 +278,22 @@ export class WsChannel implements Channel {
     return Array.from(this.knownPresent);
   }
 
+  onStatusChange(handler: (status: ChannelStatus) => void): () => void {
+    return this.status.subscribe(handler);
+  }
+
   close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    this.subscribed = false;
-    if (this.ws) {
-      try {
-        this.ws.close();
-      } catch {
-        // ignore
-      }
-      this.ws = null;
+    if (this.status.current === 'closed') return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
+    this.dropSocket();
+    this.handshake?.fail(new Error('WsChannel: closed before handshake'));
+    this.status.set('closed');
     this.handlers.clear();
     this.presenceHandlers.clear();
+    this.status.clear();
     this.customHandlers.clear();
   }
 
@@ -216,7 +301,7 @@ export class WsChannel implements Channel {
 
   /** Send a `{ t: 'custom', kind, payload }` frame to the server. */
   sendCustom(kind: string, payload: unknown): void {
-    if (this.closed || !this.subscribed || !this.ws) return;
+    if (!this.subscribed || !this.ws) return;
     if (this.ws.readyState !== WS_OPEN) return;
     const frame: CustomFrame = { t: 'custom', kind, payload };
     this.ws.send(encodeFrame(frame));
@@ -239,7 +324,7 @@ export class WsChannel implements Channel {
 
   private handleFrame(frame: Frame): void {
     if (frame.t === 'hello-ack') {
-      if (this.offHelloAck) this.offHelloAck(frame);
+      this.handshake?.ack(frame);
       return;
     }
     if (frame.t === 'snapshot') {
@@ -259,13 +344,7 @@ export class WsChannel implements Channel {
     if (frame.t === 'presence') {
       for (const id of frame.joined) this.knownPresent.add(id);
       for (const id of frame.left) this.knownPresent.delete(id);
-      for (const h of [...this.presenceHandlers]) {
-        try {
-          h(frame.joined, frame.left);
-        } catch (err) {
-          console.error('[ws-channel] presence handler threw:', err);
-        }
-      }
+      this.firePresence(frame.joined, frame.left);
       return;
     }
     if (frame.t === 'custom') {
@@ -281,6 +360,16 @@ export class WsChannel implements Channel {
       return;
     }
     // hello / track-presence are client→server only; ignore if echoed.
+  }
+
+  private firePresence(joined: PlayerId[], left: PlayerId[]): void {
+    for (const h of [...this.presenceHandlers]) {
+      try {
+        h(joined, left);
+      } catch (err) {
+        console.error('[ws-channel] presence handler threw:', err);
+      }
+    }
   }
 
   private dispatchBroadcast(event: NetEvent): void {

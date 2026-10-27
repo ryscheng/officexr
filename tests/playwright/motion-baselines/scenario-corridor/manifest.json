@@ -1,0 +1,31 @@
+{
+  "scenario": "corridor",
+  "description": "Walk-off-and-respawn: character walks along corridor, falls off far end, dual-gate respawn fires, returns to spawn.",
+  "geometry": "scenario-corridor map — 2x1x8 colored_block_blue platform (voxel cols x={0,4}, z={0,4,8,12,16,20,24,28}); platform world X: 0–4m, Z: 0–16m, top face at world Y=2m",
+  "spawnPoint": { "x": 0, "y": 0, "z": 0 },
+  "keyframes": [
+    {
+      "id": "keyframe-01-on-platform",
+      "filename": "ideal/keyframe-01-on-platform.png",
+      "captureCondition": "bot.pos.z >= 6 and bot.pos.y within 0.3 of settled height (y≈1.5)",
+      "description": "Bot walking on platform, past the midpoint toward the far end"
+    },
+    {
+      "id": "keyframe-02-falling",
+      "filename": "ideal/keyframe-02-falling.png",
+      "captureCondition": "bot.pos.z > 15 (far edge reached) AND observer store vel.y <= -4 m/s (position-delta estimate from PositionBroadcaster is strongly negative during free-fall)",
+      "description": "Bot in free-fall after walking off the far end of the corridor; vel.y in observer store is the position-delta estimate, not the internal Rapier accumulator"
+    },
+    {
+      "id": "keyframe-03-respawned",
+      "filename": "ideal/keyframe-03-respawned.png",
+      "captureCondition": "bot.pos.z < 4 and bot.pos.y within 0.3 of settled height (y≈1.5); spawn point is {x:0,y:0,z:0} (KCC resolves upward to y≈1.5)",
+      "description": "Bot settled back at spawn point after dual-gate respawn"
+    }
+  ],
+  "assertionThresholds": {
+    "positionTolerance": 0.3,
+    "velocityTolerance": 0.1,
+    "keyframePixelDiffPercent": 0.02
+  }
+}

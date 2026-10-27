@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "name": "default",
+  "title": "default",
+  "updatedAt": 1778544479696,
+  "worldMap": {
+    "gridSize": 20,
+    "cubeSize": 2,
+    "origin": {
+      "x": 0,
+      "z": 0
+    },
+    "layers": [],
+    "kinds": {
+      "floor": {
+        "id": "floor",
+        "walkable": true,
+        "appearance": {
+          "color": "#3b82f6"
+        }
+      },
+      "wall": {
+        "id": "wall",
+        "walkable": false,
+        "appearance": {
+          "color": "#71717a"
+        }
+      },
+      "obstacle": {
+        "id": "obstacle",
+        "walkable": false,
+        "appearance": {
+          "color": "#a16207"
+        }
+      },
+      "spawn": {
+        "id": "spawn",
+        "walkable": true,
+        "appearance": {
+          "color": "#22c55e"
+        }
+      }
+    }
+  },
+  "spawnPoints": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  ],
+  "characterConfigs": {
+    "Barbarian": {}
+  }
+}

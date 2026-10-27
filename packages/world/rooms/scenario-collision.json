@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 5,
+  "name": "scenario-collision",
+  "title": "Scenario Collision Room",
+  "updatedAt": 1749600000000,
+  "layoutName": "scenario-collision",
+  "commands": [],
+  "groups": {}
+}

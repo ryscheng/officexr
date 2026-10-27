@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 5,
+  "name": "scenario-corridor",
+  "title": "Scenario Corridor Room",
+  "updatedAt": 1781243520091,
+  "layoutName": "scenario-corridor",
+  "commands": [],
+  "groups": {}
+}

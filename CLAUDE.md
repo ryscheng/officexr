@@ -12,9 +12,9 @@ about *how* code in it should be written. Keep it short.
 
 Default to writing code that respects the five SOLID principles. They're
 not aspirational rules — they're the baseline the existing
-`@officexr/sdk` + `debug-app` split is built around, and the
-`refactor-plan/` work is explicitly aimed at restoring them where the
-old `RoomScene.tsx` god component eroded them.
+`@officexr/sdk` + `@officexr/world` + `@officexr/studio` split is built around, and the
+`refactor-plan/` work restored them where the old (since removed)
+`RoomScene.tsx` god component eroded them.
 
 - **Single Responsibility.** A module, class, or component does one
   thing. If you can't describe its job in one short sentence without
@@ -29,7 +29,7 @@ old `RoomScene.tsx` god component eroded them.
   and the `PROTOCOL` table are existing examples — they fail at compile
   time when a new variant is added without a registry entry.
 - **Liskov Substitution.** A concrete `Channel` implementation
-  (`InMemoryChannel`, `WsChannel`, `SupabaseChannel`) must obey the
+  (`InMemoryChannel`, `WsChannel`) must obey the
   same observable contract the `Channel` interface advertises —
   including subscribe / send / presence semantics. Any "this
   implementation behaves slightly differently" needs to either be
@@ -40,13 +40,14 @@ old `RoomScene.tsx` god component eroded them.
   that only needs movement tunables can ask for `AnimationSettings &
   CollisionSettings` instead of the whole bag.
 - **Dependency Inversion.** High-level modules don't depend on
-  low-level details. `@officexr/sdk` knows nothing about `three` or
-  `react`; the renderer + HUD depend on the SDK, never the reverse.
+  low-level details. `@officexr/sdk` and `@officexr/core-refactor` know
+  nothing about `three` or `react`; `@officexr/world` (renderer +
+  physics + bots) depends on the SDK, never the reverse.
   This is enforced by greps that should stay clean:
 
   ```bash
-  grep -rn "from 'three'" packages/sdk packages/realtime-server
-  grep -rn "from 'react'" packages/sdk packages/realtime-server
+  grep -rn "from 'three'" packages/sdk packages/realtime-server packages/core-refactor
+  grep -rn "from 'react'" packages/sdk packages/realtime-server packages/core-refactor
   ```
 
   Both must return zero matches.
@@ -85,7 +86,7 @@ escape hatch is for genuine constraints, not for skipping refactors.
 ## Other guardrails
 
 - **No mock-only tests for cross-process behaviour.** If a test would
-  pass with mocked Supabase / mocked channels but fail in production,
+  pass with mocked channels but fail in production,
   add an integration test against the in-memory channel hub
   (`createInMemoryChannelHub`) — that's the convergence-test pattern
   the SDK already uses.
@@ -95,3 +96,60 @@ escape hatch is for genuine constraints, not for skipping refactors.
 - **No new `useRef + setStateSync` mirror pairs.** They were the
   load-bearing footgun that ARCHITECTURE.md observation O3 calls out.
   Use the store or a `subscribeAll` listener instead.
+- **Editor canvases compose renderer primitives; they don't
+  re-implement them.** World objects render via
+  `<ObjectInstances worldObjects={…} />`; lighting via
+  `<LightingRig lighting={…} />`; preview cameras via
+  `<EditorCamera />`. Editor-specific overlays (selection
+  outlines, tool ghosts, hover tooltips, command-tree picking)
+  layer ON TOP of those primitives — they don't replace them.
+  The `lint:no-bespoke-renderer` script enforces the headline
+  cases: no `SEAM_OVERLAP` anywhere, no inline `<directionalLight>`
+  / `<hemisphereLight>` / `<ambientLight>` / etc. outside the
+  renderer package. If you need a new primitive, add it to
+  `packages/world/src/renderer/` and export it — don't fork
+  it inside an editor.
+- **Hermetic studio test mode (`?test=1`).** `packages/studio/src/App.tsx`
+  has a startup branch: when the URL carries `?test=1`, the studio boots
+  with a bundled-catalog `ApplicationApi` (no `/api/world-object-kinds`
+  fetch) and in-memory storages (no `/api/*` filesystem), seeded from
+  `window.__OFFICEXR_TEST_SEED__`. This is a deliberate production-code
+  seam for the Playwright suite, not a stealth feature — it's a single
+  branch evaluated once at boot and is null/no-op in normal operation.
+  The editor document hooks resolve storage as
+  `explicit option → TestStorageContext (?test=1) → Filesystem stack`.
+  The hermetic harness + conventions live under
+  `packages/studio/src/test-harness/` (see its README). When adding a
+  new editor hook that persists, accept an optional `storage` and read
+  `useTestStorages()` so it stays hermetically testable.
+- **Playwright e2e tests (incl. mugshot) MUST be run after any
+  change to `@officexr/world` renderer logic.** The mugshot
+  baselines under `tests/playwright/mugshot-baselines/` are the
+  visual contract for the renderer's positioning, scaling, and
+  lighting — they will silently drift when a renderer-side
+  convention changes (anchor convention, voxel size, kind AABB,
+  primitive sizing, camera plumbing, etc.) and unit tests will
+  not catch it because the divergence is purely pixel-level. Run
+  the full e2e suite (`pnpm test:e2e`, or at minimum the mugshot
+  specs `pnpm exec playwright test tests/playwright/mugshot-*`)
+  before considering a renderer change complete. If a baseline
+  truly needs to change, change BOTH the ideal PNGs and the
+  manifest in the same PR — never silently widen the diff
+  threshold to make the suite green.
+- **Regenerating per-platform Playwright baselines: use podman.**
+  `character-on-surface.spec.ts` uses Playwright's native
+  `toHaveScreenshot`, which writes OS-suffixed baselines
+  (`*-chromium-linux.png` / `*-chromium-darwin.png`). CI runs on
+  linux, so its `-linux.png` baselines can't be regenerated from a
+  macOS dev box directly. When they need refreshing (a renderer
+  change moved the rendered pixels), regenerate them in a linux
+  container via **podman** (Docker is not installed on these
+  machines — prefer podman when available, `podman --version` to
+  check). Use the Playwright image matching the installed version
+  (`mcr.microsoft.com/playwright:v<version>-noble`) against a
+  throwaway `git clone` of the repo (NOT a mount of the working
+  tree — an in-container `pnpm install` would clobber the host's
+  node_modules with linux binaries), then copy the generated
+  `*-chromium-linux.png` back into
+  `tests/playwright/<spec>-snapshots/`. Review each PNG by hand
+  before committing.

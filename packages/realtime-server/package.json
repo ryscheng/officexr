@@ -8,6 +8,7 @@
     "./server": "./src/server.ts"
   },
   "scripts": {
+    "start": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@types/node": "^22.7.5",
     "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
     "typescript": "^5",
     "vitest": "^4.1.3"
   }

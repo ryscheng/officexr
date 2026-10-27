@@ -1,0 +1,26 @@
+{
+  "name": "@officexr/studio-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/vite-plugin.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.0",
+    "@officexr/sdk": "workspace:*",
+    "@officexr/world": "workspace:*",
+    "playwright-core": "1.60.0",
+    "zod": "^3.25"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "typescript": "^5",
+    "vite": "^6",
+    "vitest": "^4.1.3"
+  }
+}

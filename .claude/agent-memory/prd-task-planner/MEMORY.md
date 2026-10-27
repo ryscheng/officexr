@@ -1,0 +1,2 @@
+- [Object capabilities PRD — generated](project-object-capabilities.md) — PRD updated (2026-05-17): 12 tasks (task-00 added: rename CubeKindEntry→WorldObjectKind, CUBE_SIZE→VOXEL_SIZE, etc.); all downstream tasks updated with new names
+- [Jump feature PRD — generated](project-jump-feature.md) — GENERATE complete (2026-05-18): 5 tasks; isAirborne on PlayerState + presence:position; Jump_Full_Long animation for all players; landingEaseMs blend; TDD on task-01+02

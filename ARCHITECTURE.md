@@ -3,215 +3,76 @@
 > Living document. Intended as a baseline reference we can use when discussing
 > refactors / a "better" architecture in subsequent changes.
 
-OfficeXR is a pnpm monorepo with a single source-of-truth React/Three.js
-codebase (`@officexr/core`) wrapped by three platform shells (web, desktop,
-mobile). The backend is "serverless" — Supabase handles auth, persistence, and
-realtime; JaaS (Jitsi as a Service) handles voice/video. The web client mints
-its own JaaS JWT via the Web Crypto API, so there is no custom backend service
-to operate.
+OfficeXR is a pnpm monorepo whose deployable app is the browser client
+`@officexr/web`. It renders offices with the world renderer (`@officexr/world`)
+from maps authored in `@officexr/studio`, syncs players through a WebSocket
+realtime server, reads Postgres server-side, and takes identity from
+Tailscale. JaaS (Jitsi as a Service) handles proximity voice; the browser mints
+its own JaaS JWT via the Web Crypto API.
 
-## 1. System Architecture (clients + backend services)
+## 1. System Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Clients["Client shells"]
-        Web["@officexr/web<br/>Vite + React 19"]
-        Desktop["@officexr/desktop<br/>Electron wrapper"]
-        Mobile["@officexr/mobile<br/>Expo / React Native"]
+    subgraph Browser["Browser"]
+        WebApp["@officexr/web<br/>React 19 shell + HUD"]
+        World["@officexr/world<br/>renderer · physics · characters"]
+        Session["@officexr/core-refactor<br/>createStack · office session"]
+        SDK["@officexr/sdk<br/>store · protocol · SyncEngine"]
     end
 
-    subgraph Core["@officexr/core (shared)"]
-        ReactApp["React 19 SPA<br/>react-router"]
-        ThreeJS["Three.js + WebXR<br/>3D scene + avatars"]
+    subgraph Server["Server side"]
+        Tailscale["Tailscale Serve<br/>identity headers"]
+        WebServer["web server (Vite plugin)<br/>/api/* · /config.js"]
+        Realtime["@officexr/realtime-server<br/>WebSocket relay"]
+        PG[("Postgres<br/>offices · office_characters")]
+        JaaS["JaaS / Jitsi<br/>voice"]
     end
 
-    subgraph Backend["Backend services (serverless)"]
-        SBAuth["Supabase Auth<br/>Google OAuth"]
-        SBDB[("Supabase Postgres<br/>profiles · offices ·<br/>office_members · office_skins")]
-        SBRT["Supabase Realtime<br/>presence + broadcast"]
-        JaaS["JaaS / Jitsi<br/>voice + video"]
-        Google["Google OAuth"]
-    end
+    WebApp --> World
+    WebApp --> Session
+    Session --> SDK
+    World --> SDK
 
-    Web --> Core
-    Desktop -- "loads built<br/>SPA via app://" --> Core
-    Mobile -. "shares hooks /<br/>supabase client" .-> Core
-
-    ReactApp --> SBAuth
-    ReactApp --> SBDB
-    ThreeJS --> SBRT
-    ThreeJS --> JaaS
-    SBAuth --> Google
+    Tailscale --> WebServer
+    WebApp -- "/api/me, /api/offices" --> WebServer
+    WebServer -- "pg" --> PG
+    SDK -- "WsChannel over /ws" --> Realtime
+    Session --> JaaS
 
     classDef client fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
-    classDef core fill:#312e81,stroke:#a78bfa,color:#ede9fe
     classDef svc fill:#064e3b,stroke:#34d399,color:#d1fae5
-    class Web,Desktop,Mobile client
-    class ReactApp,ThreeJS core
-    class SBAuth,SBDB,SBRT,JaaS,Google svc
+    class WebApp,World,Session,SDK client
+    class Tailscale,WebServer,Realtime,PG,JaaS svc
 ```
 
-## 2. Application Layers (inside `@officexr/core`)
+## 2. Packages and Layers
 
-The core package is conventional layered React: presentation components →
-custom hooks → lib/data → external services. The 3D scene (`RoomScene`) is
-the central composition root that wires every subsystem hook together.
+| Package | Role | Depends on |
+|---------|------|-----------|
+| `@officexr/sdk` | Headless game state (store, actions, rules), realtime protocol, `Channel` + `InMemoryChannel`, `SyncEngine` | — (no `three`, no `react`) |
+| `@officexr/realtime-server` | WebSocket relay server and the `WsChannel` client | sdk |
+| `@officexr/core-refactor` | `createStack` (local / ws), office session, voice adapter contract | sdk, realtime-server |
+| `@officexr/world` | Renderer primitives, physics, characters, bots, map/room/cube-kind data | sdk, realtime-server |
+| `@officexr/studio` | Authoring editors and the debug playtest mode | world, core-refactor, sdk, realtime-server |
+| `@officexr/web` | Office list, room (`OfficeWorld`), chat HUD, JaaS voice, `/api` server | world, core-refactor, sdk |
 
-```mermaid
-flowchart TB
-    subgraph Pres["Presentation layer (components/, pages/)"]
-        Pages["pages/<br/>Home · Login · RoomPage"]
-        Lobby["UserLobby ·<br/>OfficeSelector ·<br/>SettingsPanel"]
-        Scene["RoomScene<br/>(3D composition root)"]
-        RoomUI["components/room/<br/>ChatPanel · UserPanel ·<br/>InventoryPanel · LootBox ·<br/>JitsiMeetingContainer ·<br/>ScreenShare · LoginModal ·<br/>VirtualJoystick · Crosshair"]
-        Three3D["Three.js objects<br/>Avatar · WhiteboardCanvas ·<br/>EmojiConfetti · LootBoxEffect"]
-        Zombie["zombie/<br/>ZombieOverlay · ZombieHUD ·<br/>useZombieGame (mini-game)"]
-    end
+## 3. Realtime and Voice
 
-    subgraph Logic["State / hooks layer (hooks/)"]
-        Auth["useAuth"]
-        SceneHk["useSceneSetup<br/>(renderer, camera, HDRI)"]
-        Channel["useRealtimeChannel<br/>(Supabase channel mgr)"]
-        Presence["usePresence<br/>(positions, proximity)"]
-        Chat["useChat"]
-        Jitsi["useJitsi<br/>(proximity voice)"]
-        Screen["useScreenSharing<br/>(WebRTC + STUN)"]
-        Whiteboard["useWhiteboard"]
-        Shoot["useShooting"]
-        Loot["useLootBox"]
-        Avatar["useAvatarCustomization"]
-        Input["useKeyboardControls ·<br/>useMotionControls"]
-        Net["useNetworkStats ·<br/>useChannelLogger"]
-    end
+Each office is one realtime channel. In the web app that is a `WsChannel` to
+`@officexr/realtime-server` (the web server proxies `/ws` to it); the studio
+debug mode can also run fully in-browser on an `InMemoryChannel` hub. The
+SDK's `SyncEngine` broadcasts positions and state diffs, routes inbound
+events, and hands late joiners a snapshot. Proximity voice is a
+`VoiceAdapter`; the web app's `JaasVoiceAdapter` joins a JaaS room when
+players are close together.
 
-    subgraph Data["Data / lib layer"]
-        Supa["lib/supabase.ts<br/>typed client + Database<>"]
-        JWT["lib/jaasJwt.ts<br/>RS256 JWT (Web Crypto)"]
-        LootData["data/lootBoxItems.ts"]
-        Types["types/<br/>avatar · room"]
-    end
+## 4. Legacy Client: Local Game State & Rendering
 
-    subgraph Ext["External services"]
-        SB[("Supabase<br/>Auth + DB + Realtime")]
-        JaaSExt["JaaS / Jitsi"]
-        WebRTC["Browser WebRTC<br/>(getDisplayMedia, RTCPeer)"]
-        LS["localStorage<br/>(inventory, cooldown)"]
-    end
-
-    Pages --> Scene
-    Pages --> Lobby
-    Scene --> RoomUI
-    Scene --> Three3D
-    Scene --> Zombie
-
-    Scene --> SceneHk
-    Scene --> Channel
-    Scene --> Presence
-    Scene --> Chat
-    Scene --> Jitsi
-    Scene --> Screen
-    Scene --> Whiteboard
-    Scene --> Shoot
-    Scene --> Loot
-    Scene --> Avatar
-    Scene --> Input
-    Scene --> Net
-    Lobby --> Auth
-    Pages --> Auth
-
-    Auth --> Supa
-    Channel --> Supa
-    Presence --> Channel
-    Chat --> Channel
-    Whiteboard --> Channel
-    Screen --> Channel
-    Jitsi --> JWT
-    Avatar --> Supa
-    Loot --> LootData
-    Loot --> LS
-
-    Supa --> SB
-    JWT --> JaaSExt
-    Jitsi --> JaaSExt
-    Screen --> WebRTC
-
-    classDef pres fill:#1e3a8a,stroke:#60a5fa,color:#dbeafe
-    classDef logic fill:#312e81,stroke:#a78bfa,color:#ede9fe
-    classDef data fill:#064e3b,stroke:#34d399,color:#d1fae5
-    classDef ext fill:#3f1d1d,stroke:#f87171,color:#fee2e2
-    class Pages,Lobby,Scene,RoomUI,Three3D,Zombie pres
-    class Auth,SceneHk,Channel,Presence,Chat,Jitsi,Screen,Whiteboard,Shoot,Loot,Avatar,Input,Net logic
-    class Supa,JWT,LootData,Types data
-    class SB,JaaSExt,WebRTC,LS ext
-```
-
-## 3. Realtime, Voice & Media Subsystems
-
-Each room is one Supabase Realtime channel multiplexing several event streams,
-plus two out-of-band media subsystems (voice via JaaS iframe, screen sharing
-via direct WebRTC peer connections signaled over the same channel).
-
-```mermaid
-flowchart LR
-    subgraph Local["Local client (browser)"]
-        Tick["Frame tick<br/>(setAnimationLoop)"]
-        PresHk["usePresence"]
-        ChatHk["useChat"]
-        WBHk["useWhiteboard"]
-        ShootHk["useShooting"]
-        ScreenHk["useScreenSharing"]
-        JitsiHk["useJitsi"]
-        Iframe["Jitsi IFrame API<br/>(JitsiMeetingContainer)"]
-        ZombieHk["useZombieGame"]
-    end
-
-    subgraph Channel["Supabase Realtime channel: room:{officeId}"]
-        Track["presence.track<br/>(position, yaw, avatar)"]
-        BCPos["broadcast: position"]
-        BCChat["broadcast: chat"]
-        BCDraw["broadcast: stroke / clear"]
-        BCHit["broadcast: hit"]
-        BCSig["broadcast: webrtc-offer /<br/>answer / ice"]
-        BCZom["broadcast: zombie-positions /<br/>zombie-spawn / zombie-kill /<br/>zombie-state"]
-    end
-
-    subgraph Voice["Proximity voice (JaaS)"]
-        JWTGen["jaasJwt.ts<br/>RS256 sign in browser"]
-        JaaSRoom["JaaS room<br/>(8x8.vc iframe)"]
-    end
-
-    subgraph Peers["WebRTC peers"]
-        PC["RTCPeerConnection<br/>+ Google STUN"]
-        Remote["Remote screen tracks"]
-    end
-
-    Tick --> PresHk
-    PresHk --> Track
-    PresHk --> BCPos
-    ChatHk --> BCChat
-    WBHk --> BCDraw
-    ShootHk --> BCHit
-    ScreenHk --> BCSig
-    BCSig --> PC
-    PC --> Remote
-    ZombieHk --> BCZom
-
-    JitsiHk --> JWTGen
-    JWTGen --> Iframe
-    Iframe --> JaaSRoom
-    PresHk -. "computes nearby<br/>users → triggers<br/>join/leave room" .-> JitsiHk
-
-    classDef local fill:#1e3a8a,stroke:#60a5fa,color:#dbeafe
-    classDef chan fill:#3f1d8a,stroke:#a78bfa,color:#ede9fe
-    classDef voice fill:#064e3b,stroke:#34d399,color:#d1fae5
-    classDef peer fill:#7c2d12,stroke:#fb923c,color:#ffedd5
-    class Tick,PresHk,ChatHk,WBHk,ShootHk,ScreenHk,JitsiHk,Iframe,ZombieHk local
-    class Track,BCPos,BCChat,BCDraw,BCHit,BCSig,BCZom chan
-    class JWTGen,JaaSRoom voice
-    class PC,Remote peer
-```
-
-## 4. Local Game State & Rendering
+> **Historical.** This section and its observations (O1–O11) describe the
+> original `RoomScene`-based client, which has since been removed. They are
+> kept because `refactor-plan/` and `CLAUDE.md` cite them as the motivation
+> for the current `sdk` / `world` / `studio` split.
 
 Yes — there is meaningful local game state, but it is **not cleanly separated
 from rendering**. State lives in five different places and is read/written
@@ -511,19 +372,18 @@ where each step unlocks the next:
 8. **O9** — extract `@officexr/sdk` and migrate mobile.
 9. **O10, O11** — addressed opportunistically as ceilings approach.
 
-## 5. Data Layer (Supabase)
+## 5. Data Layer
 
-Persistence is a small Postgres schema with row-level security. Access to a
-room is gated by the `join_office_if_allowed` RPC, called by `RoomPage`
-before mounting the 3D scene.
+Postgres schema lives in `supabase/migrations/`; `pnpm db:migrate` applies it
+to `SUPABASE_DB_URL`, and `.github/workflows/supabase-migrations.yml` applies
+it on push to `main`. Only the web server talks to the database (via `pg`);
+the browser makes no database calls.
 
-- `profiles` — one per auth user; default avatar customization fields.
-- `offices` — rooms; `environment` selects the 3D scene preset; `link_access`
-  toggles open-by-link join.
-- `office_members` — membership + role (`owner | admin | member`) +
-  per-room avatar overrides.
-- `office_skins` — uploaded GLB models attached to an office.
-- RPC `join_office_if_allowed(p_office_id)` → `'ready' | 'denied' | 'not-found'`.
+- `offices` — the office list; `map_name` selects the studio map (null means
+  the default map).
+- `office_characters` — each user's world character per office, keyed by
+  Tailscale login. Row-level security is enabled with no policies, so only the
+  server's direct connection can read or write it.
 
-SQL migrations live in `supabase/migrations/` and are applied automatically on
-push to `main` by `.github/workflows/supabase-migrations.yml`.
+Tables from the original Supabase Auth client (`profiles`, `office_members`,
+`office_skins`) still exist in the schema but nothing reads them.

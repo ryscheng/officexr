@@ -4,6 +4,7 @@ import type {
   VoiceAdapterEvents,
   VoiceConnectionState,
 } from '../communication/types.ts';
+import { VoiceEventEmitter } from '../communication/voice-event-emitter.ts';
 
 export interface LocalVoiceAdapterOptions {
   /** Id to use for the fake remote participant. Default: 'bot-001'. */
@@ -24,7 +25,7 @@ export class LocalVoiceAdapter implements VoiceAdapter {
 
   private currentRoom: string | null = null;
   private connectionState: VoiceConnectionState = 'idle';
-  private handlers = new Map<VoiceAdapterEventName, Set<(payload: any) => void>>();
+  private events = new VoiceEventEmitter('local-voice-adapter');
   private disposed = false;
   private pendingTimeout: ReturnType<typeof setTimeout> | null = null;
   private fakeParticipantJoined = false;
@@ -97,15 +98,7 @@ export class LocalVoiceAdapter implements VoiceAdapter {
     name: K,
     handler: (payload: VoiceAdapterEvents[K]) => void,
   ): () => void {
-    let set = this.handlers.get(name);
-    if (!set) {
-      set = new Set();
-      this.handlers.set(name, set);
-    }
-    set.add(handler as (payload: any) => void);
-    return () => {
-      this.handlers.get(name)?.delete(handler as (payload: any) => void);
-    };
+    return this.events.on(name, handler);
   }
 
   dispose(): void {
@@ -115,7 +108,7 @@ export class LocalVoiceAdapter implements VoiceAdapter {
       clearTimeout(this.pendingTimeout);
       this.pendingTimeout = null;
     }
-    this.handlers.clear();
+    this.events.clear();
   }
 
   private setConnectionState(state: VoiceConnectionState): void {
@@ -128,14 +121,6 @@ export class LocalVoiceAdapter implements VoiceAdapter {
     payload: VoiceAdapterEvents[K],
   ): void {
     if (this.disposed) return;
-    const set = this.handlers.get(name);
-    if (!set) return;
-    for (const h of [...set]) {
-      try {
-        h(payload);
-      } catch (err) {
-        console.error('[local-voice-adapter] handler threw:', err);
-      }
-    }
+    this.events.emit(name, payload);
   }
 }

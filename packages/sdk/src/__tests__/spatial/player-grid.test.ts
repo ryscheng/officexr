@@ -11,6 +11,7 @@ function fakePlayer(id: string, x: number, z: number): PlayerState {
     yaw: 0,
     hp: 100,
     isDead: false,
+    isAirborne: false,
     avatar: { model: 'default' },
     jitsiRoom: null,
     status: 'active',

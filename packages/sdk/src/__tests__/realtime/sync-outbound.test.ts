@@ -79,6 +79,7 @@ describe('SyncEngine outbound — presence:position', () => {
       { x: POSITION_CONSTANTS.deltaP * 2, y: 0, z: 0 },
       { x: 1, y: 0, z: 0 },
       0,
+      false,
     );
     ctx.sync.flushPosition();
     // Skip the initial spawn announcement (broadcast on start) — we're
@@ -96,7 +97,7 @@ describe('SyncEngine outbound — presence:position', () => {
     // move every 1ms for 1 second; only ~MAX_HZ packets should send
     for (let ms = 0; ms < 1000; ms++) {
       x += POSITION_CONSTANTS.deltaP * 2;
-      ctx.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0);
+      ctx.actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0, false);
       ctx.sync.flushPosition();
       ctx.clock.advance(1);
     }
@@ -114,6 +115,7 @@ describe('SyncEngine outbound — presence:position', () => {
         { x: (i + 1) * POSITION_CONSTANTS.deltaP * 2, y: 0, z: 0 },
         { x: 1, y: 0, z: 0 },
         0,
+        false,
       );
       ctx.clock.advance(50);
       ctx.sync.flushPosition();
@@ -123,6 +125,7 @@ describe('SyncEngine outbound — presence:position', () => {
       { x: 5 * POSITION_CONSTANTS.deltaP * 2, y: 0, z: 0 },
       { x: 0, y: 0, z: 0 },
       0,
+      false,
     );
     ctx.clock.advance(POSITION_CONSTANTS.stopGraceMs + 10);
     ctx.sync.flushPosition();
@@ -178,5 +181,44 @@ describe('SyncEngine outbound — send-on-mutation kinds', () => {
       t: 0,
     });
     expect(ctx.sent.find((e) => e.kind === 'whiteboard:stroke')).toBeDefined();
+  });
+
+  it('world:characters sends on setCharacterConfig mutation', () => {
+    ctx.actions.setCharacterConfig('Mage', { speedMultiplier: 0.7 });
+    const evt = ctx.sent.find((e) => e.kind === 'world:characters');
+    expect(evt).toBeDefined();
+    if (evt && evt.kind === 'world:characters') {
+      expect(evt.configs.Mage).toEqual({ speedMultiplier: 0.7 });
+    }
+  });
+
+  it('world:objects sends on setWorldObjects mutation', () => {
+    ctx.actions.setWorldObjects({
+      cubeSize: 2,
+      instances: [
+        {
+          id: 'i1',
+          sourceCommandId: 'c1',
+          kindId: 'colored_block_blue',
+          position: [1, 0, 2],
+        },
+      ],
+    });
+    const evt = ctx.sent.find((e) => e.kind === 'world:objects');
+    expect(evt).toBeDefined();
+    if (evt && evt.kind === 'world:objects') {
+      expect(evt.objects.instances).toHaveLength(1);
+      expect(evt.objects.instances[0].kindId).toBe('colored_block_blue');
+      expect(evt.objects.instances[0].position).toEqual([1, 0, 2]);
+    }
+  });
+
+  it('avatar:update sends when self name or avatar changes, but not on movement', () => {
+    ctx.actions.setSelfPosition({ x: 5, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0, false);
+    expect(ctx.sent.some((e) => e.kind === 'avatar:update')).toBe(false);
+
+    ctx.actions.upsertPlayer({ id: 'me', name: 'Alice', avatar: { model: 'gnome' } });
+    const evt = ctx.sent.find((e) => e.kind === 'avatar:update');
+    expect(evt).toMatchObject({ actorId: 'me', name: 'Alice', avatar: { model: 'gnome' } });
   });
 });

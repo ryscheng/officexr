@@ -10,6 +10,7 @@ import {
 import { FakeClock } from '../../test-harness/time.ts';
 import type { NetEvent } from '../../realtime/protocol.ts';
 import type { GameEvent } from '../../game-state/types.ts';
+import { DEFAULT_WORLD_CONSTANTS } from '../../game-state/world-constants.ts';
 
 function setup(opts: { selfId: string; remoteId: string }) {
   const hub = createInMemoryChannelHub();
@@ -60,6 +61,7 @@ describe('SyncEngine inbound', () => {
       pos: { x: 5, y: 0, z: 5 },
       vel: { x: 1, y: 0, z: 0 },
       yaw: 0.5,
+      isAirborne: false,
     };
     await ctx.remote.send(evt);
     const r = ctx.store.getState().players['other'];
@@ -247,12 +249,30 @@ describe('SyncEngine inbound', () => {
     }
   });
 
-  it('applies remote world:settings without re-broadcasting (no echo)', async () => {
-    // Regression: an earlier refactor reordered `applyNetEventToStore`
-    // and the anti-echo marker update so the marker landed AFTER the
-    // store mutation. That made `subscribeAll → StateDiffBroadcaster`
-    // see a "changed" worldSettings and fan the just-received event
-    // back out — a cascade in a multi-peer mesh.
+  it('replaces worldConstants and the derived worldSettings from a world:constants event', async () => {
+    const ctx = setup({ selfId: 'me', remoteId: 'server' });
+    await ctx.start();
+    const constants = structuredClone(DEFAULT_WORLD_CONSTANTS);
+    constants.animation.playerSpeed = 7;
+    constants.proximity.sensorRadius = 4;
+    constants.lighting.sunColor = '#ff0000';
+
+    await ctx.remote.send({
+      kind: 'world:constants',
+      v: 1,
+      actorId: 'server',
+      seq: 1,
+      t: 0,
+      constants,
+    });
+
+    const state = ctx.store.getState();
+    expect(state.worldConstants).toEqual(constants);
+    expect(state.worldSettings.playerSpeed).toBe(7);
+    expect(state.worldSettings.proximityRadius).toBe(4);
+  });
+
+  it('never broadcasts world constants or settings', async () => {
     const ctx = setup({ selfId: 'me', remoteId: 'other' });
     await ctx.start();
     const observer = new InMemoryChannel(ctx.hub, '__obs__');
@@ -260,32 +280,87 @@ describe('SyncEngine inbound', () => {
     const sent: NetEvent[] = [];
     observer.on((e) => sent.push(e));
 
-    // The inbound event MUST differ from the local store's current
-    // worldSettings — otherwise the diff would naturally not fire and
-    // the test would pass for the wrong reason.
-    const initial = ctx.store.getState().worldSettings;
-    const changed = { ...initial, playerSpeed: initial.playerSpeed + 1.5 };
+    const constants = structuredClone(DEFAULT_WORLD_CONSTANTS);
+    constants.animation.playerSpeed = 9;
+    ctx.actions.setWorldConstants(constants);
+    ctx.sync.broadcastWorldState();
+
+    expect(ctx.store.getState().worldSettings.playerSpeed).toBe(9);
+    expect(sent.map((e) => e.kind)).toEqual(['world:map', 'world:characters', 'world:objects']);
+  });
+
+  it('applies remote world:objects without re-broadcasting (no echo)', async () => {
+    // Regression: the anti-echo marker must land before the store
+    // mutation, or the just-received event fans back out. Covers the new
+    // worldObjects broadcast slot (compiled scene snapshots).
+    const ctx = setup({ selfId: 'me', remoteId: 'other' });
+    await ctx.start();
+    const observer = new InMemoryChannel(ctx.hub, '__obs__');
+    await observer.subscribe();
+    const sent: NetEvent[] = [];
+    observer.on((e) => sent.push(e));
+
+    const incoming = {
+      cubeSize: 2,
+      instances: [
+        {
+          id: 'cmd-1:0,0,0',
+          sourceCommandId: 'cmd-1',
+          kindId: 'colored_block_blue',
+          position: [0, 0, 0] as [number, number, number],
+        },
+      ],
+    };
     await ctx.remote.send({
-      kind: 'world:settings',
+      kind: 'world:objects',
       v: 1,
       actorId: 'other',
       seq: 1,
       t: 0,
-      settings: changed,
+      objects: incoming,
     });
 
-    expect(ctx.store.getState().worldSettings.playerSpeed).toBe(
-      changed.playerSpeed,
-    );
+    expect(ctx.store.getState().worldObjects).toEqual(incoming);
     const echos = sent.filter(
-      (e) => e.kind === 'world:settings' && e.actorId === 'me',
+      (e) => e.kind === 'world:objects' && e.actorId === 'me',
+    );
+    expect(echos).toHaveLength(0);
+  });
+
+  it('applies remote world:characters without re-broadcasting (no echo)', async () => {
+    // Regression: the anti-echo marker must land before the store
+    // mutation, or the just-received event fans back out. Covers the new
+    // characterConfigs broadcast slot.
+    const ctx = setup({ selfId: 'me', remoteId: 'other' });
+    await ctx.start();
+    const observer = new InMemoryChannel(ctx.hub, '__obs__');
+    await observer.subscribe();
+    const sent: NetEvent[] = [];
+    observer.on((e) => sent.push(e));
+
+    const incoming = {
+      Mage: { speedMultiplier: 0.5 },
+      Knight: { charRadius: 0.55 },
+    };
+    await ctx.remote.send({
+      kind: 'world:characters',
+      v: 1,
+      actorId: 'other',
+      seq: 1,
+      t: 0,
+      configs: incoming,
+    });
+
+    expect(ctx.store.getState().characterConfigs).toEqual(incoming);
+    const echos = sent.filter(
+      (e) => e.kind === 'world:characters' && e.actorId === 'me',
     );
     expect(echos).toHaveLength(0);
   });
 
   it('applies remote world:map without re-broadcasting (no echo)', async () => {
-    // Same regression shape as world:settings, but for the WorldMap
-    // anti-echo marker.
+    // Regression: the anti-echo marker must land before the store
+    // mutation, or the just-received event fans back out.
     const ctx = setup({ selfId: 'me', remoteId: 'other' });
     await ctx.start();
     const observer = new InMemoryChannel(ctx.hub, '__obs__');

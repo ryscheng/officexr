@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "name": "default",
+  "title": "Default Map",
+  "updatedAt": 1779216172087,
+  "rooms": [
+    {
+      "id": "room-1",
+      "roomName": "platform",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotationY": 0
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "spawn-center",
+      "label": "center",
+      "position": [
+        12,
+        2,
+        12
+      ]
+    }
+  ],
+  "environment": {
+    "sun": {
+      "positionX": 20,
+      "positionY": 40,
+      "positionZ": 20,
+      "color": "#ffffff",
+      "intensity": 1.4
+    },
+    "sky": null,
+    "stars": {
+      "enabled": true,
+      "radius": 100,
+      "depth": 50,
+      "count": 5000,
+      "factor": 4,
+      "saturation": 0,
+      "fade": true
+    },
+    "hdri": null,
+    "ambientIntensity": 0.15
+  }
+}

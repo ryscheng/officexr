@@ -1,5 +1,3 @@
--- Remove invitations table and all related RLS policies
-drop policy if exists "Users can view invitations for their email" on public.invitations;
-drop policy if exists "Office owners/admins can create invitations" on public.invitations;
-drop policy if exists "Users can update their own invitations" on public.invitations;
-drop table if exists public.invitations;
+-- Remove the invitations table; cascade takes its RLS policies with it.
+-- A drop policy on a missing table errors on some Postgres versions, so a fresh database can't run one.
+drop table if exists public.invitations cascade;

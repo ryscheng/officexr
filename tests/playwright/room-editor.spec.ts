@@ -1,0 +1,264 @@
+/**
+ * Room editor regressions. Pins:
+ *
+ *   - Canvas mounts and renders SOMETHING (catches "broken Three.js
+ *     scene" regressions).
+ *   - Staging a kind in the palette switches the active tool to Add.
+ *   - The Add ghost preview shows up under the cursor.
+ *
+ * Room camera + selection wireframe + Tile/Delete tools will get
+ * their own specs as those features land.
+ */
+
+import { expect, test } from '@playwright/test';
+import { PNG } from 'pngjs';
+import {
+  captureConsole,
+  distinctColorsInCanvas,
+  goToMode,
+  goToModeHermetic,
+  waitForCanvasReady,
+} from './helpers.ts';
+
+test('Room mounts a canvas and renders SOMETHING', async ({ page }) => {
+  const getConsole = captureConsole(page);
+  await goToMode(page, 'room');
+  const canvas = await waitForCanvasReady(page, 1500);
+  const colorCount = await distinctColorsInCanvas(canvas);
+  expect(colorCount, 'Room canvas screenshot should have color variation').toBeGreaterThan(20);
+  const errors = getConsole().filter(
+    (l) => l.startsWith('[error]') || l.startsWith('[pageerror]'),
+  );
+  expect(errors, 'no console errors during Room boot').toEqual([]);
+});
+
+test('clicking a palette swatch activates the Add tool', async ({ page }) => {
+  await goToMode(page, 'room');
+  await waitForCanvasReady(page, 1000);
+
+  // The Toolbar lives in a `role="toolbar"` aria-region. Find the Add
+  // tool button by its accessible name (its title includes "place"
+  // when staged + "Pick a cube" when not).
+  const toolbar = page.locator('div[role="toolbar"]');
+  const buttons = await toolbar.locator('button').all();
+  // Before staging there are 2 buttons (Select, Add — Add is disabled).
+  expect(buttons.length).toBeGreaterThanOrEqual(2);
+
+  // Add button is the 2nd toolbar button; it should be disabled
+  // before staging.
+  await expect(buttons[1]).toBeDisabled();
+
+  // Click a known palette entry. Palette buttons have title="Blue block" etc.
+  // Blue block is a layout object (isLayoutObject), which the Room
+  // palette hides by default — reveal it before staging.
+  await page.check('#room-show-layout-objects');
+  await page.click('button[title="Blue block"]');
+
+  // After staging: the Add button is enabled and active.
+  await expect(buttons[1]).toBeEnabled({ timeout: 2000 });
+  // The active button has background #3b82f6; the inactive ones are
+  // transparent. Use the Select button's background as a baseline.
+  const selectBg = await buttons[0].evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+  const addBg = await buttons[1].evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+  // Active button has a coloured background; inactive should differ.
+  expect(addBg, 'Add button should be visibly active after staging').not.toBe(selectBg);
+});
+
+test('RoomPicker exposes a select + new-room input', async ({ page }) => {
+  await goToMode(page, 'room');
+  await waitForCanvasReady(page, 1200);
+  // The RoomPicker is the first widget in the left panel: a `<select>`
+  // with the current room + a "+ New room…" button.
+  await expect(page.locator('select').first()).toBeVisible();
+  await expect(
+    page.locator('button', { hasText: 'New room' }),
+  ).toBeVisible();
+});
+
+test('Toolbar shows all five tools — Add/Tile are gated on a staged kind', async ({
+  page,
+}) => {
+  await goToMode(page, 'room');
+  await waitForCanvasReady(page, 1200);
+  const toolbar = page.locator('div[role="toolbar"]');
+  const buttons = await toolbar.locator('button').all();
+  // TOOLS order: Select(0), Add(1), Delete(2), Tile(3), Move(4).
+  expect(buttons.length).toBe(5);
+  // Select + Delete + Move are always enabled.
+  await expect(buttons[0]).toBeEnabled();
+  await expect(buttons[2]).toBeEnabled();
+  await expect(buttons[4]).toBeEnabled();
+  // Add (1) + Tile (3) need a staged kind first.
+  await expect(buttons[1]).toBeDisabled();
+  await expect(buttons[3]).toBeDisabled();
+  // Stage a kind → both become enabled.
+  // Blue block is a layout object (isLayoutObject), which the Room
+  // palette hides by default — reveal it before staging.
+  await page.check('#room-show-layout-objects');
+  await page.click('button[title="Blue block"]');
+  await expect(buttons[1]).toBeEnabled();
+  await expect(buttons[3]).toBeEnabled();
+});
+
+test('Add tool ghost preview renders a blue ghost cube under the cursor', async ({
+  page,
+}) => {
+  await goToMode(page, 'room');
+  const canvas = await waitForCanvasReady(page, 1500);
+
+  // Stage a kind so the Add tool has a model to preview.
+  // Blue block is a layout object (isLayoutObject), which the Room
+  // palette hides by default — reveal it before staging.
+  await page.check('#room-show-layout-objects');
+  await page.click('button[title="Blue block"]');
+  await page.waitForTimeout(300);
+
+  // Move the cursor over the floor at a position where the ghost
+  // should clearly land. The orbit camera looks down at the room
+  // origin from a slight angle; below-center of the canvas is the
+  // floor near the camera.
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) throw new Error('canvas has no bounding box');
+  const cx = canvasBox.x + canvasBox.width / 2;
+  const cy = canvasBox.y + canvasBox.height / 2 + 60;
+  await page.mouse.move(cx - 200, cy - 100);
+  await page.waitForTimeout(120);
+  await page.mouse.move(cx, cy);
+  await page.waitForTimeout(700);
+
+  // Read pixels via WebGL near the cursor and look for a distinctly
+  // blue signal. A pixel-variation byte-triple count proved too weak
+  // — it was passing on rendering noise even when no ghost appeared
+  // (caused by R3F failing to deliver pointermove to a FloorPicker
+  // co-planar with EndlessGrid). The blue-pixel test catches that.
+  const result = await page.evaluate(
+    ({ cx, cy }) => {
+      return new Promise<{ hasBluePixel: boolean }>((resolve) => {
+        requestAnimationFrame(() => {
+          const c = document.querySelector('canvas') as HTMLCanvasElement;
+          const gl = c.getContext('webgl2') || c.getContext('webgl');
+          if (!gl) return resolve({ hasBluePixel: false });
+          const r = c.getBoundingClientRect();
+          const dpr = window.devicePixelRatio || 1;
+          const localX = (cx - r.left) * dpr;
+          const localY = (cy - r.top) * dpr;
+          const fbX = Math.round(localX);
+          const fbY = c.height - Math.round(localY);
+          const px = new Uint8Array(4);
+          let hasBluePixel = false;
+          for (let dy = -40; dy <= 40 && !hasBluePixel; dy += 8) {
+            for (let dx = -40; dx <= 40 && !hasBluePixel; dx += 8) {
+              gl.readPixels(
+                Math.max(0, Math.min(c.width - 1, fbX + dx)),
+                Math.max(0, Math.min(c.height - 1, fbY + dy)),
+                1,
+                1,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                px,
+              );
+              // KayKit blue block renders as a bright #3b82f6-ish blue.
+              // "Distinctly blue" = B > 100 AND clearly bluer than R or G.
+              if (px[2] > 100 && px[2] > px[0] + 30 && px[2] > px[1]) {
+                hasBluePixel = true;
+              }
+            }
+          }
+          resolve({ hasBluePixel });
+        });
+      });
+    },
+    { cx, cy },
+  );
+
+  expect(
+    result.hasBluePixel,
+    'expected a distinctly-blue ghost pixel near the cursor',
+  ).toBe(true);
+});
+
+test('R rotates the selected object by its kind step and undo restores it', async ({ page }) => {
+  // One 2 m primitive block, which renders without a GLTF fetch.
+  await goToModeHermetic(page, 'room', {
+    rooms: [
+      {
+        name: 'default-v2',
+        doc: {
+          schemaVersion: 5,
+          name: 'default-v2',
+          title: 'default-v2',
+          updatedAt: 0,
+          commands: [
+            { id: 'c1', op: 'placeObject', kindId: '__primitive_blue', position: [-2, 0, -2] },
+          ],
+          groups: {},
+        },
+      },
+    ],
+  });
+  const canvas = await waitForCanvasReady(page, 1200);
+  const box = await canvas.boundingBox();
+  if (!box) {
+    throw new Error('canvas has no bounding box');
+  }
+  const block = blueCentroid(await canvas.screenshot());
+  const yaw = page.getByRole('combobox', { name: 'yaw°' });
+  // R3F raycasts on pointer moves, and a click can land before the scene
+  // has picked up the hover, so retry until the inspector shows the block.
+  const selectBlock = () =>
+    expect(async () => {
+      await page.mouse.move(box.x + block.x, box.y + block.y);
+      await page.mouse.down();
+      await page.mouse.up();
+      await expect(yaw).toBeVisible({ timeout: 500 });
+    }).toPass();
+
+  await selectBlock();
+  await expect(yaw).toHaveText('0');
+
+  await page.keyboard.press('r');
+  await expect(yaw).toHaveText('90');
+
+  await page.keyboard.press('Control+z');
+  await expect(yaw).toBeHidden();
+  await selectBlock();
+  await expect(yaw).toHaveText('0');
+
+  // With the Add tool, R turns the staged object, and placing keeps that yaw
+  // (the placed object is selected, so the inspector shows it).
+  await page.check('#room-show-layout-objects');
+  await page.click('button[title="Blue block"]');
+  await page.keyboard.press('r');
+  await expect(async () => {
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.8);
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect(page.getByRole('combobox', { name: 'kind' })).toHaveText('colored_block_blue', {
+      timeout: 500,
+    });
+  }).toPass();
+  await expect(yaw).toHaveText('90');
+});
+
+/** Centroid, in canvas pixels, of the distinctly blue pixels in a screenshot. */
+function blueCentroid(png: Buffer): { x: number; y: number } {
+  const { data, width } = PNG.sync.read(png);
+  let count = 0;
+  let sumX = 0;
+  let sumY = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 2] > 100 && data[i + 2] > data[i] + 30 && data[i + 2] > data[i + 1]) {
+      count += 1;
+      sumX += (i / 4) % width;
+      sumY += Math.floor(i / 4 / width);
+    }
+  }
+  if (count === 0) {
+    throw new Error('no blue block on the canvas');
+  }
+  return { x: sumX / count, y: sumY / count };
+}

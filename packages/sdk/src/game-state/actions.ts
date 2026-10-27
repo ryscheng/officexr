@@ -1,33 +1,57 @@
 import type { Bus } from './bus.ts';
 import type { Store } from './store.ts';
 import type {
+  CharacterConfig,
+  CharacterConfigs,
   ChatMessage,
+  CubeKindId,
   InventoryItem,
   PlayerId,
   PlayerState,
   RealtimeStatus,
   Stroke,
   Vec3,
+  VoiceZone,
   WorldMap,
-  WorldSettings,
+  WorldMapLayer,
+  WorldObjects,
   ZombieState,
 } from './types.ts';
+import { worldSettingsFromConstants, type WorldConstants } from './world-constants.ts';
 import { cloneWorldMap } from './world-map.ts';
 
 export interface Actions {
   // local intents
-  setSelfPosition(pos: Vec3, vel: Vec3, yaw: number): void;
+  setSelfPosition(pos: Vec3, vel: Vec3, yaw: number, isAirborne: boolean): void;
   setMyJitsiRoom(roomId: string | null): void;
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
   applyHit(targetId: PlayerId, dmg: number, byId: PlayerId): void;
   addInventoryItem(item: InventoryItem): void;
   removeInventoryItem(itemId: string): void;
-  /** Update one or more world-level settings. Triggers a `world:settings`
-   * broadcast for peers to mirror. */
-  setWorldSettings(patch: Partial<WorldSettings>): void;
+  /** Replace the world constants (and so the derived `worldSettings`).
+   * Never broadcast: only the realtime server distributes constants. */
+  setWorldConstants(next: WorldConstants): void;
   /** Replace the world map. Triggers a `world:map` broadcast. */
   setWorldMap(map: WorldMap): void;
+  /** Patch a single (i, j) cell in the world map to the given `kindId`,
+   * or remove it from all layers when `kindId` is null. Composes
+   * `setWorldMap` under the hood — uses the existing `world:map`
+   * broadcast path, no new NetEvent required. The kindId must already
+   * exist in `worldMap.kinds`; unknown kinds are a no-op. */
+  setWorldMapCell(i: number, j: number, kindId: CubeKindId | null): void;
+  /** Patch per-character config for a single model id. Merges into any
+   * existing entry and triggers a `world:characters` broadcast. */
+  setCharacterConfig(modelId: string, patch: Partial<CharacterConfig>): void;
+  /** Replace the entire characterConfigs map (used by snapshot apply
+   * paths and bulk imports). */
+  setCharacterConfigs(configs: CharacterConfigs): void;
+  /** Replace the compiled scene-objects snapshot. The studio's Scenes
+   * mode calls this whenever its command list re-compiles. Triggers
+   * a `world:objects` broadcast. */
+  setWorldObjects(objects: WorldObjects): void;
+  /** Local-only: never broadcast. */
+  setVoiceZones(zones: VoiceZone[]): void;
 
   // remote applications (called by sync engine)
   applyRemotePosition(
@@ -36,12 +60,14 @@ export interface Actions {
     vel: Vec3,
     yaw: number,
     tRecv: number,
+    isAirborne: boolean,
   ): void;
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
   applyZombieState(z: ZombieState): void;
-  applyRemoteWorldSettings(settings: WorldSettings): void;
   applyRemoteWorldMap(map: WorldMap): void;
+  applyRemoteCharacterConfigs(configs: CharacterConfigs): void;
+  applyRemoteWorldObjects(objects: WorldObjects): void;
 
   // membership
   upsertPlayer(p: Partial<PlayerState> & { id: PlayerId }): void;
@@ -62,6 +88,7 @@ const DEFAULT_PLAYER: Omit<PlayerState, 'id'> = {
   yaw: 0,
   hp: 100,
   isDead: false,
+  isAirborne: false,
   avatar: { model: 'default' },
   jitsiRoom: null,
   status: 'active',
@@ -95,22 +122,87 @@ export function createActions(store: Store, bus?: Bus): Actions {
   }
 
   return {
-    setSelfPosition(pos, vel, yaw) {
-      patchSelf({ pos, vel, yaw });
+    setSelfPosition(pos, vel, yaw, isAirborne) {
+      patchSelf({ pos, vel, yaw, isAirborne });
     },
 
     setMyJitsiRoom(roomId) {
       patchSelf({ jitsiRoom: roomId });
     },
 
-    setWorldSettings(patch) {
-      store.setState((s) => ({
-        worldSettings: { ...s.worldSettings, ...patch },
+    setWorldConstants(next) {
+      store.setState(() => ({
+        worldConstants: next,
+        worldSettings: worldSettingsFromConstants(next),
       }));
     },
 
     setWorldMap(map) {
       store.setState(() => ({ worldMap: cloneWorldMap(map) }));
+    },
+
+    setWorldMapCell(i, j, kindId) {
+      store.setState((s) => {
+        const map = s.worldMap;
+        if (kindId !== null && !map.kinds[kindId]) return {};
+        // Remove (i, j) from every existing layer first; then append it
+        // to the target kind's layer (creating one if needed). Layers
+        // with zero cells are dropped to keep the wire payload tight.
+        const stripped: WorldMapLayer[] = [];
+        for (const layer of map.layers) {
+          const cells = layer.cells.filter((c) => c.i !== i || c.j !== j);
+          if (cells.length > 0) stripped.push({ kind: layer.kind, cells });
+        }
+        let nextLayers = stripped;
+        if (kindId !== null) {
+          const idx = stripped.findIndex((l) => l.kind === kindId);
+          if (idx === -1) {
+            nextLayers = [...stripped, { kind: kindId, cells: [{ i, j }] }];
+          } else {
+            nextLayers = stripped.map((layer, k) =>
+              k === idx
+                ? { kind: layer.kind, cells: [...layer.cells, { i, j }] }
+                : layer,
+            );
+          }
+        }
+        return { worldMap: { ...map, layers: nextLayers } };
+      });
+    },
+
+    setCharacterConfig(modelId, patch) {
+      store.setState((s) => {
+        const existing = s.characterConfigs[modelId] ?? {};
+        return {
+          characterConfigs: {
+            ...s.characterConfigs,
+            [modelId]: { ...existing, ...patch },
+          },
+        };
+      });
+    },
+
+    setCharacterConfigs(configs) {
+      store.setState(() => ({ characterConfigs: { ...configs } }));
+    },
+
+    setVoiceZones(zones) {
+      store.setState(() => ({ voiceZones: zones }));
+    },
+
+    setWorldObjects(objects) {
+      // Defensive clone — instances are mutated by editors that may
+      // share references with us. Snapshot ensures the store sees a
+      // change-by-value, which the diff broadcaster relies on.
+      store.setState(() => ({
+        worldObjects: {
+          cubeSize: objects.cubeSize,
+          instances: objects.instances.map((i) => ({
+            ...i,
+            position: [...i.position] as [number, number, number],
+          })),
+        },
+      }));
     },
 
     appendChat(msg) {
@@ -162,17 +254,17 @@ export function createActions(store: Store, bus?: Bus): Actions {
       if (removed) bus?.emit({ kind: 'inventory:removed', itemId });
     },
 
-    applyRemotePosition(playerId, pos, vel, yaw, tRecv) {
+    applyRemotePosition(playerId, pos, vel, yaw, tRecv, isAirborne) {
       // A position broadcast is implicit "this peer is here, with this state".
       // Upsert-on-missing so peers that join without a snapshot handshake
       // still materialise into the receiver's office. The DEFAULT_PLAYER
       // template provides sensible defaults for fields not on the wire
-      // (name, hp, avatar, status); pos/vel/yaw/tRecv come from the event.
+      // (name, hp, avatar, status); pos/vel/yaw/tRecv/isAirborne come from the event.
       store.setState((s) => {
         const existing = s.players[playerId];
         const next: PlayerState = existing
-          ? { ...existing, pos, vel, yaw, tRecv }
-          : { ...DEFAULT_PLAYER, id: playerId, pos, vel, yaw, tRecv };
+          ? { ...existing, pos, vel, yaw, tRecv, isAirborne }
+          : { ...DEFAULT_PLAYER, id: playerId, pos, vel, yaw, tRecv, isAirborne };
         return { players: { ...s.players, [playerId]: next } };
       });
     },
@@ -191,12 +283,28 @@ export function createActions(store: Store, bus?: Bus): Actions {
       store.setState(() => ({ zombies: z }));
     },
 
-    applyRemoteWorldSettings(settings) {
-      store.setState(() => ({ worldSettings: { ...settings } }));
-    },
-
     applyRemoteWorldMap(map) {
       store.setState(() => ({ worldMap: cloneWorldMap(map) }));
+    },
+
+    applyRemoteCharacterConfigs(configs) {
+      const cloned: CharacterConfigs = {};
+      for (const [id, cfg] of Object.entries(configs)) {
+        cloned[id] = { ...cfg };
+      }
+      store.setState(() => ({ characterConfigs: cloned }));
+    },
+
+    applyRemoteWorldObjects(objects) {
+      store.setState(() => ({
+        worldObjects: {
+          cubeSize: objects.cubeSize,
+          instances: objects.instances.map((i) => ({
+            ...i,
+            position: [...i.position] as [number, number, number],
+          })),
+        },
+      }));
     },
 
     upsertPlayer(p) {

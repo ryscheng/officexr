@@ -120,7 +120,7 @@ export class InboundRouter {
    *
    * Ordering is load-bearing: `onApplied` runs BEFORE
    * `applyNetEventToStore`. The hook updates the SyncEngine's outbound
-   * anti-echo markers (e.g. `lastWorldSettingsJson`), and
+   * anti-echo markers (e.g. `lastWorldMapJson`), and
    * `applyNetEventToStore` calls `store.setState`, which synchronously
    * fires `subscribeAll → StateDiffBroadcaster.onStoreChange`. If the
    * marker hasn't been updated yet, that diff comparison finds the new

@@ -1,0 +1,9 @@
+{
+ "schemaVersion": 5,
+ "name": "scenario-slope",
+ "title": "Scenario Slope Room",
+ "updatedAt": 1749694800000,
+ "layoutName": "scenario-slope",
+ "commands": [],
+ "groups": {}
+}

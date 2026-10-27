@@ -2,20 +2,13 @@
 
 ## Project Overview
 
-OfficeXR is a 3D virtual office platform with real-time presence, spatial audio, and avatar customization.
-The codebase is organized as a **pnpm workspaces monorepo** targeting six platform builds:
+OfficeXR is a 3D virtual office with real-time presence, proximity voice chat, and
+per-office characters. The codebase is a **pnpm workspaces monorepo** whose single
+deployable app is the web build (`@officexr/web`); `@officexr/studio` is the authoring
+tool for the maps, rooms and object kinds the web app renders.
 
 > **Package manager: pnpm.** Always use `pnpm` — do not use `npm` or `yarn`.
 > Workspace config lives in `pnpm-workspace.yaml`; cross-package deps use the `workspace:*` protocol.
-
-| Build | Target | Toolchain |
-|-------|--------|-----------|
-| Web | Browser | Vite + React |
-| Desktop (macOS) | macOS app | Electron + electron-builder |
-| Desktop (Windows) | Windows app | Electron + electron-builder |
-| Desktop (Linux) | Linux app | Electron + electron-builder |
-| Mobile (iOS) | iOS app | Expo + EAS Build |
-| Mobile (Android) | Android app | Expo + EAS Build |
 
 ---
 
@@ -24,152 +17,61 @@ The codebase is organized as a **pnpm workspaces monorepo** targeting six platfo
 ```
 officexr/
 ├── packages/
-│   ├── core/                   # @officexr/core — all application source + shared types
-│   │   └── src/
-│   │       ├── index.ts        # Barrel: platform-agnostic type exports (Database, avatars)
-│   │       ├── main.tsx        # Web entry point
-│   │       ├── App.tsx
-│   │       ├── index.css
-│   │       ├── vite-env.d.ts
-│   │       ├── assets/
-│   │       │   └── hdri/       # HDRI environment maps (EXR) — global lobby skybox
-│   │       ├── components/
-│   │       │   ├── Avatar.tsx
-│   │       │   ├── ControlsOverlay.tsx  # Shared controls UI (motion, recalibrate)
-│   │       │   ├── OfficeSelector.tsx
-│   │       │   ├── RoomScene.tsx        # Three.js WebXR scene + Realtime presence
-│   │       │   ├── SettingsPanel.tsx
-│   │       │   └── UserLobby.tsx        # Authenticated user lobby with room portals
-│   │       ├── hooks/
-│   │       │   ├── useAuth.ts           # Supabase session
-│   │       │   └── useMotionControls.ts # Gyroscope / device-orientation look controls
-│   │       ├── lib/
-│   │       │   ├── jaasJwt.ts  # JaaS JWT generation (Web Crypto, RS256)
-│   │       │   └── supabase.ts # Database type + Supabase web client singleton
-│   │       ├── pages/
-│   │       │   ├── Home.tsx     # Route "/" — lobby or room depending on auth state
-│   │       │   ├── Login.tsx    # Route "/login"
-│   │       │   └── RoomPage.tsx # Route "/room/:id" — deep-link into a specific room
-│   │       └── types/
-│   │           └── avatar.ts   # AvatarCustomization, AvatarPreset, MARIO_PRESETS, etc.
-│   ├── web/                    # @officexr/web — Vite build wrapper for the browser
-│   │   ├── index.html          # SPA shell (entry: ../core/src/main.tsx)
-│   │   ├── vite.config.ts      # @ alias → ../core/src; assetsInclude EXR
-│   │   ├── tsconfig.json
-│   │   ├── tsconfig.node.json
-│   │   ├── public/             # Static assets (SVGs etc.)
-│   │   └── .env.example        # VITE_SUPABASE_*, VITE_JAAS_*
-│   ├── desktop/                # @officexr/desktop — Electron wrapper
-│   │   └── src/
-│   │       ├── main.ts         # Electron main process
-│   │       └── preload.ts      # Context bridge (electronAPI)
-│   └── mobile/                 # @officexr/mobile — React Native / Expo
-│       └── src/
-│           ├── App.tsx
-│           ├── index.ts
-│           ├── hooks/useAuth.ts
-│           ├── lib/supabase.ts  # Native Supabase client (AsyncStorage)
-│           ├── navigation/
-│           └── screens/        # LoginScreen, HomeScreen, OfficeScreen
-├── supabase/migrations/        # SQL migrations
+│   ├── web/              # @officexr/web — office app
+│   │   ├── index.html    # SPA shell (entry: src/main.tsx)
+│   │   ├── src/          # App.tsx (routing), home/ (office list + create form), room/ (OfficeWorld, session, characters),
+│   │   │                 # hud/ (chat), voice/ (JaaS proximity voice)
+│   │   ├── server/       # /api/me, /api/offices (list + create), /api/offices/:id/character (pg), /config.js; vitest specs
+│   │   ├── vite.config.ts
+│   │   └── .env.example  # SUPABASE_DB_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
+│   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
+│   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
+│   ├── sdk/              # @officexr/sdk — headless game state, realtime protocol, Channel
+│   ├── core-refactor/    # @officexr/core-refactor — createStack, office session, voice adapters
+│   └── realtime-server/  # @officexr/realtime-server — WebSocket relay + WsChannel
+├── supabase/migrations/  # SQL migrations (applied with `pnpm db:migrate`)
+├── tests/playwright/     # Playwright e2e specs
 ├── .github/workflows/
+│   ├── ci.yml                  # typecheck, build, unit tests, hermetic e2e
 │   └── supabase-migrations.yml # Applies migrations on push to main + workflow_dispatch
-├── pnpm-workspace.yaml         # Workspace package globs
-├── tsconfig.json               # Root: IDE project references only
-└── AGENTS.md                   # This file
+├── pnpm-workspace.yaml   # Workspace package globs
+├── tsconfig.json         # Root: IDE project references only
+└── AGENTS.md             # This file
 ```
 
 ---
 
-## Shared Code Strategy
+## How the web app fits together
 
-All application source lives in **`packages/core/src`**. The web build (`packages/web`) is
-a thin Vite wrapper that points its entry and `@` alias at `packages/core/src` — it adds
-no application logic of its own.
-
-| What | Where |
-|------|-------|
-| Database schema types (`Database`) | `packages/core/src/lib/supabase.ts` |
-| Supabase web client singleton | `packages/core/src/lib/supabase.ts` |
-| Avatar types & presets | `packages/core/src/types/avatar.ts` |
-| React components, pages, hooks | `packages/core/src/` |
-
-The `packages/core/src/index.ts` barrel exports **only** platform-agnostic types
-(`Database`, avatar interfaces/constants) so mobile packages that import
-`@officexr/core` never encounter `import.meta.env` at runtime.
-
-The desktop package loads the pre-built web dist via a custom `app://` protocol; it does
-not import from `@officexr/core` directly.
-
-The mobile package imports the `Database` type and avatar types from `@officexr/core`
-(resolved by Babel's `module-resolver`), while providing its own Supabase client
-(AsyncStorage-backed) and native UI (React Navigation).
+- **Identity.** There is no auth in the app. The server trusts the
+  `Tailscale-User-Login` / `Tailscale-User-Name` headers added by Tailscale Serve and
+  exposes them at `/api/me`.
+- **Database.** The web server (a Vite plugin, `packages/web/server/api.ts`) reads and
+  writes Postgres via `pg` using `SUPABASE_DB_URL`; the browser never talks to the
+  database. Offices and per-office character choices live there.
+- **World.** A room renders the office's studio map through `@officexr/world`
+  (`<Scene>`, physics, characters). The headless state and protocol live in
+  `@officexr/sdk`; `@officexr/core-refactor`'s `createStack` builds the channel +
+  voice adapter for a session.
+- **Realtime.** Presence, position and chat sync go over a `WsChannel` to
+  `@officexr/realtime-server`; the web server proxies `/ws` to it
+  (`REALTIME_SERVER_TARGET`, default `http://127.0.0.1:8787`). The studio debug mode
+  uses the same stack with an in-memory or WebSocket channel.
+- **Voice.** Proximity voice uses JaaS (Jitsi as a Service) rooms, with the JWT minted
+  in the browser from the `VITE_JAAS_*` values served at `/config.js`.
 
 ---
 
-## Default Build Target: Web
-
-> **Always target the web build by default.** All commands below assume the web target
-> unless a `:<platform>` suffix is specified.
+## Commands
 
 ```bash
 pnpm dev          # Start web dev server (Vite, http://localhost:5173)
 pnpm build        # Build web (outputs to packages/web/dist/)
 pnpm preview      # Preview the production web build
-```
-
----
-
-## Building All Platforms
-
-### Web (default)
-
-```bash
-pnpm build          # or: pnpm build:web
-```
-
-Output: `packages/web/dist/`
-
-To work directly inside the package:
-```bash
-cd packages/web
-pnpm dev
-pnpm build
-```
-
-### Desktop (Electron)
-
-The desktop build wraps the web build. Always run `build:web` first or use the combined
-scripts below:
-
-```bash
-pnpm dist:desktop:mac    # macOS .dmg + .zip (universal)
-pnpm dist:desktop:win    # Windows .exe installer (x64 + arm64)
-pnpm dist:desktop:linux  # Linux .AppImage, .deb, .rpm (x64)
-pnpm dist:desktop:all    # All three platforms
-```
-
-Desktop development (loads from Vite dev server):
-```bash
-pnpm dev                                           # terminal 1 — Vite
-pnpm --filter @officexr/desktop run build          # compile main.ts
-pnpm --filter @officexr/desktop exec electron .    # terminal 2 — Electron
-```
-
-### Mobile (React Native / Expo)
-
-Prerequisites: [EAS CLI](https://docs.expo.dev/eas/) installed and logged in.
-
-```bash
-pnpm dev:mobile             # Start Expo dev server (scan QR with Expo Go)
-pnpm build:mobile:ios       # EAS cloud build → .ipa
-pnpm build:mobile:android   # EAS cloud build → .aab / .apk
-```
-
-Local device runs (requires local Android/iOS toolchain):
-```bash
-pnpm --filter @officexr/mobile run android
-pnpm --filter @officexr/mobile run ios
+pnpm typecheck    # Typecheck every package
+pnpm test         # Unit tests for every package
+pnpm test:e2e:ci  # Hermetic Playwright suite run in CI
+pnpm --filter @officexr/realtime-server start   # Realtime server on :8787
 ```
 
 ---
@@ -178,73 +80,108 @@ pnpm --filter @officexr/mobile run ios
 
 ### Web (`packages/web/.env`)
 
-```
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
-```
+Identity comes from the `Tailscale-User-Login` / `Tailscale-User-Name` headers (no auth
+in the app); the server reads offices from Postgres via `SUPABASE_DB_URL`. Run
+`pnpm db:migrate` (applies `supabase/migrations` to `SUPABASE_DB_URL`) before `start`.
+For local dev set `OFFICEXR_DEV_USER_LOGIN` / `OFFICEXR_DEV_USER_NAME`; the dev server
+injects them as the Tailscale headers (never in preview).
+The identity headers are trusted only because the server is reachable solely through the
+Tailscale ingress; direct access to the pod port would allow spoofing them.
+Optional `OFFICEXR_ASSET_BASE_URL` (served at `/config.js`) loads `/models` assets and baked
+layouts from that base URL (e.g. a CDN); unset keeps same-origin paths.
 
 Copy from `packages/web/.env.example`. Vite loads `.env` from `packages/web/` when
 `pnpm dev` / `pnpm build` are run inside that package.
 
-### Mobile (`packages/mobile/.env`)
-
-```
-EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
-EXPO_PUBLIC_WEB_APP_URL=https://your-officexr-deployment.vercel.app
-```
-
-Copy from `packages/mobile/.env.example`.
-
 ---
 
-## Architecture Notes
+## Studio Editors (5 modes)
 
-### Desktop: Electron wraps the web build
+The studio (`@officexr/studio`) at `pnpm --filter @officexr/studio dev` is
+restructured into five purpose-built modes, each a separate App under
+`packages/studio/src/modes/<name>/`:
 
-- `packages/desktop/src/main.ts` registers a custom `app://` protocol that serves
-  `packages/web/dist/` files, falling back to `index.html` for any unknown path so
-  React Router works.
-- In development mode (`!app.isPackaged`) it loads from the Vite dev server at
-  `http://localhost:5173` instead, enabling HMR.
-- WebGL (Three.js) and experimental WebXR work in Electron's Chromium renderer.
+| Mode      | Hash      | Purpose                                                  |
+|-----------|-----------|----------------------------------------------------------|
+| Map       | `#map`    | Compose Rooms into a world — placement, rotation, spawn points, environment (sun/sky/stars/HDRI) |
+| Room      | `#room`   | Author a single Room: Select / Add / Delete / Tile tools, multi-select + groups, point-and-click cube placement |
+| Object    | `#object` | Tune every cube kind: label, swatch, walkable, scale, tint, opacity, roughness, metalness, emissive |
+| Character | `#character` | Character previewer + per-model tuning                |
+| Debug     | `#debug`  | Playtest: pick a map, bots spawn at the map's spawn points, Reset & respawn warps everyone |
 
-### Mobile: WebView for the 3D scene
+Storage endpoints (Vite middleware):
+- `/api/rooms/:name` — RoomDocument JSON
+- `/api/maps/:name` — MapDocumentV2 JSON (v1 maps are migrated on server start and on PUT)
+- `/api/cube-kinds` — single-doc catalog GET/PUT
+- `/api/world-settings` — single-doc `WorldConstants` GET/PUT; a save is pushed to the realtime servers (502 `{failed}` when some push fails)
 
-- Login, office list, and authentication are fully native (React Navigation, Supabase Auth
-  with AsyncStorage persistence, Google OAuth via expo-auth-session).
-- The 3D office scene (`OfficeScreen`) embeds the **deployed web build** in a
-  `react-native-webview`. The Supabase session token is injected into `localStorage` so
-  the web app recognises the already-authenticated user without a second login.
-- **Future:** Replace the WebView with `expo-gl` + `expo-three` for a fully native render
-  path with deeper OS integration (AR via ARKit/ARCore).
+Files on disk:
+- `packages/world/rooms/*.json`
+- `packages/world/maps/*.json` (`default.json` is the seed)
+- `packages/world/cube-kinds.json` (+ `cube-kinds.default.json` fallback)
 
-### Supabase Realtime
+### Studio control kit
 
-All real-time features (presence, position sync, chat, proximity voice) are implemented
-using Supabase Realtime channels in `packages/core/src/components/RoomScene.tsx` and
-shared equally by web and desktop (same code). Mobile inherits this through the WebView.
+Every panel uses an in-house control kit at
+`packages/studio/src/ui/controls/` built on shadcn-style wrappers
+around Radix primitives (slider, select, switch, collapsible, popover,
+tooltip, label) plus `react-colorful` for color pickers. The base
+shadcn components live at `packages/studio/src/components/ui/`.
+Styling is Tailwind v4 (configured via `@tailwindcss/vite`); tokens
+match the dark studio palette and are declared in
+`packages/studio/src/styles/globals.css`.
 
-### Proximity Voice Chat
+Key controls:
+- `<NumberInput>` — slider + draggable scrubber + click-to-type
+  (drag-to-scrub uses `useDragScrub`; shift = ×10, alt = ×0.1).
+- `<ColorInput>` — `react-colorful` HexColorPicker in a Popover.
+- `<Vector3Input>` — three scrubbers side-by-side.
+- `<NullableField>` — checkbox + slotted control for `tint`/
+  `roughness`/`metalness`/`emissive` "use X" pairs.
+- `<Section>` — Radix Collapsible with an optional enable-toggle.
 
-When two users' bubble spheres (radius = 3 Three.js units) overlap, a shared Jitsi room
-is auto-created and all nearby users join it. Cluster merges are handled by re-evaluating
-room membership on every presence `sync` event.
+Every value is fully controlled — there is no module-level store
+backing any of the panels. The previous Leva-based stack has been
+removed entirely; `pnpm --filter @officexr/studio lint:leva-free`
+runs four greps and fails CI if any Leva references leak back in.
 
----
+The Debug tuning panels (Bot, Animation, Jump, Proximity, Lighting,
+Background, FixedCamera, Settings) live at
+`packages/studio/src/panels/world/`. Every section but Bot edits the
+store's `worldConstants`; `useWorldConstantsPersistence` loads the saved
+document on start and saves (`/api/world-settings`) 500 ms after the last
+edit. Bot count/mode stay studio-local (`useStudioSettings`). In the
+in-memory stack a small authority re-emits the constants as the server
+actor so in-browser bots follow them.
 
-## Adding New Shared Logic
+## Studio Asset Packs
 
-1. Add to `packages/core/src/` (keep framework deps out of `lib/` and `types/` if possible).
-2. If platform-agnostic, re-export from `packages/core/src/index.ts`.
-3. Import in mobile as `@officexr/core` (resolved by Babel's `module-resolver`).
-4. Import in web using the `@/` alias (resolved by Vite to `packages/core/src`).
+The studio's Object editor + Room editor catalog references three KayKit FREE
+packs (Furniture, Prototype, Restaurant) hosted on Cloudflare R2. The `.gltf`
+binaries are gitignored — the matching catalog entries in
+`packages/world/cube-kinds.json` ARE committed. After cloning, populate the
+binaries locally:
+
+```bash
+pnpm asset-packs:install        # idempotent; add --force to redownload
+```
+
+This downloads the three zip files, unzips them into
+`packages/studio/public/models/{furniture,prototype,restaurant}/`, enumerates
+the `.gltf` files, and appends any not-yet-known entries to
+`cube-kinds.json`. Re-running with no new packs is a no-op.
+
+If you skip the install step, the catalog still loads but
+`useGLTF(...)` will 404 on any furniture / prototype / restaurant kind your
+scene references. The original 12 KayKit BlockBits ship in-repo so the
+default Scenes / Debug paths work without the install step.
 
 ## Database Migrations
 
-SQL migrations live in `supabase/migrations/`. Apply with:
+SQL migrations live in `supabase/migrations/`. Apply them to `SUPABASE_DB_URL` with:
 
 ```bash
-supabase db push          # push all pending migrations
-supabase db reset         # reset and re-apply from scratch (dev only)
+pnpm db:migrate           # supabase db push against SUPABASE_DB_URL
 ```
+
+The web container runs `pnpm db:migrate` before starting the server.

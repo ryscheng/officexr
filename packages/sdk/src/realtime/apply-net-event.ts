@@ -23,6 +23,7 @@ export function applyNetEventToStore(
         event.vel,
         event.yaw,
         clock.now(),
+        event.isAirborne,
       );
       return;
     case 'chat:message': {
@@ -39,7 +40,7 @@ export function applyNetEventToStore(
       actions.applyRemoteStroke(event.stroke);
       return;
     case 'avatar:update':
-      actions.upsertPlayer({ id: event.actorId, avatar: event.avatar });
+      actions.upsertPlayer({ id: event.actorId, avatar: event.avatar, name: event.name });
       return;
     case 'shot:hit':
       actions.applyHit(event.targetId, event.dmg, event.actorId);
@@ -47,11 +48,17 @@ export function applyNetEventToStore(
     case 'zombie:state':
       actions.applyZombieState(event.state);
       return;
-    case 'world:settings':
-      actions.applyRemoteWorldSettings(event.settings);
+    case 'world:constants':
+      actions.setWorldConstants(event.constants);
       return;
     case 'world:map':
       actions.applyRemoteWorldMap(event.map);
+      return;
+    case 'world:characters':
+      actions.applyRemoteCharacterConfigs(event.configs);
+      return;
+    case 'world:objects':
+      actions.applyRemoteWorldObjects(event.objects);
       return;
     case 'snapshot:request':
     case 'snapshot:offer':

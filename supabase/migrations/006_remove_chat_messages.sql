@@ -1,5 +1,2 @@
--- Remove chat_messages table (chat is now ephemeral via Supabase Realtime broadcast only)
-drop policy if exists "Chat messages are publicly readable" on public.chat_messages;
-drop policy if exists "Authenticated users can insert chat messages" on public.chat_messages;
-drop policy if exists "Anonymous users can insert chat messages" on public.chat_messages;
-drop table if exists public.chat_messages;
+-- Remove chat_messages (chat is now ephemeral via Supabase Realtime broadcast only); cascade takes its RLS policies with it.
+drop table if exists public.chat_messages cascade;

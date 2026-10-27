@@ -49,7 +49,7 @@ The arrows are **one-way**: subsystems never read from each other.
 This is what makes the "voice survives renderer crash" invariant
 enforceable rather than aspirational.
 
-## Communication (`@officexr/app/communication/`)
+## Communication (`@officexr/core-refactor/communication/`)
 
 This is the **most critical subsystem**. It is the product. It must
 keep working when everything else fails.
@@ -107,7 +107,7 @@ keep working when everything else fails.
   `THREE.VideoTexture` for in-world display. If the renderer crashes,
   the share keeps streaming; only the in-world plane disappears.
 
-## WorldRenderer (`@officexr/app/renderer/`)
+## WorldRenderer (`@officexr/world/renderer/`)
 
 The 3D view of `OfficeState`. Stateless from the outside — its job is
 "render = f(state)".
@@ -168,7 +168,7 @@ reconciliation all see the same snapshot.
 - **The renderer never mutates `OfficeState.players[other]`.** Remote
   player state is written exclusively by the sync engine.
 
-## HUD (`@officexr/app/hud/`)
+## HUD (`@officexr/hud/  (future — extracted from core during web migration)`)
 
 Conventional React components, each subscribing to a narrow
 selector. No refs (O3 dies here). No `THREE.*`.
@@ -248,7 +248,7 @@ disappears entirely. Each subsystem talks to the store; nothing else.
 A reviewer can confirm this layer is correctly built when:
 
 1. Grep for `from 'three'` returns matches only under
-   `@officexr/app/renderer/**`.
+   `@officexr/world/renderer/**`.
 2. Grep for `import.*from.*\\bcommunication` returns no matches in
    `renderer/**` and vice versa.
 3. Throwing a synthetic error inside `WorldRenderer` during a live

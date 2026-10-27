@@ -30,6 +30,9 @@ vite.config.d.ts
 .DS_Store
 *.pem
 
+# studio state backups (tarballs produced by `pnpm state:backup`)
+/backups/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -50,5 +53,25 @@ next-env.d.ts
 # supabase CLI temp + branch state
 supabase/.temp/
 supabase/.branches/
-tools/supabase-test/supabase/.temp/
-tools/supabase-test/supabase/.branches/
+
+# KayKit asset packs — downloaded by `pnpm asset-packs:install`.
+# The matching catalog entries in packages/world/cube-kinds.json ARE
+# committed; only the .gltf/.bin/.png binaries are gitignored.
+packages/studio/public/models/furniture/
+packages/studio/public/models/prototype/
+packages/studio/public/models/restaurant/
+test-results/
+playwright-report/
+
+# Baked layout GLBs — generated artifacts, do NOT commit.
+# Layout JSON sources (packages/world/layouts/) are tracked.
+packages/world/baked-layouts/
+
+# Playwright scratch documents. The editor specs save maps/rooms with a
+# generated `pw-test-<random>` name; these are throwaway artifacts.
+packages/world/maps/pw-test-*.json
+packages/world/rooms/pw-test-*.json
+
+# Dev saves of the world settings land here when OFFICEXR_STUDIO_DATA_DIR is unset.
+packages/world/world-settings.json
+packages/world/world-settings.json.*.tmp

@@ -14,8 +14,7 @@
   },
   "dependencies": {
     "@officexr/realtime-server": "workspace:*",
-    "@officexr/sdk": "workspace:*",
-    "@supabase/supabase-js": "^2.49.4"
+    "@officexr/sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",

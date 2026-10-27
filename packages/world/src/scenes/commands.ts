@@ -1,0 +1,223 @@
+/**
+ * CAD-style scene authoring commands. A `SceneDocument` is an ordered
+ * list of these commands; replaying them in `compileScene` yields a
+ * flat list of `ObjectInstance`s the renderer can draw.
+ *
+ * Adding a new command kind:
+ *   1. Extend the `SceneCommand` union here.
+ *   2. Add a switch case in `compileScene`.
+ *   3. Add an Inspector renderer in studio so the user can edit it.
+ * Forgetting (1) is a compile error in (2) thanks to the exhaustive
+ * `never` check in `compileScene`.
+ */
+
+/** Cardinal axis-aligned face of a cube object. */
+export type CubeFace = 'px' | 'nx' | 'py' | 'ny' | 'pz' | 'nz';
+export const CUBE_FACES: readonly CubeFace[] = [
+  'px',
+  'nx',
+  'py',
+  'ny',
+  'pz',
+  'nz',
+];
+
+/** Place a single world object at integer voxel coords. The first
+ * command in a scene is almost always a placeObject. */
+export interface PlaceObjectCommand {
+  id: string;
+  /** v4 canonical op string. v3 on-disk files used 'placeCube' —
+   * migrateRoomV3toV4 in serialize.ts rewrites them on load. */
+  op: 'placeObject';
+  kindId: string;
+  /** Min corner of the object's unrotated footprint. */
+  position: [number, number, number];
+  /** Yaw about +Y in degrees, [0, 360), in the sense of three.js
+   * `rotation.y`, pivoting on the unrotated footprint's centre. Absent
+   * means 0. */
+  yawDeg?: number;
+}
+
+/** @deprecated Use PlaceObjectCommand */
+export type PlaceCubeCommand = PlaceObjectCommand;
+
+/**
+ * Tile cubes outward from a chosen face of an existing object.
+ * `count` is the TOTAL number of cubes along the extrude direction
+ * INCLUDING the source. So an extrude with count=3 from a single cube
+ * gives a 1×3 row (the source plus 2 new cubes); count=1 is a no-op
+ * (the source already exists); count <= 0 is a no-op too.
+ *
+ * `face` selects which direction to grow in. The new cubes inherit
+ * the target's kind.
+ */
+export interface ExtrudeCommand {
+  id: string;
+  op: 'extrude';
+  targetCommandId: string;
+  face: CubeFace;
+  count: number;
+}
+
+export type SceneCommand = PlaceObjectCommand | ExtrudeCommand;
+
+/**
+ * Versioned authoring document. `schemaVersion: 2` is the new
+ * command-list format; v1 files (legacy `WorldMap` cell grids)
+ * round-trip through `migrateV1ToV2` in `serialize.ts`.
+ *
+ * @deprecated Prefer `RoomDocument` (v3) for new code. `SceneDocument`
+ * is kept as a type alias for v2 docs so the existing Scenes editor
+ * keeps compiling during the studio multi-editor restructure; it will
+ * be removed once every caller has migrated.
+ */
+export interface SceneDocument {
+  schemaVersion: 2;
+  name: string;
+  title?: string;
+  updatedAt?: number;
+  commands: SceneCommand[];
+}
+
+/**
+ * Grouping of commands in a `RoomDocument`. Groups are a
+ * selection/lifecycle concern: a group's children are deleted together
+ * by the Delete tool and selected together by the Select tool. They
+ * are NOT a compile concern — `compileScene` does not look at groups.
+ *
+ * v1 invariant: each `commandId` belongs to at most one group.
+ * Nesting is not supported in v1.
+ *
+ * Invariant: `id` must equal the `Record<string, CommandGroup>` key that
+ * stores this group. Carrying the id inline is intentional so a group
+ * passed around by reference (e.g. into the inspector) still knows its
+ * own identity; the duplication is checked when the Room editor's
+ * mutators write to the document.
+ */
+export interface CommandGroup {
+  id: string;
+  commandIds: string[];
+  label?: string;
+}
+
+/**
+ * Versioned authoring document for one Room.
+ *
+ * - **v5** (this) adds optional `layoutName` — a reference to a
+ *   `LayoutDocument` whose baked GLB is rendered as the room's base.
+ * - **v4** was the previous version — no `layoutName` field.
+ *   migrateRoomV4toV5 in serialize.ts upgrades v4 docs on load.
+ * - **v3** was the previous version — op string 'placeCube', voxelSize=2.
+ *   migrateRoomV3toV4 in serialize.ts upgrades v3 docs on load.
+ * - **v2** is the historical command-list "scene" — see `SceneDocument`.
+ * - **v1** is the legacy cell-grid WorldMap.
+ *
+ * The on-disk wire form is `SerializedRoomV5` in `serialize.ts`.
+ */
+export interface RoomDocument {
+  schemaVersion: 5;
+  name: string;
+  title?: string;
+  updatedAt?: number;
+  commands: SceneCommand[];
+  groups: Record<string, CommandGroup>;
+  /** Optional reference to a named LayoutDocument. When set, the room
+   * loads the baked GLB for this layout as its structural base. */
+  layoutName?: string;
+}
+
+/** A room whose only geometry is its baked layout GLB. */
+export function isBakedRoom<T extends Pick<RoomDocument, 'commands' | 'layoutName'>>(
+  room: T,
+): room is T & { layoutName: string } {
+  return room.commands.length === 0 && room.layoutName !== undefined;
+}
+
+let nextCmdId = 1;
+function mintCommandId(prefix: string): string {
+  // Stable enough for in-session uniqueness; the studio assigns a
+  // fresh sequence when a doc is loaded so saved files don't collide.
+  return `${prefix}-${(nextCmdId++).toString(36)}-${Date.now().toString(36).slice(-4)}`;
+}
+
+export function newPlaceObject(opts: {
+  kindId: string;
+  position?: [number, number, number];
+  yawDeg?: number;
+  id?: string;
+}): PlaceObjectCommand {
+  return {
+    id: opts.id ?? mintCommandId('place'),
+    op: 'placeObject',
+    kindId: opts.kindId,
+    position: opts.position ?? [0, 0, 0],
+    ...(opts.yawDeg !== undefined && { yawDeg: normalizeYawDeg(opts.yawDeg) }),
+  };
+}
+
+export function normalizeYawDeg(yawDeg: number): number {
+  return ((yawDeg % 360) + 360) % 360;
+}
+
+export type QuarterTurns = 0 | 1 | 2 | 3;
+
+/** Turns an X/Z offset about +Y in the same sense as three.js
+ * `rotation.y = rot·π/2` (and a map room's `rotationY`). */
+export function rotateXZ(rot: QuarterTurns, x: number, z: number): [number, number] {
+  return rot === 0 ? [x, z] : rot === 1 ? [z, -x] : rot === 2 ? [-x, -z] : [-z, x];
+}
+
+/**
+ * Validates each placeObject's optional `yawDeg` and returns the commands
+ * with it normalised to [0, 360). Throws when a yaw is present but not a
+ * finite number. `label` prefixes the error message.
+ */
+export function parseCommandYaws<T>(commands: T[], label: string): T[] {
+  return commands.map((cmd, i) => {
+    const c = cmd as { op?: unknown; yawDeg?: unknown };
+    if (c?.op !== 'placeObject' || c.yawDeg === undefined) return cmd;
+    if (typeof c.yawDeg !== 'number' || !Number.isFinite(c.yawDeg)) {
+      throw new Error(`${label}: commands[${i}].yawDeg must be a finite number`);
+    }
+    return { ...cmd, yawDeg: normalizeYawDeg(c.yawDeg) };
+  });
+}
+
+/** @deprecated Use newPlaceObject */
+export const newPlaceCube = newPlaceObject;
+
+export function newExtrude(opts: {
+  targetCommandId: string;
+  face: CubeFace;
+  count: number;
+  id?: string;
+}): ExtrudeCommand {
+  return {
+    id: opts.id ?? mintCommandId('ext'),
+    op: 'extrude',
+    targetCommandId: opts.targetCommandId,
+    face: opts.face,
+    count: Math.max(0, Math.floor(opts.count)),
+  };
+}
+
+export function emptyDocument(name: string, title?: string): SceneDocument {
+  return {
+    schemaVersion: 2,
+    name,
+    title,
+    updatedAt: Date.now(),
+    commands: [],
+  };
+}
+
+export function emptyRoomDocument(name: string, title?: string): RoomDocument {
+  return {
+    schemaVersion: 5,
+    name,
+    title,
+    updatedAt: Date.now(),
+    commands: [],
+    groups: {},
+  };
+}

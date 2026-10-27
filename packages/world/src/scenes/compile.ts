@@ -1,0 +1,227 @@
+import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
+import type {
+  CubeFace,
+  PlaceObjectCommand,
+  RoomDocument,
+  SceneCommand,
+  SceneDocument,
+} from './commands.ts';
+
+/** Minimum shape `compileScene` actually consumes: a command list.
+ * Both `SceneDocument` (v2) and `RoomDocument` (v3) satisfy this, so
+ * a single signature covers both. */
+type CompileInput = SceneDocument | RoomDocument | { commands: SceneCommand[] };
+
+/**
+ * Pure replay of a `SceneDocument`'s command list into a flat list of
+ * placed object instances. Same input → same output; safe to call as
+ * often as the editor needs (it runs on every command-list edit).
+ *
+ * Algorithm:
+ *   - Maintain a `byCommand: Map<commandId, ObjectInstance[]>` so
+ *     subsequent extrudes can look up the cells produced by their
+ *     target.
+ *   - `placeObject` adds one instance whose `sourceCommandId` is the
+ *     command itself.
+ *   - `extrude` reads the target's instance set, finds the outermost
+ *     layer of cells along the chosen face's normal, and emits
+ *     `count` new layers walking outward. Each new instance's
+ *     `sourceCommandId` is the extrude command (so the inspector can
+ *     focus the right command on selection); its `kindId` inherits
+ *     from the target's first instance.
+ *
+ * Edge cases handled:
+ *   - Unknown `targetCommandId` → no-op (logged but doesn't throw).
+ *   - `count <= 0` → no-op.
+ *   - Two objects occupying the same voxel after extrude → the later
+ *     wins (the earlier instance is dropped from the global set).
+ */
+/**
+ * Optional per-kind extrude-stride lookup. When provided, an extrude
+ * command places each successive layer `stride[axis]` voxels away
+ * instead of the legacy 1-voxel step; `stride` is the kind's AABB size
+ * at the target's yaw. Callers with a catalog pass the geometry
+ * service's `tileStep` (see `app/room-service.ts`).
+ * When omitted (legacy callers, unit tests), behavior matches the
+ * previous 1-voxel step.
+ */
+export type KindStrideLookup = (kindId: string, yawDeg?: number) => [number, number, number];
+
+export function compileScene(
+  doc: CompileInput,
+  voxelSize: number,
+  kindStride?: KindStrideLookup,
+): WorldObjects {
+  const byCommand = new Map<string, ObjectInstance[]>();
+  const byVoxel = new Map<string, ObjectInstance>();
+
+  const upsert = (instance: ObjectInstance) => {
+    const key = voxelKey(instance.position);
+    const existing = byVoxel.get(key);
+    if (existing) {
+      // Drop the previous occupant from its source command's bucket.
+      const bucket = byCommand.get(existing.sourceCommandId);
+      if (bucket) {
+        const idx = bucket.indexOf(existing);
+        if (idx !== -1) bucket.splice(idx, 1);
+      }
+    }
+    byVoxel.set(key, instance);
+    let bucket = byCommand.get(instance.sourceCommandId);
+    if (!bucket) {
+      bucket = [];
+      byCommand.set(instance.sourceCommandId, bucket);
+    }
+    bucket.push(instance);
+  };
+
+  for (const cmd of doc.commands) {
+    switch (cmd.op) {
+      case 'placeObject':
+        upsert(makeInstance(cmd, cmd.position, cmd.kindId, cmd.yawDeg));
+        break;
+      case 'extrude': {
+        const target = byCommand.get(cmd.targetCommandId);
+        if (!target || target.length === 0 || cmd.count <= 1) break;
+        const { kindId, yawDeg } = target[0];
+        const layer = outerLayer(target, cmd.face);
+        const normal = faceNormal(cmd.face);
+        // Per-axis voxel step for the target kind. When `kindStride` is
+        // omitted the legacy 1-voxel step is preserved (back-compat for
+        // unit tests and callers that haven't been wired to a catalog).
+        const kindSteps = kindStride ? kindStride(kindId, yawDeg) : ([1, 1, 1] as const);
+        const axis = normal[0] !== 0 ? 0 : normal[1] !== 0 ? 1 : 2;
+        const stride: [number, number, number] = [
+          normal[0] * kindSteps[axis],
+          normal[1] * kindSteps[axis],
+          normal[2] * kindSteps[axis],
+        ];
+        // count = TOTAL cubes along the direction including the
+        // source. The source already exists in `target`, so we add
+        // count - 1 new layers walking outward from its outer face.
+        const newLayers = cmd.count - 1;
+        for (let step = 1; step <= newLayers; step++) {
+          for (const cell of layer) {
+            const pos: [number, number, number] = [
+              cell[0] + stride[0] * step,
+              cell[1] + stride[1] * step,
+              cell[2] + stride[2] * step,
+            ];
+            upsert(makeInstance(cmd, pos, kindId, yawDeg));
+          }
+        }
+        break;
+      }
+      default: {
+        const _exhaustive: never = cmd;
+        void _exhaustive;
+      }
+    }
+  }
+
+  const instances = Array.from(byVoxel.values());
+  // Keep iteration order deterministic so the diff broadcaster sees a
+  // stable JSON shape across runs of identical commands.
+  instances.sort((a, b) => a.id.localeCompare(b.id));
+  // Note: the SDK's WorldObjects type uses `cubeSize` — the field will
+  // be renamed to `voxelSize` in a future SDK update (tracked separately).
+  return { cubeSize: voxelSize, instances };
+}
+
+function makeInstance(
+  cmd: SceneCommand,
+  position: [number, number, number],
+  kindId: string,
+  yawDeg: number | undefined,
+): ObjectInstance {
+  return {
+    id: `${cmd.id}@${position[0]},${position[1]},${position[2]}`,
+    sourceCommandId: cmd.id,
+    kindId,
+    position: [position[0], position[1], position[2]],
+    ...(yawDeg !== undefined && { yawDeg }),
+  };
+}
+
+function voxelKey(position: [number, number, number]): string {
+  return `${position[0]}|${position[1]}|${position[2]}`;
+}
+
+const FACE_NORMALS: Record<CubeFace, [number, number, number]> = {
+  px: [1, 0, 0],
+  nx: [-1, 0, 0],
+  py: [0, 1, 0],
+  ny: [0, -1, 0],
+  pz: [0, 0, 1],
+  nz: [0, 0, -1],
+};
+
+function faceNormal(face: CubeFace): [number, number, number] {
+  return FACE_NORMALS[face];
+}
+
+/**
+ * Outermost layer of an instance set along a face direction.
+ * Used by extrude to find the "starting plane" to tile from.
+ *
+ * For face `+x`: pick all instances whose x equals `max(x)`.
+ * For face `-x`: pick all instances whose x equals `min(x)`.
+ * Same for y and z.
+ *
+ * Returns positions, not full instances, since the caller only needs
+ * coordinates to derive the next layer.
+ */
+function outerLayer(
+  instances: ObjectInstance[],
+  face: CubeFace,
+): Array<[number, number, number]> {
+  const axis = axisOf(face);
+  const sign = signOf(face);
+  let extreme = sign > 0 ? -Infinity : Infinity;
+  for (const i of instances) {
+    const v = i.position[axis];
+    if (sign > 0 ? v > extreme : v < extreme) extreme = v;
+  }
+  const out: Array<[number, number, number]> = [];
+  for (const i of instances) {
+    if (i.position[axis] === extreme) {
+      out.push([i.position[0], i.position[1], i.position[2]]);
+    }
+  }
+  return out;
+}
+
+function axisOf(face: CubeFace): 0 | 1 | 2 {
+  if (face === 'px' || face === 'nx') return 0;
+  if (face === 'py' || face === 'ny') return 1;
+  return 2;
+}
+
+function signOf(face: CubeFace): 1 | -1 {
+  return face === 'px' || face === 'py' || face === 'pz' ? 1 : -1;
+}
+
+/**
+ * Bounding box of a command's contribution. Useful for the inspector
+ * to display "this object occupies (1,0,0) → (3,0,2), 9 cubes" and
+ * for the editor's "select all instances by command" workflow.
+ */
+export function commandBounds(
+  doc: CompileInput,
+  commandId: string,
+  voxelSize: number,
+  kindStride?: KindStrideLookup,
+): { min: [number, number, number]; max: [number, number, number]; count: number } | null {
+  const compiled = compileScene(doc, voxelSize, kindStride);
+  const owned = compiled.instances.filter((i) => i.sourceCommandId === commandId);
+  if (owned.length === 0) return null;
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (const i of owned) {
+    for (let a = 0; a < 3; a++) {
+      if (i.position[a] < min[a]) min[a] = i.position[a];
+      if (i.position[a] > max[a]) max[a] = i.position[a];
+    }
+  }
+  return { min, max, count: owned.length };
+}

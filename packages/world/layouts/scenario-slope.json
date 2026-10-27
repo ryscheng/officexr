@@ -1,0 +1,99 @@
+{
+ "schemaVersion": 1,
+ "name": "scenario-slope",
+ "title": "Scenario: Slope Walk (trimesh collider)",
+ "updatedAt": 1749694800000,
+ "optimizer": "default",
+ "commands": [
+  {
+   "id": "place-slope-base-1",
+   "op": "placeObject",
+   "kindId": "colored_block_blue",
+   "position": [
+    8,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "place-slope-base-2",
+   "op": "placeObject",
+   "kindId": "colored_block_blue",
+   "position": [
+    8,
+    0,
+    4
+   ]
+  },
+  {
+   "id": "place-slope-base-3",
+   "op": "placeObject",
+   "kindId": "colored_block_blue",
+   "position": [
+    12,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "place-slope-base-4",
+   "op": "placeObject",
+   "kindId": "colored_block_blue",
+   "position": [
+    12,
+    0,
+    4
+   ]
+  },
+  {
+   "id": "place-slope-geometry",
+   "op": "placeObject",
+   "kindId": "prototype_primitive_slope",
+   "position": [
+    0,
+    4,
+    0
+   ]
+  },
+  {
+   "id": "place-slope-top-1",
+   "op": "placeObject",
+   "kindId": "colored_block_blue",
+   "position": [
+    -4,
+    8,
+    0
+   ]
+  },
+  {
+   "id": "place-slope-top-2",
+   "op": "placeObject",
+   "kindId": "colored_block_blue",
+   "position": [
+    -4,
+    8,
+    4
+   ]
+  },
+  {
+   "id": "place-slope-top-3",
+   "op": "placeObject",
+   "kindId": "colored_block_blue",
+   "position": [
+    -8,
+    8,
+    0
+   ]
+  },
+  {
+   "id": "place-slope-top-4",
+   "op": "placeObject",
+   "kindId": "colored_block_blue",
+   "position": [
+    -8,
+    8,
+    4
+   ]
+  }
+ ]
+}

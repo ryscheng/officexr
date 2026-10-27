@@ -2,11 +2,12 @@ import type { Actions } from '../game-state/actions.ts';
 import type { Bus } from '../game-state/bus.ts';
 import type { Store } from '../game-state/store.ts';
 import type { OfficeState } from '../game-state/types.ts';
-import type { Channel } from './channel.ts';
+import type { Channel, ChannelStatus } from './channel.ts';
 import type { NetEvent } from './protocol.ts';
 import type { Clock } from '../test-harness/time.ts';
 import { applyNetEventToStore } from './apply-net-event.ts';
 import { InboundSeqTable } from './inbound-seq-table.ts';
+import { createSeqCounter, type SeqCounter } from './seq-counter.ts';
 import { InboundRouter } from './inbound/router.ts';
 import {
   PositionBroadcaster,
@@ -26,6 +27,13 @@ interface SyncEngineOpts {
   clock: Clock;
   /** Optional shared seq table so other modules (e.g. SnapshotHandshake) can read/seed it. */
   inboundSeqs?: InboundSeqTable;
+  /**
+   * Wall-clock source for the initial outbound seq. Deliberately separate from
+   * `clock`, which may restart near 0 on reload.
+   */
+  seqSeed?: () => number;
+  /** Start without announcing the self player until {@link SyncEngine.releaseSelf}. */
+  holdSelf?: boolean;
 }
 
 /**
@@ -48,17 +56,21 @@ export class SyncEngine {
   private inbound: InboundRouter;
 
   private started = false;
+  private heldSelf: boolean;
   private offStore: (() => void) | null = null;
   private offChannel: (() => void) | null = null;
   private offPresence: (() => void) | null = null;
+  private offStatus: (() => void) | null = null;
 
   // outbound seq counter (per local actor); shared between collaborators
-  private nextSeq = 1;
+  private seqs: SeqCounter;
 
   constructor(opts: SyncEngineOpts) {
     this.store = opts.store;
     this.actions = opts.actions;
     this.channel = opts.channel;
+    this.seqs = createSeqCounter(opts.seqSeed);
+    this.heldSelf = opts.holdSelf ?? false;
 
     const broadcast = (event: NetEvent) => this.broadcast(event);
     const takeSeq = () => this.takeSeq();
@@ -92,9 +104,9 @@ export class SyncEngine {
     return this.inbound.getInboundSeqTable();
   }
 
-  /** Highest outbound seq we've emitted from self. 0 if we've sent nothing. */
+  /** Highest outbound seq emitted from self (the clock-derived seed if none yet). */
   lastOutboundSeq(): number {
-    return this.nextSeq - 1;
+    return this.seqs.last();
   }
 
   /**
@@ -115,19 +127,31 @@ export class SyncEngine {
    * and the per-frame ticker so a stop-packet can fire even when no
    * store mutation happened this frame. */
   flushPosition(): void {
+    if (this.heldSelf) return;
     this.position.flushPosition();
   }
 
+  isSelfHeld(): boolean {
+    return this.heldSelf;
+  }
+
+  /** Ends a `holdSelf` hold, announcing the current self pose and name once. No-op if not held. */
+  releaseSelf(): void {
+    if (!this.heldSelf) return;
+    this.heldSelf = false;
+    this.announceSelf();
+  }
+
   /**
-   * Unconditionally broadcast the current `worldSettings` and `worldMap`
-   * from this peer's store. The regular `onStoreChange` diff path only
+   * Unconditionally broadcast the current `worldMap`, `characterConfigs`
+   * and `worldObjects` from this peer's store. The regular `onStoreChange` diff path only
    * broadcasts when the values *change* — but on first connect we want
    * to publish the canonical state even if it happens to equal the SDK
    * defaults, so a later-joining peer (e.g. a bot spawned in the
    * realtime-server's process) picks it up.
    *
    * Call this once after `start()` from the source-of-truth peer (the
-   * debug-app browser, which owns the Leva-driven settings).
+   * studio browser, which owns the map and scene edits).
    */
   broadcastWorldState(): void {
     this.stateDiff.broadcastWorldState();
@@ -147,8 +171,7 @@ export class SyncEngine {
     // real change is treated as a delta, not absorbed into the
     // baseline.
     this.stateDiff.captureBaseline();
-    // Announce ourselves to peers already on the channel.
-    this.position.announceSelf();
+    if (!this.heldSelf) this.position.announceSelf();
 
     this.offStore = this.store.subscribeAll((next, prev) =>
       this.onStoreChange(next, prev),
@@ -162,7 +185,19 @@ export class SyncEngine {
       for (const id of left) {
         if (id === selfId) continue; // never remove self
         this.actions.removePlayer(id);
+        // A returning peer's join snapshot restarts its seqs at 1.
+        // ponytail: peers present across a client-only blip keep their seqs, so their re-sent snapshot is dropped until they next send.
+        this.inbound.getInboundSeqTable().forget(id);
       }
+    });
+    // A restarted server, or a peer that forgot us while we were away,
+    // only learns our pose and name from a fresh announce.
+    let prevStatus: ChannelStatus | null = null;
+    this.offStatus = this.channel.onStatusChange((status) => {
+      if (prevStatus === 'reconnecting' && status === 'live') {
+        if (!this.heldSelf) this.announceSelf();
+      }
+      prevStatus = status;
     });
   }
 
@@ -171,27 +206,35 @@ export class SyncEngine {
     this.offStore?.();
     this.offChannel?.();
     this.offPresence?.();
+    this.offStatus?.();
     this.started = false;
   }
 
   // --- Internal -------------------------------------------------------
 
+  private announceSelf(): void {
+    this.position.announceSelf();
+    this.stateDiff.announceAvatar();
+  }
+
   private onStoreChange(next: OfficeState, prev: OfficeState): void {
-    this.stateDiff.onStoreChange(next, prev);
-    this.position.flushPosition();
+    this.stateDiff.onStoreChange(next, prev, !this.heldSelf);
+    this.flushPosition();
   }
 
   /**
    * Anti-echo: after the InboundRouter applies a remote
-   * `world:settings` or `world:map`, tell the outbound StateDiff
-   * collaborator that this value was just received so its next
-   * `onStoreChange` diff doesn't re-broadcast it.
+   * `world:map` / `world:characters` / `world:objects`, tell the
+   * outbound StateDiff collaborator that this value was just received
+   * so its next `onStoreChange` diff doesn't re-broadcast it.
    */
   private onInboundApplied(event: NetEvent): void {
-    if (event.kind === 'world:settings') {
-      this.stateDiff.markWorldSettings(event.settings);
-    } else if (event.kind === 'world:map') {
+    if (event.kind === 'world:map') {
       this.stateDiff.markWorldMap(event.map);
+    } else if (event.kind === 'world:characters') {
+      this.stateDiff.markCharacterConfigs(event.configs);
+    } else if (event.kind === 'world:objects') {
+      this.stateDiff.markWorldObjects(event.objects);
     }
   }
 
@@ -200,6 +243,6 @@ export class SyncEngine {
   }
 
   private takeSeq(): number {
-    return this.nextSeq++;
+    return this.seqs.next();
   }
 }

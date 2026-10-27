@@ -1,0 +1,60 @@
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import type { ServerResponse } from 'node:http';
+import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import type { Connect } from 'vite';
+import { assetContentType } from '@officexr/world/asset-content-type';
+
+function decodePath(urlPath: string): string | null {
+  try {
+    return decodeURIComponent(urlPath);
+  } catch {
+    return null;
+  }
+}
+
+async function serveFile(root: string, prefix: string, req: Connect.IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const decoded = decodePath(req.url!.split('?')[0].slice(prefix.length));
+  if (decoded === null) {
+    res.statusCode = 400;
+    res.end();
+    return true;
+  }
+  const file = path.join(root, decoded);
+  if (!file.startsWith(root + path.sep)) {
+    return false;
+  }
+  const info = await stat(file).catch(() => null);
+  if (!info?.isFile()) {
+    return false;
+  }
+  res.setHeader('Content-Type', assetContentType(file));
+  res.setHeader('Content-Length', info.size);
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  try {
+    await pipeline(createReadStream(file), res);
+  } catch (err) {
+    // The client went away mid-download; pipeline has already closed the file.
+    if ((err as NodeJS.ErrnoException).code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+      throw err;
+    }
+  }
+  return true;
+}
+
+/** Serves the files under `dir` at `prefix`, read at request time so assets installed after the build are found. */
+export function staticDirMiddleware(prefix: string, dir: string): Connect.NextHandleFunction {
+  const root = path.resolve(dir);
+  return (req, res, next) => {
+    const urlPath = req.url?.split('?')[0] ?? '';
+    if (!urlPath.startsWith(`${prefix}/`) || (req.method !== 'GET' && req.method !== 'HEAD')) {
+      return next();
+    }
+    serveFile(root, prefix, req, res).then((served) => !served && next(), next);
+  };
+}

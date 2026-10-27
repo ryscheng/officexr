@@ -1,0 +1,6258 @@
+{
+  "schemaVersion": 1,
+  "name": "platform",
+  "title": "Platform (25×25)",
+  "updatedAt": 1779138558286,
+  "commands": [
+    {
+      "id": "place-platform-1",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-3",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-4",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-5",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-6",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-7",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-8",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-9",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-10",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-11",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-12",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-13",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-14",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-15",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-16",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-17",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-18",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-19",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-20",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-21",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-22",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-23",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-24",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-25",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-26",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-27",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-28",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-29",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-30",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-31",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-32",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-33",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-34",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-35",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-36",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-37",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-38",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-39",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-40",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-41",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-42",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-43",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-44",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-45",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-46",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-47",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-48",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-49",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-50",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-51",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-52",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-53",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-54",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-55",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-56",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-57",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-58",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-59",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-60",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-61",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-62",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-63",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-64",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-65",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-66",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-67",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-68",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-69",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-70",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-71",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-72",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-73",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-74",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-75",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-76",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-77",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-78",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-79",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-80",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-81",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-82",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-83",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-84",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-85",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-86",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-87",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-88",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-89",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-90",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-91",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-92",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-93",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-94",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-95",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-96",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-97",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-98",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-99",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-100",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-101",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-102",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-103",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-104",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-105",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-106",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-107",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-108",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-109",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-110",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-111",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-112",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-113",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-114",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-115",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-116",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-117",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-118",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-119",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-120",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-121",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-122",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-123",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-124",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-125",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-126",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-127",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-128",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-129",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-130",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-131",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-132",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-133",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-134",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-135",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-136",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-137",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-138",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-139",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-140",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-141",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-142",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-143",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-144",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-145",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-146",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-147",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-148",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-149",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-150",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-151",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-152",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-153",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-154",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-155",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-156",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-157",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-158",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-159",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-160",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-161",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-162",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-163",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-164",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-165",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-166",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-167",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-168",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-169",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-170",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-171",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-172",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-173",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-174",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-175",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-176",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-177",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-178",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-179",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-180",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-181",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-182",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-183",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-184",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-185",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-186",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-187",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-188",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-189",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-190",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-191",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-192",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-193",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-194",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-195",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-196",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-197",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-198",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-199",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-200",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-201",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-202",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-203",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-204",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-205",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-206",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-207",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-208",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-209",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-210",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-211",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-212",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-213",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-214",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-215",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-216",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-217",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-218",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-219",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-220",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-221",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-222",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-223",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-224",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-225",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-226",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-227",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-228",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-229",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-230",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-231",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-232",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-233",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-234",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-235",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-236",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-237",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-238",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-239",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-240",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-241",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-242",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-243",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-244",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-245",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-246",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-247",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-248",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-249",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-250",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-251",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-252",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-253",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-254",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-255",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-256",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-257",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-258",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-259",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-260",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-261",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-262",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-263",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-264",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-265",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-266",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-267",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-268",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-269",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-270",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-271",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-272",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-273",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-274",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-275",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-276",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-277",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-278",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-279",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-280",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-281",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-282",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-283",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-284",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-285",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-286",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-287",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-288",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-289",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-290",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-291",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-292",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-293",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-294",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-295",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-296",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-297",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-298",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-299",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-300",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-301",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-302",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-303",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-304",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-305",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-306",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-307",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-308",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-309",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-310",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-311",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-312",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-313",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-314",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-315",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-316",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-317",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-318",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-319",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-320",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-321",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-322",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-323",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-324",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-325",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-326",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-327",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-328",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-329",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-330",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-331",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-332",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-333",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-334",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-335",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-336",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-337",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-338",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-339",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-340",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-341",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-342",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-343",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-344",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-345",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-346",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-347",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-348",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-349",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-350",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-351",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-352",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-353",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-354",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-355",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-356",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-357",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-358",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-359",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-360",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-361",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-362",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-363",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-364",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-365",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-366",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-367",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-368",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-369",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-370",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-371",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-372",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-373",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-374",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-375",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-376",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-377",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-378",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-379",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-380",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-381",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-382",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-383",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-384",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-385",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-386",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-387",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-388",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-389",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-390",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-391",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-392",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-393",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-394",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-395",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-396",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-397",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-398",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-399",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-400",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-401",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-402",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-403",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-404",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-405",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-406",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-407",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-408",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-409",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-410",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-411",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-412",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-413",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-414",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-415",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-416",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-417",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-418",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-419",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-420",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-421",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-422",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-423",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-424",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-425",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-426",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-427",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-428",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-429",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-430",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-431",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-432",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-433",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-434",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-435",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-436",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-437",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-438",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-439",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-440",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-441",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-442",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-443",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-444",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-445",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-446",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-447",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-448",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-449",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-450",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-451",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-452",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-453",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-454",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-455",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-456",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-457",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-458",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-459",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-460",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-461",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-462",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-463",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-464",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-465",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-466",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-467",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-468",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-469",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-470",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-471",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-472",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-473",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-474",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-475",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-476",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-477",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-478",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-479",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-480",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-481",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-482",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-483",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-484",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-485",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-486",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-487",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-488",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-489",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-490",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-491",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-492",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-493",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-494",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-495",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-496",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-497",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-498",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-499",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-500",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-501",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-502",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-503",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-504",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-505",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-506",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-507",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-508",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-509",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-510",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-511",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-512",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-513",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-514",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-515",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-516",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-517",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-518",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-519",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-520",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-521",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-522",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-523",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-524",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-525",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-526",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-527",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-528",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-529",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-530",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-531",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-532",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-533",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-534",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-535",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-536",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-537",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-538",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-539",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-540",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-541",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-542",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-543",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-544",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-545",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-546",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-547",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-548",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-549",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-550",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-551",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-552",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-553",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-554",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-555",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-556",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-557",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-558",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-559",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-560",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-561",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-562",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-563",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-564",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-565",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-566",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-567",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-568",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-569",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-570",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-571",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-572",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-573",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-574",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-575",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-576",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-577",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        12,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-578",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        16,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-579",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        20,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-580",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        24,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-581",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        28,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-582",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        32,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-583",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        36,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-584",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        4,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-585",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        40,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-586",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        44,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-587",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        48,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-588",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        52,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-589",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        56,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-590",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        60,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-591",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        64,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-592",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        68,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-593",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        72,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-594",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        76,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-595",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        8,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-596",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        80,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-597",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        84,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-598",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        88,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-599",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        92,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-600",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        96,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-platform-601",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        12
+      ]
+    },
+    {
+      "id": "place-platform-602",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-platform-603",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        20
+      ]
+    },
+    {
+      "id": "place-platform-604",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        24
+      ]
+    },
+    {
+      "id": "place-platform-605",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        28
+      ]
+    },
+    {
+      "id": "place-platform-606",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        32
+      ]
+    },
+    {
+      "id": "place-platform-607",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        36
+      ]
+    },
+    {
+      "id": "place-platform-608",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "place-platform-609",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        40
+      ]
+    },
+    {
+      "id": "place-platform-610",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        44
+      ]
+    },
+    {
+      "id": "place-platform-611",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        48
+      ]
+    },
+    {
+      "id": "place-platform-612",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        52
+      ]
+    },
+    {
+      "id": "place-platform-613",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        56
+      ]
+    },
+    {
+      "id": "place-platform-614",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        60
+      ]
+    },
+    {
+      "id": "place-platform-615",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        64
+      ]
+    },
+    {
+      "id": "place-platform-616",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        68
+      ]
+    },
+    {
+      "id": "place-platform-617",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        72
+      ]
+    },
+    {
+      "id": "place-platform-618",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        76
+      ]
+    },
+    {
+      "id": "place-platform-619",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-platform-620",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        80
+      ]
+    },
+    {
+      "id": "place-platform-621",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        84
+      ]
+    },
+    {
+      "id": "place-platform-622",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        88
+      ]
+    },
+    {
+      "id": "place-platform-623",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        92
+      ]
+    },
+    {
+      "id": "place-platform-624",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        96
+      ]
+    },
+    {
+      "id": "place-platform-625",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "name": "scenario-stairs",
+  "title": "Scenario: Stairs Climb (Path B — compound-step colliders)",
+  "updatedAt": 1749694800000,
+  "optimizer": "simplify-light",
+  "commands": [
+    {
+      "id": "place-stairs-base-1",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [8, 0, 0]
+    },
+    {
+      "id": "place-stairs-base-2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [8, 0, 4]
+    },
+    {
+      "id": "place-stairs-base-3",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [12, 0, 0]
+    },
+    {
+      "id": "place-stairs-base-4",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [12, 0, 4]
+    },
+    {
+      "id": "place-stairs-geometry",
+      "op": "placeObject",
+      "kindId": "prototype_primitive_stairs",
+      "position": [0, 4, 0]
+    },
+    {
+      "id": "place-stairs-top-1",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [-4, 8, 0]
+    },
+    {
+      "id": "place-stairs-top-2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [-4, 8, 4]
+    },
+    {
+      "id": "place-stairs-top-3",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [-8, 8, 0]
+    },
+    {
+      "id": "place-stairs-top-4",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [-8, 8, 4]
+    }
+  ]
+}

@@ -20,28 +20,37 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck (sdk + core-refactor)
+      - name: Typecheck
         run: pnpm typecheck
 
       - name: Build
         run: pnpm build
 
-      - name: Start Supabase (test instance)
-        working-directory: tools/supabase-test
-        run: |
-          supabase start --exclude edge-runtime,storage-api,imgproxy,mailpit,vector,logflare,supavisor,studio,postgres-meta
-
       - name: Test
         run: pnpm test
 
-      - name: Stop Supabase
-        if: always()
-        working-directory: tools/supabase-test
-        run: supabase stop
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E (editor interaction, hermetic)
+        # Scoped to the specs that run hermetically: ?test=1 (in-memory
+        # storage, bundled catalog — no database), or the dev server's
+        # per-run scratch data dir (OFFICEXR_STUDIO_DATA_DIR, seeded by the
+        # dev server), which every dev-server spec uses. The broader Playwright suite has
+        # pre-existing rot (stale /api/cube-kinds endpoint, drifted
+        # room-editor selectors) and is fixed/expanded in a follow-up;
+        # see packages/studio/src/test-harness/README.md.
+        run: pnpm test:e2e:ci
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

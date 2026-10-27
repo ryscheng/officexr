@@ -8,6 +8,10 @@ a specification, not an options menu.
 > Addresses observations **O6** (untyped network grab-bag), **O7**
 > (ad-hoc multiplayer authority), **O10** (unthrottled position
 > broadcasts).
+>
+> The Supabase Realtime channel adapter specified here was later
+> replaced by the WebSocket `WsChannel` (`@officexr/realtime-server`)
+> and removed; the protocol and sync design still apply.
 
 ## Layer shape
 
@@ -75,7 +79,7 @@ type Envelope = {
 
 type NetEvent = Envelope & (
   | { kind: 'presence:position', v: 1, pos: Vec3, vel: Vec3, yaw: number }
-  | { kind: 'avatar:update',     v: 1, avatar: AvatarData }
+  | { kind: 'avatar:update',     v: 1, avatar: AvatarData, name: string }
   | { kind: 'chat:message',      v: 1, text: string }
   | { kind: 'whiteboard:stroke', v: 1, stroke: Stroke }
   | { kind: 'whiteboard:clear',  v: 1, epoch: number }

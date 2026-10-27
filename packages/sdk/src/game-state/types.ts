@@ -1,3 +1,9 @@
+import {
+  DEFAULT_WORLD_CONSTANTS,
+  worldSettingsFromConstants,
+  type WorldConstants,
+} from './world-constants.ts';
+
 export type PlayerId = string;
 
 export type Vec3 = { x: number; y: number; z: number };
@@ -16,6 +22,9 @@ export type PlayerState = {
   yaw: number;
   hp: number;
   isDead: boolean;
+  /** True while the local player has jumped and has not yet touched ground.
+   * Broadcast via presence:position so peers can play the jump animation clip. */
+  isAirborne: boolean;
   avatar: AvatarData;
   jitsiRoom: string | null;
   status: 'active' | 'inactive';
@@ -77,7 +86,7 @@ export type ScreenShareSignal = {
   signalState: 'idle' | 'offering' | 'answering' | 'connected' | 'error';
 };
 
-export type RealtimeStatus = 'connecting' | 'live' | 'reconnecting' | 'snapshot-pending';
+export type RealtimeStatus = 'connecting' | 'live' | 'reconnecting' | 'replaced' | 'snapshot-pending';
 
 export type RealtimeState = {
   status: RealtimeStatus;
@@ -97,7 +106,7 @@ export type AnimationSettings = {
   /** Character walking speed in world units per second. */
   playerSpeed: number;
   /** Run speed = playerSpeed × runSpeedMultiplier. Used when the local
-   * player holds Shift while moving; can be tuned live via Leva. */
+   * player holds Shift while moving. */
   runSpeedMultiplier: number;
   /** AnimationAction.timeScale for the walk clip (1 = authored). */
   walkAnimSpeed: number;
@@ -126,8 +135,7 @@ export type ProximitySettings = {
   proximityOuterRadius: number;
   /** Hold time before a pair's inner-ring overlap is promoted to
    * `proximity:entered` (admission to a MeetingArea). Prevents flickery
-   * conversations triggered by a momentary brush-past. Default 500 ms;
-   * tunable live from the Leva Proximity panel. */
+   * conversations triggered by a momentary brush-past. Default 500 ms. */
   proximityEnterDebounceMs: number;
 };
 
@@ -149,78 +157,39 @@ export type CollisionSettings = {
 };
 
 /**
- * Camera framing tuning specific to the auto-engaged conversation view.
+ * Player jump tunables, shared by the local player, peers and bots.
  */
-export type ConversationCameraSettings = {
-  /** Horizontal distance (world m) from the MeetingArea centroid at
-   * which the camera frames the conversation view. Bigger = more
-   * zoomed out; smaller = closer / tighter framing. Same knob is
-   * used by all camera modes (fixed/FP/3P) for consistency. */
-  conversationCameraDistance: number;
-  /** Vertical height (world m) of the camera above the MeetingArea
-   * centroid in the conversation view. Combined with
-   * `conversationCameraDistance` this determines both the offset
-   * length and the pitch angle of the conversation framing. */
-  conversationCameraHeight: number;
+export type JumpSettings = {
+  /** Vertical liftoff impulse (m/s). Applied identically for jump #1 and #2.
+   * With GRAVITY = -20, a value of 8 reaches a peak of ~1.6 m. */
+  jumpVelocity: number;
+  /** 0..1 fraction of WASD intent that deflects in-air horizontal velocity
+   * per second (low-pass blend). 0 = no air control; 1 = instant snap to intent. */
+  airControl: number;
+  /** Maximum consecutive jumps before landing resets the counter.
+   * 1 = single jump; 2 = double-jump (default). */
+  maxJumps: number;
+  /** Duration (ms) over which carried horizontal air velocity blends back to
+   * WASD-driven ground movement after landing. 0 = hard stop. */
+  landingEaseMs: number;
 };
 
 /**
- * Scene lighting / time-of-day. Sun position is broadcast so peers see
- * the same shadows.
- */
-export type LightingSettings = {
-  /** World-space position of the sun-like directional light. Drives both
-   * the shadow-casting light direction and the visible sun disc in the
-   * sky. Broadcast so peers see the same time-of-day. */
-  sunPositionX: number;
-  sunPositionY: number;
-  sunPositionZ: number;
-  /** Intensity of the sun-like directional light. */
-  sunIntensity: number;
-  /** Low ambient fill so shadow-side faces aren't pitch black. */
-  ambientIntensity: number;
-};
-
-/**
- * World-level movement & animation tunables. These live in OfficeState so
- * they can be broadcast to every client and used uniformly by the local
- * player, AI/bots, and any other agent — there's no "client-private"
- * version. Updating them via `setWorldSettings` triggers a `world:settings`
- * broadcast that peers apply to their stores via `applyRemoteWorldSettings`.
+ * World-level movement & animation tunables, used uniformly by the local
+ * player, AI/bots, and any other agent. Derived from the server-owned
+ * `WorldConstants` via `worldSettingsFromConstants`; never set directly.
  *
  * Composed as the intersection of focused sub-types (Animation,
- * Proximity, Collision, ConversationCamera, Lighting) so consumers can
- * declare narrower signatures (e.g. a movement function asks for
+ * Proximity, Collision, Jump) so consumers can declare narrower
+ * signatures (e.g. a movement function asks for
  * `AnimationSettings & CollisionSettings`) without taking the whole bag.
- * Wire format stays a flat object literal.
  */
 export type WorldSettings = AnimationSettings &
   ProximitySettings &
   CollisionSettings &
-  ConversationCameraSettings &
-  LightingSettings;
+  JumpSettings;
 
-export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
-  playerSpeed: 3,
-  runSpeedMultiplier: 2,
-  walkAnimSpeed: 1,
-  runAnimSpeed: 1,
-  idleAnimSpeed: 1,
-  turnSpeed: 16,
-  charRadius: 0.4,
-  proximityRadius: 3,
-  proximityOuterRadius: 6,
-  bumpEasingMs: 180,
-  proximityEnterDebounceMs: 500,
-  conversationCameraDistance: 7,
-  conversationCameraHeight: 5,
-  movementBlockThreshold: 0.9,
-  sunPositionX: 20,
-  sunPositionY: 40,
-  sunPositionZ: 20,
-  sunIntensity: 1.4,
-  ambientIntensity: 0.15,
-};
+export const DEFAULT_WORLD_SETTINGS: WorldSettings = worldSettingsFromConstants(DEFAULT_WORLD_CONSTANTS);
 
 /**
  * Static map data: a square grid of cube cells, each tagged with a kind id.
@@ -232,7 +201,25 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
  * cells are walkable: each layer lists the (i, j) cells of one kind.
  */
 export type CubeKindId = string;
-export type CubeKind = { id: CubeKindId; walkable: boolean };
+/**
+ * Optional rendering hints for a CubeKind. The renderer reads these when
+ * painting the floor; absence falls back to per-renderer defaults
+ * (today: blue for floor, grey for unknown). Kept loose on purpose —
+ * either a flat color, a GLB asset reference, or both. The SDK stays
+ * headless: it never imports a renderer or asset loader.
+ */
+export type CubeKindAppearance = {
+  /** CSS hex color, e.g. "#3b82f6". */
+  color?: string;
+  /** Path to a GLB/GLTF asset (rendered as a tiled instance per cell)
+   * if the cell warrants more than a flat-colored block. */
+  modelUrl?: string;
+};
+export type CubeKind = {
+  id: CubeKindId;
+  walkable: boolean;
+  appearance?: CubeKindAppearance;
+};
 export type CubeKindRegistry = Record<CubeKindId, CubeKind>;
 export type WorldMapLayer = {
   kind: CubeKindId;
@@ -259,6 +246,114 @@ export const DEFAULT_WORLD_MAP: WorldMap = {
   },
 };
 
+/**
+ * Per-character override for movement-related tunables. Every field is
+ * optional: a present field replaces the world-level default for that
+ * character model only; an absent field inherits the corresponding
+ * `WorldSettings` value. This is the model layer for tuning Mages
+ * faster than Knights, etc.
+ */
+export type CharacterMovementOverrides = {
+  /** Multiplier on `WorldSettings.playerSpeed` for this model. 1 = no
+   * change. Resolved as `worldSettings.playerSpeed * speedMultiplier`. */
+  speedMultiplier?: number;
+  /** Override for `WorldSettings.runSpeedMultiplier` (the Shift-to-run
+   * factor). Multiplicative on top of `speedMultiplier`. */
+  runSpeedMultiplier?: number;
+  /** Override for `WorldSettings.turnSpeed` (rad/s). */
+  turnSpeed?: number;
+};
+
+export type CharacterCollisionOverrides = {
+  /** Override for `WorldSettings.charRadius` (world units). */
+  charRadius?: number;
+  /** Override for `WorldSettings.bumpEasingMs`. */
+  bumpEasingMs?: number;
+};
+
+export type CharacterAnimationOverrides = {
+  /** Override for `WorldSettings.walkAnimSpeed`. */
+  walkAnimSpeed?: number;
+  /** Override for `WorldSettings.runAnimSpeed`. */
+  runAnimSpeed?: number;
+  /** Override for `WorldSettings.idleAnimSpeed`. */
+  idleAnimSpeed?: number;
+};
+
+/**
+ * Per-character config keyed off `AvatarData.model`. Composed as the
+ * intersection of focused override sub-types so a caller can ask for
+ * a narrow slice (e.g. movement only) without taking the whole bag.
+ *
+ * Held in `OfficeState.characterConfigs[modelId]`. Broadcast via the
+ * `world:characters` NetEvent — every peer (including bots) sees the
+ * same per-character tuning.
+ */
+export type CharacterConfig = CharacterMovementOverrides &
+  CharacterCollisionOverrides &
+  CharacterAnimationOverrides;
+
+/** Map from model id (e.g. "Barbarian", "Mage") → per-character config. */
+export type CharacterConfigs = Record<string, CharacterConfig>;
+
+/**
+ * One placed cube in an authored scene. The compiled output of a
+ * `SceneDocument` (see `@officexr/world/scenes/commands.ts`) is a flat
+ * list of these instances. The renderer reads them as-is and groups
+ * them into per-kind `<InstancedMesh>`es; collision builds AABBs from
+ * `position` + `cubeSize` (the `cubeSize` lives on `WorldObjects`, not
+ * per-instance, so a scene can't accidentally mix scales).
+ *
+ * `position` is in voxel coords (not world units). Multiply by
+ * `WorldObjects.cubeSize` to get world space. `id` is unique per
+ * instance and stable across recompiles for the same source command +
+ * voxel position. `sourceCommandId` is the editor's hook back into
+ * the command list — selecting an instance highlights its source
+ * command in the inspector.
+ */
+export type ObjectInstance = {
+  id: string;
+  sourceCommandId: string;
+  kindId: string;
+  /** Unrotated footprint's min corner in voxels. Usually integral, but a
+   * map room's rotation can leave it on a half (or finer) voxel when the
+   * footprint's width minus depth is odd or the kind's size isn't a whole
+   * number of voxels. */
+  position: [number, number, number];
+  /** Yaw about +Y in degrees, [0, 360), pivoting on the unrotated
+   * footprint's centre. Absent means 0. */
+  yawDeg?: number;
+};
+
+/**
+ * The compiled, broadcast-ready form of a scene's placed cubes.
+ * Lives on `OfficeState.worldObjects`. The studio's Scenes mode owns
+ * the canonical command list and pushes the recompiled snapshot here
+ * via `actions.setWorldObjects(...)`. The `world:objects` NetEvent
+ * mirrors the same shape across peers.
+ *
+ * `cubeSize` is captured here (not just in `WorldMap`) so a scene
+ * authored with a different scale renders correctly even when no
+ * legacy WorldMap is loaded.
+ */
+export type WorldObjects = {
+  cubeSize: number;
+  instances: ObjectInstance[];
+};
+
+export const DEFAULT_WORLD_OBJECTS: WorldObjects = {
+  cubeSize: 2,
+  instances: [],
+};
+
+/** A rectangle on the XZ plane (world metres) whose occupants share one voice call. */
+export type VoiceZone = {
+  id: string;
+  label: string;
+  min: { x: number; z: number };
+  max: { x: number; z: number };
+};
+
 export type OfficeState = {
   selfId: PlayerId;
   officeId: string;
@@ -275,8 +370,25 @@ export type OfficeState = {
     lastTick: number;
     protocolVersion: number;
   };
+  worldConstants: WorldConstants;
+  /** Always `worldSettingsFromConstants(worldConstants)`. */
   worldSettings: WorldSettings;
   worldMap: WorldMap;
+  /**
+   * Per-character tuning overrides keyed by `AvatarData.model`. An empty
+   * record means "every character uses the worldSettings defaults".
+   * Broadcast via the `world:characters` NetEvent.
+   */
+  characterConfigs: CharacterConfigs;
+  /**
+   * Compiled, instance-level scene objects (cubes today; future shapes
+   * later). Populated by the studio's Scenes mode from a CAD-style
+   * command list (`SceneDocument` in `@officexr/world/scenes`).
+   * Broadcast via the `world:objects` NetEvent.
+   */
+  worldObjects: WorldObjects;
+  /** Local-only: never snapshotted or broadcast. */
+  voiceZones: VoiceZone[];
 };
 
 export type GameEvent =

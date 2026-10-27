@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "name": "scenario-corridor",
+  "title": "Scenario: Walk-off-Respawn Corridor",
+  "updatedAt": 1781243484096,
+  "optimizer": "simplify-light",
+  "commands": [
+    {
+      "id": "place-corridor-1",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [0, 0, 0]
+    },
+    {
+      "id": "place-corridor-2",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [4, 0, 0]
+    },
+    {
+      "id": "place-corridor-3",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [0, 0, 4]
+    },
+    {
+      "id": "place-corridor-4",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [4, 0, 4]
+    },
+    {
+      "id": "place-corridor-5",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [0, 0, 8]
+    },
+    {
+      "id": "place-corridor-6",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [4, 0, 8]
+    },
+    {
+      "id": "place-corridor-7",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [0, 0, 12]
+    },
+    {
+      "id": "place-corridor-8",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [4, 0, 12]
+    },
+    {
+      "id": "place-corridor-9",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [0, 0, 16]
+    },
+    {
+      "id": "place-corridor-10",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [4, 0, 16]
+    },
+    {
+      "id": "place-corridor-11",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [0, 0, 20]
+    },
+    {
+      "id": "place-corridor-12",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [4, 0, 20]
+    },
+    {
+      "id": "place-corridor-13",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [0, 0, 24]
+    },
+    {
+      "id": "place-corridor-14",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [4, 0, 24]
+    },
+    {
+      "id": "place-corridor-15",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [0, 0, 28]
+    },
+    {
+      "id": "place-corridor-16",
+      "op": "placeObject",
+      "kindId": "colored_block_blue",
+      "position": [4, 0, 28]
+    }
+  ]
+}

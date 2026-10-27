@@ -5,6 +5,7 @@ import {
   versionMismatch,
   type NetEvent,
 } from '../../realtime/protocol.ts';
+import { DEFAULT_WORLD_CONSTANTS } from '../../game-state/world-constants.ts';
 
 describe('PROTOCOL table', () => {
   const SAMPLE_EVENTS: NetEvent[] = [
@@ -17,9 +18,18 @@ describe('PROTOCOL table', () => {
       pos: { x: 0, y: 0, z: 0 },
       vel: { x: 0, y: 0, z: 0 },
       yaw: 0,
+      isAirborne: false,
     },
     { kind: 'chat:message', v: 1, actorId: 'a', seq: 1, t: 0, text: 'hi' },
-    { kind: 'avatar:update', v: 1, actorId: 'a', seq: 1, t: 0, avatar: { model: 'gnome' } },
+    {
+      kind: 'avatar:update',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      avatar: { model: 'gnome' },
+      name: 'A',
+    },
     {
       kind: 'whiteboard:stroke',
       v: 1,
@@ -86,27 +96,6 @@ describe('PROTOCOL table', () => {
         screenShares: {},
         realtime: { status: 'live', snapshotTarget: null, versionWarnings: {} },
         runtime: { tickRate: 60, lastTick: 0, protocolVersion: 1 },
-        worldSettings: {
-          playerSpeed: 3,
-          runSpeedMultiplier: 2,
-          walkAnimSpeed: 1,
-          runAnimSpeed: 1,
-          idleAnimSpeed: 1,
-          turnSpeed: 16,
-          charRadius: 0.4,
-          proximityRadius: 3,
-          proximityOuterRadius: 6,
-          bumpEasingMs: 180,
-          proximityEnterDebounceMs: 500,
-          conversationCameraDistance: 7,
-          conversationCameraHeight: 5,
-          movementBlockThreshold: 0.9,
-          sunPositionX: 20,
-          sunPositionY: 40,
-          sunPositionZ: 20,
-          sunIntensity: 1.4,
-          ambientIntensity: 0.15,
-        },
         worldMap: {
           gridSize: 50,
           cubeSize: 2,
@@ -114,36 +103,18 @@ describe('PROTOCOL table', () => {
           layers: [],
           kinds: { floor: { id: 'floor', walkable: true } },
         },
+        characterConfigs: {},
+        worldObjects: { cubeSize: 2, instances: [] },
       },
       seqTable: { leader: 5 },
     },
     {
-      kind: 'world:settings',
+      kind: 'world:constants',
       v: 1,
-      actorId: 'a',
+      actorId: 'server',
       seq: 1,
       t: 0,
-      settings: {
-        playerSpeed: 4,
-        runSpeedMultiplier: 2.5,
-        walkAnimSpeed: 1.2,
-        runAnimSpeed: 1.0,
-        idleAnimSpeed: 0.8,
-        turnSpeed: 20,
-        charRadius: 0.4,
-        proximityRadius: 3,
-        proximityOuterRadius: 6,
-        bumpEasingMs: 180,
-        proximityEnterDebounceMs: 500,
-        conversationCameraDistance: 7,
-        conversationCameraHeight: 5,
-        movementBlockThreshold: 0.9,
-        sunPositionX: 20,
-        sunPositionY: 40,
-        sunPositionZ: 20,
-        sunIntensity: 1.4,
-        ambientIntensity: 0.15,
-      },
+      constants: DEFAULT_WORLD_CONSTANTS,
     },
     {
       kind: 'world:map',
@@ -158,8 +129,37 @@ describe('PROTOCOL table', () => {
         layers: [{ kind: 'wall', cells: [{ i: 0, j: 0 }] }],
         kinds: {
           floor: { id: 'floor', walkable: true },
-          wall: { id: 'wall', walkable: false },
+          wall: { id: 'wall', walkable: false, appearance: { color: '#888' } },
         },
+      },
+    },
+    {
+      kind: 'world:characters',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      configs: {
+        Mage: { speedMultiplier: 0.7, walkAnimSpeed: 0.9 },
+        Knight: { charRadius: 0.5 },
+      },
+    },
+    {
+      kind: 'world:objects',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      objects: {
+        cubeSize: 2,
+        instances: [
+          {
+            id: 'i:cmd1:0,0,0',
+            sourceCommandId: 'cmd1',
+            kindId: 'colored_block_blue',
+            position: [0, 0, 0],
+          },
+        ],
       },
     },
   ];
@@ -175,7 +175,7 @@ describe('PROTOCOL table', () => {
     for (const [kind, def] of Object.entries(PROTOCOL)) {
       expect(def.v).toBeGreaterThan(0);
       expect(def.schema).toBeDefined();
-      expect(def.authority).toMatch(/^(local|host)$/);
+      expect(def.authority).toMatch(/^(local|host|server)$/);
       expect(protocolKinds.has(kind)).toBe(true);
     }
   });
@@ -229,5 +229,95 @@ describe('PROTOCOL table', () => {
         text: 'hi',
       }),
     ).toBe(false);
+  });
+});
+
+function makeWorldConstantsEvent(constants: unknown) {
+  return { kind: 'world:constants', v: 1, actorId: 'server', seq: 1, t: 0, constants };
+}
+
+function withSection(section: string, patch: Record<string, unknown>) {
+  const c = structuredClone(DEFAULT_WORLD_CONSTANTS) as unknown as Record<string, Record<string, unknown>>;
+  c[section] = { ...c[section], ...patch };
+  return c;
+}
+
+describe('world:constants', () => {
+  it('is the only world-settings carrier in the protocol', () => {
+    expect(PROTOCOL['world:constants'].authority).toBe('server');
+    expect(Object.keys(PROTOCOL)).not.toContain('world:settings');
+  });
+
+  it.each([
+    ['jump', { airControl: 1.5 }],
+    ['jump', { jumpVelocity: 0 }],
+    ['jump', { maxJumps: 0 }],
+    ['animation', { movementBlockThreshold: 2 }],
+    ['proximity', { enteredColor: 'green' }],
+    ['lighting', { sunPosition: [1, 2] }],
+    ['fixedCamera', { fov: 0 }],
+  ])('rejects out-of-range %s %o', (section, patch) => {
+    const r = validateNetEvent(makeWorldConstantsEvent(withSection(section, patch)));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+
+  it('rejects a document missing a field', () => {
+    const c = structuredClone(DEFAULT_WORLD_CONSTANTS) as unknown as Record<string, Record<string, unknown>>;
+    delete c.lighting!.sunColor;
+    expect(validateNetEvent(makeWorldConstantsEvent(c)).ok).toBe(false);
+  });
+
+  it('rejects a document missing a section or schemaVersion', () => {
+    const { background: _bg, ...noBackground } = DEFAULT_WORLD_CONSTANTS;
+    const { schemaVersion: _v, ...noVersion } = DEFAULT_WORLD_CONSTANTS;
+    expect(validateNetEvent(makeWorldConstantsEvent(noBackground)).ok).toBe(false);
+    expect(validateNetEvent(makeWorldConstantsEvent(noVersion)).ok).toBe(false);
+  });
+});
+
+function makePresencePositionEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: 'presence:position',
+    v: 1,
+    actorId: 'alice',
+    seq: 1,
+    t: 0,
+    pos: { x: 0, y: 0, z: 0 },
+    vel: { x: 0, y: 0, z: 0 },
+    yaw: 0,
+    isAirborne: false,
+    ...overrides,
+  };
+}
+
+describe('presence:position — isAirborne field', () => {
+  it('accepts isAirborne: false', () => {
+    const r = validateNetEvent(makePresencePositionEvent({ isAirborne: false }));
+    expect(r.ok).toBe(true);
+  });
+
+  it('accepts isAirborne: true', () => {
+    const r = validateNetEvent(makePresencePositionEvent({ isAirborne: true }));
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects missing isAirborne', () => {
+    const { isAirborne: _, ...noAirborne } = makePresencePositionEvent();
+    const r = validateNetEvent(noAirborne);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+
+  it('rejects avatar:update without a name', () => {
+    const result = validateNetEvent({
+      kind: 'avatar:update',
+      v: 1,
+      actorId: 'a',
+      seq: 1,
+      t: 0,
+      avatar: { model: 'gnome' },
+    });
+    expect(result.ok).toBe(false);
   });
 });
