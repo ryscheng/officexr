@@ -673,13 +673,15 @@ function VoiceZoneLayer({
 }) {
   const { geometry, rooms: roomService } = useApplication();
   const catalogReady = useCatalogReady();
-  // A v1 doc has no voice zones; the server migrates v1 before the editor sees it.
+  // v1 docs (only the LocalStorage fallback can hand the editor one) show no overlay.
+  // Keyed on rooms, not the whole doc, so environment and spawn edits don't recompile the map.
   const zones = useMemo(
     () =>
       catalogReady && doc.schemaVersion === 2
         ? computeVoiceZones(doc, rooms, layouts, roomService, geometry)
         : [],
-    [catalogReady, doc, rooms, layouts, roomService, geometry],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [catalogReady, doc.rooms, doc.schemaVersion, rooms, layouts, roomService, geometry],
   );
   return (
     <>
@@ -689,7 +691,6 @@ function VoiceZoneLayer({
           rotation={[-Math.PI / 2, 0, 0]}
           position={[(z.min.x + z.max.x) / 2, VOICE_ZONE_Y, (z.min.z + z.max.z) / 2]}
           renderOrder={1}
-          raycast={() => null}
         >
           <planeGeometry args={[z.max.x - z.min.x, z.max.z - z.min.z]} />
           {/* No depth test: floors and room cubes at y=0 would otherwise hide the footprint. */}

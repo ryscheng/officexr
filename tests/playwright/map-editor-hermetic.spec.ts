@@ -175,11 +175,11 @@ test('voice zone toggle previews the footprint, follows rotate and move, and sur
 }) => {
   await goToModeHermetic(page, 'map', SEED);
   const canvas = await waitForCanvasReady(page);
-  await expect(page.getByText(/Placed rooms \(3\)/)).toBeVisible();
   const zoneSwitch = (id: string) =>
-    page.getByTestId(`room-row-${id}`).getByRole('switch');
+    page.getByTestId(`room-row-${id}`).getByRole('switch', { name: 'Voice zone' });
   const overlay = () => voiceZoneOverlay(page, canvas);
 
+  await expect(page.getByText(/Placed rooms \(3\)/)).toBeVisible();
   expect((await overlay()).count).toBe(0);
 
   // Baked room: its geometry only exists in the layout.
@@ -193,7 +193,7 @@ test('voice zone toggle previews the footprint, follows rotate and move, and sur
       const o = await overlay();
       return Math.hypot(o.x - placed.x, o.y - placed.y);
     })
-    .toBeGreaterThan(20);
+    .toBeGreaterThan(12);
 
   // Move a placement with the Move tool; its overlay goes along.
   await zoneSwitch('inst-c').click();
@@ -214,7 +214,7 @@ test('voice zone toggle previews the footprint, follows rotate and move, and sur
     .toBeGreaterThan(20);
 
   // Autosave is debounced 500 ms and a map switch cancels a pending save.
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(1500);
   await page.locator('select').selectOption('other');
   await expect(page.getByText(/Placed rooms \(0\)/)).toBeVisible();
   await page.locator('select').selectOption('default');

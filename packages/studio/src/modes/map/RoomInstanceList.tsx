@@ -17,8 +17,8 @@ interface RoomInstanceListProps {
  * map. Each row shows:
  *   - room name + current position
  *   - "↻" rotate button (cycles `rotationY` through 0→1→2→3→0)
- *   - "Voice zone" toggle
  *   - "✕" delete button
+ *   - "Voice zone" toggle
  *
  * Clicking the row selects the instance so the TransformControls in
  * the canvas attach to it.

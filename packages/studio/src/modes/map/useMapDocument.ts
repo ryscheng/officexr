@@ -228,8 +228,11 @@ export function useMapDocument(
           if (r.id !== id) {
             return r;
           }
+          if (enabled) {
+            return { ...r, voiceZone: true };
+          }
           const { voiceZone: _, ...rest } = r;
-          return enabled ? { ...r, voiceZone: true } : rest;
+          return rest;
         }),
       }));
     },
