@@ -25,6 +25,7 @@ import type { WorldObjects } from '@officexr/sdk';
 import type { MapSelection } from './useMapDocument.ts';
 import type { MapTool } from './mapTools.ts';
 import { resolveRoomPointerAction } from './mapPointerActions.ts';
+import { computeRoomAabbs } from './roomAabbs.ts';
 import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 import {
   snapRoomToNeighbors,
@@ -107,8 +108,9 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
         tool={props.tool}
       />
       <RoomsLayer
-        instances={props.doc.rooms}
+        doc={props.doc}
         rooms={props.rooms}
+        layouts={props.layouts}
         selection={props.selection}
         onSelect={props.onSelect}
         onMove={props.onMoveRoom}
@@ -230,8 +232,9 @@ function FloorPicker({ onPlaceSpawn: _onPlaceSpawn, onDeselect, tool }: FloorPic
 // --- Rooms ------------------------------------------------------
 
 export interface RoomsLayerProps {
-  instances: readonly RoomInstance[];
+  doc: SerializedMap;
   rooms: ReadonlyMap<string, RoomDocument>;
+  layouts: ReadonlyMap<string, LayoutDocument>;
   selection: MapSelection;
   onSelect: (sel: MapSelection) => void;
   onMove: (id: string, position: [number, number, number]) => void;
@@ -253,55 +256,21 @@ export function RoomsLayer(props: RoomsLayerProps) {
   const { geometry: geomService, rooms: roomService } = useApplication();
   const catalogReady = useCatalogReady();
 
-  // Precompute each room instance's world voxel AABB by uniting the
-  // voxelFootprints of its compiled cubes, rotating by rotationY, then
-  // offsetting by the instance's voxel position. This is the data the
-  // Move-tool snap needs from every NON-moving room. Memoized on
-  // doc.rooms + the room library so the cost is paid once per
-  // selection/library mutation, not per drag frame.
-  const allAabbs = useMemo<readonly RoomAABBVoxel[]>(() => {
-    if (!catalogReady) return [];
-    const out: RoomAABBVoxel[] = [];
-    for (const ri of props.instances) {
-      const room = props.rooms.get(ri.roomName);
-      if (!room) continue;
-      const compiled = roomService.compileScene(room);
-      if (compiled.instances.length === 0) continue;
-      // Compute the room-local voxel AABB by unioning each cube's
-      // voxelFootprint.
-      let minX = Infinity,
-        minY = Infinity,
-        minZ = Infinity;
-      let maxX = -Infinity,
-        maxY = -Infinity,
-        maxZ = -Infinity;
-      for (const cube of compiled.instances) {
-        const fp = geomService.voxelFootprint(cube.position, cube.kindId);
-        if (fp.min[0] < minX) minX = fp.min[0];
-        if (fp.min[1] < minY) minY = fp.min[1];
-        if (fp.min[2] < minZ) minZ = fp.min[2];
-        if (fp.max[0] - 1 > maxX) maxX = fp.max[0] - 1; // VoxelFootprint.max is exclusive
-        if (fp.max[1] - 1 > maxY) maxY = fp.max[1] - 1;
-        if (fp.max[2] - 1 > maxZ) maxZ = fp.max[2] - 1;
-      }
-      // Rotate the X/Z extents by rotationY * 90°. Y is unaffected.
-      const rot = ((ri.rotationY ?? 0) % 4) as 0 | 1 | 2 | 3;
-      const rotated = rotateXZ({ minX, minZ, maxX, maxZ }, rot);
-      // Offset by the room instance's voxel position.
-      const [px, py, pz] = ri.position;
-      out.push({
-        id: ri.id,
-        min: [rotated.minX + px, minY + py, rotated.minZ + pz],
-        max: [rotated.maxX + px, maxY + py, rotated.maxZ + pz],
-      });
-    }
-    return out;
-  }, [props.instances, props.rooms, geomService, roomService, catalogReady]);
+  const { doc, rooms, layouts } = props;
+  // Compiled once per rooms/library/layouts change, not per drag frame. v1 docs get none.
+  const allAabbs = useMemo<readonly RoomAABBVoxel[]>(
+    () =>
+      catalogReady && doc.schemaVersion === 2
+        ? computeRoomAabbs(doc, rooms, layouts, roomService, geomService)
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [catalogReady, doc.rooms, doc.schemaVersion, rooms, layouts, roomService, geomService],
+  );
 
   return (
     <>
-      {props.instances.map((ri) => {
-        const room = props.rooms.get(ri.roomName);
+      {doc.rooms.map((ri) => {
+        const room = rooms.get(ri.roomName);
         const isSelected =
           props.selection !== null &&
           props.selection.kind === 'room' &&
@@ -325,49 +294,6 @@ export function RoomsLayer(props: RoomsLayerProps) {
       })}
     </>
   );
-}
-
-/** Rotate an XZ-axis-aligned voxel rectangle by `rot * 90°` (Y axis,
- *  right-handed). Used to convert a room's local AABB into the AABB
- *  it occupies after `rotationY` is applied. */
-function rotateXZ(
-  rect: { minX: number; minZ: number; maxX: number; maxZ: number },
-  rot: 0 | 1 | 2 | 3,
-): { minX: number; minZ: number; maxX: number; maxZ: number } {
-  const { minX, minZ, maxX, maxZ } = rect;
-  // The four corners of the original rectangle.
-  const corners: [number, number][] = [
-    [minX, minZ],
-    [maxX, minZ],
-    [minX, maxZ],
-    [maxX, maxZ],
-  ];
-  // Y-axis rotation matrix in XZ (right-handed): (x,z) → rotated.
-  // Note: voxel coords are inclusive integer indices; after rotation
-  // we re-union the corners to recover the new axis-aligned AABB.
-  const rotated = corners.map(([x, z]) => {
-    switch (rot) {
-      case 0:
-        return [x, z];
-      case 1:
-        return [-z, x]; // 90° CCW about Y
-      case 2:
-        return [-x, -z];
-      case 3:
-        return [z, -x];
-    }
-  });
-  let rMinX = Infinity,
-    rMinZ = Infinity,
-    rMaxX = -Infinity,
-    rMaxZ = -Infinity;
-  for (const [x, z] of rotated) {
-    if (x < rMinX) rMinX = x;
-    if (x > rMaxX) rMaxX = x;
-    if (z < rMinZ) rMinZ = z;
-    if (z > rMaxZ) rMaxZ = z;
-  }
-  return { minX: rMinX, minZ: rMinZ, maxX: rMaxX, maxZ: rMaxZ };
 }
 
 interface RoomInstanceMeshProps {
