@@ -10,7 +10,7 @@ const SPAWN_DROP_HEIGHT = 0.1;
 export type PlayStorages = MapLoaderDeps['storages'];
 
 export interface UsePlaySessionOptions {
-  actions: Pick<Actions, 'setWorldObjects' | 'setSelfPosition'>;
+  actions: Pick<Actions, 'setWorldObjects' | 'setVoiceZones' | 'setSelfPosition'>;
   mapName: string;
   storages: PlayStorages;
   /** Changing this re-loads and re-applies `mapName` (reset & respawn). */
@@ -36,7 +36,7 @@ export interface PlaySession {
 
 /**
  * Loads `mapName` into the store through `actions`: pushes its world
- * objects and places the local player just above the first spawn point.
+ * objects and voice zones, and places the local player just above the first spawn point.
  */
 export function usePlaySession({
   actions,
@@ -45,7 +45,7 @@ export function usePlaySession({
   reloadKey,
   onMapApplied,
 }: UsePlaySessionOptions): PlaySession {
-  const { catalog, rooms } = useApplication();
+  const { catalog, rooms, geometry } = useApplication();
   const [applied, setApplied] = useState<{ actions: UsePlaySessionOptions['actions']; map: LoadedMap | null } | null>(
     null,
   );
@@ -54,12 +54,13 @@ export function usePlaySession({
 
   useEffect(() => {
     let cancelled = false;
-    loadMap({ storages, catalog, roomService: rooms }, mapName).then(
+    loadMap({ storages, catalog, roomService: rooms, geometry }, mapName).then(
       (map) => {
         if (cancelled) {
           return;
         }
         actions.setWorldObjects(map.worldObjects);
+        actions.setVoiceZones(map.voiceZones);
         const spawnPoints = toVec3s(map);
         const spawn = spawnPoints[0];
         if (spawn) {
@@ -81,7 +82,7 @@ export function usePlaySession({
     return () => {
       cancelled = true;
     };
-  }, [actions, mapName, storages, catalog, rooms, reloadKey]);
+  }, [actions, mapName, storages, catalog, rooms, geometry, reloadKey]);
 
   const map = applied?.actions === actions ? applied.map : null;
   const spawnPoints = useMemo(() => (map ? toVec3s(map) : []), [map]);

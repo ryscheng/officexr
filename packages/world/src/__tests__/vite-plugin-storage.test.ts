@@ -280,6 +280,19 @@ describe('studio storage plugin: map schema v2 migration', () => {
     await expect(readMap('put')).rejects.toThrow(/ENOENT/);
   });
 
+  it('round-trips a voiceZone placement through PUT and GET', async () => {
+    await setup();
+    const url = await boot(false);
+    const map = {
+      ...emptyMapDocument('zoned'),
+      rooms: [{ id: 'k', roomName: 'kitchen', position: [0, 0, 0], voiceZone: true }],
+    };
+    const put = await fetch(`${url}/api/maps/zoned`, { method: 'PUT', body: JSON.stringify(map) });
+    expect(put.status).toBe(204);
+    const got = await (await fetch(`${url}/api/maps/zoned`)).json();
+    expect(got.rooms[0].voiceZone).toBe(true);
+  });
+
   it('stores a v1 PUT as migrated v2', async () => {
     await setup();
     const url = await boot(false);

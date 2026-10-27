@@ -525,6 +525,10 @@ export function deserializeMap(raw: unknown): SerializedMap {
     if (rot !== undefined && rot !== 0 && rot !== 1 && rot !== 2 && rot !== 3) {
       throw new Error(`map: room rotationY must be 0-3, got ${String(rot)}`);
     }
+    const zone = (ri as { voiceZone?: unknown }).voiceZone;
+    if (zone !== undefined && typeof zone !== 'boolean') {
+      throw new Error(`map: room voiceZone must be a boolean, got ${String(zone)}`);
+    }
   }
   if (!Array.isArray(obj.spawnPoints)) {
     throw new Error('map: missing `spawnPoints` array');
