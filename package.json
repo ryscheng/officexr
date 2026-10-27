@@ -28,6 +28,7 @@
     "test:e2e:ci": "playwright test tests/playwright/map-editor.spec.ts tests/playwright/map-editor-hermetic.spec.ts tests/playwright/object-editor.spec.ts tests/playwright/routing.spec.ts tests/playwright/room-editor.spec.ts tests/playwright/debug-mode.spec.ts tests/playwright/character-on-surface.spec.ts tests/playwright/debug-world-constants-hermetic.spec.ts tests/playwright/render-page.spec.ts --project=chromium"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.1.2",
     "@playwright/test": "^1.60.0",
     "@types/pngjs": "^6.0.5",
     "pngjs": "^7.0.0"

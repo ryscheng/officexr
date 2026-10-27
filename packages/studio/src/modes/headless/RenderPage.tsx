@@ -1,9 +1,8 @@
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
-import * as THREE from 'three';
 import { bakedLayoutUrl } from '@officexr/world/app';
-import { useApplication } from '@officexr/world/react';
+import { useApplication, useCatalogReady } from '@officexr/world/react';
 import {
   FilesystemLayoutStorage,
   FilesystemMapStorage,
@@ -20,7 +19,7 @@ import {
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 import { RoomsLayer } from '../map/MapEditorCanvas.tsx';
 import { ReadySignal } from './ReadySignal.tsx';
-import { loadRenderContent, type RenderContent, type RenderStorages } from './renderContent.ts';
+import { bakedLayoutNames, loadRenderContent, type RenderContent, type RenderStorages } from './renderContent.ts';
 import { frameCamera, type Bounds, type CameraSetup } from './renderFraming.ts';
 import { parseRenderParams, type RenderParams } from './renderParams.ts';
 
@@ -31,20 +30,16 @@ interface RenderSentinels {
 
 const sentinels = () => window as unknown as RenderSentinels;
 const noop = () => {};
+const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 type PageState =
   | { status: 'loading' }
   | { status: 'ready'; content: RenderContent }
   | { status: 'error'; message: string };
 
-const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
-const bakedLoadMessage = (err: Error) => `baked layout failed to load: ${err.message}`;
-
-/** Loads the document named by `params`; the first failure sticks. */
-function useRenderContent(params: RenderParams | null): [PageState, (message: string) => void] {
-  const api = useApplication();
+function useRenderStorages(): RenderStorages {
   const testStorages = useTestStorages();
-  const storages = useMemo<RenderStorages>(
+  return useMemo(
     () => ({
       maps: testStorages?.mapStorage ?? new FilesystemMapStorage(),
       rooms: testStorages?.roomStorage ?? new FilesystemRoomStorage(),
@@ -52,24 +47,6 @@ function useRenderContent(params: RenderParams | null): [PageState, (message: st
     }),
     [testStorages],
   );
-  const [state, setState] = useState<PageState>({ status: 'loading' });
-
-  useEffect(() => {
-    if (!params) {
-      return;
-    }
-    let cancelled = false;
-    loadRenderContent(api, storages, params).then(
-      (content) => !cancelled && setState({ status: 'ready', content }),
-      (err) => !cancelled && setState({ status: 'error', message: errorMessage(err) }),
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [api, storages, params]);
-
-  const fail = (message: string) => setState((prev) => (prev.status === 'error' ? prev : { status: 'error', message }));
-  return [state, fail];
 }
 
 /**
@@ -78,19 +55,35 @@ function useRenderContent(params: RenderParams | null): [PageState, (message: st
  * Mounted by HeadlessApp on `?op=render`. `window.__officexrRenderReady`
  * is set once every model and baked GLB has loaded and a few frames have
  * rendered; `window.__officexrRenderError` is set instead when the
- * parameters, the document or a baked GLB are bad.
+ * parameters, the document or an asset are bad.
  */
 export function RenderPage() {
+  const api = useApplication();
+  const storages = useRenderStorages();
   const parsed = useMemo(() => parseRenderParams(new URLSearchParams(window.location.search)), []);
-  const params = parsed.ok ? parsed.params : null;
-  const [loaded, fail] = useRenderContent(params);
-  const state: PageState = parsed.ok ? loaded : { status: 'error', message: parsed.error };
+  const [state, setState] = useState<PageState>({ status: 'loading' });
+
+  // The sentinel is set here, not from a render, so the ready signal can never race past an error.
+  const fail = useCallback((message: string) => {
+    const w = sentinels();
+    w.__officexrRenderError ??= message;
+    setState({ status: 'error', message: w.__officexrRenderError });
+  }, []);
 
   useEffect(() => {
-    if (state.status === 'error') {
-      sentinels().__officexrRenderError = state.message;
+    if (!parsed.ok) {
+      fail(parsed.error);
+      return;
     }
-  }, [state]);
+    let cancelled = false;
+    loadRenderContent(api, storages, parsed.params).then(
+      (content) => !cancelled && setState({ status: 'ready', content }),
+      (err) => !cancelled && fail(errorMessage(err)),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [api, storages, parsed, fail]);
   useEffect(
     () => () => {
       delete sentinels().__officexrRenderReady;
@@ -102,10 +95,10 @@ export function RenderPage() {
   if (state.status === 'error') {
     return <pre style={{ color: '#fcc', fontFamily: 'monospace', padding: 16 }}>{state.message}</pre>;
   }
-  if (state.status === 'loading' || !params) {
+  if (state.status === 'loading' || !parsed.ok) {
     return null;
   }
-  return <RenderCanvas params={params} content={state.content} onError={fail} />;
+  return <RenderCanvas params={parsed.params} content={state.content} onError={fail} />;
 }
 
 function RenderCanvas({
@@ -122,7 +115,13 @@ function RenderCanvas({
   const cameraProps = ortho
     ? { position: setup.position, up: setup.up, zoom: setup.zoom, near: setup.near, far: setup.far }
     : { position: setup.position, fov: setup.fov, near: setup.near, far: setup.far };
-  const bakedUrls = useMemo(() => content.bakedLayoutNames.map((n) => bakedLayoutUrl(n)), [content]);
+  const glbUrls = useMemo(
+    () => [...bakedLayoutNames(content).map((n) => bakedLayoutUrl(n)), ...content.modelUrls],
+    [content],
+  );
+  // Rooms mount their objects only once the catalog hook flips, so the ready signal waits for it too.
+  const catalogReady = useCatalogReady();
+  const onAssetError = (err: Error) => onError(`failed to load asset: ${err.message}`);
 
   return (
     <div
@@ -135,22 +134,19 @@ function RenderCanvas({
         camera={cameraProps}
         gl={{ preserveDrawingBuffer: true, antialias: true, alpha: false }}
         style={{ width: '100%', height: '100%' }}
-        onCreated={({ camera }) => camera.lookAt(new THREE.Vector3(...setup.target))}
+        onCreated={({ camera }) => camera.lookAt(...setup.target)}
       >
         <color attach="background" args={['#1b1d22']} />
         <LightingRig lighting={DEFAULT_EDITOR_LIGHTING} />
         <EndlessGrid fadeDistance={400} />
         <Suspense fallback={null}>
-          {/* Baked layouts suspend in their own boundary, so the ready signal
-              would otherwise fire before their GLBs arrive. */}
-          <BakedLayoutErrorBoundary
-            resetKey={params.name}
-            onError={(err) => onError(bakedLoadMessage(err))}
-          >
-            <PreloadGlbs urls={bakedUrls} />
+          <BakedLayoutErrorBoundary resetKey={params.name} onError={onAssetError}>
+            {/* Baked layouts suspend in their own boundary, so the ready signal
+                would otherwise fire before their GLBs arrive. */}
+            <PreloadGlbs urls={glbUrls} />
+            <RenderedContent content={content} onAssetError={onAssetError} />
           </BakedLayoutErrorBoundary>
-          <RenderedContent content={content} onError={onError} />
-          <ReadySignal onReady={() => reportReady(content.bounds, setup)} />
+          {catalogReady ? <ReadySignal onReady={() => reportReady(content.bounds, setup)} /> : null}
         </Suspense>
       </Canvas>
     </div>
@@ -172,7 +168,13 @@ function PreloadGlbs({ urls }: { urls: string[] }) {
   return null;
 }
 
-function RenderedContent({ content, onError }: { content: RenderContent; onError: (message: string) => void }) {
+function RenderedContent({
+  content,
+  onAssetError,
+}: {
+  content: RenderContent;
+  onAssetError: (err: Error) => void;
+}) {
   if (content.type === 'map') {
     return (
       <RoomsLayer
@@ -192,7 +194,7 @@ function RenderedContent({ content, onError }: { content: RenderContent; onError
         <BakedLayout
           gltfPath={bakedLayoutUrl(content.layoutName)}
           layoutName={content.layoutName}
-          onLoadError={(err) => onError(bakedLoadMessage(err))}
+          onLoadError={onAssetError}
         />
       ) : null}
       <ObjectInstances worldObjects={content.worldObjects} />

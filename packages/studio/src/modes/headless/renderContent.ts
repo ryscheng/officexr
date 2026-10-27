@@ -1,33 +1,36 @@
 import type { WorldObjects } from '@officexr/sdk';
-import { loadMap, type ApplicationApi } from '@officexr/world/app';
-import type {
-  LayoutStorage,
-  MapStorage,
-  RoomDocument,
-  RoomInstance,
-  RoomStorage,
-} from '@officexr/world/scenes';
+import { loadMap, modelUrl, type ApplicationApi, type MapLoaderDeps } from '@officexr/world/app';
+import type { RoomDocument, RoomInstance } from '@officexr/world/scenes';
 import { unionBounds, type Bounds } from './renderFraming.ts';
 import type { RenderParams } from './renderParams.ts';
 
-export interface RenderStorages {
-  maps: MapStorage;
-  rooms: RoomStorage;
-  layouts: LayoutStorage;
-}
+export type RenderStorages = MapLoaderDeps['storages'];
 
-/** What the render page draws, plus the bounds the camera frames. */
-export type RenderContent = { bounds: Bounds; bakedLayoutNames: string[] } & (
+/** What the render page draws; `bounds` is what the camera frames. */
+export type RenderContent = { bounds: Bounds; modelUrls: string[] } & (
   | { type: 'map'; placements: readonly RoomInstance[]; rooms: ReadonlyMap<string, RoomDocument> }
   | { type: 'room'; worldObjects: WorldObjects; layoutName?: string }
   | { type: 'layout'; worldObjects: WorldObjects }
 );
 
+/** Names of the baked layouts whose GLBs the content draws. */
+export function bakedLayoutNames(content: RenderContent): string[] {
+  if (content.type === 'map') {
+    const names = new Set<string>();
+    for (const room of content.rooms.values()) {
+      if (room.layoutName) {
+        names.add(room.layoutName);
+      }
+    }
+    return [...names];
+  }
+  return content.type === 'room' && content.layoutName ? [content.layoutName] : [];
+}
+
 function nothingToRender({ target, name }: RenderParams): Error {
   return new Error(`${target} "${name}" has nothing to render`);
 }
 
-/** Loads the requested document (and what it references) from `storages`. */
 export async function loadRenderContent(
   api: ApplicationApi,
   storages: RenderStorages,
@@ -36,27 +39,40 @@ export async function loadRenderContent(
   const { target, name } = params;
   const boundsOf = (instances: WorldObjects['instances']) =>
     unionBounds(instances, (inst) => api.geometry.worldAABBOfInstance(inst));
+  /** Catalog kinds only: primitives have no model to load. */
+  const modelUrlsOf = (instances: WorldObjects['instances']) => [
+    ...new Set(
+      instances.flatMap((inst) => {
+        const kind = api.catalog.getKind(inst.kindId);
+        return kind ? [modelUrl(kind.gltfPath)] : [];
+      }),
+    ),
+  ];
 
   if (target === 'map') {
     const map = await loadMap(
       { storages, catalog: api.catalog, roomService: api.rooms, geometry: api.geometry },
       name,
     );
-    const bounds = boundsOf(map.worldObjects.instances);
+    // The map draws a room's baked layout as well as its commands, but loadMap only
+    // compiles layouts for baked-only rooms; compile every room's layout for bounds.
+    const layoutRooms = new Map<string, RoomDocument>();
+    for (const [roomName, room] of map.rooms) {
+      const layout = room.layoutName ? await storages.layouts.load(room.layoutName) : null;
+      if (layout) {
+        layoutRooms.set(roomName, { ...room, commands: layout.commands });
+      }
+    }
+    const roomObjects = api.rooms.compileMap(map.mapDoc, map.rooms);
+    const layoutObjects = api.rooms.compileMap(map.mapDoc, layoutRooms);
+    const bounds = boundsOf([...roomObjects.instances, ...layoutObjects.instances]);
     if (!bounds) {
       throw nothingToRender(params);
-    }
-    const bakedLayoutNames = new Set<string>();
-    for (const placement of map.mapDoc.rooms) {
-      const layoutName = map.rooms.get(placement.roomName)?.layoutName;
-      if (layoutName) {
-        bakedLayoutNames.add(layoutName);
-      }
     }
     return {
       type: 'map',
       bounds,
-      bakedLayoutNames: [...bakedLayoutNames],
+      modelUrls: modelUrlsOf(roomObjects.instances),
       placements: map.mapDoc.rooms,
       rooms: map.rooms,
     };
@@ -74,7 +90,7 @@ export async function loadRenderContent(
     if (!bounds) {
       throw nothingToRender(params);
     }
-    return { type: 'layout', bounds, bakedLayoutNames: [], worldObjects };
+    return { type: 'layout', bounds, modelUrls: modelUrlsOf(worldObjects.instances), worldObjects };
   }
 
   const room = await storages.rooms.load(name);
@@ -92,7 +108,7 @@ export async function loadRenderContent(
   return {
     type: 'room',
     bounds,
-    bakedLayoutNames: room.layoutName ? [room.layoutName] : [],
+    modelUrls: modelUrlsOf(worldObjects.instances),
     worldObjects,
     layoutName: room.layoutName,
   };

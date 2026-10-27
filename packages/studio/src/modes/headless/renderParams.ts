@@ -89,7 +89,6 @@ function parseCamera(search: URLSearchParams): Parsed<CameraSpec> {
   return 'error' in target ? target : { value: { type, position: position.value, target: target.value } };
 }
 
-/** Parses the `?op=render` query into validated render parameters. */
 export function parseRenderParams(search: URLSearchParams): ParsedRenderParams {
   const target = search.get('target');
   if (!TARGETS.includes(target as RenderTarget)) {

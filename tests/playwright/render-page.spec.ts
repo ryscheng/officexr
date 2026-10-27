@@ -29,9 +29,17 @@ const room = (name: string, extra: object) => ({
   doc: { schemaVersion: 5, name, title: name, updatedAt: 0, commands: [], groups: {}, ...extra },
 });
 
-const layout = (name: string) => ({
+// A real catalog kind (BlockBits, 2 m), so the page has to load a model GLB.
+const catalogBlock = (id: string, position: number[]) => ({
+  id,
+  op: 'placeObject',
+  kindId: 'colored_block_blue',
+  position,
+});
+
+const layout = (name: string, position = [0, 0, 0]) => ({
   name,
-  doc: { schemaVersion: 1, name, updatedAt: 0, commands: [blueBlock('l1', [0, 0, 0])], groups: {} },
+  doc: { schemaVersion: 1, name, updatedAt: 0, commands: [blueBlock('l1', position)], groups: {} },
 });
 
 const map = (name: string, rooms: object[]) => ({
@@ -40,8 +48,9 @@ const map = (name: string, rooms: object[]) => ({
 });
 
 // `wing` is baked-only (its geometry is a green GLB) and placed twice; `hall`
-// is two blue cubes in a row along X, placed once, rotated a quarter turn so
-// the row runs along Z. The `ghost` layout has no GLB.
+// is two blue catalog cubes in a row along X, placed once, rotated a quarter
+// turn so the row runs along Z. `annex` has commands AND a layout, its bake
+// drawn 4 m along X from them. The `ghost` layout has no GLB.
 const SEED = {
   maps: [
     map('office', [
@@ -49,17 +58,17 @@ const SEED = {
       { id: 'wing-b', roomName: 'wing', position: [12, 0, 0], rotationY: 0 },
       { id: 'hall-1', roomName: 'hall', position: [0, 0, 12], rotationY: 1 },
     ]),
+    map('annexed', [{ id: 'annex-1', roomName: 'annex', position: [0, 0, 0], rotationY: 0 }]),
     map('haunted', [{ id: 'ghost-1', roomName: 'ghost', position: [0, 0, 0], rotationY: 0 }]),
   ],
   rooms: [
     room('wing', { layoutName: 'wing-layout' }),
-    room('hall', { commands: [blueBlock('c1', [0, 0, 0]), blueBlock('c2', [4, 0, 0])] }),
+    room('hall', { commands: [catalogBlock('c1', [0, 0, 0]), catalogBlock('c2', [4, 0, 0])] }),
+    room('annex', { commands: [blueBlock('c1', [0, 0, 0])], layoutName: 'annex-layout' }),
     room('ghost', { layoutName: 'ghost-layout' }),
   ],
-  layouts: [layout('wing-layout'), layout('ghost-layout')],
+  layouts: [layout('wing-layout'), layout('annex-layout', [8, 0, 0]), layout('ghost-layout')],
 };
-
-const GREEN_GLB = boxGlb([2, 2, 2], [0.1, 0.9, 0.1]);
 
 type RenderReady = { bounds: { min: number[]; max: number[] }; metresPerPixel?: number };
 
@@ -67,8 +76,9 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript((seed) => {
     (window as unknown as { __OFFICEXR_TEST_SEED__: unknown }).__OFFICEXR_TEST_SEED__ = seed;
   }, SEED);
-  await page.route('**/api/baked-layouts/wing-layout', (route) =>
-    route.fulfill({ body: GREEN_GLB, contentType: 'model/gltf-binary' }),
+  const greenBox = Buffer.from(await boxGlb([2, 2, 2], [0.1, 0.9, 0.1]));
+  await page.route(/\/api\/baked-layouts\/(wing|annex)-layout$/, (route) =>
+    route.fulfill({ body: greenBox, contentType: 'model/gltf-binary' }),
   );
   await page.route('**/api/baked-layouts/ghost-layout', (route) => route.fulfill({ status: 404, body: 'no bake' }));
 });
@@ -92,7 +102,6 @@ async function canvasPixels(page: Page): Promise<PNG> {
   return PNG.sync.read(Buffer.from(dataUrl.split(',')[1], 'base64'));
 }
 
-/** Pixels matching `predicate`, with their bounding box. */
 function matching(png: PNG, predicate: (r: number, g: number, b: number) => boolean) {
   const box = { count: 0, minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
   for (let i = 0; i < png.data.length; i += 4) {
@@ -107,13 +116,6 @@ function matching(png: PNG, predicate: (r: number, g: number, b: number) => bool
     }
   }
   return box;
-}
-
-/** One-pixel-wide column `x` of `png`. */
-function crop(png: PNG, x: number): PNG {
-  const column = new PNG({ width: 1, height: png.height });
-  PNG.bitblt(png, column, x, 0, 1, png.height, 0, 0);
-  return column;
 }
 
 const isGreen = (r: number, g: number, b: number) => g - r > 60 && g - b > 60;
@@ -151,9 +153,12 @@ test('draws both placements of a room, and rotates the other one', async ({ page
   const png = await canvasPixels(page);
 
   // wing-a and wing-b are one layout placed twice, 4 m apart: two separate green runs along X.
-  const greenColumns = Array.from({ length: png.width }, (_, x) =>
-    matching(crop(png, x), isGreen).count > 0,
-  );
+  const greenColumns = new Array<boolean>(png.width).fill(false);
+  for (let i = 0; i < png.data.length; i += 4) {
+    if (isGreen(png.data[i], png.data[i + 1], png.data[i + 2])) {
+      greenColumns[(i / 4) % png.width] = true;
+    }
+  }
   const runs = greenColumns.filter((on, x) => on && !greenColumns[x - 1]).length;
   expect(runs).toBe(2);
 
@@ -169,7 +174,15 @@ test('reports the framed bounds and scale for the top camera', async ({ page }) 
   // wing-a x 0..2, wing-b x 6..8 (voxels 12 at 0.5 m), hall rotated into z 2..6.
   expect(bounds.min[0]).toBeCloseTo(0);
   expect(bounds.max[0]).toBeCloseTo(8);
-  expect(metresPerPixel).toBeGreaterThan(0);
+  // z 0..6 plus a 1 m margin each side is the tighter axis: 8 m over 300 px.
+  expect(metresPerPixel).toBeCloseTo(8 / 300, 6);
+});
+
+test('bounds include the baked layout of a room that also has commands', async ({ page }) => {
+  expect(await render(page, 'target=map&name=annexed&camera=top')).toBe('ready');
+  const { bounds } = await readySentinel(page);
+  // The room's own cube is x 0..2; its layout's cube is x 4..6.
+  expect(bounds.max[0]).toBeCloseTo(6);
 });
 
 test('an unknown document sets the error sentinel', async ({ page }) => {
@@ -184,7 +197,7 @@ test('bad parameters set the error sentinel', async ({ page }) => {
 
 test('a missing baked GLB sets the error sentinel instead of ready', async ({ page }) => {
   expect(await render(page, 'target=map&name=haunted&camera=top')).toBe('error');
-  expect(await errorSentinel(page)).toMatch(/baked layout/i);
+  expect(await errorSentinel(page)).toContain('ghost-layout');
   // Give the frame counter time to (wrongly) fire.
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => (window as unknown as { __officexrRenderReady?: unknown }).__officexrRenderReady)).toBeUndefined();
