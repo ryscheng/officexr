@@ -36,7 +36,14 @@ export function createRoomService(deps: {
       const getLayout = layouts
         ? (name: string) => layouts.get(name)
         : undefined;
-      return compileMapRaw(map, rooms, geometry.voxelSize, stride, getLayout);
+      return compileMapRaw(
+        map,
+        rooms,
+        geometry.voxelSize,
+        stride,
+        getLayout,
+        geometry.voxelFootprint,
+      );
     },
   };
 }
