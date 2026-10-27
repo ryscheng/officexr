@@ -198,9 +198,7 @@ export function createActions(store: Store, bus?: Bus): Actions {
         worldObjects: {
           cubeSize: objects.cubeSize,
           instances: objects.instances.map((i) => ({
-            id: i.id,
-            sourceCommandId: i.sourceCommandId,
-            kindId: i.kindId,
+            ...i,
             position: [...i.position] as [number, number, number],
           })),
         },
@@ -302,9 +300,7 @@ export function createActions(store: Store, bus?: Bus): Actions {
         worldObjects: {
           cubeSize: objects.cubeSize,
           instances: objects.instances.map((i) => ({
-            id: i.id,
-            sourceCommandId: i.sourceCommandId,
-            kindId: i.kindId,
+            ...i,
             position: [...i.position] as [number, number, number],
           })),
         },

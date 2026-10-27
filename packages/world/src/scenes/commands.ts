@@ -30,7 +30,12 @@ export interface PlaceObjectCommand {
    * migrateRoomV3toV4 in serialize.ts rewrites them on load. */
   op: 'placeObject';
   kindId: string;
+  /** Min corner of the object's unrotated footprint. */
   position: [number, number, number];
+  /** Yaw about +Y in degrees, [0, 360), in the sense of three.js
+   * `rotation.y`, pivoting on the unrotated footprint's centre. Absent
+   * means 0. */
+  yawDeg?: number;
 }
 
 /** @deprecated Use PlaceObjectCommand */
@@ -138,6 +143,7 @@ function mintCommandId(prefix: string): string {
 export function newPlaceObject(opts: {
   kindId: string;
   position?: [number, number, number];
+  yawDeg?: number;
   id?: string;
 }): PlaceObjectCommand {
   return {
@@ -145,7 +151,28 @@ export function newPlaceObject(opts: {
     op: 'placeObject',
     kindId: opts.kindId,
     position: opts.position ?? [0, 0, 0],
+    ...(opts.yawDeg !== undefined && { yawDeg: normalizeYawDeg(opts.yawDeg) }),
   };
+}
+
+export function normalizeYawDeg(yawDeg: number): number {
+  return ((yawDeg % 360) + 360) % 360;
+}
+
+/**
+ * Validates each placeObject's optional `yawDeg` and returns the commands
+ * with it normalised to [0, 360). Throws when a yaw is present but not a
+ * finite number. `label` prefixes the error message.
+ */
+export function parseCommandYaws<T>(commands: T[], label: string): T[] {
+  return commands.map((cmd, i) => {
+    const c = cmd as { op?: unknown; yawDeg?: unknown };
+    if (c?.op !== 'placeObject' || c.yawDeg === undefined) return cmd;
+    if (typeof c.yawDeg !== 'number' || !Number.isFinite(c.yawDeg)) {
+      throw new Error(`${label}: commands[${i}].yawDeg must be a finite number`);
+    }
+    return { ...cmd, yawDeg: normalizeYawDeg(c.yawDeg) };
+  });
 }
 
 /** @deprecated Use newPlaceObject */

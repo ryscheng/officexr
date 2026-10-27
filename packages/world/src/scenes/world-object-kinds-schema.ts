@@ -13,6 +13,8 @@
  * customized.
  */
 
+import { normalizeYawDeg } from './commands.ts';
+
 /** Category groups the Object editor uses to sort kinds in its
  * left-panel list. `block` covers the original KayKit BlockBits set;
  * the others are seeded by Task 4 (KayKit Furniture / Prototype /
@@ -123,6 +125,22 @@ export interface WorldObjectKind {
    * default AABB path — the default path stays unchanged.
    */
   colliderShape?: ColliderShapeSpec;
+  /** Allowed yaw increment in degrees: a positive integer dividing 360.
+   * Absent means `DEFAULT_ROTATION_STEP_DEG`. */
+  rotationStepDeg?: number;
+}
+
+export const DEFAULT_ROTATION_STEP_DEG = 90;
+
+/** Whether `yawDeg` is a multiple of the kind's rotation step, to float
+ * tolerance. An unknown kind gets the default step. */
+export function isYawAllowed(
+  kind: Pick<WorldObjectKind, 'rotationStepDeg'> | undefined,
+  yawDeg: number,
+): boolean {
+  const step = kind?.rotationStepDeg ?? DEFAULT_ROTATION_STEP_DEG;
+  const remainder = normalizeYawDeg(yawDeg) % step;
+  return Math.min(remainder, step - remainder) < 1e-6;
 }
 
 /**
@@ -329,7 +347,18 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     dimensions: normalizeDimensions(k.dimensions),
     localAABB: normalizeLocalAABB(k.localAABB),
     colliderShape: normalizeColliderShape(k.colliderShape),
+    rotationStepDeg: normalizeRotationStep(k.rotationStepDeg, idx),
   };
+}
+
+function normalizeRotationStep(raw: unknown, idx: number): number | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw <= 0 || 360 % raw !== 0) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].rotationStepDeg must be a positive integer dividing 360, got ${String(raw)}`,
+    );
+  }
+  return raw;
 }
 
 function normalizeDimensions(

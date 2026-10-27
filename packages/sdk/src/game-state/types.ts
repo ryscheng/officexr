@@ -315,7 +315,14 @@ export type ObjectInstance = {
   id: string;
   sourceCommandId: string;
   kindId: string;
+  /** Unrotated footprint's min corner in voxels. Usually integral, but a
+   * map room's rotation can leave it on a half (or finer) voxel when the
+   * footprint's width minus depth is odd or the kind's size isn't a whole
+   * number of voxels. */
   position: [number, number, number];
+  /** Yaw about +Y in degrees, [0, 360), pivoting on the unrotated
+   * footprint's centre. Absent means 0. */
+  yawDeg?: number;
 };
 
 /**

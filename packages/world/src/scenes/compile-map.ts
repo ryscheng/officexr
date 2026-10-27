@@ -1,6 +1,11 @@
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { MapDocumentV2, RoomInstance } from './map-document.ts';
-import { isBakedRoom, type RoomDocument, type SceneCommand } from './commands.ts';
+import {
+  isBakedRoom,
+  normalizeYawDeg,
+  type RoomDocument,
+  type SceneCommand,
+} from './commands.ts';
 import { compileScene, type KindStrideLookup } from './compile.ts';
 
 /**
@@ -22,11 +27,9 @@ export type LayoutResolver = (layoutName: string) => { commands: SceneCommand[] 
 
 type Vec3 = readonly [number, number, number];
 
-/**
- * Room-local, half-open voxel footprint of an object at `position`
- * (mirrors `InstanceGeometryService.voxelFootprint`).
- */
-type VoxelFootprintLookup = (position: Vec3, kindId: string) => { min: Vec3; max: Vec3 };
+/** Unrotated world AABB (m) of an object at `position` (mirrors
+ * `InstanceGeometryService.worldAABB`). */
+type WorldAABBLookup = (position: Vec3, kindId: string) => { min: Vec3; max: Vec3 };
 
 /**
  * Pure replay of a `MapDocumentV2` against the rooms it references.
@@ -36,8 +39,9 @@ type VoxelFootprintLookup = (position: Vec3, kindId: string) => { min: Vec3; max
  *      coords relative to the room's origin).
  *      - If the room has no inline commands but names a layout AND
  *        `getLayout` is provided, compile the layout's commands instead.
- *   2. Rotate each object's voxel footprint by a quarter-turn yaw around the
- *      room-local origin (`rotationY`: 0=identity, 1=+90° about Y, 2=180°, 3=270°).
+ *   2. Rotate each object's footprint centre by a quarter-turn yaw around the
+ *      room-local origin (`rotationY`: 0=identity, 1=+90° about Y, 2=180°, 3=270°)
+ *      and add the same turn to the object's yaw.
  *   3. Translate by the instance position (voxel coords).
  *   4. Namespace each instance's id and sourceCommandId with the
  *      `RoomInstance.id` so two placements of the same room don't
@@ -56,7 +60,7 @@ export function compileMap(
   voxelSize: number,
   kindStride?: KindStrideLookup,
   getLayout?: LayoutResolver,
-  voxelFootprint?: VoxelFootprintLookup,
+  worldAABB?: WorldAABBLookup,
 ): WorldObjects {
   const instances: ObjectInstance[] = [];
 
@@ -90,7 +94,7 @@ export function compileMap(
     }
 
     const compiled = compileScene(compileInput, voxelSize, kindStride);
-    const rotated = applyRoomInstance(compiled.instances, ri, voxelFootprint);
+    const rotated = applyRoomInstance(compiled.instances, ri, voxelSize, worldAABB);
     instances.push(...rotated);
   }
 
@@ -109,24 +113,27 @@ function rotateXZ(rot: 0 | 1 | 2 | 3, x: number, z: number): [number, number] {
 function applyRoomInstance(
   src: ObjectInstance[],
   ri: RoomInstance,
-  voxelFootprint?: VoxelFootprintLookup,
+  voxelSize: number,
+  worldAABB?: WorldAABBLookup,
 ): ObjectInstance[] {
   const rot = ri.rotationY ?? 0;
   const [ox, oy, oz] = ri.position;
   return src.map((inst) => {
     const [x, y, z] = inst.position;
-    const { min, max } = voxelFootprint?.(inst.position, inst.kindId) ?? {
-      min: inst.position,
-      max: [x + 1, y + 1, z + 1],
-    };
-    // ponytail: non-square XZ footprints keep unrotated extents (ObjectInstance has no rotation).
-    const [ax, az] = rotateXZ(rot, min[0], min[2]);
-    const [bx, bz] = rotateXZ(rot, max[0], max[2]);
+    const aabb = worldAABB?.(inst.position, inst.kindId);
+    const halfW = aabb ? (aabb.max[0] - aabb.min[0]) / voxelSize / 2 : 0.5;
+    const halfD = aabb ? (aabb.max[2] - aabb.min[2]) / voxelSize / 2 : 0.5;
+    // The object yaws about its unrotated footprint's centre, so turning
+    // the room moves only that centre; `position` stays the unrotated
+    // min corner around it.
+    const [cx, cz] = rotateXZ(rot, x + halfW, z + halfD);
+    const yawDeg = normalizeYawDeg((inst.yawDeg ?? 0) + 90 * rot);
     return {
       id: `${ri.id}/${inst.id}`,
       sourceCommandId: `${ri.id}/${inst.sourceCommandId}`,
       kindId: inst.kindId,
-      position: [Math.min(ax, bx) + ox, y + oy, Math.min(az, bz) + oz],
+      position: [cx - halfW + ox, y + oy, cz - halfD + oz],
+      ...(yawDeg !== 0 && { yawDeg }),
     };
   });
 }

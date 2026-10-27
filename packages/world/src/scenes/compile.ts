@@ -39,12 +39,13 @@ type CompileInput = SceneDocument | RoomDocument | { commands: SceneCommand[] };
 /**
  * Optional per-kind extrude-stride lookup. When provided, an extrude
  * command places each successive layer `stride[axis]` voxels away
- * instead of the legacy 1-voxel step. Callers that have access to a
- * catalog should pass `getKindStride` from `object-kind-catalog.ts`.
+ * instead of the legacy 1-voxel step; `stride` is the kind's AABB size
+ * at the target's yaw. Callers with a catalog pass the geometry
+ * service's `tileStep` (see `app/room-service.ts`).
  * When omitted (legacy callers, unit tests), behavior matches the
  * previous 1-voxel step.
  */
-export type KindStrideLookup = (kindId: string) => [number, number, number];
+export type KindStrideLookup = (kindId: string, yawDeg?: number) => [number, number, number];
 
 export function compileScene(
   doc: CompileInput,
@@ -77,18 +78,18 @@ export function compileScene(
   for (const cmd of doc.commands) {
     switch (cmd.op) {
       case 'placeObject':
-        upsert(makeInstance(cmd, cmd.position, cmd.kindId));
+        upsert(makeInstance(cmd, cmd.position, cmd.kindId, cmd.yawDeg));
         break;
       case 'extrude': {
         const target = byCommand.get(cmd.targetCommandId);
         if (!target || target.length === 0 || cmd.count <= 1) break;
-        const kindId = target[0].kindId;
+        const { kindId, yawDeg } = target[0];
         const layer = outerLayer(target, cmd.face);
         const normal = faceNormal(cmd.face);
         // Per-axis voxel step for the target kind. When `kindStride` is
         // omitted the legacy 1-voxel step is preserved (back-compat for
         // unit tests and callers that haven't been wired to a catalog).
-        const kindSteps = kindStride ? kindStride(kindId) : ([1, 1, 1] as const);
+        const kindSteps = kindStride ? kindStride(kindId, yawDeg) : ([1, 1, 1] as const);
         const axis = normal[0] !== 0 ? 0 : normal[1] !== 0 ? 1 : 2;
         const stride: [number, number, number] = [
           normal[0] * kindSteps[axis],
@@ -106,7 +107,7 @@ export function compileScene(
               cell[1] + stride[1] * step,
               cell[2] + stride[2] * step,
             ];
-            upsert(makeInstance(cmd, pos, kindId));
+            upsert(makeInstance(cmd, pos, kindId, yawDeg));
           }
         }
         break;
@@ -131,12 +132,14 @@ function makeInstance(
   cmd: SceneCommand,
   position: [number, number, number],
   kindId: string,
+  yawDeg: number | undefined,
 ): ObjectInstance {
   return {
     id: `${cmd.id}@${position[0]},${position[1]},${position[2]}`,
     sourceCommandId: cmd.id,
     kindId,
     position: [position[0], position[1], position[2]],
+    ...(yawDeg !== undefined && { yawDeg }),
   };
 }
 

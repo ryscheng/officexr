@@ -26,6 +26,7 @@ const stubGeometry: InstanceGeometryService = {
   worldAABB: () => ({ min: [0, 0, 0], max: [0, 0, 0] }),
   worldAABBOfInstance: () => ({ min: [0, 0, 0], max: [0, 0, 0] }),
   meshOrigin: () => [0, 0, 0],
+  meshTransform: () => ({ position: [0, 0, 0], rotationY: 0 }),
   voxelFootprint: () => ({ min: [0, 0, 0], max: [0, 0, 0] }),
   tileStep: () => [1, 1, 1],
 };

@@ -91,9 +91,7 @@ export function applySnapshot(target: OfficeState, snap: SerializedOfficeState):
   target.worldObjects = {
     cubeSize: snap.worldObjects?.cubeSize ?? 2,
     instances: (snap.worldObjects?.instances ?? []).map((i) => ({
-      id: i.id,
-      sourceCommandId: i.sourceCommandId,
-      kindId: i.kindId,
+      ...i,
       position: [...i.position] as [number, number, number],
     })),
   };
