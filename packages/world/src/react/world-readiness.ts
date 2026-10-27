@@ -1,16 +1,14 @@
 import type { BakedLayoutPlacement } from '../app/map-loader.ts';
 
-export type WorldReadiness =
-  | {
-      type: 'loading';
-      map: boolean;
-      models: boolean;
-      /** Room instance ids of the baked layouts whose colliders must mount; known once the map applies. */
-      bakedLayouts: readonly string[];
-      collidersReady: readonly string[];
-    }
-  | { type: 'ready' }
-  | { type: 'failed'; message: string };
+type Loading = {
+  type: 'loading';
+  map: boolean;
+  models: boolean;
+  placementIds: readonly string[];
+  collidersReady: readonly string[];
+};
+
+export type WorldReadiness = Loading | { type: 'ready' } | { type: 'failed'; message: string };
 
 export type WorldReadinessEvent =
   | { type: 'mapApplied'; bakedLayouts: readonly Pick<BakedLayoutPlacement, 'roomInstanceId'>[] }
@@ -23,7 +21,7 @@ export const INITIAL_WORLD_READINESS: WorldReadiness = {
   type: 'loading',
   map: false,
   models: false,
-  bakedLayouts: [],
+  placementIds: [],
   collidersReady: [],
 };
 
@@ -32,16 +30,27 @@ export function worldReadiness(state: WorldReadiness, event: WorldReadinessEvent
   if (state.type !== 'loading') {
     return state;
   }
-  if (event.type === 'mapFailed' || event.type === 'collidersFailed') {
-    return { type: 'failed', message: event.message };
+  switch (event.type) {
+    case 'mapFailed':
+      return { type: 'failed', message: event.message };
+    // ponytail: a missing or stale bake for one layout-linked room fails the whole world; falling back to that placement's instances would contain it.
+    case 'collidersFailed':
+      return { type: 'failed', message: event.message };
+    case 'mapApplied':
+      return settle({ ...state, map: true, placementIds: event.bakedLayouts.map((p) => p.roomInstanceId) });
+    case 'modelsReady':
+      return settle({ ...state, models: true });
+    case 'collidersReady':
+      return settle({ ...state, collidersReady: [...state.collidersReady, event.roomInstanceId] });
+    default: {
+      const _exhaustive: never = event;
+      return _exhaustive;
+    }
   }
-  const next =
-    event.type === 'mapApplied'
-      ? { ...state, map: true, bakedLayouts: event.bakedLayouts.map((p) => p.roomInstanceId) }
-      : event.type === 'modelsReady'
-        ? { ...state, models: true }
-        : { ...state, collidersReady: [...state.collidersReady, event.roomInstanceId] };
-  return next.map && next.models && next.bakedLayouts.every((id) => next.collidersReady.includes(id))
+}
+
+function settle(state: Loading): WorldReadiness {
+  return state.map && state.models && state.placementIds.every((id) => state.collidersReady.includes(id))
     ? { type: 'ready' }
-    : next;
+    : state;
 }

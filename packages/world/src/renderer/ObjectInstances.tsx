@@ -221,12 +221,12 @@ function ObjectInstancesView({
     if (!publishWindowMarker) return;
     const win = globalThis as unknown as {
       __OFFICE_OBJECT_INSTANCES__?: {
-        storeCount: number;
+        renderedCount: number;
         perKind: Array<{ kindId: string; count: number }>;
       };
     };
     win.__OFFICE_OBJECT_INSTANCES__ = {
-      storeCount: worldObjects.instances.length,
+      renderedCount: worldObjects.instances.length,
       perKind: [
         ...usedKinds.map(({ kind, instances }) => ({
           kindId: kind.id,

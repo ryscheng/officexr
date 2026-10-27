@@ -31,9 +31,7 @@ import { getVersion } from '../app/bake-registry.ts';
 import { parseEmbeddedColliders } from '../app/baked-collider-extras.ts';
 import { WALL_GROUPS } from '../physics/groups.ts';
 import { BakedLayoutErrorBoundary } from './BakedLayout.tsx';
-import type { placementTransform } from './placement-transform.ts';
-
-type ColliderTransform = ReturnType<typeof placementTransform>;
+import type { PlacementTransform } from './placement-transform.ts';
 
 // ---------------------------------------------------------------------------
 // Inner component (inside Suspense — can use useGLTF)
@@ -75,7 +73,7 @@ function extractMeshAABBs(scene: THREE.Object3D): MeshAABB[] {
 
 interface BakedLayoutCollidersInnerProps {
   effectiveUrl: string;
-  transform?: ColliderTransform;
+  transform?: PlacementTransform;
   onReady?: () => void;
 }
 
@@ -158,7 +156,7 @@ export interface BakedLayoutCollidersProps {
    */
   layoutName?: string;
   /** Where the layout is placed; the colliders are layout-local, so this goes on their `RigidBody`. */
-  transform?: ColliderTransform;
+  transform?: PlacementTransform;
   /** Fires once the colliders have mounted (also when there are none), again per new layout. */
   onReady?: () => void;
   onError?: (error: Error) => void;

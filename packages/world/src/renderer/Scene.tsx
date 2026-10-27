@@ -5,7 +5,7 @@ import { Physics, type RapierRigidBody } from '@react-three/rapier';
 import { GradientBackground } from './GradientBackground.tsx';
 import { LightingRig } from './LightingRig.tsx';
 import { MapColliders } from './MapColliders.tsx';
-import type { ExcludeInstance } from './useStoreWorldObjects.ts';
+import { excludeLayoutInstances } from './useStoreWorldObjects.ts';
 import type {
   Actions,
   Bus,
@@ -28,7 +28,6 @@ import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
 import type { CameraMode } from './config.ts';
 import { placementTransform } from './placement-transform.ts';
 import type { BakedLayoutPlacement } from '../app/map-loader.ts';
-import { layoutIdPrefix } from '../scenes/compile-map.ts';
 import type { ViewConfig } from './viewConfig.ts';
 
 /**
@@ -137,13 +136,7 @@ interface SceneProps {
 
 export function Scene(props: SceneProps) {
   const { store, selfId, cameraMode, sync, bakedLayouts } = props;
-  const excludeBakedInstance = useMemo((): ExcludeInstance | undefined => {
-    if (!bakedLayouts?.length) {
-      return undefined;
-    }
-    const prefixes = bakedLayouts.map((p) => layoutIdPrefix(p.roomInstanceId));
-    return (instance) => prefixes.some((prefix) => instance.id.startsWith(prefix));
-  }, [bakedLayouts]);
+  const excludeBakedInstance = useMemo(() => excludeLayoutInstances(bakedLayouts), [bakedLayouts]);
   const { proximity, lighting, background, fixedCamera } = props.view;
   const worldFocused = props.worldFocused ?? true;
 
@@ -281,16 +274,6 @@ export function Scene(props: SceneProps) {
           bottomColor={background.bottomColor}
         />
 
-        {/* Per-map cubes. The Map Editor is the source of truth; the
-            picker pushes a fresh WorldObjects snapshot via
-            `actions.setWorldObjects(compileMap(...))` on every map
-            switch, and this re-renders one InstancedMesh per cube kind
-            in response.
-            The legacy `<Floor>` (a default 27×27 blue platform
-            rendered underneath these cubes) was removed because it
-            visually competed with map-authored content — authors saw
-            a stripe of "default" cubes peeking around the edges of
-            their own map and assumed map switching was broken. */}
         <ObjectInstances store={store} exclude={excludeBakedInstance} />
 
         <Players
