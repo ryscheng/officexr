@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import {
@@ -8,11 +8,20 @@ import {
   TOP_DOWN_CAMERA_DEFAULTS,
   type CameraMode,
 } from './config.ts';
+import {
+  applyLookDelta,
+  fixedOrbit,
+  MOUSE_SENSITIVITY,
+  PITCH_MAX,
+  PITCH_MIN,
+  zoomedFov,
+  type LookRefs,
+  type ViewOffsets,
+} from './lookControls.ts';
+import { useTouchCameraGestures } from './useTouchCameraGestures.ts';
 
-const PITCH_MIN = -1.3;
-const PITCH_MAX = 1.3;
-const MOUSE_SENSITIVITY = 0.0025;
 const THIRD_PERSON_RADIUS = 6;
+const GAMEPLAY_FOV = 75;
 
 interface CameraRigProps {
   mode: CameraMode;
@@ -21,6 +30,8 @@ interface CameraRigProps {
   /** Mutable yaw shared with movement code so WASD is camera-relative. */
   yawRef: React.MutableRefObject<number>;
   pitchRef: React.MutableRefObject<number>;
+  /** Local-only zoom and fixed-mode orbit offsets, changed by touch gestures. */
+  viewOffsetsRef: React.MutableRefObject<ViewOffsets>;
   /** Set by `ProximityGlow` each frame to the local player's
    * MeetingArea centroid when in a conversation, or `null` otherwise.
    * When non-null, the rig blends in a "conversation view": elevated
@@ -80,6 +91,7 @@ export function CameraRig({
   playerPosRef,
   yawRef,
   pitchRef,
+  viewOffsetsRef,
   conversationFocusRef,
   conversationDistance,
   conversationHeight,
@@ -87,6 +99,11 @@ export function CameraRig({
 }: CameraRigProps) {
   const { camera, gl } = useThree();
   const persp = camera as THREE.PerspectiveCamera;
+  const lookRefs = useMemo<LookRefs>(
+    () => ({ yawRef, pitchRef, viewOffsetsRef }),
+    [yawRef, pitchRef, viewOffsetsRef],
+  );
+  useTouchCameraGestures(mode, lookRefs);
 
   // Pointer-lock + mouse-look — only active in first/third person modes.
   useEffect(() => {
@@ -103,10 +120,12 @@ export function CameraRig({
     };
     const onMouseMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== canvas) return;
-      yawRef.current -= e.movementX * MOUSE_SENSITIVITY;
-      pitchRef.current -= e.movementY * MOUSE_SENSITIVITY;
-      if (pitchRef.current < PITCH_MIN) pitchRef.current = PITCH_MIN;
-      if (pitchRef.current > PITCH_MAX) pitchRef.current = PITCH_MAX;
+      applyLookDelta(
+        mode,
+        -e.movementX * MOUSE_SENSITIVITY,
+        -e.movementY * MOUSE_SENSITIVITY,
+        lookRefs,
+      );
     };
 
     canvas.addEventListener('mousedown', onMouseDown);
@@ -116,7 +135,7 @@ export function CameraRig({
       document.removeEventListener('mousemove', onMouseMove);
       if (document.pointerLockElement === canvas) document.exitPointerLock?.();
     };
-  }, [mode, gl, yawRef, pitchRef]);
+  }, [mode, gl, lookRefs]);
 
   // Keep fixed/top-down/free-fly camera fov in sync. Each mode sets its
   // own default; everything else falls back to the gameplay 75°.
@@ -128,7 +147,7 @@ export function CameraRig({
     } else if (mode === 'free-fly') {
       persp.fov = FREE_FLY_DEFAULTS.fov;
     } else {
-      persp.fov = 75;
+      persp.fov = GAMEPLAY_FOV;
     }
     persp.updateProjectionMatrix();
   }, [mode, fixed.fov, persp]);
@@ -339,6 +358,11 @@ export function CameraRig({
     );
 
     if (mode === 'first-person') {
+      const fov = zoomedFov(GAMEPLAY_FOV, viewOffsetsRef.current.zoom);
+      if (persp.fov !== fov) {
+        persp.fov = fov;
+        persp.updateProjectionMatrix();
+      }
       camera.position.set(pos.x, pos.y + EYE_HEIGHT, pos.z);
       target.current.set(
         pos.x - Math.sin(yaw) * Math.cos(pitch),
@@ -363,7 +387,7 @@ export function CameraRig({
         camera.lookAt(target.current);
       }
     } else if (mode === 'third-person') {
-      const r = THIRD_PERSON_RADIUS;
+      const r = THIRD_PERSON_RADIUS / viewOffsetsRef.current.zoom;
       const head = target.current.set(pos.x, pos.y + EYE_HEIGHT, pos.z);
       camera.position.set(
         head.x + Math.sin(yaw) * Math.cos(pitch) * r,
@@ -461,8 +485,18 @@ export function CameraRig({
       const reference = fixed.lookAt
         ? { x: fixed.lookAt[0], y: fixed.lookAt[1], z: fixed.lookAt[2] }
         : pos;
-      const az = THREE.MathUtils.degToRad(fixed.azimuthDeg);
-      const pitch = THREE.MathUtils.degToRad(fixed.pitchDeg);
+      // Writing the clamped offset back stops a drag past the elevation
+      // limit from winding up an offset the user must drag back out of.
+      const view = viewOffsetsRef.current;
+      const orbit = fixedOrbit(
+        THREE.MathUtils.degToRad(fixed.pitchDeg),
+        fixed.height,
+        view,
+      );
+      view.fixedPitchOffsetRad = orbit.pitchOffsetRad;
+      const az = THREE.MathUtils.degToRad(fixed.azimuthDeg) + orbit.azimuthOffsetRad;
+      const pitch = orbit.pitchRad;
+      const cameraHeight = orbit.orbitHeight / view.zoom;
 
       // Derive leash distances from screen fractions. The character should
       // occupy ~maxOnScreenFrac of the screen at the near bound, dwindling
@@ -473,7 +507,7 @@ export function CameraRig({
       // character's center: depth = sqrt(distance3D² − heightOffset²).
       const fovRad = THREE.MathUtils.degToRad(fixed.fov);
       const tanHalfFov = Math.tan(fovRad / 2);
-      const heightOffset = Math.max(0, fixed.height - CHAR_HEIGHT_M / 2);
+      const heightOffset = Math.max(0, orbit.orbitHeight - CHAR_HEIGHT_M / 2);
       const safeMaxFrac = Math.max(0.005, fixed.maxOnScreenFrac);
       const safeMinFrac = Math.max(0.001, fixed.minOnScreenFrac);
       const dNear3D = CHAR_HEIGHT_M / (2 * safeMaxFrac * tanHalfFov);
@@ -489,7 +523,7 @@ export function CameraRig({
       // fallback the leash clamps the camera to XZ=1m from the
       // player, which puts the character at ~87° below the look
       // direction — far outside the FOV.
-      const pitchRad = Math.abs(THREE.MathUtils.degToRad(fixed.pitchDeg));
+      const pitchRad = Math.abs(pitch);
       const tanPitch = Math.tan(pitchRad);
       const pitchAlignedXZ =
         tanPitch > 0.01 ? heightOffset / tanPitch : heightOffset;
@@ -518,27 +552,30 @@ export function CameraRig({
         directXZ !== undefined ? minDistance : Math.max(minDistance + 0.5, maxXZ);
       const maxLateral =
         directXZ !== undefined ? 0 : fixed.lateralFrac * maxDistance * tanHalfFov;
+      const minLeash = minDistance / view.zoom;
+      const maxLeash = maxDistance / view.zoom;
+      const lateralLeash = maxLateral / view.zoom;
 
       // Initialize position on entry into fixed mode so the reference
       // point is visible at the default leash distance.
       if (fixedNeedsInit.current) {
         fixedNeedsInit.current = false;
-        const initialDist = (minDistance + maxDistance) / 2;
+        const initialDist = (minLeash + maxLeash) / 2;
         camera.position.set(
           reference.x + Math.sin(az) * initialDist,
-          reference.y + fixed.height,
+          reference.y + cameraHeight,
           reference.z - Math.cos(az) * initialDist,
         );
       }
 
       // Lock Y to the reference's height each frame.
-      camera.position.y = reference.y + fixed.height;
+      camera.position.y = reference.y + cameraHeight;
 
       // Decompose the (camera → reference) XZ vector into a depth
       // component along the camera's forward axis and a lateral
       // component along the camera's right axis. The two leashes are
-      // independent: depth is clamped to [minDistance, maxDistance],
-      // lateral to ±maxLateral.
+      // independent: depth is clamped to [minLeash, maxLeash],
+      // lateral to ±lateralLeash.
       const forwardX = -Math.sin(az);
       const forwardZ = Math.cos(az);
       const rightX = -Math.cos(az);
@@ -550,12 +587,12 @@ export function CameraRig({
       const perp = rx * rightX + rz * rightZ;
 
       const clampedParallel = Math.max(
-        minDistance,
-        Math.min(maxDistance, parallel),
+        minLeash,
+        Math.min(maxLeash, parallel),
       );
       const clampedPerp = Math.max(
-        -maxLateral,
-        Math.min(maxLateral, perp),
+        -lateralLeash,
+        Math.min(lateralLeash, perp),
       );
       const depthCorrection = parallel - clampedParallel;
       const lateralCorrection = perp - clampedPerp;
