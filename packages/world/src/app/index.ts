@@ -72,4 +72,4 @@ export { bakedLayoutUrl } from './baked-layout-url.ts';
 export { bakedLayoutAssetUrl, modelUrl, setAssetBaseUrl } from './asset-url.ts';
 export { computeVoiceZones } from './voice-zones.ts';
 export { loadMap, MapNotFoundError } from './map-loader.ts';
-export type { LoadedMap, MapLoaderDeps } from './map-loader.ts';
+export type { BakedLayoutPlacement, LoadedMap, MapLoaderDeps } from './map-loader.ts';

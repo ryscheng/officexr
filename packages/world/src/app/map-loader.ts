@@ -28,6 +28,14 @@ export interface MapLoaderDeps {
   geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>;
 }
 
+/** One room placement that links a baked layout; `position` is in voxels. */
+export interface BakedLayoutPlacement {
+  roomInstanceId: string;
+  layoutName: string;
+  position: RoomInstance['position'];
+  rotationY: 0 | 1 | 2 | 3;
+}
+
 export interface LoadedMap {
   mapDoc: MapDocumentV2;
   rooms: ReadonlyMap<string, RoomDocument>;
@@ -38,6 +46,8 @@ export interface LoadedMap {
   bakedLayoutName?: string;
   /** Where `bakedLayoutName` renders: its baked room's placement, in voxels. */
   bakedPlacement?: Pick<RoomInstance, 'position' | 'rotationY'>;
+  /** Every room placement that links a layout, whether or not the room has commands. */
+  bakedLayouts: BakedLayoutPlacement[];
 }
 
 async function loadAll<T>(
@@ -60,7 +70,7 @@ async function loadAll<T>(
 }
 
 /**
- * Loads a map, its rooms, and the layouts of rooms without commands, then
+ * Loads a map, its rooms, and the layout of every room that links one, then
  * compiles it and derives its voice zones. Throws `MapNotFoundError` when the map doesn't exist.
  */
 export async function loadMap(
@@ -83,25 +93,29 @@ export async function loadMap(
     return room !== undefined && isBakedRoom(room);
   };
   const mapDoc = stored.schemaVersion === 1 ? migrateMapV1toV2(stored, isBaked) : stored;
-  const layoutNames = new Set<string>();
+  const bakedRoomLayoutNames = new Set<string>();
+  const linkedLayoutNames = new Set<string>();
   for (const room of rooms.values()) {
+    if (room.layoutName !== undefined) {
+      linkedLayoutNames.add(room.layoutName);
+    }
     if (isBakedRoom(room)) {
-      layoutNames.add(room.layoutName);
+      bakedRoomLayoutNames.add(room.layoutName);
     }
   }
   const layouts = await loadAll<LayoutDocument>(
-    layoutNames,
+    linkedLayoutNames,
     (n) => storages.layouts.load(n),
     'layout',
   );
 
-  const bakedLayoutName = layoutNames.size === 1 ? [...layoutNames][0] : undefined;
+  const bakedLayoutName = bakedRoomLayoutNames.size === 1 ? [...bakedRoomLayoutNames][0] : undefined;
   const bakedPlacements = bakedLayoutName ? mapDoc.rooms.filter((ri) => isBaked(ri.roomName)) : [];
   // ponytail: <Scene> renders one baked layout at one placement; more need a bakedLayouts array prop.
-  if (layoutNames.size > 1) {
+  if (bakedRoomLayoutNames.size > 1) {
     console.warn(
       `[map-loader] map "${mapDoc.name}" references multiple layouts; baked-layout rendering supports one`,
-      [...layoutNames],
+      [...bakedRoomLayoutNames],
     );
   }
   if (bakedPlacements.length > 1) {
@@ -109,6 +123,13 @@ export async function loadMap(
       `[map-loader] map "${mapDoc.name}" places its baked layout ${bakedPlacements.length} times; rendering the first`,
     );
   }
+
+  const bakedLayouts = mapDoc.rooms.flatMap((ri): BakedLayoutPlacement[] => {
+    const layoutName = rooms.get(ri.roomName)?.layoutName;
+    return layoutName === undefined
+      ? []
+      : [{ roomInstanceId: ri.id, layoutName, position: ri.position, rotationY: ri.rotationY ?? 0 }];
+  });
 
   const worldObjects = roomService.compileMap(mapDoc, rooms, layouts);
   // Hands the zone helper the compile above rather than compiling the map twice.
@@ -122,5 +143,6 @@ export async function loadMap(
     spawnPoints: mapDoc.spawnPoints,
     bakedLayoutName,
     bakedPlacement: bakedPlacements[0],
+    bakedLayouts,
   };
 }
