@@ -41,7 +41,6 @@ export function isYawPitchMode(mode: CameraMode): boolean {
   return mode === 'first-person' || mode === 'third-person';
 }
 
-/** Modes that respond to look input: the yaw/pitch modes and fixed. */
 export function isLookMode(mode: CameraMode): boolean {
   return isYawPitchMode(mode) || mode === 'fixed';
 }
@@ -81,7 +80,7 @@ export function zoomedFov(baseFovDeg: number, zoom: number): number {
   return baseFovDeg * (limitDeg / baseFovDeg) ** (Math.log(zoom) / Math.log(zoomLimit));
 }
 
-export interface FixedLeashParams {
+interface FixedLeashParams {
   height: number;
   maxOnScreenFrac: number;
   minOnScreenFrac: number;
@@ -92,8 +91,7 @@ export interface FixedLeashParams {
 }
 
 /**
- * Fixed-camera pose limits. The leash is derived exactly as it was before
- * touch input, at the base pitch: the camera sits `height` above the
+ * Fixed-camera pose limits. The leash is derived at the base pitch: the camera sits `height` above the
  * reference and keeps its XZ distance within [minDistance, maxDistance] (and
  * ±maxLateral sideways), sized so the character occupies between
  * `maxOnScreenFrac` and `minOnScreenFrac` of the screen:

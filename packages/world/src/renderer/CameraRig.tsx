@@ -478,7 +478,7 @@ export function CameraRig({
       //   - Y is locked at reference.y + height (no bobbing), scaled by the
       //     local orbit elevation and pinch zoom.
       //   - XZ position is moved only when XZ distance to the reference
-      //     leaves [minLeash, maxLeash]. Within bounds the camera
+      //     leaves [minDistance, maxDistance]. Within bounds the camera
       //     stays put while the character wanders.
       //
       // The "reference point" the camera orbits and looks toward is
@@ -495,19 +495,16 @@ export function CameraRig({
       // limit from winding up an offset the user must drag back out of.
       view.fixedPitchOffsetRad = leash.pitchOffsetRad;
       const az = THREE.MathUtils.degToRad(fixed.azimuthDeg) + view.fixedAzimuthOffsetRad;
-      const pitch = leash.pitchRad;
-      const cameraHeight = leash.height;
-      const { minDistance: minLeash, maxDistance: maxLeash, maxLateral: lateralLeash } = leash;
 
       // Initialize position on entry into fixed mode so the reference
       // point is visible at the default leash distance.
       if (fixedNeedsInit.current) {
         fixedNeedsInit.current = false;
-        const initialDist = (minLeash + maxLeash) / 2;
+        const initialDist = (leash.minDistance + leash.maxDistance) / 2;
         appliedAzimuthOffset.current = view.fixedAzimuthOffsetRad;
         camera.position.set(
           reference.x + Math.sin(az) * initialDist,
-          reference.y + cameraHeight,
+          reference.y + leash.height,
           reference.z - Math.cos(az) * initialDist,
         );
       }
@@ -524,13 +521,13 @@ export function CameraRig({
       }
 
       // Lock Y to the reference's height each frame.
-      camera.position.y = reference.y + cameraHeight;
+      camera.position.y = reference.y + leash.height;
 
       // Decompose the (camera → reference) XZ vector into a depth
       // component along the camera's forward axis and a lateral
       // component along the camera's right axis. The two leashes are
-      // independent: depth is clamped to [minLeash, maxLeash],
-      // lateral to ±lateralLeash.
+      // independent: depth is clamped to [minDistance, maxDistance],
+      // lateral to ±maxLateral.
       const forwardX = -Math.sin(az);
       const forwardZ = Math.cos(az);
       const rightX = -Math.cos(az);
@@ -542,12 +539,12 @@ export function CameraRig({
       const perp = rx * rightX + rz * rightZ;
 
       const clampedParallel = Math.max(
-        minLeash,
-        Math.min(maxLeash, parallel),
+        leash.minDistance,
+        Math.min(leash.maxDistance, parallel),
       );
       const clampedPerp = Math.max(
-        -lateralLeash,
-        Math.min(lateralLeash, perp),
+        -leash.maxLateral,
+        Math.min(leash.maxLateral, perp),
       );
       const depthCorrection = parallel - clampedParallel;
       const lateralCorrection = perp - clampedPerp;
@@ -562,9 +559,9 @@ export function CameraRig({
       // forward, so orientation is independent of the character's
       // position.
       const lookYaw = az + Math.PI;
-      const cosP = Math.cos(pitch);
+      const cosP = Math.cos(leash.pitchRad);
       const normalLookX = camera.position.x + Math.sin(lookYaw) * cosP;
-      const normalLookY = camera.position.y + Math.sin(pitch);
+      const normalLookY = camera.position.y + Math.sin(leash.pitchRad);
       const normalLookZ = camera.position.z - Math.cos(lookYaw) * cosP;
 
       if (mix > 0.001) {

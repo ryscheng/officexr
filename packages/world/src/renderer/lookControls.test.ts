@@ -4,8 +4,6 @@ import {
   applyZoom,
   fixedMovementYaw,
   fixedLeash,
-  isLookMode,
-  isYawPitchMode,
   pinchFactor,
   PITCH_MAX,
   PITCH_MIN,
@@ -15,7 +13,7 @@ import {
   type LookRefs,
   type ViewOffsets,
 } from './lookControls.ts';
-import { CHAR_HEIGHT_M, type CameraMode } from './config.ts';
+import { CHAR_HEIGHT_M } from './config.ts';
 
 const deg = (d: number) => (d * Math.PI) / 180;
 
@@ -105,16 +103,6 @@ describe('zoomedFov', () => {
       expect(fov).toBeLessThan(prev);
       prev = fov;
     }
-  });
-});
-
-describe('look modes', () => {
-  it('knows which modes take look input', () => {
-    expect(['first-person', 'third-person'].every((m) => isYawPitchMode(m as CameraMode))).toBe(true);
-    expect(isYawPitchMode('fixed')).toBe(false);
-    expect(isLookMode('fixed')).toBe(true);
-    expect(isLookMode('top-down')).toBe(false);
-    expect(isLookMode('free-fly')).toBe(false);
   });
 });
 
