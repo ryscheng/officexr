@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { CAMERA_MODES, type CameraMode } from '../renderer/config.ts';
 
 // 'top-down' and 'free-fly' belong to the Scenes editor.
@@ -19,20 +19,18 @@ const nextMode = (current: CameraMode): CameraMode => {
  */
 export function useCameraMode({ value, onChange }: { value?: CameraMode; onChange?: (mode: CameraMode) => void } = {}): CameraMode {
   const [local, setLocal] = useState<CameraMode>('fixed');
-  const latest = useRef({ value, onChange });
-  useEffect(() => {
-    latest.current = { value, onChange };
+  const onAltP = useEffectEvent(() => {
+    if (value === undefined) {
+      setLocal(nextMode);
+    } else {
+      onChange?.(nextMode(value));
+    }
   });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.altKey && e.code === 'KeyP') {
         e.preventDefault();
-        const { value, onChange } = latest.current;
-        if (value === undefined) {
-          setLocal(nextMode);
-        } else {
-          onChange?.(nextMode(value));
-        }
+        onAltP();
       }
     };
     window.addEventListener('keydown', onKeyDown);

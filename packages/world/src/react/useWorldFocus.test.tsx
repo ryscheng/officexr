@@ -162,7 +162,7 @@ describe('isTypingTarget', () => {
     expect(isTypingTarget(document.createElement('input'))).toBe(true);
     expect(isTypingTarget(document.createElement('textarea'))).toBe(true);
     expect(isTypingTarget(editable)).toBe(true);
-    expect(isTypingTarget(document.createElement('button'))).toBeFalsy();
+    expect(isTypingTarget(document.createElement('button'))).toBe(false);
     expect(isTypingTarget(window)).toBe(false);
     expect(isTypingTarget(null)).toBe(false);
   });
