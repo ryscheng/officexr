@@ -6,6 +6,7 @@ import {
 } from '@officexr/world/scenes';
 import type { StudioDocuments } from '../studio-documents.ts';
 import { documentSchema, errorResult, guard, jsonResult } from './shared.ts';
+import { YAW_CONTRACT } from './yaw.ts';
 
 export function registerWorldTools(
   server: McpServer,
@@ -16,8 +17,9 @@ export function registerWorldTools(
     {
       description:
         'Read the catalog of world-object kinds (id, label, model path, swatch, walkable, scale, material ' +
-        'overrides). Rooms and layouts reference kinds by id. `scale` is a unitless uniform multiplier (1 = model ' +
-        'size unchanged); dimensions are in metres, and a voxel position puts the model\'s bounding-box minimum corner at that voxel cell.',
+        'overrides, rotationStepDeg). Rooms and layouts reference kinds by id. `scale` is a unitless uniform multiplier (1 = model ' +
+        'size unchanged); dimensions are in metres, and a voxel position puts the model\'s bounding-box minimum corner at that voxel cell. ' +
+        YAW_CONTRACT,
     },
     () =>
       guard(async () => {
@@ -30,7 +32,9 @@ export function registerWorldTools(
     {
       description:
         'Replace the whole world-object-kind catalog; it is validated and nothing is written if invalid. ' +
-        'Call get_world_object_kinds first and edit that document; `scale` is a unitless multiplier (1 = unchanged).',
+        'Call get_world_object_kinds first and edit that document; `scale` is a unitless multiplier (1 = unchanged). ' +
+        '`rotationStepDeg` must be a positive integer dividing 360, else the catalog is rejected. ' +
+        YAW_CONTRACT,
       inputSchema: { catalog: documentSchema },
     },
     (args) =>
