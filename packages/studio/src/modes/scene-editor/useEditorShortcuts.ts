@@ -1,25 +1,21 @@
 import { useEffect, type Dispatch, type SetStateAction } from 'react';
-import {
-  DEFAULT_ROTATION_STEP_DEG,
-  normalizeYawDeg,
-} from '@officexr/world/scenes';
+import { nextAllowedYaw } from '@officexr/world/scenes';
 import { useApplication } from '@officexr/world/react';
-import type { useRoomDocument } from '../room/useRoomDocument.ts';
 import { selectionIsExactlyOneGroup } from '../room/room-selection.ts';
 import type { Tool } from './tools.ts';
 
-type ShortcutDoc = Pick<
-  ReturnType<typeof useRoomDocument>,
-  | 'selection'
-  | 'lookup'
-  | 'clearSelection'
-  | 'groupCommands'
-  | 'ungroupCommands'
-  | 'undo'
-  | 'redo'
-  | 'deleteSelection'
-  | 'rotateSelection'
->;
+/** The document operations the editor shortcuts drive. */
+export interface ShortcutDoc {
+  selection: ReadonlySet<string>;
+  lookup: { groupMembers: ReadonlyMap<string, readonly string[]> };
+  clearSelection(): void;
+  groupCommands(commandIds: Iterable<string>): unknown;
+  ungroupCommands(groupId: string): void;
+  undo(): void;
+  redo(): void;
+  deleteSelection(): void;
+  rotateSelection(): void;
+}
 
 interface EditorShortcutsOptions {
   doc: ShortcutDoc;
@@ -101,12 +97,13 @@ export function useEditorShortcuts({
       } else if (k === 'e') {
         setBuildHeight((y) => y + 1);
       } else if (k === 'r') {
-        if (doc.selection.size > 0) {
+        // Add keeps the object it just placed selected, so the staged
+        // object must win over the selection while Add is active.
+        if (tool === 'add' && stagedKindId) {
+          const kind = catalog.getKind(stagedKindId);
+          setStagedYawDeg((yaw) => nextAllowedYaw(kind, yaw));
+        } else if (doc.selection.size > 0) {
           doc.rotateSelection();
-        } else if (tool === 'add' && stagedKindId) {
-          const step =
-            catalog.getKind(stagedKindId)?.rotationStepDeg ?? DEFAULT_ROTATION_STEP_DEG;
-          setStagedYawDeg((yaw) => normalizeYawDeg(yaw + step));
         }
       } else if (k === 'v') {
         setTool('select');

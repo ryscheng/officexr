@@ -206,14 +206,16 @@ test('R rotates the selected object by its kind step and undo restores it', asyn
     throw new Error('canvas has no bounding box');
   }
   const block = blueCentroid(await canvas.screenshot());
-  const selectBlock = async () => {
-    // R3F raycasts on pointer moves, so hover before pressing.
-    await page.mouse.move(box.x + block.x, box.y + block.y);
-    await page.waitForTimeout(200);
-    await page.mouse.down();
-    await page.mouse.up();
-  };
-  const yaw = page.locator('div:has(> label:text-is("yaw°")) button[role="combobox"]');
+  const yaw = page.getByRole('combobox', { name: 'yaw°' });
+  // R3F raycasts on pointer moves, and a click can land before the scene
+  // has picked up the hover, so retry until the inspector shows the block.
+  const selectBlock = () =>
+    expect(async () => {
+      await page.mouse.move(box.x + block.x, box.y + block.y);
+      await page.mouse.down();
+      await page.mouse.up();
+      await expect(yaw).toBeVisible({ timeout: 500 });
+    }).toPass();
 
   await selectBlock();
   await expect(yaw).toHaveText('0');
@@ -222,8 +224,24 @@ test('R rotates the selected object by its kind step and undo restores it', asyn
   await expect(yaw).toHaveText('90');
 
   await page.keyboard.press('Control+z');
+  await expect(yaw).toBeHidden();
   await selectBlock();
   await expect(yaw).toHaveText('0');
+
+  // With the Add tool, R turns the staged object, and placing keeps that yaw
+  // (the placed object is selected, so the inspector shows it).
+  await page.check('#room-show-layout-objects');
+  await page.click('button[title="Blue block"]');
+  await page.keyboard.press('r');
+  await expect(async () => {
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.8);
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect(page.getByRole('combobox', { name: 'kind' })).toHaveText('colored_block_blue', {
+      timeout: 500,
+    });
+  }).toPass();
+  await expect(yaw).toHaveText('90');
 });
 
 /** Centroid, in canvas pixels, of the distinctly blue pixels in a screenshot. */

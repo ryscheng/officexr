@@ -134,18 +134,20 @@ export function applyAction(doc: RoomDocument, action: EditAction): RoomDocument
 
     case 'setYaw':
     case 'setYawMany': {
-      const yaws =
+      const yaws = new Map(
         action.type === 'setYaw'
-          ? new Map([[action.commandId, action.yawDeg]])
-          : new Map(action.yaws.map((y) => [y.commandId, y.yawDeg]));
+          ? [[action.commandId, action.yawDeg]]
+          : action.yaws.map((y) => [y.commandId, y.yawDeg]),
+      );
       return {
         ...doc,
         updatedAt: Date.now(),
-        commands: doc.commands.map((c) =>
-          c.op === 'placeObject' && yaws.has(c.id)
-            ? { ...c, yawDeg: normalizeYawDeg(yaws.get(c.id)!) }
-            : c,
-        ),
+        commands: doc.commands.map((c) => {
+          const yawDeg = yaws.get(c.id);
+          return c.op === 'placeObject' && yawDeg !== undefined
+            ? { ...c, yawDeg: normalizeYawDeg(yawDeg) }
+            : c;
+        }),
       };
     }
 

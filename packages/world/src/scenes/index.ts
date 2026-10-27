@@ -93,6 +93,7 @@ export {
   validateCubeKindCatalog,
   normalizeKind,
   isYawAllowed,
+  nextAllowedYaw,
   DEFAULT_ROTATION_STEP_DEG,
 } from './world-object-kinds-schema.ts';
 // Module-globals for the kind catalog were removed in the three-layer

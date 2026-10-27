@@ -21,6 +21,7 @@ import type { Tool } from '../scene-editor/tools.ts';
 import { SceneEditorCanvas } from '../scene-editor/SceneEditorCanvas.tsx';
 import type { SceneEditorBackend } from '../scene-editor/SceneEditorBackend.ts';
 import { useEditorShortcuts } from '../scene-editor/useEditorShortcuts.ts';
+import { useStagedObject } from '../scene-editor/useStagedObject.ts';
 import { selectionIsExactlyOneGroup } from '../room/room-selection.ts';
 import { LayoutPicker } from './LayoutPicker.tsx';
 import { useLayoutDocument } from './useLayoutDocument.ts';
@@ -151,16 +152,13 @@ function BakeStatusPill({ layoutName }: { layoutName: string }) {
 export function LayoutApp() {
   const layoutDoc = useLayoutDocument();
   const [tool, setTool] = useState<Tool>('select');
-  const [stagedKindId, setStagedKindId] = useState<string | null>(null);
+  const { stagedKindId, stagedYawDeg, setStagedYawDeg, stageKind } = useStagedObject();
   const [buildHeight, setBuildHeight] = useState<number>(0);
-  const [stagedYawDeg, setStagedYawDeg] = useState<number>(0);
 
   const handleStage = useCallback((kindId: string | null) => {
-    setStagedKindId(kindId);
-    // A new kind may have a coarser rotation step than the current yaw.
-    setStagedYawDeg(0);
+    stageKind(kindId);
     setTool(kindId ? 'add' : 'select');
-  }, []);
+  }, [stageKind]);
 
   const handlePlace = useCallback(
     (position: [number, number, number]) => {

@@ -11,6 +11,7 @@ import { SceneEditorCanvas } from '../scene-editor/SceneEditorCanvas.tsx';
 import { Toolbar } from '../scene-editor/Toolbar.tsx';
 import { useRoomDocument } from './useRoomDocument.ts';
 import { useEditorShortcuts } from '../scene-editor/useEditorShortcuts.ts';
+import { useStagedObject } from '../scene-editor/useStagedObject.ts';
 import { selectionIsExactlyOneGroup } from './room-selection.ts';
 import type { Tool } from '../scene-editor/tools.ts';
 import type { SceneEditorBackend } from '../scene-editor/SceneEditorBackend.ts';
@@ -28,7 +29,7 @@ import type { SceneEditorBackend } from '../scene-editor/SceneEditorBackend.ts';
 export function RoomApp() {
   const roomDoc = useRoomDocument();
   const [tool, setTool] = useState<Tool>('select');
-  const [stagedKindId, setStagedKindId] = useState<string | null>(null);
+  const { stagedKindId, stagedYawDeg, setStagedYawDeg, stageKind } = useStagedObject();
   // Session-local toggle: show layout objects (walls/floors) in the palette.
   // Defaults to hidden so the Room palette focuses on furnishings.
   const [showLayoutObjects, setShowLayoutObjects] = useState(false);
@@ -39,16 +40,13 @@ export function RoomApp() {
   // y=0 (negative voxels) by pressing Q, or stack high in the sky by
   // pressing E.
   const [buildHeight, setBuildHeight] = useState<number>(0);
-  const [stagedYawDeg, setStagedYawDeg] = useState<number>(0);
 
   // Picking a kind in the palette implies "I want to place this".
   // Switch to Add automatically; un-pick reverts to Select.
   const handleStage = useCallback((kindId: string | null) => {
-    setStagedKindId(kindId);
-    // A new kind may have a coarser rotation step than the current yaw.
-    setStagedYawDeg(0);
+    stageKind(kindId);
     setTool(kindId ? 'add' : 'select');
-  }, []);
+  }, [stageKind]);
 
   // Place via the Add tool. Tool stays Add so the user can keep
   // dropping cubes — Esc (or clicking Select in the toolbar) ends

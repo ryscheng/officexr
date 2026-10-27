@@ -305,13 +305,16 @@ function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
   const kinds = useCatalog();
   const kindOptions = useMemo(() => kinds.map((k) => k.id), [kinds]);
   const kind = kinds.find((k) => k.id === command.kindId);
-  const yawOptions = useMemo(
-    () =>
-      Array.from({ length: 360 }, (_, deg) => deg)
-        .filter((deg) => isYawAllowed(kind, deg))
-        .map(String),
-    [kind],
-  );
+  const yawDeg = command.yawDeg ?? 0;
+  const yawOptions = useMemo(() => {
+    const allowed = Array.from({ length: 360 }, (_, deg) => deg)
+      .filter((deg) => isYawAllowed(kind, deg))
+      .map((deg) => ({ value: String(deg) }));
+    // Keep an off-step yaw (from a kind change or a hand-edited doc) visible.
+    return isYawAllowed(kind, yawDeg)
+      ? allowed
+      : [{ value: String(yawDeg), label: `${yawDeg} (not allowed)` }, ...allowed];
+  }, [kind, yawDeg]);
 
   return (
     <Panel>
@@ -339,7 +342,7 @@ function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
         />
         <SelectInput
           label="yaw°"
-          value={String(command.yawDeg ?? 0)}
+          value={String(yawDeg)}
           options={yawOptions}
           onChange={(yaw) => roomDoc.setYawForCommand(command.id, Number(yaw))}
         />
