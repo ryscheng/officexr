@@ -257,7 +257,6 @@ function ObjectInstancesView({
           key={kind.id}
           kind={kind}
           instances={instances}
-          voxelSize={worldObjects.cubeSize}
           materialOverride={materialOverride}
         />
       ))}
@@ -267,7 +266,6 @@ function ObjectInstancesView({
           kindId={kindId}
           color={color}
           instances={instances}
-          voxelSize={worldObjects.cubeSize}
         />
       ))}
     </>
@@ -276,8 +274,6 @@ function ObjectInstancesView({
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
-/** Writes an instance's mesh-root translation and yaw from the geometry
- * service into `pos` / `quat`. */
 function setInstancePose(
   geometry: InstanceGeometryService,
   inst: ObjectInstance,
@@ -292,7 +288,6 @@ function setInstancePose(
 interface KindInstanceGroupProps {
   kind: WorldObjectKind;
   instances: ObjectInstance[];
-  voxelSize: number;
   materialOverride?: MaterialOverride;
 }
 
@@ -304,7 +299,6 @@ interface KindInstanceGroupProps {
 function KindInstanceGroup({
   kind,
   instances,
-  voxelSize,
   materialOverride,
 }: KindInstanceGroupProps) {
   const { geometry } = useApplication();
@@ -359,7 +353,7 @@ function KindInstanceGroup({
     // uninitialized matrices. Re-running this effect refills them so a
     // live tint/opacity edit from the Object editor doesn't scramble
     // object positions.
-  }, [instances, voxelSize, kind.scale, mat, geometry]);
+  }, [instances, kind.scale, mat, geometry]);
 
   // userData lets the editor's R3F overlay raycast and identify which
   // kind / instance was hit. The caller can read `intersection.object.userData.kindId`
@@ -379,7 +373,6 @@ interface PrimitiveInstanceGroupProps {
   kindId: string;
   color: string;
   instances: ObjectInstance[];
-  voxelSize: number;
 }
 
 /**
@@ -398,7 +391,6 @@ function PrimitiveInstanceGroup({
   kindId,
   color,
   instances,
-  voxelSize,
 }: PrimitiveInstanceGroupProps) {
   const { geometry } = useApplication();
   const geom = useMemo(
@@ -440,7 +432,7 @@ function PrimitiveInstanceGroup({
     mesh.count = instances.length;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [instances, voxelSize, mat, geometry]);
+  }, [instances, mat, geometry]);
 
   return (
     <instancedMesh

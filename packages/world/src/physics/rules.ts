@@ -1,6 +1,8 @@
 import type { ObjectInstance, Vec3, WorldObjects } from '@officexr/sdk';
 import type { ColliderShapeSpec } from '../scenes/world-object-kinds-schema.ts';
 import { normalizeYawDeg } from '../scenes/commands.ts';
+import { rotateXZ, type QuarterTurns } from '../app/geometry-service.ts';
+import type { WorldAABB } from '../app/types.ts';
 
 /**
  * Game-physics constants + helpers that EVERY character in the world
@@ -153,10 +155,7 @@ export interface InstanceAABBLookup {
     position: readonly [number, number, number],
     kindId: string,
     yawDeg?: number,
-  ): {
-    min: readonly [number, number, number];
-    max: readonly [number, number, number];
-  };
+  ): WorldAABB;
 }
 
 /** Collider-shape lookup: returns the optional `colliderShape` override
@@ -189,7 +188,7 @@ function compoundStepCuboids(
   ox: number,
   oy: number,
   oz: number,
-  aabb: { min: readonly [number, number, number]; max: readonly [number, number, number] },
+  aabb: WorldAABB,
   spec: import('../scenes/world-object-kinds-schema.ts').CompoundStepsSpec,
 ): CuboidDescriptor[] {
   const { stepCount, stepRise, stepRun, stepDepth } = spec;
@@ -226,7 +225,7 @@ function compoundStepCuboids(
  * Walk `worldObjects.instances` and emit cuboid collider descriptors.
  *
  * When `aabbLookup` is provided, each cuboid uses the kind's true AABB
- * (canonical convention: X/Z centred, Y bottom at voxel*cubeSize).
+ * (canonical convention: min corner at voxel*cubeSize).
  * When omitted, falls back to the legacy one-voxel cube — preserved so
  * existing unit tests that don't have a catalog keep working.
  *
@@ -236,8 +235,8 @@ function compoundStepCuboids(
  * always get the single-AABB behaviour (no regression for them).
  *
  * OCP note: the default AABB path is never touched by a new collider
- * shape variant — each new shape adds a branch here without modifying
- * the existing code paths.
+ * shape variant — each new shape adds a case to `shapeColliders`
+ * without modifying the existing code paths.
  */
 export function worldObjectsToCuboids(
   worldObjects: WorldObjects,
@@ -292,11 +291,6 @@ export function worldObjectsToColliders(
   return out;
 }
 
-type AABB = {
-  min: readonly [number, number, number];
-  max: readonly [number, number, number];
-};
-
 function instanceColliders(
   inst: ObjectInstance,
   aabbLookup: InstanceAABBLookup,
@@ -304,20 +298,20 @@ function instanceColliders(
 ): ColliderDescriptor[] {
   const yawDeg = normalizeYawDeg(inst.yawDeg ?? 0);
   if (!shapeSpec || yawDeg % 90 !== 0) {
-    // ponytail: off-quarter-turn stairs, scans and slopes collide as one solid box over the rotated AABB.
+    // ponytail: off-quarter-turn stairs/scans/slopes collide as one box; inadequate once such a kind allows a sub-90° rotationStepDeg.
     return [{ type: 'cuboid', ...cuboidOver(aabbLookup(inst.position, inst.kindId, yawDeg)) }];
   }
   const aabb = aabbLookup(inst.position, inst.kindId);
   return rotateDescriptorsAboutCentre(
     shapeColliders(aabb, shapeSpec),
     { x: (aabb.min[0] + aabb.max[0]) / 2, z: (aabb.min[2] + aabb.max[2]) / 2 },
-    yawDeg / 90,
+    (yawDeg / 90) as QuarterTurns,
   );
 }
 
 /** A collider shape in world space for an unrotated instance whose
  * world AABB is `aabb`. */
-function shapeColliders(aabb: AABB, spec: ColliderShapeSpec): ColliderDescriptor[] {
+function shapeColliders(aabb: WorldAABB, spec: ColliderShapeSpec): ColliderDescriptor[] {
   switch (spec.kind) {
     case 'compound-steps':
       return compoundStepCuboids(aabb.min[0], aabb.min[1], aabb.min[2], aabb, spec).map((c) => ({
@@ -335,7 +329,7 @@ function shapeColliders(aabb: AABB, spec: ColliderShapeSpec): ColliderDescriptor
   }
 }
 
-function cuboidOver(aabb: AABB): CuboidDescriptor {
+function cuboidOver(aabb: WorldAABB): CuboidDescriptor {
   return {
     center: {
       x: (aabb.min[0] + aabb.max[0]) / 2,
@@ -355,14 +349,11 @@ function cuboidOver(aabb: AABB): CuboidDescriptor {
 function rotateDescriptorsAboutCentre(
   descriptors: ColliderDescriptor[],
   centre: { x: number; z: number },
-  quarterTurns: number,
+  quarterTurns: QuarterTurns,
 ): ColliderDescriptor[] {
   if (quarterTurns === 0) return descriptors;
   const rotate = (x: number, z: number): [number, number] => {
-    const dx = x - centre.x;
-    const dz = z - centre.z;
-    const [rx, rz] =
-      quarterTurns === 1 ? [dz, -dx] : quarterTurns === 2 ? [-dx, -dz] : [-dz, dx];
+    const [rx, rz] = rotateXZ(quarterTurns, x - centre.x, z - centre.z);
     return [centre.x + rx, centre.z + rz];
   };
   return descriptors.map((d) => {
@@ -386,10 +377,7 @@ function rotateDescriptorsAboutCentre(
 /** Map a normalized (0..1 in local-AABB space) trimesh through the
  * placed instance's world AABB — same convention as scanned cuboids. */
 function trimeshToWorld(
-  aabb: {
-    min: readonly [number, number, number];
-    max: readonly [number, number, number];
-  },
+  aabb: WorldAABB,
   positions: readonly number[],
   indices: readonly number[],
 ): TrimeshDescriptor {
@@ -413,10 +401,7 @@ function trimeshToWorld(
  * mesh-origin / uniform-scale convention changes without re-scanning.
  */
 function scannedCuboidsToWorld(
-  aabb: {
-    min: readonly [number, number, number];
-    max: readonly [number, number, number];
-  },
+  aabb: WorldAABB,
   cuboids: ReadonlyArray<{
     min: [number, number, number];
     max: [number, number, number];

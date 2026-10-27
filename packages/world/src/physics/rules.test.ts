@@ -163,10 +163,12 @@ describe('physics/rules', () => {
       wall: { id: 'wall', dimensions: { width: 4, height: 2, depth: 1 } } as WorldObjectKind,
       stairs: { id: 'stairs', dimensions: { width: 2, height: 2, depth: 1 } } as WorldObjectKind,
       ramp: { id: 'ramp', dimensions: { width: 4, height: 2, depth: 1 } } as WorldObjectKind,
+      scan: { id: 'scan', dimensions: { width: 2, height: 2, depth: 1 } } as WorldObjectKind,
     };
     const shapes: Record<string, ColliderShapeSpec> = {
       stairs: { kind: 'compound-steps', stepCount: 4, stepRise: 0.5, stepRun: 0.5, stepDepth: 1 },
       ramp: { kind: 'trimesh', positions: [0, 0, 0, 1, 0, 0, 0, 1, 1], indices: [0, 1, 2] },
+      scan: { kind: 'scanned-cuboids', cuboids: [{ min: [0, 0, 0], max: [0.25, 0.5, 1] }] },
     };
     const geometry = createInstanceGeometry({
       catalog: { getKind: (id) => kinds[id] },
@@ -224,6 +226,14 @@ describe('physics/rules', () => {
       );
       expect((highest.center.x - lowest.center.x) / run).toBeCloseTo(dir[0], 9);
       expect((highest.center.z - lowest.center.z) / run).toBeCloseTo(dir[1], 9);
+    });
+
+    it('turns scanned cuboids of a non-square kind at yaw 90', () => {
+      // Footprint x 1..3, z 2..3 (centre (2, 2.5)); the scan covers
+      // x 1..1.5, z 2..3, which a quarter turn maps to x 1.5..2.5, z 3..3.5.
+      expect(colliders('scan', 90)).toEqual([
+        { type: 'cuboid', center: { x: 2, y: 0.5, z: 3.25 }, halfExtents: { x: 0.5, y: 0.5, z: 0.25 } },
+      ]);
     });
 
     it('rotates slope trimesh vertices about the footprint centre', () => {

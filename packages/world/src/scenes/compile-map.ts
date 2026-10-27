@@ -7,6 +7,7 @@ import {
   type SceneCommand,
 } from './commands.ts';
 import { compileScene, type KindStrideLookup } from './compile.ts';
+import { rotateXZ } from '../app/geometry-service.ts';
 
 /**
  * Optional layout resolver for baked-only rooms. When provided, a room
@@ -103,11 +104,6 @@ export function compileMap(
   instances.sort((a, b) => a.id.localeCompare(b.id));
   // cubeSize key is required by the SDK WorldObjects type — kept as-is.
   return { cubeSize: voxelSize, instances };
-}
-
-/** Same sense as three.js `rotation.y = rot·π/2` (the map editor's room group). */
-function rotateXZ(rot: 0 | 1 | 2 | 3, x: number, z: number): [number, number] {
-  return rot === 0 ? [x, z] : rot === 1 ? [z, -x] : rot === 2 ? [-x, -z] : [-z, x];
 }
 
 function applyRoomInstance(
