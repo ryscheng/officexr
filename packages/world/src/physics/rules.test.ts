@@ -9,8 +9,14 @@ import {
   respawnThreshold,
   shouldRespawnFalling,
   SPAWN_DROP_HEIGHT,
+  worldObjectsToColliders,
   worldObjectsToCuboids,
 } from './rules.ts';
+import { createInstanceGeometry } from '../app/geometry-service.ts';
+import type {
+  ColliderShapeSpec,
+  WorldObjectKind,
+} from '../scenes/world-object-kinds-schema.ts';
 
 function inst(x: number, y: number, z: number) {
   return {
@@ -148,6 +154,110 @@ describe('physics/rules', () => {
       // Ascending tops: 1, 2, 4 (normalized 0.25/0.5/1 of the 4 m AABB).
       const tops = out.map((c) => c.center.y + c.halfExtents.y);
       expect(tops).toEqual([1, 2, 4]);
+    });
+  });
+
+  describe('yawed instances', () => {
+    const VOXEL = 0.5;
+    const kinds: Record<string, WorldObjectKind> = {
+      wall: { id: 'wall', dimensions: { width: 4, height: 2, depth: 1 } } as WorldObjectKind,
+      stairs: { id: 'stairs', dimensions: { width: 2, height: 2, depth: 1 } } as WorldObjectKind,
+      ramp: { id: 'ramp', dimensions: { width: 4, height: 2, depth: 1 } } as WorldObjectKind,
+    };
+    const shapes: Record<string, ColliderShapeSpec> = {
+      stairs: { kind: 'compound-steps', stepCount: 4, stepRise: 0.5, stepRun: 0.5, stepDepth: 1 },
+      ramp: { kind: 'trimesh', positions: [0, 0, 0, 1, 0, 0, 0, 1, 1], indices: [0, 1, 2] },
+    };
+    const geometry = createInstanceGeometry({
+      catalog: { getKind: (id) => kinds[id] },
+      voxelSize: VOXEL,
+    });
+    const colliders = (kindId: string, yawDeg: number) =>
+      worldObjectsToColliders(
+        {
+          cubeSize: VOXEL,
+          instances: [{ id: 'a', sourceCommandId: 'a', kindId, position: [2, 0, 4], yawDeg }],
+        },
+        geometry.worldAABB,
+        (id) => shapes[id],
+      );
+
+    it('turns a 4×1 wall at yaw 90 into a 1×4 cuboid around the same centre', () => {
+      const [flat] = worldObjectsToCuboids(
+        {
+          cubeSize: VOXEL,
+          instances: [{ id: 'a', sourceCommandId: 'a', kindId: 'wall', position: [2, 0, 4] }],
+        },
+        geometry.worldAABB,
+      );
+      const [turned] = colliders('wall', 90);
+      expect(turned).toEqual({
+        type: 'cuboid',
+        center: flat.center,
+        halfExtents: { x: 0.5, y: 1, z: 2 },
+      });
+    });
+
+    it.each([
+      { yawDeg: 0, dir: [-1, 0] },
+      { yawDeg: 90, dir: [0, 1] },
+      { yawDeg: 180, dir: [1, 0] },
+      { yawDeg: 270, dir: [0, -1] },
+    ])('stairs at yaw $yawDeg ascend toward $dir', ({ yawDeg, dir }) => {
+      const steps = colliders('stairs', yawDeg).map((c) => {
+        if (c.type !== 'cuboid') throw new Error('expected cuboid steps');
+        return c;
+      });
+      const box = geometry.worldAABB([2, 0, 4], 'stairs', yawDeg);
+      for (const s of steps) {
+        expect(s.center.x - s.halfExtents.x).toBeGreaterThanOrEqual(box.min[0] - 1e-9);
+        expect(s.center.x + s.halfExtents.x).toBeLessThanOrEqual(box.max[0] + 1e-9);
+        expect(s.center.z - s.halfExtents.z).toBeGreaterThanOrEqual(box.min[2] - 1e-9);
+        expect(s.center.z + s.halfExtents.z).toBeLessThanOrEqual(box.max[2] + 1e-9);
+      }
+      const lowest = steps[0];
+      const highest = steps[steps.length - 1];
+      expect(highest.halfExtents.y).toBeGreaterThan(lowest.halfExtents.y);
+      const run = Math.hypot(
+        highest.center.x - lowest.center.x,
+        highest.center.z - lowest.center.z,
+      );
+      expect((highest.center.x - lowest.center.x) / run).toBeCloseTo(dir[0], 9);
+      expect((highest.center.z - lowest.center.z) / run).toBeCloseTo(dir[1], 9);
+    });
+
+    it('rotates slope trimesh vertices about the footprint centre', () => {
+      const flat = colliders('ramp', 0)[0];
+      const turned = colliders('ramp', 270)[0];
+      if (flat.type !== 'trimesh' || turned.type !== 'trimesh') throw new Error('expected trimesh');
+      // Footprint x 1..5, z 2..3 → centre (3, 2.5); yaw 270 maps offset (dx, dz) → (−dz, dx).
+      const expected: number[] = [];
+      for (let i = 0; i < flat.vertices.length; i += 3) {
+        const dx = flat.vertices[i] - 3;
+        const dz = flat.vertices[i + 2] - 2.5;
+        expected.push(3 - dz, flat.vertices[i + 1], 2.5 + dx);
+      }
+      expect(turned.vertices).toEqual(expected.map((v) => expect.closeTo(v, 9)));
+      expect(turned.indices).toEqual(flat.indices);
+    });
+
+    it('falls back to one cuboid over the rotated AABB for a 45° shaped kind', () => {
+      const box = geometry.worldAABB([2, 0, 4], 'stairs', 45);
+      expect(colliders('stairs', 45)).toEqual([
+        {
+          type: 'cuboid',
+          center: {
+            x: (box.min[0] + box.max[0]) / 2,
+            y: (box.min[1] + box.max[1]) / 2,
+            z: (box.min[2] + box.max[2]) / 2,
+          },
+          halfExtents: {
+            x: (box.max[0] - box.min[0]) / 2,
+            y: (box.max[1] - box.min[1]) / 2,
+            z: (box.max[2] - box.min[2]) / 2,
+          },
+        },
+      ]);
     });
   });
 

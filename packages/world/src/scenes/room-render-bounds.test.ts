@@ -28,14 +28,17 @@ import { compileScene, type KindStrideLookup } from './compile.ts';
 import { compileMap } from './compile-map.ts';
 import { deserializeScene, deserializeMap, migrateToV5 } from './serialize.ts';
 import { deserializeLayout, type LayoutDocument } from './layout-document.ts';
-import type { RoomDocument } from './commands.ts';
+import { emptyRoomDocument, newPlaceObject, type RoomDocument } from './commands.ts';
 import type { ObjectInstance } from '@officexr/sdk';
+import { createInstanceGeometry } from '../app/geometry-service.ts';
 import {
   validateWorldObjectKindCatalog,
   type WorldObjectKind,
 } from './world-object-kinds-schema.ts';
 
 const VOXEL_SIZE = 0.5;
+
+type Vec3 = readonly [number, number, number];
 
 /** Stride lookup that reads directly from the on-disk catalog so the
  * test is independent of `object-kind-catalog.ts` module state (the
@@ -85,7 +88,7 @@ function instanceAABB(
 }
 
 function unionAABB(
-  boxes: ReadonlyArray<{ min: [number, number, number]; max: [number, number, number] }>,
+  boxes: ReadonlyArray<{ min: Vec3; max: Vec3 }>,
 ): { min: [number, number, number]; max: [number, number, number] } {
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
@@ -98,10 +101,7 @@ function unionAABB(
   return { min, max };
 }
 
-function extents(box: {
-  min: [number, number, number];
-  max: [number, number, number];
-}): [number, number, number] {
+function extents(box: { min: Vec3; max: Vec3 }): [number, number, number] {
   return [
     box.max[0] - box.min[0],
     box.max[1] - box.min[1],
@@ -113,8 +113,8 @@ function extents(box: {
  * volume. Touching faces (max == min) are NOT considered an overlap —
  * adjacent cubes should pass. */
 function overlaps(
-  a: { min: [number, number, number]; max: [number, number, number] },
-  b: { min: [number, number, number]; max: [number, number, number] },
+  a: { min: Vec3; max: Vec3 },
+  b: { min: Vec3; max: Vec3 },
 ): boolean {
   const EPS = 1e-6;
   for (let axis = 0; axis < 3; axis++) {
@@ -238,5 +238,52 @@ describe('room render bounds', () => {
 
     const overlapsFound = findOverlapping(instances, kindById);
     expect(overlapsFound).toEqual([]);
+  });
+
+  describe('rotated placements', () => {
+    const geometry = createInstanceGeometry({
+      catalog: { getKind: (id) => kindById.get(id) },
+      voxelSize: VOXEL_SIZE,
+    });
+    const compileRotated = (room: RoomDocument, layout?: LayoutDocument) => {
+      const map = deserializeMap(longCorridorMapJson);
+      if (map.schemaVersion !== 2) {
+        throw new Error('committed long_corridor map is not v2');
+      }
+      map.rooms = [{ ...map.rooms[0], roomName: room.name, rotationY: 1 }];
+      return compileMap(
+        map,
+        new Map([[room.name, room]]),
+        VOXEL_SIZE,
+        kindStride,
+        () => layout,
+        geometry.worldAABB,
+      ).instances.map((inst) => ({ id: inst.id, box: geometry.worldAABBOfInstance(inst) }));
+    };
+
+    it('long_corridor map turned a quarter composes to an 8 m × 4 m × 2 m AABB', () => {
+      const room = migrateToV5(deserializeScene(defaultV2RoomJson));
+      const boxes = compileRotated(room, deserializeLayout(longCorridorLayoutJson));
+
+      expect(boxes.length).toBeGreaterThan(0);
+      const [w, h, d] = extents(unionAABB(boxes.map((b) => b.box)));
+      expect(w).toBeCloseTo(8, 5);
+      expect(d).toBeCloseTo(4, 5);
+      expect(h).toBeCloseTo(2, 5);
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          expect(overlaps(boxes[i].box, boxes[j].box), `${boxes[i].id} × ${boxes[j].id}`).toBe(false);
+        }
+      }
+    });
+
+    it('a 4 m × 1 m wall in a quarter-turned room renders 1 m × 4 m', () => {
+      const room = emptyRoomDocument('wall-room');
+      room.commands.push(newPlaceObject({ kindId: 'prototype_primitive_wall', position: [0, 0, 0] }));
+      const [wall] = compileRotated(room);
+      const [w, , d] = extents(wall.box);
+      expect(w).toBeCloseTo(1, 5);
+      expect(d).toBeCloseTo(4, 5);
+    });
   });
 });

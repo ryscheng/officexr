@@ -1,5 +1,6 @@
-import type { Vec3, WorldObjects } from '@officexr/sdk';
+import type { ObjectInstance, Vec3, WorldObjects } from '@officexr/sdk';
 import type { ColliderShapeSpec } from '../scenes/world-object-kinds-schema.ts';
+import { normalizeYawDeg } from '../scenes/commands.ts';
 
 /**
  * Game-physics constants + helpers that EVERY character in the world
@@ -151,6 +152,7 @@ export interface InstanceAABBLookup {
   (
     position: readonly [number, number, number],
     kindId: string,
+    yawDeg?: number,
   ): {
     min: readonly [number, number, number];
     max: readonly [number, number, number];
@@ -272,41 +274,7 @@ export function worldObjectsToColliders(
   const out: ColliderDescriptor[] = [];
   for (const inst of worldObjects.instances) {
     if (aabbLookup) {
-      const aabb = aabbLookup(inst.position, inst.kindId);
-      // Check for a collider-shape override before falling back to single AABB.
-      const shapeSpec = colliderShapeLookup?.(inst.kindId);
-      if (shapeSpec?.kind === 'compound-steps') {
-        const ox = aabb.min[0];
-        const oy = aabb.min[1];
-        const oz = aabb.min[2];
-        for (const c of compoundStepCuboids(ox, oy, oz, aabb, shapeSpec)) {
-          out.push({ type: 'cuboid', ...c });
-        }
-        continue;
-      }
-      if (shapeSpec?.kind === 'scanned-cuboids') {
-        for (const c of scannedCuboidsToWorld(aabb, shapeSpec.cuboids)) {
-          out.push({ type: 'cuboid', ...c });
-        }
-        continue;
-      }
-      if (shapeSpec?.kind === 'trimesh') {
-        out.push(trimeshToWorld(aabb, shapeSpec.positions, shapeSpec.indices));
-        continue;
-      }
-      out.push({
-        type: 'cuboid',
-        center: {
-          x: (aabb.min[0] + aabb.max[0]) / 2,
-          y: (aabb.min[1] + aabb.max[1]) / 2,
-          z: (aabb.min[2] + aabb.max[2]) / 2,
-        },
-        halfExtents: {
-          x: (aabb.max[0] - aabb.min[0]) / 2,
-          y: (aabb.max[1] - aabb.min[1]) / 2,
-          z: (aabb.max[2] - aabb.min[2]) / 2,
-        },
-      });
+      out.push(...instanceColliders(inst, aabbLookup, colliderShapeLookup?.(inst.kindId)));
       continue;
     }
     // Legacy fallback path — one-voxel-cube colliders. Used by old
@@ -322,6 +290,97 @@ export function worldObjectsToColliders(
     });
   }
   return out;
+}
+
+type AABB = {
+  min: readonly [number, number, number];
+  max: readonly [number, number, number];
+};
+
+function instanceColliders(
+  inst: ObjectInstance,
+  aabbLookup: InstanceAABBLookup,
+  shapeSpec: ColliderShapeSpec | undefined,
+): ColliderDescriptor[] {
+  const yawDeg = normalizeYawDeg(inst.yawDeg ?? 0);
+  if (!shapeSpec || yawDeg % 90 !== 0) {
+    // ponytail: off-quarter-turn stairs, scans and slopes collide as one solid box over the rotated AABB.
+    return [{ type: 'cuboid', ...cuboidOver(aabbLookup(inst.position, inst.kindId, yawDeg)) }];
+  }
+  const aabb = aabbLookup(inst.position, inst.kindId);
+  return rotateDescriptorsAboutCentre(
+    shapeColliders(aabb, shapeSpec),
+    { x: (aabb.min[0] + aabb.max[0]) / 2, z: (aabb.min[2] + aabb.max[2]) / 2 },
+    yawDeg / 90,
+  );
+}
+
+/** A collider shape in world space for an unrotated instance whose
+ * world AABB is `aabb`. */
+function shapeColliders(aabb: AABB, spec: ColliderShapeSpec): ColliderDescriptor[] {
+  switch (spec.kind) {
+    case 'compound-steps':
+      return compoundStepCuboids(aabb.min[0], aabb.min[1], aabb.min[2], aabb, spec).map((c) => ({
+        type: 'cuboid',
+        ...c,
+      }));
+    case 'scanned-cuboids':
+      return scannedCuboidsToWorld(aabb, spec.cuboids).map((c) => ({ type: 'cuboid', ...c }));
+    case 'trimesh':
+      return [trimeshToWorld(aabb, spec.positions, spec.indices)];
+    default: {
+      const _exhaustive: never = spec;
+      return _exhaustive;
+    }
+  }
+}
+
+function cuboidOver(aabb: AABB): CuboidDescriptor {
+  return {
+    center: {
+      x: (aabb.min[0] + aabb.max[0]) / 2,
+      y: (aabb.min[1] + aabb.max[1]) / 2,
+      z: (aabb.min[2] + aabb.max[2]) / 2,
+    },
+    halfExtents: {
+      x: (aabb.max[0] - aabb.min[0]) / 2,
+      y: (aabb.max[1] - aabb.min[1]) / 2,
+      z: (aabb.max[2] - aabb.min[2]) / 2,
+    },
+  };
+}
+
+/** Turn world-space descriptors `quarterTurns` × 90° about the vertical
+ * line through `centre`, in the sense of three.js `rotation.y`. */
+function rotateDescriptorsAboutCentre(
+  descriptors: ColliderDescriptor[],
+  centre: { x: number; z: number },
+  quarterTurns: number,
+): ColliderDescriptor[] {
+  if (quarterTurns === 0) return descriptors;
+  const rotate = (x: number, z: number): [number, number] => {
+    const dx = x - centre.x;
+    const dz = z - centre.z;
+    const [rx, rz] =
+      quarterTurns === 1 ? [dz, -dx] : quarterTurns === 2 ? [-dx, -dz] : [-dz, dx];
+    return [centre.x + rx, centre.z + rz];
+  };
+  return descriptors.map((d) => {
+    if (d.type === 'trimesh') {
+      const vertices = [...d.vertices];
+      for (let i = 0; i < vertices.length; i += 3) {
+        [vertices[i], vertices[i + 2]] = rotate(vertices[i], vertices[i + 2]);
+      }
+      return { ...d, vertices };
+    }
+    const [x, z] = rotate(d.center.x, d.center.z);
+    const h = d.halfExtents;
+    return {
+      type: 'cuboid',
+      center: { x, y: d.center.y, z },
+      halfExtents: quarterTurns === 2 ? h : { x: h.z, y: h.y, z: h.x },
+    };
+  });
 }
 
 /** Map a normalized (0..1 in local-AABB space) trimesh through the

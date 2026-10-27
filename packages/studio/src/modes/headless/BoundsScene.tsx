@@ -128,7 +128,7 @@ export function BoundsScene({ sceneId }: BoundsSceneProps) {
 }
 
 interface SelectionWireframeProps {
-  instances: readonly { id: string; position: readonly [number, number, number]; kindId: string }[];
+  instances: readonly { id: string; position: readonly [number, number, number]; kindId: string; yawDeg?: number }[];
   selection: ReadonlySet<string>;
 }
 
@@ -143,7 +143,7 @@ function SelectionWireframe({ instances, selection }: SelectionWireframeProps) {
     const aabbs = [];
     for (const inst of instances) {
       if (!selection.has(inst.id)) continue;
-      aabbs.push(geometry.worldAABB(inst.position, inst.kindId));
+      aabbs.push(geometry.worldAABB(inst.position, inst.kindId, inst.yawDeg));
     }
     const positions = outlineEdgePositions(aabbs);
     if (positions.length === 0) return null;
