@@ -84,14 +84,7 @@ export function DebugApp() {
   // placed object (instead of the legacy one-voxel-cube collider that
   // let bots walk through 2 m blocks).
   const { geometry, catalog } = useApplication();
-  const instanceAABB = useCallback(
-    (
-      position: readonly [number, number, number],
-      kindId: string,
-    ): { min: readonly [number, number, number]; max: readonly [number, number, number] } =>
-      geometry.worldAABB(position, kindId),
-    [geometry],
-  );
+  const instanceAABB = geometry.worldAABB;
 
   // Collider-shape override lookup from the catalog. Threaded into
   // useStackSwitcher → BotPool → BotPhysicsWorld so compound-step

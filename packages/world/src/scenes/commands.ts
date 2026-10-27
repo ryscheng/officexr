@@ -159,6 +159,14 @@ export function normalizeYawDeg(yawDeg: number): number {
   return ((yawDeg % 360) + 360) % 360;
 }
 
+export type QuarterTurns = 0 | 1 | 2 | 3;
+
+/** Turns an X/Z offset about +Y in the same sense as three.js
+ * `rotation.y = rot·π/2` (and a map room's `rotationY`). */
+export function rotateXZ(rot: QuarterTurns, x: number, z: number): [number, number] {
+  return rot === 0 ? [x, z] : rot === 1 ? [z, -x] : rot === 2 ? [-x, -z] : [-z, x];
+}
+
 /**
  * Validates each placeObject's optional `yawDeg` and returns the commands
  * with it normalised to [0, 360). Throws when a yaw is present but not a

@@ -62,11 +62,11 @@ export function PlayView(props: PlayViewProps) {
 
   useEffect(() => {
     if (session.loaded) {
-      dispatch({ type: 'mapApplied', bakedColliders: session.bakedLayoutName !== undefined });
+      dispatch({ type: 'mapApplied', bakedLayouts: session.bakedLayouts });
     } else if (session.failed) {
       dispatch({ type: 'mapFailed', message: session.error ?? 'Could not load the map' });
     }
-  }, [session.loaded, session.failed, session.bakedLayoutName, session.error]);
+  }, [session.loaded, session.failed, session.bakedLayouts, session.error]);
 
   const { sync } = props;
   useEffect(() => {
@@ -92,19 +92,17 @@ export function PlayView(props: PlayViewProps) {
           view={worldConstants}
           worldFocused={worldFocused}
           spawnPoints={session.spawnPoints}
-          bakedLayoutPath={session.bakedLayoutPath}
-          bakedLayoutName={session.bakedLayoutName}
-          bakedPlacement={session.bakedPlacement}
+          bakedLayouts={session.bakedLayouts}
           onFrameStats={props.onFrameStats}
           selfReady={ready}
           onModelsReady={() => dispatch({ type: 'modelsReady' })}
-          onCollidersReady={() => dispatch({ type: 'collidersReady' })}
+          onCollidersReady={(roomInstanceId) => dispatch({ type: 'collidersReady', roomInstanceId })}
           onCollidersError={(err) =>
             dispatch({ type: 'collidersFailed', message: `Could not load the world: ${err.message}` })
           }
         />
       )}
-      <WorldHud cameraMode={cameraMode} realtime={props.realtime} bakedLayoutName={session.bakedLayoutName} />
+      <WorldHud cameraMode={cameraMode} realtime={props.realtime} bakedLayouts={session.bakedLayouts} />
       <FocusIndicator focused={worldFocused} />
       {props.error ? (
         <ErrorBanner message={props.error} onDismiss={() => props.onDismissError?.()} />

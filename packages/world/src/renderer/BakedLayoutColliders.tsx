@@ -12,8 +12,7 @@
  * describe physics.
  *
  * FALLBACK (stale pre-extras bakes only): traverse the scene and emit
- * one layout-local AABB per Mesh (relative to the parent placement
- * group), the legacy behaviour. Safe because
+ * one layout-local AABB per Mesh, the legacy behaviour. Safe because
  * pre-extras GLBs were baked with the broken non-merging pipeline —
  * their per-object mesh nodes are still intact.
  *
@@ -32,6 +31,7 @@ import { getVersion } from '../app/bake-registry.ts';
 import { parseEmbeddedColliders } from '../app/baked-collider-extras.ts';
 import { WALL_GROUPS } from '../physics/groups.ts';
 import { BakedLayoutErrorBoundary } from './BakedLayout.tsx';
+import type { PlacementTransform } from './placement-transform.ts';
 
 // ---------------------------------------------------------------------------
 // Inner component (inside Suspense — can use useGLTF)
@@ -73,10 +73,11 @@ function extractMeshAABBs(scene: THREE.Object3D): MeshAABB[] {
 
 interface BakedLayoutCollidersInnerProps {
   effectiveUrl: string;
+  transform?: PlacementTransform;
   onReady?: () => void;
 }
 
-function BakedLayoutCollidersInner({ effectiveUrl, onReady }: BakedLayoutCollidersInnerProps) {
+function BakedLayoutCollidersInner({ effectiveUrl, transform, onReady }: BakedLayoutCollidersInnerProps) {
   const gltf = useGLTF(effectiveUrl);
   // Child effects run first, so the colliders below exist by the time this fires.
   const notifyReady = useEffectEvent(() => onReady?.());
@@ -91,7 +92,7 @@ function BakedLayoutCollidersInner({ effectiveUrl, onReady }: BakedLayoutCollide
   if (embedded) {
     if (embedded.length === 0) return null;
     return (
-      <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }}>
+      <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }} {...transform}>
         {embedded.map((d, i) =>
           d.type === 'cuboid' ? (
             <CuboidCollider
@@ -128,7 +129,7 @@ function BakedLayoutCollidersInner({ effectiveUrl, onReady }: BakedLayoutCollide
   if (aabbs.length === 0) return null;
 
   return (
-    <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }}>
+    <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }} {...transform}>
       {aabbs.map((aabb, i) => (
         <CuboidCollider
           key={i}
@@ -154,6 +155,8 @@ export interface BakedLayoutCollidersProps {
    * cache-bust in lockstep.
    */
   layoutName?: string;
+  /** Where the layout is placed; the colliders are layout-local, so this goes on their `RigidBody`. */
+  transform?: PlacementTransform;
   /** Fires once the colliders have mounted (also when there are none), again per new layout. */
   onReady?: () => void;
   onError?: (error: Error) => void;
@@ -171,6 +174,7 @@ export interface BakedLayoutCollidersProps {
 export function BakedLayoutColliders({
   gltfPath,
   layoutName,
+  transform,
   onReady,
   onError,
 }: BakedLayoutCollidersProps) {
@@ -184,7 +188,7 @@ export function BakedLayoutColliders({
   return (
     <BakedLayoutErrorBoundary resetKey={layoutName ?? gltfPath} fallback={null} onError={onError}>
       <Suspense fallback={null}>
-        <BakedLayoutCollidersInner effectiveUrl={effectiveUrl} onReady={onReady} />
+        <BakedLayoutCollidersInner effectiveUrl={effectiveUrl} transform={transform} onReady={onReady} />
       </Suspense>
     </BakedLayoutErrorBoundary>
   );

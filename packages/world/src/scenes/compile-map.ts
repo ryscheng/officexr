@@ -2,6 +2,7 @@ import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { MapDocumentV2, RoomInstance } from './map-document.ts';
 import {
   normalizeYawDeg,
+  rotateXZ,
   type RoomDocument,
   type SceneCommand,
 } from './commands.ts';
@@ -20,6 +21,11 @@ type Vec3 = readonly [number, number, number];
 /** Unrotated world AABB (m) of an object at `position` (mirrors
  * `InstanceGeometryService.worldAABB`). */
 type WorldAABBLookup = (position: Vec3, kindId: string) => { min: Vec3; max: Vec3 };
+
+/** Id prefix of the instances `compileMap` compiles from a room placement's linked layout. */
+export function layoutIdPrefix(roomInstanceId: string): string {
+  return `${roomInstanceId}/layout/`;
+}
 
 /**
  * Pure replay of a `MapDocumentV2` against the rooms it references.
@@ -70,7 +76,7 @@ export function compileMap(
       if (layout !== undefined) {
         // Separate id namespace: the room's command ids are minted per document and could collide.
         const fromLayout = compileScene(layout, voxelSize, kindStride).instances;
-        instances.push(...applyRoomInstance(fromLayout, ri, `${ri.id}/layout/`, voxelSize, worldAABB));
+        instances.push(...applyRoomInstance(fromLayout, ri, layoutIdPrefix(ri.id), voxelSize, worldAABB));
       } else {
         console.warn(
           `[compile-map] room "${ri.roomName}" has layoutName "${room.layoutName}" but getLayout returned undefined`,
@@ -84,11 +90,6 @@ export function compileMap(
   instances.sort((a, b) => a.id.localeCompare(b.id));
   // cubeSize key is required by the SDK WorldObjects type — kept as-is.
   return { cubeSize: voxelSize, instances };
-}
-
-/** Same sense as three.js `rotation.y = rot·π/2` (the map editor's room group). */
-function rotateXZ(rot: 0 | 1 | 2 | 3, x: number, z: number): [number, number] {
-  return rot === 0 ? [x, z] : rot === 1 ? [z, -x] : rot === 2 ? [-x, -z] : [-z, x];
 }
 
 function applyRoomInstance(

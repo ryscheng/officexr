@@ -105,6 +105,7 @@ export class BotPhysicsWorld {
    * picker pushes a new snapshot on every map switch, and the
    * bot's store sees that broadcast just like a peer would. */
   private mapColliderBodies: RAPIER.RigidBody[] = [];
+  private cubesSource: WorldObjects | null = null;
   private cubesFingerprint: string | null = null;
   /** Per-frame integrated fall speed. Accumulates `GRAVITY * dt`
    * and resets to 0 when the controller reports the bot grounded.
@@ -264,15 +265,17 @@ export class BotPhysicsWorld {
    * can stand on, walk against, and fall off — matching the
    * browser-side `<MapColliders>`.
    *
-   * Cheap no-op when the cube layout hasn't changed: we fingerprint
-   * by instance count + cubeSize. The map-switch path always
-   * re-publishes a fresh `worldObjects` so a different layout with
-   * the same count would still be caught by the next picker push
-   * mutating the reference (and we don't try to detect that
-   * granularly — rebuilding ~hundreds of fixed colliders is cheap).
+   * Cheap no-op when the layout hasn't changed: the same snapshot is
+   * skipped outright (this runs every tick), and a new one is
+   * fingerprinted by cubeSize and every instance's kind, position and yaw.
    */
   syncCubes(worldObjects: WorldObjects): void {
-    const fingerprint = `${worldObjects.instances.length}:${worldObjects.cubeSize}`;
+    if (this.cubesSource === worldObjects) return;
+    this.cubesSource = worldObjects;
+    const fingerprint = JSON.stringify([
+      worldObjects.cubeSize,
+      worldObjects.instances.map((i) => [i.kindId, i.position, i.yawDeg ?? 0]),
+    ]);
     if (this.cubesFingerprint === fingerprint) return;
     for (const b of this.mapColliderBodies) this.world.removeRigidBody(b);
     this.mapColliderBodies = [];

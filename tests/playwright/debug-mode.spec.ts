@@ -73,20 +73,23 @@ test('Debug mode mounts a canvas, the SDK store has both the local player and a 
 });
 
 /**
- * Map-switch regression — BAKED-GEOMETRY model. Maps no longer carry
- * inline cubes in `worldObjects.instances`; room/layout geometry is
- * baked to a GLB and drawn by `<BakedLayout>`, which fetches
- * `/api/baked-layouts/<layoutName>`. So "the rendered world actually
- * changed" is pinned by two observable signals:
+ * Map-switch regression — BAKED-GEOMETRY model. A room's layout
+ * geometry is drawn from its baked GLB by `<BakedLayout>`, which
+ * fetches `/api/baked-layouts/<layoutName>`. The store still holds the
+ * layout's compiled `<roomInstanceId>/layout/*` instances (bots collide
+ * with them), but `<ObjectInstances>` leaves them out so they aren't
+ * drawn twice. So "the rendered world actually changed" is pinned by:
  *
  *   1. **Baked-layout fetch.** Switching to a map backed by a
  *      DIFFERENT layout fires a GET to `/api/baked-layouts/<newLayout>`
  *      — the renderer asked the server for that map's geometry. A
  *      switch that silently kept the old layout (or rendered nothing)
- *      never fires it. This replaces the old store-count delta, which
- *      is now always 0→0 because geometry is baked, not in the store.
+ *      never fires it.
  *   2. **Pixel side.** A downsampled `gl.readPixels` hash over the
  *      canvas differs between maps — the frame actually changed.
+ *
+ * On both maps it also checks the store holds layout instances while
+ * the `__OFFICE_OBJECT_INSTANCES__` marker's rendered count excludes them.
  *
  * Uses two specific maps with KNOWN, DISTINCT baked layouts that ship
  * on disk: `default`→`platform.glb`, `long_corridor`→
@@ -141,9 +144,11 @@ test('Map switch in Debug actually changes the rendered world', async ({
 
   const snap = async () =>
     page.evaluate(async () => {
-      const st = (window as unknown as {
-        __OFFICE_STORE__?: { getState: () => { worldObjects?: { instances?: unknown[] } } };
-      }).__OFFICE_STORE__?.getState();
+      const win = window as unknown as {
+        __OFFICE_STORE__?: { getState: () => { worldObjects?: { instances?: { id: string }[] } } };
+        __OFFICE_OBJECT_INSTANCES__?: { renderedCount: number };
+      };
+      const instances = win.__OFFICE_STORE__?.getState().worldObjects?.instances ?? [];
       // Pixel hash over a downsampled grid via gl.readPixels.
       const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
       let hash = 'no-canvas';
@@ -181,7 +186,9 @@ test('Map switch in Debug actually changes the rendered world', async ({
         }
       }
       return {
-        count: st?.worldObjects?.instances?.length ?? 0,
+        storeCount: instances.length,
+        layoutCount: instances.filter((i) => i.id.includes('/layout/')).length,
+        renderedCount: win.__OFFICE_OBJECT_INSTANCES__?.renderedCount,
         hash,
       };
     });
@@ -229,10 +236,14 @@ test('Map switch in Debug actually changes the rendered world', async ({
   await page.waitForTimeout(5000);
   const after = await snap();
 
-  // (1) Baked-geometry model: maps carry NO inline store cubes —
-  // geometry is baked. Documents why the old store-count delta is gone.
-  expect(before.count, `map "${a}" geometry is baked, not in the store`).toBe(0);
-  expect(after.count, `map "${b}" geometry is baked, not in the store`).toBe(0);
+  // (1) The store keeps each map's layout instances for the bots, and
+  // ObjectInstances leaves them out because the baked GLB draws them.
+  for (const [name, s] of [[a, before], [b, after]] as const) {
+    expect(s.layoutCount, `map "${name}" layout instances are in the store`).toBeGreaterThan(0);
+    expect(s.renderedCount, `map "${name}" layout instances are not rendered as instances`).toBe(
+      s.storeCount - s.layoutCount,
+    );
+  }
 
   // (2) The switch fetched a baked layout that map A did NOT use — the
   // renderer asked the server for map B's distinct geometry.
@@ -428,12 +439,12 @@ test('Rendered cube field actually tracks state.worldObjects (deterministic)', a
     () =>
       (
         window as unknown as {
-          __OFFICE_OBJECT_INSTANCES__?: { storeCount: number };
+          __OFFICE_OBJECT_INSTANCES__?: { renderedCount: number };
         }
       ).__OFFICE_OBJECT_INSTANCES__,
   );
   expect(
-    marker?.storeCount,
+    marker?.renderedCount,
     'ObjectInstances mounted and reflects 441-cube store snapshot',
   ).toBe(441);
 

@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Document, NodeIO, WebIO } from '@gltf-transform/core';
+import { Document, NodeIO, WebIO, getBounds } from '@gltf-transform/core';
 import { dequantize } from '@gltf-transform/functions';
 import { registerCompressionCodecs } from '../glb-compression.ts';
 import { bakeLayout } from '../layout-bake-service.ts';
@@ -53,6 +53,36 @@ async function makeTrivialGlb(name: string): Promise<Uint8Array> {
   const node = doc.createNode(name + '_node').setMesh(mesh);
   scene.addChild(node);
 
+  return io.writeBinary(doc);
+}
+
+const closeToAll = (values: number[]) => values.map((v) => expect.closeTo(v));
+
+/** A closed box GLB spanning `min`..`max` in model space. */
+async function makeBoxGlb(
+  name: string,
+  min: [number, number, number],
+  max: [number, number, number],
+): Promise<Uint8Array> {
+  const doc = new Document();
+  const buffer = doc.createBuffer();
+  const corners = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => [
+    i & 1 ? max[0] : min[0],
+    i & 2 ? max[1] : min[1],
+    i & 4 ? max[2] : min[2],
+  ]);
+  const quad = (a: number, b: number, c: number, d: number) => [a, b, c, a, c, d];
+  const indices = [
+    ...quad(0, 1, 3, 2), ...quad(4, 6, 7, 5), ...quad(0, 4, 5, 1),
+    ...quad(2, 3, 7, 6), ...quad(0, 2, 6, 4), ...quad(1, 5, 7, 3),
+  ];
+  const position = doc.createAccessor().setType('VEC3').setBuffer(buffer)
+    .setArray(new Float32Array(corners.flat()));
+  const index = doc.createAccessor().setType('SCALAR').setBuffer(buffer)
+    .setArray(new Uint16Array(indices));
+  const prim = doc.createPrimitive().setAttribute('POSITION', position).setIndices(index);
+  const node = doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(prim));
+  doc.createScene(name).addChild(node);
   return io.writeBinary(doc);
 }
 
@@ -246,17 +276,12 @@ describe('bakeLayout', () => {
     expect(result.meta.commandCount).toBe(1);
   });
 
-  it('positions instances via geometry.meshOrigin (matches runtime renderer)', async () => {
-    // Regression: the bake service must NOT reimplement the voxel→world
-    // transform. It must call geometry.meshOrigin(position, kindId) for
-    // every instance so the baked GLB places meshes exactly where
-    // <ObjectInstances> would at runtime. A prior bug treated voxel
-    // coordinates as world coordinates, producing visibly spaced-out
-    // cubes (e.g. 2 m cubes 4 m apart on a 0.5 m voxel grid).
-    //
-    // The optimization pass can collapse wrapper nodes, so this test
-    // verifies the contract directly via a spy on `meshOrigin`: every
-    // command's (position, kindId) must reach the geometry service.
+  it('positions instances via geometry.meshTransform (matches runtime renderer)', async () => {
+    // The bake must not reimplement the voxel→world transform: every
+    // command's (position, kindId, yawDeg) goes through geometry.meshTransform,
+    // so baked meshes land exactly where <ObjectInstances> draws them. The
+    // optimizer can collapse wrapper nodes, hence the spy rather than reading
+    // node transforms back.
     const blockBytes = await makeTrivialGlb('cube');
     const kindMap = new Map<string, WorldObjectKind>([
       [
@@ -275,17 +300,18 @@ describe('bakeLayout', () => {
     const gltfLoader = async () => blockBytes;
 
     const baseGeometry = makeGeometry(kindMap, 0.5);
-    const meshOriginCalls: Array<{
+    const meshTransformCalls: Array<{
       position: readonly [number, number, number];
       kindId: string;
-      result: readonly [number, number, number];
+      yawDeg: number | undefined;
+      translation: readonly [number, number, number];
     }> = [];
     const geometry: typeof baseGeometry = {
       ...baseGeometry,
-      meshOrigin(position, kindId) {
-        const result = baseGeometry.meshOrigin(position, kindId);
-        meshOriginCalls.push({ position, kindId, result });
-        return result;
+      meshTransform(position, kindId, yawDeg) {
+        const transform = baseGeometry.meshTransform(position, kindId, yawDeg);
+        meshTransformCalls.push({ position, kindId, yawDeg, translation: transform.position });
+        return transform;
       },
     };
 
@@ -293,24 +319,25 @@ describe('bakeLayout', () => {
     // world step, exactly the cube width, so the cubes should touch).
     const doc = makeLayoutDoc('adjacency', [
       { id: 'c1', op: 'placeObject', kindId: 'cube', position: [0, 0, 0] },
-      { id: 'c2', op: 'placeObject', kindId: 'cube', position: [4, 0, 0] },
+      { id: 'c2', op: 'placeObject', kindId: 'cube', position: [4, 0, 0], yawDeg: 90 },
     ]);
 
     await bakeLayout(doc, kindLookup, gltfLoader, geometry, { io });
 
-    // The bake must consult geometry.meshOrigin for every placeObject
+    // The bake must consult geometry.meshTransform for every placeObject
     // command. Two cubes → two calls, one per command (cubes share a
-    // kind so the gltf loader runs once via caching, but meshOrigin must
+    // kind so the gltf loader runs once via caching, but meshTransform must
     // run per instance for correct positioning).
-    expect(meshOriginCalls.length).toBe(2);
-    expect(meshOriginCalls[0].position).toEqual([0, 0, 0]);
-    expect(meshOriginCalls[1].position).toEqual([4, 0, 0]);
-    expect(meshOriginCalls.every((c) => c.kindId === 'cube')).toBe(true);
+    expect(meshTransformCalls.length).toBe(2);
+    expect(meshTransformCalls[0].position).toEqual([0, 0, 0]);
+    expect(meshTransformCalls[1].position).toEqual([4, 0, 0]);
+    expect(meshTransformCalls.map((c) => c.yawDeg)).toEqual([undefined, 90]);
+    expect(meshTransformCalls.every((c) => c.kindId === 'cube')).toBe(true);
 
     // The world-space step between two adjacent voxel cells must equal
     // one cube width (the test's whole point — no spacing, no gap).
-    const [t0x] = meshOriginCalls[0].result;
-    const [t1x] = meshOriginCalls[1].result;
+    const [t0x] = meshTransformCalls[0].translation;
+    const [t1x] = meshTransformCalls[1].translation;
     expect(t1x - t0x).toBeCloseTo(2, 6);
   });
 
@@ -517,6 +544,66 @@ describe('bakeLayout', () => {
       expect(bottom).toBeCloseTo(base, 6);
       expect(top).toBeCloseTo(base + (i + 1) * stepRise, 6);
     }
+  });
+
+  describe.each(['none', 'default'])('yaw-rotated instances (%s optimizer)', (optimizer) => {
+    it('bakes a 4x1 wall at yaw 90 around the unrotated wall centre, mesh and colliders alike', async () => {
+      const wallBytes = await makeBoxGlb('wall', [0, 0, 0], [4, 2, 1]);
+      const kindMap = new Map<string, WorldObjectKind>([
+        [
+          'wall',
+          {
+            ...makeKind('wall', '/models/wall.glb'),
+            dimensions: { width: 4, height: 2, depth: 1 },
+            localAABB: { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 2, z: 1 } },
+          },
+        ],
+      ]);
+      const geometry = makeGeometry(kindMap, 0.5);
+      const bakeWall = async (yawDeg?: number) => {
+        const doc = makeLayoutDoc('wall', [
+          {
+            id: 'w',
+            op: 'placeObject',
+            kindId: 'wall',
+            position: [2, 0, 2],
+            ...(yawDeg !== undefined && { yawDeg }),
+          },
+        ]);
+        const { glb } = await bakeLayout(doc, (id) => kindMap.get(id), async () => wallBytes, geometry, {
+          io,
+          optimizer,
+        });
+        const parsed = await io.readBinary(glb);
+        const scene = parsed.getRoot().listScenes()[0];
+        const cuboids = parseEmbeddedColliders(scene.getExtras())!.filter(
+          (d): d is Extract<typeof d, { type: 'cuboid' }> => d.type === 'cuboid',
+        );
+        expect(cuboids).toHaveLength(1);
+        return { bounds: getBounds(scene), collider: cuboids[0] };
+      };
+
+      const flat = await bakeWall();
+      const rotated = await bakeWall(90);
+
+      // Unrotated wall: min corner (1, 0, 1), 4 m in x and 1 m in z.
+      expect(flat.bounds.min).toEqual(closeToAll([1, 0, 1]));
+      expect(flat.bounds.max).toEqual(closeToAll([5, 2, 2]));
+      const centre = [3, 1, 1.5];
+
+      expect(rotated.bounds.min).toEqual(closeToAll([centre[0] - 0.5, 0, centre[2] - 2]));
+      expect(rotated.bounds.max).toEqual(closeToAll([centre[0] + 0.5, 2, centre[2] + 2]));
+      expect(rotated.collider.center).toEqual({
+        x: expect.closeTo(centre[0]),
+        y: expect.closeTo(centre[1]),
+        z: expect.closeTo(centre[2]),
+      });
+      expect(rotated.collider.halfExtents).toEqual({
+        x: expect.closeTo(0.5),
+        y: expect.closeTo(1),
+        z: expect.closeTo(2),
+      });
+    });
   });
 });
 

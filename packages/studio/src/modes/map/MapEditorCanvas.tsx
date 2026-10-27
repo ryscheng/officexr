@@ -454,7 +454,7 @@ function RoomInstanceMesh({
     const min: [number, number, number] = [Infinity, Infinity, Infinity];
     const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
     for (const inst of compiled.instances) {
-      const aabb = geomService.worldAABB(inst.position, inst.kindId);
+      const aabb = geomService.worldAABB(inst.position, inst.kindId, inst.yawDeg);
       for (let a = 0; a < 3; a++) {
         if (aabb.min[a] < min[a]) min[a] = aabb.min[a];
         if (aabb.max[a] > max[a]) max[a] = aabb.max[a];

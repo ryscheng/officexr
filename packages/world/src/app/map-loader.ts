@@ -42,10 +42,6 @@ export interface LoadedMap {
   worldObjects: WorldObjects;
   voiceZones: VoiceZone[];
   spawnPoints: readonly SpawnPoint[];
-  /** Set only when exactly one distinct layout is referenced by the map's command-less (baked) rooms. */
-  bakedLayoutName?: string;
-  /** Where `bakedLayoutName` renders: its baked room's placement, in voxels. */
-  bakedPlacement?: Pick<RoomInstance, 'position' | 'rotationY'>;
   /** Every room placement that links a layout, whether or not the room has commands. */
   bakedLayouts: readonly BakedLayoutPlacement[];
 }
@@ -93,43 +89,17 @@ export async function loadMap(
     return room !== undefined && isBakedRoom(room);
   };
   const mapDoc = stored.schemaVersion === 1 ? migrateMapV1toV2(stored, isBaked) : stored;
-  const bakedRoomLayoutNames = new Set<string>();
-  const linkedLayoutNames = new Set<string>();
-  for (const room of rooms.values()) {
-    if (room.layoutName !== undefined) {
-      linkedLayoutNames.add(room.layoutName);
-    }
-    if (isBakedRoom(room)) {
-      bakedRoomLayoutNames.add(room.layoutName);
-    }
-  }
-  const layouts = await loadAll<LayoutDocument>(
-    linkedLayoutNames,
-    (n) => storages.layouts.load(n),
-    'layout',
-  );
-
-  const bakedLayoutName = bakedRoomLayoutNames.size === 1 ? [...bakedRoomLayoutNames][0] : undefined;
-  const bakedPlacements = bakedLayoutName ? mapDoc.rooms.filter((ri) => isBaked(ri.roomName)) : [];
-  // ponytail(OSO-7186): <Scene> renders one baked layout at one placement; more need a bakedLayouts array prop.
-  if (bakedRoomLayoutNames.size > 1) {
-    console.warn(
-      `[map-loader] map "${mapDoc.name}" references multiple layouts; baked-layout rendering supports one`,
-      [...bakedRoomLayoutNames],
-    );
-  }
-  if (bakedPlacements.length > 1) {
-    console.warn(
-      `[map-loader] map "${mapDoc.name}" places its baked layout ${bakedPlacements.length} times; rendering the first`,
-    );
-  }
-
   const bakedLayouts = mapDoc.rooms.flatMap((ri): BakedLayoutPlacement[] => {
     const layoutName = rooms.get(ri.roomName)?.layoutName;
     return layoutName === undefined
       ? []
       : [{ roomInstanceId: ri.id, layoutName, position: ri.position, rotationY: ri.rotationY ?? 0 }];
   });
+  const layouts = await loadAll<LayoutDocument>(
+    new Set(bakedLayouts.map((p) => p.layoutName)),
+    (n) => storages.layouts.load(n),
+    'layout',
+  );
 
   const worldObjects = roomService.compileMap(mapDoc, rooms, layouts);
   // Hands the zone helper the compile above rather than compiling the map twice.
@@ -141,8 +111,6 @@ export async function loadMap(
     worldObjects,
     voiceZones,
     spawnPoints: mapDoc.spawnPoints,
-    bakedLayoutName,
-    bakedPlacement: bakedPlacements[0],
     bakedLayouts,
   };
 }
