@@ -22,6 +22,7 @@ describe('createFootprintOf', () => {
     expect(sizeOf(box)).toEqual([1, 3, 4]);
     expect(sizeOf(geometry.voxelFootprint([0, 0, 0], WALL.id, 90))).toEqual([2, 3, 5]);
     expect(box).toEqual({ min: [2, 0, -1], max: [3, 3, 3] });
+    expect(footprintOf([0, 0, 0], WALL.id, 270)).toEqual(box);
   });
 
   it('translates with the position', () => {

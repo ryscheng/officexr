@@ -55,6 +55,13 @@ describe('dropToSurface with yawed supports', () => {
     expect(dropPegOnWall(90, [3, 10, 0])).toBeNull();
     expect(dropPegOnWall(90, [2, 10, 3])).toBeNull();
   });
+
+  it('a wall at yaw 180 supports like yaw 0, and at yaw 270 like yaw 90', () => {
+    expect(dropPegOnWall(180, [3, 10, 0])).toEqual([3, 3, 0]);
+    expect(dropPegOnWall(180, [2, 10, 2])).toBeNull();
+    expect(dropPegOnWall(270, [2, 10, -1])).toEqual([2, 3, -1]);
+    expect(dropPegOnWall(270, [3, 10, 0])).toBeNull();
+  });
 });
 
 describe('dropToSurface rests on supports under the whole dropped footprint', () => {
@@ -76,6 +83,13 @@ describe('dropToSurface rests on supports under the whole dropped footprint', ()
     expect(drop(turnedWall, [2, 0, 3])).toBeNull();
     // Unturned, the same wall spans x [0,4) at z 0 and misses the off-axis support.
     expect(drop({ kindId: WALL.id }, [2, 0, 2])).toBeNull();
+  });
+
+  it('a wall dropped at yaw 270 covers the same cells as yaw 90, and yaw 180 as yaw 0', () => {
+    expect(drop({ kindId: WALL.id, yawDeg: 270 }, [2, 0, -1])).toEqual([0, 1, 0]);
+    expect(drop({ kindId: WALL.id, yawDeg: 270 }, [3, 0, 0])).toBeNull();
+    expect(drop({ kindId: WALL.id, yawDeg: 180 }, [3, 0, 0])).toEqual([0, 1, 0]);
+    expect(drop({ kindId: WALL.id, yawDeg: 180 }, [2, 0, 2])).toBeNull();
   });
 
   it('an unrotated 4×4 object lands on a support under a non-anchor cell', () => {

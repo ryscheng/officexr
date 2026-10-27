@@ -165,6 +165,21 @@ describe('checkMoveOccupancy with yawed footprints', () => {
     expect(moveTo(doc, [3, 0, 0])).toBe('ok');
   });
 
+  it('a wall at yaw 180 blocks like yaw 0, and at yaw 270 like yaw 90', () => {
+    const half = [place('static', WALL.id, [0, 0, 0], 180), place('mover', PEG.id, FAR)];
+    expect(moveTo(half, [3, 0, 0])).toBe('blocked');
+    expect(moveTo(half, [0, 0, 1])).toBe('ok');
+    const threeQuarter = [place('static', WALL.id, [0, 0, 0], 270), place('mover', PEG.id, FAR)];
+    expect(moveTo(threeQuarter, [2, 0, -1])).toBe('blocked');
+    expect(moveTo(threeQuarter, [3, 0, 0])).toBe('ok');
+  });
+
+  it('a moving wall at yaw 270 is checked by its rotated footprint', () => {
+    const peg = place('static', PEG.id, [2, 0, 2]);
+    expect(moveTo([peg, place('mover', WALL.id, FAR, 270)], [0, 0, 2])).toBe('blocked');
+    expect(moveTo([peg, place('mover', WALL.id, FAR, 270)], [-1, 0, 2])).toBe('ok');
+  });
+
   it('a moving wall is checked at its own yaw', () => {
     const peg = place('static', PEG.id, [2, 0, 2]);
     // Unrotated at [0,0,2] it spans x [0,4), z [2,3), which covers the peg.

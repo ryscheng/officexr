@@ -6,15 +6,19 @@ type Vec3 = readonly [number, number, number];
 /** Voxel box occupied by an object of `kindId` at `position`, turned by `yawDeg`. */
 export type FootprintOf = (position: Vec3, kindId: string, yawDeg?: number) => VoxelFootprint;
 
-// Ties go up so a half-voxel offset rounds the same way whatever float noise the catalog sizes carry.
-const roundHalfUp = (v: number) => Math.floor(v + 0.5 + 1e-6);
+/**
+ * Nearest voxel to a metre coordinate. Ties go up so a half-voxel offset rounds
+ * the same way whatever float noise the catalog sizes carry; every metre-to-voxel
+ * conversion in the placement math uses it so snaps and footprints agree.
+ */
+export const metresToVoxel = (m: number, voxelSize: number) =>
+  Math.floor(m / voxelSize + 0.5 + 1e-6);
 
 /**
  * Footprints for the editors' occupancy, snap and drop math, derived from the
  * geometry service so they follow the object's yaw. The box is the rotated
  * world AABB snapped to the grid: `tileStep` size, nearest-voxel origin, so at
- * yaw 0 it is `position` plus the tile step. A turned box can sit up to half a
- * voxel off the exact AABB.
+ * yaw 0 it is `position` plus the tile step.
  */
 export function createFootprintOf(
   geometry: Pick<InstanceGeometryService, 'voxelSize' | 'worldAABB' | 'tileStep'>,
@@ -23,10 +27,11 @@ export function createFootprintOf(
   return (position, kindId, yawDeg = 0) => {
     const size = geometry.tileStep(kindId, yawDeg);
     const { min } = geometry.worldAABB(position, kindId, yawDeg);
+    // ponytail: min and size round separately; past quarter turns (e.g. a 45° step) `max` can land a whole voxel off.
     const lo = [
-      roundHalfUp(min[0] / voxelSize),
-      roundHalfUp(min[1] / voxelSize),
-      roundHalfUp(min[2] / voxelSize),
+      metresToVoxel(min[0], voxelSize),
+      metresToVoxel(min[1], voxelSize),
+      metresToVoxel(min[2], voxelSize),
     ] as const;
     return { min: lo, max: [lo[0] + size[0], lo[1] + size[1], lo[2] + size[2]] };
   };
