@@ -6,7 +6,7 @@ const useShareState = (voice: JaasVoiceAdapter) => useSyncExternalStore(voice.on
 
 // Kept in-viewport but invisible: fully off-screen, Chrome throttles the iframe's timers and the XMPP connection never completes.
 const HIDDEN: CSSProperties = { bottom: 0, right: 0, opacity: 0, zIndex: -1 };
-const SHOWING_SHARE: CSSProperties = { top: 48, right: 12, borderRadius: 4, overflow: 'hidden', zIndex: 10 };
+const SHOWING_SHARE: CSSProperties = { top: 64, right: 12, borderRadius: 4, overflow: 'hidden', zIndex: 10 };
 
 /**
  * Renders the JaaS iframe for the room the adapter is in: invisible for voice,
