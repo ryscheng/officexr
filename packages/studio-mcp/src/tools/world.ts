@@ -18,7 +18,7 @@ export function registerWorldTools(
       description:
         'Read the catalog of world-object kinds (id, label, model path, swatch, walkable, scale, material ' +
         'overrides, rotationStepDeg). Rooms and layouts reference kinds by id. `scale` is a unitless uniform multiplier (1 = model ' +
-        'size unchanged); dimensions are in metres, and a voxel position puts the model\'s bounding-box minimum corner at that voxel cell. ' +
+        'size unchanged); dimensions are in metres. ' +
         YAW_CONTRACT,
     },
     () =>

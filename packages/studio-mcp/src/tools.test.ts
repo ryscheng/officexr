@@ -153,11 +153,28 @@ describe('studio MCP tools', () => {
       expect((await call(put, { name: 'r', [noun]: { ...empty, commands: place('barrel', 45) } })).isError).toBe(false);
     });
 
-    it('does not check unknown kinds or placements without a yaw', async () => {
+    it('judges the raw yaw by its normalised value', async () => {
       const { call } = await connect({ catalog });
       const room = emptyRoomDocument('r');
-      expect((await call('put_room', { name: 'r', room: { ...room, commands: place('ghost', 45) } })).isError).toBe(false);
-      expect((await call('put_room', { name: 'r', room: { ...room, commands: place('crate') } })).isError).toBe(false);
+      const put = (yawDeg: number) => call('put_room', { name: 'r', room: { ...room, commands: place('crate', yawDeg) } });
+      expect((await put(450)).isError).toBe(false);
+      expect((await put(-90)).isError).toBe(false);
+      expect((await put(-45)).isError).toBe(true);
+    });
+
+    it('does not check unknown kinds, a missing catalog or placements without a yaw', async () => {
+      const room = emptyRoomDocument('r');
+      const put = (kindId: string, yawDeg?: number, overrides?: Partial<StudioDocuments>) =>
+        connect(overrides).then(({ call }) =>
+          call('put_room', { name: 'r', room: { ...room, commands: place(kindId, yawDeg) } }),
+        );
+      expect((await put('ghost', 45, { catalog })).isError).toBe(false);
+      expect((await put('crate', 45)).isError).toBe(false);
+      const stepped = new InMemoryCatalogStorage(
+        validateWorldObjectKindCatalog({ schemaVersion: 1, kinds: [{ ...kind, rotationStepDeg: 360 }] }),
+      );
+      expect((await put('crate', undefined, { catalog: stepped })).isError).toBe(false);
+      expect((await put('crate', 90, { catalog: stepped })).isError).toBe(true);
     });
 
     it('rejects an invalid rotationStepDeg in the catalog', async () => {

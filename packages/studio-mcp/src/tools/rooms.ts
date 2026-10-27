@@ -1,4 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { deserializeScene } from '@officexr/world/scenes';
 import type { StudioDocuments } from '../studio-documents.ts';
 import { registerDocumentTools } from './documents.ts';
 import { rejectDisallowedYaws, YAW_CONTRACT } from './yaw.ts';
@@ -11,6 +12,6 @@ export function registerRoomTools(server: McpServer, { rooms, catalog }: StudioD
       'repeats an existing object along a face) in integer voxel coordinates [x, y, z]. ' +
       'Maps place rooms by name. ' +
       YAW_CONTRACT,
-    beforeSave: rejectDisallowedYaws(catalog),
+    beforeSave: rejectDisallowedYaws(catalog, deserializeScene),
   });
 }
