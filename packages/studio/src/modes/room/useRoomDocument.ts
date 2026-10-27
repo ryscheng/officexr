@@ -19,6 +19,7 @@ import {
 } from './room-selection.ts';
 import { RoomHistory } from './RoomHistory.ts';
 import type { EditAction } from './EditAction.ts';
+import { useDebouncedSave } from '../useDebouncedSave.ts';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 
 const LAST_ROOM_KEY = 'officexr:studio:lastRoom';
@@ -313,15 +314,15 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   // layout via the Inspector picks up the autosave — and so the
   // saved JSON ALSO includes the field (the earlier version dropped
   // it on every save, which silently unlinked layouts).
-  useEffect(() => {
-    if (loadedForRef.current !== roomName) return;
-    const json = JSON.stringify({
-      commands: doc.commands,
-      groups: doc.groups,
-      layoutName: doc.layoutName,
-    });
-    if (json === lastSavedJsonRef.current) return;
-    const t = setTimeout(() => {
+  const saveRoom = useCallback(
+    (pending: {
+      roomName: string;
+      storage: RoomStorage;
+      doc: RoomDocument;
+      json: string;
+      afterSave: UseRoomDocumentOptions['afterSave'];
+    }) => {
+      const { roomName, storage, doc, json, afterSave } = pending;
       lastSavedJsonRef.current = json;
       const serialized = serializeRoom({
         name: roomName,
@@ -341,9 +342,22 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
         .catch((err) => {
           console.warn(`[room] save("${roomName}") failed:`, err);
         });
-    }, 500);
-    return () => clearTimeout(t);
-  }, [doc, roomName, storage, afterSave]);
+    },
+    [],
+  );
+  const scheduleSave = useDebouncedSave(saveRoom, [roomName, storage]);
+
+  useEffect(() => {
+    const json = JSON.stringify({
+      commands: doc.commands,
+      groups: doc.groups,
+      layoutName: doc.layoutName,
+    });
+    if (loadedForRef.current !== roomName || json === lastSavedJsonRef.current) {
+      return scheduleSave(null);
+    }
+    return scheduleSave({ roomName, storage, doc, json, afterSave });
+  }, [doc, roomName, storage, afterSave, scheduleSave]);
 
   // --- Selection -------------------------------------------------
 

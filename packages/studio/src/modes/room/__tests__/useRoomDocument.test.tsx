@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { InMemoryRoomStorage, emptyRoomDocument } from '@officexr/world/scenes';
 import { StudioHarness } from '../../../test-harness/index.ts';
@@ -89,5 +89,87 @@ describe('useRoomDocument', () => {
       result.current.placeObject('colored_block_blue', [0, 0, 0]);
     });
     expect(result.current.doc.layoutName).toBe('lobby-layout');
+  });
+
+  describe('pending autosave', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function renderLoaded() {
+      const storage = new InMemoryRoomStorage({
+        seed: [
+          { name: 'default-v2', doc: emptyRoomDocument('default-v2') },
+          { name: 'other', doc: emptyRoomDocument('other') },
+        ],
+      });
+      const view = renderHook(() => useRoomDocument({ storage }), {
+        wrapper: StudioHarness,
+      });
+      await waitFor(() => expect(view.result.current.roomName).toBe('default-v2'));
+      vi.useFakeTimers();
+      return { storage, ...view };
+    }
+
+    it('flushes an edit to the old room when the room is switched within the debounce', async () => {
+      const { storage, result } = await renderLoaded();
+      const save = vi.spyOn(storage, 'save');
+
+      act(() => {
+        result.current.placeObject('colored_block_blue', [0, 0, 0]);
+      });
+      await act(async () => {
+        await result.current.loadRoom('other');
+      });
+
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0][0]).toBe('default-v2');
+      expect(save.mock.calls[0][1].commands).toHaveLength(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(save).toHaveBeenCalledTimes(1);
+      expect((await storage.load('other'))?.commands).toHaveLength(0);
+    });
+
+    it('flushes an edit when the hook unmounts within the debounce', async () => {
+      const { storage, result, unmount } = await renderLoaded();
+      const save = vi.spyOn(storage, 'save');
+
+      act(() => {
+        result.current.placeObject('colored_block_blue', [0, 0, 0]);
+      });
+      unmount();
+
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0][0]).toBe('default-v2');
+      expect(save.mock.calls[0][1].commands).toHaveLength(1);
+    });
+
+    it('debounces rapid edits into one save 500 ms after the last', async () => {
+      const { storage, result } = await renderLoaded();
+      const save = vi.spyOn(storage, 'save');
+
+      act(() => {
+        result.current.placeObject('colored_block_blue', [0, 0, 0]);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      act(() => {
+        result.current.placeObject('colored_block_blue', [1, 0, 0]);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(499);
+      });
+      expect(save).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0][1].commands).toHaveLength(2);
+    });
   });
 });
