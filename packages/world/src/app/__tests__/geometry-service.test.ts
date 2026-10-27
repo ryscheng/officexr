@@ -274,3 +274,14 @@ describe('InstanceGeometry — yaw', () => {
     expect(position[1]).toBe(aabb.min[1]);
   });
 });
+
+describe('InstanceGeometry — primitive diagnostic boxes', () => {
+  const geom = createInstanceGeometry({ catalog: makeCatalog([]), voxelSize: VS });
+
+  it('pivots meshTransform on the same 2 m box worldAABB uses', () => {
+    // The primitive mesh is a 2 m box centred on its root.
+    const { position } = geom.meshTransform([0, 0, 0], '__primitive_blue', 90);
+    const aabb = geom.worldAABB([0, 0, 0], '__primitive_blue', 90);
+    expect(position.map((v, i) => v - (aabb.min[i] + aabb.max[i]) / 2)).toEqual([0, 0, 0]);
+  });
+});

@@ -186,6 +186,21 @@ describe('compileMap', () => {
     });
   });
 
+  it('rotationY=0 adds the offset exactly for sizes that are not whole voxels', () => {
+    // 0.6 × 0.2 m: half sizes of 0.6 and 0.2 voxels used to leave float noise.
+    const worldAABB = (p: readonly [number, number, number]) => ({
+      min: [p[0] * 0.5, p[1] * 0.5, p[2] * 0.5] as const,
+      max: [p[0] * 0.5 + 0.6, p[1] * 0.5 + 0.5, p[2] * 0.5 + 0.2] as const,
+    });
+    const room = roomWithCubes('r', [[3, 0, 8]]);
+    const map: MapDocumentV2 = {
+      ...emptyMapDocument('m'),
+      rooms: [{ id: 'i', roomName: 'r', position: [10, 0, 0], rotationY: 0 }],
+    };
+    const [inst] = compileMap(map, new Map([['r', room]]), 0.5, undefined, undefined, worldAABB).instances;
+    expect(inst.position).toEqual([13, 0, 8]);
+  });
+
   it('skips RoomInstance with a missing room ref and warns', () => {
     const warn = console.warn;
     const calls: string[] = [];

@@ -7,7 +7,7 @@
  * outline / occupancy / snap / drop):
  *
  *   - voxel position * voxelSize = the world-space lower-left-bottom
- *     corner of the object's AABB. So a 2 m Blue cube at voxel
+ *     corner of the object's unrotated AABB. So a 2 m Blue cube at voxel
  *     (0, 0, 0) on a 0.5 m grid occupies world (0, 0, 0) → (2, 2, 2).
  *     Two cubes at voxel.x = 0 and voxel.x = 4 are flush adjacent at
  *     world x = 2.
@@ -124,23 +124,23 @@ export function createInstanceGeometry(deps: {
     throw new Error(`createInstanceGeometry: voxelSize must be > 0, got ${voxelSize}`);
   }
 
+  function localAABBOf(kindId: string): LocalAABB {
+    // Mugshot primitive-box diagnostic: the box isn't a catalog kind,
+    // so derive its box straight from PRIMITIVE_BLOCK_SIZE (the same
+    // size the mesh renders, centred on its root) instead of the
+    // one-voxel fallback, so colliders match across cube modes.
+    if (kindId.startsWith(PRIMITIVE_KIND_PREFIX)) {
+      const half = PRIMITIVE_BLOCK_SIZE / 2;
+      return { min: { x: -half, y: -half, z: -half }, max: { x: half, y: half, z: half } };
+    }
+    return localAABBFor(catalog.getKind(kindId), voxelSize);
+  }
+
   function unrotatedAABB(position: Vec3, kindId: string): WorldAABB {
     const ox = position[0] * voxelSize;
     const oy = position[1] * voxelSize;
     const oz = position[2] * voxelSize;
-    // Mugshot primitive-box diagnostic: the box isn't a catalog kind,
-    // so derive its collider straight from PRIMITIVE_BLOCK_SIZE (the
-    // same size the mesh renders) instead of the one-voxel fallback.
-    // Anchored lower-left-bottom at position*voxelSize, identical to
-    // the GLB-cube convention so colliders match across cube modes.
-    if (kindId.startsWith(PRIMITIVE_KIND_PREFIX)) {
-      return {
-        min: [ox, oy, oz],
-        max: [ox + PRIMITIVE_BLOCK_SIZE, oy + PRIMITIVE_BLOCK_SIZE, oz + PRIMITIVE_BLOCK_SIZE],
-      };
-    }
-    const kind = catalog.getKind(kindId);
-    const local = localAABBFor(kind, voxelSize);
+    const local = localAABBOf(kindId);
     // Anchor lower-left-bottom: the world AABB's MIN sits at position*vs.
     return {
       min: [ox, oy, oz],
@@ -173,8 +173,7 @@ export function createInstanceGeometry(deps: {
   }
 
   function meshOrigin(position: Vec3, kindId: string): Vec3 {
-    const kind = catalog.getKind(kindId);
-    const local = localAABBFor(kind, voxelSize);
+    const local = localAABBOf(kindId);
     // The mesh's local-AABB lower-left-bottom = `local.min`. To place
     // it at world position*vs, the mesh root must be at:
     //   meshRoot = world_lower_left - local.min
@@ -190,7 +189,7 @@ export function createInstanceGeometry(deps: {
     if (rotationY === 0) return { position: origin, rotationY };
     // Spin the mesh root about the unrotated footprint's centre: the
     // centre's offset from the root, rotated, must still land on it.
-    const local = localAABBFor(catalog.getKind(kindId), voxelSize);
+    const local = localAABBOf(kindId);
     const lx = (local.min.x + local.max.x) / 2;
     const lz = (local.min.z + local.max.z) / 2;
     const [cos, sin] = cosSin(yawDeg);

@@ -304,7 +304,7 @@ export type CharacterConfigs = Record<string, CharacterConfig>;
  * `position` + `cubeSize` (the `cubeSize` lives on `WorldObjects`, not
  * per-instance, so a scene can't accidentally mix scales).
  *
- * `position` is in INTEGER VOXEL COORDS (not world units). Multiply by
+ * `position` is in voxel coords (not world units). Multiply by
  * `WorldObjects.cubeSize` to get world space. `id` is unique per
  * instance and stable across recompiles for the same source command +
  * voxel position. `sourceCommandId` is the editor's hook back into

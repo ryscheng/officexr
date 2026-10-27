@@ -126,11 +126,11 @@ export interface WorldObjectKind {
    */
   colliderShape?: ColliderShapeSpec;
   /** Allowed yaw increment in degrees: a positive integer dividing 360.
-   * Absent means `DEFAULT_ROTATION_STEP_DEG`. */
+   * Absent means 90. */
   rotationStepDeg?: number;
 }
 
-export const DEFAULT_ROTATION_STEP_DEG = 90;
+const DEFAULT_ROTATION_STEP_DEG = 90;
 
 /** Whether `yawDeg` is a multiple of the kind's rotation step, to float
  * tolerance. An unknown kind gets the default step. */

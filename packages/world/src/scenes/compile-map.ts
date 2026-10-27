@@ -125,14 +125,16 @@ function applyRoomInstance(
     const halfD = aabb ? (aabb.max[2] - aabb.min[2]) / voxelSize / 2 : 0.5;
     // The object yaws about its unrotated footprint's centre, so turning
     // the room moves only that centre; `position` stays the unrotated
-    // min corner around it.
-    const [cx, cz] = rotateXZ(rot, x + halfW, z + halfD);
+    // min corner around it. Rotating the corner and the half-size
+    // separately keeps rotationY 0 free of float noise.
+    const [rx, rz] = rotateXZ(rot, x, z);
+    const [hx, hz] = rotateXZ(rot, halfW, halfD);
     const yawDeg = normalizeYawDeg((inst.yawDeg ?? 0) + 90 * rot);
     return {
       id: `${ri.id}/${inst.id}`,
       sourceCommandId: `${ri.id}/${inst.sourceCommandId}`,
       kindId: inst.kindId,
-      position: [cx - halfW + ox, y + oy, cz - halfD + oz],
+      position: [rx + (hx - halfW) + ox, y + oy, rz + (hz - halfD) + oz],
       ...(yawDeg !== 0 && { yawDeg }),
     };
   });
