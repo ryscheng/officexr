@@ -4,7 +4,6 @@ import {
   FilesystemRoomStorage,
   LocalStorageLayoutStorage,
   LocalStorageRoomStorage,
-  isBakedRoom,
   type LayoutDocument,
   type LayoutStorage,
   type RoomDocument,
@@ -30,7 +29,7 @@ import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
  */
 export interface UseMapRoomLibraryResult {
   rooms: ReadonlyMap<string, RoomDocument>;
-  /** Layouts of the loaded baked rooms, which `compileMap` needs for their geometry. */
+  /** Layouts linked by the loaded rooms, which `compileMap` needs for their geometry. */
   layouts: ReadonlyMap<string, LayoutDocument>;
   allRoomNames: readonly string[];
   loading: boolean;
@@ -83,7 +82,7 @@ export function useMapRoomLibrary(
   const layoutNames = useMemo(() => {
     const names = new Set<string>();
     for (const room of rooms.values()) {
-      if (isBakedRoom(room)) {
+      if (room.layoutName !== undefined) {
         names.add(room.layoutName);
       }
     }

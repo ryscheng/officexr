@@ -1,7 +1,6 @@
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
 import type { MapDocumentV2, RoomInstance } from './map-document.ts';
 import {
-  isBakedRoom,
   normalizeYawDeg,
   type RoomDocument,
   type SceneCommand,
@@ -10,19 +9,10 @@ import { compileScene, type KindStrideLookup } from './compile.ts';
 import { rotateXZ } from '../app/geometry-service.ts';
 
 /**
- * Optional layout resolver for baked-only rooms. When provided, a room
- * with empty `commands` and a `layoutName` will be compiled from the
- * layout's commands instead of the (empty) room commands. This gives
- * `BotPhysicsWorld.syncCubes` precise per-cube colliders derived from
- * the same authored geometry as the baked GLB, so bots have a real
- * floor on baked-layout maps without any store-injection hack.
- *
- * The resolver is intentionally optional (not part of the default
- * signature) so that all existing callers (room editor, map editor, and
- * any test that does not supply layouts) remain byte-for-byte unchanged.
- * Only the runtime map loader (`loadMap` in `app/map-loader.ts`) opts in by passing this
- * function. Editor paths explicitly do NOT pass it — they only see the
- * room's own commands, which is the correct authoring-time behavior.
+ * Optional layout resolver. When provided, a room that links a layout also
+ * compiles the layout's commands, alongside the room's own, so
+ * `BotPhysicsWorld.syncCubes` gets per-cube colliders derived from the same
+ * authored geometry as the baked GLB.
  */
 export type LayoutResolver = (layoutName: string) => { commands: SceneCommand[] } | undefined;
 
@@ -38,8 +28,8 @@ type WorldAABBLookup = (position: Vec3, kindId: string) => { min: Vec3; max: Vec
  *   1. Compile the referenced `RoomDocument` to its local
  *      `ObjectInstance[]` via `compileScene` (cube positions in voxel
  *      coords relative to the room's origin).
- *      - If the room has no inline commands but names a layout AND
- *        `getLayout` is provided, compile the layout's commands instead.
+ *      - If the room names a layout AND `getLayout` is provided, also compile
+ *        the layout's commands; their ids live under `<RoomInstance.id>/layout/`.
  *   2. Rotate each object's footprint centre by a quarter-turn yaw around the
  *      room-local origin (`rotationY`: 0=identity, 1=+90° about Y, 2=180°, 3=270°)
  *      and add the same turn to the object's yaw.
@@ -74,29 +64,20 @@ export function compileMap(
       continue;
     }
 
-    // Baked-layout resolution: when the room has no inline commands but
-    // references a layout, compile from the layout's commands so
-    // BotPhysicsWorld.syncCubes gets real per-cube colliders. This only
-    // fires when getLayout is supplied (opt-in, debug runtime only).
-    //
-    // OCP note: we treat this as an extension point — no existing branch
-    // in this function changes; the new behavior is additive, gated by the
-    // optional resolver. Callers that don't supply getLayout are unaffected.
-    let compileInput: { commands: SceneCommand[] } = room;
-    if (getLayout !== undefined && isBakedRoom(room)) {
+    const own = compileScene(room, voxelSize, kindStride).instances;
+    instances.push(...applyRoomInstance(own, ri, `${ri.id}/`, voxelSize, worldAABB));
+    if (getLayout !== undefined && room.layoutName !== undefined) {
       const layout = getLayout(room.layoutName);
       if (layout !== undefined) {
-        compileInput = layout;
+        // Separate id namespace: the room's command ids are minted per document and could collide.
+        const fromLayout = compileScene(layout, voxelSize, kindStride).instances;
+        instances.push(...applyRoomInstance(fromLayout, ri, `${ri.id}/layout/`, voxelSize, worldAABB));
       } else {
         console.warn(
           `[compile-map] room "${ri.roomName}" has layoutName "${room.layoutName}" but getLayout returned undefined`,
         );
       }
     }
-
-    const compiled = compileScene(compileInput, voxelSize, kindStride);
-    const rotated = applyRoomInstance(compiled.instances, ri, voxelSize, worldAABB);
-    instances.push(...rotated);
   }
 
   // Keep iteration order deterministic so the diff broadcaster sees a
@@ -109,6 +90,7 @@ export function compileMap(
 function applyRoomInstance(
   src: ObjectInstance[],
   ri: RoomInstance,
+  idPrefix: string,
   voxelSize: number,
   worldAABB?: WorldAABBLookup,
 ): ObjectInstance[] {
@@ -127,8 +109,8 @@ function applyRoomInstance(
     const [hx, hz] = rotateXZ(rot, halfW, halfD);
     const yawDeg = normalizeYawDeg((inst.yawDeg ?? 0) + 90 * rot);
     return {
-      id: `${ri.id}/${inst.id}`,
-      sourceCommandId: `${ri.id}/${inst.sourceCommandId}`,
+      id: `${idPrefix}${inst.id}`,
+      sourceCommandId: `${idPrefix}${inst.sourceCommandId}`,
       kindId: inst.kindId,
       position: [rx + (hx - halfW) + ox, y + oy, rz + (hz - halfD) + oz],
       ...(yawDeg !== 0 && { yawDeg }),

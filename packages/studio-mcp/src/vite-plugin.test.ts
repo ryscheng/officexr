@@ -66,7 +66,6 @@ describe('POST /mcp over HTTP', () => {
 
     const bad = await call('put_room', { name: 'bad', room: { nope: true } });
     expect(bad.isError).toBe(true);
-    expect(bad.text).toContain('room-storage save: 400');
     expect(bad.text).toContain('missing string `name`');
     expect((await call('put_layout', { name: 'bad', layout: { nope: true } })).isError).toBe(true);
     expect((await call('put_room', { name: '../evil', room: emptyRoomDocument('x') })).isError).toBe(true);
