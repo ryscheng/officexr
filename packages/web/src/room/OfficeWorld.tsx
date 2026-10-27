@@ -7,6 +7,7 @@ import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PresenceList } from '../hud/PresenceList';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
+import { ZoneCallLabel } from '../voice/ZoneCallLabel';
 import { CharacterPicker } from './CharacterPicker';
 import { OfficeSettings } from './OfficeSettings';
 import { PreWorld } from './PreWorld';
@@ -71,7 +72,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
             <OfficeSettings office={office} me={me} onSaved={setOffice} />
             <CharacterPicker local={session.local} onSaveResult={setSaveError} />
             {session.voice && (
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
+                <ZoneCallLabel store={session.local.store} />
                 <ShareScreenToggle voice={session.voice} />
                 <MuteToggle voice={session.voice} />
               </div>
