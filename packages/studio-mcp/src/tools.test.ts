@@ -14,6 +14,8 @@ import {
   type CatalogStorage,
   type LayoutDocument,
   type WorldConstantsStorage,
+  type WorldObjectKindCatalogV1,
+  validateWorldObjectKindCatalog,
 } from '@officexr/world/scenes';
 import { describe, expect, it } from 'vitest';
 import { createStudioMcpServer } from './server.ts';
@@ -21,8 +23,9 @@ import type { StudioDocuments } from './studio-documents.ts';
 
 class InMemoryCatalogStorage implements CatalogStorage {
   saved = 0;
+  constructor(private readonly catalog: WorldObjectKindCatalogV1 | null = null) {}
   async load() {
-    return null;
+    return this.catalog;
   }
   async save() {
     this.saved += 1;
@@ -120,6 +123,70 @@ describe('studio MCP tools', () => {
     expect(catalog.saved).toBe(0);
     expect((await call('put_world_object_kinds', { catalog: { schemaVersion: 1, kinds: [] } })).isError).toBe(false);
     expect(catalog.saved).toBe(1);
+  });
+
+  describe('yaw', () => {
+    const kind = { id: 'crate', label: 'Crate', gltfPath: 'crate.glb', swatch: '#fff' };
+    const catalog = new InMemoryCatalogStorage(
+      validateWorldObjectKindCatalog({
+        schemaVersion: 1,
+        kinds: [kind, { ...kind, id: 'barrel', rotationStepDeg: 15 }],
+      }),
+    );
+    const place = (kindId: string, yawDeg?: number) => [
+      { id: 'p1', op: 'placeObject', kindId, position: [0, 0, 0], ...(yawDeg !== undefined && { yawDeg }) },
+    ];
+
+    it.each([
+      ['room', 'put_room', 'get_room', 'rooms', emptyRoomDocument('r')],
+      ['layout', 'put_layout', 'get_layout', 'layouts', emptyLayoutDocument('r')],
+    ] as const)('%s: rejects a yaw the kind does not allow and stores nothing', async (noun, put, get, store, empty) => {
+      const { call, docs } = await connect({ catalog });
+      const bad = await call(put, { name: 'r', [noun]: { ...empty, commands: place('crate', 45) } });
+      expect(bad.isError).toBe(true);
+      expect(bad.text).toMatch(/"p1".*45.*"crate".*90/);
+      expect(await docs[store].list()).toEqual([]);
+
+      const good = await call(put, { name: 'r', [noun]: { ...empty, commands: place('crate', 90) } });
+      expect(good.isError).toBe(false);
+      expect(JSON.parse((await call(get, { name: 'r' })).text).commands[0].yawDeg).toBe(90);
+      expect((await call(put, { name: 'r', [noun]: { ...empty, commands: place('barrel', 45) } })).isError).toBe(false);
+    });
+
+    it('judges the raw yaw by its normalised value', async () => {
+      const { call } = await connect({ catalog });
+      const room = emptyRoomDocument('r');
+      const put = (yawDeg: number) => call('put_room', { name: 'r', room: { ...room, commands: place('crate', yawDeg) } });
+      expect((await put(450)).isError).toBe(false);
+      expect((await put(-90)).isError).toBe(false);
+      expect((await put(-45)).isError).toBe(true);
+    });
+
+    it('does not check unknown kinds, a missing catalog or placements without a yaw', async () => {
+      const room = emptyRoomDocument('r');
+      const put = (kindId: string, yawDeg?: number, overrides?: Partial<StudioDocuments>) =>
+        connect(overrides).then(({ call }) =>
+          call('put_room', { name: 'r', room: { ...room, commands: place(kindId, yawDeg) } }),
+        );
+      expect((await put('ghost', 45, { catalog })).isError).toBe(false);
+      expect((await put('crate', 45)).isError).toBe(false);
+      const stepped = new InMemoryCatalogStorage(
+        validateWorldObjectKindCatalog({ schemaVersion: 1, kinds: [{ ...kind, rotationStepDeg: 360 }] }),
+      );
+      expect((await put('crate', undefined, { catalog: stepped })).isError).toBe(false);
+      expect((await put('crate', 90, { catalog: stepped })).isError).toBe(true);
+    });
+
+    it('rejects an invalid rotationStepDeg in the catalog', async () => {
+      const catalog = new InMemoryCatalogStorage();
+      const { call } = await connect({ catalog });
+      const r = await call('put_world_object_kinds', {
+        catalog: { schemaVersion: 1, kinds: [{ ...kind, rotationStepDeg: 7 }] },
+      });
+      expect(r.isError).toBe(true);
+      expect(r.text).toContain('rotationStepDeg');
+      expect(catalog.saved).toBe(0);
+    });
   });
 
   it('serves the default settings until some are saved', async () => {

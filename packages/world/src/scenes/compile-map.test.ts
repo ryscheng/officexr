@@ -303,9 +303,7 @@ describe('compileMap — layout resolution (task-13)', () => {
     expect(positions).toEqual([[0, 0, 0], [1, 0, 0]].sort());
   });
 
-  it('with getLayout, a room that has inline commands uses its OWN commands (not the layout)', () => {
-    // A room with inline commands should NOT be replaced by the layout even
-    // if layoutName is set and getLayout returns something.
+  it('with getLayout, a room with inline commands and a layout yields both, layout ids under /layout/', () => {
     const room: RoomDocument = {
       schemaVersion: 5,
       name: 'inline-r',
@@ -322,9 +320,28 @@ describe('compileMap — layout resolution (task-13)', () => {
       rooms: [{ id: 'inst', roomName: 'inline-r', position: [0, 0, 0] }],
     };
     const compiled = compileMap(map, new Map([['inline-r', room]]), 2, undefined, getLayout);
-    // Only the 1 inline cube, NOT the 2 layout cubes.
-    expect(compiled.instances).toHaveLength(1);
-    expect(compiled.instances[0].position).toEqual([5, 0, 0]);
+    expect(compiled.instances).toHaveLength(3);
+    const own = compiled.instances.filter((i) => !i.id.startsWith('inst/layout/'));
+    const fromLayout = compiled.instances.filter((i) => i.id.startsWith('inst/layout/'));
+    expect(own.map((i) => i.position)).toEqual([[5, 0, 0]]);
+    expect(fromLayout.map((i) => i.position).sort()).toEqual([[0, 0, 0], [1, 0, 0]]);
+    for (const i of fromLayout) {
+      expect(i.sourceCommandId).toMatch(/^inst\/layout\//);
+    }
+    expect(new Set(compiled.instances.map((i) => i.id)).size).toBe(3);
+  });
+
+  it('without getLayout, a room with inline commands and a layout yields only its own commands', () => {
+    const room: RoomDocument = {
+      ...bakedRoom('inline-r', 'my-layout'),
+      commands: [newPlaceObject({ kindId: 'block', position: [5, 0, 0] })],
+    };
+    const map: MapDocumentV2 = {
+      ...emptyMapDocument('m'),
+      rooms: [{ id: 'inst', roomName: 'inline-r', position: [0, 0, 0] }],
+    };
+    const compiled = compileMap(map, new Map([['inline-r', room]]), 2);
+    expect(compiled.instances.map((i) => i.position)).toEqual([[5, 0, 0]]);
   });
 
   it('with getLayout that returns undefined for the layout name, emits a warning and yields no instances', () => {

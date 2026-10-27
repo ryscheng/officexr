@@ -133,11 +133,9 @@ export type LayoutCommandSource = { commands: SceneCommand[] };
 export interface RoomService {
   compileScene(doc: LayoutCommandSource): WorldObjects;
   /**
-   * Compile a map into a flat WorldObjects. The optional `layouts` map
-   * enables baked-layout resolution: when a room has empty `commands`
-   * and a `layoutName`, the room's geometry is sourced from the matching
-   * layout's commands instead. Callers that omit `layouts` (all editor
-   * paths) get exactly the same behavior as before this parameter existed.
+   * Compile a map into a flat WorldObjects. When the optional `layouts` map
+   * is given, a room that links a layout also compiles that layout's
+   * commands, with ids under `<roomInstanceId>/layout/`.
    */
   compileMap(
     map: MapDocumentV2,
