@@ -8,7 +8,7 @@ import {
   type SceneCommand,
   type SceneDocument,
 } from './commands.ts';
-import type { MapDocumentV1 } from './map-document.ts';
+import type { MapDocumentV1, MapDocumentV2, SerializedMap } from './map-document.ts';
 
 /**
  * On-disk shape: a discriminated union over `schemaVersion`.
@@ -474,19 +474,19 @@ export function migrateToV3(scene: SerializedScene): RoomDocument {
   return migrateToV5(scene);
 }
 
-// --- Map (v1) helpers ------------------------------------------
+// --- Map helpers ----------------------------------------------
 
 export interface SerializeMapInput {
   name: string;
   title?: string;
-  rooms: MapDocumentV1['rooms'];
-  spawnPoints: MapDocumentV1['spawnPoints'];
-  environment: MapDocumentV1['environment'];
+  rooms: MapDocumentV2['rooms'];
+  spawnPoints: MapDocumentV2['spawnPoints'];
+  environment: MapDocumentV2['environment'];
 }
 
-export function serializeMap(input: SerializeMapInput): MapDocumentV1 {
+export function serializeMap(input: SerializeMapInput): MapDocumentV2 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     name: input.name,
     title: input.title,
     updatedAt: Date.now(),
@@ -501,7 +501,7 @@ export function serializeMap(input: SerializeMapInput): MapDocumentV1 {
  * loader can surface the failure (corrupt file / wrong version) to
  * the user instead of silently rendering an empty world.
  */
-export function deserializeMap(raw: unknown): MapDocumentV1 {
+export function deserializeMap(raw: unknown): SerializedMap {
   if (!raw || typeof raw !== 'object') {
     throw new Error('map: not an object');
   }
@@ -509,20 +509,46 @@ export function deserializeMap(raw: unknown): MapDocumentV1 {
   if (typeof obj.name !== 'string') {
     throw new Error('map: missing string `name`');
   }
-  if (obj.schemaVersion !== 1) {
+  if (obj.schemaVersion !== 1 && obj.schemaVersion !== 2) {
     throw new Error(
       `map: unsupported schemaVersion ${String(obj.schemaVersion)}`,
     );
   }
   if (!Array.isArray(obj.rooms)) {
-    throw new Error('map v1: missing `rooms` array');
+    throw new Error('map: missing `rooms` array');
+  }
+  for (const ri of obj.rooms as unknown[]) {
+    if (!ri || typeof ri !== 'object' || typeof (ri as { roomName?: unknown }).roomName !== 'string') {
+      throw new Error('map: every room needs a string `roomName`');
+    }
+    const rot = (ri as { rotationY?: unknown }).rotationY;
+    if (rot !== undefined && rot !== 0 && rot !== 1 && rot !== 2 && rot !== 3) {
+      throw new Error(`map: room rotationY must be 0-3, got ${String(rot)}`);
+    }
   }
   if (!Array.isArray(obj.spawnPoints)) {
-    throw new Error('map v1: missing `spawnPoints` array');
+    throw new Error('map: missing `spawnPoints` array');
   }
   if (!obj.environment || typeof obj.environment !== 'object') {
-    throw new Error('map v1: missing `environment` object');
+    throw new Error('map: missing `environment` object');
   }
-  return obj as unknown as MapDocumentV1;
+  return obj as unknown as SerializedMap;
 }
 
+/**
+ * v1 rendered a baked layout at the world origin whatever its placement
+ * said, so a baked room's placement becomes identity to keep it where
+ * players saw it. Every other placement already rendered at its data.
+ */
+export function migrateMapV1toV2(
+  map: MapDocumentV1,
+  isBaked: (roomName: string) => boolean,
+): MapDocumentV2 {
+  return {
+    ...map,
+    schemaVersion: 2,
+    rooms: map.rooms.map((ri) =>
+      isBaked(ri.roomName) ? { ...ri, position: [0, 0, 0], rotationY: 0 } : ri,
+    ),
+  };
+}

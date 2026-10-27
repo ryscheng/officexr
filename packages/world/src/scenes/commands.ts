@@ -121,6 +121,13 @@ export interface RoomDocument {
   layoutName?: string;
 }
 
+/** A room whose only geometry is its baked layout GLB. */
+export function isBakedRoom<T extends Pick<RoomDocument, 'commands' | 'layoutName'>>(
+  room: T,
+): room is T & { layoutName: string } {
+  return room.commands.length === 0 && room.layoutName !== undefined;
+}
+
 let nextCmdId = 1;
 function mintCommandId(prefix: string): string {
   // Stable enough for in-session uniqueness; the studio assigns a

@@ -77,7 +77,7 @@ async function start(hook: Hook, devUser?: { login: string; name: string }): Pro
     },
   };
   for (const plugin of officexrServer({ queryOffices, characters, createOffice, updateOffice, devUser, modelsDir })) {
-    (plugin[hook] as (s: ViteDevServer | PreviewServer) => void)(fake as unknown as ViteDevServer);
+    await (plugin[hook] as (s: ViteDevServer | PreviewServer) => unknown)(fake as unknown as ViteDevServer);
   }
   server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const run = (i: number): void => {

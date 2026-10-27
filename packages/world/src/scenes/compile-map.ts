@@ -1,6 +1,6 @@
 import type { ObjectInstance, WorldObjects } from '@officexr/sdk';
-import type { MapDocumentV1, RoomInstance } from './map-document.ts';
-import type { RoomDocument, SceneCommand } from './commands.ts';
+import type { MapDocumentV2, RoomInstance } from './map-document.ts';
+import { isBakedRoom, type RoomDocument, type SceneCommand } from './commands.ts';
 import { compileScene, type KindStrideLookup } from './compile.ts';
 
 /**
@@ -29,7 +29,7 @@ type Vec3 = readonly [number, number, number];
 type VoxelFootprintLookup = (position: Vec3, kindId: string) => { min: Vec3; max: Vec3 };
 
 /**
- * Pure replay of a `MapDocumentV1` against the rooms it references.
+ * Pure replay of a `MapDocumentV2` against the rooms it references.
  * For each `RoomInstance`:
  *   1. Compile the referenced `RoomDocument` to its local
  *      `ObjectInstance[]` via `compileScene` (cube positions in voxel
@@ -51,7 +51,7 @@ type VoxelFootprintLookup = (position: Vec3, kindId: string) => { min: Vec3; max
  * compiled map identically to a single-room scene.
  */
 export function compileMap(
-  map: MapDocumentV1,
+  map: MapDocumentV2,
   rooms: ReadonlyMap<string, RoomDocument>,
   voxelSize: number,
   kindStride?: KindStrideLookup,
@@ -78,11 +78,7 @@ export function compileMap(
     // in this function changes; the new behavior is additive, gated by the
     // optional resolver. Callers that don't supply getLayout are unaffected.
     let compileInput: { commands: SceneCommand[] } = room;
-    if (
-      getLayout !== undefined &&
-      room.commands.length === 0 &&
-      room.layoutName !== undefined
-    ) {
+    if (getLayout !== undefined && isBakedRoom(room)) {
       const layout = getLayout(room.layoutName);
       if (layout !== undefined) {
         compileInput = layout;

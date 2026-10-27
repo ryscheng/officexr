@@ -122,11 +122,11 @@ describe('LocalStorageMapStorage', () => {
     storage = new LocalStorageMapStorage({ storage: mem });
   });
 
-  it('save → load round-trips a MapDocumentV1', async () => {
+  it('save → load round-trips a map', async () => {
     await storage.save('town', sample);
     const back = await storage.load('town');
     expect(back?.name).toBe('town');
-    expect(back?.schemaVersion).toBe(1);
+    expect(back?.schemaVersion).toBe(2);
     expect(back?.rooms).toHaveLength(1);
     expect(back?.spawnPoints).toHaveLength(1);
   });

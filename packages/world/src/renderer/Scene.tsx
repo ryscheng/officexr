@@ -25,6 +25,8 @@ import { ProximityGlow } from './ProximityGlow.tsx';
 import { ModelsReady } from './ModelsReady.tsx';
 import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
 import type { CameraMode } from './config.ts';
+import { placementTransform } from './placement-transform.ts';
+import type { RoomInstance } from '../scenes/map-document.ts';
 import type { ViewConfig } from './viewConfig.ts';
 
 /**
@@ -105,6 +107,8 @@ interface SceneProps {
    * Required alongside `bakedLayoutPath` for the layout to render.
    */
   bakedLayoutName?: string;
+  /** Map placement of the baked layout, in voxels; the world origin when unset. */
+  bakedPlacement?: Pick<RoomInstance, 'position' | 'rotationY'>;
   /** When true, every character rendered in this scene is frozen at
    * its bind pose (no animation mixer activity). Used by the Mugshot
    * mode to produce deterministic snapshot tests. */
@@ -255,7 +259,7 @@ export function Scene(props: SceneProps) {
         */}
         {!hasBaked && <MapColliders store={store} />}
         {showLayout && (
-          <>
+          <group {...placementTransform(props.bakedPlacement)}>
             <BakedLayout
               gltfPath={props.bakedLayoutPath!}
               layoutName={props.bakedLayoutName}
@@ -266,7 +270,7 @@ export function Scene(props: SceneProps) {
               onReady={props.onCollidersReady}
               onError={props.onCollidersError}
             />
-          </>
+          </group>
         )}
         {/* Lighting: shared LightingRig + a per-frame SunFollower
             that mutates the sun's position/target/disc to track the

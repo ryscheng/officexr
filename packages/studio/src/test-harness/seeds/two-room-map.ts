@@ -1,12 +1,12 @@
 import {
   emptyMapDocument,
-  type MapDocumentV1,
+  type MapDocumentV2,
   type RoomDocument,
 } from '@officexr/world/scenes';
 import { simpleRoomSeed } from './simple-room.ts';
 
 export interface TwoRoomMapSeed {
-  map: MapDocumentV1;
+  map: MapDocumentV2;
   /** Room documents the map's instances reference, ready to seed an
    *  `InMemoryRoomStorage` so the map library can resolve them. */
   rooms: Array<{ name: string; doc: RoomDocument }>;

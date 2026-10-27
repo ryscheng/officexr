@@ -94,6 +94,7 @@ export function PlayView(props: PlayViewProps) {
           spawnPoints={session.spawnPoints}
           bakedLayoutPath={session.bakedLayoutPath}
           bakedLayoutName={session.bakedLayoutName}
+          bakedPlacement={session.bakedPlacement}
           onFrameStats={props.onFrameStats}
           selfReady={ready}
           onModelsReady={() => dispatch({ type: 'modelsReady' })}

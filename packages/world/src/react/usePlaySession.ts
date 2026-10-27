@@ -23,6 +23,7 @@ export interface PlaySession {
   spawnPoints: readonly Vec3[];
   bakedLayoutName: string | undefined;
   bakedLayoutPath: string | undefined;
+  bakedPlacement: LoadedMap['bakedPlacement'];
   error: string | null;
   dismissError: () => void;
   /** True once the first load into the current `actions` has settled, either way. */
@@ -90,6 +91,7 @@ export function usePlaySession({
     spawnPoints,
     bakedLayoutName,
     bakedLayoutPath: bakedLayoutName ? bakedLayoutAssetUrl(bakedLayoutName) : undefined,
+    bakedPlacement: map?.bakedPlacement,
     error,
     dismissError: () => setError(null),
     ready,

@@ -1,11 +1,11 @@
 import { LocalStorageMapStorage } from './localstorage-map-storage.ts';
 import { createMemoryWebStorage } from './in-memory-web-storage.ts';
-import type { MapDocumentV1 } from './map-document.ts';
+import type { SerializedMap } from './map-document.ts';
 import type { MapStorage, MapSummary } from './filesystem-map-storage.ts';
 
 export interface MapSeedEntry {
   name: string;
-  doc: MapDocumentV1;
+  doc: SerializedMap;
 }
 
 /**
@@ -37,11 +37,11 @@ export class InMemoryMapStorage implements MapStorage {
     return this.delegate.list();
   }
 
-  load(name: string): Promise<MapDocumentV1 | null> {
+  load(name: string): Promise<SerializedMap | null> {
     return this.delegate.load(name);
   }
 
-  save(name: string, map: MapDocumentV1): Promise<void> {
+  save(name: string, map: SerializedMap): Promise<void> {
     return this.delegate.save(name, map);
   }
 

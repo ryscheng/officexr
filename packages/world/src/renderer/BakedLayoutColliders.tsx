@@ -12,7 +12,8 @@
  * describe physics.
  *
  * FALLBACK (stale pre-extras bakes only): traverse the scene and emit
- * one world-space AABB per Mesh, the legacy behaviour. Safe because
+ * one layout-local AABB per Mesh (relative to the parent placement
+ * group), the legacy behaviour. Safe because
  * pre-extras GLBs were baked with the broken non-merging pipeline —
  * their per-object mesh nodes are still intact.
  *
@@ -47,16 +48,19 @@ function extractMeshAABBs(scene: THREE.Object3D): MeshAABB[] {
   const size = new THREE.Vector3();
   const results: MeshAABB[] = [];
 
-  // Force a matrix update so `setFromObject(mesh)` uses the correct
-  // world transform even though we haven't rendered yet.
+  // Force a matrix update so `setFromObject(mesh)` sees current
+  // transforms even though we haven't rendered yet.
   scene.updateMatrixWorld(true);
+  // Boxes are layout-local, relative to the parent placement group:
+  // `<BakedLayout>` mounts this same cached scene under that group,
+  // which the collider body already follows, so drop its transform.
+  const worldToParent = scene.parent ? scene.parent.matrixWorld.clone().invert() : new THREE.Matrix4();
 
   scene.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
     if (!child.geometry) return;
 
-    // Compute world-space AABB from the mesh and its applied transforms.
-    box.setFromObject(child);
+    box.setFromObject(child).applyMatrix4(worldToParent);
     if (box.isEmpty()) return;
 
     box.getCenter(center);

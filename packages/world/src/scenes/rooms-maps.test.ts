@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   serializeRoom,
@@ -6,14 +8,17 @@ import {
   serializeMap,
   deserializeScene,
   deserializeMap,
+  migrateMapV1toV2,
   migrateToV3,
   migrateToV4,
+  migrateToV5,
 } from './serialize.ts';
-import { newPlaceObject } from './commands.ts';
+import { isBakedRoom, newPlaceObject } from './commands.ts';
 import {
   DEFAULT_MAP_ENVIRONMENT,
   emptyMapDocument,
   type MapDocumentV1,
+  type MapDocumentV2,
 } from './map-document.ts';
 
 describe('serializeRoom + deserializeScene (v5 RoomDocument)', () => {
@@ -154,8 +159,8 @@ describe('migrateToV3 (deprecated — delegates to migrateToV5)', () => {
   });
 });
 
-describe('serializeMap + deserializeMap (MapDocumentV1)', () => {
-  function makeFullMap(): MapDocumentV1 {
+describe('serializeMap + deserializeMap', () => {
+  function makeFullMap(): MapDocumentV2 {
     return serializeMap({
       name: 'town',
       title: 'Town',
@@ -179,7 +184,7 @@ describe('serializeMap + deserializeMap (MapDocumentV1)', () => {
 
   it('round-trips a fully-populated map', () => {
     const m = makeFullMap();
-    expect(m.schemaVersion).toBe(1);
+    expect(m.schemaVersion).toBe(2);
     const back = deserializeMap(JSON.parse(JSON.stringify(m)));
     expect(back).toEqual(m);
   });
@@ -211,6 +216,15 @@ describe('serializeMap + deserializeMap (MapDocumentV1)', () => {
     ).toThrow(/environment/);
   });
 
+  it('rejects rooms without a string roomName or with a rotationY outside 0-3', () => {
+    const map = (room: unknown) => ({ ...emptyMapDocument('x'), rooms: [room] });
+    expect(() => deserializeMap(map(null))).toThrow(/roomName/);
+    expect(() => deserializeMap(map({ id: 'a', position: [0, 0, 0] }))).toThrow(/roomName/);
+    expect(() => deserializeMap(map({ id: 'a', roomName: 'k', position: [0, 0, 0], rotationY: 4 }))).toThrow(/rotationY/);
+    expect(() => deserializeMap(map({ id: 'a', roomName: 'k', position: [0, 0, 0], rotationY: 1.5 }))).toThrow(/rotationY/);
+    expect(deserializeMap(map({ id: 'a', roomName: 'k', position: [0, 0, 0], rotationY: 3 })).rooms).toHaveLength(1);
+  });
+
   it('emptyMapDocument produces a valid deserializable map', () => {
     const m = emptyMapDocument('blank');
     const back = deserializeMap(JSON.parse(JSON.stringify(m)));
@@ -228,5 +242,55 @@ describe('serializeMap + deserializeMap (MapDocumentV1)', () => {
     });
     const back = deserializeMap(JSON.parse(JSON.stringify(m)));
     expect(back.rooms[0].rotationY).toBeUndefined();
+  });
+});
+
+describe('migrateMapV1toV2', () => {
+  const v1: MapDocumentV1 = {
+    ...emptyMapDocument('town'),
+    schemaVersion: 1,
+    rooms: [
+      { id: 'baked', roomName: 'hall', position: [-24, 0, -23], rotationY: 3 },
+      { id: 'cubes', roomName: 'kitchen', position: [10, 0, 5], rotationY: 1 },
+    ],
+    spawnPoints: [{ id: 's', position: [1.5, 0, 1.5] }],
+  };
+  const migrated = migrateMapV1toV2(v1, (roomName) => roomName === 'hall');
+
+  it('resets an off-origin, rotated baked placement to identity', () => {
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.rooms[0]).toEqual({ id: 'baked', roomName: 'hall', position: [0, 0, 0], rotationY: 0 });
+  });
+
+  it('leaves non-baked placements and spawn points untouched', () => {
+    expect(migrated.rooms[1]).toEqual(v1.rooms[1]);
+    expect(migrated.spawnPoints).toEqual(v1.spawnPoints);
+    expect(migrated.environment).toEqual(v1.environment);
+  });
+
+  it('deserializeMap passes a v2 map through unchanged', () => {
+    const v2 = { ...migrated, rooms: [{ id: 'baked', roomName: 'hall', position: [4, 0, 4], rotationY: 1 }] };
+    expect(deserializeMap(JSON.parse(JSON.stringify(v2)))).toEqual(v2);
+  });
+});
+
+describe('committed maps', () => {
+  const worldDir = path.resolve(__dirname, '../..');
+  const readJson = (dir: string, name: string): unknown =>
+    JSON.parse(readFileSync(path.join(worldDir, dir, `${name}.json`), 'utf8'));
+  const mapNames = readdirSync(path.join(worldDir, 'maps'))
+    // `pw-test-*` maps are gitignored e2e leftovers.
+    .filter((f) => f.endsWith('.json') && !f.startsWith('pw-test-'))
+    .map((f) => f.slice(0, -'.json'.length));
+
+  it.each(mapNames)('%s is v2 with every baked placement at identity, as v1 rendered it', (name) => {
+    const map = deserializeMap(readJson('maps', name));
+    expect(map.schemaVersion).toBe(2);
+    for (const ri of map.rooms) {
+      if (isBakedRoom(migrateToV5(deserializeScene(readJson('rooms', ri.roomName))))) {
+        expect(ri.position).toEqual([0, 0, 0]);
+        expect(ri.rotationY ?? 0).toBe(0);
+      }
+    }
   });
 });

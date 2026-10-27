@@ -203,14 +203,16 @@ describe('room render bounds', () => {
 
   it('long_corridor map composes to the same 8 m × 4 m × 2 m AABB', () => {
     const map = deserializeMap(longCorridorMapJson);
+    if (map.schemaVersion !== 2) {
+      throw new Error('committed long_corridor map is not v2');
+    }
     const room = migrateToV5(deserializeScene(defaultV2RoomJson));
     const layout = deserializeLayout(longCorridorLayoutJson);
     const rooms = new Map([[room.name, room]]);
 
     // compileMap operates on the room commands only; to verify the
     // composed map's geometry we add the layout's instances at the
-    // room-instance origin (the long_corridor map places the room at a
-    // non-zero offset, so apply it here).
+    // room-instance origin.
     const mapCompiled = compileMap(map, rooms, VOXEL_SIZE, kindStride);
     const layoutCompiled = compileScene(layout, VOXEL_SIZE, kindStride);
     const ri = map.rooms[0];

@@ -26,7 +26,7 @@
  * collision math.
  *
  * `rotationY` is a quarter-turn discriminator (0|1|2|3). Free yaw is
- * not supported in v1 because rotating a voxel-aligned room by an
+ * not supported because rotating a voxel-aligned room by an
  * arbitrary angle would break the integer-coord invariant; quarter
  * turns map integer voxels to integer voxels exactly.
  */
@@ -109,6 +109,14 @@ export interface MapDocumentV1 {
   environment: MapEnvironment;
 }
 
+/** Same shape as v1, but a placement's position and rotation now apply to baked layouts too. */
+export interface MapDocumentV2 extends Omit<MapDocumentV1, 'schemaVersion'> {
+  schemaVersion: 2;
+}
+
+/** Any map version found on disk. */
+export type SerializedMap = MapDocumentV1 | MapDocumentV2;
+
 export const DEFAULT_MAP_ENVIRONMENT: MapEnvironment = {
   sun: { positionX: 20, positionY: 40, positionZ: 20, color: '#ffffff', intensity: 1.4 },
   sky: null,
@@ -117,9 +125,9 @@ export const DEFAULT_MAP_ENVIRONMENT: MapEnvironment = {
   ambientIntensity: 0.15,
 };
 
-export function emptyMapDocument(name: string, title?: string): MapDocumentV1 {
+export function emptyMapDocument(name: string, title?: string): MapDocumentV2 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     name,
     title,
     updatedAt: Date.now(),

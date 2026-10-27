@@ -154,7 +154,7 @@ describe('FilesystemMapStorage (mocked /api/maps)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('PUT → GET round-trips a MapDocumentV1', async () => {
+  it('PUT → GET round-trips a map', async () => {
     const m = serializeMap({
       name: 'town',
       rooms: [{ id: 'r-1', roomName: 'default-v2', position: [0, 0, 0] }],
@@ -163,7 +163,7 @@ describe('FilesystemMapStorage (mocked /api/maps)', () => {
     });
     await storage.save('town', m);
     const back = await storage.load('town');
-    expect(back?.schemaVersion).toBe(1);
+    expect(back?.schemaVersion).toBe(2);
     expect(back?.rooms).toHaveLength(1);
   });
 

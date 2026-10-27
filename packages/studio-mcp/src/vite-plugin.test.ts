@@ -75,6 +75,22 @@ describe('POST /mcp over HTTP', () => {
     await client.close();
   });
 
+  it('stores a v1 put_map as v2 with its baked placement at the origin', async () => {
+    const { client, call } = await connectMcp();
+    const room = { ...emptyRoomDocument('lobby'), layoutName: 'lobby' };
+    expect((await call('put_room', { name: 'lobby', room })).isError).toBe(false);
+    const map = {
+      ...emptyMapDocument('legacy'),
+      schemaVersion: 1,
+      rooms: [{ id: 'a', roomName: 'lobby', position: [-24, 0, -23], rotationY: 2 }],
+    };
+    expect((await call('put_map', { name: 'legacy', map })).isError).toBe(false);
+    const stored = JSON.parse((await call('get_map', { name: 'legacy' })).text);
+    expect(stored.schemaVersion).toBe(2);
+    expect(stored.rooms[0]).toMatchObject({ position: [0, 0, 0], rotationY: 0 });
+    await client.close();
+  });
+
   it('rejects a foreign Host header', async () => {
     const { port } = vite.httpServer!.address() as { port: number };
     const status = await new Promise<number | undefined>((resolve, reject) => {
