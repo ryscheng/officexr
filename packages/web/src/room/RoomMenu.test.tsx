@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
+import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CameraMode } from '@officexr/world/renderer';
 import { CameraModeMenuItem } from './CameraModeMenuItem';
@@ -40,47 +41,65 @@ describe('RoomMenu', () => {
     expect(menuButton().getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(menuButton());
     expect(menuButton().getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('radiogroup', { name: 'Camera mode' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Camera' })).toBeTruthy();
     fireEvent.pointerDown(document.body);
-    expect(screen.queryByRole('radiogroup')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Camera' })).toBeNull();
     fireEvent.click(menuButton());
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('radiogroup')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Camera' })).toBeNull();
   });
 
   it('stays open for a press inside the panel', () => {
     render(<Harness />);
     fireEvent.click(menuButton());
-    fireEvent.pointerDown(screen.getByRole('radiogroup'));
-    expect(screen.getByRole('radiogroup')).toBeTruthy();
+    fireEvent.pointerDown(screen.getByRole('group', { name: 'Camera' }));
+    expect(screen.getByRole('group', { name: 'Camera' })).toBeTruthy();
   });
 
   it('checks the current camera mode and reports a selection, keeping the menu open', () => {
     const onCameraModeChange = vi.fn();
     render(<Harness onCameraModeChange={onCameraModeChange} />);
     fireEvent.click(menuButton());
-    expect(screen.getAllByRole('radio').map((r) => [r.textContent, r.getAttribute('aria-checked')])).toEqual([
-      ['○First person', 'false'],
-      ['○Third person', 'false'],
-      ['●Fixed', 'true'],
-    ]);
+    expect(screen.getAllByRole('radio').map((r) => (r as HTMLInputElement).checked)).toEqual([false, false, true]);
     fireEvent.click(screen.getByRole('radio', { name: /Third person/ }));
     expect(onCameraModeChange).toHaveBeenCalledWith('third-person');
-    expect(screen.getByRole('radio', { name: /Third person/ }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('radiogroup')).toBeTruthy();
+    expect((screen.getByRole('radio', { name: /Third person/ }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole('group', { name: 'Camera' })).toBeTruthy();
   });
 
   it('closes the menu and opens the shortcuts dialog from its item', () => {
     render(<Harness />);
     fireEvent.click(menuButton());
     fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }));
-    expect(screen.queryByRole('radiogroup')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Camera' })).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeTruthy();
   });
 
   it('marks the menu as a studio panel so using it does not drive the avatar', () => {
     render(<Harness />);
     expect(menuButton().closest('[data-studio-panel]')).toBeTruthy();
+  });
+});
+
+describe('shortcuts dialog', () => {
+  it('hands keyboard control back to the world when it closes', () => {
+    function Focused() {
+      const focused = useWorldFocus();
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <output>{String(focused)}</output>
+          <button onClick={() => setOpen(true)}>open</button>
+          {open && <ShortcutsDialog onClose={() => setOpen(false)} />}
+        </>
+      );
+    }
+    render(<Focused />);
+    fireEvent.click(screen.getByRole('button', { name: 'open' }));
+    // Opening focuses the dialog, a studio panel, which releases the world.
+    expect(screen.getByRole('status').textContent).toBe('false');
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('status').textContent).toBe('true');
   });
 });
 

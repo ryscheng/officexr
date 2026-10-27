@@ -8,6 +8,7 @@ import {
   TOP_DOWN_CAMERA_DEFAULTS,
   type CameraMode,
 } from './config.ts';
+import { isTypingTarget } from '../react/useWorldFocus.ts';
 
 const PITCH_MIN = -1.3;
 const PITCH_MAX = 1.3;
@@ -176,8 +177,7 @@ export function CameraRig({
 
     const onKeyDown = (e: KeyboardEvent) => {
       // Don't capture keys while typing into Leva or any input.
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (isTypingTarget(e.target)) return;
       freeFlyKeys.current.add(e.code.toLowerCase());
     };
     const onKeyUp = (e: KeyboardEvent) => {

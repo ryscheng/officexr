@@ -1,34 +1,42 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CAMERA_MODES, type CameraMode } from '../renderer/config.ts';
 
 // 'top-down' and 'free-fly' belong to the Scenes editor.
-export const GAMEPLAY_CAMERA_MODES: readonly CameraMode[] = CAMERA_MODES.filter(
-  (m) => m !== 'top-down' && m !== 'free-fly',
+export type GameplayCameraMode = Exclude<CameraMode, 'top-down' | 'free-fly'>;
+
+export const GAMEPLAY_CAMERA_MODES: readonly GameplayCameraMode[] = CAMERA_MODES.filter(
+  (m): m is GameplayCameraMode => m !== 'top-down' && m !== 'free-fly',
 );
 
-export interface UseCameraModeOptions {
-  /** Makes the hook controlled: the caller owns the mode and Alt+P reports through `onChange`. */
-  value?: CameraMode;
-  onChange?: (mode: CameraMode) => void;
-}
+const nextMode = (current: CameraMode): CameraMode => {
+  const modes: readonly CameraMode[] = GAMEPLAY_CAMERA_MODES;
+  return modes[(modes.indexOf(current) + 1) % modes.length];
+};
 
-/** The gameplay camera mode, cycled with Alt+P; starts on 'fixed' unless controlled. */
-export function useCameraMode({ value, onChange }: UseCameraModeOptions = {}): CameraMode {
+/**
+ * The gameplay camera mode, cycled with Alt+P; starts on 'fixed'. Given a `value` it is
+ * controlled: Alt+P calls `onChange` and the caller owns the mode.
+ */
+export function useCameraMode({ value, onChange }: { value?: CameraMode; onChange?: (mode: CameraMode) => void } = {}): CameraMode {
   const [local, setLocal] = useState<CameraMode>('fixed');
-  const cameraMode = value ?? local;
+  const latest = useRef({ value, onChange });
+  useEffect(() => {
+    latest.current = { value, onChange };
+  });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.altKey && e.code === 'KeyP') {
         e.preventDefault();
-        const next = GAMEPLAY_CAMERA_MODES[(GAMEPLAY_CAMERA_MODES.indexOf(cameraMode) + 1) % GAMEPLAY_CAMERA_MODES.length];
+        const { value, onChange } = latest.current;
         if (value === undefined) {
-          setLocal(next);
+          setLocal(nextMode);
+        } else {
+          onChange?.(nextMode(value));
         }
-        onChange?.(next);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [cameraMode, value, onChange]);
-  return cameraMode;
+  }, []);
+  return value ?? local;
 }

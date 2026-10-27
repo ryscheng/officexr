@@ -1,29 +1,16 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
-const RoomMenuContext = createContext<{ close: () => void }>({ close: () => {} });
+const CloseMenuContext = createContext<() => void>(() => {});
 
-/** The menu's close seam, for items that need to dismiss it themselves. */
-export const useRoomMenu = () => useContext(RoomMenuContext);
-
-/** An action item: runs `onSelect`, then closes the menu unless `closeOnSelect` is false. */
-export function RoomMenuItem({
-  onSelect,
-  closeOnSelect = true,
-  children,
-}: {
-  onSelect: () => void;
-  closeOnSelect?: boolean;
-  children: ReactNode;
-}) {
-  const { close } = useRoomMenu();
+/** An action item: runs `onSelect`, then closes the menu. */
+export function RoomMenuItem({ onSelect, children }: { onSelect: () => void; children: ReactNode }) {
+  const close = useContext(CloseMenuContext);
   return (
     <button
       type="button"
       onClick={() => {
         onSelect();
-        if (closeOnSelect) {
-          close();
-        }
+        close();
       }}
       className="block w-full rounded px-3 py-2 text-left hover:bg-white/10"
     >
@@ -32,10 +19,10 @@ export function RoomMenuItem({
   );
 }
 
-/** The top-right hamburger button and its dropdown; items are passed as children. */
 export function RoomMenu({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
     if (!open) {
@@ -71,9 +58,9 @@ export function RoomMenu({ children }: { children: ReactNode }) {
         ☰
       </button>
       {open && (
-        <RoomMenuContext.Provider value={{ close: () => setOpen(false) }}>
+        <CloseMenuContext.Provider value={close}>
           <div className="pointer-events-auto w-56 space-y-1 rounded bg-black/70 p-2 text-sm text-white">{children}</div>
-        </RoomMenuContext.Provider>
+        </CloseMenuContext.Provider>
       )}
     </div>
   );

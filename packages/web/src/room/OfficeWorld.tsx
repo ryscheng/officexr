@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, PlayView, useStoreSelector } from '@officexr/world/react';
@@ -53,7 +53,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  useShortcutsHotkey(() => setShortcutsOpen(true), session.type === 'ready');
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  useShortcutsHotkey(openShortcuts, session.type === 'ready');
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -78,7 +79,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         >
           <RoomMenu>
             <CameraModeMenuItem value={cameraMode} onChange={setCameraMode} />
-            <RoomMenuItem onSelect={() => setShortcutsOpen(true)}>Keyboard shortcuts</RoomMenuItem>
+            <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
           </RoomMenu>
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {session.voice && <JaasMeeting voice={session.voice} />}

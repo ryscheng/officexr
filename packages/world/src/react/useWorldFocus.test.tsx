@@ -11,7 +11,7 @@
  */
 import { describe, expect, it, afterEach } from 'vitest';
 import { render, renderHook, act, cleanup } from '@testing-library/react';
-import { focusWorld, useWorldFocus } from './useWorldFocus.ts';
+import { focusWorld, isTypingTarget, useWorldFocus } from './useWorldFocus.ts';
 
 afterEach(() => {
   cleanup();
@@ -150,5 +150,20 @@ describe('useWorldFocus', () => {
     expect(result.current).toBe(false);
     act(() => focusWorld());
     expect(result.current).toBe(true);
+  });
+});
+
+describe('isTypingTarget', () => {
+  it('is true for inputs, textareas and contentEditable, false otherwise', () => {
+    const editable = document.createElement('div');
+    editable.contentEditable = 'true';
+    // jsdom doesn't implement isContentEditable
+    Object.defineProperty(editable, 'isContentEditable', { value: true });
+    expect(isTypingTarget(document.createElement('input'))).toBe(true);
+    expect(isTypingTarget(document.createElement('textarea'))).toBe(true);
+    expect(isTypingTarget(editable)).toBe(true);
+    expect(isTypingTarget(document.createElement('button'))).toBeFalsy();
+    expect(isTypingTarget(window)).toBe(false);
+    expect(isTypingTarget(null)).toBe(false);
   });
 });
