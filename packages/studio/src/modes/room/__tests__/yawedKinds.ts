@@ -42,7 +42,11 @@ export const CUBE = kind('cube', 2, 2, 2);
 // 2×1×1 voxels whose baked width carries float noise, as real catalog bakes do.
 export const NOISY = kind('noisy', 1.0000001, 0.5, 0.5);
 
-const kinds = [WALL, BEAM, PEG, CUBE, NOISY];
+// A WALL whose baked width carries downward float noise: turned a quarter, its
+// box edges sit within noise of a half voxel.
+export const NOISY_WALL = kind('noisy-wall', 1.9999999, 1.5, 0.5);
+
+const kinds = [WALL, BEAM, PEG, CUBE, NOISY, NOISY_WALL];
 
 export const geometry = createInstanceGeometry({
   catalog: { getKind: (id) => kinds.find((k) => k.id === id) },

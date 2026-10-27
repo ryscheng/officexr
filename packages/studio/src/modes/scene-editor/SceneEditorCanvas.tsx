@@ -25,6 +25,7 @@ import { GhostLayer, type GhostSpec } from './GhostLayer.tsx';
 import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 import {
   snapToNearestFace,
+  snapToGridOrStack,
   snapToVoxel,
   type NearbyObjectInfo,
   type SnapHit,
@@ -421,86 +422,39 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
   //      footprint, stack above or below depending on camera angle.
   const snapForPlacement = useCallback(
     (hit: SnapHit, kindId: string | null, yawDeg = 0): [number, number, number] => {
-      const placingStep = stepForKind(kindId, yawDeg);
+      if (!kindId) {
+        return snapToVoxel(hit, voxelSize, undefined, targetStrideFor(hit));
+      }
+      const shape = newObjectShape(geomService, kindId, yawDeg);
 
-      // World-space cursor point — always use the actual raycast hit
-      // position. Floor hits already carry it; cube hits carry the
-      // hit point on the cube's face. (We previously synthesised the
-      // cube's anchor instead, which always reads as the cube's
-      // BOTTOM regardless of which face was clicked — so the snap
-      // dominant-axis pick always picked -Y. That was the bug.)
-      const cursorPoint = hit.point;
-
-      const dims = kindId ? newObjectShape(geomService, kindId, yawDeg) : null;
-
-      if (dims) {
-        // Face-snap considers ALL nearby objects, including the one
-        // the cursor is currently on. When the cursor is directly on a
-        // cube the dominant-axis face naturally points OUT of that
-        // cube; if it would overlap a neighbour, the snap falls back
-        // to stacking on top.
-        const facePull = snapToNearestFace(
-          cursorPoint,
-          dims,
+      // Always snap from the actual raycast hit point: floor hits carry
+      // it, cube hits carry the point on the clicked face. Snapping from
+      // the cube's anchor instead always reads as its bottom, so the
+      // dominant-axis pick would always choose -Y.
+      //
+      // Face-snap considers ALL nearby objects, including the one the
+      // cursor is on: the dominant-axis face points OUT of that cube,
+      // and if that would overlap a neighbour the snap stacks instead.
+      return (
+        snapToNearestFace(
+          hit.point,
+          shape,
           nearbyObjects,
           voxelSize,
           FACE_SNAP_PULL_RADIUS_M,
           { cameraY: cameraYRef.current },
-        );
-        if (facePull) return facePull;
-      }
-
-      // No nearby object → grid snap. Then check overlap one last
-      // time: if the grid snap happens to land at an overlapping
-      // position (cursor just inside an existing cube's XZ footprint),
-      // stack the new object on top of the overlapping cube. This is
-      // the same "never produce a merged ghost" promise the face
-      // snap honours.
-      const gridVoxel = snapToVoxel(
-        hit,
-        voxelSize,
-        placingStep,
-        targetStrideFor(hit),
+        ) ??
+        snapToGridOrStack(
+          hit,
+          shape,
+          nearbyObjects,
+          voxelSize,
+          targetStrideFor(hit),
+          cameraYRef.current,
+        )
       );
-      if (dims) {
-        const [offX, , offZ] = dims.originOffset;
-        const aax = (gridVoxel[0] + offX) * voxelSize;
-        const aay = gridVoxel[1] * voxelSize;
-        const aaz = (gridVoxel[2] + offZ) * voxelSize;
-        const bbx = aax + dims.width;
-        const bby = aay + dims.height;
-        const bbz = aaz + dims.depth;
-        for (const obj of nearbyObjects) {
-          const o = obj.aabb;
-          if (
-            bbx > o.min[0] + 1e-6 &&
-            aax < o.max[0] - 1e-6 &&
-            bby > o.min[1] + 1e-6 &&
-            aay < o.max[1] - 1e-6 &&
-            bbz > o.min[2] + 1e-6 &&
-            aaz < o.max[2] - 1e-6
-          ) {
-            // Overlap → stack above or below this cube based on the
-            // camera direction: looking DOWN at the cube prefers
-            // above (closer to camera); looking UP prefers below.
-            const cy = (o.min[1] + o.max[1]) / 2;
-            const stackAbove = cameraYRef.current >= cy;
-            const stackedY = stackAbove
-              ? Math.round(o.max[1] / voxelSize)
-              : Math.round((o.min[1] - dims.height) / voxelSize);
-            return [gridVoxel[0], stackedY, gridVoxel[2]];
-          }
-        }
-      }
-      return gridVoxel;
     },
-    [
-      voxelSize,
-      nearbyObjects,
-      stepForKind,
-      targetStrideFor,
-      geomService,
-    ],
+    [voxelSize, nearbyObjects, targetStrideFor, geomService],
   );
 
   // Compute the ghost specs the GhostLayer should render this frame.
@@ -688,6 +642,11 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
           );
           if (!settled) return; // No support → reject placement
           voxel = settled;
+        }
+
+        const proposed = footprintOf(voxel, stagedKindId, yawDeg);
+        if (overlapsAnyInstance(proposed, props.compiled.instances, footprintOf)) {
+          return;
         }
 
         const ids = props.onPlaceMany(stagedKindId, [voxel], null, yawDeg);
