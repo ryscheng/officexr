@@ -33,7 +33,12 @@ import { outlineEdgePositions } from '../room/selectionOutline.ts';
 import { computeMovedPositions } from '../room/moveDelta.ts';
 import { checkMoveOccupancy } from '../room/moveOccupancy.ts';
 import { dropToSurface } from '../room/dropToSurface.ts';
-import { createFootprintOf, newObjectShape, type FootprintOf } from '../room/footprint.ts';
+import {
+  createFootprintOf,
+  newObjectShape,
+  overlapsAnyInstance,
+  type FootprintOf,
+} from '../room/footprint.ts';
 import {
   computeTileGhosts,
   resolveAvailableAxes,
@@ -607,7 +612,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       if (addKind?.gravity) {
         const settled = dropToSurface(
           voxel,
-          { w: 1, d: 1 },
+          { kindId: props.stagedKindId },
           props.compiled,
           footprintOf,
         );
@@ -620,22 +625,9 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
       // a click slightly off-grid could pile a second cube on top of
       // the existing one — confusing the user into thinking multiple
       // cubes were placed per click.
-      if (props.stagedKindId) {
-        const proposed = footprintOf(voxel, props.stagedKindId);
-        for (const inst of props.compiled.instances) {
-          const fp = footprintOf(inst.position, inst.kindId, inst.yawDeg);
-          // Half-open AABB overlap on the voxel grid.
-          if (
-            proposed.max[0] > fp.min[0] &&
-            proposed.min[0] < fp.max[0] &&
-            proposed.max[1] > fp.min[1] &&
-            proposed.min[1] < fp.max[1] &&
-            proposed.max[2] > fp.min[2] &&
-            proposed.min[2] < fp.max[2]
-          ) {
-            return; // refuse — would overlap
-          }
-        }
+      const proposed = footprintOf(voxel, props.stagedKindId);
+      if (overlapsAnyInstance(proposed, props.compiled.instances, footprintOf)) {
+        return;
       }
 
       props.onPlaceAt(voxel);
@@ -680,11 +672,11 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
         const tileKind = catalogService.getKind(stagedKindId);
         if (tileKind?.gravity) {
           const settled = dropToSurface(
-          voxel,
-          { w: 1, d: 1 },
-          props.compiled,
-          footprintOf,
-        );
+            voxel,
+            { kindId: stagedKindId },
+            props.compiled,
+            footprintOf,
+          );
           if (!settled) return; // No support → reject placement
           voxel = settled;
         }

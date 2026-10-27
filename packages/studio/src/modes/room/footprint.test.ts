@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { BEAM, WALL, footprintOf, geometry } from './__tests__/yawedKinds.ts';
+import { overlapsAnyInstance } from './footprint.ts';
+import { BEAM, NOISY, WALL, footprintOf, geometry } from './__tests__/yawedKinds.ts';
 
 const sizeOf = (box: { min: readonly number[]; max: readonly number[] }) =>
   box.max.map((hi, i) => hi - box.min[i]);
@@ -28,5 +29,26 @@ describe('createFootprintOf', () => {
     const origin = footprintOf([0, 0, 0], WALL.id, 90);
     expect(at.min).toEqual([origin.min[0] + 10, origin.min[1] + 2, origin.min[2] - 6]);
     expect(sizeOf(at)).toEqual(sizeOf(origin));
+  });
+});
+
+describe('overlapsAnyInstance', () => {
+  const placed = [{ position: [0, 0, 0] as const, kindId: NOISY.id }];
+
+  it('lets a float-noise kind sit flush beside itself, which rounding the AABB outward refused', () => {
+    expect(overlapsAnyInstance(footprintOf([2, 0, 0], NOISY.id), placed, footprintOf)).toBe(false);
+    const outward = (p: readonly [number, number, number], k: string) =>
+      geometry.voxelFootprint(p, k);
+    expect(overlapsAnyInstance(outward([2, 0, 0], NOISY.id), placed, outward)).toBe(true);
+  });
+
+  it('still refuses a real overlap', () => {
+    expect(overlapsAnyInstance(footprintOf([1, 0, 0], NOISY.id), placed, footprintOf)).toBe(true);
+  });
+
+  it('checks against yawed instances by their rotated footprint', () => {
+    const wall = [{ position: [0, 0, 0] as const, kindId: WALL.id, yawDeg: 90 }];
+    expect(overlapsAnyInstance(footprintOf([2, 0, 2], 'peg'), wall, footprintOf)).toBe(true);
+    expect(overlapsAnyInstance(footprintOf([3, 0, 0], 'peg'), wall, footprintOf)).toBe(false);
   });
 });

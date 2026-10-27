@@ -39,7 +39,10 @@ export const PEG = kind('peg', 0.5, 0.5, 0.5);
 // 4×4×4 voxels.
 export const CUBE = kind('cube', 2, 2, 2);
 
-const kinds = [WALL, BEAM, PEG, CUBE];
+// 2×1×1 voxels whose baked width carries float noise, as real catalog bakes do.
+export const NOISY = kind('noisy', 1.0000001, 0.5, 0.5);
+
+const kinds = [WALL, BEAM, PEG, CUBE, NOISY];
 
 export const geometry = createInstanceGeometry({
   catalog: { getKind: (id) => kinds.find((k) => k.id === id) },

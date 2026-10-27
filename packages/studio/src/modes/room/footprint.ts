@@ -48,3 +48,15 @@ export function newObjectShape(
     originOffset: createFootprintOf(geometry)([0, 0, 0], kindId, yawDeg).min,
   };
 }
+
+/** Whether `box` shares any voxel with an instance's footprint (half-open boxes). */
+export function overlapsAnyInstance(
+  box: VoxelFootprint,
+  instances: ReadonlyArray<{ position: Vec3; kindId: string; yawDeg?: number }>,
+  footprintOf: FootprintOf,
+): boolean {
+  return instances.some((inst) => {
+    const fp = footprintOf(inst.position, inst.kindId, inst.yawDeg);
+    return [0, 1, 2].every((i) => box.max[i] > fp.min[i] && box.min[i] < fp.max[i]);
+  });
+}
