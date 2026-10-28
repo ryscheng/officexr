@@ -15,6 +15,10 @@ describe('fetchRealtimeToken', () => {
     expect(await fetchRealtimeToken(respond(404))).toBeUndefined();
   });
 
+  it('rejects a 200 without a token', async () => {
+    await expect(fetchRealtimeToken(respond(200, {}))).rejects.toThrow('no token');
+  });
+
   it.each([401, 500])('rejects on %i', async (status) => {
     await expect(fetchRealtimeToken(respond(status))).rejects.toThrow(String(status));
   });

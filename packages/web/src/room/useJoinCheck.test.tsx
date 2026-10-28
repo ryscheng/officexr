@@ -53,6 +53,12 @@ describe('useJoinCheck', () => {
     expect(fetchFn).toHaveBeenCalledWith('/rooms/my%20office/sessions?login=a%40example.com&token=a.b');
   });
 
+  it('joins without a prompt when the token request fails', async () => {
+    setup(answer({ connected: true, allowMulti: false }, 500));
+    await screen.findByText('state:go');
+    expect(screen.queryByText(PROMPT)).toBeNull();
+  });
+
   it('prompts when already connected, and Join anyway proceeds', async () => {
     setup(answer({ connected: true, allowMulti: false }));
     expect(await screen.findByText(PROMPT)).toBeTruthy();

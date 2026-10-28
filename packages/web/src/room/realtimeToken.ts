@@ -7,5 +7,9 @@ export async function fetchRealtimeToken(fetchFn: typeof fetch = fetch): Promise
   if (!res.ok) {
     throw new Error(`Realtime token request failed (${res.status})`);
   }
-  return ((await res.json()) as { token: string }).token;
+  const { token } = (await res.json()) as { token?: unknown };
+  if (typeof token !== 'string') {
+    throw new Error('Realtime token response had no token');
+  }
+  return token;
 }
