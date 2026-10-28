@@ -37,6 +37,7 @@ export function createInitialOfficeState(opts: {
     selfId: opts.selfId,
     officeId: opts.officeId,
     players: {},
+    departed: {},
     proximity: {},
     chat: [],
     whiteboard: { strokes: [], cleared: 0 },

@@ -35,7 +35,7 @@ export interface MultiClientHarness {
   tick(): void;
   /** Advance time and tick once. */
   step(ms: number): void;
-  /** Flush any pending throttled outbound (position) on every client. */
+  /** Flush any pending throttled outbound (position, heartbeat) on every client. */
   flush(): void;
   /** Convenience: makes both clients see each other in their players map. */
   ensureMutualPresence(): void;
@@ -81,7 +81,9 @@ export function createMultiClientHarness(opts?: {
     // proximity events should emit them on `bus` themselves.
     const rules = createRuleRegistry();
     const detachProximity = attachProximityReducer(store, bus);
-    const sync = new SyncEngine({ store, actions, bus, channel, clock, holdSelf: addOpts?.holdSelf });
+    // flush() drives the heartbeat off the fake clock, so no real interval.
+    const timers = { setInterval: () => 0, clearInterval: () => {} };
+    const sync = new SyncEngine({ store, actions, bus, channel, clock, holdSelf: addOpts?.holdSelf, timers });
     lastTickState.set(id, store.getState());
     const handshake = new SnapshotHandshake({
       selfId: id,
@@ -146,6 +148,7 @@ export function createMultiClientHarness(opts?: {
   function flush(): void {
     for (const c of clients.values()) {
       c.sync.flushPosition();
+      c.sync.tickHeartbeat();
       c.handshake.tickTimers();
     }
   }

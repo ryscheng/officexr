@@ -69,6 +69,33 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     b.close();
   });
 
+  it('relays presence:status between clients', async () => {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    const a = new WsChannel({ url, userId: 'A' });
+    const b = new WsChannel({ url, userId: 'B' });
+    await a.subscribe();
+    await b.subscribe();
+    const received: NetEvent[] = [];
+    b.on((event) => received.push(event));
+
+    await a.send({
+      kind: 'presence:status',
+      v: 1,
+      actorId: 'A',
+      seq: 1,
+      t: 0,
+      status: 'away',
+      mic: 'muted',
+    });
+
+    await vi.waitFor(() =>
+      expect(received).toContainEqual(expect.objectContaining({ kind: 'presence:status', status: 'away', mic: 'muted' })),
+    );
+
+    a.close();
+    b.close();
+  });
+
   it('presence change frames fire onPresenceChange for the other peer', async () => {
     const url = `ws://127.0.0.1:${port}/ws`;
     const a = new WsChannel({ url, userId: 'A' });
