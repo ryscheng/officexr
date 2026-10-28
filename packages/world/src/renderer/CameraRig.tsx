@@ -22,6 +22,8 @@ import {
   type LookRefs,
   type ViewOffsets,
 } from './lookControls.ts';
+import type { MotionLookState } from './motionLook.ts';
+import { useMotionLook } from './useMotionLook.ts';
 import { useTouchCameraGestures } from './useTouchCameraGestures.ts';
 
 const THIRD_PERSON_RADIUS = 6;
@@ -35,6 +37,8 @@ interface CameraRigProps {
   pitchRef: React.MutableRefObject<number>;
   /** Local-only zoom and fixed-mode orbit offsets, changed by touch gestures. */
   viewOffsetsRef: React.MutableRefObject<ViewOffsets>;
+  /** Absent means device motion doesn't steer the view. */
+  motionLook?: MotionLookState;
   /** Set by `ProximityGlow` each frame to the local player's
    * MeetingArea centroid when in a conversation, or `null` otherwise.
    * When non-null, the rig blends in a "conversation view": elevated
@@ -97,6 +101,7 @@ export function CameraRig({
   yawRef,
   pitchRef,
   viewOffsetsRef,
+  motionLook,
   conversationFocusRef,
   conversationDistance,
   conversationHeight,
@@ -110,6 +115,8 @@ export function CameraRig({
     [yawRef, pitchRef, viewOffsetsRef],
   );
   useTouchCameraGestures(mode, lookRefs);
+  // The headset owns the camera while presenting; motion look re-baselines after.
+  useMotionLook(xrPresenting ? undefined : motionLook, mode, lookRefs);
 
   // Pointer-lock + mouse-look — only active in first/third person modes.
   useEffect(() => {

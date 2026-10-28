@@ -13,7 +13,7 @@ const FOV_MIN_DEG = 30;
 const FOV_MAX_DEG = 100;
 // Same factor as `THREE.MathUtils.degToRad`, so the fixed leash maths stays
 // bit-identical without importing three.
-const DEG2RAD = Math.PI / 180;
+export const DEG2RAD = Math.PI / 180;
 
 /**
  * Per-user view state that stays local to the client (never part of

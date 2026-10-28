@@ -20,6 +20,7 @@ import type { BotPool } from '../bot/BotPool.ts';
 import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { XRAvatarOrigin } from './XRAvatarOrigin.tsx';
+import type { MotionLookState } from './motionLook.ts';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
 import { BakedLayout } from './BakedLayout.tsx';
@@ -99,6 +100,8 @@ interface SceneProps {
   bots?: BotPool;
   selfId: string;
   cameraMode: CameraMode;
+  /** Device-motion look; absent leaves the view to mouse and touch. */
+  motionLook?: MotionLookState;
   /** Fully resolved lighting, background, camera and proximity values. */
   view: ViewConfig;
   /** When false, keyboard input is released from the in-world
@@ -341,6 +344,7 @@ export function Scene(props: SceneProps) {
           yawRef={yawRef}
           pitchRef={pitchRef}
           viewOffsetsRef={viewOffsetsRef}
+          motionLook={props.motionLook}
           conversationFocusRef={conversationFocusRef}
           conversationDistance={proximity.conversationDistance}
           conversationHeight={proximity.conversationHeight}

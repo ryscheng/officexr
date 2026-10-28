@@ -5,6 +5,7 @@ import type { Actions, Bus, RuleRegistry, Store, SyncEngine, SnapshotHandshake, 
 import type { BotPool } from '../bot/BotPool.ts';
 import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import type { CameraMode } from '../renderer/config.ts';
+import type { MotionLookState } from '../renderer/motionLook.ts';
 import { Scene } from '../renderer/Scene.tsx';
 import { ErrorBanner, FocusIndicator, WorldHud, type HudRealtime } from './hud.tsx';
 import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
@@ -45,6 +46,8 @@ export interface PlayViewProps {
   /** Makes the camera mode controlled; Alt+P then reports through `onCameraModeChange`. */
   cameraMode?: CameraMode;
   onCameraModeChange?: (mode: CameraMode) => void;
+  /** Steers the view with device motion; absent means off. */
+  motionLook?: MotionLookState;
   /** The host app provides the controls chrome: the HUD shows status only and the focus chip leaves the top-right corner to it. */
   hostControls?: boolean;
   /** Lets the host start immersive XR sessions; see `createWorldXRStore`. */
@@ -106,6 +109,7 @@ export function PlayView(props: PlayViewProps) {
           bots={props.bots}
           selfId={props.selfId}
           cameraMode={cameraMode}
+          motionLook={props.motionLook}
           view={worldConstants}
           worldFocused={worldFocused}
           moveInputRef={moveInputRef}
