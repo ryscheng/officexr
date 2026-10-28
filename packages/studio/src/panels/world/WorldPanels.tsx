@@ -6,6 +6,7 @@ import {
   type WorldConstants,
 } from '@officexr/sdk';
 import type { BotMode } from '@officexr/world/bot';
+import { resolveHorizonColor } from '@officexr/world/renderer';
 
 import { Button } from '../../components/ui/button.tsx';
 import { downloadBlob } from '../../lib/utils.ts';
@@ -375,6 +376,14 @@ function BackgroundPanel({
   return (
     <Section title="Background" defaultOpen={false}>
       <ColorInput label="top" value={background.topColor} onChange={set('topColor')} />
+      <ColorInput
+        label="horizon"
+        value={
+          background.horizonColor ??
+          `#${resolveHorizonColor(background.topColor, background.bottomColor).getHexString()}`
+        }
+        onChange={set('horizonColor')}
+      />
       <ColorInput label="bottom" value={background.bottomColor} onChange={set('bottomColor')} />
     </Section>
   );
