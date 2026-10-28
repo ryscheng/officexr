@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createActions,
+  type Actions,
   createBus,
   createStore,
   SyncEngine,
@@ -78,7 +79,7 @@ describe('WsChannel reconnect', () => {
   async function namedPeer(
     userId: PlayerId,
     holdSelf = false,
-  ): Promise<{ store: Store; statuses: ChannelStatus[]; sync: SyncEngine }> {
+  ): Promise<{ store: Store; actions: Actions; statuses: ChannelStatus[]; sync: SyncEngine }> {
     const c = channel(userId);
     const statuses = statusesOf(c);
     const store = createStore({ selfId: userId, officeId: 'debug-office' });
@@ -92,7 +93,7 @@ describe('WsChannel reconnect', () => {
     await c.subscribe();
     c.trackPresence({});
     actions.upsertPlayer({ id: userId, name: `name-${userId}` });
-    return { store, statuses, sync };
+    return { store, actions, statuses, sync };
   }
 
   beforeEach(() => {
@@ -164,6 +165,8 @@ describe('WsChannel reconnect', () => {
       expect(nameOf(a.store, 'B')).toBe('name-B');
       expect(nameOf(b.store, 'A')).toBe('name-A');
     });
+    a.actions.setSelfPresence({ status: 'away', mic: 'muted' });
+    await vi.waitFor(() => expect(b.store.getState().players['A']?.mic).toBe('muted'));
 
     await restartServer();
     await vi.waitFor(() => {
@@ -173,7 +176,10 @@ describe('WsChannel reconnect', () => {
       expect(nameOf(b.store, 'A')).toBe('name-A');
     });
 
-    // The restarted server only knows these names from the re-announce.
+    // The restarted server only knows these names, and A's presence, from the re-announce.
+    await vi.waitFor(() =>
+      expect(server.defaultRoom.store.getState().players['A']).toMatchObject({ status: 'away', mic: 'muted' }),
+    );
     const c = await namedPeer('C');
     await vi.waitFor(() => {
       expect(nameOf(c.store, 'A')).toBe('name-A');

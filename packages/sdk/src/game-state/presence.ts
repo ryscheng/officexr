@@ -7,8 +7,8 @@ export const DEPARTED_LINGER_MS = 60_000;
 export type PresenceIndicator = PresenceStatus | 'unresponsive' | 'offline';
 
 /**
- * Indicator for a remote player. A player never heard from (e.g. one laid down
- * by a snapshot) has no timestamp to age, so it shows its status.
+ * Indicator for a remote player. A player with no timestamp (not laid down by
+ * a live event or snapshot here) has nothing to age, so it shows its status.
  */
 export function presenceIndicator(
   p: PlayerState | Pick<DepartedPlayer, 'leftAt'>,

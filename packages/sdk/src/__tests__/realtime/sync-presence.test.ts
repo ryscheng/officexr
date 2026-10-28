@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEPARTED_LINGER_MS } from '../../game-state/presence.ts';
-import { HEARTBEAT_TICK_MS, SyncEngine, type IntervalTimers } from '../../realtime/sync.ts';
+import { DEPARTED_LINGER_MS, UNRESPONSIVE_MS, presenceIndicator } from '../../game-state/presence.ts';
+import { SyncEngine, type IntervalTimers } from '../../realtime/sync.ts';
 import { createStore } from '../../game-state/store.ts';
 import { createActions } from '../../game-state/actions.ts';
 import { createBus } from '../../game-state/bus.ts';
@@ -77,6 +77,31 @@ describe('presence heartbeat', () => {
     expect(b.store.getState().departed['a']).toBeUndefined();
   });
 
+  it('records no departed entry for a peer that never announced', async () => {
+    const h = createMultiClientHarness();
+    const b = await h.add('b');
+    await h.add('held', { seedSelf: false, holdSelf: true });
+
+    h.remove('held');
+
+    expect(b.store.getState().departed).toEqual({});
+  });
+
+  it('ages a snapshot-laid peer that never sends into unresponsive', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    a.actions.upsertPlayer({ id: 'ghost', name: 'Ghost' });
+    const b = await h.add('b');
+    await b.handshake.requestSnapshot();
+    expect(b.store.getState().players['ghost']).toBeDefined();
+
+    const ghost = () => b.store.getState().players['ghost']!;
+    h.step(UNRESPONSIVE_MS);
+    expect(presenceIndicator(ghost(), h.clock.now())).toBe('available');
+    h.step(1);
+    expect(presenceIndicator(ghost(), h.clock.now())).toBe('unresponsive');
+  });
+
   it('clears departed when the player rejoins', async () => {
     const h = createMultiClientHarness();
     const b = await h.add('b');
@@ -118,7 +143,7 @@ describe('SyncEngine heartbeat timer', () => {
 
     expect(intervals).toEqual([]);
     sync.start();
-    expect(intervals).toEqual([HEARTBEAT_TICK_MS]);
+    expect(intervals).toHaveLength(1);
 
     const statusCount = () => sent.filter((e) => e.kind === 'presence:status').length;
     const afterStart = statusCount();

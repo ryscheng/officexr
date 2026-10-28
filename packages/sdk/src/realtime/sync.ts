@@ -20,7 +20,7 @@ import { StatusBroadcaster } from './outbound/status-broadcaster.ts';
 // changing.
 export { applyNetEventToStore, POSITION_CONSTANTS };
 
-export const HEARTBEAT_TICK_MS = 1_000;
+const HEARTBEAT_TICK_MS = 1_000;
 
 /** Interval seam so tests can drive the heartbeat without real time. */
 export interface IntervalTimers {
@@ -76,6 +76,7 @@ export class SyncEngine {
   private started = false;
   private heldSelf: boolean;
   private offStore: (() => void) | null = null;
+  private offSelfPresence: (() => void) | null = null;
   private offChannel: (() => void) | null = null;
   private offPresence: (() => void) | null = null;
   private offStatus: (() => void) | null = null;
@@ -115,7 +116,6 @@ export class SyncEngine {
       clock: opts.clock,
       broadcast,
       takeSeq,
-      isHeld: () => this.heldSelf,
     });
     this.inbound = new InboundRouter({
       store: opts.store,
@@ -123,7 +123,10 @@ export class SyncEngine {
       bus: opts.bus,
       clock: opts.clock,
       inboundSeqs: opts.inboundSeqs,
-      onApplied: (event) => this.onInboundApplied(event),
+      onApplied: (event) => {
+        this.actions.clearDeparted(event.actorId);
+        this.onInboundApplied(event);
+      },
     });
   }
 
@@ -167,7 +170,7 @@ export class SyncEngine {
    * render loop, which browsers pause in hidden tabs.
    */
   tickHeartbeat(): void {
-    this.status.tick();
+    if (!this.heldSelf) this.status.tick();
     this.actions.pruneDeparted(this.clock.now());
   }
 
@@ -215,11 +218,17 @@ export class SyncEngine {
       this.position.announceSelf();
       this.status.announceSelf();
     }
-    this.status.start();
     this.heartbeat = this.timers.setInterval(() => this.tickHeartbeat(), HEARTBEAT_TICK_MS);
 
     this.offStore = this.store.subscribeAll((next, prev) =>
       this.onStoreChange(next, prev),
+    );
+    this.offSelfPresence = this.store.subscribe(
+      (s) => s.players[s.selfId],
+      () => {
+        if (!this.heldSelf) this.status.announceSelf();
+      },
+      (a, b) => a?.status === b?.status && a?.mic === b?.mic,
     );
     this.offChannel = this.channel.on((event) => this.inbound.onInbound(event));
     // When a peer's channel disconnects, the hub fires presence-leave for
@@ -250,11 +259,12 @@ export class SyncEngine {
   stop(): void {
     if (!this.started) return;
     this.offStore?.();
+    this.offSelfPresence?.();
     this.offChannel?.();
     this.offPresence?.();
     this.offStatus?.();
-    this.status.stop();
     this.timers.clearInterval(this.heartbeat);
+    this.heartbeat = null;
     this.started = false;
   }
 
@@ -278,7 +288,6 @@ export class SyncEngine {
    * so its next `onStoreChange` diff doesn't re-broadcast it.
    */
   private onInboundApplied(event: NetEvent): void {
-    this.actions.clearDeparted(event.actorId);
     if (event.kind === 'world:map') {
       this.stateDiff.markWorldMap(event.map);
     } else if (event.kind === 'world:characters') {

@@ -41,7 +41,7 @@ describe('snapshot', () => {
     const wire = serializeOfficeState(s);
     const json = JSON.parse(JSON.stringify(wire));
     const restored = createInitialOfficeState({ selfId: 'me', officeId: 'r' });
-    applySnapshot(restored, json);
+    applySnapshot(restored, json, 0);
 
     expect(restored.players.me.hp).toBe(75);
     expect(restored.chat).toHaveLength(1);
@@ -80,7 +80,7 @@ describe('snapshot', () => {
     };
     const wire = serializeOfficeState(s);
     const restored = createInitialOfficeState({ selfId: 'me', officeId: 'r' });
-    applySnapshot(restored, JSON.parse(JSON.stringify(wire)));
+    applySnapshot(restored, JSON.parse(JSON.stringify(wire)), 0);
     expect(restored.players.remote.tRecv).toBeUndefined();
   });
 

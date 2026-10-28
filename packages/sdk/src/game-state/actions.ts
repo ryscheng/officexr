@@ -28,7 +28,6 @@ export interface Actions {
   // local intents
   setSelfPosition(pos: Vec3, vel: Vec3, yaw: number, isAirborne: boolean): void;
   setMyJitsiRoom(roomId: string | null): void;
-  /** Patch the local player's presence. Broadcast by the `StatusBroadcaster`. */
   setSelfPresence(patch: { status?: PresenceStatus; mic?: MicState }): void;
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
@@ -356,6 +355,7 @@ export function createActions(store: Store, bus?: Bus): Actions {
     },
 
     recordDeparted(playerId, now) {
+      if (!store.getState().players[playerId]) return;
       store.setState((s) => ({
         departed: {
           ...s.departed,

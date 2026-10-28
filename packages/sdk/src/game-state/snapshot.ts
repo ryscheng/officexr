@@ -49,15 +49,17 @@ export function serializeOfficeState(state: OfficeState): SerializedOfficeState 
 }
 
 // Apply a snapshot to an existing in-memory store target. Mutates `target`
-// in place (callers wrap this in store.setState()).
-export function applySnapshot(target: OfficeState, snap: SerializedOfficeState): void {
+// in place (callers wrap this in store.setState()). `now` stamps `firstSeenAt`
+// on every laid-down peer so one that never sends again still ages out.
+export function applySnapshot(target: OfficeState, snap: SerializedOfficeState, now: number): void {
   // self-related fields preserved on the receiver
   const selfId = target.selfId;
   const officeId = target.officeId;
 
   target.players = {};
   for (const [id, p] of Object.entries(snap.players)) {
-    target.players[id] = { ...p }; // tRecv intentionally omitted
+    // tRecv intentionally omitted
+    target.players[id] = id === selfId ? { ...p } : { ...p, firstSeenAt: now };
   }
 
   target.proximity = {};
