@@ -108,6 +108,7 @@ export default defineConfig(({ mode }) => {
         sessionStore: () => pgSessionStore(getPool()),
         devUser: login ? { login, name: name ?? login } : undefined,
         devEnv,
+        realtimeTokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
         studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,
         modelsDir: fileURLToPath(new URL('../studio/public/models', import.meta.url)),
       }),

@@ -3,6 +3,7 @@ import { createServer, request, type IncomingMessage, type Server, type ServerRe
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { verifyJoinToken } from '@officexr/realtime-server/join-token';
 import session from 'express-session';
 import type { Profile } from 'passport-google-oauth20';
 import type { Connect, PreviewServer, ViteDevServer } from 'vite';
@@ -115,9 +116,10 @@ interface StartOptions {
   devUser?: Identity;
   auth?: Partial<AuthConfig>;
   sessionStore?: session.Store;
+  realtimeTokenSecret?: string;
 }
 
-async function start(hook: Hook, { devUser, auth = AUTH, sessionStore = new session.MemoryStore() }: StartOptions = {}): Promise<string> {
+async function start(hook: Hook, { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret }: StartOptions = {}): Promise<string> {
   const stack: Connect.NextHandleFunction[] = [];
   const fake = {
     middlewares: {
@@ -137,6 +139,7 @@ async function start(hook: Hook, { devUser, auth = AUTH, sessionStore = new sess
     sessionStore: () => sessionStore,
     googleStrategy: fakeGoogle,
     devUser,
+    realtimeTokenSecret,
     modelsDir,
   });
   for (const plugin of plugins) {
@@ -196,6 +199,33 @@ const headerIdentity: ResolveIdentity = (req) => {
   return typeof login === 'string' ? { login, name: login } : null;
 };
 const alice = { 'x-test-login': 'a@example.com' };
+
+describe('/api/realtime-token', () => {
+  it('is 401 without a session', async () => {
+    const base = await start('configurePreviewServer', { realtimeTokenSecret: 's3cret' });
+    expect((await fetch(`${base}/api/realtime-token`)).status).toBe(401);
+  });
+
+  it("mints a token the realtime server's verifier accepts for the session's login", async () => {
+    const base = await start('configurePreviewServer', { realtimeTokenSecret: 's3cret' });
+    const res = await fetch(`${base}/api/realtime-token`, { headers: await signIn(base, 'a@example.com') });
+    expect(res.status).toBe(200);
+    const { token } = (await res.json()) as { token: string };
+    expect(verifyJoinToken('s3cret', token)).toEqual({ login: 'a@example.com' });
+    expect(verifyJoinToken('other', token)).toBeNull();
+  });
+
+  it('uses the dev user on the dev server', async () => {
+    const base = await start('configureServer', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {}, realtimeTokenSecret: 's3cret' });
+    const { token } = (await (await fetch(`${base}/api/realtime-token`)).json()) as { token: string };
+    expect(verifyJoinToken('s3cret', token)).toEqual({ login: 'dev@example.com' });
+  });
+
+  it.each([undefined, ''])('is 404 when the secret is %j', async (secret) => {
+    const base = await start('configurePreviewServer', { realtimeTokenSecret: secret });
+    expect((await fetch(`${base}/api/realtime-token`, { headers: await signIn(base, 'a@example.com') })).status).toBe(404);
+  });
+});
 
 describe('/api/me', () => {
   it('returns the signed-in Google identity', async () => {

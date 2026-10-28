@@ -16,6 +16,7 @@
   "dependencies": {
     "@jitsi/react-sdk": "^1.4.4",
     "@officexr/core-refactor": "workspace:*",
+    "@officexr/realtime-server": "workspace:*",
     "@officexr/sdk": "workspace:*",
     "@officexr/world": "workspace:*",
     "connect-pg-simple": "^10.0.0",

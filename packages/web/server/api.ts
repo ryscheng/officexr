@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { Connect, Plugin } from 'vite';
+import { signJoinToken } from '@officexr/realtime-server/join-token';
 import { isCharacterName } from '@officexr/world/characters';
 import studioStorage, { studioMapExists } from '@officexr/world/vite-plugin-storage';
 import type { Store } from 'express-session';
@@ -53,6 +54,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type ResolveIdentity = (req: IncomingMessage) => Identity | null;
 
+const JOIN_TOKEN_TTL_MS = 120_000;
 const MAX_BODY_BYTES = 4096;
 const TOO_LARGE = Symbol('too large');
 
@@ -141,6 +143,7 @@ export function apiMiddleware(
   updateOffice: UpdateOffice,
   mapExists: MapExists,
   identity: ResolveIdentity,
+  realtimeTokenSecret?: string,
 ): Connect.NextHandleFunction {
   return async (req, res, next) => {
     const path = req.url?.split('?')[0] ?? '';
@@ -156,6 +159,17 @@ export function apiMiddleware(
       if (path === '/api/me') {
         const me = identity(req);
         return me ? send(200, me) : send(401, { error: 'Not signed in' });
+      }
+      if (path === '/api/realtime-token') {
+        // An empty secret counts as unset: signing with it throws.
+        if (!realtimeTokenSecret) {
+          return send(404, { error: 'Realtime tokens are not enabled' });
+        }
+        const me = identity(req);
+        if (!me) {
+          return send(401, { error: 'Not signed in' });
+        }
+        return send(200, { token: signJoinToken(realtimeTokenSecret, { login: me.login, ttlMs: JOIN_TOKEN_TTL_MS }) });
       }
       if (path === '/api/offices') {
         if (req.method === 'POST') {
@@ -251,6 +265,8 @@ export interface ServerPluginOptions {
   /** The identity of every dev-server request, never preview's. */
   devUser?: Identity;
   devEnv?: Record<string, string>;
+  /** Must equal the realtime server's `OFFICEXR_REALTIME_TOKEN_SECRET`; unset disables `/api/realtime-token`. */
+  realtimeTokenSecret?: string;
   /** Studio data dir served read-only under `/api`; the storage plugin's defaults when unset. */
   studioDataDir?: string;
   /** Character and object models served at `/models`. */
@@ -268,12 +284,13 @@ export function officexrServer({
   googleStrategy,
   devUser,
   devEnv,
+  realtimeTokenSecret,
   studioDataDir,
   modelsDir,
 }: ServerPluginOptions): Plugin[] {
   const models = staticDirMiddleware('/models', modelsDir);
   const mapExists = studioMapExists(studioDataDir);
-  const api = (identity: ResolveIdentity) => apiMiddleware(queryOffices, characters, createOffice, updateOffice, mapExists, identity);
+  const api = (identity: ResolveIdentity) => apiMiddleware(queryOffices, characters, createOffice, updateOffice, mapExists, identity, realtimeTokenSecret);
   const parsedAuth = parseAuthConfig(auth);
   const useAuth = (server: { middlewares: Connect.Server }, config: AuthConfig) => {
     for (const middleware of createAuth({ config, sessionStore: sessionStore(), isLoginAllowed, googleStrategy })) {

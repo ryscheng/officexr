@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { fetchRealtimeToken } from './realtimeToken';
 
 export type JoinCheck = 'checking' | 'prompt' | 'go' | 'cancelled';
 
@@ -12,7 +13,8 @@ export function useJoinCheck(officeId: string, login: string, fetchFn: typeof fe
   useEffect(() => {
     let cancelled = false;
     setState('checking');
-    fetchFn(`/rooms/${encodeURIComponent(officeId)}/sessions?login=${encodeURIComponent(login)}`)
+    fetchRealtimeToken(fetchFn)
+      .then((token) => fetchFn(`/rooms/${encodeURIComponent(officeId)}/sessions?login=${encodeURIComponent(login)}${token ? `&token=${encodeURIComponent(token)}` : ''}`))
       .then((res) => (res.ok ? (res.json() as Promise<{ connected: boolean; allowMulti: boolean }>) : null))
       // The server enforces the rule either way, so an unanswered check just joins.
       .catch(() => null)
