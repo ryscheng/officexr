@@ -519,6 +519,7 @@ export function SceneFrame({
         let moveZ: number;
 
         if (isAirborne) {
+          // During the landing ease the lerp above owns airVel; steering only applies in flight.
           if (airborneRef.current && landingBlendTRef.current === 0) {
             const next = stepAirVelocity(
               { x: airVelXRef.current, z: airVelZRef.current },

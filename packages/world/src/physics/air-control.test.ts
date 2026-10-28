@@ -17,6 +17,12 @@ describe('stepAirVelocity', () => {
     expect(stepAirVelocity(start, intent, 0.5, 0)).toEqual(start);
   });
 
+  it('decays toward rest when no key is held', () => {
+    const next = stepAirVelocity(start, { x: 0, z: 0 }, 0.2, 1 / 60);
+    expect(next.x).toBeCloseTo(start.x * 0.8, 9);
+    expect(next.z).toBeCloseTo(start.z * 0.8, 9);
+  });
+
   it('is frame-rate independent: one 1/30 step equals two 1/60 steps', () => {
     const once = stepAirVelocity(start, intent, 0.2, 1 / 30);
     const twice = stepAirVelocity(stepAirVelocity(start, intent, 0.2, 1 / 60), intent, 0.2, 1 / 60);

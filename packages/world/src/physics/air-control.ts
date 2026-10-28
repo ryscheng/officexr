@@ -1,10 +1,10 @@
 /**
  * air-control.ts — headless in-flight horizontal steering.
  *
- * No Three, no React, no r3f imports; SceneFrame depends on this module.
+ * No Three, no React, no r3f imports.
  */
 
-export type Velocity2 = { x: number; z: number };
+type Velocity2 = { x: number; z: number };
 
 /**
  * Next air velocity (m/s) after blending `current` toward the WASD `intent`.
