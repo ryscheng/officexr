@@ -5,6 +5,7 @@ import { WorldLoadingScreen } from '@officexr/world/react';
 import { Async } from './Async';
 import { Home } from './home/Home';
 import { OfficeWorld } from './room/OfficeWorld';
+import { SignIn } from './SignIn';
 import { useApi } from './useApi';
 
 const roomLoading = <WorldLoadingScreen step="Loading office…" />;
@@ -39,6 +40,9 @@ function Room({ me }: { me: Identity }) {
 
 export default function App() {
   const me = useApi<Identity>('/api/me');
+  if (me.type === 'error' && me.status === 401) {
+    return <SignIn />;
+  }
   return (
     <BrowserRouter>
       <Routes>

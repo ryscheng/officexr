@@ -7,7 +7,7 @@ OfficeXR is a pnpm monorepo whose deployable app is the browser client
 `@officexr/web`. It renders offices with the world renderer (`@officexr/world`)
 from maps authored in `@officexr/studio`, syncs players through a WebSocket
 realtime server, reads Postgres server-side, and takes identity from
-Tailscale. JaaS (Jitsi as a Service) handles proximity voice; the browser mints
+Google sign-in (Postgres-backed sessions). JaaS (Jitsi as a Service) handles proximity voice; the browser mints
 its own JaaS JWT via the Web Crypto API.
 
 ## 1. System Architecture
@@ -22,7 +22,7 @@ flowchart LR
     end
 
     subgraph Server["Server side"]
-        Tailscale["Tailscale Serve<br/>identity headers"]
+        Google["Google OAuth<br/>sign-in"]
         WebServer["web server (Vite plugin)<br/>/api/* · /config.js"]
         Realtime["@officexr/realtime-server<br/>WebSocket relay"]
         PG[("Postgres<br/>offices · office_characters")]
@@ -34,7 +34,7 @@ flowchart LR
     Session --> SDK
     World --> SDK
 
-    Tailscale --> WebServer
+    Google -- "/auth/google" --> WebServer
     WebApp -- "/api/me, /api/offices" --> WebServer
     WebServer -- "pg" --> PG
     SDK -- "WsChannel over /ws" --> Realtime
@@ -43,7 +43,7 @@ flowchart LR
     classDef client fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
     classDef svc fill:#064e3b,stroke:#34d399,color:#d1fae5
     class WebApp,World,Session,SDK client
-    class Tailscale,WebServer,Realtime,PG,JaaS svc
+    class Google,WebServer,Realtime,PG,JaaS svc
 ```
 
 ## 2. Packages and Layers
@@ -382,8 +382,10 @@ the browser makes no database calls.
 - `offices` — the office list; `map_name` selects the studio map (null means
   the default map).
 - `office_characters` — each user's world character per office, keyed by
-  Tailscale login. Row-level security is enabled with no policies, so only the
+  the user's verified Google email. Row-level security is enabled with no policies, so only the
   server's direct connection can read or write it.
+- `session` and `login_allowlist` — the sign-in session store and the SQL-managed
+  emails/domains allowed to sign in.
 
 Tables from the original Supabase Auth client (`profiles`, `office_members`,
 `office_skins`) still exist in the schema but nothing reads them.

@@ -15,7 +15,7 @@ const json = (status: number, body: unknown) =>
   Promise.resolve({ ok: status < 400, status, json: async () => body } as Response);
 
 const ready: ApiState<Identity> = { type: 'ready', data: { login: 'a@example.com', name: 'Alice' } };
-const unidentified: ApiState<Identity> = { type: 'error', message: 'Not identified via Tailscale' };
+const unidentified: ApiState<Identity> = { type: 'error', message: 'Not signed in' };
 
 function setup(me: ApiState<Identity>, offices: Office[] | number, post?: (init: RequestInit) => Promise<Response>) {
   const fetchMock = vi.fn((url: string, init?: RequestInit) =>
@@ -65,9 +65,18 @@ describe('Home', () => {
   it('still lists offices and disables the form when /api/me fails', async () => {
     setup(unidentified, [{ id: 'o1', name: 'HQ', description: null, map_name: 'hq', created_by_login: null, debug_enabled: false }]);
     expect(await screen.findByText('HQ')).toBeTruthy();
-    expect(screen.getAllByText('Not identified via Tailscale').length).toBeGreaterThan(0);
-    expect(screen.getByText(/requires being identified/)).toBeTruthy();
+    expect(screen.getAllByText('Not signed in').length).toBeGreaterThan(0);
+    expect(screen.getByText(/requires signing in/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Create office' })).matches(':disabled')).toBe(true);
+  });
+
+  it('signs out by POSTing /auth/logout then returning to /', async () => {
+    const assign = vi.fn();
+    setup(ready, []);
+    vi.stubGlobal('location', { assign });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/'));
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/auth/logout', { method: 'POST' });
   });
 
   it('creates an office and navigates into it', async () => {

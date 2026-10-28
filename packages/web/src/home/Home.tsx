@@ -64,7 +64,7 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
   return (
     <form onSubmit={submit} className="mt-8 space-y-3">
       <h2 className="text-lg font-semibold">Create an office</h2>
-      {!identified && <p className="text-sm text-gray-600">Creating an office requires being identified via Tailscale.</p>}
+      {!identified && <p className="text-sm text-gray-600">Creating an office requires signing in.</p>}
       <fieldset disabled={!identified || busy} className="space-y-3">
         <label className="block text-sm">
           Name
@@ -102,6 +102,11 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
   );
 }
 
+async function signOut() {
+  await fetch('/auth/logout', { method: 'POST' });
+  window.location.assign('/');
+}
+
 export function Home({ me }: { me: ApiState<Identity> }) {
   return (
     <main className="mx-auto max-w-2xl p-6">
@@ -109,7 +114,14 @@ export function Home({ me }: { me: ApiState<Identity> }) {
         <Link to="/" className="text-2xl font-semibold">
           OfficeXR
         </Link>
-        {me.type === 'ready' && <span className="text-sm">{me.data.name}</span>}
+        {me.type === 'ready' && (
+          <span className="flex items-baseline gap-3 text-sm">
+            {me.data.name}
+            <button type="button" onClick={signOut} className="underline">
+              Sign out
+            </button>
+          </span>
+        )}
         {me.type === 'error' && (
           <span role="alert" className="text-sm text-red-600">
             {me.message}
