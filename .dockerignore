@@ -1,0 +1,9 @@
+.git
+**/node_modules
+**/dist
+packages/world/baked-layouts
+packages/studio/public/models/furniture
+packages/studio/public/models/prototype
+packages/studio/public/models/restaurant
+test-results
+playwright-report
