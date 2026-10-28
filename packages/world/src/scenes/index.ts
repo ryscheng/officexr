@@ -113,6 +113,13 @@ export {
   type MapSummary,
   FilesystemMapStorage,
 } from './filesystem-map-storage.ts';
+export {
+  groupPlacementsByLayout,
+  loadAll,
+  mapLayoutPlacements,
+  type BakedLayoutPlacement,
+  type MapLayoutPlacements,
+} from './map-layout-placements.ts';
 export { LocalStorageMapStorage } from './localstorage-map-storage.ts';
 export {
   type LayoutStorage,

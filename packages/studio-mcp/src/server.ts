@@ -5,6 +5,7 @@ import type { StudioDocuments } from './studio-documents.ts';
 import type { HeavyWorkLock } from './heavy-work-lock.ts';
 import type { ViewRenderer } from './renderer.ts';
 import { registerBakedLayoutTools } from './tools/baked-layouts.ts';
+import { registerMapBakeTools } from './tools/map-bakes.ts';
 import { registerLayoutTools } from './tools/layouts.ts';
 import { registerMapTools } from './tools/maps.ts';
 import { registerRenderTools } from './tools/render.ts';
@@ -30,6 +31,7 @@ export function createStudioMcpServer(
   registerMapTools(server, docs);
   registerLayoutTools(server, docs);
   registerBakedLayoutTools(server, docs, modelRoot, heavyWorkLock);
+  registerMapBakeTools(server, docs);
   registerRenderTools(server, docs, studioOrigin, renderer, heavyWorkLock);
   registerWorldTools(server, docs);
   return server;

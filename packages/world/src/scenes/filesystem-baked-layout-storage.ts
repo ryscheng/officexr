@@ -9,6 +9,8 @@ export interface BakedLayoutSummary {
 
 export interface BakedLayoutStorage {
   list(): Promise<BakedLayoutSummary[]>;
+  /** The stored GLB bytes, or `null` when none is stored. */
+  load(name: string): Promise<Uint8Array | null>;
   save(name: string, glb: Uint8Array): Promise<void>;
   delete(name: string): Promise<void>;
 }
@@ -28,6 +30,18 @@ export class FilesystemBakedLayoutStorage implements BakedLayoutStorage {
     }
     const json = (await r.json()) as { bakedLayouts?: BakedLayoutSummary[] };
     return Array.isArray(json.bakedLayouts) ? json.bakedLayouts : [];
+  }
+
+  async load(name: string): Promise<Uint8Array | null> {
+    this.checkName('load', name);
+    const r = await fetch(bakedLayoutUrl(name, this.base));
+    if (r.status === 404) {
+      return null;
+    }
+    if (!r.ok) {
+      throw await httpError('baked-layout-storage load', r);
+    }
+    return new Uint8Array(await r.arrayBuffer());
   }
 
   async save(name: string, glb: Uint8Array): Promise<void> {

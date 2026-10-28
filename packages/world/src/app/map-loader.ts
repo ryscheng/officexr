@@ -1,18 +1,20 @@
 import type { VoiceZone, WorldObjects } from '@officexr/sdk';
 import {
-  isBakedRoom,
-  migrateMapV1toV2,
+  loadAll,
+  mapLayoutPlacements,
+  type BakedLayoutPlacement,
   type LayoutDocument,
   type LayoutStorage,
   type MapDocumentV2,
   type MapStorage,
   type RoomDocument,
-  type RoomInstance,
   type RoomStorage,
   type SpawnPoint,
 } from '../scenes/index.ts';
 import type { CatalogService, InstanceGeometryService, RoomService } from './types.ts';
 import { computeVoiceZones } from './voice-zones.ts';
+
+export type { BakedLayoutPlacement };
 
 export class MapNotFoundError extends Error {
   constructor(readonly mapName: string) {
@@ -28,14 +30,6 @@ export interface MapLoaderDeps {
   geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>;
 }
 
-/** One room placement that links a baked layout; `position` is in voxels. */
-export interface BakedLayoutPlacement {
-  roomInstanceId: string;
-  layoutName: string;
-  position: RoomInstance['position'];
-  rotationY: NonNullable<RoomInstance['rotationY']>;
-}
-
 export interface LoadedMap {
   mapDoc: MapDocumentV2;
   rooms: ReadonlyMap<string, RoomDocument>;
@@ -44,25 +38,6 @@ export interface LoadedMap {
   spawnPoints: readonly SpawnPoint[];
   /** Every room placement that links a layout, whether or not the room has commands. */
   bakedLayouts: readonly BakedLayoutPlacement[];
-}
-
-async function loadAll<T>(
-  names: Iterable<string>,
-  load: (name: string) => Promise<T | null>,
-  kind: string,
-): Promise<Map<string, T>> {
-  const entries = await Promise.all(
-    Array.from(names).map(async (name) => {
-      try {
-        const doc = await load(name);
-        return doc ? ([name, doc] as const) : null;
-      } catch (err) {
-        console.warn(`[map-loader] ${kind} load("${name}") failed:`, err);
-        return null;
-      }
-    }),
-  );
-  return new Map(entries.filter((e) => e !== null));
 }
 
 /**
@@ -79,22 +54,7 @@ export async function loadMap(
   if (!stored) {
     throw new MapNotFoundError(name);
   }
-  const rooms = await loadAll(
-    new Set(stored.rooms.map((ri) => ri.roomName)),
-    (n) => storages.rooms.load(n),
-    'room',
-  );
-  const isBaked = (roomName: string) => {
-    const room = rooms.get(roomName);
-    return room !== undefined && isBakedRoom(room);
-  };
-  const mapDoc = stored.schemaVersion === 1 ? migrateMapV1toV2(stored, isBaked) : stored;
-  const bakedLayouts = mapDoc.rooms.flatMap((ri): BakedLayoutPlacement[] => {
-    const layoutName = rooms.get(ri.roomName)?.layoutName;
-    return layoutName === undefined
-      ? []
-      : [{ roomInstanceId: ri.id, layoutName, position: ri.position, rotationY: ri.rotationY ?? 0 }];
-  });
+  const { mapDoc, rooms, placements: bakedLayouts } = await mapLayoutPlacements(stored, (n) => storages.rooms.load(n));
   const layouts = await loadAll<LayoutDocument>(
     new Set(bakedLayouts.map((p) => p.layoutName)),
     (n) => storages.layouts.load(n),
