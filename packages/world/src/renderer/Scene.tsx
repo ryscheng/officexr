@@ -5,6 +5,7 @@ import { Physics, type RapierRigidBody } from '@react-three/rapier';
 import { XR, type XRStore } from '@react-three/xr';
 import { GradientBackground } from './GradientBackground.tsx';
 import { LightingRig } from './LightingRig.tsx';
+import { lightBasis, snapToShadowTexel } from './shadow-snap.ts';
 import { MapColliders } from './MapColliders.tsx';
 import { excludeLayoutInstances } from './useStoreWorldObjects.ts';
 import type {
@@ -52,27 +53,33 @@ function SunFollower(props: {
   lightTargetRef: React.RefObject<THREE.Object3D | null>;
   sunDiscRef: React.RefObject<THREE.Object3D | null>;
   sunOffset: [number, number, number];
+  shadowRange: number;
+  shadowMapSize: number;
   selfPosRef: React.RefObject<THREE.Vector3>;
 }) {
+  const [ox, oy, oz] = props.sunOffset;
+  const basis = useMemo(() => lightBasis([ox, oy, oz]), [ox, oy, oz]);
+  const texelSize = (2 * props.shadowRange) / props.shadowMapSize;
+  const snapped = useMemo(() => new THREE.Vector3(), []);
   useFrame(() => {
     const player = props.selfPosRef.current;
     if (!player) return;
-    const [ox, oy, oz] = props.sunOffset;
+    snapToShadowTexel(player, basis, texelSize, snapped);
     const light = props.lightRef.current;
     const target = props.lightTargetRef.current;
     if (light && target) {
       // Bind the movable target to the light (idempotent — three.js
       // reads `light.target.matrixWorld` for the view direction).
       if (light.target !== target) light.target = target;
-      light.position.set(player.x + ox, player.y + oy, player.z + oz);
-      target.position.copy(player);
+      light.position.set(snapped.x + ox, snapped.y + oy, snapped.z + oz);
+      target.position.copy(snapped);
       target.updateMatrixWorld();
     }
     if (props.sunDiscRef.current) {
       props.sunDiscRef.current.position.set(
-        player.x + ox,
-        player.y + oy,
-        player.z + oz,
+        snapped.x + ox,
+        snapped.y + oy,
+        snapped.z + oz,
       );
     }
   });
@@ -277,25 +284,18 @@ export function Scene(props: SceneProps) {
             </React.Fragment>
           );
         })}
-        {/* Lighting: shared LightingRig + a per-frame SunFollower
-            that mutates the sun's position/target/disc to track the
-            local player. The follower keeps the orthographic shadow
-            camera tight around the player even on huge maps — that's
-            how shadow-map texels stay small (sharp shadows) without
-            exploding shadow-map memory. Editors mount LightingRig
-            without the follower (sun stays static). */}
+        {/* Lighting: shared LightingRig. SunFollower (mounted below,
+            after Players) moves the sun to track the local player,
+            keeping the orthographic shadow camera tight around the
+            player even on huge maps — that's how shadow-map texels
+            stay small (sharp shadows) without exploding shadow-map
+            memory. Editors mount LightingRig without the follower
+            (sun stays static). */}
         <LightingRig
           lighting={lighting}
           sunLightRef={sunLightRef}
           sunLightTargetRef={sunLightTargetRef}
           sunDiscRef={sunDiscRef}
-        />
-        <SunFollower
-          lightRef={sunLightRef}
-          lightTargetRef={sunLightTargetRef}
-          sunDiscRef={sunDiscRef}
-          sunOffset={lighting.sunPosition as [number, number, number]}
-          selfPosRef={selfPosRef}
         />
         <GradientBackground
           topColor={background.topColor}
@@ -317,6 +317,19 @@ export function Scene(props: SceneProps) {
           selfReady={props.selfReady}
         />
         {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} />}
+
+        {/* Mounted after Players: same-priority useFrames run in
+            subscription order, so this reads the current frame's
+            selfPosRef instead of last frame's. */}
+        <SunFollower
+          lightRef={sunLightRef}
+          lightTargetRef={sunLightTargetRef}
+          sunDiscRef={sunDiscRef}
+          sunOffset={lighting.sunPosition as [number, number, number]}
+          shadowRange={lighting.shadowRange}
+          shadowMapSize={lighting.shadowMapSize}
+          selfPosRef={selfPosRef}
+        />
 
         <ProximityGlow
           store={store}
