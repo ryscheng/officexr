@@ -38,6 +38,7 @@ import {
   type HelloFrame,
 } from './protocol.ts';
 import { fetchSessionPolicy } from './office-policy.ts';
+import { isLogin, verifyJoinToken } from './join-token.ts';
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_PATH = '/ws';
@@ -63,6 +64,12 @@ export interface RealtimeServerOptions {
    * join for whether the login may hold several sessions. Unset means
    * never. */
   officeUrl?: string;
+  /** HMAC secret for join tokens. When set, every `hello` and every
+   * `/rooms/:id/sessions` request must carry a token signed with it, and
+   * the login comes from the token. Unset or empty means no enforcement. */
+  tokenSecret?: string;
+  /** Clock (epoch ms) for token expiry. Default `Date.now`. */
+  now?: () => number;
   /** Used for the boot load and office lookups. Default: global `fetch`. */
   fetch?: typeof fetch;
   /** First boot-load retry delay; doubles per attempt up to 30 s. Default 2000. */
@@ -239,6 +246,8 @@ export class RealtimeServer {
   private readonly worldConstantsUrl: string | undefined;
   private readonly adminToken: string | undefined;
   private readonly officeUrl: string | undefined;
+  private readonly tokenSecret: string | undefined;
+  private readonly now: () => number;
   private readonly fetch: typeof fetch;
   private readonly bootRetryMs: number;
   private worldConstants: WorldConstants = DEFAULT_WORLD_CONSTANTS;
@@ -252,6 +261,8 @@ export class RealtimeServer {
     this.worldConstantsUrl = opts.worldConstantsUrl;
     this.adminToken = opts.adminToken;
     this.officeUrl = opts.officeUrl;
+    this.tokenSecret = opts.tokenSecret || undefined;
+    this.now = opts.now ?? Date.now;
     this.fetch = opts.fetch ?? globalThis.fetch;
     this.bootRetryMs = opts.bootRetryMs ?? DEFAULT_BOOT_RETRY_MS;
     this.defaultRoom = new Room(
@@ -293,8 +304,7 @@ export class RealtimeServer {
       }
       const sessionsRoute = req.method === 'GET' && req.url?.match(SESSIONS_ROUTE);
       if (sessionsRoute) {
-        const login = new URLSearchParams(sessionsRoute[2]).get('login');
-        this.getSessions(sessionsRoute[1], login, res).catch(() => res.destroy());
+        this.getSessions(sessionsRoute[1], new URLSearchParams(sessionsRoute[2]), res).catch(() => res.destroy());
         return;
       }
       res.writeHead(404);
@@ -394,11 +404,19 @@ export class RealtimeServer {
     res.writeHead(204).end();
   }
 
-  private async getSessions(rawOfficeId: string, login: string | null, res: ServerResponse): Promise<void> {
+  private async getSessions(rawOfficeId: string, query: URLSearchParams, res: ServerResponse): Promise<void> {
     const officeId = decodeOrNull(rawOfficeId);
+    const login = query.get('login');
     if (officeId === null || !isLogin(login)) {
       res.writeHead(400).end();
       return;
+    }
+    if (this.tokenSecret !== undefined) {
+      const token = query.get('token');
+      if (token === null || verifyJoinToken(this.tokenSecret, token, this.now())?.login !== login) {
+        res.writeHead(401).end();
+        return;
+      }
     }
     const connected = (this.rooms.get(officeId)?.sessionsOf(login).length ?? 0) > 0;
     const allowMulti = await this.allowsMultiSession(officeId, login);
@@ -439,7 +457,7 @@ export class RealtimeServer {
 
       if (frame.t === 'hello') {
         if (client || helloPending) return;
-        const login = helloLogin(frame);
+        const login = helloIdentity(frame, this.tokenSecret, this.now());
         if (login === null) {
           ws.close();
           return;
@@ -629,10 +647,6 @@ function decodeOrNull(component: string): string | null {
   }
 }
 
-function isLogin(login: unknown): login is string {
-  return typeof login === 'string' && login !== '' && !login.includes('#');
-}
-
 /** The login a `hello` speaks for, or `null` when its `userId` isn't
  * one of that login's player ids. */
 function helloLogin(frame: HelloFrame): string | null {
@@ -642,6 +656,19 @@ function helloLogin(frame: HelloFrame): string | null {
   const login = frame.login ?? loginOf(frame.userId);
   const ownsId = frame.userId === login || (frame.userId.startsWith(`${login}#`) && frame.userId.length > login.length + 1);
   return isLogin(login) && ownsId ? login : null;
+}
+
+/** The login a `hello` speaks for. With a token secret it comes from the
+ * verified token, which the frame's own `login` may not contradict. */
+function helloIdentity(frame: HelloFrame, tokenSecret: string | undefined, now: number): string | null {
+  if (tokenSecret === undefined) {
+    return helloLogin(frame);
+  }
+  const verified = typeof frame.token === 'string' ? verifyJoinToken(tokenSecret, frame.token, now) : null;
+  if (!verified || (frame.login !== undefined && frame.login !== verified.login)) {
+    return null;
+  }
+  return helloLogin({ ...frame, login: verified.login });
 }
 
 function bearerMatches(header: string | undefined, token: string): boolean {

@@ -22,6 +22,8 @@ export interface WsStackConfig {
   selfId: string;
   /** Login that `selfId` is a session of, when it isn't the login itself. */
   login?: string;
+  /** Join token for the realtime server, awaited before every `hello`. */
+  getToken?: () => Promise<string | undefined>;
   /** Office to join on the server. Omitted means the server's default
    * office. */
   officeId?: string;
@@ -63,6 +65,7 @@ export function createStack(config: StackConfig): Stack {
       url: config.url,
       userId: config.selfId,
       login: config.login,
+      getToken: config.getToken,
       officeId: config.officeId,
     });
     const voiceAdapter =
