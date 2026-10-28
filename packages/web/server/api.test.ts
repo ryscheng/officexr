@@ -3,9 +3,22 @@ import { createServer, request, type IncomingMessage, type Server, type ServerRe
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import session from 'express-session';
+import type { Profile } from 'passport-google-oauth20';
 import type { Connect, PreviewServer, ViteDevServer } from 'vite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { apiMiddleware, officexrServer, type CreateOffice, type Office, type OfficeCharacters, type QueryOffices, type UpdateOffice } from './api';
+import {
+  apiMiddleware,
+  officexrServer,
+  type CreateOffice,
+  type Identity,
+  type Office,
+  type OfficeCharacters,
+  type QueryOffices,
+  type ResolveIdentity,
+  type UpdateOffice,
+} from './api';
+import { createGoogleStrategy, emailDomain, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const OTHER = '33333333-3333-4333-8333-333333333333';
@@ -66,7 +79,45 @@ afterEach(() => server?.close());
 
 type Hook = 'configureServer' | 'configurePreviewServer';
 
-async function start(hook: Hook, devUser?: { login: string; name: string }): Promise<string> {
+const AUTH: AuthConfig = {
+  googleClientId: 'client-id',
+  googleClientSecret: 'client-secret',
+  sessionSecret: 'session-secret',
+  publicUrl: 'http://officexr.test',
+};
+
+const isLoginAllowed: IsLoginAllowed = async (email) =>
+  ['a@example.com', 'b@example.com'].includes(email) || emailDomain(email) === 'allowed.org';
+
+function googleProfile(email: string, { verified = true, name = '' } = {}): Profile {
+  return { emails: [{ value: email, verified }], displayName: name, _json: { email_verified: verified } } as unknown as Profile;
+}
+
+/** Token request params the fake Google received, newest last. */
+const tokenRequests: Record<string, string>[] = [];
+let googleUser: Profile = googleProfile('a@example.com', { name: 'Alice' });
+
+/** The real strategy, state store and PKCE included, with Google's token and profile endpoints faked. */
+const fakeGoogle: GoogleStrategyFactory = (config, verify) => {
+  const strategy = createGoogleStrategy(config, verify) as unknown as {
+    _oauth2: { getOAuthAccessToken: (code: string, params: Record<string, string>, cb: (...args: unknown[]) => void) => void };
+    userProfile: (token: string, done: (err: unknown, profile: Profile) => void) => void;
+  };
+  strategy._oauth2.getOAuthAccessToken = (_code, params, cb) => {
+    tokenRequests.push(params);
+    cb(null, 'access-token', 'refresh-token', {});
+  };
+  strategy.userProfile = (_token, done) => done(null, googleUser);
+  return strategy as unknown as ReturnType<GoogleStrategyFactory>;
+};
+
+interface StartOptions {
+  devUser?: Identity;
+  auth?: Partial<AuthConfig>;
+  sessionStore?: session.Store;
+}
+
+async function start(hook: Hook, { devUser, auth = AUTH, sessionStore = new session.MemoryStore() }: StartOptions = {}): Promise<string> {
   const stack: Connect.NextHandleFunction[] = [];
   const fake = {
     middlewares: {
@@ -76,7 +127,19 @@ async function start(hook: Hook, devUser?: { login: string; name: string }): Pro
       },
     },
   };
-  for (const plugin of officexrServer({ queryOffices, characters, createOffice, updateOffice, devUser, modelsDir })) {
+  const plugins = officexrServer({
+    queryOffices,
+    characters,
+    createOffice,
+    updateOffice,
+    isLoginAllowed,
+    auth,
+    sessionStore: () => sessionStore,
+    googleStrategy: fakeGoogle,
+    devUser,
+    modelsDir,
+  });
+  for (const plugin of plugins) {
     await (plugin[hook] as (s: ViteDevServer | PreviewServer) => unknown)(fake as unknown as ViteDevServer);
   }
   server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -94,6 +157,27 @@ async function start(hook: Hook, devUser?: { login: string; name: string }): Pro
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
+const cookieOf = (res: Response) => res.headers.getSetCookie()[0]?.split(';')[0];
+
+/** Runs the Google round trip as `user`; `location` is where the callback sends the browser. */
+async function googleLogin(base: string, user: Profile, next?: string, tamperState = false) {
+  googleUser = user;
+  const query = next === undefined ? '' : `?next=${encodeURIComponent(next)}`;
+  const authorize = await fetch(`${base}/auth/google${query}`, { redirect: 'manual' });
+  const state = new URL(authorize.headers.get('location')!).searchParams.get('state')!;
+  const preLogin = cookieOf(authorize);
+  const callback = await fetch(`${base}/auth/google/callback?code=c0de&state=${tamperState ? 'forged' : state}`, {
+    redirect: 'manual',
+    headers: { cookie: preLogin },
+  });
+  return { authorize, preLogin, callback, location: callback.headers.get('location'), cookie: cookieOf(callback) };
+}
+
+async function signIn(base: string, email: string, name = ''): Promise<Record<string, string>> {
+  const { cookie } = await googleLogin(base, googleProfile(email, { name }));
+  return { cookie: cookie! };
+}
+
 /** Sends `path` verbatim; `fetch` would normalise dot segments before the server sees them. */
 function rawStatus(base: string, path: string): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -106,45 +190,162 @@ function rawStatus(base: string, path: string): Promise<number> {
   });
 }
 
-const tailscale = { 'Tailscale-User-Login': 'a@example.com', 'Tailscale-User-Name': 'Alice' };
+/** For the direct `apiMiddleware` specs, which skip the session layer. */
+const headerIdentity: ResolveIdentity = (req) => {
+  const login = req.headers['x-test-login'];
+  return typeof login === 'string' ? { login, name: login } : null;
+};
+const alice = { 'x-test-login': 'a@example.com' };
 
 describe('/api/me', () => {
-  it('returns the Tailscale header identity', async () => {
+  it('returns the signed-in Google identity', async () => {
     const base = await start('configurePreviewServer');
-    const res = await fetch(`${base}/api/me`, { headers: tailscale });
+    const res = await fetch(`${base}/api/me`, { headers: await signIn(base, 'A@Example.com', 'Alice') });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ login: 'a@example.com', name: 'Alice' });
   });
 
-  it('decodes RFC 2047 encoded names', async () => {
+  it('is 401 without a session, even with Tailscale headers', async () => {
     const base = await start('configurePreviewServer');
-    const res = await fetch(`${base}/api/me`, {
-      headers: { 'Tailscale-User-Login': 'a@example.com', 'Tailscale-User-Name': '=?utf-8?q?Jos=C3=A9_Ruiz?=' },
-    });
-    expect((await res.json()).name).toBe('José Ruiz');
+    const res = await fetch(`${base}/api/me`, { headers: { 'Tailscale-User-Login': 'a@example.com' } });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Not signed in' });
   });
 
-  it('decodes base64 and split encoded words', async () => {
-    const base = await start('configurePreviewServer');
-    const res = await fetch(`${base}/api/me`, {
-      headers: { 'Tailscale-User-Login': 'a@example.com', 'Tailscale-User-Name': '=?utf-8?b?Sm9z?= =?utf-8?q?=C3=A9?=' },
-    });
-    expect((await res.json()).name).toBe('José');
-  });
-
-  it('is 401 without headers', async () => {
-    const base = await start('configurePreviewServer');
-    expect((await fetch(`${base}/api/me`)).status).toBe(401);
-  });
-
-  it('injects the dev user on the dev server', async () => {
-    const base = await start('configureServer', { login: 'dev@example.com', name: 'Dev' });
+  it('is the dev user on the dev server, without any auth config', async () => {
+    const base = await start('configureServer', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {} });
     expect(await (await fetch(`${base}/api/me`)).json()).toEqual({ login: 'dev@example.com', name: 'Dev' });
   });
 
   it('ignores the dev user on the preview server', async () => {
-    const base = await start('configurePreviewServer', { login: 'dev@example.com', name: 'Dev' });
+    const base = await start('configurePreviewServer', { devUser: { login: 'dev@example.com', name: 'Dev' } });
     expect((await fetch(`${base}/api/me`)).status).toBe(401);
+  });
+});
+
+describe('Google sign-in', () => {
+  beforeEach(() => {
+    tokenRequests.length = 0;
+  });
+
+  it('sends the user to Google with state and a PKCE challenge, and returns to a safe next', async () => {
+    const base = await start('configurePreviewServer');
+    const { authorize, preLogin, callback, location, cookie } = await googleLogin(base, googleProfile('a@example.com'), '/offices/x?y=1');
+    const google = new URL(authorize.headers.get('location')!);
+    expect(google.origin).toBe('https://accounts.google.com');
+    expect(google.searchParams.get('redirect_uri')).toBe('http://officexr.test/auth/google/callback');
+    expect(google.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(callback.status).toBe(302);
+    expect(location).toBe('/offices/x?y=1');
+    expect(tokenRequests[0].code_verifier).toBeTruthy();
+    // Login regenerates the session, so a pre-login (possibly planted) cookie never authenticates.
+    expect(cookie).not.toBe(preLogin);
+    expect((await fetch(`${base}/api/me`, { headers: { cookie: preLogin! } })).status).toBe(401);
+    expect(await (await fetch(`${base}/api/me`, { headers: { cookie: cookie! } })).json()).toEqual({
+      login: 'a@example.com',
+      name: 'a@example.com',
+    });
+  });
+
+  it('round-trips a URL-encoded next with its own query string', async () => {
+    const base = await start('configurePreviewServer');
+    expect((await googleLogin(base, googleProfile('a@example.com'), '/room/abc?x=1&y=2?z')).location).toBe('/room/abc?x=1&y=2?z');
+  });
+
+  it.each(['//evil.com', 'https://evil.com', '/\\evil.com', '/\t/evil.com', 'evil', '/日本'])('falls back to / for next=%s', async (next) => {
+    const base = await start('configurePreviewServer');
+    expect((await googleLogin(base, googleProfile('a@example.com'), next)).location).toBe('/');
+  });
+
+  it.each([
+    ['unverified', googleProfile('a@example.com', { verified: false })],
+    ['not_allowed', googleProfile('eve@example.com')],
+  ])('refuses with login_error=%s and no session identity', async (code, user) => {
+    const base = await start('configurePreviewServer');
+    const { location, cookie } = await googleLogin(base, user, '/offices');
+    expect(location).toBe(`/?login_error=${code}`);
+    expect((await fetch(`${base}/api/me`, { headers: cookie ? { cookie } : {} })).status).toBe(401);
+  });
+
+  it('refuses a callback whose state does not match the session', async () => {
+    const base = await start('configurePreviewServer');
+    const { location } = await googleLogin(base, googleProfile('a@example.com'), '/', true);
+    expect(location).toBe('/?login_error=failed');
+    expect(tokenRequests).toEqual([]);
+  });
+
+  it('refuses when the user denies consent at Google', async () => {
+    const base = await start('configurePreviewServer');
+    const res = await fetch(`${base}/auth/google/callback?error=access_denied`, { redirect: 'manual' });
+    expect(res.headers.get('location')).toBe('/?login_error=failed');
+  });
+
+  it('logout returns 204 and the old cookie no longer authenticates', async () => {
+    const base = await start('configurePreviewServer');
+    const headers = await signIn(base, 'a@example.com');
+    const res = await fetch(`${base}/auth/logout`, { method: 'POST', headers });
+    expect(res.status).toBe(204);
+    expect(res.headers.getSetCookie()[0]).toMatch(/^officexr\.sid=;.*Expires=Thu, 01 Jan 1970/);
+    expect((await fetch(`${base}/api/me`, { headers })).status).toBe(401);
+  });
+
+  it('only touches the session store for /auth and /api', async () => {
+    const store = new session.MemoryStore();
+    const base = await start('configurePreviewServer', { sessionStore: store });
+    const headers = await signIn(base, 'a@example.com');
+    const reads: string[] = [];
+    const get = store.get.bind(store);
+    store.get = (sid, cb) => {
+      reads.push(sid);
+      get(sid, cb);
+    };
+    await fetch(`${base}/models/characters/Mage.glb`, { headers });
+    await fetch(`${base}/config.js`, { headers });
+    expect(reads).toEqual([]);
+    await fetch(`${base}/api/me`, { headers });
+    expect(reads).toHaveLength(1);
+  });
+
+  it('fails preview startup naming the missing config', async () => {
+    await expect(start('configurePreviewServer', { auth: { publicUrl: 'https://x.test' } })).rejects.toThrow(
+      'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET',
+    );
+    await expect(start('configurePreviewServer', { auth: { ...AUTH, sessionSecret: '' } })).rejects.toThrow(/SESSION_SECRET$/);
+  });
+
+  it('fails preview startup on a PUBLIC_URL without a scheme', async () => {
+    await expect(start('configurePreviewServer', { auth: { ...AUTH, publicUrl: 'officexr.example.com' } })).rejects.toThrow(/PUBLIC_URL$/);
+  });
+
+  it('keeps the dev user on the dev server while Google sign-in is mounted', async () => {
+    const base = await start('configureServer', { devUser: { login: 'dev@example.com', name: 'Dev' } });
+    expect(await (await fetch(`${base}/api/me`)).json()).toEqual({ login: 'dev@example.com', name: 'Dev' });
+    const authorize = await fetch(`${base}/auth/google`, { redirect: 'manual' });
+    expect(new URL(authorize.headers.get('location')!).origin).toBe('https://accounts.google.com');
+  });
+});
+
+describe('emailDomain', () => {
+  it.each([
+    ['c@allowed.org', 'allowed.org'],
+    ['c@allowed.org.evil', 'allowed.org.evil'],
+    ['c@sub.allowed.org', 'sub.allowed.org'],
+    ['"a@allowed.org"@evil.com', 'evil.com'],
+  ])('%s is at %s', (email, domain) => {
+    expect(emailDomain(email)).toBe(domain);
+  });
+});
+
+describe('verifyGoogleProfile', () => {
+  it.each([
+    ['an allowlisted email', googleProfile('b@example.com', { name: 'Bob' }), { login: 'b@example.com', name: 'Bob' }],
+    ['an allowlisted domain', googleProfile('c@allowed.org'), { login: 'c@allowed.org', name: 'c@allowed.org' }],
+    ['an uppercase email', googleProfile('B@EXAMPLE.COM', { name: 'Bob' }), { login: 'b@example.com', name: 'Bob' }],
+    ['an unverified email', googleProfile('b@example.com', { verified: false }), { loginError: 'unverified' }],
+    ['an email not allowlisted', googleProfile('c@other.org'), { loginError: 'not_allowed' }],
+    ['a lookalike domain', googleProfile('c@notallowed.org.evil'), { loginError: 'not_allowed' }],
+  ])('handles %s', async (_label, profile, expected) => {
+    expect(await verifyGoogleProfile(profile, isLoginAllowed)).toEqual(expected);
   });
 });
 
@@ -173,9 +374,9 @@ describe('POST /api/offices', () => {
     calls.push('createOffice');
     return createOffice(input);
   };
-  const middleware = apiMiddleware(queryOffices, characters, spyCreate, updateOffice, mapExists);
+  const middleware = apiMiddleware(queryOffices, characters, spyCreate, updateOffice, mapExists, headerIdentity);
 
-  const post = async (body: unknown, headers: Record<string, string> = tailscale) => {
+  const post = async (body: unknown, headers: Record<string, string> = alice) => {
     calls.length = 0;
     server = createServer((req, res) => middleware(req, res, () => res.end()));
     await new Promise<void>((resolve) => server!.listen(0, resolve));
@@ -235,12 +436,12 @@ describe('POST /api/offices', () => {
 
   it('is 405 for other methods', async () => {
     const base = await start('configurePreviewServer');
-    expect((await fetch(`${base}/api/offices`, { method: 'PUT', headers: tailscale })).status).toBe(405);
+    expect((await fetch(`${base}/api/offices`, { method: 'PUT', headers: await signIn(base, 'a@example.com') })).status).toBe(405);
   });
 });
 
 describe('PATCH /api/offices/:id', () => {
-  const bob = { 'Tailscale-User-Login': 'b@example.com', 'Tailscale-User-Name': 'Bob' };
+  const bob = { 'x-test-login': 'b@example.com' };
   const calls: string[] = [];
   const updates: unknown[] = [];
   const spyUpdate: UpdateOffice = async (id, update) => {
@@ -248,9 +449,9 @@ describe('PATCH /api/offices/:id', () => {
     updates.push(update);
     return updateOffice(id, update);
   };
-  const middleware = apiMiddleware(queryOffices, characters, createOffice, spyUpdate, async (name) => name === 'hq' || name === 'default');
+  const middleware = apiMiddleware(queryOffices, characters, createOffice, spyUpdate, async (name) => name === 'hq' || name === 'default', headerIdentity);
 
-  const patch = async (id: string, body: unknown, headers: Record<string, string> = tailscale) => {
+  const patch = async (id: string, body: unknown, headers: Record<string, string> = alice) => {
     calls.length = 0;
     updates.length = 0;
     server = createServer((req, res) => middleware(req, res, () => res.end()));
@@ -283,7 +484,7 @@ describe('PATCH /api/offices/:id', () => {
 
   it('is 403 for another login, and for an office without a creator', async () => {
     const forbidden = { error: 'Only the office creator can change its settings' };
-    for (const [id, headers] of [[ID, bob], [OTHER, tailscale]] as const) {
+    for (const [id, headers] of [[ID, bob], [OTHER, alice]] as const) {
       const res = await patch(id, { name: 'Lab' }, headers);
       expect(res.status).toBe(403);
       expect(await res.json()).toEqual(forbidden);
@@ -312,11 +513,11 @@ describe('PATCH /api/offices/:id', () => {
   });
 
   it('is 404 when the office vanishes before the update', async () => {
-    const gone = apiMiddleware(queryOffices, characters, createOffice, async () => undefined, async () => true);
+    const gone = apiMiddleware(queryOffices, characters, createOffice, async () => undefined, async () => true, headerIdentity);
     server = createServer((req, res) => gone(req, res, () => res.end()));
     await new Promise<void>((resolve) => server!.listen(0, resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    const res = await fetch(`${base}/api/offices/${ID}`, { method: 'PATCH', headers: tailscale, body: '{"name":"Lab"}' });
+    const res = await fetch(`${base}/api/offices/${ID}`, { method: 'PATCH', headers: alice, body: '{"name":"Lab"}' });
     expect(res.status).toBe(404);
   });
 
@@ -327,52 +528,55 @@ describe('PATCH /api/offices/:id', () => {
 
   it('is 405 for methods other than GET and PATCH', async () => {
     const base = await start('configurePreviewServer');
-    expect((await fetch(`${base}/api/offices/${ID}`, { method: 'DELETE', headers: tailscale })).status).toBe(405);
+    expect((await fetch(`${base}/api/offices/${ID}`, { method: 'DELETE', headers: await signIn(base, 'a@example.com') })).status).toBe(405);
   });
 });
 
 describe('/api/offices/:id/character', () => {
-  const bob = { 'Tailscale-User-Login': 'b@example.com', 'Tailscale-User-Name': 'Bob' };
-  const put = (base: string, officeId: string, body: unknown, headers = tailscale) =>
+  let base: string;
+  let me: Record<string, string>;
+  let bob: Record<string, string>;
+  const put = (officeId: string, body: unknown, headers = me) =>
     fetch(`${base}/api/offices/${officeId}/character`, { method: 'PUT', headers, body: JSON.stringify(body) });
-  const get = async (base: string, officeId: string, headers = tailscale) =>
+  const get = async (officeId: string, headers = me) =>
     (await (await fetch(`${base}/api/offices/${officeId}/character`, { headers })).json()).characterId;
-  beforeEach(() => storedCharacters.clear());
+  beforeEach(async () => {
+    storedCharacters.clear();
+    base = await start('configurePreviewServer');
+    me = await signIn(base, 'a@example.com');
+    bob = await signIn(base, 'b@example.com');
+  });
 
   it('stores the choice per office and login', async () => {
-    const base = await start('configurePreviewServer');
-    expect(await get(base, ID)).toBeNull();
-    expect((await put(base, ID, { characterId: 'Mage' })).status).toBe(200);
-    expect((await put(base, OTHER, { characterId: 'Knight' })).status).toBe(200);
-    expect((await put(base, ID, { characterId: 'Rogue' }, bob)).status).toBe(200);
-    expect(await get(base, ID)).toBe('Mage');
-    expect(await get(base, OTHER)).toBe('Knight');
-    expect(await get(base, ID, bob)).toBe('Rogue');
+    expect(await get(ID)).toBeNull();
+    expect((await put(ID, { characterId: 'Mage' })).status).toBe(200);
+    expect((await put(OTHER, { characterId: 'Knight' })).status).toBe(200);
+    expect((await put(ID, { characterId: 'Rogue' }, bob)).status).toBe(200);
+    expect(await get(ID)).toBe('Mage');
+    expect(await get(OTHER)).toBe('Knight');
+    expect(await get(ID, bob)).toBe('Rogue');
   });
 
   it('rejects unknown characters and malformed bodies', async () => {
-    const base = await start('configurePreviewServer');
-    expect((await put(base, ID, { characterId: 'Dragon' })).status).toBe(400);
-    expect((await put(base, ID, 'not json')).status).toBe(400);
-    const raw = await fetch(`${base}/api/offices/${ID}/character`, { method: 'PUT', headers: tailscale, body: '{' });
+    expect((await put(ID, { characterId: 'Dragon' })).status).toBe(400);
+    expect((await put(ID, 'not json')).status).toBe(400);
+    const raw = await fetch(`${base}/api/offices/${ID}/character`, { method: 'PUT', headers: me, body: '{' });
     expect(raw.status).toBe(400);
-    expect((await put(base, ID, { characterId: 'Mage', pad: 'x'.repeat(5000) })).status).toBe(413);
-    expect(await get(base, ID)).toBeNull();
+    expect((await put(ID, { characterId: 'Mage', pad: 'x'.repeat(5000) })).status).toBe(413);
+    expect(await get(ID)).toBeNull();
   });
 
   it('is 405 for other methods', async () => {
-    const base = await start('configurePreviewServer');
-    const res = await fetch(`${base}/api/offices/${ID}/character`, { method: 'DELETE', headers: tailscale });
+    const res = await fetch(`${base}/api/offices/${ID}/character`, { method: 'DELETE', headers: me });
     expect(res.status).toBe(405);
   });
 
   it('is 401 without identity and 404 for unknown offices', async () => {
-    const base = await start('configurePreviewServer');
     expect((await fetch(`${base}/api/offices/${ID}/character`)).status).toBe(401);
     const missing = '22222222-2222-4222-8222-222222222222';
-    expect((await put(base, missing, { characterId: 'Mage' })).status).toBe(404);
-    expect((await fetch(`${base}/api/offices/${missing}/character`, { headers: tailscale })).status).toBe(404);
-    expect((await fetch(`${base}/api/offices/not-a-uuid/character`, { headers: tailscale })).status).toBe(404);
+    expect((await put(missing, { characterId: 'Mage' })).status).toBe(404);
+    expect((await fetch(`${base}/api/offices/${missing}/character`, { headers: me })).status).toBe(404);
+    expect((await fetch(`${base}/api/offices/not-a-uuid/character`, { headers: me })).status).toBe(404);
   });
 });
 
@@ -418,6 +622,20 @@ describe('/config.js', () => {
       expect(await res.text()).toContain('"OFFICEXR_ASSET_BASE_URL":"https://cdn.example.com"');
     } finally {
       delete process.env.OFFICEXR_ASSET_BASE_URL;
+    }
+  });
+
+  it('never serves the sign-in secrets', async () => {
+    process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+    process.env.SESSION_SECRET = 'session-secret';
+    try {
+      const base = await start('configurePreviewServer');
+      const body = await (await fetch(`${base}/config.js`)).text();
+      expect(body).not.toContain('google-secret');
+      expect(body).not.toContain('session-secret');
+    } finally {
+      delete process.env.GOOGLE_CLIENT_SECRET;
+      delete process.env.SESSION_SECRET;
     }
   });
 });

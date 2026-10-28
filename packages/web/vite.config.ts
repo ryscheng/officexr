@@ -3,6 +3,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import pg from 'pg';
+import { emailDomain, pgSessionStore, type IsLoginAllowed } from './server/auth';
 import { officexrServer, type CreateOffice, type Office, type OfficeCharacters, type OfficeUpdate, type UpdateOffice } from './server/api';
 
 export default defineConfig(({ mode }) => {
@@ -64,6 +65,13 @@ export default defineConfig(({ mode }) => {
       );
     },
   };
+  const isLoginAllowed: IsLoginAllowed = async (email) => {
+    const { rows } = await getPool().query<{ allowed: boolean }>(
+      `select exists (select 1 from login_allowlist where (kind = 'email' and value = $1) or (kind = 'domain' and value = $2)) as allowed`,
+      [email, emailDomain(email)],
+    );
+    return rows[0].allowed;
+  };
   const closePool = () => {
     const closing = pool;
     pool = undefined;
@@ -90,6 +98,14 @@ export default defineConfig(({ mode }) => {
         characters,
         createOffice,
         updateOffice,
+        isLoginAllowed,
+        auth: {
+          googleClientId: env.GOOGLE_CLIENT_ID,
+          googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+          sessionSecret: env.SESSION_SECRET,
+          publicUrl: env.PUBLIC_URL,
+        },
+        sessionStore: () => pgSessionStore(getPool()),
         devUser: login ? { login, name: name ?? login } : undefined,
         devEnv,
         studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,
