@@ -44,8 +44,6 @@ import type { MoveInput } from './moveIntent.ts';
  * maps": the directional light's orthographic shadow camera now
  * covers a fixed `shadowRange` around the player, so shadow-map
  * texels stay small (sharp shadows) even when `gridSize` is huge.
- * The follow point is snapped to whole shadow-map texels so the texel
- * grid stays fixed in the world and shadow edges don't shimmer.
  */
 function SunFollower(props: {
   lightRef: React.RefObject<THREE.DirectionalLight | null>;
@@ -267,13 +265,13 @@ export function Scene(props: SceneProps) {
             </React.Fragment>
           );
         })}
-        {/* Lighting: shared LightingRig + a per-frame SunFollower
-            that mutates the sun's position/target/disc to track the
-            local player The follower keeps the orthographic shadow
-            camera tight around the player even on huge maps — that's
-            how shadow-map texels stay small (sharp shadows) without
-            exploding shadow-map memory. Editors mount LightingRig
-            without the follower (sun stays static). */}
+        {/* Lighting: shared LightingRig. SunFollower (mounted below,
+            after Players) moves the sun to track the local player,
+            keeping the orthographic shadow camera tight around the
+            player even on huge maps — that's how shadow-map texels
+            stay small (sharp shadows) without exploding shadow-map
+            memory. Editors mount LightingRig without the follower
+            (sun stays static). */}
         <LightingRig
           lighting={lighting}
           sunLightRef={sunLightRef}

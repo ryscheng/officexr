@@ -8,7 +8,10 @@ export interface LightBasis {
 
 const ORIGIN = new THREE.Vector3();
 
-/** Axes of the directional shadow camera, oriented as `DirectionalLightShadow.updateMatrices` does (lookAt with default up). */
+/**
+ * Axes of the directional shadow camera, oriented as
+ * `DirectionalLightShadow.updateMatrices` does (lookAt with default up).
+ */
 export function lightBasis(sunOffset: readonly [number, number, number]): LightBasis {
   const m = new THREE.Matrix4().lookAt(
     new THREE.Vector3(...sunOffset),
@@ -22,7 +25,11 @@ export function lightBasis(sunOffset: readonly [number, number, number]): LightB
   return { right, up, back };
 }
 
-/** Quantises `point` to whole shadow-map texels along the light's right/up axes; the depth component is unchanged. Writes into and returns `out`. */
+/**
+ * Quantises `point` to whole shadow-map texels along the light's
+ * right/up axes; the depth component is unchanged. Writes into and
+ * returns `out`.
+ */
 export function snapToShadowTexel(
   point: THREE.Vector3,
   basis: LightBasis,

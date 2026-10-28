@@ -22,16 +22,20 @@ describe('snapToShadowTexel', () => {
     expect(s.dot(basis.back)).toBeCloseTo(p.dot(basis.back), 9);
   });
 
-  it('is stable under sub-texel moves and shifts by one texel for a full-texel move', () => {
-    const base = snap(p);
-    for (const k of [-0.4, 0.4]) {
-      const near = snap(base.clone().addScaledVector(basis.right, TEXEL * k));
-      expect(near.distanceTo(base)).toBeLessThan(1e-9);
-    }
-    const shifted = snap(p.clone().addScaledVector(basis.right, TEXEL));
-    expect(shifted.clone().sub(base).dot(basis.right)).toBeCloseTo(TEXEL, 9);
-    expect(shifted.clone().sub(base).length()).toBeCloseTo(TEXEL, 9);
-  });
+  it.each(['right', 'up'] as const)(
+    'is stable under sub-texel moves and shifts by one texel for a full-texel move along %s',
+    (axisName) => {
+      const axis = basis[axisName];
+      const base = snap(p);
+      for (const k of [-0.4, 0.4]) {
+        const near = snap(base.clone().addScaledVector(axis, TEXEL * k));
+        expect(near.distanceTo(base)).toBeLessThan(1e-9);
+      }
+      const shifted = snap(p.clone().addScaledVector(axis, TEXEL));
+      expect(shifted.clone().sub(base).dot(axis)).toBeCloseTo(TEXEL, 9);
+      expect(shifted.clone().sub(base).length()).toBeCloseTo(TEXEL, 9);
+    },
+  );
 
   it.each(OFFSETS)('basis matches the three.js shadow camera for sun offset %j', (...offset) => {
     const light = new THREE.DirectionalLight();
@@ -49,8 +53,11 @@ describe('snapToShadowTexel', () => {
     expect(b.back.distanceTo(camBack)).toBeLessThan(1e-6);
   });
 
-  it('does not produce NaN for a vertical sun', () => {
-    const b = lightBasis([0, 40, 0]);
+  it.each([
+    [0, 40, 0],
+    [0, 40, 1e-4],
+  ] as const)('does not produce NaN for a (near-)vertical sun %j', (...offset) => {
+    const b = lightBasis(offset);
     const s = snapToShadowTexel(p, b, TEXEL, new THREE.Vector3());
     expect(Number.isNaN(s.x + s.y + s.z)).toBe(false);
   });
