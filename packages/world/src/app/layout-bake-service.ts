@@ -262,10 +262,16 @@ export async function bakeLayout(
   const bakedScene = outDoc.getRoot().listScenes()[0] ?? outScene;
   const extras = buildColliderExtras(colliders);
   const fingerprint = await computeBakeSourceFingerprint(doc, optimizer.id, kindLookup, options?.subtle);
-  if (fingerprint !== null) {
-    extras.officexr.bakeSource = { version: BAKE_SOURCE_VERSION, fingerprint, layoutName: doc.name };
-  }
-  bakedScene.setExtras(extras);
+  bakedScene.setExtras(
+    fingerprint === null
+      ? extras
+      : {
+          officexr: {
+            ...extras.officexr,
+            bakeSource: { version: BAKE_SOURCE_VERSION, fingerprint, layoutName: doc.name },
+          },
+        },
+  );
 
   // GLB output requires exactly 0–1 buffers (spec constraint of the
   // binary container). After mergeDocuments runs N times — once per

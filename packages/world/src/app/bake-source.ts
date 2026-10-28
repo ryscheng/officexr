@@ -8,7 +8,7 @@
  */
 
 import type { LayoutDocument } from '../scenes/layout-document.ts';
-import { normalizeKind } from '../scenes/world-object-kinds-schema.ts';
+import { normalizeKind, type WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
 import type { KindLookup } from './layout-bake-service.ts';
 
 /** Bump when the bake algorithm itself changes output for identical inputs. */
@@ -22,7 +22,7 @@ const defaultSubtle: SubtleProvider = () => globalThis.crypto?.subtle;
 let warnedNoSubtle = false;
 
 /** JSON with object keys sorted at every depth; `undefined` members are dropped like `JSON.stringify`. */
-function canonicalJson(value: unknown): string {
+function canonicalJson(value: unknown): string | undefined {
   if (Array.isArray(value)) {
     return `[${value.map((v) => canonicalJson(v) ?? 'null').join(',')}]`;
   }
@@ -43,7 +43,7 @@ function canonicalJson(value: unknown): string {
  * the catalog entries of the kinds the commands place. `groups`, `name` and
  * `updatedAt` are excluded. Kinds are normalised so a raw catalog entry and
  * its normalised form hash identically. Resolves `null` (with one
- * `console.warn`) when `crypto.subtle` is unavailable.
+ * `console.warn`) when `crypto.subtle` is unavailable or a used kind fails normalisation.
  */
 export async function computeBakeSourceFingerprint(
   layout: LayoutDocument,
@@ -62,10 +62,16 @@ export async function computeBakeSourceFingerprint(
   const kindIds = [
     ...new Set(layout.commands.flatMap((c) => (c.op === 'placeObject' ? [c.kindId] : []))),
   ].sort();
-  const kinds = kindIds.map((id) => {
+  const kinds: Array<WorldObjectKind | null> = [];
+  for (const id of kindIds) {
     const kind = kindLookup(id);
-    return kind ? normalizeKind(kind, 0) : null;
-  });
+    try {
+      kinds.push(kind ? normalizeKind(kind, 0) : null);
+    } catch (err) {
+      console.warn(`kind "${id}" is invalid; baked layout will carry no bakeSource fingerprint: ${(err as Error).message}`);
+      return null;
+    }
+  }
   const payload = canonicalJson({
     version: BAKE_SOURCE_VERSION,
     commands: layout.commands,

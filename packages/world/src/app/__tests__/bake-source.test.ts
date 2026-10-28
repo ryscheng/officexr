@@ -62,7 +62,13 @@ describe('computeBakeSourceFingerprint', () => {
   });
 
   it('records a missing kind as null rather than throwing', async () => {
-    expect(await fingerprint(layout(), {})).toMatch(/^[0-9a-f]{64}$/);
+    const missing = await fingerprint(layout(), {});
+    expect(missing).toMatch(/^[0-9a-f]{64}$/);
+    expect(missing).not.toBe(await fingerprint(layout(), kinds));
+  });
+
+  it('returns null when a used kind fails normalisation', async () => {
+    expect(await fingerprint(layout(), { wall: rawKind('wall', { label: '' }) })).toBeNull();
   });
 
   it('returns null when crypto.subtle is unavailable', async () => {

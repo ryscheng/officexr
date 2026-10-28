@@ -12,6 +12,7 @@ import { dequantize } from '@gltf-transform/functions';
 import { registerCompressionCodecs } from '../glb-compression.ts';
 import { bakeLayout } from '../layout-bake-service.ts';
 import type { KindLookup } from '../layout-bake-service.ts';
+import { defaultOptimizer } from '../bake-optimizers.ts';
 import { createInstanceGeometry } from '../geometry-service.ts';
 import { createRoomService } from '../room-service.ts';
 import { buildColliderExtras, parseBakeSource, parseEmbeddedColliders } from '../baked-collider-extras.ts';
@@ -686,8 +687,8 @@ describe('bakeLayout bakeSource', () => {
     const doc = makeLayoutDoc('room1', [
       { id: 'c1', op: 'placeObject', kindId: 'wall', position: [0, 0, 0] },
     ]);
-    const bake = async (options: Parameters<typeof bakeLayout>[4]) => {
-      const result = await bakeLayout(doc, kindLookup, async () => bytes, makeGeometry(kindMap), { io, ...options });
+    const bake = async (options: Parameters<typeof bakeLayout>[4], lookup: KindLookup = kindLookup) => {
+      const result = await bakeLayout(doc, lookup, async () => bytes, makeGeometry(kindMap), { io, ...options });
       const extras = (await io.readBinary(result.glb)).getRoot().listScenes()[0].getExtras();
       return { result, extras };
     };
@@ -696,12 +697,20 @@ describe('bakeLayout bakeSource', () => {
 
   it('stamps the fingerprint of the inputs and the optimizer actually applied', async () => {
     const { doc, kindLookup, bake } = await setup();
-    const { result, extras } = await bake({ optimizer: 'none' });
+    const { result, extras } = await bake({ optimizer: 'no-such-optimizer' });
+    expect(result.meta.optimizerId).toBe(defaultOptimizer.id);
     expect(parseBakeSource(extras)).toEqual({
       version: BAKE_SOURCE_VERSION,
       fingerprint: await computeBakeSourceFingerprint(doc, result.meta.optimizerId, kindLookup),
       layoutName: 'room1',
     });
+    expect(parseEmbeddedColliders(extras)).not.toBeNull();
+  });
+
+  it('writes no bakeSource, and still bakes, when a used kind is invalid', async () => {
+    const { bake } = await setup();
+    const { extras } = await bake({}, () => ({ ...makeKind('wall', '/models/wall.glb'), label: '' }));
+    expect(parseBakeSource(extras)).toBeNull();
     expect(parseEmbeddedColliders(extras)).not.toBeNull();
   });
 
@@ -765,8 +774,8 @@ describe('bakeLayout compression', () => {
         (kindId) => kindMap.get(kindId)?.colliderShape,
       ),
     );
-    expect(parseEmbeddedColliders(parsed.getRoot().listScenes()[0].getExtras())).toEqual(
-      parseEmbeddedColliders(expected),
+    expect((parsed.getRoot().listScenes()[0].getExtras() as typeof expected).officexr.colliders).toEqual(
+      expected.officexr.colliders,
     );
 
     // Uncompressed reference: the same content, dequantized and written without the extensions.

@@ -58,7 +58,7 @@ interface BakedColliderPayloadV2 {
  * Namespaced under `officexr` so we never collide with extras a future
  * tool (or a source asset) might carry. */
 export function buildColliderExtras(colliders: ColliderDescriptor[]): {
-  officexr: { colliders: BakedColliderPayloadV2; bakeSource?: BakeSource };
+  officexr: { colliders: BakedColliderPayloadV2 };
 } {
   const cuboids: CuboidDescriptor[] = [];
   const trimeshes: BakedColliderPayloadV2['trimeshes'] = [];
