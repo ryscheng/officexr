@@ -15,7 +15,7 @@ export { CharacterPreviewCanvas } from './CharacterPreviewCanvas.tsx';
 export { MapColliders } from './MapColliders.tsx';
 export { BakedLayout, BakedLayoutErrorBoundary, type BakedLayoutProps } from './BakedLayout.tsx';
 export { BakedLayoutColliders, type BakedLayoutCollidersProps } from './BakedLayoutColliders.tsx';
-export { GradientBackground } from './GradientBackground.tsx';
+export { SkyDome, resolveHorizonColor, type SkySun } from './SkyDome.tsx';
 export { ProximityGlow } from './ProximityGlow.tsx';
 export { CameraRig } from './CameraRig.tsx';
 export { requestMotionPermission, type MotionLookState, type MotionPermission } from './motionLook.ts';

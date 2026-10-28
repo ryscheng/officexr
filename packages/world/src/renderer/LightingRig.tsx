@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Sphere } from '@react-three/drei';
 import type { LightingViewConfig } from './viewConfig.ts';
 
 /**
@@ -14,7 +13,7 @@ export type LightingSettings = LightingViewConfig;
 /**
  * Editor-friendly lighting defaults. Mounts the shared LightingRig
  * with shadows off (editors set `shadows={false}` on their Canvas
- * anyway), no sun disc, no aux light. Hemisphere is at 0 so the
+ * anyway), no sun disc (editors draw no `SkyDome`), no aux light. Hemisphere is at 0 so the
  * `ambientFillIntensity` term acts as a flat ambient — matching the
  * look editors had before unification.
  *
@@ -58,10 +57,6 @@ interface LightingRigProps {
    * supplies this ref can move the target each frame to keep the
    * shadow camera centered on whatever it cares about. */
   sunLightTargetRef?: React.MutableRefObject<THREE.Object3D | null>;
-  /** Optional ref to the visible emissive sun-disc sphere. Forwarded
-   * so a caller can co-locate it with the directional light's
-   * position when tracking is active. */
-  sunDiscRef?: React.MutableRefObject<THREE.Object3D | null>;
 }
 
 /**
@@ -74,11 +69,11 @@ interface LightingRigProps {
  *     used by Mugshot for high-key captures)
  *   - one `<spotLight>` or `<pointLight>` co-located with the sun
  *     when `auxLightType` is set
- *   - one visible emissive sun-disc Sphere when `showSunDisc`
  *
  * Every editor and the gameplay Scene mounts this same rig — there's
  * exactly one place that knows how to translate `LightingViewConfig`
- * into Three.js lights. The forwarded refs let the gameplay Scene
+ * into Three.js lights. The visible sun disc (`showSunDisc` and its
+ * radius / glow) is drawn by `SkyDome`, not here. The forwarded refs let the gameplay Scene
  * attach a SunFollower so shadow-map texels stay small over large
  * maps; editors omit them and the sun stays static.
  */
@@ -86,7 +81,6 @@ export function LightingRig({
   lighting,
   sunLightRef,
   sunLightTargetRef,
-  sunDiscRef,
 }: LightingRigProps) {
   // Orthographic shadow camera sized so its frustum spans from the
   // sun to `shadowRange` past whatever the target tracks. For a
@@ -139,23 +133,6 @@ export function LightingRig({
           provides `sunLightTargetRef` typically also moves this each
           frame; Three.js needs `target.matrixWorld` up to date. */}
       <object3D ref={sunLightTargetRef} />
-      {/* Visible sun disc — emissive sphere co-located with the
-          directional light. Renders bright regardless of lighting via
-          `emissive`. */}
-      {lighting.showSunDisc && (
-        <Sphere
-          ref={sunDiscRef as unknown as React.Ref<THREE.Mesh>}
-          args={[lighting.sunDiscRadius, 32, 16]}
-          position={lighting.sunPosition}
-        >
-          <meshStandardMaterial
-            color={lighting.sunColor}
-            emissive={lighting.sunColor}
-            emissiveIntensity={lighting.sunDiscIntensity}
-            toneMapped={false}
-          />
-        </Sphere>
-      )}
       {/* Optional secondary localised light co-located with the sun.
           Shadow casting is deliberately off — only the directional
           drives shadows, so the secondary doesn't double-up shadow

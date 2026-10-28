@@ -57,6 +57,10 @@ export type LightingConstants = {
 
 export type BackgroundConstants = {
   topColor: string;
+  /** Sky colour at the horizon; omitted, the sky is the original two-stop
+   * top-to-bottom gradient. Optional so documents saved before it existed
+   * still parse and look the same. */
+  horizonColor?: string;
   bottomColor: string;
 };
 
@@ -236,6 +240,7 @@ export const ZWorldConstants: z.ZodType<WorldConstants> = z.object({
   }),
   background: z.object({
     topColor: ZColor,
+    horizonColor: ZColor.optional(),
     bottomColor: ZColor,
   }),
   fixedCamera: z.object({
