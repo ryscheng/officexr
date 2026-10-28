@@ -30,12 +30,13 @@ import type { StudioDocuments } from './studio-documents.ts';
 
 class InMemoryCatalogStorage implements CatalogStorage {
   saved = 0;
-  constructor(private readonly catalog: WorldObjectKindCatalogV1 | null = null) {}
+  constructor(private catalog: WorldObjectKindCatalogV1 | null = null) {}
   async load() {
     return this.catalog;
   }
-  async save() {
+  async save(catalog: WorldObjectKindCatalogV1) {
     this.saved += 1;
+    this.catalog = catalog;
   }
 }
 
@@ -104,7 +105,7 @@ async function connect(
 }
 
 describe('studio MCP tools', () => {
-  it('lists the 23 tools', async () => {
+  it('lists the 24 tools', async () => {
     const { client } = await connect();
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(
@@ -119,6 +120,7 @@ describe('studio MCP tools', () => {
         'render_view',
         'get_world_object_kinds',
         'put_world_object_kinds',
+        'patch_world_object_kinds',
         'get_world_settings',
         'put_world_settings',
       ].sort(),
@@ -164,6 +166,44 @@ describe('studio MCP tools', () => {
     expect(catalog.saved).toBe(0);
     expect((await call('put_world_object_kinds', { catalog: { schemaVersion: 1, kinds: [] } })).isError).toBe(false);
     expect(catalog.saved).toBe(1);
+  });
+
+  describe('patch_world_object_kinds', () => {
+    const kind = { id: 'crate', label: 'Crate', gltfPath: 'crate.glb', swatch: '#fff' };
+    const seeded = () =>
+      new InMemoryCatalogStorage(
+        validateWorldObjectKindCatalog({ schemaVersion: 1, kinds: [kind, { ...kind, id: 'barrel', label: 'Barrel' }] }),
+      );
+
+    it('replaces only the given fields of the given kinds', async () => {
+      const catalog = seeded();
+      const before = (await catalog.load())!;
+      const { call } = await connect({ catalog });
+      const r = await call('patch_world_object_kinds', { kinds: [{ id: 'crate', label: 'Big crate', walkable: true }] });
+      expect(r.isError).toBe(false);
+      expect(JSON.parse(r.text)).toEqual({ saved: true, patched: ['crate'] });
+      const after = (await catalog.load())!;
+      expect(after.kinds[0]).toEqual({ ...before.kinds[0], label: 'Big crate', walkable: true });
+      expect(after.kinds[1]).toEqual(before.kinds[1]);
+    });
+
+    it.each([
+      ['an unknown id', [{ id: 'ghost', label: 'x' }], /no such kind: ghost/],
+      ['a repeated id', [{ id: 'crate', label: 'a' }, { id: 'crate', label: 'b' }], /only once/],
+      ['a patch that makes the catalog invalid', [{ id: 'barrel', rotationStepDeg: 7 }], /rotationStepDeg/],
+    ])('writes nothing for %s', async (_, kinds, message) => {
+      const catalog = seeded();
+      const { call } = await connect({ catalog });
+      const r = await call('patch_world_object_kinds', { kinds });
+      expect(r.isError).toBe(true);
+      expect(r.text).toMatch(message);
+      expect(catalog.saved).toBe(0);
+    });
+
+    it('fails when no catalog is saved', async () => {
+      const { call } = await connect();
+      expect((await call('patch_world_object_kinds', { kinds: [{ id: 'crate' }] })).isError).toBe(true);
+    });
   });
 
   describe('yaw', () => {
