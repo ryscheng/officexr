@@ -19,6 +19,15 @@ export function RoomMenuItem({ onSelect, children }: { onSelect: () => void; chi
   );
 }
 
+/** A radio or switch row that, unlike `RoomMenuItem`, keeps the menu open. */
+export function RoomMenuChoice({ children }: { children: ReactNode }) {
+  return (
+    <label className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-3 hover:bg-white/10">
+      {children}
+    </label>
+  );
+}
+
 export function RoomMenu({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
