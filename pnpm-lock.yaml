@@ -259,6 +259,9 @@ importers:
       '@officexr/core-refactor':
         specifier: workspace:*
         version: link:../core-refactor
+      '@officexr/realtime-server':
+        specifier: workspace:*
+        version: link:../realtime-server
       '@officexr/sdk':
         specifier: workspace:*
         version: link:../sdk

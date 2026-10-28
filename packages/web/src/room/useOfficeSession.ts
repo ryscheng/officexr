@@ -11,6 +11,7 @@ import { generateJaaSJwt } from '../voice/jaasJwt';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { getJaasConfig } from '../voice/runtimeConfig';
 import { loadCharacter } from './character';
+import { fetchRealtimeToken } from './realtimeToken';
 
 export type OfficeSession =
   | { type: 'connecting' }
@@ -52,6 +53,7 @@ export function useOfficeSession(
       selfId,
       login: me.login,
       officeId,
+      getToken: () => fetchRealtimeToken(),
       voiceAdapter: voice ?? undefined,
     });
     let cancelled = false;

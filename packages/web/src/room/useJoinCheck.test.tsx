@@ -28,7 +28,10 @@ function setup(fetchFn: typeof fetch) {
   );
 }
 
-const answer = (body: unknown) => vi.fn(async () => ({ ok: true, json: async () => body }) as Response) as unknown as typeof fetch;
+const reply = (status: number, body: unknown) => ({ ok: status < 300, status, json: async () => body }) as Response;
+/** Answers the sessions check with `body`, and the token request with `tokenStatus` (404 means no token). */
+const answer = (body: unknown, tokenStatus = 404) =>
+  vi.fn(async (url: string) => (url === '/api/realtime-token' ? reply(tokenStatus, { token: 'a.b' }) : reply(200, body))) as unknown as typeof fetch;
 const PROMPT = /Joining here will disconnect it/;
 
 describe('useJoinCheck', () => {
@@ -41,6 +44,19 @@ describe('useJoinCheck', () => {
     await screen.findByText('state:go');
     expect(screen.queryByText(PROMPT)).toBeNull();
     expect(fetchFn).toHaveBeenCalledWith('/rooms/my%20office/sessions?login=a%40example.com');
+  });
+
+  it('appends the realtime token to the check when one is issued', async () => {
+    const fetchFn = answer({ connected: false, allowMulti: false }, 200);
+    setup(fetchFn);
+    await screen.findByText('state:go');
+    expect(fetchFn).toHaveBeenCalledWith('/rooms/my%20office/sessions?login=a%40example.com&token=a.b');
+  });
+
+  it('joins without a prompt when the token request fails', async () => {
+    setup(answer({ connected: true, allowMulti: false }, 500));
+    await screen.findByText('state:go');
+    expect(screen.queryByText(PROMPT)).toBeNull();
   });
 
   it('prompts when already connected, and Join anyway proceeds', async () => {

@@ -106,7 +106,8 @@ Optional `OFFICEXR_REALTIME_TOKEN_SECRET` makes the server require an HMAC-signe
 (minted with `signJoinToken` from `@officexr/realtime-server/join-token`) on every `hello` and
 on `GET /rooms/:id/sessions?login=…&token=…`; the login is taken from the token. Unset keeps
 today's unauthenticated behaviour. The studio has no login, so it must point at a realtime
-server without the secret.
+server without the secret. The web server needs the same value (see `packages/web/.env.example`);
+it mints the tokens at `GET /api/realtime-token`.
 
 ---
 
