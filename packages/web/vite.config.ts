@@ -3,7 +3,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import pg from 'pg';
-import { pgSessionStore, type IsLoginAllowed } from './server/auth';
+import { emailDomain, pgSessionStore, type IsLoginAllowed } from './server/auth';
 import { officexrServer, type CreateOffice, type Office, type OfficeCharacters, type OfficeUpdate, type UpdateOffice } from './server/api';
 
 export default defineConfig(({ mode }) => {
@@ -68,7 +68,7 @@ export default defineConfig(({ mode }) => {
   const isLoginAllowed: IsLoginAllowed = async (email) => {
     const { rows } = await getPool().query<{ allowed: boolean }>(
       `select exists (select 1 from login_allowlist where (kind = 'email' and value = $1) or (kind = 'domain' and value = $2)) as allowed`,
-      [email, email.slice(email.lastIndexOf('@') + 1)],
+      [email, emailDomain(email)],
     );
     return rows[0].allowed;
   };

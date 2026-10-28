@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import connectPgSimple from 'connect-pg-simple';
+import { serialize } from 'cookie';
 import session from 'express-session';
 import passport from 'passport';
 import { Strategy as GoogleStrategy, type Profile, type VerifyCallback } from 'passport-google-oauth20';
@@ -22,15 +23,28 @@ const AUTH_ENV: Record<keyof AuthConfig, string> = {
   publicUrl: 'PUBLIC_URL',
 };
 
-/** The env var names of the unset fields; empty when `config` is complete. */
-export function missingAuthEnv(config: Partial<AuthConfig>): string[] {
-  return (Object.keys(AUTH_ENV) as (keyof AuthConfig)[]).filter((key) => !config[key]).map((key) => AUTH_ENV[key]);
+export type ParsedAuthConfig = { type: 'valid'; config: AuthConfig } | { type: 'invalid'; envNames: string[] };
+
+/** The complete config, or the env var names that are unset or malformed. */
+export function parseAuthConfig(raw: Partial<AuthConfig>): ParsedAuthConfig {
+  const isValid = (key: keyof AuthConfig) => (key === 'publicUrl' ? /^https?:$/.test(protocolOf(raw.publicUrl)) : !!raw[key]);
+  const envNames = (Object.keys(AUTH_ENV) as (keyof AuthConfig)[]).filter((key) => !isValid(key)).map((key) => AUTH_ENV[key]);
+  return envNames.length ? { type: 'invalid', envNames } : { type: 'valid', config: raw as AuthConfig };
+}
+
+function protocolOf(url: string | undefined): string {
+  return url && URL.canParse(url) ? new URL(url).protocol : '';
 }
 
 export type IsLoginAllowed = (email: string) => Promise<boolean>;
 
-export type LoginError = 'unverified' | 'not_allowed' | 'failed';
-export interface Refusal {
+/** The part after the last `@`; a quoted local part may itself contain `@`. */
+export function emailDomain(email: string): string {
+  return email.slice(email.lastIndexOf('@') + 1);
+}
+
+type LoginError = 'unverified' | 'not_allowed' | 'failed';
+interface Refusal {
   loginError: LoginError;
 }
 
@@ -91,28 +105,28 @@ function redirect(res: ServerResponse, location: string) {
   res.end();
 }
 
-function chain(handlers: Connect.NextHandleFunction[]): Connect.NextHandleFunction {
+function onlyAuthAndApi(fn: Connect.NextHandleFunction): Connect.NextHandleFunction {
   return (req, res, next) => {
-    const run = (i: number, err?: unknown): void => {
-      if (err || i === handlers.length) {
-        return next(err);
-      }
-      handlers[i](req, res, (e?: unknown) => run(i + 1, e));
-    };
-    run(0);
+    const url = req.url ?? '';
+    return url.startsWith('/auth/') || url.startsWith('/api/') ? fn(req, res, next) : next();
   };
 }
 
-export interface AuthOptions {
+interface AuthOptions {
   config: AuthConfig;
   sessionStore: session.Store;
   isLoginAllowed: IsLoginAllowed;
   googleStrategy?: GoogleStrategyFactory;
 }
 
-/** Session, passport and the `/auth/*` routes, run only for `/auth/*` and `/api/*` requests. */
-export function createAuth({ config, sessionStore, isLoginAllowed, googleStrategy = createGoogleStrategy }: AuthOptions): Connect.NextHandleFunction {
-  const secure = new URL(config.publicUrl).protocol === 'https:';
+/** Session, passport and the `/auth/*` routes, in order; each runs only for `/auth/*` and `/api/*` requests. */
+export function createAuth({ config, sessionStore, isLoginAllowed, googleStrategy = createGoogleStrategy }: AuthOptions): Connect.NextHandleFunction[] {
+  const cookieOptions = {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: new URL(config.publicUrl).protocol === 'https:',
+  } as const;
   const auth = new passport.Passport();
   auth.serializeUser((user, done) => done(null, user));
   auth.deserializeUser((user: Identity, done) => done(null, user));
@@ -127,8 +141,10 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
   );
 
   const routes: Connect.NextHandleFunction = (req, res, next) => {
-    const [path, search = ''] = (req.url ?? '').split('?');
-    const query = Object.fromEntries(new URLSearchParams(search));
+    const url = req.url ?? '';
+    const queryStart = url.indexOf('?');
+    const path = queryStart < 0 ? url : url.slice(0, queryStart);
+    const query = Object.fromEntries(new URLSearchParams(queryStart < 0 ? '' : url.slice(queryStart + 1)));
     if (path.startsWith('/auth/google')) {
       // passport-oauth2 reads `code`, `state` and `error` from `req.query`, which only Express sets.
       (req as { query?: unknown }).query = query;
@@ -170,7 +186,7 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
             return next(destroyErr);
           }
           res.statusCode = 204;
-          res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`);
+          res.setHeader('Set-Cookie', serialize(SESSION_COOKIE, '', { ...cookieOptions, expires: new Date(0) }));
           res.end();
         });
       });
@@ -178,7 +194,7 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
     next();
   };
 
-  const handle = chain([
+  return [
     session({
       name: SESSION_COOKIE,
       store: sessionStore,
@@ -186,14 +202,10 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
       resave: false,
       saveUninitialized: false,
       proxy: true,
-      cookie: { httpOnly: true, sameSite: 'lax', secure, maxAge: SESSION_MAX_AGE_MS },
+      cookie: { ...cookieOptions, maxAge: SESSION_MAX_AGE_MS },
     }) as unknown as Connect.NextHandleFunction,
     auth.initialize() as unknown as Connect.NextHandleFunction,
     auth.session() as unknown as Connect.NextHandleFunction,
     routes,
-  ]);
-  return (req, res, next) => {
-    const url = req.url ?? '';
-    return url.startsWith('/auth/') || url.startsWith('/api/') ? handle(req, res, next) : next();
-  };
+  ].map(onlyAuthAndApi);
 }

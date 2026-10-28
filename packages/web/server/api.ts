@@ -3,7 +3,7 @@ import type { Connect, Plugin } from 'vite';
 import { isCharacterName } from '@officexr/world/characters';
 import studioStorage, { studioMapExists } from '@officexr/world/vite-plugin-storage';
 import type { Store } from 'express-session';
-import { createAuth, missingAuthEnv, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
+import { createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import { MAX_DESCRIPTION, MAX_NAME } from './officeLimits';
 import { configJsMiddleware } from './runtimeConfig';
 import { staticDirMiddleware } from './staticDir';
@@ -51,7 +51,6 @@ export interface Identity {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The signed-in user of a request, or `null`. */
 export type ResolveIdentity = (req: IncomingMessage) => Identity | null;
 
 const MAX_BODY_BYTES = 4096;
@@ -275,26 +274,32 @@ export function officexrServer({
   const models = staticDirMiddleware('/models', modelsDir);
   const mapExists = studioMapExists(studioDataDir);
   const api = (identity: ResolveIdentity) => apiMiddleware(queryOffices, characters, createOffice, updateOffice, mapExists, identity);
-  const authMiddleware = () => createAuth({ config: auth as AuthConfig, sessionStore: sessionStore(), isLoginAllowed, googleStrategy });
+  const parsedAuth = parseAuthConfig(auth);
+  const useAuth = (server: { middlewares: Connect.Server }, config: AuthConfig) => {
+    for (const middleware of createAuth({ config, sessionStore: sessionStore(), isLoginAllowed, googleStrategy })) {
+      server.middlewares.use(middleware);
+    }
+  };
   return [
     // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
     studioStorage({ dataDir: studioDataDir, readOnly: true }),
     {
       name: 'officexr-server',
       configureServer: (server) => {
-        if (missingAuthEnv(auth).length === 0) {
-          server.middlewares.use(authMiddleware());
+        if (parsedAuth.type === 'valid') {
+          useAuth(server, parsedAuth.config);
+        } else if (!devUser) {
+          console.warn(`Neither OFFICEXR_DEV_USER_LOGIN nor Google sign-in (${parsedAuth.envNames.join(', ')}) is set; identity routes will return 401.`);
         }
         server.middlewares.use(models);
         server.middlewares.use(configJsMiddleware(devEnv));
         server.middlewares.use(api(devUser ? () => devUser : sessionIdentity));
       },
       configurePreviewServer: (server) => {
-        const missing = missingAuthEnv(auth);
-        if (missing.length) {
-          throw new Error(`Google sign-in is not configured; set ${missing.join(', ')}`);
+        if (parsedAuth.type === 'invalid') {
+          throw new Error(`Google sign-in is not configured; set a valid ${parsedAuth.envNames.join(', ')}`);
         }
-        server.middlewares.use(authMiddleware());
+        useAuth(server, parsedAuth.config);
         server.middlewares.use(models);
         server.middlewares.use(configJsMiddleware());
         server.middlewares.use(api(sessionIdentity));

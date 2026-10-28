@@ -18,7 +18,7 @@ import {
   type ResolveIdentity,
   type UpdateOffice,
 } from './api';
-import { createGoogleStrategy, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
+import { createGoogleStrategy, emailDomain, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const OTHER = '33333333-3333-4333-8333-333333333333';
@@ -87,7 +87,7 @@ const AUTH: AuthConfig = {
 };
 
 const isLoginAllowed: IsLoginAllowed = async (email) =>
-  ['a@example.com', 'b@example.com'].includes(email) || email.endsWith('@allowed.org');
+  ['a@example.com', 'b@example.com'].includes(email) || emailDomain(email) === 'allowed.org';
 
 function googleProfile(email: string, { verified = true, name = '' } = {}): Profile {
   return { emails: [{ value: email, verified }], displayName: name, _json: { email_verified: verified } } as unknown as Profile;
@@ -247,6 +247,11 @@ describe('Google sign-in', () => {
     });
   });
 
+  it('round-trips a URL-encoded next with its own query string', async () => {
+    const base = await start('configurePreviewServer');
+    expect((await googleLogin(base, googleProfile('a@example.com'), '/room/abc?x=1&y=2?z')).location).toBe('/room/abc?x=1&y=2?z');
+  });
+
   it.each(['//evil.com', 'https://evil.com', '/\\evil.com', '/\t/evil.com', 'evil', '/日本'])('falls back to / for next=%s', async (next) => {
     const base = await start('configurePreviewServer');
     expect((await googleLogin(base, googleProfile('a@example.com'), next)).location).toBe('/');
@@ -305,6 +310,29 @@ describe('Google sign-in', () => {
     await expect(start('configurePreviewServer', { auth: { publicUrl: 'https://x.test' } })).rejects.toThrow(
       'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET',
     );
+    await expect(start('configurePreviewServer', { auth: { ...AUTH, sessionSecret: '' } })).rejects.toThrow(/SESSION_SECRET$/);
+  });
+
+  it('fails preview startup on a PUBLIC_URL without a scheme', async () => {
+    await expect(start('configurePreviewServer', { auth: { ...AUTH, publicUrl: 'officexr.example.com' } })).rejects.toThrow(/PUBLIC_URL$/);
+  });
+
+  it('keeps the dev user on the dev server while Google sign-in is mounted', async () => {
+    const base = await start('configureServer', { devUser: { login: 'dev@example.com', name: 'Dev' } });
+    expect(await (await fetch(`${base}/api/me`)).json()).toEqual({ login: 'dev@example.com', name: 'Dev' });
+    const authorize = await fetch(`${base}/auth/google`, { redirect: 'manual' });
+    expect(new URL(authorize.headers.get('location')!).origin).toBe('https://accounts.google.com');
+  });
+});
+
+describe('emailDomain', () => {
+  it.each([
+    ['c@allowed.org', 'allowed.org'],
+    ['c@allowed.org.evil', 'allowed.org.evil'],
+    ['c@sub.allowed.org', 'sub.allowed.org'],
+    ['"a@allowed.org"@evil.com', 'evil.com'],
+  ])('%s is at %s', (email, domain) => {
+    expect(emailDomain(email)).toBe(domain);
   });
 });
 
