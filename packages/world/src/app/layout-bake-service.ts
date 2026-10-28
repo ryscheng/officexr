@@ -1,6 +1,7 @@
 /**
- * Headless layout bake function. Merges all `placeObject` commands in a
- * `LayoutDocument` into a single optimised GLB using `@gltf-transform/core`
+ * Headless layout bake function. Compiles a `LayoutDocument` (placeObject
+ * + extrude) exactly as the runtime does and merges every compiled
+ * instance into a single optimised GLB using `@gltf-transform/core`
  * and `@gltf-transform/functions`.
  *
  * CONTRACT
@@ -25,9 +26,9 @@ import type { PlatformIO } from '@gltf-transform/core';
 import { mergeDocuments } from '@gltf-transform/functions';
 import type { LayoutDocument } from '../scenes/layout-document.ts';
 import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
-import type { PlaceObjectCommand } from '../scenes/commands.ts';
 import type { InstanceGeometryService } from './types.ts';
 import { worldObjectsToColliders } from '../physics/rules.ts';
+import { createRoomService } from './room-service.ts';
 import { compressDocument, registerCompressionCodecs } from './glb-compression.ts';
 import { buildColliderExtras } from './baked-collider-extras.ts';
 import {
@@ -71,14 +72,16 @@ export interface BakeResultBytes {
   /** The merged, optimised GLB as a `Uint8Array`. */
   glb: Uint8Array;
   meta: {
-    /** Number of distinct kind IDs referenced by placeObject commands. */
+    /** Number of distinct kind IDs among the compiled instances. */
     kindCount: number;
-    /** Total number of placeObject commands processed. */
+    /** Number of layout commands (placeObject + extrude) compiled. */
     commandCount: number;
+    /** Number of compiled instances baked (extrudes expand to many). */
+    instanceCount: number;
     /** Stable id of the optimizer that ran. Useful for telemetry / UI. */
     optimizerId: string;
     /** Number of collider cuboids embedded in the GLB's scene extras
-     * (≥ commandCount: compound-step kinds emit several per command). */
+     * (≥ instanceCount: compound-step kinds emit several per instance). */
     colliderCount: number;
   };
 }
@@ -88,7 +91,7 @@ export interface BakeResultBytes {
 // ---------------------------------------------------------------------------
 
 /**
- * Bake all `placeObject` commands in a `LayoutDocument` into a single
+ * Bake every instance a `LayoutDocument` compiles to into a single
  * optimised GLB.
  *
  * @param doc         The layout document to bake.
@@ -108,12 +111,15 @@ export async function bakeLayout(
   geometry: InstanceGeometryService,
   options?: BakeOptions,
 ): Promise<BakeResultBytes> {
-  // Collect placeObject commands only — extrude is not used in layouts yet.
-  const placeCommands = doc.commands.filter(
-    (c): c is PlaceObjectCommand => c.op === 'placeObject',
-  );
+  // Compile the command list through the SAME room service the runtime
+  // and studio use (kind-stride from `geometry.tileStep`), so extrudes
+  // expand to exactly the tiles the unbaked layout draws. The runtime
+  // excludes a baked layout's compiled instances and draws this GLB
+  // instead, so anything not in here vanishes visually and physically.
+  const compiled = createRoomService({ geometry }).compileScene(doc);
+  const instances = compiled.instances;
 
-  if (placeCommands.length === 0) {
+  if (instances.length === 0) {
     throw new Error(
       `bakeLayout("${doc.name}"): document contains no placeObject commands.`,
     );
@@ -157,15 +163,15 @@ export async function bakeLayout(
 
   const seenKindIds = new Set<string>();
 
-  for (const cmd of placeCommands) {
-    const kind = kindLookup(cmd.kindId);
+  for (const inst of instances) {
+    const kind = kindLookup(inst.kindId);
     if (!kind) {
       throw new Error(
-        `bakeLayout("${doc.name}"): unknown kind "${cmd.kindId}" in command "${cmd.id}".`,
+        `bakeLayout("${doc.name}"): unknown kind "${inst.kindId}" in command "${inst.sourceCommandId}".`,
       );
     }
 
-    seenKindIds.add(cmd.kindId);
+    seenKindIds.add(inst.kindId);
 
     const sourceDoc = await loadSourceDoc(kind.gltfPath);
 
@@ -178,17 +184,17 @@ export async function bakeLayout(
 
     // Retrieve the source scene and look up its merged counterpart.
     const sourceScene = sourceDoc.getRoot().listScenes()[0];
-    const wrapperNode = outDoc.createNode(`inst_${cmd.id}`);
+    const wrapperNode = outDoc.createNode(`inst_${inst.id}`);
 
     // Apply the canonical voxel→world transform via the geometry service.
-    // PlaceObjectCommand.position is in VOXEL coordinates (integer voxel
+    // Instance positions are in VOXEL coordinates (integer voxel
     // anchors); the geometry service converts these (and the yaw about the
     // footprint centre) to the mesh-root transform that matches the runtime
     // renderer's <ObjectInstances>, so bake and runtime stay in lockstep.
     const { position, rotationY } = geometry.meshTransform(
-      cmd.position,
-      cmd.kindId,
-      cmd.yawDeg,
+      inst.position,
+      inst.kindId,
+      inst.yawDeg,
     );
     wrapperNode.setTranslation([...position]);
     wrapperNode.setRotation([0, Math.sin(rotationY / 2), 0, Math.cos(rotationY / 2)]);
@@ -243,16 +249,7 @@ export async function bakeLayout(
   // extras; `prune` only removes unused properties and the scene is
   // the document root's entry point, but ordering removes the question.
   const colliders = worldObjectsToColliders(
-    {
-      cubeSize: geometry.voxelSize,
-      instances: placeCommands.map((c) => ({
-        id: c.id,
-        sourceCommandId: c.id,
-        kindId: c.kindId,
-        position: c.position,
-        yawDeg: c.yawDeg,
-      })),
-    },
+    compiled,
     geometry.worldAABB,
     (kindId) => kindLookup(kindId)?.colliderShape,
   );
@@ -291,7 +288,8 @@ export async function bakeLayout(
     glb,
     meta: {
       kindCount: seenKindIds.size,
-      commandCount: placeCommands.length,
+      commandCount: doc.commands.length,
+      instanceCount: instances.length,
       optimizerId: optimizer.id,
       colliderCount: colliders.length,
     },

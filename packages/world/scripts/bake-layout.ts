@@ -56,7 +56,8 @@ async function bakeOne(name: string, optimizerOverride?: string): Promise<void> 
   await fs.writeFile(outPath, result.glb);
   console.log(
     `[bake-layout] ✓ "${name}" → ${outPath} (${result.glb.length} bytes, ` +
-    `${result.meta.commandCount} commands, ${result.meta.kindCount} kinds, ` +
+    `${result.meta.commandCount} commands → ${result.meta.instanceCount} instances, ` +
+    `${result.meta.kindCount} kinds, ` +
     `optimizer=${result.meta.optimizerId})`,
   );
 }
