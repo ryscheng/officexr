@@ -29,8 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { bakeLayoutGlb } from '../src/app/bake-layout-glb.ts';
 import { deserializeLayout } from '../src/scenes/layout-document.ts';
 import { groupPlacementsByLayout, mapLayoutPlacements } from '../src/scenes/map-layout-placements.ts';
-import { deserializeMap } from '../src/scenes/serialize.ts';
-import type { RoomDocument } from '../src/scenes/commands.ts';
+import { deserializeMap, deserializeScene, migrateToV5 } from '../src/scenes/serialize.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WORLD_ROOT = path.resolve(HERE, '..');
@@ -51,23 +50,29 @@ async function loadLayout(name: string) {
   return deserializeLayout(JSON.parse(raw) as unknown);
 }
 
-async function readJson(filePath: string): Promise<unknown> {
-  return JSON.parse(await fs.readFile(filePath, 'utf-8')) as unknown;
+/** Parsed JSON, or null when the file does not exist; unreadable or malformed files throw. */
+async function readJsonIfExists(filePath: string): Promise<unknown> {
+  try {
+    return JSON.parse(await fs.readFile(filePath, 'utf-8')) as unknown;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null;
+    }
+    throw err;
+  }
 }
 
-async function layoutsOfMap(mapName: string): Promise<string[]> {
+async function layoutsOfMap(mapName: string): Promise<{ layouts: string[]; missingRooms: string[] }> {
   const mapPath = path.resolve(MAPS_DIR, `${mapName}.json`);
-  const map = deserializeMap(await readJson(mapPath).catch(() => {
+  const rawMap = await readJsonIfExists(mapPath);
+  if (rawMap === null) {
     throw new Error(`Map "${mapName}" not found at ${mapPath}`);
-  }));
-  const { placements, missingRooms } = await mapLayoutPlacements(
-    map,
-    (name) => readJson(path.resolve(ROOMS_DIR, `${name}.json`)).then((room) => room as RoomDocument, () => null),
-  );
-  if (missingRooms.length > 0) {
-    console.warn(`[bake-layout] Map "${mapName}" rooms not found: ${missingRooms.join(', ')}`);
   }
-  return [...groupPlacementsByLayout(placements).keys()];
+  const { placements, missingRooms } = await mapLayoutPlacements(deserializeMap(rawMap), async (name) => {
+    const raw = await readJsonIfExists(path.resolve(ROOMS_DIR, `${name}.json`));
+    return raw === null ? null : migrateToV5(deserializeScene(raw));
+  });
+  return { layouts: [...groupPlacementsByLayout(placements).keys()], missingRooms };
 }
 
 async function ensureBakedDir(): Promise<void> {
@@ -106,6 +111,7 @@ async function main(): Promise<void> {
   // Parse `--optimizer=<id>` or `--optimizer <id>`. Empty string is treated
   // as "use the layout's stored choice" (i.e. no override).
   let optimizerOverride: string | undefined;
+  let mapName: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--optimizer' && i + 1 < args.length) {
@@ -113,10 +119,13 @@ async function main(): Promise<void> {
       i++;
     } else if (a.startsWith('--optimizer=')) {
       optimizerOverride = a.slice('--optimizer='.length);
+    } else if (a === '--map' && i + 1 < args.length) {
+      mapName = args[i + 1];
+      i++;
+    } else if (a.startsWith('--map=')) {
+      mapName = a.slice('--map='.length);
     }
   }
-  const mapName = args[args.indexOf('--map') + 1];
-  const mapFlag = args.includes('--map');
   const names = args.filter(
     (a, i) =>
       !a.startsWith('--') &&
@@ -125,7 +134,16 @@ async function main(): Promise<void> {
       args[i - 1] !== '--map',
   );
 
-  if (!allFlag && !mapFlag && names.length === 0) {
+  if (args.some((a) => a === '--map' || a.startsWith('--map=')) && (!mapName || mapName.startsWith('--'))) {
+    console.error('[bake-layout] --map needs a map name');
+    process.exit(1);
+  }
+  if (mapName !== undefined && (allFlag || names.length > 0)) {
+    console.error('[bake-layout] --map cannot be combined with --all or layout names');
+    process.exit(1);
+  }
+
+  if (!allFlag && mapName === undefined && names.length === 0) {
     console.error(
       'Usage: bake-layout <layoutName> [<layoutName>…] | --all | --map <mapName> [--optimizer <id>]',
     );
@@ -142,12 +160,13 @@ async function main(): Promise<void> {
       process.exit(0);
     }
     console.log(`[bake-layout] Baking all ${targets.length} layout(s): ${targets.join(', ')}`);
-  } else if (mapFlag) {
-    if (mapName === undefined || mapName.startsWith('--')) {
-      console.error('[bake-layout] --map needs a map name');
+  } else if (mapName !== undefined) {
+    const { layouts, missingRooms } = await layoutsOfMap(mapName);
+    if (missingRooms.length > 0) {
+      console.error(`[bake-layout] Map "${mapName}" rooms not found or unreadable: ${missingRooms.join(', ')}`);
       process.exit(1);
     }
-    targets = await layoutsOfMap(mapName);
+    targets = layouts;
     console.log(`[bake-layout] Baking ${targets.length} layout(s) of map "${mapName}": ${targets.join(', ')}`);
   } else {
     targets = names;

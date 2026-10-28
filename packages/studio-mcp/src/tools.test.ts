@@ -417,7 +417,7 @@ describe('studio MCP tools', () => {
       };
     }
 
-    async function setup(bakedNames: string[] = []) {
+    async function setup(catalog = new InMemoryCatalogStorage(catalogDoc), bakedNames: string[] = []) {
       const stub = new StubBake();
       const baked = new InMemoryBakedLayouts();
       const rooms = new InMemoryRoomStorage();
@@ -437,7 +437,7 @@ describe('studio MCP tools', () => {
         rooms: [{ id: 'x', roomName: 'a', position: [0, 0, 0] as [number, number, number] }],
       });
       const connected = await connect(
-        { rooms, layouts, maps, catalog: new InMemoryCatalogStorage(catalogDoc), bakedLayouts: baked },
+        { rooms, layouts, maps, catalog, bakedLayouts: baked },
         undefined,
         { bakeLayout: stub.bake },
       );
@@ -472,13 +472,21 @@ describe('studio MCP tools', () => {
           await new Promise((r) => setTimeout(r, 1));
         }
       };
-      return { ...connected, stub, baked, poll, start, untilDone };
+      const expectLockFree = async () => {
+        expect((await connected.call('bake_layout', { name: 'a' })).text).not.toContain('already in progress');
+      };
+      return { ...connected, stub, baked, poll, start, untilDone, expectLockFree };
     }
 
     it('skips fresh layouts and bakes stale or missing ones', async () => {
-      const { start, untilDone, stub, baked } = await setup(['a']);
-      const { jobId, layouts } = await start({ map: 'town' });
+      const { start, untilDone, stub, baked, docs } = await setup(undefined, ['a', 'b']);
+      await docs.layouts.save('b', {
+        ...crateLayout('b'),
+        commands: [...crateLayout('b').commands, { id: 'c2', op: 'placeObject' as const, kindId: 'crate', position: [1, 0, 0] as [number, number, number] }],
+      });
+      const { jobId, layouts, mapErrors, missingRooms } = await start({ map: 'town' });
       expect(layouts.map((l: { action: string }) => l.action)).toEqual(['skipped', 'pending', 'pending']);
+      expect([mapErrors, missingRooms]).toEqual([[], []]);
       const job = await untilDone(jobId);
       expect(job.results).toEqual([
         { layoutName: 'a', action: 'skipped' },
@@ -491,7 +499,7 @@ describe('studio MCP tools', () => {
     });
 
     it('bakes fresh layouts too with force', async () => {
-      const { start, untilDone, stub } = await setup(['a', 'b', 'c']);
+      const { start, untilDone, stub } = await setup(undefined, ['a', 'b', 'c']);
       expect((await untilDone((await start({ map: 'town' })).jobId)).totals).toMatchObject({ skipped: 3, baked: 0 });
       await untilDone((await start({ map: 'town', force: true })).jobId);
       expect(stub.baked).toEqual(['a', 'b', 'c']);
@@ -504,7 +512,7 @@ describe('studio MCP tools', () => {
     });
 
     it('keeps baking after a layout fails and reports unresolvable layouts and maps as failed', async () => {
-      const { start, untilDone, stub, docs } = await setup();
+      const { start, untilDone, stub, docs, expectLockFree } = await setup();
       stub.failing.add('a');
       await docs.layouts.delete('c');
       const job = await untilDone((await start({ all: true })).jobId);
@@ -513,10 +521,21 @@ describe('studio MCP tools', () => {
         { layoutName: 'b', action: 'baked', bytes: 1 },
         { layoutName: 'c', action: 'failed', error: 'layout "c" not found' },
       ]);
+      await expectLockFree();
       const missing = await start({ map: 'ghost' });
-      expect((await untilDone(missing.jobId)).results).toEqual([
-        { layoutName: 'map "ghost"', action: 'failed', error: 'map "ghost" not found' },
-      ]);
+      const done = await untilDone(missing.jobId);
+      expect(missing.mapErrors).toEqual([{ map: 'ghost', error: 'map "ghost" not found' }]);
+      expect(done.mapErrors).toEqual(missing.mapErrors);
+      expect(done.results).toEqual([]);
+      await expectLockFree();
+    });
+
+    it('reports rooms that failed to load, per map', async () => {
+      const { start, untilDone, docs } = await setup();
+      await docs.rooms.delete('b');
+      const { jobId, missingRooms } = await start({ map: 'town' });
+      expect(missingRooms).toEqual([{ map: 'town', rooms: ['b'] }]);
+      expect((await untilDone(jobId)).missingRooms).toEqual(missingRooms);
     });
 
     it('returns before the bakes finish, and holds the lock against other bakes until then', async () => {
@@ -534,26 +553,33 @@ describe('studio MCP tools', () => {
     });
 
     it('frees the lock when the job cannot start', async () => {
-      const { call, start, untilDone } = await setup();
+      const { call, start, untilDone, expectLockFree } = await setup();
       expect((await call('bake_map', {})).isError).toBe(true);
       expect((await call('bake_map', { map: 'town', all: true })).isError).toBe(true);
+      await expectLockFree();
       await untilDone((await start({ map: 'town' })).jobId);
     });
 
-    it('errors without a catalog, and for an unknown job', async () => {
-      const { call, docs } = await setup();
-      expect((await call('get_bake_job', { jobId: 'nope' })).isError).toBe(true);
-      docs.catalog.load = async () => null;
+    it('errors without a catalog, freeing the lock', async () => {
+      const { call, expectLockFree } = await setup(new InMemoryCatalogStorage(null));
       expect(await call('bake_map', { map: 'town' })).toEqual({ isError: true, text: 'no catalog saved' });
+      await expectLockFree();
+    });
+
+    it('errors for an unknown job', async () => {
+      const { call } = await setup();
+      expect((await call('get_bake_job', { jobId: 'nope' })).isError).toBe(true);
     });
 
     it('forgets finished jobs after an hour', () => {
       let now = 0;
       const jobs = new BakeJobs(() => now);
-      const done = jobs.create([]);
-      const running = jobs.create([]);
+      const done = jobs.create({ results: [], mapErrors: [], missingRooms: [] });
+      const running = jobs.create({ results: [], mapErrors: [], missingRooms: [] });
       jobs.finish(done);
-      now = 60 * 60 * 1000;
+      now = 60 * 60 * 1000 - 1;
+      expect(jobs.get(done.id)).toBe(done);
+      now += 1;
       expect(jobs.get(done.id)).toBeUndefined();
       expect(jobs.get(running.id)).toBe(running);
     });

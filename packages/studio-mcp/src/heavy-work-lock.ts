@@ -17,8 +17,12 @@ export class HeavyWorkLock {
       throw new Error(`${this.work} is already in progress; retry shortly`);
     }
     this.busy = true;
+    let released = false;
     return () => {
-      this.busy = false;
+      if (!released) {
+        released = true;
+        this.busy = false;
+      }
     };
   }
 

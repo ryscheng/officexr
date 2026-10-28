@@ -1,17 +1,21 @@
 import { randomUUID } from 'node:crypto';
 
-export type BakeAction = 'baked' | 'skipped' | 'failed' | 'pending';
+export type BakeJobResult =
+  | { action: 'pending' | 'skipped'; layoutName: string }
+  | { action: 'baked'; layoutName: string; bytes: number }
+  | { action: 'failed'; layoutName: string; error: string };
 
-export interface BakeJobResult {
-  layoutName: string;
-  action: BakeAction;
-  error?: string;
-  bytes?: number;
+export type BakeAction = BakeJobResult['action'];
+
+/** What `bake_map` found beyond per-layout results: maps that could not be checked and rooms that failed to load. */
+export interface BakeJobPlan {
+  results: BakeJobResult[];
+  mapErrors: { map: string; error: string }[];
+  missingRooms: { map: string; rooms: string[] }[];
 }
 
-export interface BakeJob {
+export interface BakeJob extends BakeJobPlan {
   id: string;
-  results: BakeJobResult[];
   /** Set when the job finishes; a job without it is still running. */
   finishedAt?: number;
 }
@@ -24,9 +28,9 @@ export class BakeJobs {
 
   constructor(private readonly now: () => number = Date.now) {}
 
-  create(results: BakeJobResult[]): BakeJob {
+  create(plan: BakeJobPlan): BakeJob {
     this.evictExpired();
-    const job: BakeJob = { id: randomUUID(), results };
+    const job: BakeJob = { id: randomUUID(), ...plan };
     this.jobs.set(job.id, job);
     return job;
   }
