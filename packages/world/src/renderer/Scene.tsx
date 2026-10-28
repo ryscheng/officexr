@@ -29,6 +29,8 @@ import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
 import { ModelsReady } from './ModelsReady.tsx';
 import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
+import { ViewYawProbe } from './ViewYawProbe.tsx';
+import type { ViewYaw } from '../react/viewYaw.tsx';
 import { GAMEPLAY_FOV, type CameraMode } from './config.ts';
 import { placementTransform } from './placement-transform.ts';
 import type { BakedLayoutPlacement } from '../app/map-loader.ts';
@@ -137,6 +139,8 @@ interface SceneProps {
    * final `null` on unmount). The studio's perf footer is the
    * intended consumer; omitting the prop adds zero per-frame work. */
   onFrameStats?: (sample: FrameStatsSample | null) => void;
+  /** Receives the camera's yaw each frame; omitting it mounts no probe. */
+  viewYaw?: ViewYaw;
   /** When false, the self player is not rendered, so it has no body and
    * neither moves nor falls. Default true. */
   selfReady?: boolean;
@@ -366,6 +370,7 @@ export function Scene(props: SceneProps) {
           fixed={fixedCam}
           xrPresenting={xrPresenting}
         />
+        {props.viewYaw && <ViewYawProbe viewYaw={props.viewYaw} />}
 
         <SceneFrame
           store={props.store}

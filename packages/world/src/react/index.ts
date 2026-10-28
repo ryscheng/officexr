@@ -20,3 +20,6 @@ export {
   type PlayStorages,
   type UsePlaySessionOptions,
 } from './usePlaySession.ts';
+export { useCoarsePointer } from './useCoarsePointer.ts';
+export { createViewYaw, useViewYaw, ViewYawProvider, type ViewYaw } from './viewYaw.tsx';
+export { planarDistance, relativeBearing } from './relativeGeometry.ts';
