@@ -15,7 +15,7 @@ import type { KindLookup } from './layout-bake-service.ts';
 export const BAKE_SOURCE_VERSION = 1;
 
 /** Resolves Web Crypto's `subtle`; absent outside secure contexts (plain-HTTP browsers). */
-export type SubtleProvider = () => SubtleCrypto | undefined;
+export type SubtleProvider = () => typeof globalThis.crypto.subtle | undefined;
 
 const defaultSubtle: SubtleProvider = () => globalThis.crypto?.subtle;
 
