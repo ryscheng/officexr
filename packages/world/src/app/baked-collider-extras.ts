@@ -41,6 +41,13 @@ import type {
 /** Current written version. Readers also accept v1 (cuboids only). */
 export const BAKED_COLLIDERS_VERSION = 2;
 
+/** Which inputs a baked GLB came from; see `computeBakeSourceFingerprint`. */
+export interface BakeSource {
+  version: number;
+  fingerprint: string;
+  layoutName: string;
+}
+
 interface BakedColliderPayloadV2 {
   version: number;
   cuboids: CuboidDescriptor[];
@@ -51,7 +58,7 @@ interface BakedColliderPayloadV2 {
  * Namespaced under `officexr` so we never collide with extras a future
  * tool (or a source asset) might carry. */
 export function buildColliderExtras(colliders: ColliderDescriptor[]): {
-  officexr: { colliders: BakedColliderPayloadV2 };
+  officexr: { colliders: BakedColliderPayloadV2; bakeSource?: BakeSource };
 } {
   const cuboids: CuboidDescriptor[] = [];
   const trimeshes: BakedColliderPayloadV2['trimeshes'] = [];
@@ -108,6 +115,26 @@ export function parseEmbeddedColliders(
     }
   }
   return out;
+}
+
+/** Defensive parse of a GLB scene's extras; `null` when no (or malformed) `bakeSource`, e.g. a pre-fingerprint bake. */
+export function parseBakeSource(extras: unknown): BakeSource | null {
+  if (typeof extras !== 'object' || extras === null) {
+    return null;
+  }
+  const officexr = (extras as { officexr?: unknown }).officexr;
+  if (typeof officexr !== 'object' || officexr === null) {
+    return null;
+  }
+  const bakeSource = (officexr as { bakeSource?: unknown }).bakeSource;
+  if (typeof bakeSource !== 'object' || bakeSource === null) {
+    return null;
+  }
+  const { version, fingerprint, layoutName } = bakeSource as Record<string, unknown>;
+  if (typeof version !== 'number' || typeof fingerprint !== 'string' || typeof layoutName !== 'string') {
+    return null;
+  }
+  return { version, fingerprint, layoutName };
 }
 
 function parseTrimesh(raw: unknown): TrimeshDescriptor | null {

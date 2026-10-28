@@ -31,6 +31,7 @@ import { worldObjectsToColliders } from '../physics/rules.ts';
 import { createRoomService } from './room-service.ts';
 import { compressDocument, registerCompressionCodecs } from './glb-compression.ts';
 import { buildColliderExtras } from './baked-collider-extras.ts';
+import { BAKE_SOURCE_VERSION, computeBakeSourceFingerprint, type SubtleProvider } from './bake-source.ts';
 import {
   defaultOptimizer,
   resolveOptimizer,
@@ -65,6 +66,8 @@ export interface BakeOptions {
    * to `defaultOptimizer` (lossless: dedup/weld/prune/join/flatten).
    */
   optimizer?: BakeOptimizer | string;
+  /** Overrides where the bake-source fingerprint finds `crypto.subtle`. */
+  subtle?: SubtleProvider;
 }
 
 /** Return value of `bakeLayout`. */
@@ -257,7 +260,12 @@ export async function bakeLayout(
   // pre-transform `outScene` reference — a future optimizer strategy
   // could legally replace the scene object.
   const bakedScene = outDoc.getRoot().listScenes()[0] ?? outScene;
-  bakedScene.setExtras(buildColliderExtras(colliders));
+  const extras = buildColliderExtras(colliders);
+  const fingerprint = await computeBakeSourceFingerprint(doc, optimizer.id, kindLookup, options?.subtle);
+  if (fingerprint !== null) {
+    extras.officexr.bakeSource = { version: BAKE_SOURCE_VERSION, fingerprint, layoutName: doc.name };
+  }
+  bakedScene.setExtras(extras);
 
   // GLB output requires exactly 0–1 buffers (spec constraint of the
   // binary container). After mergeDocuments runs N times — once per

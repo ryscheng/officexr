@@ -14,7 +14,8 @@ import { bakeLayout } from '../layout-bake-service.ts';
 import type { KindLookup } from '../layout-bake-service.ts';
 import { createInstanceGeometry } from '../geometry-service.ts';
 import { createRoomService } from '../room-service.ts';
-import { buildColliderExtras, parseEmbeddedColliders } from '../baked-collider-extras.ts';
+import { buildColliderExtras, parseBakeSource, parseEmbeddedColliders } from '../baked-collider-extras.ts';
+import { BAKE_SOURCE_VERSION, computeBakeSourceFingerprint } from '../bake-source.ts';
 import { worldObjectsToColliders } from '../../physics/rules.ts';
 import type { WorldObjectKind } from '../../scenes/world-object-kinds-schema.ts';
 import type { LayoutDocument } from '../../scenes/layout-document.ts';
@@ -677,6 +678,41 @@ describe('bakeLayout', () => {
   });
 });
 
+describe('bakeLayout bakeSource', () => {
+  const setup = async () => {
+    const bytes = await makeTrivialGlb('wall');
+    const kindMap = new Map([['wall', makeKind('wall', '/models/wall.glb')]]);
+    const kindLookup: KindLookup = (id) => kindMap.get(id);
+    const doc = makeLayoutDoc('room1', [
+      { id: 'c1', op: 'placeObject', kindId: 'wall', position: [0, 0, 0] },
+    ]);
+    const bake = async (options: Parameters<typeof bakeLayout>[4]) => {
+      const result = await bakeLayout(doc, kindLookup, async () => bytes, makeGeometry(kindMap), { io, ...options });
+      const extras = (await io.readBinary(result.glb)).getRoot().listScenes()[0].getExtras();
+      return { result, extras };
+    };
+    return { doc, kindLookup, bake };
+  };
+
+  it('stamps the fingerprint of the inputs and the optimizer actually applied', async () => {
+    const { doc, kindLookup, bake } = await setup();
+    const { result, extras } = await bake({ optimizer: 'none' });
+    expect(parseBakeSource(extras)).toEqual({
+      version: BAKE_SOURCE_VERSION,
+      fingerprint: await computeBakeSourceFingerprint(doc, result.meta.optimizerId, kindLookup),
+      layoutName: 'room1',
+    });
+    expect(parseEmbeddedColliders(extras)).not.toBeNull();
+  });
+
+  it('writes no bakeSource, and still bakes, without crypto.subtle', async () => {
+    const { bake } = await setup();
+    const { extras } = await bake({ subtle: () => undefined });
+    expect(parseBakeSource(extras)).toBeNull();
+    expect(parseEmbeddedColliders(extras)).not.toBeNull();
+  });
+});
+
 describe('bakeLayout compression', () => {
   const blocksDir = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -729,7 +765,9 @@ describe('bakeLayout compression', () => {
         (kindId) => kindMap.get(kindId)?.colliderShape,
       ),
     );
-    expect(parsed.getRoot().listScenes()[0].getExtras()).toEqual(expected);
+    expect(parseEmbeddedColliders(parsed.getRoot().listScenes()[0].getExtras())).toEqual(
+      parseEmbeddedColliders(expected),
+    );
 
     // Uncompressed reference: the same content, dequantized and written without the extensions.
     await parsed.transform(dequantize());
