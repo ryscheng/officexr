@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { requestMotionPermission, type MotionPermission } from '@officexr/world/renderer';
-import { RoomMenuItem } from './RoomMenu';
+import { RoomMenuChoice, RoomMenuItem } from './RoomMenu';
 
-const REFUSAL: Record<Exclude<MotionPermission, 'granted'>, string> = {
+type Refusal = Exclude<MotionPermission, 'granted'>;
+
+const REFUSAL_MESSAGE: Record<Refusal, string> = {
   denied: 'Motion access denied — enable it in Safari settings',
   unsupported: 'Not supported on this device',
 };
@@ -21,7 +23,8 @@ export function MotionLookMenuItem({
   onRecenter,
   requestPermission = requestMotionPermission,
 }: MotionLookMenuItemProps) {
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const [pending, setPending] = useState(false);
 
   // The permission prompt only shows from inside the tap, so no await precedes the request.
   const toggle = async () => {
@@ -29,18 +32,35 @@ export function MotionLookMenuItem({
       onEnabledChange(false);
       return;
     }
-    const result = await requestPermission();
-    setRefusal(result === 'granted' ? null : REFUSAL[result]);
+    setPending(true);
+    let result: MotionPermission;
+    try {
+      result = await requestPermission();
+    } catch {
+      result = 'denied';
+    }
+    setPending(false);
+    setRefusal(result === 'granted' ? null : result);
     onEnabledChange(result === 'granted');
   };
 
   return (
     <>
-      <label className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-3 hover:bg-white/10">
-        <input type="checkbox" role="switch" checked={enabled} onChange={toggle} />
+      <RoomMenuChoice>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={enabled}
+          disabled={pending || refusal === 'unsupported'}
+          onChange={toggle}
+        />
         Motion look
-      </label>
-      {refusal && <p className="px-3 pb-1 text-xs text-white/60">{refusal}</p>}
+      </RoomMenuChoice>
+      {refusal && (
+        <p role="status" className="px-3 pb-1 text-xs text-white/60">
+          {REFUSAL_MESSAGE[refusal]}
+        </p>
+      )}
       {enabled && <RoomMenuItem onSelect={onRecenter}>Recenter</RoomMenuItem>}
     </>
   );

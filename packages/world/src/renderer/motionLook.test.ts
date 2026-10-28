@@ -1,108 +1,112 @@
 import { describe, expect, it } from 'vitest';
-import {
-  GLITCH_THRESHOLD_DEG,
-  isNaturalLandscape,
-  lookDelta,
-  toPose,
-  type DeviceReading,
-  type MotionPose,
-} from './motionLook.ts';
+import { DEG2RAD } from './lookControls.ts';
+import { GLITCH_THRESHOLD_DEG, lookDelta, toPose, type MotionPose } from './motionLook.ts';
 
-const deg = (d: number) => (d * Math.PI) / 180;
+type Matrix = number[][];
 
-const reading = (over: Partial<DeviceReading> = {}): DeviceReading => ({ alpha: 100, beta: 90, gamma: 0, ...over });
+const rotX = (deg: number): Matrix => {
+  const [c, s] = [Math.cos(deg * DEG2RAD), Math.sin(deg * DEG2RAD)];
+  return [[1, 0, 0], [0, c, -s], [0, s, c]];
+};
+const rotZ = (deg: number): Matrix => {
+  const [c, s] = [Math.cos(deg * DEG2RAD), Math.sin(deg * DEG2RAD)];
+  return [[c, -s, 0], [s, c, 0], [0, 0, 1]];
+};
+const mul = (a: Matrix, b: Matrix): Matrix => a.map((row) => b[0].map((_, j) => row.reduce((sum, x, k) => sum + x * b[k][j], 0)));
 
-const pose = (over: Partial<MotionPose> = {}): MotionPose => ({ yawDeg: 100, pitchDeg: 0, screenAngle: 0, ...over });
+/** The alpha/beta/gamma a browser reports for a device rotation matrix (W3C Z-X'-Y'' order). */
+function readingOf(r: Matrix) {
+  const sign = Math.sign(r[2][2]) || 1;
+  const cosBeta = sign * Math.hypot(r[2][0], r[2][2]);
+  return {
+    alpha: (((Math.atan2(-r[0][1] / cosBeta, r[1][1] / cosBeta) / DEG2RAD) % 360) + 360) % 360,
+    beta: Math.atan2(r[2][1], cosBeta) / DEG2RAD,
+    gamma: Math.atan2(-r[2][0] / cosBeta, r[2][2] / cosBeta) / DEG2RAD,
+  };
+}
+
+/**
+ * A device whose back camera points `headingDeg` left of north and `upDeg`
+ * above the horizon, rolled `rollDeg` about its screen normal (0 = portrait,
+ * 90 = landscape, ...).
+ */
+const device = (headingDeg: number, upDeg: number, rollDeg: number) =>
+  readingOf(mul(rotZ(headingDeg), mul(rotX(90 + upDeg), rotZ(rollDeg))));
+
+const poseOf = (headingDeg: number, upDeg: number, rollDeg: number) => toPose(device(headingDeg, upDeg, rollDeg))!;
+
+const deg = (d: number) => d * DEG2RAD;
+
+const pose = (over: Partial<MotionPose> = {}): MotionPose => ({ yawDeg: 100, pitchDeg: 0, ...over });
 
 describe('toPose', () => {
-  it('has no pose without an alpha reading', () => {
-    expect(toPose(reading({ alpha: null }), 0, false)).toBeNull();
+  it('has no pose without a full orientation reading', () => {
+    expect(toPose({ alpha: null, beta: null, gamma: null })).toBeNull();
+    expect(toPose({ alpha: 10, beta: 90, gamma: null })).toBeNull();
   });
 
-  it('takes yaw from alpha at every screen angle', () => {
-    for (const angle of [0, 90, 180, 270]) {
-      expect(toPose(reading({ alpha: 42 }), angle, true)?.yawDeg).toBe(42);
+  it('is unchanged by rolling the device about its screen normal', () => {
+    const portrait = poseOf(25, 12, 0);
+    for (const roll of [90, 180, 270]) {
+      const rolled = poseOf(25, 12, roll);
+      expect(rolled.yawDeg).toBeCloseTo(portrait.yawDeg, 6);
+      expect(rolled.pitchDeg).toBeCloseTo(portrait.pitchDeg, 6);
     }
-  });
-
-  it('reads pitch from beta in portrait and gamma in landscape on a natural-portrait device', () => {
-    const r = reading({ beta: 80, gamma: 15 });
-    expect(toPose(r, 0, false)?.pitchDeg).toBe(-10);
-    expect(toPose(r, 90, false)?.pitchDeg).toBe(15);
-    expect(toPose(r, 180, false)?.pitchDeg).toBe(-10);
-    expect(toPose(r, 270, false)?.pitchDeg).toBe(-15);
-  });
-
-  it('reads pitch from gamma in landscape and mirrored beta in portrait on a natural-landscape device', () => {
-    const r = reading({ beta: 80, gamma: 15 });
-    expect(toPose(r, 0, true)?.pitchDeg).toBe(15);
-    expect(toPose(r, 90, true)?.pitchDeg).toBe(-80);
-    expect(toPose(r, 180, true)?.pitchDeg).toBe(15);
-    expect(toPose(r, 270, true)?.pitchDeg).toBe(80);
-  });
-
-  it('falls back to an upright beta and a level gamma', () => {
-    expect(toPose({ alpha: 0, beta: null, gamma: null }, 0, false)?.pitchDeg).toBe(0);
-    expect(toPose({ alpha: 0, beta: null, gamma: null }, 0, true)?.pitchDeg).toBe(0);
-  });
-
-  it('records the screen angle it was read at', () => {
-    expect(toPose(reading(), 270, true)?.screenAngle).toBe(270);
   });
 });
 
-describe('isNaturalLandscape', () => {
-  it('follows the viewport at angle 0 and 180', () => {
-    expect(isNaturalLandscape(0, true)).toBe(true);
-    expect(isNaturalLandscape(180, false)).toBe(false);
+describe.each([0, 90, 180, 270])('at a screen roll of %i°', (roll) => {
+  const before = poseOf(0, -10, roll);
+
+  it('turning right yields a negative yaw delta and no pitch', () => {
+    const { dYaw, dPitch } = lookDelta(before, poseOf(-3, -10, roll));
+    expect(dYaw).toBeCloseTo(deg(-3), 6);
+    expect(dPitch).toBeCloseTo(0, 6);
   });
 
-  it('inverts the viewport when the screen is rotated', () => {
-    expect(isNaturalLandscape(90, false)).toBe(true);
-    expect(isNaturalLandscape(270, true)).toBe(false);
+  it('tilting the back camera up yields a positive pitch delta and no yaw', () => {
+    const { dYaw, dPitch } = lookDelta(before, poseOf(0, -7, roll));
+    expect(dPitch).toBeCloseTo(deg(3), 6);
+    expect(dYaw).toBeCloseTo(0, 6);
   });
 });
 
 describe('lookDelta', () => {
-  it('turns left (positive yaw) as alpha rises', () => {
-    expect(lookDelta(pose({ yawDeg: 100 }), pose({ yawDeg: 105 })).dYaw).toBeCloseTo(deg(5));
-  });
-
-  it('looks up (positive pitch) as the raw pitch falls', () => {
-    expect(lookDelta(pose({ pitchDeg: 0 }), pose({ pitchDeg: -4 })).dPitch).toBeCloseTo(deg(4));
+  it('accumulates no yaw or pitch while the device rolls from portrait to landscape', () => {
+    let prev = poseOf(0, -10, 0);
+    let yaw = 0;
+    let pitch = 0;
+    for (let roll = 5; roll <= 90; roll += 5) {
+      const next = poseOf(0, -10, roll);
+      const { dYaw, dPitch } = lookDelta(prev, next);
+      yaw += dYaw;
+      pitch += dPitch;
+      prev = next;
+    }
+    expect(yaw).toBeCloseTo(0, 6);
+    expect(pitch).toBeCloseTo(0, 6);
   });
 
   it('wraps yaw across 0/360 in both directions', () => {
-    expect(lookDelta(pose({ yawDeg: 358 }), pose({ yawDeg: 2 })).dYaw).toBeCloseTo(deg(4));
-    expect(lookDelta(pose({ yawDeg: 2 }), pose({ yawDeg: 358 })).dYaw).toBeCloseTo(deg(-4));
-  });
-
-  it('keeps a delta of exactly ±180° on the same side', () => {
-    expect(lookDelta(pose({ yawDeg: 0 }), pose({ yawDeg: 180 })).dYaw).toBe(0);
+    expect(lookDelta(pose({ yawDeg: 179 }), pose({ yawDeg: -179 })).dYaw).toBeCloseTo(deg(2));
+    expect(lookDelta(pose({ yawDeg: -179 }), pose({ yawDeg: 179 })).dYaw).toBeCloseTo(deg(-2));
   });
 
   it('ignores an axis that jumps past the glitch threshold and keeps the other', () => {
     const jump = GLITCH_THRESHOLD_DEG + 1;
-    expect(lookDelta(pose({ yawDeg: 100 }), pose({ yawDeg: 100 + jump, pitchDeg: -3 }))).toEqual({
+    expect(lookDelta(pose({ yawDeg: 0 }), pose({ yawDeg: jump, pitchDeg: 3 }))).toEqual({
       dYaw: 0,
       dPitch: expect.closeTo(deg(3)),
     });
-    expect(lookDelta(pose({ pitchDeg: 0 }), pose({ pitchDeg: jump, yawDeg: 103 }))).toEqual({
+    expect(lookDelta(pose({ yawDeg: 0, pitchDeg: 0 }), pose({ yawDeg: 3, pitchDeg: jump }))).toEqual({
       dYaw: expect.closeTo(deg(3)),
       dPitch: 0,
     });
   });
 
-  it('accepts a delta exactly at the glitch threshold', () => {
+  it('accepts a jump exactly at the glitch threshold', () => {
     expect(lookDelta(pose({ yawDeg: 0 }), pose({ yawDeg: GLITCH_THRESHOLD_DEG })).dYaw).toBeCloseTo(
       deg(GLITCH_THRESHOLD_DEG),
     );
-  });
-
-  it('applies no delta across a screen-angle change', () => {
-    expect(lookDelta(pose({ screenAngle: 0 }), pose({ screenAngle: 90, yawDeg: 105, pitchDeg: 5 }))).toEqual({
-      dYaw: 0,
-      dPitch: 0,
-    });
   });
 });

@@ -1,14 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { CameraMode } from './config.ts';
 import { applyLookDelta, type LookRefs } from './lookControls.ts';
-import {
-  isNaturalLandscape,
-  lookDelta,
-  readScreenAngle,
-  toPose,
-  type MotionLookState,
-  type MotionPose,
-} from './motionLook.ts';
+import { lookDelta, toPose, type MotionLookState, type MotionPose } from './motionLook.ts';
 
 interface ViewSnapshot {
   yaw: number;
@@ -62,9 +55,8 @@ export function useMotionLook(motionLook: MotionLookState | undefined, mode: Cam
     if (!enabled) {
       return;
     }
-    const naturalLandscape = isNaturalLandscape(readScreenAngle(), window.innerWidth > window.innerHeight);
     const onOrientation = (e: DeviceOrientationEvent) => {
-      const pose = toPose(e, readScreenAngle(), naturalLandscape);
+      const pose = toPose(e);
       if (!pose) {
         return;
       }

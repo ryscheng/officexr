@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MotionPermission } from '@officexr/world/renderer';
@@ -47,12 +47,39 @@ describe('MotionLookMenuItem', () => {
     expect(screen.queryByRole('button', { name: 'Recenter' })).toBeNull();
   });
 
-  it('stays off and explains when motion is unsupported', async () => {
+  it('stays off, disabled, and explains when motion is unsupported', async () => {
     render(<Harness result="unsupported" />);
     openMenu();
     fireEvent.click(motionSwitch());
-    await screen.findByText('Not supported on this device');
+    expect((await screen.findByRole('status')).textContent).toBe('Not supported on this device');
     expect(motionSwitch().checked).toBe(false);
+    expect(motionSwitch().disabled).toBe(true);
+  });
+
+  it('counts a failed permission request as denied', async () => {
+    for (const requestPermission of [
+      () => Promise.reject(new Error('not allowed')),
+      () => {
+        throw new Error('not allowed');
+      },
+    ]) {
+      render(<MotionLookMenuItem enabled={false} onEnabledChange={() => {}} onRecenter={() => {}} requestPermission={requestPermission} />);
+      fireEvent.click(motionSwitch());
+      await screen.findByText('Motion access denied — enable it in Safari settings');
+      expect(motionSwitch().disabled).toBe(false);
+      cleanup();
+    }
+  });
+
+  it('asks for permission synchronously within the tap and disables the switch meanwhile', async () => {
+    let answer: (result: MotionPermission) => void = () => {};
+    const requestPermission = vi.fn(() => new Promise<MotionPermission>((resolve) => (answer = resolve)));
+    render(<MotionLookMenuItem enabled={false} onEnabledChange={() => {}} onRecenter={() => {}} requestPermission={requestPermission} />);
+    fireEvent.click(motionSwitch());
+    expect(requestPermission).toHaveBeenCalledTimes(1);
+    expect(motionSwitch().disabled).toBe(true);
+    await act(async () => answer('denied'));
+    expect(motionSwitch().disabled).toBe(false);
   });
 
   it('turns off without asking for permission again', async () => {

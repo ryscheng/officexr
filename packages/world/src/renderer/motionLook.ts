@@ -8,17 +8,12 @@ export interface MotionLookState {
 
 export type MotionPermission = 'granted' | 'denied' | 'unsupported';
 
-export interface DeviceReading {
-  alpha: number | null;
-  beta: number | null;
-  gamma: number | null;
-}
+export type DeviceReading = Pick<DeviceOrientationEvent, 'alpha' | 'beta' | 'gamma'>;
 
-/** Device attitude in degrees, in the frame of the screen angle it was read at. */
+/** Direction of the device's back camera in world space, in degrees (positive yaw = left, positive pitch = up). */
 export interface MotionPose {
   yawDeg: number;
   pitchDeg: number;
-  screenAngle: number;
 }
 
 /** Sensor spikes near Euler singularities are 90-180°; real hand motion stays well under this per event. */
@@ -26,55 +21,21 @@ export const GLITCH_THRESHOLD_DEG = 30;
 
 const PROBE_TIMEOUT_MS = 500;
 
-/** Screen rotation in degrees (0/90/180/270), falling back to iOS's legacy `window.orientation`. */
-export function readScreenAngle(): number {
-  const angle = window.screen?.orientation?.angle ?? (window as { orientation?: number }).orientation ?? 0;
-  return ((angle % 360) + 360) % 360;
-}
-
 /**
- * Whether the device's factory orientation is landscape (iPads). The screen
- * angle is relative to that orientation, so a rotated screen inverts the
- * viewport check.
+ * Where the back camera, `R(α,β,γ)·(0,0,−1)`, points. Rolling the device about
+ * its screen normal leaves it unchanged, so portrait and landscape need no
+ * special-casing. Null for a reading without an orientation, as desktop
+ * browsers emit.
  */
-export function isNaturalLandscape(screenAngle: number, landscapeViewport: boolean): boolean {
-  return screenAngle === 90 || screenAngle === 270 ? !landscapeViewport : landscapeViewport;
-}
-
-/**
- * Pitch axis in degrees, decreasing as the top of the device tilts away
- * (looking up). Which sensor axis carries pitch depends on the screen angle
- * and the device's natural orientation.
- */
-function rawPitch(beta: number, gamma: number, screenAngle: number, naturalLandscape: boolean): number {
-  if (naturalLandscape) {
-    if (screenAngle === 90) {
-      return -beta;
-    }
-    if (screenAngle === 270) {
-      return beta;
-    }
-    return gamma;
-  }
-  if (screenAngle === 90) {
-    return gamma;
-  }
-  if (screenAngle === 270) {
-    return -gamma;
-  }
-  return beta - 90;
-}
-
-/** Null for a reading without an orientation, as desktop browsers emit. */
-export function toPose(reading: DeviceReading, screenAngle: number, naturalLandscape: boolean): MotionPose | null {
-  if (reading.alpha === null) {
+export function toPose({ alpha, beta, gamma }: DeviceReading): MotionPose | null {
+  if (alpha === null || beta === null || gamma === null) {
     return null;
   }
-  return {
-    yawDeg: reading.alpha,
-    pitchDeg: rawPitch(reading.beta ?? 90, reading.gamma ?? 0, screenAngle, naturalLandscape),
-    screenAngle,
-  };
+  const [a, b, g] = [alpha, beta, gamma].map((deg) => deg * DEG2RAD);
+  const north = -Math.sin(a) * Math.sin(g) + Math.cos(a) * Math.sin(b) * Math.cos(g);
+  const west = Math.cos(a) * Math.sin(g) + Math.sin(a) * Math.sin(b) * Math.cos(g);
+  const up = Math.min(1, Math.max(-1, -Math.cos(b) * Math.cos(g)));
+  return { yawDeg: Math.atan2(west, north) / DEG2RAD, pitchDeg: Math.asin(up) / DEG2RAD };
 }
 
 const wrap180 = (deg: number) => (deg > 180 ? deg - 360 : deg < -180 ? deg + 360 : deg);
@@ -83,18 +44,13 @@ const unlessGlitch = (deltaDeg: number) => (Math.abs(deltaDeg) <= GLITCH_THRESHO
 
 /**
  * Look delta in radians, in `applyLookDelta`'s convention, between two
- * consecutive poses. Turning the device left raises alpha, and tilting its top
- * away lowers the raw pitch. An axis whose jump exceeds the glitch threshold
- * contributes nothing, as does a change of screen angle, whose readings
- * aren't comparable.
+ * consecutive poses. An axis whose jump exceeds the glitch threshold
+ * contributes nothing.
  */
 export function lookDelta(prev: MotionPose, next: MotionPose): { dYaw: number; dPitch: number } {
-  if (prev.screenAngle !== next.screenAngle) {
-    return { dYaw: 0, dPitch: 0 };
-  }
   return {
     dYaw: unlessGlitch(wrap180(next.yawDeg - prev.yawDeg)),
-    dPitch: unlessGlitch(prev.pitchDeg - next.pitchDeg),
+    dPitch: unlessGlitch(next.pitchDeg - prev.pitchDeg),
   };
 }
 
@@ -110,8 +66,11 @@ export async function requestMotionPermission(): Promise<MotionPermission> {
   }
   const { requestPermission } = DeviceOrientationEvent as { requestPermission?: () => Promise<string> };
   if (typeof requestPermission === 'function') {
-    const state = await requestPermission.call(DeviceOrientationEvent).catch(() => 'denied');
-    if (state !== 'granted') {
+    try {
+      if ((await requestPermission.call(DeviceOrientationEvent)) !== 'granted') {
+        return 'denied';
+      }
+    } catch {
       return 'denied';
     }
   }
@@ -122,7 +81,7 @@ export async function requestMotionPermission(): Promise<MotionPermission> {
       resolve(result);
     };
     const onReading = (e: DeviceOrientationEvent) => {
-      if (e.alpha !== null) {
+      if (toPose(e)) {
         finish('granted');
       }
     };
