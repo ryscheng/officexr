@@ -186,13 +186,12 @@ function trimeshSpans(grid: NavGrid, v: readonly number[], indices: readonly num
 interface Triangle {
   minX: number;
   maxX: number;
-  maxY: number;
   minZ: number;
   maxZ: number;
-  /** The triangle's plane height at `(x, z)`, extrapolated past its edges. */
-  planeHeight(x: number, z: number): number;
   /** The triangle's height at `(x, z)`, or NaN outside it. */
   heightInside(x: number, z: number): number;
+  /** The triangle's highest point over the square `[x0, x1] × [z0, z1]`, or -Infinity if it misses the square. */
+  maxHeightOver(x0: number, z0: number, x1: number, z1: number): number;
 }
 
 /** A trimesh's triangles that aren't vertical (a vertical one has no height over any point). */
@@ -210,21 +209,55 @@ function* triangles(v: readonly number[], indices: readonly number[]): Generator
     }
     const weightA = (x: number, z: number) => ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
     const weightB = (x: number, z: number) => ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
+    const corners = [
+      [ax, ay, az],
+      [bx, by, bz],
+      [cx, cy, cz],
+    ];
     yield {
       minX: Math.min(ax, bx, cx),
       maxX: Math.max(ax, bx, cx),
-      maxY: Math.max(ay, by, cy),
       minZ: Math.min(az, bz, cz),
       maxZ: Math.max(az, bz, cz),
-      planeHeight(x, z) {
-        const wa = weightA(x, z);
-        const wb = weightB(x, z);
-        return wa * ay + wb * by + (1 - wa - wb) * cy;
-      },
       heightInside(x, z) {
         const wa = weightA(x, z);
         const wb = weightB(x, z);
-        return wa < -EPS || wb < -EPS || 1 - wa - wb < -EPS ? NaN : this.planeHeight(x, z);
+        return wa < -EPS || wb < -EPS || 1 - wa - wb < -EPS ? NaN : wa * ay + wb * by + (1 - wa - wb) * cy;
+      },
+      // A plane peaks at a vertex of the triangle clipped to the square: a square corner inside the
+      // triangle, a triangle corner inside the square, or where a triangle edge crosses a square edge.
+      maxHeightOver(x0, z0, x1, z1) {
+        const inX = (x: number) => x >= x0 - EPS && x <= x1 + EPS;
+        const inZ = (z: number) => z >= z0 - EPS && z <= z1 + EPS;
+        let top = -Infinity;
+        const consider = (y: number) => {
+          if (y > top) {
+            top = y;
+          }
+        };
+        for (const [x, z] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) {
+          consider(this.heightInside(x, z));
+        }
+        for (let e = 0; e < 3; e++) {
+          const [px, py, pz] = corners[e];
+          const [qx, qy, qz] = corners[(e + 1) % 3];
+          if (inX(px) && inZ(pz)) {
+            consider(py);
+          }
+          for (const x of [x0, x1]) {
+            const t = (x - px) / (qx - px);
+            if (t >= 0 && t <= 1 && inZ(pz + t * (qz - pz))) {
+              consider(py + t * (qy - py));
+            }
+          }
+          for (const z of [z0, z1]) {
+            const t = (z - pz) / (qz - pz);
+            if (t >= 0 && t <= 1 && inX(px + t * (qx - px))) {
+              consider(py + t * (qy - py));
+            }
+          }
+        }
+        return top;
       },
     };
   }
@@ -269,17 +302,7 @@ function obstructions(grid: NavGrid, colliders: readonly ColliderDescriptor[], c
         for (let i = i0; i <= i1; i++) {
           const x = origin.x + i * cellSize;
           const z = origin.z + j * cellSize;
-          // A plane peaks at a corner of the square; the clamp undoes extrapolating past the triangle.
-          const top = Math.min(
-            tri.maxY,
-            Math.max(
-              tri.planeHeight(x, z),
-              tri.planeHeight(x + cellSize, z),
-              tri.planeHeight(x, z + cellSize),
-              tri.planeHeight(x + cellSize, z + cellSize),
-            ),
-          );
-          obstruct(j * width + i, bottom, top);
+          obstruct(j * width + i, bottom, tri.maxHeightOver(x, z, x + cellSize, z + cellSize));
         }
       }
     }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_WORLD_CONSTANTS, worldSettingsFromConstants } from '@officexr/sdk';
 import catalogJson from '../../world-object-kinds.json' with { type: 'json' };
 import doorwayLayout from '../../layouts/scenario-doorway.json' with { type: 'json' };
+import slopeLayout from '../../layouts/scenario-slope.json' with { type: 'json' };
 import stairsLayout from '../../layouts/scenario-stairs.json' with { type: 'json' };
 import { createInstanceGeometry } from '../app/geometry-service.ts';
 import { createRoomService } from '../app/room-service.ts';
@@ -33,6 +34,31 @@ describe('nav grid over checked-in layouts', () => {
     const path = findPath(layoutGrid(stairsLayout), { x: 6, y: 2, z: 2 }, { x: -2, y: 6, z: 2 });
     expect(path).not.toBeNull();
     expect(path!.at(-1)!.x).toBeLessThan(0);
+  });
+
+  it('climbs scenario-slope from the floor to the top platform', () => {
+    // Same footprint as scenario-stairs, with a slope trimesh in place of the steps.
+    const path = findPath(layoutGrid(slopeLayout), { x: 6, y: 2, z: 2 }, { x: -2, y: 6, z: 2 });
+    expect(path).not.toBeNull();
+    expect(path!.at(-1)!.x).toBeLessThan(0);
+  });
+
+  it('walks up an outer-corner slope piece standing on a floor', () => {
+    const commands = [];
+    for (let x = -8; x <= 12; x += 4) {
+      for (let z = -8; z <= 12; z += 4) {
+        commands.push({ id: `floor@${x},${z}`, op: 'placeObject', kindId: 'colored_block_blue', position: [x, 0, z] });
+      }
+    }
+    // A 4×4 m piece over x, z 0..4, rising from the floor top (y=2) to y=6 along its ridge.
+    commands.push({ id: 'corner', op: 'placeObject', kindId: 'prototype_primitive_slope_outercorner', position: [0, 4, 0] });
+    const g = layoutGrid({ schemaVersion: 1, name: 'corner', title: 'corner', updatedAt: 0, commands });
+    let onPiece = 0;
+    for (let c = 0; c < g.walkable.length; c++) {
+      onPiece += g.walkable[c] === 1 && g.surface[c] > 2.01 ? 1 : 0;
+    }
+    expect(onPiece).toBeGreaterThan(150);
+    expect(findPath(g, { x: -3, y: 2, z: -3 }, { x: 0.75, y: 5.3, z: 0.75 })).not.toBeNull();
   });
 
   it('walks through the scanned doorway of scenario-doorway', () => {
