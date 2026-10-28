@@ -13,6 +13,7 @@ import { registerCompressionCodecs } from '../glb-compression.ts';
 import { bakeLayout } from '../layout-bake-service.ts';
 import type { KindLookup } from '../layout-bake-service.ts';
 import { createInstanceGeometry } from '../geometry-service.ts';
+import { createRoomService } from '../room-service.ts';
 import { buildColliderExtras, parseEmbeddedColliders } from '../baked-collider-extras.ts';
 import { worldObjectsToColliders } from '../../physics/rules.ts';
 import type { WorldObjectKind } from '../../scenes/world-object-kinds-schema.ts';
@@ -252,28 +253,97 @@ describe('bakeLayout', () => {
     ).rejects.toThrow(/failed to load GLTF/);
   });
 
-  it('skips extrude commands (they are not yet implemented for layouts)', async () => {
-    // A layout document with a mix of placeObject and extrude.
-    // The extrude should be silently ignored; the placeObject processed.
-    const wallBytes = await makeTrivialGlb('wall');
-    const wallKind = makeKind('wall', '/models/wall.glb');
-    const kindLookup: KindLookup = (id) => (id === 'wall' ? wallKind : undefined);
-    const gltfLoader = async () => wallBytes;
-
-    const doc: LayoutDocument = {
-      schemaVersion: 1,
-      name: 'mixed',
-      updatedAt: 0,
-      commands: [
-        { id: 'c1', op: 'placeObject', kindId: 'wall', position: [0, 0, 0] },
-        // extrude is part of SceneCommand union but not handled by bakeLayout
-        { id: 'c2', op: 'extrude', targetCommandId: 'c1', face: 'px', count: 2 },
+  it('bakes extruded instances exactly as compileScene tiles them (meshes + colliders)', async () => {
+    // A floor built from one placeObject plus extrudes. The runtime draws
+    // the baked GLB INSTEAD of the layout's compiled instances, so the bake
+    // must contain every tile `compileScene` produces with the geometry
+    // service's `tileStep` stride — otherwise extruded tiles vanish both
+    // visually and physically (you fall through the floor).
+    const blockBytes = await makeTrivialGlb('block');
+    const plankBytes = await makeTrivialGlb('plank');
+    const kindMap = new Map<string, WorldObjectKind>([
+      [
+        'block',
+        {
+          ...makeKind('block', '/models/block.glb'),
+          dimensions: { width: 2, height: 2, depth: 2 },
+          localAABB: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+        },
       ],
+      [
+        // Non-square footprint, yawed: the stride must come from the
+        // yawed AABB (tileStep at yaw 90 swaps x/z).
+        'plank',
+        {
+          ...makeKind('plank', '/models/plank.glb'),
+          dimensions: { width: 2, height: 0.5, depth: 1 },
+          localAABB: { min: { x: -1, y: -0.25, z: -0.5 }, max: { x: 1, y: 0.25, z: 0.5 } },
+        },
+      ],
+    ]);
+    const kindLookup: KindLookup = (id) => kindMap.get(id);
+    const glbByUrl: Record<string, Uint8Array> = {
+      '/models/block.glb': blockBytes,
+      '/models/plank.glb': plankBytes,
+    };
+    const gltfLoader = async (url: string) => glbByUrl[url];
+
+    const baseGeometry = makeGeometry(kindMap, 0.5);
+    const meshTransformCalls: Array<{
+      position: [number, number, number];
+      kindId: string;
+      yawDeg: number | undefined;
+    }> = [];
+    const geometry: typeof baseGeometry = {
+      ...baseGeometry,
+      meshTransform(position, kindId, yawDeg) {
+        meshTransformCalls.push({ position: [...position], kindId, yawDeg });
+        return baseGeometry.meshTransform(position, kindId, yawDeg);
+      },
     };
 
-    const result = await bakeLayout(doc, kindLookup, gltfLoader, makeGeometry(new Map()), { io });
-    // Only the placeObject counts.
-    expect(result.meta.commandCount).toBe(1);
+    const doc = makeLayoutDoc('extruded-floor', [
+      { id: 'floor', op: 'placeObject', kindId: 'block', position: [0, -4, 0] },
+      // A 4 × 3 block floor: a row along +x, then that row along +z.
+      { id: 'row', op: 'extrude', targetCommandId: 'floor', face: 'px', count: 4 },
+      { id: 'grid', op: 'extrude', targetCommandId: 'row', face: 'pz', count: 3 },
+      { id: 'walk', op: 'placeObject', kindId: 'plank', position: [0, 0, 20], yawDeg: 90 },
+      { id: 'walkway', op: 'extrude', targetCommandId: 'walk', face: 'pz', count: 3 },
+    ]);
+
+    // Expected: the runtime compile (same stride the room service uses).
+    const compiled = createRoomService({ geometry: baseGeometry }).compileScene(doc);
+    // Sanity: the extrudes actually tiled at kind stride (2 m block = 4
+    // voxels; yawed 2 m plank along z = 4 voxels).
+    expect(compiled.instances.length).toBe(1 + 3 + 2 * 3 + 1 + 2);
+    expect(
+      compiled.instances.filter((i) => i.sourceCommandId === 'row').map((i) => i.position[0]).sort((a, b) => a - b),
+    ).toEqual([4, 8, 12]);
+    expect(
+      compiled.instances.filter((i) => i.sourceCommandId === 'walkway').map((i) => i.position[2]).sort((a, b) => a - b),
+    ).toEqual([24, 28]);
+
+    const result = await bakeLayout(doc, kindLookup, gltfLoader, geometry, { io });
+
+    // Mesh input: one meshTransform per compiled instance, same
+    // (position, kind, yaw).
+    const key = (i: { position: readonly number[]; kindId: string; yawDeg?: number }) =>
+      `${i.kindId}@${i.position.join(',')}#${i.yawDeg ?? 0}`;
+    expect(meshTransformCalls.map(key).sort()).toEqual(compiled.instances.map(key).sort());
+    expect(result.meta.instanceCount).toBe(compiled.instances.length);
+    expect(result.meta.kindCount).toBe(2);
+
+    // Colliders: identical to the canonical helper over the compiled set.
+    const expectedColliders = worldObjectsToColliders(
+      compiled,
+      baseGeometry.worldAABB,
+      (kindId) => kindLookup(kindId)?.colliderShape,
+    );
+    expect(result.meta.colliderCount).toBe(expectedColliders.length);
+    const parsed = await io.readBinary(result.glb);
+    expect(parseEmbeddedColliders(parsed.getRoot().listScenes()[0].getExtras())).toEqual(
+      parseEmbeddedColliders(buildColliderExtras(expectedColliders)),
+    );
   });
 
   it('positions instances via geometry.meshTransform (matches runtime renderer)', async () => {
