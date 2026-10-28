@@ -2,17 +2,16 @@ import { useState } from 'react';
 import { requestMotionPermission, type MotionPermission } from '@officexr/world/renderer';
 import { RoomMenuChoice, RoomMenuItem } from './RoomMenu';
 
-type Refusal = Exclude<MotionPermission, 'granted'>;
-
-const REFUSAL_MESSAGE: Record<Refusal, string> = {
-  denied: 'Motion access denied — enable it in Safari settings',
-  unsupported: 'Not supported on this device',
-};
+const DENIED_MESSAGE = 'Motion access denied — enable it in Safari settings';
+const UNSUPPORTED_MESSAGE = 'Not supported on this device';
 
 interface MotionLookMenuItemProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
   onRecenter: () => void;
+  /** Kept by the caller so it survives the menu closing; the switch stays disabled once set. */
+  unsupported: boolean;
+  onUnsupported: () => void;
   requestPermission?: () => Promise<MotionPermission>;
 }
 
@@ -21,9 +20,11 @@ export function MotionLookMenuItem({
   enabled,
   onEnabledChange,
   onRecenter,
+  unsupported,
+  onUnsupported,
   requestPermission = requestMotionPermission,
 }: MotionLookMenuItemProps) {
-  const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const [denied, setDenied] = useState(false);
   const [pending, setPending] = useState(false);
 
   // The permission prompt only shows from inside the tap, so no await precedes the request.
@@ -40,7 +41,10 @@ export function MotionLookMenuItem({
       result = 'denied';
     }
     setPending(false);
-    setRefusal(result === 'granted' ? null : result);
+    setDenied(result === 'denied');
+    if (result === 'unsupported') {
+      onUnsupported();
+    }
     onEnabledChange(result === 'granted');
   };
 
@@ -51,14 +55,14 @@ export function MotionLookMenuItem({
           type="checkbox"
           role="switch"
           checked={enabled}
-          disabled={pending || refusal === 'unsupported'}
+          disabled={pending || unsupported}
           onChange={toggle}
         />
         Motion look
       </RoomMenuChoice>
-      {refusal && (
+      {(unsupported || denied) && (
         <p role="status" className="px-3 pb-1 text-xs text-white/60">
-          {REFUSAL_MESSAGE[refusal]}
+          {unsupported ? UNSUPPORTED_MESSAGE : DENIED_MESSAGE}
         </p>
       )}
       {enabled && <RoomMenuItem onSelect={onRecenter}>Recenter</RoomMenuItem>}

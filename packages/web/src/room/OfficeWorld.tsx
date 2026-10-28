@@ -54,6 +54,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
   const [motionLook, setMotionLook] = useState({ enabled: false, recenterKey: 0 });
+  const [motionUnsupported, setMotionUnsupported] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
@@ -86,6 +87,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
               enabled={motionLook.enabled}
               onEnabledChange={(enabled) => setMotionLook((m) => ({ ...m, enabled }))}
               onRecenter={() => setMotionLook((m) => ({ ...m, recenterKey: m.recenterKey + 1 }))}
+              unsupported={motionUnsupported}
+              onUnsupported={() => setMotionUnsupported(true)}
             />
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
           </RoomMenu>

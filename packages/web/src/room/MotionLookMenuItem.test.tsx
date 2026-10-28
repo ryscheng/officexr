@@ -10,12 +10,15 @@ afterEach(cleanup);
 
 function Harness({ result, onRecenter = () => {} }: { result: MotionPermission; onRecenter?: () => void }) {
   const [enabled, setEnabled] = useState(false);
+  const [unsupported, setUnsupported] = useState(false);
   return (
     <RoomMenu>
       <MotionLookMenuItem
         enabled={enabled}
         onEnabledChange={setEnabled}
         onRecenter={onRecenter}
+        unsupported={unsupported}
+        onUnsupported={() => setUnsupported(true)}
         requestPermission={() => Promise.resolve(result)}
       />
     </RoomMenu>
@@ -54,6 +57,10 @@ describe('MotionLookMenuItem', () => {
     expect((await screen.findByRole('status')).textContent).toBe('Not supported on this device');
     expect(motionSwitch().checked).toBe(false);
     expect(motionSwitch().disabled).toBe(true);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    openMenu();
+    expect(motionSwitch().disabled).toBe(true);
+    expect(screen.getByRole('status').textContent).toBe('Not supported on this device');
   });
 
   it('counts a failed permission request as denied', async () => {
@@ -63,7 +70,7 @@ describe('MotionLookMenuItem', () => {
         throw new Error('not allowed');
       },
     ]) {
-      render(<MotionLookMenuItem enabled={false} onEnabledChange={() => {}} onRecenter={() => {}} requestPermission={requestPermission} />);
+      render(<MotionLookMenuItem enabled={false} onEnabledChange={() => {}} onRecenter={() => {}} unsupported={false} onUnsupported={() => {}} requestPermission={requestPermission} />);
       fireEvent.click(motionSwitch());
       await screen.findByText('Motion access denied — enable it in Safari settings');
       expect(motionSwitch().disabled).toBe(false);
@@ -74,7 +81,7 @@ describe('MotionLookMenuItem', () => {
   it('asks for permission synchronously within the tap and disables the switch meanwhile', async () => {
     let answer: (result: MotionPermission) => void = () => {};
     const requestPermission = vi.fn(() => new Promise<MotionPermission>((resolve) => (answer = resolve)));
-    render(<MotionLookMenuItem enabled={false} onEnabledChange={() => {}} onRecenter={() => {}} requestPermission={requestPermission} />);
+    render(<MotionLookMenuItem enabled={false} onEnabledChange={() => {}} onRecenter={() => {}} unsupported={false} onUnsupported={() => {}} requestPermission={requestPermission} />);
     fireEvent.click(motionSwitch());
     expect(requestPermission).toHaveBeenCalledTimes(1);
     expect(motionSwitch().disabled).toBe(true);
@@ -91,6 +98,8 @@ describe('MotionLookMenuItem', () => {
           enabled={enabled}
           onEnabledChange={setEnabled}
           onRecenter={() => {}}
+          unsupported={false}
+          onUnsupported={() => {}}
           requestPermission={requestPermission}
         />
       );

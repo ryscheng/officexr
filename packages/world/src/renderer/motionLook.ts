@@ -16,7 +16,7 @@ export interface MotionPose {
   pitchDeg: number;
 }
 
-/** Sensor spikes near Euler singularities are 90-180°; real hand motion stays well under this per event. */
+/** Drops the 180° yaw flip as pitch crosses the zenith or nadir, and genuine sensor spikes; hand motion stays well under this per event. */
 export const GLITCH_THRESHOLD_DEG = 30;
 
 const PROBE_TIMEOUT_MS = 500;
