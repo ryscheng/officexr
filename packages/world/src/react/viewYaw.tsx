@@ -1,9 +1,12 @@
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
-import { wrapAngle } from './relativeGeometry.ts';
+import { wrapAngle } from '../renderer/lookControls.ts';
 
 const NOTIFY_THRESHOLD_RAD = Math.PI / 180;
 
-/** The camera's yaw (the `yawRef` convention), published out of the Canvas for DOM overlays. */
+/**
+ * The camera's yaw, published out of the Canvas for DOM overlays. Same convention as
+ * `yawFromDirection`: 0 faces -z, positive turns counter-clockwise.
+ */
 export interface ViewYaw {
   get(): number;
   /** Updates and notifies only when the yaw moved at least 1° from the last published value. */

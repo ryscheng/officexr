@@ -4,7 +4,10 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createViewYaw, useViewYaw, ViewYawProvider } from './viewYaw.tsx';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const deg = (d: number) => (d * Math.PI) / 180;
 
@@ -28,6 +31,16 @@ describe('createViewYaw', () => {
     viewYaw.set(Math.PI - deg(0.2));
     viewYaw.set(-Math.PI + deg(0.2));
     expect(viewYaw.get()).toBe(Math.PI - deg(0.2));
+  });
+
+  it('notifies for a 1° move across the ±π wrap', () => {
+    const viewYaw = createViewYaw();
+    const cb = vi.fn();
+    viewYaw.set(deg(179.5));
+    viewYaw.subscribe(cb);
+    viewYaw.set(deg(-179.5));
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(viewYaw.get()).toBe(deg(-179.5));
   });
 
   it('stops notifying after unsubscribe', () => {

@@ -17,6 +17,13 @@ describe('relativeBearing', () => {
     ['right', 0, at(5, 0), Math.PI / 2],
     ['left', 0, at(-5, 0), -Math.PI / 2],
     ['behind', 0, at(0, 5), Math.PI],
+    ['behind after turning left', Math.PI / 2, at(5, 0), Math.PI],
+    [
+      'left across the seam',
+      Math.PI - 0.1,
+      at(5 * Math.sin(0.1), 5 * Math.cos(0.1)),
+      -0.2,
+    ],
     ['ahead after turning left', Math.PI / 2, at(-5, 0), 0],
     ['right after turning left', Math.PI / 2, at(0, -5), Math.PI / 2],
     ['left after turning around', Math.PI, at(5, 0), -Math.PI / 2],
@@ -35,6 +42,10 @@ describe('relativeBearing', () => {
         expect(b).toBeLessThanOrEqual(Math.PI);
       }
     }
+  });
+
+  it('is 0 for coincident points', () => {
+    expect(relativeBearing(at(2, 3), 1, at(2, 3))).toBe(0);
   });
 
   it('is measured from selfPos', () => {

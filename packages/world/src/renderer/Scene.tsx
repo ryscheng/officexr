@@ -370,6 +370,7 @@ export function Scene(props: SceneProps) {
           fixed={fixedCam}
           xrPresenting={xrPresenting}
         />
+        {/* After CameraRig, so the probe reads this frame's pose, not last frame's. */}
         {props.viewYaw && <ViewYawProbe viewYaw={props.viewYaw} />}
 
         <SceneFrame
