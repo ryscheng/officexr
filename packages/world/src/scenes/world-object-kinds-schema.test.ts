@@ -326,3 +326,43 @@ describe('normalizeKind — trimesh colliderShape', () => {
     }
   });
 });
+
+describe('normalizeKind — colliderComplexity', () => {
+  it('stays absent when not provided', () => {
+    expect(normalizeKind(minimalRaw(), 0).colliderComplexity).toBeUndefined();
+  });
+
+  it.each([
+    [{ type: 'box' }],
+    [{ type: 'trimesh' }],
+    [{ type: 'heightfield' }],
+    [{ type: 'heightfield', cellSize: 0.25, heightEpsilon: 0.02 }],
+    [{ type: 'profile' }],
+    [{ type: 'profile', axis: 'x', cellSize: 0.5 }],
+  ])('keeps valid recipe %j through a catalog round-trip', (recipe) => {
+    const catalog = validateWorldObjectKindCatalog({
+      schemaVersion: 1,
+      updatedAt: 1,
+      kinds: [minimalRaw('block', { colliderComplexity: recipe })],
+    });
+    expect(catalog.kinds[0].colliderComplexity).toEqual(recipe);
+    const again = validateWorldObjectKindCatalog(JSON.parse(JSON.stringify(catalog)));
+    expect(again.kinds[0].colliderComplexity).toEqual(recipe);
+  });
+
+  it.each([
+    [{ type: 'sphere' }],
+    [{}],
+    ['box'],
+    [{ type: 'profile', axis: 'w' }],
+    [{ type: 'profile', cellSize: 0 }],
+    [{ type: 'heightfield', cellSize: -1 }],
+    [{ type: 'heightfield', cellSize: Number.POSITIVE_INFINITY }],
+    [{ type: 'heightfield', heightEpsilon: 0 }],
+    [{ type: 'heightfield', cellSize: '0.1' }],
+  ])('rejects invalid recipe %j with the kind index', (recipe) => {
+    expect(() => normalizeKind(minimalRaw('block', { colliderComplexity: recipe }), 4)).toThrow(
+      /kinds\[4\]\.colliderComplexity/,
+    );
+  });
+});
