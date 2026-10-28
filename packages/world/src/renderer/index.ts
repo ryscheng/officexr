@@ -20,6 +20,8 @@ export { ProximityGlow } from './ProximityGlow.tsx';
 export { CameraRig } from './CameraRig.tsx';
 export { requestMotionPermission, type MotionLookState, type MotionPermission } from './motionLook.ts';
 export { SceneFrame } from './SceneFrame.tsx';
+export { createWorldXRStore } from './xrStore.ts';
+export { useXRSessionModeSupported, type XRStore } from '@react-three/xr';
 export { ObjectInstances, type MaterialOverride } from './ObjectInstances.tsx';
 export {
   LightingRig,

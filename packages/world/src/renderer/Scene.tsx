@@ -1,7 +1,8 @@
-import React, { Suspense, useEffect, useMemo, useRef } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Physics, type RapierRigidBody } from '@react-three/rapier';
+import { XR, type XRStore } from '@react-three/xr';
 import { GradientBackground } from './GradientBackground.tsx';
 import { LightingRig } from './LightingRig.tsx';
 import { MapColliders } from './MapColliders.tsx';
@@ -18,6 +19,7 @@ import type {
 import type { BotPool } from '../bot/BotPool.ts';
 import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
+import { XRAvatarOrigin } from './XRAvatarOrigin.tsx';
 import type { MotionLookState } from './motionLook.ts';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
@@ -76,6 +78,12 @@ function SunFollower(props: {
   });
   return null;
 }
+
+function OptionalXR({ store, children }: { store?: XRStore; children: React.ReactNode }) {
+  return store ? <XR store={store}>{children}</XR> : <>{children}</>;
+}
+
+const noopSubscribe = () => () => {};
 
 /** A layout placement with the URL of its baked GLB, e.g. `/api/baked-layouts/lobby`. */
 export interface SceneBakedLayout extends BakedLayoutPlacement {
@@ -139,6 +147,8 @@ interface SceneProps {
   /** Called once each baked layout's colliders have mounted, with its room instance id. */
   onCollidersReady?: (roomInstanceId: string) => void;
   onCollidersError?: (error: Error) => void;
+  /** Enables immersive XR sessions from the self avatar's eyes. Without it the scene has no `<XR>` wrapper. */
+  xrStore?: XRStore;
 }
 
 export function Scene(props: SceneProps) {
@@ -146,6 +156,11 @@ export function Scene(props: SceneProps) {
   const excludeBakedInstance = useMemo(() => excludeLayoutInstances(bakedLayouts), [bakedLayouts]);
   const { proximity, lighting, background, fixedCamera } = props.view;
   const worldFocused = props.worldFocused ?? true;
+  const { xrStore } = props;
+  const xrPresenting = useSyncExternalStore(
+    xrStore?.subscribe ?? noopSubscribe,
+    () => xrStore?.getState().session != null,
+  );
 
   // After Scene mounts, force-broadcast the current world state.
   // The regular `onStoreChange` diff path only fires when values
@@ -229,6 +244,7 @@ export function Scene(props: SceneProps) {
       // consumers (Debug) don't use the export path.
       gl={{ preserveDrawingBuffer: true }}
     >
+      <OptionalXR store={xrStore}>
       {props.onFrameStats && <FrameStatsProbe onSample={props.onFrameStats} />}
       <Suspense fallback={null}>
         {/*
@@ -297,8 +313,10 @@ export function Scene(props: SceneProps) {
           selfBodyRef={selfBodyRef}
           paused={props.paused}
           isAirborneRef={isAirborneRef}
+          xrPresenting={xrPresenting}
           selfReady={props.selfReady}
         />
+        {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} />}
 
         <ProximityGlow
           store={store}
@@ -331,6 +349,7 @@ export function Scene(props: SceneProps) {
           conversationDistance={proximity.conversationDistance}
           conversationHeight={proximity.conversationHeight}
           fixed={fixedCam}
+          xrPresenting={xrPresenting}
         />
 
         <SceneFrame
@@ -352,12 +371,14 @@ export function Scene(props: SceneProps) {
           worldFocused={worldFocused}
           spawnPoints={props.spawnPoints}
           isAirborneRef={isAirborneRef}
+          xrPresenting={xrPresenting}
         />
         {props.onModelsReady && (
           <ModelsReady store={store} selfId={selfId} onReady={props.onModelsReady} />
         )}
         </Physics>
       </Suspense>
+      </OptionalXR>
     </Canvas>
   );
 }

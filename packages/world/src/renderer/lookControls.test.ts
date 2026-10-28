@@ -9,6 +9,7 @@ import {
   PITCH_MIN,
   ZOOM_MAX,
   ZOOM_MIN,
+  yawFromDirection,
   zoomedFov,
   type LookRefs,
   type ViewOffsets,
@@ -203,5 +204,14 @@ describe('fixedMovementYaw', () => {
     const yaw = fixedMovementYaw(0, r.viewOffsetsRef.current.fixedAzimuthOffsetRad, 0);
     // Camera yaw as first-person look would have it after the same drag.
     expect(yaw).toBeCloseTo(Math.PI - 0.5);
+  });
+});
+
+describe('yawFromDirection', () => {
+  it.each([0, 0.7, -2.4, Math.PI / 2])('inverts the yaw convention at yaw %s, whatever the pitch', (yaw) => {
+    for (const pitch of [0, -0.6, 1.1]) {
+      const dir = { x: -Math.sin(yaw) * Math.cos(pitch), z: -Math.cos(yaw) * Math.cos(pitch) };
+      expect(yawFromDirection(dir)).toBeCloseTo(yaw);
+    }
   });
 });

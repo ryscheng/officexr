@@ -18,6 +18,7 @@ import {
   PITCH_MAX,
   PITCH_MIN,
   zoomedFov,
+  yawFromDirection,
   type LookRefs,
   type ViewOffsets,
 } from './lookControls.ts';
@@ -84,6 +85,8 @@ interface CameraRigProps {
      * different y values. */
     lookAt?: readonly [number, number, number];
   };
+  /** An immersive XR session owns the camera; the rig leaves it alone. */
+  xrPresenting: boolean;
 }
 
 /**
@@ -103,6 +106,7 @@ export function CameraRig({
   conversationDistance,
   conversationHeight,
   fixed,
+  xrPresenting,
 }: CameraRigProps) {
   const { camera, gl } = useThree();
   const persp = camera as THREE.PerspectiveCamera;
@@ -111,7 +115,8 @@ export function CameraRig({
     [yawRef, pitchRef, viewOffsetsRef],
   );
   useTouchCameraGestures(mode, lookRefs);
-  useMotionLook(motionLook, mode, lookRefs);
+  // The headset owns the camera while presenting; motion look re-baselines after.
+  useMotionLook(xrPresenting ? undefined : motionLook, mode, lookRefs);
 
   // Pointer-lock + mouse-look — only active in first/third person modes.
   useEffect(() => {
@@ -148,6 +153,9 @@ export function CameraRig({
   // Keep fixed/top-down/free-fly camera fov in sync. Each mode sets its
   // own default; everything else falls back to the gameplay 75°.
   useEffect(() => {
+    if (xrPresenting) {
+      return;
+    }
     if (mode === 'fixed') {
       persp.fov = fixed.fov;
     } else if (mode === 'top-down') {
@@ -158,7 +166,7 @@ export function CameraRig({
       persp.fov = GAMEPLAY_FOV;
     }
     persp.updateProjectionMatrix();
-  }, [mode, fixed.fov, persp]);
+  }, [mode, fixed.fov, persp, xrPresenting]);
 
   const target = useRef(new THREE.Vector3());
 
@@ -175,9 +183,10 @@ export function CameraRig({
   const fixedNeedsInit = useRef(false);
   const appliedAzimuthOffset = useRef(0);
 
+  // Re-placed after an XR session too, as the player has moved meanwhile.
   useEffect(() => {
     if (mode === 'fixed') fixedNeedsInit.current = true;
-  }, [mode]);
+  }, [mode, xrPresenting]);
 
   // --- Free-fly camera state -------------------------------------
   // Persistent (across frames) state for the free-fly mode. Lives in
@@ -281,7 +290,7 @@ export function CameraRig({
         // Keep yaw/pitch state synchronised so post-orbit WASD continues
         // to move forward "toward" what the user was looking at.
         const fwd = anchor.clone().sub(freeFlyPos.current).normalize();
-        freeFlyYaw.current = Math.atan2(-fwd.x, -fwd.z);
+        freeFlyYaw.current = yawFromDirection(fwd);
         freeFlyPitch.current = Math.asin(fwd.y);
       } else {
         // Free look: rotate around camera position.
@@ -336,7 +345,10 @@ export function CameraRig({
 
   useFrame((_, dtSec) => {
     const pos = playerPosRef.current;
-    if (!pos) return;
+    // The prop lags the XR camera swap by a commit; gl.xr is synchronous.
+    if (xrPresenting || gl.xr.isPresenting || !pos) {
+      return;
+    }
     const yaw = yawRef.current;
     const pitch = pitchRef.current;
 

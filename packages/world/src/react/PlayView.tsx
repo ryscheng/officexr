@@ -1,4 +1,5 @@
 import React, { useEffect, useReducer, useRef } from 'react';
+import type { XRStore } from '@react-three/xr';
 import { useProgress } from '@react-three/drei';
 import type { Actions, Bus, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
@@ -49,6 +50,8 @@ export interface PlayViewProps {
   motionLook?: MotionLookState;
   /** The host app provides the controls chrome: the HUD shows status only and the focus chip leaves the top-right corner to it. */
   hostControls?: boolean;
+  /** Lets the host start immersive XR sessions; see `createWorldXRStore`. */
+  xrStore?: XRStore;
   /** Overlays rendered above the scene and HUD. */
   children?: React.ReactNode;
 }
@@ -113,6 +116,7 @@ export function PlayView(props: PlayViewProps) {
           spawnPoints={session.spawnPoints}
           bakedLayouts={session.bakedLayouts}
           onFrameStats={props.onFrameStats}
+          xrStore={props.xrStore}
           selfReady={ready}
           onModelsReady={() => dispatch({ type: 'modelsReady' })}
           onCollidersReady={(roomInstanceId) => dispatch({ type: 'collidersReady', roomInstanceId })}

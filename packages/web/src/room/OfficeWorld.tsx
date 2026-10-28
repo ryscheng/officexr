@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, PlayView, useStoreSelector } from '@officexr/world/react';
-import type { CameraMode } from '@officexr/world/renderer';
+import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XRStore } from '@officexr/world/renderer';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
@@ -20,6 +20,7 @@ import { ShortcutsDialog } from './ShortcutsDialog';
 import { useJoinCheck } from './useJoinCheck';
 import { useOfficeSession } from './useOfficeSession';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
+import { VrMenuItem } from './VrMenuItem';
 import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 
 const storages = {
@@ -46,18 +47,31 @@ function ReplacedBanner({ store }: { store: Store }) {
   return replaced ? <ErrorBanner message={REPLACED_MESSAGE} /> : null;
 }
 
+/** Created in an effect so StrictMode's remount destroys the first store, which appends a DOM overlay. */
+function useWorldXRStore(): XRStore | undefined {
+  const [store, setStore] = useState<XRStore>();
+  useEffect(() => {
+    const created = createWorldXRStore();
+    setStore(created);
+    return () => created.destroy();
+  }, []);
+  return store;
+}
+
 function World({ office: initialOffice, me }: { office: Office; me: Identity }) {
   const [office, setOffice] = useState(initialOffice);
   const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
   const join = useJoinCheck(office.id, me.login);
   const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [bannerError, setBannerError] = useState<string | null>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
   const [motionLook, setMotionLook] = useState({ enabled: false, recenterKey: 0 });
   const [motionUnsupported, setMotionUnsupported] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
+  const xrStore = useWorldXRStore();
+  const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -78,8 +92,9 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           onCameraModeChange={setCameraMode}
           motionLook={motionLook}
           hostControls
-          error={saveError}
-          onDismissError={() => setSaveError(null)}
+          error={bannerError}
+          onDismissError={() => setBannerError(null)}
+          xrStore={xrStore}
         >
           <RoomMenu>
             <CameraModeMenuItem value={cameraMode} onChange={setCameraMode} />
@@ -91,6 +106,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
               onUnsupported={() => setMotionUnsupported(true)}
             />
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
+            {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={setBannerError} />}
           </RoomMenu>
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {session.voice && <JaasMeeting voice={session.voice} />}
@@ -98,7 +114,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
           <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
             <OfficeSettings office={office} me={me} onSaved={setOffice} />
-            <CharacterPicker local={session.local} onSaveResult={setSaveError} />
+            <CharacterPicker local={session.local} onSaveResult={setBannerError} />
             {session.voice && (
               <div className="flex items-center gap-2">
                 <ZoneCallLabel store={session.local.store} />
