@@ -17,6 +17,7 @@ import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
 import { useWorldConstants } from './useWorldConstants.ts';
 import { useSlowNotice } from './useSlowNotice.ts';
 import { useWorldFocus } from './useWorldFocus.ts';
+import { NavGridProvider, useBuildNavGrid } from './useNavGrid.tsx';
 import { INITIAL_WORLD_READINESS, worldReadiness } from './world-readiness.ts';
 
 /** Clears a 44px host menu button at `right: 12`. */
@@ -69,6 +70,7 @@ export function PlayView(props: PlayViewProps) {
   const moveInputRef = useRef<MoveInput>(NO_MOVE);
   const coarsePointer = useCoarsePointer();
   const worldConstants = useWorldConstants(props.store);
+  const navGrid = useBuildNavGrid(props.store);
   const session = usePlaySession({
     actions: props.actions,
     mapName: props.mapName,
@@ -138,7 +140,7 @@ export function PlayView(props: PlayViewProps) {
       ) : (
         session.error && <ErrorBanner message={session.error} onDismiss={session.dismissError} />
       )}
-      {props.children}
+      <NavGridProvider value={navGrid}>{props.children}</NavGridProvider>
       {!ready && (
         <LoadingScreenWithProgress
           title={props.title}
