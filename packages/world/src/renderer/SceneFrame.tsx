@@ -27,6 +27,7 @@ import {
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
+import { RUN_DEFLECTION, type MoveInput } from '../react/joystick.ts';
 import { fixedMovementYaw, type ViewOffsets } from './lookControls.ts';
 
 interface SceneFrameProps {
@@ -43,6 +44,8 @@ interface SceneFrameProps {
   fixedMovementYawOffsetDeg: number;
   yawRef: React.MutableRefObject<number>;
   viewOffsetsRef: React.MutableRefObject<ViewOffsets>;
+  /** Analog walking input (e.g. an on-screen joystick); keys win when held. Not gated by `worldFocused`. */
+  moveInputRef?: React.MutableRefObject<MoveInput>;
   selfId: string;
   /** Set by `Players` when the self avatar's RigidBody mounts. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
@@ -109,6 +112,7 @@ export function SceneFrame({
   fixedMovementYawOffsetDeg,
   yawRef,
   viewOffsetsRef,
+  moveInputRef,
   selfId,
   selfBodyRef,
   worldFocused,
@@ -285,8 +289,18 @@ export function SceneFrame({
         stateSnapshot.worldSettings,
         stateSnapshot.characterConfigs,
       );
-    const isRunning = keys.has('shift');
-    const playerSpeed = isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed;
+    const keyFwd =
+      (keys.has('w') || keys.has('arrowup') ? 1 : 0) -
+      (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
+    const keyStrafe =
+      (keys.has('d') || keys.has('arrowright') ? 1 : 0) -
+      (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
+    const analog = keyFwd === 0 && keyStrafe === 0 ? moveInputRef?.current : undefined;
+    const fwd = analog ? analog.z : keyFwd;
+    const strafe = analog ? analog.x : keyStrafe;
+    const deflection = analog ? Math.hypot(analog.x, analog.z) : undefined;
+    const isRunning = keys.has('shift') || (deflection ?? 0) >= RUN_DEFLECTION;
+    const playerSpeed = (isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed) * (deflection ?? 1);
     // movementBlockThreshold = "fraction of intent that must be
     // *blocked* to count as 'fully stopped'". So if 90% (default) of
     // intent is blocked, we want progress < 0.1 to snap velocity and
@@ -355,13 +369,6 @@ export function SceneFrame({
         // doesn't fire spuriously after a teleport.
         wasMoving.current = false;
       }
-
-      const fwd =
-        (keys.has('w') || keys.has('arrowup') ? 1 : 0) -
-        (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
-      const strafe =
-        (keys.has('d') || keys.has('arrowright') ? 1 : 0) -
-        (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
 
       // Intent verb (mirrors CharacterMovement interface):
       // isRunning + (fwd || strafe) → 'run' verb

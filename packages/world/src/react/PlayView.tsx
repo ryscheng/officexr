@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer } from 'react';
+import React, { useEffect, useReducer, useRef } from 'react';
 import { useProgress } from '@react-three/drei';
 import type { Actions, Bus, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
@@ -7,6 +7,9 @@ import { Scene } from '../renderer/Scene.tsx';
 import { ErrorBanner, FocusIndicator, WorldHud, type HudRealtime } from './hud.tsx';
 import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
 import { useCameraModeCycle } from './useCameraModeCycle.ts';
+import { useCoarsePointer } from './useCoarsePointer.ts';
+import { NO_MOVE, type MoveInput } from './joystick.ts';
+import { VirtualJoystick } from './VirtualJoystick.tsx';
 import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
 import { useWorldConstants } from './useWorldConstants.ts';
 import { useSlowNotice } from './useSlowNotice.ts';
@@ -48,6 +51,8 @@ export interface PlayViewProps {
 export function PlayView(props: PlayViewProps) {
   const cameraMode = useCameraModeCycle();
   const worldFocused = useWorldFocus();
+  const moveInputRef = useRef<MoveInput>(NO_MOVE);
+  const coarsePointer = useCoarsePointer();
   const worldConstants = useWorldConstants(props.store);
   const session = usePlaySession({
     actions: props.actions,
@@ -91,6 +96,7 @@ export function PlayView(props: PlayViewProps) {
           cameraMode={cameraMode}
           view={worldConstants}
           worldFocused={worldFocused}
+          moveInputRef={moveInputRef}
           spawnPoints={session.spawnPoints}
           bakedLayouts={session.bakedLayouts}
           onFrameStats={props.onFrameStats}
@@ -104,6 +110,7 @@ export function PlayView(props: PlayViewProps) {
       )}
       <WorldHud cameraMode={cameraMode} realtime={props.realtime} bakedLayouts={session.bakedLayouts} />
       <FocusIndicator focused={worldFocused} />
+      {coarsePointer && <VirtualJoystick inputRef={moveInputRef} />}
       {props.error ? (
         <ErrorBanner message={props.error} onDismiss={() => props.onDismissError?.()} />
       ) : (

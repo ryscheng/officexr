@@ -30,6 +30,7 @@ import { placementTransform } from './placement-transform.ts';
 import type { BakedLayoutPlacement } from '../app/map-loader.ts';
 import type { ViewConfig } from './viewConfig.ts';
 import type { ViewOffsets } from './lookControls.ts';
+import type { MoveInput } from '../react/joystick.ts';
 
 /**
  * Each frame, anchor the sun (directional light + its target + the
@@ -99,6 +100,8 @@ interface SceneProps {
    * true preserves the historical behaviour for any caller that
    * doesn't wire a focus tracker. */
   worldFocused?: boolean;
+  /** Analog walking input from a touch joystick; absent where there is none. */
+  moveInputRef?: React.MutableRefObject<MoveInput>;
   /** Spawn points for the active map, in world coords. Forwarded
    * straight to `SceneFrame`'s fall-respawn rule. Empty/undefined
    * disables respawn (the player floats in the void instead). */
@@ -340,6 +343,7 @@ export function Scene(props: SceneProps) {
           fixedMovementYawOffsetDeg={fixedCamera.movementYawOffsetDeg}
           yawRef={yawRef}
           viewOffsetsRef={viewOffsetsRef}
+          moveInputRef={props.moveInputRef}
           selfBodyRef={selfBodyRef}
           worldFocused={worldFocused}
           spawnPoints={props.spawnPoints}
