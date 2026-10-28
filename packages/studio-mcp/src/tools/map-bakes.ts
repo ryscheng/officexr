@@ -2,7 +2,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { BakeStatusType } from '@officexr/world/bake-source';
 import { catalogKindLookup, groupPlacementsByLayout, mapLayoutPlacements } from '@officexr/world/scenes';
 import { z } from 'zod';
+import type { HeavyWorkLock } from '../heavy-work-lock.ts';
 import type { StudioDocuments } from '../studio-documents.ts';
+import { type BakeDeps, bakeOne } from './baked-layouts.ts';
+import type { BakeAction, BakeJob, BakeJobPlan, BakeJobResult, BakeJobs } from './bake-jobs.ts';
 import { checkedName, nameSchema } from './documents.ts';
 import { errorResult, guard, jsonResult } from './shared.ts';
 
@@ -88,7 +91,74 @@ function tallyBakes(results: readonly MapBakeCheck[]): BakeTotals {
   return totals;
 }
 
-export function registerMapBakeTools(server: McpServer, docs: StudioDocuments): void {
+type MapSelection = { map?: string; all?: true };
+
+/** Checks the requested map, or every map; throws on bad input or when no catalog is saved. */
+async function checkRequestedMaps(docs: StudioDocuments, { map, all }: MapSelection): Promise<MapBakeCheck[]> {
+  if ((map === undefined) === (all === undefined)) {
+    throw new Error('pass exactly one of `map` or `all: true`');
+  }
+  const catalog = await docs.catalog.load();
+  if (!catalog) {
+    throw new Error('no catalog saved');
+  }
+  const kindLookup = catalogKindLookup(catalog);
+  const names = map === undefined ? (await docs.maps.list()).map((m) => m.name) : [checkedName(map)];
+  return Promise.all(names.map((name) => checkMapBakes(docs, kindLookup, name)));
+}
+
+/** One result per distinct layout (the first mention wins); a layout that cannot be checked is `failed`. */
+function planBakeJob(checks: readonly MapBakeCheck[], force: boolean): BakeJobPlan {
+  const results = new Map<string, BakeJobResult>();
+  const plan: BakeJobPlan = { results: [], mapErrors: [], missingRooms: [] };
+  for (const check of checks) {
+    if (check.type === 'error') {
+      plan.mapErrors.push({ map: check.map, error: check.error });
+      continue;
+    }
+    if (check.missingRooms.length > 0) {
+      plan.missingRooms.push({ map: check.map, rooms: check.missingRooms });
+    }
+    for (const layout of check.layouts) {
+      const { layoutName } = layout;
+      if (!results.has(layoutName)) {
+        results.set(
+          layoutName,
+          layout.type === 'error'
+            ? { layoutName, action: 'failed', error: layout.error }
+            : { layoutName, action: force || layout.status !== 'fresh' ? 'pending' : 'skipped' },
+        );
+      }
+    }
+  }
+  plan.results = [...results.values()];
+  return plan;
+}
+
+async function runBakeJob(jobs: BakeJobs, job: BakeJob, deps: BakeDeps): Promise<void> {
+  try {
+    for (const [i, { action, layoutName }] of job.results.entries()) {
+      if (action !== 'pending') {
+        continue;
+      }
+      try {
+        job.results[i] = { layoutName, action: 'baked', bytes: (await bakeOne(layoutName, deps)).bytes };
+      } catch (err) {
+        job.results[i] = { layoutName, action: 'failed', error: messageOf(err) };
+      }
+    }
+  } finally {
+    jobs.finish(job);
+  }
+}
+
+export function registerMapBakeTools(
+  server: McpServer,
+  lock: HeavyWorkLock,
+  jobs: BakeJobs,
+  deps: BakeDeps,
+): void {
+  const { docs } = deps;
   server.registerTool(
     'check_map_bakes',
     {
@@ -98,19 +168,63 @@ export function registerMapBakeTools(server: McpServer, docs: StudioDocuments): 
         'rooms that fail to load, per-map and per-layout errors, and totals. Read-only; errors when no catalog is saved.',
       inputSchema: { map: nameSchema.optional(), all: z.literal(true).optional() },
     },
-    ({ map, all }) =>
+    (selection) =>
       guard(async () => {
-        if ((map === undefined) === (all === undefined)) {
-          return errorResult('pass exactly one of `map` or `all: true`');
-        }
-        const catalog = await docs.catalog.load();
-        if (!catalog) {
-          return errorResult('no catalog saved');
-        }
-        const kindLookup = catalogKindLookup(catalog);
-        const names = map === undefined ? (await docs.maps.list()).map((m) => m.name) : [checkedName(map)];
-        const results = await Promise.all(names.map((name) => checkMapBakes(docs, kindLookup, name)));
+        const results = await checkRequestedMaps(docs, selection);
         return jsonResult({ maps: results, totals: tallyBakes(results) });
+      }),
+  );
+  server.registerTool(
+    'bake_map',
+    {
+      description:
+        'Start a background job that re-bakes the layouts a map uses (`map`) or every map uses (`all: true`) against ' +
+        'the live catalog, one at a time. Only layouts that are not fresh are baked unless `force` is true. Returns ' +
+        '{jobId, layouts, mapErrors, missingRooms} at once; poll get_bake_job. Errors when a bake or render is in progress or no catalog is saved.',
+      inputSchema: { map: nameSchema.optional(), all: z.literal(true).optional(), force: z.boolean().optional() },
+    },
+    ({ force, ...selection }) =>
+      guard(async () => {
+        const release = lock.acquire();
+        let job: BakeJob;
+        try {
+          job = jobs.create(planBakeJob(await checkRequestedMaps(docs, selection), force === true));
+        } catch (err) {
+          release();
+          throw err;
+        }
+        // Detached: the lock stays held until the whole job is done, and the loop never rejects.
+        void runBakeJob(jobs, job, deps).finally(release);
+        const { id, results, mapErrors, missingRooms } = job;
+        return jsonResult({ jobId: id, layouts: results, mapErrors, missingRooms });
+      }),
+  );
+  server.registerTool(
+    'get_bake_job',
+    {
+      description:
+        'Report a bake_map job: state (running or done), each layout\'s result (baked, skipped, failed or pending, ' +
+        'with error or bytes), maps that could not be checked (mapErrors), rooms that failed to load (missingRooms) and totals per action. Errors for an unknown jobId; finished jobs are kept for an hour.',
+      inputSchema: { jobId: z.string() },
+    },
+    ({ jobId }) =>
+      guard(async () => {
+        const job = jobs.get(jobId);
+        if (!job) {
+          return errorResult(`bake job "${jobId}" not found`);
+        }
+        const totals: Record<BakeAction, number> = { baked: 0, skipped: 0, failed: 0, pending: 0 };
+        for (const { action } of job.results) {
+          totals[action] += 1;
+        }
+        const { results, mapErrors, missingRooms } = job;
+        return jsonResult({
+          state: job.finishedAt === undefined ? 'running' : 'done',
+          results,
+          mapErrors,
+          missingRooms,
+          totals,
+        });
       }),
   );
 }

@@ -22,8 +22,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { HeavyWorkLock } from './heavy-work-lock.ts';
+import type { BakeLayout } from './tools/baked-layouts.ts';
 import type { RenderRequest, RenderResult, ViewRenderer } from './renderer.ts';
-import { createStudioMcpServer } from './server.ts';
+import { createStudioMcpServer, type StudioMcpOptions } from './server.ts';
+import { BakeJobs } from './tools/bake-jobs.ts';
 import type { StudioDocuments } from './studio-documents.ts';
 
 class InMemoryCatalogStorage implements CatalogStorage {
@@ -69,7 +71,11 @@ class FakeRenderer implements ViewRenderer {
   };
 }
 
-async function connect(overrides: Partial<StudioDocuments> = {}, renderer: ViewRenderer = new FakeRenderer()) {
+async function connect(
+  overrides: Partial<StudioDocuments> = {},
+  renderer: ViewRenderer = new FakeRenderer(),
+  extra: Partial<StudioMcpOptions> = {},
+) {
   const docs: StudioDocuments = {
     rooms: new InMemoryRoomStorage(),
     maps: new InMemoryMapStorage(),
@@ -80,7 +86,13 @@ async function connect(overrides: Partial<StudioDocuments> = {}, renderer: ViewR
     ...overrides,
   };
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  const options = { modelRoot: '/nonexistent', heavyWorkLock: new HeavyWorkLock('a bake or render'), renderer };
+  const options: StudioMcpOptions = {
+    modelRoot: '/nonexistent',
+    heavyWorkLock: new HeavyWorkLock('a bake or render'),
+    renderer,
+    bakeJobs: new BakeJobs(),
+    ...extra,
+  };
   await createStudioMcpServer(docs, options, 'http://studio.test').connect(serverSide);
   const client = new Client({ name: 'test', version: '0' });
   await client.connect(clientSide);
@@ -92,7 +104,7 @@ async function connect(overrides: Partial<StudioDocuments> = {}, renderer: ViewR
 }
 
 describe('studio MCP tools', () => {
-  it('lists the 21 tools', async () => {
+  it('lists the 23 tools', async () => {
     const { client } = await connect();
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(
@@ -102,6 +114,8 @@ describe('studio MCP tools', () => {
         'list_baked_layouts',
         'delete_baked_layout',
         'check_map_bakes',
+        'bake_map',
+        'get_bake_job',
         'render_view',
         'get_world_object_kinds',
         'put_world_object_kinds',
@@ -378,6 +392,196 @@ describe('studio MCP tools', () => {
       expect(totals.errors).toBe(1);
       expect((await call('check_map_bakes', {})).isError).toBe(true);
       expect((await call('check_map_bakes', { map: 'town', all: true })).isError).toBe(true);
+    });
+  });
+
+  describe('bake_map', () => {
+    const kind = { id: 'crate', label: 'Crate', gltfPath: '/crate.gltf', swatch: '#fff' };
+    const catalogDoc = validateWorldObjectKindCatalog({ schemaVersion: 1, kinds: [kind] });
+    const crateLayout = (name: string) => ({
+      ...emptyLayoutDocument(name),
+      commands: [{ id: 'c1', op: 'placeObject' as const, kindId: 'crate', position: [0, 0, 0] as [number, number, number] }],
+    });
+
+    class StubBake {
+      baked: string[] = [];
+      failing = new Set<string>();
+      gate: Promise<void> | null = null;
+      bake: BakeLayout = async ({ layout }) => {
+        await this.gate;
+        if (this.failing.has(layout.name)) {
+          throw new Error(`cannot bake ${layout.name}`);
+        }
+        this.baked.push(layout.name);
+        return { glb: new Uint8Array(layout.name.length), meta: { optimizerId: 'stub' } };
+      };
+    }
+
+    async function setup(catalog = new InMemoryCatalogStorage(catalogDoc), bakedNames: string[] = []) {
+      const stub = new StubBake();
+      const baked = new InMemoryBakedLayouts();
+      const rooms = new InMemoryRoomStorage();
+      const layouts = new InMemoryLayoutStorage();
+      const maps = new InMemoryMapStorage();
+      const names = ['a', 'b', 'c'];
+      for (const name of names) {
+        await rooms.save(name, { ...emptyRoomDocument(name), layoutName: name });
+        await layouts.save(name, crateLayout(name));
+      }
+      await maps.save('town', {
+        ...emptyMapDocument('town'),
+        rooms: names.map((roomName, i) => ({ id: `r${i}`, roomName, position: [i, 0, 0] as [number, number, number] })),
+      });
+      await maps.save('other', {
+        ...emptyMapDocument('other'),
+        rooms: [{ id: 'x', roomName: 'a', position: [0, 0, 0] as [number, number, number] }],
+      });
+      const connected = await connect(
+        { rooms, layouts, maps, catalog, bakedLayouts: baked },
+        undefined,
+        { bakeLayout: stub.bake },
+      );
+      // A baked stand-in for "fresh": the real freshness check is evaluated against these bytes.
+      const { bakeLayoutGlb } = await import('@officexr/world/bake-layout-glb');
+      const modelRoot = await mkdtemp(join(tmpdir(), 'bake-map-'));
+      const triangle = Buffer.from(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).buffer).toString('base64');
+      await writeFile(
+        join(modelRoot, 'crate.gltf'),
+        JSON.stringify({
+          asset: { version: '2.0' },
+          scene: 0,
+          scenes: [{ nodes: [0] }],
+          nodes: [{ mesh: 0 }],
+          meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+          accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] }],
+          bufferViews: [{ buffer: 0, byteLength: 36 }],
+          buffers: [{ byteLength: 36, uri: `data:application/octet-stream;base64,${triangle}` }],
+        }),
+      );
+      for (const name of bakedNames) {
+        await baked.save(name, (await bakeLayoutGlb({ layout: crateLayout(name), modelRoot, catalog: catalogDoc })).glb);
+      }
+      const poll = async (jobId: string) => JSON.parse((await connected.call('get_bake_job', { jobId })).text);
+      const start = async (args: Record<string, unknown>) => JSON.parse((await connected.call('bake_map', args)).text);
+      const untilDone = async (jobId: string) => {
+        for (;;) {
+          const job = await poll(jobId);
+          if (job.state === 'done') {
+            return job;
+          }
+          await new Promise((r) => setTimeout(r, 1));
+        }
+      };
+      const expectLockFree = async () => {
+        expect((await connected.call('bake_layout', { name: 'a' })).text).not.toContain('already in progress');
+      };
+      return { ...connected, stub, baked, poll, start, untilDone, expectLockFree };
+    }
+
+    it('skips fresh layouts and bakes stale or missing ones', async () => {
+      const { start, untilDone, stub, baked, docs } = await setup(undefined, ['a', 'b']);
+      await docs.layouts.save('b', {
+        ...crateLayout('b'),
+        commands: [...crateLayout('b').commands, { id: 'c2', op: 'placeObject' as const, kindId: 'crate', position: [1, 0, 0] as [number, number, number] }],
+      });
+      const { jobId, layouts, mapErrors, missingRooms } = await start({ map: 'town' });
+      expect(layouts.map((l: { action: string }) => l.action)).toEqual(['skipped', 'pending', 'pending']);
+      expect([mapErrors, missingRooms]).toEqual([[], []]);
+      const job = await untilDone(jobId);
+      expect(job.results).toEqual([
+        { layoutName: 'a', action: 'skipped' },
+        { layoutName: 'b', action: 'baked', bytes: 1 },
+        { layoutName: 'c', action: 'baked', bytes: 1 },
+      ]);
+      expect(job.totals).toEqual({ baked: 2, skipped: 1, failed: 0, pending: 0 });
+      expect(stub.baked).toEqual(['b', 'c']);
+      expect([...baked.files.keys()].sort()).toEqual(['a', 'b', 'c']);
+    });
+
+    it('bakes fresh layouts too with force', async () => {
+      const { start, untilDone, stub } = await setup(undefined, ['a', 'b', 'c']);
+      expect((await untilDone((await start({ map: 'town' })).jobId)).totals).toMatchObject({ skipped: 3, baked: 0 });
+      await untilDone((await start({ map: 'town', force: true })).jobId);
+      expect(stub.baked).toEqual(['a', 'b', 'c']);
+    });
+
+    it('covers every map with all, listing a shared layout once', async () => {
+      const { start } = await setup();
+      const { layouts } = await start({ all: true });
+      expect(layouts.map((l: { layoutName: string }) => l.layoutName)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('keeps baking after a layout fails and reports unresolvable layouts and maps as failed', async () => {
+      const { start, untilDone, stub, docs, expectLockFree } = await setup();
+      stub.failing.add('a');
+      await docs.layouts.delete('c');
+      const job = await untilDone((await start({ all: true })).jobId);
+      expect(job.results).toEqual([
+        { layoutName: 'a', action: 'failed', error: 'cannot bake a' },
+        { layoutName: 'b', action: 'baked', bytes: 1 },
+        { layoutName: 'c', action: 'failed', error: 'layout "c" not found' },
+      ]);
+      await expectLockFree();
+      const missing = await start({ map: 'ghost' });
+      const done = await untilDone(missing.jobId);
+      expect(missing.mapErrors).toEqual([{ map: 'ghost', error: 'map "ghost" not found' }]);
+      expect(done.mapErrors).toEqual(missing.mapErrors);
+      expect(done.results).toEqual([]);
+      await expectLockFree();
+    });
+
+    it('reports rooms that failed to load, per map', async () => {
+      const { start, untilDone, docs } = await setup();
+      await docs.rooms.delete('b');
+      const { jobId, missingRooms } = await start({ map: 'town' });
+      expect(missingRooms).toEqual([{ map: 'town', rooms: ['b'] }]);
+      expect((await untilDone(jobId)).missingRooms).toEqual(missingRooms);
+    });
+
+    it('returns before the bakes finish, and holds the lock against other bakes until then', async () => {
+      const { start, poll, call, stub, untilDone } = await setup();
+      const gate = deferred();
+      stub.gate = gate.promise;
+      const { jobId } = await start({ map: 'town' });
+      expect((await poll(jobId)).state).toBe('running');
+      const busy = { isError: true, text: 'a bake or render is already in progress; retry shortly' };
+      expect(await call('bake_map', { map: 'town' })).toEqual(busy);
+      expect(await call('bake_layout', { name: 'a' })).toEqual(busy);
+      gate.resolve();
+      expect((await untilDone(jobId)).totals.baked).toBe(3);
+      expect((await call('bake_layout', { name: 'a' })).isError).toBe(false);
+    });
+
+    it('frees the lock when the job cannot start', async () => {
+      const { call, start, untilDone, expectLockFree } = await setup();
+      expect((await call('bake_map', {})).isError).toBe(true);
+      expect((await call('bake_map', { map: 'town', all: true })).isError).toBe(true);
+      await expectLockFree();
+      await untilDone((await start({ map: 'town' })).jobId);
+    });
+
+    it('errors without a catalog, freeing the lock', async () => {
+      const { call, expectLockFree } = await setup(new InMemoryCatalogStorage(null));
+      expect(await call('bake_map', { map: 'town' })).toEqual({ isError: true, text: 'no catalog saved' });
+      await expectLockFree();
+    });
+
+    it('errors for an unknown job', async () => {
+      const { call } = await setup();
+      expect((await call('get_bake_job', { jobId: 'nope' })).isError).toBe(true);
+    });
+
+    it('forgets finished jobs after an hour', () => {
+      let now = 0;
+      const jobs = new BakeJobs(() => now);
+      const done = jobs.create({ results: [], mapErrors: [], missingRooms: [] });
+      const running = jobs.create({ results: [], mapErrors: [], missingRooms: [] });
+      jobs.finish(done);
+      now = 60 * 60 * 1000 - 1;
+      expect(jobs.get(done.id)).toBe(done);
+      now += 1;
+      expect(jobs.get(done.id)).toBeUndefined();
+      expect(jobs.get(running.id)).toBe(running);
     });
   });
 

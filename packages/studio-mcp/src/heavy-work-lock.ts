@@ -11,15 +11,27 @@ export class HeavyWorkLock {
     this.work = work;
   }
 
-  async run<T>(work: () => Promise<T>): Promise<T> {
+  /** Takes the lock now or throws; the returned function releases it. */
+  acquire(): () => void {
     if (this.busy) {
       throw new Error(`${this.work} is already in progress; retry shortly`);
     }
     this.busy = true;
+    let released = false;
+    return () => {
+      if (!released) {
+        released = true;
+        this.busy = false;
+      }
+    };
+  }
+
+  async run<T>(work: () => Promise<T>): Promise<T> {
+    const release = this.acquire();
     try {
       return await work();
     } finally {
-      this.busy = false;
+      release();
     }
   }
 }
