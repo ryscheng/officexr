@@ -25,8 +25,11 @@ const FINISHED_JOB_TTL_MS = 60 * 60 * 1000;
 // ponytail: jobs live in this process's memory, so a studio restart loses them (and any in-flight bake).
 export class BakeJobs {
   private readonly jobs = new Map<string, BakeJob>();
+  private readonly now: () => number;
 
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(now: () => number = Date.now) {
+    this.now = now;
+  }
 
   create(plan: BakeJobPlan): BakeJob {
     this.evictExpired();
