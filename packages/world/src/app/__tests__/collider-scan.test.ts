@@ -8,6 +8,7 @@ import { Document, type Scene } from '@gltf-transform/core';
 import {
   extractLocalTriangles,
   scanColliderCuboids,
+  scanColliderProfile,
   type NormalizedCuboid,
 } from '../collider-scan.ts';
 
@@ -251,5 +252,69 @@ describe('scanColliderCuboids', () => {
     expect(() =>
       scanColliderCuboids(doc, { cellSize: 0.125, maxCuboids: 8 }),
     ).toThrow(/exceeds the cap/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scanColliderProfile
+// ---------------------------------------------------------------------------
+
+describe('scanColliderProfile', () => {
+  /** A 4 × 4 × 0.5 slab (x, y, z) with a 2 × 2 hole at x 1..3, y 1..3,
+   * built as four frame boxes so the hole's inner faces are edge-on to z. */
+  function slabWithHole(): Document {
+    const doc = new Document();
+    const scene = doc.createScene('s');
+    addBox(doc, scene, [0, 0, 0], [4, 1, 0.5], 'bottom');
+    addBox(doc, scene, [0, 3, 0], [4, 4, 0.5], 'top');
+    addBox(doc, scene, [0, 1, 0], [1, 3, 0.5], 'left');
+    addBox(doc, scene, [3, 1, 0], [4, 3, 0.5], 'right');
+    return doc;
+  }
+
+  const contains = (c: NormalizedCuboid, p: [number, number, number]) =>
+    p.every((v, a) => v > c.min[a] && v < c.max[a]);
+
+  it('leaves the hole empty and covers the frame with merged, full-depth boxes', () => {
+    const { cuboids } = scanColliderProfile(slabWithHole(), { axis: 'z', cellSize: 0.25 });
+
+    expect(cuboids).toHaveLength(4);
+    for (const c of cuboids) {
+      expect(c.min[2]).toBe(0);
+      expect(c.max[2]).toBe(1);
+    }
+    // Normalised hole is x 0.25..0.75, y 0.25..0.75.
+    for (const p of [[0.5, 0.5, 0.5], [0.26, 0.26, 0.5], [0.74, 0.74, 0.5]] as const) {
+      expect(cuboids.some((c) => contains(c, [...p]))).toBe(false);
+    }
+    for (const p of [[0.1, 0.5, 0.5], [0.9, 0.5, 0.5], [0.5, 0.1, 0.5], [0.5, 0.9, 0.5]] as const) {
+      expect(cuboids.some((c) => contains(c, [...p]))).toBe(true);
+    }
+  });
+
+  it('extrudes along y for a floor with a hole', () => {
+    const doc = new Document();
+    const scene = doc.createScene('s');
+    addBox(doc, scene, [0, 0, 0], [4, 0.5, 1], 'front');
+    addBox(doc, scene, [0, 0, 3], [4, 0.5, 4], 'back');
+    addBox(doc, scene, [0, 0, 1], [1, 0.5, 3], 'left');
+    addBox(doc, scene, [3, 0, 1], [4, 0.5, 3], 'right');
+
+    const { cuboids } = scanColliderProfile(doc, { axis: 'y', cellSize: 0.25 });
+    expect(cuboids).toHaveLength(4);
+    expect(cuboids.every((c) => c.min[1] === 0 && c.max[1] === 1)).toBe(true);
+    expect(cuboids.some((c) => contains(c, [0.5, 0.5, 0.5]))).toBe(false);
+  });
+
+  it('throws when the merged count exceeds the scanned-cuboids cap', () => {
+    // 300 tiles separated by gaps cannot merge.
+    const doc = new Document();
+    const scene = doc.createScene('s');
+    for (let i = 0; i < 20; i++) {
+      for (let j = 0; j < 15; j++) {
+        addBox(doc, scene, [i * 0.5, j * 0.5, 0], [i * 0.5 + 0.25, j * 0.5 + 0.25, 0.1], `t${i}-${j}`);
+      }
+    }
+    expect(() => scanColliderProfile(doc, { axis: 'z', cellSize: 0.25 })).toThrow(/exceeds the cap/);
   });
 });
