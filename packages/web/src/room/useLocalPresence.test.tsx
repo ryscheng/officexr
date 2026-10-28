@@ -67,8 +67,8 @@ function setup(voice: FakeVoice | null) {
     },
   };
   const setSelfPresence = vi.fn<(patch: { status?: PresenceStatus; mic?: MicState }) => void>();
-  renderHook(() => useLocalPresence({ setSelfPresence }, voice, deps));
-  return { doc, meters, setSelfPresence };
+  const { unmount } = renderHook(() => useLocalPresence({ setSelfPresence }, voice, deps));
+  return { doc, meters, setSelfPresence, unmount };
 }
 
 describe('useLocalPresence', () => {
@@ -136,6 +136,44 @@ describe('useLocalPresence', () => {
     expect(setSelfPresence).toHaveBeenLastCalledWith({ status: 'available', mic: 'none' });
     expect(meters[0].running).toBe(false);
     expect(setSelfPresence).toHaveBeenCalledTimes(5);
+  });
+
+  it.each(['joining', 'error', 'idle'])('reports no mic when the call goes to %s', (state) => {
+    const voice = new FakeVoice();
+    const { meters, setSelfPresence } = setup(voice);
+    act(() => voice.setState('connected'));
+    act(() => voice.setState(state));
+    expect(setSelfPresence).toHaveBeenLastCalledWith({ status: 'available', mic: 'none' });
+    expect(meters[0].running).toBe(false);
+  });
+
+  it('sends a single none when the call ends while speaking', () => {
+    const voice = new FakeVoice();
+    const { meters, setSelfPresence } = setup(voice);
+    act(() => voice.setState('connected'));
+    act(() => meters[0].say(true));
+    setSelfPresence.mockClear();
+
+    act(() => voice.setState('idle'));
+    expect(setSelfPresence.mock.calls).toEqual([[{ status: 'available', mic: 'none' }]]);
+  });
+
+  it('stops listening and sends nothing on unmount', () => {
+    const voice = new FakeVoice();
+    const { doc, meters, setSelfPresence, unmount } = setup(voice);
+    act(() => voice.setState('connected'));
+    act(() => meters[0].say(true));
+    setSelfPresence.mockClear();
+
+    unmount();
+    expect(meters[0].running).toBe(false);
+    doc.hidden = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    voice.setMuted(true);
+    voice.setState('idle');
+    meters[0].say(true);
+    expect(setSelfPresence).not.toHaveBeenCalled();
   });
 
   it('uses a fresh meter for each call', () => {

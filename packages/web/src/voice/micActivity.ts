@@ -40,7 +40,8 @@ export interface MicActivityMeter {
 }
 
 const TICK_MS = 100;
-const GESTURES = ['pointerdown', 'keydown'];
+// Touch only counts as user activation on release, so pointerdown alone never resumes on a tablet.
+const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'keydown'];
 
 const browserMicDeps = (): MicActivityDeps => ({
   getUserMedia: (constraints) => navigator.mediaDevices.getUserMedia(constraints),
@@ -82,17 +83,24 @@ export function createMicActivityMeter(deps: MicActivityDeps = browserMicDeps())
       stopTracks();
       return;
     }
+    let context: MeterAudioContext | undefined;
     try {
-      const context = deps.createAudioContext();
-      const analyser = context.createAnalyser();
-      const source = context.createMediaStreamSource(stream);
+      context = deps.createAudioContext();
+      const live = context;
+      const analyser = live.createAnalyser();
+      const source = live.createMediaStreamSource(stream);
       source.connect(analyser);
       const samples = new Float32Array(analyser.fftSize);
+      const removeGestures = () => GESTURES.forEach((type) => deps.gestureTarget.removeEventListener(type, resume));
+      // A refused resume leaves the listeners in place for the next gesture.
       const resume = () => {
-        void context.resume();
+        live.resume().then(
+          () => live.state === 'running' && removeGestures(),
+          () => {},
+        );
       };
-      if (context.state === 'suspended') {
-        GESTURES.forEach((type) => deps.gestureTarget.addEventListener(type, resume, { once: true }));
+      if (live.state === 'suspended') {
+        GESTURES.forEach((type) => deps.gestureTarget.addEventListener(type, resume));
       }
       const cancelTimer = deps.setInterval(() => {
         analyser.getFloatTimeDomainData(samples);
@@ -100,13 +108,14 @@ export function createMicActivityMeter(deps: MicActivityDeps = browserMicDeps())
       }, TICK_MS);
       release = () => {
         cancelTimer();
-        GESTURES.forEach((type) => deps.gestureTarget.removeEventListener(type, resume));
+        removeGestures();
         source.disconnect();
         stopTracks();
-        void context.close();
+        void live.close();
       };
     } catch (err) {
       stopTracks();
+      void context?.close();
       throw err;
     }
   }
@@ -120,10 +129,12 @@ export function createMicActivityMeter(deps: MicActivityDeps = browserMicDeps())
       const mine = ++generation;
       open(mine).catch((err: unknown) => {
         if (mine === generation) {
-          failed = true;
           wanted = false;
         }
-        console.warn('Mic activity unavailable; reporting silent:', err);
+        if (!failed) {
+          failed = true;
+          console.warn('Mic activity unavailable; reporting silent:', err);
+        }
       });
     },
     stop() {

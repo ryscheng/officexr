@@ -32,11 +32,12 @@ export function useLocalPresence(
     let speaking = false;
     let meter: MicActivityMeter | null = null;
     let stopListening = () => {};
+    const inCall = () => voice?.getConnectionState() === 'connected';
 
     const push = () => {
       const next = {
         status: presenceStatus(readDocument()),
-        mic: micState({ inCall: meter !== null, muted: voice?.isMicMuted() ?? false, speaking }),
+        mic: micState({ inCall: inCall(), muted: voice?.isMicMuted() ?? false, speaking }),
       };
       if (next.status !== sent.status || next.mic !== sent.mic) {
         sent = next;
@@ -44,20 +45,25 @@ export function useLocalPresence(
       }
     };
 
+    // Unsubscribes first: stop() reports not-speaking, which would otherwise push a stale `silent`.
+    const releaseMeter = () => {
+      stopListening();
+      meter?.stop();
+      meter = null;
+      speaking = false;
+    };
+
     // One meter per call, so a mic that can't be opened is not retried until the next call.
     const syncCall = () => {
-      const inCall = voice?.getConnectionState() === 'connected';
-      if (inCall && !meter) {
-        meter = createMeter();
-        stopListening = meter.onChange((next) => {
+      if (inCall() && !meter) {
+        const created = createMeter();
+        meter = created;
+        stopListening = created.onChange((next) => {
           speaking = next;
           push();
         });
-      } else if (!inCall && meter) {
-        meter.stop();
-        stopListening();
-        meter = null;
-        speaking = false;
+      } else if (!inCall() && meter) {
+        releaseMeter();
       }
       if (meter) {
         if (voice?.isMicMuted()) {
@@ -83,8 +89,7 @@ export function useLocalPresence(
       document.removeEventListener('visibilitychange', push);
       window.removeEventListener('focus', push);
       window.removeEventListener('blur', push);
-      meter?.stop();
-      stopListening();
+      releaseMeter();
     };
   }, [actions, voice, readDocument, createMeter]);
 }

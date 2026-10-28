@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createMicActivityMeter,
   NOT_SPEAKING,
@@ -38,7 +38,14 @@ class FakeTrack {
   }
 }
 
-function setup({ state = 'running', denied = false }: { state?: string; denied?: boolean } = {}) {
+afterEach(() => vi.restoreAllMocks());
+
+function setup({
+  state = 'running',
+  denied = false,
+  refuseResumes = 0,
+  contextFails = false,
+}: { state?: string; denied?: boolean; refuseResumes?: number; contextFails?: boolean } = {}) {
   const track = new FakeTrack();
   let level = 0;
   let tick = () => {};
@@ -49,6 +56,9 @@ function setup({ state = 'running', denied = false }: { state?: string; denied?:
     closed: false,
     resume() {
       this.resumed++;
+      if (refuseResumes < this.resumed) {
+        this.state = 'running';
+      }
       return Promise.resolve();
     },
     close() {
@@ -71,7 +81,12 @@ function setup({ state = 'running', denied = false }: { state?: string; denied?:
   });
   const deps: MicActivityDeps = {
     getUserMedia,
-    createAudioContext: () => context as unknown as MeterAudioContext,
+    createAudioContext: () => {
+      if (contextFails) {
+        throw new Error('no AudioContext');
+      }
+      return context as unknown as MeterAudioContext;
+    },
     setInterval: (fn) => {
       tick = fn;
       return () => {
@@ -160,7 +175,31 @@ describe('createMicActivityMeter', () => {
     expect(t.getUserMedia).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(t.changes).toEqual([]);
-    warn.mockRestore();
+  });
+
+  it('releases the stream and never speaks when the audio context cannot be created', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const t = setup({ contextFails: true });
+    t.meter.start();
+    await flush();
+    t.meter.start();
+    await flush();
+    expect(t.track.stopped).toBe(true);
+    expect(t.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(t.changes).toEqual([]);
+  });
+
+  it('closes the context when wiring the graph fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const t = setup();
+    t.context.createAnalyser = () => {
+      throw new Error('no analyser');
+    };
+    t.meter.start();
+    await flush();
+    expect(t.track.stopped).toBe(true);
+    expect(t.context.closed).toBe(true);
   });
 
   it('resumes a suspended context on the next gesture', async () => {
@@ -170,6 +209,31 @@ describe('createMicActivityMeter', () => {
     expect(t.context.resumed).toBe(0);
     t.gestures.dispatchEvent(new Event('pointerdown'));
     expect(t.context.resumed).toBe(1);
+  });
+
+  it('keeps listening for gestures until the browser accepts the resume', async () => {
+    const t = setup({ state: 'suspended', refuseResumes: 1 });
+    t.meter.start();
+    await flush();
+    t.gestures.dispatchEvent(new Event('pointerdown'));
+    await flush();
+    expect(t.context.state).toBe('suspended');
+
+    t.gestures.dispatchEvent(new Event('pointerup'));
+    await flush();
+    expect(t.context.state).toBe('running');
+
+    t.gestures.dispatchEvent(new Event('touchend'));
+    expect(t.context.resumed).toBe(2);
+  });
+
+  it('stops listening for gestures on stop', async () => {
+    const t = setup({ state: 'suspended' });
+    t.meter.start();
+    await flush();
+    t.meter.stop();
+    t.gestures.dispatchEvent(new Event('keydown'));
+    expect(t.context.resumed).toBe(0);
   });
 
   it('does not resume a running context on a gesture', async () => {
