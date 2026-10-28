@@ -27,6 +27,7 @@ import {
   respawnThreshold,
   shouldRespawnFalling,
 } from '../physics/rules.ts';
+import { stepAirVelocity } from '../physics/air-control.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
@@ -524,11 +525,17 @@ export function SceneFrame({
         let moveZ: number;
 
         if (isAirborne) {
-          // Air-control: low-pass blend airVel toward movement intent each frame.
-          const intentX = dx * playerSpeed;
-          const intentZ = dz * playerSpeed;
-          airVelXRef.current += (intentX - airVelXRef.current) * airControl * dtSec;
-          airVelZRef.current += (intentZ - airVelZRef.current) * airControl * dtSec;
+          // During the landing ease the lerp above owns airVel; steering only applies in flight.
+          if (airborneRef.current && landingBlendTRef.current === 0) {
+            const next = stepAirVelocity(
+              { x: airVelXRef.current, z: airVelZRef.current },
+              { x: dx * playerSpeed, z: dz * playerSpeed },
+              airControl,
+              dtSec,
+            );
+            airVelXRef.current = next.x;
+            airVelZRef.current = next.z;
+          }
           moveX = airVelXRef.current * dtSec;
           moveZ = airVelZRef.current * dtSec;
         } else {

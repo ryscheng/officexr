@@ -161,10 +161,10 @@ export type CollisionSettings = {
  */
 export type JumpSettings = {
   /** Vertical liftoff impulse (m/s). Applied identically for jump #1 and #2.
-   * With GRAVITY = -20, a value of 8 reaches a peak of ~1.6 m. */
+   * With GRAVITY = -50, a value of 8 reaches a peak of ~0.64 m. */
   jumpVelocity: number;
-  /** 0..1 fraction of WASD intent that deflects in-air horizontal velocity
-   * per second (low-pass blend). 0 = no air control; 1 = instant snap to intent. */
+  /** 0..1 fraction of the gap to the WASD intent closed per 1/60 s while
+   * airborne. 0 = ballistic (no steering); 1 = ground-like steering. */
   airControl: number;
   /** Maximum consecutive jumps before landing resets the counter.
    * 1 = single jump; 2 = double-jump (default). */
