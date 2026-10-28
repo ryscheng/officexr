@@ -29,6 +29,7 @@ import {
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, type ViewOffsets } from './lookControls.ts';
+import { moveIntent, type MoveInput } from './moveIntent.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -44,6 +45,8 @@ interface SceneFrameProps {
   fixedMovementYawOffsetDeg: number;
   yawRef: React.MutableRefObject<number>;
   viewOffsetsRef: React.MutableRefObject<ViewOffsets>;
+  /** Analog walking input (e.g. an on-screen joystick); keys win when held. Not gated by `worldFocused`. */
+  moveInputRef?: React.MutableRefObject<MoveInput>;
   selfId: string;
   /** Set by `Players` when the self avatar's RigidBody mounts. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
@@ -110,6 +113,7 @@ export function SceneFrame({
   fixedMovementYawOffsetDeg,
   yawRef,
   viewOffsetsRef,
+  moveInputRef,
   selfId,
   selfBodyRef,
   worldFocused,
@@ -282,8 +286,8 @@ export function SceneFrame({
         stateSnapshot.worldSettings,
         stateSnapshot.characterConfigs,
       );
-    const isRunning = keys.has('shift');
-    const playerSpeed = isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed;
+    const { fwd, strafe, isRunning, speedScale } = moveIntent(keys, moveInputRef?.current);
+    const playerSpeed = (isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed) * speedScale;
     // movementBlockThreshold = "fraction of intent that must be
     // *blocked* to count as 'fully stopped'". So if 90% (default) of
     // intent is blocked, we want progress < 0.1 to snap velocity and
@@ -353,18 +357,11 @@ export function SceneFrame({
         wasMoving.current = false;
       }
 
-      const fwd =
-        (keys.has('w') || keys.has('arrowup') ? 1 : 0) -
-        (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
-      const strafe =
-        (keys.has('d') || keys.has('arrowright') ? 1 : 0) -
-        (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
-
       // Intent verb (mirrors CharacterMovement interface):
       // isRunning + (fwd || strafe) → 'run' verb
       // !isRunning + (fwd || strafe) → 'walk' verb
       // neither → 'stop' verb
-      // Horizontal intent. Zero when no WASD keys are held; we still
+      // Horizontal intent. Zero when there is no movement input; we still
       // run the controller below so gravity can apply.
       let dx = 0;
       let dz = 0;
@@ -502,7 +499,7 @@ export function SceneFrame({
         ) {
           verticalVelRef.current = jumpVelocity;
           if (!airborneRef.current) {
-            // First jump from ground: capture current WASD intent as
+            // First jump from ground: capture current movement intent as
             // the air-vel baseline. dx/dz are normalised direction
             // unit vectors; multiply by playerSpeed to get m/s.
             // Standing-still jump → 0 carry.
@@ -520,7 +517,7 @@ export function SceneFrame({
         let moveZ: number;
 
         if (isAirborne) {
-          // Air-control: low-pass blend airVel toward WASD intent each frame.
+          // Air-control: low-pass blend airVel toward movement intent each frame.
           const intentX = dx * playerSpeed;
           const intentZ = dz * playerSpeed;
           airVelXRef.current += (intentX - airVelXRef.current) * airControl * dtSec;

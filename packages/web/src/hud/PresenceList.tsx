@@ -47,7 +47,7 @@ export function PresenceList({ store, selfId, officeName }: { store: Store; self
   return (
     <div
       data-studio-panel
-      className="pointer-events-auto absolute bottom-3 left-3 max-h-60 max-w-64 overflow-y-auto overscroll-contain rounded bg-black/70 p-2 text-xs text-white"
+      className="pointer-events-auto absolute bottom-3 left-3 pointer-coarse:bottom-40 max-h-60 max-w-64 overflow-y-auto overscroll-contain rounded bg-black/70 p-2 text-xs text-white"
     >
       <div className="mb-1 flex items-center justify-between gap-3 font-medium">
         <span className="truncate">
