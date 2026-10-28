@@ -8,13 +8,13 @@ export type HudRealtime = 'in-memory' | 'ws';
  * Pointer-events: none so clicking the chip doesn't count as a "focus
  * the world" mousedown — the user has to click the canvas behind it.
  */
-export function FocusIndicator({ focused }: { focused: boolean }) {
+export function FocusIndicator({ focused, offsetRight = 12 }: { focused: boolean; offsetRight?: number }) {
   return (
     <div
       style={{
         position: 'absolute',
         top: 12,
-        right: 12,
+        right: offsetRight,
         padding: '6px 10px',
         background: focused ? 'rgba(0,0,0,0.55)' : 'rgba(146, 64, 14, 0.85)',
         color: '#fff',
@@ -49,13 +49,16 @@ export function FocusIndicator({ focused }: { focused: boolean }) {
   );
 }
 
+/** `statusOnly` drops the control instructions, for hosts that document them elsewhere. */
 export function WorldHud({
   cameraMode,
   realtime,
   bakedLayouts = [],
+  statusOnly = false,
 }: {
   cameraMode: CameraMode;
   realtime: HudRealtime;
+  statusOnly?: boolean;
   bakedLayouts?: readonly Pick<BakedLayoutPlacement, 'layoutName'>[];
 }) {
   const layoutNames = [...new Set(bakedLayouts.map((p) => `"${p.layoutName}"`))];
@@ -77,8 +80,8 @@ export function WorldHud({
         whiteSpace: 'pre-line',
       }}
     >
-      {`Camera: ${cameraMode} (Alt+P to cycle) · Realtime: ${realtime} · ${layoutLine}
-WASD to move · Click to look · Esc to release mouse`}
+      {`Camera: ${cameraMode}${statusOnly ? '' : ' (Alt+P to cycle)'} · Realtime: ${realtime} · ${layoutLine}`}
+      {!statusOnly && '\nWASD to move · Click to look · Esc to release mouse'}
     </div>
   );
 }

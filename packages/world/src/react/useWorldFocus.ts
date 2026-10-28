@@ -7,6 +7,14 @@ export function focusWorld(): void {
   window.dispatchEvent(new Event(FOCUS_WORLD_EVENT));
 }
 
+/** Whether keystrokes aimed at `target` are going into a text field. */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable === true)
+  );
+}
+
 /**
  * Tracks whether the in-world 3D canvas currently "has focus" for
  * keyboard input. The model:

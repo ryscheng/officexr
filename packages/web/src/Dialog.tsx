@@ -5,7 +5,11 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
   // Focus must start inside, or Escape never reaches the dialog and assistive tech stays behind it.
-  useEffect(() => ref.current?.focus(), []);
+  // A pointer-locked camera would otherwise keep turning, with the cursor hidden, behind the backdrop.
+  useEffect(() => {
+    document.exitPointerLock?.();
+    ref.current?.focus();
+  }, []);
   return (
     <div
       className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
