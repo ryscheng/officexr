@@ -28,6 +28,7 @@ import {
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
+import { fixedMovementYaw, type ViewOffsets } from './lookControls.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -42,6 +43,7 @@ interface SceneFrameProps {
   /** Manual fine-tune for fixed-mode WASD direction (degrees). */
   fixedMovementYawOffsetDeg: number;
   yawRef: React.MutableRefObject<number>;
+  viewOffsetsRef: React.MutableRefObject<ViewOffsets>;
   selfId: string;
   /** Set by `Players` when the self avatar's RigidBody mounts. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
@@ -107,6 +109,7 @@ export function SceneFrame({
   fixedAzimuthDeg,
   fixedMovementYawOffsetDeg,
   yawRef,
+  viewOffsetsRef,
   selfId,
   selfBodyRef,
   worldFocused,
@@ -371,9 +374,11 @@ export function SceneFrame({
       if (fwd !== 0 || strafe !== 0) {
         const cameraYaw =
           cameraMode === 'fixed'
-            ? Math.PI -
-              (fixedAzimuthDeg * Math.PI) / 180 +
-              (fixedMovementYawOffsetDeg * Math.PI) / 180
+            ? fixedMovementYaw(
+                fixedAzimuthDeg,
+                viewOffsetsRef.current.fixedAzimuthOffsetRad,
+                fixedMovementYawOffsetDeg,
+              )
             : yawRef.current;
         const forwardX = -Math.sin(cameraYaw);
         const forwardZ = -Math.cos(cameraYaw);
