@@ -93,6 +93,14 @@ layouts from that base URL (e.g. a CDN); unset keeps same-origin paths.
 Copy from `packages/web/.env.example`. Vite loads `.env` from `packages/web/` when
 `pnpm dev` / `pnpm build` are run inside that package.
 
+### Realtime server (`packages/realtime-server`)
+
+Optional `OFFICEXR_REALTIME_TOKEN_SECRET` makes the server require an HMAC-signed join token
+(minted with `signJoinToken` from `@officexr/realtime-server/join-token`) on every `hello` and
+on `GET /rooms/:id/sessions?login=…&token=…`; the login is taken from the token. Unset keeps
+today's unauthenticated behaviour. The studio has no login, so it must point at a realtime
+server without the secret.
+
 ---
 
 ## Studio Editors (5 modes)

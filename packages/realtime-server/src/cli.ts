@@ -6,6 +6,7 @@ const server = new RealtimeServer({
   worldConstantsUrl: process.env.OFFICEXR_WORLD_CONSTANTS_URL,
   adminToken: process.env.OFFICEXR_REALTIME_ADMIN_TOKEN,
   officeUrl: process.env.OFFICEXR_OFFICE_URL,
+  tokenSecret: process.env.OFFICEXR_REALTIME_TOKEN_SECRET,
 });
 await server.start();
 console.log(`[realtime-server] listening on :${port}`);

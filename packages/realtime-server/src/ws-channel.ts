@@ -61,6 +61,10 @@ export interface WsChannelOptions {
   officeId?: string;
   /** Login `userId` is a session of. Omitted means `loginOf(userId)`. */
   login?: string;
+  /** Awaited before every `hello`, reconnects included, so short-lived
+   * tokens stay fresh. Resolving `undefined` sends no token; rejecting
+   * fails that connect attempt. */
+  getToken?: () => Promise<string | undefined>;
   /** Override the WebSocket constructor. Default uses the global. */
   wsFactory?: WsFactory;
   /** Timeout (ms) for each subscribe / reconnect handshake. Default 10000. */
@@ -95,6 +99,7 @@ export class WsChannel implements Channel {
   private readonly url: string;
   private readonly officeId?: string;
   private readonly login?: string;
+  private readonly getToken?: () => Promise<string | undefined>;
   private readonly wsFactory: WsFactory;
   private readonly handshakeTimeoutMs: number;
   private readonly reconnectDelayMs: (attempt: number) => number;
@@ -126,6 +131,7 @@ export class WsChannel implements Channel {
     this.userId = opts.userId;
     this.officeId = opts.officeId;
     this.login = opts.login;
+    this.getToken = opts.getToken;
     this.wsFactory = opts.wsFactory ?? defaultFactory;
     this.handshakeTimeoutMs = opts.handshakeTimeoutMs ?? 10_000;
     this.reconnectDelayMs = opts.reconnectDelayMs ?? reconnectDelayMs;
@@ -151,27 +157,29 @@ export class WsChannel implements Channel {
       const frame = decodeFrame(e.data);
       if (frame) this.handleFrame(frame);
     });
-    ws.addEventListener('close', (e: { code?: number }) => {
+    const lose = (code?: number) => {
       if (this.ws !== ws) return;
       this.dropSocket();
       this.handshake?.fail(new Error('WsChannel: closed before handshake'));
-      if (e.code === REPLACED_CLOSE_CODE) {
+      if (code === REPLACED_CLOSE_CODE) {
         this.status.set('replaced');
       } else if (this.status.current === 'live' || this.status.current === 'reconnecting') {
         this.status.set('reconnecting');
         this.scheduleReconnect();
       }
-    });
+    };
+    ws.addEventListener('close', (e: { code?: number }) => lose(e.code));
     ws.addEventListener('error', () => {
       // Don't tear down here; the close event will follow.
     });
-    const sendHello = () =>
-      ws.send(encodeFrame({ t: 'hello', userId: this.userId, officeId: this.officeId, login: this.login }));
-    if (ws.readyState === WS_OPEN) {
-      sendHello();
-    } else {
-      ws.addEventListener('open', sendHello);
-    }
+    const opened =
+      ws.readyState === WS_OPEN
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => ws.addEventListener('open', () => resolve()));
+    Promise.all([Promise.resolve().then(() => this.getToken?.()), opened]).then(([token]) => {
+      if (this.ws !== ws) return;
+      ws.send(encodeFrame({ t: 'hello', userId: this.userId, officeId: this.officeId, login: this.login, token }));
+    }, () => lose());
 
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {

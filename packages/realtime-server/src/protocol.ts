@@ -40,6 +40,8 @@ export interface HelloFrame {
   /** Account behind `userId`, which must be the login itself or one of
    * its `sessionPlayerId`s. Omitted means `loginOf(userId)`. */
   login?: string;
+  /** Signed join token (see `join-token.ts`); required when the server has a token secret. */
+  token?: string;
 }
 
 /** Server → client, immediately after `hello`. Confirms the join and
