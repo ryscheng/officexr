@@ -278,7 +278,6 @@ describe('scanColliderProfile', () => {
   it('leaves the hole empty and covers the frame with merged, full-depth boxes', () => {
     const { cuboids } = scanColliderProfile(slabWithHole(), { axis: 'z', cellSize: 0.25 });
 
-    // Bottom band, two side runs, top band — 64 frame cells merged into 4.
     expect(cuboids).toHaveLength(4);
     for (const c of cuboids) {
       expect(c.min[2]).toBe(0);

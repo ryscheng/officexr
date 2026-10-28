@@ -12,7 +12,7 @@ import {
 } from '@officexr/sdk';
 import committedCatalog from '../../world-object-kinds.json' with { type: 'json' };
 import { createInstanceGeometry } from '../app/geometry-service.ts';
-import { BotPhysicsWorld } from '../bot/BotPhysicsWorld.ts';
+import { BODY_Y, BotPhysicsWorld } from '../bot/BotPhysicsWorld.ts';
 import { validateWorldObjectKindCatalog } from '../scenes/world-object-kinds-schema.ts';
 import { BotCharacterMovement } from './bot-character-movement.ts';
 
@@ -54,9 +54,17 @@ function makeBot(startPos: { x: number; y: number; z: number }, instances: Objec
 describe('profile-scanned colliders (real Rapier, committed catalog)', () => {
   describe('prototype_wall_doorway', () => {
     // Wall at world x 0..4, z 0..0.53 on a floor (top y = 0) spanning
-    // z −4..4. The scanned opening is x 1.2..2.8 (1.6 m wide, 2.8 m tall).
-    const OPENING_CENTRE_X = 2;
-    const OPENING_HALF_WIDTH = 0.8;
+    // z −4..4. The opening's x span is the lintel's: the one scanned
+    // cuboid that does not reach the base.
+    const doorway = kinds.get('prototype_wall_doorway')!;
+    const shape = doorway.colliderShape;
+    if (shape?.kind !== 'scanned-cuboids' || !doorway.localAABB) {
+      throw new Error('prototype_wall_doorway needs a scanned-cuboids colliderShape and localAABB');
+    }
+    const lintel = shape.cuboids.find((c) => c.min[1] > 0)!;
+    const width = doorway.localAABB.max.x - doorway.localAABB.min.x;
+    const OPENING_CENTRE_X = ((lintel.min[0] + lintel.max[0]) / 2) * width;
+    const OPENING_HALF_WIDTH = ((lintel.max[0] - lintel.min[0]) / 2) * width;
     const scene = [
       place('prototype_floor', [0, -1, -8]),
       place('prototype_floor', [0, -1, 0]),
@@ -76,7 +84,9 @@ describe('profile-scanned colliders (real Rapier, committed catalog)', () => {
       const bot = makeBot({ x, y: 0, z: -2 }, scene);
       bot.stand(30);
       const end = bot.walk({ x: 0, z: 1 }, 150);
+      // Stopped at the wall face (z = 0), one ball radius short of it.
       expect(end.z).toBeLessThan(0);
+      expect(end.z).toBeGreaterThan(-0.6);
     });
   });
 
@@ -84,6 +94,6 @@ describe('profile-scanned colliders (real Rapier, committed catalog)', () => {
     // Floor hole at world x 0..4, y 0..1, z 0..4; the hole is x 1..3, z 1..3.
     const bot = makeBot({ x: 2, y: 1.5, z: 2 }, [place('prototype_primitive_floor_hole', [0, 0, 0])]);
     const end = bot.stand(90);
-    expect(end.y + 0.9 + worldSettings.charRadius).toBeLessThan(0);
+    expect(end.y + BODY_Y + worldSettings.charRadius).toBeLessThan(0);
   });
 });

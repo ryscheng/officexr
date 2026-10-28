@@ -65,7 +65,7 @@ export interface ScanCuboidsOptions {
 
 export interface ScanCuboidsResult {
   /** Solid columns, normalized 0..1 to `aabb`. Deterministically
-   * ordered (z, then x) so catalog diffs are stable. */
+   * ordered by the scan grid's (row, column) so catalog diffs are stable. */
   cuboids: NormalizedCuboid[];
   /** The scanned mesh's local AABB (mesh units). */
   aabb: Aabb;
@@ -233,6 +233,10 @@ export function scanColliderTrimesh(doc: Document): ScanTrimeshResult {
     triangleCount: outIndices.length / 3,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Heightfield cuboid scan
+// ---------------------------------------------------------------------------
 
 /** Largest grid dimension the scanner will allocate. A 4 m kind at the
  * 0.125 m default is 32 cells/axis; 512 guards absurd cellSize input. */
@@ -411,8 +415,8 @@ export function scanColliderCuboids(
 // ---------------------------------------------------------------------------
 
 export interface ScanProfileOptions {
-  /** Extrusion axis — the kind's thin axis. Default 'z'. */
-  axis?: 'x' | 'y' | 'z';
+  /** Extrusion axis — the kind's thin axis. */
+  axis: 'x' | 'y' | 'z';
   /** Grid cell size in the projection plane (metres). Default 0.125. */
   cellSize?: number;
 }
@@ -430,10 +434,10 @@ const AXIS_INDEX = { x: 0, y: 1, z: 2 } as const;
  */
 export function scanColliderProfile(
   doc: Document,
-  options?: ScanProfileOptions,
+  options: ScanProfileOptions,
 ): ScanCuboidsResult {
-  const axis = AXIS_INDEX[options?.axis ?? 'z'];
-  const cellSize = options?.cellSize ?? 0.125;
+  const axis = AXIS_INDEX[options.axis];
+  const cellSize = options.cellSize ?? 0.125;
   // Plane axes in ascending order: z → (x, y), y → (x, z), x → (y, z).
   const [ua, va] = [0, 1, 2].filter((a) => a !== axis);
 
@@ -455,9 +459,9 @@ export function scanColliderProfile(
   const solid = new Int32Array(nu * nv);
   // Index range of the cells whose centres lie within [lo, hi].
   const firstCell = (lo: number, origin: number, cell: number) =>
-    Math.max(0, Math.ceil((lo - origin) / cell - 0.5));
+    Math.max(0, Math.ceil((lo - origin) / cell - 0.5 - 1e-9));
   const lastCell = (hi: number, origin: number, cell: number, n: number) =>
-    Math.min(n - 1, Math.floor((hi - origin) / cell - 0.5));
+    Math.min(n - 1, Math.floor((hi - origin) / cell - 0.5 + 1e-9));
 
   for (let t = 0; t < indices.length; t += 3) {
     const a = indices[t] * 3, b = indices[t + 1] * 3, c = indices[t + 2] * 3;
