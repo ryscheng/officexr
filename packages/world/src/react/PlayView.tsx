@@ -3,15 +3,19 @@ import { useProgress } from '@react-three/drei';
 import type { Actions, Bus, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
+import type { CameraMode } from '../renderer/config.ts';
 import { Scene } from '../renderer/Scene.tsx';
 import { ErrorBanner, FocusIndicator, WorldHud, type HudRealtime } from './hud.tsx';
 import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
-import { useCameraModeCycle } from './useCameraModeCycle.ts';
+import { useCameraMode } from './useCameraMode.ts';
 import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
 import { useWorldConstants } from './useWorldConstants.ts';
 import { useSlowNotice } from './useSlowNotice.ts';
 import { useWorldFocus } from './useWorldFocus.ts';
 import { INITIAL_WORLD_READINESS, worldReadiness } from './world-readiness.ts';
+
+/** Clears a 44px host menu button at `right: 12`. */
+const HOST_MENU_OFFSET = 64;
 
 export interface PlayViewProps {
   store: Store;
@@ -34,6 +38,11 @@ export interface PlayViewProps {
   onDismissError?: () => void;
   onMapApplied?: (spawnPoints: readonly Vec3[]) => void;
   onFrameStats?: (sample: FrameStatsSample | null) => void;
+  /** Makes the camera mode controlled; Alt+P then reports through `onCameraModeChange`. */
+  cameraMode?: CameraMode;
+  onCameraModeChange?: (mode: CameraMode) => void;
+  /** The host app provides the controls chrome: the HUD shows status only and the focus chip leaves the top-right corner to it. */
+  hostControls?: boolean;
   /** Overlays rendered above the scene and HUD. */
   children?: React.ReactNode;
 }
@@ -46,7 +55,7 @@ export interface PlayViewProps {
  * Renders into the caller's positioned container.
  */
 export function PlayView(props: PlayViewProps) {
-  const cameraMode = useCameraModeCycle();
+  const cameraMode = useCameraMode({ value: props.cameraMode, onChange: props.onCameraModeChange });
   const worldFocused = useWorldFocus();
   const worldConstants = useWorldConstants(props.store);
   const session = usePlaySession({
@@ -102,8 +111,13 @@ export function PlayView(props: PlayViewProps) {
           }
         />
       )}
-      <WorldHud cameraMode={cameraMode} realtime={props.realtime} bakedLayouts={session.bakedLayouts} />
-      <FocusIndicator focused={worldFocused} />
+      <WorldHud
+        cameraMode={cameraMode}
+        realtime={props.realtime}
+        bakedLayouts={session.bakedLayouts}
+        statusOnly={props.hostControls}
+      />
+      <FocusIndicator focused={worldFocused} offsetRight={props.hostControls ? HOST_MENU_OFFSET : undefined} />
       {props.error ? (
         <ErrorBanner message={props.error} onDismiss={() => props.onDismissError?.()} />
       ) : (

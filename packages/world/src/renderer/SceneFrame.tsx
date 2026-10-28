@@ -15,6 +15,7 @@ import type {
   Vec3,
 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
+import { isTypingTarget } from '../react/useWorldFocus.ts';
 import type { CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
@@ -234,11 +235,7 @@ export function SceneFrame({
       // Also defend against keys typed into a focused <input> that
       // happens to be outside any panel — the world should never
       // capture keystrokes a real text field is consuming.
-      const t = e.target as HTMLElement | null;
-      if (
-        t &&
-        (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
-      ) {
+      if (isTypingTarget(e.target)) {
         return;
       }
       if (ARROW_KEYS.has(e.key) || e.key === ' ') e.preventDefault();
