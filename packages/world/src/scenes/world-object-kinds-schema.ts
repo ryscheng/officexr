@@ -383,7 +383,7 @@ function normalizeRotationStep(raw: unknown, idx: number): number | undefined {
   return raw;
 }
 
-export function normalizeColliderComplexity(raw: unknown, idx: number): ColliderComplexity | undefined {
+function normalizeColliderComplexity(raw: unknown, idx: number): ColliderComplexity | undefined {
   if (raw === undefined) {
     return undefined;
   }
