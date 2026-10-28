@@ -2,6 +2,8 @@ import type { IncomingMessage } from 'node:http';
 import type { Connect, Plugin } from 'vite';
 import { isCharacterName } from '@officexr/world/characters';
 import studioStorage, { studioMapExists } from '@officexr/world/vite-plugin-storage';
+import type { Store } from 'express-session';
+import { createAuth, missingAuthEnv, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import { MAX_DESCRIPTION, MAX_NAME } from './officeLimits';
 import { configJsMiddleware } from './runtimeConfig';
 import { staticDirMiddleware } from './staticDir';
@@ -49,27 +51,8 @@ export interface Identity {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Decodes RFC 2047 UTF-8 encoded words (`=?utf-8?q?…?=` / `?b?`), which Tailscale uses for non-ASCII names. */
-function decodeMimeWords(value: string): string {
-  return value.replace(/(\?=)\s+(?==\?)/g, '$1').replace(/=\?utf-8\?([qb])\?(.*?)\?=/gi, (_, kind: string, text: string) =>
-    kind.toLowerCase() === 'b'
-      ? Buffer.from(text, 'base64').toString('utf8')
-      : Buffer.from(
-          text.replace(/_/g, ' ').replace(/=([0-9a-f]{2})/gi, (_m, hex: string) => String.fromCharCode(parseInt(hex, 16))),
-          'latin1',
-        ).toString('utf8'),
-  );
-}
-
-/** Tailscale Serve sets these headers on proxied tailnet requests and strips client-supplied copies. */
-export function tailscaleIdentity(req: IncomingMessage): Identity | null {
-  const login = req.headers['tailscale-user-login'] as string | undefined;
-  if (!login) {
-    return null;
-  }
-  const name = req.headers['tailscale-user-name'] as string | undefined;
-  return { login, name: name ? decodeMimeWords(name) : login };
-}
+/** The signed-in user of a request, or `null`. */
+export type ResolveIdentity = (req: IncomingMessage) => Identity | null;
 
 const MAX_BODY_BYTES = 4096;
 const TOO_LARGE = Symbol('too large');
@@ -158,6 +141,7 @@ export function apiMiddleware(
   createOffice: CreateOffice,
   updateOffice: UpdateOffice,
   mapExists: MapExists,
+  identity: ResolveIdentity,
 ): Connect.NextHandleFunction {
   return async (req, res, next) => {
     const path = req.url?.split('?')[0] ?? '';
@@ -171,14 +155,14 @@ export function apiMiddleware(
     };
     try {
       if (path === '/api/me') {
-        const me = tailscaleIdentity(req);
-        return me ? send(200, me) : send(401, { error: 'Not identified via Tailscale' });
+        const me = identity(req);
+        return me ? send(200, me) : send(401, { error: 'Not signed in' });
       }
       if (path === '/api/offices') {
         if (req.method === 'POST') {
-          const me = tailscaleIdentity(req);
+          const me = identity(req);
           if (!me) {
-            return send(401, { error: 'Not identified via Tailscale' });
+            return send(401, { error: 'Not signed in' });
           }
           const body = await readJson(req);
           if (body === TOO_LARGE) {
@@ -191,9 +175,9 @@ export function apiMiddleware(
       }
       const characterOffice = path.match(/^\/api\/offices\/([^/]+)\/character$/)?.[1];
       if (characterOffice) {
-        const me = tailscaleIdentity(req);
+        const me = identity(req);
         if (!me) {
-          return send(401, { error: 'Not identified via Tailscale' });
+          return send(401, { error: 'Not signed in' });
         }
         const [office] = UUID.test(characterOffice) ? await queryOffices(characterOffice) : [];
         if (!office) {
@@ -221,9 +205,9 @@ export function apiMiddleware(
         if (req.method !== 'GET' && req.method !== 'PATCH') {
           return send(405, { error: 'Method not allowed' });
         }
-        const me = tailscaleIdentity(req);
+        const me = identity(req);
         if (req.method === 'PATCH' && !me) {
-          return send(401, { error: 'Not identified via Tailscale' });
+          return send(401, { error: 'Not signed in' });
         }
         const [office] = UUID.test(id) ? await queryOffices(id) : [];
         if (!office) {
@@ -254,21 +238,18 @@ export function apiMiddleware(
   };
 }
 
-/** Sets the Tailscale headers on every request so local dev works without a tailnet. */
-function devUserMiddleware(user: Identity): Connect.NextHandleFunction {
-  return (req, _res, next) => {
-    req.headers['tailscale-user-login'] = user.login;
-    req.headers['tailscale-user-name'] = user.name;
-    next();
-  };
-}
-
 export interface ServerPluginOptions {
   queryOffices: QueryOffices;
   characters: OfficeCharacters;
   createOffice: CreateOffice;
   updateOffice: UpdateOffice;
-  /** Applied to the dev server only, never to preview. */
+  isLoginAllowed: IsLoginAllowed;
+  /** Required in preview; in dev, sign-in is mounted only when every field is set. */
+  auth: Partial<AuthConfig>;
+  /** Called once per server start, so building or loading the config never connects to the database. */
+  sessionStore: () => Store;
+  googleStrategy?: GoogleStrategyFactory;
+  /** The identity of every dev-server request, never preview's. */
   devUser?: Identity;
   devEnv?: Record<string, string>;
   /** Studio data dir served read-only under `/api`; the storage plugin's defaults when unset. */
@@ -282,30 +263,41 @@ export function officexrServer({
   characters,
   createOffice,
   updateOffice,
+  isLoginAllowed,
+  auth,
+  sessionStore,
+  googleStrategy,
   devUser,
   devEnv,
   studioDataDir,
   modelsDir,
 }: ServerPluginOptions): Plugin[] {
   const models = staticDirMiddleware('/models', modelsDir);
-  const api = apiMiddleware(queryOffices, characters, createOffice, updateOffice, studioMapExists(studioDataDir));
+  const mapExists = studioMapExists(studioDataDir);
+  const api = (identity: ResolveIdentity) => apiMiddleware(queryOffices, characters, createOffice, updateOffice, mapExists, identity);
+  const authMiddleware = () => createAuth({ config: auth as AuthConfig, sessionStore: sessionStore(), isLoginAllowed, googleStrategy });
   return [
     // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
     studioStorage({ dataDir: studioDataDir, readOnly: true }),
     {
       name: 'officexr-server',
       configureServer: (server) => {
-        if (devUser) {
-          server.middlewares.use(devUserMiddleware(devUser));
+        if (missingAuthEnv(auth).length === 0) {
+          server.middlewares.use(authMiddleware());
         }
         server.middlewares.use(models);
         server.middlewares.use(configJsMiddleware(devEnv));
-        server.middlewares.use(api);
+        server.middlewares.use(api(devUser ? () => devUser : sessionIdentity));
       },
       configurePreviewServer: (server) => {
+        const missing = missingAuthEnv(auth);
+        if (missing.length) {
+          throw new Error(`Google sign-in is not configured; set ${missing.join(', ')}`);
+        }
+        server.middlewares.use(authMiddleware());
         server.middlewares.use(models);
         server.middlewares.use(configJsMiddleware());
-        server.middlewares.use(api);
+        server.middlewares.use(api(sessionIdentity));
       },
     },
   ];
