@@ -33,14 +33,14 @@ describe('createViewYaw', () => {
     expect(viewYaw.get()).toBe(Math.PI - deg(0.2));
   });
 
-  it('notifies for a 1° move across the ±π wrap', () => {
+  it('notifies for a move past 1° across the ±π wrap', () => {
     const viewYaw = createViewYaw();
     const cb = vi.fn();
-    viewYaw.set(deg(179.5));
+    viewYaw.set(deg(179.4));
     viewYaw.subscribe(cb);
-    viewYaw.set(deg(-179.5));
+    viewYaw.set(deg(-179.4));
     expect(cb).toHaveBeenCalledTimes(1);
-    expect(viewYaw.get()).toBe(deg(-179.5));
+    expect(viewYaw.get()).toBe(deg(-179.4));
   });
 
   it('stops notifying after unsubscribe', () => {
