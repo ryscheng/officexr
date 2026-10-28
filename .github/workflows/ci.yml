@@ -35,6 +35,13 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Bake layouts used by e2e
+        # Baked layout GLBs are gitignored build outputs, but the default and
+        # long_corridor maps load them; without a bake the world fails to load
+        # (404 on /api/baked-layouts/<name>). Only layouts whose models ship in
+        # the repo can bake here (the KayKit prototype pack isn't downloaded).
+        run: pnpm --filter @officexr/world bake:layout platform long_corridor
+
       - name: E2E (editor interaction, hermetic)
         # Scoped to the specs that run hermetically: ?test=1 (in-memory
         # storage, bundled catalog — no database), or the dev server's
