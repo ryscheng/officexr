@@ -5,16 +5,24 @@ import { useCoarsePointer } from './useCoarsePointer.ts';
 
 const realMatchMedia = window.matchMedia;
 
-/** A controllable `matchMedia`: `set` flips `matches` and notifies listeners. */
+/** A controllable `matchMedia` that only matches the coarse-pointer query and only delivers `change` events. */
 function fakeMatchMedia(initial: boolean) {
   let matches = initial;
   const listeners = new Set<() => void>();
-  window.matchMedia = (() => ({
+  window.matchMedia = ((query: string) => ({
     get matches() {
-      return matches;
+      return query === '(pointer: coarse)' && matches;
     },
-    addEventListener: (_: string, l: () => void) => listeners.add(l),
-    removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+    addEventListener: (type: string, l: () => void) => {
+      if (type === 'change') {
+        listeners.add(l);
+      }
+    },
+    removeEventListener: (type: string, l: () => void) => {
+      if (type === 'change') {
+        listeners.delete(l);
+      }
+    },
   })) as unknown as typeof window.matchMedia;
   return (next: boolean) => {
     matches = next;

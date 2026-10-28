@@ -30,7 +30,7 @@ import { placementTransform } from './placement-transform.ts';
 import type { BakedLayoutPlacement } from '../app/map-loader.ts';
 import type { ViewConfig } from './viewConfig.ts';
 import type { ViewOffsets } from './lookControls.ts';
-import type { MoveInput } from '../react/joystick.ts';
+import type { MoveInput } from './moveIntent.ts';
 
 /**
  * Each frame, anchor the sun (directional light + its target + the

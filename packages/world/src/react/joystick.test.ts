@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { JOYSTICK_DEAD_ZONE, NO_MOVE, joystickVector } from './joystick.ts';
+import { NO_MOVE } from '../renderer/moveIntent.ts';
+import { JOYSTICK_DEAD_ZONE, joystickVector } from './joystick.ts';
 
 const R = 40;
 

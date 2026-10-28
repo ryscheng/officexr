@@ -27,8 +27,8 @@ import {
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
-import { RUN_DEFLECTION, type MoveInput } from '../react/joystick.ts';
 import { fixedMovementYaw, type ViewOffsets } from './lookControls.ts';
+import { moveIntent, type MoveInput } from './moveIntent.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -289,18 +289,8 @@ export function SceneFrame({
         stateSnapshot.worldSettings,
         stateSnapshot.characterConfigs,
       );
-    const keyFwd =
-      (keys.has('w') || keys.has('arrowup') ? 1 : 0) -
-      (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
-    const keyStrafe =
-      (keys.has('d') || keys.has('arrowright') ? 1 : 0) -
-      (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
-    const analog = keyFwd === 0 && keyStrafe === 0 ? moveInputRef?.current : undefined;
-    const fwd = analog ? analog.z : keyFwd;
-    const strafe = analog ? analog.x : keyStrafe;
-    const deflection = analog ? Math.hypot(analog.x, analog.z) : undefined;
-    const isRunning = keys.has('shift') || (deflection ?? 0) >= RUN_DEFLECTION;
-    const playerSpeed = (isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed) * (deflection ?? 1);
+    const { fwd, strafe, isRunning, speedScale } = moveIntent(keys, moveInputRef?.current);
+    const playerSpeed = (isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed) * speedScale;
     // movementBlockThreshold = "fraction of intent that must be
     // *blocked* to count as 'fully stopped'". So if 90% (default) of
     // intent is blocked, we want progress < 0.1 to snap velocity and
@@ -374,7 +364,7 @@ export function SceneFrame({
       // isRunning + (fwd || strafe) → 'run' verb
       // !isRunning + (fwd || strafe) → 'walk' verb
       // neither → 'stop' verb
-      // Horizontal intent. Zero when no WASD keys are held; we still
+      // Horizontal intent. Zero when there is no movement input; we still
       // run the controller below so gravity can apply.
       let dx = 0;
       let dz = 0;
@@ -512,7 +502,7 @@ export function SceneFrame({
         ) {
           verticalVelRef.current = jumpVelocity;
           if (!airborneRef.current) {
-            // First jump from ground: capture current WASD intent as
+            // First jump from ground: capture current movement intent as
             // the air-vel baseline. dx/dz are normalised direction
             // unit vectors; multiply by playerSpeed to get m/s.
             // Standing-still jump → 0 carry.
@@ -530,7 +520,7 @@ export function SceneFrame({
         let moveZ: number;
 
         if (isAirborne) {
-          // Air-control: low-pass blend airVel toward WASD intent each frame.
+          // Air-control: low-pass blend airVel toward movement intent each frame.
           const intentX = dx * playerSpeed;
           const intentZ = dz * playerSpeed;
           airVelXRef.current += (intentX - airVelXRef.current) * airControl * dtSec;

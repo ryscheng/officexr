@@ -1,10 +1,4 @@
-/** Analog walking intent: `x` is strafe (right +), `z` is forward (+), within the unit circle. */
-export type MoveInput = { x: number; z: number };
-
-export const NO_MOVE: MoveInput = { x: 0, z: 0 };
-
-/** Deflection at or above this runs, like holding Shift. */
-export const RUN_DEFLECTION = 0.9;
+import { NO_MOVE, type MoveInput } from '../renderer/moveIntent.ts';
 
 export const JOYSTICK_DEAD_ZONE = 0.15;
 

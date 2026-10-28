@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { JOYSTICK_DEAD_ZONE, NO_MOVE, joystickVector, type MoveInput } from './joystick.ts';
+import React, { useEffect, useRef, useState } from 'react';
+import { NO_MOVE, type MoveInput } from '../renderer/moveIntent.ts';
+import { JOYSTICK_DEAD_ZONE, joystickVector } from './joystick.ts';
 
 const BASE_SIZE = 110;
 const KNOB_SIZE = 46;
@@ -8,6 +9,7 @@ const TRAVEL = (BASE_SIZE - KNOB_SIZE) / 2;
 /** Bottom-left on-screen stick; writes its vector to `inputRef` for the scene to read each frame. */
 export function VirtualJoystick({ inputRef }: { inputRef: React.MutableRefObject<MoveInput> }) {
   const [knob, setKnob] = useState({ x: 0, y: 0 });
+  const activePointer = useRef<number | null>(null);
 
   const drag = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -20,7 +22,11 @@ export function VirtualJoystick({ inputRef }: { inputRef: React.MutableRefObject
     inputRef.current = input;
     setKnob({ x: input.x * TRAVEL, y: -input.z * TRAVEL });
   };
-  const release = () => {
+  const release = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== activePointer.current) {
+      return;
+    }
+    activePointer.current = null;
     inputRef.current = NO_MOVE;
     setKnob({ x: 0, y: 0 });
   };
@@ -32,16 +38,19 @@ export function VirtualJoystick({ inputRef }: { inputRef: React.MutableRefObject
   return (
     <div
       onPointerDown={(e) => {
+        if (activePointer.current !== null) {
+          return;
+        }
+        activePointer.current = e.pointerId;
         e.currentTarget.setPointerCapture(e.pointerId);
         drag(e);
       }}
       onPointerMove={(e) => {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        if (e.pointerId === activePointer.current) {
           drag(e);
         }
       }}
-      onPointerUp={release}
-      onPointerCancel={release}
+      onLostPointerCapture={release}
       style={{
         position: 'absolute',
         left: 12,
@@ -54,6 +63,8 @@ export function VirtualJoystick({ inputRef }: { inputRef: React.MutableRefObject
         boxSizing: 'border-box',
         touchAction: 'none',
         userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
         pointerEvents: 'auto',
       }}
     >

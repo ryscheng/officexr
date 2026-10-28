@@ -8,7 +8,7 @@ import { ErrorBanner, FocusIndicator, WorldHud, type HudRealtime } from './hud.t
 import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
 import { useCameraModeCycle } from './useCameraModeCycle.ts';
 import { useCoarsePointer } from './useCoarsePointer.ts';
-import { NO_MOVE, type MoveInput } from './joystick.ts';
+import { NO_MOVE, type MoveInput } from '../renderer/moveIntent.ts';
 import { VirtualJoystick } from './VirtualJoystick.tsx';
 import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
 import { useWorldConstants } from './useWorldConstants.ts';
