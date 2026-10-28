@@ -34,7 +34,7 @@ flowchart LR
     Session --> SDK
     World --> SDK
 
-    Google -- "/auth/google" --> WebServer
+    Google -- "/auth/google/callback" --> WebServer
     WebApp -- "/api/me, /api/offices" --> WebServer
     WebServer -- "pg" --> PG
     SDK -- "WsChannel over /ws" --> Realtime

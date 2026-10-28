@@ -21,7 +21,7 @@ officexr/
 │   │   ├── index.html    # SPA shell (entry: src/main.tsx)
 │   │   ├── src/          # App.tsx (routing), home/ (office list + create form), room/ (OfficeWorld, session, characters),
 │   │   │                 # hud/ (chat), voice/ (JaaS proximity voice)
-│   │   ├── server/       # /api/me, /api/offices (list + create), /api/offices/:id/character (pg), /config.js; vitest specs
+│   │   ├── server/       # /api/me, /auth/* (auth.ts: Google login, logout), /api/offices (list + create), /api/offices/:id/character (pg), /config.js; vitest specs
 │   │   ├── vite.config.ts
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
@@ -89,9 +89,7 @@ trailing slash; the Google OAuth redirect URI is `${PUBLIC_URL}/auth/google/call
 `vite preview` / `start` refuses to boot unless all four are set. When `PUBLIC_URL` is
 https the session cookie is Secure, so the TLS terminator must send
 `X-Forwarded-Proto: https`. Who may sign in is managed with SQL in `login_allowlist`
-(values lowercase, no admin UI), e.g.
-`insert into login_allowlist (kind, value) values ('domain', 'example.com');` or
-`('email', 'someone@gmail.com')`. The server reads offices from Postgres via
+(values lowercase, no admin UI; example inserts in the README "Sign-in" section). The server reads offices from Postgres via
 `SUPABASE_DB_URL`. Run `pnpm db:migrate` (applies `supabase/migrations` to
 `SUPABASE_DB_URL`) before `start`.
 For local dev set `OFFICEXR_DEV_USER_LOGIN` / `OFFICEXR_DEV_USER_NAME`; `vite dev` (never

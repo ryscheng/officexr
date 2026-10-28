@@ -79,6 +79,18 @@ describe('Home', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/auth/logout', { method: 'POST' });
   });
 
+  it('keeps the user signed in and shows the error when sign-out fails', async () => {
+    const assign = vi.fn();
+    setup(ready, []);
+    vi.stubGlobal('location', { assign });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementationOnce(() => json(500, { error: 'Logout broke' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Logout broke');
+    expect(assign).not.toHaveBeenCalled();
+    expect((screen.getByRole('button', { name: 'Sign out' })).matches(':disabled')).toBe(false);
+  });
+
   it('creates an office and navigates into it', async () => {
     const post = vi.fn(() => json(201, { id: 'new', name: 'Lab', description: null, map_name: 'hq', created_by_login: null, debug_enabled: false }));
     setup(ready, [], post);

@@ -82,7 +82,9 @@ VITE_JAAS_PRIVATE_KEY=your-jaas-private-key-base64
 
 Production signs users in with Google (create a Web application OAuth client and add
 `${PUBLIC_URL}/auth/google/callback` as an authorized redirect URI). Only emails or
-domains in the `login_allowlist` table may sign in; manage it with SQL (values lowercase):
+domains in the `login_allowlist` table may sign in; manage it with SQL (values lowercase).
+When `PUBLIC_URL` is https the session cookie is Secure, so the TLS terminator in front of
+the server must send `X-Forwarded-Proto: https`, or login loops back to Google:
 
 ```sql
 insert into login_allowlist (kind, value) values ('domain', 'example.com');

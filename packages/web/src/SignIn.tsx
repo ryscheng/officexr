@@ -5,7 +5,11 @@ const LOGIN_ERRORS: Record<string, string> = {
 
 export function SignIn() {
   const { pathname, search } = window.location;
-  const loginError = new URLSearchParams(search).get('login_error');
+  const params = new URLSearchParams(search);
+  const loginError = params.get('login_error');
+  params.delete('login_error');
+  const rest = params.toString();
+  const next = rest ? `${pathname}?${rest}` : pathname;
   return (
     <main className="mx-auto max-w-sm p-6 text-center">
       <h1 className="mb-6 text-2xl font-semibold">OfficeXR</h1>
@@ -15,7 +19,7 @@ export function SignIn() {
         </p>
       )}
       <a
-        href={`/auth/google?next=${encodeURIComponent(pathname + search)}`}
+        href={`/auth/google?next=${encodeURIComponent(next)}`}
         className="inline-block rounded bg-black px-4 py-2 text-white"
       >
         Sign in with Google

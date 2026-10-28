@@ -102,9 +102,37 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
   );
 }
 
-async function signOut() {
-  await fetch('/auth/logout', { method: 'POST' });
-  window.location.assign('/');
+function SignOutButton() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const signOut = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/auth/logout', { method: 'POST' });
+      if (!res.ok) {
+        throw new Error(errorMessage(res, await res.json().catch(() => null)));
+      }
+      window.location.assign('/');
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" onClick={signOut} disabled={busy} className="underline disabled:opacity-50">
+        Sign out
+      </button>
+      {error && (
+        <span role="alert" className="text-red-600">
+          {error}
+        </span>
+      )}
+    </>
+  );
 }
 
 export function Home({ me }: { me: ApiState<Identity> }) {
@@ -117,9 +145,7 @@ export function Home({ me }: { me: ApiState<Identity> }) {
         {me.type === 'ready' && (
           <span className="flex items-baseline gap-3 text-sm">
             {me.data.name}
-            <button type="button" onClick={signOut} className="underline">
-              Sign out
-            </button>
+            <SignOutButton />
           </span>
         )}
         {me.type === 'error' && (

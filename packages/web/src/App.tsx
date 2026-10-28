@@ -40,6 +40,9 @@ function Room({ me }: { me: Identity }) {
 
 export default function App() {
   const me = useApi<Identity>('/api/me');
+  if (me.type === 'loading') {
+    return <p className="p-6">Loading…</p>;
+  }
   if (me.type === 'error' && me.status === 401) {
     return <SignIn />;
   }
