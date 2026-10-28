@@ -179,3 +179,8 @@ export function fixedMovementYaw(
     (movementYawOffsetDeg * Math.PI) / 180
   );
 }
+
+/** Yaw (the `yawRef` convention, forward = `-sin, -cos`) of a look direction, ignoring its pitch. */
+export function yawFromDirection(dir: { x: number; z: number }): number {
+  return Math.atan2(-dir.x, -dir.z);
+}

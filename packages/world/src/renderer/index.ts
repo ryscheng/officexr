@@ -19,6 +19,8 @@ export { GradientBackground } from './GradientBackground.tsx';
 export { ProximityGlow } from './ProximityGlow.tsx';
 export { CameraRig } from './CameraRig.tsx';
 export { SceneFrame } from './SceneFrame.tsx';
+export { createWorldXRStore } from './xrStore.ts';
+export { useXRSessionModeSupported, type XRStore } from '@react-three/xr';
 export { ObjectInstances, type MaterialOverride } from './ObjectInstances.tsx';
 export {
   LightingRig,

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import {
   useRapier,
@@ -28,7 +29,7 @@ import {
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
-import { fixedMovementYaw, type ViewOffsets } from './lookControls.ts';
+import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type MoveInput } from './moveIntent.ts';
 
 interface SceneFrameProps {
@@ -71,7 +72,11 @@ interface SceneFrameProps {
    * without React re-renders. Ref is created in Scene.tsx and threaded to
    * both SceneFrame and Players. */
   isAirborneRef: React.MutableRefObject<boolean>;
+  /** While an immersive XR session is presenting, movement follows the headset's yaw. */
+  xrPresenting: boolean;
 }
+
+const headsetForward = new THREE.Vector3();
 
 const ARROW_KEYS = new Set([
   'ArrowUp',
@@ -119,6 +124,7 @@ export function SceneFrame({
   worldFocused,
   spawnPoints,
   isAirborneRef,
+  xrPresenting,
 }: SceneFrameProps) {
   // Mirror the spawn list into a ref so the per-frame fall-respawn
   // check below can read the live value without re-binding the
@@ -267,7 +273,7 @@ export function SceneFrame({
   // What would remove this: extract SceneFrame's physics step into a
   // headless class that accepts `world` + `controller` as constructor args,
   // wrapping it in a thin r3f component that calls useRapier/useFrame.
-  useFrame((_, dtSec) => {
+  useFrame(({ gl }, dtSec) => {
     const dt = dtSec * 1000;
     const now = performance.now();
     const keys = keysDown.current;
@@ -369,8 +375,9 @@ export function SceneFrame({
       let intendsMove = false;
       let movementYaw = self.yaw;
       if (fwd !== 0 || strafe !== 0) {
-        const cameraYaw =
-          cameraMode === 'fixed'
+        const cameraYaw = xrPresenting
+          ? yawFromDirection(gl.xr.getCamera().getWorldDirection(headsetForward))
+          : cameraMode === 'fixed'
             ? fixedMovementYaw(
                 fixedAzimuthDeg,
                 viewOffsetsRef.current.fixedAzimuthOffsetRad,

@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, PlayView, useStoreSelector } from '@officexr/world/react';
-import type { CameraMode } from '@officexr/world/renderer';
+import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XRStore } from '@officexr/world/renderer';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
@@ -19,6 +19,7 @@ import { ShortcutsDialog } from './ShortcutsDialog';
 import { useJoinCheck } from './useJoinCheck';
 import { useOfficeSession } from './useOfficeSession';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
+import { VrMenuItem } from './VrMenuItem';
 import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 
 const storages = {
@@ -45,6 +46,17 @@ function ReplacedBanner({ store }: { store: Store }) {
   return replaced ? <ErrorBanner message={REPLACED_MESSAGE} /> : null;
 }
 
+/** Created in an effect so StrictMode's remount destroys the first store, which appends a DOM overlay. */
+function useWorldXRStore(): XRStore | undefined {
+  const [store, setStore] = useState<XRStore>();
+  useEffect(() => {
+    const created = createWorldXRStore();
+    setStore(created);
+    return () => created.destroy();
+  }, []);
+  return store;
+}
+
 function World({ office: initialOffice, me }: { office: Office; me: Identity }) {
   const [office, setOffice] = useState(initialOffice);
   const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
@@ -55,6 +67,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
+  const xrStore = useWorldXRStore();
+  const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -76,10 +90,12 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           hostControls
           error={saveError}
           onDismissError={() => setSaveError(null)}
+          xrStore={xrStore}
         >
           <RoomMenu>
             <CameraModeMenuItem value={cameraMode} onChange={setCameraMode} />
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
+            {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={setSaveError} />}
           </RoomMenu>
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {session.voice && <JaasMeeting voice={session.voice} />}
