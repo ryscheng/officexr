@@ -11,6 +11,7 @@ import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting
 import { ZoneCallLabel } from '../voice/ZoneCallLabel';
 import { CameraModeMenuItem } from './CameraModeMenuItem';
 import { CharacterPicker } from './CharacterPicker';
+import { MotionLookMenuItem } from './MotionLookMenuItem';
 import { OfficeSettings } from './OfficeSettings';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
@@ -52,6 +53,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
+  const [motionLook, setMotionLook] = useState({ enabled: false, recenterKey: 0 });
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
@@ -73,12 +75,18 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           realtime="ws"
           cameraMode={cameraMode}
           onCameraModeChange={setCameraMode}
+          motionLook={motionLook}
           hostControls
           error={saveError}
           onDismissError={() => setSaveError(null)}
         >
           <RoomMenu>
             <CameraModeMenuItem value={cameraMode} onChange={setCameraMode} />
+            <MotionLookMenuItem
+              enabled={motionLook.enabled}
+              onEnabledChange={(enabled) => setMotionLook((m) => ({ ...m, enabled }))}
+              onRecenter={() => setMotionLook((m) => ({ ...m, recenterKey: m.recenterKey + 1 }))}
+            />
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
           </RoomMenu>
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
