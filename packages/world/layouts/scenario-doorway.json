@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "name": "scenario-doorway",
+  "title": "Scenario: Doorway Walk-through",
+  "updatedAt": 1793177549699,
+  "optimizer": "simplify-light",
+  "commands": [
+    {
+      "id": "place-doorway-floor-1",
+      "op": "placeObject",
+      "kindId": "prototype_floor",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-doorway-floor-2",
+      "op": "placeObject",
+      "kindId": "prototype_floor",
+      "position": [
+        8,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-doorway-floor-3",
+      "op": "placeObject",
+      "kindId": "prototype_floor",
+      "position": [
+        16,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "place-doorway-floor-4",
+      "op": "placeObject",
+      "kindId": "prototype_floor",
+      "position": [
+        0,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-doorway-floor-5",
+      "op": "placeObject",
+      "kindId": "prototype_floor",
+      "position": [
+        8,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-doorway-floor-6",
+      "op": "placeObject",
+      "kindId": "prototype_floor",
+      "position": [
+        16,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "place-doorway-floor-7",
+      "op": "placeObject",
+      "kindId": "prototype_floor",
+      "position": [
+        0,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-doorway-floor-8",
+      "op": "placeObject",
+      "kindId": "prototype_floor",
+      "position": [
+        8,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-doorway-floor-9",
+      "op": "placeObject",
+      "kindId": "prototype_floor",
+      "position": [
+        16,
+        0,
+        16
+      ]
+    },
+    {
+      "id": "place-doorway-wall-west",
+      "op": "placeObject",
+      "kindId": "prototype_wall",
+      "position": [
+        0,
+        1,
+        12
+      ]
+    },
+    {
+      "id": "place-doorway-door",
+      "op": "placeObject",
+      "kindId": "prototype_wall_doorway",
+      "position": [
+        8,
+        1,
+        12
+      ]
+    },
+    {
+      "id": "place-doorway-wall-east",
+      "op": "placeObject",
+      "kindId": "prototype_wall",
+      "position": [
+        16,
+        1,
+        12
+      ]
+    }
+  ]
+}
