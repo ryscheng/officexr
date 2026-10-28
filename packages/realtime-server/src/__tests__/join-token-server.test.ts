@@ -86,26 +86,68 @@ describe('RealtimeServer join tokens', () => {
     expect(await tryJoin({ userId: 'ann' })).toBe('joined');
   });
 
-  it('refreshes the token through getToken on reconnect', async () => {
-    await start();
-    let calls = 0;
+  /** Closes every client socket server-side, leaving the server up for the reconnect. */
+  function dropClients(): void {
+    for (const client of server.defaultRoom.clients.values()) {
+      client.terminate();
+    }
+  }
+
+  function tokenChannel(getToken: () => Promise<string | undefined>): { c: WsChannel; statuses: string[] } {
     const c = new WsChannel({
       url: `ws://127.0.0.1:${port}/ws`,
       userId: 'ann',
-      officeId: OFFICE,
       reconnectDelayMs: () => 20,
-      getToken: async () => {
-        calls++;
-        return tokenFor('ann');
-      },
+      getToken,
     });
     channels.push(c);
+    const statuses: string[] = [];
+    c.onStatusChange((s) => statuses.push(s));
+    return { c, statuses };
+  }
+
+  it('uses a freshly fetched token on reconnect', async () => {
+    await start();
+    let calls = 0;
+    const { c, statuses } = tokenChannel(async () => {
+      calls++;
+      return signJoinToken(SECRET, { login: 'ann', ttlMs: 1000, now: clock });
+    });
     await c.subscribe();
     expect(calls).toBe(1);
 
-    await server.stop();
+    // The first token is expired by the time the channel reconnects.
+    clock += 5000;
+    dropClients();
+    await vi.waitFor(() => expect(statuses).toContain('reconnecting'));
+    await vi.waitFor(() => expect(statuses.at(-1)).toBe('live'));
+    expect(calls).toBeGreaterThan(1);
+  });
+
+  it('retries the reconnect when getToken rejects once', async () => {
     await start();
-    await vi.waitFor(() => expect(calls).toBeGreaterThan(1));
+    let calls = 0;
+    const { c, statuses } = tokenChannel(async () => {
+      calls++;
+      if (calls === 2) {
+        throw new Error('token endpoint down');
+      }
+      return tokenFor('ann');
+    });
+    await c.subscribe();
+
+    dropClients();
+    await vi.waitFor(() => expect(statuses).toContain('reconnecting'));
+    await vi.waitFor(() => expect(statuses.at(-1)).toBe('live'));
+    expect(calls).toBeGreaterThanOrEqual(3);
+  });
+
+  it('fails subscribe when getToken rejects on the first connect', async () => {
+    await start();
+    const { c } = tokenChannel(async () => {
+      throw new Error('token endpoint down');
+    });
+    await expect(c.subscribe()).rejects.toThrow();
   });
 
   describe('GET /rooms/:id/sessions', () => {

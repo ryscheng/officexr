@@ -4,8 +4,12 @@ export function isLogin(login: unknown): login is string {
   return typeof login === 'string' && login !== '' && !login.includes('#');
 }
 
-const sign = (secret: string, payload: string): string =>
-  createHmac('sha256', secret).update(payload).digest('base64url');
+const sign = (secret: string, payload: string): string => {
+  if (secret === '') {
+    throw new Error('join token secret must not be empty');
+  }
+  return createHmac('sha256', secret).update(payload).digest('base64url');
+};
 
 /** Mints `base64url({login, exp}).base64url(HMAC-SHA256)`; `now` is epoch ms. */
 export function signJoinToken(

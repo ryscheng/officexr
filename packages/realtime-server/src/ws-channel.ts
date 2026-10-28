@@ -158,7 +158,9 @@ export class WsChannel implements Channel {
       if (frame) this.handleFrame(frame);
     });
     const lose = (code?: number) => {
-      if (this.ws !== ws) return;
+      if (this.ws !== ws) {
+        return;
+      }
       this.dropSocket();
       this.handshake?.fail(new Error('WsChannel: closed before handshake'));
       if (code === REPLACED_CLOSE_CODE) {
@@ -177,7 +179,9 @@ export class WsChannel implements Channel {
         ? Promise.resolve()
         : new Promise<void>((resolve) => ws.addEventListener('open', () => resolve()));
     Promise.all([Promise.resolve().then(() => this.getToken?.()), opened]).then(([token]) => {
-      if (this.ws !== ws) return;
+      if (this.ws !== ws) {
+        return;
+      }
       ws.send(encodeFrame({ t: 'hello', userId: this.userId, officeId: this.officeId, login: this.login, token }));
     }, () => lose());
 

@@ -37,6 +37,11 @@ describe('join token', () => {
     expect(verifyJoinToken(SECRET, signJoinToken(SECRET, { login: '', ttlMs: 1000, now: 0 }), 1)).toBeNull();
   });
 
+  it('throws on an empty secret instead of signing or verifying', () => {
+    expect(() => signJoinToken('', { login: 'ann', ttlMs: 1000 })).toThrow();
+    expect(() => verifyJoinToken('', 'a.b')).toThrow();
+  });
+
   it.each(['', 'abc', 'a.b.c', '.', 'e30.', 'not-base64!.sig'])('rejects malformed %j', (token) => {
     expect(verifyJoinToken(SECRET, token, 0)).toBeNull();
   });
