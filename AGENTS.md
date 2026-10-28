@@ -21,9 +21,9 @@ officexr/
 │   │   ├── index.html    # SPA shell (entry: src/main.tsx)
 │   │   ├── src/          # App.tsx (routing), home/ (office list + create form), room/ (OfficeWorld, session, characters),
 │   │   │                 # hud/ (chat), voice/ (JaaS proximity voice)
-│   │   ├── server/       # /api/me, /api/offices (list + create), /api/offices/:id/character (pg), /config.js; vitest specs
+│   │   ├── server/       # /api/me, /auth/* (auth.ts: Google login, logout), /api/offices (list + create), /api/offices/:id/character (pg), /config.js; vitest specs
 │   │   ├── vite.config.ts
-│   │   └── .env.example  # SUPABASE_DB_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
+│   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
 │   ├── sdk/              # @officexr/sdk — headless game state, realtime protocol, Channel
@@ -43,9 +43,12 @@ officexr/
 
 ## How the web app fits together
 
-- **Identity.** There is no auth in the app. The server trusts the
-  `Tailscale-User-Login` / `Tailscale-User-Name` headers added by Tailscale Serve and
-  exposes them at `/api/me`.
+- **Identity.** Users sign in with Google. The server keeps a Postgres-backed session
+  (the `session` table), identifies the user by their verified Google email, and exposes
+  it at `/api/me` (401 `{ error: 'Not signed in' }` when signed out). Only emails or
+  domains in the SQL-managed `login_allowlist` table may sign in. The web app shows a
+  sign-in screen on a 401 and a Sign out button on the home page (`POST /auth/logout`).
+  The server never trusts client-supplied identity headers.
 - **Database.** The web server (a Vite plugin, `packages/web/server/api.ts`) reads and
   writes Postgres via `pg` using `SUPABASE_DB_URL`; the browser never talks to the
   database. Offices and per-office character choices live there.
@@ -80,13 +83,17 @@ pnpm --filter @officexr/realtime-server start   # Realtime server on :8787
 
 ### Web (`packages/web/.env`)
 
-Identity comes from the `Tailscale-User-Login` / `Tailscale-User-Name` headers (no auth
-in the app); the server reads offices from Postgres via `SUPABASE_DB_URL`. Run
-`pnpm db:migrate` (applies `supabase/migrations` to `SUPABASE_DB_URL`) before `start`.
-For local dev set `OFFICEXR_DEV_USER_LOGIN` / `OFFICEXR_DEV_USER_NAME`; the dev server
-injects them as the Tailscale headers (never in preview).
-The identity headers are trusted only because the server is reachable solely through the
-Tailscale ingress; direct access to the pod port would allow spoofing them.
+Identity comes from Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`SESSION_SECRET` (signs the session cookie) and `PUBLIC_URL` (the external origin, no
+trailing slash; the Google OAuth redirect URI is `${PUBLIC_URL}/auth/google/callback`).
+`vite preview` / `start` refuses to boot unless all four are set. When `PUBLIC_URL` is
+https the session cookie is Secure, so the TLS terminator must send
+`X-Forwarded-Proto: https`. Who may sign in is managed with SQL in `login_allowlist`
+(values lowercase, no admin UI; example inserts in the README "Sign-in" section). The server reads offices from Postgres via
+`SUPABASE_DB_URL`. Run `pnpm db:migrate` (applies `supabase/migrations` to
+`SUPABASE_DB_URL`) before `start`.
+For local dev set `OFFICEXR_DEV_USER_LOGIN` / `OFFICEXR_DEV_USER_NAME`; `vite dev` (never
+preview) then treats every request as that user and needs no Google variables.
 Optional `OFFICEXR_ASSET_BASE_URL` (served at `/config.js`) loads `/models` assets and baked
 layouts from that base URL (e.g. a CDN); unset keeps same-origin paths.
 

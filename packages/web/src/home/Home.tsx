@@ -64,7 +64,7 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
   return (
     <form onSubmit={submit} className="mt-8 space-y-3">
       <h2 className="text-lg font-semibold">Create an office</h2>
-      {!identified && <p className="text-sm text-gray-600">Creating an office requires being identified via Tailscale.</p>}
+      {!identified && <p className="text-sm text-gray-600">Creating an office requires signing in.</p>}
       <fieldset disabled={!identified || busy} className="space-y-3">
         <label className="block text-sm">
           Name
@@ -102,6 +102,39 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
   );
 }
 
+function SignOutButton() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const signOut = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/auth/logout', { method: 'POST' });
+      if (!res.ok) {
+        throw new Error(errorMessage(res, await res.json().catch(() => null)));
+      }
+      window.location.assign('/');
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" onClick={signOut} disabled={busy} className="underline disabled:opacity-50">
+        Sign out
+      </button>
+      {error && (
+        <span role="alert" className="text-red-600">
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
 export function Home({ me }: { me: ApiState<Identity> }) {
   return (
     <main className="mx-auto max-w-2xl p-6">
@@ -109,7 +142,12 @@ export function Home({ me }: { me: ApiState<Identity> }) {
         <Link to="/" className="text-2xl font-semibold">
           OfficeXR
         </Link>
-        {me.type === 'ready' && <span className="text-sm">{me.data.name}</span>}
+        {me.type === 'ready' && (
+          <span className="flex items-baseline gap-3 text-sm">
+            {me.data.name}
+            <SignOutButton />
+          </span>
+        )}
         {me.type === 'error' && (
           <span role="alert" className="text-sm text-red-600">
             {me.message}

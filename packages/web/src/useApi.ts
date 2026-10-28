@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export type ApiState<T> = { type: 'loading' } | { type: 'ready'; data: T } | { type: 'error'; message: string };
+export type ApiState<T> = { type: 'loading' } | { type: 'ready'; data: T } | { type: 'error'; message: string; status?: number };
 
 /** The server's `{ error }` message, falling back to the HTTP status. */
 export function errorMessage(res: Response, body: unknown): string {
@@ -17,7 +17,7 @@ export function useApi<T>(url: string): ApiState<T> {
         const body = await res.json().catch(() => null);
         return res.ok
           ? { type: 'ready' as const, data: body as T }
-          : { type: 'error' as const, message: errorMessage(res, body) };
+          : { type: 'error' as const, message: errorMessage(res, body), status: res.status };
       })
       .catch((err: Error) => ({ type: 'error' as const, message: err.message }))
       .then((next) => {
