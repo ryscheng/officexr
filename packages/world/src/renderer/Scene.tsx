@@ -2,7 +2,7 @@ import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Physics, type RapierRigidBody } from '@react-three/rapier';
-import { GradientBackground } from './GradientBackground.tsx';
+import { SkyDome } from './SkyDome.tsx';
 import { LightingRig } from './LightingRig.tsx';
 import { MapColliders } from './MapColliders.tsx';
 import { excludeLayoutInstances } from './useStoreWorldObjects.ts';
@@ -31,8 +31,8 @@ import type { BakedLayoutPlacement } from '../app/map-loader.ts';
 import type { ViewConfig } from './viewConfig.ts';
 
 /**
- * Each frame, anchor the sun (directional light + its target + the
- * visible emissive sphere) to the local player's render position
+ * Each frame, anchor the sun (directional light + its target) to the
+ * local player's render position
  * plus the user-set sun offset. The sun's *direction* (offset from
  * player) stays constant — it's only translated — so it still reads
  * as the same sun in the sky regardless of where the player walks.
@@ -45,7 +45,6 @@ import type { ViewConfig } from './viewConfig.ts';
 function SunFollower(props: {
   lightRef: React.RefObject<THREE.DirectionalLight | null>;
   lightTargetRef: React.RefObject<THREE.Object3D | null>;
-  sunDiscRef: React.RefObject<THREE.Object3D | null>;
   sunOffset: [number, number, number];
   selfPosRef: React.RefObject<THREE.Vector3>;
 }) {
@@ -62,13 +61,6 @@ function SunFollower(props: {
       light.position.set(player.x + ox, player.y + oy, player.z + oz);
       target.position.copy(player);
       target.updateMatrixWorld();
-    }
-    if (props.sunDiscRef.current) {
-      props.sunDiscRef.current.position.set(
-        player.x + ox,
-        player.y + oy,
-        player.z + oz,
-      );
     }
   });
   return null;
@@ -156,10 +148,9 @@ export function Scene(props: SceneProps) {
   const selfPosRef = useRef(new THREE.Vector3());
 
   // Refs the SunFollower drives each frame so the directional light
-  // (and its visible sun disc) tracks the local player.
+  // tracks the local player.
   const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
   const sunLightTargetRef = useRef<THREE.Object3D | null>(null);
-  const sunDiscRef = useRef<THREE.Object3D | null>(null);
 
   // Set by `Players` when the self avatar's `RigidBody` mounts; SceneFrame
   // reads it each frame to drive the `KinematicCharacterController`.
@@ -260,18 +251,29 @@ export function Scene(props: SceneProps) {
           lighting={lighting}
           sunLightRef={sunLightRef}
           sunLightTargetRef={sunLightTargetRef}
-          sunDiscRef={sunDiscRef}
         />
         <SunFollower
           lightRef={sunLightRef}
           lightTargetRef={sunLightTargetRef}
-          sunDiscRef={sunDiscRef}
           sunOffset={lighting.sunPosition as [number, number, number]}
           selfPosRef={selfPosRef}
         />
-        <GradientBackground
+        {/* The sky draws the visible sun in the directional light's
+            direction, so the disc lines up with the shadows. */}
+        <SkyDome
           topColor={background.topColor}
+          horizonColor={background.horizonColor}
           bottomColor={background.bottomColor}
+          sun={
+            lighting.showSunDisc
+              ? {
+                  position: lighting.sunPosition,
+                  color: lighting.sunColor,
+                  discRadius: lighting.sunDiscRadius,
+                  glow: lighting.sunDiscIntensity,
+                }
+              : null
+          }
         />
 
         <ObjectInstances store={store} exclude={excludeBakedInstance} />

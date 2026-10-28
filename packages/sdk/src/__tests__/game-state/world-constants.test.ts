@@ -42,4 +42,13 @@ describe('WorldConstants', () => {
     expect(() => parseWorldConstants({ ...DEFAULT_WORLD_CONSTANTS, schemaVersion: 2 })).toThrow();
     expect(() => parseWorldConstants(null)).toThrow();
   });
+
+  it('parseWorldConstants accepts a horizon colour, still parses documents without one, and rejects a bad one', () => {
+    const background = { ...DEFAULT_WORLD_CONSTANTS.background, horizonColor: '#ffd9b0' };
+    expect(parseWorldConstants({ ...DEFAULT_WORLD_CONSTANTS, background }).background).toEqual(background);
+    expect(parseWorldConstants(DEFAULT_WORLD_CONSTANTS).background.horizonColor).toBeUndefined();
+    expect(() =>
+      parseWorldConstants({ ...DEFAULT_WORLD_CONSTANTS, background: { ...background, horizonColor: 'peach' } }),
+    ).toThrow();
+  });
 });
