@@ -24,6 +24,7 @@ import {
   type ColliderTag,
 } from '../physics/groups.ts';
 import { routeContactEvent } from '../physics/bridge.ts';
+import { BODY_Y } from '../physics/rules.ts';
 
 interface PlayersProps {
   store: Store;
@@ -386,10 +387,6 @@ export function Players({
     if (motionChanged) setMotionByPlayer(nextMotion);
     if (animScaleChanged) setAnimScaleByPlayer(nextAnimScales);
   });
-
-  // The body collider centre is at the rigid-body origin, lifted ~0.9 m so
-  // the ball is roughly torso-height. Sensors share that centre.
-  const BODY_Y = 0.9;
 
   // Every character body in this scene is a kinematic-position rigid
   // body. Rapier's default `ActiveCollisionTypes.DEFAULT` only enables

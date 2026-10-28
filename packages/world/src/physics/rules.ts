@@ -41,6 +41,16 @@ export const SPAWN_DROP_HEIGHT = 4;
  * character obeys the same contact rule. */
 export const CHARACTER_CONTROLLER_SKIN = 0.0001;
 
+/** Height of a character's body-ball centre above its rigid-body root,
+ * the position the store holds (`players[id].pos`). */
+export const BODY_Y = 0.9;
+
+/** Where a character stands, from its store position: the bottom of its
+ * body ball, which the controller rests on the surface. */
+export function feetPosition(pos: Vec3, charRadius: number): Vec3 {
+  return { x: pos.x, y: pos.y + BODY_Y - charRadius, z: pos.z };
+}
+
 /** Margin (m) below the lowest cube before a character counts as
  * "fallen off the map" and is forcibly respawned. Generous enough
  * that a character resting on the lowest cube's top can't trip the

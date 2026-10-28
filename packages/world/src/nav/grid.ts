@@ -14,9 +14,16 @@ export interface NavGrid {
   height: number;
   /** The largest rise between neighbouring cells a character can walk. */
   maxStep: number;
-  /** 1 where a character can stand. */
+  /**
+   * 1 where a character can stand. A wide obstacle's top can keep a
+   * walkable island no stairs lead to; `findPath` never reaches it
+   * because it only snaps to cells near the point's own height.
+   */
   walkable: Uint8Array;
-  /** Standing height per cell; NaN where nothing is underfoot. */
+  /**
+   * Standing height per cell; NaN where nothing is underfoot or no top
+   * has head-room (an overhang, a solid column).
+   */
   surface: Float32Array;
 }
 
@@ -29,8 +36,11 @@ export interface NavGridOptions {
 
 const MARGIN_CELLS = 2;
 const EPS = 1e-4;
+/** 500 m square at the default cell size; a stray far-away collider would otherwise cost gigabytes. */
+const MAX_CELLS = 4_000_000;
 
-export function buildNavGrid(colliders: readonly ColliderDescriptor[], opts: NavGridOptions): NavGrid {
+/** Null, with a warning, when the colliders span more than `MAX_CELLS` cells. */
+export function buildNavGrid(colliders: readonly ColliderDescriptor[], opts: NavGridOptions): NavGrid | null {
   const cellSize = opts.cellSize ?? 0.25;
   const bounds = xzBounds(colliders);
   const origin = {
@@ -39,6 +49,10 @@ export function buildNavGrid(colliders: readonly ColliderDescriptor[], opts: Nav
   };
   const width = Math.ceil((bounds.maxX - origin.x) / cellSize) + MARGIN_CELLS;
   const height = Math.ceil((bounds.maxZ - origin.z) / cellSize) + MARGIN_CELLS;
+  if (width * height > MAX_CELLS) {
+    console.warn(`nav grid: colliders span ${width}×${height} cells, over the ${MAX_CELLS} limit; navigation is off`);
+    return null;
+  }
   const grid: NavGrid = {
     origin,
     cellSize,
@@ -57,11 +71,13 @@ export function buildNavGrid(colliders: readonly ColliderDescriptor[], opts: Nav
     }
   }
 
-  const blocked = new Uint8Array(width * height);
+  const blocked = obstructions(grid, colliders, opts.charHeight);
   for (let j = 0; j < height; j++) {
     for (let i = 0; i < width; i++) {
       const c = j * width + i;
-      blocked[c] = Number.isNaN(grid.surface[c]) || isLedge(grid, i, j) ? 1 : 0;
+      if (Number.isNaN(grid.surface[c]) || isLedge(grid, i, j)) {
+        blocked[c] = 1;
+      }
     }
   }
   inflate(grid, blocked, opts.charRadius);
@@ -107,6 +123,14 @@ function cellRange(lo: number, hi: number, origin: number, cellSize: number, cou
   ];
 }
 
+/** Inclusive range of cell indices whose span overlaps `(lo, hi)` along one axis. */
+function overlapRange(lo: number, hi: number, origin: number, cellSize: number, count: number): [number, number] {
+  return [
+    Math.max(0, Math.floor((lo - origin) / cellSize + EPS)),
+    Math.min(count - 1, Math.ceil((hi - origin) / cellSize - EPS) - 1),
+  ];
+}
+
 /** Per cell, the `[bottom, top, bottom, top, …]` spans of solid each collider fills above the cell centre. */
 function solidColumns(grid: NavGrid, colliders: readonly ColliderDescriptor[]): (number[] | undefined)[] {
   const columns: (number[] | undefined)[] = new Array(grid.width * grid.height);
@@ -135,29 +159,16 @@ function solidColumns(grid: NavGrid, colliders: readonly ColliderDescriptor[]): 
 /** Treats a trimesh as solid between the lowest and highest of its triangles over each cell centre. */
 function trimeshSpans(grid: NavGrid, v: readonly number[], indices: readonly number[]): Map<number, [number, number]> {
   const spans = new Map<number, [number, number]>();
-  for (let t = 0; t < indices.length; t += 3) {
-    const a = indices[t] * 3;
-    const b = indices[t + 1] * 3;
-    const c = indices[t + 2] * 3;
-    const ax = v[a], ay = v[a + 1], az = v[a + 2];
-    const bx = v[b], by = v[b + 1], bz = v[b + 2];
-    const cx = v[c], cy = v[c + 1], cz = v[c + 2];
-    const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
-    if (Math.abs(det) < EPS) {
-      continue;
-    }
-    const [i0, i1] = cellRange(Math.min(ax, bx, cx), Math.max(ax, bx, cx), grid.origin.x, grid.cellSize, grid.width);
-    const [j0, j1] = cellRange(Math.min(az, bz, cz), Math.max(az, bz, cz), grid.origin.z, grid.cellSize, grid.height);
+  for (const tri of triangles(v, indices)) {
+    const [i0, i1] = cellRange(tri.minX, tri.maxX, grid.origin.x, grid.cellSize, grid.width);
+    const [j0, j1] = cellRange(tri.minZ, tri.maxZ, grid.origin.z, grid.cellSize, grid.height);
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
         const p = cellCentre(grid, i, j);
-        const wa = ((bz - cz) * (p.x - cx) + (cx - bx) * (p.z - cz)) / det;
-        const wb = ((cz - az) * (p.x - cx) + (ax - cx) * (p.z - cz)) / det;
-        const wc = 1 - wa - wb;
-        if (wa < -EPS || wb < -EPS || wc < -EPS) {
+        const y = tri.heightInside(p.x, p.z);
+        if (Number.isNaN(y)) {
           continue;
         }
-        const y = wa * ay + wb * by + wc * cy;
         const cell = j * grid.width + i;
         const span = spans.get(cell);
         if (span) {
@@ -170,6 +181,110 @@ function trimeshSpans(grid: NavGrid, v: readonly number[], indices: readonly num
     }
   }
   return spans;
+}
+
+interface Triangle {
+  minX: number;
+  maxX: number;
+  maxY: number;
+  minZ: number;
+  maxZ: number;
+  /** The triangle's plane height at `(x, z)`, extrapolated past its edges. */
+  planeHeight(x: number, z: number): number;
+  /** The triangle's height at `(x, z)`, or NaN outside it. */
+  heightInside(x: number, z: number): number;
+}
+
+/** A trimesh's triangles that aren't vertical (a vertical one has no height over any point). */
+function* triangles(v: readonly number[], indices: readonly number[]): Generator<Triangle> {
+  for (let t = 0; t < indices.length; t += 3) {
+    const a = indices[t] * 3;
+    const b = indices[t + 1] * 3;
+    const c = indices[t + 2] * 3;
+    const ax = v[a], ay = v[a + 1], az = v[a + 2];
+    const bx = v[b], by = v[b + 1], bz = v[b + 2];
+    const cx = v[c], cy = v[c + 1], cz = v[c + 2];
+    const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+    if (Math.abs(det) < EPS) {
+      continue;
+    }
+    const weightA = (x: number, z: number) => ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
+    const weightB = (x: number, z: number) => ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
+    yield {
+      minX: Math.min(ax, bx, cx),
+      maxX: Math.max(ax, bx, cx),
+      maxY: Math.max(ay, by, cy),
+      minZ: Math.min(az, bz, cz),
+      maxZ: Math.max(az, bz, cz),
+      planeHeight(x, z) {
+        const wa = weightA(x, z);
+        const wb = weightB(x, z);
+        return wa * ay + wb * by + (1 - wa - wb) * cy;
+      },
+      heightInside(x, z) {
+        const wa = weightA(x, z);
+        const wb = weightB(x, z);
+        return wa < -EPS || wb < -EPS || 1 - wa - wb < -EPS ? NaN : this.planeHeight(x, z);
+      },
+    };
+  }
+}
+
+/**
+ * Blocks every cell a collider rises out of more than a step above its
+ * surface, within head height, anywhere over the cell's square rather
+ * than only over its centre: a wall thinner than a cell can miss every
+ * centre.
+ */
+function obstructions(grid: NavGrid, colliders: readonly ColliderDescriptor[], charHeight: number): Uint8Array {
+  const { width, cellSize, origin } = grid;
+  const blocked = new Uint8Array(width * grid.height);
+  const obstruct = (c: number, bottom: number, top: number) => {
+    const s = grid.surface[c];
+    if (top > s + grid.maxStep && bottom < s + charHeight) {
+      blocked[c] = 1;
+    }
+  };
+  for (const col of colliders) {
+    if (col.type === 'cuboid') {
+      const { center: m, halfExtents: h } = col;
+      const [i0, i1] = overlapRange(m.x - h.x, m.x + h.x, origin.x, cellSize, width);
+      const [j0, j1] = overlapRange(m.z - h.z, m.z + h.z, origin.z, cellSize, grid.height);
+      for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) {
+          obstruct(j * width + i, m.y - h.y, m.y + h.y);
+        }
+      }
+      continue;
+    }
+    // ponytail: a trimesh counts as solid from its lowest vertex up; fine for slopes standing on a floor.
+    let bottom = Infinity;
+    for (let k = 1; k < col.vertices.length; k += 3) {
+      bottom = Math.min(bottom, col.vertices[k]);
+    }
+    for (const tri of triangles(col.vertices, col.indices)) {
+      const [i0, i1] = overlapRange(tri.minX, tri.maxX, origin.x, cellSize, width);
+      const [j0, j1] = overlapRange(tri.minZ, tri.maxZ, origin.z, cellSize, grid.height);
+      for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) {
+          const x = origin.x + i * cellSize;
+          const z = origin.z + j * cellSize;
+          // A plane peaks at a corner of the square; the clamp undoes extrapolating past the triangle.
+          const top = Math.min(
+            tri.maxY,
+            Math.max(
+              tri.planeHeight(x, z),
+              tri.planeHeight(x + cellSize, z),
+              tri.planeHeight(x, z + cellSize),
+              tri.planeHeight(x + cellSize, z + cellSize),
+            ),
+          );
+          obstruct(j * width + i, bottom, top);
+        }
+      }
+    }
+  }
+  return blocked;
 }
 
 /**

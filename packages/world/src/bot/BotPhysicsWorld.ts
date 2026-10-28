@@ -8,16 +8,13 @@ import {
   type ColliderTag,
 } from '../physics/groups.ts';
 import {
+  BODY_Y,
   CHARACTER_CONTROLLER_SKIN,
   GRAVITY,
   worldObjectsToColliders,
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp, type StepUpProbe } from '../physics/step-up.ts';
-
-/** Local-y the bot collider sits at (matches the browser-side BODY_Y in
- * Players.tsx so all bodies are at the same elevation). */
-export const BODY_Y = 0.9;
 
 
 /** Per-peer kinematic mirror body the bot maintains in its own Rapier

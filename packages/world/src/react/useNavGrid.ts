@@ -12,7 +12,7 @@ const NavGridContext = createContext<NavGrid | null>(null);
 
 export const NavGridProvider = NavGridContext.Provider;
 
-/** The walkability grid of the room being played; null while it has no world objects. */
+/** The walkability grid of the room being played; null while it has no world objects or they span too far to grid. */
 export function useNavGrid(): NavGrid | null {
   return useContext(NavGridContext);
 }

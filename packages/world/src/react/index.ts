@@ -20,6 +20,7 @@ export {
   type PlayStorages,
   type UsePlaySessionOptions,
 } from './usePlaySession.ts';
-export { NavGridProvider, useNavGrid } from './useNavGrid.tsx';
+export { NavGridProvider, useNavGrid } from './useNavGrid.ts';
 export { findPath } from '../nav/path.ts';
+export { feetPosition } from '../physics/rules.ts';
 export type { NavGrid } from '../nav/grid.ts';

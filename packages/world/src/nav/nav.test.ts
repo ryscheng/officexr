@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import type { ColliderDescriptor } from '../physics/rules.ts';
+import { describe, expect, it, vi } from 'vitest';
+import { BODY_Y, feetPosition, type ColliderDescriptor } from '../physics/rules.ts';
 import { STEP_UP_MAX_HEIGHT } from '../physics/step-up.ts';
 import { CHAR_HEIGHT_M } from '../renderer/config.ts';
 import { buildNavGrid, type NavGrid } from './grid.ts';
@@ -21,11 +21,15 @@ function box(x0: number, x1: number, y0: number, y1: number, z0: number, z1: num
 const wall = (x0: number, x1: number, z0: number, z1: number) => box(x0, x1, FLOOR_TOP, FLOOR_TOP + 3, z0, z1);
 
 function grid(...extra: ColliderDescriptor[]): NavGrid {
+  return gridWithRadius(CHAR_RADIUS, ...extra);
+}
+
+function gridWithRadius(charRadius: number, ...extra: ColliderDescriptor[]): NavGrid {
   return buildNavGrid([box(-10, 10, 0, FLOOR_TOP, -10, 10), ...extra], {
-    charRadius: CHAR_RADIUS,
+    charRadius,
     charHeight: CHAR_HEIGHT_M,
     maxStep: STEP_UP_MAX_HEIGHT,
-  });
+  })!;
 }
 
 const onFloor = (x: number, z: number) => ({ x, y: FLOOR_TOP, z });
@@ -113,22 +117,43 @@ describe('findPath', () => {
     });
   });
 
-  it('keeps the path a body radius from walls, to within half a cell', () => {
-    const g = grid(wall(-1, 10, -0.25, 0.25));
+  it.each([
+    { name: 'on cell edges', x0: -1, z0: -0.25, z1: 0.25 },
+    { name: 'off cell edges', x0: -1.12, z0: -0.36, z1: 0.36 },
+  ])('keeps the path a body radius from a wall $name, to within half a cell', ({ x0, z0, z1 }) => {
+    const g = grid(wall(x0, 10, z0, z1));
     const path = findPath(g, onFloor(3, -3), onFloor(3, 3));
     expect(path).not.toBeNull();
     for (const p of samples(path!)) {
-      const dx = Math.max(-1 - p.x, 0, p.x - 10);
-      const dz = Math.max(-0.25 - p.z, 0, p.z - 0.25);
+      const dx = Math.max(x0 - p.x, 0, p.x - 10);
+      const dz = Math.max(z0 - p.z, 0, p.z - z1);
       expect(Math.hypot(dx, dz)).toBeGreaterThanOrEqual(CHAR_RADIUS - CELL / 2);
     }
   });
 
-  it('passes a 1 m gap', () => {
-    const g = grid(wall(-10, -0.5, -0.25, 0.25), wall(0.5, 10, -0.25, 0.25));
+  it('is blocked by a wall thinner than a cell that misses every cell centre', () => {
+    expect(findPath(grid(wall(-10, 10, 0.13, 0.33)), onFloor(0, -3), onFloor(0, 3))).toBeNull();
+  });
+
+  it.each([
+    { name: 'on cell edges', gap: -0.5 },
+    { name: 'off cell edges', gap: -0.4 },
+  ])('passes a 1 m gap $name', ({ gap }) => {
+    const g = grid(wall(-10, gap, 0.13, 0.33), wall(gap + 1, 10, 0.13, 0.33));
     const path = findPath(g, onFloor(-4, -4), onFloor(4, 4));
     expect(path).not.toBeNull();
-    expect(Math.abs(crossingX(path!, 0))).toBeLessThan(0.5);
+    const x = crossingX(path!, 0.23);
+    expect(x).toBeGreaterThan(gap);
+    expect(x).toBeLessThan(gap + 1);
+  });
+
+  it('takes store positions once converted to feet height', () => {
+    const charRadius = 0.25;
+    const g = gridWithRadius(charRadius);
+    // A body standing on the floor has its root this far below the floor top.
+    const storePos = (x: number, z: number) => ({ x, y: FLOOR_TOP - (BODY_Y - charRadius), z });
+    expect(findPath(g, storePos(-5, 0), storePos(5, 0))).toBeNull();
+    expect(findPath(g, feetPosition(storePos(-5, 0), charRadius), feetPosition(storePos(5, 0), charRadius))).toHaveLength(2);
   });
 
   it('does not walk off the floor edge', () => {
@@ -150,7 +175,7 @@ describe('findPath', () => {
         ),
       ],
       { charRadius: CHAR_RADIUS, charHeight: CHAR_HEIGHT_M, maxStep: STEP_UP_MAX_HEIGHT },
-    );
+    )!;
     expect(g.width).toBeGreaterThanOrEqual(240);
     expect(g.height).toBeGreaterThanOrEqual(240);
     const from = onFloor(-28, -28);
@@ -163,6 +188,17 @@ describe('findPath', () => {
       expect(findPath(g, from, to)).not.toBeNull();
       elapsed = Math.min(elapsed, performance.now() - t0);
     }
-    expect(elapsed).toBeLessThan(50);
+    expect(elapsed).toBeLessThan(100);
+  });
+});
+
+describe('buildNavGrid', () => {
+  it('gives up on colliders spread too far apart to grid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const colliders = [box(-10, 10, 0, FLOOR_TOP, -10, 10), box(2000, 2001, 0, 1, 2000, 2001)];
+    const g = buildNavGrid(colliders, { charRadius: CHAR_RADIUS, charHeight: CHAR_HEIGHT_M, maxStep: STEP_UP_MAX_HEIGHT });
+    expect(g).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 });

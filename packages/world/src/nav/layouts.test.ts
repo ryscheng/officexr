@@ -24,7 +24,7 @@ function layoutGrid(layout: unknown) {
     charRadius: worldSettingsFromConstants(DEFAULT_WORLD_CONSTANTS).charRadius,
     charHeight: CHAR_HEIGHT_M,
     maxStep: STEP_UP_MAX_HEIGHT,
-  });
+  })!;
 }
 
 describe('nav grid over checked-in layouts', () => {

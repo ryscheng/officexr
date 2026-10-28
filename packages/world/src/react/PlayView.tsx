@@ -17,7 +17,7 @@ import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
 import { useWorldConstants } from './useWorldConstants.ts';
 import { useSlowNotice } from './useSlowNotice.ts';
 import { useWorldFocus } from './useWorldFocus.ts';
-import { NavGridProvider, useBuildNavGrid } from './useNavGrid.tsx';
+import { NavGridProvider, useBuildNavGrid } from './useNavGrid.ts';
 import { INITIAL_WORLD_READINESS, worldReadiness } from './world-readiness.ts';
 
 /** Clears a 44px host menu button at `right: 12`. */

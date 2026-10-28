@@ -12,6 +12,10 @@ const NEIGHBOUR_DJ = [0, 0, 1, -1, 1, -1, 1, -1];
  * centres of the cells to walk through (both ends included), or null
  * when either end has no walkable cell nearby at its height or the
  * ends are not connected.
+ *
+ * `y` is feet height, the surface the point stands on. A store position
+ * (`players[id].pos`) is the body root, below the feet; convert it with
+ * `feetPosition(pos, charRadius)`.
  */
 export function findPath(
   grid: NavGrid,
