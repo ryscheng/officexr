@@ -5,8 +5,10 @@
  * Usage:
  *   pnpm tsx packages/world/scripts/bake-layout.ts <layoutName>
  *   pnpm tsx packages/world/scripts/bake-layout.ts --all
+ *   pnpm tsx packages/world/scripts/bake-layout.ts --map <mapName>
  *
- * Reads layout JSON from `packages/world/layouts/<name>.json`. Writes the baked GLB to
+ * Reads layout JSON from `packages/world/layouts/<name>.json`. `--map` bakes every layout the rooms of
+ * `packages/world/maps/<mapName>.json` use (rooms come from `packages/world/rooms/`). Writes the baked GLB to
  * `packages/world/baked-layouts/<name>.glb`.
  *
  * Exits 0 on success, 1 on any failure.
@@ -26,11 +28,16 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bakeLayoutGlb } from '../src/app/bake-layout-glb.ts';
 import { deserializeLayout } from '../src/scenes/layout-document.ts';
+import { groupPlacementsByLayout, mapLayoutPlacements } from '../src/scenes/map-layout-placements.ts';
+import { deserializeMap } from '../src/scenes/serialize.ts';
+import type { RoomDocument } from '../src/scenes/commands.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WORLD_ROOT = path.resolve(HERE, '..');
 const STUDIO_PUBLIC = path.resolve(WORLD_ROOT, '../../packages/studio/public');
 const LAYOUTS_DIR = path.resolve(WORLD_ROOT, 'layouts');
+const MAPS_DIR = path.resolve(WORLD_ROOT, 'maps');
+const ROOMS_DIR = path.resolve(WORLD_ROOT, 'rooms');
 const BAKED_DIR = path.resolve(WORLD_ROOT, 'baked-layouts');
 
 async function loadLayout(name: string) {
@@ -42,6 +49,25 @@ async function loadLayout(name: string) {
     throw new Error(`Layout "${name}" not found at ${filePath}`);
   }
   return deserializeLayout(JSON.parse(raw) as unknown);
+}
+
+async function readJson(filePath: string): Promise<unknown> {
+  return JSON.parse(await fs.readFile(filePath, 'utf-8')) as unknown;
+}
+
+async function layoutsOfMap(mapName: string): Promise<string[]> {
+  const mapPath = path.resolve(MAPS_DIR, `${mapName}.json`);
+  const map = deserializeMap(await readJson(mapPath).catch(() => {
+    throw new Error(`Map "${mapName}" not found at ${mapPath}`);
+  }));
+  const { placements, missingRooms } = await mapLayoutPlacements(
+    map,
+    (name) => readJson(path.resolve(ROOMS_DIR, `${name}.json`)).then((room) => room as RoomDocument, () => null),
+  );
+  if (missingRooms.length > 0) {
+    console.warn(`[bake-layout] Map "${mapName}" rooms not found: ${missingRooms.join(', ')}`);
+  }
+  return [...groupPlacementsByLayout(placements).keys()];
 }
 
 async function ensureBakedDir(): Promise<void> {
@@ -89,16 +115,19 @@ async function main(): Promise<void> {
       optimizerOverride = a.slice('--optimizer='.length);
     }
   }
+  const mapName = args[args.indexOf('--map') + 1];
+  const mapFlag = args.includes('--map');
   const names = args.filter(
     (a, i) =>
       !a.startsWith('--') &&
-      // skip the value that follows `--optimizer` (space form)
-      args[i - 1] !== '--optimizer',
+      // skip the value that follows `--optimizer` or `--map` (space form)
+      args[i - 1] !== '--optimizer' &&
+      args[i - 1] !== '--map',
   );
 
-  if (!allFlag && names.length === 0) {
+  if (!allFlag && !mapFlag && names.length === 0) {
     console.error(
-      'Usage: bake-layout <layoutName> [<layoutName>…] | --all [--optimizer <id>]',
+      'Usage: bake-layout <layoutName> [<layoutName>…] | --all | --map <mapName> [--optimizer <id>]',
     );
     process.exit(1);
   }
@@ -113,6 +142,13 @@ async function main(): Promise<void> {
       process.exit(0);
     }
     console.log(`[bake-layout] Baking all ${targets.length} layout(s): ${targets.join(', ')}`);
+  } else if (mapFlag) {
+    if (mapName === undefined || mapName.startsWith('--')) {
+      console.error('[bake-layout] --map needs a map name');
+      process.exit(1);
+    }
+    targets = await layoutsOfMap(mapName);
+    console.log(`[bake-layout] Baking ${targets.length} layout(s) of map "${mapName}": ${targets.join(', ')}`);
   } else {
     targets = names;
   }

@@ -8,6 +8,7 @@ import {
 } from '@officexr/world/scenes';
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
 import { HeavyWorkLock } from './heavy-work-lock.ts';
+import { BakeJobs } from './tools/bake-jobs.ts';
 import { createChromiumRenderer } from './renderer.ts';
 import { handleMcpRequest, type StudioMcpOptions } from './server.ts';
 import type { StudioDocuments } from './studio-documents.ts';
@@ -73,6 +74,7 @@ export default function studioMcpPlugin({
     modelRoot,
     heavyWorkLock: new HeavyWorkLock('a bake or render'),
     renderer: createChromiumRenderer({ executablePath: chromiumPath }),
+    bakeJobs: new BakeJobs(),
   };
   return {
     name: 'officexr:studio-mcp',

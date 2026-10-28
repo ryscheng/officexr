@@ -1,15 +1,42 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { LayoutDocument, WorldObjectKindCatalogV1 } from '@officexr/world/scenes';
 import type { HeavyWorkLock } from '../heavy-work-lock.ts';
 import type { StudioDocuments } from '../studio-documents.ts';
 import { checkedName, nameSchema } from './documents.ts';
-import { errorResult, guard, jsonResult } from './shared.ts';
+import { guard, jsonResult } from './shared.ts';
 
-export function registerBakedLayoutTools(
-  server: McpServer,
-  { layouts, catalog, bakedLayouts }: StudioDocuments,
-  modelRoot: string,
-  lock: HeavyWorkLock,
-): void {
+/** The shape of `bakeLayoutGlb` that the tools rely on, so tests can inject a stub. */
+export type BakeLayout = (input: {
+  layout: LayoutDocument;
+  modelRoot: string;
+  catalog: WorldObjectKindCatalogV1 | null;
+}) => Promise<{ glb: Uint8Array; meta: { optimizerId: string } }>;
+
+export interface BakeDeps {
+  docs: StudioDocuments;
+  modelRoot: string;
+  bake: BakeLayout;
+}
+
+// Lazy so vite.config.ts doesn't load the bake pipeline (three, gltf-transform) at startup.
+export const bakeLayoutLazily: BakeLayout = async (input) => {
+  const { bakeLayoutGlb } = await import('@officexr/world/bake-layout-glb');
+  return bakeLayoutGlb(input);
+};
+
+/** Bakes the stored layout against the live catalog and saves the GLB; throws if the layout is missing or the bake fails. */
+export async function bakeOne(name: string, { docs, modelRoot, bake }: BakeDeps) {
+  const layout = await docs.layouts.load(checkedName(name));
+  if (!layout) {
+    throw new Error(`layout "${name}" not found`);
+  }
+  const { glb, meta } = await bake({ layout, modelRoot, catalog: await docs.catalog.load() });
+  await docs.bakedLayouts.save(name, glb);
+  return { bytes: glb.length, optimizer: meta.optimizerId };
+}
+
+export function registerBakedLayoutTools(server: McpServer, lock: HeavyWorkLock, deps: BakeDeps): void {
+  const { bakedLayouts } = deps.docs;
   server.registerTool(
     'bake_layout',
     {
@@ -22,15 +49,8 @@ export function registerBakedLayoutTools(
     ({ name }) =>
       guard(() =>
         lock.run(async () => {
-          const layout = await layouts.load(checkedName(name));
-          if (!layout) {
-            return errorResult(`layout "${name}" not found`);
-          }
-          // Lazy so vite.config.ts doesn't load the bake pipeline (three, gltf-transform) at startup.
-          const { bakeLayoutGlb } = await import('@officexr/world/bake-layout-glb');
-          const { glb, meta } = await bakeLayoutGlb({ layout, modelRoot, catalog: await catalog.load() });
-          await bakedLayouts.save(name, glb);
-          return jsonResult({ name, bytes: glb.length, optimizer: meta.optimizerId });
+          const { bytes, optimizer } = await bakeOne(name, deps);
+          return jsonResult({ name, bytes, optimizer });
         }),
       ),
   );

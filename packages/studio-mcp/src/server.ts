@@ -4,7 +4,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { StudioDocuments } from './studio-documents.ts';
 import type { HeavyWorkLock } from './heavy-work-lock.ts';
 import type { ViewRenderer } from './renderer.ts';
-import { registerBakedLayoutTools } from './tools/baked-layouts.ts';
+import { type BakeLayout, bakeLayoutLazily, registerBakedLayoutTools } from './tools/baked-layouts.ts';
+import { BakeJobs } from './tools/bake-jobs.ts';
 import { registerMapBakeTools } from './tools/map-bakes.ts';
 import { registerLayoutTools } from './tools/layouts.ts';
 import { registerMapTools } from './tools/maps.ts';
@@ -18,20 +19,25 @@ export interface StudioMcpOptions {
   /** Shared across requests: each request builds a fresh server, and a bake peaks near 290 MB. */
   heavyWorkLock: HeavyWorkLock;
   renderer: ViewRenderer;
+  /** Shared across requests so `get_bake_job` can see a job another request started. */
+  bakeJobs: BakeJobs;
+  /** Defaults to the real bake; tests inject a stub. */
+  bakeLayout?: BakeLayout;
 }
 
 /** `studioOrigin` is where this request reached the studio; the renderer loads its render page from there. */
 export function createStudioMcpServer(
   docs: StudioDocuments,
-  { modelRoot, heavyWorkLock, renderer }: StudioMcpOptions,
+  { modelRoot, heavyWorkLock, renderer, bakeJobs, bakeLayout = bakeLayoutLazily }: StudioMcpOptions,
   studioOrigin: string,
 ): McpServer {
   const server = new McpServer({ name: 'officexr-studio', version: '0.1.0' });
   registerRoomTools(server, docs);
   registerMapTools(server, docs);
   registerLayoutTools(server, docs);
-  registerBakedLayoutTools(server, docs, modelRoot, heavyWorkLock);
-  registerMapBakeTools(server, docs);
+  const bakeDeps = { docs, modelRoot, bake: bakeLayout };
+  registerBakedLayoutTools(server, heavyWorkLock, bakeDeps);
+  registerMapBakeTools(server, heavyWorkLock, bakeJobs, bakeDeps);
   registerRenderTools(server, docs, studioOrigin, renderer, heavyWorkLock);
   registerWorldTools(server, docs);
   return server;
