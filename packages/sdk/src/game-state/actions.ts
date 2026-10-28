@@ -1,13 +1,16 @@
 import type { Bus } from './bus.ts';
 import type { Store } from './store.ts';
 import type {
+  AvatarData,
   CharacterConfig,
   CharacterConfigs,
   ChatMessage,
   CubeKindId,
   InventoryItem,
+  MicState,
   PlayerId,
   PlayerState,
+  PresenceStatus,
   RealtimeStatus,
   Stroke,
   Vec3,
@@ -17,6 +20,7 @@ import type {
   WorldObjects,
   ZombieState,
 } from './types.ts';
+import { DEPARTED_LINGER_MS } from './presence.ts';
 import { worldSettingsFromConstants, type WorldConstants } from './world-constants.ts';
 import { cloneWorldMap } from './world-map.ts';
 
@@ -24,6 +28,8 @@ export interface Actions {
   // local intents
   setSelfPosition(pos: Vec3, vel: Vec3, yaw: number, isAirborne: boolean): void;
   setMyJitsiRoom(roomId: string | null): void;
+  /** Patch the local player's presence. Broadcast by the `StatusBroadcaster`. */
+  setSelfPresence(patch: { status?: PresenceStatus; mic?: MicState }): void;
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
   applyHit(targetId: PlayerId, dmg: number, byId: PlayerId): void;
@@ -62,6 +68,8 @@ export interface Actions {
     tRecv: number,
     isAirborne: boolean,
   ): void;
+  applyRemotePresence(playerId: PlayerId, status: PresenceStatus, mic: MicState, now: number): void;
+  applyRemoteAvatar(playerId: PlayerId, avatar: AvatarData, name: string, now: number): void;
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
   applyZombieState(z: ZombieState): void;
@@ -72,6 +80,10 @@ export interface Actions {
   // membership
   upsertPlayer(p: Partial<PlayerState> & { id: PlayerId }): void;
   removePlayer(playerId: PlayerId): void;
+  /** Remember a player who is about to be removed, for `DEPARTED_LINGER_MS`. */
+  recordDeparted(playerId: PlayerId, now: number): void;
+  clearDeparted(playerId: PlayerId): void;
+  pruneDeparted(now: number): void;
 
   // realtime status helpers
   setRealtimeStatus(status: RealtimeStatus): void;
@@ -91,7 +103,8 @@ const DEFAULT_PLAYER: Omit<PlayerState, 'id'> = {
   isAirborne: false,
   avatar: { model: 'default' },
   jitsiRoom: null,
-  status: 'active',
+  status: 'available',
+  mic: 'none',
 };
 
 /**
@@ -121,6 +134,21 @@ export function createActions(store: Store, bus?: Bus): Actions {
     });
   }
 
+  // Any remote event is an implicit "this peer is here": upsert-on-missing lets
+  // peers that join without a snapshot handshake materialise, with
+  // DEFAULT_PLAYER filling the fields not on the wire.
+  function upsertRemote(id: PlayerId, patch: Partial<PlayerState>, now: number): void {
+    store.setState((s) => {
+      const existing = s.players[id];
+      const next: PlayerState = {
+        ...(existing ?? { ...DEFAULT_PLAYER, id }),
+        ...patch,
+        firstSeenAt: existing?.firstSeenAt ?? now,
+      };
+      return { players: { ...s.players, [id]: next } };
+    });
+  }
+
   return {
     setSelfPosition(pos, vel, yaw, isAirborne) {
       patchSelf({ pos, vel, yaw, isAirborne });
@@ -128,6 +156,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     setMyJitsiRoom(roomId) {
       patchSelf({ jitsiRoom: roomId });
+    },
+
+    setSelfPresence({ status, mic }) {
+      patchSelf({ ...(status && { status }), ...(mic && { mic }) });
     },
 
     setWorldConstants(next) {
@@ -255,18 +287,15 @@ export function createActions(store: Store, bus?: Bus): Actions {
     },
 
     applyRemotePosition(playerId, pos, vel, yaw, tRecv, isAirborne) {
-      // A position broadcast is implicit "this peer is here, with this state".
-      // Upsert-on-missing so peers that join without a snapshot handshake
-      // still materialise into the receiver's office. The DEFAULT_PLAYER
-      // template provides sensible defaults for fields not on the wire
-      // (name, hp, avatar, status); pos/vel/yaw/tRecv/isAirborne come from the event.
-      store.setState((s) => {
-        const existing = s.players[playerId];
-        const next: PlayerState = existing
-          ? { ...existing, pos, vel, yaw, tRecv, isAirborne }
-          : { ...DEFAULT_PLAYER, id: playerId, pos, vel, yaw, tRecv, isAirborne };
-        return { players: { ...s.players, [playerId]: next } };
-      });
+      upsertRemote(playerId, { pos, vel, yaw, tRecv, isAirborne }, tRecv);
+    },
+
+    applyRemotePresence(playerId, status, mic, now) {
+      upsertRemote(playerId, { status, mic, lastStatusAt: now }, now);
+    },
+
+    applyRemoteAvatar(playerId, avatar, name, now) {
+      upsertRemote(playerId, { avatar, name }, now);
     },
 
     applyRemoteChat(msg) {
@@ -324,6 +353,31 @@ export function createActions(store: Store, bus?: Bus): Actions {
         delete players[playerId];
         return { players };
       });
+    },
+
+    recordDeparted(playerId, now) {
+      store.setState((s) => ({
+        departed: {
+          ...s.departed,
+          [playerId]: { name: s.players[playerId]?.name ?? '', leftAt: now },
+        },
+      }));
+    },
+
+    clearDeparted(playerId) {
+      if (!store.getState().departed[playerId]) return;
+      store.setState((s) => {
+        const { [playerId]: _gone, ...departed } = s.departed;
+        return { departed };
+      });
+    },
+
+    pruneDeparted(now) {
+      const stale = (d: { leftAt: number }) => now - d.leftAt > DEPARTED_LINGER_MS;
+      if (!Object.values(store.getState().departed).some(stale)) return;
+      store.setState((s) => ({
+        departed: Object.fromEntries(Object.entries(s.departed).filter(([, d]) => !stale(d))),
+      }));
     },
 
     setRealtimeStatus(status) {

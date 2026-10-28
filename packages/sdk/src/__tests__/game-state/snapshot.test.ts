@@ -16,7 +16,8 @@ describe('snapshot', () => {
       isAirborne: false,
       avatar: { model: 'gnome' },
       jitsiRoom: null,
-      status: 'active',
+      status: 'available',
+      mic: 'none',
     };
     s.chat = [{ id: 'm1', authorId: 'me', text: 'hi', t: 100 }];
     s.whiteboard.strokes.push({
@@ -73,13 +74,40 @@ describe('snapshot', () => {
       isAirborne: false,
       avatar: { model: 'default' },
       jitsiRoom: null,
-      status: 'active',
+      status: 'available',
+      mic: 'none',
       tRecv: 99999,
     };
     const wire = serializeOfficeState(s);
     const restored = createInitialOfficeState({ selfId: 'me', officeId: 'r' });
     applySnapshot(restored, JSON.parse(JSON.stringify(wire)));
     expect(restored.players.remote.tRecv).toBeUndefined();
+  });
+
+  it('strips local-only presence fields and departed on serialize', () => {
+    const s = createInitialOfficeState({ selfId: 'me', officeId: 'r' });
+    s.players['remote'] = {
+      id: 'remote',
+      name: 'R',
+      pos: { x: 0, y: 0, z: 0 },
+      vel: { x: 0, y: 0, z: 0 },
+      yaw: 0,
+      hp: 100,
+      isDead: false,
+      isAirborne: false,
+      avatar: { model: 'default' },
+      jitsiRoom: null,
+      status: 'away',
+      mic: 'muted',
+      lastStatusAt: 5,
+      firstSeenAt: 1,
+    };
+    s.departed = { gone: { name: 'G', leftAt: 3 } };
+    const wire = serializeOfficeState(s);
+    expect(wire.players.remote).toMatchObject({ status: 'away', mic: 'muted' });
+    expect(wire.players.remote).not.toHaveProperty('lastStatusAt');
+    expect(wire.players.remote).not.toHaveProperty('firstSeenAt');
+    expect(wire).not.toHaveProperty('departed');
   });
 
   it('round-trips proximity Sets as arrays on the wire', () => {

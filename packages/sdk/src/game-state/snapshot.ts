@@ -6,9 +6,9 @@ import type { OfficeState, PlayerState, ScreenShareSignal } from './types.ts';
 // Voice zones are left out: each client derives them from its own loaded map.
 export type SerializedOfficeState = Omit<
   OfficeState,
-  'proximity' | 'players' | 'screenShares' | 'worldConstants' | 'worldSettings' | 'voiceZones'
+  'proximity' | 'players' | 'departed' | 'screenShares' | 'worldConstants' | 'worldSettings' | 'voiceZones'
 > & {
-  players: Record<string, Omit<PlayerState, 'tRecv'>>;
+  players: Record<string, Omit<PlayerState, 'tRecv' | 'lastStatusAt' | 'firstSeenAt'>>;
   proximity: Record<string, string[]>;
   screenShares: Record<string, Omit<ScreenShareSignal, 'stream'> & { stream: null }>;
 };
@@ -16,7 +16,7 @@ export type SerializedOfficeState = Omit<
 export function serializeOfficeState(state: OfficeState): SerializedOfficeState {
   const players: SerializedOfficeState['players'] = {};
   for (const [id, p] of Object.entries(state.players)) {
-    const { tRecv: _tRecv, ...rest } = p;
+    const { tRecv: _tRecv, lastStatusAt: _lastStatusAt, firstSeenAt: _firstSeenAt, ...rest } = p;
     players[id] = rest;
   }
 

@@ -14,10 +14,24 @@ import {
   POSITION_CONSTANTS,
 } from './outbound/position-broadcaster.ts';
 import { StateDiffBroadcaster } from './outbound/state-diff-broadcaster.ts';
+import { StatusBroadcaster } from './outbound/status-broadcaster.ts';
 
 // Re-export so existing consumers keep working without their import paths
 // changing.
 export { applyNetEventToStore, POSITION_CONSTANTS };
+
+export const HEARTBEAT_TICK_MS = 1_000;
+
+/** Interval seam so tests can drive the heartbeat without real time. */
+export interface IntervalTimers {
+  setInterval(fn: () => void, ms: number): unknown;
+  clearInterval(handle: unknown): void;
+}
+
+const GLOBAL_TIMERS: IntervalTimers = {
+  setInterval: (fn, ms) => setInterval(fn, ms),
+  clearInterval: (handle) => clearInterval(handle as Parameters<typeof clearInterval>[0]),
+};
 
 interface SyncEngineOpts {
   store: Store;
@@ -34,12 +48,15 @@ interface SyncEngineOpts {
   seqSeed?: () => number;
   /** Start without announcing the self player until {@link SyncEngine.releaseSelf}. */
   holdSelf?: boolean;
+  /** Drives {@link SyncEngine.tickHeartbeat}; defaults to the global timers. */
+  timers?: IntervalTimers;
 }
 
 /**
- * Thin coordinator over three collaborators:
+ * Thin coordinator over four collaborators:
  *   - {@link PositionBroadcaster} — self-position cadence + stop-grace.
  *   - {@link StateDiffBroadcaster} — chat / whiteboard / world diff broadcasts.
+ *   - {@link StatusBroadcaster} — self `presence:status` on change + heartbeat.
  *   - {@link InboundRouter} — validate → version → snapshot-shortcircuit →
  *     pause-buffer → dedup → authority-warn → apply.
  *
@@ -53,6 +70,7 @@ export class SyncEngine {
 
   private position: PositionBroadcaster;
   private stateDiff: StateDiffBroadcaster;
+  private status: StatusBroadcaster;
   private inbound: InboundRouter;
 
   private started = false;
@@ -61,6 +79,9 @@ export class SyncEngine {
   private offChannel: (() => void) | null = null;
   private offPresence: (() => void) | null = null;
   private offStatus: (() => void) | null = null;
+  private heartbeat: unknown = null;
+  private timers: IntervalTimers;
+  private clock: Clock;
 
   // outbound seq counter (per local actor); shared between collaborators
   private seqs: SeqCounter;
@@ -71,6 +92,8 @@ export class SyncEngine {
     this.channel = opts.channel;
     this.seqs = createSeqCounter(opts.seqSeed);
     this.heldSelf = opts.holdSelf ?? false;
+    this.timers = opts.timers ?? GLOBAL_TIMERS;
+    this.clock = opts.clock;
 
     const broadcast = (event: NetEvent) => this.broadcast(event);
     const takeSeq = () => this.takeSeq();
@@ -86,6 +109,13 @@ export class SyncEngine {
       clock: opts.clock,
       broadcast,
       takeSeq,
+    });
+    this.status = new StatusBroadcaster({
+      store: opts.store,
+      clock: opts.clock,
+      broadcast,
+      takeSeq,
+      isHeld: () => this.heldSelf,
     });
     this.inbound = new InboundRouter({
       store: opts.store,
@@ -131,6 +161,16 @@ export class SyncEngine {
     this.position.flushPosition();
   }
 
+  /**
+   * Re-send the self status when the heartbeat is due and prune expired
+   * `departed` entries. Runs from the engine's interval, never from the
+   * render loop, which browsers pause in hidden tabs.
+   */
+  tickHeartbeat(): void {
+    this.status.tick();
+    this.actions.pruneDeparted(this.clock.now());
+  }
+
   isSelfHeld(): boolean {
     return this.heldSelf;
   }
@@ -171,7 +211,12 @@ export class SyncEngine {
     // real change is treated as a delta, not absorbed into the
     // baseline.
     this.stateDiff.captureBaseline();
-    if (!this.heldSelf) this.position.announceSelf();
+    if (!this.heldSelf) {
+      this.position.announceSelf();
+      this.status.announceSelf();
+    }
+    this.status.start();
+    this.heartbeat = this.timers.setInterval(() => this.tickHeartbeat(), HEARTBEAT_TICK_MS);
 
     this.offStore = this.store.subscribeAll((next, prev) =>
       this.onStoreChange(next, prev),
@@ -184,6 +229,7 @@ export class SyncEngine {
     this.offPresence = this.channel.onPresenceChange((_joined, left) => {
       for (const id of left) {
         if (id === selfId) continue; // never remove self
+        this.actions.recordDeparted(id, this.clock.now());
         this.actions.removePlayer(id);
         // A returning peer's join snapshot restarts its seqs at 1.
         // ponytail: peers present across a client-only blip keep their seqs, so their re-sent snapshot is dropped until they next send.
@@ -207,6 +253,8 @@ export class SyncEngine {
     this.offChannel?.();
     this.offPresence?.();
     this.offStatus?.();
+    this.status.stop();
+    this.timers.clearInterval(this.heartbeat);
     this.started = false;
   }
 
@@ -215,6 +263,7 @@ export class SyncEngine {
   private announceSelf(): void {
     this.position.announceSelf();
     this.stateDiff.announceAvatar();
+    this.status.announceSelf();
   }
 
   private onStoreChange(next: OfficeState, prev: OfficeState): void {
@@ -229,6 +278,7 @@ export class SyncEngine {
    * so its next `onStoreChange` diff doesn't re-broadcast it.
    */
   private onInboundApplied(event: NetEvent): void {
+    this.actions.clearDeparted(event.actorId);
     if (event.kind === 'world:map') {
       this.stateDiff.markWorldMap(event.map);
     } else if (event.kind === 'world:characters') {

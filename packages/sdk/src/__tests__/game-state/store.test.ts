@@ -165,7 +165,8 @@ describe('actions', () => {
       isAirborne: false,
       avatar: { model: 'default' },
       jitsiRoom: null,
-      status: 'active',
+      status: 'available',
+      mic: 'none',
     });
     actions.upsertPlayer({ id: 'p', hp: 50 });
     const p = store.getState().players.p;
@@ -202,7 +203,8 @@ function makePlayer(id: string) {
     isAirborne: false,
     avatar: { model: 'default' },
     jitsiRoom: null,
-    status: 'active' as const,
+    status: 'available' as const,
+    mic: 'none' as const,
   };
 }
 

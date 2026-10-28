@@ -27,9 +27,19 @@ export type PlayerState = {
   isAirborne: boolean;
   avatar: AvatarData;
   jitsiRoom: string | null;
-  status: 'active' | 'inactive';
+  status: PresenceStatus;
+  mic: MicState;
   tRecv?: number;
+  /** Local-only: receive time of this player's last `presence:status`. */
+  lastStatusAt?: number;
+  /** Local-only: when this remote player was first upserted here. */
+  firstSeenAt?: number;
 };
+
+export type PresenceStatus = 'available' | 'away';
+export type MicState = 'none' | 'muted' | 'silent' | 'speaking';
+
+export type DepartedPlayer = { name: string; leftAt: number };
 
 export type ChatMessage = {
   id: string;
@@ -358,6 +368,8 @@ export type OfficeState = {
   selfId: PlayerId;
   officeId: string;
   players: Record<PlayerId, PlayerState>;
+  /** Local-only: players whose channel just left, kept for `DEPARTED_LINGER_MS`. */
+  departed: Record<PlayerId, DepartedPlayer>;
   proximity: Record<PlayerId, Set<PlayerId>>;
   chat: ChatMessage[];
   whiteboard: WhiteboardState;
