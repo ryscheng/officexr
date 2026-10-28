@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 5,
+  "name": "scenario-doorway",
+  "title": "Scenario Doorway Room",
+  "updatedAt": 1793177549699,
+  "layoutName": "scenario-doorway",
+  "commands": [],
+  "groups": {}
+}

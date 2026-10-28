@@ -15,7 +15,9 @@
  *                 stair-like solids) using the recipe's `cellSize` /
  *                 `heightEpsilon`. See `src/app/collider-scan.ts`.
  *   trimesh     — `scanColliderTrimesh` (slopes).
- *   profile     — not implemented yet; the CLI errors.
+ *   profile     — `scanColliderProfile` (silhouette along `axis`, default
+ *                 z, extruded through the kind; walls with openings and
+ *                 floors with holes) using the recipe's `cellSize`.
  * `--all` cannot be combined with explicit kind ids.
  *
  * With explicit kind ids, `--mode` picks the scan per invocation:
@@ -38,7 +40,10 @@ import { fileURLToPath } from 'node:url';
 import { NodeIO, type Document } from '@gltf-transform/core';
 import {
   scanColliderCuboids,
+  scanColliderProfile,
   scanColliderTrimesh,
+  type Aabb,
+  type NormalizedCuboid,
 } from '../src/app/collider-scan.ts';
 import {
   normalizeKind,
@@ -134,6 +139,23 @@ function logPrevious({ kindId, entry }: ScanContext): void {
   console.log(`  previous:    ${JSON.stringify(entry.colliderShape ?? null)}`);
 }
 
+function logScanHeader({ kindId, entry, gltfPath }: ScanContext, aabb: Aabb): void {
+  console.log(`[scan-colliders] ${kindId}`);
+  console.log(`  gltf:        ${gltfPath}`);
+  console.log(`  local AABB:  [${aabb.min.map(round6).join(', ')}] .. [${aabb.max.map(round6).join(', ')}]`);
+  console.log(`  previous:    ${JSON.stringify(entry.colliderShape ?? null)}`);
+}
+
+function scannedCuboidsSpec(cuboids: NormalizedCuboid[]) {
+  return {
+    kind: 'scanned-cuboids' as const,
+    cuboids: cuboids.map((c) => ({
+      min: c.min.map(round6) as [number, number, number],
+      max: c.max.map(round6) as [number, number, number],
+    })),
+  };
+}
+
 async function scanHeightfield(
   recipe: Extract<ColliderComplexity, { type: 'heightfield' }>,
   ctx: ScanContext,
@@ -143,13 +165,7 @@ async function scanHeightfield(
     cellSize: recipe.cellSize,
     heightEpsilon: recipe.heightEpsilon,
   });
-  const spec = {
-    kind: 'scanned-cuboids' as const,
-    cuboids: result.cuboids.map((c) => ({
-      min: c.min.map(round6) as [number, number, number],
-      max: c.max.map(round6) as [number, number, number],
-    })),
-  };
+  const spec = scannedCuboidsSpec(result.cuboids);
   assertSurvivesNormalizer(entry, spec, kindId);
 
   const sizeY = result.aabb.max[1] - result.aabb.min[1];
@@ -157,13 +173,8 @@ async function scanHeightfield(
   const tops = [...new Set(spec.cuboids.map((c) => round6(c.max[1] * sizeY)))].sort(
     (a, b) => a - b,
   );
-  console.log(`[scan-colliders] ${kindId}`);
-  console.log(`  gltf:        ${gltfPath}`);
+  logScanHeader(ctx, result.aabb);
   console.log(`  triangles:   ${result.triangleCount}`);
-  console.log(
-    `  local AABB:  [${result.aabb.min.map(round6).join(', ')}] .. [${result.aabb.max.map(round6).join(', ')}]`,
-  );
-  console.log(`  previous:    ${JSON.stringify(entry.colliderShape ?? null)}`);
   console.log(
     `  cuboids:     ${spec.cuboids.length} (${round6(sizeX)} m span starting x=${round6(result.aabb.min[0])})`,
   );
@@ -180,15 +191,33 @@ async function scanTrimesh(ctx: ScanContext): Promise<ColliderShapeSpec> {
     indices: tm.indices,
   };
   assertSurvivesNormalizer(entry, spec, kindId);
-  console.log(`[scan-colliders] ${kindId}`);
-  console.log(`  gltf:        ${gltfPath}`);
-  console.log(
-    `  local AABB:  [${tm.aabb.min.map(round6).join(', ')}] .. [${tm.aabb.max.map(round6).join(', ')}]`,
-  );
-  console.log(`  previous:    ${JSON.stringify(entry.colliderShape ?? null)}`);
+  logScanHeader(ctx, tm.aabb);
   console.log(
     `  trimesh:     ${tm.positions.length / 3} vertices, ${tm.triangleCount} triangles (welded)`,
   );
+  return spec;
+}
+
+async function scanProfile(
+  recipe: Extract<ColliderComplexity, { type: 'profile' }>,
+  ctx: ScanContext,
+): Promise<ColliderShapeSpec> {
+  const { kindId, entry, gltfPath } = ctx;
+  const axis = recipe.axis ?? 'z';
+  const result = scanColliderProfile(await loadGltf(gltfPath), { axis, cellSize: recipe.cellSize });
+  const spec = scannedCuboidsSpec(result.cuboids);
+  assertSurvivesNormalizer(entry, spec, kindId);
+
+  const { min, max } = result.aabb;
+  const planeAxes = [0, 1, 2].filter((a) => 'xyz'[a] !== axis);
+  const metres = (n: number, a: number) => (min[a] + n * (max[a] - min[a])).toFixed(3);
+  logScanHeader(ctx, result.aabb);
+  console.log(`  triangles:   ${result.triangleCount}`);
+  console.log(`  cuboids:     ${spec.cuboids.length} (profile along ${axis}, metres)`);
+  for (const c of spec.cuboids) {
+    const ranges = planeAxes.map((a) => `${'xyz'[a]} ${metres(c.min[a], a)}..${metres(c.max[a], a)}`);
+    console.log(`    ${ranges.join('  ')}`);
+  }
   return spec;
 }
 
@@ -207,7 +236,7 @@ async function runRecipe(
     case 'trimesh':
       return scanTrimesh(ctx);
     case 'profile':
-      throw new Error(`kind "${ctx.kindId}": colliderComplexity "profile" is not implemented yet`);
+      return scanProfile(recipe, ctx);
     default: {
       const unhandled: never = recipe;
       throw new Error(`unhandled colliderComplexity ${JSON.stringify(unhandled)}`);
