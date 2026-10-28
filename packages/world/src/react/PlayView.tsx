@@ -1,8 +1,4 @@
 import React, { useEffect, useReducer, useRef } from 'react';
-// Keep this above drei: tsc merges module augmentations in program order, and once
-// drei's augmentation of '@react-three/fiber' is merged first, @react-three/xr's
-// augmentation of 'three' no longer reaches the Object3D class, which breaks
-// `Group` → `Object3D` assignability in web and studio typechecks.
 import type { XRStore } from '@react-three/xr';
 import { useProgress } from '@react-three/drei';
 import type { Actions, Bus, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';

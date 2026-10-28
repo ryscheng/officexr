@@ -16,6 +16,7 @@
     "esModuleInterop": true,
     "types": ["@react-three/fiber", "node"]
   },
+  "files": ["src/renderer/xr-types.ts"],
   "include": [
     "src",
     "vite-plugin-storage.ts",

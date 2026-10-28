@@ -18,6 +18,7 @@ import {
   PITCH_MAX,
   PITCH_MIN,
   zoomedFov,
+  yawFromDirection,
   type LookRefs,
   type ViewOffsets,
 } from './lookControls.ts';
@@ -282,7 +283,7 @@ export function CameraRig({
         // Keep yaw/pitch state synchronised so post-orbit WASD continues
         // to move forward "toward" what the user was looking at.
         const fwd = anchor.clone().sub(freeFlyPos.current).normalize();
-        freeFlyYaw.current = Math.atan2(-fwd.x, -fwd.z);
+        freeFlyYaw.current = yawFromDirection(fwd);
         freeFlyPitch.current = Math.asin(fwd.y);
       } else {
         // Free look: rotate around camera position.
@@ -337,7 +338,8 @@ export function CameraRig({
 
   useFrame((_, dtSec) => {
     const pos = playerPosRef.current;
-    if (xrPresenting || !pos) {
+    // The prop lags the XR camera swap by a commit; gl.xr is synchronous.
+    if (xrPresenting || gl.xr.isPresenting || !pos) {
       return;
     }
     const yaw = yawRef.current;

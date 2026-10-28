@@ -15,5 +15,6 @@
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true
   },
+  "files": ["../world/src/renderer/xr-types.ts"],
   "include": ["src", "server", "vite.config.ts"]
 }

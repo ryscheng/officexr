@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomMenu } from './RoomMenu';
 import { VrMenuItem, type VrSessionStore } from './VrMenuItem';
@@ -57,6 +58,19 @@ describe('VrMenuItem', () => {
     act(() => setSession(undefined));
     openMenu();
     expect(screen.getByRole('button', { name: 'Enter VR' })).toBeTruthy();
+  });
+
+  it('hands keyboard control back to the world once the session starts', async () => {
+    function Focused() {
+      return <output>{String(useWorldFocus())}</output>;
+    }
+    render(<Focused />);
+    renderMenu({ supported: true, store: fakeStore().store });
+    // Using the menu, a studio panel, released the world.
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Enter VR' }));
+    expect(screen.getByRole('status').textContent).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Enter VR' }));
+    await vi.waitFor(() => expect(screen.getByRole('status').textContent).toBe('true'));
   });
 
   it('reports a failed session request instead of rejecting unhandled', async () => {

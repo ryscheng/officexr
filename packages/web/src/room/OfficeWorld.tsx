@@ -62,7 +62,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
   const join = useJoinCheck(office.id, me.login);
   const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [bannerError, setBannerError] = useState<string | null>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
@@ -88,14 +88,14 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           cameraMode={cameraMode}
           onCameraModeChange={setCameraMode}
           hostControls
-          error={saveError}
-          onDismissError={() => setSaveError(null)}
+          error={bannerError}
+          onDismissError={() => setBannerError(null)}
           xrStore={xrStore}
         >
           <RoomMenu>
             <CameraModeMenuItem value={cameraMode} onChange={setCameraMode} />
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
-            {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={setSaveError} />}
+            {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={setBannerError} />}
           </RoomMenu>
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {session.voice && <JaasMeeting voice={session.voice} />}
@@ -103,7 +103,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
           <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
             <OfficeSettings office={office} me={me} onSaved={setOffice} />
-            <CharacterPicker local={session.local} onSaveResult={setSaveError} />
+            <CharacterPicker local={session.local} onSaveResult={setBannerError} />
             {session.voice && (
               <div className="flex items-center gap-2">
                 <ZoneCallLabel store={session.local.store} />

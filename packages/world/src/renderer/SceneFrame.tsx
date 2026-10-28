@@ -395,7 +395,7 @@ export function SceneFrame({
           dx /= len;
           dz /= len;
           horizMove = (playerSpeed * dt) / 1000;
-          movementYaw = Math.atan2(-dx, -dz);
+          movementYaw = yawFromDirection({ x: dx, z: dz });
           intendsMove = true;
         }
       }
