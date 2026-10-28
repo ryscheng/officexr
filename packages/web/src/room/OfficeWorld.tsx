@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { OfficeState, Store } from '@officexr/sdk';
+import type { Actions, OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, PlayView, useStoreSelector } from '@officexr/world/react';
 import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XRStore } from '@officexr/world/renderer';
@@ -8,6 +8,7 @@ import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PresenceList } from '../hud/PresenceList';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
+import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { ZoneCallLabel } from '../voice/ZoneCallLabel';
 import { CameraModeMenuItem } from './CameraModeMenuItem';
 import { CharacterPicker } from './CharacterPicker';
@@ -18,6 +19,7 @@ import { playerIdFor } from './playerId';
 import { RoomMenu, RoomMenuItem } from './RoomMenu';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { useJoinCheck } from './useJoinCheck';
+import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession } from './useOfficeSession';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { VrMenuItem } from './VrMenuItem';
@@ -45,6 +47,11 @@ const REPLACED_MESSAGE = 'This office was opened in another window. Reload to re
 function ReplacedBanner({ store }: { store: Store }) {
   const replaced = useStoreSelector(store, isReplaced);
   return replaced ? <ErrorBanner message={REPLACED_MESSAGE} /> : null;
+}
+
+function LocalPresence({ actions, voice }: { actions: Actions; voice: JaasVoiceAdapter | null }) {
+  useLocalPresence(actions, voice);
+  return null;
 }
 
 /** Created in an effect so StrictMode's remount destroys the first store, which appends a DOM overlay. */
@@ -125,7 +132,12 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           </div>
         </PlayView>
       )}
-      {session.type === 'ready' && <ReplacedBanner store={session.local.store} />}
+      {session.type === 'ready' && (
+        <>
+          <ReplacedBanner store={session.local.store} />
+          <LocalPresence actions={session.local.actions} voice={session.voice} />
+        </>
+      )}
       <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onCancel={join.cancel} />
       {session.type === 'replaced' && <ErrorBanner message={REPLACED_MESSAGE} />}
     </div>
