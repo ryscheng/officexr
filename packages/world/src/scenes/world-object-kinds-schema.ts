@@ -125,6 +125,9 @@ export interface WorldObjectKind {
    * default AABB path — the default path stays unchanged.
    */
   colliderShape?: ColliderShapeSpec;
+  /** Authoring-time recipe the scan CLI uses to regenerate `colliderShape`.
+   * Never read at runtime. */
+  colliderComplexity?: ColliderComplexity;
   /** Allowed yaw increment in degrees: a positive integer dividing 360.
    * Absent means 90. */
   rotationStepDeg?: number;
@@ -152,6 +155,14 @@ export function nextAllowedYaw(
   const step = kind?.rotationStepDeg ?? DEFAULT_ROTATION_STEP_DEG;
   return normalizeYawDeg((Math.floor(yawDeg / step + 1e-6) + 1) * step);
 }
+
+/** Authoring-time collider recipe. `cellSize` and `heightEpsilon` are in
+ * metres; omitted values fall back to the scanner defaults. */
+export type ColliderComplexity =
+  | { type: 'box' }
+  | { type: 'heightfield'; cellSize?: number; heightEpsilon?: number }
+  | { type: 'profile'; axis?: 'x' | 'y' | 'z'; cellSize?: number }
+  | { type: 'trimesh' };
 
 /**
  * Discriminated union of optional collider-shape overrides for kinds
@@ -357,6 +368,7 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     dimensions: normalizeDimensions(k.dimensions),
     localAABB: normalizeLocalAABB(k.localAABB),
     colliderShape: normalizeColliderShape(k.colliderShape),
+    colliderComplexity: normalizeColliderComplexity(k.colliderComplexity, idx),
     rotationStepDeg: normalizeRotationStep(k.rotationStepDeg, idx),
   };
 }
@@ -369,6 +381,57 @@ function normalizeRotationStep(raw: unknown, idx: number): number | undefined {
     );
   }
   return raw;
+}
+
+export function normalizeColliderComplexity(raw: unknown, idx: number): ColliderComplexity | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const fail = (detail: string): never => {
+    throw new Error(`world-object-kind-catalog: kinds[${idx}].colliderComplexity ${detail}`);
+  };
+  if (!raw || typeof raw !== 'object') {
+    return fail('must be an object');
+  }
+  const r = raw as Record<string, unknown>;
+  const positive = (field: string): number | undefined => {
+    const v = r[field];
+    if (v === undefined) {
+      return undefined;
+    }
+    if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
+      return fail(`.${field} must be a positive finite number, got ${String(v)}`);
+    }
+    return v;
+  };
+  switch (r.type) {
+    case 'box':
+    case 'trimesh':
+      return { type: r.type };
+    case 'heightfield': {
+      const cellSize = positive('cellSize');
+      const heightEpsilon = positive('heightEpsilon');
+      return {
+        type: 'heightfield',
+        ...(cellSize !== undefined && { cellSize }),
+        ...(heightEpsilon !== undefined && { heightEpsilon }),
+      };
+    }
+    case 'profile': {
+      const axis = r.axis;
+      if (axis !== undefined && axis !== 'x' && axis !== 'y' && axis !== 'z') {
+        return fail(`.axis must be 'x' | 'y' | 'z', got ${String(axis)}`);
+      }
+      const cellSize = positive('cellSize');
+      return {
+        type: 'profile',
+        ...(axis !== undefined && { axis }),
+        ...(cellSize !== undefined && { cellSize }),
+      };
+    }
+    default:
+      return fail(`.type must be box | heightfield | profile | trimesh, got ${String(r.type)}`);
+  }
 }
 
 function normalizeDimensions(
