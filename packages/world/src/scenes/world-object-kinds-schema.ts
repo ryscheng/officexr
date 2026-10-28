@@ -373,6 +373,15 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
   };
 }
 
+/** Resolves kinds of a catalog by id, normalised; the last entry wins on a duplicated id. Throws on an invalid kind. */
+export function catalogKindLookup(catalog: WorldObjectKindCatalogV1): (kindId: string) => WorldObjectKind | undefined {
+  const kinds = new Map<string, WorldObjectKind>();
+  for (const [idx, kind] of catalog.kinds.entries()) {
+    kinds.set(kind.id, normalizeKind(kind, idx));
+  }
+  return (kindId) => kinds.get(kindId);
+}
+
 function normalizeRotationStep(raw: unknown, idx: number): number | undefined {
   if (raw === undefined) return undefined;
   if (typeof raw !== 'number' || !Number.isInteger(raw) || raw <= 0 || 360 % raw !== 0) {

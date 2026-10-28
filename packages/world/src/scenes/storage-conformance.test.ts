@@ -15,6 +15,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  FilesystemBakedLayoutStorage,
   FilesystemMapStorage,
   FilesystemRoomStorage,
   FilesystemLayoutStorage,
@@ -340,5 +341,29 @@ describe('InMemory seed convenience', () => {
     const back = await s.load('preloaded');
     expect(back?.name).toBe('preloaded');
     expect((await s.list()).map((e) => e.name)).toContain('preloaded');
+  });
+});
+
+describe('BakedLayoutStorage.load', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns the stored bytes, and null on 404', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url === '/api/baked-layouts/hall' ? new Response(bytes) : new Response(null, { status: 404 }),
+      ),
+    );
+    const storage = new FilesystemBakedLayoutStorage();
+    expect(await storage.load('hall')).toEqual(bytes);
+    expect(await storage.load('nope')).toBeNull();
+  });
+
+  it('rejects an invalid name and surfaces other failures', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 500 })));
+    const storage = new FilesystemBakedLayoutStorage();
+    await expect(storage.load('../evil')).rejects.toThrow('invalid name');
+    await expect(storage.load('hall')).rejects.toThrow();
   });
 });

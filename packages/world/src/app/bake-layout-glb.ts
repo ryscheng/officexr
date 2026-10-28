@@ -4,9 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
 import type { LayoutDocument } from '../scenes/layout-document.ts';
 import {
-  normalizeKind,
+  catalogKindLookup,
   validateWorldObjectKindCatalog,
-  type WorldObjectKind,
   type WorldObjectKindCatalogV1,
 } from '../scenes/world-object-kinds-schema.ts';
 import { VOXEL_SIZE } from '../renderer/config.ts';
@@ -43,11 +42,8 @@ export async function bakeLayoutGlb({
   catalog,
   optimizer,
 }: BakeLayoutGlbOptions): Promise<BakeResultBytes> {
-  const kinds = new Map<string, WorldObjectKind>();
-  for (const [idx, kind] of (catalog ?? (await readCatalogFile())).kinds.entries()) {
-    kinds.set(kind.id, normalizeKind(kind, idx));
-  }
-  const geometry = createInstanceGeometry({ catalog: { getKind: (id) => kinds.get(id) }, voxelSize: VOXEL_SIZE });
+  const kindLookup = catalogKindLookup(catalog ?? (await readCatalogFile()));
+  const geometry = createInstanceGeometry({ catalog: { getKind: kindLookup }, voxelSize: VOXEL_SIZE });
 
   // Re-emitting as a GLB lets catalog entries stay multi-file .gltf bundles.
   const io = new NodeIO();
@@ -61,5 +57,5 @@ export async function bakeLayoutGlb({
     return io.writeBinary(await io.read(file));
   };
 
-  return bakeLayout(layout, (id) => kinds.get(id), loadGltf, geometry, { optimizer: optimizer ?? layout.optimizer });
+  return bakeLayout(layout, kindLookup, loadGltf, geometry, { optimizer: optimizer ?? layout.optimizer });
 }

@@ -92,6 +92,7 @@ export {
   validateWorldObjectKindCatalog,
   validateCubeKindCatalog,
   normalizeKind,
+  catalogKindLookup,
   isYawAllowed,
   nextAllowedYaw,
   DEFAULT_ROTATION_STEP_DEG,
@@ -113,6 +114,12 @@ export {
   type MapSummary,
   FilesystemMapStorage,
 } from './filesystem-map-storage.ts';
+export {
+  groupPlacementsByLayout,
+  mapLayoutPlacements,
+  type BakedLayoutPlacement,
+  type MapLayoutPlacements,
+} from './map-layout-placements.ts';
 export { LocalStorageMapStorage } from './localstorage-map-storage.ts';
 export {
   type LayoutStorage,

@@ -58,7 +58,7 @@ describe('POST /mcp over HTTP', () => {
   it('writes through the REST surface and rejects what it rejects', async () => {
     const { client, call } = await connectMcp();
 
-    expect((await client.listTools()).tools).toHaveLength(20);
+    expect((await client.listTools()).tools).toHaveLength(21);
     expect((await call('put_room', { name: 'hall', room: emptyRoomDocument('hall') })).isError).toBe(false);
     const map = { ...emptyMapDocument('town'), rooms: [{ id: 'a', roomName: 'hall', position: [0, 0, 0] }] };
     expect((await call('put_map', { name: 'town', map })).isError).toBe(false);

@@ -17,6 +17,9 @@ import {
   type WorldObjectKindCatalogV1,
   validateWorldObjectKindCatalog,
 } from '@officexr/world/scenes';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { HeavyWorkLock } from './heavy-work-lock.ts';
 import type { RenderRequest, RenderResult, ViewRenderer } from './renderer.ts';
@@ -41,6 +44,9 @@ class InMemoryBakedLayouts implements BakedLayoutStorage {
   }
   async save(name: string, glb: Uint8Array) {
     this.files.set(name, glb);
+  }
+  async load(name: string) {
+    return this.files.get(name) ?? null;
   }
   async delete(name: string) {
     this.files.delete(name);
@@ -86,7 +92,7 @@ async function connect(overrides: Partial<StudioDocuments> = {}, renderer: ViewR
 }
 
 describe('studio MCP tools', () => {
-  it('lists the 20 tools', async () => {
+  it('lists the 21 tools', async () => {
     const { client } = await connect();
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(
@@ -95,6 +101,7 @@ describe('studio MCP tools', () => {
         'bake_layout',
         'list_baked_layouts',
         'delete_baked_layout',
+        'check_map_bakes',
         'render_view',
         'get_world_object_kinds',
         'put_world_object_kinds',
@@ -250,6 +257,128 @@ describe('studio MCP tools', () => {
     expect((await call('delete_baked_layout', { name: 'hall' })).isError).toBe(false);
     expect(baked.files.size).toBe(0);
     expect((await call('delete_baked_layout', { name: '../x' })).isError).toBe(true);
+  });
+
+  describe('check_map_bakes', () => {
+    const kind = { id: 'crate', label: 'Crate', gltfPath: '/crate.gltf', swatch: '#fff' };
+    const crateLayout = (name: string) => ({
+      ...emptyLayoutDocument(name),
+      commands: [{ id: 'c1', op: 'placeObject' as const, kindId: 'crate', position: [0, 0, 0] as [number, number, number] }],
+    });
+
+    /** A minimal GLB with no bakeSource, standing in for a bake from before fingerprints. */
+    const unfingerprintedGlb = () => {
+      const json = new TextEncoder().encode(
+        JSON.stringify({ asset: { version: '2.0' }, scene: 0, scenes: [{ extras: {} }] }).padEnd(128, ' '),
+      );
+      const out = new Uint8Array(20 + json.length);
+      const view = new DataView(out.buffer);
+      view.setUint32(0, 0x46546c67, true);
+      view.setUint32(4, 2, true);
+      view.setUint32(8, out.length, true);
+      view.setUint32(12, json.length, true);
+      view.setUint32(16, 0x4e4f534a, true);
+      out.set(json, 20);
+      return out;
+    };
+
+    async function setup() {
+      const rooms = new InMemoryRoomStorage();
+      const layouts = new InMemoryLayoutStorage();
+      const maps = new InMemoryMapStorage();
+      const baked = new InMemoryBakedLayouts();
+      const catalogDoc = validateWorldObjectKindCatalog({ schemaVersion: 1, kinds: [kind] });
+      const catalog = new InMemoryCatalogStorage(catalogDoc);
+      const layoutNames = ['fresh', 'stale', 'unknown', 'absent', 'deleted'];
+      for (const name of layoutNames) {
+        await rooms.save(name, { ...emptyRoomDocument(name), layoutName: name });
+      }
+      for (const name of layoutNames.slice(0, 4)) {
+        await layouts.save(name, crateLayout(name));
+      }
+      const { bakeLayoutGlb } = await import('@officexr/world/bake-layout-glb');
+      const modelRoot = await mkdtemp(join(tmpdir(), 'check-map-bakes-'));
+      const triangle = Buffer.from(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).buffer).toString('base64');
+      await writeFile(
+        join(modelRoot, 'crate.gltf'),
+        JSON.stringify({
+          asset: { version: '2.0' },
+          scene: 0,
+          scenes: [{ nodes: [0] }],
+          nodes: [{ mesh: 0 }],
+          meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+          accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] }],
+          bufferViews: [{ buffer: 0, byteLength: 36 }],
+          buffers: [{ byteLength: 36, uri: `data:application/octet-stream;base64,${triangle}` }],
+        }),
+      );
+      const bake = async (name: string, optimizer?: string) =>
+        (await bakeLayoutGlb({ layout: crateLayout(name), modelRoot, catalog: catalogDoc, optimizer })).glb;
+      await baked.save('fresh', await bake('fresh'));
+      await baked.save('stale', await bake('stale', 'none'));
+      await baked.save('unknown', unfingerprintedGlb());
+      await rooms.save('plain', emptyRoomDocument('plain'));
+      const town = {
+        ...emptyMapDocument('town'),
+        rooms: [
+          ...[...layoutNames, 'fresh'].map((roomName, i) => ({ id: `r${i}`, roomName, position: [i, 0, 0] as [number, number, number] })),
+          { id: 'p', roomName: 'plain', position: [0, 0, 9] as [number, number, number] },
+        ],
+      };
+      await maps.save('town', town);
+      await maps.save('empty', emptyMapDocument('empty'));
+      return connect({ rooms, layouts, maps, catalog, bakedLayouts: baked });
+    }
+
+    it('classifies each layout of a map, grouping the rooms that share one', async () => {
+      const { call } = await setup();
+      const r = await call('check_map_bakes', { map: 'town' });
+      expect(r.isError).toBe(false);
+      const { maps, totals } = JSON.parse(r.text);
+      expect(maps).toHaveLength(1);
+      expect(maps[0].missingRooms).toEqual([]);
+      expect(maps[0].layouts).toEqual([
+        { type: 'ok', layoutName: 'fresh', status: 'fresh', roomInstanceIds: ['r0', 'r5'] },
+        { type: 'ok', layoutName: 'stale', status: 'stale', roomInstanceIds: ['r1'] },
+        { type: 'ok', layoutName: 'unknown', status: 'unknown', roomInstanceIds: ['r2'] },
+        { type: 'ok', layoutName: 'absent', status: 'missing', roomInstanceIds: ['r3'] },
+        { type: 'error', layoutName: 'deleted', error: 'layout "deleted" not found', roomInstanceIds: ['r4'] },
+      ]);
+      expect(totals).toEqual({ fresh: 1, stale: 1, missing: 1, unknown: 1, errors: 1 });
+    });
+
+    it('reports rooms that fail to load and checks every map with all', async () => {
+      const { call, docs } = await setup();
+      await docs.rooms.delete('stale');
+      const { maps } = JSON.parse((await call('check_map_bakes', { all: true })).text);
+      expect(maps.map((m: { map: string }) => m.map).sort()).toEqual(['empty', 'town']);
+      expect(maps.find((m: { map: string }) => m.map === 'town').missingRooms).toEqual(['stale']);
+    });
+
+    it('reports a map that fails to load without failing the others', async () => {
+      const { docs } = await setup();
+      const maps = Object.create(docs.maps) as typeof docs.maps;
+      maps.load = async (name) => {
+        if (name === 'town') {
+          throw new Error('disk on fire');
+        }
+        return docs.maps.load(name);
+      };
+      const { call } = await connect({ ...docs, maps });
+      const { maps: results, totals } = JSON.parse((await call('check_map_bakes', { all: true })).text);
+      expect(results).toContainEqual({ type: 'error', map: 'town', error: 'disk on fire' });
+      expect(results).toContainEqual({ type: 'ok', map: 'empty', layouts: [], missingRooms: [] });
+      expect(totals.errors).toBe(1);
+    });
+
+    it('turns a missing map into an error entry and rejects ambiguous input', async () => {
+      const { call } = await setup();
+      const { maps, totals } = JSON.parse((await call('check_map_bakes', { map: 'nope' })).text);
+      expect(maps).toEqual([{ type: 'error', map: 'nope', error: 'map "nope" not found' }]);
+      expect(totals.errors).toBe(1);
+      expect((await call('check_map_bakes', {})).isError).toBe(true);
+      expect((await call('check_map_bakes', { map: 'town', all: true })).isError).toBe(true);
+    });
   });
 
   it('rejects a bake while another heavy operation is running and frees the lock afterwards', async () => {
