@@ -22,7 +22,7 @@ export async function loadAll<T>(
         const doc = await load(name);
         return doc ? ([name, doc] as const) : null;
       } catch (err) {
-        console.warn(`[map-loader] ${kind} load("${name}") failed:`, err);
+        console.warn(`[scenes] ${kind} load("${name}") failed:`, err);
         return null;
       }
     }),

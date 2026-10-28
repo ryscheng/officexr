@@ -1,6 +1,5 @@
 import type { VoiceZone, WorldObjects } from '@officexr/sdk';
 import {
-  loadAll,
   mapLayoutPlacements,
   type BakedLayoutPlacement,
   type LayoutDocument,
@@ -11,6 +10,7 @@ import {
   type RoomStorage,
   type SpawnPoint,
 } from '../scenes/index.ts';
+import { loadAll } from '../scenes/map-layout-placements.ts';
 import type { CatalogService, InstanceGeometryService, RoomService } from './types.ts';
 import { computeVoiceZones } from './voice-zones.ts';
 

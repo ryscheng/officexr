@@ -92,6 +92,7 @@ export {
   validateWorldObjectKindCatalog,
   validateCubeKindCatalog,
   normalizeKind,
+  catalogKindLookup,
   isYawAllowed,
   nextAllowedYaw,
   DEFAULT_ROTATION_STEP_DEG,
@@ -115,7 +116,6 @@ export {
 } from './filesystem-map-storage.ts';
 export {
   groupPlacementsByLayout,
-  loadAll,
   mapLayoutPlacements,
   type BakedLayoutPlacement,
   type MapLayoutPlacements,
