@@ -11,7 +11,7 @@ export type PresenceIndicator = PresenceStatus | 'unresponsive' | 'offline';
  * a live event or snapshot here) has nothing to age, so it shows its status.
  */
 export function presenceIndicator(
-  p: PlayerState | Pick<DepartedPlayer, 'leftAt'>,
+  p: Pick<PlayerState, 'status' | 'lastStatusAt' | 'firstSeenAt'> | Pick<DepartedPlayer, 'leftAt'>,
   now: number,
 ): PresenceIndicator {
   if ('leftAt' in p) return 'offline';

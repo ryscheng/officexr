@@ -277,6 +277,9 @@ importers:
       express-session:
         specifier: ^1.19.0
         version: 1.19.0
+      lucide-react:
+        specifier: ^0.475.0
+        version: 0.475.0(react@19.2.3)
       passport:
         specifier: ^0.7.0
         version: 0.7.0

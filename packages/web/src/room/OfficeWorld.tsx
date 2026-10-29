@@ -118,7 +118,9 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {session.voice && <JaasMeeting voice={session.voice} />}
           <ChatPanel store={session.local.store} actions={session.local.actions} selfId={session.local.selfId} />
-          <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
+          <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col items-start gap-2 pointer-coarse:bottom-40">
+            <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
+          </div>
           <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
             <OfficeSettings office={office} me={me} onSaved={setOffice} />
             <CharacterPicker local={session.local} onSaveResult={setBannerError} />
