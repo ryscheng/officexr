@@ -3,6 +3,7 @@ import { ChannelStatusEmitter, validateNetEvent } from '@officexr/sdk';
 import {
   decodeFrame,
   encodeFrame,
+  REJECTED_CLOSE_CODE,
   REPLACED_CLOSE_CODE,
   type CustomFrame,
   type Frame,
@@ -157,12 +158,12 @@ export class WsChannel implements Channel {
       const frame = decodeFrame(e.data);
       if (frame) this.handleFrame(frame);
     });
-    const lose = (code?: number) => {
+    const lose = (why: string, code?: number) => {
       if (this.ws !== ws) {
         return;
       }
       this.dropSocket();
-      this.handshake?.fail(new Error('WsChannel: closed before handshake'));
+      this.handshake?.fail(new Error(`WsChannel: ${why}`));
       if (code === REPLACED_CLOSE_CODE) {
         this.status.set('replaced');
       } else if (this.status.current === 'live' || this.status.current === 'reconnecting') {
@@ -170,7 +171,9 @@ export class WsChannel implements Channel {
         this.scheduleReconnect();
       }
     };
-    ws.addEventListener('close', (e: { code?: number }) => lose(e.code));
+    ws.addEventListener('close', (e: { code?: number; reason?: string }) =>
+      lose(e.code === REJECTED_CLOSE_CODE ? `rejected by the server: ${e.reason || 'no reason given'}` : 'closed before handshake', e.code),
+    );
     ws.addEventListener('error', () => {
       // Don't tear down here; the close event will follow.
     });
@@ -183,7 +186,7 @@ export class WsChannel implements Channel {
         return;
       }
       ws.send(encodeFrame({ t: 'hello', userId: this.userId, officeId: this.officeId, login: this.login, token }));
-    }, () => lose());
+    }, (err: unknown) => lose(`getToken failed: ${err instanceof Error ? err.message : String(err)}`));
 
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {

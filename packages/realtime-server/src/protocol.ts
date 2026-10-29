@@ -29,6 +29,9 @@ export const SERVER_SELF_ID = 'server';
  * same login has taken over. Clients must not reconnect after it. */
 export const REPLACED_CLOSE_CODE = 4001;
 
+/** Close code the server uses to refuse a `hello`; the close reason says why. */
+export const REJECTED_CLOSE_CODE = 4003;
+
 /** Client → server, first frame after the websocket opens. Identifies
  * the caller; server uses it as the `selfId` for the attached hub
  * client. `officeId` picks the room; omitted means the server's default
