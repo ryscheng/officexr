@@ -29,7 +29,9 @@ export function IconButton({
 }) {
   const tooltipContainer = useContext(TooltipContainer);
   return (
-    <Tooltip.Provider delayDuration={300}>
+    // Hoverable content closes through a pointermove listener on the global `document`, which never hears
+    // another document's pointer, so tooltips portalled elsewhere close on trigger leave instead.
+    <Tooltip.Provider delayDuration={300} disableHoverableContent={tooltipContainer !== undefined}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
           {/* A disabled button gets no pointer events, so the wrapper carries the hover for the tooltip.

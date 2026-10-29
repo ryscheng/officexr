@@ -21,6 +21,7 @@ export interface PictureInPictureDeps {
   doc?: Document;
 }
 
+// ponytail: a snapshot at open, so styles the opener adds later (Vite HMR, lazily loaded CSS) never reach the window.
 function copyStyleSheets(from: Document, to: Document) {
   for (const sheet of from.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style')) {
     const copy = sheet.cloneNode(true) as HTMLLinkElement | HTMLStyleElement;
@@ -54,6 +55,11 @@ export function usePictureInPicture({
       pending
         .then(
           (win) => {
+            // The tab can be shown again while the OS window is still opening.
+            if (opening === 'auto' && doc.visibilityState === 'visible') {
+              win.close();
+              return;
+            }
             copyStyleSheets(doc, win.document);
             setPip({ window: win, opening });
           },

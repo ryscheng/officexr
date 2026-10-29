@@ -67,11 +67,11 @@ export function Minimap({
   alwaysOpen?: boolean;
 }) {
   const coarse = useCoarsePointer();
-  const [expanded, setOpen] = useState(!coarse);
+  const [expanded, setExpanded] = useState(!coarse);
   const open = alwaysOpen || expanded;
   const mapId = useId();
   const toggle = () => {
-    setOpen((o) => !o);
+    setExpanded((o) => !o);
     focusWorld();
   };
   return (

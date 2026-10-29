@@ -186,6 +186,27 @@ describe('usePictureInPicture', () => {
     act(() => pipMute().focus());
     expect(pipBody().getByRole('tooltip').textContent).toBe('Mute microphone');
     expect(screen.queryByRole('tooltip')).toBeNull();
+    // The trigger is the button's wrapper.
+    fireEvent.pointerLeave(pipMute().parentElement!);
+    expect(pipBody().queryByRole('tooltip')).toBeNull();
+  });
+
+  it('closes a window that arrives after the tab was shown again', async () => {
+    const { mediaSession, setVisibility, windows, pipBody } = setup();
+    setVisibility('hidden');
+    mediaSession.handlers.get('enterpictureinpicture')!();
+    setVisibility('visible');
+    await act(async () => {});
+    expect(windows).toHaveLength(1);
+    expect(windows[0].closed).toBe(true);
+    expect(pipBody().queryByRole('group', { name: 'Map' })).toBeNull();
+  });
+
+  it('hides Pop out while a window is open', async () => {
+    const { popOut } = setup();
+    await popOut();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(screen.queryByRole('button', { name: 'Pop out' })).toBeNull();
   });
 
   it('unmounts the contents when the window is closed, and can open again', async () => {
