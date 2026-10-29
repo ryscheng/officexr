@@ -7,7 +7,7 @@ import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import type { CameraMode } from '../renderer/config.ts';
 import type { MotionLookState } from '../renderer/motionLook.ts';
 import { Scene } from '../renderer/Scene.tsx';
-import { ErrorBanner, FocusIndicator, WorldHud, type HudRealtime } from './hud.tsx';
+import { ErrorBanner, FocusIndicator, TopLeftHud, WorldHud, type HudRealtime } from './hud.tsx';
 import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
 import { useCameraMode } from './useCameraMode.ts';
 import { useCoarsePointer } from './useCoarsePointer.ts';
@@ -22,9 +22,6 @@ import { NavGridProvider, useBuildNavGrid } from './useNavGrid.ts';
 import { PlayControlsProvider } from './playControls.tsx';
 import { useAutoWalk } from './useAutoWalk.ts';
 import { INITIAL_WORLD_READINESS, worldReadiness } from './world-readiness.ts';
-
-/** Clears a 44px host menu button at `right: 12`. */
-const HOST_MENU_OFFSET = 64;
 
 export interface PlayViewProps {
   store: Store;
@@ -53,7 +50,7 @@ export interface PlayViewProps {
   /** Steers the view with device motion; absent means off. */
   motionLook?: MotionLookState;
   invertLook?: boolean;
-  /** The host app provides the controls chrome: the HUD shows status only and the focus chip leaves the top-right corner to it. */
+  /** The host app provides the controls chrome: the HUD shows status only and leaves a slot at the top left for the host's menu button. */
   hostControls?: boolean;
   /** Lets the host start immersive XR sessions; see `createWorldXRStore`. */
   xrStore?: XRStore;
@@ -136,13 +133,15 @@ export function PlayView(props: PlayViewProps) {
           }
         />
       )}
-      <WorldHud
-        cameraMode={cameraMode}
-        realtime={props.realtime}
-        bakedLayouts={session.bakedLayouts}
-        statusOnly={props.hostControls}
-      />
-      <FocusIndicator focused={worldFocused} offsetRight={props.hostControls ? HOST_MENU_OFFSET : undefined} />
+      <TopLeftHud reserveMenuSlot={props.hostControls}>
+        <WorldHud
+          cameraMode={cameraMode}
+          realtime={props.realtime}
+          bakedLayouts={session.bakedLayouts}
+          statusOnly={props.hostControls}
+        />
+        <FocusIndicator focused={worldFocused} />
+      </TopLeftHud>
       {coarsePointer && <VirtualJoystick inputRef={moveInputRef} />}
       {props.error ? (
         <ErrorBanner message={props.error} onDismiss={() => props.onDismissError?.()} />
