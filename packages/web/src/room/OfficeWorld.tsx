@@ -12,9 +12,9 @@ import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { ZoneCallLabel } from '../voice/ZoneCallLabel';
 import { CameraModeMenuItem } from './CameraModeMenuItem';
-import { CharacterPicker } from './CharacterPicker';
+import { CharacterDialog } from './CharacterDialog';
 import { MotionLookMenuItem } from './MotionLookMenuItem';
-import { OfficeSettings } from './OfficeSettings';
+import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
 import { RoomMenu, RoomMenuChoice, RoomMenuItem } from './RoomMenu';
@@ -78,6 +78,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [invertLook, setInvertLook] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  const [characterOpen, setCharacterOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
   const xrStore = useWorldXRStore();
   const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
@@ -124,10 +126,18 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
               />
               Invert look
             </RoomMenuChoice>
+            <RoomMenuItem onSelect={() => setCharacterOpen(true)}>Change character…</RoomMenuItem>
+            <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setSettingsOpen(true)} />
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
             {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={setBannerError} />}
           </RoomMenu>
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+          {characterOpen && (
+            <CharacterDialog local={session.local} onSaveResult={setBannerError} onClose={() => setCharacterOpen(false)} />
+          )}
+          {settingsOpen && (
+            <OfficeSettingsDialog office={office} me={me} onSaved={setOffice} onClose={() => setSettingsOpen(false)} />
+          )}
           {session.voice && <JaasMeeting voice={session.voice} />}
           <ChatPanel store={session.local.store} actions={session.local.actions} selfId={session.local.selfId} />
           <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col items-start gap-2 pointer-coarse:bottom-40">
@@ -135,8 +145,6 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
             <Minimap store={session.local.store} />
           </div>
           <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
-            <OfficeSettings office={office} me={me} onSaved={setOffice} />
-            <CharacterPicker local={session.local} onSaveResult={setBannerError} />
             {session.voice && (
               <div className="flex items-center gap-2">
                 <ZoneCallLabel store={session.local.store} />

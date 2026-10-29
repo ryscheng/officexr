@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react';
+import { focusWorld } from '@officexr/world/react';
 import type { Identity, Office, OfficeUpdate } from '../../server/api';
 import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
 import { Dialog } from '../Dialog';
 import { errorMessage } from '../useApi';
 import { useMapNames } from '../useMapNames';
+import { RoomMenuItem } from './RoomMenu';
 import { DEFAULT_MAP } from './withDefaultMap';
 
 /** Only the fields that differ, so an untouched map (or one since removed) can't fail the save. */
@@ -99,27 +101,36 @@ function SettingsForm({ office, onSaved, onClose }: { office: Office; onSaved: (
   );
 }
 
-/** The creator's Settings button and dialog; renders nothing for anyone else. */
-export function OfficeSettings({ office, me, onSaved }: { office: Office; me: Identity; onSaved: (office: Office) => void }) {
-  const [open, setOpen] = useState(false);
-  if (me.login !== office.created_by_login) {
+export const isOfficeCreator = (me: Identity, office: Office) => me.login === office.created_by_login;
+
+/** The creator's menu entry for the Office settings dialog; renders nothing for anyone else. */
+export function OfficeSettingsMenuItem({ office, me, onSelect }: { office: Office; me: Identity; onSelect: () => void }) {
+  return isOfficeCreator(me, office) ? <RoomMenuItem onSelect={onSelect}>Office settings…</RoomMenuItem> : null;
+}
+
+/** The creator's Office settings dialog; renders nothing for anyone else. */
+export function OfficeSettingsDialog({
+  office,
+  me,
+  onSaved,
+  onClose,
+}: {
+  office: Office;
+  me: Identity;
+  onSaved: (office: Office) => void;
+  onClose: () => void;
+}) {
+  if (!isOfficeCreator(me, office)) {
     return null;
   }
+  const close = () => {
+    onClose();
+    // The dialog's focus-in released keyboard control from the world.
+    focusWorld();
+  };
   return (
-    <>
-      <button
-        type="button"
-        data-studio-panel
-        onClick={() => setOpen(true)}
-        className="pointer-events-auto rounded bg-black/70 px-2 py-1 text-xs font-medium text-white"
-      >
-        Settings
-      </button>
-      {open && (
-        <Dialog title="Office settings" onClose={() => setOpen(false)}>
-          <SettingsForm office={office} onSaved={onSaved} onClose={() => setOpen(false)} />
-        </Dialog>
-      )}
-    </>
+    <Dialog title="Office settings" onClose={close}>
+      <SettingsForm office={office} onSaved={onSaved} onClose={close} />
+    </Dialog>
   );
 }
