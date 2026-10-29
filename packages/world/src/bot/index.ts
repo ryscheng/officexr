@@ -13,10 +13,10 @@ export {
 } from './BotDriver.ts';
 export {
   BotPhysicsWorld,
-  BODY_Y,
   type StepResult,
   type SensorEvent,
 } from './BotPhysicsWorld.ts';
+export { BODY_Y } from '../physics/rules.ts';
 export {
   BOT_MODE_STRATEGIES,
   ALL_MODES,

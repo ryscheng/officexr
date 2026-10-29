@@ -12,7 +12,8 @@ import {
 } from '@officexr/sdk';
 import committedCatalog from '../../world-object-kinds.json' with { type: 'json' };
 import { createInstanceGeometry } from '../app/geometry-service.ts';
-import { BODY_Y, BotPhysicsWorld } from '../bot/BotPhysicsWorld.ts';
+import { BotPhysicsWorld } from '../bot/BotPhysicsWorld.ts';
+import { BODY_Y } from './rules.ts';
 import { validateWorldObjectKindCatalog } from '../scenes/world-object-kinds-schema.ts';
 import { BotCharacterMovement } from './bot-character-movement.ts';
 
