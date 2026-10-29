@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 import { useThree } from '@react-three/fiber';
 import type { CameraMode } from './config.ts';
 import {
@@ -22,8 +22,11 @@ interface Point {
  * `preventDefault`ed so the compatibility mousedown still reaches the focus
  * tracking. Does nothing in modes without look input.
  */
-export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs): void {
+export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs, lookSign = -1): void {
   const canvas = useThree((s) => s.gl.domElement);
+  const onDragLook = useEffectEvent((dx: number, dy: number) =>
+    applyLookDelta(mode, lookSign * dx * TOUCH_SENSITIVITY, lookSign * dy * TOUCH_SENSITIVITY, refs),
+  );
 
   useEffect(() => {
     if (!isLookMode(mode)) {
@@ -43,12 +46,7 @@ export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs): void {
       }
       const next = { x: e.clientX, y: e.clientY };
       if (pointers.size === 1) {
-        applyLookDelta(
-          mode,
-          -(next.x - prev.x) * TOUCH_SENSITIVITY,
-          -(next.y - prev.y) * TOUCH_SENSITIVITY,
-          refs,
-        );
+        onDragLook(next.x - prev.x, next.y - prev.y);
       } else if (pointers.size === 2) {
         const other = [...pointers.entries()].find(([id]) => id !== e.pointerId)![1];
         applyZoom(

@@ -52,6 +52,7 @@ export interface PlayViewProps {
   onCameraModeChange?: (mode: CameraMode) => void;
   /** Steers the view with device motion; absent means off. */
   motionLook?: MotionLookState;
+  invertLook?: boolean;
   /** The host app provides the controls chrome: the HUD shows status only and the focus chip leaves the top-right corner to it. */
   hostControls?: boolean;
   /** Lets the host start immersive XR sessions; see `createWorldXRStore`. */
@@ -117,6 +118,7 @@ export function PlayView(props: PlayViewProps) {
           selfId={props.selfId}
           cameraMode={cameraMode}
           motionLook={props.motionLook}
+          invertLook={props.invertLook}
           view={worldConstants}
           worldFocused={worldFocused}
           moveInputRef={moveInputRef}
