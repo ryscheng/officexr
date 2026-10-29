@@ -91,6 +91,8 @@ interface CameraRigProps {
   };
   /** An immersive XR session owns the camera; the rig leaves it alone. */
   xrPresenting: boolean;
+  /** A paused scene ignores canvas touch and wheel gestures. */
+  paused?: boolean;
 }
 
 /**
@@ -113,6 +115,7 @@ export function CameraRig({
   conversationHeight,
   fixed,
   xrPresenting,
+  paused,
 }: CameraRigProps) {
   const { camera, gl } = useThree();
   const persp = camera as THREE.PerspectiveCamera;
@@ -121,7 +124,7 @@ export function CameraRig({
     [yawRef, pitchRef, viewOffsetsRef],
   );
   const lookSign = invertLook ? 1 : -1;
-  useTouchCameraGestures(mode, lookRefs, lookSign);
+  useTouchCameraGestures(mode, lookRefs, lookSign, paused);
   // The headset owns the camera while presenting; motion look re-baselines after.
   useMotionLook(xrPresenting ? undefined : motionLook, mode, lookRefs);
   const onMouseLook = useEffectEvent((e: MouseEvent) =>

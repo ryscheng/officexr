@@ -382,6 +382,7 @@ export function Scene(props: SceneProps) {
           conversationHeight={proximity.conversationHeight}
           fixed={fixedCam}
           xrPresenting={xrPresenting}
+          paused={props.paused}
         />
         {/* After CameraRig, so the probe reads this frame's pose, not last frame's. */}
         {props.viewYaw && <ViewYawProbe viewYaw={props.viewYaw} />}

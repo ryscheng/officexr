@@ -26,7 +26,7 @@ export const DEG2RAD = Math.PI / 180;
 export interface ViewOffsets {
   fixedAzimuthOffsetRad: number;
   fixedPitchOffsetRad: number;
-  /** Pinch zoom, 1 = no zoom. */
+  /** Pinch and wheel zoom, 1 = no zoom. */
   zoom: number;
 }
 
@@ -70,6 +70,26 @@ export function applyZoom(factor: number, offsets: ViewOffsets): void {
 
 export function pinchFactor(prevDistance: number, nextDistance: number): number {
   return prevDistance > 0 ? nextDistance / prevDistance : 1;
+}
+
+const DOM_DELTA_LINE = 1;
+const DOM_DELTA_PAGE = 2;
+const WHEEL_LINE_PX = 33;
+const WHEEL_PAGE_PX = 800;
+/** One 100px notch of a typical mouse wheel is a ~10% zoom step. */
+const WHEEL_ZOOM_PER_PX = 0.001;
+/** A trackpad pinch arrives as ctrl+wheel with small deltas; this tracks the fingers roughly 1:1. */
+const PINCH_WHEEL_ZOOM_PER_PX = 0.01;
+
+/**
+ * Zoom factor for a wheel event: scrolling up (negative `deltaY`) zooms in and
+ * the step is proportional to the scrolled distance, with line and page deltas
+ * converted to pixels. `ctrlKey` marks a trackpad pinch.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode: number, ctrlKey = false): number {
+  const px =
+    deltaMode === DOM_DELTA_LINE ? WHEEL_LINE_PX : deltaMode === DOM_DELTA_PAGE ? WHEEL_PAGE_PX : 1;
+  return Math.exp(-deltaY * px * (ctrlKey ? PINCH_WHEEL_ZOOM_PER_PX : WHEEL_ZOOM_PER_PX));
 }
 
 /**

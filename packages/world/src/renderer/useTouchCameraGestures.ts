@@ -6,6 +6,7 @@ import {
   applyZoom,
   isLookMode,
   pinchFactor,
+  wheelZoomFactor,
   type LookRefs,
 } from './lookControls.ts';
 
@@ -16,20 +17,39 @@ interface Point {
   y: number;
 }
 
+/** Binds `useCanvasGestures` to the R3F canvas. */
+export function useTouchCameraGestures(
+  mode: CameraMode,
+  refs: LookRefs,
+  lookSign = -1,
+  paused = false,
+): void {
+  const canvas = useThree((s) => s.gl.domElement);
+  useCanvasGestures(canvas, mode, refs, lookSign, paused);
+}
+
 /**
  * One-finger drag looks around and a two-finger pinch zooms, on the canvas.
- * Mouse and pen pointers are ignored, and the events are not
- * `preventDefault`ed so the compatibility mousedown still reaches the focus
- * tracking. Does nothing in modes without look input.
+ * Mouse and pen pointers are ignored by the touch gestures, and their events
+ * are not `preventDefault`ed so the compatibility mousedown still reaches the
+ * focus tracking. The mouse wheel zooms and is `preventDefault`ed so the page
+ * doesn't scroll. Does nothing in modes without look input, and a paused scene
+ * ignores all of these touch and wheel gestures. `lookSign` flips the drag
+ * look direction only, never the zoom.
  */
-export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs, lookSign = -1): void {
-  const canvas = useThree((s) => s.gl.domElement);
+export function useCanvasGestures(
+  canvas: HTMLElement,
+  mode: CameraMode,
+  refs: LookRefs,
+  lookSign: number,
+  paused: boolean,
+): void {
   const onDragLook = useEffectEvent((dx: number, dy: number) =>
     applyLookDelta(mode, lookSign * dx * TOUCH_SENSITIVITY, lookSign * dy * TOUCH_SENSITIVITY, refs),
   );
 
   useEffect(() => {
-    if (!isLookMode(mode)) {
+    if (!isLookMode(mode) || paused) {
       return;
     }
     const pointers = new Map<number, Point>();
@@ -63,18 +83,25 @@ export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs, lookSig
       pointers.delete(e.pointerId);
     };
 
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      applyZoom(wheelZoomFactor(e.deltaY, e.deltaMode, e.ctrlKey), refs.viewOffsetsRef.current);
+    };
+
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('pointerup', onEnd);
     canvas.addEventListener('pointercancel', onEnd);
     // A released capture without a pointerup must not leave a stale pointer.
     canvas.addEventListener('lostpointercapture', onEnd);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onEnd);
       canvas.removeEventListener('pointercancel', onEnd);
       canvas.removeEventListener('lostpointercapture', onEnd);
+      canvas.removeEventListener('wheel', onWheel);
     };
-  }, [mode, canvas, refs]);
+  }, [mode, canvas, refs, paused]);
 }
