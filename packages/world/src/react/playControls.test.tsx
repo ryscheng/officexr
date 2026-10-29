@@ -16,7 +16,7 @@ function renderControls() {
   const actions = createActions(store);
   actions.upsertPlayer({ id: 'me', pos: { x: 0, y: 1, z: 0 } });
   actions.upsertPlayer({ id: 'bob', pos: { x: 0, y: 1, z: 10 } });
-  const autoWalk = createAutoWalk(store, 'me');
+  const autoWalk = createAutoWalk(store, 'me', { now: () => 0 });
   let renders = 0;
   const wrapper = ({ children }: { children: ReactNode }) => (
     <PlayControlsProvider controls={autoWalk}>{children}</PlayControlsProvider>

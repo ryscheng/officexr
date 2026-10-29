@@ -378,7 +378,8 @@ export function SceneFrame({
       // isRunning + (fwd || strafe) → 'run' verb
       // !isRunning + (fwd || strafe) → 'walk' verb
       // neither → 'stop' verb
-      // Horizontal intent. Zero when there is no movement input; we still
+      // Horizontal intent: camera-relative from keys or the stick, else
+      // world-space from auto-walk. Zero when neither steers; we still
       // run the controller below so gravity can apply.
       let dx = 0;
       let dz = 0;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AUTO_WALK_IDLE, autoWalkGoTo, autoWalkStep, type AutoWalkState, type PlanFn } from './autoWalk.ts';
+import { AUTO_WALK_IDLE, autoWalkGoTo, autoWalkStep, type PlanFn, type TrackedAutoWalkState } from './autoWalk.ts';
 import type { NavGrid } from './grid.ts';
 
 const GRID = {} as NavGrid;
@@ -9,7 +9,9 @@ function planner(route: { x: number; z: number }[] | null = []) {
   return vi.fn<PlanFn>(() => route);
 }
 
-function walking(overrides: Partial<Extract<AutoWalkState, { type: 'walking' }>> = {}): AutoWalkState {
+type Walking = Extract<TrackedAutoWalkState, { type: 'walking' }>;
+
+function walking(overrides: Partial<Walking> = {}): Walking {
   return { type: 'walking', targetId: 'bob', route: [], plannedAt: 0, plannedFor: { x: 0, z: 10 }, ...overrides };
 }
 
@@ -55,13 +57,22 @@ describe('autoWalkStep', () => {
     expect(step.state).toMatchObject({ plannedFor: { x: 0, z: 11.1 } });
   });
 
+  it('keeps its route when a re-plan mid-walk finds none', () => {
+    const plan = planner(null);
+    const state = walking({ route: [{ x: 0, z: 4 }] });
+    const step = autoWalkStep(state, { selfPos: at(0, 0), targetPos: at(0, 10), now: 500 }, GRID, plan);
+    expect(plan).toHaveBeenCalledTimes(1);
+    expect(step.state).toEqual({ ...state, plannedAt: 500 });
+    expect(step.intent).toEqual({ x: 0, z: 1 });
+  });
+
   it('arrives within 1.5 m with a null intent', () => {
     const step = autoWalkStep(walking(), { selfPos: at(0, 0), targetPos: at(0, 1.5), now: 100 }, GRID, planner());
     expect(step).toEqual({ state: { type: 'arrived', targetId: 'bob' }, intent: null });
   });
 
   it('resumes walking once the target is more than 3 m away', () => {
-    const arrived: AutoWalkState = { type: 'arrived', targetId: 'bob' };
+    const arrived: TrackedAutoWalkState = { type: 'arrived', targetId: 'bob' };
     const plan = planner();
     const near = autoWalkStep(arrived, { selfPos: at(0, 0), targetPos: at(0, 3), now: 100 }, GRID, plan);
     expect(near).toEqual({ state: arrived, intent: null });
