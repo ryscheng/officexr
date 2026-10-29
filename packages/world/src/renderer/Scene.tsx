@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Physics, type RapierRigidBody } from '@react-three/rapier';
@@ -187,6 +187,8 @@ export function Scene(props: SceneProps) {
     zoom: 1,
   });
   const selfPosRef = useRef(new THREE.Vector3());
+  const [charRadius, setCharRadius] = useState(() => store.getState().worldSettings.charRadius);
+  useEffect(() => store.subscribe((s) => s.worldSettings.charRadius, setCharRadius), [store]);
 
   // Refs the SunFollower drives each frame so the directional light
   // tracks the local player.
@@ -203,7 +205,7 @@ export function Scene(props: SceneProps) {
   const isAirborneRef = useRef<boolean>(false);
 
   // Updated each frame by `ProximityGlow`'s tracker: the local player's
-  // current MeetingArea centroid (lifted to local-player y), or `null`
+  // current MeetingArea centroid (at the local player's feet height), or `null`
   // when not in a conversation. `CameraRig` reads it to drive the
   // damped conversation-view blend.
   const conversationFocusRef = useRef<
@@ -326,7 +328,7 @@ export function Scene(props: SceneProps) {
           xrPresenting={xrPresenting}
           selfReady={props.selfReady}
         />
-        {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} />}
+        {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} charRadius={charRadius} />}
 
         {/* Mounted after Players: same-priority useFrames run in
             subscription order, so this reads the current frame's
@@ -363,6 +365,7 @@ export function Scene(props: SceneProps) {
         <CameraRig
           mode={cameraMode}
           playerPosRef={selfPosRef}
+          charRadius={charRadius}
           yawRef={yawRef}
           pitchRef={pitchRef}
           viewOffsetsRef={viewOffsetsRef}

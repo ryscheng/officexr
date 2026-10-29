@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import {
   CHAR_HEIGHT_M,
-  EYE_HEIGHT,
   GAMEPLAY_FOV,
   FREE_FLY_DEFAULTS,
   TOP_DOWN_CAMERA_DEFAULTS,
@@ -12,9 +11,11 @@ import {
 import { isTypingTarget } from '../react/useWorldFocus.ts';
 import {
   applyLookDelta,
+  eyePosition,
   fixedLeash,
   isYawPitchMode,
   MOUSE_SENSITIVITY,
+  orbitPosition,
   PITCH_MAX,
   PITCH_MIN,
   zoomedFov,
@@ -32,6 +33,8 @@ interface CameraRigProps {
   mode: CameraMode;
   /** Provides the local player's world position each frame. */
   playerPosRef: React.RefObject<THREE.Vector3>;
+  /** The local player's `worldSettings.charRadius`, which places its feet. */
+  charRadius: number;
   /** Mutable yaw shared with movement code so WASD is camera-relative. */
   yawRef: React.MutableRefObject<number>;
   pitchRef: React.MutableRefObject<number>;
@@ -99,6 +102,7 @@ interface CameraRigProps {
 export function CameraRig({
   mode,
   playerPosRef,
+  charRadius,
   yawRef,
   pitchRef,
   viewOffsetsRef,
@@ -183,6 +187,7 @@ export function CameraRig({
   // this we'd snap the camera the moment focus went null.
   const convoMix = useRef(0);
   const lastFocus = useRef(new THREE.Vector3());
+  const convoPos = useRef(new THREE.Vector3());
 
   // True when fixed-mode just became active and the camera position needs to
   // snap to a sensible starting point relative to the character.
@@ -389,11 +394,12 @@ export function CameraRig({
         persp.fov = fov;
         persp.updateProjectionMatrix();
       }
-      camera.position.set(pos.x, pos.y + EYE_HEIGHT, pos.z);
+      const eye = eyePosition(pos, charRadius);
+      camera.position.set(eye.x, eye.y, eye.z);
       target.current.set(
-        pos.x - Math.sin(yaw) * Math.cos(pitch),
-        pos.y + EYE_HEIGHT + Math.sin(pitch),
-        pos.z - Math.cos(yaw) * Math.cos(pitch),
+        eye.x - Math.sin(yaw) * Math.cos(pitch),
+        eye.y + Math.sin(pitch),
+        eye.z - Math.cos(yaw) * Math.cos(pitch),
       );
       camera.lookAt(target.current);
 
@@ -402,34 +408,22 @@ export function CameraRig({
         // person centred on the focus, preserving the user's yaw.
         // Lerp BETWEEN first-person and this conversation target by
         // `mix`.
-        const convoPos = computeElevatedThirdPerson(
-          useFocus,
-          yaw,
-          convoR,
-          -convoPitchDown,
-        );
-        camera.position.lerp(convoPos, mix);
+        const convo = orbitPosition(useFocus, yaw, -convoPitchDown, convoR);
+        camera.position.lerp(convoPos.current.set(convo.x, convo.y, convo.z), mix);
         target.current.lerp(useFocus, mix);
         camera.lookAt(target.current);
       }
     } else if (mode === 'third-person') {
       const r = THIRD_PERSON_RADIUS / viewOffsetsRef.current.zoom;
-      const head = target.current.set(pos.x, pos.y + EYE_HEIGHT, pos.z);
-      camera.position.set(
-        head.x + Math.sin(yaw) * Math.cos(pitch) * r,
-        head.y + Math.sin(pitch) * r,
-        head.z + Math.cos(yaw) * Math.cos(pitch) * r,
-      );
-      camera.lookAt(head);
+      const head = eyePosition(pos, charRadius);
+      const orbit = orbitPosition(head, yaw, pitch, r);
+      camera.position.set(orbit.x, orbit.y, orbit.z);
+      target.current.set(head.x, head.y, head.z);
+      camera.lookAt(target.current);
 
       if (mix > 0.001) {
-        const convoPos = computeElevatedThirdPerson(
-          useFocus,
-          yaw,
-          convoR,
-          -convoPitchDown,
-        );
-        camera.position.lerp(convoPos, mix);
+        const convo = orbitPosition(useFocus, yaw, -convoPitchDown, convoR);
+        camera.position.lerp(convoPos.current.set(convo.x, convo.y, convo.z), mix);
         target.current.lerp(useFocus, mix);
         camera.lookAt(target.current);
       }
@@ -641,24 +635,4 @@ export function CameraRig({
   });
 
   return null;
-}
-
-/** Conversation-view camera target: an elevated 3rd-person frame
- * centred on `focus`. `yaw` is the user's current look yaw (so the
- * conversation view rotates with them in FP/3P modes); pitch tilts
- * the camera down, and `r` controls how far the camera sits from the
- * focus point. Returns a fresh Vector3 each call. */
-const _convoVec = new THREE.Vector3();
-function computeElevatedThirdPerson(
-  focus: { x: number; y: number; z: number },
-  yaw: number,
-  r: number,
-  pitch: number,
-): THREE.Vector3 {
-  const cosP = Math.cos(pitch);
-  return _convoVec.set(
-    focus.x + Math.sin(yaw) * cosP * r,
-    focus.y + Math.sin(-pitch) * r,
-    focus.z + Math.cos(yaw) * cosP * r,
-  );
 }
