@@ -12,7 +12,15 @@ function planner(route: { x: number; z: number }[] | null = []) {
 type Walking = Extract<TrackedAutoWalkState, { type: 'walking' }>;
 
 function walking(overrides: Partial<Walking> = {}): Walking {
-  return { type: 'walking', targetId: 'bob', route: [], plannedAt: 0, plannedFor: { x: 0, z: 10 }, ...overrides };
+  return {
+    type: 'walking',
+    targetId: 'bob',
+    route: [],
+    plannedAt: 0,
+    routedAt: 0,
+    plannedFor: { x: 0, z: 10 },
+    ...overrides,
+  };
 }
 
 describe('autoWalkStep', () => {
@@ -64,6 +72,24 @@ describe('autoWalkStep', () => {
     expect(plan).toHaveBeenCalledTimes(1);
     expect(step.state).toEqual({ ...state, plannedAt: 500 });
     expect(step.intent).toEqual({ x: 0, z: 1 });
+  });
+
+  it('gives up after failed re-plans outlast the grace period, and walks again once a route appears', () => {
+    const plan = planner(null);
+    const input = { selfPos: at(0, 0), targetPos: at(0, 10) };
+    let state: TrackedAutoWalkState = walking({ route: [{ x: 0, z: 4 }] });
+    for (const now of [500, 1000]) {
+      const step = autoWalkStep(state, { ...input, now }, GRID, plan);
+      expect(step.state).toMatchObject({ type: 'walking', route: [{ x: 0, z: 4 }], routedAt: 0 });
+      state = step.state;
+    }
+    const stuck = autoWalkStep(state, { ...input, now: 1500 }, GRID, plan);
+    expect(stuck).toEqual({ state: { type: 'no-route', targetId: 'bob', plannedAt: 1500 }, intent: null });
+
+    plan.mockReturnValue([{ x: 0, z: 6 }]);
+    const resumed = autoWalkStep(stuck.state, { ...input, now: 2000 }, GRID, plan);
+    expect(resumed.state).toMatchObject({ type: 'walking', route: [{ x: 0, z: 6 }], routedAt: 2000 });
+    expect(resumed.intent).toEqual({ x: 0, z: 1 });
   });
 
   it('arrives within 1.5 m with a null intent', () => {

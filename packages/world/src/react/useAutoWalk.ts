@@ -5,6 +5,7 @@ import {
   autoWalkGoTo,
   autoWalkStep,
   type AutoWalkInput,
+  type AutoWalkState,
   type PlanFn,
   type TrackedAutoWalkState,
 } from '../nav/autoWalk.ts';
@@ -34,11 +35,13 @@ export function createAutoWalk(
   { plan = findPath, now = () => performance.now() }: AutoWalkOptions = {},
 ): AutoWalkController {
   let state: TrackedAutoWalkState = AUTO_WALK_IDLE;
+  let published: AutoWalkState = AUTO_WALK_IDLE;
   let grid: NavGrid | null = null;
   const listeners = new Set<() => void>();
   const publish = (next: TrackedAutoWalkState) => {
-    if (next !== state) {
-      state = next;
+    state = next;
+    if (!samePublicState(published, next)) {
+      published = publicState(next);
       listeners.forEach((cb) => cb());
     }
   };
@@ -53,7 +56,7 @@ export function createAutoWalk(
     };
   };
   return {
-    getState: () => state,
+    getState: () => published,
     subscribe(cb) {
       listeners.add(cb);
       return () => void listeners.delete(cb);
@@ -79,12 +82,39 @@ export function createAutoWalk(
   };
 }
 
+function publicState(s: TrackedAutoWalkState): AutoWalkState {
+  switch (s.type) {
+    case 'idle':
+      return AUTO_WALK_IDLE;
+    case 'walking':
+      return { type: s.type, targetId: s.targetId, route: s.route };
+    case 'arrived':
+    case 'no-route':
+      return { type: s.type, targetId: s.targetId };
+    default: {
+      const _exhaustive: never = s;
+      return _exhaustive;
+    }
+  }
+}
+
+function samePublicState(a: AutoWalkState, b: AutoWalkState): boolean {
+  const targetOf = (s: AutoWalkState) => (s.type === 'idle' ? null : s.targetId);
+  const routeOf = (s: AutoWalkState) => (s.type === 'walking' ? s.route : null);
+  return a.type === b.type && targetOf(a) === targetOf(b) && routeOf(a) === routeOf(b);
+}
+
 /** One controller per `store` and `selfId`; a new pair starts a fresh, idle one. */
 export function useAutoWalk(store: Store, selfId: PlayerId, grid: NavGrid | null): AutoWalkController {
-  const [held, setHeld] = useState(() => ({ store, selfId, autoWalk: createAutoWalk(store, selfId) }));
+  const create = () => {
+    const autoWalk = createAutoWalk(store, selfId);
+    autoWalk.setGrid(grid);
+    return { store, selfId, autoWalk };
+  };
+  const [held, setHeld] = useState(create);
   let current = held;
   if (held.store !== store || held.selfId !== selfId) {
-    current = { store, selfId, autoWalk: createAutoWalk(store, selfId) };
+    current = create();
     setHeld(current);
   }
   const { autoWalk } = current;

@@ -8,6 +8,8 @@ const REPLAN_INTERVAL_MS = 500;
 const REPLAN_TARGET_MOVED_M = 1;
 const ARRIVE_M = 1.5;
 const RESUME_M = 3;
+/** Longer than a jump's airtime, when the feet are too far above the floor to plan from. */
+const ROUTE_GRACE_MS = 1200;
 
 export type AutoWalkState =
   | { type: 'idle' }
@@ -22,6 +24,8 @@ export type AutoWalkState =
 
 type Walking = Extract<AutoWalkState, { type: 'walking' }> & {
   plannedAt: number;
+  /** When a plan last succeeded. */
+  routedAt: number;
   /** Where the target stood when `route` was planned. */
   plannedFor: XZ;
 };
@@ -92,14 +96,13 @@ export function autoWalkStep(
             ? start()
             : state;
       break;
-    // A failed re-plan mid-walk (e.g. mid-jump, too far above the floor to snap) keeps the old route.
     case 'walking':
       next =
         distance <= ARRIVE_M
           ? { type: 'arrived', targetId: state.targetId }
           : now - state.plannedAt >= REPLAN_INTERVAL_MS ||
               planarDistance(state.plannedFor, targetPos) > REPLAN_TARGET_MOVED_M
-            ? walkingTo(state.targetId, route(selfPos, targetPos, grid, plan) ?? state.route, targetPos, now)
+            ? replanWalk(state, selfPos, targetPos, now, grid, plan)
             : state;
       break;
     default: {
@@ -110,9 +113,12 @@ export function autoWalkStep(
   return next.type === 'walking' ? steer(next, selfPos, targetPos) : { state: next, intent: null };
 }
 
+/** Shared, so re-planning without a grid keeps the same route. */
+const STRAIGHT_AT_TARGET: XZ[] = [];
+
 /** Null when unreachable; empty, meaning straight at the target, without a grid. */
 function route(selfPos: Vec3, targetPos: Vec3, grid: NavGrid | null, plan: PlanFn): XZ[] | null {
-  return grid ? plan(grid, selfPos, targetPos) : [];
+  return grid ? plan(grid, selfPos, targetPos) : STRAIGHT_AT_TARGET;
 }
 
 function startWalking(
@@ -124,11 +130,35 @@ function startWalking(
   plan: PlanFn,
 ): TrackedAutoWalkState {
   const planned = route(selfPos, targetPos, grid, plan);
-  return planned ? walkingTo(targetId, planned, targetPos, now) : { type: 'no-route', targetId, plannedAt: now };
+  return planned ? walkingTo(targetId, planned, targetPos, now, now) : { type: 'no-route', targetId, plannedAt: now };
 }
 
-function walkingTo(targetId: PlayerId, route: XZ[], targetPos: Vec3, now: number): Walking {
-  return { type: 'walking', targetId, route, plannedAt: now, plannedFor: { x: targetPos.x, z: targetPos.z } };
+/** A failed re-plan keeps the old route for a grace period, so a jump doesn't stop the walk. */
+function replanWalk(
+  state: Walking,
+  selfPos: Vec3,
+  targetPos: Vec3,
+  now: number,
+  grid: NavGrid | null,
+  plan: PlanFn,
+): TrackedAutoWalkState {
+  const planned = route(selfPos, targetPos, grid, plan);
+  return planned
+    ? walkingTo(state.targetId, planned, targetPos, now, now)
+    : now - state.routedAt < ROUTE_GRACE_MS
+      ? walkingTo(state.targetId, state.route, targetPos, now, state.routedAt)
+      : { type: 'no-route', targetId: state.targetId, plannedAt: now };
+}
+
+function walkingTo(targetId: PlayerId, route: XZ[], targetPos: Vec3, now: number, routedAt: number): Walking {
+  return {
+    type: 'walking',
+    targetId,
+    route,
+    plannedAt: now,
+    routedAt,
+    plannedFor: { x: targetPos.x, z: targetPos.z },
+  };
 }
 
 /** Drops the waypoints already reached and aims at the next one, or at the target once none are left. */
