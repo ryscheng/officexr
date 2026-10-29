@@ -16,7 +16,7 @@ import { MotionLookMenuItem } from './MotionLookMenuItem';
 import { OfficeSettings } from './OfficeSettings';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
-import { RoomMenu, RoomMenuItem } from './RoomMenu';
+import { RoomMenu, RoomMenuChoice, RoomMenuItem } from './RoomMenu';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { useJoinCheck } from './useJoinCheck';
 import { useLocalPresence } from './useLocalPresence';
@@ -74,6 +74,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
   const [motionLook, setMotionLook] = useState({ enabled: false, recenterKey: 0 });
   const [motionUnsupported, setMotionUnsupported] = useState(false);
+  const [invertLook, setInvertLook] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
@@ -98,6 +99,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           cameraMode={cameraMode}
           onCameraModeChange={setCameraMode}
           motionLook={motionLook}
+          invertLook={invertLook}
           hostControls
           error={bannerError}
           onDismissError={() => setBannerError(null)}
@@ -112,6 +114,15 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
               unsupported={motionUnsupported}
               onUnsupported={() => setMotionUnsupported(true)}
             />
+            <RoomMenuChoice>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={invertLook}
+                onChange={(e) => setInvertLook(e.target.checked)}
+              />
+              Invert look
+            </RoomMenuChoice>
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
             {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={setBannerError} />}
           </RoomMenu>

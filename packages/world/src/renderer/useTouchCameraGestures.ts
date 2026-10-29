@@ -22,7 +22,7 @@ interface Point {
  * `preventDefault`ed so the compatibility mousedown still reaches the focus
  * tracking. Does nothing in modes without look input.
  */
-export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs): void {
+export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs, lookSign = -1): void {
   const canvas = useThree((s) => s.gl.domElement);
 
   useEffect(() => {
@@ -45,8 +45,8 @@ export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs): void {
       if (pointers.size === 1) {
         applyLookDelta(
           mode,
-          -(next.x - prev.x) * TOUCH_SENSITIVITY,
-          -(next.y - prev.y) * TOUCH_SENSITIVITY,
+          lookSign * (next.x - prev.x) * TOUCH_SENSITIVITY,
+          lookSign * (next.y - prev.y) * TOUCH_SENSITIVITY,
           refs,
         );
       } else if (pointers.size === 2) {
@@ -78,5 +78,5 @@ export function useTouchCameraGestures(mode: CameraMode, refs: LookRefs): void {
       canvas.removeEventListener('pointercancel', onEnd);
       canvas.removeEventListener('lostpointercapture', onEnd);
     };
-  }, [mode, canvas, refs]);
+  }, [mode, canvas, refs, lookSign]);
 }

@@ -39,6 +39,7 @@ interface CameraRigProps {
   viewOffsetsRef: React.MutableRefObject<ViewOffsets>;
   /** Absent means device motion doesn't steer the view. */
   motionLook?: MotionLookState;
+  invertLook?: boolean;
   /** Set by `ProximityGlow` each frame to the local player's
    * MeetingArea centroid when in a conversation, or `null` otherwise.
    * When non-null, the rig blends in a "conversation view": elevated
@@ -102,6 +103,7 @@ export function CameraRig({
   pitchRef,
   viewOffsetsRef,
   motionLook,
+  invertLook = false,
   conversationFocusRef,
   conversationDistance,
   conversationHeight,
@@ -114,7 +116,8 @@ export function CameraRig({
     () => ({ yawRef, pitchRef, viewOffsetsRef }),
     [yawRef, pitchRef, viewOffsetsRef],
   );
-  useTouchCameraGestures(mode, lookRefs);
+  const lookSign = invertLook ? 1 : -1;
+  useTouchCameraGestures(mode, lookRefs, lookSign);
   // The headset owns the camera while presenting; motion look re-baselines after.
   useMotionLook(xrPresenting ? undefined : motionLook, mode, lookRefs);
 
@@ -135,8 +138,8 @@ export function CameraRig({
       if (document.pointerLockElement !== canvas) return;
       applyLookDelta(
         mode,
-        -e.movementX * MOUSE_SENSITIVITY,
-        -e.movementY * MOUSE_SENSITIVITY,
+        lookSign * e.movementX * MOUSE_SENSITIVITY,
+        lookSign * e.movementY * MOUSE_SENSITIVITY,
         lookRefs,
       );
     };
@@ -148,7 +151,7 @@ export function CameraRig({
       document.removeEventListener('mousemove', onMouseMove);
       if (document.pointerLockElement === canvas) document.exitPointerLock?.();
     };
-  }, [mode, gl, lookRefs]);
+  }, [mode, gl, lookRefs, lookSign]);
 
   // Keep fixed/top-down/free-fly camera fov in sync. Each mode sets its
   // own default; everything else falls back to the gameplay 75°.
