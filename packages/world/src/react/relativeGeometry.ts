@@ -1,7 +1,7 @@
 import type { Vec3 } from '@officexr/sdk';
 import { wrapAngle, yawFromDirection } from '../renderer/lookControls.ts';
 
-export function planarDistance(a: Vec3, b: Vec3): number {
+export function planarDistance(a: Pick<Vec3, 'x' | 'z'>, b: Pick<Vec3, 'x' | 'z'>): number {
   return Math.hypot(b.x - a.x, b.z - a.z);
 }
 

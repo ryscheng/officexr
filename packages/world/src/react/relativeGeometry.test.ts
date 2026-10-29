@@ -6,7 +6,8 @@ const at = (x: number, z: number) => ({ x, y: 0, z });
 
 describe('planarDistance', () => {
   it('ignores y', () => {
-    expect(planarDistance(origin, { x: 3, y: 40, z: 4 })).toBe(5);
+    const above = { x: 3, y: 40, z: 4 };
+    expect(planarDistance(origin, above)).toBe(5);
   });
 });
 

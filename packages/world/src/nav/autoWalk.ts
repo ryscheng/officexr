@@ -1,6 +1,7 @@
 import type { PlayerId, Vec3 } from '@officexr/sdk';
 import type { NavGrid } from './grid.ts';
 import type { findPath } from './path.ts';
+import { planarDistance } from '../react/relativeGeometry.ts';
 
 type XZ = { x: number; z: number };
 
@@ -127,8 +128,4 @@ function steer(
   const dz = aim.z - selfPos.z;
   const length = Math.hypot(dx, dz);
   return { state: next, intent: { x: dx / length, z: dz / length } };
-}
-
-function planarDistance(a: XZ, b: XZ): number {
-  return Math.hypot(a.x - b.x, a.z - b.z);
 }
