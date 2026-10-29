@@ -24,3 +24,6 @@ export { NavGridProvider, useNavGrid } from './useNavGrid.ts';
 export { findPath } from '../nav/path.ts';
 export { feetPosition } from '../physics/rules.ts';
 export type { NavGrid } from '../nav/grid.ts';
+export { useCoarsePointer } from './useCoarsePointer.ts';
+export { createViewYaw, useViewYaw, ViewYawProvider, type ViewYaw } from './viewYaw.tsx';
+export { planarDistance, relativeBearing } from './relativeGeometry.ts';

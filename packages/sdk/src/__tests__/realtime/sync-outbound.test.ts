@@ -25,7 +25,8 @@ function setupOne(opts: { selfId: string }) {
     isDead: false,
     avatar: { model: 'default' },
     jitsiRoom: null,
-    status: 'active',
+    status: 'available',
+    mic: 'none',
   });
   const bus = createBus();
   const channel = new InMemoryChannel(hub, opts.selfId);

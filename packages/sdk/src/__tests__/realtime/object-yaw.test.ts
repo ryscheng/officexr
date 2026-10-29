@@ -49,7 +49,7 @@ describe('ObjectInstance.yawDeg', () => {
     const s = createInitialOfficeState({ selfId: 'me', officeId: 'r' });
     s.worldObjects = objects;
     const restored = createInitialOfficeState({ selfId: 'me', officeId: 'r' });
-    applySnapshot(restored, JSON.parse(JSON.stringify(serializeOfficeState(s))));
+    applySnapshot(restored, JSON.parse(JSON.stringify(serializeOfficeState(s))), 0);
     expect(restored.worldObjects).toEqual(objects);
   });
 });

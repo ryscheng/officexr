@@ -21,6 +21,7 @@ describe('PROTOCOL table', () => {
       isAirborne: false,
     },
     { kind: 'chat:message', v: 1, actorId: 'a', seq: 1, t: 0, text: 'hi' },
+    { kind: 'presence:status', v: 1, actorId: 'a', seq: 1, t: 0, status: 'away', mic: 'muted' },
     {
       kind: 'avatar:update',
       v: 1,
@@ -290,6 +291,19 @@ function makePresencePositionEvent(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe('presence:status', () => {
+  const base = { kind: 'presence:status', v: 1, actorId: 'a', seq: 1, t: 0, status: 'available', mic: 'none' };
+
+  it.each([
+    ['status', { status: 'active' }],
+    ['mic', { mic: 'loud' }],
+  ])('rejects an invalid %s', (_field, patch) => {
+    const r = validateNetEvent({ ...base, ...patch });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('schema');
+  });
+});
 
 describe('presence:position — isAirborne field', () => {
   it('accepts isAirborne: false', () => {

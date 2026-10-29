@@ -26,6 +26,9 @@ export function applyNetEventToStore(
         event.isAirborne,
       );
       return;
+    case 'presence:status':
+      actions.applyRemotePresence(event.actorId, event.status, event.mic, clock.now());
+      return;
     case 'chat:message': {
       const msg: ChatMessage = {
         id: `${event.actorId}:${event.seq}`,
@@ -40,7 +43,7 @@ export function applyNetEventToStore(
       actions.applyRemoteStroke(event.stroke);
       return;
     case 'avatar:update':
-      actions.upsertPlayer({ id: event.actorId, avatar: event.avatar, name: event.name });
+      actions.applyRemoteAvatar(event.actorId, event.avatar, event.name, clock.now());
       return;
     case 'shot:hit':
       actions.applyHit(event.targetId, event.dmg, event.actorId);

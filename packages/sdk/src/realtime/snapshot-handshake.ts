@@ -190,7 +190,7 @@ export class SnapshotHandshake {
     try {
       this.store.setState((s) => {
         const target = { ...s };
-        applySnapshot(target, event.state);
+        applySnapshot(target, event.state, this.clock.now());
         return target;
       });
       this.sync.getInboundSeqTable().seed(event.seqTable);

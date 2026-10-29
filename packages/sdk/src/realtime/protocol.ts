@@ -2,7 +2,9 @@ import { z } from 'zod';
 import type {
   AvatarData,
   CharacterConfigs,
+  MicState,
   PlayerId,
+  PresenceStatus,
   Stroke,
   Vec3,
   WorldMap,
@@ -55,6 +57,9 @@ const ZZombieState: z.ZodType<ZombieState> = z.object({
   playerHealths: z.record(z.string(), z.number()),
 });
 
+const ZPresenceStatus = z.enum(['available', 'away']);
+const ZMicState = z.enum(['none', 'muted', 'silent', 'speaking']);
+
 const ZPlayerState = z.object({
   id: z.string(),
   name: z.string(),
@@ -66,7 +71,8 @@ const ZPlayerState = z.object({
   isAirborne: z.boolean(),
   avatar: ZAvatarData,
   jitsiRoom: z.string().nullable(),
-  status: z.enum(['active', 'inactive']),
+  status: ZPresenceStatus,
+  mic: ZMicState,
 });
 
 const ZChatMessageObj = z.object({
@@ -182,6 +188,7 @@ const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
 // --- Per-kind payload schemas (without envelope) ---
 
 const ZPresencePosition = z.object({ pos: ZVec3, vel: ZVec3, yaw: z.number(), isAirborne: z.boolean() });
+const ZPresenceStatusPayload = z.object({ status: ZPresenceStatus, mic: ZMicState });
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) });
 const ZChatMessage = z.object({ text: z.string() });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
@@ -210,6 +217,7 @@ type WithEnvelope<K extends string, V extends number, P = {}> = Envelope & { kin
 
 export type NetEvent =
   | WithEnvelope<'presence:position', 1, { pos: Vec3; vel: Vec3; yaw: number; isAirborne: boolean }>
+  | WithEnvelope<'presence:status', 1, { status: PresenceStatus; mic: MicState }>
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData; name: string }>
   | WithEnvelope<'chat:message', 1, { text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>
@@ -240,6 +248,7 @@ export type ProtocolEntry = {
 
 export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'presence:position': { v: 1, schema: ZPresencePosition, authority: 'local' },
+  'presence:status': { v: 1, schema: ZPresenceStatusPayload, authority: 'local' },
   'avatar:update': { v: 1, schema: ZAvatarUpdate, authority: 'local' },
   'chat:message': { v: 1, schema: ZChatMessage, authority: 'local' },
   'whiteboard:stroke': { v: 1, schema: ZWhiteboardStroke, authority: 'local' },

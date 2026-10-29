@@ -6,9 +6,9 @@ import type { OfficeState, PlayerState, ScreenShareSignal } from './types.ts';
 // Voice zones are left out: each client derives them from its own loaded map.
 export type SerializedOfficeState = Omit<
   OfficeState,
-  'proximity' | 'players' | 'screenShares' | 'worldConstants' | 'worldSettings' | 'voiceZones'
+  'proximity' | 'players' | 'departed' | 'screenShares' | 'worldConstants' | 'worldSettings' | 'voiceZones'
 > & {
-  players: Record<string, Omit<PlayerState, 'tRecv'>>;
+  players: Record<string, Omit<PlayerState, 'tRecv' | 'lastStatusAt' | 'firstSeenAt'>>;
   proximity: Record<string, string[]>;
   screenShares: Record<string, Omit<ScreenShareSignal, 'stream'> & { stream: null }>;
 };
@@ -16,7 +16,7 @@ export type SerializedOfficeState = Omit<
 export function serializeOfficeState(state: OfficeState): SerializedOfficeState {
   const players: SerializedOfficeState['players'] = {};
   for (const [id, p] of Object.entries(state.players)) {
-    const { tRecv: _tRecv, ...rest } = p;
+    const { tRecv: _tRecv, lastStatusAt: _lastStatusAt, firstSeenAt: _firstSeenAt, ...rest } = p;
     players[id] = rest;
   }
 
@@ -49,15 +49,17 @@ export function serializeOfficeState(state: OfficeState): SerializedOfficeState 
 }
 
 // Apply a snapshot to an existing in-memory store target. Mutates `target`
-// in place (callers wrap this in store.setState()).
-export function applySnapshot(target: OfficeState, snap: SerializedOfficeState): void {
+// in place (callers wrap this in store.setState()). `now` stamps `firstSeenAt`
+// on every laid-down peer so one that never sends again still ages out.
+export function applySnapshot(target: OfficeState, snap: SerializedOfficeState, now: number): void {
   // self-related fields preserved on the receiver
   const selfId = target.selfId;
   const officeId = target.officeId;
 
   target.players = {};
   for (const [id, p] of Object.entries(snap.players)) {
-    target.players[id] = { ...p }; // tRecv intentionally omitted
+    // tRecv intentionally omitted
+    target.players[id] = id === selfId ? { ...p } : { ...p, firstSeenAt: now };
   }
 
   target.proximity = {};

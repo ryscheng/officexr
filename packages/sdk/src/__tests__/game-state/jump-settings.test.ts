@@ -75,7 +75,8 @@ describe('PlayerState has isAirborne field', () => {
       isAirborne: false,
       avatar: { model: 'default' },
       jitsiRoom: null,
-      status: 'active',
+      status: 'available',
+      mic: 'none',
     };
     expect(p.isAirborne).toBe(false);
   });

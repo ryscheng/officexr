@@ -28,7 +28,7 @@ describe('applyRemotePosition — membership upsert', () => {
     // sensible defaults for fields that aren't on the wire
     expect(created.hp).toBe(100);
     expect(created.isDead).toBe(false);
-    expect(created.status).toBe('active');
+    expect(created.status).toBe('available');
     expect(created.avatar).toEqual({ model: 'default' });
   });
 

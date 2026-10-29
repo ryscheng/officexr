@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket as RawWebSocket } from 'ws';
 import { RealtimeServer } from '../server.ts';
 import { signJoinToken } from '../join-token.ts';
-import { decodeFrame, encodeFrame, type Frame } from '../protocol.ts';
+import { decodeFrame, encodeFrame, REJECTED_CLOSE_CODE, type Frame } from '../protocol.ts';
 import { WsChannel } from '../ws-channel.ts';
 
 const SECRET = 'join-secret';
@@ -25,8 +25,8 @@ describe('RealtimeServer join tokens', () => {
   const tokenFor = (login: string, ttlMs = 60_000, secret = SECRET): string =>
     signJoinToken(secret, { login, ttlMs, now: T0 });
 
-  /** Sends one hello and reports whether the server acked it or closed the socket. */
-  async function tryJoin(hello: { userId: string; login?: string; token?: string }): Promise<'joined' | 'rejected'> {
+  /** Sends one hello and reports whether the server acked it, or the reason it refused it. */
+  async function tryJoin(hello: { userId: string; login?: string; token?: string }): Promise<string> {
     const ws = new RawWebSocket(`ws://127.0.0.1:${port}/ws`);
     sockets.push(ws);
     return new Promise((resolve) => {
@@ -36,7 +36,7 @@ describe('RealtimeServer join tokens', () => {
           resolve('joined');
         }
       });
-      ws.on('close', () => resolve('rejected'));
+      ws.on('close', (code, reason) => resolve(code === REJECTED_CLOSE_CODE ? `rejected: ${String(reason)}` : `closed ${code}`));
       ws.on('open', () => ws.send(encodeFrame({ t: 'hello', officeId: OFFICE, ...hello })));
     });
   }
@@ -61,18 +61,18 @@ describe('RealtimeServer join tokens', () => {
 
   it('rejects a missing, forged, wrong-secret or expired token', async () => {
     await start();
-    expect(await tryJoin({ userId: 'ann' })).toBe('rejected');
-    expect(await tryJoin({ userId: 'ann', token: 'garbage' })).toBe('rejected');
-    expect(await tryJoin({ userId: 'ann', token: tokenFor('ann', 60_000, 'other') })).toBe('rejected');
+    expect(await tryJoin({ userId: 'ann' })).toBe('rejected: missing join token');
+    expect(await tryJoin({ userId: 'ann', token: 'garbage' })).toBe('rejected: invalid or expired join token');
+    expect(await tryJoin({ userId: 'ann', token: tokenFor('ann', 60_000, 'other') })).toBe('rejected: invalid or expired join token');
     clock = T0 + 60_000;
-    expect(await tryJoin({ userId: 'ann', token: tokenFor('ann') })).toBe('rejected');
+    expect(await tryJoin({ userId: 'ann', token: tokenFor('ann') })).toBe('rejected: invalid or expired join token');
   });
 
   it("rejects a token for another login's player id", async () => {
     await start();
-    expect(await tryJoin({ userId: 'bob', token: tokenFor('ann') })).toBe('rejected');
-    expect(await tryJoin({ userId: 'bob#t1', token: tokenFor('ann') })).toBe('rejected');
-    expect(await tryJoin({ userId: 'ann', login: 'bob', token: tokenFor('ann') })).toBe('rejected');
+    expect(await tryJoin({ userId: 'bob', token: tokenFor('ann') })).toBe('rejected: userId does not belong to the login');
+    expect(await tryJoin({ userId: 'bob#t1', token: tokenFor('ann') })).toBe('rejected: userId does not belong to the login');
+    expect(await tryJoin({ userId: 'ann', login: 'bob', token: tokenFor('ann') })).toBe('rejected: login does not match the join token');
   });
 
   it('works unchanged when no secret is set', async () => {
@@ -147,7 +147,13 @@ describe('RealtimeServer join tokens', () => {
     const { c } = tokenChannel(async () => {
       throw new Error('token endpoint down');
     });
-    await expect(c.subscribe()).rejects.toThrow();
+    await expect(c.subscribe()).rejects.toThrow('WsChannel: getToken failed: token endpoint down');
+  });
+
+  it('fails subscribe with the reason the server refused the hello', async () => {
+    await start();
+    const { c } = tokenChannel(async () => undefined);
+    await expect(c.subscribe()).rejects.toThrow('WsChannel: rejected by the server: missing join token');
   });
 
   describe('GET /rooms/:id/sessions', () => {
