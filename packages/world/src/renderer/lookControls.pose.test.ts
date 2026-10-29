@@ -5,12 +5,20 @@ import { feetPosition } from '../physics/rules.ts';
 
 const bodyRoot = { x: 2, y: 1, z: -3 };
 
-describe.each([0.4, 0.25])('with charRadius %s', (charRadius) => {
+describe.each([
+  { charRadius: 0.4, eyeY: 3.1 },
+  { charRadius: 0.25, eyeY: 3.25 },
+])('with charRadius $charRadius', ({ charRadius, eyeY }) => {
   const feet = feetPosition(bodyRoot, charRadius);
   const eye = eyePosition(bodyRoot, charRadius);
 
   it('puts the first-person eye EYE_HEIGHT above the feet', () => {
     expect(eye).toEqual({ x: feet.x, y: expect.closeTo(feet.y + EYE_HEIGHT, 9), z: feet.z });
+  });
+
+  it('puts the eye at the hand-computed height for a body root at y = 1', () => {
+    // root 1 + BODY_Y 0.9 - charRadius + EYE_HEIGHT 1.6
+    expect(eye.y).toBeCloseTo(eyeY, 9);
   });
 
   it('orbits the third-person camera around the eye at a level pitch', () => {

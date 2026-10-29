@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Physics, type RapierRigidBody } from '@react-three/rapier';
@@ -187,8 +187,14 @@ export function Scene(props: SceneProps) {
     zoom: 1,
   });
   const selfPosRef = useRef(new THREE.Vector3());
-  const [charRadius, setCharRadius] = useState(() => store.getState().worldSettings.charRadius);
-  useEffect(() => store.subscribe((s) => s.worldSettings.charRadius, setCharRadius), [store]);
+  const subscribeCharRadius = useCallback(
+    (onChange: () => void) => store.subscribe((s) => s.worldSettings.charRadius, onChange),
+    [store],
+  );
+  const charRadius = useSyncExternalStore(
+    subscribeCharRadius,
+    () => store.getState().worldSettings.charRadius,
+  );
 
   // Refs the SunFollower drives each frame so the directional light
   // tracks the local player.
