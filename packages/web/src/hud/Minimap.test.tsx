@@ -79,7 +79,7 @@ function seed({ coarse = false, navGrid = grid as NavGrid | null, onRender = () 
   };
 }
 
-const marker = (name: string) => screen.getByRole('img', { name });
+const marker = (name: string) => screen.getByRole('img', { name: name === 'You' ? name : new RegExp(`^${name}, `) });
 const dotOf = (name: string) => marker(name).querySelector('circle')!;
 const map = () => screen.queryByRole('group', { name: 'Map' });
 const floorPlan = () => map()?.querySelector('path[transform]') ?? null;
@@ -90,9 +90,9 @@ describe('Minimap', () => {
     expect(marker('You')).toBeTruthy();
     expect(dotOf('Ann').getAttribute('class')).toContain('fill-green-500');
     expect(dotOf('Bob').getAttribute('class')).toContain('fill-yellow-400');
-    expect(marker('Ann').textContent).toBe('Ann12 m');
-    expect(marker('Bob').textContent).toBe('Bob<1 m');
-    expect(screen.queryByRole('img', { name: 'Dan' })).toBeNull();
+    expect(screen.getByRole('img', { name: 'Ann, 12 m' }).textContent).toBe('Ann12 m');
+    expect(screen.getByRole('img', { name: 'Bob, <1 m' }).textContent).toBe('Bob<1 m');
+    expect(screen.queryByRole('img', { name: /^Dan/ })).toBeNull();
   });
 
   it('turns a silent user red once stale', () => {
@@ -129,7 +129,9 @@ describe('Minimap', () => {
 
   it('is open on a fine pointer and collapsed on a coarse one', () => {
     seed();
-    expect(screen.getByRole('button', { name: 'Hide map' }).getAttribute('aria-expanded')).toBe('true');
+    const button = screen.getByRole('button', { name: 'Hide map' });
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(button.getAttribute('aria-controls')).toBe(map()?.id);
     cleanup();
     seed({ coarse: true });
     expect(screen.getByRole('button', { name: 'Show map' }).getAttribute('aria-expanded')).toBe('false');
@@ -162,6 +164,8 @@ describe('Minimap', () => {
     expect(onRender).toHaveBeenCalledTimes(renders);
     act(() => actions.upsertPlayer({ id: 'ann', pos: { x: 0, y: 0, z: -13.6 } }));
     expect(onRender).toHaveBeenCalledTimes(renders + 1);
-    expect(marker('Ann').textContent).toBe('Ann13 m');
+    expect(screen.getByRole('img', { name: 'Ann, 13 m' })).toBeTruthy();
+    act(() => actions.upsertPlayer({ id: 'me', pos: { x: 0.2, y: 0, z: 0.1 } }));
+    expect(onRender).toHaveBeenCalledTimes(renders + 2);
   });
 });

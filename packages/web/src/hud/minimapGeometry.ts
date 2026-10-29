@@ -19,6 +19,35 @@ export function toMinimap(
   return { x: sizePx / 2 + r * Math.sin(bearing), y: sizePx / 2 - r * Math.cos(bearing), clamped };
 }
 
+/** An SVG `matrix(a b c d e f)`: x' = a·x + c·y + e, y' = b·x + d·y + f. */
+export type SvgMatrix = { a: number; b: number; c: number; d: number; e: number; f: number };
+
+/**
+ * Maps `navGridPath(grid)`'s cell units onto the map `toMinimap` draws, with
+ * `selfPos` at `centre` instead of at `sizePx / 2`.
+ */
+export function floorPlanTransform(
+  grid: NavGrid,
+  selfPos: Vec3,
+  viewYaw: number,
+  { rangeM, sizePx, centre }: { rangeM: number; sizePx: number; centre: number },
+): SvgMatrix {
+  const scale = sizePx / rangeM;
+  // SVG's y points down, so a positive rotation turns clockwise on screen, undoing a counter-clockwise yaw.
+  const cos = Math.cos(viewYaw) * scale;
+  const sin = Math.sin(viewYaw) * scale;
+  const dx = grid.origin.x - selfPos.x;
+  const dz = grid.origin.z - selfPos.z;
+  return {
+    a: cos * grid.cellSize,
+    b: sin * grid.cellSize,
+    c: -sin * grid.cellSize,
+    d: cos * grid.cellSize,
+    e: centre + cos * dx - sin * dz,
+    f: centre + sin * dx + cos * dz,
+  };
+}
+
 const paths = new WeakMap<NavGrid, string>();
 
 type Run = { i0: number; i1: number; fromRow: number };

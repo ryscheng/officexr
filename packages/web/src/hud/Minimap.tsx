@@ -12,7 +12,7 @@ import {
   type NavGrid,
 } from '@officexr/world/react';
 import { formatDistance } from './formatDistance';
-import { navGridPath, toMinimap } from './minimapGeometry';
+import { floorPlanTransform, navGridPath, toMinimap } from './minimapGeometry';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { quantise } from './quantise';
 import { sameFields, sameList } from './sameFields';
@@ -24,7 +24,6 @@ const RIM_INSET_PX = 12;
 const MAP_PX = SIZE_PX - 2 * RIM_INSET_PX;
 const RANGE_M = 40;
 const CENTRE = SIZE_PX / 2;
-const DEG = 180 / Math.PI;
 
 type MinimapPeer = Pick<PlayerState, 'id' | 'name' | 'status' | 'lastStatusAt' | 'firstSeenAt'> &
   Vec3 & { distanceM: number };
@@ -66,8 +65,9 @@ export function Minimap({
 }) {
   const coarse = useCoarsePointer();
   const [open, setOpen] = useState(!coarse);
+  const mapId = useId();
   const toggle = () => {
-    setOpen(!open);
+    setOpen((o) => !o);
     focusWorld();
   };
   return (
@@ -79,6 +79,7 @@ export function Minimap({
           type="button"
           aria-label={open ? 'Hide map' : 'Show map'}
           aria-expanded={open}
+          aria-controls={mapId}
           onMouseDown={(e) => e.preventDefault()}
           onClick={toggle}
           className="rounded p-0.5 hover:bg-white/20"
@@ -86,12 +87,12 @@ export function Minimap({
           {open ? <ChevronDown aria-hidden className="h-3 w-3" /> : <ChevronUp aria-hidden className="h-3 w-3" />}
         </button>
       </div>
-      {open && <MapView store={store} clock={clock} />}
+      {open && <MapView id={mapId} store={store} clock={clock} />}
     </div>
   );
 }
 
-function MapView({ store, clock }: { store: Store; clock?: () => number }) {
+function MapView({ id, store, clock }: { id: string; store: Store; clock?: () => number }) {
   const { self, peers } = useStoreSelector(store, selectPositions, samePositions);
   const clipId = useId();
   const viewYaw = useViewYaw();
@@ -99,6 +100,7 @@ function MapView({ store, clock }: { store: Store; clock?: () => number }) {
   const grid = useNavGrid();
   return (
     <svg
+      id={id}
       role="group"
       aria-label="Map"
       width={SIZE_PX}
@@ -125,7 +127,7 @@ function PeerMarker({ peer, self, viewYaw, now }: { peer: MinimapPeer; self: Vec
   const cy = y + RIM_INSET_PX;
   const name = peer.name || 'Joining…';
   return (
-    <g role="img" aria-label={name}>
+    <g role="img" aria-label={`${name}, ${formatDistance(peer.distanceM)}`}>
       <title>{name}</title>
       <circle cx={cx} cy={cy} r={4} className={PRESENCE_INDICATOR[presenceIndicator(peer, now)].fill} />
       <text x={cx} y={cy + 12} textAnchor="middle" className="fill-white text-[9px] tabular-nums">
@@ -136,16 +138,14 @@ function PeerMarker({ peer, self, viewYaw, now }: { peer: MinimapPeer; self: Vec
 }
 
 function FloorPlan({ grid, self, viewYaw, clipId }: { grid: NavGrid; self: Vec3; viewYaw: number; clipId: string }) {
-  const transform = [
-    `translate(${CENTRE} ${CENTRE})`,
-    `rotate(${viewYaw * DEG})`,
-    `scale(${MAP_PX / RANGE_M})`,
-    `translate(${grid.origin.x - self.x} ${grid.origin.z - self.z})`,
-    `scale(${grid.cellSize})`,
-  ].join(' ');
+  const { a, b, c, d, e, f } = floorPlanTransform(grid, self, viewYaw, {
+    rangeM: RANGE_M,
+    sizePx: MAP_PX,
+    centre: CENTRE,
+  });
   return (
     <g clipPath={`url(#${clipId})`}>
-      <path d={navGridPath(grid)} transform={transform} className="fill-white/40" />
+      <path d={navGridPath(grid)} transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`} className="fill-white/40" />
     </g>
   );
 }
