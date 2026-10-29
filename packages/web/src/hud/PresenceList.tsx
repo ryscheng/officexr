@@ -1,5 +1,5 @@
 import { ArrowUp, Mic, MicOff, type LucideIcon } from 'lucide-react';
-import type { MicState, OfficeState, PlayerId, PlayerState, PresenceStatus, Store } from '@officexr/sdk';
+import type { DepartedPlayer, MicState, OfficeState, PlayerId, PlayerState, PresenceStatus, Store } from '@officexr/sdk';
 import { loginOf, presenceIndicator } from '@officexr/sdk';
 import { planarDistance, relativeBearing, useStoreSelector, useViewYaw } from '@officexr/world/react';
 import { PRESENCE_INDICATOR } from './presenceColours';
@@ -10,7 +10,7 @@ type PresencePlayer = Pick<PlayerState, 'id' | 'name' | 'status' | 'mic' | 'last
   /** Bearing for a view yaw of 0, in degrees rounded to 5°. */
   bearingDeg: number;
 };
-type DepartedEntry = { id: PlayerId; name: string; leftAt: number };
+type DepartedEntry = DepartedPlayer & { id: PlayerId };
 type PresenceRow = { id: PlayerId; name: string; label: string } & (
   | { type: 'self'; status: PresenceStatus; mic: MicState }
   | ({ type: 'peer' } & Omit<PresencePlayer, 'id' | 'name'>)
@@ -117,35 +117,39 @@ export function PresenceList({
         </span>
       </div>
       <ul aria-label={`People in ${officeName}`}>
-        {presenceRows(players, departed, selfId).map((row) => {
-          const indicator = PRESENCE_INDICATOR[row.type === 'self' ? row.status : presenceIndicator(row, now)];
-          const mic = row.type === 'departed' ? null : MIC[row.mic];
-          return (
-            <li key={row.id} className="flex items-center gap-1.5">
-              <span
-                role="img"
-                aria-label={indicator.label}
-                className={`inline-block h-2 w-2 shrink-0 rounded-full ${indicator.dot}`}
-              />
-              {mic && <mic.Icon role="img" aria-label={mic.label} className={`h-3 w-3 shrink-0 ${mic.className}`} />}
-              <span className={`min-w-0 flex-1 truncate ${row.type === 'departed' ? 'text-white/60' : ''}`}>
-                {row.label}
-                {row.type === 'self' && ' (you)'}
-              </span>
-              {row.type === 'peer' && (
-                <span className="flex shrink-0 items-center gap-0.5 tabular-nums text-white/80">
-                  <ArrowUp
-                    aria-hidden
-                    className="h-3 w-3"
-                    style={{ transform: `rotate(${Math.round(row.bearingDeg + viewYawDeg)}deg)` }}
-                  />
-                  {row.distanceM < 1 ? '<1 m' : `${row.distanceM} m`}
-                </span>
-              )}
-            </li>
-          );
-        })}
+        {presenceRows(players, departed, selfId).map((row) => (
+          <PresenceRowItem key={row.id} row={row} now={now} viewYawDeg={viewYawDeg} />
+        ))}
       </ul>
     </div>
+  );
+}
+
+function PresenceRowItem({ row, now, viewYawDeg }: { row: PresenceRow; now: number; viewYawDeg: number }) {
+  const indicator = PRESENCE_INDICATOR[row.type === 'self' ? row.status : presenceIndicator(row, now)];
+  const mic = row.type === 'departed' ? null : MIC[row.mic];
+  return (
+    <li className="flex items-center gap-1.5">
+      <span
+        role="img"
+        aria-label={indicator.label}
+        className={`inline-block h-2 w-2 shrink-0 rounded-full ${indicator.dot}`}
+      />
+      {mic && <mic.Icon role="img" aria-label={mic.label} className={`h-3 w-3 shrink-0 ${mic.className}`} />}
+      <span className={`min-w-0 flex-1 truncate ${row.type === 'departed' ? 'text-white/60' : ''}`}>
+        {row.label}
+        {row.type === 'self' && ' (you)'}
+      </span>
+      {row.type === 'peer' && (
+        <span className="flex shrink-0 items-center gap-0.5 tabular-nums text-white/80">
+          <ArrowUp
+            aria-hidden
+            className="h-3 w-3"
+            style={{ transform: `rotate(${Math.round(row.bearingDeg + viewYawDeg)}deg)` }}
+          />
+          {row.distanceM < 1 ? '<1 m' : `${row.distanceM} m`}
+        </span>
+      )}
+    </li>
   );
 }
