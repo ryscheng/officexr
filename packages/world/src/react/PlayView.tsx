@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer, useRef } from 'react';
+import React, { useEffect, useReducer, useRef, useState } from 'react';
 import type { XRStore } from '@react-three/xr';
 import { useProgress } from '@react-three/drei';
 import type { Actions, Bus, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
@@ -13,6 +13,7 @@ import { useCameraMode } from './useCameraMode.ts';
 import { useCoarsePointer } from './useCoarsePointer.ts';
 import { NO_MOVE, type MoveInput } from '../renderer/moveIntent.ts';
 import { VirtualJoystick } from './VirtualJoystick.tsx';
+import { createViewYaw, ViewYawProvider } from './viewYaw.tsx';
 import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
 import { useWorldConstants } from './useWorldConstants.ts';
 import { useSlowNotice } from './useSlowNotice.ts';
@@ -68,6 +69,7 @@ export function PlayView(props: PlayViewProps) {
   const worldFocused = useWorldFocus();
   const moveInputRef = useRef<MoveInput>(NO_MOVE);
   const coarsePointer = useCoarsePointer();
+  const [viewYaw] = useState(createViewYaw);
   const worldConstants = useWorldConstants(props.store);
   const session = usePlaySession({
     actions: props.actions,
@@ -116,6 +118,7 @@ export function PlayView(props: PlayViewProps) {
           spawnPoints={session.spawnPoints}
           bakedLayouts={session.bakedLayouts}
           onFrameStats={props.onFrameStats}
+          viewYaw={viewYaw}
           xrStore={props.xrStore}
           selfReady={ready}
           onModelsReady={() => dispatch({ type: 'modelsReady' })}
@@ -138,7 +141,7 @@ export function PlayView(props: PlayViewProps) {
       ) : (
         session.error && <ErrorBanner message={session.error} onDismiss={session.dismissError} />
       )}
-      {props.children}
+      <ViewYawProvider viewYaw={viewYaw}>{props.children}</ViewYawProvider>
       {!ready && (
         <LoadingScreenWithProgress
           title={props.title}
