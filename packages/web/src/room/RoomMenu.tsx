@@ -56,7 +56,7 @@ export function RoomMenu({ children }: { children: ReactNode }) {
   }, [open]);
 
   return (
-    <div ref={ref} data-studio-panel className="pointer-events-none absolute top-3 right-3 z-20 flex flex-col items-end gap-2">
+    <div ref={ref} data-studio-panel className="pointer-events-none absolute top-3 left-3 z-20 flex flex-col items-start gap-2">
       <button
         type="button"
         aria-label="Menu"
