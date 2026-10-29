@@ -1,9 +1,7 @@
 import type { Vec3 } from '@officexr/sdk';
 import { wrapAngle, yawFromDirection } from '../renderer/lookControls.ts';
 
-export function planarDistance(a: Vec3, b: Vec3): number {
-  return Math.hypot(b.x - a.x, b.z - a.z);
-}
+export { planarDistance } from '../nav/planar.ts';
 
 /**
  * Where `targetPos` appears relative to the view, in radians in (-π, π]:

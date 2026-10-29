@@ -31,7 +31,7 @@ import { stepAirVelocity } from '../physics/air-control.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
-import { moveIntent, type MoveInput } from './moveIntent.ts';
+import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -49,6 +49,8 @@ interface SceneFrameProps {
   viewOffsetsRef: React.MutableRefObject<ViewOffsets>;
   /** Analog walking input (e.g. an on-screen joystick); keys win when held. Not gated by `worldFocused`. */
   moveInputRef?: React.MutableRefObject<MoveInput>;
+  /** Steers at walk speed while there is no key or stick input; such input cancels it. Not gated by `worldFocused`. */
+  autoWalk?: AutoWalkSource;
   selfId: string;
   /** Set by `Players` when the self avatar's RigidBody mounts. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
@@ -120,6 +122,7 @@ export function SceneFrame({
   yawRef,
   viewOffsetsRef,
   moveInputRef,
+  autoWalk,
   selfId,
   selfBodyRef,
   worldFocused,
@@ -294,7 +297,14 @@ export function SceneFrame({
         stateSnapshot.characterConfigs,
       );
     const { fwd, strafe, isRunning, speedScale } = moveIntent(keys, moveInputRef?.current);
-    const playerSpeed = (isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed) * speedScale;
+    const hasMoveInput = fwd !== 0 || strafe !== 0;
+    if (hasMoveInput) {
+      autoWalk?.cancel();
+    }
+    const autoWalkDir = !hasMoveInput && self ? (autoWalk?.intent(self.pos) ?? null) : null;
+    const playerSpeed = autoWalkDir
+      ? baseSpeed
+      : (isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed) * speedScale;
     // movementBlockThreshold = "fraction of intent that must be
     // *blocked* to count as 'fully stopped'". So if 90% (default) of
     // intent is blocked, we want progress < 0.1 to snap velocity and
@@ -368,14 +378,15 @@ export function SceneFrame({
       // isRunning + (fwd || strafe) → 'run' verb
       // !isRunning + (fwd || strafe) → 'walk' verb
       // neither → 'stop' verb
-      // Horizontal intent. Zero when there is no movement input; we still
+      // Horizontal intent: camera-relative from keys or the stick, else
+      // world-space from auto-walk. Zero when neither steers; we still
       // run the controller below so gravity can apply.
       let dx = 0;
       let dz = 0;
       let horizMove = 0;
       let intendsMove = false;
       let movementYaw = self.yaw;
-      if (fwd !== 0 || strafe !== 0) {
+      if (hasMoveInput) {
         const cameraYaw = xrPresenting
           ? yawFromDirection(gl.xr.getCamera().getWorldDirection(headsetForward))
           : cameraMode === 'fixed'
@@ -391,14 +402,17 @@ export function SceneFrame({
         const rightZ = -Math.sin(cameraYaw);
         dx = forwardX * fwd + rightX * strafe;
         dz = forwardZ * fwd + rightZ * strafe;
-        const len = Math.hypot(dx, dz);
-        if (len > 0) {
-          dx /= len;
-          dz /= len;
-          horizMove = (playerSpeed * dt) / 1000;
-          movementYaw = yawFromDirection({ x: dx, z: dz });
-          intendsMove = true;
-        }
+      } else if (autoWalkDir) {
+        dx = autoWalkDir.x;
+        dz = autoWalkDir.z;
+      }
+      const len = Math.hypot(dx, dz);
+      if (len > 0) {
+        dx /= len;
+        dz /= len;
+        horizMove = (playerSpeed * dt) / 1000;
+        movementYaw = yawFromDirection({ x: dx, z: dz });
+        intendsMove = true;
       }
 
       // Find the body's primary collider — Rapier's controller works

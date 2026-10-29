@@ -21,6 +21,13 @@ export {
   type UsePlaySessionOptions,
 } from './usePlaySession.ts';
 export { NavGridProvider, useNavGrid } from './useNavGrid.ts';
+export {
+  PlayControlsProvider,
+  usePlayControls,
+  type PlayControls,
+  type PlayControlsSource,
+} from './playControls.tsx';
+export type { AutoWalkState } from '../nav/autoWalk.ts';
 export { findPath } from '../nav/path.ts';
 export { feetPosition } from '../physics/rules.ts';
 export type { NavGrid } from '../nav/grid.ts';
