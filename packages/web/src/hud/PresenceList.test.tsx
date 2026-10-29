@@ -194,7 +194,8 @@ describe('PresenceList', () => {
 
   it('re-renders on a whole-metre change, not on every small move', () => {
     let commits = 0;
-    // The Go button's Radix tooltip adds a nested commit to each render; only store-driven renders count.
+    // Radix's Slot composes the tooltip trigger's ref afresh each render, so the Tooltip re-sets its trigger in a
+    // nested commit; only the renders the store drives count here.
     const { actions } = seed((_id, phase) => {
       if (phase !== 'nested-update') {
         commits++;
@@ -234,7 +235,7 @@ describe('PresenceList', () => {
     const focus = screen.getByRole('status', { name: 'world focus' });
 
     const bob = goButton('Bob')!;
-    fireEvent.mouseDown(bob);
+    expect(fireEvent.mouseDown(bob)).toBe(false);
     expect(focus.textContent).toBe('false');
     fireEvent.click(bob);
     expect(play.goTos).toEqual(['bob']);
@@ -253,13 +254,15 @@ describe('PresenceList', () => {
     expect(screen.queryByText('No route')).toBeNull();
 
     act(() => play.set({ type: 'no-route', targetId: 'ann' }));
-    expect(pressed('Ann')).toBe('false');
+    expect(pressed('Ann')).toBe('true');
     expect(pressed('Bob')).toBe('false');
     expect(within(rowOf('Ann')).getByText('No route')).toBeTruthy();
     expect(screen.getAllByText('No route')).toHaveLength(1);
+    expect(screen.getByText('No route to Ann').getAttribute('role')).toBe('status');
 
     act(() => play.set({ type: 'idle' }));
     expect(screen.queryByText('No route')).toBeNull();
+    expect(screen.queryByText('No route to Ann')).toBeNull();
   });
 });
 

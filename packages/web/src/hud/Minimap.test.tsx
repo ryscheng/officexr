@@ -140,8 +140,14 @@ describe('Minimap', () => {
     expect(marker('Ann')).toBeTruthy();
   });
 
-  it('draws the route from you through the waypoints only while walking', () => {
+  it('draws the route from you through the waypoints to the target only while walking', () => {
     const { play } = seed();
+    // 156 px span 40 m, so 3.9 px a metre, with you at (90, 90); ahead (-z) is up. Ann stands at z = -12.
+    const points = () =>
+      routeLine()!
+        .getAttribute('points')!
+        .split(' ')
+        .map((p) => p.split(',').map(Number));
     expect(routeLine()).toBeNull();
 
     act(() =>
@@ -154,17 +160,18 @@ describe('Minimap', () => {
         ],
       }),
     );
-    // 156 px span 40 m, so 3.9 px a metre, with you at (90, 90); ahead (-z) is up.
-    const points = routeLine()!
-      .getAttribute('points')!
-      .split(' ')
-      .map((p) => p.split(',').map(Number));
-    expect(points).toHaveLength(3);
-    expect(points[0]).toEqual([90, 90]);
-    expect(points[1][0]).toBeCloseTo(90 + 4 * 3.9);
-    expect(points[1][1]).toBeCloseTo(90);
-    expect(points[2][0]).toBeCloseTo(90 + 4 * 3.9);
-    expect(points[2][1]).toBeCloseTo(90 - 8 * 3.9);
+    expect(points()).toHaveLength(4);
+    expect(points()[0]).toEqual([90, 90]);
+    expect(points()[1][0]).toBeCloseTo(90 + 4 * 3.9);
+    expect(points()[1][1]).toBeCloseTo(90);
+    expect(points()[2][0]).toBeCloseTo(90 + 4 * 3.9);
+    expect(points()[2][1]).toBeCloseTo(90 - 8 * 3.9);
+    expect(points()[3][0]).toBeCloseTo(90);
+    expect(points()[3][1]).toBeCloseTo(90 - 12 * 3.9);
+
+    act(() => play.set({ type: 'walking', targetId: 'ann', route: [] }));
+    expect(points()).toHaveLength(2);
+    expect(points()[1][1]).toBeCloseTo(90 - 12 * 3.9);
 
     for (const state of [
       { type: 'arrived', targetId: 'ann' },
@@ -174,6 +181,14 @@ describe('Minimap', () => {
       act(() => play.set(state));
       expect(routeLine()).toBeNull();
     }
+  });
+
+  it('clips a route that runs off the map instead of pinning it to the rim', () => {
+    const { play } = seed();
+    act(() => play.set({ type: 'walking', targetId: 'ann', route: [{ x: 30, z: 0 }] }));
+    const [, far] = routeLine()!.getAttribute('points')!.split(' ');
+    expect(Number(far.split(',')[0])).toBeCloseTo(90 + 30 * 3.9);
+    expect(routeLine()!.getAttribute('clip-path')).toMatch(/^url\(#.+\)$/);
   });
 
   it('is open on a fine pointer and collapsed on a coarse one', () => {

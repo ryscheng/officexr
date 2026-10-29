@@ -111,8 +111,11 @@ export function PresenceList({
   const now = useNow(1000, clock);
   const { text, dot } = STATUS[status];
   const { goTo, state } = usePlayControls();
-  const following = state.type === 'walking' || state.type === 'arrived' ? state.targetId : null;
+  // A no-route walk keeps re-planning, so its button stays pressed: clicking it again cancels.
+  const following = state.type === 'idle' ? null : state.targetId;
   const unreachable = state.type === 'no-route' ? state.targetId : null;
+  const rows = presenceRows(players, departed, selfId);
+  const unreachableLabel = rows.find((row) => row.id === unreachable)?.label;
   return (
     <div
       data-studio-panel
@@ -128,7 +131,7 @@ export function PresenceList({
         </span>
       </div>
       <ul aria-label={`People in ${officeName}`}>
-        {presenceRows(players, departed, selfId).map((row) => (
+        {rows.map((row) => (
           <PresenceRowItem
             key={row.id}
             row={row}
@@ -143,6 +146,10 @@ export function PresenceList({
           />
         ))}
       </ul>
+      {/* Always mounted: a live region that mounts with its text is often not announced. */}
+      <p role="status" className="sr-only">
+        {unreachableLabel ? `No route to ${unreachableLabel}` : ''}
+      </p>
     </div>
   );
 }
@@ -158,7 +165,7 @@ function PresenceRowItem({
   row: PresenceRow;
   now: number;
   viewYawDeg: number;
-  /** Whether the auto-walk is heading for, or standing by, this user. */
+  /** Whether the auto-walk targets this user, so clicking Go again cancels it. */
   following: boolean;
   noRoute: boolean;
   onGo: () => void;
