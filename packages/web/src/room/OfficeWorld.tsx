@@ -12,9 +12,9 @@ import { CallBar } from '../voice/CallBar';
 import { JaasMeeting } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { CameraModeMenuItem } from './CameraModeMenuItem';
-import { CharacterPicker } from './CharacterPicker';
+import { CharacterDialog, CharacterMenuItem } from './CharacterDialog';
 import { MotionLookMenuItem } from './MotionLookMenuItem';
-import { OfficeSettings } from './OfficeSettings';
+import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
 import { RoomMenu, RoomMenuChoice, RoomMenuItem } from './RoomMenu';
@@ -78,6 +78,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [invertLook, setInvertLook] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  const [characterOpen, setCharacterOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
   const xrStore = useWorldXRStore();
   const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
@@ -124,13 +126,21 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
               />
               Invert look
             </RoomMenuChoice>
+            <CharacterMenuItem onSelect={() => setCharacterOpen(true)} />
+            <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setSettingsOpen(true)} />
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
             {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={setBannerError} />}
           </RoomMenu>
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+          {characterOpen && (
+            <CharacterDialog local={session.local} onSaveResult={setBannerError} onClose={() => setCharacterOpen(false)} />
+          )}
+          {settingsOpen && (
+            <OfficeSettingsDialog office={office} me={me} onSaved={setOffice} onClose={() => setSettingsOpen(false)} />
+          )}
           {session.voice && <JaasMeeting voice={session.voice} />}
           <ChatPanel store={session.local.store} actions={session.local.actions} selfId={session.local.selfId} />
-          {/* The call bar centres while it fits; the side columns push it aside instead of under them.
+          {/* The call bar centres while it fits; the people column pushes it aside instead of under it.
               On touch the people column sits above the joystick, so only the joystick's width is reserved. */}
           <div className="pointer-events-none absolute inset-x-3 bottom-3 grid grid-cols-[1fr_minmax(0,auto)_1fr] items-end gap-2">
             <div className="pointer-coarse:min-w-28">
@@ -140,10 +150,6 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
               </div>
             </div>
             {session.voice && <CallBar store={session.local.store} voice={session.voice} />}
-            <div className="col-start-3 flex flex-col items-end gap-2 justify-self-end max-sm:col-span-3 max-sm:col-start-1 max-sm:row-start-1">
-              <OfficeSettings office={office} me={me} onSaved={setOffice} />
-              <CharacterPicker local={session.local} onSaveResult={setBannerError} />
-            </div>
           </div>
         </PlayView>
       )}
