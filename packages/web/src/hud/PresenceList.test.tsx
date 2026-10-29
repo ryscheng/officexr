@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, within } from '@testing-library/react';
-import { Profiler, type ReactNode } from 'react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { Profiler, type ProfilerOnRenderCallback, type ReactNode } from 'react';
 import { createActions, createBus, createStore, type OfficeState } from '@officexr/sdk';
 import { createMultiClientHarness } from '@officexr/sdk/test-harness';
-import { createViewYaw, ViewYawProvider } from '@officexr/world/react';
+import {
+  createViewYaw,
+  PlayControlsProvider,
+  useWorldFocus,
+  ViewYawProvider,
+  type PlayControlsSource,
+} from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakePlayControls } from './fakePlayControls';
 import { PresenceList, presenceRows } from './PresenceList';
 
 afterEach(() => {
@@ -21,8 +28,22 @@ const player = (id: string, name: string) => ({
   bearingDeg: 45,
 });
 
-const renderInView = (ui: ReactNode, viewYaw = createViewYaw()) =>
-  render(<ViewYawProvider viewYaw={viewYaw}>{ui}</ViewYawProvider>);
+const renderInView = (
+  ui: ReactNode,
+  {
+    viewYaw = createViewYaw(),
+    controls = fakePlayControls().controls,
+  }: { viewYaw?: ReturnType<typeof createViewYaw>; controls?: PlayControlsSource } = {},
+) =>
+  render(
+    <PlayControlsProvider controls={controls}>
+      <ViewYawProvider viewYaw={viewYaw}>{ui}</ViewYawProvider>
+    </PlayControlsProvider>,
+  );
+
+function WorldFocus() {
+  return <output aria-label="world focus">{String(useWorldFocus())}</output>;
+}
 
 describe('presenceRows', () => {
   it('sorts by name with self first and flags the self row', () => {
@@ -89,10 +110,11 @@ describe('presenceRows', () => {
 const rowOf = (name: string) => screen.getByText(name).closest('li')!;
 
 describe('PresenceList', () => {
-  function seed(onRender: () => void = () => {}) {
+  function seed(onRender: ProfilerOnRenderCallback = () => {}) {
     const store = createStore({ selfId: 'me', officeId: 'o' });
     const actions = createActions(store, createBus());
     const viewYaw = createViewYaw();
+    const play = fakePlayControls();
     let t = 0;
     const clock = () => t;
     const setTime = (ms: number) => {
@@ -112,12 +134,15 @@ describe('PresenceList', () => {
     actions.removePlayer('dan');
     vi.useFakeTimers();
     renderInView(
-      <Profiler id="list" onRender={onRender}>
-        <PresenceList store={store} selfId="me" officeName="HQ" clock={clock} />
-      </Profiler>,
-      viewYaw,
+      <>
+        <WorldFocus />
+        <Profiler id="list" onRender={onRender}>
+          <PresenceList store={store} selfId="me" officeName="HQ" clock={clock} />
+        </Profiler>
+      </>,
+      { viewYaw, controls: play.controls },
     );
-    return { actions, viewYaw, setTime };
+    return { actions, viewYaw, setTime, play };
   }
 
   const dotOf = (name: string, label: string) => within(rowOf(name)).getByRole('img', { name: label });
@@ -168,13 +193,18 @@ describe('PresenceList', () => {
   });
 
   it('re-renders on a whole-metre change, not on every small move', () => {
-    const onRender = vi.fn();
-    const { actions } = seed(onRender);
-    const renders = onRender.mock.calls.length;
+    let commits = 0;
+    // The Go button's Radix tooltip adds a nested commit to each render; only store-driven renders count.
+    const { actions } = seed((_id, phase) => {
+      if (phase !== 'nested-update') {
+        commits++;
+      }
+    });
+    const renders = commits;
     act(() => actions.upsertPlayer({ id: 'ann', pos: { x: 0.1, y: 0, z: -12.3 } }));
-    expect(onRender).toHaveBeenCalledTimes(renders);
+    expect(commits).toBe(renders);
     act(() => actions.upsertPlayer({ id: 'ann', pos: { x: 0, y: 0, z: -13.2 } }));
-    expect(onRender).toHaveBeenCalledTimes(renders + 1);
+    expect(commits).toBe(renders + 1);
     expect(within(rowOf('Ann')).getByText('13 m')).toBeTruthy();
   });
 
@@ -192,6 +222,44 @@ describe('PresenceList', () => {
     expect(arrow('Me (you)')).toBeNull();
     expect(arrow('Dan')).toBeNull();
     expect(within(rowOf('Dan')).queryByText(/ m$/)).toBeNull();
+  });
+
+  const goButton = (name: string) => within(rowOf(name)).queryByRole('button', { name: `Go to ${name}` });
+
+  it('offers Go on present peers only, and it walks to them with the world keeping the keyboard', () => {
+    const { play } = seed();
+    expect(goButton('Me (you)')).toBeNull();
+    expect(within(rowOf('Me (you)')).queryByRole('button')).toBeNull();
+    expect(within(rowOf('Dan')).queryByRole('button')).toBeNull();
+    const focus = screen.getByRole('status', { name: 'world focus' });
+
+    const bob = goButton('Bob')!;
+    fireEvent.mouseDown(bob);
+    expect(focus.textContent).toBe('false');
+    fireEvent.click(bob);
+    expect(play.goTos).toEqual(['bob']);
+    expect(focus.textContent).toBe('true');
+  });
+
+  it('presses the Go button of the user being walked to, and says when there is no route', () => {
+    const { play } = seed();
+    const pressed = (name: string) => goButton(name)?.getAttribute('aria-pressed');
+    expect(['Ann', 'Bob', 'Cat'].map(pressed)).toEqual(['false', 'false', 'false']);
+
+    act(() => play.set({ type: 'walking', targetId: 'bob', route: [] }));
+    expect(['Ann', 'Bob', 'Cat'].map(pressed)).toEqual(['false', 'true', 'false']);
+    act(() => play.set({ type: 'arrived', targetId: 'bob' }));
+    expect(pressed('Bob')).toBe('true');
+    expect(screen.queryByText('No route')).toBeNull();
+
+    act(() => play.set({ type: 'no-route', targetId: 'ann' }));
+    expect(pressed('Ann')).toBe('false');
+    expect(pressed('Bob')).toBe('false');
+    expect(within(rowOf('Ann')).getByText('No route')).toBeTruthy();
+    expect(screen.getAllByText('No route')).toHaveLength(1);
+
+    act(() => play.set({ type: 'idle' }));
+    expect(screen.queryByText('No route')).toBeNull();
   });
 });
 

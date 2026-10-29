@@ -2,8 +2,16 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Profiler, type ReactNode } from 'react';
 import { createActions, createBus, createStore } from '@officexr/sdk';
-import { createViewYaw, NavGridProvider, useWorldFocus, ViewYawProvider, type NavGrid } from '@officexr/world/react';
+import {
+  createViewYaw,
+  NavGridProvider,
+  PlayControlsProvider,
+  useWorldFocus,
+  ViewYawProvider,
+  type NavGrid,
+} from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakePlayControls } from './fakePlayControls';
 import { Minimap } from './Minimap';
 import { navGridPath } from './minimapGeometry';
 
@@ -42,6 +50,7 @@ function seed({ coarse = false, navGrid = grid as NavGrid | null, onRender = () 
   const store = createStore({ selfId: 'me', officeId: 'o' });
   const actions = createActions(store, createBus());
   const viewYaw = createViewYaw();
+  const play = fakePlayControls();
   let t = 0;
   const clock = () => t;
   actions.upsertPlayer({ id: 'me', name: 'Me', pos: { x: 0, y: 0, z: 0 } });
@@ -56,9 +65,11 @@ function seed({ coarse = false, navGrid = grid as NavGrid | null, onRender = () 
   actions.removePlayer('dan');
   vi.useFakeTimers();
   const wrap = (ui: ReactNode) => (
-    <NavGridProvider value={navGrid}>
-      <ViewYawProvider viewYaw={viewYaw}>{ui}</ViewYawProvider>
-    </NavGridProvider>
+    <PlayControlsProvider controls={play.controls}>
+      <NavGridProvider value={navGrid}>
+        <ViewYawProvider viewYaw={viewYaw}>{ui}</ViewYawProvider>
+      </NavGridProvider>
+    </PlayControlsProvider>
   );
   render(
     wrap(
@@ -73,6 +84,7 @@ function seed({ coarse = false, navGrid = grid as NavGrid | null, onRender = () 
   return {
     actions,
     viewYaw,
+    play,
     setTime: (ms: number) => {
       t = ms;
     },
@@ -83,6 +95,7 @@ const marker = (name: string) => screen.getByRole('img', { name: name === 'You' 
 const dotOf = (name: string) => marker(name).querySelector('circle')!;
 const map = () => screen.queryByRole('group', { name: 'Map' });
 const floorPlan = () => map()?.querySelector('path[transform]') ?? null;
+const routeLine = () => map()?.querySelector('polyline') ?? null;
 
 describe('Minimap', () => {
   it('shows you and one dot per present user, coloured by status and labelled with distance', () => {
@@ -125,6 +138,42 @@ describe('Minimap', () => {
     expect(floorPlan()).toBeNull();
     expect(marker('You')).toBeTruthy();
     expect(marker('Ann')).toBeTruthy();
+  });
+
+  it('draws the route from you through the waypoints only while walking', () => {
+    const { play } = seed();
+    expect(routeLine()).toBeNull();
+
+    act(() =>
+      play.set({
+        type: 'walking',
+        targetId: 'ann',
+        route: [
+          { x: 4, z: 0 },
+          { x: 4, z: -8 },
+        ],
+      }),
+    );
+    // 156 px span 40 m, so 3.9 px a metre, with you at (90, 90); ahead (-z) is up.
+    const points = routeLine()!
+      .getAttribute('points')!
+      .split(' ')
+      .map((p) => p.split(',').map(Number));
+    expect(points).toHaveLength(3);
+    expect(points[0]).toEqual([90, 90]);
+    expect(points[1][0]).toBeCloseTo(90 + 4 * 3.9);
+    expect(points[1][1]).toBeCloseTo(90);
+    expect(points[2][0]).toBeCloseTo(90 + 4 * 3.9);
+    expect(points[2][1]).toBeCloseTo(90 - 8 * 3.9);
+
+    for (const state of [
+      { type: 'arrived', targetId: 'ann' },
+      { type: 'no-route', targetId: 'ann' },
+      { type: 'idle' },
+    ] as const) {
+      act(() => play.set(state));
+      expect(routeLine()).toBeNull();
+    }
   });
 
   it('is open on a fine pointer and collapsed on a coarse one', () => {

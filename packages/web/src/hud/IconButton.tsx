@@ -7,6 +7,11 @@ const TONE = {
   success: 'bg-green-700/80 hover:bg-green-700',
 };
 
+const SIZE = {
+  md: { button: 'p-2', icon: 'h-4 w-4' },
+  sm: { button: 'p-0.5', icon: 'h-3 w-3' },
+};
+
 /** A HUD button showing one icon, named and tooltipped by `label`. It never takes focus from the world on click. */
 export function IconButton({
   icon: Icon,
@@ -15,6 +20,7 @@ export function IconButton({
   pressed,
   disabled,
   tone = 'neutral',
+  size = 'md',
 }: {
   icon: LucideIcon;
   label: string;
@@ -22,6 +28,7 @@ export function IconButton({
   pressed?: boolean;
   disabled?: boolean;
   tone?: keyof typeof TONE;
+  size?: keyof typeof SIZE;
 }) {
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -39,9 +46,9 @@ export function IconButton({
               aria-pressed={pressed}
               disabled={disabled}
               onClick={onClick}
-              className={`rounded p-2 text-white disabled:pointer-events-none disabled:opacity-50 ${TONE[tone]}`}
+              className={`rounded text-white disabled:pointer-events-none disabled:opacity-50 ${SIZE[size].button} ${TONE[tone]}`}
             >
-              <Icon aria-hidden className="h-4 w-4" />
+              <Icon aria-hidden className={SIZE[size].icon} />
             </button>
           </span>
         </Tooltip.Trigger>

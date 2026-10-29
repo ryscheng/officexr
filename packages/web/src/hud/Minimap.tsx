@@ -7,6 +7,7 @@ import {
   planarDistance,
   useCoarsePointer,
   useNavGrid,
+  usePlayControls,
   useStoreSelector,
   useViewYaw,
   type NavGrid,
@@ -98,6 +99,7 @@ function MapView({ id, store, clock }: { id: string; store: Store; clock?: () =>
   const viewYaw = useViewYaw();
   const now = useNow(1000, clock);
   const grid = useNavGrid();
+  const { state } = usePlayControls();
   return (
     <svg
       id={id}
@@ -113,6 +115,7 @@ function MapView({ id, store, clock }: { id: string; store: Store; clock?: () =>
       </clipPath>
       <circle cx={CENTRE} cy={CENTRE} r={MAP_PX / 2} className="fill-white/10" />
       {self && grid && <FloorPlan grid={grid} self={self} viewYaw={viewYaw} clipId={clipId} />}
+      {self && state.type === 'walking' && <RouteLine route={state.route} self={self} viewYaw={viewYaw} />}
       {self && peers.map((p) => <PeerMarker key={p.id} peer={p} self={self} viewYaw={viewYaw} now={now} />)}
       <path role="img" aria-label="You" d={`M${CENTRE} ${CENTRE - 7}l5 12h-10z`} className="fill-white stroke-black/60">
         <title>You</title>
@@ -134,6 +137,23 @@ function PeerMarker({ peer, self, viewYaw, now }: { peer: MinimapPeer; self: Vec
         {formatDistance(peer.distanceM)}
       </text>
     </g>
+  );
+}
+
+// ponytail: waypoints beyond the map's range are pinned to its rim, so a long route bends along the edge.
+function RouteLine({ route, self, viewYaw }: { route: { x: number; z: number }[]; self: Vec3; viewYaw: number }) {
+  const points = route.map((p) => {
+    const { x, y } = toMinimap(self, viewYaw, { x: p.x, y: 0, z: p.z }, { rangeM: RANGE_M, sizePx: MAP_PX });
+    return `${x + RIM_INSET_PX},${y + RIM_INSET_PX}`;
+  });
+  return (
+    <polyline
+      points={[`${CENTRE},${CENTRE}`, ...points].join(' ')}
+      className="fill-none stroke-sky-400"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   );
 }
 
