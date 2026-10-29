@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { Identity, Office } from '../../server/api';
 import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
 import { Async } from '../Async';
+import { SignInLink } from '../SignIn';
 import { DEFAULT_MAP } from '../room/withDefaultMap';
 import { errorMessage, useApi, type ApiState } from '../useApi';
 import { useMapNames } from '../useMapNames';
@@ -149,8 +150,11 @@ export function Home({ me }: { me: ApiState<Identity> }) {
           </span>
         )}
         {me.type === 'error' && (
-          <span role="alert" className="text-sm text-red-600">
-            {me.message}
+          <span className="flex items-baseline gap-3 text-sm">
+            <span role="alert" className="text-red-600">
+              {me.message}
+            </span>
+            <SignInLink className="rounded bg-black px-3 py-1 text-white" />
           </span>
         )}
       </header>
