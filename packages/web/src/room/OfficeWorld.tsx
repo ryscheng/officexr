@@ -8,6 +8,9 @@ import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
 import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
+import { PipContents } from '../pip/PipContents';
+import { PopOutMenuItem } from '../pip/PopOutMenuItem';
+import { usePictureInPicture } from '../pip/usePictureInPicture';
 import { CallBar } from '../voice/CallBar';
 import { JaasMeeting } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -83,6 +86,14 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
   const xrStore = useWorldXRStore();
   const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
+  const pip = usePictureInPicture();
+  const closePip = pip.close;
+  // The window's contents render inside PlayView, so a session that drops would leave it blank.
+  useEffect(() => {
+    if (session.type !== 'ready') {
+      closePip();
+    }
+  }, [session.type, closePip]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -129,6 +140,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
             <CharacterMenuItem onSelect={() => setCharacterOpen(true)} />
             <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setSettingsOpen(true)} />
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
+            <PopOutMenuItem pip={pip} />
             {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={setBannerError} />}
           </RoomMenu>
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
@@ -151,6 +163,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
             </div>
             {session.voice && <CallBar store={session.local.store} voice={session.voice} />}
           </div>
+          {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={session.local.store} voice={session.voice} />}
         </PlayView>
       )}
       {session.type === 'ready' && (

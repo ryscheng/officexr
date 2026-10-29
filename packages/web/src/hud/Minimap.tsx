@@ -58,16 +58,20 @@ const samePositions = (a: Positions, b: Positions) =>
 export function Minimap({
   store,
   clock,
+  alwaysOpen = false,
 }: {
   store: Store;
   /** Must be stable; defaults to `performance.now`, the clock presence timestamps are on. */
   clock?: () => number;
+  /** Hides the collapse toggle and keeps the map shown. */
+  alwaysOpen?: boolean;
 }) {
   const coarse = useCoarsePointer();
-  const [open, setOpen] = useState(!coarse);
+  const [expanded, setExpanded] = useState(!coarse);
+  const open = alwaysOpen || expanded;
   const mapId = useId();
   const toggle = () => {
-    setOpen((o) => !o);
+    setExpanded((o) => !o);
     focusWorld();
   };
   return (
@@ -75,17 +79,19 @@ export function Minimap({
       <div className="flex items-center justify-between gap-3 font-medium">
         Map
         {/* preventDefault on mousedown keeps focus off the button, so Space/Enter keep driving the world. */}
-        <button
-          type="button"
-          aria-label={open ? 'Hide map' : 'Show map'}
-          aria-expanded={open}
-          aria-controls={mapId}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={toggle}
-          className="rounded p-0.5 hover:bg-white/20"
-        >
-          {open ? <ChevronDown aria-hidden className="h-3 w-3" /> : <ChevronUp aria-hidden className="h-3 w-3" />}
-        </button>
+        {!alwaysOpen && (
+          <button
+            type="button"
+            aria-label={open ? 'Hide map' : 'Show map'}
+            aria-expanded={open}
+            aria-controls={mapId}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggle}
+            className="rounded p-0.5 hover:bg-white/20"
+          >
+            {open ? <ChevronDown aria-hidden className="h-3 w-3" /> : <ChevronUp aria-hidden className="h-3 w-3" />}
+          </button>
+        )}
       </div>
       {open && <MapView id={mapId} store={store} clock={clock} />}
     </div>

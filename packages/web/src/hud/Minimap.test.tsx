@@ -37,7 +37,7 @@ function WorldFocus() {
   return <output aria-label="world focus">{String(useWorldFocus())}</output>;
 }
 
-function seed({ coarse = false, navGrid = grid as NavGrid | null, onRender = () => {} } = {}) {
+function seed({ coarse = false, alwaysOpen = false, navGrid = grid as NavGrid | null, onRender = () => {} } = {}) {
   fakePointer(coarse);
   const store = createStore({ selfId: 'me', officeId: 'o' });
   const actions = createActions(store, createBus());
@@ -65,7 +65,7 @@ function seed({ coarse = false, navGrid = grid as NavGrid | null, onRender = () 
       <>
         <WorldFocus />
         <Profiler id="map" onRender={onRender}>
-          <Minimap store={store} clock={clock} />
+          <Minimap store={store} clock={clock} alwaysOpen={alwaysOpen} />
         </Profiler>
       </>,
     ),
@@ -136,6 +136,13 @@ describe('Minimap', () => {
     seed({ coarse: true });
     expect(screen.getByRole('button', { name: 'Show map' }).getAttribute('aria-expanded')).toBe('false');
     expect(map()).toBeNull();
+  });
+
+  it('hides the toggle and stays open when always open, even on a coarse pointer', () => {
+    seed({ coarse: true, alwaysOpen: true });
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(map()).toBeTruthy();
+    expect(marker('Ann')).toBeTruthy();
   });
 
   it('toggles from its header and gives the keyboard back to the world', () => {

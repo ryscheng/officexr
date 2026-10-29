@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { LucideIcon } from 'lucide-react';
 
@@ -6,6 +7,9 @@ const TONE = {
   danger: 'bg-red-700/80 hover:bg-red-700',
   success: 'bg-green-700/80 hover:bg-green-700',
 };
+
+/** Where `IconButton` tooltips portal to, for buttons rendered into another document; defaults to `document.body`. */
+export const TooltipContainer = createContext<HTMLElement | undefined>(undefined);
 
 /** A HUD button showing one icon, named and tooltipped by `label`. It never takes focus from the world on click. */
 export function IconButton({
@@ -23,8 +27,11 @@ export function IconButton({
   disabled?: boolean;
   tone?: keyof typeof TONE;
 }) {
+  const tooltipContainer = useContext(TooltipContainer);
   return (
-    <Tooltip.Provider delayDuration={300}>
+    // Hoverable content closes through a pointermove listener on the global `document`, which never hears
+    // another document's pointer, so tooltips portalled elsewhere close on trigger leave instead.
+    <Tooltip.Provider delayDuration={300} disableHoverableContent={tooltipContainer !== undefined}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
           {/* A disabled button gets no pointer events, so the wrapper carries the hover for the tooltip.
@@ -45,7 +52,7 @@ export function IconButton({
             </button>
           </span>
         </Tooltip.Trigger>
-        <Tooltip.Portal>
+        <Tooltip.Portal container={tooltipContainer}>
           <Tooltip.Content sideOffset={6} className="z-50 rounded bg-black/80 px-2 py-1 text-xs text-white">
             {label}
           </Tooltip.Content>
