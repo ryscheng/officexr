@@ -2,7 +2,9 @@ import { ArrowUp, Mic, MicOff, type LucideIcon } from 'lucide-react';
 import type { DepartedPlayer, MicState, OfficeState, PlayerId, PlayerState, PresenceStatus, Store } from '@officexr/sdk';
 import { loginOf, presenceIndicator } from '@officexr/sdk';
 import { planarDistance, relativeBearing, useStoreSelector, useViewYaw } from '@officexr/world/react';
+import { formatDistance } from './formatDistance';
 import { PRESENCE_INDICATOR } from './presenceColours';
+import { sameList } from './sameFields';
 import { useNow } from './useNow';
 
 type PresencePlayer = Pick<PlayerState, 'id' | 'name' | 'status' | 'mic' | 'lastStatusAt' | 'firstSeenAt'> & {
@@ -80,10 +82,6 @@ const selectPresence = (s: OfficeState): Presence => {
     status: s.realtime.status,
   };
 };
-const sameFields = <T extends object>(a: T, b: T) =>
-  (Object.keys(a) as (keyof T)[]).every((k) => Object.is(a[k], b[k]));
-const sameList = <T extends object>(a: T[], b: T[]) =>
-  a.length === b.length && a.every((x, i) => sameFields(x, b[i]));
 const samePresence = (a: Presence, b: Presence) =>
   a.status === b.status && sameList(a.players, b.players) && sameList(a.departed, b.departed);
 
@@ -149,7 +147,7 @@ function PresenceRowItem({ row, now, viewYawDeg }: { row: PresenceRow; now: numb
             className="h-3 w-3"
             style={{ transform: `rotate(${Math.round(row.bearingDeg + viewYawDeg)}deg)` }}
           />
-          {row.distanceM < 1 ? '<1 m' : `${row.distanceM} m`}
+          {formatDistance(row.distanceM)}
         </span>
       )}
     </li>

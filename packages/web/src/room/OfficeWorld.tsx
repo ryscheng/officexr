@@ -6,6 +6,7 @@ import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XR
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '../../server/api';
 import { ChatPanel } from '../hud/ChatPanel';
+import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -120,6 +121,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           <ChatPanel store={session.local.store} actions={session.local.actions} selfId={session.local.selfId} />
           <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col items-start gap-2 pointer-coarse:bottom-40">
             <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
+            <Minimap store={session.local.store} />
           </div>
           <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
             <OfficeSettings office={office} me={me} onSaved={setOffice} />
