@@ -130,6 +130,37 @@ describe('JaasVoiceAdapter', () => {
     expect(api.audioMuted).toBe(false);
   });
 
+  it('tells mute listeners when the mic goes off or on, once per change', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    const seen: boolean[] = [];
+    const off = voice.onMuteChange(() => seen.push(voice.isMicMuted()));
+    voice.setMuted(true);
+    voice.setMuted(true);
+    api.deliverReports();
+    voice.setMuted(false);
+    api.deliverReports();
+    expect(seen).toEqual([true, false]);
+
+    off();
+    voice.setMuted(true);
+    expect(seen).toEqual([true, false]);
+  });
+
+  it('reports a mic Jitsi keeps muted as muted', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    const listener = vi.fn();
+    voice.onMuteChange(listener);
+    api.executeCommand = () => {};
+    for (let i = 0; i < 6; i++) {
+      api.emit('audioMuteStatusChanged', { muted: true });
+    }
+    expect(voice.isMuted()).toBe(false);
+    expect(voice.isMicMuted()).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('goes to error when the conference drops', async () => {
     const { voice, states } = setup();
     const api = await joinedMeeting(voice);

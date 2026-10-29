@@ -64,6 +64,8 @@ export class JaasVoiceAdapter implements VoiceAdapter {
   private localId: string | null = null;
   private share = NO_SHARE;
   private shareListeners = new Set<() => void>();
+  private muteListeners = new Set<() => void>();
+  private lastMicMuted = false;
 
   constructor(readonly options: JaasVoiceOptions) {
     options.jwt.catch((err: unknown) => console.error('JaaS JWT generation failed:', err));
@@ -139,6 +141,18 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     };
   };
 
+  /** Whether the mic is actually off: muted by the user, or by Jitsi itself (e.g. permission denied). */
+  isMicMuted(): boolean {
+    return this.muted || this.jitsiMuted;
+  }
+
+  onMuteChange(listener: () => void): () => void {
+    this.muteListeners.add(listener);
+    return () => {
+      this.muteListeners.delete(listener);
+    };
+  }
+
   toggleShareScreen(): void {
     if (this.api && this.joined) {
       this.api.executeCommand('toggleShareScreen');
@@ -159,6 +173,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     this.joined = false;
     this.localId = null;
     this.jitsiMuted = startMuted;
+    this.notifyMute();
     const ifCurrent =
       <T>(fn: (payload: T) => void) =>
       (payload: T) => {
@@ -185,6 +200,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
           this.corrections++;
           this.applyMute();
         }
+        this.notifyMute();
       }),
     );
     api.on(
@@ -238,6 +254,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     this.events.clear();
     this.meetingListeners.clear();
     this.shareListeners.clear();
+    this.muteListeners.clear();
   }
 
   // The IFrame API can only toggle, and answers queries only once joined, so
@@ -246,6 +263,18 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     if (this.api && this.joined && this.jitsiMuted !== this.muted) {
       this.api.executeCommand('toggleAudio');
       this.jitsiMuted = this.muted;
+    }
+    this.notifyMute();
+  }
+
+  private notifyMute(): void {
+    const muted = this.isMicMuted();
+    if (muted === this.lastMicMuted) {
+      return;
+    }
+    this.lastMicMuted = muted;
+    for (const listener of [...this.muteListeners]) {
+      listener();
     }
   }
 
