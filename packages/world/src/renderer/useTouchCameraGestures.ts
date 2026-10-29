@@ -33,7 +33,9 @@ export function useTouchCameraGestures(
  * Mouse and pen pointers are ignored by the touch gestures, and their events
  * are not `preventDefault`ed so the compatibility mousedown still reaches the
  * focus tracking. The mouse wheel zooms and is `preventDefault`ed so the page
- * doesn't scroll. Does nothing in modes without look input or while paused.
+ * doesn't scroll. Does nothing in modes without look input, and a paused scene
+ * ignores all of these touch and wheel gestures. `lookSign` flips the drag
+ * look direction only, never the zoom.
  */
 export function useCanvasGestures(
   canvas: HTMLElement,
@@ -83,7 +85,7 @@ export function useCanvasGestures(
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      applyZoom(wheelZoomFactor(e.deltaY, e.deltaMode), refs.viewOffsetsRef.current);
+      applyZoom(wheelZoomFactor(e.deltaY, e.deltaMode, e.ctrlKey), refs.viewOffsetsRef.current);
     };
 
     canvas.addEventListener('pointerdown', onDown);

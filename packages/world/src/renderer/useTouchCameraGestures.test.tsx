@@ -16,9 +16,15 @@ const makeRefs = (): LookRefs => ({
 function mount(mode: CameraMode, paused = false) {
   const canvas = document.createElement('canvas');
   const refs = makeRefs();
-  renderHook(() => useCanvasGestures(canvas, mode, refs, -1, paused));
-  const wheel = (deltaY: number) => {
-    const e = new WheelEvent('wheel', { deltaY, cancelable: true });
+  const hook = renderHook(
+    (props: { mode: CameraMode; paused: boolean }) =>
+      useCanvasGestures(canvas, props.mode, refs, -1, props.paused),
+    { initialProps: { mode, paused } },
+  );
+  const update = (next: Partial<{ mode: CameraMode; paused: boolean }>) =>
+    hook.rerender({ mode, paused, ...next });
+  const wheel = (deltaY: number, ctrlKey = false) => {
+    const e = new WheelEvent('wheel', { deltaY, ctrlKey, cancelable: true });
     canvas.dispatchEvent(e);
     return e;
   };
@@ -31,7 +37,7 @@ function mount(mode: CameraMode, paused = false) {
     touch(2, 'pointerdown', 200);
     touch(1, 'pointermove', 50);
   };
-  return { refs, wheel, pinchOut };
+  return { refs, wheel, pinchOut, update };
 }
 
 describe('useCanvasGestures', () => {
@@ -57,6 +63,30 @@ describe('useCanvasGestures', () => {
     const { refs, wheel, pinchOut } = mount('fixed', true);
     expect(wheel(-100).defaultPrevented).toBe(false);
     pinchOut();
+    expect(refs.viewOffsetsRef.current.zoom).toBe(1);
+  });
+
+  it('zooms faster for a trackpad pinch (ctrl+wheel) than for a plain wheel', () => {
+    const plain = mount('fixed');
+    plain.wheel(-5);
+    const pinch = mount('fixed');
+    pinch.wheel(-5, true);
+    expect(pinch.refs.viewOffsetsRef.current.zoom).toBeGreaterThan(
+      plain.refs.viewOffsetsRef.current.zoom,
+    );
+  });
+
+  it('removes the wheel listener when the scene becomes paused', () => {
+    const { refs, wheel, update } = mount('fixed');
+    update({ paused: true });
+    expect(wheel(-100).defaultPrevented).toBe(false);
+    expect(refs.viewOffsetsRef.current.zoom).toBe(1);
+  });
+
+  it('removes the wheel listener when the mode switches to free-fly', () => {
+    const { refs, wheel, update } = mount('fixed');
+    update({ mode: 'free-fly' });
+    expect(wheel(-100).defaultPrevented).toBe(false);
     expect(refs.viewOffsetsRef.current.zoom).toBe(1);
   });
 

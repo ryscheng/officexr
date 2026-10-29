@@ -121,6 +121,12 @@ describe('wheelZoomFactor', () => {
     expect(wheelZoomFactor(-1, 2)).toBeCloseTo(wheelZoomFactor(-800, 0));
   });
 
+  it('tracks a trackpad pinch (ctrl+wheel) about 10x faster than a plain wheel', () => {
+    expect(wheelZoomFactor(-5, 0, true)).toBeCloseTo(Math.exp(0.05));
+    expect(wheelZoomFactor(-5, 0, true)).toBeGreaterThan(wheelZoomFactor(-5, 0));
+    expect(wheelZoomFactor(5, 0, true)).toBeLessThan(1);
+  });
+
   it('stays inside the zoom clamp however far it is scrolled', () => {
     const offsets: ViewOffsets = { fixedAzimuthOffsetRad: 0, fixedPitchOffsetRad: 0, zoom: 1 };
     for (let i = 0; i < 200; i++) {
