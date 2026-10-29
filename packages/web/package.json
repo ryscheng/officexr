@@ -19,6 +19,7 @@
     "@officexr/realtime-server": "workspace:*",
     "@officexr/sdk": "workspace:*",
     "@officexr/world": "workspace:*",
+    "@radix-ui/react-tooltip": "^1.1.7",
     "connect-pg-simple": "^10.0.0",
     "cookie": "^1.1.1",
     "express-session": "^1.19.0",
