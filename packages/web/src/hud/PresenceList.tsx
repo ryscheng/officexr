@@ -6,7 +6,8 @@ import { PRESENCE_INDICATOR } from './presenceColours';
 import { useNow } from './useNow';
 
 type PresencePlayer = Pick<PlayerState, 'id' | 'name' | 'status' | 'mic' | 'lastStatusAt' | 'firstSeenAt'> & {
-  distanceM: number;
+  /** Null until your own position is known. */
+  distanceM: number | null;
   /** Bearing for a view yaw of 0, in degrees rounded to 5°. */
   bearingDeg: number;
 };
@@ -40,7 +41,7 @@ export function presenceRows(players: PresencePlayer[], departed: DepartedEntry[
   });
   const presentIds = new Set(players.map((p) => p.id));
   const gone = departed
-    .filter((d) => !presentIds.has(d.id))
+    .filter((d) => d.name && !presentIds.has(d.id))
     .map((d): PresenceRow => ({ type: 'departed', ...d, label: labelOf(d.id, d.name) }));
   return [...present.sort(byPresence), ...gone.sort(byPresence)];
 }
@@ -57,7 +58,7 @@ const MIC = {
   none: null,
   muted: { Icon: MicOff, label: 'Muted', className: 'text-red-400' },
   silent: { Icon: Mic, label: 'Mic on', className: 'opacity-50' },
-  speaking: { Icon: Mic, label: 'Speaking', className: 'animate-pulse text-green-400' },
+  speaking: { Icon: Mic, label: 'Speaking', className: 'motion-safe:animate-pulse text-green-400' },
 } satisfies Record<MicState, { Icon: LucideIcon; label: string; className: string } | null>;
 
 const DEG = 180 / Math.PI;
@@ -72,7 +73,7 @@ const selectPresence = (s: OfficeState): Presence => {
       mic: p.mic,
       lastStatusAt: p.lastStatusAt,
       firstSeenAt: p.firstSeenAt,
-      distanceM: selfPos ? Math.floor(planarDistance(selfPos, p.pos)) : 0,
+      distanceM: selfPos ? Math.floor(planarDistance(selfPos, p.pos)) : null,
       bearingDeg: selfPos ? Math.round((relativeBearing(selfPos, 0, p.pos) * DEG) / 5) * 5 : 0,
     })),
     departed: Object.entries(s.departed).map(([id, d]) => ({ id, ...d })),
@@ -133,6 +134,7 @@ function PresenceRowItem({ row, now, viewYawDeg }: { row: PresenceRow; now: numb
       <span
         role="img"
         aria-label={indicator.label}
+        title={indicator.label}
         className={`inline-block h-2 w-2 shrink-0 rounded-full ${indicator.dot}`}
       />
       {mic && <mic.Icon role="img" aria-label={mic.label} className={`h-3 w-3 shrink-0 ${mic.className}`} />}
@@ -140,7 +142,7 @@ function PresenceRowItem({ row, now, viewYawDeg }: { row: PresenceRow; now: numb
         {row.label}
         {row.type === 'self' && ' (you)'}
       </span>
-      {row.type === 'peer' && (
+      {row.type === 'peer' && row.distanceM !== null && (
         <span className="flex shrink-0 items-center gap-0.5 tabular-nums text-white/80">
           <ArrowUp
             aria-hidden

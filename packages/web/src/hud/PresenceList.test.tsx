@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { Profiler, type ReactNode } from 'react';
 import { createActions, createBus, createStore, type OfficeState } from '@officexr/sdk';
 import { createMultiClientHarness } from '@officexr/sdk/test-harness';
 import { createViewYaw, ViewYawProvider } from '@officexr/world/react';
@@ -56,6 +56,10 @@ describe('presenceRows', () => {
     expect(rows.map((r) => r.type)).toEqual(['peer']);
   });
 
+  it('drops a departed entry for a user who never sent a name', () => {
+    expect(presenceRows([], [{ id: 'bob', name: '', leftAt: 0 }], 'me')).toEqual([]);
+  });
+
   it('gives distance and bearing to peers only', () => {
     const [self, peer] = presenceRows([player('me', 'Me'), player('amy', 'Amy')], [], 'me');
     expect(self).not.toHaveProperty('distanceM');
@@ -85,7 +89,7 @@ describe('presenceRows', () => {
 const rowOf = (name: string) => screen.getByText(name).closest('li')!;
 
 describe('PresenceList', () => {
-  function seed() {
+  function seed(onRender: () => void = () => {}) {
     const store = createStore({ selfId: 'me', officeId: 'o' });
     const actions = createActions(store, createBus());
     const viewYaw = createViewYaw();
@@ -107,7 +111,12 @@ describe('PresenceList', () => {
     actions.recordDeparted('dan', 0);
     actions.removePlayer('dan');
     vi.useFakeTimers();
-    renderInView(<PresenceList store={store} selfId="me" officeName="HQ" clock={clock} />, viewYaw);
+    renderInView(
+      <Profiler id="list" onRender={onRender}>
+        <PresenceList store={store} selfId="me" officeName="HQ" clock={clock} />
+      </Profiler>,
+      viewYaw,
+    );
     return { actions, viewYaw, setTime };
   }
 
@@ -156,6 +165,17 @@ describe('PresenceList', () => {
     expect(mic('Bob').map((el) => el.getAttribute('aria-label'))).toEqual(['Muted']);
     expect(mic('Cat').map((el) => el.getAttribute('aria-label'))).toEqual(['Mic on']);
     expect(mic('Dan')).toEqual([]);
+  });
+
+  it('re-renders on a whole-metre change, not on every small move', () => {
+    const onRender = vi.fn();
+    const { actions } = seed(onRender);
+    const renders = onRender.mock.calls.length;
+    act(() => actions.upsertPlayer({ id: 'ann', pos: { x: 0.1, y: 0, z: -12.3 } }));
+    expect(onRender).toHaveBeenCalledTimes(renders);
+    act(() => actions.upsertPlayer({ id: 'ann', pos: { x: 0, y: 0, z: -13.2 } }));
+    expect(onRender).toHaveBeenCalledTimes(renders + 1);
+    expect(within(rowOf('Ann')).getByText('13 m')).toBeTruthy();
   });
 
   it('points an arrow at peers relative to the view and shows their distance', () => {
