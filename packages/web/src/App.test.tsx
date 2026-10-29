@@ -38,10 +38,11 @@ describe('App signed out', () => {
     expect(link.getAttribute('href')).toBe('/auth/google?next=%2F%3Ffoo%3D1');
   });
 
-  it('keeps the normal error UI for non-401 /api/me failures', async () => {
+  it('shows the home page with its error and a sign-in link for non-401 /api/me failures', async () => {
     meFailsAt('/', 500, 'Boom');
     expect(await screen.findByText('Boom')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Sign in with Google' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'OfficeXR' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Sign in with Google' }).getAttribute('href')).toBe('/auth/google?next=%2F');
   });
 
   it.each([

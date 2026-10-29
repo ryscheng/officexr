@@ -70,6 +70,18 @@ describe('Home', () => {
     expect((screen.getByRole('button', { name: 'Create office' })).matches(':disabled')).toBe(true);
   });
 
+  it('offers Google sign-in back to this page when /api/me fails', async () => {
+    setup(unidentified, []);
+    const link = await screen.findByRole('link', { name: 'Sign in with Google' });
+    expect(link.getAttribute('href')).toBe('/auth/google?next=%2F');
+  });
+
+  it('offers no sign-in link when signed in', async () => {
+    setup(ready, []);
+    await screen.findByText(/No offices yet/);
+    expect(screen.queryByRole('link', { name: 'Sign in with Google' })).toBeNull();
+  });
+
   it('signs out by POSTing /auth/logout then returning to /', async () => {
     const assign = vi.fn();
     setup(ready, []);
