@@ -48,18 +48,24 @@ export function FocusIndicator({ focused }: { focused: boolean }) {
   );
 }
 
-/** Top-left row for the status line and focus chip; `reserveMenuSlot` leaves room for a 44px host menu button at `left: 12`. */
+const HUD_INSET = 12;
+const HUD_GAP = 8;
+/** Matches the host menu button's `h-11 w-11` in `@officexr/web`'s `RoomMenu`. */
+const HOST_MENU_SLOT = 44;
+
+/** Top-left row for the status line and focus chip; `reserveMenuSlot` leaves room for the host's menu button. */
 export function TopLeftHud({ reserveMenuSlot = false, children }: { reserveMenuSlot?: boolean; children: ReactNode }) {
+  const left = reserveMenuSlot ? HUD_INSET + HOST_MENU_SLOT + HUD_GAP : HUD_INSET;
   return (
     <div
       style={{
         position: 'absolute',
-        top: 12,
-        left: reserveMenuSlot ? 64 : 12,
-        maxWidth: `calc(100% - ${reserveMenuSlot ? 76 : 24}px)`,
+        top: HUD_INSET,
+        left,
+        maxWidth: `calc(100% - ${left + HUD_INSET}px)`,
         display: 'flex',
         alignItems: 'flex-start',
-        gap: 8,
+        gap: HUD_GAP,
         pointerEvents: 'none',
       }}
     >
