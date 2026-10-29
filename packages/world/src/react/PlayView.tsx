@@ -19,6 +19,8 @@ import { useWorldConstants } from './useWorldConstants.ts';
 import { useSlowNotice } from './useSlowNotice.ts';
 import { useWorldFocus } from './useWorldFocus.ts';
 import { NavGridProvider, useBuildNavGrid } from './useNavGrid.ts';
+import { PlayControlsProvider } from './playControls.tsx';
+import { useAutoWalk } from './useAutoWalk.ts';
 import { INITIAL_WORLD_READINESS, worldReadiness } from './world-readiness.ts';
 
 /** Clears a 44px host menu button at `right: 12`. */
@@ -73,6 +75,7 @@ export function PlayView(props: PlayViewProps) {
   const [viewYaw] = useState(createViewYaw);
   const worldConstants = useWorldConstants(props.store);
   const navGrid = useBuildNavGrid(props.store);
+  const autoWalk = useAutoWalk(props.store, props.selfId, navGrid);
   const session = usePlaySession({
     actions: props.actions,
     mapName: props.mapName,
@@ -117,6 +120,7 @@ export function PlayView(props: PlayViewProps) {
           view={worldConstants}
           worldFocused={worldFocused}
           moveInputRef={moveInputRef}
+          autoWalk={autoWalk}
           spawnPoints={session.spawnPoints}
           bakedLayouts={session.bakedLayouts}
           onFrameStats={props.onFrameStats}
@@ -144,7 +148,9 @@ export function PlayView(props: PlayViewProps) {
         session.error && <ErrorBanner message={session.error} onDismiss={session.dismissError} />
       )}
       <NavGridProvider value={navGrid}>
-        <ViewYawProvider viewYaw={viewYaw}>{props.children}</ViewYawProvider>
+        <ViewYawProvider viewYaw={viewYaw}>
+          <PlayControlsProvider controls={autoWalk}>{props.children}</PlayControlsProvider>
+        </ViewYawProvider>
       </NavGridProvider>
       {!ready && (
         <LoadingScreenWithProgress
