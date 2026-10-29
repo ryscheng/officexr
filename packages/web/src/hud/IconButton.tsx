@@ -1,13 +1,11 @@
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { LucideIcon } from 'lucide-react';
 
-export type IconButtonTone = 'neutral' | 'danger' | 'success';
-
 const TONE = {
   neutral: 'bg-black/55 hover:bg-black/70',
   danger: 'bg-red-700/80 hover:bg-red-700',
   success: 'bg-green-700/80 hover:bg-green-700',
-} satisfies Record<IconButtonTone, string>;
+};
 
 /** A HUD button showing one icon, named and tooltipped by `label`. It never takes focus from the world on click. */
 export function IconButton({
@@ -23,7 +21,7 @@ export function IconButton({
   onClick: () => void;
   pressed?: boolean;
   disabled?: boolean;
-  tone?: IconButtonTone;
+  tone?: keyof typeof TONE;
 }) {
   return (
     <Tooltip.Provider delayDuration={300}>

@@ -130,7 +130,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {session.voice && <JaasMeeting voice={session.voice} />}
           <ChatPanel store={session.local.store} actions={session.local.actions} selfId={session.local.selfId} />
-          {/* Centres the call bar while space allows; the left track (the people column, at least the joystick's width on touch) pushes it right rather than under them. */}
+          {/* The call bar centres while it fits; the people column (at least the joystick's width on touch) pushes it right instead of under it. */}
           <div className="pointer-events-none absolute inset-x-3 bottom-3 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
             <div className="flex flex-col items-start gap-2 pointer-coarse:mb-37 pointer-coarse:min-w-28">
               <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
