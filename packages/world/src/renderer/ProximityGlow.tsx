@@ -10,6 +10,7 @@ import { useFrame } from '@react-three/fiber';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { PairTracker, type MeetingArea } from '@officexr/sdk';
 import { extrapolatePos } from './Players.tsx';
+import { feetPosition } from '../physics/rules.ts';
 import type { CameraMode } from './config.ts';
 import { BubbleParticles, radialTexture } from './proximity/BubbleParticles.tsx';
 
@@ -57,7 +58,7 @@ interface ProximityGlowProps {
    * are enlarged to stay visible. */
   cameraMode: CameraMode;
   /** Mutated each frame with the local player's current MeetingArea
-   * centroid (lifted to local-player y), or set to null when the
+   * centroid (at the local player's feet height), or set to null when the
    * local player is not in a conversation. CameraRig reads this ref
    * to drive the conversation-view camera blend. */
   conversationFocusRef: React.MutableRefObject<{ x: number; y: number; z: number } | null>;
@@ -200,7 +201,7 @@ export function ProximityGlow({
     if (out.conversationFocus && selfPlayer) {
       conversationFocusRef.current = {
         x: out.conversationFocus.x,
-        y: selfPlayer.pos.y,
+        y: feetPosition(selfPlayer.pos, ws.charRadius).y,
         z: out.conversationFocus.z,
       };
     } else {

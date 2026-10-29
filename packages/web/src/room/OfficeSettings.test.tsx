@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Office } from '../../server/api';
-import { OfficeSettings } from './OfficeSettings';
+import type { Identity, Office } from '../../server/api';
+import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
+import { RoomMenu } from './RoomMenu';
 
 afterEach(() => {
   cleanup();
@@ -22,29 +25,57 @@ const office: Office = {
 };
 const alice = { login: 'a@example.com', name: 'Alice' };
 
+function Harness({ me, onSaved }: { me: Identity; onSaved: (office: Office) => void }) {
+  const focused = useWorldFocus();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <output>{String(focused)}</output>
+      <RoomMenu>
+        <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setOpen(true)} />
+      </RoomMenu>
+      {open && <OfficeSettingsDialog office={office} me={me} onSaved={onSaved} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+const openSettings = () => {
+  fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Office settings…' }));
+};
+
 function setup(me = alice, patch: (init: RequestInit) => Promise<Response> = () => json(200, office)) {
   const fetchMock = vi.fn((url: string, init?: RequestInit) =>
     init?.method === 'PATCH' ? patch(init) : json(200, { maps: [{ name: 'default' }, { name: 'hq' }] }),
   );
   vi.stubGlobal('fetch', fetchMock);
   const onSaved = vi.fn();
-  render(<OfficeSettings office={office} me={me} onSaved={onSaved} />);
+  render(<Harness me={me} onSaved={onSaved} />);
   return { fetchMock, onSaved };
 }
 
 describe('OfficeSettings', () => {
-  it('shows the Settings button only to the creator', () => {
+  it('offers Office settings in the menu only to the creator, with no button outside it', () => {
     setup({ login: 'b@example.com', name: 'Bob' });
-    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(screen.queryByRole('button', { name: 'Office settings…' })).toBeNull();
     cleanup();
     setup();
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
+    openSettings();
+    expect(screen.getByRole('dialog', { name: 'Office settings' })).toBeTruthy();
+  });
+
+  it('renders no dialog for anyone but the creator', () => {
+    const bob = { login: 'b@example.com', name: 'Bob' };
+    render(<OfficeSettingsDialog office={office} me={bob} onSaved={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('saves the edited settings and reports the updated office', async () => {
     const updated = { ...office, name: 'Lab', map_name: 'default', debug_enabled: true };
     const { fetchMock, onSaved } = setup(alice, () => json(200, updated));
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    openSettings();
     await screen.findByRole('option', { name: 'default' });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lab' } });
     fireEvent.change(screen.getByLabelText('Map'), { target: { value: 'default' } });
@@ -55,11 +86,27 @@ describe('OfficeSettings', () => {
     expect(url).toBe('/api/offices/o1');
     expect(JSON.parse(init!.body as string)).toEqual({ name: 'Lab', mapName: 'default', debugEnabled: true });
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('true');
+  });
+
+  it('applies a save that lands after the dialog closed without closing or unfocusing what opened since', async () => {
+    let respond!: (res: Response) => void;
+    const { onSaved } = setup(alice, () => new Promise<Response>((resolve) => (respond = resolve)));
+    openSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    openSettings();
+    expect(screen.getByRole('status').textContent).toBe('false');
+    const updated = { ...office, name: 'Lab' };
+    respond({ ok: true, status: 200, json: async () => updated } as Response);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(updated));
+    expect(screen.getByRole('dialog', { name: 'Office settings' })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('false');
   });
 
   it('sends nothing for untouched fields', async () => {
     const { fetchMock } = setup();
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    openSettings();
     fireEvent.click(screen.getByLabelText(/Debug mode/));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -67,17 +114,19 @@ describe('OfficeSettings', () => {
     expect(JSON.parse(init!.body as string)).toEqual({ debugEnabled: true });
   });
 
-  it('moves focus into the dialog and closes on Escape', () => {
+  it('moves focus into the dialog and closes on Escape, handing the keyboard back to the world', () => {
     setup();
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    openSettings();
     expect(document.activeElement).toBe(screen.getByRole('dialog'));
+    expect(screen.getByRole('status').textContent).toBe('false');
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('true');
   });
 
   it("shows the server's error and keeps the dialog open", async () => {
     const { onSaved } = setup(alice, () => json(403, { error: 'Only the office creator can change its settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    openSettings();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect((await screen.findByRole('alert')).textContent).toBe('Only the office creator can change its settings');
     expect(onSaved).not.toHaveBeenCalled();

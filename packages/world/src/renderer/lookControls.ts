@@ -1,4 +1,6 @@
-import { CHAR_HEIGHT_M, type CameraMode } from './config.ts';
+import type { Vec3 } from '@officexr/sdk';
+import { feetPosition } from '../physics/rules.ts';
+import { CHAR_HEIGHT_M, EYE_HEIGHT, type CameraMode } from './config.ts';
 
 export const PITCH_MIN = -1.3;
 export const PITCH_MAX = 1.3;
@@ -209,4 +211,24 @@ export function yawFromDirection(dir: { x: number; z: number }): number {
 export function wrapAngle(rad: number): number {
   const a = rad % (2 * Math.PI);
   return a <= -Math.PI ? a + 2 * Math.PI : a > Math.PI ? a - 2 * Math.PI : a;
+}
+
+/** Where a character's eyes are, from its store position (the body root). */
+export function eyePosition(pos: Vec3, charRadius: number): Vec3 {
+  const feet = feetPosition(pos, charRadius);
+  return { x: feet.x, y: feet.y + EYE_HEIGHT, z: feet.z };
+}
+
+/**
+ * Camera position `r` from `centre`, behind the look direction of `yaw`, for a
+ * camera aimed at `centre`. A negative (look-down) pitch raises the camera
+ * above the centre, so it looks down the same way first person does.
+ */
+export function orbitPosition(centre: Vec3, yaw: number, pitch: number, r: number): Vec3 {
+  const cosP = Math.cos(pitch);
+  return {
+    x: centre.x + Math.sin(yaw) * cosP * r,
+    y: centre.y + Math.sin(-pitch) * r,
+    z: centre.z + Math.cos(yaw) * cosP * r,
+  };
 }
