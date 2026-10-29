@@ -14,6 +14,7 @@ import {
 import { formatDistance } from './formatDistance';
 import { navGridPath, toMinimap } from './minimapGeometry';
 import { PRESENCE_INDICATOR } from './presenceColours';
+import { quantise } from './quantise';
 import { sameFields, sameList } from './sameFields';
 import { useNow } from './useNow';
 
@@ -28,8 +29,6 @@ const DEG = 180 / Math.PI;
 type MinimapPeer = Pick<PlayerState, 'id' | 'name' | 'status' | 'lastStatusAt' | 'firstSeenAt'> &
   Vec3 & { distanceM: number };
 type Positions = { self: Vec3 | null; peers: MinimapPeer[] };
-
-const quantise = (v: number, step: number) => Math.round(v / step) * step;
 
 const selectPositions = (s: OfficeState): Positions => {
   const selfPos = s.players[s.selfId]?.pos;
@@ -112,34 +111,27 @@ function MapView({ store, clock }: { store: Store; clock?: () => number }) {
       </clipPath>
       <circle cx={CENTRE} cy={CENTRE} r={MAP_PX / 2} className="fill-white/10" />
       {self && grid && <FloorPlan grid={grid} self={self} viewYaw={viewYaw} clipId={clipId} />}
-      {self &&
-        peers.map((p) => {
-          const { x, y } = toMinimap(self, viewYaw, p, { rangeM: RANGE_M, sizePx: MAP_PX });
-          const name = p.name || 'Joining…';
-          return (
-            <g key={p.id} role="img" aria-label={name}>
-              <title>{name}</title>
-              <circle
-                cx={x + RIM_INSET_PX}
-                cy={y + RIM_INSET_PX}
-                r={4}
-                className={PRESENCE_INDICATOR[presenceIndicator(p, now)].fill}
-              />
-              <text
-                x={x + RIM_INSET_PX}
-                y={y + RIM_INSET_PX + 12}
-                textAnchor="middle"
-                className="fill-white text-[9px] tabular-nums"
-              >
-                {formatDistance(p.distanceM)}
-              </text>
-            </g>
-          );
-        })}
+      {self && peers.map((p) => <PeerMarker key={p.id} peer={p} self={self} viewYaw={viewYaw} now={now} />)}
       <path role="img" aria-label="You" d={`M${CENTRE} ${CENTRE - 7}l5 12h-10z`} className="fill-white stroke-black/60">
         <title>You</title>
       </path>
     </svg>
+  );
+}
+
+function PeerMarker({ peer, self, viewYaw, now }: { peer: MinimapPeer; self: Vec3; viewYaw: number; now: number }) {
+  const { x, y } = toMinimap(self, viewYaw, peer, { rangeM: RANGE_M, sizePx: MAP_PX });
+  const cx = x + RIM_INSET_PX;
+  const cy = y + RIM_INSET_PX;
+  const name = peer.name || 'Joining…';
+  return (
+    <g role="img" aria-label={name}>
+      <title>{name}</title>
+      <circle cx={cx} cy={cy} r={4} className={PRESENCE_INDICATOR[presenceIndicator(peer, now)].fill} />
+      <text x={cx} y={cy + 12} textAnchor="middle" className="fill-white text-[9px] tabular-nums">
+        {formatDistance(peer.distanceM)}
+      </text>
+    </g>
   );
 }
 

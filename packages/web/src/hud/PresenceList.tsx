@@ -4,6 +4,7 @@ import { loginOf, presenceIndicator } from '@officexr/sdk';
 import { planarDistance, relativeBearing, useStoreSelector, useViewYaw } from '@officexr/world/react';
 import { formatDistance } from './formatDistance';
 import { PRESENCE_INDICATOR } from './presenceColours';
+import { quantise } from './quantise';
 import { sameList } from './sameFields';
 import { useNow } from './useNow';
 
@@ -76,7 +77,7 @@ const selectPresence = (s: OfficeState): Presence => {
       lastStatusAt: p.lastStatusAt,
       firstSeenAt: p.firstSeenAt,
       distanceM: selfPos ? Math.floor(planarDistance(selfPos, p.pos)) : null,
-      bearingDeg: selfPos ? Math.round((relativeBearing(selfPos, 0, p.pos) * DEG) / 5) * 5 : 0,
+      bearingDeg: selfPos ? quantise(relativeBearing(selfPos, 0, p.pos) * DEG, 5) : 0,
     })),
     departed: Object.entries(s.departed).map(([id, d]) => ({ id, ...d })),
     status: s.realtime.status,

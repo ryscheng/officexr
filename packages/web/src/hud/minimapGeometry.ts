@@ -21,6 +21,8 @@ export function toMinimap(
 
 const paths = new WeakMap<NavGrid, string>();
 
+type Run = { i0: number; i1: number; fromRow: number };
+
 /**
  * The walkable cells of `grid` as one SVG path in cell units (x along i, y along j):
  * each row's runs, merged downwards while the rows below repeat them.
@@ -31,28 +33,29 @@ export function navGridPath(grid: NavGrid): string {
     return cached;
   }
   const rects: string[] = [];
-  let open = new Map<string, number>();
-  const close = (key: string, fromRow: number, toRow: number) => {
-    const [i0, i1] = key.split(',').map(Number);
+  const close = ({ i0, i1, fromRow }: Run, toRow: number) => {
     rects.push(`M${i0} ${fromRow}h${i1 - i0}v${toRow - fromRow}h${i0 - i1}z`);
   };
-  for (let j = 0; j <= grid.height; j++) {
-    const next = new Map<string, number>();
-    for (let i = 0; j < grid.height && i < grid.width; i++) {
-      if (!grid.walkable[j * grid.width + i]) {
+  let open = new Map<string, Run>();
+  for (let j = 0; j < grid.height; j++) {
+    const walkable = (i: number) => grid.walkable[j * grid.width + i];
+    const next = new Map<string, Run>();
+    for (let i = 0; i < grid.width; i++) {
+      if (!walkable(i)) {
         continue;
       }
       const i0 = i;
-      while (i < grid.width && grid.walkable[j * grid.width + i]) {
+      while (i < grid.width && walkable(i)) {
         i++;
       }
       const key = `${i0},${i}`;
-      next.set(key, open.get(key) ?? j);
+      next.set(key, open.get(key) ?? { i0, i1: i, fromRow: j });
       open.delete(key);
     }
-    open.forEach((fromRow, key) => close(key, fromRow, j));
+    open.forEach((run) => close(run, j));
     open = next;
   }
+  open.forEach((run) => close(run, grid.height));
   const d = rects.join('');
   paths.set(grid, d);
   return d;
