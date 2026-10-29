@@ -1,6 +1,9 @@
-import { useCallback, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { useCallback, useSyncExternalStore, type CSSProperties } from 'react';
 import { JaaSMeeting } from '@jitsi/react-sdk';
+import { Mic, MicOff, MonitorOff, MonitorUp } from 'lucide-react';
+import { IconButton } from '../hud/IconButton';
 import type { JaasVoiceAdapter } from './JaasVoiceAdapter';
+import { useMicMuted } from './useMicMuted';
 
 const useShareState = (voice: JaasVoiceAdapter) => useSyncExternalStore(voice.onShareChange, voice.getShareState);
 
@@ -48,37 +51,28 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
 }
 
 export function MuteToggle({ voice }: { voice: JaasVoiceAdapter }) {
-  const [muted, setMuted] = useState(voice.isMuted());
-  const toggle = () => {
-    voice.setMuted(!muted);
-    setMuted(!muted);
-  };
-  // preventDefault on mousedown keeps focus off the button, so Space/Enter keep driving the world.
+  const muted = useMicMuted(voice);
   return (
-    <button
-      type="button"
-      aria-pressed={muted}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={toggle}
-      className={`pointer-events-auto rounded px-3 py-1.5 text-xs text-white ${muted ? 'bg-red-700/80 hover:bg-red-700' : 'bg-black/55 hover:bg-black/70'}`}
-    >
-      Mute mic
-    </button>
+    <IconButton
+      icon={muted ? MicOff : Mic}
+      label={muted ? 'Unmute microphone' : 'Mute microphone'}
+      pressed={muted}
+      tone={muted ? 'danger' : 'neutral'}
+      onClick={() => voice.setMuted(!muted)}
+    />
   );
 }
 
 export function ShareScreenToggle({ voice }: { voice: JaasVoiceAdapter }) {
   const { canShare, sharing } = useShareState(voice);
   return (
-    <button
-      type="button"
-      aria-pressed={sharing}
+    <IconButton
+      icon={sharing ? MonitorOff : MonitorUp}
+      label={!canShare ? 'Screen sharing unavailable' : sharing ? 'Stop sharing' : 'Share screen'}
+      pressed={sharing}
       disabled={!canShare}
-      onMouseDown={(e) => e.preventDefault()}
+      tone={sharing ? 'success' : 'neutral'}
       onClick={() => voice.toggleShareScreen()}
-      className={`pointer-events-auto rounded px-3 py-1.5 text-xs text-white disabled:cursor-not-allowed disabled:opacity-50 ${sharing ? 'bg-green-700/80 hover:bg-green-700' : 'bg-black/55 hover:bg-black/70'}`}
-    >
-      Share screen
-    </button>
+    />
   );
 }

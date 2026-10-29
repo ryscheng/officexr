@@ -9,5 +9,5 @@ const selectZoneLabel = (s: OfficeState) => {
 
 export function ZoneCallLabel({ store }: { store: Store }) {
   const label = useStoreSelector(store, selectZoneLabel);
-  return label && <span className="pointer-events-none rounded bg-black/55 px-3 py-1.5 text-xs text-white">In {label} call</span>;
+  return label && <span className="px-2 text-xs whitespace-nowrap text-white">In {label} call</span>;
 }
