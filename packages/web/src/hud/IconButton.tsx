@@ -8,6 +8,11 @@ const TONE = {
   success: 'bg-green-700/80 hover:bg-green-700',
 };
 
+const SIZE = {
+  md: { button: 'p-2', icon: 'h-4 w-4' },
+  sm: { button: 'p-0.5', icon: 'h-3 w-3' },
+};
+
 /** Where `IconButton` tooltips portal to, for buttons rendered into another document; defaults to `document.body`. */
 export const TooltipContainer = createContext<HTMLElement | undefined>(undefined);
 
@@ -19,6 +24,7 @@ export function IconButton({
   pressed,
   disabled,
   tone = 'neutral',
+  size = 'md',
 }: {
   icon: LucideIcon;
   label: string;
@@ -26,6 +32,7 @@ export function IconButton({
   pressed?: boolean;
   disabled?: boolean;
   tone?: keyof typeof TONE;
+  size?: keyof typeof SIZE;
 }) {
   const tooltipContainer = useContext(TooltipContainer);
   return (
@@ -46,9 +53,9 @@ export function IconButton({
               aria-pressed={pressed}
               disabled={disabled}
               onClick={onClick}
-              className={`rounded p-2 text-white disabled:pointer-events-none disabled:opacity-50 ${TONE[tone]}`}
+              className={`rounded text-white disabled:pointer-events-none disabled:opacity-50 ${SIZE[size].button} ${TONE[tone]}`}
             >
-              <Icon aria-hidden className="h-4 w-4" />
+              <Icon aria-hidden className={SIZE[size].icon} />
             </button>
           </span>
         </Tooltip.Trigger>

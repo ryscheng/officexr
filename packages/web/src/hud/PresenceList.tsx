@@ -1,8 +1,16 @@
-import { ArrowUp, Mic, MicOff, type LucideIcon } from 'lucide-react';
+import { ArrowUp, Mic, MicOff, Navigation, type LucideIcon } from 'lucide-react';
 import type { DepartedPlayer, MicState, OfficeState, PlayerId, PlayerState, PresenceStatus, Store } from '@officexr/sdk';
 import { loginOf, presenceIndicator } from '@officexr/sdk';
-import { planarDistance, relativeBearing, useStoreSelector, useViewYaw } from '@officexr/world/react';
+import {
+  focusWorld,
+  planarDistance,
+  relativeBearing,
+  usePlayControls,
+  useStoreSelector,
+  useViewYaw,
+} from '@officexr/world/react';
 import { formatDistance } from './formatDistance';
+import { IconButton } from './IconButton';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { quantise } from './quantise';
 import { sameList } from './sameFields';
@@ -102,6 +110,12 @@ export function PresenceList({
   const viewYawDeg = useViewYaw() * DEG;
   const now = useNow(1000, clock);
   const { text, dot } = STATUS[status];
+  const { goTo, state } = usePlayControls();
+  // A no-route walk keeps re-planning, so its button stays pressed: clicking it again cancels.
+  const following = state.type === 'idle' ? null : state.targetId;
+  const unreachable = state.type === 'no-route' ? state.targetId : null;
+  const rows = presenceRows(players, departed, selfId);
+  const unreachableLabel = rows.find((row) => row.id === unreachable)?.label;
   return (
     <div
       data-studio-panel
@@ -117,15 +131,45 @@ export function PresenceList({
         </span>
       </div>
       <ul aria-label={`People in ${officeName}`}>
-        {presenceRows(players, departed, selfId).map((row) => (
-          <PresenceRowItem key={row.id} row={row} now={now} viewYawDeg={viewYawDeg} />
+        {rows.map((row) => (
+          <PresenceRowItem
+            key={row.id}
+            row={row}
+            now={now}
+            viewYawDeg={viewYawDeg}
+            following={row.id === following}
+            noRoute={row.id === unreachable}
+            onGo={() => {
+              goTo(row.id);
+              focusWorld();
+            }}
+          />
         ))}
       </ul>
+      {/* Always mounted: a live region that mounts with its text is often not announced. */}
+      <p role="status" className="sr-only">
+        {unreachableLabel ? `No route to ${unreachableLabel}` : ''}
+      </p>
     </div>
   );
 }
 
-function PresenceRowItem({ row, now, viewYawDeg }: { row: PresenceRow; now: number; viewYawDeg: number }) {
+function PresenceRowItem({
+  row,
+  now,
+  viewYawDeg,
+  following,
+  noRoute,
+  onGo,
+}: {
+  row: PresenceRow;
+  now: number;
+  viewYawDeg: number;
+  /** Whether the auto-walk targets this user, so clicking Go again cancels it. */
+  following: boolean;
+  noRoute: boolean;
+  onGo: () => void;
+}) {
   const indicator = PRESENCE_INDICATOR[row.type === 'self' ? row.status : presenceIndicator(row, now)];
   const mic = row.type === 'departed' ? null : MIC[row.mic];
   return (
@@ -141,6 +185,7 @@ function PresenceRowItem({ row, now, viewYawDeg }: { row: PresenceRow; now: numb
         {row.label}
         {row.type === 'self' && ' (you)'}
       </span>
+      {row.type === 'peer' && noRoute && <span className="shrink-0 text-amber-400">No route</span>}
       {row.type === 'peer' && row.distanceM !== null && (
         <span className="flex shrink-0 items-center gap-0.5 tabular-nums text-white/80">
           <ArrowUp
@@ -150,6 +195,16 @@ function PresenceRowItem({ row, now, viewYawDeg }: { row: PresenceRow; now: numb
           />
           {formatDistance(row.distanceM)}
         </span>
+      )}
+      {row.type === 'peer' && (
+        <IconButton
+          icon={Navigation}
+          label={`Go to ${row.label}`}
+          pressed={following}
+          tone={following ? 'success' : 'neutral'}
+          size="sm"
+          onClick={onGo}
+        />
       )}
     </li>
   );

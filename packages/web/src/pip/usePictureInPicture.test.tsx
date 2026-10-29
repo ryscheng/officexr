@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { createActions, createBus, createStore, type Store } from '@officexr/sdk';
-import { createViewYaw, NavGridProvider, ViewYawProvider } from '@officexr/world/react';
+import { createViewYaw, NavGridProvider, PlayControlsProvider, ViewYawProvider } from '@officexr/world/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fakePlayControls } from '../hud/fakePlayControls';
 import { RoomMenu } from '../room/RoomMenu';
 import { MuteToggle } from '../voice/JaasMeeting';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -12,6 +13,7 @@ import { PopOutMenuItem } from './PopOutMenuItem';
 import { usePictureInPicture, type PictureInPictureDeps } from './usePictureInPicture';
 
 const realMatchMedia = window.matchMedia;
+const idlePlayControls = fakePlayControls().controls;
 
 beforeEach(() => {
   window.matchMedia = ((query: string) => ({
@@ -96,11 +98,13 @@ function Room({ deps, store, voice }: { deps: PictureInPictureDeps; store: Store
   return (
     <NavGridProvider value={null}>
       <ViewYawProvider viewYaw={createViewYaw()}>
-        <RoomMenu>
-          <PopOutMenuItem pip={pip} />
-        </RoomMenu>
-        <MuteToggle voice={voice} />
-        {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={store} voice={voice} />}
+        <PlayControlsProvider controls={idlePlayControls}>
+          <RoomMenu>
+            <PopOutMenuItem pip={pip} />
+          </RoomMenu>
+          <MuteToggle voice={voice} />
+          {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={store} voice={voice} />}
+        </PlayControlsProvider>
       </ViewYawProvider>
     </NavGridProvider>
   );

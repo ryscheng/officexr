@@ -4,17 +4,17 @@ import { planarDistance, relativeBearing, type NavGrid } from '@officexr/world/r
 /**
  * Where `point` lands on a `sizePx` square map spanning `rangeM` metres, centred
  * on `selfPos` and turned so `viewYaw` points up. Points beyond `rangeM / 2` are
- * pinned to the rim in their direction.
+ * pinned to the rim in their direction unless `clamp` is false.
  */
 export function toMinimap(
   selfPos: Vec3,
   viewYaw: number,
   point: Vec3,
-  { rangeM, sizePx }: { rangeM: number; sizePx: number },
+  { rangeM, sizePx, clamp = true }: { rangeM: number; sizePx: number; clamp?: boolean },
 ): { x: number; y: number; clamped: boolean } {
   const bearing = relativeBearing(selfPos, viewYaw, point);
   const distance = planarDistance(selfPos, point);
-  const clamped = distance > rangeM / 2;
+  const clamped = clamp && distance > rangeM / 2;
   const r = ((clamped ? rangeM / 2 : distance) * sizePx) / rangeM;
   return { x: sizePx / 2 + r * Math.sin(bearing), y: sizePx / 2 - r * Math.cos(bearing), clamped };
 }
