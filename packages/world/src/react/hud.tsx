@@ -50,7 +50,7 @@ export function FocusIndicator({ focused }: { focused: boolean }) {
 
 const HUD_INSET = 12;
 const HUD_GAP = 8;
-/** Matches the host menu button's `h-11 w-11` in `@officexr/web`'s `RoomMenu`. */
+/** Mirrors the host menu button's size in `@officexr/web`'s `RoomMenu`. */
 const HOST_MENU_SLOT = 44;
 
 /** Top-left row for the status line and focus chip; `reserveMenuSlot` leaves room for the host's menu button. */
@@ -64,7 +64,8 @@ export function TopLeftHud({ reserveMenuSlot = false, children }: { reserveMenuS
         left,
         maxWidth: `calc(100% - ${left + HUD_INSET}px)`,
         display: 'flex',
-        alignItems: 'flex-start',
+        minHeight: reserveMenuSlot ? HOST_MENU_SLOT : undefined,
+        alignItems: reserveMenuSlot ? 'center' : 'flex-start',
         gap: HUD_GAP,
         pointerEvents: 'none',
       }}
@@ -115,7 +116,7 @@ export function ErrorBanner({ message, onDismiss }: { message: string; onDismiss
       role="alert"
       style={{
         position: 'absolute',
-        top: 12,
+        top: HUD_INSET,
         left: '50%',
         transform: 'translateX(-50%)',
         padding: '8px 14px',
