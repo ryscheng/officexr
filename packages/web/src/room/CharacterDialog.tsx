@@ -2,10 +2,10 @@ import { useEffect, useState, type ComponentType } from 'react';
 import type { PersistentLocalState } from '@officexr/core-refactor';
 import type { OfficeState } from '@officexr/sdk';
 import { CHARACTERS, pickCharacterForPlayer, type CharacterName } from '@officexr/world/characters';
-import { focusWorld } from '@officexr/world/react';
 import { CharacterPreviewCanvas } from '@officexr/world/renderer';
 import { Dialog } from '../Dialog';
 import { chooseCharacter } from './character';
+import { closeToWorld } from './closeToWorld';
 
 const selfCharacter = (s: OfficeState, selfId: string) => pickCharacterForPlayer(selfId, s.players[selfId]?.avatar.model);
 
@@ -33,14 +33,7 @@ export function CharacterDialog({
 }) {
   const character = useSelfCharacter(local);
   return (
-    <Dialog
-      title="Character"
-      onClose={() => {
-        onClose();
-        // The dialog's focus-in released keyboard control from the world.
-        focusWorld();
-      }}
-    >
+    <Dialog title="Character" onClose={closeToWorld(onClose)}>
       <div className="mb-3 h-40 overflow-hidden rounded">
         <Preview character={character} />
       </div>

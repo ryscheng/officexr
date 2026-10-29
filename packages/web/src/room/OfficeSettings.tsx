@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { focusWorld } from '@officexr/world/react';
 import type { Identity, Office, OfficeUpdate } from '../../server/api';
 import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
 import { Dialog } from '../Dialog';
 import { errorMessage } from '../useApi';
 import { useMapNames } from '../useMapNames';
+import { closeToWorld } from './closeToWorld';
 import { RoomMenuItem } from './RoomMenu';
 import { DEFAULT_MAP } from './withDefaultMap';
 
@@ -123,11 +123,7 @@ export function OfficeSettingsDialog({
   if (!isOfficeCreator(me, office)) {
     return null;
   }
-  const close = () => {
-    onClose();
-    // The dialog's focus-in released keyboard control from the world.
-    focusWorld();
-  };
+  const close = closeToWorld(onClose);
   return (
     <Dialog title="Office settings" onClose={close}>
       <SettingsForm office={office} onSaved={onSaved} onClose={close} />

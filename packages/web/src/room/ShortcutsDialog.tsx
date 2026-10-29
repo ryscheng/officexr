@@ -1,17 +1,10 @@
-import { focusWorld } from '@officexr/world/react';
 import { Dialog } from '../Dialog';
+import { closeToWorld } from './closeToWorld';
 import { SHORTCUT_GROUPS, SHORTCUTS } from './shortcuts';
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   return (
-    <Dialog
-      title="Keyboard shortcuts"
-      onClose={() => {
-        onClose();
-        // The dialog's focus-in released keyboard control from the world.
-        focusWorld();
-      }}
-    >
+    <Dialog title="Keyboard shortcuts" onClose={closeToWorld(onClose)}>
       <div className="space-y-3">
         {SHORTCUT_GROUPS.map((group) => (
           <section key={group}>
