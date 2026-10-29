@@ -31,6 +31,7 @@ import {
 import {
   decodeFrame,
   encodeFrame,
+  REJECTED_CLOSE_CODE,
   REPLACED_CLOSE_CODE,
   SERVER_SELF_ID,
   type CustomFrame,
@@ -457,11 +458,13 @@ export class RealtimeServer {
 
       if (frame.t === 'hello') {
         if (client || helloPending) return;
-        const login = helloIdentity(frame, this.tokenSecret, this.now());
-        if (login === null) {
-          ws.close();
+        const identity = helloIdentity(frame, this.tokenSecret, this.now());
+        if (identity.type === 'rejected') {
+          console.warn(`[realtime-server] rejected hello from ${JSON.stringify(frame.userId)}: ${identity.reason}`);
+          ws.close(REJECTED_CLOSE_CODE, identity.reason);
           return;
         }
+        const { login } = identity;
         helloPending = true;
         const helloSeq = ++this.helloSeq;
         const officeId = this.officeIdOf(frame.officeId);
@@ -658,17 +661,29 @@ function helloLogin(frame: HelloFrame): string | null {
   return isLogin(login) && ownsId ? login : null;
 }
 
-/** The login a `hello` speaks for. With a token secret it comes from the
- * verified token, which the frame's own `login` may not contradict. */
-function helloIdentity(frame: HelloFrame, tokenSecret: string | undefined, now: number): string | null {
+type HelloIdentity = { type: 'accepted'; login: string } | { type: 'rejected'; reason: string };
+
+/** The login a `hello` speaks for, or why it's refused. With a token secret the
+ * login comes from the verified token, which the frame's own `login` may not contradict. */
+function helloIdentity(frame: HelloFrame, tokenSecret: string | undefined, now: number): HelloIdentity {
+  const owned = (f: HelloFrame): HelloIdentity => {
+    const login = helloLogin(f);
+    return login === null ? { type: 'rejected', reason: 'userId does not belong to the login' } : { type: 'accepted', login };
+  };
   if (tokenSecret === undefined) {
-    return helloLogin(frame);
+    return owned(frame);
   }
-  const verified = typeof frame.token === 'string' ? verifyJoinToken(tokenSecret, frame.token, now) : null;
-  if (!verified || (frame.login !== undefined && frame.login !== verified.login)) {
-    return null;
+  if (typeof frame.token !== 'string') {
+    return { type: 'rejected', reason: 'missing join token' };
   }
-  return helloLogin({ ...frame, login: verified.login });
+  const verified = verifyJoinToken(tokenSecret, frame.token, now);
+  if (!verified) {
+    return { type: 'rejected', reason: 'invalid or expired join token' };
+  }
+  if (frame.login !== undefined && frame.login !== verified.login) {
+    return { type: 'rejected', reason: 'login does not match the join token' };
+  }
+  return owned({ ...frame, login: verified.login });
 }
 
 function bearerMatches(header: string | undefined, token: string): boolean {
