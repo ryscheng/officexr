@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useEffectEvent, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import {
@@ -120,6 +120,14 @@ export function CameraRig({
   useTouchCameraGestures(mode, lookRefs, lookSign);
   // The headset owns the camera while presenting; motion look re-baselines after.
   useMotionLook(xrPresenting ? undefined : motionLook, mode, lookRefs);
+  const onMouseLook = useEffectEvent((e: MouseEvent) =>
+    applyLookDelta(
+      mode,
+      lookSign * e.movementX * MOUSE_SENSITIVITY,
+      lookSign * e.movementY * MOUSE_SENSITIVITY,
+      lookRefs,
+    ),
+  );
 
   // Pointer-lock + mouse-look — only active in first/third person modes.
   useEffect(() => {
@@ -136,12 +144,7 @@ export function CameraRig({
     };
     const onMouseMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== canvas) return;
-      applyLookDelta(
-        mode,
-        lookSign * e.movementX * MOUSE_SENSITIVITY,
-        lookSign * e.movementY * MOUSE_SENSITIVITY,
-        lookRefs,
-      );
+      onMouseLook(e);
     };
 
     canvas.addEventListener('mousedown', onMouseDown);
@@ -151,7 +154,7 @@ export function CameraRig({
       document.removeEventListener('mousemove', onMouseMove);
       if (document.pointerLockElement === canvas) document.exitPointerLock?.();
     };
-  }, [mode, gl, lookRefs, lookSign]);
+  }, [mode, gl]);
 
   // Keep fixed/top-down/free-fly camera fov in sync. Each mode sets its
   // own default; everything else falls back to the gameplay 75°.
