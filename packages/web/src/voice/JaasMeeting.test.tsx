@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type IJitsiMeetExternalApi from '@jitsi/react-sdk/lib/types/IJitsiMeetExternalApi';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MuteToggle, ShareScreenToggle } from './JaasMeeting';
-import { JaasVoiceAdapter } from './JaasVoiceAdapter';
+import { JaasVoiceAdapter, MAX_MUTE_CORRECTIONS } from './JaasVoiceAdapter';
 
 class FakeJitsiApi extends EventEmitter {
   commands: string[] = [];
@@ -29,7 +29,7 @@ async function joinMeeting(voice: JaasVoiceAdapter) {
 }
 
 const button = () => screen.getByRole('button') as HTMLButtonElement;
-const iconOf = (el: HTMLElement) => el.querySelector('svg')!.getAttribute('class');
+const hasIcon = (name: string) => button().querySelector('svg')!.classList.contains(name);
 
 describe('MuteToggle', () => {
   it('follows the effective mute and toggles away from it', () => {
@@ -38,13 +38,13 @@ describe('MuteToggle', () => {
     render(<MuteToggle voice={voice} />);
     expect(button().getAttribute('aria-label')).toBe('Mute microphone');
     expect(button().getAttribute('aria-pressed')).toBe('false');
-    expect(iconOf(button())).toContain('lucide-mic ');
+    expect(hasIcon('lucide-mic')).toBe(true);
 
     fireEvent.click(button());
     expect(setMuted).toHaveBeenLastCalledWith(true);
     expect(button().getAttribute('aria-label')).toBe('Unmute microphone');
     expect(button().getAttribute('aria-pressed')).toBe('true');
-    expect(iconOf(button())).toContain('lucide-mic-off');
+    expect(hasIcon('lucide-mic-off')).toBe(true);
 
     fireEvent.click(button());
     expect(setMuted).toHaveBeenLastCalledWith(false);
@@ -57,18 +57,52 @@ describe('MuteToggle', () => {
     const api = await joinMeeting(voice);
     api.executeCommand = () => {};
     act(() => {
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i <= MAX_MUTE_CORRECTIONS; i++) {
         api.emit('audioMuteStatusChanged', { muted: true });
       }
     });
     expect(voice.isMuted()).toBe(false);
     expect(button().getAttribute('aria-label')).toBe('Unmute microphone');
     expect(button().getAttribute('aria-pressed')).toBe('true');
-    expect(iconOf(button())).toContain('lucide-mic-off');
+    expect(hasIcon('lucide-mic-off')).toBe(true);
 
     const setMuted = vi.spyOn(voice, 'setMuted');
     fireEvent.click(button());
     expect(setMuted).toHaveBeenCalledWith(false);
+  });
+
+  it('stays toggleable after muting in a call and leaving it', async () => {
+    const voice = newVoice();
+    render(<MuteToggle voice={voice} />);
+    await joinMeeting(voice);
+    fireEvent.click(button());
+    await act(() => voice.leaveRoom());
+    expect(button().getAttribute('aria-label')).toBe('Unmute microphone');
+
+    fireEvent.click(button());
+    expect(button().getAttribute('aria-label')).toBe('Mute microphone');
+    expect(button().getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(button());
+    expect(button().getAttribute('aria-label')).toBe('Unmute microphone');
+  });
+
+  it('drops a mute Jitsi held once the call is left', async () => {
+    const voice = newVoice();
+    render(<MuteToggle voice={voice} />);
+    const api = await joinMeeting(voice);
+    api.executeCommand = () => {};
+    act(() => {
+      for (let i = 0; i <= MAX_MUTE_CORRECTIONS; i++) {
+        api.emit('audioMuteStatusChanged', { muted: true });
+      }
+    });
+    expect(button().getAttribute('aria-label')).toBe('Unmute microphone');
+
+    await act(() => voice.leaveRoom());
+    expect(button().getAttribute('aria-label')).toBe('Mute microphone');
+    expect(button().getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(button());
+    expect(button().getAttribute('aria-label')).toBe('Unmute microphone');
   });
 
   it('shows its label as a tooltip on focus and keeps focus off on mousedown', () => {
@@ -90,14 +124,14 @@ describe('ShareScreenToggle', () => {
     expect(button().disabled).toBe(false);
     expect(button().getAttribute('aria-label')).toBe('Share screen');
     expect(button().getAttribute('aria-pressed')).toBe('false');
-    expect(iconOf(button())).toContain('lucide-monitor-up');
+    expect(hasIcon('lucide-monitor-up')).toBe(true);
     fireEvent.click(button());
     expect(api.commands).toEqual(['toggleShareScreen']);
 
     act(() => void api.emit('screenSharingStatusChanged', { on: true }));
     expect(button().getAttribute('aria-label')).toBe('Stop sharing');
     expect(button().getAttribute('aria-pressed')).toBe('true');
-    expect(iconOf(button())).toContain('lucide-monitor-off');
+    expect(hasIcon('lucide-monitor-off')).toBe(true);
 
     await act(() => voice.leaveRoom());
     expect(button().disabled).toBe(true);
@@ -112,5 +146,13 @@ describe('ShareScreenToggle', () => {
     expect(fireEvent.mouseDown(button())).toBe(false);
     act(() => button().focus());
     expect(screen.getByRole('tooltip').textContent).toBe('Share screen');
+  });
+
+  it('explains why it is disabled on hover, and keeps focus off on mousedown', async () => {
+    render(<ShareScreenToggle voice={newVoice()} />);
+    const wrapper = button().parentElement!;
+    expect(fireEvent.mouseDown(wrapper)).toBe(false);
+    fireEvent.pointerMove(wrapper, { pointerType: 'mouse' });
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Screen sharing unavailable');
   });
 });

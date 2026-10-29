@@ -7,7 +7,7 @@ import {
   type VoiceConnectionState,
 } from '@officexr/core-refactor';
 
-const MAX_MUTE_CORRECTIONS = 4;
+export const MAX_MUTE_CORRECTIONS = 4;
 export interface JaasVoiceOptions {
   appId: string;
   jwt: Promise<string>;
@@ -141,9 +141,9 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     };
   };
 
-  /** Whether the mic is actually off: muted by the user, or by Jitsi itself (e.g. permission denied). */
+  /** Whether the mic is actually off: muted by the user, or by Jitsi itself (e.g. permission denied) while in a call. */
   isMicMuted(): boolean {
-    return this.muted || this.jitsiMuted;
+    return this.muted || (this.joined && this.jitsiMuted);
   }
 
   onMuteChange(listener: () => void): () => void {
@@ -223,6 +223,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
       'videoConferenceLeft',
       ifCurrent(() => {
         this.joined = false;
+        this.notifyMute();
         this.setState('error');
       }),
     );
@@ -231,6 +232,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
       ifCurrent(({ isFatal }: { isFatal?: boolean }) => {
         if (isFatal) {
           this.joined = false;
+          this.notifyMute();
           this.setState('error');
         }
       }),
@@ -287,6 +289,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     }
     this.api = null;
     this.joined = false;
+    this.notifyMute();
     api?.dispose();
     this.meeting = meeting;
     for (const listener of [...this.meetingListeners]) {

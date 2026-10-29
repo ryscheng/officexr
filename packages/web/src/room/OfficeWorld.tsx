@@ -130,17 +130,20 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {session.voice && <JaasMeeting voice={session.voice} />}
           <ChatPanel store={session.local.store} actions={session.local.actions} selfId={session.local.selfId} />
-          {/* The call bar centres while it fits; the people column (at least the joystick's width on touch) pushes it right instead of under it. */}
-          <div className="pointer-events-none absolute inset-x-3 bottom-3 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-            <div className="flex flex-col items-start gap-2 pointer-coarse:mb-37 pointer-coarse:min-w-28">
-              <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
-              <Minimap store={session.local.store} />
+          {/* The call bar centres while it fits; the side columns push it aside instead of under them.
+              On touch the people column sits above the joystick, so only the joystick's width is reserved. */}
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 grid grid-cols-[1fr_minmax(0,auto)_1fr] items-end gap-2">
+            <div className="pointer-coarse:min-w-28">
+              <div className="flex flex-col items-start gap-2 pointer-coarse:absolute pointer-coarse:bottom-37 pointer-coarse:left-0">
+                <PresenceList store={session.local.store} selfId={session.local.selfId} officeName={office.name} />
+                <Minimap store={session.local.store} />
+              </div>
             </div>
             {session.voice && <CallBar store={session.local.store} voice={session.voice} />}
-          </div>
-          <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
-            <OfficeSettings office={office} me={me} onSaved={setOffice} />
-            <CharacterPicker local={session.local} onSaveResult={setBannerError} />
+            <div className="col-start-3 flex flex-col items-end gap-2 justify-self-end max-sm:col-span-3 max-sm:col-start-1 max-sm:row-start-1">
+              <OfficeSettings office={office} me={me} onSaved={setOffice} />
+              <CharacterPicker local={session.local} onSaveResult={setBannerError} />
+            </div>
           </div>
         </PlayView>
       )}

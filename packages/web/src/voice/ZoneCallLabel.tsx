@@ -9,5 +9,13 @@ const selectZoneLabel = (s: OfficeState) => {
 
 export function ZoneCallLabel({ store }: { store: Store }) {
   const label = useStoreSelector(store, selectZoneLabel);
-  return label && <span className="px-2 text-xs whitespace-nowrap text-white">In {label} call</span>;
+  if (!label) {
+    return null;
+  }
+  const text = `In ${label} call`;
+  return (
+    <span title={text} className="max-w-40 truncate px-2 text-xs text-white">
+      {text}
+    </span>
+  );
 }

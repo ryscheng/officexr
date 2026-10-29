@@ -29,7 +29,10 @@ export function IconButton({
         <Tooltip.Trigger asChild>
           {/* A disabled button gets no pointer events, so the wrapper carries the hover for the tooltip.
               preventDefault on mousedown keeps focus off the button, so Space/Enter keep driving the world. */}
-          <span className="pointer-events-auto inline-flex" onMouseDown={(e) => e.preventDefault()}>
+          <span
+            className={`pointer-events-auto inline-flex ${disabled ? 'cursor-not-allowed' : ''}`}
+            onMouseDown={(e) => e.preventDefault()}
+          >
             <button
               type="button"
               aria-label={label}
