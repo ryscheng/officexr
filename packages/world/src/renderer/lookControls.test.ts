@@ -5,6 +5,7 @@ import {
   fixedMovementYaw,
   fixedLeash,
   pinchFactor,
+  wheelZoomFactor,
   PITCH_MAX,
   PITCH_MIN,
   ZOOM_MAX,
@@ -91,6 +92,45 @@ describe('pinchFactor', () => {
 
   it('ignores a zero starting distance', () => {
     expect(pinchFactor(0, 50)).toBe(1);
+  });
+});
+
+describe('wheelZoomFactor', () => {
+  it('zooms in when scrolling up and out when scrolling down', () => {
+    expect(wheelZoomFactor(-100, 0)).toBeGreaterThan(1);
+    expect(wheelZoomFactor(100, 0)).toBeLessThan(1);
+    expect(wheelZoomFactor(0, 0)).toBe(1);
+  });
+
+  it('makes one 100px notch a ~10% step, and scrolling back undoes it', () => {
+    expect(wheelZoomFactor(-100, 0)).toBeCloseTo(1.1, 1);
+    expect(wheelZoomFactor(100, 0)).toBeCloseTo(1 / 1.1, 1);
+    expect(wheelZoomFactor(-100, 0) * wheelZoomFactor(100, 0)).toBeCloseTo(1);
+  });
+
+  it('is proportional, so a stream of small deltas adds up to one notch', () => {
+    let zoom = 1;
+    for (let i = 0; i < 100; i++) {
+      zoom *= wheelZoomFactor(-1, 0);
+    }
+    expect(zoom).toBeCloseTo(wheelZoomFactor(-100, 0));
+  });
+
+  it('normalises line and page deltas to the pixel step', () => {
+    expect(wheelZoomFactor(-3, 1)).toBeCloseTo(wheelZoomFactor(-100, 0), 1);
+    expect(wheelZoomFactor(-1, 2)).toBeCloseTo(wheelZoomFactor(-800, 0));
+  });
+
+  it('stays inside the zoom clamp however far it is scrolled', () => {
+    const offsets: ViewOffsets = { fixedAzimuthOffsetRad: 0, fixedPitchOffsetRad: 0, zoom: 1 };
+    for (let i = 0; i < 200; i++) {
+      applyZoom(wheelZoomFactor(-100, 0), offsets);
+    }
+    expect(offsets.zoom).toBe(ZOOM_MAX);
+    for (let i = 0; i < 400; i++) {
+      applyZoom(wheelZoomFactor(100, 0), offsets);
+    }
+    expect(offsets.zoom).toBe(ZOOM_MIN);
   });
 });
 

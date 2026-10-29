@@ -24,7 +24,7 @@ export const DEG2RAD = Math.PI / 180;
 export interface ViewOffsets {
   fixedAzimuthOffsetRad: number;
   fixedPitchOffsetRad: number;
-  /** Pinch zoom, 1 = no zoom. */
+  /** Pinch and wheel zoom, 1 = no zoom. */
   zoom: number;
 }
 
@@ -68,6 +68,18 @@ export function applyZoom(factor: number, offsets: ViewOffsets): void {
 
 export function pinchFactor(prevDistance: number, nextDistance: number): number {
   return prevDistance > 0 ? nextDistance / prevDistance : 1;
+}
+
+/** Wheel `deltaMode` 1 (lines) and 2 (pages) expressed in pixels. */
+const WHEEL_LINE_PX = 33;
+const WHEEL_PAGE_PX = 800;
+/** One 100px notch of a typical mouse wheel is a ~10% zoom step. */
+const WHEEL_ZOOM_PER_PX = 0.001;
+
+/** Scrolling up (negative `deltaY`) zooms in; the step is proportional to the scrolled distance. */
+export function wheelZoomFactor(deltaY: number, deltaMode: number): number {
+  const px = deltaMode === 1 ? WHEEL_LINE_PX : deltaMode === 2 ? WHEEL_PAGE_PX : 1;
+  return Math.exp(-deltaY * px * WHEEL_ZOOM_PER_PX);
 }
 
 /**
