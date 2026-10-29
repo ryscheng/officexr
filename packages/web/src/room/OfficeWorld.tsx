@@ -12,7 +12,7 @@ import { JaasMeeting, MuteToggle, ShareScreenToggle } from '../voice/JaasMeeting
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { ZoneCallLabel } from '../voice/ZoneCallLabel';
 import { CameraModeMenuItem } from './CameraModeMenuItem';
-import { CharacterDialog } from './CharacterDialog';
+import { CharacterDialog, CharacterMenuItem } from './CharacterDialog';
 import { MotionLookMenuItem } from './MotionLookMenuItem';
 import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
 import { PreWorld } from './PreWorld';
@@ -126,7 +126,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
               />
               Invert look
             </RoomMenuChoice>
-            <RoomMenuItem onSelect={() => setCharacterOpen(true)}>Change character…</RoomMenuItem>
+            <CharacterMenuItem onSelect={() => setCharacterOpen(true)} />
             <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setSettingsOpen(true)} />
             <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
             {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={setBannerError} />}

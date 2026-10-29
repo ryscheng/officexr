@@ -67,7 +67,6 @@ describe('OfficeSettings', () => {
   });
 
   it('renders no dialog for anyone but the creator', () => {
-    vi.stubGlobal('fetch', vi.fn(() => json(200, { maps: [] })));
     const bob = { login: 'b@example.com', name: 'Bob' };
     render(<OfficeSettingsDialog office={office} me={bob} onSaved={() => {}} onClose={() => {}} />);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -87,6 +86,22 @@ describe('OfficeSettings', () => {
     expect(url).toBe('/api/offices/o1');
     expect(JSON.parse(init!.body as string)).toEqual({ name: 'Lab', mapName: 'default', debugEnabled: true });
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('true');
+  });
+
+  it('applies a save that lands after the dialog closed without closing or unfocusing what opened since', async () => {
+    let respond!: (res: Response) => void;
+    const { onSaved } = setup(alice, () => new Promise<Response>((resolve) => (respond = resolve)));
+    openSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    openSettings();
+    expect(screen.getByRole('status').textContent).toBe('false');
+    const updated = { ...office, name: 'Lab' };
+    respond({ ok: true, status: 200, json: async () => updated } as Response);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(updated));
+    expect(screen.getByRole('dialog', { name: 'Office settings' })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('false');
   });
 
   it('sends nothing for untouched fields', async () => {

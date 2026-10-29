@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Identity, Office, OfficeUpdate } from '../../server/api';
 import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
 import { Dialog } from '../Dialog';
@@ -24,6 +24,14 @@ function SettingsForm({ office, onSaved, onClose }: { office: Office; onSaved: (
   const [mapName, setMapName] = useState(office.map_name ?? DEFAULT_MAP);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A save that lands after the dialog closed must not close or steal focus from whatever opened since.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -46,7 +54,9 @@ function SettingsForm({ office, onSaved, onClose }: { office: Office; onSaved: (
         throw new Error(errorMessage(res, body));
       }
       onSaved(body as Office);
-      onClose();
+      if (mounted.current) {
+        onClose();
+      }
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);

@@ -6,6 +6,7 @@ import { CharacterPreviewCanvas } from '@officexr/world/renderer';
 import { Dialog } from '../Dialog';
 import { chooseCharacter } from './character';
 import { closeToWorld } from './closeToWorld';
+import { RoomMenuItem } from './RoomMenu';
 
 const selfCharacter = (s: OfficeState, selfId: string) => pickCharacterForPlayer(selfId, s.players[selfId]?.avatar.model);
 
@@ -17,6 +18,10 @@ function useSelfCharacter({ store, selfId }: PersistentLocalState): CharacterNam
 
 /** Reports each save's error, or `null` once a save succeeds. */
 type SaveResult = (error: string | null) => void;
+
+export function CharacterMenuItem({ onSelect }: { onSelect: () => void }) {
+  return <RoomMenuItem onSelect={onSelect}>Change character…</RoomMenuItem>;
+}
 
 export function CharacterDialog({
   local,
@@ -32,8 +37,9 @@ export function CharacterDialog({
   fetchFn?: typeof fetch;
 }) {
   const character = useSelfCharacter(local);
+  const close = closeToWorld(onClose);
   return (
-    <Dialog title="Character" onClose={closeToWorld(onClose)}>
+    <Dialog title="Character" onClose={close}>
       <div className="mb-3 h-40 overflow-hidden rounded">
         <Preview character={character} />
       </div>
@@ -52,6 +58,11 @@ export function CharacterDialog({
           <option key={c}>{c}</option>
         ))}
       </select>
+      <div className="mt-3 flex justify-end">
+        <button type="button" onClick={close} className="rounded bg-black px-4 py-2 text-white">
+          Done
+        </button>
+      </div>
     </Dialog>
   );
 }

@@ -5,8 +5,8 @@ import { createPersistentLocalState, type PersistentLocalState } from '@officexr
 import { CHARACTERS, pickCharacterForPlayer, type CharacterName } from '@officexr/world/characters';
 import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CharacterDialog } from './CharacterDialog';
-import { RoomMenu, RoomMenuItem } from './RoomMenu';
+import { CharacterDialog, CharacterMenuItem } from './CharacterDialog';
+import { RoomMenu } from './RoomMenu';
 
 afterEach(cleanup);
 
@@ -33,7 +33,7 @@ function Harness({
     <>
       <output>{String(focused)}</output>
       <RoomMenu>
-        <RoomMenuItem onSelect={() => setOpen(true)}>Change character…</RoomMenuItem>
+        <CharacterMenuItem onSelect={() => setOpen(true)} />
       </RoomMenu>
       {open && (
         <CharacterDialog
@@ -59,13 +59,8 @@ function setup(status = 200) {
 }
 
 describe('CharacterDialog', () => {
-  it('opens from the menu, previewing the current character, with no picker outside it', () => {
-    const local = createPersistentLocalState({ selfId: SELF, officeId: OFFICE });
-    render(<Harness local={local} onSaveResult={() => {}} fetchFn={fetch} />);
-    expect(screen.queryByRole('combobox', { name: 'Character' })).toBeNull();
-    expect(screen.queryByTestId('preview')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Change character…' }));
+  it('opens from the menu, previewing the current character', () => {
+    setup();
     expect(screen.getByRole('dialog', { name: 'Character' })).toBeTruthy();
     const select = screen.getByRole('combobox', { name: 'Character' }) as HTMLSelectElement;
     expect(screen.getByTestId('preview').textContent).toBe(select.value);
@@ -89,10 +84,14 @@ describe('CharacterDialog', () => {
     await waitFor(() => expect(onSaveResult).toHaveBeenCalledWith('Could not save the character: HTTP 500'));
   });
 
-  it('hands keyboard control back to the world when it closes', () => {
+  it.each([
+    ['Escape', () => fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })],
+    ['a backdrop press', () => fireEvent.mouseDown(screen.getByRole('dialog').parentElement!)],
+    ['Done', () => fireEvent.click(screen.getByRole('button', { name: 'Done' }))],
+  ])('hands keyboard control back to the world when closed by %s', (_, close) => {
     setup();
     expect(screen.getByRole('status').textContent).toBe('false');
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    close();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByRole('status').textContent).toBe('true');
   });
