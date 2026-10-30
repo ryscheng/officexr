@@ -10,6 +10,7 @@ export function fakePlayControls(initial: AutoWalkState = { type: 'idle' }) {
     goTo: (targetId) => {
       goTos.push(targetId);
     },
+    goToPoint: () => {},
     cancel: () => {},
     getState: () => state,
     subscribe: (cb) => {

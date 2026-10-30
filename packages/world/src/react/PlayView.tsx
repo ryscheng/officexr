@@ -120,6 +120,7 @@ export function PlayView(props: PlayViewProps) {
           worldFocused={worldFocused}
           moveInputRef={moveInputRef}
           autoWalk={autoWalk}
+          onFloorClick={autoWalk.goToPoint}
           spawnPoints={session.spawnPoints}
           bakedLayouts={session.bakedLayouts}
           onFrameStats={props.onFrameStats}
