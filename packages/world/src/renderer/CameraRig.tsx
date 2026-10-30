@@ -6,8 +6,10 @@ import {
   GAMEPLAY_FOV,
   FREE_FLY_DEFAULTS,
   TOP_DOWN_CAMERA_DEFAULTS,
+  TOP_DOWN_PLAY_HEIGHT,
   type CameraMode,
 } from './config.ts';
+import { feetPosition } from '../physics/rules.ts';
 import { isTypingTarget } from '../react/useWorldFocus.ts';
 import {
   applyLookDelta,
@@ -18,6 +20,7 @@ import {
   orbitPosition,
   PITCH_MAX,
   PITCH_MIN,
+  topDownPose,
   zoomedFov,
   yawFromDirection,
   type LookRefs,
@@ -28,6 +31,7 @@ import { useMotionLook } from './useMotionLook.ts';
 import { useTouchCameraGestures } from './useTouchCameraGestures.ts';
 
 const THIRD_PERSON_RADIUS = 6;
+const TOP_DOWN_FOLLOW_LAMBDA = 12;
 
 interface CameraRigProps {
   mode: CameraMode;
@@ -100,6 +104,7 @@ interface CameraRigProps {
  *  - first-person: at player eye height, mouse-look (pointer lock)
  *  - third-person: orbits behind player, mouse-look (pointer lock)
  *  - fixed: parked at a configurable azimuth/elevation/distance, looks at player
+ *  - top-down: straight above the player, following it
  */
 export function CameraRig({
   mode,
@@ -195,11 +200,14 @@ export function CameraRig({
   // True when fixed-mode just became active and the camera position needs to
   // snap to a sensible starting point relative to the character.
   const fixedNeedsInit = useRef(false);
+  const topDownNeedsInit = useRef(false);
+  const topDownCentre = useRef(new THREE.Vector3());
   const appliedAzimuthOffset = useRef(0);
 
   // Re-placed after an XR session too, as the player has moved meanwhile.
   useEffect(() => {
     if (mode === 'fixed') fixedNeedsInit.current = true;
+    if (mode === 'top-down') topDownNeedsInit.current = true;
   }, [mode, xrPresenting]);
 
   // --- Free-fly camera state -------------------------------------
@@ -431,15 +439,23 @@ export function CameraRig({
         camera.lookAt(target.current);
       }
     } else if (mode === 'top-down') {
-      // Studio's Scene mode: high-altitude orthographic-style framing
-      // for editing the WorldMap by clicking cells. Uses the existing
-      // perspective camera at ~89° down-pitch and a fixed altitude
-      // anchored at world origin (not the player) so the editor view
-      // doesn't pan when the player walks.
-      const td = TOP_DOWN_CAMERA_DEFAULTS;
-      camera.position.set(0, td.height, 0.001); // tiny z so lookAt has a stable up
-      target.current.set(0, 0, 0);
-      camera.lookAt(target.current);
+      const feet = feetPosition(pos, charRadius);
+      const centre = topDownCentre.current;
+      if (topDownNeedsInit.current) {
+        centre.set(feet.x, feet.y, feet.z);
+        topDownNeedsInit.current = false;
+      } else {
+        centre.x = THREE.MathUtils.damp(centre.x, feet.x, TOP_DOWN_FOLLOW_LAMBDA, dtSec);
+        centre.y = THREE.MathUtils.damp(centre.y, feet.y, TOP_DOWN_FOLLOW_LAMBDA, dtSec);
+        centre.z = THREE.MathUtils.damp(centre.z, feet.z, TOP_DOWN_FOLLOW_LAMBDA, dtSec);
+      }
+      const pose = topDownPose(
+        centre,
+        { ...TOP_DOWN_CAMERA_DEFAULTS, height: TOP_DOWN_PLAY_HEIGHT },
+        viewOffsetsRef.current.zoom,
+      );
+      camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+      camera.lookAt(centre);
     } else if (mode === 'free-fly') {
       // Free-fly editor camera: WASD/QE strafes through space; mouse-
       // drag (no pointer lock) rotates the view; scroll dollies in/out.

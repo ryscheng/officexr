@@ -50,6 +50,9 @@ export const TOP_DOWN_CAMERA_DEFAULTS = {
   fov: 45,
 };
 
+/** Height (m) of the top-down camera above the player when playing. */
+export const TOP_DOWN_PLAY_HEIGHT = 18;
+
 /** Free-fly camera defaults — starting pose for the Scenes editor.
  * Pitched down ~30° so the user starts looking at the build platform
  * from a comfortable elevated angle. */
