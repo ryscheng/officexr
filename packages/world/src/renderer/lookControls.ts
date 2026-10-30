@@ -47,6 +47,11 @@ export function isLookMode(mode: CameraMode): boolean {
   return isYawPitchMode(mode) || mode === 'fixed';
 }
 
+/** Modes where pinch and wheel zoom apply. */
+export function isZoomMode(mode: CameraMode): boolean {
+  return isLookMode(mode) || mode === 'top-down';
+}
+
 /**
  * Turns the view by `dYaw`/`dPitch` radians (positive = counter-clockwise yaw,
  * look up), the sign convention of mouse look. Modes without look input are
@@ -200,6 +205,37 @@ export function fixedMovementYaw(
     azimuthOffsetRad +
     (movementYawOffsetDeg * Math.PI) / 180
   );
+}
+
+/**
+ * Yaw of the top-down camera for camera-relative WASD: the view's up
+ * direction. At azimuth 0 the camera looks along -z, so forward is -z.
+ */
+export function topDownMovementYaw(azimuthDeg: number): number {
+  return -azimuthDeg * DEG2RAD;
+}
+
+/**
+ * Top-down camera pose above `centre`: `height / zoom` up, tilted by
+ * `pitchDeg` (negative = looking down) and rotated by `azimuthDeg`, aimed at
+ * `centre`. A pitch short of -90 keeps `lookAt` away from the up vector.
+ */
+export function topDownPose(
+  centre: Vec3,
+  topDown: { pitchDeg: number; azimuthDeg: number; height: number },
+  zoom: number,
+) {
+  const height = topDown.height / zoom;
+  const horizontal = height / Math.tan(-topDown.pitchDeg * DEG2RAD);
+  const az = topDown.azimuthDeg * DEG2RAD;
+  return {
+    position: {
+      x: centre.x + Math.sin(az) * horizontal,
+      y: centre.y + height,
+      z: centre.z + Math.cos(az) * horizontal,
+    },
+    target: centre,
+  };
 }
 
 /** Yaw (forward = `-sin, -cos`; positive turns counter-clockwise from above) of a look direction, ignoring its pitch. */

@@ -60,7 +60,7 @@ describe('RoomMenu', () => {
     const onCameraModeChange = vi.fn();
     render(<Harness onCameraModeChange={onCameraModeChange} />);
     fireEvent.click(menuButton());
-    expect(screen.getAllByRole('radio').map((r) => (r as HTMLInputElement).checked)).toEqual([false, false, true]);
+    expect(screen.getAllByRole('radio').map((r) => (r as HTMLInputElement).checked)).toEqual([false, false, true, false]);
     fireEvent.click(screen.getByRole('radio', { name: /Third person/ }));
     expect(onCameraModeChange).toHaveBeenCalledWith('third-person');
     expect((screen.getByRole('radio', { name: /Third person/ }) as HTMLInputElement).checked).toBe(true);

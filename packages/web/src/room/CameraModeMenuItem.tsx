@@ -6,6 +6,7 @@ const LABELS: Record<GameplayCameraMode, string> = {
   'first-person': 'First person',
   'third-person': 'Third person',
   fixed: 'Fixed',
+  'top-down': 'Top-down',
 };
 
 export function CameraModeMenuItem({ value, onChange }: { value: CameraMode; onChange: (mode: CameraMode) => void }) {

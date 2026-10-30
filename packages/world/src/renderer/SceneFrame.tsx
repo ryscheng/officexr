@@ -17,7 +17,7 @@ import type {
 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import { isTypingTarget } from '../react/useWorldFocus.ts';
-import type { CameraMode } from './config.ts';
+import { TOP_DOWN_CAMERA_DEFAULTS, type CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
   CHARACTER_CONTROLLER_SKIN,
@@ -30,7 +30,7 @@ import {
 import { stepAirVelocity } from '../physics/air-control.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
-import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
+import { fixedMovementYaw, topDownMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
 
 interface SceneFrameProps {
@@ -395,7 +395,9 @@ export function SceneFrame({
                 viewOffsetsRef.current.fixedAzimuthOffsetRad,
                 fixedMovementYawOffsetDeg,
               )
-            : yawRef.current;
+            : cameraMode === 'top-down'
+              ? topDownMovementYaw(TOP_DOWN_CAMERA_DEFAULTS.azimuthDeg)
+              : yawRef.current;
         const forwardX = -Math.sin(cameraYaw);
         const forwardZ = -Math.cos(cameraYaw);
         const rightX = Math.cos(cameraYaw);

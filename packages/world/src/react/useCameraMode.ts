@@ -1,11 +1,11 @@
 import { useEffect, useEffectEvent, useState } from 'react';
 import { CAMERA_MODES, type CameraMode } from '../renderer/config.ts';
 
-// 'top-down' and 'free-fly' belong to the Scenes editor.
-export type GameplayCameraMode = Exclude<CameraMode, 'top-down' | 'free-fly'>;
+// 'free-fly' belongs to the Scenes editor.
+export type GameplayCameraMode = Exclude<CameraMode, 'free-fly'>;
 
 export const GAMEPLAY_CAMERA_MODES: readonly GameplayCameraMode[] = CAMERA_MODES.filter(
-  (m): m is GameplayCameraMode => m !== 'top-down' && m !== 'free-fly',
+  (m): m is GameplayCameraMode => m !== 'free-fly',
 );
 
 const nextMode = (current: CameraMode): CameraMode => {
