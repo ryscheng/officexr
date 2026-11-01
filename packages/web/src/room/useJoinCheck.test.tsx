@@ -2,12 +2,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { apiFetch } from '../apiOrigin';
 import { JoinPrompt } from './JoinPrompt';
 import { useJoinCheck } from './useJoinCheck';
 
 afterEach(cleanup);
 
-function Probe({ fetchFn }: { fetchFn: typeof fetch }) {
+function Probe({ fetchFn }: { fetchFn: typeof apiFetch }) {
   const { state, join, cancel } = useJoinCheck('my office', 'a@example.com', fetchFn);
   return (
     <>
@@ -17,7 +18,7 @@ function Probe({ fetchFn }: { fetchFn: typeof fetch }) {
   );
 }
 
-function setup(fetchFn: typeof fetch) {
+function setup(fetchFn: typeof apiFetch) {
   render(
     <MemoryRouter initialEntries={['/room/o1']}>
       <Routes>
@@ -31,7 +32,7 @@ function setup(fetchFn: typeof fetch) {
 const reply = (status: number, body: unknown) => ({ ok: status < 300, status, json: async () => body }) as Response;
 /** Answers the sessions check with `body`, and the token request with `tokenStatus` (404 means no token). */
 const answer = (body: unknown, tokenStatus = 404) =>
-  vi.fn(async (url: string) => (url === '/api/realtime-token' ? reply(tokenStatus, { token: 'a.b' }) : reply(200, body))) as unknown as typeof fetch;
+  vi.fn(async (url: string) => (url === '/api/realtime-token' ? reply(tokenStatus, { token: 'a.b' }) : reply(200, body))) as unknown as typeof apiFetch;
 const PROMPT = /Joining here will disconnect it/;
 
 describe('useJoinCheck', () => {
@@ -80,7 +81,7 @@ describe('useJoinCheck', () => {
   });
 
   it('joins without a prompt when the check fails', async () => {
-    setup(vi.fn(async () => Promise.reject(new Error('down'))) as unknown as typeof fetch);
+    setup(vi.fn(async () => Promise.reject(new Error('down'))) as unknown as typeof apiFetch);
     await screen.findByText('state:go');
     expect(screen.queryByText(PROMPT)).toBeNull();
   });

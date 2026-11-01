@@ -136,6 +136,17 @@ In production the backend is one process, `pnpm --filter @officexr/server start`
 pnpm build                  # outputs the SPA to packages/web/dist/
 ```
 
+### Cloudflare Pages
+
+Host the SPA on Pages with the backend on another origin. Git-integration settings:
+
+- Build command `pnpm --filter @officexr/web build`, output directory `packages/web/dist`.
+- Environment variables `NODE_VERSION=22`, `PNPM_VERSION=10.33.0` and `VITE_API_ORIGIN=https://api.example.com`
+  (the backend's origin; unset means same-origin). See `packages/web/.env.example`.
+
+The backend must allow the Pages origin as a frontend origin (CORS and sign-in `next`) and set
+`OFFICEXR_ASSET_BASE_URL`, since it doesn't serve `/baked-layouts/*` itself.
+
 ## License
 
 MIT

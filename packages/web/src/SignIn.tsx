@@ -1,17 +1,25 @@
+import { API_ORIGIN, apiUrl, paths } from './apiOrigin';
+
 const LOGIN_ERRORS: Record<string, string> = {
   not_allowed: "This Google account isn't allowed to use OfficeXR. Ask an admin to add it.",
   unverified: "Your Google email address isn't verified.",
 };
 
-/** Starts Google sign-in, returning to the current page without its `login_error`. */
-export function SignInLink({ className }: { className: string }) {
-  const { pathname, search } = window.location;
+/** The sign-in URL returning to the page at `{ pathname, search }` without its `login_error`. */
+export function signInHref({ pathname, search }: Pick<Location, 'pathname' | 'search'>) {
   const params = new URLSearchParams(search);
   params.delete('login_error');
   const rest = params.toString();
-  const next = rest ? `${pathname}?${rest}` : pathname;
+  const path = rest ? `${pathname}?${rest}` : pathname;
+  // A cross-origin backend can't resolve a relative `next` against the SPA's origin.
+  const next = API_ORIGIN ? `${window.location.origin}${path}` : path;
+  return apiUrl(`${paths.signIn}?next=${encodeURIComponent(next)}`);
+}
+
+/** Starts Google sign-in, returning to the current page. */
+export function SignInLink({ className }: { className: string }) {
   return (
-    <a href={`/auth/google?next=${encodeURIComponent(next)}`} className={className}>
+    <a href={signInHref(window.location)} className={className}>
       Sign in with Google
     </a>
   );

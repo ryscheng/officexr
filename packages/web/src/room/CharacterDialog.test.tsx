@@ -5,6 +5,7 @@ import { createPersistentLocalState, type PersistentLocalState } from '@officexr
 import { CHARACTERS, pickCharacterForPlayer, type CharacterName } from '@officexr/world/characters';
 import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { apiFetch } from '../apiOrigin';
 import { CharacterDialog, CharacterMenuItem } from './CharacterDialog';
 import { RoomMenu } from './RoomMenu';
 
@@ -25,7 +26,7 @@ function Harness({
 }: {
   local: PersistentLocalState;
   onSaveResult: (error: string | null) => void;
-  fetchFn: typeof fetch;
+  fetchFn: typeof apiFetch;
 }) {
   const focused = useWorldFocus();
   const [open, setOpen] = useState(false);

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office, type OfficeUpdate } from '@officexr/server/shared';
+import { apiFetch, paths } from '../apiOrigin';
 import { Dialog } from '../Dialog';
 import { errorMessage } from '../useApi';
 import { useMapNames } from '../useMapNames';
@@ -38,7 +39,7 @@ function SettingsForm({ office, onSaved, onClose }: { office: Office; onSaved: (
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/offices/${encodeURIComponent(office.id)}`, {
+      const res = await apiFetch(paths.office(office.id), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(changedFields(office, {

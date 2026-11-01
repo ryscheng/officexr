@@ -88,7 +88,7 @@ describe('Home', () => {
     vi.stubGlobal('location', { assign });
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/'));
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/auth/logout', { method: 'POST' });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/auth/logout', { credentials: 'include', method: 'POST' });
   });
 
   it('keeps the user signed in and shows the error when sign-out fails', async () => {

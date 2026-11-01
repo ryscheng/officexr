@@ -5,6 +5,7 @@ import { ApplicationProvider, ErrorBanner, PlayView, useStoreSelector } from '@o
 import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XRStore } from '@officexr/world/renderer';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
+import { apiUrl, paths } from '../apiOrigin';
 import { ChatPanel } from '../hud/ChatPanel';
 import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
@@ -30,13 +31,13 @@ import { VrMenuItem } from './VrMenuItem';
 import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 
 const storages = {
-  maps: withDefaultMap(new FilesystemMapStorage()),
-  rooms: new FilesystemRoomStorage(),
-  layouts: new FilesystemLayoutStorage(),
+  maps: withDefaultMap(new FilesystemMapStorage({ basePath: apiUrl(paths.maps) })),
+  rooms: new FilesystemRoomStorage({ basePath: apiUrl(paths.rooms) }),
+  layouts: new FilesystemLayoutStorage({ basePath: apiUrl(paths.layouts) }),
 };
 
 export function OfficeWorld(props: { office: Office; me: Identity }) {
-  const api = useMemo(() => createDefaultApi(), []);
+  const api = useMemo(() => createDefaultApi({ apiPath: apiUrl(paths.worldObjectKinds) }), []);
   return (
     <ApplicationProvider api={api}>
       <World {...props} />

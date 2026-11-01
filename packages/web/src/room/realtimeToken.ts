@@ -1,6 +1,8 @@
+import { apiFetch, paths } from '../apiOrigin';
+
 /** The realtime join token for the signed-in user, or `undefined` when the web server has none to give (404). */
-export async function fetchRealtimeToken(fetchFn: typeof fetch = fetch): Promise<string | undefined> {
-  const res = await fetchFn('/api/realtime-token');
+export async function fetchRealtimeToken(fetchFn: typeof apiFetch = apiFetch): Promise<string | undefined> {
+  const res = await fetchFn(paths.realtimeToken);
   if (res.status === 404) {
     return undefined;
   }
