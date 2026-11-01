@@ -1,7 +1,8 @@
-import { createServer, type Server as HttpServer } from 'node:http';
+import { createServer, request, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
-import { WebSocket as RawWebSocket } from 'ws';
+import type { Duplex } from 'node:stream';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { WebSocket as RawWebSocket, WebSocketServer } from 'ws';
 import { decodeFrame, encodeFrame, type Frame } from '../protocol.ts';
 import { officeAllowsMultiSession, RealtimeServer, type RealtimeServerOptions } from '../server.ts';
 
@@ -51,13 +52,20 @@ describe('RealtimeServer attached to a host server', () => {
       }
     });
     ws.send(encodeFrame({ t: 'hello', userId, officeId: 'o1' }));
+    await expect.poll(() => frames.some((f) => f.t === 'hello-ack')).toBe(true);
+    ws.send(encodeFrame({ t: 'track-presence', data: {} }));
     return frames;
   }
 
   afterEach(async () => {
     for (const ws of sockets.splice(0)) ws.terminate();
     for (const s of servers.splice(0)) await s.stop();
-    await Promise.all(hosts.splice(0).map((h) => new Promise((resolve) => h.close(resolve))));
+    await Promise.all(
+      hosts.splice(0).map((h) => {
+        h.closeAllConnections();
+        return new Promise((resolve) => h.close(resolve));
+      }),
+    );
   });
 
   it('accepts a /ws client that completes hello', async () => {
@@ -68,18 +76,41 @@ describe('RealtimeServer attached to a host server', () => {
   });
 
   it('leaves upgrades on other paths to the host', async () => {
-    const seen: string[] = [];
+    const other = new WebSocketServer({ noServer: true });
     const { port } = await host({}, (http) => {
-      http.on('upgrade', (req, socket) => {
+      http.on('upgrade', (req, socket, head) => {
         if (req.url === '/hmr') {
-          seen.push(req.url);
-          socket.destroy();
+          other.handleUpgrade(req, socket, head, () => {});
         }
       });
     });
 
-    await connect(port, '/hmr').catch(() => undefined);
-    expect(seen).toEqual(['/hmr']);
+    const ws = await connect(port, '/hmr');
+    expect(ws.readyState).toBe(RawWebSocket.OPEN);
+    other.close();
+  });
+
+  it.each(['/hmr', '/ws'])('survives an upgrade with a malformed Host on %s', async (path) => {
+    const upgraded: Duplex[] = [];
+    const { host: http, port } = await host({}, (h) => {
+      h.on('upgrade', (_req, socket) => upgraded.push(socket));
+    });
+    const uncaught = vi.fn();
+    process.on('uncaughtException', uncaught);
+    const req = request({
+      port,
+      path,
+      headers: { connection: 'Upgrade', upgrade: 'websocket', host: 'a b' },
+    });
+    req.on('error', () => {});
+    req.end();
+    await new Promise((r) => setTimeout(r, 100));
+    req.destroy();
+    upgraded.forEach((s) => s.destroy());
+    process.off('uncaughtException', uncaught);
+
+    expect(uncaught).not.toHaveBeenCalled();
+    expect(http.listening).toBe(true);
   });
 
   it('serves /health and /rooms/:id/sessions and falls through otherwise', async () => {
@@ -90,6 +121,16 @@ describe('RealtimeServer attached to a host server', () => {
     const sessions = await fetch(`http://127.0.0.1:${port}/rooms/o1/sessions?login=ann`);
     expect(await sessions.json()).toEqual({ connected: false, allowMulti: true });
     expect((await fetch(`http://127.0.0.1:${port}/nope`)).status).toBe(404);
+  });
+
+  it('requestHandler calls next() for paths it does not own', () => {
+    const server = new RealtimeServer();
+    const next = vi.fn();
+    const res = {} as ServerResponse;
+    server.requestHandler({ url: '/nope', method: 'GET' } as IncomingMessage, res, next);
+    server.requestHandler({ url: '/admin/world-constants', method: 'PUT' } as IncomingMessage, res, next);
+    server.requestHandler({ url: '/health', method: 'POST' } as IncomingMessage, res, next);
+    expect(next).toHaveBeenCalledTimes(3);
   });
 
   it('adminHandler enforces the token, and falls through without one', async () => {
@@ -112,9 +153,11 @@ describe('RealtimeServer attached to a host server', () => {
     const { port } = await host({ sessionPolicy: async () => true });
     const first = await join(port, 'ann#t1');
     await expect.poll(() => first.length).toBe(2);
-    const second = await join(port, 'ann#t2');
-    await expect.poll(() => second.length).toBe(2);
+    await join(port, 'ann#t2');
 
+    await expect
+      .poll(() => first.filter((f) => f.t === 'presence' && f.joined.includes('ann#t2')).length)
+      .toBe(1);
     expect(sockets[0].readyState).toBe(RawWebSocket.OPEN);
   });
 

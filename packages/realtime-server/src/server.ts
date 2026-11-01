@@ -335,8 +335,7 @@ export class RealtimeServer {
     this.startBootLoad();
   }
 
-  /** Connect-style handler for `GET /health` and `GET /rooms/:id/sessions`;
-   * calls `next()` for anything else. */
+  /** Connect-style: serves `GET /health` and `GET /rooms/:id/sessions`, else calls `next()`. */
   readonly requestHandler = (req: IncomingMessage, res: ServerResponse, next: () => void): void => {
     if (req.url === '/health' && req.method === 'GET') {
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -351,8 +350,7 @@ export class RealtimeServer {
     next();
   };
 
-  /** Connect-style handler for `PUT /admin/world-constants`; calls `next()`
-   * for anything else, and for everything when no admin token is set. */
+  /** Connect-style: calls `next()` for everything when no admin token is set. */
   readonly adminHandler = (req: IncomingMessage, res: ServerResponse, next: () => void): void => {
     if (req.url === '/admin/world-constants' && req.method === 'PUT' && this.adminToken) {
       this.putWorldConstants(req, res, this.adminToken).catch(() => res.destroy());
@@ -363,14 +361,17 @@ export class RealtimeServer {
 
   private upgradeListener(destroyUnmatched: boolean): UpgradeListener {
     return (req, socket, head) => {
-      const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
-      const matches = url.pathname === this.path;
-      if (!matches && !destroyUnmatched) {
+      // A fixed base: a malformed Host header would make `new URL` throw inside the event.
+      const matches = new URL(req.url ?? '/', 'http://localhost').pathname === this.path;
+      if (!matches) {
+        if (destroyUnmatched) {
+          socket.destroy();
+        }
         return;
       }
       // No wss once stop() is underway; an undestroyed socket would keep the http close waiting.
       const wss = this.wss;
-      if (!matches || !wss) {
+      if (!wss) {
         socket.destroy();
         return;
       }
