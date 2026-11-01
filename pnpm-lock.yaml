@@ -119,6 +119,9 @@ importers:
       cookie:
         specifier: ^1.1.1
         version: 1.1.1
+      cors:
+        specifier: ^2.8.6
+        version: 2.8.6
       express-session:
         specifier: ^1.19.0
         version: 1.19.0
@@ -134,10 +137,19 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
+      vary:
+        specifier: ^1.1.2
+        version: 1.1.2
     devDependencies:
+      '@types/cors':
+        specifier: ^2.8.19
+        version: 2.8.19
       '@types/node':
         specifier: ^22.7.5
         version: 22.19.15
+      '@types/vary':
+        specifier: ^1.1.3
+        version: 1.1.3
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1
@@ -2728,6 +2740,9 @@ packages:
   '@types/connect@3.4.38':
     resolution: {integrity: sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==}
 
+  '@types/cors@2.8.19':
+    resolution: {integrity: sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==}
+
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
@@ -2827,6 +2842,9 @@ packages:
 
   '@types/three@0.182.0':
     resolution: {integrity: sha512-WByN9V3Sbwbe2OkWuSGyoqQO8Du6yhYaXtXLoA5FkKTUJorZ+yOHBZ35zUUPQXlAKABZmbYp5oAqpA4RBjtJ/Q==}
+
+  '@types/vary@1.1.3':
+    resolution: {integrity: sha512-XJT8/ZQCL7NUut9QDLf6l24JfAEl7bnNdgxfj50cHIpEPRJLHHDDFOAq6i+GsEmeFfH7NamhBE4c4Thtb2egWg==}
 
   '@types/webxr@0.5.24':
     resolution: {integrity: sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg==}
@@ -8614,6 +8632,10 @@ snapshots:
     dependencies:
       '@types/node': 22.19.15
 
+  '@types/cors@2.8.19':
+    dependencies:
+      '@types/node': 22.19.15
+
   '@types/deep-eql@4.0.2': {}
 
   '@types/draco3d@1.4.10': {}
@@ -8738,6 +8760,10 @@ snapshots:
       '@webgpu/types': 0.1.69
       fflate: 0.8.2
       meshoptimizer: 0.22.0
+
+  '@types/vary@1.1.3':
+    dependencies:
+      '@types/node': 22.19.15
 
   '@types/webxr@0.5.24': {}
 
