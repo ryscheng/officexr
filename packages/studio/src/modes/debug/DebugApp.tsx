@@ -60,7 +60,7 @@ export function DebugApp() {
   const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    const a = new Audio('/elevator-music.mp3');
+    const a = new Audio(`${import.meta.env.BASE_URL}elevator-music.mp3`);
     a.loop = true;
     a.volume = 0.4;
     setAudio(a);

@@ -21,6 +21,9 @@ export default function studioMcpPlugin(mcpOptions: Parameters<typeof createStud
   return {
     name: 'officexr:studio-mcp',
     configureServer: (server) => mountOnVite(server, options),
-    configurePreviewServer: (server) => mountOnVite(server, options),
+    // Mounted up front: with a non-root `base`, preview's base middleware 404s everything the post hook adds.
+    configurePreviewServer: (server) => {
+      mountOnVite(server, options)();
+    },
   };
 }

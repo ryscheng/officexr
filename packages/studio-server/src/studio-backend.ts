@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_MODELS_DIR } from '@officexr/server/static';
+import { DEFAULT_MODELS_DIR, staticDirMiddleware } from '@officexr/server/static';
 import { STORAGE_ENTRIES, type StudioStoragePluginOptions } from '@officexr/world/vite-plugin-storage';
 import { pushWorldConstants } from './push-world-constants.ts';
 import { createR2Publisher, r2ConfigFromEnv, type R2Publisher } from './r2-publisher.ts';
@@ -55,5 +55,7 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
     });
   };
 
-  return { dataDir, pushTargets, adminToken, storageOptions, startR2Sync };
+  const modelsMiddleware = staticDirMiddleware('/models', DEFAULT_MODELS_DIR);
+
+  return { dataDir, pushTargets, adminToken, storageOptions, startR2Sync, modelsMiddleware };
 }

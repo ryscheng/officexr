@@ -67,7 +67,7 @@ async function withDeadline<T>(work: Promise<T>, ms: number, message: string): P
 }
 
 function renderUrl(origin: string, { target, camera, width, height }: RenderRequest): string {
-  const url = new URL('/', origin);
+  const url = new URL('/studio/', origin);
   url.searchParams.set('op', 'render');
   url.searchParams.set('target', target.type);
   url.searchParams.set('name', target.name);

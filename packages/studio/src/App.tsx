@@ -83,6 +83,8 @@ export default function App() {
     if (testMode) return createTestApi();
     const loader = new GLTFLoader();
     return createDefaultApi({
+      // Same-origin on purpose: the bake needs the uncompressed models and this loader has no meshopt
+      // decoder, while the asset CDN serves meshopt-compressed copies.
       loadGltf: async (path) => {
         const gltf = await loader.loadAsync(path);
         return { scene: gltf.scene as THREE.Object3D };
