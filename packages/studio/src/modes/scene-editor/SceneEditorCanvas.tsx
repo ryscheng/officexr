@@ -47,6 +47,7 @@ import {
   type TileAxis,
   type TileMachineState,
 } from './tileStateMachine.ts';
+import { STUDIO_API_ORIGIN } from '../../apiOrigin.ts';
 
 type Vec3 = [number, number, number];
 
@@ -890,6 +891,7 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
             <BakedLayout
               gltfPath={props.bakedLayoutPath}
               layoutName={props.bakedLayoutName}
+              withCredentials={Boolean(STUDIO_API_ORIGIN)}
             />
           </BakedLayoutPicker>
         )}

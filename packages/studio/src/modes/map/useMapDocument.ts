@@ -10,6 +10,7 @@ import {
 } from '@officexr/world/scenes';
 import { useDebouncedSave } from '../useDebouncedSave.ts';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
+import { paths, studioApiOptions } from '../../apiOrigin.ts';
 
 /**
  * Optional configuration for `useMapDocument`. Mirrors
@@ -59,7 +60,7 @@ export type MapSelection =
  *
  * Brand-new maps get a blank `emptyMapDocument(name)` until the user
  * adds something; the auto-save then writes the empty doc out so the
- * map shows up in subsequent `/api/maps` listings.
+ * map shows up in subsequent maps-endpoint listings.
  */
 export interface UseMapDocumentResult {
   doc: SerializedMap;
@@ -93,7 +94,7 @@ export function useMapDocument(
   // caller doesn't supply a storage. Tests pass an in-memory adapter.
   const fallbackStorage = useMemo<MapStorage>(() => {
     try {
-      return new FilesystemMapStorage();
+      return new FilesystemMapStorage(studioApiOptions(paths.maps));
     } catch {
       return new LocalStorageMapStorage();
     }

@@ -46,8 +46,8 @@ export class FilesystemWorldConstantsStorage
   extends FilesystemSingleDocumentStorage<WorldConstants>
   implements WorldConstantsStorage
 {
-  constructor(opts: { basePath?: string } = {}) {
-    super(opts.basePath ?? '/api/world-settings', 'world-constants-storage', parseWorldConstants);
+  constructor(opts: { basePath?: string; fetch?: typeof fetch } = {}) {
+    super(opts.basePath ?? '/api/world-settings', 'world-constants-storage', parseWorldConstants, opts.fetch);
   }
 
   protected override async rejectSave(r: Response): Promise<never> {

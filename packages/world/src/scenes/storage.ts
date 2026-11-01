@@ -60,3 +60,6 @@ export async function httpError(prefix: string, r: Response): Promise<Error> {
     typeof body?.error === 'string' ? `${prefix}: ${r.status} ${body.error}` : `${prefix}: ${r.status}`,
   );
 }
+
+/** Resolves `globalThis.fetch` per call, so a fetch stubbed after construction still applies. */
+export const globalFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);

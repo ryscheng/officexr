@@ -27,6 +27,7 @@ import type { MapTool } from './mapTools.ts';
 import { resolveRoomPointerAction } from './mapPointerActions.ts';
 import { computeRoomAabbs } from './roomAabbs.ts';
 import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
+import { paths, STUDIO_API_ORIGIN, studioApiUrl } from '../../apiOrigin.ts';
 import {
   snapRoomToNeighbors,
   type RoomAABBVoxel,
@@ -505,7 +506,7 @@ function RoomInstanceMesh({
   // Map view renders full room geometry, so each room instance should
   // also show its structural GLB at the same world transform.
   const bakedLayoutPath = room.layoutName
-    ? bakedLayoutUrl(room.layoutName)
+    ? bakedLayoutUrl(room.layoutName, studioApiUrl(paths.bakedLayouts))
     : undefined;
 
   return (
@@ -548,6 +549,7 @@ function RoomInstanceMesh({
         <BakedLayout
           gltfPath={bakedLayoutPath}
           layoutName={room.layoutName}
+          withCredentials={Boolean(STUDIO_API_ORIGIN)}
         />
       ) : null}
       {worldObjects ? <ObjectInstances worldObjects={worldObjects} /> : null}

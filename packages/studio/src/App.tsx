@@ -13,6 +13,8 @@ import {
 } from '@officexr/world/scenes';
 import type { WorldConstants } from '@officexr/sdk';
 import { StudioPage } from './StudioPage.tsx';
+import { paths, STUDIO_API_ORIGIN, studioApiUrl, studioFetch } from './apiOrigin.ts';
+import { SignInGate } from './SignInGate.tsx';
 import { HeadlessApp } from './modes/headless/HeadlessApp.tsx';
 import { createTestApi } from './test-harness/createTestApi.ts';
 import { RecordingWorldConstantsStorage, testApi } from './test-harness/pageTestApi.ts';
@@ -62,31 +64,24 @@ function buildTestStorages(): TestStorages {
  * SOLID note (DIP): the only place that knows about concrete service
  * implementations is `createDefaultApi`. Tests / headless harnesses
  * can swap in mocks at this layer without touching the consumers.
- *
- * The `loadGltf` we inject here uses three's GLTFLoader — same code
- * path drei's `useGLTF` already relies on internally, so opening a
- * kind in the Object editor and then asking the BakeService to
- * measure it do not double-download the GLTF (browsers cache the
- * HTTP response).
  */
-export default function App() {
-  const params = new URLSearchParams(globalThis.location?.search ?? '');
+function Studio({ params, testMode }: { params: URLSearchParams; testMode: boolean }) {
   const op = params.get('op');
   const sceneId = params.get('scene') ?? undefined;
-  // `?test=1` boots the studio hermetically: a bundled-catalog api (no
-  // /api/world-object-kinds fetch) + in-memory storages (no /api/maps
-  // etc.). Used by the Playwright suite so editor interaction can be
-  // exercised without a backend. Documented in CLAUDE.md.
-  const testMode = params.get('test') === '1';
 
   const api = useMemo(() => {
     if (testMode) return createTestApi();
     const loader = new GLTFLoader();
+    if (STUDIO_API_ORIGIN) {
+      loader.setWithCredentials(true).setCrossOrigin('use-credentials');
+    }
     return createDefaultApi({
-      // Same-origin on purpose: the bake needs the uncompressed models and this loader has no meshopt
-      // decoder, while the asset CDN serves meshopt-compressed copies.
+      apiPath: studioApiUrl(paths.worldObjectKinds),
+      fetcher: studioFetch,
+      // From the studio API, not the asset CDN: the bake needs the uncompressed models and this
+      // loader has no meshopt decoder, while the CDN serves meshopt-compressed copies.
       loadGltf: async (path) => {
-        const gltf = await loader.loadAsync(path);
+        const gltf = await loader.loadAsync(studioApiUrl(path));
         return { scene: gltf.scene as THREE.Object3D };
       },
     });
@@ -107,5 +102,19 @@ export default function App() {
         tree
       )}
     </ApplicationProvider>
+  );
+}
+
+export default function App() {
+  const params = new URLSearchParams(globalThis.location?.search ?? '');
+  // `?test=1` boots the studio hermetically: a bundled-catalog api (no
+  // /api/world-object-kinds fetch) + in-memory storages (no /api/maps
+  // etc.). Used by the Playwright suite so editor interaction can be
+  // exercised without a backend. Documented in CLAUDE.md.
+  const testMode = params.get('test') === '1';
+  return (
+    <SignInGate bypass={testMode}>
+      <Studio params={params} testMode={testMode} />
+    </SignInGate>
   );
 }

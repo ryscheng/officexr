@@ -26,11 +26,12 @@ export class FilesystemCatalogStorage
   extends FilesystemSingleDocumentStorage<WorldObjectKindCatalogV1>
   implements CatalogStorage
 {
-  constructor(opts: { basePath?: string } = {}) {
+  constructor(opts: { basePath?: string; fetch?: typeof fetch } = {}) {
     super(
       opts.basePath ?? '/api/world-object-kinds',
       'catalog-storage',
       validateWorldObjectKindCatalog,
+      opts.fetch,
     );
   }
 }

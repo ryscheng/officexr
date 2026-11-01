@@ -42,6 +42,7 @@ import { useApplication } from '@officexr/world/react';
 import { scheduleBake, createBrowserBakeDeps } from '@officexr/world/app';
 import { useRoomDocument } from '../room/useRoomDocument.ts';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
+import { paths, STUDIO_API_ORIGIN, studioApiOptions } from '../../apiOrigin.ts';
 
 const LAST_LAYOUT_KEY = 'officexr:studio:lastLayout';
 const DEFAULT_LAYOUT_NAME = 'default';
@@ -135,7 +136,7 @@ export function useLayoutDocument(options?: UseLayoutDocumentOptions) {
 
   const fallbackLayoutStorage = useMemo<LayoutStorage>(() => {
     try {
-      return new FilesystemLayoutStorage();
+      return new FilesystemLayoutStorage(studioApiOptions(paths.layouts));
     } catch {
       return new LocalStorageLayoutStorage();
     }
@@ -177,7 +178,10 @@ export function useLayoutDocument(options?: UseLayoutDocumentOptions) {
   const afterSave = useCallback(
     (name: string, roomDoc: RoomDocument) => {
       const layoutDoc = roomToLayout(roomDoc, name, optimizerRef.current);
-      const deps = createBrowserBakeDeps(catalog, geometry);
+      const deps = createBrowserBakeDeps(catalog, geometry, {
+        ...studioApiOptions(paths.bakedLayouts),
+        modelBaseUrl: STUDIO_API_ORIGIN,
+      });
       scheduleBake(name, layoutDoc, deps);
     },
     [catalog, geometry],

@@ -4,7 +4,7 @@ import {
   migrateToV5,
   type SerializedScene,
 } from './serialize.ts';
-import { httpError, isValidSceneName } from './storage.ts';
+import { globalFetch, httpError, isValidSceneName } from './storage.ts';
 import type { RoomDocument } from './commands.ts';
 import type { SceneSummary } from './storage.ts';
 
@@ -30,13 +30,15 @@ export interface RoomStorage {
  */
 export class FilesystemRoomStorage implements RoomStorage {
   private base: string;
+  private fetch: typeof fetch;
 
-  constructor(opts: { basePath?: string } = {}) {
+  constructor(opts: { basePath?: string; fetch?: typeof fetch } = {}) {
     this.base = (opts.basePath ?? '/api/rooms').replace(/\/$/, '');
+    this.fetch = opts.fetch ?? globalFetch;
   }
 
   async list(): Promise<RoomSummary[]> {
-    const r = await fetch(this.base, { method: 'GET' });
+    const r = await this.fetch(this.base, { method: 'GET' });
     if (!r.ok) throw new Error(`room-storage list: ${r.status}`);
     const json = (await r.json()) as { rooms?: RoomSummary[] };
     return Array.isArray(json.rooms) ? json.rooms : [];
@@ -46,7 +48,7 @@ export class FilesystemRoomStorage implements RoomStorage {
     if (!isValidSceneName(name)) {
       throw new Error(`room-storage load: invalid name "${name}"`);
     }
-    const r = await fetch(`${this.base}/${encodeURIComponent(name)}`);
+    const r = await this.fetch(`${this.base}/${encodeURIComponent(name)}`);
     if (r.status === 404) return null;
     if (!r.ok) throw new Error(`room-storage load: ${r.status}`);
     const raw = (await r.json()) as unknown;
@@ -58,7 +60,7 @@ export class FilesystemRoomStorage implements RoomStorage {
     if (!isValidSceneName(name)) {
       throw new Error(`room-storage save: invalid name "${name}"`);
     }
-    const r = await fetch(`${this.base}/${encodeURIComponent(name)}`, {
+    const r = await this.fetch(`${this.base}/${encodeURIComponent(name)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(room),
@@ -70,7 +72,7 @@ export class FilesystemRoomStorage implements RoomStorage {
     if (!isValidSceneName(name)) {
       throw new Error(`room-storage delete: invalid name "${name}"`);
     }
-    const r = await fetch(`${this.base}/${encodeURIComponent(name)}`, {
+    const r = await this.fetch(`${this.base}/${encodeURIComponent(name)}`, {
       method: 'DELETE',
     });
     if (!r.ok && r.status !== 404) {
