@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/vite-plugin.ts"
+    ".": "./src/vite-plugin.ts",
+    "./mount-mcp": "./src/mount-mcp.ts"
   },
   "scripts": {
     "test": "vitest run",
