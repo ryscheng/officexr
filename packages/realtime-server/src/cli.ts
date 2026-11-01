@@ -1,11 +1,15 @@
+import { fetchSessionPolicy } from './office-policy.ts';
 import { RealtimeServer } from './server.ts';
 
 const port = Number(process.env.REALTIME_PORT || 8787);
+const officeUrl = process.env.OFFICEXR_OFFICE_URL;
 const server = new RealtimeServer({
   port,
   worldConstantsUrl: process.env.OFFICEXR_WORLD_CONSTANTS_URL,
   adminToken: process.env.OFFICEXR_REALTIME_ADMIN_TOKEN,
-  officeUrl: process.env.OFFICEXR_OFFICE_URL,
+  sessionPolicy: officeUrl
+    ? (officeId, login) => fetchSessionPolicy(officeUrl, officeId, login, fetch)
+    : undefined,
   tokenSecret: process.env.OFFICEXR_REALTIME_TOKEN_SECRET,
 });
 await server.start();
