@@ -7,11 +7,11 @@ import {
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import type { Identity } from '@officexr/server/shared';
+import { wsUrl } from '../apiOrigin';
 import { generateJaaSJwt } from '../voice/jaasJwt';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { getJaasConfig } from '../voice/runtimeConfig';
 import { loadCharacter } from './character';
-import { wsUrl } from '../apiOrigin';
 import { fetchRealtimeToken } from './realtimeToken';
 
 export type OfficeSession =

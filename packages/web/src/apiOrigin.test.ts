@@ -36,7 +36,8 @@ describe('apiFetch', () => {
 
 describe('wsUrl', () => {
   it('follows the page origin when unset', async () => {
-    expect((await load()).wsUrl()).toBe(`${window.location.origin.replace(/^http/, 'ws')}/ws`);
+    vi.stubGlobal('location', { origin: 'https://app.example.com' });
+    expect((await load()).wsUrl()).toBe('wss://app.example.com/ws');
   });
 
   it.each([

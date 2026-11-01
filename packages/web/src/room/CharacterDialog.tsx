@@ -3,6 +3,7 @@ import type { PersistentLocalState } from '@officexr/core-refactor';
 import type { OfficeState } from '@officexr/sdk';
 import { CHARACTERS, pickCharacterForPlayer, type CharacterName } from '@officexr/world/characters';
 import { CharacterPreviewCanvas } from '@officexr/world/renderer';
+import type { apiFetch } from '../apiOrigin';
 import { Dialog } from '../Dialog';
 import { chooseCharacter } from './character';
 import { closeToWorld } from './closeToWorld';
@@ -34,7 +35,7 @@ export function CharacterDialog({
   onSaveResult: SaveResult;
   onClose: () => void;
   Preview?: ComponentType<{ character: CharacterName }>;
-  fetchFn?: typeof fetch;
+  fetchFn?: typeof apiFetch;
 }) {
   const character = useSelfCharacter(local);
   const close = closeToWorld(onClose);

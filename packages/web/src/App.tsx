@@ -12,6 +12,7 @@ import { useApi } from './useApi';
 const roomLoading = <WorldLoadingScreen step="Loading office…" />;
 
 function Room({ me }: { me: Identity }) {
+  // The `/room/:id` route guarantees the id.
   const { id } = useParams() as { id: string };
   // Safari reports pinches as gesture events and zooms the page unless they
   // are cancelled; touch-action alone doesn't stop it over the overlays.

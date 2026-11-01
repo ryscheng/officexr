@@ -1,7 +1,6 @@
-import { apiFetch, paths } from '../apiOrigin';
 import type { PersistentLocalState } from '@officexr/core-refactor';
 import { pickCharacterForPlayer, type CharacterName } from '@officexr/world/characters';
-
+import { apiFetch, paths } from '../apiOrigin';
 
 /** The login's stored character for the office, else (also when it can't be read) its deterministic default. */
 export async function loadCharacter(officeId: string, login: string, fetchFn: typeof apiFetch = apiFetch): Promise<CharacterName> {

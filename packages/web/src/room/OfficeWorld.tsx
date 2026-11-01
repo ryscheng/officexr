@@ -5,6 +5,7 @@ import { ApplicationProvider, ErrorBanner, PlayView, useStoreSelector } from '@o
 import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XRStore } from '@officexr/world/renderer';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
+import { apiUrl, paths } from '../apiOrigin';
 import { ChatPanel } from '../hud/ChatPanel';
 import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
@@ -22,7 +23,6 @@ import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
 import { RoomMenu, RoomMenuChoice, RoomMenuItem } from './RoomMenu';
 import { ShortcutsDialog } from './ShortcutsDialog';
-import { apiUrl, paths } from '../apiOrigin';
 import { useJoinCheck } from './useJoinCheck';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession } from './useOfficeSession';
