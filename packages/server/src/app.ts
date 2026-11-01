@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import connect from 'connect';
 import type { RealtimeServer } from '@officexr/realtime-server/server';
 import { createStudioStorage, studioMapExists } from '@officexr/world/vite-plugin-storage';
@@ -8,9 +7,7 @@ import { createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type Goo
 import { createCors } from './cors';
 import { configJsMiddleware } from './runtimeConfig';
 import type { Identity } from './shared';
-import { staticDirMiddleware } from './staticDir';
-
-const DEFAULT_MODELS_DIR = fileURLToPath(new URL('../../studio/public/models', import.meta.url));
+import { DEFAULT_MODELS_DIR, staticDirMiddleware } from './staticDir';
 
 export interface AppOptions {
   queryOffices: QueryOffices;

@@ -1,3 +1,4 @@
+import type { AddressInfo } from 'node:net';
 import {
   FilesystemBakedLayoutStorage,
   FilesystemCatalogStorage,
@@ -7,8 +8,11 @@ import {
   FilesystemWorldConstantsStorage,
 } from '@officexr/world/scenes';
 import type { NodeMiddleware, StudioStorageApp } from '@officexr/world/vite-plugin-storage';
+import { HeavyWorkLock } from './heavy-work-lock.ts';
+import { createChromiumRenderer } from './renderer.ts';
 import { handleMcpRequest, type StudioMcpOptions } from './server.ts';
 import type { StudioDocuments } from './studio-documents.ts';
+import { BakeJobs } from './tools/bake-jobs.ts';
 
 /** Clients for the studio's own REST surface, so validation, hooks and disk I/O stay in `vite-plugin-storage.ts`. */
 function loopbackDocuments(origin: string): StudioDocuments {
@@ -24,10 +28,35 @@ function loopbackDocuments(origin: string): StudioDocuments {
 
 export type McpApp = StudioStorageApp;
 
+/** The production options: a real Chromium renderer and one lock and job registry for the process. */
+export function createStudioMcpOptions({
+  modelRoot,
+  chromiumPath,
+}: Pick<StudioMcpOptions, 'modelRoot'> & {
+  /** Chromium that `render_view` launches; Playwright's own download when unset. */
+  chromiumPath?: string;
+}): StudioMcpOptions {
+  return {
+    modelRoot,
+    heavyWorkLock: new HeavyWorkLock('a bake or render'),
+    renderer: createChromiumRenderer({ executablePath: chromiumPath }),
+    bakeJobs: new BakeJobs(),
+  };
+}
+
 export type McpOptions = StudioMcpOptions & {
   /** Loopback and render origin, read per request: the port is only known once the server is listening. */
   origin: () => string;
 };
+
+/** `http://127.0.0.1:<port>` of a listening TCP server. */
+export function loopbackOrigin(server: { address(): AddressInfo | string | null } | null | undefined): string {
+  const address = server?.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('server is not listening on a TCP port');
+  }
+  return `http://127.0.0.1:${address.port}`;
+}
 
 /** 405s everything but POST, so a host's SPA fallback can't answer a GET. */
 export const mcpMethodGuard: NodeMiddleware = (req, res, next) => {

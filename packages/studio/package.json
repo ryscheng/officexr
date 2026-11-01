@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.2",
-    "@gltf-transform/core": "^4.1.2",
     "@officexr/core-refactor": "workspace:*",
     "@officexr/realtime-server": "workspace:*",
     "@officexr/sdk": "workspace:*",
@@ -33,7 +32,6 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@react-three/rapier": "^2.2.0",
-    "aws4fetch": "^1.0.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jszip": "^3.10.1",
@@ -45,6 +43,7 @@
     "three": "^0.182.0"
   },
   "devDependencies": {
+    "@officexr/studio-server": "workspace:*",
     "@react-three/test-renderer": "^9.1.0",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/react": "^16.1.0",

@@ -1,5 +1,6 @@
-import { createServer, type Server } from 'node:http';
+import { createServer } from 'node:http';
 import { createBackend } from './backend';
+import { close, listen } from './listen';
 
 const env = process.env;
 const port = Number(env.PORT) || 4173;
@@ -8,16 +9,6 @@ const { app, realtime, closePool } = await createBackend(env, {
   adminToken: env.OFFICEXR_REALTIME_ADMIN_TOKEN,
   worldConstantsUrl: env.OFFICEXR_WORLD_CONSTANTS_URL ?? `http://127.0.0.1:${port}/api/world-settings`,
 });
-
-const listen = (server: Server, listenPort: number) =>
-  new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(listenPort, () => {
-      server.off('error', reject);
-      resolve();
-    });
-  });
-const close = (server: Server) => new Promise<void>((resolve) => server.close(() => resolve()));
 
 const server = createServer(app);
 realtime.attach(server);

@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./shared": "./src/shared.ts"
+    "./shared": "./src/shared.ts",
+    "./static": "./src/staticDir.ts",
+    "./listen": "./src/listen.ts"
   },
   "scripts": {
     "start": "tsx src/main.ts",

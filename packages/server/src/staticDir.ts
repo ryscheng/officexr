@@ -2,9 +2,13 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
 import type { IncomingMessage, NextHandleFunction } from 'connect';
 import { assetContentType } from '@officexr/world/asset-content-type';
+
+/** The studio's character and object models. */
+export const DEFAULT_MODELS_DIR = fileURLToPath(new URL('../../studio/public/models', import.meta.url));
 
 function decodePath(urlPath: string): string | null {
   try {
