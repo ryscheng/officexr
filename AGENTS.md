@@ -29,7 +29,7 @@ officexr/
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
-│   ├── studio-server/    # @officexr/studio-server — studio backend: main.ts (entrypoint), app.ts (internal + public servers),
+│   ├── studio-server/    # @officexr/studio-server — studio backend: main.ts (entrypoint), app.ts (internal + public servers), studio-gate.ts (public-port sign-in gate),
 │   │                     # studio-backend.ts (storage hooks + R2 sync, shared with the Vite studio), r2-publisher.ts, push-world-constants.ts
 │   ├── studio-mcp/       # @officexr/studio-mcp — MCP server at /mcp (tools, render_view)
 │   ├── sdk/              # @officexr/sdk — headless game state, realtime protocol, Channel
@@ -67,7 +67,11 @@ officexr/
   `PORT` (default 5174) also serves the built studio SPA, read/write `/api/*`, `/models` and `/mcp`,
   unauthenticated, for in-cluster callers (the bots sidecar, private-ops-center).
   `PUBLIC_PORT` (default 5175) also serves `/api/*` and `/models`; everything else is a 404. The public
-  port is **unauthenticated until the studio auth gate lands — do not expose it**. Both ports share
+  port (`studio-gate.ts`) requires the web backend's session cookie for a login on the SQL-managed
+  `studio_allowlist` (as well as `login_allowlist`, to sign in) on every request and `/ws` upgrade, and
+  serves `GET /api/me` (200 / 401 / 403). It needs `SESSION_SECRET`, `SUPABASE_DB_URL` and `COOKIE_DOMAIN`
+  matching the web backend, plus `FRONTEND_ORIGINS` (CORS; the first origin sets cookie `secure` and must sit
+  under `COOKIE_DOMAIN`); example insert in the README. Both ports share
   one storage instance, so save hooks fire once per write. Other env: `OFFICEXR_STUDIO_DATA_DIR`
   (seeded from `packages/world` on first boot), `OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS` +
   `OFFICEXR_REALTIME_ADMIN_TOKEN`, `OFFICEXR_R2_*`, `OFFICEXR_RENDER_CHROMIUM_PATH`.
@@ -118,7 +122,7 @@ allowlists SPAs on other origins for credentialed CORS and as `?next=` return ta
 default landing and the `login_error` target); they must be same-site with `PUBLIC_URL` because the cookie
 is `SameSite=Lax`. `COOKIE_DOMAIN` (e.g. `karibalabs.co`, must contain `PUBLIC_URL`'s host) shares the
 session cookie across subdomains; enabling it signs existing users out once, and the server clears the old host-only cookie on the next sign-in/out. `createCors` and
-`createSessionReader` are exported for the studio backend. Who may sign in is managed with SQL in `login_allowlist`
+`createSessionReader` are exported for the studio backend, which gates its public port with them. Who may sign in is managed with SQL in `login_allowlist`
 (values lowercase, no admin UI; example inserts in the README "Sign-in" section). The server reads offices from Postgres via
 `SUPABASE_DB_URL`. Run `pnpm db:migrate` (applies `supabase/migrations` to
 `SUPABASE_DB_URL`) before `start`. The server listens on `PORT` (default 4173) and
