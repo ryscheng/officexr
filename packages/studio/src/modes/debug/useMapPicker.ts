@@ -4,7 +4,7 @@ import type { MapStorage } from '@officexr/world/scenes';
 const LAST_MAP_KEY = 'officexr:studio:lastMap';
 
 export interface MapPickerState {
-  /** All map names served by /api/maps, sorted alphabetically. */
+  /** All map names served by the maps endpoint, sorted alphabetically. */
   maps: readonly string[];
   /** The map currently selected by the dropdown. */
   selected: string;

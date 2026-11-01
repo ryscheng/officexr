@@ -10,7 +10,7 @@ interface RoomPaletteProps {
  * Left-panel palette of saved rooms. Clicking a row drops a new
  * `RoomInstance` of that room onto the map at the camera's focus
  * point (`onAddRoom` decides where). A "Refresh" button re-fetches
- * the /api/rooms listing in case the user just authored a new room
+ * the rooms endpoint's listing in case the user just authored a new room
  * in another tab.
  *
  * Note that this list is the set of rooms AVAILABLE — `RoomInstanceList`

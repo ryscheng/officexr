@@ -12,17 +12,8 @@ const assertNever = (value: never): never => {
   throw new Error(`unhandled gate state: ${JSON.stringify(value)}`);
 };
 
-const stateForStatus = (status: number): GateState =>
-  status === 200
-    ? { type: 'allowed' }
-    : status === 401
-      ? { type: 'signedOut' }
-      : status === 403
-        ? { type: 'forbidden' }
-        : { type: 'failed' };
-
 /** Web-backend Google sign-in returning to `location` without its `login_error`. */
-export function signInHref({ origin, pathname, search, hash }: Pick<Location, 'origin' | 'pathname' | 'search' | 'hash'>) {
+function signInHref({ origin, pathname, search, hash }: Pick<Location, 'origin' | 'pathname' | 'search' | 'hash'>) {
   const params = new URLSearchParams(search);
   params.delete('login_error');
   const rest = params.toString();
@@ -44,7 +35,15 @@ function MeGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     let live = true;
     studioFetch(studioApiUrl(paths.me))
-      .then((r) => stateForStatus(r.status))
+      .then(({ status }): GateState =>
+        status === 200
+          ? { type: 'allowed' }
+          : status === 401
+            ? { type: 'signedOut' }
+            : status === 403
+              ? { type: 'forbidden' }
+              : { type: 'failed' },
+      )
       .catch((): GateState => ({ type: 'failed' }))
       .then((next) => {
         if (live) {

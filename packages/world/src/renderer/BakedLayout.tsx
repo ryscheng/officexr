@@ -24,6 +24,10 @@ import React, {
 } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
+import { useLoader } from '@react-three/fiber';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { getVersion, subscribe } from '../app/bake-registry.ts';
 
 /**
@@ -42,12 +46,49 @@ interface BakedLayoutMeshProps {
   materialOverride?: LayoutMaterialOverride;
 }
 
+/**
+ * GLTF loader that sends cookies with every request. Its own constructor
+ * gives it a separate r3f loader instance and cache from `useGLTF`'s shared
+ * one, so credentialed loads never leak into CDN model loads.
+ */
+export class CredentialedGLTFLoader extends GLTFLoader {
+  constructor() {
+    super();
+    this.withCredentials = true;
+    this.crossOrigin = 'use-credentials';
+  }
+}
+
+let dracoLoader: DRACOLoader | null = null;
+
+// Mirrors drei's `useGLTF` extensions (its default DRACO decoder path + meshopt) so both paths parse alike.
+function credentialedExtensions(loader: GLTFLoader): void {
+  dracoLoader ??= new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.5/');
+  loader.setDRACOLoader(dracoLoader);
+  loader.setMeshoptDecoder(MeshoptDecoder);
+}
+
 function BakedLayoutMesh({ effectiveUrl, materialOverride }: BakedLayoutMeshProps) {
   const gltf = useGLTF(effectiveUrl);
-  // useGLTF caches one scene per URL; a three.js object has a single
+  return <BakedLayoutScene source={gltf.scene} materialOverride={materialOverride} />;
+}
+
+function CredentialedBakedLayoutMesh({ effectiveUrl, materialOverride }: BakedLayoutMeshProps) {
+  const gltf = useLoader(CredentialedGLTFLoader, effectiveUrl, credentialedExtensions);
+  return <BakedLayoutScene source={gltf.scene} materialOverride={materialOverride} />;
+}
+
+function BakedLayoutScene({
+  source,
+  materialOverride,
+}: {
+  source: THREE.Object3D;
+  materialOverride?: LayoutMaterialOverride;
+}) {
+  // The loader caches one scene per URL; a three.js object has a single
   // parent, so each mount draws its own clone (geometry and materials
   // stay shared).
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
+  const scene = useMemo(() => source.clone(true), [source]);
 
   // Make the baked layout participate in the shadow pipeline the same
   // way `<ObjectInstances>` does for per-instance kinds. Without this,
@@ -184,6 +225,8 @@ export interface BakedLayoutProps {
    * this callback. Re-armed when `layoutName` changes.
    */
   onLoadError?: (err: Error) => void;
+  /** Send cookies with the GLB request, for a `gltfPath` on a cross-origin session-gated server. */
+  withCredentials?: boolean;
 }
 
 /**
@@ -199,6 +242,7 @@ export function BakedLayout({
   fallback = null,
   materialOverride,
   onLoadError,
+  withCredentials = false,
 }: BakedLayoutProps) {
   // Track the registry version so we can append `?v=<N>` to the URL,
   // causing drei to re-fetch after a new bake is published.
@@ -230,6 +274,7 @@ export function BakedLayout({
   // Version 0 means "never baked in this session"; skip the `?v=` suffix so
   // we get a clean URL (avoids a 404 for a newly-added layout).
   const effectiveUrl = version > 0 ? `${gltfPath}?v=${version}` : gltfPath;
+  const Mesh = withCredentials ? CredentialedBakedLayoutMesh : BakedLayoutMesh;
 
   return (
     <BakedLayoutErrorBoundary
@@ -238,7 +283,7 @@ export function BakedLayout({
       fallback={fallback}
     >
       <Suspense fallback={fallback}>
-        <BakedLayoutMesh
+        <Mesh
           effectiveUrl={effectiveUrl}
           materialOverride={materialOverride}
         />

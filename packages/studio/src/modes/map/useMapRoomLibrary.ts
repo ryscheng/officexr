@@ -22,7 +22,7 @@ import { paths, studioApiOptions } from '../../apiOrigin.ts';
  *   - `loading` — true while at least one referenced room is in flight.
  *
  * The hook intentionally fetches LAZILY per-name rather than eagerly
- * loading the whole /api/rooms listing's contents up-front — for a
+ * loading the whole rooms-endpoint listing's contents up-front — for a
  * map that uses 3 of 50 saved rooms, eager loading wastes the trip.
  *
  * Re-fetches if the requested set changes (e.g. user adds a new room

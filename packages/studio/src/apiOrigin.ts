@@ -14,7 +14,6 @@ export const paths = {
   maps: '/api/maps',
   rooms: '/api/rooms',
   layouts: '/api/layouts',
-  // ponytail: drei's useGLTF fetches these without credentials, so cross-origin editor previews of baked layouts 401.
   bakedLayouts: '/api/baked-layouts',
   worldObjectKinds: '/api/world-object-kinds',
   worldSettings: '/api/world-settings',

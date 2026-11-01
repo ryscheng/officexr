@@ -60,7 +60,7 @@ export type MapSelection =
  *
  * Brand-new maps get a blank `emptyMapDocument(name)` until the user
  * adds something; the auto-save then writes the empty doc out so the
- * map shows up in subsequent /api/maps listings.
+ * map shows up in subsequent maps-endpoint listings.
  */
 export interface UseMapDocumentResult {
   doc: SerializedMap;

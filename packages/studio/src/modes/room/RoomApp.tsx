@@ -23,7 +23,7 @@ import { paths, studioApiUrl } from '../../apiOrigin.ts';
  * inspector hooks moved to `useRoomDocument` / `useRoomInspector` in
  * Task 6 when the multi-select + groups model landed). Owns its own
  * R3F canvas, document state, and free-fly camera. Persists the
- * working document via `RoomStorage` (Vite middleware at /api/rooms
+ * working document via `RoomStorage` (the studio API's rooms endpoint
  * in dev, localStorage otherwise). Has no SDK store, no SyncEngine,
  * no WebSocket — Debug mode is what consumes authored rooms.
  */

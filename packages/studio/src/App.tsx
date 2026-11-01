@@ -64,12 +64,6 @@ function buildTestStorages(): TestStorages {
  * SOLID note (DIP): the only place that knows about concrete service
  * implementations is `createDefaultApi`. Tests / headless harnesses
  * can swap in mocks at this layer without touching the consumers.
- *
- * The `loadGltf` we inject here uses three's GLTFLoader — same code
- * path drei's `useGLTF` already relies on internally, so opening a
- * kind in the Object editor and then asking the BakeService to
- * measure it do not double-download the GLTF (browsers cache the
- * HTTP response).
  */
 function Studio({ params, testMode }: { params: URLSearchParams; testMode: boolean }) {
   const op = params.get('op');

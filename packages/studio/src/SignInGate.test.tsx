@@ -2,11 +2,16 @@ import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 
-async function load(studioOrigin: string | undefined, meStatus = 200) {
+async function load(studioOrigin: string | undefined, meStatus: number | 'network error' = 200) {
   vi.resetModules();
   vi.stubEnv('VITE_STUDIO_API_ORIGIN', studioOrigin as string);
   vi.stubEnv('VITE_API_ORIGIN', 'https://web.example');
-  const fetchMock = vi.fn(async () => new Response('{}', { status: meStatus }));
+  const fetchMock = vi.fn(async () => {
+    if (meStatus === 'network error') {
+      throw new TypeError('Failed to fetch');
+    }
+    return new Response('{}', { status: meStatus });
+  });
   vi.stubGlobal('fetch', fetchMock);
   const { SignInGate } = await import('./SignInGate.tsx');
   return { SignInGate, fetchMock };
@@ -55,6 +60,13 @@ describe('SignInGate', () => {
     const { SignInGate } = await load('https://studio.example', 403);
     render(<SignInGate bypass={false}>studio</SignInGate>);
     expect(await screen.findByText("Your account isn't allowed to use the studio")).toBeTruthy();
+    expect(screen.queryByText('studio')).toBeNull();
+  });
+
+  it.each([500, 'network error' as const])('reports an unreachable studio server on %s', async (outcome) => {
+    const { SignInGate } = await load('https://studio.example', outcome);
+    render(<SignInGate bypass={false}>studio</SignInGate>);
+    expect(await screen.findByText("Couldn't reach the studio server")).toBeTruthy();
     expect(screen.queryByText('studio')).toBeNull();
   });
 });

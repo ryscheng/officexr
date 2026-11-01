@@ -116,6 +116,7 @@ function RenderCanvas({
   const cameraProps = ortho
     ? { position: setup.position, up: setup.up, zoom: setup.zoom, near: setup.near, far: setup.far }
     : { position: setup.position, fov: setup.fov, near: setup.near, far: setup.far };
+  // ponytail: baked layouts load without credentials; fine while headless render only runs same-origin.
   const glbUrls = useMemo(
     () => [...bakedLayoutNames(content).map((n) => bakedLayoutUrl(n, studioApiUrl(paths.bakedLayouts))), ...content.modelUrls],
     [content],

@@ -95,7 +95,7 @@ export interface RoomDocLookup {
 /**
  * Owns the Room editor's working document. Pure local state — no
  * SDK store, no NetEvent broadcast. Persistence runs through
- * `RoomStorage`: filesystem in dev (Vite middleware at /api/rooms),
+ * `RoomStorage`: the studio API's rooms endpoint in dev,
  * localStorage fallback otherwise.
  *
  * History is managed by a `RoomHistory` instance held in a `useRef`.

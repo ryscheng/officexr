@@ -28,12 +28,12 @@ function originHttpToWs(origin: string): string {
 
 /**
  * Resolve config for the browser. Defaults to `${origin}/ws` /
- * `${origin}/health`, where `origin` is the studio API origin when set and
- * otherwise the page's, so the Vite proxy carries the traffic.
+ * `${origin}/health` on the studio API origin when set; otherwise on the
+ * page's origin, so the Vite proxy carries the traffic.
  * `VITE_REALTIME_URL` / `VITE_HEALTH_URL` override.
  */
 export function browserRealtimeConfig(): RealtimeConfig {
-  const env = (import.meta as unknown as { env?: Record<string, string> }).env ?? {};
+  const env: Record<string, string | undefined> = import.meta.env ?? {};
   const origin =
     STUDIO_API_ORIGIN ||
     (typeof window !== 'undefined' && window.location?.origin ? window.location.origin : LOCAL_DEFAULT_HOST);
@@ -54,7 +54,9 @@ export async function isRealtimeServerAvailable(
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await studioFetch(healthUrl, { signal: ctrl.signal });
+    // Only the studio API needs the session; credentials to another server would fail its CORS.
+    const probe = STUDIO_API_ORIGIN && healthUrl.startsWith(`${STUDIO_API_ORIGIN}/`) ? studioFetch : fetch;
+    const res = await probe(healthUrl, { signal: ctrl.signal });
     clearTimeout(timer);
     return res.ok;
   } catch {

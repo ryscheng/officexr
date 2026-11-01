@@ -9,7 +9,7 @@ interface MapPickerProps {
 
 /**
  * Tiny header block in the Map editor's LeftPanel: a dropdown of all
- * /api/maps, a textbox to author a brand-new map, and a reload
+ * saved maps, a textbox to author a brand-new map, and a reload
  * button. Mirrors `RoomPicker` from the Room editor at
  * `room/RoomPicker.tsx` — keep the two in shape sync if either
  * grows.
