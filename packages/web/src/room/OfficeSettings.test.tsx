@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { useState } from 'react';
 import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Identity, Office } from '../../server/api';
+import type { Identity, Office } from '@officexr/server/shared';
 import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
 import { RoomMenu } from './RoomMenu';
 

@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Identity, Office } from '../../server/api';
+import type { Identity, Office } from '@officexr/server/shared';
 import type { ApiState } from '../useApi';
 import { Home } from './Home';
 

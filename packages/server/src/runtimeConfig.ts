@@ -1,14 +1,8 @@
-import type { Connect } from 'vite';
-
-export const RUNTIME_CONFIG_KEYS = [
-  'VITE_JAAS_APP_ID',
-  'VITE_JAAS_API_KEY_ID',
-  'VITE_JAAS_PRIVATE_KEY',
-  'OFFICEXR_ASSET_BASE_URL',
-] as const;
+import type { NextHandleFunction } from 'connect';
+import { RUNTIME_CONFIG_KEYS } from './shared';
 
 /** Serves `/config.js` from env at request time so one build can be configured per deployment. */
-export function configJsMiddleware(extraEnv: Record<string, string> = {}): Connect.NextHandleFunction {
+export function configJsMiddleware(extraEnv: Record<string, string> = {}): NextHandleFunction {
   return (req, res, next) => {
     if (req.url?.split('?')[0] !== '/config.js') {
       return next();

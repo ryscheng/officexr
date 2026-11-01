@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import type { Connect } from 'vite';
+import type { IncomingMessage, NextHandleFunction } from 'connect';
 import { assetContentType } from '@officexr/world/asset-content-type';
 
 function decodePath(urlPath: string): string | null {
@@ -14,7 +14,7 @@ function decodePath(urlPath: string): string | null {
   }
 }
 
-async function serveFile(root: string, prefix: string, req: Connect.IncomingMessage, res: ServerResponse): Promise<boolean> {
+async function serveFile(root: string, prefix: string, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const decoded = decodePath(req.url!.split('?')[0].slice(prefix.length));
   if (decoded === null) {
     res.statusCode = 400;
@@ -48,7 +48,7 @@ async function serveFile(root: string, prefix: string, req: Connect.IncomingMess
 }
 
 /** Serves the files under `dir` at `prefix`, read at request time so assets installed after the build are found. */
-export function staticDirMiddleware(prefix: string, dir: string): Connect.NextHandleFunction {
+export function staticDirMiddleware(prefix: string, dir: string): NextHandleFunction {
   const root = path.resolve(dir);
   return (req, res, next) => {
     const urlPath = req.url?.split('?')[0] ?? '';

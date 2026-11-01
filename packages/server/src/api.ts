@@ -1,37 +1,14 @@
 import type { IncomingMessage } from 'node:http';
-import type { Connect, Plugin } from 'vite';
+import type { NextHandleFunction } from 'connect';
 import { signJoinToken } from '@officexr/realtime-server/join-token';
 import { isCharacterName } from '@officexr/world/characters';
-import studioStorage, { studioMapExists } from '@officexr/world/vite-plugin-storage';
-import type { Store } from 'express-session';
-import { createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import { MAX_DESCRIPTION, MAX_NAME } from './officeLimits';
-import { configJsMiddleware } from './runtimeConfig';
-import { staticDirMiddleware } from './staticDir';
-
-export interface Office {
-  id: string;
-  name: string;
-  description: string | null;
-  map_name: string | null;
-  created_by_login: string | null;
-  debug_enabled: boolean;
-}
+import type { Identity, NewOffice, Office, OfficeUpdate } from './shared';
 
 /** Lists all offices, or just the one with `id` when given. */
 export type QueryOffices = (id?: string) => Promise<Office[]>;
 
-export interface NewOffice {
-  name: string;
-  description: string | null;
-  mapName: string;
-  createdByLogin: string;
-}
-
 export type CreateOffice = (input: NewOffice) => Promise<Office>;
-
-/** The settings a creator may change; only the keys present are written. */
-export type OfficeUpdate = Partial<Pick<NewOffice, 'name' | 'description' | 'mapName'>> & { debugEnabled?: boolean };
 
 /** Resolves to `undefined` when the office no longer exists. */
 export type UpdateOffice = (id: string, update: OfficeUpdate) => Promise<Office | undefined>;
@@ -43,11 +20,6 @@ export type MapExists = (name: string) => Promise<boolean>;
 export interface OfficeCharacters {
   get: (officeId: string, login: string) => Promise<string | null>;
   set: (officeId: string, login: string, characterId: string) => Promise<void>;
-}
-
-export interface Identity {
-  login: string;
-  name: string;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -144,7 +116,7 @@ export function apiMiddleware(
   mapExists: MapExists,
   identity: ResolveIdentity,
   realtimeTokenSecret?: string,
-): Connect.NextHandleFunction {
+): NextHandleFunction {
   return async (req, res, next) => {
     const path = req.url?.split('?')[0] ?? '';
     if (!path.startsWith('/api/')) {
@@ -249,78 +221,4 @@ export function apiMiddleware(
       return send(500, { error: 'Internal error' });
     }
   };
-}
-
-export interface ServerPluginOptions {
-  queryOffices: QueryOffices;
-  characters: OfficeCharacters;
-  createOffice: CreateOffice;
-  updateOffice: UpdateOffice;
-  isLoginAllowed: IsLoginAllowed;
-  /** Required in preview; in dev, sign-in is mounted only when every field is set. */
-  auth: Partial<AuthConfig>;
-  /** Called once per server start, so building or loading the config never connects to the database. */
-  sessionStore: () => Store;
-  googleStrategy?: GoogleStrategyFactory;
-  /** The identity of every dev-server request, never preview's. */
-  devUser?: Identity;
-  devEnv?: Record<string, string>;
-  /** Must equal the realtime server's `OFFICEXR_REALTIME_TOKEN_SECRET`; unset disables `/api/realtime-token`. */
-  realtimeTokenSecret?: string;
-  /** Studio data dir served read-only under `/api`; the storage plugin's defaults when unset. */
-  studioDataDir?: string;
-  /** Character and object models served at `/models`. */
-  modelsDir: string;
-}
-
-export function officexrServer({
-  queryOffices,
-  characters,
-  createOffice,
-  updateOffice,
-  isLoginAllowed,
-  auth,
-  sessionStore,
-  googleStrategy,
-  devUser,
-  devEnv,
-  realtimeTokenSecret,
-  studioDataDir,
-  modelsDir,
-}: ServerPluginOptions): Plugin[] {
-  const models = staticDirMiddleware('/models', modelsDir);
-  const mapExists = studioMapExists(studioDataDir);
-  const api = (identity: ResolveIdentity) => apiMiddleware(queryOffices, characters, createOffice, updateOffice, mapExists, identity, realtimeTokenSecret);
-  const parsedAuth = parseAuthConfig(auth);
-  const useAuth = (server: { middlewares: Connect.Server }, config: AuthConfig) => {
-    for (const middleware of createAuth({ config, sessionStore: sessionStore(), isLoginAllowed, googleStrategy })) {
-      server.middlewares.use(middleware);
-    }
-  };
-  return [
-    // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
-    studioStorage({ dataDir: studioDataDir, readOnly: true }),
-    {
-      name: 'officexr-server',
-      configureServer: (server) => {
-        if (parsedAuth.type === 'valid') {
-          useAuth(server, parsedAuth.config);
-        } else if (!devUser) {
-          console.warn(`Neither OFFICEXR_DEV_USER_LOGIN nor Google sign-in (${parsedAuth.envNames.join(', ')}) is set; identity routes will return 401.`);
-        }
-        server.middlewares.use(models);
-        server.middlewares.use(configJsMiddleware(devEnv));
-        server.middlewares.use(api(devUser ? () => devUser : sessionIdentity));
-      },
-      configurePreviewServer: (server) => {
-        if (parsedAuth.type === 'invalid') {
-          throw new Error(`Google sign-in is not configured; set a valid ${parsedAuth.envNames.join(', ')}`);
-        }
-        useAuth(server, parsedAuth.config);
-        server.middlewares.use(models);
-        server.middlewares.use(configJsMiddleware());
-        server.middlewares.use(api(sessionIdentity));
-      },
-    },
-  ];
 }

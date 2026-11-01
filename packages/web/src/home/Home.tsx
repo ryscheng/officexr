@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { Identity, Office } from '../../server/api';
-import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
+import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office } from '@officexr/server/shared';
 import { Async } from '../Async';
 import { SignInLink } from '../SignIn';
 import { DEFAULT_MAP } from '../room/withDefaultMap';

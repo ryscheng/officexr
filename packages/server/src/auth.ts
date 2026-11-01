@@ -5,8 +5,8 @@ import session from 'express-session';
 import passport from 'passport';
 import { Strategy as GoogleStrategy, type Profile, type VerifyCallback } from 'passport-google-oauth20';
 import type pg from 'pg';
-import type { Connect } from 'vite';
-import type { Identity } from './api';
+import type { NextHandleFunction } from 'connect';
+import type { Identity } from './shared';
 
 export interface AuthConfig {
   googleClientId: string;
@@ -22,6 +22,10 @@ const AUTH_ENV: Record<keyof AuthConfig, string> = {
   sessionSecret: 'SESSION_SECRET',
   publicUrl: 'PUBLIC_URL',
 };
+
+export function authConfigFromEnv(env: Record<string, string | undefined>): Partial<AuthConfig> {
+  return Object.fromEntries(Object.entries(AUTH_ENV).map(([key, name]) => [key, env[name]]));
+}
 
 export type ParsedAuthConfig = { type: 'valid'; config: AuthConfig } | { type: 'invalid'; envNames: string[] };
 
@@ -105,7 +109,7 @@ function redirect(res: ServerResponse, location: string) {
   res.end();
 }
 
-function onlyAuthAndApi(fn: Connect.NextHandleFunction): Connect.NextHandleFunction {
+function onlyAuthAndApi(fn: NextHandleFunction): NextHandleFunction {
   return (req, res, next) => {
     const url = req.url ?? '';
     return url.startsWith('/auth/') || url.startsWith('/api/') ? fn(req, res, next) : next();
@@ -120,7 +124,7 @@ interface AuthOptions {
 }
 
 /** Session, passport and the `/auth/*` routes, in order; each runs only for `/auth/*` and `/api/*` requests. */
-export function createAuth({ config, sessionStore, isLoginAllowed, googleStrategy = createGoogleStrategy }: AuthOptions): Connect.NextHandleFunction[] {
+export function createAuth({ config, sessionStore, isLoginAllowed, googleStrategy = createGoogleStrategy }: AuthOptions): NextHandleFunction[] {
   const cookieOptions = {
     path: '/',
     httpOnly: true,
@@ -140,7 +144,7 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
     }),
   );
 
-  const routes: Connect.NextHandleFunction = (req, res, next) => {
+  const routes: NextHandleFunction = (req, res, next) => {
     const url = req.url ?? '';
     const queryStart = url.indexOf('?');
     const path = queryStart < 0 ? url : url.slice(0, queryStart);
@@ -203,9 +207,9 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
       saveUninitialized: false,
       proxy: true,
       cookie: { ...cookieOptions, maxAge: SESSION_MAX_AGE_MS },
-    }) as unknown as Connect.NextHandleFunction,
-    auth.initialize() as unknown as Connect.NextHandleFunction,
-    auth.session() as unknown as Connect.NextHandleFunction,
+    }) as unknown as NextHandleFunction,
+    auth.initialize() as unknown as NextHandleFunction,
+    auth.session() as unknown as NextHandleFunction,
     routes,
   ].map(onlyAuthAndApi);
 }

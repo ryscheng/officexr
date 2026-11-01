@@ -1,5 +1,5 @@
 import { sessionPlayerId } from '@officexr/sdk';
-import type { Identity, Office } from '../../server/api';
+import type { Identity, Office } from '@officexr/server/shared';
 
 const fallbackTabId = crypto.randomUUID().slice(0, 8);
 
