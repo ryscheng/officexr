@@ -163,13 +163,16 @@ Host the SPA on Pages with the backend on another origin. Git-integration settin
 
 - Build command `pnpm build:pages` (web app at `/`, studio at `/studio/`), output directory `packages/web/dist`.
 - Environment variables `NODE_VERSION=22`, `PNPM_VERSION=10.33.0`, `VITE_API_ORIGIN=https://api.example.com`
-  (the backend's origin; unset means same-origin; see `packages/web/.env.example`) and
-  `VITE_ASSET_BASE_URL=https://officexr-assets.oso.xyz` (where the studio loads models and baked layouts from).
+  (the backend's origin; unset means same-origin; see `packages/web/.env.example`),
+  `VITE_ASSET_BASE_URL=https://officexr-assets.oso.xyz` (where the studio loads models and baked layouts from), and
+  `VITE_STUDIO_API_ORIGIN=https://studio-api.example.com` (the studio backend's public port, which the studio calls
+  with credentials for its API, realtime and in-browser bake; unset means same-origin and no sign-in gate).
 
 The studio's Debug mode then loads baked layouts from that CDN, which can be up to 5 minutes stale.
 `build:pages` copies the whole studio `dist`, so `dist/studio/models` ships unused (ponytail: trim it if Pages size limits bite).
-Without `VITE_ASSET_BASE_URL` the Pages studio gets HTML for every model. The studio's `/api/*` still goes
-same-origin until the studio API origin lands, so the Pages studio isn't usable yet.
+Without `VITE_ASSET_BASE_URL` the Pages studio gets HTML for every model. With `VITE_STUDIO_API_ORIGIN` set, the
+studio asks signed-out users to sign in through the web backend, so the studio backend must list the Pages origin in
+its frontend origins.
 
 The backend must allow the Pages origin as a frontend origin (CORS and sign-in `next`) and set
 `OFFICEXR_ASSET_BASE_URL`, since it doesn't serve `/baked-layouts/*` itself.

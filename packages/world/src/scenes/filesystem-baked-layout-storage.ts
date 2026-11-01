@@ -1,5 +1,5 @@
 import { bakedLayoutUrl } from './baked-layout-url.ts';
-import { httpError, isValidSceneName } from './storage.ts';
+import { globalFetch, httpError, isValidSceneName } from './storage.ts';
 
 export interface BakedLayoutSummary {
   name: string;
@@ -18,13 +18,15 @@ export interface BakedLayoutStorage {
 /** Talks to the Vite middleware at `/api/baked-layouts`. */
 export class FilesystemBakedLayoutStorage implements BakedLayoutStorage {
   private base: string;
+  private fetch: typeof fetch;
 
-  constructor(opts: { basePath?: string } = {}) {
+  constructor(opts: { basePath?: string; fetch?: typeof fetch } = {}) {
     this.base = (opts.basePath ?? '/api/baked-layouts').replace(/\/$/, '');
+    this.fetch = opts.fetch ?? globalFetch;
   }
 
   async list(): Promise<BakedLayoutSummary[]> {
-    const r = await fetch(this.base);
+    const r = await this.fetch(this.base);
     if (!r.ok) {
       throw await httpError('baked-layout-storage list', r);
     }
@@ -34,7 +36,7 @@ export class FilesystemBakedLayoutStorage implements BakedLayoutStorage {
 
   async load(name: string): Promise<Uint8Array | null> {
     this.checkName('load', name);
-    const r = await fetch(bakedLayoutUrl(name, this.base));
+    const r = await this.fetch(bakedLayoutUrl(name, this.base));
     if (r.status === 404) {
       return null;
     }
@@ -46,7 +48,7 @@ export class FilesystemBakedLayoutStorage implements BakedLayoutStorage {
 
   async save(name: string, glb: Uint8Array): Promise<void> {
     this.checkName('save', name);
-    const r = await fetch(bakedLayoutUrl(name, this.base), {
+    const r = await this.fetch(bakedLayoutUrl(name, this.base), {
       method: 'PUT',
       headers: { 'content-type': 'model/gltf-binary' },
       // The cast relies on callers passing ArrayBuffer-backed bytes, as gltf-transform output is.
@@ -59,7 +61,7 @@ export class FilesystemBakedLayoutStorage implements BakedLayoutStorage {
 
   async delete(name: string): Promise<void> {
     this.checkName('delete', name);
-    const r = await fetch(bakedLayoutUrl(name, this.base), { method: 'DELETE' });
+    const r = await this.fetch(bakedLayoutUrl(name, this.base), { method: 'DELETE' });
     if (!r.ok) {
       throw await httpError('baked-layout-storage delete', r);
     }

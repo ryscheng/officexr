@@ -5,6 +5,7 @@ import {
   type WorldObjectKind,
 } from '@officexr/world';
 import { useApplication, useCatalog } from '@officexr/world/react';
+import { paths, studioApiOptions } from '../../apiOrigin.ts';
 
 /**
  * Studio-side wrapper around the world's catalog store. Adds:
@@ -77,7 +78,7 @@ export function useObjectCatalog(): UseObjectCatalogResult {
   // batches the PUTs.
   const storage = useMemo(() => {
     try {
-      return new FilesystemCatalogStorage();
+      return new FilesystemCatalogStorage(studioApiOptions(paths.worldObjectKinds));
     } catch {
       return null;
     }

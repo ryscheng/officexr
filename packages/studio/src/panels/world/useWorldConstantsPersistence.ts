@@ -12,6 +12,7 @@ import {
 } from '@officexr/world/scenes';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 import { SAVE_DEBOUNCE_MS } from './saveDebounce.ts';
+import { paths, studioApiOptions } from '../../apiOrigin.ts';
 
 export type PersistenceStatus =
   | { type: 'loading' }
@@ -205,7 +206,7 @@ export function useWorldConstantsPersistence(opts: {
       new WorldConstantsPersistence(
         opts.store,
         opts.actions,
-        opts.storage ?? testStorages?.worldConstantsStorage ?? new FilesystemWorldConstantsStorage(),
+        opts.storage ?? testStorages?.worldConstantsStorage ?? new FilesystemWorldConstantsStorage(studioApiOptions(paths.worldSettings)),
       ),
   );
   useEffect(() => persistence.start(), [persistence]);

@@ -24,6 +24,7 @@ import { createFootprintOf, overlapsAnyInstance } from './footprint.ts';
 import type { EditAction } from './EditAction.ts';
 import { useDebouncedSave } from '../useDebouncedSave.ts';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
+import { paths, studioApiOptions } from '../../apiOrigin.ts';
 
 const LAST_ROOM_KEY = 'officexr:studio:lastRoom';
 const DEFAULT_ROOM_NAME = 'default-v2';
@@ -94,7 +95,7 @@ export interface RoomDocLookup {
 /**
  * Owns the Room editor's working document. Pure local state — no
  * SDK store, no NetEvent broadcast. Persistence runs through
- * `RoomStorage`: filesystem in dev (Vite middleware at `/api/rooms`),
+ * `RoomStorage`: filesystem in dev (Vite middleware at /api/rooms),
  * localStorage fallback otherwise.
  *
  * History is managed by a `RoomHistory` instance held in a `useRef`.
@@ -173,7 +174,7 @@ export function useRoomDocument(options?: UseRoomDocumentOptions): {
   // (which wraps LayoutStorage + translates document shapes).
   const fallbackStorage = useMemo<RoomStorage>(() => {
     try {
-      return new FilesystemRoomStorage();
+      return new FilesystemRoomStorage(studioApiOptions(paths.rooms));
     } catch {
       return new LocalStorageRoomStorage();
     }

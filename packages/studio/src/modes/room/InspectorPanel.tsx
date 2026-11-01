@@ -8,6 +8,7 @@ import {
   type BakeState,
 } from '@officexr/world/app';
 
+import { paths, studioApiUrl, studioFetch } from '../../apiOrigin.ts';
 import { Button } from '../../components/ui/button.tsx';
 import {
   Field,
@@ -31,7 +32,7 @@ interface InspectorPanelProps {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetches the list of available layouts from `/api/layouts` and renders
+ * Fetches the list of available layouts from the studio API and renders
  * an autocomplete field bound to `doc.layoutName`.  Empty value unlinks
  * the layout.
  *
@@ -44,7 +45,7 @@ function LayoutSection({ roomDoc }: { roomDoc: RoomDoc }) {
   const [availableLayouts, setAvailableLayouts] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch('/api/layouts')
+    studioFetch(studioApiUrl(paths.layouts))
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { layouts: { name: string }[] }) =>
         setAvailableLayouts(data.layouts.map((l) => l.name)),
@@ -97,7 +98,7 @@ function LayoutSection({ roomDoc }: { roomDoc: RoomDoc }) {
  * Two signals are merged:
  *   - `BakeRegistry` for live in-session state (`pending` / `running` /
  *     `error` while a bake is being scheduled or executed).
- *   - A HEAD probe against `/api/baked-layouts/<name>` for ground-
+ *   - A HEAD probe against the baked-layout endpoint for ground-
  *     truth disk presence.
  *
  * Priority rules — disk presence trumps a stale registry error:
@@ -136,7 +137,7 @@ function LayoutBakeBadge({ layoutName }: { layoutName: string }) {
   useEffect(() => {
     let cancelled = false;
     setDiskPresent(null);
-    fetch(bakedLayoutUrl(layoutName), { method: 'HEAD' })
+    studioFetch(bakedLayoutUrl(layoutName, studioApiUrl(paths.bakedLayouts)), { method: 'HEAD' })
       .then((r) => {
         if (cancelled) return;
         setDiskPresent(r.ok);

@@ -1,5 +1,5 @@
 import { deserializeLayout } from './layout-document.ts';
-import { httpError, isValidSceneName, type SceneSummary } from './storage.ts';
+import { globalFetch, httpError, isValidSceneName, type SceneSummary } from './storage.ts';
 import type { LayoutDocument } from './layout-document.ts';
 
 export type LayoutSummary = SceneSummary;
@@ -20,13 +20,15 @@ export interface LayoutStorage {
 /** Talks to the Vite middleware at `/api/layouts`. */
 export class FilesystemLayoutStorage implements LayoutStorage {
   private base: string;
+  private fetch: typeof fetch;
 
-  constructor(opts: { basePath?: string } = {}) {
+  constructor(opts: { basePath?: string; fetch?: typeof fetch } = {}) {
     this.base = (opts.basePath ?? '/api/layouts').replace(/\/$/, '');
+    this.fetch = opts.fetch ?? globalFetch;
   }
 
   async list(): Promise<LayoutSummary[]> {
-    const r = await fetch(this.base, { method: 'GET' });
+    const r = await this.fetch(this.base, { method: 'GET' });
     if (!r.ok) throw new Error(`layout-storage list: ${r.status}`);
     const json = (await r.json()) as { layouts?: LayoutSummary[] };
     return Array.isArray(json.layouts) ? json.layouts : [];
@@ -36,7 +38,7 @@ export class FilesystemLayoutStorage implements LayoutStorage {
     if (!isValidSceneName(name)) {
       throw new Error(`layout-storage load: invalid name "${name}"`);
     }
-    const r = await fetch(`${this.base}/${encodeURIComponent(name)}`);
+    const r = await this.fetch(`${this.base}/${encodeURIComponent(name)}`);
     if (r.status === 404) return null;
     if (!r.ok) throw new Error(`layout-storage load: ${r.status}`);
     return deserializeLayout((await r.json()) as unknown);
@@ -46,7 +48,7 @@ export class FilesystemLayoutStorage implements LayoutStorage {
     if (!isValidSceneName(name)) {
       throw new Error(`layout-storage save: invalid name "${name}"`);
     }
-    const r = await fetch(`${this.base}/${encodeURIComponent(name)}`, {
+    const r = await this.fetch(`${this.base}/${encodeURIComponent(name)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(layout),
@@ -58,7 +60,7 @@ export class FilesystemLayoutStorage implements LayoutStorage {
     if (!isValidSceneName(name)) {
       throw new Error(`layout-storage delete: invalid name "${name}"`);
     }
-    const r = await fetch(`${this.base}/${encodeURIComponent(name)}`, {
+    const r = await this.fetch(`${this.base}/${encodeURIComponent(name)}`, {
       method: 'DELETE',
     });
     if (!r.ok && r.status !== 404) {

@@ -10,6 +10,7 @@ import {
   type RoomStorage,
 } from '@officexr/world/scenes';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
+import { paths, studioApiOptions } from '../../apiOrigin.ts';
 
 /**
  * Loads the set of `RoomDocument`s referenced by the Map editor's
@@ -21,7 +22,7 @@ import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
  *   - `loading` — true while at least one referenced room is in flight.
  *
  * The hook intentionally fetches LAZILY per-name rather than eagerly
- * loading the whole `/api/rooms` listing's contents up-front — for a
+ * loading the whole /api/rooms listing's contents up-front — for a
  * map that uses 3 of 50 saved rooms, eager loading wastes the trip.
  *
  * Re-fetches if the requested set changes (e.g. user adds a new room
@@ -43,7 +44,7 @@ export function useMapRoomLibrary(
   const testStorages = useTestStorages();
   const fallbackRoomStorage = useMemo<RoomStorage>(() => {
     try {
-      return new FilesystemRoomStorage();
+      return new FilesystemRoomStorage(studioApiOptions(paths.rooms));
     } catch {
       return new LocalStorageRoomStorage();
     }
@@ -51,7 +52,7 @@ export function useMapRoomLibrary(
   const storage = testStorages?.roomStorage ?? fallbackRoomStorage;
   const fallbackLayoutStorage = useMemo<LayoutStorage>(() => {
     try {
-      return new FilesystemLayoutStorage();
+      return new FilesystemLayoutStorage(studioApiOptions(paths.layouts));
     } catch {
       return new LocalStorageLayoutStorage();
     }

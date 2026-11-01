@@ -24,6 +24,7 @@ import { useStackSwitcher } from '../../realtime/useStackSwitcher.ts';
 import { MapPickerPanel } from './MapPickerPanel.tsx';
 import { useMapPicker } from './useMapPicker.ts';
 import { publishFrameStats } from '../../perf/frame-stats.ts';
+import { paths, studioApiOptions } from '../../apiOrigin.ts';
 
 const SELF_ID = 'local-player';
 const OFFICE_ID = 'studio-office';
@@ -31,9 +32,9 @@ const OFFICE_ID = 'studio-office';
 function createStorages() {
   try {
     return {
-      maps: new FilesystemMapStorage(),
-      rooms: new FilesystemRoomStorage(),
-      layouts: new FilesystemLayoutStorage(),
+      maps: new FilesystemMapStorage(studioApiOptions(paths.maps)),
+      rooms: new FilesystemRoomStorage(studioApiOptions(paths.rooms)),
+      layouts: new FilesystemLayoutStorage(studioApiOptions(paths.layouts)),
     };
   } catch {
     return {

@@ -22,6 +22,7 @@ import { ReadySignal } from './ReadySignal.tsx';
 import { bakedLayoutNames, loadRenderContent, type RenderContent, type RenderStorages } from './renderContent.ts';
 import { frameCamera, type Bounds, type CameraSetup } from './renderFraming.ts';
 import { parseRenderParams, type RenderParams } from './renderParams.ts';
+import { paths, studioApiOptions, studioApiUrl } from '../../apiOrigin.ts';
 
 interface RenderSentinels {
   __officexrRenderReady?: { bounds: Bounds; metresPerPixel?: number };
@@ -41,9 +42,9 @@ function useRenderStorages(): RenderStorages {
   const testStorages = useTestStorages();
   return useMemo(
     () => ({
-      maps: testStorages?.mapStorage ?? new FilesystemMapStorage(),
-      rooms: testStorages?.roomStorage ?? new FilesystemRoomStorage(),
-      layouts: testStorages?.layoutStorage ?? new FilesystemLayoutStorage(),
+      maps: testStorages?.mapStorage ?? new FilesystemMapStorage(studioApiOptions(paths.maps)),
+      rooms: testStorages?.roomStorage ?? new FilesystemRoomStorage(studioApiOptions(paths.rooms)),
+      layouts: testStorages?.layoutStorage ?? new FilesystemLayoutStorage(studioApiOptions(paths.layouts)),
     }),
     [testStorages],
   );
@@ -116,7 +117,7 @@ function RenderCanvas({
     ? { position: setup.position, up: setup.up, zoom: setup.zoom, near: setup.near, far: setup.far }
     : { position: setup.position, fov: setup.fov, near: setup.near, far: setup.far };
   const glbUrls = useMemo(
-    () => [...bakedLayoutNames(content).map((n) => bakedLayoutUrl(n)), ...content.modelUrls],
+    () => [...bakedLayoutNames(content).map((n) => bakedLayoutUrl(n, studioApiUrl(paths.bakedLayouts))), ...content.modelUrls],
     [content],
   );
   const onAssetError = (err: Error) => onError(`failed to load asset: ${err.message}`);
@@ -191,7 +192,7 @@ function RenderedContent({
     <>
       {content.type === 'room' && content.layoutName ? (
         <BakedLayout
-          gltfPath={bakedLayoutUrl(content.layoutName)}
+          gltfPath={bakedLayoutUrl(content.layoutName, studioApiUrl(paths.bakedLayouts))}
           layoutName={content.layoutName}
           onLoadError={onAssetError}
         />
