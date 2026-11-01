@@ -49,6 +49,7 @@ export async function createApp({
   dev,
 }: AppOptions): Promise<connect.Server> {
   const parsedAuth = parseAuthConfig(auth);
+  const devUser = dev?.user;
   if (parsedAuth.type === 'invalid' && !dev) {
     throw new Error(`Google sign-in is not configured; set a valid ${parsedAuth.envNames.join(', ')}`);
   }
@@ -61,10 +62,9 @@ export async function createApp({
     for (const middleware of createAuth({ config: parsedAuth.config, sessionStore: sessionStore(), isLoginAllowed, googleStrategy })) {
       app.use(middleware);
     }
-  } else if (!dev?.user) {
+  } else if (!devUser) {
     console.warn(`Neither OFFICEXR_DEV_USER_LOGIN nor Google sign-in (${parsedAuth.envNames.join(', ')}) is set; identity routes will return 401.`);
   }
-  const devUser = dev?.user;
   app.use(staticDirMiddleware('/models', modelsDir));
   app.use(configJsMiddleware(dev?.env));
   app.use(realtime.requestHandler);

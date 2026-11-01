@@ -1,5 +1,5 @@
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
