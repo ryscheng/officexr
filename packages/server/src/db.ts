@@ -1,6 +1,6 @@
 import pg from 'pg';
 import type { CreateOffice, OfficeCharacters, QueryOffices, UpdateOffice } from './api';
-import { emailDomain, pgSessionStore, type IsLoginAllowed } from './auth';
+import { pgAllowlist, pgSessionStore, type IsLoginAllowed } from './auth';
 import type { Office, OfficeUpdate } from './shared';
 
 /** The Postgres-backed callbacks `createApp` takes. The pool connects on first query, so an unset URL only fails then. */
@@ -61,13 +61,7 @@ export function createDb(connectionString: string | undefined) {
       );
     },
   };
-  const isLoginAllowed: IsLoginAllowed = async (email) => {
-    const { rows } = await getPool().query<{ allowed: boolean }>(
-      `select exists (select 1 from login_allowlist where (kind = 'email' and value = $1) or (kind = 'domain' and value = $2)) as allowed`,
-      [email, emailDomain(email)],
-    );
-    return rows[0].allowed;
-  };
+  const isLoginAllowed: IsLoginAllowed = (email) => pgAllowlist(getPool(), 'login_allowlist')(email);
   const close = async () => {
     const closing = pool;
     pool = undefined;

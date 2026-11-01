@@ -142,7 +142,7 @@ The studio backend is a separate process, `pnpm --filter @officexr/studio-server
   `/ws` upgrade needs the web backend's sign-in session for a login on `studio_allowlist`
   (401 without a session, 403 when not allowed); `GET /api/me` returns `{ login, name }`.
   It reads the session with the web backend's `SESSION_SECRET`, `SUPABASE_DB_URL` and `COOKIE_DOMAIN`,
-  which must match it, and refuses to start without the first two. `FRONTEND_ORIGINS` allowlists the
+  which must match it; the whole process refuses to start without the first two. `FRONTEND_ORIGINS` allowlists the
   studio SPA's origin for credentialed CORS; its first origin sets whether the cookie is Secure and must be
   on or under `COOKIE_DOMAIN`. A studio user must be on both `login_allowlist` (to sign in) and
   `studio_allowlist` (lookups are cached for 60 s):

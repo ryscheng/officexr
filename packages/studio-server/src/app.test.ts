@@ -93,23 +93,24 @@ async function realtimeStub() {
   return loopbackOrigin(server);
 }
 
-async function openWs(origin: string, cookie?: string) {
-  const ws = new WebSocket(`${origin.replace('http', 'ws')}/ws`, { headers: cookie ? { cookie } : {} });
+async function openWs(origin: string, cookie?: string, pageOrigin?: string) {
+  const ws = new WebSocket(`${origin.replace('http', 'ws')}/ws`, { headers: cookie ? { cookie } : {}, origin: pageOrigin });
   await new Promise((resolve, reject) => ws.once('open', resolve).once('error', reject));
   return ws;
 }
 
-function rawUpgrade(origin: string, urlPath: string, cookie?: string) {
+function rawUpgrade(origin: string, urlPath: string, cookie?: string, pageOrigin?: string) {
   const socket = netConnect(Number(new URL(origin).port), '127.0.0.1', () => {
     const cookieHeader = cookie ? `Cookie: ${cookie}\r\n` : '';
-    socket.write(`GET ${urlPath} HTTP/1.1\r\nHost: x\r\n${cookieHeader}Connection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+    const originHeader = pageOrigin ? `Origin: ${pageOrigin}\r\n` : '';
+    socket.write(`GET ${urlPath} HTTP/1.1\r\nHost: x\r\n${cookieHeader}${originHeader}Connection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
   });
   return socket;
 }
 
 /** Resolves with everything the server sent once it ends the socket of a raw upgrade request to `urlPath`. */
-function rawUpgradeEnds(origin: string, urlPath: string, cookie?: string) {
-  const socket = rawUpgrade(origin, urlPath, cookie);
+function rawUpgradeEnds(origin: string, urlPath: string, cookie?: string, pageOrigin?: string) {
+  const socket = rawUpgrade(origin, urlPath, cookie, pageOrigin);
   let received = '';
   socket.on('error', () => {});
   socket.on('data', (chunk) => (received += chunk));
@@ -207,12 +208,25 @@ describe('public server', () => {
     expect(res.headers.get('access-control-allow-credentials')).toBe('true');
   });
 
-  it('answers 500 when the allowlist lookup fails', async () => {
+  it('answers a 500 without the error details when the allowlist lookup fails', async () => {
     const { pub } = await boot();
     isStudioAllowed = async () => {
       throw new Error('db down');
     };
-    expect((await fetch(`${pub}/api/me`, { headers: { cookie: await signIn(ALLOWED) } })).status).toBe(500);
+    const res = await fetch(`${pub}/api/me`, { headers: { cookie: await signIn(ALLOWED) } });
+    expect(res.status).toBe(500);
+    expect(await res.text()).toBe(JSON.stringify({ error: 'Internal error' }));
+  });
+
+  it('proxies /ws for an allowed session from a frontend origin or with no Origin', async () => {
+    const realtime = await realtimeStub();
+    const { pub } = await boot(realtime);
+    for (const pageOrigin of [FRONTEND, undefined]) {
+      const ws = await openWs(pub, await signIn(ALLOWED), pageOrigin);
+      ws.send('hi');
+      expect(await new Promise((resolve) => ws.once('message', (data) => resolve(String(data))))).toBe('echo hi');
+      ws.close();
+    }
   });
 
   it('refuses /ws upgrades without an allowed session, never reaching the realtime server', async () => {
@@ -225,6 +239,7 @@ describe('public server', () => {
     const { pub } = await boot(await listen(realtime));
     expect(await rawUpgradeEnds(pub, '/ws')).toMatch(/^HTTP\/1\.1 401 /);
     expect(await rawUpgradeEnds(pub, '/ws', await signIn('other@example.com'))).toMatch(/^HTTP\/1\.1 403 /);
+    expect(await rawUpgradeEnds(pub, '/ws', await signIn(ALLOWED), 'https://evil.example.com')).toMatch(/^HTTP\/1\.1 403 /);
     isStudioAllowed = async () => {
       throw new Error('db down');
     };

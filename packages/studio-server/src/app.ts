@@ -9,15 +9,14 @@ import { close } from '@officexr/server/listen';
 import { staticDirMiddleware } from '@officexr/server/static';
 import { loopbackOrigin, mountMcp, type McpOptions } from '@officexr/studio-mcp/mount-mcp';
 import type { StudioStorage } from '@officexr/world/vite-plugin-storage';
-import { studioGate, upgradeAccess, type Access, type IsStudioAllowed } from './studio-gate.ts';
+import { pathname } from './http.ts';
+import { sendJson, studioGate, upgradeAccess, type Access, type IsStudioAllowed } from './studio-gate.ts';
 
 export interface StudioListener {
   server: Server;
   /** Stops listening, drops proxied WebSockets and resolves once every connection has ended. */
   close(): Promise<void>;
 }
-
-const pathname = (req: IncomingMessage) => req.url?.split('?')[0];
 
 /**
  * Serves `/health` and `/ws` upgrades on `app`/`server` from the realtime server at `target`; with `authorizeUpgrade`,
@@ -69,6 +68,9 @@ function proxyRealtime(
     }
     authorizeUpgrade(req).then(
       (access) => {
+        if (socket.destroyed) {
+          return;
+        }
         if (access.type === 'allowed') {
           proxy.ws(req, socket, head);
         } else {
@@ -155,6 +157,16 @@ export function createPublicServer(opts: {
   app.use(studioGate(opts.sessionReader, opts.isStudioAllowed));
   opts.storage.mount(app);
   app.use(staticDirMiddleware('/models', opts.modelsDir));
-  const authorizeUpgrade = upgradeAccess(opts.sessionReader, opts.isStudioAllowed);
-  return listener(server, proxyRealtime(app, server, opts.realtimeTarget, authorizeUpgrade));
+  const authorizeUpgrade = upgradeAccess(opts.sessionReader, opts.isStudioAllowed, opts.frontendOrigins);
+  const dropTunnels = proxyRealtime(app, server, opts.realtimeTarget, authorizeUpgrade);
+  // Replaces connect's default handler, which sends the stack trace unless NODE_ENV is production.
+  app.use((err: Error, _req: IncomingMessage, res: ServerResponse, _next: connect.NextFunction) => {
+    console.error('[studio-server] public request:', err);
+    if (res.headersSent) {
+      res.destroy();
+    } else {
+      sendJson(res, 500, { error: 'Internal error' });
+    }
+  });
+  return listener(server, dropTunnels);
 }

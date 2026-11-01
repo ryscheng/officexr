@@ -86,6 +86,17 @@ export const createGoogleStrategy: GoogleStrategyFactory = (config, verify) =>
     verify,
   );
 
+/** Whether an email, or its domain, is on `table`: a `(kind, value)` allowlist like `login_allowlist`. */
+export function pgAllowlist(pool: pg.Pool, table: 'login_allowlist' | 'studio_allowlist'): IsLoginAllowed {
+  return async (email) => {
+    const { rows } = await pool.query<{ allowed: boolean }>(
+      `select exists (select 1 from ${table} where (kind = 'email' and value = $1) or (kind = 'domain' and value = $2)) as allowed`,
+      [email, emailDomain(email)],
+    );
+    return rows[0].allowed;
+  };
+}
+
 export function pgSessionStore(pool: pg.Pool): session.Store {
   // Non-sliding expiry: without it every request with a loaded session writes its expiry back.
   return new (connectPgSimple(session))({ pool, disableTouch: true });
@@ -104,7 +115,7 @@ export function parseCookieDomain(raw: string | undefined, host: string): string
   // Needs a dot so a bare TLD (`com`) can't scope the cookie to every site under it; browsers refuse a Domain on an IP host.
   const isIpHost = isIP(host) !== 0 || host.startsWith('[');
   if (isIpHost || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain) || !(host === domain || host.endsWith(`.${domain}`))) {
-    throw new Error(`COOKIE_DOMAIN must be a domain of PUBLIC_URL's host (${host}); got ${JSON.stringify(raw)}`);
+    throw new Error(`COOKIE_DOMAIN must be the host (${host}) or a parent domain of it; got ${JSON.stringify(raw)}`);
   }
   return domain;
 }

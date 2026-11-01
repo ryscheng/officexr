@@ -2,14 +2,14 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { createSessionReader, parseCookieDomain, parseFrontendOrigins, pgSessionStore } from '@officexr/server';
+import { createSessionReader, parseCookieDomain, parseFrontendOrigins, pgAllowlist, pgSessionStore } from '@officexr/server';
 import { listen } from '@officexr/server/listen';
 import { DEFAULT_MODELS_DIR } from '@officexr/server/static';
 import { createStudioMcpOptions } from '@officexr/studio-mcp/mount-mcp';
 import { createStudioStorage, seedDataDir } from '@officexr/world/vite-plugin-storage';
 import { createInternalServer, createPublicServer } from './app.ts';
 import { studioBackend } from './studio-backend.ts';
-import { cacheIsStudioAllowed, pgIsStudioAllowed } from './studio-gate.ts';
+import { cacheIsStudioAllowed } from './studio-gate.ts';
 
 const env = process.env;
 const port = Number(env.PORT) || 5174;
@@ -23,9 +23,10 @@ if (!env.SESSION_SECRET || !env.SUPABASE_DB_URL) {
   process.exit(1);
 }
 const frontendOrigins = parseFrontendOrigins(env.FRONTEND_ORIGINS);
-// There is no PUBLIC_URL here, so the cookie settings follow the studio's own origin.
+// There is no PUBLIC_URL here, so the cookie settings follow the first frontend origin.
 const studioOrigin = URL.parse(frontendOrigins[0] ?? '');
-const pool = new pg.Pool({ connectionString: env.SUPABASE_DB_URL });
+// Bounded so a hung database fails requests instead of holding them open.
+const pool = new pg.Pool({ connectionString: env.SUPABASE_DB_URL, connectionTimeoutMillis: 5000 });
 pool.on('error', (err) => console.error(err));
 const sessionReader = createSessionReader({
   sessionSecret: env.SESSION_SECRET,
@@ -61,7 +62,7 @@ const publicServer = createPublicServer({
   realtimeTarget,
   frontendOrigins,
   sessionReader,
-  isStudioAllowed: cacheIsStudioAllowed(pgIsStudioAllowed(pool)),
+  isStudioAllowed: cacheIsStudioAllowed(pgAllowlist(pool, 'studio_allowlist')),
 });
 
 await Promise.all([listen(internal.server, port), listen(publicServer.server, publicPort)]);
