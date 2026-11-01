@@ -24,7 +24,7 @@ officexr/
 │   │   │                 # hud/ (chat), voice/ (JaaS proximity voice)
 │   │   └── vite.config.ts # dev only: mounts @officexr/server's app and an in-process realtime office
 │   ├── server/           # @officexr/server — web backend
-│   │   ├── src/          # main.ts (entrypoint), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
+│   │   ├── src/          # main.ts (entrypoint), backend.ts (createBackend: db + realtime + app, shared with `pnpm dev`), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
 │   │   │                 # sessionPolicy.ts, runtimeConfig.ts (/config.js), staticDir.ts (/models), shared.ts (browser-safe types/limits); vitest specs
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
@@ -56,7 +56,7 @@ officexr/
   `PORT` (default 4173) serves the API, Google auth, read-only studio data, `/models`,
   `/config.js`, and an attached `RealtimeServer` (`/ws`, `/health`, `/rooms/:id/sessions`);
   it serves no SPA, so `GET /` is a 404. `ADMIN_PORT` (default 8787) serves only
-  `PUT /admin/world-constants`. `pnpm dev` mounts the same `createApp` in Vite's dev server.
+  `PUT /admin/world-constants`. `pnpm dev` mounts the same `createBackend` in Vite's dev server.
   The SPA imports only `@officexr/server/shared`, which must stay free of Node and server deps.
 - **Database.** The backend (`packages/server/src/db.ts`) reads and
   writes Postgres via `pg` using `SUPABASE_DB_URL`; the browser never talks to the
