@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch, paths } from '../apiOrigin';
 import { fetchRealtimeToken } from './realtimeToken';
 
 export type JoinCheck = 'checking' | 'prompt' | 'go' | 'cancelled';
@@ -7,14 +8,14 @@ export type JoinCheck = 'checking' | 'prompt' | 'go' | 'cancelled';
 // ponytail: a very fast reload may briefly see its own old session as connected and prompt.
 // ponytail: a tab that was reconnecting when another window joined replaces that window on reconnect, without prompting.
 /** Asks whether `login` is already in the office and, if joining would replace that session, waits for a decision. */
-export function useJoinCheck(officeId: string, login: string, fetchFn: typeof fetch = fetch) {
+export function useJoinCheck(officeId: string, login: string, fetchFn: typeof apiFetch = apiFetch) {
   const [state, setState] = useState<JoinCheck>('checking');
   const navigate = useNavigate();
   useEffect(() => {
     let cancelled = false;
     setState('checking');
     fetchRealtimeToken(fetchFn)
-      .then((token) => fetchFn(`/rooms/${encodeURIComponent(officeId)}/sessions?login=${encodeURIComponent(login)}${token ? `&token=${encodeURIComponent(token)}` : ''}`))
+      .then((token) => fetchFn(paths.sessions(officeId, login, token)))
       .then((res) => (res.ok ? (res.json() as Promise<{ connected: boolean; allowMulti: boolean }>) : null))
       // The server enforces the rule either way, so an unanswered check just joins.
       .catch(() => null)

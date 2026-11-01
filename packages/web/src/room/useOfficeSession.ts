@@ -11,6 +11,7 @@ import { generateJaaSJwt } from '../voice/jaasJwt';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { getJaasConfig } from '../voice/runtimeConfig';
 import { loadCharacter } from './character';
+import { wsUrl } from '../apiOrigin';
 import { fetchRealtimeToken } from './realtimeToken';
 
 export type OfficeSession =
@@ -49,7 +50,7 @@ export function useOfficeSession(
     const voice = createJaasVoice(me, selfId);
     const { channel, voiceAdapter } = createStack({
       mode: 'ws',
-      url: `${window.location.origin.replace(/^http/, 'ws')}/ws`,
+      url: wsUrl(),
       selfId,
       login: me.login,
       officeId,

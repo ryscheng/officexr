@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from './apiOrigin';
 
 export type ApiState<T> = { type: 'loading' } | { type: 'ready'; data: T } | { type: 'error'; message: string; status?: number };
 
@@ -12,7 +13,7 @@ export function useApi<T>(url: string): ApiState<T> {
   useEffect(() => {
     setState({ type: 'loading' });
     let cancelled = false;
-    fetch(url)
+    apiFetch(url)
       .then(async (res) => {
         const body = await res.json().catch(() => null);
         return res.ok

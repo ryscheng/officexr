@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Route, Routes, useParams } from 'react-router-dom';
 import type { Identity, Office } from '@officexr/server/shared';
 import { WorldLoadingScreen } from '@officexr/world/react';
+import { paths } from './apiOrigin';
 import { Async } from './Async';
 import { Home } from './home/Home';
 import { OfficeWorld } from './room/OfficeWorld';
@@ -11,7 +12,7 @@ import { useApi } from './useApi';
 const roomLoading = <WorldLoadingScreen step="Loading office…" />;
 
 function Room({ me }: { me: Identity }) {
-  const { id } = useParams();
+  const { id } = useParams() as { id: string };
   // Safari reports pinches as gesture events and zooms the page unless they
   // are cancelled; touch-action alone doesn't stop it over the overlays.
   // overscroll-behavior stops iOS rubber-banding the fixed room.
@@ -31,7 +32,7 @@ function Room({ me }: { me: Identity }) {
   }, []);
   return (
     <div className="fixed inset-0 touch-manipulation overflow-hidden">
-      <Async state={useApi<Office>(`/api/offices/${id}`)} loading={roomLoading}>
+      <Async state={useApi<Office>(paths.office(id))} loading={roomLoading}>
         {(office) => <OfficeWorld key={office.id} office={office} me={me} />}
       </Async>
     </div>
@@ -39,7 +40,7 @@ function Room({ me }: { me: Identity }) {
 }
 
 export default function App() {
-  const me = useApi<Identity>('/api/me');
+  const me = useApi<Identity>(paths.me);
   if (me.type === 'loading') {
     return <p className="p-6">Loading…</p>;
   }

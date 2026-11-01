@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { createBackend } from '@officexr/server';
 
+// An unset variable must render `/config.js` in index.html rather than a literal placeholder.
+process.env.VITE_API_ORIGIN ??= '';
+
 // The package scripts load this with `--configLoader runner`: the default loader leaves workspace
 // packages to Node's type stripping, which can't parse `@officexr/realtime-server`'s parameter properties.
 export default defineConfig(({ mode }) => {

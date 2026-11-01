@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office } from '@officexr/server/shared';
+import { apiFetch, paths } from '../apiOrigin';
 import { Async } from '../Async';
 import { SignInLink } from '../SignIn';
 import { DEFAULT_MAP } from '../room/withDefaultMap';
@@ -9,7 +10,7 @@ import { useMapNames } from '../useMapNames';
 
 function OfficeList() {
   return (
-    <Async state={useApi<Office[]>('/api/offices')}>
+    <Async state={useApi<Office[]>(paths.offices)}>
       {(offices) =>
         offices.length === 0 ? (
           <p className="text-gray-600">No offices yet. Create the first one below.</p>
@@ -45,7 +46,7 @@ function CreateOfficeForm({ identified }: { identified: boolean }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/offices', {
+      const res = await apiFetch(paths.offices, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: form.get('name'), description: form.get('description'), mapName }),
@@ -110,7 +111,7 @@ function SignOutButton() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/auth/logout', { method: 'POST' });
+      const res = await apiFetch(paths.signOut, { method: 'POST' });
       if (!res.ok) {
         throw new Error(errorMessage(res, await res.json().catch(() => null)));
       }

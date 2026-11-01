@@ -22,6 +22,7 @@ import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
 import { RoomMenu, RoomMenuChoice, RoomMenuItem } from './RoomMenu';
 import { ShortcutsDialog } from './ShortcutsDialog';
+import { apiUrl, paths } from '../apiOrigin';
 import { useJoinCheck } from './useJoinCheck';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession } from './useOfficeSession';
@@ -30,13 +31,13 @@ import { VrMenuItem } from './VrMenuItem';
 import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 
 const storages = {
-  maps: withDefaultMap(new FilesystemMapStorage()),
-  rooms: new FilesystemRoomStorage(),
-  layouts: new FilesystemLayoutStorage(),
+  maps: withDefaultMap(new FilesystemMapStorage({ basePath: apiUrl(paths.maps) })),
+  rooms: new FilesystemRoomStorage({ basePath: apiUrl(paths.rooms) }),
+  layouts: new FilesystemLayoutStorage({ basePath: apiUrl(paths.layouts) }),
 };
 
 export function OfficeWorld(props: { office: Office; me: Identity }) {
-  const api = useMemo(() => createDefaultApi(), []);
+  const api = useMemo(() => createDefaultApi({ apiPath: apiUrl(paths.worldObjectKinds) }), []);
   return (
     <ApplicationProvider api={api}>
       <World {...props} />
