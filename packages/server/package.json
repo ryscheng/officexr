@@ -24,6 +24,7 @@
     "connect": "^3.7.0",
     "connect-pg-simple": "^10.0.0",
     "cookie": "^1.1.1",
+    "cors": "^2.8.6",
     "express-session": "^1.19.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
@@ -31,6 +32,7 @@
     "tsx": "^4.19.2"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/node": "^22.7.5",
     "@types/ws": "^8.5.13",
     "typescript": "^5",

@@ -94,13 +94,69 @@ export function sessionIdentity(req: IncomingMessage): Identity | null {
   return (req as { user?: Identity }).user ?? null;
 }
 
+/** `COOKIE_DOMAIN` when `host` is that domain or a subdomain of it, else throws; unset or empty is `undefined`. */
+export function parseCookieDomain(raw: string | undefined, host: string): string | undefined {
+  const domain = raw?.trim().toLowerCase();
+  if (!domain) {
+    return undefined;
+  }
+  // Needs a dot so a bare TLD (`com`) can't scope the cookie to every site under it.
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain) || !(host === domain || host.endsWith(`.${domain}`))) {
+    throw new Error(`COOKIE_DOMAIN must be a domain of PUBLIC_URL's host (${host}); got ${JSON.stringify(raw)}`);
+  }
+  return domain;
+}
+
+function sessionCookieOptions(secure: boolean, cookieDomain: string | undefined) {
+  return { path: '/', httpOnly: true, sameSite: 'lax', secure, ...(cookieDomain && { domain: cookieDomain }) } as const;
+}
+
+export interface SessionReaderOptions {
+  sessionSecret: string;
+  sessionStore: session.Store;
+  cookieDomain?: string;
+  secure: boolean;
+}
+
+/** Session and passport middleware, with no routes and not path-scoped; `sessionIdentity` then reads the signed-in user. */
+export function createSessionReader({ sessionSecret, sessionStore, cookieDomain, secure }: SessionReaderOptions) {
+  const auth = new passport.Passport();
+  auth.serializeUser((user, done) => done(null, user));
+  auth.deserializeUser((user: Identity, done) => done(null, user));
+  const middlewares = [
+    session({
+      name: SESSION_COOKIE,
+      store: sessionStore,
+      secret: sessionSecret,
+      resave: false,
+      saveUninitialized: false,
+      proxy: true,
+      cookie: { ...sessionCookieOptions(secure, cookieDomain), maxAge: SESSION_MAX_AGE_MS },
+    }),
+    auth.initialize(),
+    auth.session(),
+  ] as unknown as NextHandleFunction[];
+  return { middlewares, passport: auth, sessionIdentity };
+}
+
 // Browsers drop tabs and newlines inside URLs (`/\t/evil.com` becomes `//evil.com`) and treat `\` as `/`;
 // non-ASCII would make `setHeader('Location')` throw. Real return paths are already percent-encoded.
 const UNSAFE_PATH_CHAR = (c: string) => c === '\\' || c < ' ' || c > '~';
 
-/** Accepts only same-origin relative paths, so `next` can't redirect off-site. */
-export function safeReturnPath(next: unknown): string {
-  return typeof next === 'string' && next.startsWith('/') && !next.startsWith('//') && ![...next].some(UNSAFE_PATH_CHAR) ? next : '/';
+/**
+ * `next` if it is a relative path or an absolute URL on one of `origins`, so it can't redirect off-site;
+ * otherwise the default landing page.
+ */
+export function safeReturnTarget(next: unknown, origins: string[]): string {
+  const landing = `${origins[0] ?? ''}/`;
+  if (typeof next !== 'string' || [...next].some(UNSAFE_PATH_CHAR)) {
+    return landing;
+  }
+  if (next.startsWith('/')) {
+    return next.startsWith('//') ? landing : next;
+  }
+  const url = URL.canParse(next) ? new URL(next) : undefined;
+  return url && origins.includes(url.origin) ? url.href : landing;
 }
 
 function redirect(res: ServerResponse, location: string) {
@@ -121,19 +177,23 @@ interface AuthOptions {
   sessionStore: session.Store;
   isLoginAllowed: IsLoginAllowed;
   googleStrategy?: GoogleStrategyFactory;
+  /** Allowlisted frontend origins; the first is where sign-in lands by default and where failures go. */
+  frontendOrigins?: string[];
+  cookieDomain?: string;
 }
 
 /** Session, passport and the `/auth/*` routes, in order; each runs only for `/auth/*` and `/api/*` requests. */
-export function createAuth({ config, sessionStore, isLoginAllowed, googleStrategy = createGoogleStrategy }: AuthOptions): NextHandleFunction[] {
-  const cookieOptions = {
-    path: '/',
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: new URL(config.publicUrl).protocol === 'https:',
-  } as const;
-  const auth = new passport.Passport();
-  auth.serializeUser((user, done) => done(null, user));
-  auth.deserializeUser((user: Identity, done) => done(null, user));
+export function createAuth({
+  config,
+  sessionStore,
+  isLoginAllowed,
+  googleStrategy = createGoogleStrategy,
+  frontendOrigins = [],
+  cookieDomain,
+}: AuthOptions): NextHandleFunction[] {
+  const secure = new URL(config.publicUrl).protocol === 'https:';
+  const reader = createSessionReader({ sessionSecret: config.sessionSecret, sessionStore, cookieDomain, secure });
+  const auth = reader.passport;
   auth.use(
     'google',
     googleStrategy(config, (_accessToken, _refreshToken, profile, done) => {
@@ -154,15 +214,15 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
       (req as { query?: unknown }).query = query;
     }
     if (req.method === 'GET' && path === '/auth/google') {
-      const returnPath = safeReturnPath(query.next);
+      const returnTo = safeReturnTarget(query.next, frontendOrigins);
       // Kept in the verified OAuth state, not the session: `req.logIn` regenerates the session.
-      const options = { scope: ['profile', 'email'], state: { returnPath } as unknown as string };
+      const options = { scope: ['profile', 'email'], state: { returnTo } as unknown as string };
       return auth.authenticate('google', options)(req, res, next);
     }
     if (req.method === 'GET' && path === '/auth/google/callback') {
-      const fail = (loginError: LoginError) => redirect(res, `/?login_error=${loginError}`);
+      const fail = (loginError: LoginError) => redirect(res, `${frontendOrigins[0] ?? ''}/?login_error=${loginError}`);
       // A custom callback because `successRedirect`/`failureRedirect` call `res.redirect`, which connect lacks.
-      return auth.authenticate('google', (err: unknown, user: Identity | false, info?: Partial<Refusal> & { state?: { returnPath?: unknown } }) => {
+      return auth.authenticate('google', (err: unknown, user: Identity | false, info?: Partial<Refusal> & { state?: { returnTo?: unknown } }) => {
         if (err) {
           console.error(err);
           return fail('failed');
@@ -175,7 +235,7 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
             console.error(loginErr);
             return fail('failed');
           }
-          redirect(res, safeReturnPath(info?.state?.returnPath));
+          redirect(res, safeReturnTarget(info?.state?.returnTo, frontendOrigins));
         });
       })(req, res, next);
     }
@@ -190,7 +250,7 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
             return next(destroyErr);
           }
           res.statusCode = 204;
-          res.setHeader('Set-Cookie', serialize(SESSION_COOKIE, '', { ...cookieOptions, expires: new Date(0) }));
+          res.setHeader('Set-Cookie', serialize(SESSION_COOKIE, '', { ...sessionCookieOptions(secure, cookieDomain), expires: new Date(0) }));
           res.end();
         });
       });
@@ -198,18 +258,5 @@ export function createAuth({ config, sessionStore, isLoginAllowed, googleStrateg
     next();
   };
 
-  return [
-    session({
-      name: SESSION_COOKIE,
-      store: sessionStore,
-      secret: config.sessionSecret,
-      resave: false,
-      saveUninitialized: false,
-      proxy: true,
-      cookie: { ...cookieOptions, maxAge: SESSION_MAX_AGE_MS },
-    }) as unknown as NextHandleFunction,
-    auth.initialize() as unknown as NextHandleFunction,
-    auth.session() as unknown as NextHandleFunction,
-    routes,
-  ].map(onlyAuthAndApi);
+  return [...reader.middlewares, routes].map(onlyAuthAndApi);
 }

@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { verifyJoinToken } from '@officexr/realtime-server/join-token';
 import { RealtimeServer } from '@officexr/realtime-server/server';
+import connect from 'connect';
 import session from 'express-session';
 import type { Profile } from 'passport-google-oauth20';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { apiMiddleware, type CreateOffice, type OfficeCharacters, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
 import { createApp } from './app';
-import { createGoogleStrategy, emailDomain, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
+import { parseFrontendOrigins } from './cors';
+import { createGoogleStrategy, createSessionReader, emailDomain, parseCookieDomain, safeReturnTarget, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import type { Identity, Office } from './shared';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -95,9 +97,14 @@ interface StartOptions {
   auth?: Partial<AuthConfig>;
   sessionStore?: session.Store;
   realtimeTokenSecret?: string;
+  frontendOrigins?: string[];
+  cookieDomain?: string;
 }
 
-async function start(mode: Mode, { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret }: StartOptions = {}): Promise<string> {
+async function start(
+  mode: Mode,
+  { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret, frontendOrigins, cookieDomain }: StartOptions = {},
+): Promise<string> {
   const app = await createApp({
     queryOffices,
     characters,
@@ -109,6 +116,8 @@ async function start(mode: Mode, { devUser, auth = AUTH, sessionStore = new sess
     googleStrategy: fakeGoogle,
     realtime: new RealtimeServer(),
     realtimeTokenSecret,
+    frontendOrigins,
+    cookieDomain,
     modelsDir,
     dev: mode === 'dev' ? { user: devUser } : undefined,
   });
@@ -304,6 +313,169 @@ describe('Google sign-in', () => {
     expect(await (await fetch(`${base}/api/me`)).json()).toEqual({ login: 'dev@example.com', name: 'Dev' });
     const authorize = await fetch(`${base}/auth/google`, { redirect: 'manual' });
     expect(new URL(authorize.headers.get('location')!).origin).toBe('https://accounts.google.com');
+  });
+});
+
+const STUDIO = 'https://studio.karibalabs.co';
+const ORIGINS = [STUDIO, 'https://other.karibalabs.co:8443'];
+const CORS_HEADERS = ['origin', 'credentials', 'methods', 'headers', 'max-age'].map((h) => `access-control-allow-${h}`);
+const corsHeaders = (res: Response) => CORS_HEADERS.filter((h) => res.headers.has(h));
+
+describe('CORS', () => {
+  it('answers an allowlisted preflight with 204 and the credentialed headers', async () => {
+    const base = await start('prod', { frontendOrigins: ORIGINS });
+    const res = await fetch(`${base}/api/offices`, {
+      method: 'OPTIONS',
+      headers: { origin: STUDIO, 'access-control-request-method': 'PUT', 'access-control-request-headers': 'content-type' },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe(STUDIO);
+    expect(res.headers.get('access-control-allow-credentials')).toBe('true');
+    expect(res.headers.get('access-control-allow-methods')).toBe('GET,HEAD,POST,PUT,PATCH,DELETE');
+    expect(res.headers.get('access-control-allow-headers')).toBe('Content-Type');
+    expect(res.headers.get('access-control-max-age')).toBe('600');
+  });
+
+  it.each(['https://evil.example', 'http://studio.karibalabs.co', 'https://studio.karibalabs.co:444', 'null'])(
+    'sends no Access-Control headers to %s, preflight or not',
+    async (origin) => {
+      const base = await start('prod', { frontendOrigins: ORIGINS });
+      const preflight = await fetch(`${base}/api/offices`, { method: 'OPTIONS', headers: { origin, 'access-control-request-method': 'PUT' } });
+      expect(corsHeaders(preflight)).toEqual([]);
+      expect(corsHeaders(await fetch(`${base}/api/me`, { headers: { origin } }))).toEqual([]);
+    },
+  );
+
+  it('lets an allowed origin read /api/me with credentials', async () => {
+    const base = await start('prod', { frontendOrigins: ORIGINS });
+    const headers = await signIn(base, 'a@example.com');
+    const res = await fetch(`${base}/api/me`, { headers: { ...headers, origin: STUDIO } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBe(STUDIO);
+    expect(res.headers.get('access-control-allow-credentials')).toBe('true');
+  });
+
+  it('is off when no origins are configured', async () => {
+    const base = await start('prod');
+    const preflight = await fetch(`${base}/api/me`, { method: 'OPTIONS', headers: { origin: STUDIO, 'access-control-request-method': 'GET' } });
+    expect(corsHeaders(preflight)).toEqual([]);
+    expect(corsHeaders(await fetch(`${base}/api/me`, { headers: { origin: STUDIO } }))).toEqual([]);
+  });
+});
+
+describe('parseFrontendOrigins', () => {
+  it('splits, trims and skips empties; unset is empty', () => {
+    expect(parseFrontendOrigins(` ${STUDIO}, http://localhost:5173 ,`)).toEqual([STUDIO, 'http://localhost:5173']);
+    expect(parseFrontendOrigins(undefined)).toEqual([]);
+    expect(parseFrontendOrigins('')).toEqual([]);
+  });
+
+  it.each(['studio.karibalabs.co', `${STUDIO}/`, `${STUDIO}/app`, 'ftp://studio.karibalabs.co', 'https://', `${STUDIO}?x=1`, '*'])('rejects %s', (bad) => {
+    expect(() => parseFrontendOrigins(`${STUDIO},${bad}`)).toThrow(/FRONTEND_ORIGINS/);
+  });
+});
+
+describe('parseCookieDomain', () => {
+  it('accepts the host itself or a parent domain; unset or empty is undefined', () => {
+    expect(parseCookieDomain('karibalabs.co', 'api.karibalabs.co')).toBe('karibalabs.co');
+    expect(parseCookieDomain('api.karibalabs.co', 'api.karibalabs.co')).toBe('api.karibalabs.co');
+    expect(parseCookieDomain(undefined, 'api.karibalabs.co')).toBeUndefined();
+    expect(parseCookieDomain(' ', 'api.karibalabs.co')).toBeUndefined();
+  });
+
+  it.each(['example.com', 'labs.co', '.karibalabs.co', 'co', 'com', 'karibalabs.co/x'])('rejects %s for api.karibalabs.co', (bad) => {
+    expect(() => parseCookieDomain(bad, 'api.karibalabs.co')).toThrow(/COOKIE_DOMAIN/);
+  });
+});
+
+describe('safeReturnTarget', () => {
+  it('accepts relative paths and allowlisted absolute URLs', () => {
+    expect(safeReturnTarget('/offices/x?y=1', ORIGINS)).toBe('/offices/x?y=1');
+    expect(safeReturnTarget('/offices', [])).toBe('/offices');
+    expect(safeReturnTarget(`${STUDIO}/studio/?a=1#h`, ORIGINS)).toBe(`${STUDIO}/studio/?a=1#h`);
+    expect(safeReturnTarget('https://other.karibalabs.co:8443/x', ORIGINS)).toBe('https://other.karibalabs.co:8443/x');
+  });
+
+  it.each([
+    'https://evil.example/',
+    `${STUDIO}.evil.example/`,
+    `${STUDIO}@evil.example/`,
+    'https://studio.karibalabs.co:444/',
+    'http://studio.karibalabs.co/',
+    '//evil.example',
+    `${STUDIO}\\@evil.example/`,
+    '/\\evil.example',
+    '/	/evil.example',
+    `${STUDIO}/
+`,
+    'javascript:alert(1)',
+    'evil',
+    '/日本',
+    '',
+    undefined,
+    ['/x'],
+  ])('falls back to the first origin for %s', (next) => {
+    expect(safeReturnTarget(next, ORIGINS)).toBe(`${STUDIO}/`);
+  });
+
+  it('falls back to / without origins, and rejects absolute URLs', () => {
+    expect(safeReturnTarget(`${STUDIO}/x`, [])).toBe('/');
+    expect(safeReturnTarget(undefined, [])).toBe('/');
+  });
+});
+
+describe('sign-in with frontend origins', () => {
+  it('returns to an allowlisted absolute next, and to the first origin otherwise', async () => {
+    const base = await start('prod', { frontendOrigins: ORIGINS });
+    expect((await googleLogin(base, googleProfile('a@example.com'), `${STUDIO}/studio/`)).location).toBe(`${STUDIO}/studio/`);
+    expect((await googleLogin(base, googleProfile('a@example.com'), 'https://evil.example/')).location).toBe(`${STUDIO}/`);
+    expect((await googleLogin(base, googleProfile('a@example.com'))).location).toBe(`${STUDIO}/`);
+  });
+
+  it('sends every failure to the first origin', async () => {
+    const base = await start('prod', { frontendOrigins: ORIGINS });
+    expect((await googleLogin(base, googleProfile('eve@example.com'), '/x')).location).toBe(`${STUDIO}/?login_error=not_allowed`);
+    expect((await googleLogin(base, googleProfile('a@example.com'), '/x', true)).location).toBe(`${STUDIO}/?login_error=failed`);
+    const denied = await fetch(`${base}/auth/google/callback?error=access_denied`, { redirect: 'manual' });
+    expect(denied.headers.get('location')).toBe(`${STUDIO}/?login_error=failed`);
+  });
+});
+
+describe('cookie domain', () => {
+  it('is set on the session cookie at login and on the clearing cookie at logout', async () => {
+    const base = await start('prod', { cookieDomain: 'officexr.test' });
+    const { callback, cookie } = await googleLogin(base, googleProfile('a@example.com'));
+    expect(callback.headers.getSetCookie()[0]).toMatch(/; Domain=officexr\.test(;|$)/);
+    const logout = await fetch(`${base}/auth/logout`, { method: 'POST', headers: { cookie: cookie! } });
+    expect(logout.headers.getSetCookie()[0]).toMatch(/; Domain=officexr\.test(;|$)/);
+  });
+
+  it('is omitted when unset', async () => {
+    const base = await start('prod');
+    expect((await googleLogin(base, googleProfile('a@example.com'))).callback.headers.getSetCookie()[0]).not.toMatch(/Domain=/);
+  });
+});
+
+describe('createSessionReader', () => {
+  it('resolves the identity from a cookie issued by createAuth, and null without one', async () => {
+    const sessionStore = new session.MemoryStore();
+    const base = await start('prod', { sessionStore });
+    const { cookie } = await googleLogin(base, googleProfile('a@example.com', { name: 'Alice' }));
+    const reader = createSessionReader({ sessionSecret: AUTH.sessionSecret, sessionStore, secure: false });
+    const app = connect();
+    reader.middlewares.forEach((middleware) => app.use(middleware));
+    app.use((req, res) => {
+      res.end(JSON.stringify(reader.sessionIdentity(req)));
+    });
+    const readerServer = createServer(app);
+    await new Promise<void>((resolve) => readerServer.listen(0, resolve));
+    try {
+      const url = `http://127.0.0.1:${(readerServer.address() as AddressInfo).port}/anything`;
+      expect(await (await fetch(url, { headers: { cookie: cookie! } })).json()).toEqual({ login: 'a@example.com', name: 'Alice' });
+      expect(await (await fetch(url)).json()).toBeNull();
+    } finally {
+      readerServer.close();
+    }
   });
 });
 

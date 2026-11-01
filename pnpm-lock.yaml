@@ -119,6 +119,9 @@ importers:
       cookie:
         specifier: ^1.1.1
         version: 1.1.1
+      cors:
+        specifier: ^2.8.6
+        version: 2.8.6
       express-session:
         specifier: ^1.19.0
         version: 1.19.0
@@ -135,6 +138,9 @@ importers:
         specifier: ^4.19.2
         version: 4.21.0
     devDependencies:
+      '@types/cors':
+        specifier: ^2.8.19
+        version: 2.8.19
       '@types/node':
         specifier: ^22.7.5
         version: 22.19.15
@@ -2727,6 +2733,9 @@ packages:
 
   '@types/connect@3.4.38':
     resolution: {integrity: sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==}
+
+  '@types/cors@2.8.19':
+    resolution: {integrity: sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==}
 
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
@@ -8611,6 +8620,10 @@ snapshots:
       '@types/pg': 8.23.1
 
   '@types/connect@3.4.38':
+    dependencies:
+      '@types/node': 22.19.15
+
+  '@types/cors@2.8.19':
     dependencies:
       '@types/node': 22.19.15
 

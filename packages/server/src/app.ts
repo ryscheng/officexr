@@ -5,6 +5,7 @@ import { createStudioStorage, studioMapExists } from '@officexr/world/vite-plugi
 import type { Store } from 'express-session';
 import { apiMiddleware, type CreateOffice, type OfficeCharacters, type QueryOffices, type UpdateOffice } from './api';
 import { createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
+import { createCors } from './cors';
 import { configJsMiddleware } from './runtimeConfig';
 import type { Identity } from './shared';
 import { staticDirMiddleware } from './staticDir';
@@ -22,6 +23,10 @@ export interface AppOptions {
   /** Called once per app, so building the options never connects to the database. */
   sessionStore: () => Store;
   googleStrategy?: GoogleStrategyFactory;
+  /** Parsed `FRONTEND_ORIGINS`: allowed for credentialed CORS and as sign-in return targets. Empty is same-origin only. */
+  frontendOrigins?: string[];
+  /** Parsed `COOKIE_DOMAIN`, applied to the session cookie. */
+  cookieDomain?: string;
   realtime: Pick<RealtimeServer, 'requestHandler'>;
   /** Must equal the realtime server's `OFFICEXR_REALTIME_TOKEN_SECRET`; unset disables `/api/realtime-token`. */
   realtimeTokenSecret?: string;
@@ -42,6 +47,8 @@ export async function createApp({
   auth,
   sessionStore,
   googleStrategy,
+  frontendOrigins = [],
+  cookieDomain,
   realtime,
   realtimeTokenSecret,
   studioDataDir,
@@ -54,12 +61,15 @@ export async function createApp({
     throw new Error(`Google sign-in is not configured; set a valid ${parsedAuth.envNames.join(', ')}`);
   }
   const app = connect();
+  if (frontendOrigins.length) {
+    app.use(createCors(frontendOrigins));
+  }
   const storage = createStudioStorage({ dataDir: studioDataDir, readOnly: true });
   await storage.migrate();
   // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
   storage.mount(app);
   if (parsedAuth.type === 'valid') {
-    for (const middleware of createAuth({ config: parsedAuth.config, sessionStore: sessionStore(), isLoginAllowed, googleStrategy })) {
+    for (const middleware of createAuth({ config: parsedAuth.config, sessionStore: sessionStore(), isLoginAllowed, googleStrategy, frontendOrigins, cookieDomain })) {
       app.use(middleware);
     }
   } else if (!devUser) {
