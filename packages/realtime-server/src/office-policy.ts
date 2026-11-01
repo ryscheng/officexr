@@ -1,8 +1,15 @@
 const POLICY_TIMEOUT_MS = 2_000;
 
-/** Whether `login` may hold several live sessions in `officeId`: only the
- * creator of a debug-enabled office may. `officeUrl` contains `{id}`.
- * Any failure resolves `false`. */
+/** Only the creator of a debug-enabled office may hold several live sessions in it. */
+export function officeAllowsMultiSession(
+  office: { debug_enabled?: unknown; created_by_login?: unknown },
+  login: string,
+): boolean {
+  return office.debug_enabled === true && office.created_by_login === login;
+}
+
+/** Whether `login` may hold several live sessions in `officeId`, per the
+ * office JSON at `officeUrl` (which contains `{id}`). Any failure resolves `false`. */
 export async function fetchSessionPolicy(
   officeUrl: string,
   officeId: string,
@@ -21,8 +28,7 @@ export async function fetchSessionPolicy(
     if (!office || typeof office !== 'object') {
       return false;
     }
-    const { debug_enabled, created_by_login } = office as Record<string, unknown>;
-    return debug_enabled === true && created_by_login === login;
+    return officeAllowsMultiSession(office, login);
   } catch {
     return false;
   }

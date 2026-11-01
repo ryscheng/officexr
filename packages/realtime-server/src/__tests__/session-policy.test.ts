@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelStatus, PlayerId } from '@officexr/sdk';
 import { WebSocket as RawWebSocket } from 'ws';
+import { fetchSessionPolicy } from '../office-policy.ts';
 import { RealtimeServer } from '../server.ts';
 import { decodeFrame, encodeFrame, REPLACED_CLOSE_CODE, type Frame, type HelloFrame } from '../protocol.ts';
 import { WsChannel, type WsChannelOptions } from '../ws-channel.ts';
@@ -40,7 +41,11 @@ describe('RealtimeServer sessions per login', () => {
   const sockets: RawWebSocket[] = [];
 
   async function startServer(fetchFn?: FakeFetch): Promise<void> {
-    server = new RealtimeServer({ port: 0, officeUrl: OFFICE_URL, fetch: fetchFn as typeof fetch | undefined });
+    const fetchImpl = (fetchFn ?? fetch) as typeof fetch;
+    server = new RealtimeServer({
+      port: 0,
+      sessionPolicy: (officeId, login) => fetchSessionPolicy(OFFICE_URL, officeId, login, fetchImpl),
+    });
     await server.start();
     port = server.boundPort;
   }
@@ -363,9 +368,8 @@ describe('RealtimeServer sessions per login', () => {
     });
   });
 
-  it('never allows several sessions without an office URL', async () => {
-    const fetchFn = vi.fn(debugOfficeOf('ann'));
-    server = new RealtimeServer({ port: 0, fetch: fetchFn as unknown as typeof fetch });
+  it('never allows several sessions without a session policy', async () => {
+    server = new RealtimeServer({ port: 0 });
     await server.start();
     port = server.boundPort;
 
@@ -373,7 +377,6 @@ describe('RealtimeServer sessions per login', () => {
     await join('ann#t2', 'ann');
 
     await vi.waitFor(() => expect(first.statuses.at(-1)).toBe('replaced'));
-    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('closes older sessions with the replaced code', async () => {
