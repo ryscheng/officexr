@@ -1,13 +1,16 @@
-import { createServer, ServerResponse, type IncomingMessage, type Server } from 'node:http';
+import { createServer, ServerResponse, STATUS_CODES, type IncomingMessage, type Server } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
 import connect from 'connect';
 import httpProxy from 'http-proxy';
+import { createCors, type createSessionReader } from '@officexr/server';
 import { close } from '@officexr/server/listen';
 import { staticDirMiddleware } from '@officexr/server/static';
 import { loopbackOrigin, mountMcp, type McpOptions } from '@officexr/studio-mcp/mount-mcp';
 import type { StudioStorage } from '@officexr/world/vite-plugin-storage';
+import { pathname } from './http.ts';
+import { sendJson, studioGate, upgradeAccess, type Access, type IsStudioAllowed } from './studio-gate.ts';
 
 export interface StudioListener {
   server: Server;
@@ -15,10 +18,16 @@ export interface StudioListener {
   close(): Promise<void>;
 }
 
-const pathname = (req: IncomingMessage) => req.url?.split('?')[0];
-
-/** Serves `/health` and `/ws` upgrades on `app`/`server` from the realtime server at `target`. */
-function proxyRealtime(app: connect.Server, server: Server, target: string): () => void {
+/**
+ * Serves `/health` and `/ws` upgrades on `app`/`server` from the realtime server at `target`; with `authorizeUpgrade`,
+ * only upgrades it allows are proxied.
+ */
+function proxyRealtime(
+  app: connect.Server,
+  server: Server,
+  target: string,
+  authorizeUpgrade?: (req: IncomingMessage) => Promise<Access>,
+): () => void {
   const proxy = httpProxy.createProxyServer({ target, changeOrigin: true });
   proxy.on('error', (err, _req, res) => {
     console.warn('[studio-server] realtime proxy:', err.message);
@@ -53,13 +62,39 @@ function proxyRealtime(app: connect.Server, server: Server, target: string): () 
     }
     tunnels.add(socket);
     socket.once('close', () => tunnels.delete(socket));
-    proxy.ws(req, socket, head);
+    if (!authorizeUpgrade) {
+      proxy.ws(req, socket, head);
+      return;
+    }
+    authorizeUpgrade(req).then(
+      (access) => {
+        if (socket.destroyed) {
+          return;
+        }
+        if (access.type === 'allowed') {
+          proxy.ws(req, socket, head);
+        } else {
+          refuseUpgrade(socket, access.status);
+        }
+      },
+      (err: Error) => {
+        console.error('[studio-server] upgrade auth:', err);
+        refuseUpgrade(socket, 500);
+      },
+    );
   });
   return () => {
     for (const socket of tunnels) {
       socket.destroy();
     }
   };
+}
+
+function refuseUpgrade(socket: Duplex, status: number) {
+  if (!socket.destroyed) {
+    socket.end(`HTTP/1.1 ${status} ${STATUS_CODES[status]}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+    socket.destroy();
+  }
 }
 
 function listener(server: Server, dropTunnels: () => void): StudioListener {
@@ -112,15 +147,34 @@ export function createInternalServer(opts: {
   return listener(server, dropTunnels);
 }
 
-/** Studio storage, `/models` and the realtime proxy. */
+/** Studio storage, `/models` and the realtime proxy, each only for a signed-in user on `studio_allowlist`, plus `GET /api/me`. */
 export function createPublicServer(opts: {
   storage: StudioStorage;
   modelsDir: string;
   realtimeTarget: string;
+  frontendOrigins: string[];
+  sessionReader: ReturnType<typeof createSessionReader>;
+  isStudioAllowed: IsStudioAllowed;
 }): StudioListener {
   const app = connect();
   const server = createServer(app);
+  if (opts.frontendOrigins.length) {
+    app.use(createCors(opts.frontendOrigins));
+  }
+  opts.sessionReader.middlewares.forEach((middleware) => app.use(middleware));
+  app.use(studioGate(opts.sessionReader, opts.isStudioAllowed));
   opts.storage.mount(app);
   app.use(staticDirMiddleware('/models', opts.modelsDir));
-  return listener(server, proxyRealtime(app, server, opts.realtimeTarget));
+  const authorizeUpgrade = upgradeAccess(opts.sessionReader, opts.isStudioAllowed, opts.frontendOrigins);
+  const dropTunnels = proxyRealtime(app, server, opts.realtimeTarget, authorizeUpgrade);
+  // Replaces connect's default handler, which sends the stack trace unless NODE_ENV is production.
+  app.use((err: Error, _req: IncomingMessage, res: ServerResponse, _next: connect.NextFunction) => {
+    console.error('[studio-server] public request:', err);
+    if (res.headersSent) {
+      res.destroy();
+    } else {
+      sendJson(res, 500, { error: 'Internal error' });
+    }
+  });
+  return listener(server, dropTunnels);
 }
