@@ -8,6 +8,9 @@ import { createBackend } from '@officexr/server';
 // packages to Node's type stripping, which can't parse `@officexr/realtime-server`'s parameter properties.
 export default defineConfig(({ mode }) => {
   const devEnv = loadEnv(mode, import.meta.dirname, '');
+  // index.html substitutes %VITE_API_ORIGIN% from process.env, so normalize it here: an unset value
+  // must render `/config.js` and a trailing slash must not double up.
+  process.env.VITE_API_ORIGIN = (devEnv.VITE_API_ORIGIN ?? '').replace(/\/+$/, '');
   const env = { ...devEnv, ...process.env };
   const { OFFICEXR_DEV_USER_LOGIN: login, OFFICEXR_DEV_USER_NAME: name } = env;
 

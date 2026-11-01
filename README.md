@@ -76,6 +76,8 @@ OFFICEXR_DEV_USER_NAME=You                # `pnpm dev` only
 # GOOGLE_CLIENT_SECRET=your-client-secret
 # SESSION_SECRET=a-long-random-string     # signs the session cookie
 # PUBLIC_URL=https://officexr.example.com # redirect URI: ${PUBLIC_URL}/auth/google/callback
+# FRONTEND_ORIGINS=https://app.example.com # optional; see "Sign-in"
+# COOKIE_DOMAIN=example.com                # optional; see "Sign-in"
 VITE_JAAS_APP_ID=your-jaas-app-id
 VITE_JAAS_API_KEY_ID=your-jaas-api-key-id
 VITE_JAAS_PRIVATE_KEY=your-jaas-private-key-base64
@@ -93,6 +95,14 @@ the server must send `X-Forwarded-Proto: https`, or login loops back to Google:
 insert into login_allowlist (kind, value) values ('domain', 'example.com');
 insert into login_allowlist (kind, value) values ('email', 'someone@gmail.com');
 ```
+
+To serve the SPAs from other origins, set `FRONTEND_ORIGINS` to their comma-separated exact origins
+(`https://app.example.com`, no path). They may then call the API with credentials and pass an absolute
+`?next=` on one of them to `/auth/google`; the first origin is the default landing page and where
+`login_error` redirects go. Unset means same-origin only. The frontends must be same-site with
+`PUBLIC_URL` (same registrable domain), because the session cookie is `SameSite=Lax`. Set `COOKIE_DOMAIN`
+(e.g. `example.com`, a domain `PUBLIC_URL`'s host is on or under) to share the cookie across subdomains.
+Turning it on signs existing users out once; the server clears the old host-only cookie on the next sign-in or sign-out.
 
 For local development the `OFFICEXR_DEV_USER_*` variables skip Google entirely.
 
@@ -136,6 +146,17 @@ The studio backend is a separate process, `pnpm --filter @officexr/studio-server
 ```bash
 pnpm build                  # outputs the SPA to packages/web/dist/
 ```
+
+### Cloudflare Pages
+
+Host the SPA on Pages with the backend on another origin. Git-integration settings:
+
+- Build command `pnpm --filter @officexr/web build`, output directory `packages/web/dist`.
+- Environment variables `NODE_VERSION=22`, `PNPM_VERSION=10.33.0` and `VITE_API_ORIGIN=https://api.example.com`
+  (the backend's origin; unset means same-origin). See `packages/web/.env.example`.
+
+The backend must allow the Pages origin as a frontend origin (CORS and sign-in `next`) and set
+`OFFICEXR_ASSET_BASE_URL`, since it doesn't serve `/baked-layouts/*` itself.
 
 ## License
 

@@ -1,7 +1,8 @@
 import { RealtimeServer } from '@officexr/realtime-server/server';
 import type connect from 'connect';
 import { createApp, type AppOptions } from './app';
-import { authConfigFromEnv } from './auth';
+import { authConfigFromEnv, parseCookieDomain } from './auth';
+import { parseFrontendOrigins } from './cors';
 import { createDb } from './db';
 import { officeSessionPolicy } from './sessionPolicy';
 
@@ -21,6 +22,9 @@ export interface Backend {
 
 /** The app and realtime server, wired to the database and Google sign-in configured in `env`. */
 export async function createBackend(env: Record<string, string | undefined>, { dev, adminToken, worldConstantsUrl }: BackendOptions = {}): Promise<Backend> {
+  const auth = authConfigFromEnv(env);
+  const frontendOrigins = parseFrontendOrigins(env.FRONTEND_ORIGINS);
+  const cookieDomain = parseCookieDomain(env.COOKIE_DOMAIN, URL.parse(auth.publicUrl ?? '')?.hostname ?? '');
   const db = createDb(env.SUPABASE_DB_URL);
   const realtime = new RealtimeServer({
     tokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
@@ -30,7 +34,9 @@ export async function createBackend(env: Record<string, string | undefined>, { d
   });
   const app = await createApp({
     ...db,
-    auth: authConfigFromEnv(env),
+    auth,
+    frontendOrigins,
+    cookieDomain,
     realtime,
     realtimeTokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
     studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,

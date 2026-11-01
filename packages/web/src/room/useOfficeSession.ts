@@ -7,6 +7,7 @@ import {
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import type { Identity } from '@officexr/server/shared';
+import { wsUrl } from '../apiOrigin';
 import { generateJaaSJwt } from '../voice/jaasJwt';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { getJaasConfig } from '../voice/runtimeConfig';
@@ -49,7 +50,7 @@ export function useOfficeSession(
     const voice = createJaasVoice(me, selfId);
     const { channel, voiceAdapter } = createStack({
       mode: 'ws',
-      url: `${window.location.origin.replace(/^http/, 'ws')}/ws`,
+      url: wsUrl(),
       selfId,
       login: me.login,
       officeId,
