@@ -311,9 +311,10 @@ describe('seedDataDir', () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'seed-'));
     try {
       await mkdir(path.join(dir, 'rooms'));
-      await writeFile(path.join(dir, 'rooms', 'lobby.json'), 'mine');
+      await writeFile(path.join(dir, 'rooms', 'default.json'), 'mine');
       await seedDataDir(dir);
-      expect(await readFile(path.join(dir, 'rooms', 'lobby.json'), 'utf8')).toBe('mine');
+      expect(await readFile(path.join(dir, 'rooms', 'default.json'), 'utf8')).toBe('mine');
+      expect(await readdir(path.join(dir, 'rooms'))).toContain('platform.json');
       expect(await readdir(dir)).toEqual(expect.arrayContaining(['.seeded', 'maps', 'layouts']));
       await rm(path.join(dir, 'maps'), { recursive: true });
       await seedDataDir(dir);

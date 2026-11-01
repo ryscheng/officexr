@@ -6,7 +6,7 @@ import {
   FilesystemRoomStorage,
   FilesystemWorldConstantsStorage,
 } from '@officexr/world/scenes';
-import type { Connect } from 'vite';
+import type { NodeMiddleware, StudioStorageApp } from '@officexr/world/vite-plugin-storage';
 import { handleMcpRequest, type StudioMcpOptions } from './server.ts';
 import type { StudioDocuments } from './studio-documents.ts';
 
@@ -22,9 +22,7 @@ function loopbackDocuments(origin: string): StudioDocuments {
   };
 }
 
-export interface McpApp {
-  use(path: string, handler: Connect.NextHandleFunction): unknown;
-}
+export type McpApp = StudioStorageApp;
 
 export type McpOptions = StudioMcpOptions & {
   /** Loopback and render origin, read per request: the port is only known once the server is listening. */
@@ -32,7 +30,7 @@ export type McpOptions = StudioMcpOptions & {
 };
 
 /** 405s everything but POST, so a host's SPA fallback can't answer a GET. */
-export const mcpMethodGuard: Connect.NextHandleFunction = (req, res, next) => {
+export const mcpMethodGuard: NodeMiddleware = (req, res, next) => {
   if (req.method === 'POST') {
     next();
     return;
@@ -42,7 +40,7 @@ export const mcpMethodGuard: Connect.NextHandleFunction = (req, res, next) => {
   res.end();
 };
 
-export function mcpPostHandler(options: McpOptions): Connect.NextHandleFunction {
+export function mcpPostHandler(options: McpOptions): NodeMiddleware {
   return async (req, res) => {
     try {
       const origin = options.origin();

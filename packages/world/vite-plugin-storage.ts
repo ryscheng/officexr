@@ -261,9 +261,10 @@ export default function studioStoragePlugin(options: StudioStoragePluginOptions 
   };
 }
 
-/** The slice of a connect app the storage routes need. */
+export type NodeMiddleware = (req: IncomingMessage, res: ServerResponse, next: (err?: unknown) => void) => void;
+
 export interface StudioStorageApp {
-  use(path: string, handler: Connect.NextHandleFunction): unknown;
+  use(path: string, handler: NodeMiddleware): unknown;
 }
 
 export interface StudioStorage {
