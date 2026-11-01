@@ -151,9 +151,12 @@ pnpm build                  # outputs the SPA to packages/web/dist/
 
 Host the SPA on Pages with the backend on another origin. Git-integration settings:
 
-- Build command `pnpm --filter @officexr/web build`, output directory `packages/web/dist`.
-- Environment variables `NODE_VERSION=22`, `PNPM_VERSION=10.33.0` and `VITE_API_ORIGIN=https://api.example.com`
-  (the backend's origin; unset means same-origin). See `packages/web/.env.example`.
+- Build command `pnpm build:pages` (web app at `/`, studio at `/studio/`), output directory `packages/web/dist`.
+- Environment variables `NODE_VERSION=22`, `PNPM_VERSION=10.33.0`, `VITE_API_ORIGIN=https://api.example.com`
+  (the backend's origin; unset means same-origin; see `packages/web/.env.example`) and
+  `VITE_ASSET_BASE_URL=https://officexr-assets.oso.xyz` (where the studio loads models and baked layouts from).
+
+The studio's Debug mode then loads baked layouts from that CDN, which can be up to 5 minutes stale.
 
 The backend must allow the Pages origin as a frontend origin (CORS and sign-in `next`) and set
 `OFFICEXR_ASSET_BASE_URL`, since it doesn't serve `/baked-layouts/*` itself.

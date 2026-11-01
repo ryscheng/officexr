@@ -8,6 +8,7 @@
     "build": "pnpm --filter @officexr/web run build",
     "db:migrate": "pnpm --filter @officexr/web run db:migrate",
     "preview": "pnpm --filter @officexr/web run preview",
+    "build:pages": "pnpm --filter @officexr/web build && pnpm --filter @officexr/studio build && rm -rf packages/web/dist/studio && cp -r packages/studio/dist packages/web/dist/studio",
     "build:web": "pnpm --filter @officexr/web run build",
     "test": "pnpm --filter @officexr/web --filter @officexr/server --filter @officexr/sdk --filter @officexr/core-refactor --filter @officexr/realtime-server --filter @officexr/world --filter @officexr/studio --filter @officexr/studio-mcp --filter @officexr/studio-server run test",
     "test:sdk": "pnpm --filter @officexr/sdk run test",

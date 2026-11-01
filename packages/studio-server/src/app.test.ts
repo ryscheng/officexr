@@ -112,13 +112,13 @@ describe('internal server', () => {
     });
     expect(mcp.status).toBe(200);
     expect((await mcp.json()).result.tools.length).toBeGreaterThan(0);
-    for (const index of ['/?op=render', '/index.html']) {
+    for (const index of ['/studio/?op=render', '/studio/index.html']) {
       const spa = await fetch(`${internal}${index}`);
       expect(spa.headers.get('content-type')).toMatch(/^text\/html/);
       expect(spa.headers.get('cache-control')).toBe('no-cache');
       expect(await spa.text()).toBe('<html>studio</html>');
     }
-    expect((await fetch(`${internal}/app.js`)).headers.get('content-type')).toBe('text/javascript');
+    expect((await fetch(`${internal}/studio/app.js`)).headers.get('content-type')).toBe('text/javascript');
   });
 });
 

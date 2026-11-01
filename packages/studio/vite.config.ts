@@ -24,7 +24,9 @@ const REALTIME_TARGET =
 const backend = studioBackend(process.env);
 const PUBLIC_DIR = fileURLToPath(new URL('./public', import.meta.url));
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // Only builds move to /studio/: in dev, Vite's base middleware would 404 root /models and /mcp.
+  base: command === 'build' ? '/studio/' : '/',
   plugins: [
     react(),
     tailwindcss(),
@@ -98,4 +100,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
