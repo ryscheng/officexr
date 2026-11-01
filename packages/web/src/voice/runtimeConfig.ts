@@ -1,4 +1,4 @@
-import type { RUNTIME_CONFIG_KEYS } from '../../server/runtimeConfig';
+import type { RUNTIME_CONFIG_KEYS } from '@officexr/server/shared';
 
 type RuntimeConfig = Partial<Record<(typeof RUNTIME_CONFIG_KEYS)[number], string>>;
 

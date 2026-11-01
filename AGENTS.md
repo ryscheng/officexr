@@ -3,9 +3,10 @@
 ## Project Overview
 
 OfficeXR is a 3D virtual office with real-time presence, proximity voice chat, and
-per-office characters. The codebase is a **pnpm workspaces monorepo** whose single
-deployable app is the web build (`@officexr/web`); `@officexr/studio` is the authoring
-tool for the maps, rooms and object kinds the web app renders.
+per-office characters. The codebase is a **pnpm workspaces monorepo** whose deployables
+are the web SPA build (`@officexr/web`) and its backend (`@officexr/server`);
+`@officexr/studio` is the authoring tool for the maps, rooms and object kinds the web
+app renders.
 
 > **Package manager: pnpm.** Always use `pnpm` — do not use `npm` or `yarn`.
 > Workspace config lives in `pnpm-workspace.yaml`; cross-package deps use the `workspace:*` protocol.
@@ -17,13 +18,15 @@ tool for the maps, rooms and object kinds the web app renders.
 ```
 officexr/
 ├── packages/
-│   ├── web/              # @officexr/web — office app
+│   ├── web/              # @officexr/web — office app (SPA only)
 │   │   ├── index.html    # SPA shell (entry: src/main.tsx)
 │   │   ├── src/          # App.tsx (routing), home/ (office list + create form), room/ (OfficeWorld, session, characters),
 │   │   │                 # hud/ (chat), voice/ (JaaS proximity voice)
-│   │   ├── server/       # /api/me, /auth/* (auth.ts: Google login, logout), /api/offices (list + create), /api/offices/:id/character (pg), /config.js; vitest specs
-│   │   ├── vite.config.ts
-│   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
+│   │   └── vite.config.ts # dev only: mounts @officexr/server's app and an in-process realtime office
+│   ├── server/           # @officexr/server — web backend
+│   │   ├── src/          # main.ts (entrypoint), backend.ts (createBackend: db + realtime + app, shared with `pnpm dev`), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
+│   │   │                 # sessionPolicy.ts, runtimeConfig.ts (/config.js), staticDir.ts (/models), shared.ts (browser-safe types/limits); vitest specs
+│   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
 │   ├── sdk/              # @officexr/sdk — headless game state, realtime protocol, Channel
@@ -49,17 +52,23 @@ officexr/
   domains in the SQL-managed `login_allowlist` table may sign in. The web app shows a
   sign-in screen on a 401 and a Sign out button on the home page (`POST /auth/logout`).
   The server never trusts client-supplied identity headers.
-- **Database.** The web server (a Vite plugin, `packages/web/server/api.ts`) reads and
+- **Backend.** `@officexr/server` is one Node process (`pnpm --filter @officexr/server start`).
+  `PORT` (default 4173) serves the API, Google auth, read-only studio data, `/models`,
+  `/config.js`, and an attached `RealtimeServer` (`/ws`, `/health`, `/rooms/:id/sessions`);
+  it serves no SPA, so `GET /` is a 404. `ADMIN_PORT` (default 8787) serves only
+  `PUT /admin/world-constants`. `pnpm dev` mounts the same `createBackend` in Vite's dev server.
+  The SPA imports only `@officexr/server/shared`, which must stay free of Node and server deps.
+- **Database.** The backend (`packages/server/src/db.ts`) reads and
   writes Postgres via `pg` using `SUPABASE_DB_URL`; the browser never talks to the
   database. Offices and per-office character choices live there.
 - **World.** A room renders the office's studio map through `@officexr/world`
   (`<Scene>`, physics, characters). The headless state and protocol live in
   `@officexr/sdk`; `@officexr/core-refactor`'s `createStack` builds the channel +
   voice adapter for a session.
-- **Realtime.** Presence, position and chat sync go over a `WsChannel` to
-  `@officexr/realtime-server`; the web server proxies `/ws` to it
-  (`REALTIME_SERVER_TARGET`, default `http://127.0.0.1:8787`). The studio debug mode
-  uses the same stack with an in-memory or WebSocket channel.
+- **Realtime.** Presence, position and chat sync go over a `WsChannel` to the
+  `@officexr/realtime-server` instance the backend runs in-process. `pnpm dev` runs its
+  own, so web dev no longer shares an office with `pnpm bots:start` or the studio. The
+  studio debug mode uses the same stack with an in-memory or WebSocket channel.
 - **Voice.** Proximity voice uses JaaS (Jitsi as a Service) rooms, with the JWT minted
   in the browser from the `VITE_JAAS_*` values served at `/config.js`.
 
@@ -68,9 +77,10 @@ officexr/
 ## Commands
 
 ```bash
-pnpm dev          # Start web dev server (Vite, http://localhost:5173)
-pnpm build        # Build web (outputs to packages/web/dist/)
-pnpm preview      # Preview the production web build
+pnpm dev          # Start web dev server (Vite, http://localhost:5173) with the backend in-process
+pnpm build        # Build the web SPA (outputs to packages/web/dist/)
+pnpm preview      # Preview the SPA build (static only: no API)
+pnpm --filter @officexr/server start   # Production backend on :4173, admin on :8787
 pnpm typecheck    # Typecheck every package
 pnpm test         # Unit tests for every package
 pnpm test:e2e:ci  # Hermetic Playwright suite run in CI
@@ -81,24 +91,27 @@ pnpm --filter @officexr/realtime-server start   # Realtime server on :8787
 
 ## Environment Variables
 
-### Web (`packages/web/.env`)
+### Web backend (`packages/server/.env.example`)
 
 Identity comes from Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
 `SESSION_SECRET` (signs the session cookie) and `PUBLIC_URL` (the external origin, no
 trailing slash; the Google OAuth redirect URI is `${PUBLIC_URL}/auth/google/callback`).
-`vite preview` / `start` refuses to boot unless all four are set. When `PUBLIC_URL` is
+`pnpm --filter @officexr/server start` refuses to boot unless all four are set. When `PUBLIC_URL` is
 https the session cookie is Secure, so the TLS terminator must send
 `X-Forwarded-Proto: https`. Who may sign in is managed with SQL in `login_allowlist`
 (values lowercase, no admin UI; example inserts in the README "Sign-in" section). The server reads offices from Postgres via
 `SUPABASE_DB_URL`. Run `pnpm db:migrate` (applies `supabase/migrations` to
-`SUPABASE_DB_URL`) before `start`.
-For local dev set `OFFICEXR_DEV_USER_LOGIN` / `OFFICEXR_DEV_USER_NAME`; `vite dev` (never
-preview) then treats every request as that user and needs no Google variables.
+`SUPABASE_DB_URL`) before `start`. The server listens on `PORT` (default 4173) and
+`ADMIN_PORT` (default 8787, `PUT /admin/world-constants` behind `OFFICEXR_REALTIME_ADMIN_TOKEN`);
+that default clashes with a local realtime CLI or `pnpm bots:start`, so set `ADMIN_PORT` to run
+both. `OFFICEXR_WORLD_CONSTANTS_URL` defaults to its own `/api/world-settings`.
+For local dev set `OFFICEXR_DEV_USER_LOGIN` / `OFFICEXR_DEV_USER_NAME`; `pnpm dev` (never
+`start`) then treats every request as that user and needs no Google variables.
 Optional `OFFICEXR_ASSET_BASE_URL` (served at `/config.js`) loads `/models` assets and baked
 layouts from that base URL (e.g. a CDN); unset keeps same-origin paths.
 
-Copy from `packages/web/.env.example`. Vite loads `.env` from `packages/web/` when
-`pnpm dev` / `pnpm build` are run inside that package.
+Copy `packages/server/.env.example` to `packages/web/.env` for `pnpm dev`, which loads
+`.env` from `packages/web/`; `start` reads only the process environment.
 
 ### Realtime server (`packages/realtime-server`)
 
@@ -106,7 +119,7 @@ Optional `OFFICEXR_REALTIME_TOKEN_SECRET` makes the server require an HMAC-signe
 (minted with `signJoinToken` from `@officexr/realtime-server/join-token`) on every `hello` and
 on `GET /rooms/:id/sessions?login=…&token=…`; the login is taken from the token. Unset keeps
 today's unauthenticated behaviour. The studio has no login, so it must point at a realtime
-server without the secret. The web server needs the same value (see `packages/web/.env.example`);
+server without the secret. The web backend needs the same value (see `packages/server/.env.example`);
 it mints the tokens at `GET /api/realtime-token`.
 
 ---

@@ -3,10 +3,10 @@
 > Living document. Intended as a baseline reference we can use when discussing
 > refactors / a "better" architecture in subsequent changes.
 
-OfficeXR is a pnpm monorepo whose deployable app is the browser client
-`@officexr/web`. It renders offices with the world renderer (`@officexr/world`)
+OfficeXR is a pnpm monorepo whose deployables are the browser client
+`@officexr/web` and its backend `@officexr/server`. It renders offices with the world renderer (`@officexr/world`)
 from maps authored in `@officexr/studio`, syncs players through a WebSocket
-realtime server, reads Postgres server-side, and takes identity from
+realtime server that the backend runs in-process, reads Postgres server-side, and takes identity from
 Google sign-in (Postgres-backed sessions). JaaS (Jitsi as a Service) handles proximity voice; the browser mints
 its own JaaS JWT via the Web Crypto API.
 
@@ -23,8 +23,8 @@ flowchart LR
 
     subgraph Server["Server side"]
         Google["Google OAuth<br/>sign-in"]
-        WebServer["web server (Vite plugin)<br/>/api/* · /config.js"]
-        Realtime["@officexr/realtime-server<br/>WebSocket relay"]
+        WebServer["@officexr/server :PORT<br/>/api/* · /auth/* · /config.js · /models"]
+        Realtime["RealtimeServer (attached)<br/>/ws · /health · admin on :ADMIN_PORT"]
         PG[("Postgres<br/>offices · office_characters")]
         JaaS["JaaS / Jitsi<br/>voice"]
     end
@@ -37,6 +37,7 @@ flowchart LR
     Google -- "/auth/google/callback" --> WebServer
     WebApp -- "/api/me, /api/offices" --> WebServer
     WebServer -- "pg" --> PG
+    WebServer --- Realtime
     SDK -- "WsChannel over /ws" --> Realtime
     Session --> JaaS
 
@@ -55,12 +56,14 @@ flowchart LR
 | `@officexr/core-refactor` | `createStack` (local / ws), office session, voice adapter contract | sdk, realtime-server |
 | `@officexr/world` | Renderer primitives, physics, characters, bots, map/room/cube-kind data | sdk, realtime-server |
 | `@officexr/studio` | Authoring editors and the debug playtest mode | world, core-refactor, sdk, realtime-server |
-| `@officexr/web` | Office list, room (`OfficeWorld`), chat HUD, JaaS voice, `/api` server | world, core-refactor, sdk |
+| `@officexr/server` | Web backend process: `/api`, Google auth, read-only studio data, `/models`, `/config.js`, attached realtime; `./shared` is the browser-safe subset | world, realtime-server |
+| `@officexr/web` | Office list, room (`OfficeWorld`), chat HUD, JaaS voice; its Vite dev server mounts `@officexr/server` | world, core-refactor, sdk, server (`./shared`) |
 
 ## 3. Realtime and Voice
 
 Each office is one realtime channel. In the web app that is a `WsChannel` to
-`@officexr/realtime-server` (the web server proxies `/ws` to it); the studio
+the `RealtimeServer` attached to `@officexr/server`'s public port (in `pnpm dev`,
+to Vite's dev server, so web dev has its own offices); the studio
 debug mode can also run fully in-browser on an `InMemoryChannel` hub. The
 SDK's `SyncEngine` broadcasts positions and state diffs, routes inbound
 events, and hands late joiners a snapshot. Proximity voice is a
@@ -376,7 +379,7 @@ where each step unlocks the next:
 
 Postgres schema lives in `supabase/migrations/`; `pnpm db:migrate` applies it
 to `SUPABASE_DB_URL`, and `.github/workflows/supabase-migrations.yml` applies
-it on push to `main`. Only the web server talks to the database (via `pg`);
+it on push to `main`. Only `@officexr/server` talks to the database (via `pg`);
 the browser makes no database calls.
 
 - `offices` — the office list; `map_name` selects the studio map (null means

@@ -1,25 +1,17 @@
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { verifyJoinToken } from '@officexr/realtime-server/join-token';
+import { RealtimeServer } from '@officexr/realtime-server/server';
 import session from 'express-session';
 import type { Profile } from 'passport-google-oauth20';
-import type { Connect, PreviewServer, ViteDevServer } from 'vite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  apiMiddleware,
-  officexrServer,
-  type CreateOffice,
-  type Identity,
-  type Office,
-  type OfficeCharacters,
-  type QueryOffices,
-  type ResolveIdentity,
-  type UpdateOffice,
-} from './api';
+import { apiMiddleware, type CreateOffice, type OfficeCharacters, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
+import { createApp } from './app';
 import { createGoogleStrategy, emailDomain, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
+import type { Identity, Office } from './shared';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const OTHER = '33333333-3333-4333-8333-333333333333';
@@ -60,25 +52,11 @@ const characters: OfficeCharacters = {
   },
 };
 
-/** Mimics connect's `use(base, fn)`: only matching paths reach `fn`, with `base` stripped from `req.url`. */
-function mountAt(base: string, fn: Connect.NextHandleFunction): Connect.NextHandleFunction {
-  return (req, res, next) => {
-    const url = req.url ?? '';
-    if (url !== base && !url.startsWith(`${base}/`) && !url.startsWith(`${base}?`)) {
-      return next();
-    }
-    req.url = url.slice(base.length) || '/';
-    fn(req, res, (err?: unknown) => {
-      req.url = url;
-      next(err);
-    });
-  };
-}
-
 let server: Server | undefined;
 afterEach(() => server?.close());
 
-type Hook = 'configureServer' | 'configurePreviewServer';
+/** `dev` passes `createApp` its dev options, as the web dev server does; `prod` doesn't, as `main.ts` doesn't. */
+type Mode = 'dev' | 'prod';
 
 const AUTH: AuthConfig = {
   googleClientId: 'client-id',
@@ -119,17 +97,8 @@ interface StartOptions {
   realtimeTokenSecret?: string;
 }
 
-async function start(hook: Hook, { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret }: StartOptions = {}): Promise<string> {
-  const stack: Connect.NextHandleFunction[] = [];
-  const fake = {
-    middlewares: {
-      use: (...args: [Connect.NextHandleFunction] | [string, Connect.NextHandleFunction]) => {
-        const [base, fn] = args.length === 2 ? args : [undefined, args[0]];
-        stack.push(base ? mountAt(base, fn) : fn);
-      },
-    },
-  };
-  const plugins = officexrServer({
+async function start(mode: Mode, { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret }: StartOptions = {}): Promise<string> {
+  const app = await createApp({
     queryOffices,
     characters,
     createOffice,
@@ -138,24 +107,12 @@ async function start(hook: Hook, { devUser, auth = AUTH, sessionStore = new sess
     auth,
     sessionStore: () => sessionStore,
     googleStrategy: fakeGoogle,
-    devUser,
+    realtime: new RealtimeServer(),
     realtimeTokenSecret,
     modelsDir,
+    dev: mode === 'dev' ? { user: devUser } : undefined,
   });
-  for (const plugin of plugins) {
-    await (plugin[hook] as (s: ViteDevServer | PreviewServer) => unknown)(fake as unknown as ViteDevServer);
-  }
-  server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const run = (i: number): void => {
-      if (i === stack.length) {
-        res.statusCode = 404;
-        res.end();
-        return;
-      }
-      stack[i](req, res, () => run(i + 1));
-    };
-    run(0);
-  });
+  server = createServer(app);
   await new Promise<void>((resolve) => server!.listen(0, resolve));
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
@@ -202,12 +159,12 @@ const alice = { 'x-test-login': 'a@example.com' };
 
 describe('/api/realtime-token', () => {
   it('is 401 without a session', async () => {
-    const base = await start('configurePreviewServer', { realtimeTokenSecret: 's3cret' });
+    const base = await start('prod', { realtimeTokenSecret: 's3cret' });
     expect((await fetch(`${base}/api/realtime-token`)).status).toBe(401);
   });
 
   it("mints a token the realtime server's verifier accepts for the session's login", async () => {
-    const base = await start('configurePreviewServer', { realtimeTokenSecret: 's3cret' });
+    const base = await start('prod', { realtimeTokenSecret: 's3cret' });
     const res = await fetch(`${base}/api/realtime-token`, { headers: await signIn(base, 'a@example.com') });
     expect(res.status).toBe(200);
     const { token } = (await res.json()) as { token: string };
@@ -215,41 +172,36 @@ describe('/api/realtime-token', () => {
     expect(verifyJoinToken('other', token)).toBeNull();
   });
 
-  it('uses the dev user on the dev server', async () => {
-    const base = await start('configureServer', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {}, realtimeTokenSecret: 's3cret' });
+  it('uses the dev user in dev', async () => {
+    const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {}, realtimeTokenSecret: 's3cret' });
     const { token } = (await (await fetch(`${base}/api/realtime-token`)).json()) as { token: string };
     expect(verifyJoinToken('s3cret', token)).toEqual({ login: 'dev@example.com' });
   });
 
   it.each([undefined, ''])('is 404 when the secret is %j', async (secret) => {
-    const base = await start('configurePreviewServer', { realtimeTokenSecret: secret });
+    const base = await start('prod', { realtimeTokenSecret: secret });
     expect((await fetch(`${base}/api/realtime-token`, { headers: await signIn(base, 'a@example.com') })).status).toBe(404);
   });
 });
 
 describe('/api/me', () => {
   it('returns the signed-in Google identity', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     const res = await fetch(`${base}/api/me`, { headers: await signIn(base, 'A@Example.com', 'Alice') });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ login: 'a@example.com', name: 'Alice' });
   });
 
   it('is 401 without a session, even with Tailscale headers', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     const res = await fetch(`${base}/api/me`, { headers: { 'Tailscale-User-Login': 'a@example.com' } });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: 'Not signed in' });
   });
 
-  it('is the dev user on the dev server, without any auth config', async () => {
-    const base = await start('configureServer', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {} });
+  it('is the dev user in dev, without any auth config', async () => {
+    const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {} });
     expect(await (await fetch(`${base}/api/me`)).json()).toEqual({ login: 'dev@example.com', name: 'Dev' });
-  });
-
-  it('ignores the dev user on the preview server', async () => {
-    const base = await start('configurePreviewServer', { devUser: { login: 'dev@example.com', name: 'Dev' } });
-    expect((await fetch(`${base}/api/me`)).status).toBe(401);
   });
 });
 
@@ -259,7 +211,7 @@ describe('Google sign-in', () => {
   });
 
   it('sends the user to Google with state and a PKCE challenge, and returns to a safe next', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     const { authorize, preLogin, callback, location, cookie } = await googleLogin(base, googleProfile('a@example.com'), '/offices/x?y=1');
     const google = new URL(authorize.headers.get('location')!);
     expect(google.origin).toBe('https://accounts.google.com');
@@ -278,12 +230,12 @@ describe('Google sign-in', () => {
   });
 
   it('round-trips a URL-encoded next with its own query string', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     expect((await googleLogin(base, googleProfile('a@example.com'), '/room/abc?x=1&y=2?z')).location).toBe('/room/abc?x=1&y=2?z');
   });
 
   it.each(['//evil.com', 'https://evil.com', '/\\evil.com', '/\t/evil.com', 'evil', '/日本'])('falls back to / for next=%s', async (next) => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     expect((await googleLogin(base, googleProfile('a@example.com'), next)).location).toBe('/');
   });
 
@@ -291,27 +243,27 @@ describe('Google sign-in', () => {
     ['unverified', googleProfile('a@example.com', { verified: false })],
     ['not_allowed', googleProfile('eve@example.com')],
   ])('refuses with login_error=%s and no session identity', async (code, user) => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     const { location, cookie } = await googleLogin(base, user, '/offices');
     expect(location).toBe(`/?login_error=${code}`);
     expect((await fetch(`${base}/api/me`, { headers: cookie ? { cookie } : {} })).status).toBe(401);
   });
 
   it('refuses a callback whose state does not match the session', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     const { location } = await googleLogin(base, googleProfile('a@example.com'), '/', true);
     expect(location).toBe('/?login_error=failed');
     expect(tokenRequests).toEqual([]);
   });
 
   it('refuses when the user denies consent at Google', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     const res = await fetch(`${base}/auth/google/callback?error=access_denied`, { redirect: 'manual' });
     expect(res.headers.get('location')).toBe('/?login_error=failed');
   });
 
   it('logout returns 204 and the old cookie no longer authenticates', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     const headers = await signIn(base, 'a@example.com');
     const res = await fetch(`${base}/auth/logout`, { method: 'POST', headers });
     expect(res.status).toBe(204);
@@ -321,7 +273,7 @@ describe('Google sign-in', () => {
 
   it('only touches the session store for /auth and /api', async () => {
     const store = new session.MemoryStore();
-    const base = await start('configurePreviewServer', { sessionStore: store });
+    const base = await start('prod', { sessionStore: store });
     const headers = await signIn(base, 'a@example.com');
     const reads: string[] = [];
     const get = store.get.bind(store);
@@ -336,19 +288,19 @@ describe('Google sign-in', () => {
     expect(reads).toHaveLength(1);
   });
 
-  it('fails preview startup naming the missing config', async () => {
-    await expect(start('configurePreviewServer', { auth: { publicUrl: 'https://x.test' } })).rejects.toThrow(
+  it('fails startup without dev options, naming the missing config', async () => {
+    await expect(start('prod', { auth: { publicUrl: 'https://x.test' } })).rejects.toThrow(
       'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET',
     );
-    await expect(start('configurePreviewServer', { auth: { ...AUTH, sessionSecret: '' } })).rejects.toThrow(/SESSION_SECRET$/);
+    await expect(start('prod', { auth: { ...AUTH, sessionSecret: '' } })).rejects.toThrow(/SESSION_SECRET$/);
   });
 
-  it('fails preview startup on a PUBLIC_URL without a scheme', async () => {
-    await expect(start('configurePreviewServer', { auth: { ...AUTH, publicUrl: 'officexr.example.com' } })).rejects.toThrow(/PUBLIC_URL$/);
+  it('fails startup without dev options on a PUBLIC_URL without a scheme', async () => {
+    await expect(start('prod', { auth: { ...AUTH, publicUrl: 'officexr.example.com' } })).rejects.toThrow(/PUBLIC_URL$/);
   });
 
-  it('keeps the dev user on the dev server while Google sign-in is mounted', async () => {
-    const base = await start('configureServer', { devUser: { login: 'dev@example.com', name: 'Dev' } });
+  it('keeps the dev user in dev while Google sign-in is mounted', async () => {
+    const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' } });
     expect(await (await fetch(`${base}/api/me`)).json()).toEqual({ login: 'dev@example.com', name: 'Dev' });
     const authorize = await fetch(`${base}/auth/google`, { redirect: 'manual' });
     expect(new URL(authorize.headers.get('location')!).origin).toBe('https://accounts.google.com');
@@ -381,12 +333,12 @@ describe('verifyGoogleProfile', () => {
 
 describe('/api/offices', () => {
   it('lists offices', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     expect(await (await fetch(`${base}/api/offices`)).json()).toEqual(offices);
   });
 
   it('returns one office, or 404', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     const office = await (await fetch(`${base}/api/offices/${ID}`)).json();
     expect(office).toEqual(offices[0]);
     expect((await fetch(`${base}/api/offices/22222222-2222-4222-8222-222222222222`)).status).toBe(404);
@@ -465,7 +417,7 @@ describe('POST /api/offices', () => {
   });
 
   it('is 405 for other methods', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     expect((await fetch(`${base}/api/offices`, { method: 'PUT', headers: await signIn(base, 'a@example.com') })).status).toBe(405);
   });
 });
@@ -557,7 +509,7 @@ describe('PATCH /api/offices/:id', () => {
   });
 
   it('is 405 for methods other than GET and PATCH', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     expect((await fetch(`${base}/api/offices/${ID}`, { method: 'DELETE', headers: await signIn(base, 'a@example.com') })).status).toBe(405);
   });
 });
@@ -572,7 +524,7 @@ describe('/api/offices/:id/character', () => {
     (await (await fetch(`${base}/api/offices/${officeId}/character`, { headers })).json()).characterId;
   beforeEach(async () => {
     storedCharacters.clear();
-    base = await start('configurePreviewServer');
+    base = await start('prod');
     me = await signIn(base, 'a@example.com');
     bob = await signIn(base, 'b@example.com');
   });
@@ -612,7 +564,7 @@ describe('/api/offices/:id/character', () => {
 
 describe('studio storage', () => {
   it('serves maps read-only', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     expect((await fetch(`${base}/api/maps/default`)).status).toBe(200);
     for (const method of ['PUT', 'DELETE']) {
       expect((await fetch(`${base}/api/maps/default`, { method, body: method === 'PUT' ? '{}' : undefined })).status).toBe(405);
@@ -623,7 +575,7 @@ describe('studio storage', () => {
 
 describe('/models', () => {
   it('serves model files and 404s outside the models dir', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     const res = await fetch(`${base}/models/characters/Mage.glb`);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('model/gltf-binary');
@@ -631,13 +583,13 @@ describe('/models', () => {
   });
 
   it('404s paths that escape the models dir', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     expect(await rawStatus(base, `/models/..%2f${outsideName}`)).toBe(404);
     expect(await rawStatus(base, `/models/characters/..%2f..%2f${outsideName}`)).toBe(404);
   });
 
   it('400s malformed escapes and keeps serving', async () => {
-    const base = await start('configurePreviewServer');
+    const base = await start('prod');
     expect(await rawStatus(base, '/models/%E0%A4%A')).toBe(400);
     expect((await fetch(`${base}/models/characters/Mage.glb`)).status).toBe(200);
   });
@@ -647,7 +599,7 @@ describe('/config.js', () => {
   it('serves OFFICEXR_ASSET_BASE_URL from the environment', async () => {
     process.env.OFFICEXR_ASSET_BASE_URL = 'https://cdn.example.com';
     try {
-      const base = await start('configurePreviewServer');
+      const base = await start('prod');
       const res = await fetch(`${base}/config.js`);
       expect(await res.text()).toContain('"OFFICEXR_ASSET_BASE_URL":"https://cdn.example.com"');
     } finally {
@@ -659,7 +611,7 @@ describe('/config.js', () => {
     process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
     process.env.SESSION_SECRET = 'session-secret';
     try {
-      const base = await start('configurePreviewServer');
+      const base = await start('prod');
       const body = await (await fetch(`${base}/config.js`)).text();
       expect(body).not.toContain('google-secret');
       expect(body).not.toContain('session-secret');
@@ -667,5 +619,17 @@ describe('/config.js', () => {
       delete process.env.GOOGLE_CLIENT_SECRET;
       delete process.env.SESSION_SECRET;
     }
+  });
+});
+
+describe('createApp routing', () => {
+  it('serves realtime /health and /rooms; GET / is 404', async () => {
+    const base = await start('prod');
+    const health = await fetch(`${base}/health`);
+    expect(health.status).toBe(200);
+    expect(await health.json()).toMatchObject({ ok: true });
+    expect(await (await fetch(`${base}/rooms/${ID}/sessions?login=a@example.com`)).json()).toEqual({ connected: false, allowMulti: false });
+    expect((await fetch(`${base}/api/nope`)).status).toBe(404);
+    expect((await fetch(`${base}/`)).status).toBe(404);
   });
 });

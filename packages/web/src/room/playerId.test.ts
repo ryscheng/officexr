@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Identity, Office } from '../../server/api';
+import type { Identity, Office } from '@officexr/server/shared';
 import { playerIdFor } from './playerId';
 
 afterEach(() => sessionStorage.clear());

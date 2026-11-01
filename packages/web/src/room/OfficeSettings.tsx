@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { Identity, Office, OfficeUpdate } from '../../server/api';
-import { MAX_DESCRIPTION, MAX_NAME } from '../../server/officeLimits';
+import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office, type OfficeUpdate } from '@officexr/server/shared';
 import { Dialog } from '../Dialog';
 import { errorMessage } from '../useApi';
 import { useMapNames } from '../useMapNames';

@@ -29,7 +29,8 @@ A 3D virtual office with real-time presence, proximity voice chat, and per-offic
 ```
 officexr/
 ├── packages/
-│   ├── web/              # @officexr/web — office app (React shell + /api server plugin)
+│   ├── web/              # @officexr/web — office app (React SPA)
+│   ├── server/           # @officexr/server — web backend: /api, Google sign-in, realtime
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms
 │   ├── studio/           # @officexr/studio — authoring editors
 │   ├── sdk/              # @officexr/sdk — headless game state + realtime protocol
@@ -58,16 +59,17 @@ pnpm install
 
 ### Environment Variables
 
-Copy and fill in `packages/web/.env.example`:
+Copy and fill in `packages/server/.env.example`. `pnpm dev` reads it from `packages/web/.env`;
+`pnpm --filter @officexr/server start` reads only the process environment:
 
 ```bash
-cp packages/web/.env.example packages/web/.env
+cp packages/server/.env.example packages/web/.env
 ```
 
 ```env
 SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
-OFFICEXR_DEV_USER_LOGIN=you@example.com   # `vite dev` only; signs every request in as this user
-OFFICEXR_DEV_USER_NAME=You                # `vite dev` only
+OFFICEXR_DEV_USER_LOGIN=you@example.com   # `pnpm dev` only; signs every request in as this user
+OFFICEXR_DEV_USER_NAME=You                # `pnpm dev` only
 # Production sign-in (`start` refuses to boot without all four):
 # GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 # GOOGLE_CLIENT_SECRET=your-client-secret
@@ -97,22 +99,31 @@ For local development the `OFFICEXR_DEV_USER_*` variables skip Google entirely.
 
 The web server reads Postgres directly; the browser makes no database calls.
 The web server runs migrations with `pnpm db:migrate` (reads `SUPABASE_DB_URL` from the shell environment, not `packages/web/.env`); run it before
-`pnpm --filter @officexr/web start`.
+`pnpm --filter @officexr/server start`.
 
 ### Run
 
 ```bash
-pnpm --filter @officexr/realtime-server start   # realtime server on :8787
-pnpm dev                                        # web dev server at http://localhost:5173
+pnpm dev   # web dev server at http://localhost:5173, with the API and realtime in-process
 ```
 
-The web server proxies `/ws` to the realtime server (`REALTIME_SERVER_TARGET`,
-default `http://127.0.0.1:8787`).
+`pnpm dev` mounts the backend (`@officexr/server`) and its own realtime office in the
+Vite dev server, so it no longer shares an office with `pnpm bots:start` or the studio.
+
+In production the backend is one process, `pnpm --filter @officexr/server start`:
+
+- `PORT` (default 4173) serves `/api/*`, `/auth/*`, `/config.js`, `/models/*`, the realtime
+  `/health` and `/rooms/:id/sessions`, and the `/ws` WebSocket. It serves no SPA (`GET /`
+  is a 404); host `packages/web/dist` separately.
+- `ADMIN_PORT` (default 8787) serves only `PUT /admin/world-constants`, guarded by
+  `OFFICEXR_REALTIME_ADMIN_TOKEN`; keep it off the public network. The default clashes with a
+  locally running realtime CLI or `pnpm bots:start`, so set `ADMIN_PORT` to run both.
+- It refuses to boot without valid Google sign-in config.
 
 ## Building
 
 ```bash
-pnpm build                  # outputs to packages/web/dist/
+pnpm build                  # outputs the SPA to packages/web/dist/
 ```
 
 ## License

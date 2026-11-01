@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1.7
 #
 # The officexr image: web app, studio and bots, with every layout pre-baked
-# and the KayKit asset packs installed. `pnpm --filter @officexr/web start`
-# serves the app; the studio deployment overrides the command.
+# and the KayKit asset packs installed. `pnpm --filter @officexr/server start`
+# runs the web backend (the built SPA in packages/web/dist is served
+# elsewhere); the studio deployment overrides the command.
 #
 # Stages are ordered so the slow ones key only on what actually changes them
 # and come back from the layer cache otherwise:
@@ -76,4 +77,4 @@ RUN test "$(node -p "require('/app/packages/studio-mcp/node_modules/playwright-c
 ENV COREPACK_HOME=/home/node/.corepack
 RUN corepack install
 ENV COREPACK_ENABLE_NETWORK=0
-CMD ["pnpm", "--filter", "@officexr/web", "start"]
+CMD ["pnpm", "--filter", "@officexr/server", "start"]

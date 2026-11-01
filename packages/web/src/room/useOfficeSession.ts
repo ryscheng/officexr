@@ -6,7 +6,7 @@ import {
   type OfficeSync,
   type PersistentLocalState,
 } from '@officexr/core-refactor';
-import type { Identity } from '../../server/api';
+import type { Identity } from '@officexr/server/shared';
 import { generateJaaSJwt } from '../voice/jaasJwt';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { getJaasConfig } from '../voice/runtimeConfig';
