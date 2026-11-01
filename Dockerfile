@@ -3,7 +3,8 @@
 # The officexr image: web app, studio and bots, with every layout pre-baked
 # and the KayKit asset packs installed. `pnpm --filter @officexr/server start`
 # runs the web backend (the built SPA in packages/web/dist is served
-# elsewhere); the studio deployment overrides the command.
+# elsewhere); the studio deployment overrides the command with
+# `pnpm --filter @officexr/studio-server start`.
 #
 # Stages are ordered so the slow ones key only on what actually changes them
 # and come back from the layer cache otherwise:
@@ -46,7 +47,8 @@ RUN npx -y "playwright-core@${PLAYWRIGHT_CORE_VERSION}" install --only-shell chr
 FROM store AS build
 COPY . .
 RUN pnpm install --offline --frozen-lockfile \
-      --filter @officexr/web... --filter @officexr/studio... --filter @officexr/world...
+      --filter @officexr/web... --filter @officexr/studio... --filter @officexr/studio-server... \
+      --filter @officexr/world...
 COPY --from=packs /models packages/studio/public/models
 # Baked layouts are gitignored, so bake them all here; the studio seeds its
 # data dir from packages/world/baked-layouts/, and vite copies public/ (with

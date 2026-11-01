@@ -29,6 +29,9 @@ officexr/
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
+│   ├── studio-server/    # @officexr/studio-server — studio backend: main.ts (entrypoint), app.ts (internal + public servers),
+│   │                     # studio-backend.ts (storage hooks + R2 sync, shared with the Vite studio), r2-publisher.ts, push-world-constants.ts
+│   ├── studio-mcp/       # @officexr/studio-mcp — MCP server at /mcp (tools, render_view)
 │   ├── sdk/              # @officexr/sdk — headless game state, realtime protocol, Channel
 │   ├── core-refactor/    # @officexr/core-refactor — createStack, office session, voice adapters
 │   └── realtime-server/  # @officexr/realtime-server — WebSocket relay + WsChannel
@@ -58,6 +61,17 @@ officexr/
   it serves no SPA, so `GET /` is a 404. `ADMIN_PORT` (default 8787) serves only
   `PUT /admin/world-constants`. `pnpm dev` mounts the same `createBackend` in Vite's dev server.
   The SPA imports only `@officexr/server/shared`, which must stay free of Node and server deps.
+- **Studio backend.** `@officexr/studio-server` is one Node process
+  (`pnpm --filter @officexr/studio-server start`; run `pnpm --filter @officexr/studio build` first).
+  `PORT` (default 5174) serves the built studio SPA, read/write `/api/*`, `/models` and `/mcp`,
+  unauthenticated, for in-cluster callers (the bots sidecar, private-ops-center).
+  `PUBLIC_PORT` (default 5175) serves `/api/*` and `/models`, and proxies `/health` and `/ws` to
+  `REALTIME_SERVER_TARGET` (default `http://127.0.0.1:8787`); everything else is a 404. The public
+  port is **unauthenticated until the studio auth gate lands — do not expose it**. Both ports share
+  one storage instance, so save hooks fire once per write. Other env: `OFFICEXR_STUDIO_DATA_DIR`
+  (seeded from `packages/world` on first boot), `OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS` +
+  `OFFICEXR_REALTIME_ADMIN_TOKEN`, `OFFICEXR_R2_*`, `OFFICEXR_RENDER_CHROMIUM_PATH`.
+  `pnpm --filter @officexr/studio dev` keeps running the same storage, MCP and hooks inside Vite.
 - **Database.** The backend (`packages/server/src/db.ts`) reads and
   writes Postgres via `pg` using `SUPABASE_DB_URL`; the browser never talks to the
   database. Offices and per-office character choices live there.
@@ -81,6 +95,7 @@ pnpm dev          # Start web dev server (Vite, http://localhost:5173) with the 
 pnpm build        # Build the web SPA (outputs to packages/web/dist/)
 pnpm preview      # Preview the SPA build (static only: no API)
 pnpm --filter @officexr/server start   # Production backend on :4173, admin on :8787
+pnpm --filter @officexr/studio-server start   # Studio backend: internal :5174, public :5175
 pnpm typecheck    # Typecheck every package
 pnpm test         # Unit tests for every package
 pnpm test:e2e:ci  # Hermetic Playwright suite run in CI

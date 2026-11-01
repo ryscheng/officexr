@@ -1,14 +1,11 @@
-import { randomUUID } from 'node:crypto';
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import studioStorage, { STORAGE_ENTRIES, seedDataDir } from '@officexr/world/vite-plugin-storage';
+import studioStorage, { seedDataDir } from '@officexr/world/vite-plugin-storage';
 import studioMcp from '@officexr/studio-mcp';
 import bots from '@officexr/world/vite-plugin-bots';
-import { pushWorldConstants } from './server/push-world-constants.ts';
-import { createR2Publisher, r2ConfigFromEnv, type R2Publisher } from './server/r2-publisher.ts';
+import { studioBackend } from '@officexr/studio-server/studio-backend';
 
 /**
  * The custom realtime server (`@officexr/realtime-server`, started by
@@ -24,42 +21,8 @@ import { createR2Publisher, r2ConfigFromEnv, type R2Publisher } from './server/r
 const REALTIME_TARGET =
   process.env.REALTIME_SERVER_TARGET ?? 'http://127.0.0.1:8787';
 
-// A bot server run outside the dev server is pushed to only when listed here,
-// and must share OFFICEXR_REALTIME_ADMIN_TOKEN.
-const pushTargets = new Set(
-  (process.env.OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS ?? '')
-    .split(',')
-    .map((t) => t.trim().replace(/\/$/, ''))
-    .filter(Boolean),
-);
-const adminToken = process.env.OFFICEXR_REALTIME_ADMIN_TOKEN ?? randomUUID();
-
-const WORLD_DIR = fileURLToPath(new URL('../world', import.meta.url));
+const backend = studioBackend(process.env);
 const PUBLIC_DIR = fileURLToPath(new URL('./public', import.meta.url));
-const DATA_DIR = process.env.OFFICEXR_STUDIO_DATA_DIR;
-
-// Created on first server start or layout hook, so `vite build` never builds one.
-let publisher: R2Publisher | null | undefined;
-function r2Publisher(): R2Publisher | null {
-  if (publisher === undefined) {
-    const config = r2ConfigFromEnv(process.env);
-    publisher = config ? createR2Publisher(config) : null;
-  }
-  return publisher;
-}
-
-function startR2Sync(): void {
-  const bucket = r2ConfigFromEnv(process.env)?.bucket;
-  console.log(
-    bucket
-      ? `[r2-publisher] publishing assets to bucket ${bucket}`
-      : '[r2-publisher] off: OFFICEXR_R2_ENDPOINT/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY not all set',
-  );
-  void r2Publisher()?.sync({
-    modelsDir: path.join(PUBLIC_DIR, 'models'),
-    bakedLayoutsDir: path.join(DATA_DIR ?? WORLD_DIR, STORAGE_ENTRIES.bakedLayouts.name),
-  });
-}
 
 export default defineConfig({
   plugins: [
@@ -73,35 +36,26 @@ export default defineConfig({
     //   /api/world-settings → packages/world/world-settings.json (saved world constants; pushed to realtime servers)
     //   /api/scenes     → packages/world/scenes/     (legacy back-compat for the
     //                                                 existing Scenes editor until Task 5)
-    studioStorage({
-      dataDir: DATA_DIR,
-      worldSettings: {
-        onSaved: (doc) => pushWorldConstants({ targets: [...pushTargets], token: adminToken, doc }),
-      },
-      bakedLayouts: {
-        onSaved: async (name, bytes) => r2Publisher()?.bakedLayoutHooks.onSaved(name, bytes),
-        onDeleted: async (name) => r2Publisher()?.bakedLayoutHooks.onDeleted(name),
-      },
-    }),
+    studioStorage(backend.storageOptions),
     studioMcp({ modelRoot: PUBLIC_DIR, chromiumPath: process.env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined }),
     {
       name: 'officexr:seed-data-dir',
       async configureServer() {
-        if (DATA_DIR) {
-          await seedDataDir(DATA_DIR);
+        if (backend.dataDir) {
+          await seedDataDir(backend.dataDir);
         }
       },
       async configurePreviewServer() {
-        if (DATA_DIR) {
-          await seedDataDir(DATA_DIR);
+        if (backend.dataDir) {
+          await seedDataDir(backend.dataDir);
         }
       },
     },
     // After the seed, so the sync sees seeded layouts.
     {
       name: 'officexr:r2-publish',
-      configureServer: startR2Sync,
-      configurePreviewServer: startR2Sync,
+      configureServer: backend.startR2Sync,
+      configurePreviewServer: backend.startR2Sync,
     },
     // Spawns the Node bot CLI as a child process for the lifetime of
     // the dev server, so `pnpm dev:studio` is one-command. If you'd
@@ -115,9 +69,9 @@ export default defineConfig({
       env: (server) => ({
         OFFICE_ID: 'studio-office',
         OFFICEXR_WORLD_CONSTANTS_URL: `http://127.0.0.1:${server.config.server.port}/api/world-settings`,
-        OFFICEXR_REALTIME_ADMIN_TOKEN: adminToken,
+        OFFICEXR_REALTIME_ADMIN_TOKEN: backend.adminToken,
       }),
-      onSpawn: (baseUrl) => pushTargets.add(baseUrl),
+      onSpawn: (baseUrl) => backend.pushTargets.add(baseUrl),
     }),
   ],
   // proxy and host are inherited from `server`.

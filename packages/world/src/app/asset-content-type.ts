@@ -7,9 +7,12 @@ const CONTENT_TYPES: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.ktx2': 'image/ktx2',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.mp3': 'audio/mpeg',
 };
 
-/** `Content-Type` for a model asset path or key, by extension; `application/octet-stream` when unknown. */
+/** `Content-Type` for a static asset path or key, by extension; `application/octet-stream` when unknown. */
 export function assetContentType(file: string): string {
   const ext = /\.[^./]+$/.exec(file)?.[0].toLowerCase();
   return (ext && CONTENT_TYPES[ext]) || 'application/octet-stream';
