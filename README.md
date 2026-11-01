@@ -125,7 +125,8 @@ The studio backend is a separate process, `pnpm --filter @officexr/studio-server
 (after `pnpm --filter @officexr/studio build`):
 
 - `PORT` (default 5174) serves the studio SPA, read/write `/api/*`, `/models/*` and `/mcp`,
-  unauthenticated; keep it inside the cluster.
+  and proxies `/health` and `/ws` like `PUBLIC_PORT`. It is unauthenticated; keep it inside the
+  cluster.
 - `PUBLIC_PORT` (default 5175) serves `/api/*` and `/models/*`, and proxies `/health` and the
   `/ws` WebSocket to `REALTIME_SERVER_TARGET` (default `http://127.0.0.1:8787`). It is
   **unauthenticated until the studio auth gate lands — do not expose it**.

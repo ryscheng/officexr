@@ -25,7 +25,7 @@ officexr/
 │   │   └── vite.config.ts # dev only: mounts @officexr/server's app and an in-process realtime office
 │   ├── server/           # @officexr/server — web backend
 │   │   ├── src/          # main.ts (entrypoint), backend.ts (createBackend: db + realtime + app, shared with `pnpm dev`), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
-│   │   │                 # sessionPolicy.ts, runtimeConfig.ts (/config.js), staticDir.ts (/models), shared.ts (browser-safe types/limits); vitest specs
+│   │   │                 # sessionPolicy.ts, runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
@@ -63,10 +63,10 @@ officexr/
   The SPA imports only `@officexr/server/shared`, which must stay free of Node and server deps.
 - **Studio backend.** `@officexr/studio-server` is one Node process
   (`pnpm --filter @officexr/studio-server start`; run `pnpm --filter @officexr/studio build` first).
-  `PORT` (default 5174) serves the built studio SPA, read/write `/api/*`, `/models` and `/mcp`,
+  Both ports proxy `/health` and `/ws` to `REALTIME_SERVER_TARGET` (default `http://127.0.0.1:8787`).
+  `PORT` (default 5174) also serves the built studio SPA, read/write `/api/*`, `/models` and `/mcp`,
   unauthenticated, for in-cluster callers (the bots sidecar, private-ops-center).
-  `PUBLIC_PORT` (default 5175) serves `/api/*` and `/models`, and proxies `/health` and `/ws` to
-  `REALTIME_SERVER_TARGET` (default `http://127.0.0.1:8787`); everything else is a 404. The public
+  `PUBLIC_PORT` (default 5175) also serves `/api/*` and `/models`; everything else is a 404. The public
   port is **unauthenticated until the studio auth gate lands — do not expose it**. Both ports share
   one storage instance, so save hooks fire once per write. Other env: `OFFICEXR_STUDIO_DATA_DIR`
   (seeded from `packages/world` on first boot), `OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS` +

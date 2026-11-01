@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_MODELS_DIR } from '@officexr/server/static';
 import { STORAGE_ENTRIES, type StudioStoragePluginOptions } from '@officexr/world/vite-plugin-storage';
 import { pushWorldConstants } from './push-world-constants.ts';
 import { createR2Publisher, r2ConfigFromEnv, type R2Publisher } from './r2-publisher.ts';
 
 const WORLD_DIR = fileURLToPath(new URL('../../world', import.meta.url));
-export const STUDIO_MODELS_DIR = fileURLToPath(new URL('../../studio/public/models', import.meta.url));
 
 /** The studio's storage hooks and R2 sync, shared by the Vite studio and the standalone server. */
 export function studioBackend(env: NodeJS.ProcessEnv) {
@@ -50,7 +50,7 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
         : '[r2-publisher] off: OFFICEXR_R2_ENDPOINT/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY not all set',
     );
     void r2Publisher()?.sync({
-      modelsDir: STUDIO_MODELS_DIR,
+      modelsDir: DEFAULT_MODELS_DIR,
       bakedLayoutsDir: path.join(dataDir ?? WORLD_DIR, STORAGE_ENTRIES.bakedLayouts.name),
     });
   };

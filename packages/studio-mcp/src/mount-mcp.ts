@@ -1,3 +1,4 @@
+import type { AddressInfo } from 'node:net';
 import {
   FilesystemBakedLayoutStorage,
   FilesystemCatalogStorage,
@@ -47,6 +48,15 @@ export type McpOptions = StudioMcpOptions & {
   /** Loopback and render origin, read per request: the port is only known once the server is listening. */
   origin: () => string;
 };
+
+/** `http://127.0.0.1:<port>` of a listening TCP server. */
+export function loopbackOrigin(server: { address(): AddressInfo | string | null } | null | undefined): string {
+  const address = server?.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('server is not listening on a TCP port');
+  }
+  return `http://127.0.0.1:${address.port}`;
+}
 
 /** 405s everything but POST, so a host's SPA fallback can't answer a GET. */
 export const mcpMethodGuard: NodeMiddleware = (req, res, next) => {
