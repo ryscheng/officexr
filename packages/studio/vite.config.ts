@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { access, cp, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import studioStorage, { STORAGE_ENTRIES, type StorageEntry } from '@officexr/world/vite-plugin-storage';
+import studioStorage, { STORAGE_ENTRIES, seedDataDir } from '@officexr/world/vite-plugin-storage';
 import studioMcp from '@officexr/studio-mcp';
 import bots from '@officexr/world/vite-plugin-bots';
 import { pushWorldConstants } from './server/push-world-constants.ts';
@@ -60,39 +59,6 @@ function startR2Sync(): void {
     modelsDir: path.join(PUBLIC_DIR, 'models'),
     bakedLayoutsDir: path.join(DATA_DIR ?? WORLD_DIR, STORAGE_ENTRIES.bakedLayouts.name),
   });
-}
-
-const exists = (p: string) =>
-  access(p).then(
-    () => true,
-    () => false,
-  );
-
-// Written once the whole seed has copied, so a seed interrupted mid-copy
-// (e.g. the container is killed) resumes on the next start, while files the
-// user deletes after a completed seed are never re-seeded.
-const SEED_MARKER = '.seeded';
-
-// ponytail: copy-if-missing only; updated defaults never merge into an existing data dir.
-async function seedDataDir(dataDir: string): Promise<void> {
-  const marker = path.join(dataDir, SEED_MARKER);
-  if (await exists(marker)) {
-    return;
-  }
-  await mkdir(dataDir, { recursive: true });
-  for (const { kind, name, seed } of Object.values<StorageEntry>(STORAGE_ENTRIES)) {
-    if (seed === false) {
-      continue;
-    }
-    const src = path.join(WORLD_DIR, name);
-    const dst = path.join(dataDir, name);
-    if (await exists(src)) {
-      await cp(src, dst, { recursive: true, force: false, errorOnExist: false });
-    } else if (kind === 'dir') {
-      await mkdir(dst, { recursive: true });
-    }
-  }
-  await writeFile(marker, '');
 }
 
 export default defineConfig({

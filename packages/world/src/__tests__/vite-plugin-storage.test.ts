@@ -1,12 +1,14 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_WORLD_CONSTANTS, type WorldConstants } from '@officexr/sdk';
 import studioStorage, {
   STORAGE_ENTRIES,
+  createStudioStorage,
+  seedDataDir,
   dataDirOptions,
 } from '../../vite-plugin-storage.ts';
 import { newPlaceObject } from '../scenes/commands.ts';
@@ -17,10 +19,9 @@ type Handler = (req: IncomingMessage, res: ServerResponse, next: () => void) => 
 
 async function serve(options: Parameters<typeof studioStorage>[0]) {
   const mounts: Array<[string, Handler]> = [];
-  const plugin = studioStorage(options);
-  await (plugin.configureServer as (s: unknown) => Promise<void>)({
-    middlewares: { use: (base: string, h: Handler) => mounts.push([base, h]) },
-  });
+  const storage = createStudioStorage(options);
+  await storage.migrate();
+  storage.mount({ use: (base, h) => mounts.push([base, h as Handler]) });
   const server: Server = createServer((req, res) => {
     const mount = mounts.find(([base]) => req.url?.startsWith(base));
     if (!mount) {
@@ -302,5 +303,23 @@ describe('studio storage plugin: map schema v2 migration', () => {
     expect(stored.schemaVersion).toBe(2);
     expect(stored.rooms[0]).toEqual({ id: 'baked', roomName: 'hall', position: [0, 0, 0], rotationY: 0 });
     expect(stored.rooms[1]).toEqual(v1Map.rooms[1]);
+  });
+});
+
+describe('seedDataDir', () => {
+  it('copies only missing entries and writes the marker', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'seed-'));
+    try {
+      await mkdir(path.join(dir, 'rooms'));
+      await writeFile(path.join(dir, 'rooms', 'lobby.json'), 'mine');
+      await seedDataDir(dir);
+      expect(await readFile(path.join(dir, 'rooms', 'lobby.json'), 'utf8')).toBe('mine');
+      expect(await readdir(dir)).toEqual(expect.arrayContaining(['.seeded', 'maps', 'layouts']));
+      await rm(path.join(dir, 'maps'), { recursive: true });
+      await seedDataDir(dir);
+      expect(await readdir(dir)).not.toContain('maps');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

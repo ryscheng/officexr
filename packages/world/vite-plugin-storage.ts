@@ -121,7 +121,7 @@ export interface StudioStoragePluginOptions {
 }
 
 /**
- * Vite plugin that exposes the studio's authoring REST surface.
+ * Studio authoring REST surface, mountable on any connect-style app.
  *
  *   GET    /api/rooms                → { rooms: ResourceSummary[] }
  *   GET    /api/rooms/:name          → SerializedScene | 404
@@ -141,12 +141,9 @@ export interface StudioStoragePluginOptions {
  *
  *   GET    /api/scenes/*             → legacy (back-compat for Task <6)
  *
- * Mounted on both the dev and preview servers, each of which first
- * rewrites every v1 map in the maps dir to v2.
+ * `migrate()` rewrites every v1 map in the maps dir to v2 and runs before `mount`.
  */
-export default function studioStoragePlugin(
-  options: StudioStoragePluginOptions = {},
-): Plugin {
+export function createStudioStorage(options: StudioStoragePluginOptions = {}): StudioStorage {
   const fromDataDir = options.dataDir ? dataDirOptions(options.dataDir) : {};
   const opts = {
     ...options,
@@ -185,9 +182,9 @@ export default function studioStoragePlugin(
   ).replace(/\/$/, '');
   const mountLegacy = !opts.legacyScenes?.disable;
 
-  const mountStorage = (server: Connect.Server) => {
+  const mount = (app: StudioStorageApp) => {
     const use = (base: string, handler: Connect.NextHandleFunction) =>
-      server.use(base, (req, res, next) => {
+      app.use(base, (req, res, next) => {
         if (opts.readOnly && req.method !== 'GET' && req.method !== 'HEAD') {
           return badMethod(res, ['GET', 'HEAD']);
         }
@@ -247,15 +244,62 @@ export default function studioStoragePlugin(
     }
   };
 
+  return { migrate: () => migrateMapsDir(mapsDir, roomsDir), mount };
+}
+
+/** Vite plugin that mounts `createStudioStorage` on the dev and preview servers. */
+export default function studioStoragePlugin(options: StudioStoragePluginOptions = {}): Plugin {
+  const storage = createStudioStorage(options);
   const boot = async (server: { middlewares: Connect.Server }) => {
-    await migrateMapsDir(mapsDir, roomsDir);
-    mountStorage(server.middlewares);
+    await storage.migrate();
+    storage.mount(server.middlewares);
   };
   return {
     name: 'officexr:studio-storage',
     configureServer: boot,
     configurePreviewServer: boot,
   };
+}
+
+/** The slice of a connect app the storage routes need. */
+export interface StudioStorageApp {
+  use(path: string, handler: Connect.NextHandleFunction): unknown;
+}
+
+export interface StudioStorage {
+  migrate(): Promise<void>;
+  mount(app: StudioStorageApp): void;
+}
+
+const SEED_MARKER = '.seeded';
+
+const exists = (p: string) => fs.access(p).then(() => true, () => false);
+
+// ponytail: copy-if-missing only; updated defaults never merge into an existing data dir.
+/**
+ * Copies the bundled defaults into `dataDir`. The marker is written once the whole seed has copied,
+ * so a seed interrupted mid-copy resumes on the next start, while files the user deletes after a
+ * completed seed are never re-seeded.
+ */
+export async function seedDataDir(dataDir: string): Promise<void> {
+  const marker = path.join(dataDir, SEED_MARKER);
+  if (await exists(marker)) {
+    return;
+  }
+  await fs.mkdir(dataDir, { recursive: true });
+  for (const { kind, name, seed } of Object.values<StorageEntry>(STORAGE_ENTRIES)) {
+    if (seed === false) {
+      continue;
+    }
+    const src = path.join(HERE, name);
+    const dst = path.join(dataDir, name);
+    if (await exists(src)) {
+      await fs.cp(src, dst, { recursive: true, force: false, errorOnExist: false });
+    } else if (kind === 'dir') {
+      await fs.mkdir(dst, { recursive: true });
+    }
+  }
+  await fs.writeFile(marker, '');
 }
 
 /**
