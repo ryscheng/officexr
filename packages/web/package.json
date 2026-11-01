@@ -15,7 +15,6 @@
   "dependencies": {
     "@jitsi/react-sdk": "^1.4.4",
     "@officexr/core-refactor": "workspace:*",
-    "@officexr/realtime-server": "workspace:*",
     "@officexr/sdk": "workspace:*",
     "@officexr/server": "workspace:*",
     "@officexr/world": "workspace:*",

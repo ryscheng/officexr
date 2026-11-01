@@ -1,26 +1,12 @@
 import { createServer, type Server } from 'node:http';
-import { RealtimeServer } from '@officexr/realtime-server/server';
-import { createApp } from './app';
-import { authConfigFromEnv } from './auth';
-import { createDb } from './db';
-import { officeSessionPolicy } from './sessionPolicy';
+import { createBackend } from './backend';
 
 const env = process.env;
 const port = Number(env.PORT) || 4173;
 const adminPort = Number(env.ADMIN_PORT) || 8787;
-const db = createDb(env.SUPABASE_DB_URL);
-const realtime = new RealtimeServer({
-  tokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
+const { app, realtime, closePool } = await createBackend(env, {
   adminToken: env.OFFICEXR_REALTIME_ADMIN_TOKEN,
   worldConstantsUrl: env.OFFICEXR_WORLD_CONSTANTS_URL ?? `http://127.0.0.1:${port}/api/world-settings`,
-  sessionPolicy: officeSessionPolicy(db.queryOffices),
-});
-const app = await createApp({
-  ...db,
-  auth: authConfigFromEnv(env),
-  realtime,
-  realtimeTokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
-  studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,
 });
 
 const listen = (server: Server, listenPort: number) =>
@@ -52,7 +38,7 @@ const shutdown = (): void => {
   realtime
     .stop()
     .then(() => Promise.all([close(server), close(adminServer)]))
-    .then(() => db.close())
+    .then(closePool)
     .then(
       () => process.exit(0),
       (err) => {

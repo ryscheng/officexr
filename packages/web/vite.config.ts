@@ -1,9 +1,8 @@
-import type { Server as HttpServer } from 'node:http';
+import { Server as HttpServer } from 'node:http';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { RealtimeServer } from '@officexr/realtime-server/server';
-import { authConfigFromEnv, createApp, createDb, officeSessionPolicy } from '@officexr/server';
+import { createBackend } from '@officexr/server';
 
 // The package scripts load this with `--configLoader runner`: the default loader leaves workspace
 // packages to Node's type stripping, which can't parse `@officexr/realtime-server`'s parameter properties.
@@ -19,27 +18,18 @@ export default defineConfig(({ mode }) => {
       {
         name: 'officexr-server',
         configureServer: async (server) => {
-          const db = createDb(env.SUPABASE_DB_URL);
-          const realtime = new RealtimeServer({
-            tokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
-            sessionPolicy: officeSessionPolicy(db.queryOffices),
-          });
-          const app = await createApp({
-            ...db,
-            auth: authConfigFromEnv(env),
-            realtime,
-            realtimeTokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
-            studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,
+          const { app, realtime, closePool } = await createBackend(env, {
             dev: { user: login ? { login, name: name ?? login } : undefined, env: devEnv },
+            worldConstantsUrl: env.OFFICEXR_WORLD_CONSTANTS_URL,
           });
           server.middlewares.use(app);
           const { httpServer } = server;
-          if (httpServer) {
-            // Vite only hands out an HTTP/2 server when `server.https` is set, which this config never does.
-            realtime.attach(httpServer as HttpServer);
+          // Vite hands out an HTTP/2 server only when `server.https` is set; realtime attaches to HTTP/1 only.
+          if (httpServer instanceof HttpServer) {
+            realtime.attach(httpServer);
             httpServer.on('close', () => {
               realtime.stop().catch((err) => console.error(err));
-              db.close().catch((err) => console.error(err));
+              closePool().catch((err) => console.error(err));
             });
           }
         },

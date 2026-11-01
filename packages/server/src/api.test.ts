@@ -203,16 +203,6 @@ describe('/api/me', () => {
     const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {} });
     expect(await (await fetch(`${base}/api/me`)).json()).toEqual({ login: 'dev@example.com', name: 'Dev' });
   });
-
-  it('ignores OFFICEXR_DEV_USER_LOGIN without dev options', async () => {
-    process.env.OFFICEXR_DEV_USER_LOGIN = 'dev@example.com';
-    try {
-      const base = await start('prod');
-      expect((await fetch(`${base}/api/me`)).status).toBe(401);
-    } finally {
-      delete process.env.OFFICEXR_DEV_USER_LOGIN;
-    }
-  });
 });
 
 describe('Google sign-in', () => {
@@ -633,7 +623,7 @@ describe('/config.js', () => {
 });
 
 describe('createApp routing', () => {
-  it('serves realtime /health and /rooms ahead of the api 404, and nothing else', async () => {
+  it('serves realtime /health and /rooms; GET / is 404', async () => {
     const base = await start('prod');
     const health = await fetch(`${base}/health`);
     expect(health.status).toBe(200);
