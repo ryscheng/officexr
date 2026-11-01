@@ -101,7 +101,7 @@ To serve the SPAs from other origins, set `FRONTEND_ORIGINS` to their comma-sepa
 `login_error` redirects go. Unset means same-origin only. The frontends must be same-site with
 `PUBLIC_URL` (same registrable domain), because the session cookie is `SameSite=Lax`. Set `COOKIE_DOMAIN`
 (e.g. `example.com`, a domain `PUBLIC_URL`'s host is on or under) to share the cookie across subdomains.
-Turning it on signs existing users out once.
+Turning it on signs existing users out once; the server clears the old host-only cookie on the next sign-in or sign-out.
 
 For local development the `OFFICEXR_DEV_USER_*` variables skip Google entirely.
 

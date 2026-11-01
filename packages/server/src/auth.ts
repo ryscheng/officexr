@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { isIP } from 'node:net';
 import connectPgSimple from 'connect-pg-simple';
 import { serialize } from 'cookie';
 import session from 'express-session';
@@ -100,8 +101,9 @@ export function parseCookieDomain(raw: string | undefined, host: string): string
   if (!domain) {
     return undefined;
   }
-  // Needs a dot so a bare TLD (`com`) can't scope the cookie to every site under it.
-  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain) || !(host === domain || host.endsWith(`.${domain}`))) {
+  // Needs a dot so a bare TLD (`com`) can't scope the cookie to every site under it; browsers refuse a Domain on an IP host.
+  const isIpHost = isIP(host) !== 0 || host.startsWith('[');
+  if (isIpHost || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain) || !(host === domain || host.endsWith(`.${domain}`))) {
     throw new Error(`COOKIE_DOMAIN must be a domain of PUBLIC_URL's host (${host}); got ${JSON.stringify(raw)}`);
   }
   return domain;
@@ -118,8 +120,7 @@ export interface SessionReaderOptions {
   secure: boolean;
 }
 
-/** Session and passport middleware, with no routes and not path-scoped; `sessionIdentity` then reads the signed-in user. */
-export function createSessionReader({ sessionSecret, sessionStore, cookieDomain, secure }: SessionReaderOptions) {
+function buildSessionReader({ sessionSecret, sessionStore, cookieDomain, secure }: SessionReaderOptions) {
   const auth = new passport.Passport();
   auth.serializeUser((user, done) => done(null, user));
   auth.deserializeUser((user: Identity, done) => done(null, user));
@@ -132,31 +133,40 @@ export function createSessionReader({ sessionSecret, sessionStore, cookieDomain,
       saveUninitialized: false,
       proxy: true,
       cookie: { ...sessionCookieOptions(secure, cookieDomain), maxAge: SESSION_MAX_AGE_MS },
-    }),
-    auth.initialize(),
-    auth.session(),
-  ] as unknown as NextHandleFunction[];
-  return { middlewares, passport: auth, sessionIdentity };
+    }) as unknown as NextHandleFunction,
+    auth.initialize() as unknown as NextHandleFunction,
+    auth.session() as unknown as NextHandleFunction,
+  ];
+  return { middlewares, passport: auth };
+}
+
+/** Session and passport middleware, with no routes and not path-scoped; `sessionIdentity` then reads the signed-in user. */
+export function createSessionReader(options: SessionReaderOptions) {
+  return { middlewares: buildSessionReader(options).middlewares, sessionIdentity };
 }
 
 // Browsers drop tabs and newlines inside URLs (`/\t/evil.com` becomes `//evil.com`) and treat `\` as `/`;
 // non-ASCII would make `setHeader('Location')` throw. Real return paths are already percent-encoded.
 const UNSAFE_PATH_CHAR = (c: string) => c === '\\' || c < ' ' || c > '~';
 
+const landingUrl = (origins: string[]) => `${origins[0] ?? ''}/`;
+
 /**
- * `next` if it is a relative path or an absolute URL on one of `origins`, so it can't redirect off-site;
+ * `next` if it is a relative path or an absolute http(s) URL on one of `origins`, so it can't redirect off-site;
  * otherwise the default landing page.
  */
 export function safeReturnTarget(next: unknown, origins: string[]): string {
-  const landing = `${origins[0] ?? ''}/`;
+  const landing = landingUrl(origins);
   if (typeof next !== 'string' || [...next].some(UNSAFE_PATH_CHAR)) {
     return landing;
   }
   if (next.startsWith('/')) {
     return next.startsWith('//') ? landing : next;
   }
-  const url = URL.canParse(next) ? new URL(next) : undefined;
-  return url && origins.includes(url.origin) ? url.href : landing;
+  const url = URL.parse(next);
+  // `blob:https://host/` reports the inner origin, so the scheme is checked too.
+  const isPlainHttp = url && (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password;
+  return isPlainHttp && origins.includes(url.origin) ? url.href : landing;
 }
 
 function redirect(res: ServerResponse, location: string) {
@@ -192,8 +202,15 @@ export function createAuth({
   cookieDomain,
 }: AuthOptions): NextHandleFunction[] {
   const secure = new URL(config.publicUrl).protocol === 'https:';
-  const reader = createSessionReader({ sessionSecret: config.sessionSecret, sessionStore, cookieDomain, secure });
+  const reader = buildSessionReader({ sessionSecret: config.sessionSecret, sessionStore, cookieDomain, secure });
   const auth = reader.passport;
+  const landing = landingUrl(frontendOrigins);
+  // With a cookie domain, browsers keep the old host-only cookie too and send it first, so it must be expired.
+  const expireHostOnlyCookie = (res: ServerResponse) => {
+    if (cookieDomain) {
+      res.appendHeader('Set-Cookie', serialize(SESSION_COOKIE, '', { ...sessionCookieOptions(secure, undefined), expires: new Date(0) }));
+    }
+  };
   auth.use(
     'google',
     googleStrategy(config, (_accessToken, _refreshToken, profile, done) => {
@@ -220,7 +237,7 @@ export function createAuth({
       return auth.authenticate('google', options)(req, res, next);
     }
     if (req.method === 'GET' && path === '/auth/google/callback') {
-      const fail = (loginError: LoginError) => redirect(res, `${frontendOrigins[0] ?? ''}/?login_error=${loginError}`);
+      const fail = (loginError: LoginError) => redirect(res, `${landing}?login_error=${loginError}`);
       // A custom callback because `successRedirect`/`failureRedirect` call `res.redirect`, which connect lacks.
       return auth.authenticate('google', (err: unknown, user: Identity | false, info?: Partial<Refusal> & { state?: { returnTo?: unknown } }) => {
         if (err) {
@@ -235,6 +252,7 @@ export function createAuth({
             console.error(loginErr);
             return fail('failed');
           }
+          expireHostOnlyCookie(res);
           redirect(res, safeReturnTarget(info?.state?.returnTo, frontendOrigins));
         });
       })(req, res, next);
@@ -250,7 +268,8 @@ export function createAuth({
             return next(destroyErr);
           }
           res.statusCode = 204;
-          res.setHeader('Set-Cookie', serialize(SESSION_COOKIE, '', { ...sessionCookieOptions(secure, cookieDomain), expires: new Date(0) }));
+          res.appendHeader('Set-Cookie', serialize(SESSION_COOKIE, '', { ...sessionCookieOptions(secure, cookieDomain), expires: new Date(0) }));
+          expireHostOnlyCookie(res);
           res.end();
         });
       });

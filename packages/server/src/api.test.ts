@@ -126,7 +126,7 @@ async function start(
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
-const cookieOf = (res: Response) => res.headers.getSetCookie()[0]?.split(';')[0];
+const cookieOf = (res: Response) => res.headers.getSetCookie().find((c) => !c.startsWith('officexr.sid=;'))?.split(';')[0] as string;
 
 /** Runs the Google round trip as `user`; `location` is where the callback sends the browser. */
 async function googleLogin(base: string, user: Profile, next?: string, tamperState = false) {
@@ -355,6 +355,12 @@ describe('CORS', () => {
     expect(res.headers.get('access-control-allow-credentials')).toBe('true');
   });
 
+  it.each([STUDIO, 'https://evil.example', undefined])('varies on Origin even for origin %s', async (origin) => {
+    const base = await start('prod', { frontendOrigins: ORIGINS });
+    const res = await fetch(`${base}/models/characters/Mage.glb`, { headers: origin ? { origin } : {} });
+    expect(res.headers.get('vary')).toMatch(/\bOrigin\b/);
+  });
+
   it('is off when no origins are configured', async () => {
     const base = await start('prod');
     const preflight = await fetch(`${base}/api/me`, { method: 'OPTIONS', headers: { origin: STUDIO, 'access-control-request-method': 'GET' } });
@@ -383,6 +389,11 @@ describe('parseCookieDomain', () => {
     expect(parseCookieDomain(' ', 'api.karibalabs.co')).toBeUndefined();
   });
 
+  it('rejects an IP host', () => {
+    expect(() => parseCookieDomain('127.0.0.1', '127.0.0.1')).toThrow(/COOKIE_DOMAIN/);
+    expect(() => parseCookieDomain('0.1', '[::1]')).toThrow(/COOKIE_DOMAIN/);
+  });
+
   it.each(['example.com', 'labs.co', '.karibalabs.co', 'co', 'com', 'karibalabs.co/x'])('rejects %s for api.karibalabs.co', (bad) => {
     expect(() => parseCookieDomain(bad, 'api.karibalabs.co')).toThrow(/COOKIE_DOMAIN/);
   });
@@ -409,6 +420,9 @@ describe('safeReturnTarget', () => {
     `${STUDIO}/
 `,
     'javascript:alert(1)',
+    `blob:${STUDIO}/uuid`,
+    'https://studio.karibalabs.co:pw@studio.karibalabs.co/',
+    'https://user@studio.karibalabs.co/',
     'evil',
     '/日本',
     '',
@@ -442,17 +456,31 @@ describe('sign-in with frontend origins', () => {
 });
 
 describe('cookie domain', () => {
-  it('is set on the session cookie at login and on the clearing cookie at logout', async () => {
+  const expiredHostOnly = /^officexr\.sid=;(?!.*Domain=).*Expires=Thu, 01 Jan 1970/;
+  const expiredDomain = /^officexr\.sid=;.*Domain=officexr\.test;.*Expires=Thu, 01 Jan 1970/;
+
+  it('is set on the session cookie at login, which also expires the old host-only cookie', async () => {
     const base = await start('prod', { cookieDomain: 'officexr.test' });
-    const { callback, cookie } = await googleLogin(base, googleProfile('a@example.com'));
-    expect(callback.headers.getSetCookie()[0]).toMatch(/; Domain=officexr\.test(;|$)/);
-    const logout = await fetch(`${base}/auth/logout`, { method: 'POST', headers: { cookie: cookie! } });
-    expect(logout.headers.getSetCookie()[0]).toMatch(/; Domain=officexr\.test(;|$)/);
+    const cookies = (await googleLogin(base, googleProfile('a@example.com'))).callback.headers.getSetCookie();
+    expect(cookies).toHaveLength(2);
+    expect(cookies.some((c) => /^officexr\.sid=[^;]+;.*Domain=officexr\.test(;|$)/.test(c))).toBe(true);
+    expect(cookies.some((c) => expiredHostOnly.test(c))).toBe(true);
   });
 
-  it('is omitted when unset', async () => {
+  it('is set on the clearing cookie at logout, which also expires the old host-only cookie', async () => {
+    const base = await start('prod', { cookieDomain: 'officexr.test' });
+    const { cookie } = await googleLogin(base, googleProfile('a@example.com'));
+    const cookies = (await fetch(`${base}/auth/logout`, { method: 'POST', headers: { cookie: cookie! } })).headers.getSetCookie();
+    expect(cookies).toHaveLength(2);
+    expect(cookies.some((c) => expiredDomain.test(c))).toBe(true);
+    expect(cookies.some((c) => expiredHostOnly.test(c))).toBe(true);
+  });
+
+  it('is omitted when unset, with no host-only expiry', async () => {
     const base = await start('prod');
-    expect((await googleLogin(base, googleProfile('a@example.com'))).callback.headers.getSetCookie()[0]).not.toMatch(/Domain=/);
+    const cookies = (await googleLogin(base, googleProfile('a@example.com'))).callback.headers.getSetCookie();
+    expect(cookies).toHaveLength(1);
+    expect(cookies[0]).not.toMatch(/Domain=/);
   });
 });
 

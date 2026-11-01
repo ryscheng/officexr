@@ -24,7 +24,7 @@ export interface Backend {
 export async function createBackend(env: Record<string, string | undefined>, { dev, adminToken, worldConstantsUrl }: BackendOptions = {}): Promise<Backend> {
   const auth = authConfigFromEnv(env);
   const frontendOrigins = parseFrontendOrigins(env.FRONTEND_ORIGINS);
-  const cookieDomain = parseCookieDomain(env.COOKIE_DOMAIN, URL.canParse(auth.publicUrl ?? '') ? new URL(auth.publicUrl!).hostname : '');
+  const cookieDomain = parseCookieDomain(env.COOKIE_DOMAIN, URL.parse(auth.publicUrl ?? '')?.hostname ?? '');
   const db = createDb(env.SUPABASE_DB_URL);
   const realtime = new RealtimeServer({
     tokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,

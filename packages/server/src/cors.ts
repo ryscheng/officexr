@@ -1,4 +1,5 @@
 import cors from 'cors';
+import vary from 'vary';
 import type { NextHandleFunction } from 'connect';
 
 /** `FRONTEND_ORIGINS`: comma-separated exact origins (`scheme://host[:port]`, no path); unset or empty is `[]`. */
@@ -22,6 +23,10 @@ export function createCors(origins: string[]): NextHandleFunction {
     allowedHeaders: ['Content-Type'],
     maxAge: 600,
   }) as unknown as NextHandleFunction;
-  // The package emits preflight headers even for a refused origin, so refused origins skip it entirely.
-  return (req, res, next) => (allowed.has(req.headers.origin ?? '') ? handler(req, res, next) : next());
+  return (req, res, next) => {
+    // Always, so a cache never serves one origin's response to another (e.g. the public `/models`).
+    vary(res, 'Origin');
+    // Checked outside `cors`, which still sends the methods, headers and max-age preflight headers when its origin option refuses.
+    return allowed.has(req.headers.origin ?? '') ? handler(req, res, next) : next();
+  };
 }

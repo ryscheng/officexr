@@ -102,7 +102,7 @@ https the session cookie is Secure, so the TLS terminator must send
 allowlists SPAs on other origins for credentialed CORS and as `?next=` return targets (the first is the
 default landing and the `login_error` target); they must be same-site with `PUBLIC_URL` because the cookie
 is `SameSite=Lax`. `COOKIE_DOMAIN` (e.g. `karibalabs.co`, must contain `PUBLIC_URL`'s host) shares the
-session cookie across subdomains; enabling it signs existing users out once. `createCors` and
+session cookie across subdomains; enabling it signs existing users out once, and the server clears the old host-only cookie on the next sign-in/out. `createCors` and
 `createSessionReader` are exported for the studio backend. Who may sign in is managed with SQL in `login_allowlist`
 (values lowercase, no admin UI; example inserts in the README "Sign-in" section). The server reads offices from Postgres via
 `SUPABASE_DB_URL`. Run `pnpm db:migrate` (applies `supabase/migrations` to
