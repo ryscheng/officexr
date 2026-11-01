@@ -118,6 +118,11 @@ describe('internal server', () => {
       expect(spa.headers.get('cache-control')).toBe('no-cache');
       expect(await spa.text()).toBe('<html>studio</html>');
     }
+    for (const from of ['/', '/studio']) {
+      const redirect = await fetch(`${internal}${from}`, { redirect: 'manual' });
+      expect(redirect.status).toBe(302);
+      expect(redirect.headers.get('location')).toBe('/studio/');
+    }
     expect((await fetch(`${internal}/studio/app.js`)).headers.get('content-type')).toBe('text/javascript');
   });
 });

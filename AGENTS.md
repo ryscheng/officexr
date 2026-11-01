@@ -64,7 +64,7 @@ officexr/
 - **Studio backend.** `@officexr/studio-server` is one Node process
   (`pnpm --filter @officexr/studio-server start`; run `pnpm --filter @officexr/studio build` first).
   Both ports proxy `/health` and `/ws` to `REALTIME_SERVER_TARGET` (default `http://127.0.0.1:8787`).
-  `PORT` (default 5174) also serves the built studio SPA, read/write `/api/*`, `/models` and `/mcp`,
+  `PORT` (default 5174) also serves the built studio SPA at `/studio/` (`/` redirects there), read/write `/api/*`, `/models` and `/mcp`,
   unauthenticated, for in-cluster callers (the bots sidecar, private-ops-center).
   `PUBLIC_PORT` (default 5175) also serves `/api/*` and `/models`; everything else is a 404. The public
   port is **unauthenticated until the studio auth gate lands — do not expose it**. Both ports share

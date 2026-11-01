@@ -39,6 +39,13 @@ export default defineConfig(({ command }) => ({
     //   /api/scenes     → packages/world/scenes/     (legacy back-compat for the
     //                                                 existing Scenes editor until Task 5)
     studioStorage(backend.storageOptions),
+    {
+      name: 'officexr:preview-models',
+      // Pre-hook, for the same reason as studio-mcp's preview mount: a `/studio/` base hides root `/models`.
+      configurePreviewServer: ({ middlewares }) => {
+        middlewares.use(backend.modelsMiddleware);
+      },
+    },
     studioMcp({ modelRoot: PUBLIC_DIR, chromiumPath: process.env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined }),
     {
       name: 'officexr:seed-data-dir',

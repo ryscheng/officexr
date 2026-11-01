@@ -134,7 +134,7 @@ In production the backend is one process, `pnpm --filter @officexr/server start`
 The studio backend is a separate process, `pnpm --filter @officexr/studio-server start`
 (after `pnpm --filter @officexr/studio build`):
 
-- `PORT` (default 5174) serves the studio SPA, read/write `/api/*`, `/models/*` and `/mcp`,
+- `PORT` (default 5174) serves the studio SPA at `/studio/` (`/` redirects there), read/write `/api/*`, `/models/*` and `/mcp`,
   and proxies `/health` and `/ws` like `PUBLIC_PORT`. It is unauthenticated; keep it inside the
   cluster.
 - `PUBLIC_PORT` (default 5175) serves `/api/*` and `/models/*`, and proxies `/health` and the
@@ -157,6 +157,9 @@ Host the SPA on Pages with the backend on another origin. Git-integration settin
   `VITE_ASSET_BASE_URL=https://officexr-assets.oso.xyz` (where the studio loads models and baked layouts from).
 
 The studio's Debug mode then loads baked layouts from that CDN, which can be up to 5 minutes stale.
+`build:pages` copies the whole studio `dist`, so `dist/studio/models` ships unused (ponytail: trim it if Pages size limits bite).
+Without `VITE_ASSET_BASE_URL` the Pages studio gets HTML for every model. The studio's `/api/*` still goes
+same-origin until the studio API origin lands, so the Pages studio isn't usable yet.
 
 The backend must allow the Pages origin as a frontend origin (CORS and sign-in `next`) and set
 `OFFICEXR_ASSET_BASE_URL`, since it doesn't serve `/baked-layouts/*` itself.

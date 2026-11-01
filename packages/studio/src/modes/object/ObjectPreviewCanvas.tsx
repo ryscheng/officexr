@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
+import { modelUrl } from '@officexr/world/app';
 import {
   DEFAULT_EDITOR_LIGHTING,
   EditorCamera,
@@ -86,7 +87,7 @@ export function ObjectPreviewCanvas({ kind }: ObjectPreviewCanvasProps) {
 
 function KindPreview({ kind }: { kind: WorldObjectKind }) {
   const { gl } = useThree();
-  const gltf = useGLTF(kind.gltfPath);
+  const gltf = useGLTF(modelUrl(kind.gltfPath));
   const geom = useMemo(() => extractGeometryFromGltf(gltf.scene), [gltf.scene]);
   // Rebuild the material whenever an override field changes so a
   // Leva tweak shows up live.

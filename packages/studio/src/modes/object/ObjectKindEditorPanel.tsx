@@ -1,5 +1,6 @@
 import React, { Suspense, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
+import { modelUrl } from '@officexr/world/app';
 import {
   CUBE_KIND_CATEGORIES,
   type CubeKindCategory,
@@ -251,7 +252,7 @@ function KindDimensionsEditor({
   dimensions,
   applyPatch,
 }: KindDimensionsEditorProps) {
-  const gltf = useGLTF(gltfPath);
+  const gltf = useGLTF(modelUrl(gltfPath));
   const measuredDims = useMemo(
     () => getKindBoundingDimensions(gltf.scene, scale),
     [gltf.scene, scale],

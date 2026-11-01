@@ -88,6 +88,14 @@ export function createInternalServer(opts: {
   mountMcp(app, { ...opts.mcp, origin: () => loopbackOrigin(server) });
   const dropTunnels = proxyRealtime(app, server, opts.realtimeTarget);
   app.use((req, res, next) => {
+    const p = pathname(req);
+    if ((p === '/' || p === '/studio') && (req.method === 'GET' || req.method === 'HEAD')) {
+      res.writeHead(302, { Location: '/studio/' }).end();
+      return;
+    }
+    next();
+  });
+  app.use((req, res, next) => {
     const isIndex = pathname(req) === '/studio/' || pathname(req) === '/studio/index.html';
     if (!isIndex || (req.method !== 'GET' && req.method !== 'HEAD')) {
       next();
