@@ -247,7 +247,7 @@ export function createStudioStorage(options: StudioStoragePluginOptions = {}): S
   return { migrate: () => migrateMapsDir(mapsDir, roomsDir), mount };
 }
 
-/** Vite plugin that mounts `createStudioStorage` on the dev and preview servers. */
+/** Vite plugin that mounts `createStudioStorage` on the dev server. */
 export default function studioStoragePlugin(options: StudioStoragePluginOptions = {}): Plugin {
   const storage = createStudioStorage(options);
   const boot = async (server: { middlewares: Connect.Server }) => {
@@ -257,7 +257,6 @@ export default function studioStoragePlugin(options: StudioStoragePluginOptions 
   return {
     name: 'officexr:studio-storage',
     configureServer: boot,
-    configurePreviewServer: boot,
   };
 }
 

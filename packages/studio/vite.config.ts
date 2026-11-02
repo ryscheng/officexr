@@ -39,22 +39,10 @@ export default defineConfig(({ command }) => ({
     //   /api/scenes     → packages/world/scenes/     (legacy back-compat for the
     //                                                 existing Scenes editor until Task 5)
     studioStorage(backend.storageOptions),
-    {
-      name: 'officexr:preview-models',
-      // Pre-hook, for the same reason as studio-mcp's preview mount: a `/studio/` base hides root `/models`.
-      configurePreviewServer: ({ middlewares }) => {
-        middlewares.use(backend.modelsMiddleware);
-      },
-    },
     studioMcp({ modelRoot: PUBLIC_DIR, chromiumPath: process.env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined }),
     {
       name: 'officexr:seed-data-dir',
       async configureServer() {
-        if (backend.dataDir) {
-          await seedDataDir(backend.dataDir);
-        }
-      },
-      async configurePreviewServer() {
         if (backend.dataDir) {
           await seedDataDir(backend.dataDir);
         }
@@ -64,7 +52,6 @@ export default defineConfig(({ command }) => ({
     {
       name: 'officexr:r2-publish',
       configureServer: backend.startR2Sync,
-      configurePreviewServer: backend.startR2Sync,
     },
     // Spawns the Node bot CLI as a child process for the lifetime of
     // the dev server, so `pnpm dev:studio` is one-command. If you'd
@@ -83,11 +70,6 @@ export default defineConfig(({ command }) => ({
       onSpawn: (baseUrl) => backend.pushTargets.add(baseUrl),
     }),
   ],
-  // proxy and host are inherited from `server`.
-  preview: {
-    port: 5174,
-    allowedHosts: true, // only reachable via the Tailscale ingress
-  },
   server: {
     port: 5174,
     // The spawned bot server reads this server's settings by port, so it must not move.
