@@ -54,6 +54,7 @@ export interface PlayViewProps {
   hostControls?: boolean;
   /** Lets the host start immersive XR sessions; see `createWorldXRStore`. */
   xrStore?: XRStore;
+  /** Shows a ping bell when hovering another player's avatar in the fixed camera. */
   onPingPlayer?: (id: PlayerId) => void;
   /** Overlays rendered above the scene and HUD. */
   children?: React.ReactNode;

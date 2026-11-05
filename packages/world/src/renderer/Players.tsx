@@ -14,7 +14,8 @@ import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { Adventurer } from './Adventurer.tsx';
 import type { CameraMode, CharacterName } from './config.ts';
-import { PlayerNameTag, PlayerPingBell, shouldShowPingBell } from './PlayerNameTag.tsx';
+import { PlayerNameTag } from './PlayerNameTag.tsx';
+import { PlayerPingBell, shouldShowPingBell } from './PlayerPingBell.tsx';
 import { pickCharacterForPlayer, resolvePlayerModel, type PlayerModel } from '../characters/registry.ts';
 import { ModelWithFallback } from './ModelWithFallback.tsx';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
@@ -528,7 +529,7 @@ export function Players({
                 isSelf={isSelf}
                 paused={paused ?? false}
               />
-              {shouldShowPingBell(onPingPlayer, isSelf, cameraMode, paused ?? false) && (
+              {onPingPlayer && shouldShowPingBell(onPingPlayer, isSelf, cameraMode, paused ?? false) && (
                 <PlayerPingBell store={store} playerId={p.id} radius={charRadius} onPing={onPingPlayer} />
               )}
             </group>

@@ -2,12 +2,15 @@ import type React from 'react';
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-/** Bell button that pings a player. Stops its pointer events so the click never reaches the canvas. */
+/**
+ * Bell button that pings a player. Stops propagation so a click doesn't reach R3F's
+ * event-source listeners or the world-focus `mousedown` listener on `document`.
+ */
 export function PingBellButton({ name, onPing }: { name: string; onPing: () => void }) {
   return (
     <button
       type="button"
-      aria-label={`Ping ${name}`}
+      aria-label={`Ping ${name || 'player'}`}
       onPointerDown={stop}
       onMouseDown={stop}
       onClick={(e) => {

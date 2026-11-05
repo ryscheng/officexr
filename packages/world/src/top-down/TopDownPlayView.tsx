@@ -48,6 +48,7 @@ export interface TopDownPlayViewProps {
   error?: string | null;
   onDismissError?: () => void;
   onMapApplied?: (spawnPoints: readonly Vec3[]) => void;
+  /** Pings another player; currently unused in the 2D view. */
   onPingPlayer?: (id: PlayerId) => void;
   /** Overlays rendered above the canvas. */
   children?: React.ReactNode;

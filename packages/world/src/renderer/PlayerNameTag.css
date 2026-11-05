@@ -9,5 +9,3 @@
   opacity: 0.5;
 }
 .player-name-tag:hover { opacity: 1; }
-/* The padding bridges the gap down to the head so the pointer can reach the bell without unhovering. */
-.player-ping-bell { padding-bottom: 48px; }

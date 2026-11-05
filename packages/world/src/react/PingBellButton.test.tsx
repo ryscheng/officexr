@@ -22,4 +22,20 @@ describe('PingBellButton', () => {
     expect(onParentClick).not.toHaveBeenCalled();
     expect(onParentMouseDown).not.toHaveBeenCalled();
   });
+
+  it('stops pointerdown from reaching its parent', () => {
+    const onParentPointerDown = vi.fn();
+    render(
+      <div onPointerDown={onParentPointerDown}>
+        <PingBellButton name="Ada" onPing={() => {}} />
+      </div>,
+    );
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Ping Ada' }));
+    expect(onParentPointerDown).not.toHaveBeenCalled();
+  });
+
+  it('labels a nameless player generically', () => {
+    render(<PingBellButton name="" onPing={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Ping player' })).toBeTruthy();
+  });
 });
