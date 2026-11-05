@@ -1,5 +1,6 @@
 import type { VoiceZone } from '@officexr/sdk';
 import type { LayoutDocument, MapDocumentV2, RoomDocument } from '../scenes/index.ts';
+import { roomXZBounds } from './room-bounds.ts';
 import type { InstanceGeometryService, RoomService } from './types.ts';
 
 /**
@@ -20,20 +21,7 @@ export function computeVoiceZones(
   }
   const { instances } = roomService.compileMap(map, rooms, layouts);
   return flagged.flatMap((ri) => {
-    const prefix = `${ri.id}/`;
-    let min = { x: Infinity, z: Infinity };
-    let max = { x: -Infinity, z: -Infinity };
-    for (const inst of instances) {
-      if (!inst.id.startsWith(prefix)) {
-        continue;
-      }
-      const box = geometry.worldAABBOfInstance(inst);
-      min = { x: Math.min(min.x, box.min[0]), z: Math.min(min.z, box.min[2]) };
-      max = { x: Math.max(max.x, box.max[0]), z: Math.max(max.z, box.max[2]) };
-    }
-    if (min.x === Infinity) {
-      return [];
-    }
-    return { id: ri.id, label: rooms.get(ri.roomName)?.title ?? ri.roomName, min, max };
+    const bounds = roomXZBounds(instances, ri.id, geometry);
+    return bounds ? { id: ri.id, label: rooms.get(ri.roomName)?.title ?? ri.roomName, ...bounds } : [];
   });
 }

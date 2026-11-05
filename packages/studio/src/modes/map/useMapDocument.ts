@@ -75,6 +75,7 @@ export interface UseMapDocumentResult {
   setRoomPosition: (id: string, position: [number, number, number]) => void;
   setRoomRotation: (id: string, rotationY: 0 | 1 | 2 | 3) => void;
   setRoomVoiceZone: (id: string, enabled: boolean) => void;
+  setRoomBuilding: (id: string, enabled: boolean) => void;
   addSpawn: (position: [number, number, number], label?: string) => string;
   removeSpawn: (id: string) => void;
   setSpawnLabel: (id: string, label: string) => void;
@@ -237,8 +238,8 @@ export function useMapDocument(
     [stampUpdated],
   );
 
-  const setRoomVoiceZone = useCallback(
-    (id: string, enabled: boolean) => {
+  const setRoomFlag = useCallback(
+    (flag: 'voiceZone' | 'building', id: string, enabled: boolean) => {
       stampUpdated((prev) => ({
         ...prev,
         rooms: prev.rooms.map((r) => {
@@ -246,15 +247,17 @@ export function useMapDocument(
             return r;
           }
           if (enabled) {
-            return { ...r, voiceZone: true };
+            return { ...r, [flag]: true };
           }
-          const { voiceZone: _, ...rest } = r;
+          const { [flag]: _, ...rest } = r;
           return rest;
         }),
       }));
     },
     [stampUpdated],
   );
+  const setRoomVoiceZone = useCallback((id: string, enabled: boolean) => setRoomFlag('voiceZone', id, enabled), [setRoomFlag]);
+  const setRoomBuilding = useCallback((id: string, enabled: boolean) => setRoomFlag('building', id, enabled), [setRoomFlag]);
 
   const addSpawn = useCallback(
     (position: [number, number, number], label?: string) => {
@@ -341,6 +344,7 @@ export function useMapDocument(
     setRoomPosition,
     setRoomRotation,
     setRoomVoiceZone,
+    setRoomBuilding,
     addSpawn,
     removeSpawn,
     setSpawnLabel,

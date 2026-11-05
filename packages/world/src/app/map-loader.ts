@@ -1,4 +1,4 @@
-import type { VoiceZone, WorldObjects } from '@officexr/sdk';
+import type { FootprintRect, VoiceZone, WorldObjects } from '@officexr/sdk';
 import {
   mapLayoutPlacements,
   type BakedLayoutPlacement,
@@ -12,6 +12,7 @@ import {
 } from '../scenes/index.ts';
 import { loadAll } from '../scenes/map-layout-placements.ts';
 import type { CatalogService, InstanceGeometryService, RoomService } from './types.ts';
+import { computeBuildingFootprint } from './building-footprint.ts';
 import { computeVoiceZones } from './voice-zones.ts';
 
 export type { BakedLayoutPlacement };
@@ -35,6 +36,8 @@ export interface LoadedMap {
   rooms: ReadonlyMap<string, RoomDocument>;
   worldObjects: WorldObjects;
   voiceZones: VoiceZone[];
+  /** Empty when no room is flagged `building`; consumers treat that as no restriction. */
+  buildingFootprint: readonly FootprintRect[];
   spawnPoints: readonly SpawnPoint[];
   /** Every room placement that links a layout, whether or not the room has commands. */
   bakedLayouts: readonly BakedLayoutPlacement[];
@@ -70,6 +73,7 @@ export async function loadMap(
     rooms,
     worldObjects,
     voiceZones,
+    buildingFootprint: computeBuildingFootprint(mapDoc, worldObjects.instances, geometry),
     spawnPoints: mapDoc.spawnPoints,
     bakedLayouts,
   };

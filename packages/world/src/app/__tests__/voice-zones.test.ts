@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultApi } from '../create-default-api.ts';
 import { computeVoiceZones } from '../voice-zones.ts';
+import { computeBuildingFootprint } from '../building-footprint.ts';
 import {
   emptyLayoutDocument,
   emptyMapDocument,
@@ -98,5 +99,27 @@ describe('computeVoiceZones', () => {
     expect(
       zonesFor([{ id: 'e', roomName: 'empty', position: [0, 0, 0], voiceZone: true }], [emptyRoomDocument('empty')]),
     ).toEqual([]);
+  });
+});
+
+describe('computeBuildingFootprint', () => {
+  const footprint = (placements: RoomInstance[]) => {
+    const map = { ...emptyMapDocument('m'), rooms: placements };
+    const { instances } = api.rooms.compileMap(map, new Map([['hall', hall()]]), new Map());
+    return computeBuildingFootprint(map, instances, api.geometry);
+  };
+
+  it('returns one rect per flagged room', () => {
+    const rects = footprint([
+      { id: 'a', roomName: 'hall', position: [0, 0, 0], building: true },
+      { id: 'b', roomName: 'hall', position: [20, 0, 0], building: true },
+      { id: 'c', roomName: 'hall', position: [40, 0, 0] },
+    ]);
+    expect(rects).toHaveLength(2);
+    expect(rects[1].min.x).toBeGreaterThan(rects[0].max.x);
+  });
+
+  it('is empty when no room is flagged', () => {
+    expect(footprint([{ id: 'a', roomName: 'hall', position: [0, 0, 0] }])).toEqual([]);
   });
 });
