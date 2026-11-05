@@ -5,7 +5,10 @@ import {
   tickSession,
   type Actions,
   type Bus,
+  type FootprintRect,
   type RuleRegistry,
+  type OfficeState,
+  type PlayerState,
   type SnapshotHandshake,
   type Store,
   type SyncEngine,
@@ -24,7 +27,7 @@ import { createViewYaw, ViewYawProvider } from '../react/viewYaw.tsx';
 import { useStoreWorldObjects } from '../renderer/useStoreWorldObjects.ts';
 import { createGhostPlayControls } from './ghostPlayControls.ts';
 import { drawMap, drawPlayers, type MapBox } from './topDownDraw.ts';
-import { fitTransform, screenToWorld, unionBounds, type TopDownTransform } from './topDownGeometry.ts';
+import { fitTransform, screenToWorld, unionBounds, type TopDownTransform, type XZBounds } from './topDownGeometry.ts';
 
 export interface TopDownPlayViewProps {
   store: Store;
@@ -60,6 +63,17 @@ const KEY_BINDINGS: Record<string, keyof GhostKeys> = {
 };
 /** Caps the step after a backgrounded tab resumes. */
 const MAX_DT_SEC = 0.1;
+/** Half-size of the area shown around players when the map has nothing to fit to. */
+const EMPTY_MAP_MARGIN_M = 5;
+
+function playerBounds(players: Readonly<Record<string, PlayerState>>): XZBounds | null {
+  return unionBounds(
+    Object.values(players).map(({ pos }) => ({
+      min: { x: pos.x - EMPTY_MAP_MARGIN_M, z: pos.z - EMPTY_MAP_MARGIN_M },
+      max: { x: pos.x + EMPTY_MAP_MARGIN_M, z: pos.z + EMPTY_MAP_MARGIN_M },
+    })),
+  );
+}
 
 /**
  * Plays a map on a Canvas2D top-down view, with no WebGL context: the
@@ -86,7 +100,8 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const transformRef = useRef<TopDownTransform | null>(null);
 
-  const controller = useMemo(
+  // The footprint changes per applied map; `setFootprint` keeps held keys and a go-to intent.
+  const [controller] = useState(
     () =>
       new GhostController(actions, store, selfId, footprint, () => {
         const s = store.getState();
@@ -97,9 +112,14 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
         );
         return { playerSpeed, charRadius, proximityRadius: s.worldSettings.proximityRadius };
       }),
-    [actions, store, selfId, footprint],
   );
-  const controls = useMemo(() => createGhostPlayControls(controller), [controller]);
+  const [controls] = useState(() => createGhostPlayControls(controller));
+  const prevStateRef = useRef<OfficeState | null>(null);
+  const drawInputsRef = useRef<{ boxes: readonly MapBox[]; footprint: readonly FootprintRect[]; bounds: XZBounds | null }>({
+    boxes: [],
+    footprint: [],
+    bounds: null,
+  });
 
   const boxes = useMemo<MapBox[]>(
     () =>
@@ -110,8 +130,14 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
           max: { x: max[0], z: max[2] },
           layout: catalog.getKind(inst.kindId)?.isLayoutObject === true };
       }),
+    // `kinds` changes when the catalog loads, which changes what `catalog.getKind` returns.
     [worldObjects, geometry, catalog, kinds],
   );
+
+  useEffect(() => {
+    controller.setFootprint(footprint);
+    drawInputsRef.current = { boxes, footprint, bounds: unionBounds([...footprint, ...boxes]) };
+  }, [controller, boxes, footprint]);
 
   useEffect(() => {
     if (session.loaded) {
@@ -124,7 +150,8 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
     const keys = { ...NO_KEYS };
     const onKey = (e: KeyboardEvent) => {
       const key = KEY_BINDINGS[e.code];
-      if (!key || isTypingTarget(e.target)) {
+      // Only keydown is filtered, so a key released inside a text field can't stay held.
+      if (!key || (e.type === 'keydown' && isTypingTarget(e.target))) {
         return;
       }
       e.preventDefault();
@@ -149,8 +176,6 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
     if (!session.loaded) {
       return;
     }
-    const bounds = unionBounds([...footprint, ...boxes]);
-    let prevState = store.getState();
     let last = performance.now();
     let frame = requestAnimationFrame(function loop(now) {
       frame = requestAnimationFrame(loop);
@@ -158,12 +183,23 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
       last = now;
       controller.step(dtSec);
       controls.refresh();
-      prevState = tickSession({ actions, store, rules, bus, sync, handshake, prevState, nowMs: now });
+      prevStateRef.current = tickSession({
+        actions,
+        store,
+        rules,
+        bus,
+        sync,
+        handshake,
+        prevState: prevStateRef.current ?? store.getState(),
+        nowMs: now,
+      });
       const state = store.getState();
       tickProximity(tracker, { players: state.players, selfId, bus, settings: state.worldSettings, nowMs: now, dtSec });
 
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');
+      const { boxes, footprint, bounds: mapBounds } = drawInputsRef.current;
+      const bounds = mapBounds ?? playerBounds(state.players);
       if (!canvas || !ctx || !bounds) {
         return;
       }
@@ -182,7 +218,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [session.loaded, store, actions, rules, bus, sync, handshake, selfId, controller, controls, tracker, boxes, footprint]);
+  }, [session.loaded, store, actions, rules, bus, sync, handshake, selfId, controller, controls, tracker]);
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const t = transformRef.current;

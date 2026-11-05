@@ -25,7 +25,7 @@ export interface PlaySession {
   spawnPoints: readonly Vec3[];
   /** Every layout placement of the applied map, none before one applies. */
   bakedLayouts: readonly SceneBakedLayout[];
-  /** Of the applied map, empty before one applies. */
+  /** Footprint of the applied map; empty until one is applied. */
   buildingFootprint: readonly FootprintRect[];
   error: string | null;
   dismissError: () => void;

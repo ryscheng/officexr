@@ -10,7 +10,10 @@ export interface GhostPlayControls extends PlayControlsSource {
   refresh(): void;
 }
 
-/** Go-to-person over a `GhostController`; the ghost walks straight, so a walk never has a route. */
+/**
+ * Go-to-person over a `GhostController`. A ghost walks straight, so a walk never has a route,
+ * 'no-route' can't happen, and 'arrived' isn't published: the state goes back to 'idle'.
+ */
 export function createGhostPlayControls(controller: GhostController): GhostPlayControls {
   let state: AutoWalkState = IDLE;
   const listeners = new Set<() => void>();
