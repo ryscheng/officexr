@@ -3,16 +3,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { SoundCatalog } from '@officexr/world/app';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPingPrefs, writePingPrefs, DEFAULT_PING_PREFS } from '../ping/pingPrefs';
-import { PingSettingsDialog, type NotificationApi } from './PingSettings';
+import type { NotificationSeam } from '../ping/pingNotifier';
+import { PingSettingsDialog } from './PingSettings';
 
 const CATALOG = { sounds: [{ name: 'bell' }, { name: 'horn' }] } as SoundCatalog;
 
 beforeEach(() => writePingPrefs(localStorage, DEFAULT_PING_PREFS));
 afterEach(cleanup);
 
-function setup(notification: NotificationApi | null = null, catalog: SoundCatalog | null = CATALOG) {
+const seam = (requestPermission: () => unknown, permission: NotificationPermission = 'default') =>
+  ({ permission, requestPermission }) as unknown as NotificationSeam;
+
+function setup(notification: NotificationSeam | null = null, catalog: SoundCatalog | null = CATALOG) {
   const preview = vi.fn();
-  render(<PingSettingsDialog onClose={() => {}} notification={notification} preview={preview} useCatalog={() => catalog} />);
+  render(<PingSettingsDialog onClose={() => {}} notification={notification} preview={preview} catalog={catalog} />);
   return preview;
 }
 const notifySwitch = () => screen.getByRole('switch') as HTMLInputElement;
@@ -24,6 +28,13 @@ describe('PingSettingsDialog sound', () => {
     expect(readPingPrefs(localStorage).sound).toEqual({ type: 'library', name: 'horn' });
     fireEvent.click(screen.getByRole('radio', { name: 'None (silent)' }));
     expect(readPingPrefs(localStorage).sound).toEqual({ type: 'none' });
+  });
+
+  it('previewing leaves the selection and stored prefs alone', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview horn' }));
+    expect((screen.getByRole('radio', { name: 'Built-in chime' }) as HTMLInputElement).checked).toBe(true);
+    expect(readPingPrefs(localStorage)).toEqual(DEFAULT_PING_PREFS);
   });
 
   it('previews audible options only', () => {
@@ -49,7 +60,7 @@ describe('PingSettingsDialog sound', () => {
 
 describe('PingSettingsDialog notifications', () => {
   it('saves on when permission is granted, and off again', async () => {
-    setup({ requestPermission: () => Promise.resolve('granted') });
+    setup(seam(() => Promise.resolve('granted')));
     fireEvent.click(notifySwitch());
     await waitFor(() => expect(readPingPrefs(localStorage).notify).toBe(true));
     fireEvent.click(notifySwitch());
@@ -57,11 +68,40 @@ describe('PingSettingsDialog notifications', () => {
   });
 
   it.each(['denied', 'default'] as const)('stays off with a hint when permission is %s', async (result) => {
-    setup({ requestPermission: () => Promise.resolve(result) });
+    setup(seam(() => Promise.resolve(result)));
     fireEvent.click(notifySwitch());
     await screen.findByText(/blocked/);
     expect(readPingPrefs(localStorage).notify).toBe(false);
     expect(notifySwitch().checked).toBe(false);
+  });
+
+  it.each([
+    ['rejects', () => Promise.reject(new Error('no'))],
+    [
+      'throws',
+      () => {
+        throw new Error('no');
+      },
+    ],
+  ])('shows the hint when requestPermission %s', async (_name, request) => {
+    setup(seam(request));
+    fireEvent.click(notifySwitch());
+    await screen.findByText(/blocked/);
+    expect(readPingPrefs(localStorage).notify).toBe(false);
+    expect(notifySwitch().disabled).toBe(false);
+  });
+
+  it('supports the callback form that returns nothing', async () => {
+    setup(seam((cb?: (p: NotificationPermission) => void) => cb?.('granted')));
+    fireEvent.click(notifySwitch());
+    await waitFor(() => expect(readPingPrefs(localStorage).notify).toBe(true));
+  });
+
+  it('shows the hint when notify is saved but permission was revoked', () => {
+    writePingPrefs(localStorage, { sound: { type: 'builtin' }, notify: true });
+    setup(seam(() => Promise.resolve('denied'), 'denied'));
+    expect(screen.getByText(/blocked/)).toBeTruthy();
+    expect(notifySwitch().getAttribute('aria-describedby')).toBeTruthy();
   });
 
   it('is disabled with an explanation when unsupported', () => {

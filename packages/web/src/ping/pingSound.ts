@@ -1,6 +1,7 @@
 import { soundAssetUrl, type SoundCatalog } from '@officexr/world/app';
 import { resumeOnGesture } from '../voice/resumeOnGesture';
 import type { PingSound } from './pingPrefs';
+import { assertNever } from './assertNever';
 
 export interface PingSoundDeps {
   createAudioContext(): AudioContext;
@@ -13,10 +14,6 @@ export interface PingPlayer {
   /** Plays the sound; a library sound missing from `catalog` (when given) or failing to load plays the builtin. */
   play(sound: PingSound, catalog?: SoundCatalog | null): void;
 }
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unhandled ping sound: ${JSON.stringify(value)}`);
-};
 
 const CHIME = [
   { hz: 880, at: 0 },

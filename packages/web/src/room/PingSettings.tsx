@@ -1,18 +1,34 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { SoundCatalog } from '@officexr/world/app';
 import { Dialog } from '../Dialog';
+import { assertNever } from '../ping/assertNever';
+import { browserNotification, type NotificationSeam } from '../ping/pingNotifier';
 import { previewPingSound } from '../ping/pingSound';
-import { usePingPrefs, writePingPrefs, type PingSound } from '../ping/pingPrefs';
+import { readPingPrefs, usePingPrefs, writePingPrefs, type PingSound } from '../ping/pingPrefs';
 import { useSoundCatalog } from '../ping/useSoundCatalog';
 import { closeToWorld } from './closeToWorld';
 import { RoomMenuItem } from './RoomMenu';
 
-export type NotificationApi = { requestPermission: () => Promise<NotificationPermission> };
+const sameSound = (a: PingSound, b: PingSound): boolean =>
+  a.type === 'builtin'
+    ? b.type === 'builtin'
+    : a.type === 'none'
+      ? b.type === 'none'
+      : a.type === 'library'
+        ? b.type === 'library' && a.name === b.name
+        : assertNever(a);
 
-const browserNotification = (): NotificationApi | null => (typeof Notification === 'undefined' ? null : Notification);
+const isAudible = (sound: PingSound): boolean =>
+  sound.type === 'builtin' ? true : sound.type === 'library' ? true : sound.type === 'none' ? false : assertNever(sound);
 
-const sameSound = (a: PingSound, b: PingSound) =>
-  a.type === b.type && (a.type !== 'library' || (b.type === 'library' && a.name === b.name));
+const soundKey = (sound: PingSound): string => (sound.type === 'library' ? `library:${sound.name}` : sound.type);
+
+/** Requests inside the click so user activation holds; a throw, rejection or old Safari's callback form all resolve or reject. */
+const requestPermission = (api: NotificationSeam): Promise<NotificationPermission> =>
+  new Promise((resolve, reject) => {
+    const result = api.requestPermission(resolve) as Promise<NotificationPermission> | undefined;
+    result?.then(resolve, reject);
+  });
 
 export function PingSettingsMenuItem({ onSelect }: { onSelect: () => void }) {
   return <RoomMenuItem onSelect={onSelect}>Ping settings</RoomMenuItem>;
@@ -22,16 +38,19 @@ export function PingSettingsDialog({
   onClose,
   notification = browserNotification(),
   preview = previewPingSound,
-  useCatalog = useSoundCatalog,
+  catalog: catalogOverride,
 }: {
   onClose: () => void;
-  notification?: NotificationApi | null;
+  notification?: NotificationSeam | null;
   preview?: (sound: PingSound, catalog?: SoundCatalog | null) => void;
-  useCatalog?: () => SoundCatalog | null;
+  catalog?: SoundCatalog | null;
 }) {
   const prefs = usePingPrefs();
-  const catalog = useCatalog();
+  const loadedCatalog = useSoundCatalog();
+  const catalog = catalogOverride === undefined ? loadedCatalog : catalogOverride;
   const [blocked, setBlocked] = useState(false);
+  const [pending, setPending] = useState(false);
+  const hintId = useId();
 
   const savedName = prefs.sound.type === 'library' ? prefs.sound.name : null;
   const stale = savedName !== null && catalog !== null && !catalog.sounds.some((s) => s.name === savedName);
@@ -43,27 +62,38 @@ export function PingSettingsDialog({
     { label: 'None (silent)', sound: { type: 'none' } },
   ];
 
-  // The permission prompt only shows from inside the click, so no await precedes the request.
   const toggleNotify = (on: boolean) => {
     if (!on || !notification) {
-      writePingPrefs(localStorage, { ...prefs, notify: false });
+      setBlocked(false);
+      writePingPrefs(localStorage, { ...readPingPrefs(localStorage), notify: false });
       return;
     }
-    notification.requestPermission().then(
+    setPending(true);
+    requestPermission(notification).then(
       (permission) => {
+        setPending(false);
         setBlocked(permission !== 'granted');
-        writePingPrefs(localStorage, { ...prefs, notify: permission === 'granted' });
+        writePingPrefs(localStorage, { ...readPingPrefs(localStorage), notify: permission === 'granted' });
       },
-      () => setBlocked(true),
+      () => {
+        setPending(false);
+        setBlocked(true);
+      },
     );
   };
+
+  const hint = !notification
+    ? "This browser doesn't support notifications."
+    : blocked || (prefs.notify && notification.permission === 'denied')
+      ? 'Notifications are blocked. Allow them in your browser settings.'
+      : null;
 
   return (
     <Dialog title="Ping settings" onClose={closeToWorld(onClose)}>
       <fieldset className="mb-4">
         <legend className="mb-1 font-medium">Sound</legend>
         {options.map(({ label, sound }) => (
-          <div key={label} className="flex items-center gap-2 py-0.5">
+          <div key={soundKey(sound)} className="flex items-center gap-2 py-0.5">
             <label className="flex flex-1 items-center gap-2">
               <input
                 type="radio"
@@ -73,7 +103,7 @@ export function PingSettingsDialog({
               />
               {label}
             </label>
-            {sound.type !== 'none' && (
+            {isAudible(sound) && (
               <button type="button" className="rounded border px-2 py-0.5" onClick={() => preview(sound, catalog)}>
                 Preview<span className="sr-only"> {label}</span>
               </button>
@@ -93,19 +123,15 @@ export function PingSettingsDialog({
             type="checkbox"
             role="switch"
             checked={prefs.notify}
-            disabled={!notification}
+            disabled={!notification || pending}
+            aria-describedby={hint ? hintId : undefined}
             onChange={(e) => toggleNotify(e.target.checked)}
           />
           Show a system notification for pings
         </label>
-        {!notification && (
-          <p role="status" className="mt-1 text-xs text-gray-600">
-            This browser doesn't support notifications.
-          </p>
-        )}
-        {blocked && (
-          <p role="status" className="mt-1 text-xs text-gray-600">
-            Notifications are blocked. Allow them in your browser settings.
+        {hint && (
+          <p id={hintId} role="status" className="mt-1 text-xs text-gray-600">
+            {hint}
           </p>
         )}
       </section>
