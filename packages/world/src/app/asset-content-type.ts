@@ -10,6 +10,7 @@ const CONTENT_TYPES: Record<string, string> = {
   '.js': 'text/javascript',
   '.css': 'text/css',
   '.mp3': 'audio/mpeg',
+  '.json': 'application/json',
 };
 
 /** `Content-Type` for a static asset path or key, by extension; `application/octet-stream` when unknown. */

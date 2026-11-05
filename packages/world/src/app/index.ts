@@ -69,7 +69,15 @@ export { createDefaultApi } from './create-default-api.ts';
 export type { CreateDefaultApiOptions } from './create-default-api.ts';
 
 export { bakedLayoutUrl } from './baked-layout-url.ts';
-export { bakedLayoutAssetUrl, modelUrl, setAssetBaseUrl } from './asset-url.ts';
+export {
+  bakedLayoutAssetUrl,
+  fetchSoundCatalog,
+  modelUrl,
+  setAssetBaseUrl,
+  soundAssetUrl,
+  soundCatalogUrl,
+  type SoundCatalog,
+} from './asset-url.ts';
 export { computeVoiceZones } from './voice-zones.ts';
 export { computeBuildingFootprint } from './building-footprint.ts';
 export { loadMap, MapNotFoundError } from './map-loader.ts';
