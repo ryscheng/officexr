@@ -39,11 +39,16 @@ describe('asset-url', () => {
 });
 
 describe('fetchSoundCatalog', () => {
-  const respond = (body: unknown) => (async () => ({ json: async () => body })) as unknown as typeof fetch;
+  const respond = (body: unknown) => (async () => ({ ok: true, json: async () => body })) as unknown as typeof fetch;
 
   it('returns a valid catalog', async () => {
     const catalog = { sounds: [{ name: 'ping', size: 3, updatedAt: 1 }] };
     expect(await fetchSoundCatalog('/x', respond(catalog))).toEqual(catalog);
+  });
+
+  it('returns an empty catalog for a non-ok response', async () => {
+    const notOk = (async () => ({ ok: false, json: async () => ({ sounds: [{ name: 'a', size: 1, updatedAt: 1 }] }) })) as unknown as typeof fetch;
+    expect(await fetchSoundCatalog('/x', notOk)).toEqual({ sounds: [] });
   });
 
   it('returns an empty catalog for a malformed body or network failure', async () => {

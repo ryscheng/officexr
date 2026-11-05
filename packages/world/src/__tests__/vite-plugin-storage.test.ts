@@ -255,7 +255,9 @@ describe('studio storage plugin: binary resources', () => {
 
   it('rejects invalid sound names with 400', async () => {
     const url = await start();
-    expect((await fetch(`${url}/api/sounds/has%20space`, { method: 'PUT', body: 'x' })).status).toBe(400);
+    for (const name of ['has%20space', 'foo.glb', 'x.mp3.mp3']) {
+      expect((await fetch(`${url}/api/sounds/${name}`, { method: 'PUT', body: 'x' })).status, name).toBe(400);
+    }
   });
 
   it('keeps baked layouts as .glb', async () => {

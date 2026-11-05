@@ -77,6 +77,7 @@ export {
   soundAssetUrl,
   soundCatalogUrl,
   type SoundCatalog,
+  type SoundCatalogEntry,
 } from './asset-url.ts';
 export { computeVoiceZones } from './voice-zones.ts';
 export { computeBuildingFootprint } from './building-footprint.ts';

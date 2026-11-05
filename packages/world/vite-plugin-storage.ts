@@ -11,6 +11,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 // the Vite config. Bypassing the barrel keeps the Node-side import
 // graph free of any `.json` modules.
 import { isValidSceneName } from './src/scenes/storage.ts';
+import type { SoundCatalogEntry } from './src/app/asset-url.ts';
 import {
   deserializeMap,
   deserializeScene,
@@ -253,6 +254,7 @@ export function createStudioStorage(options: StudioStoragePluginOptions = {}): S
         extension: '.mp3',
         contentType: 'audio/mpeg',
         listKey: 'sounds',
+        rejectDots: true,
       }),
     );
     if (mountLegacy) {
@@ -428,6 +430,8 @@ interface BinaryResourceOpts extends BinaryResourceHooks {
   extension: string;
   contentType: string;
   listKey: string;
+  /** Reject names that still contain a dot after the extension is stripped. */
+  rejectDots?: boolean;
 }
 
 /**
@@ -460,7 +464,7 @@ function makeBinaryResourceMiddleware(
       // Names look like "foo" or "foo<ext>". Normalise to bare name for
       // validation, keep the extension for the actual filename.
       const bareName = slug.endsWith(opts.extension) ? slug.slice(0, -opts.extension.length) : slug;
-      if (!isValidSceneName(bareName)) {
+      if (!isValidSceneName(bareName) || (opts.rejectDots && bareName.includes('.'))) {
         return jsonResponse(res, 400, { error: 'invalid resource name' });
       }
       const filename = `${bareName}${opts.extension}`;
@@ -510,7 +514,7 @@ function makeBinaryResourceMiddleware(
           await fs.writeFile(file, data);
           res.statusCode = 204;
           res.end();
-          opts.onSaved?.(bareName, data).catch(logHookError);
+          opts.onSaved?.(bareName, data).catch((err) => logHookError(opts, err));
           return;
         }
         case 'DELETE': {
@@ -521,14 +525,14 @@ function makeBinaryResourceMiddleware(
           }
           res.statusCode = 204;
           res.end();
-          opts.onDeleted?.(bareName).catch(logHookError);
+          opts.onDeleted?.(bareName).catch((err) => logHookError(opts, err));
           return;
         }
         default:
           return badMethod(res, ['GET', 'HEAD', 'PUT', 'DELETE']);
       }
     } catch (err) {
-      console.error(`[studio-storage:${opts.listKey}] middleware error:`, err);
+      console.error(`[studio-storage:${path.basename(opts.dir)}] middleware error:`, err);
       jsonResponse(res, 500, { error: (err as Error).message });
       next?.();
     }
@@ -547,7 +551,7 @@ async function handleListBinary(
       throw err;
     }
   }
-  const items: Array<{ name: string; size: number; updatedAt: number }> = [];
+  const items: SoundCatalogEntry[] = [];
   for (const entry of entries) {
     const name = entry.name.slice(0, -extension.length);
     if (!entry.isFile() || !entry.name.endsWith(extension) || !isValidSceneName(name)) {
@@ -557,14 +561,14 @@ async function handleListBinary(
       const stat = await fs.stat(path.join(dir, entry.name));
       items.push({ name, size: stat.size, updatedAt: stat.mtimeMs });
     } catch (err) {
-      console.warn(`[studio-storage:${listKey}] skipping ${entry.name}:`, (err as Error).message);
+      console.warn(`[studio-storage:${path.basename(dir)}] skipping ${entry.name}:`, (err as Error).message);
     }
   }
   jsonResponse(res, 200, { [listKey]: items });
 }
 
-function logHookError(err: unknown): void {
-  console.error('[studio-storage] hook failed:', err);
+function logHookError(opts: BinaryResourceOpts, err: unknown): void {
+  console.error(`[studio-storage:${path.basename(opts.dir)}] hook failed:`, err);
 }
 
 interface SingleDocOpts<T> {
