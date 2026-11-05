@@ -256,8 +256,14 @@ export function useMapDocument(
     },
     [stampUpdated],
   );
-  const setRoomVoiceZone = useCallback((id: string, enabled: boolean) => setRoomFlag('voiceZone', id, enabled), [setRoomFlag]);
-  const setRoomBuilding = useCallback((id: string, enabled: boolean) => setRoomFlag('building', id, enabled), [setRoomFlag]);
+  const setRoomVoiceZone = useCallback(
+    (id: string, enabled: boolean) => setRoomFlag('voiceZone', id, enabled),
+    [setRoomFlag],
+  );
+  const setRoomBuilding = useCallback(
+    (id: string, enabled: boolean) => setRoomFlag('building', id, enabled),
+    [setRoomFlag],
+  );
 
   const addSpawn = useCallback(
     (position: [number, number, number], label?: string) => {

@@ -1,7 +1,7 @@
 import type { FootprintRect } from '@officexr/sdk';
 import type { InstanceGeometryService, RoomService } from './types.ts';
 
-type Instances = ReturnType<RoomService['compileMap']>['instances'];
+export type Instances = ReturnType<RoomService['compileMap']>['instances'];
 
 /** XZ union of the world AABBs of a placement's compiled instances, or null when it has none. */
 export function roomXZBounds(
