@@ -13,7 +13,7 @@ const SHOWING_SHARE: CSSProperties = { top: 64, right: 12, borderRadius: 4, over
 
 /**
  * Renders the JaaS iframe for the room the adapter is in: invisible for voice,
- * shown as a HUD panel while someone else in the call shares their screen.
+ * shown as a HUD panel while anyone in the call, including you, shares their screen.
  */
 export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
   const subscribe = useCallback((onChange: () => void) => voice.onMeetingChange(onChange), [voice]);

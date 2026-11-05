@@ -237,16 +237,29 @@ describe('JaasVoiceAdapter', () => {
     expect(voice.getShareState()).toEqual({ canShare: false, sharing: false, viewing: null });
   });
 
-  it('shows the latest remote share, never its own', async () => {
+  it('shows its own share when nobody else is sharing', async () => {
     const { voice } = setup();
     const api = await joinedMeeting(voice);
     api.emit('contentSharingParticipantsChanged', { data: ['me'] });
-    expect(voice.getShareState().viewing).toBeNull();
+    expect(voice.getShareState().viewing).toBe('me');
+    expect(api.largeVideo).toBe('me:desktop');
 
-    api.emit('contentSharingParticipantsChanged', { data: ['bob', 'me'] });
+    api.emit('contentSharingParticipantsChanged', { data: [] });
+    expect(voice.getShareState().viewing).toBeNull();
+  });
+
+  it('prefers the latest remote share and falls back to its own', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    api.emit('contentSharingParticipantsChanged', { data: ['me'] });
+    api.emit('contentSharingParticipantsChanged', { data: ['me', 'bob'] });
     expect(voice.getShareState().viewing).toBe('bob');
     expect(api.largeVideo).toBe('bob:desktop');
     expect(api.commands).toContain('pinParticipant');
+
+    api.emit('contentSharingParticipantsChanged', { data: ['me'] });
+    expect(voice.getShareState().viewing).toBe('me');
+    expect(api.largeVideo).toBe('me:desktop');
 
     api.emit('contentSharingParticipantsChanged', { data: [] });
     expect(voice.getShareState().viewing).toBeNull();
