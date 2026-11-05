@@ -22,6 +22,7 @@ export function IconButton({
   label,
   onClick,
   pressed,
+  expanded,
   disabled,
   tone = 'neutral',
   size = 'md',
@@ -30,6 +31,7 @@ export function IconButton({
   label: string;
   onClick: () => void;
   pressed?: boolean;
+  expanded?: boolean;
   disabled?: boolean;
   tone?: keyof typeof TONE;
   size?: keyof typeof SIZE;
@@ -51,6 +53,7 @@ export function IconButton({
               type="button"
               aria-label={label}
               aria-pressed={pressed}
+              aria-expanded={expanded}
               disabled={disabled}
               onClick={onClick}
               className={`rounded text-white disabled:pointer-events-none disabled:opacity-50 ${SIZE[size].button} ${TONE[tone]}`}
