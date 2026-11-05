@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type IJitsiMeetExternalApi from '@jitsi/react-sdk/lib/types/IJitsiMeetExternalApi';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MuteToggle, ShareScreenToggle } from './JaasMeeting';
+import { JaasMeeting, MuteToggle, ShareScreenToggle } from './JaasMeeting';
 import { JaasVoiceAdapter, MAX_MUTE_CORRECTIONS } from './JaasVoiceAdapter';
 
 class FakeJitsiApi extends EventEmitter {
@@ -13,6 +13,10 @@ class FakeJitsiApi extends EventEmitter {
   }
   dispose() {}
 }
+
+vi.mock('@jitsi/react-sdk', () => ({
+  JaaSMeeting: () => <div data-testid="jitsi" />,
+}));
 
 afterEach(cleanup);
 
@@ -154,5 +158,79 @@ describe('ShareScreenToggle', () => {
     expect(fireEvent.mouseDown(wrapper)).toBe(false);
     fireEvent.pointerMove(wrapper, { pointerType: 'mouse' });
     expect((await screen.findByRole('tooltip')).textContent).toBe('Screen sharing unavailable');
+  });
+});
+
+describe('JaasMeeting focus toggle', () => {
+  const toggle = () => screen.queryByRole('button', { name: /screen share$/ });
+  const wrapper = () => screen.getByTestId('jitsi').parentElement!;
+  const isFocused = () => wrapper().style.zIndex === '40';
+
+  async function showShare() {
+    const voice = newVoice();
+    render(<JaasMeeting voice={voice} />);
+    const api = await joinMeeting(voice);
+    act(() => void api.emit('contentSharingParticipantsChanged', { data: ['bob'] }));
+    return { voice, api };
+  }
+
+  it('has no toggle until a share is shown', async () => {
+    const voice = newVoice();
+    render(<JaasMeeting voice={voice} />);
+    const api = await joinMeeting(voice);
+    expect(toggle()).toBeNull();
+    act(() => void api.emit('contentSharingParticipantsChanged', { data: ['bob'] }));
+    expect(toggle()!.getAttribute('aria-label')).toBe('Enlarge screen share');
+  });
+
+  it('expands, releases pointer lock, and keeps the same nodes', async () => {
+    Object.defineProperty(document, 'exitPointerLock', {
+      value: () => {},
+      configurable: true,
+      writable: true,
+    });
+    const exitPointerLock = vi.spyOn(document, 'exitPointerLock');
+    await showShare();
+    const before = { wrapper: wrapper(), jitsi: screen.getByTestId('jitsi') };
+    fireEvent.click(toggle()!);
+    expect(exitPointerLock).toHaveBeenCalledTimes(1);
+    expect(isFocused()).toBe(true);
+    expect(wrapper().style.pointerEvents).toBe('auto');
+    expect(toggle()!.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle()!.getAttribute('aria-label')).toBe('Shrink screen share');
+    expect(wrapper()).toBe(before.wrapper);
+    expect(screen.getByTestId('jitsi')).toBe(before.jitsi);
+    delete (document as Partial<Document>).exitPointerLock;
+  });
+
+  it('collapses on the button, Escape and a margin click, but not a click on the share', async () => {
+    await showShare();
+    const expand = () => fireEvent.click(toggle()!);
+
+    expand();
+    fireEvent.mouseDown(screen.getByTestId('jitsi'));
+    fireEvent.click(screen.getByTestId('jitsi'));
+    expect(isFocused()).toBe(true);
+
+    fireEvent.click(toggle()!);
+    expect(isFocused()).toBe(false);
+
+    expand();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(isFocused()).toBe(false);
+
+    expand();
+    fireEvent.mouseDown(document.querySelector('.bg-black\\/50')!);
+    expect(isFocused()).toBe(false);
+  });
+
+  it('resets to collapsed when the share ends', async () => {
+    const { api } = await showShare();
+    fireEvent.click(toggle()!);
+    act(() => void api.emit('contentSharingParticipantsChanged', { data: [] }));
+    expect(toggle()).toBeNull();
+    act(() => void api.emit('contentSharingParticipantsChanged', { data: ['bob'] }));
+    expect(isFocused()).toBe(false);
+    expect(toggle()!.getAttribute('aria-expanded')).toBe('false');
   });
 });
