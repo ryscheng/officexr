@@ -189,6 +189,15 @@ describe('PROTOCOL table', () => {
     }
   });
 
+  it('avatar:update accepts viewMode, treats it as optional, and rejects invalid values', () => {
+    const avatarUpdate = (avatar: unknown) =>
+      validateNetEvent({ kind: 'avatar:update', v: 1, actorId: 'a', seq: 1, t: 0, name: 'A', avatar });
+    const accepted = avatarUpdate({ model: 'gnome', viewMode: '2d' });
+    expect(accepted.ok && accepted.event.kind === 'avatar:update' && accepted.event.avatar.viewMode).toBe('2d');
+    expect(avatarUpdate({ model: 'gnome' }).ok).toBe(true);
+    expect(avatarUpdate({ model: 'gnome', viewMode: 'vr' }).ok).toBe(false);
+  });
+
   it('validateNetEvent rejects unknown kinds', () => {
     const bad = { kind: 'totally-made-up', v: 1, actorId: 'a', seq: 1, t: 0 };
     const r = validateNetEvent(bad);

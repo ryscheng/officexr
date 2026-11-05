@@ -8,8 +8,12 @@ export type PlayerId = string;
 
 export type Vec3 = { x: number; y: number; z: number };
 
+export type ViewMode = '3d' | '2d';
+
 export type AvatarData = {
   model: string;
+  /** Absent means '3d'. */
+  viewMode?: ViewMode;
   colors?: Record<string, string>;
   accessories?: string[];
 };

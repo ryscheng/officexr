@@ -102,6 +102,19 @@ describe('RealtimeServer world constants', () => {
     await vi.waitFor(() => expect(speedsSeen(late)).toEqual([9]));
   });
 
+  it('relays ghostAvatar to clients', async () => {
+    const { port } = await startServer();
+    const received = await join(port, 'A');
+    const ghostAvatar = { model: '/models/characters/Ghost.glb' };
+
+    expect((await put(port, { ...DEFAULT_WORLD_CONSTANTS, ghostAvatar })).status).toBe(204);
+    await vi.waitFor(() =>
+      expect(received).toContainEqual(
+        expect.objectContaining({ kind: 'world:constants', constants: expect.objectContaining({ ghostAvatar }) }),
+      ),
+    );
+  });
+
   it('rejects a bad token (401) and an invalid body (400) without pushing', async () => {
     const { server, port } = await startServer();
     const received = await join(port, 'A');
