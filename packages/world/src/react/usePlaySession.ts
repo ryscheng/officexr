@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useMemo, useState } from 'react';
-import type { Actions, Vec3 } from '@officexr/sdk';
+import type { Actions, FootprintRect, Vec3 } from '@officexr/sdk';
 import { bakedLayoutAssetUrl } from '../app/asset-url.ts';
 import { loadMap, type LoadedMap, type MapLoaderDeps } from '../app/map-loader.ts';
 import type { SceneBakedLayout } from '../renderer/Scene.tsx';
@@ -7,6 +7,7 @@ import { useApplication } from './application-context.tsx';
 
 /** Clearance above the spawn point the local player appears at; the floor is loaded by then. */
 const SPAWN_DROP_HEIGHT = 0.1;
+const NO_FOOTPRINT: readonly FootprintRect[] = [];
 
 export type PlayStorages = MapLoaderDeps['storages'];
 
@@ -24,6 +25,8 @@ export interface PlaySession {
   spawnPoints: readonly Vec3[];
   /** Every layout placement of the applied map, none before one applies. */
   bakedLayouts: readonly SceneBakedLayout[];
+  /** Footprint of the applied map; empty until one is applied. */
+  buildingFootprint: readonly FootprintRect[];
   error: string | null;
   dismissError: () => void;
   /** True once the first load into the current `actions` has settled, either way. */
@@ -94,6 +97,7 @@ export function usePlaySession({
   return {
     spawnPoints,
     bakedLayouts,
+    buildingFootprint: map?.buildingFootprint ?? NO_FOOTPRINT,
     error,
     dismissError: () => setError(null),
     ready,

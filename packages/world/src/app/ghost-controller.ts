@@ -31,12 +31,12 @@ type Intent =
   | { type: "point"; target: Point }
   | { type: "follow"; playerId: PlayerId };
 
-const NO_KEYS: GhostKeys = {
+export const NO_KEYS: Readonly<GhostKeys> = Object.freeze({
   forward: false,
   back: false,
   left: false,
   right: false,
-};
+});
 const EPS = 1e-6;
 
 /** Headless 2D-mode movement: ignores map geometry, is solid against other players, stays in the footprint. */
@@ -48,7 +48,7 @@ export class GhostController {
     private readonly actions: Pick<Actions, "setSelfPosition">,
     private readonly store: Pick<Store, "getState">,
     private readonly selfId: PlayerId,
-    private readonly footprint: readonly FootprintRect[],
+    private footprint: readonly FootprintRect[],
     private readonly getTunables: () => GhostTunables,
   ) {}
 
@@ -65,6 +65,19 @@ export class GhostController {
 
   goTo(playerId: PlayerId): void {
     this.intent = { type: "follow", playerId };
+  }
+
+  setFootprint(footprint: readonly FootprintRect[]): void {
+    this.footprint = footprint;
+  }
+
+  cancel(): void {
+    this.intent = { type: "none" };
+  }
+
+  /** The player being followed, or null once the follow ends (arrived, cancelled, keys pressed). */
+  followTarget(): PlayerId | null {
+    return this.intent.type === "follow" ? this.intent.playerId : null;
   }
 
   step(dtSec: number): void {
