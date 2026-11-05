@@ -1,6 +1,6 @@
-import { useCallback, useSyncExternalStore, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { JaaSMeeting } from '@jitsi/react-sdk';
-import { Mic, MicOff, MonitorOff, MonitorUp } from 'lucide-react';
+import { Maximize2, Mic, MicOff, Minimize2, MonitorOff, MonitorUp } from 'lucide-react';
 import { IconButton } from '../hud/IconButton';
 import type { JaasVoiceAdapter } from './JaasVoiceAdapter';
 import { useMicMuted } from './useMicMuted';
@@ -10,6 +10,7 @@ const useShareState = (voice: JaasVoiceAdapter) => useSyncExternalStore(voice.on
 // Kept in-viewport but invisible: fully off-screen, Chrome throttles the iframe's timers and the XMPP connection never completes.
 const HIDDEN: CSSProperties = { bottom: 0, right: 0, opacity: 0, zIndex: -1 };
 const SHOWING_SHARE: CSSProperties = { top: 64, right: 12, borderRadius: 4, overflow: 'hidden', zIndex: 10 };
+const FOCUSED_SHARE: CSSProperties = { inset: 16, zIndex: 40, pointerEvents: 'auto' };
 
 /**
  * Renders the JaaS iframe for the room the adapter is in: invisible for voice,
@@ -19,34 +20,85 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
   const subscribe = useCallback((onChange: () => void) => voice.onMeetingChange(onChange), [voice]);
   const meeting = useSyncExternalStore(subscribe, () => voice.getMeeting());
   const { viewing } = useShareState(voice);
+  const [expanded, setExpanded] = useState(false);
+  const focused = expanded && viewing !== null;
+  useEffect(() => {
+    if (viewing === null) {
+      setExpanded(false);
+    }
+  }, [viewing]);
+  useEffect(() => {
+    if (!focused) {
+      return;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable],dialog');
+      if (e.key === 'Escape' && !e.defaultPrevented && !typing) {
+        setExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [focused]);
   if (!meeting) {
     return null;
   }
   const startMuted = voice.isMuted();
+  const wrapperStyle: CSSProperties = focused
+    ? FOCUSED_SHARE
+    : { width: 480, height: 270, pointerEvents: 'none', ...(viewing ? SHOWING_SHARE : HIDDEN) };
   return (
-    <div
-      key={meeting.key}
-      style={{ position: 'fixed', width: 480, height: 270, pointerEvents: 'none', ...(viewing ? SHOWING_SHARE : HIDDEN) }}
-    >
-      <JaaSMeeting
-        appId={voice.options.appId}
-        jwt={meeting.jwt}
-        roomName={meeting.roomName}
-        configOverwrite={{
-          startWithAudioMuted: startMuted,
-          startWithVideoMuted: true,
-          prejoinPageEnabled: false,
-          prejoinConfig: { enabled: false },
-          disableModeratorIndicator: true,
-          enableNoisyMicDetection: false,
-          disableDeepLinking: true,
-          lobby: { autoKnock: true, enableChat: false },
-        }}
-        interfaceConfigOverwrite={{ TOOLBAR_BUTTONS: [], SHOW_JITSI_WATERMARK: false, SHOW_WATERMARK_FOR_GUESTS: false }}
-        userInfo={{ displayName: voice.options.displayName, email: '' }}
-        onApiReady={(api) => voice.attachApi(meeting, api, startMuted)}
-      />
-    </div>
+    <>
+      {focused && (
+        <div
+          key="backdrop"
+          data-studio-panel
+          className="fixed inset-0 z-40 bg-black/50"
+          onMouseDown={() => setExpanded(false)}
+        />
+      )}
+      <div key={meeting.key} style={{ position: 'fixed', ...wrapperStyle }}>
+        <JaaSMeeting
+          appId={voice.options.appId}
+          jwt={meeting.jwt}
+          roomName={meeting.roomName}
+          configOverwrite={{
+            startWithAudioMuted: startMuted,
+            startWithVideoMuted: true,
+            prejoinPageEnabled: false,
+            prejoinConfig: { enabled: false },
+            disableModeratorIndicator: true,
+            enableNoisyMicDetection: false,
+            disableDeepLinking: true,
+            lobby: { autoKnock: true, enableChat: false },
+          }}
+          interfaceConfigOverwrite={{ TOOLBAR_BUTTONS: [], SHOW_JITSI_WATERMARK: false, SHOW_WATERMARK_FOR_GUESTS: false }}
+          userInfo={{ displayName: voice.options.displayName, email: '' }}
+          onApiReady={(api) => voice.attachApi(meeting, api, startMuted)}
+        />
+      </div>
+      {viewing && (
+        <div
+          key="toggle"
+          data-studio-panel
+          className="fixed"
+          style={focused ? { top: 24, right: 24, zIndex: 41 } : { top: 68, right: 16, zIndex: 11 }}
+        >
+          <IconButton
+            icon={focused ? Minimize2 : Maximize2}
+            label={focused ? 'Shrink screen share' : 'Enlarge screen share'}
+            expanded={focused}
+            size="sm"
+            onClick={() => {
+              if (!focused) {
+                document.exitPointerLock?.();
+              }
+              setExpanded(!focused);
+            }}
+          />
+        </div>
+      )}
+    </>
   );
 }
 
