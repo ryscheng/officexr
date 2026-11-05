@@ -8,6 +8,7 @@ import {
   type FootprintRect,
   type RuleRegistry,
   type OfficeState,
+  type PlayerId,
   type PlayerState,
   type SnapshotHandshake,
   type Store,
@@ -47,6 +48,7 @@ export interface TopDownPlayViewProps {
   error?: string | null;
   onDismissError?: () => void;
   onMapApplied?: (spawnPoints: readonly Vec3[]) => void;
+  onPingPlayer?: (id: PlayerId) => void;
   /** Overlays rendered above the canvas. */
   children?: React.ReactNode;
 }

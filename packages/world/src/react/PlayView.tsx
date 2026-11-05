@@ -1,7 +1,7 @@
 import React, { useEffect, useReducer, useRef, useState } from 'react';
 import type { XRStore } from '@react-three/xr';
 import { useProgress } from '@react-three/drei';
-import type { Actions, Bus, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
+import type { Actions, Bus, PlayerId, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import type { CameraMode } from '../renderer/config.ts';
@@ -54,6 +54,7 @@ export interface PlayViewProps {
   hostControls?: boolean;
   /** Lets the host start immersive XR sessions; see `createWorldXRStore`. */
   xrStore?: XRStore;
+  onPingPlayer?: (id: PlayerId) => void;
   /** Overlays rendered above the scene and HUD. */
   children?: React.ReactNode;
 }
@@ -126,6 +127,7 @@ export function PlayView(props: PlayViewProps) {
           viewYaw={viewYaw}
           xrStore={props.xrStore}
           selfReady={ready}
+          onPingPlayer={props.onPingPlayer}
           onModelsReady={() => dispatch({ type: 'modelsReady' })}
           onCollidersReady={(roomInstanceId) => dispatch({ type: 'collidersReady', roomInstanceId })}
           onCollidersError={(err) =>

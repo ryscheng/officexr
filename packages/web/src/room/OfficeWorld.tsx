@@ -103,6 +103,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
     storages,
     error: bannerError,
     onDismissError: () => setBannerError(null),
+    onPingPlayer: pinger.ping,
   });
   const menu = (
     <>
