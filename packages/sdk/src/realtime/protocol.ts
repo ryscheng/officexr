@@ -271,7 +271,11 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
 
 /** The one player who receives `event`, or null when it goes to the whole room. */
 export function recipientOf(event: NetEvent): PlayerId | null {
-  return PROTOCOL[event.kind].route === 'target' && 'targetId' in event ? event.targetId : null;
+  if (PROTOCOL[event.kind].route !== 'target') {
+    return null;
+  }
+  // Private traffic without a target goes nowhere rather than to the room; '' matches no client.
+  return (event as { targetId?: PlayerId }).targetId ?? '';
 }
 
 // --- Validation ---

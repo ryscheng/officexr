@@ -9,10 +9,7 @@ describe('ping', () => {
     const a = await h.add('A');
     const b = await h.add('B');
     const c = await h.add('C');
-    const seen = (events: NetEvent[]) => events.filter((e) => e.kind === 'ping:send');
-    const atA: NetEvent[] = [];
     const atC: NetEvent[] = [];
-    a.channel.on((e) => atA.push(e));
     c.channel.on((e) => atC.push(e));
     const bBus: GameEvent[] = [];
     const cBus: GameEvent[] = [];
@@ -24,7 +21,20 @@ describe('ping', () => {
 
     expect(bBus).toEqual([{ kind: 'ping:received', fromId: 'A', at: 5 }]);
     expect(cBus).toEqual([]);
-    expect(seen(atC)).toEqual([]);
-    expect(seen(atA)).toEqual([]);
+    expect(atC).toEqual([]);
+  });
+
+  it('delivers nowhere when the target is the sender or not attached', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('A');
+    const b = await h.add('B');
+    const received: NetEvent[] = [];
+    a.channel.on((e) => received.push(e));
+    b.channel.on((e) => received.push(e));
+
+    a.sync.sendPing('A');
+    a.sync.sendPing('nobody');
+
+    expect(received).toEqual([]);
   });
 });
