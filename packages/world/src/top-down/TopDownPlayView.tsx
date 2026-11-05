@@ -24,11 +24,13 @@ import { PlayControlsProvider } from '../react/playControls.tsx';
 import { NavGridProvider, useBuildNavGrid } from '../react/useNavGrid.ts';
 import { usePlaySession, type PlayStorages } from '../react/usePlaySession.ts';
 import { isTypingTarget } from '../react/useWorldFocus.ts';
+import { PingBellButton } from '../react/PingBellButton.tsx';
+import { useStoreSelector } from '../react/useStoreSelector.ts';
 import { createViewYaw, ViewYawProvider } from '../react/viewYaw.tsx';
 import { useStoreWorldObjects } from '../renderer/useStoreWorldObjects.ts';
 import { createGhostPlayControls } from './ghostPlayControls.ts';
 import { drawMap, drawPlayers, type MapBox } from './topDownDraw.ts';
-import { fitTransform, screenToWorld, unionBounds, type TopDownTransform, type XZBounds } from './topDownGeometry.ts';
+import { fitTransform, playerAt, screenToWorld, unionBounds, worldToScreen, type TopDownTransform, type XZBounds } from './topDownGeometry.ts';
 
 export interface TopDownPlayViewProps {
   store: Store;
@@ -48,7 +50,7 @@ export interface TopDownPlayViewProps {
   error?: string | null;
   onDismissError?: () => void;
   onMapApplied?: (spawnPoints: readonly Vec3[]) => void;
-  /** Pings another player; currently unused in the 2D view. */
+  /** Pings another player; the 2D view shows a bell over a hovered player. Touch pings from the participant list. */
   onPingPlayer?: (id: PlayerId) => void;
   /** Overlays rendered above the canvas. */
   children?: React.ReactNode;
@@ -68,6 +70,40 @@ const KEY_BINDINGS: Record<string, keyof GhostKeys> = {
 const MAX_DT_SEC = 0.1;
 /** Half-size of the area shown around players when the map has nothing to fit to. */
 const EMPTY_MAP_MARGIN_M = 5;
+/** Pointer distance from a marker that counts as hovering it; larger than the marker so the pointer can travel to the bell. */
+const HOVER_RADIUS_PX = 14;
+const BELL_GAP_PX = 8;
+
+const selectPlayers = (s: OfficeState) => s.players;
+
+function HoverBell({ store, id, transformRef, onPing, onLeave }: {
+  store: Store;
+  id: PlayerId;
+  transformRef: React.RefObject<TopDownTransform | null>;
+  onPing: (id: PlayerId) => void;
+  onLeave: () => void;
+}) {
+  const player = useStoreSelector(store, selectPlayers)[id];
+  const t = transformRef.current;
+  if (!player || !t) {
+    return null;
+  }
+  const c = worldToScreen(t, player.pos);
+  return (
+    <div
+      data-ping-bell=""
+      onMouseLeave={onLeave}
+      style={{ position: 'absolute', left: c.x, top: c.y - BELL_GAP_PX, transform: 'translate(-50%, -100%)' }}
+    >
+      <PingBellButton name={player.name} onPing={() => onPing(id)} />
+    </div>
+  );
+}
+
+function pointerPoint(e: React.MouseEvent<HTMLCanvasElement>) {
+  const rect = e.currentTarget.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
 
 function playerBounds(players: Readonly<Record<string, PlayerState>>): XZBounds | null {
   return unionBounds(
@@ -102,6 +138,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
   const worldObjects = useStoreWorldObjects(store);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const transformRef = useRef<TopDownTransform | null>(null);
+  const [hoveredId, setHoveredId] = useState<PlayerId | null>(null);
 
   // The footprint changes per applied map; `setFootprint` keeps held keys and a go-to intent.
   const [controller] = useState(
@@ -228,8 +265,21 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
     if (!t) {
       return;
     }
-    const rect = e.currentTarget.getBoundingClientRect();
-    controller.moveTo(screenToWorld(t, { x: e.clientX - rect.left, y: e.clientY - rect.top }));
+    controller.moveTo(screenToWorld(t, pointerPoint(e)));
+  };
+
+  const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const t = transformRef.current;
+    if (!t || !props.onPingPlayer) {
+      return;
+    }
+    setHoveredId(playerAt(pointerPoint(e), store.getState().players, t, selfId, HOVER_RADIUS_PX));
+  };
+
+  const onMouseLeave = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!(e.relatedTarget instanceof Element && e.relatedTarget.closest('[data-ping-bell]'))) {
+      setHoveredId(null);
+    }
   };
 
   return (
@@ -237,8 +287,19 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
       <canvas
         ref={canvasRef}
         onClick={onClick}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}
       />
+      {props.onPingPlayer && hoveredId && (
+        <HoverBell
+          store={store}
+          id={hoveredId}
+          transformRef={transformRef}
+          onPing={props.onPingPlayer}
+          onLeave={() => setHoveredId(null)}
+        />
+      )}
       {props.error ? (
         <ErrorBanner message={props.error} onDismiss={() => props.onDismissError?.()} />
       ) : (
