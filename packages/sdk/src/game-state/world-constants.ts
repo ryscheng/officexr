@@ -85,6 +85,8 @@ export type WorldConstants = {
   lighting: LightingConstants;
   background: BackgroundConstants;
   fixedCamera: FixedCameraConstants;
+  /** GLB shown for players in 2D view; omitted, no ghost model is configured. */
+  ghostAvatar?: { model: string };
 };
 
 export const FIXED_CAMERA_DEFAULTS = {
@@ -253,6 +255,7 @@ export const ZWorldConstants: z.ZodType<WorldConstants> = z.object({
     fov: z.number().min(1).max(179),
     movementYawOffsetDeg: z.number().min(-180).max(180),
   }),
+  ghostAvatar: z.object({ model: z.string().min(1) }).optional(),
 });
 
 /** Validates an untrusted constants document; throws a `ZodError` when it

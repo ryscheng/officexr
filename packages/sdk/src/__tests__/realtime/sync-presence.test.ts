@@ -155,3 +155,19 @@ describe('SyncEngine heartbeat timer', () => {
     expect(cleared).toEqual(['handle']);
   });
 });
+
+describe('avatar viewMode', () => {
+  it('converges to peers and to late joiners via the snapshot handshake', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    const b = await h.add('b');
+
+    const avatar = a.store.getState().players['a']!.avatar;
+    a.actions.upsertPlayer({ id: 'a', avatar: { ...avatar, viewMode: '2d' } });
+    expect(b.store.getState().players['a']?.avatar.viewMode).toBe('2d');
+
+    const c = await h.add('c');
+    await c.handshake.requestSnapshot();
+    expect(c.store.getState().players['a']?.avatar.viewMode).toBe('2d');
+  });
+});

@@ -52,3 +52,12 @@ describe('WorldConstants', () => {
     ).toThrow();
   });
 });
+
+describe('ghostAvatar', () => {
+  it('round-trips through parseWorldConstants and is optional', () => {
+    const ghostAvatar = { model: '/models/characters/Ghost.glb' };
+    expect(parseWorldConstants({ ...DEFAULT_WORLD_CONSTANTS, ghostAvatar }).ghostAvatar).toEqual(ghostAvatar);
+    expect(parseWorldConstants(DEFAULT_WORLD_CONSTANTS).ghostAvatar).toBeUndefined();
+    expect(() => parseWorldConstants({ ...DEFAULT_WORLD_CONSTANTS, ghostAvatar: { model: '' } })).toThrow();
+  });
+});
