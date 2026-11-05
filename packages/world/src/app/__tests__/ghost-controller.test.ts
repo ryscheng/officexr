@@ -12,7 +12,11 @@ const none: GhostKeys = {
   right: false,
 };
 
-function setup(footprint: FootprintRect[] = [], at = { x: 0, z: 0 }) {
+function setup(
+  footprint: FootprintRect[] = [],
+  at = { x: 0, z: 0 },
+  worldObjects: unknown = { cubeSize: 2, instances: [] },
+) {
   const last = { vel: { x: 0, y: 0, z: 0 } };
   const players: Record<string, P> = {
     me: { pos: { x: at.x, y: 1.5, z: at.z }, yaw: 0 },
@@ -29,10 +33,9 @@ function setup(footprint: FootprintRect[] = [], at = { x: 0, z: 0 }) {
       players.me = { pos, yaw };
     },
   };
-  const store = { getState: () => ({ players }) } as unknown as Pick<
-    Store,
-    "getState"
-  >;
+  const store = {
+    getState: () => ({ players, worldObjects }),
+  } as unknown as Pick<Store, "getState">;
   const c = new GhostController(
     actions,
     store,
@@ -176,5 +179,44 @@ describe("GhostController", () => {
     c.setKeys(none);
     c.step(1);
     expect(players.me.pos.x).toBe(0);
+  });
+
+  it("takes a bounded step on the head-on frame", () => {
+    const { c, players } = setup([], { x: 0, z: 1.2 });
+    players.other = { pos: { x: 0, y: 0, z: 0 }, yaw: 0 };
+    c.setKeys({ ...none, forward: true });
+    for (let i = 0; i < 30; i++) {
+      const before = { ...players.me.pos };
+      c.step(0.05);
+      expect(dist(before, players.me.pos)).toBeLessThanOrEqual(
+        TUN.playerSpeed * 0.05 + 1e-9,
+      );
+    }
+  });
+
+  it("ignores world objects on its path", () => {
+    const walk = (worldObjects?: unknown) => {
+      const { c, players } = setup([], { x: 0, z: 0 }, worldObjects);
+      c.setKeys({ ...none, forward: true });
+      c.step(1);
+      return players.me.pos;
+    };
+    const wall = {
+      cubeSize: 2,
+      instances: [{ kind: "wall", x: 0, y: 0, z: -1 }],
+    };
+    expect(walk(wall)).toEqual(walk());
+  });
+
+  it("goTo never presses against its target when proximityRadius is small", () => {
+    const { c, players } = setup();
+    TUN.proximityRadius = 0.1;
+    players.other = { pos: { x: 10, y: 0, z: 0 }, yaw: 0 };
+    c.goTo("other" as PlayerId);
+    for (let i = 0; i < 20; i++) {
+      c.step(1);
+    }
+    TUN.proximityRadius = 3;
+    expect(dist(players.me.pos, players.other.pos)).toBeCloseTo(1);
   });
 });

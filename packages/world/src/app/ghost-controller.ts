@@ -83,14 +83,27 @@ export class GhostController {
       const reach = Math.min(maxStep, dir.dist);
       const next = { x: from.x + dir.x * reach, z: from.z + dir.z * reach };
       const minDist = tun.charRadius * 2;
-      const resolved = clampToFootprint(
-        this.footprint,
-        this.resolveCollisions(from, next, state.players, minDist),
-      );
-      // The footprint clamp can pull the ghost back into someone's circle; refuse the move then.
-      moved = this.overlapsAny(from, resolved, state.players, minDist)
+      const attempt = (flip: 1 | -1): Point =>
+        clampToFootprint(
+          this.footprint,
+          this.resolveCollisions(
+            from,
+            next,
+            state.players,
+            minDist,
+            maxStep,
+            flip,
+          ),
+        );
+      // The footprint clamp can pull the ghost back into someone's circle, so try the other
+      // head-on side before refusing the move.
+      const first = attempt(1);
+      const second = this.overlapsAny(from, first, state.players, minDist)
+        ? attempt(-1)
+        : first;
+      moved = this.overlapsAny(from, second, state.players, minDist)
         ? from
-        : resolved;
+        : second;
       if (
         this.intent.type === "point" &&
         Math.hypot(moved.x - from.x, moved.z - from.z) < EPS
@@ -136,7 +149,7 @@ export class GhostController {
         return null;
       }
       target = other.pos;
-      stopAt = tun.proximityRadius;
+      stopAt = Math.max(tun.proximityRadius, tun.charRadius * 2);
     } else {
       return null;
     }
@@ -181,6 +194,8 @@ export class GhostController {
     next: Point,
     players: Record<PlayerId, { pos: Point }>,
     minDist: number,
+    maxStep: number,
+    flip: 1 | -1,
   ): Point {
     const mx = next.x - from.x;
     const mz = next.z - from.z;
@@ -205,16 +220,18 @@ export class GhostController {
             : { x: from.x - other.pos.x, z: from.z - other.pos.z };
         const n = Math.hypot(raw.x, raw.z) || 1;
         let out = { x: raw.x / n, z: raw.z / n };
-        // Head-on: projecting straight back out would stall forever, so go round to a fixed side.
+        // Head-on: projecting straight back out would stall forever, so swing round the circle,
+        // by the arc that keeps the whole move within `maxStep` of `from`.
         const cross = move.x * out.z - move.z * out.x;
         if (Math.abs(cross) < 0.05) {
-          const side = cross < 0 ? -1 : 1;
-          const bent = {
-            x: out.x - side * move.z * 0.5,
-            z: out.z + side * move.x * 0.5,
-          };
-          const bLen = Math.hypot(bent.x, bent.z);
-          out = { x: bent.x / bLen, z: bent.z / bLen };
+          const fx = from.x - other.pos.x;
+          const fz = from.z - other.pos.z;
+          const fd = Math.hypot(fx, fz) || limit;
+          const cosArc =
+            (fd * fd + limit * limit - maxStep * maxStep) / (2 * fd * limit);
+          const arc = Math.acos(Math.min(1, Math.max(-1, cosArc)));
+          const angle = Math.atan2(fz, fx) + (cross < 0 ? -1 : 1) * flip * arc;
+          out = { x: Math.cos(angle), z: Math.sin(angle) };
         }
         p = { x: other.pos.x + out.x * limit, z: other.pos.z + out.z * limit };
       }
