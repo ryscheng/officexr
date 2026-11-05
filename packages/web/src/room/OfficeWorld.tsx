@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import type { Actions, OfficeState, Store } from '@officexr/sdk';
+import type { Actions, Bus, OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
@@ -62,8 +62,8 @@ function LocalPresence({ actions, voice }: { actions: Actions; voice: JaasVoiceA
   return null;
 }
 
-function PingReceiver({ local }: { local: ReadySession['local'] }) {
-  usePingReceiver(local.bus, local.store);
+function PingReceiver({ bus, store }: { bus: Bus; store: Store }) {
+  usePingReceiver(bus, store);
   return null;
 }
 
@@ -154,7 +154,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       {session.type === 'ready' && (
         <>
           <ReplacedBanner store={session.local.store} />
-          <PingReceiver local={session.local} />
+          <PingReceiver bus={session.local.bus} store={session.local.store} />
           <LocalPresence actions={session.local.actions} voice={session.voice} />
         </>
       )}

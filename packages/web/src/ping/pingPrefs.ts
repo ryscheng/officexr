@@ -40,7 +40,7 @@ function rawPrefs(storage: Pick<Storage, 'getItem'>): string | null {
   }
 }
 
-export function readPingPrefs(storage: Pick<Storage, 'getItem'> = localStorage): PingPrefs {
+export function readPingPrefs(storage: Pick<Storage, 'getItem'>): PingPrefs {
   return parsePingPrefs(rawPrefs(storage));
 }
 

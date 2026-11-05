@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
+import { soundAssetUrl } from '@officexr/world/app';
 import { createPingPlayer } from './pingSound';
 
 function setup(playImpl: () => Promise<void> = () => Promise.resolve()) {
   const oscillators: unknown[] = [];
   const param = { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() };
   const node = { connect: (next: unknown) => next };
-  const context = {
+  const context: { state: string; [k: string]: unknown } = {
     currentTime: 0,
     destination: {},
-    resume: vi.fn(() => Promise.resolve()),
+    state: 'suspended',
+    resume: vi.fn(() => {
+      context.state = 'running';
+      return Promise.resolve();
+    }),
     createOscillator: () => {
       const osc = { ...node, frequency: { value: 0 }, start: vi.fn(), stop: vi.fn() };
       oscillators.push(osc);
@@ -29,7 +34,7 @@ function setup(playImpl: () => Promise<void> = () => Promise.resolve()) {
   return { player, oscillators, audioSrcs, context, gestureTarget };
 }
 
-const catalog = { sounds: [{ name: 'bell.mp3', size: 1, updatedAt: 1 }] };
+const catalog = { sounds: [{ name: 'bell', size: 1, updatedAt: 1 }] };
 
 describe('createPingPlayer', () => {
   it('plays a two-tone chime for builtin', () => {
@@ -48,10 +53,15 @@ describe('createPingPlayer', () => {
 
   it('plays a library sound through an audio element', () => {
     const { player, oscillators, audioSrcs } = setup();
-    player.play({ type: 'library', name: 'bell.mp3' }, catalog);
-    expect(audioSrcs).toHaveLength(1);
-    expect(audioSrcs[0]).toContain('bell.mp3');
+    player.play({ type: 'library', name: 'bell' }, catalog);
+    expect(audioSrcs).toEqual([soundAssetUrl('bell')]);
     expect(oscillators).toHaveLength(0);
+  });
+
+  it('tries a library sound before the catalog has loaded', () => {
+    const { player, audioSrcs } = setup();
+    player.play({ type: 'library', name: 'bell' }, null);
+    expect(audioSrcs).toEqual([soundAssetUrl('bell')]);
   });
 
   it('falls back to builtin for a name missing from the catalog', () => {
@@ -63,13 +73,14 @@ describe('createPingPlayer', () => {
 
   it('falls back to builtin when the audio fails to play', async () => {
     const { player, oscillators } = setup(() => Promise.reject(new Error('load failed')));
-    player.play({ type: 'library', name: 'bell.mp3' }, catalog);
+    player.play({ type: 'library', name: 'bell' }, catalog);
     await vi.waitFor(() => expect(oscillators).toHaveLength(2));
   });
 
-  it('resumes the audio context on the first gesture', () => {
+  it('arms the gesture unlock at construction, before any ping, and stops once running', async () => {
     const { context, gestureTarget } = setup();
-    gestureTarget.dispatchEvent(new Event('pointerdown'));
+    gestureTarget.dispatchEvent(new Event('pointerup'));
+    await Promise.resolve();
     gestureTarget.dispatchEvent(new Event('keydown'));
     expect(context.resume).toHaveBeenCalledTimes(1);
   });

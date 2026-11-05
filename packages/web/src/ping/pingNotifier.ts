@@ -16,7 +16,8 @@ const browserEnv = (): PingNotifierEnv => ({
 
 export function maybeNotify(prefs: PingPrefs, senderName: string, env: PingNotifierEnv = browserEnv()): void {
   const { Notification: Notify } = env;
-  if (!prefs.notify || !Notify || Notify.permission !== 'granted' || !(env.document.hidden || !env.document.hasFocus())) {
+  const attending = !env.document.hidden && env.document.hasFocus();
+  if (!prefs.notify || !Notify || Notify.permission !== 'granted' || attending) {
     return;
   }
   const notification = new Notify(`${senderName} pinged you`, { tag: 'officexr-ping' });

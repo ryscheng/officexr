@@ -1,9 +1,10 @@
 import { soundAssetUrl, type SoundCatalog } from '@officexr/world/app';
+import { resumeOnGesture } from '../voice/resumeOnGesture';
 import type { PingSound } from './pingPrefs';
 
 export interface PingSoundDeps {
   createAudioContext(): AudioContext;
-  createAudio(src: string): Pick<HTMLAudioElement, 'play'>;
+  createAudio(src: string): { play(): Promise<void> };
   /** Where the first user gesture is heard, to unlock a context the browser started suspended. */
   gestureTarget: EventTarget;
 }
@@ -13,24 +14,21 @@ export interface PingPlayer {
   play(sound: PingSound, catalog?: SoundCatalog | null): void;
 }
 
-const GESTURES = ['pointerdown', 'keydown'];
+const assertNever = (value: never): never => {
+  throw new Error(`Unhandled ping sound: ${JSON.stringify(value)}`);
+};
+
 const CHIME = [
   { hz: 880, at: 0 },
   { hz: 1175, at: 0.15 },
 ];
 
 export function createPingPlayer(deps: PingSoundDeps): PingPlayer {
-  let context: AudioContext | null = null;
-  const audioContext = () => (context ??= deps.createAudioContext());
-
-  const unlock = () => {
-    GESTURES.forEach((gesture) => deps.gestureTarget.removeEventListener(gesture, unlock));
-    void audioContext().resume();
-  };
-  GESTURES.forEach((gesture) => deps.gestureTarget.addEventListener(gesture, unlock));
+  const context = deps.createAudioContext();
+  resumeOnGesture(context, deps.gestureTarget);
 
   const chime = () => {
-    const ctx = audioContext();
+    const ctx = context;
     const start = ctx.currentTime;
     for (const { hz, at } of CHIME) {
       const osc = ctx.createOscillator();
@@ -47,17 +45,19 @@ export function createPingPlayer(deps: PingSoundDeps): PingPlayer {
 
   return {
     play(sound, catalog) {
-      if (sound.type === 'none') {
-        return;
-      }
-      if (sound.type === 'builtin' || (catalog && !catalog.sounds.some((s) => s.name === sound.name))) {
-        chime();
-        return;
-      }
-      try {
-        void Promise.resolve(deps.createAudio(soundAssetUrl(sound.name)).play()).catch(chime);
-      } catch {
-        chime();
+      switch (sound.type) {
+        case 'none':
+          return;
+        case 'builtin':
+          return chime();
+        case 'library':
+          if (catalog && !catalog.sounds.some((s) => s.name === sound.name)) {
+            return chime();
+          }
+          deps.createAudio(soundAssetUrl(sound.name)).play().catch(chime);
+          return;
+        default:
+          return assertNever(sound);
       }
     },
   };
@@ -65,13 +65,12 @@ export function createPingPlayer(deps: PingSoundDeps): PingPlayer {
 
 let browserPlayer: PingPlayer | null = null;
 
-const getBrowserPlayer = (): PingPlayer =>
+export const browserPingPlayer = (): PingPlayer =>
   (browserPlayer ??= createPingPlayer({
     createAudioContext: () => new AudioContext(),
     createAudio: (src) => new Audio(src),
     gestureTarget: window,
   }));
 
-export const playPingSound = (sound: PingSound, catalog?: SoundCatalog | null): void => getBrowserPlayer().play(sound, catalog);
-
-export const previewPingSound = (sound: PingSound, catalog?: SoundCatalog | null): void => playPingSound(sound, catalog);
+export const previewPingSound = (sound: PingSound, catalog?: SoundCatalog | null): void =>
+  browserPingPlayer().play(sound, catalog);
