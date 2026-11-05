@@ -3,6 +3,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { AwsClient } from 'aws4fetch';
 import { Logger, NodeIO, type JSONDocument } from '@gltf-transform/core';
+import { listBinaryResource } from '@officexr/world/vite-plugin-storage';
+import type { SoundCatalog } from '@officexr/world/app';
 import { assetContentType } from '@officexr/world/asset-content-type';
 import { compressDocument, registerCompressionCodecs } from '@officexr/world/glb-compression';
 
@@ -33,6 +35,7 @@ type Upload = { key: string; bytes: Uint8Array };
 interface SyncDirs {
   modelsDir: string;
   bakedLayoutsDir: string;
+  soundsDir: string;
 }
 
 export type R2Publisher = ReturnType<typeof createR2Publisher>;
@@ -182,6 +185,13 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
     return _exhaustive;
   }
 
+  /** Rewrites `sounds/index.json` from the sounds dir, the same listing `/api/sounds/` serves. */
+  async function publishSoundManifest(soundsDir: string) {
+    // ponytail: the manifest shares the 5-minute cache policy, so new sounds can take that long to reach clients.
+    const catalog: SoundCatalog = { sounds: await listBinaryResource(soundsDir, SOUND_EXTENSION) };
+    await publishBytes(SOUND_MANIFEST_KEY, new TextEncoder().encode(JSON.stringify(catalog)));
+  }
+
   /** Publishes every model and baked layout that changed since its last upload; never rejects. */
   async function sync(dirs: SyncDirs): Promise<void> {
     let units: Unit[];
@@ -189,6 +199,7 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
       units = [
         ...(await modelUnits(dirs.modelsDir)),
         ...(await bakedLayoutUnits(dirs.bakedLayoutsDir)),
+        ...(await soundUnits(dirs.soundsDir)),
       ];
     } catch (err) {
       console.error('[r2-publisher] sync failed to list assets:', err);
@@ -205,6 +216,12 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
         console.error(`[r2-publisher] ${unit.key} failed:`, err);
       }
     }
+    try {
+      await enqueue(() => publishSoundManifest(dirs.soundsDir));
+    } catch (err) {
+      counts.failed++;
+      console.error(`[r2-publisher] ${SOUND_MANIFEST_KEY} failed:`, err);
+    }
     console.log(
       `[r2-publisher] sync done: ${counts.uploaded} uploaded, ${counts.unchanged} unchanged, ${counts.failed} failed`,
     );
@@ -218,8 +235,25 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
         enqueue(() => publishBytes(bakedLayoutKey(name), bytes)).then(() => {}),
       onDeleted: (name: string) => enqueue(() => send('DELETE', bakedLayoutKey(name))).then(() => {}),
     },
+    /** Storage hooks for `/api/sounds`: mirror each sound and keep the manifest current. */
+    soundHooks: (soundsDir: string) => ({
+      onSaved: (name: string, bytes: Uint8Array) =>
+        enqueue(async () => {
+          await publishBytes(soundKey(name), bytes);
+          await publishSoundManifest(soundsDir);
+        }),
+      onDeleted: (name: string) =>
+        enqueue(async () => {
+          await send('DELETE', soundKey(name));
+          await publishSoundManifest(soundsDir);
+        }),
+    }),
   };
 }
+
+const SOUND_EXTENSION = '.mp3';
+const SOUND_MANIFEST_KEY = 'sounds/index.json';
+const soundKey = (name: string) => `sounds/${name}${SOUND_EXTENSION}`;
 
 const bakedLayoutKey = (name: string) => `baked-layouts/${name}.glb`;
 
@@ -301,4 +335,12 @@ async function bakedLayoutUnits(dir: string): Promise<Unit[]> {
   return names
     .filter((name) => name.endsWith('.glb'))
     .map((name) => ({ type: 'file', key: bakedLayoutKey(path.basename(name, '.glb')), path: path.join(dir, name) }));
+}
+
+async function soundUnits(dir: string): Promise<Unit[]> {
+  return (await listBinaryResource(dir, SOUND_EXTENSION)).map(({ name }) => ({
+    type: 'file',
+    key: soundKey(name),
+    path: path.join(dir, `${name}${SOUND_EXTENSION}`),
+  }));
 }

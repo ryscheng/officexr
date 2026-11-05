@@ -539,10 +539,12 @@ function makeBinaryResourceMiddleware(
   };
 }
 
-async function handleListBinary(
-  { dir, extension, listKey }: BinaryResourceOpts,
-  res: ServerResponse,
-): Promise<void> {
+async function handleListBinary(opts: BinaryResourceOpts, res: ServerResponse): Promise<void> {
+  jsonResponse(res, 200, { [opts.listKey]: await listBinaryResource(opts.dir, opts.extension) });
+}
+
+/** The valid files in `dir` ending in `extension`, as the list route reports them. */
+export async function listBinaryResource(dir: string, extension: string): Promise<SoundCatalogEntry[]> {
   let entries: Dirent[] = [];
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
@@ -564,7 +566,7 @@ async function handleListBinary(
       console.warn(`[studio-storage:${path.basename(dir)}] skipping ${entry.name}:`, (err as Error).message);
     }
   }
-  jsonResponse(res, 200, { [listKey]: items });
+  return items;
 }
 
 function logHookError(opts: BinaryResourceOpts, err: unknown): void {

@@ -31,6 +31,8 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
     return publisher;
   };
 
+  const soundsDir = path.join(dataDir ?? WORLD_DIR, STORAGE_ENTRIES.sounds.name);
+
   const storageOptions: StudioStoragePluginOptions = {
     dataDir,
     worldSettings: {
@@ -39,6 +41,10 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
     bakedLayouts: {
       onSaved: async (name, bytes) => r2Publisher()?.bakedLayoutHooks.onSaved(name, bytes),
       onDeleted: async (name) => r2Publisher()?.bakedLayoutHooks.onDeleted(name),
+    },
+    sounds: {
+      onSaved: async (name, bytes) => r2Publisher()?.soundHooks(soundsDir).onSaved(name, bytes),
+      onDeleted: async (name) => r2Publisher()?.soundHooks(soundsDir).onDeleted(name),
     },
   };
 
@@ -52,6 +58,7 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
     void r2Publisher()?.sync({
       modelsDir: DEFAULT_MODELS_DIR,
       bakedLayoutsDir: path.join(dataDir ?? WORLD_DIR, STORAGE_ENTRIES.bakedLayouts.name),
+      soundsDir,
     });
   };
 
