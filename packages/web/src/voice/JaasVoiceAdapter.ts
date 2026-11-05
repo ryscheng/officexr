@@ -26,7 +26,7 @@ export interface ScreenShareState {
   /** Joined to a call, so a share can start. */
   canShare: boolean;
   sharing: boolean;
-  /** Another participant whose shared screen the meeting is showing. */
+  /** Participant whose shared screen the meeting is showing: the newest remote sharer, else the local user. */
   viewing: string | null;
 }
 
@@ -213,7 +213,9 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     api.on(
       'contentSharingParticipantsChanged',
       ifCurrent(({ data }: { data: string[] }) => {
-        const viewing = data.findLast((id) => id !== this.localId) ?? null;
+        const viewing =
+          data.findLast((id) => id !== this.localId) ??
+          (this.localId && data.includes(this.localId) ? this.localId : null);
         if (viewing && viewing !== this.share.viewing) {
           // Tile view would shrink the share to one tile of the small panel.
           api.executeCommand('setTileView', false);
