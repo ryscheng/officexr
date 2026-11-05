@@ -8,3 +8,4 @@ export * from './snapshot.ts';
 export * from './presence.ts';
 export * from './world-map.ts';
 export { attachProximityReducer } from './reducers/proximity.ts';
+export { tickSession, type SessionTickDeps } from './tick-session.ts';

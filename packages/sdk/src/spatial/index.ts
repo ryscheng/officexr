@@ -8,4 +8,5 @@ export {
   type TrackerOutput,
 } from './pair-tracker.ts';
 export { voiceZoneAt } from './voice-zone.ts';
+export { tickProximity, type ProximityTickInput } from './tick-proximity.ts';
 export { clampToFootprint, isInsideFootprint, type FootprintRect } from './footprint.ts';
