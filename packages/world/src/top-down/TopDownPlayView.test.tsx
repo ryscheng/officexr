@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMultiClientHarness } from '@officexr/sdk/test-harness';
+import { GhostController } from '../app/ghost-controller.ts';
 import { createDefaultApi } from '../app/create-default-api.ts';
 import { ApplicationProvider } from '../react/application-context.tsx';
 import { usePlayControls } from '../react/playControls.tsx';
@@ -16,6 +17,7 @@ import {
   emptyRoomDocument,
   newPlaceObject,
 } from '../scenes/index.ts';
+import { PLAYER_RADIUS_PX } from './topDownDraw.ts';
 import { TopDownPlayView } from './TopDownPlayView.tsx';
 
 afterEach(() => {
@@ -43,8 +45,9 @@ function Hud() {
   return <div data-testid="hud">{`${state.type} ${yaw}`}</div>;
 }
 
-async function mount() {
-  const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+async function mount(opts: { onPingPlayer?: (id: string) => void; ctx?: object } = {}) {
+  const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext');
+  getContext.mockImplementation((() => opts.ctx ?? null) as typeof HTMLCanvasElement.prototype.getContext);
   const harness = createMultiClientHarness();
   const alice = await harness.add('alice', { holdSelf: true });
   const bob = await harness.add('bob');
@@ -61,6 +64,7 @@ async function mount() {
         selfId="alice"
         mapName="office"
         storages={storages()}
+        onPingPlayer={opts.onPingPlayer}
       >
         <Hud />
       </TopDownPlayView>
@@ -100,5 +104,62 @@ describe('TopDownPlayView', () => {
     await released();
     await waitFor(() => expect(getContext).toHaveBeenCalled());
     expect(getContext.mock.calls.every(([kind]) => (kind as string) === '2d')).toBe(true);
+  });
+
+  describe('ping bell', () => {
+    /** A 2D context that no-ops every call and records the centre of each player marker. */
+    function recordingContext() {
+      const markers = new Map<string, { x: number; y: number }>();
+      const ctx = new Proxy(
+        {},
+        {
+          get: (_, prop) =>
+            prop === 'arc'
+              ? (x: number, y: number, r: number) => r === PLAYER_RADIUS_PX && markers.set(`${x},${y}`, { x, y })
+              : () => {},
+          set: () => true,
+        },
+      );
+      return { ctx, markers };
+    }
+
+    /** Moves over each marker until a bell shows; self markers never show one. */
+    async function hoverMarkers(onPingPlayer?: (id: string) => void) {
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(400);
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
+      const { ctx, markers } = recordingContext();
+      const view = await mount({ onPingPlayer, ctx });
+      await view.released();
+      await waitFor(() => expect(markers.size).toBe(2));
+      const canvas = document.querySelector('canvas')!;
+      for (const { x, y } of markers.values()) {
+        fireEvent.mouseMove(canvas, { clientX: x, clientY: y });
+        if (screen.queryByRole('button')) {
+          break;
+        }
+      }
+      return { canvas };
+    }
+
+    it('shows a bell over a hovered player; clicking it pings without moving', async () => {
+      const moveTo = vi.spyOn(GhostController.prototype, 'moveTo');
+      const onPingPlayer = vi.fn();
+      await hoverMarkers(onPingPlayer);
+      fireEvent.click(await screen.findByRole('button', { name: 'Ping player' }));
+      expect(onPingPlayer).toHaveBeenCalledWith('bob');
+      expect(moveTo).not.toHaveBeenCalled();
+    });
+
+    it('moves when the canvas is clicked elsewhere', async () => {
+      const moveTo = vi.spyOn(GhostController.prototype, 'moveTo');
+      const { canvas } = await hoverMarkers(vi.fn());
+      fireEvent.click(canvas, { clientX: 1, clientY: 1 });
+      expect(moveTo).toHaveBeenCalled();
+    });
+
+    it('shows no bell without onPingPlayer', async () => {
+      await hoverMarkers();
+      expect(screen.queryByRole('button')).toBeNull();
+    });
   });
 });

@@ -44,7 +44,7 @@ export const STYLE = {
   ring: '#dc2626',
 } as const;
 
-const PLAYER_RADIUS_PX = 6;
+export const PLAYER_RADIUS_PX = 6;
 const FACING_TICK_PX = 12;
 
 export function drawMap(

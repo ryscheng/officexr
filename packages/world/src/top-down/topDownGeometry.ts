@@ -49,6 +49,27 @@ export function screenToWorld(t: TopDownTransform, s: ScreenPoint): XZ {
   return { x: (s.x - t.offsetX) / t.scale, z: (s.y - t.offsetY) / t.scale };
 }
 
+/** The nearest non-self player within `radiusPx` of `point`, or null. */
+export function playerAt(
+  point: ScreenPoint,
+  players: Readonly<Record<string, { pos: XZ }>>,
+  t: TopDownTransform,
+  selfId: string,
+  radiusPx: number,
+): string | null {
+  let nearest: string | null = null;
+  let best = radiusPx;
+  for (const [id, { pos }] of Object.entries(players)) {
+    const c = worldToScreen(t, pos);
+    const d = Math.hypot(c.x - point.x, c.y - point.y);
+    if (id !== selfId && d <= best) {
+      nearest = id;
+      best = d;
+    }
+  }
+  return nearest;
+}
+
 /** The union of `rects`, or null when there are none. */
 export function unionBounds(rects: readonly XZBounds[]): XZBounds | null {
   if (rects.length === 0) {
