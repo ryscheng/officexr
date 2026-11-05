@@ -17,6 +17,7 @@ export const paths = {
   bakedLayouts: '/api/baked-layouts',
   worldObjectKinds: '/api/world-object-kinds',
   worldSettings: '/api/world-settings',
+  sounds: '/api/sounds',
 };
 
 /** `{ basePath, fetch }` for a world `Filesystem*Storage` talking to the studio API at `path`. */

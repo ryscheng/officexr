@@ -1,6 +1,7 @@
 export {
   type SceneStorage,
   type SceneSummary,
+  httpError,
   isValidSceneName,
   SCENE_NAME_RE,
 } from './storage.ts';

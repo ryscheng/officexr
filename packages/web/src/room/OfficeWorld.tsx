@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import type { Actions, OfficeState, PlayerId, Store } from '@officexr/sdk';
+import type { Actions, Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
@@ -8,6 +8,7 @@ import { apiUrl, paths } from '../apiOrigin';
 import { ChatPanel } from '../hud/ChatPanel';
 import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
+import { usePingReceiver } from '../ping/usePingReceiver';
 import { usePingSender } from '../ping/usePingSender';
 import { PipContents } from '../pip/PipContents';
 import { PopOutMenuItem } from '../pip/PopOutMenuItem';
@@ -19,6 +20,7 @@ import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
 import { PlayView3dBoundary } from './PlayView3dBoundary';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
+import { PingSettingsDialog, PingSettingsMenuItem } from './PingSettings';
 import { RoomMenu, RoomMenuItem } from './RoomMenu';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { useJoinCheck } from './useJoinCheck';
@@ -62,6 +64,11 @@ function LocalPresence({ actions, voice }: { actions: Actions; voice: JaasVoiceA
   return null;
 }
 
+function PingReceiver({ bus, store }: { bus: Bus; store: Store }) {
+  usePingReceiver(bus, store);
+  return null;
+}
+
 function World({ office: initialOffice, me }: { office: Office; me: Identity }) {
   const [office, setOffice] = useState(initialOffice);
   const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
@@ -73,6 +80,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pingSettingsOpen, setPingSettingsOpen] = useState(false);
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
   const pip = usePictureInPicture();
   const closePip = pip.close;
@@ -110,12 +118,14 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       <ViewModeMenuItem mode={viewMode} gpu={gpu} />
       <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setSettingsOpen(true)} />
       <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
+      <PingSettingsMenuItem onSelect={() => setPingSettingsOpen(true)} />
       <PopOutMenuItem pip={pip} />
     </>
   );
   const readyHud = (ready: ReadySession) => (
     <>
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {pingSettingsOpen && <PingSettingsDialog onClose={() => setPingSettingsOpen(false)} />}
       {settingsOpen && (
         <OfficeSettingsDialog office={office} me={me} onSaved={setOffice} onClose={() => setSettingsOpen(false)} />
       )}
@@ -157,6 +167,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       {session.type === 'ready' && (
         <>
           <ReplacedBanner store={session.local.store} />
+          <PingReceiver bus={session.local.bus} store={session.local.store} />
           <LocalPresence actions={session.local.actions} voice={session.voice} />
         </>
       )}

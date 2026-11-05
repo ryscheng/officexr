@@ -9,6 +9,7 @@ import { MapApp } from './modes/map/MapApp.tsx';
 import { LayoutApp } from './modes/layout/LayoutApp.tsx';
 import { ObjectApp } from './modes/object/ObjectApp.tsx';
 import { MugshotApp } from './modes/mugshot/MugshotApp.tsx';
+import { SoundsApp } from './modes/sounds/SoundsApp.tsx';
 
 const DEFAULT_MODE: StudioMode = 'map';
 
@@ -98,6 +99,7 @@ export function StudioPage() {
       {studioMode === 'character' && <CharacterApp />}
       {studioMode === 'debug' && <DebugApp />}
       {studioMode === 'mugshot' && <MugshotApp />}
+      {studioMode === 'sounds' && <SoundsApp />}
       {/* Global render-perf readout. Bottom counterpart of the
           BakeStatusBar: whichever mode's canvas is mounted publishes
           FPS / draw-call samples to the frame-stats bus and this

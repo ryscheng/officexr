@@ -7,7 +7,8 @@ export type StudioMode =
   | 'object'
   | 'character'
   | 'debug'
-  | 'mugshot';
+  | 'mugshot'
+  | 'sounds';
 
 export const STUDIO_MODES: ReadonlyArray<{
   mode: StudioMode;
@@ -21,6 +22,7 @@ export const STUDIO_MODES: ReadonlyArray<{
   { mode: 'character', label: 'Character', description: 'Preview models + per-character tuning' },
   { mode: 'debug', label: 'Debug', description: 'Test gameplay + network protocol' },
   { mode: 'mugshot', label: 'Mugshot', description: 'Character placement reference shots' },
+  { mode: 'sounds', label: 'Sounds', description: 'Upload + preview the ping sound library' },
 ];
 
 export function isStudioMode(value: unknown): value is StudioMode {

@@ -34,7 +34,7 @@ export function soundCatalogUrl(): string {
   return assetBase ? `${assetBase}/sounds/index.json` : '/api/sounds/';
 }
 
-const soundCatalogSchema = z.object({
+export const soundCatalogSchema = z.object({
   sounds: z.array(z.object({ name: z.string(), size: z.number(), updatedAt: z.number() })),
 });
 

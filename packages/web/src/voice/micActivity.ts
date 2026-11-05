@@ -1,3 +1,5 @@
+import { resumeOnGesture } from './resumeOnGesture';
+
 export interface SpeakingState {
   speaking: boolean;
   lastLoudAt: number;
@@ -40,8 +42,6 @@ export interface MicActivityMeter {
 }
 
 const TICK_MS = 100;
-// Touch only counts as user activation on release, so pointerdown alone never resumes on a tablet.
-const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'keydown'];
 
 const browserMicDeps = (): MicActivityDeps => ({
   getUserMedia: (constraints) => navigator.mediaDevices.getUserMedia(constraints),
@@ -91,17 +91,7 @@ export function createMicActivityMeter(deps: MicActivityDeps = browserMicDeps())
       const source = live.createMediaStreamSource(stream);
       source.connect(analyser);
       const samples = new Float32Array(analyser.fftSize);
-      const removeGestures = () => GESTURES.forEach((type) => deps.gestureTarget.removeEventListener(type, resume));
-      // A refused resume leaves the listeners in place for the next gesture.
-      const resume = () => {
-        live.resume().then(
-          () => live.state === 'running' && removeGestures(),
-          () => {},
-        );
-      };
-      if (live.state === 'suspended') {
-        GESTURES.forEach((type) => deps.gestureTarget.addEventListener(type, resume));
-      }
+      const removeGestures = resumeOnGesture(live, deps.gestureTarget);
       const cancelTimer = deps.setInterval(() => {
         analyser.getFloatTimeDomainData(samples);
         report(speakingFromLevel(rms(samples), deps.now(), state));

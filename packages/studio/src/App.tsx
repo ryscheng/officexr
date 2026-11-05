@@ -12,6 +12,7 @@ import {
   type RoomDocument,
 } from '@officexr/world/scenes';
 import type { WorldConstants } from '@officexr/sdk';
+import { InMemorySoundLibraryStorage } from './modes/sounds/soundLibraryStorage.ts';
 import { StudioPage } from './StudioPage.tsx';
 import { paths, STUDIO_API_ORIGIN, studioApiUrl, studioFetch } from './apiOrigin.ts';
 import { SignInGate } from './SignInGate.tsx';
@@ -33,6 +34,7 @@ interface TestSeed {
   rooms?: Array<{ name: string; doc: RoomDocument }>;
   layouts?: Array<{ name: string; doc: LayoutDocument }>;
   worldConstants?: WorldConstants;
+  sounds?: Array<{ name: string; bytes: number[] }>;
 }
 
 /** Build the hermetic in-memory storages for `?test=1` mode, seeding
@@ -48,6 +50,7 @@ function buildTestStorages(): TestStorages {
     roomStorage: new InMemoryRoomStorage({ seed: seed?.rooms }),
     layoutStorage: new InMemoryLayoutStorage({ seed: seed?.layouts }),
     worldConstantsStorage,
+    soundStorage: new InMemorySoundLibraryStorage({ seed: seed?.sounds }),
   };
 }
 
