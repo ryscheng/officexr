@@ -8,6 +8,7 @@ import { apiUrl, paths } from '../apiOrigin';
 import { ChatPanel } from '../hud/ChatPanel';
 import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
+import { usePingReceiver } from '../ping/usePingReceiver';
 import { PipContents } from '../pip/PipContents';
 import { PopOutMenuItem } from '../pip/PopOutMenuItem';
 import { usePictureInPicture } from '../pip/usePictureInPicture';
@@ -58,6 +59,11 @@ function ReplacedBanner({ store }: { store: Store }) {
 
 function LocalPresence({ actions, voice }: { actions: Actions; voice: JaasVoiceAdapter | null }) {
   useLocalPresence(actions, voice);
+  return null;
+}
+
+function PingReceiver({ local }: { local: ReadySession['local'] }) {
+  usePingReceiver(local.bus, local.store);
   return null;
 }
 
@@ -148,6 +154,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       {session.type === 'ready' && (
         <>
           <ReplacedBanner store={session.local.store} />
+          <PingReceiver local={session.local} />
           <LocalPresence actions={session.local.actions} voice={session.voice} />
         </>
       )}
