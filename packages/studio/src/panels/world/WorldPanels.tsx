@@ -6,6 +6,7 @@ import {
   type WorldConstants,
 } from '@officexr/sdk';
 import type { BotMode } from '@officexr/world/bot';
+import { GHOST_MODELS } from '@officexr/world/characters';
 import { resolveHorizonColor } from '@officexr/world/renderer';
 
 import { Button } from '../../components/ui/button.tsx';
@@ -87,6 +88,7 @@ export function WorldPanels({
         fixedCamera={worldConstants.fixedCamera}
         setSection={setSection}
       />
+      <GhostAvatarPanel ghostAvatar={worldConstants.ghostAvatar} edit={edit} />
       <SettingsPanel
         reset={() => edit(() => DEFAULT_WORLD_CONSTANTS)}
         exportJson={() => downloadJson(worldConstants)}
@@ -385,6 +387,43 @@ function BackgroundPanel({
         onChange={set('horizonColor')}
       />
       <ColorInput label="bottom" value={background.bottomColor} onChange={set('bottomColor')} />
+    </Section>
+  );
+}
+
+// --- Ghost avatar -------------------------------------------------
+
+const NO_GHOST = 'none';
+
+export function GhostAvatarPanel({
+  ghostAvatar,
+  edit,
+}: {
+  ghostAvatar: WorldConstants['ghostAvatar'];
+  edit: UseWorldConstantsPersistenceResult['edit'];
+}) {
+  const model = ghostAvatar?.model ?? NO_GHOST;
+  const options = [
+    { value: NO_GHOST, label: "None (use player's character)" },
+    ...GHOST_MODELS.map((m) => ({ value: m.url, label: m.label })),
+  ];
+  // A saved model missing from the list stays visible rather than being dropped.
+  if (!options.some((o) => o.value === model)) {
+    options.push({ value: model, label: model });
+  }
+
+  return (
+    <Section title="Ghost avatar">
+      <SelectInput
+        label="Ghost avatar"
+        value={model}
+        options={options}
+        onChange={(next) =>
+          edit(({ ghostAvatar: _prev, ...rest }) =>
+            next === NO_GHOST ? rest : { ...rest, ghostAvatar: { model: next } },
+          )
+        }
+      />
     </Section>
   );
 }
