@@ -125,6 +125,32 @@ describe('useMapDocument', () => {
     );
   });
 
+  it('setRoomBuilding persists building: true, and turning it off removes the field', async () => {
+    const storage = makeStorage();
+    const { result } = renderHook(() => useMapDocument({ storage }));
+    await waitFor(() => expect(result.current.doc.name).toBe('default'));
+
+    let id = '';
+    act(() => {
+      id = result.current.addRoom('snap-room');
+    });
+    act(() => {
+      result.current.setRoomBuilding(id, true);
+    });
+    await waitFor(
+      async () => expect((await storage.load('default'))?.rooms[0].building).toBe(true),
+      { timeout: 2000 },
+    );
+
+    act(() => {
+      result.current.setRoomBuilding(id, false);
+    });
+    await waitFor(
+      async () => expect((await storage.load('default'))?.rooms[0]).not.toHaveProperty('building'),
+      { timeout: 2000 },
+    );
+  });
+
   describe('pending autosave', () => {
     afterEach(() => {
       vi.useRealTimers();

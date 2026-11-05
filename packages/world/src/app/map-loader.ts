@@ -1,4 +1,4 @@
-import type { VoiceZone, WorldObjects } from '@officexr/sdk';
+import type { FootprintRect, VoiceZone, WorldObjects } from '@officexr/sdk';
 import {
   mapLayoutPlacements,
   type BakedLayoutPlacement,
@@ -12,6 +12,7 @@ import {
 } from '../scenes/index.ts';
 import { loadAll } from '../scenes/map-layout-placements.ts';
 import type { CatalogService, InstanceGeometryService, RoomService } from './types.ts';
+import { computeBuildingFootprint } from './building-footprint.ts';
 import { computeVoiceZones } from './voice-zones.ts';
 
 export type { BakedLayoutPlacement };
@@ -35,6 +36,8 @@ export interface LoadedMap {
   rooms: ReadonlyMap<string, RoomDocument>;
   worldObjects: WorldObjects;
   voiceZones: VoiceZone[];
+  /** Empty when no room is flagged `building`; consumers treat that as no restriction. */
+  buildingFootprint: readonly FootprintRect[];
   spawnPoints: readonly SpawnPoint[];
   /** Every room placement that links a layout, whether or not the room has commands. */
   bakedLayouts: readonly BakedLayoutPlacement[];
@@ -42,7 +45,7 @@ export interface LoadedMap {
 
 /**
  * Loads a map, its rooms, and the layout of every room that links one, then
- * compiles it and derives its voice zones. Throws `MapNotFoundError` when the map doesn't exist.
+ * compiles it and derives its voice zones and building footprint. Throws `MapNotFoundError` when the map doesn't exist.
  */
 export async function loadMap(
   { storages, catalog, roomService, geometry }: MapLoaderDeps,
@@ -64,12 +67,14 @@ export async function loadMap(
   const worldObjects = roomService.compileMap(mapDoc, rooms, layouts);
   // Hands the zone helper the compile above rather than compiling the map twice.
   const voiceZones = computeVoiceZones(mapDoc, rooms, layouts, { compileMap: () => worldObjects }, geometry);
+  const buildingFootprint = computeBuildingFootprint(mapDoc, worldObjects.instances, geometry);
 
   return {
     mapDoc,
     rooms,
     worldObjects,
     voiceZones,
+    buildingFootprint,
     spawnPoints: mapDoc.spawnPoints,
     bakedLayouts,
   };

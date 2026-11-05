@@ -230,6 +230,23 @@ describe('serializeMap + deserializeMap', () => {
     expect(() => deserializeMap(JSON.parse(JSON.stringify(m)))).toThrow(/voiceZone/);
   });
 
+  it('round-trips building with and without it, and rejects a non-boolean one', () => {
+    const input = {
+      name: 'town',
+      rooms: [
+        { id: 'r-1', roomName: 'default-v2', position: [0, 0, 0] as [number, number, number], building: true },
+        { id: 'r-2', roomName: 'default-v2', position: [10, 0, 0] as [number, number, number] },
+      ],
+      spawnPoints: [],
+      environment: makeFullMap().environment,
+    };
+    const back = deserializeMap(JSON.parse(JSON.stringify(serializeMap(input))));
+    expect(back.rooms[0].building).toBe(true);
+    expect(back.rooms[1]).not.toHaveProperty('building');
+    const bad = serializeMap({ ...input, rooms: [{ ...input.rooms[0], building: 'yes' as unknown as boolean }] });
+    expect(() => deserializeMap(JSON.parse(JSON.stringify(bad)))).toThrow(/building/);
+  });
+
   it('preserves null sky/stars/hdri across round-trip', () => {
     const m = serializeMap({
       name: 'plain',

@@ -146,7 +146,7 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     b.close();
   });
 
-  it('late joiner snapshot carries earlier avatar:update with the name', async () => {
+  it('late joiner snapshot carries earlier avatar:update with the name and viewMode', async () => {
     const url = `ws://127.0.0.1:${port}/ws`;
     const a = new WsChannel({ url, userId: 'A' });
     await a.subscribe();
@@ -157,7 +157,7 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
       actorId: 'A',
       seq: 2,
       t: 0,
-      avatar: { model: 'gnome' },
+      avatar: { model: 'gnome', viewMode: '2d' },
       name: 'Alice',
     });
     await vi.waitFor(() => expect(server.defaultRoom.store.getState().players['A']?.name).toBe('Alice'));
@@ -175,6 +175,7 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
     }
     expect(store.getState().players['A']?.name).toBe('Alice');
     expect(store.getState().players['A']?.avatar.model).toBe('gnome');
+    expect(store.getState().players['A']?.avatar.viewMode).toBe('2d');
 
     a.close();
     b.close();

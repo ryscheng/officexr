@@ -9,6 +9,7 @@ interface RoomInstanceListProps {
   onSelect: (sel: MapSelection) => void;
   onRotate: (id: string) => void;
   onToggleVoiceZone: (id: string, enabled: boolean) => void;
+  onToggleBuilding: (id: string, enabled: boolean) => void;
   onRemove: (id: string) => void;
 }
 
@@ -29,6 +30,7 @@ export function RoomInstanceList({
   onSelect,
   onRotate,
   onToggleVoiceZone,
+  onToggleBuilding,
   onRemove,
 }: RoomInstanceListProps) {
   return (
@@ -120,6 +122,12 @@ export function RoomInstanceList({
                 label="Voice zone"
                 value={r.voiceZone === true}
                 onChange={(enabled) => onToggleVoiceZone(r.id, enabled)}
+                className="basis-full px-0"
+              />
+              <Toggle
+                label="Building"
+                value={r.building === true}
+                onChange={(enabled) => onToggleBuilding(r.id, enabled)}
                 className="basis-full px-0"
               />
             </div>

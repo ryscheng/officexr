@@ -30,6 +30,8 @@ export interface RoomInstance {
   rotationY?: 0 | 1 | 2 | 3;
   /** Everyone inside this placed room shares one voice + screenshare call. */
   voiceZone?: boolean;
+  /** Part of the main office building; its footprint bounds 2D-mode movement. */
+  building?: boolean;
 }
 
 /**

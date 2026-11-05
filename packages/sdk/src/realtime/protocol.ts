@@ -28,6 +28,7 @@ const ZVec3 = z.object({ x: z.number(), y: z.number(), z: z.number() });
 
 const ZAvatarData: z.ZodType<AvatarData> = z.object({
   model: z.string(),
+  viewMode: z.enum(['3d', '2d']).optional(),
   colors: z.record(z.string(), z.string()).optional(),
   accessories: z.array(z.string()).optional(),
 });
