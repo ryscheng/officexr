@@ -33,13 +33,21 @@ export function storeViewMode(mode: ViewMode, storage: Pick<Storage, 'setItem'> 
   try {
     storage.setItem(STORAGE_KEY, mode);
   } catch {
-    // Unremembered choice: the reload falls back to detection.
+    // Unremembered choice: the next load probes again.
   }
 }
 
-export function initialViewMode(gpu: GpuSupport, stored: ViewMode | null): ViewMode {
-  if (gpu === 'none') {
-    return '2d';
+/** The stored choice; only without one does it probe the GPU, and it stores the result.
+ * Probing on every load let a flaky `failIfMajorPerformanceCaveat` result drop a 3D user into 2D. */
+export function initialViewMode(
+  storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage,
+  detect: () => GpuSupport = detectGpu,
+): ViewMode {
+  const stored = storedViewMode(storage);
+  if (stored) {
+    return stored;
   }
-  return stored ?? (gpu === 'hardware' ? '3d' : '2d');
+  const mode: ViewMode = detect() === 'hardware' ? '3d' : '2d';
+  storeViewMode(mode, storage);
+  return mode;
 }

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { detectGpu, initialViewMode, storedViewMode, storeViewMode } from './viewMode';
+import { describe, expect, it, vi } from 'vitest';
+import { detectGpu, initialViewMode, storeViewMode } from './viewMode';
 
 function canvasFactory(supported: { webgl2?: 'strict' | 'any'; webgl?: 'strict' | 'any' }, lost: string[] = []) {
   return () => {
@@ -52,28 +52,47 @@ describe('storeViewMode', () => {
   });
 });
 
+function memoryStorage(initial: Record<string, string> = {}) {
+  const data = { ...initial };
+  return {
+    data,
+    getItem: (k: string) => data[k] ?? null,
+    setItem: (k: string, v: string) => {
+      data[k] = v;
+    },
+  };
+}
+
 describe('initialViewMode', () => {
-  it('prefers the stored choice', () => {
-    expect(initialViewMode('hardware', '2d')).toBe('2d');
-    expect(initialViewMode('software', '3d')).toBe('3d');
+  it('uses the stored choice without probing', () => {
+    const detect = vi.fn(() => 'none' as const);
+    expect(initialViewMode(memoryStorage({ 'officexr:viewMode': '3d' }), detect)).toBe('3d');
+    expect(detect).not.toHaveBeenCalled();
   });
 
-  it('defaults by GPU', () => {
-    expect(initialViewMode('hardware', null)).toBe('3d');
-    expect(initialViewMode('software', null)).toBe('2d');
+  it('probes on the first visit and remembers the result', () => {
+    const storage = memoryStorage();
+    expect(initialViewMode(storage, () => 'hardware')).toBe('3d');
+    expect(storage.data['officexr:viewMode']).toBe('3d');
+    const detect = vi.fn(() => 'software' as const);
+    expect(initialViewMode(storage, detect)).toBe('3d');
+    expect(detect).not.toHaveBeenCalled();
   });
 
-  it('is always 2d without WebGL', () => {
-    expect(initialViewMode('none', '3d')).toBe('2d');
+  it('starts in 2d without a hardware GPU', () => {
+    expect(initialViewMode(memoryStorage(), () => 'software')).toBe('2d');
+    expect(initialViewMode(memoryStorage(), () => 'none')).toBe('2d');
   });
 
-  it('falls back to detection when storage throws', () => {
-    const stored = storedViewMode({
+  it('probes when storage throws', () => {
+    const blocked = {
       getItem: () => {
         throw new Error('blocked');
       },
-    });
-    expect(stored).toBeNull();
-    expect(initialViewMode('hardware', stored)).toBe('3d');
+      setItem: () => {
+        throw new Error('blocked');
+      },
+    };
+    expect(initialViewMode(blocked, () => 'hardware')).toBe('3d');
   });
 });
