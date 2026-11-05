@@ -15,7 +15,9 @@ class FakeJitsiApi extends EventEmitter {
 }
 
 vi.mock('@jitsi/react-sdk', () => ({
-  JaaSMeeting: () => <div data-testid="jitsi" />,
+  JaaSMeeting: ({ getIFrameRef }: { getIFrameRef?: (parent: HTMLDivElement) => void }) => (
+    <div data-testid="jitsi" ref={(node) => void (node && getIFrameRef?.(node))} />
+  ),
 }));
 
 afterEach(cleanup);
@@ -200,6 +202,7 @@ describe('JaasMeeting focus toggle', () => {
     expect(toggle()!.getAttribute('aria-label')).toBe('Shrink screen share');
     expect(wrapper()).toBe(before.wrapper);
     expect(screen.getByTestId('jitsi')).toBe(before.jitsi);
+    expect(screen.getByTestId('jitsi').style.height).toBe('100%');
     delete (document as Partial<Document>).exitPointerLock;
   });
 
