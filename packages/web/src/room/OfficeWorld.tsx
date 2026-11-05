@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import type { Actions, Bus, OfficeState, Store } from '@officexr/sdk';
+import type { Actions, Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
@@ -9,6 +9,7 @@ import { ChatPanel } from '../hud/ChatPanel';
 import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
 import { usePingReceiver } from '../ping/usePingReceiver';
+import { usePingSender } from '../ping/usePingSender';
 import { PipContents } from '../pip/PipContents';
 import { PopOutMenuItem } from '../pip/PopOutMenuItem';
 import { usePictureInPicture } from '../pip/usePictureInPicture';
@@ -88,6 +89,13 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
     }
   }, [session.type, closePip]);
 
+  const sendPing = useCallback((id: PlayerId) => {
+    if (session.type === 'ready') {
+      session.office.sync.sendPing(id);
+    }
+  }, [session]);
+  const pinger = usePingSender(sendPing);
+
   const readyViewProps = (ready: ReadySession) => ({
     store: ready.local.store,
     actions: ready.local.actions,
@@ -123,7 +131,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       <div className="pointer-events-none absolute inset-x-3 bottom-3 grid grid-cols-[1fr_minmax(0,auto)_1fr] items-end gap-2">
         <div className="pointer-coarse:min-w-28">
           <div className="flex flex-col items-start gap-2 pointer-coarse:absolute pointer-coarse:bottom-37 pointer-coarse:left-0">
-            <PresenceList store={ready.local.store} selfId={ready.local.selfId} officeName={office.name} />
+            <PresenceList store={ready.local.store} selfId={ready.local.selfId} officeName={office.name} pinger={pinger} />
             <Minimap store={ready.local.store} />
           </div>
         </div>
