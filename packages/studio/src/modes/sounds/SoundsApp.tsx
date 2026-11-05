@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { soundNameFromFile } from './soundName.ts';
 import { useSoundLibrary } from './useSoundLibrary.ts';
 
@@ -11,15 +11,18 @@ export function SoundsApp() {
   const [playing, setPlaying] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
 
+  useEffect(() => () => audio.current?.pause(), []);
+
   const uploadFile = async (file: File, name: string) => {
     if (library.sounds.some((s) => s.name === name) && !window.confirm(`Overwrite "${name}"?`)) {
       return;
     }
     setNameError(null);
-    await library.upload(name, new Uint8Array(await file.arrayBuffer()));
+    await library.upload(name, file);
   };
 
   const onPick = (file: File | undefined) => {
+    setNameError(null);
     if (!file) {
       return;
     }
@@ -61,7 +64,7 @@ export function SoundsApp() {
         <p role="alert" style={errorStyle}>
           {nameError.error}{' '}
           {nameError.suggestion && (
-            <button type="button" onClick={() => void uploadFile(nameError.file, nameError.suggestion)}>
+            <button type="button" disabled={library.busy} onClick={() => void uploadFile(nameError.file, nameError.suggestion)}>
               Upload as "{nameError.suggestion}"
             </button>
           )}
@@ -72,7 +75,7 @@ export function SoundsApp() {
           {library.error}
         </p>
       )}
-      {!library.loading && library.sounds.length === 0 && <p>No sounds yet. Upload an MP3 to get started.</p>}
+      {!library.loading && !library.error && library.sounds.length === 0 && <p>No sounds yet. Upload an MP3 to get started.</p>}
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {library.sounds.map((s) => (
           <li key={s.name} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 0' }}>

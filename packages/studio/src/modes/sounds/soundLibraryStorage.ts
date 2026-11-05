@@ -1,5 +1,5 @@
-import type { SoundCatalog } from '@officexr/world/app';
-import { paths, studioApiUrl, studioFetch } from '../../apiOrigin.ts';
+import { soundCatalogSchema, type SoundCatalog } from '@officexr/world/app';
+import { httpError } from '@officexr/world/scenes';
 
 export interface SoundLibraryStorage {
   list(): Promise<SoundCatalog>;
@@ -9,30 +9,40 @@ export interface SoundLibraryStorage {
   url(name: string): string;
 }
 
-const soundUrl = (name: string) => studioApiUrl(`${paths.sounds}/${encodeURIComponent(name)}.mp3`);
-
-async function assertOk(res: Response): Promise<void> {
-  if (!res.ok) {
-    throw new Error((await res.text().catch(() => '')) || `${res.status} ${res.statusText}`);
-  }
-}
-
 export class HttpSoundLibraryStorage implements SoundLibraryStorage {
+  private readonly base: string;
+  private readonly fetch: typeof fetch;
+
+  constructor(opts: { basePath: string; fetch: typeof fetch }) {
+    this.base = opts.basePath.replace(/\/$/, '');
+    this.fetch = opts.fetch;
+  }
+
   async list(): Promise<SoundCatalog> {
-    const res = await studioFetch(studioApiUrl(`${paths.sounds}/`));
-    await assertOk(res);
-    return res.json();
+    const res = await this.fetch(`${this.base}/`);
+    if (!res.ok) {
+      throw await httpError('list sounds', res);
+    }
+    return soundCatalogSchema.parse(await res.json());
   }
 
   async put(name: string, bytes: Uint8Array<ArrayBuffer>): Promise<void> {
-    await assertOk(await studioFetch(soundUrl(name), { method: 'PUT', body: bytes }));
+    const res = await this.fetch(this.url(name), { method: 'PUT', body: bytes });
+    if (!res.ok) {
+      throw await httpError(`save ${name}`, res);
+    }
   }
 
   async remove(name: string): Promise<void> {
-    await assertOk(await studioFetch(soundUrl(name), { method: 'DELETE' }));
+    const res = await this.fetch(this.url(name), { method: 'DELETE' });
+    if (!res.ok) {
+      throw await httpError(`delete ${name}`, res);
+    }
   }
 
-  url = soundUrl;
+  url(name: string): string {
+    return `${this.base}/${encodeURIComponent(name)}.mp3`;
+  }
 }
 
 export class InMemorySoundLibraryStorage implements SoundLibraryStorage {

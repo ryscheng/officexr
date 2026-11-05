@@ -8,6 +8,9 @@ export type SoundNameCheck =
 
 /** Derives a sound name from a file name; the server rejects names that are not scene-safe or that keep a dot after `.mp3` is stripped. */
 export function soundNameFromFile(fileName: string): SoundNameCheck {
+  if (!MP3_SUFFIX.test(fileName)) {
+    return { type: 'invalid', error: `"${fileName}" is not an .mp3 file.`, suggestion: '' };
+  }
   const name = fileName.replace(MP3_SUFFIX, '');
   if (isValidSceneName(name) && !name.includes('.')) {
     return { type: 'ok', name };
