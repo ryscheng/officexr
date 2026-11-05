@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { useGLTF, useAnimations } from '@react-three/drei';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { modelUrl } from '../app/asset-url.ts';
-import { CHARACTERS, type CharacterName } from './config.ts';
+import { CHARACTERS } from './config.ts';
+import { characterUrl } from '../characters/registry.ts';
 
 const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
 const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
@@ -11,7 +12,33 @@ const ANIM_MOVEMENT_ADV = modelUrl('/models/animations/Rig_Medium_MovementAdvanc
 const ANIM_COMBAT_RANGED = modelUrl('/models/animations/Rig_Medium_CombatRanged.glb');
 export const ANIMATION_URLS = [ANIM_GENERAL, ANIM_MOVEMENT, ANIM_MOVEMENT_ADV, ANIM_COMBAT_RANGED];
 
-export const characterUrl = (character: CharacterName) => modelUrl(`/models/characters/${character}.glb`);
+export { characterUrl };
+
+export const GHOST_OPACITY = 0.6;
+
+/**
+ * Gives every mesh in `scene` its own translucent copy of its material(s), leaving the shared `useGLTF`
+ * materials untouched. Returns the copies; the caller owns them and must dispose them.
+ */
+export function applyGhostMaterials(scene: THREE.Object3D): THREE.Material[] {
+  const clones: THREE.Material[] = [];
+  const ghostOf = (m: THREE.Material) => {
+    const c = m.clone();
+    c.transparent = true;
+    c.opacity = GHOST_OPACITY;
+    // Without this, the ghost's own back faces occlude its front ones.
+    c.depthWrite = false;
+    clones.push(c);
+    return c;
+  };
+  scene.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) {
+      m.material = Array.isArray(m.material) ? m.material.map(ghostOf) : ghostOf(m.material);
+    }
+  });
+  return clones;
+}
 
 for (const url of ANIMATION_URLS) {
   useGLTF.preload(url);
@@ -70,7 +97,10 @@ const LOOPING_STATES: ReadonlySet<AnimationState> = new Set([
 ]);
 
 interface AdventurerProps {
-  character: CharacterName;
+  /** The GLB to load, e.g. `characterUrl(character)`. */
+  url: string;
+  /** Translucent, shadowless rendering for 2D-mode players. */
+  ghost?: boolean;
   /** Which clip the GAMEPLAY layer should loop. Comes from the
    * velocity-derived motion state in `Players.tsx`. */
   motion: 'idle' | 'walking' | 'running' | 'jumping';
@@ -115,7 +145,8 @@ function clipForMotion(motion: AdventurerProps['motion']): string {
 export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
   function Adventurer(
     {
-      character,
+      url,
+      ghost = false,
       motion,
       previewState,
       invisible,
@@ -127,7 +158,6 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     },
     ref,
   ) {
-    const url = characterUrl(character);
     const character_gltf = useGLTF(url);
     const general = useGLTF(ANIM_GENERAL);
     const movement = useGLTF(ANIM_MOVEMENT);
@@ -136,12 +166,14 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
 
     // Each Adventurer instance must own its own scene graph — useGLTF caches
     // a single scene per URL, and SkeletonUtils.clone preserves the skin.
-    // While we're at it, enable shadow casting on every mesh in the
-    // hierarchy so the sun's directionalLight bakes a silhouette onto
-    // the floor (which has `receiveShadow`). `receiveShadow` is also on
-    // so characters cast onto each other.
-    const scene = useMemo(() => {
+    // Ghosts get translucent materials and no shadows; every other
+    // character casts onto the floor (which has `receiveShadow`) and,
+    // with `receiveShadow` on too, onto each other.
+    const { scene, ghostMaterials } = useMemo(() => {
       const s = cloneSkinned(character_gltf.scene);
+      if (ghost) {
+        return { scene: s, ghostMaterials: applyGhostMaterials(s) };
+      }
       s.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.isMesh) {
@@ -149,8 +181,16 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
           m.receiveShadow = true;
         }
       });
-      return s;
-    }, [character_gltf.scene]);
+      return { scene: s, ghostMaterials: [] };
+    }, [character_gltf.scene, ghost]);
+    useEffect(
+      () => () => {
+        for (const m of ghostMaterials) {
+          m.dispose();
+        }
+      },
+      [ghostMaterials],
+    );
 
     // Merge clips from every loaded rig. Earlier rigs win on name
     // collision (rare — Idle_A only lives in General, Walking_C only

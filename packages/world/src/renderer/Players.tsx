@@ -15,7 +15,8 @@ import type { Bus, OfficeState, Store } from '@officexr/sdk';
 import { Adventurer } from './Adventurer.tsx';
 import type { CameraMode, CharacterName } from './config.ts';
 import { PlayerNameTag } from './PlayerNameTag.tsx';
-import { pickCharacterForPlayer } from '../characters/registry.ts';
+import { pickCharacterForPlayer, resolvePlayerModel, type PlayerModel } from '../characters/registry.ts';
+import { ModelWithFallback } from './ModelWithFallback.tsx';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
   BODY_GROUPS,
@@ -97,6 +98,7 @@ export function extrapolatePos(
 interface PlayerEntry {
   id: string;
   character: CharacterName;
+  model: PlayerModel;
 }
 
 const WALK_THRESHOLD = 0.05;
@@ -105,11 +107,18 @@ const playerEntries = (state: OfficeState): PlayerEntry[] =>
   Object.entries(state.players).map(([id, player]) => ({
     id,
     character: pickCharacterForPlayer(id, player.avatar.model),
+    model: resolvePlayerModel(id, player.avatar, state.worldConstants.ghostAvatar),
   }));
 
 const sameEntries = (a: PlayerEntry[], b: PlayerEntry[]) =>
   a.length === b.length &&
-  a.every((p, i) => p.id === b[i].id && p.character === b[i].character);
+  a.every(
+    (p, i) =>
+      p.id === b[i].id &&
+      p.character === b[i].character &&
+      p.model.url === b[i].model.url &&
+      p.model.ghost === b[i].model.ghost,
+  );
 
 /** Rotate `from` toward `to` by at most `maxStep` radians along the shortest arc. */
 function stepTowardAngle(from: number, to: number, maxStep: number): number {
@@ -498,9 +507,9 @@ export function Players({
             >
               <PerPlayerAdventurer
                 // Remount on a character change so the animation mixer binds to the new model's bones.
-                key={p.character}
+                key={`${p.model.url}|${p.model.ghost}`}
                 playerId={p.id}
-                character={p.character}
+                model={p.model}
                 motion={motionByPlayer[p.id] ?? 'idle'}
                 invisible={isSelf && (cameraMode === 'first-person' || xrPresenting)}
                 animScale={animScaleByPlayer[p.id] ?? 1}
@@ -537,7 +546,7 @@ export function Players({
  */
 function PerPlayerAdventurer(props: {
   playerId: string;
-  character: CharacterName;
+  model: PlayerModel;
   motion: MotionState;  // now includes 'jumping'
   invisible: boolean;
   animScale: number;
@@ -550,7 +559,7 @@ function PerPlayerAdventurer(props: {
 }) {
   const {
     playerId,
-    character,
+    model,
     motion,
     invisible,
     animScale,
@@ -578,9 +587,10 @@ function PerPlayerAdventurer(props: {
         a.model === b.model && a.ws === b.ws && a.cc === b.cc,
     );
   }, [store, playerId]);
-  return (
+  const adventurer = (url: string) => (
     <Adventurer
-      character={character}
+      url={url}
+      ghost={model.ghost}
       motion={motion}
       invisible={invisible}
       idleSpeed={tunedSpeeds.idle}
@@ -590,6 +600,7 @@ function PerPlayerAdventurer(props: {
       paused={paused}
     />
   );
+  return <ModelWithFallback url={model.url} fallbackUrl={model.fallbackUrl} render={adventurer} />;
 }
 
 function readSpeeds(store: Store, playerId: string) {
