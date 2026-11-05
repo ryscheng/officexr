@@ -75,6 +75,7 @@ export {
   modelUrl,
   setAssetBaseUrl,
   soundAssetUrl,
+  soundCatalogSchema,
   soundCatalogUrl,
   type SoundCatalog,
   type SoundCatalogEntry,

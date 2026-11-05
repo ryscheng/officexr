@@ -95,6 +95,10 @@ storages seeded from `window.__OFFICEXR_TEST_SEED__`. The
 `goToModeHermetic(page, mode, seed)` helper sets the seed via
 `addInitScript` and navigates. See `tests/playwright/map-editor-hermetic.spec.ts`.
 
+Sounds mode reads its in-memory `InMemorySoundLibraryStorage` from the
+`soundStorage` entry of `TestStorages`; seed it with
+`sounds: [{ name, bytes: number[] }]` (see `tests/playwright/sounds-editor.spec.ts`).
+
 In test mode `window.__OFFICEXR_TEST_API__.worldConstantsSaves` lists every
 document saved to the world-constants storage, so a spec can assert what the
 Debug panels saved (see `tests/playwright/debug-world-constants-hermetic.spec.ts`).
@@ -105,7 +109,7 @@ gitignored `packages/world/world-settings.json` is never loaded.
 **CI** runs `pnpm test:e2e:ci`, now scoped to: `map-editor`,
 `map-editor-hermetic`, `object-editor`, `routing`, `room-editor`,
 `debug-mode`, `character-on-surface`, `debug-world-constants-hermetic`,
-`render-page`, and `render-view-mcp`.
+`render-page`, `render-view-mcp`, and `sounds-editor`.
 
 The previously-rotted specs are repaired:
 

@@ -5,6 +5,7 @@ import type {
   RoomStorage,
   WorldConstantsStorage,
 } from '@officexr/world/scenes';
+import type { SoundLibraryStorage } from '../modes/sounds/soundLibraryStorage.ts';
 
 /**
  * Storages a hermetic test session injects into the editors. When the
@@ -22,6 +23,7 @@ export interface TestStorages {
   roomStorage?: RoomStorage;
   layoutStorage?: LayoutStorage;
   worldConstantsStorage?: WorldConstantsStorage;
+  soundStorage?: SoundLibraryStorage;
 }
 
 const TestStorageCtx = createContext<TestStorages | null>(null);
