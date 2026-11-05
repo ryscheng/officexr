@@ -123,6 +123,7 @@ export function MapApp() {
                 map.setRoomRotation(id, next);
               }}
               onToggleVoiceZone={map.setRoomVoiceZone}
+              onToggleBuilding={map.setRoomBuilding}
               onRemove={map.removeRoom}
             />
             <SpawnList

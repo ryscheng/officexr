@@ -533,6 +533,10 @@ export function deserializeMap(raw: unknown): SerializedMap {
     if (zone !== undefined && typeof zone !== 'boolean') {
       throw new Error(`map: room voiceZone must be a boolean, got ${String(zone)}`);
     }
+    const building = (ri as { building?: unknown }).building;
+    if (building !== undefined && typeof building !== 'boolean') {
+      throw new Error(`map: room building must be a boolean, got ${String(building)}`);
+    }
   }
   if (!Array.isArray(obj.spawnPoints)) {
     throw new Error('map: missing `spawnPoints` array');

@@ -12,7 +12,8 @@
         0,
         0
       ],
-      "rotationY": 0
+      "rotationY": 0,
+      "building": true
     }
   ],
   "spawnPoints": [
