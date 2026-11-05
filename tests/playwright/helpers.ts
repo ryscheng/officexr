@@ -36,7 +36,7 @@ export async function goToMode(
  */
 export async function goToModeHermetic(
   page: Page,
-  mode: 'map' | 'room' | 'object' | 'character' | 'debug',
+  mode: 'map' | 'room' | 'object' | 'character' | 'debug' | 'sounds',
   seed?: unknown,
 ): Promise<void> {
   if (seed !== undefined) {
@@ -64,6 +64,8 @@ function modeLabel(mode: string): string {
       return 'Debug';
     case 'mugshot':
       return 'Mugshot';
+    case 'sounds':
+      return 'Sounds';
     default:
       return mode;
   }
