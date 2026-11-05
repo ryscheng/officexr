@@ -41,14 +41,14 @@ const FLOOR_Y = 0; // a 2D ghost reports floor height
 
 const open: ReturnType<typeof headless>[] = [];
 
-async function approach(h: ReturnType<typeof createMultiClientHarness>, a: string, b: string) {
+async function approach(h: ReturnType<typeof createMultiClientHarness>, a: string, b: string, aIs3d: boolean) {
   const A = headless(await h.add(a));
   const B = headless(await h.add(b));
   open.push(A, B);
   h.flush();
   h.ensureMutualPresence();
-  const walking = { x: 0, y: 0, z: 1 };
-  A.client.actions.setSelfPosition({ x: 50, y: CAPSULE_CENTER_Y, z: 50 }, walking, 0, false);
+  const aPose = aIs3d ? { y: CAPSULE_CENTER_Y, vel: { x: 0, y: 0, z: 1 } } : { y: FLOOR_Y, vel: still };
+  A.client.actions.setSelfPosition({ x: 50, y: aPose.y, z: 50 }, aPose.vel, 0, false);
   B.client.actions.setSelfPosition({ x: 51, y: FLOOR_Y, z: 50 }, still, 0, false);
   for (let i = 0; i < 40; i++) {
     h.clock.advance(100);
@@ -67,12 +67,12 @@ describe('integration: headless session + proximity ticks', () => {
   });
 
   it.each([
-    ['3D (capsule y, moving) <-> 2D (floor y)', 'alice', 'bob'],
-    ['2D<->2D', 'carol', 'dave'],
-  ])('%s: both clients enter proximity and share a voice room', async (_name, a, b) => {
+    ['3D (capsule y, moving) <-> 2D (floor y)', 'alice', 'bob', true],
+    ['2D<->2D (floor y, still)', 'carol', 'dave', false],
+  ])('%s: both clients enter proximity and share a voice room', async (_name, a, b, aIs3d) => {
     vi.useFakeTimers();
     const h = createMultiClientHarness();
-    const { A, B } = await approach(h, a, b);
+    const { A, B } = await approach(h, a, b, aIs3d);
 
     expect(A.entered).toEqual([b]);
     expect(B.entered).toEqual([a]);
