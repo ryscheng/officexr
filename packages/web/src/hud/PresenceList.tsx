@@ -8,7 +8,7 @@ import {
   usePlayControls,
   useStoreSelector,
   useViewYaw,
-} from '@officexr/world/react';
+} from '@officexr/world/top-down';
 import { formatDistance } from './formatDistance';
 import { IconButton } from './IconButton';
 import { PRESENCE_INDICATOR } from './presenceColours';

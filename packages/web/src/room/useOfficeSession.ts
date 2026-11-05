@@ -6,6 +6,7 @@ import {
   type OfficeSync,
   type PersistentLocalState,
 } from '@officexr/core-refactor';
+import type { ViewMode } from '@officexr/sdk';
 import type { Identity } from '@officexr/server/shared';
 import { wsUrl } from '../apiOrigin';
 import { generateJaaSJwt } from '../voice/jaasJwt';
@@ -38,6 +39,7 @@ export function useOfficeSession(
   me: Identity,
   selfId: string,
   enabled: boolean,
+  viewMode: ViewMode,
   start: typeof startOfficeSync = startOfficeSync,
 ): OfficeSession {
   const [session, setSession] = useState<OfficeSession>({ type: 'connecting' });
@@ -73,7 +75,7 @@ export function useOfficeSession(
           return;
         }
         // After start, so the sync engine announces the name and character to the office.
-        local.actions.upsertPlayer({ id: selfId, name: me.name, avatar: { model } });
+        local.actions.upsertPlayer({ id: selfId, name: me.name, avatar: { model, viewMode } });
         setSession({ type: 'ready', local, office: started, voice });
       },
       (err: Error) => {
@@ -94,6 +96,6 @@ export function useOfficeSession(
       voiceAdapter.dispose();
       channel.close();
     };
-  }, [officeId, me.login, me.name, selfId, enabled, start]);
+  }, [officeId, me.login, me.name, selfId, enabled, viewMode, start]);
   return session;
 }

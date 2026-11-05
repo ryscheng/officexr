@@ -1,6 +1,6 @@
 import { deriveZoneRoom } from '@officexr/core-refactor';
 import type { OfficeState, Store } from '@officexr/sdk';
-import { useStoreSelector } from '@officexr/world/react';
+import { useStoreSelector } from '@officexr/world/top-down';
 
 const selectZoneLabel = (s: OfficeState) => {
   const room = s.players[s.selfId]?.jitsiRoom;

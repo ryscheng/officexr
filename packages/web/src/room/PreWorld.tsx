@@ -1,4 +1,4 @@
-import { WorldLoadingScreen } from '@officexr/world/react';
+import { WorldLoadingScreen } from '@officexr/world/top-down';
 import type { JoinCheck } from './useJoinCheck';
 import { JoinPrompt } from './JoinPrompt';
 import type { OfficeSession } from './useOfficeSession';

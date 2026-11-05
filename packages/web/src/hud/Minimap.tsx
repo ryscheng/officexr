@@ -11,7 +11,7 @@ import {
   useStoreSelector,
   useViewYaw,
   type NavGrid,
-} from '@officexr/world/react';
+} from '@officexr/world/top-down';
 import { formatDistance } from './formatDistance';
 import { floorPlanTransform, navGridPath, toMinimap } from './minimapGeometry';
 import { PRESENCE_INDICATOR } from './presenceColours';
