@@ -72,11 +72,7 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
             disableDeepLinking: true,
             lobby: { autoKnock: true, enableChat: false },
           }}
-          interfaceConfigOverwrite={{
-            TOOLBAR_BUTTONS: [],
-            SHOW_JITSI_WATERMARK: false,
-            SHOW_WATERMARK_FOR_GUESTS: false,
-          }}
+          interfaceConfigOverwrite={{ TOOLBAR_BUTTONS: [], SHOW_JITSI_WATERMARK: false, SHOW_WATERMARK_FOR_GUESTS: false }}
           userInfo={{ displayName: voice.options.displayName, email: '' }}
           onApiReady={(api) => voice.attachApi(meeting, api, startMuted)}
         />
