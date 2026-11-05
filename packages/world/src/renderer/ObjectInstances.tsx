@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
 import { useStoreWorldObjects, type ExcludeInstance } from './useStoreWorldObjects.ts';
+import { logModelError } from './ModelWithFallback.tsx';
+import { ResetKeyErrorBoundary } from './ResetKeyErrorBoundary.tsx';
 import { modelUrl } from '../app/asset-url.ts';
 import type { InstanceGeometryService } from '../app/types.ts';
 import { useApplication, useCatalog } from '../react/application-context.tsx';
@@ -246,12 +248,14 @@ function ObjectInstancesView({
   return (
     <>
       {usedKinds.map(({ kind, instances }) => (
-        <KindInstanceGroup
-          key={kind.id}
-          kind={kind}
-          instances={instances}
-          materialOverride={materialOverride}
-        />
+        // A kind whose model fails to load is left out rather than taking the canvas down.
+        <ResetKeyErrorBoundary key={kind.id} resetKey={kind.gltfPath} onError={logModelError(kind.gltfPath)}>
+          <KindInstanceGroup
+            kind={kind}
+            instances={instances}
+            materialOverride={materialOverride}
+          />
+        </ResetKeyErrorBoundary>
       ))}
       {usedPrimitives.map(({ kindId, color, instances }) => (
         <PrimitiveInstanceGroup
