@@ -14,3 +14,7 @@ export { usePlayControls, type PlayControls, type PlayControlsSource } from '../
 export { useNavGrid } from '../react/useNavGrid.ts';
 export { useViewYaw } from '../react/viewYaw.tsx';
 export type { PlayStorages } from '../react/usePlaySession.ts';
+export { useCoarsePointer } from '../react/useCoarsePointer.ts';
+export { planarDistance, relativeBearing } from '../react/relativeGeometry.ts';
+export type { NavGrid } from '../nav/grid.ts';
+export type { AutoWalkState } from '../nav/autoWalk.ts';

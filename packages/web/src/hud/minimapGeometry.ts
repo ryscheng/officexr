@@ -1,5 +1,5 @@
 import type { Vec3 } from '@officexr/sdk';
-import { planarDistance, relativeBearing, type NavGrid } from '@officexr/world/react';
+import { planarDistance, relativeBearing, type NavGrid } from '@officexr/world/top-down';
 
 /**
  * Where `point` lands on a `sizePx` square map spanning `rangeM` metres, centred

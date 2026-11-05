@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Route, Routes, useParams } from 'react-router-dom';
 import type { Identity, Office } from '@officexr/server/shared';
-import { WorldLoadingScreen } from '@officexr/world/react';
+import { WorldLoadingScreen } from '@officexr/world/top-down';
 import { paths } from './apiOrigin';
 import { Async } from './Async';
 import { Home } from './home/Home';

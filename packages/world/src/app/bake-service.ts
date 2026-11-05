@@ -16,7 +16,6 @@ import type * as THREE from 'three';
 // `app/` → `renderer/` for this one pure helper. Acceptable scope;
 // alternative was to inject `measureScene` as a fourth dependency
 // and add a renderer-side adapter, with no functional gain.
-import { getKindBoundingDimensions } from '../renderer/cube-material.ts';
 import type {
   BakeService,
   CatalogService,
@@ -52,6 +51,8 @@ export function createBakeService(deps: {
     const kind = catalog.getKind(id);
     if (!kind) throw new Error(`measureKindFull: unknown kind "${id}"`);
     const { scene } = await loadGltf(kind.gltfPath);
+    // Loaded on use so the headless `createDefaultApi` stays free of three for bundlers.
+    const { getKindBoundingDimensions } = await import('../renderer/cube-material.ts');
     const m = getKindBoundingDimensions(scene, kind.scale);
     return {
       width: m.width,

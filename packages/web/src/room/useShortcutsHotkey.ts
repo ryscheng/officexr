@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { isTypingTarget } from '@officexr/world/react';
+import { isTypingTarget } from '@officexr/world/top-down';
 
 export function useShortcutsHotkey(onOpen: () => void, enabled = true) {
   useEffect(() => {

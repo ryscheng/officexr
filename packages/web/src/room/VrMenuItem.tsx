@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { focusWorld } from '@officexr/world/react';
+import { focusWorld } from '@officexr/world/top-down';
 import { RoomMenuItem } from './RoomMenu';
 
 /** The part of the world's `XRStore` this item uses. */

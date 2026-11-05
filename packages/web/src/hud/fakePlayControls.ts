@@ -1,5 +1,5 @@
 import type { PlayerId } from '@officexr/sdk';
-import type { AutoWalkState, PlayControlsSource } from '@officexr/world/react';
+import type { AutoWalkState, PlayControlsSource } from '@officexr/world/top-down';
 
 /** A `PlayControlsSource` for tests: records `goTo` calls and holds whatever state the test sets. */
 export function fakePlayControls(initial: AutoWalkState = { type: 'idle' }) {
