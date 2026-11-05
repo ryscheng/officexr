@@ -3,7 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { AwsClient } from 'aws4fetch';
 import { Logger, NodeIO, type JSONDocument } from '@gltf-transform/core';
-import { listBinaryResource } from '@officexr/world/vite-plugin-storage';
+import { SOUND_EXTENSION, listBinaryResource } from '@officexr/world/vite-plugin-storage';
 import type { SoundCatalog } from '@officexr/world/app';
 import { assetContentType } from '@officexr/world/asset-content-type';
 import { compressDocument, registerCompressionCodecs } from '@officexr/world/glb-compression';
@@ -185,14 +185,14 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
     return _exhaustive;
   }
 
-  /** Rewrites `sounds/index.json` from the sounds dir, the same listing `/api/sounds/` serves. */
+  /** Publishes `sounds/index.json` from the sounds dir, the same listing `/api/sounds/` serves. */
   async function publishSoundManifest(soundsDir: string) {
     // ponytail: the manifest shares the 5-minute cache policy, so new sounds can take that long to reach clients.
     const catalog: SoundCatalog = { sounds: await listBinaryResource(soundsDir, SOUND_EXTENSION) };
     await publishBytes(SOUND_MANIFEST_KEY, new TextEncoder().encode(JSON.stringify(catalog)));
   }
 
-  /** Publishes every model and baked layout that changed since its last upload; never rejects. */
+  /** Publishes every model, baked layout, sound and the sounds manifest that changed since its last upload; never rejects. */
   async function sync(dirs: SyncDirs): Promise<void> {
     let units: Unit[];
     try {
@@ -251,7 +251,6 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
   };
 }
 
-const SOUND_EXTENSION = '.mp3';
 const SOUND_MANIFEST_KEY = 'sounds/index.json';
 const soundKey = (name: string) => `sounds/${name}${SOUND_EXTENSION}`;
 

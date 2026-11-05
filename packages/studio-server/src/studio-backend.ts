@@ -20,8 +20,9 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
       .filter(Boolean),
   );
   const adminToken = env.OFFICEXR_REALTIME_ADMIN_TOKEN ?? randomUUID();
+  const soundsDir = path.join(dataDir ?? WORLD_DIR, STORAGE_ENTRIES.sounds.name);
 
-  // Created on first server start or layout hook, so `vite build` never builds one.
+  // Created on first server start or layout/sound hook, so `vite build` never builds one.
   let publisher: R2Publisher | null | undefined;
   const r2Publisher = (): R2Publisher | null => {
     if (publisher === undefined) {
@@ -31,7 +32,8 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
     return publisher;
   };
 
-  const soundsDir = path.join(dataDir ?? WORLD_DIR, STORAGE_ENTRIES.sounds.name);
+  let soundHooks: ReturnType<R2Publisher['soundHooks']> | undefined;
+  const sounds = () => (soundHooks ??= r2Publisher()?.soundHooks(soundsDir));
 
   const storageOptions: StudioStoragePluginOptions = {
     dataDir,
@@ -43,8 +45,9 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
       onDeleted: async (name) => r2Publisher()?.bakedLayoutHooks.onDeleted(name),
     },
     sounds: {
-      onSaved: async (name, bytes) => r2Publisher()?.soundHooks(soundsDir).onSaved(name, bytes),
-      onDeleted: async (name) => r2Publisher()?.soundHooks(soundsDir).onDeleted(name),
+      dir: soundsDir,
+      onSaved: async (name, bytes) => sounds()?.onSaved(name, bytes),
+      onDeleted: async (name) => sounds()?.onDeleted(name),
     },
   };
 

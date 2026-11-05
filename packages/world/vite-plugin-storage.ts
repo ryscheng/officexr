@@ -32,6 +32,7 @@ const DEFAULT_CATALOG_FILE = path.resolve(HERE, 'world-object-kinds.json');
 const DEFAULT_WORLD_SETTINGS_FILE = path.resolve(HERE, 'world-settings.json');
 const DEFAULT_LAYOUTS_DIR = path.resolve(HERE, 'layouts');
 const DEFAULT_BAKED_LAYOUTS_DIR = path.resolve(HERE, 'baked-layouts');
+export const SOUND_EXTENSION = '.mp3';
 const DEFAULT_SOUNDS_DIR = path.resolve(HERE, 'sounds');
 
 export type StorageEntry = {
@@ -251,7 +252,7 @@ export function createStudioStorage(options: StudioStoragePluginOptions = {}): S
       makeBinaryResourceMiddleware({
         ...opts.sounds,
         dir: soundsDir,
-        extension: '.mp3',
+        extension: SOUND_EXTENSION,
         contentType: 'audio/mpeg',
         listKey: 'sounds',
         rejectDots: true,
