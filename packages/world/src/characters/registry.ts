@@ -20,6 +20,10 @@ export const CHARACTERS = [
   'Rogue_Hooded',
 ] as const;
 
+/** World-wide models shown for 2D users. Kept apart from `CHARACTERS` so they
+ * never reach the player character picker. */
+export const GHOST_MODELS: readonly { id: string; label: string; url: string }[] = [];
+
 export type CharacterName = (typeof CHARACTERS)[number];
 
 export function isCharacterName(value: unknown): value is CharacterName {

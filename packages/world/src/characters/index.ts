@@ -1,6 +1,7 @@
 export {
   CHARACTERS,
   DEFAULT_CHARACTER_CONFIGS,
+  GHOST_MODELS,
   getCharacterConfig,
   isCharacterName,
   pickCharacterForPlayer,

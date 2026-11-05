@@ -6,6 +6,7 @@ import {
   type WorldConstants,
 } from '@officexr/sdk';
 import type { BotMode } from '@officexr/world/bot';
+import { GHOST_MODELS } from '@officexr/world/characters';
 import { resolveHorizonColor } from '@officexr/world/renderer';
 
 import { Button } from '../../components/ui/button.tsx';
@@ -25,7 +26,7 @@ import type {
   UseWorldConstantsPersistenceResult,
 } from './useWorldConstantsPersistence.ts';
 
-type SetSection = <K extends Exclude<keyof WorldConstants, 'schemaVersion'>>(
+export type SetSection = <K extends Exclude<keyof WorldConstants, 'schemaVersion'>>(
   key: K,
   update: (prev: WorldConstants[K]) => WorldConstants[K],
 ) => void;
@@ -85,6 +86,10 @@ export function WorldPanels({
       />
       <FixedCameraPanel
         fixedCamera={worldConstants.fixedCamera}
+        setSection={setSection}
+      />
+      <GhostAvatarPanel
+        ghostAvatar={worldConstants.ghostAvatar}
         setSection={setSection}
       />
       <SettingsPanel
@@ -385,6 +390,43 @@ function BackgroundPanel({
         onChange={set('horizonColor')}
       />
       <ColorInput label="bottom" value={background.bottomColor} onChange={set('bottomColor')} />
+    </Section>
+  );
+}
+
+// --- Ghost avatar -------------------------------------------------
+
+const NO_GHOST = 'none';
+
+export function GhostAvatarPanel({
+  ghostAvatar,
+  setSection,
+  models = GHOST_MODELS,
+}: {
+  ghostAvatar: WorldConstants['ghostAvatar'];
+  setSection: SetSection;
+  models?: typeof GHOST_MODELS;
+}) {
+  const model = ghostAvatar?.model ?? NO_GHOST;
+  const options = [
+    { value: NO_GHOST, label: "None (use player's character)" },
+    ...models.map((m) => ({ value: m.url, label: m.label })),
+  ];
+  // A saved model missing from the list stays visible rather than being dropped.
+  if (!options.some((o) => o.value === model)) {
+    options.push({ value: model, label: model });
+  }
+
+  return (
+    <Section title="Ghost avatar">
+      <SelectInput
+        label="Model"
+        value={model}
+        options={options}
+        onChange={(next) =>
+          setSection('ghostAvatar', () => (next === NO_GHOST ? undefined : { model: next }))
+        }
+      />
     </Section>
   );
 }
