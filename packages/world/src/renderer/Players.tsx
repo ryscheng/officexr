@@ -11,10 +11,11 @@ import {
   type IntersectionExitPayload,
 } from '@react-three/rapier';
 import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
-import type { Bus, OfficeState, Store } from '@officexr/sdk';
+import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { Adventurer } from './Adventurer.tsx';
 import type { CameraMode, CharacterName } from './config.ts';
 import { PlayerNameTag } from './PlayerNameTag.tsx';
+import { PlayerPingBell, shouldShowPingBell } from './PlayerPingBell.tsx';
 import { pickCharacterForPlayer, resolvePlayerModel, type PlayerModel } from '../characters/registry.ts';
 import { ModelWithFallback } from './ModelWithFallback.tsx';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
@@ -51,6 +52,7 @@ interface PlayersProps {
   isAirborneRef: React.MutableRefObject<boolean>;
   /** Hides the self avatar, as in first-person, while an immersive XR session is presenting. */
   xrPresenting: boolean;
+  onPingPlayer?: (id: PlayerId) => void;
 }
 
 interface BumpState {
@@ -152,6 +154,7 @@ export function Players({
   isAirborneRef,
   xrPresenting,
   selfReady = true,
+  onPingPlayer,
 }: PlayersProps) {
   const [worldSettings, setWorldSettings] = useState(
     () => store.getState().worldSettings,
@@ -526,6 +529,9 @@ export function Players({
                 isSelf={isSelf}
                 paused={paused ?? false}
               />
+              {onPingPlayer && shouldShowPingBell(onPingPlayer, isSelf, cameraMode, paused ?? false) && (
+                <PlayerPingBell store={store} playerId={p.id} radius={charRadius} onPing={onPingPlayer} />
+              )}
             </group>
           </RigidBody>
         );

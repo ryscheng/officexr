@@ -11,6 +11,7 @@ import { excludeLayoutInstances } from './useStoreWorldObjects.ts';
 import type {
   Actions,
   Bus,
+  PlayerId,
   RuleRegistry,
   Store,
   SyncEngine,
@@ -150,6 +151,8 @@ interface SceneProps {
   /** Called once per mount when every model in the scene, plus the self
    * player's, has loaded. */
   onModelsReady?: () => void;
+  /** Shows a ping bell when hovering another player's avatar; omitting it renders nothing extra. */
+  onPingPlayer?: (id: PlayerId) => void;
   /** Called once each baked layout's colliders have mounted, with its room instance id. */
   onCollidersReady?: (roomInstanceId: string) => void;
   onCollidersError?: (error: Error) => void;
@@ -333,6 +336,7 @@ export function Scene(props: SceneProps) {
           isAirborneRef={isAirborneRef}
           xrPresenting={xrPresenting}
           selfReady={props.selfReady}
+          onPingPlayer={props.onPingPlayer}
         />
         {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} charRadius={charRadius} />}
 

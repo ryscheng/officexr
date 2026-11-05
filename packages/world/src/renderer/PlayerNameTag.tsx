@@ -1,15 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Html } from '@react-three/drei';
-import type { Store } from '@officexr/sdk';
+import type { PlayerId, Store } from '@officexr/sdk';
 import './PlayerNameTag.css';
 
-const TAG_HEIGHT_M = 2;
+export const TAG_HEIGHT_M = 2;
 
 export const shouldShowNameTag = (
   name: string,
   isSelf: boolean,
   paused: boolean,
 ): boolean => !isSelf && !paused && name !== '';
+
+export function usePlayerName(store: Store, playerId: PlayerId): string {
+  const [name, setName] = useState(() => store.getState().players[playerId]?.name ?? '');
+  useEffect(
+    () => store.subscribe((s) => s.players[playerId]?.name ?? '', setName),
+    [store, playerId],
+  );
+  return name;
+}
 
 /**
  * Floating name label above a player's feet. Must be a child of the
@@ -22,11 +31,7 @@ export function PlayerNameTag(props: {
   paused: boolean;
 }) {
   const { store, playerId, isSelf, paused } = props;
-  const [name, setName] = useState(() => store.getState().players[playerId]?.name ?? '');
-  useEffect(
-    () => store.subscribe((s) => s.players[playerId]?.name ?? '', setName),
-    [store, playerId],
-  );
+  const name = usePlayerName(store, playerId);
   if (!shouldShowNameTag(name, isSelf, paused)) return null;
   return (
     // ponytail: tags show through walls and keep a constant size regardless of distance.
