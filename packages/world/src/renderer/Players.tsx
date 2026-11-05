@@ -18,6 +18,7 @@ import { PlayerNameTag } from './PlayerNameTag.tsx';
 import { PlayerPingBell, shouldShowPingBell } from './PlayerPingBell.tsx';
 import { pickCharacterForPlayer, resolvePlayerModel, type PlayerModel } from '../characters/registry.ts';
 import { ModelWithFallback } from './ModelWithFallback.tsx';
+import { liveRigidBody } from './liveRigidBody.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
   BODY_GROUPS,
@@ -290,7 +291,7 @@ export function Players({
 
     for (const [id, player] of Object.entries(state.players)) {
       const grp = groupRefs.current.get(id);
-      const body = bodyRefs.current.get(id);
+      const body = liveRigidBody(bodyRefs.current.get(id));
       if (!grp || !body) continue;
 
       // Extrapolate non-self players forward by their broadcast velocity to

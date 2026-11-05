@@ -5,6 +5,7 @@ import {
   useRapier,
   type RapierRigidBody,
 } from '@react-three/rapier';
+import { liveRigidBody } from './liveRigidBody.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type {
   Actions,
@@ -285,7 +286,7 @@ export function SceneFrame({
 
     const stateSnapshot = store.getState();
     const self = stateSnapshot.players[selfId];
-    const body = selfBodyRef.current;
+    const body = liveRigidBody(selfBodyRef.current);
     const { movementBlockThreshold } = stateSnapshot.worldSettings;
     // Resolve per-character overrides for the local model — each
     // character can have its own speed / run multiplier, falling back
