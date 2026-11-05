@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isZoomMode,
+  topDownMovementYaw,
+  topDownPose,
   applyLookDelta,
   applyZoom,
   fixedMovementYaw,
@@ -272,5 +275,51 @@ describe('wrapAngle', () => {
     ['just past π to just past -π', Math.PI + 0.1, -Math.PI + 0.1],
   ])('maps %s', (_name, input, expected) => {
     expect(wrapAngle(input)).toBeCloseTo(expected, 9);
+  });
+});
+
+describe('topDownMovementYaw', () => {
+  it('points forward along -z at azimuth 0', () => {
+    const yaw = topDownMovementYaw(0);
+    expect(-Math.sin(yaw)).toBeCloseTo(0);
+    expect(-Math.cos(yaw)).toBeCloseTo(-1);
+  });
+
+  it('turns with the camera azimuth', () => {
+    const yaw = topDownMovementYaw(90);
+    expect(-Math.sin(yaw)).toBeCloseTo(1);
+    expect(-Math.cos(yaw)).toBeCloseTo(0);
+  });
+});
+
+describe('topDownPose', () => {
+  const params = { pitchDeg: -89.9, azimuthDeg: 0, height: 20 };
+  const centre = { x: 3, y: 0.5, z: -2 };
+
+  it('sits straight above the centre, a hair behind it', () => {
+    const { position, target } = topDownPose(centre, params, 1);
+    expect(position.x).toBeCloseTo(3);
+    expect(position.y).toBeCloseTo(20.5);
+    expect(position.z).toBeGreaterThan(-2);
+    expect(position.z).toBeCloseTo(-2, 1);
+    expect(target).toBe(centre);
+  });
+
+  it('divides the height by the zoom', () => {
+    expect(topDownPose(centre, params, 2).position.y).toBeCloseTo(10.5);
+  });
+
+  it('offsets sideways by azimuth at a shallow pitch', () => {
+    const { position } = topDownPose({ x: 0, y: 0, z: 0 }, { pitchDeg: -45, azimuthDeg: 90, height: 10 }, 1);
+    expect(position.x).toBeCloseTo(10);
+    expect(position.z).toBeCloseTo(0);
+  });
+});
+
+describe('isZoomMode', () => {
+  it('covers look modes and top-down only', () => {
+    expect(isZoomMode('fixed')).toBe(true);
+    expect(isZoomMode('top-down')).toBe(true);
+    expect(isZoomMode('free-fly')).toBe(false);
   });
 });

@@ -3,6 +3,7 @@ import type { PlayerId, Store, Vec3 } from '@officexr/sdk';
 import {
   AUTO_WALK_IDLE,
   autoWalkGoTo,
+  autoWalkGoToPoint,
   autoWalkStep,
   type AutoWalkInput,
   type AutoWalkState,
@@ -25,7 +26,7 @@ export interface AutoWalkOptions {
 }
 
 /**
- * Walks the self player of `store` to other players. Holds the walk
+ * Walks the self player of `store` to other players or to a point on the floor. Holds the walk
  * state itself, for the frame loop's `intent` calls, and notifies
  * subscribers only when that state changes.
  */
@@ -37,6 +38,7 @@ export function createAutoWalk(
   let state: TrackedAutoWalkState = AUTO_WALK_IDLE;
   let published: AutoWalkState = AUTO_WALK_IDLE;
   let grid: NavGrid | null = null;
+  let point: Vec3 | null = null;
   const listeners = new Set<() => void>();
   const publish = (next: TrackedAutoWalkState) => {
     state = next;
@@ -45,13 +47,13 @@ export function createAutoWalk(
       listeners.forEach((cb) => cb());
     }
   };
-  const input = (targetId: PlayerId, selfPos: Vec3): AutoWalkInput => {
+  const input = (targetId: PlayerId | null, selfPos: Vec3): AutoWalkInput => {
     const s = store.getState();
     const { charRadius } = s.worldSettings;
-    const target = s.players[targetId];
+    const target = targetId === null ? undefined : s.players[targetId];
     return {
       selfPos: feetPosition(selfPos, charRadius),
-      targetPos: target ? feetPosition(target.pos, charRadius) : null,
+      targetPos: targetId === null ? point : target ? feetPosition(target.pos, charRadius) : null,
       now: now(),
     };
   };
@@ -65,9 +67,17 @@ export function createAutoWalk(
       grid = next;
     },
     goTo(targetId) {
+      point = null;
       const self = store.getState().players[selfId];
       if (self) {
         publish(autoWalkGoTo(state, targetId, input(targetId, self.pos), grid, plan));
+      }
+    },
+    goToPoint(target) {
+      const self = store.getState().players[selfId];
+      if (self) {
+        point = target;
+        publish(autoWalkGoToPoint({ ...input(null, self.pos), targetPos: target }, grid, plan));
       }
     },
     cancel: () => publish(AUTO_WALK_IDLE),

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AUTO_WALK_IDLE, autoWalkGoTo, autoWalkStep, type PlanFn, type TrackedAutoWalkState } from './autoWalk.ts';
+import { AUTO_WALK_IDLE, autoWalkGoTo, autoWalkGoToPoint, autoWalkStep, type PlanFn, type TrackedAutoWalkState } from './autoWalk.ts';
 import type { NavGrid } from './grid.ts';
 
 const GRID = {} as NavGrid;
@@ -169,5 +169,45 @@ describe('autoWalkGoTo', () => {
 
   it('stays idle for a player who is not in the room', () => {
     expect(autoWalkGoTo(AUTO_WALK_IDLE, 'bob', { ...input, targetPos: null }, GRID, planner())).toBe(AUTO_WALK_IDLE);
+  });
+});
+
+describe('point targets', () => {
+  const point = (selfX: number, route: { x: number; z: number }[] = []) => {
+    const state = autoWalkGoToPoint({ selfPos: at(selfX, 0), targetPos: at(5, 0), now: 0 }, GRID, planner(route));
+    return state;
+  };
+
+  it('starts a walk with no player target, and a second call restarts rather than stops', () => {
+    const first = point(0);
+    expect(first).toMatchObject({ type: 'walking', targetId: null });
+    expect(point(0)).toMatchObject({ type: 'walking', targetId: null });
+  });
+
+  it('reports no-route when the planner finds none', () => {
+    expect(point(0, null as never)).toMatchObject({ type: 'no-route', targetId: null });
+  });
+
+  it('arrives within 0.4 m, not the 1.5 m a player gets', () => {
+    const state = point(0);
+    const input = { targetPos: at(5, 0), now: 100 };
+    expect(autoWalkStep(state, { ...input, selfPos: at(3.8, 0) }, GRID, planner()).state.type).toBe('walking');
+    expect(autoWalkStep(state, { ...input, selfPos: at(4.7, 0) }, GRID, planner()).state).toEqual({
+      type: 'arrived',
+      targetId: null,
+    });
+  });
+
+  it('arrives once the route is walked even when the point is off the grid', () => {
+    const state = point(0, [{ x: 4, z: 0 }]);
+    const step = autoWalkStep(state, { selfPos: at(4, 0), targetPos: at(5, 0), now: 100 }, GRID, planner());
+    expect(step.state).toEqual({ type: 'arrived', targetId: null });
+    expect(step.intent).toBeNull();
+  });
+
+  it('stays arrived when it is far from the point again', () => {
+    const arrived: TrackedAutoWalkState = { type: 'arrived', targetId: null };
+    const step = autoWalkStep(arrived, { selfPos: at(20, 0), targetPos: at(5, 0), now: 100 }, GRID, planner());
+    expect(step.state).toBe(arrived);
   });
 });

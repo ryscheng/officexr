@@ -31,6 +31,30 @@ describe('createAutoWalk', () => {
   });
 });
 
+describe('createAutoWalk goToPoint', () => {
+  it('plans to the point and keeps targeting it as the frame loop asks for intent', () => {
+    const store = createStore({ selfId: 'me', officeId: 'o' });
+    createActions(store).upsertPlayer({ id: 'me', pos: { x: 0, y: 1, z: 0 } });
+    const autoWalk = createAutoWalk(store, 'me', { now: () => 0 });
+
+    autoWalk.goToPoint({ x: 4, y: 0, z: 0 });
+
+    expect(autoWalk.getState()).toMatchObject({ type: 'walking', targetId: null });
+    expect(autoWalk.intent({ x: 0, y: 1, z: 0 })).toEqual({ x: 1, z: 0 });
+    expect(autoWalk.intent({ x: 4, y: 1, z: 0 })).toBeNull();
+    expect(autoWalk.getState()).toEqual({ type: 'arrived', targetId: null });
+  });
+
+  it('cancels a walk to a point', () => {
+    const store = createStore({ selfId: 'me', officeId: 'o' });
+    createActions(store).upsertPlayer({ id: 'me', pos: { x: 0, y: 1, z: 0 } });
+    const autoWalk = createAutoWalk(store, 'me', { now: () => 0 });
+    autoWalk.goToPoint({ x: 4, y: 0, z: 0 });
+    autoWalk.cancel();
+    expect(autoWalk.getState()).toEqual({ type: 'idle' });
+  });
+});
+
 describe('useAutoWalk', () => {
   it('keeps its controller across renders and starts an idle one for a new selfId', () => {
     const store = createStore({ selfId: 'me', officeId: 'o' });

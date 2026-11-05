@@ -7,20 +7,22 @@ const WAYPOINT_REACHED_M = 0.3;
 const REPLAN_INTERVAL_MS = 500;
 const REPLAN_TARGET_MOVED_M = 1;
 const ARRIVE_M = 1.5;
+const POINT_ARRIVE_M = 0.4;
 const RESUME_M = 3;
 /** Longer than a jump's airtime, when the feet are too far above the floor to plan from. */
 const ROUTE_GRACE_MS = 1200;
 
+/** `targetId` is null when the walk heads for a point on the floor instead of a player. */
 export type AutoWalkState =
   | { type: 'idle' }
   | {
       type: 'walking';
-      targetId: PlayerId;
+      targetId: PlayerId | null;
       /** Waypoints still ahead; empty means head straight for the target. */
       route: XZ[];
     }
-  | { type: 'arrived'; targetId: PlayerId }
-  | { type: 'no-route'; targetId: PlayerId };
+  | { type: 'arrived'; targetId: PlayerId | null }
+  | { type: 'no-route'; targetId: PlayerId | null };
 
 type Walking = Extract<AutoWalkState, { type: 'walking' }> & {
   plannedAt: number;
@@ -34,7 +36,7 @@ type Walking = Extract<AutoWalkState, { type: 'walking' }> & {
 export type TrackedAutoWalkState =
   | Exclude<AutoWalkState, { type: 'walking' | 'no-route' }>
   | Walking
-  | { type: 'no-route'; targetId: PlayerId; plannedAt: number };
+  | { type: 'no-route'; targetId: PlayerId | null; plannedAt: number };
 
 export interface AutoWalkInput {
   /** Feet position, as `findPath` takes it. */
@@ -62,6 +64,15 @@ export function autoWalkGoTo(
   return startWalking(targetId, input.selfPos, input.targetPos, input.now, grid, plan);
 }
 
+/** Starts walking to `input.targetPos`, a point on the floor; it never follows or toggles. */
+export function autoWalkGoToPoint(
+  input: AutoWalkInput & { targetPos: Vec3 },
+  grid: NavGrid | null,
+  plan: PlanFn,
+): TrackedAutoWalkState {
+  return startWalking(null, input.selfPos, input.targetPos, input.now, grid, plan);
+}
+
 /**
  * Advances the walk by one frame. `intent` is a world-space unit XZ
  * direction, or null when the avatar should stand still.
@@ -82,15 +93,16 @@ export function autoWalkStep(
   const start = () => startWalking(state.targetId, selfPos, targetPos, now, grid, plan);
   // ponytail: arrival is planar, so a target on another floor right above or below counts as reached.
   const distance = planarDistance(selfPos, targetPos);
+  const arriveM = state.targetId === null ? POINT_ARRIVE_M : ARRIVE_M;
   let next: TrackedAutoWalkState;
   switch (state.type) {
     case 'arrived':
-      next = distance > RESUME_M ? start() : state;
+      next = state.targetId !== null && distance > RESUME_M ? start() : state;
       break;
     case 'no-route':
       // ponytail: an unreachable target makes A* flood its whole connected region every 0.5 s.
       next =
-        distance <= ARRIVE_M
+        distance <= arriveM
           ? { type: 'arrived', targetId: state.targetId }
           : now - state.plannedAt >= REPLAN_INTERVAL_MS
             ? start()
@@ -98,7 +110,7 @@ export function autoWalkStep(
       break;
     case 'walking':
       next =
-        distance <= ARRIVE_M
+        distance <= arriveM
           ? { type: 'arrived', targetId: state.targetId }
           : now - state.plannedAt >= REPLAN_INTERVAL_MS ||
               planarDistance(state.plannedFor, targetPos) > REPLAN_TARGET_MOVED_M
@@ -110,7 +122,15 @@ export function autoWalkStep(
       return _exhaustive;
     }
   }
-  return next.type === 'walking' ? steer(next, selfPos, targetPos) : { state: next, intent: null };
+  if (next.type !== 'walking') {
+    return { state: next, intent: null };
+  }
+  const steered = steer(next, selfPos, targetPos);
+  // A point may sit off the grid; once its route is walked, the snapped end is as close as we get.
+  if (next.targetId === null && next.route.length > 0 && steered.state.route.length === 0) {
+    return { state: { type: 'arrived', targetId: null }, intent: null };
+  }
+  return steered;
 }
 
 /** Shared, so re-planning without a grid keeps the same route. */
@@ -122,7 +142,7 @@ function route(selfPos: Vec3, targetPos: Vec3, grid: NavGrid | null, plan: PlanF
 }
 
 function startWalking(
-  targetId: PlayerId,
+  targetId: PlayerId | null,
   selfPos: Vec3,
   targetPos: Vec3,
   now: number,
@@ -150,7 +170,7 @@ function replanWalk(
       : { type: 'no-route', targetId: state.targetId, plannedAt: now };
 }
 
-function walkingTo(targetId: PlayerId, route: XZ[], targetPos: Vec3, now: number, routedAt: number): Walking {
+function walkingTo(targetId: PlayerId | null, route: XZ[], targetPos: Vec3, now: number, routedAt: number): Walking {
   return {
     type: 'walking',
     targetId,

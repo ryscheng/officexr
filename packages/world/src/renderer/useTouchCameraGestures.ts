@@ -4,7 +4,7 @@ import type { CameraMode } from './config.ts';
 import {
   applyLookDelta,
   applyZoom,
-  isLookMode,
+  isZoomMode,
   pinchFactor,
   wheelZoomFactor,
   type LookRefs,
@@ -49,7 +49,7 @@ export function useCanvasGestures(
   );
 
   useEffect(() => {
-    if (!isLookMode(mode) || paused) {
+    if (!isZoomMode(mode) || paused) {
       return;
     }
     const pointers = new Map<number, Point>();

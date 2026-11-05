@@ -116,7 +116,7 @@ export function ProximityGlow({
   // drei sizes vanish from camera distance; the 5× makes them
   // readable. User can crank `sparkleSize` for additional bias.
   const sparkleSizeMul =
-    sparkleSize * (cameraMode === 'fixed' ? 5 : 1);
+    sparkleSize * (cameraMode === 'fixed' || cameraMode === 'top-down' ? 5 : 1);
   const initialIds = useMemo(
     () => Object.keys(store.getState().players),
     [store],

@@ -12,12 +12,10 @@ describe('useCameraMode', () => {
   it('uncontrolled: starts fixed and Alt+P cycles through the gameplay modes', () => {
     const { result } = renderHook(() => useCameraMode());
     expect(result.current).toBe('fixed');
-    altP();
-    expect(result.current).toBe('first-person');
-    altP();
-    expect(result.current).toBe('third-person');
-    altP();
-    expect(result.current).toBe('fixed');
+    for (const mode of ['top-down', 'first-person', 'third-person', 'fixed']) {
+      altP();
+      expect(result.current).toBe(mode);
+    }
   });
 
   it('ignores P without Alt', () => {
@@ -35,6 +33,9 @@ describe('useCameraMode', () => {
     expect(onChange).toHaveBeenCalledWith('fixed');
     expect(result.current).toBe('third-person');
     rerender({ value: 'fixed' });
+    altP();
+    expect(onChange).toHaveBeenLastCalledWith('top-down');
+    rerender({ value: 'top-down' });
     altP();
     expect(onChange).toHaveBeenLastCalledWith('first-person');
   });

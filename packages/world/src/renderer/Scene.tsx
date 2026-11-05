@@ -29,6 +29,8 @@ import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
 import { ModelsReady } from './ModelsReady.tsx';
 import { FrameStatsProbe, type FrameStatsSample } from './FrameStatsProbe.tsx';
+import { FloorClick } from './FloorClick.tsx';
+import { allowsFloorClick } from './floorClick.ts';
 import { ViewYawProbe } from './ViewYawProbe.tsx';
 import type { ViewYaw } from '../react/viewYaw.tsx';
 import { GAMEPLAY_FOV, type CameraMode } from './config.ts';
@@ -117,6 +119,8 @@ interface SceneProps {
   moveInputRef?: React.MutableRefObject<MoveInput>;
   /** World-space steering used while there is no key or stick input; absent where nothing auto-walks. */
   autoWalk?: AutoWalkSource;
+  /** Called with the feet position a click on the floor picked, in camera modes without pointer lock. */
+  onFloorClick?: (point: Vec3) => void;
   /** Spawn points for the active map, in world coords. Forwarded
    * straight to `SceneFrame`'s fall-respawn rule. Empty/undefined
    * disables respawn (the player floats in the void instead). */
@@ -384,6 +388,9 @@ export function Scene(props: SceneProps) {
           xrPresenting={xrPresenting}
           paused={props.paused}
         />
+        {props.onFloorClick && allowsFloorClick(cameraMode) && (
+          <FloorClick playerPosRef={selfPosRef} charRadius={charRadius} onFloorClick={props.onFloorClick} />
+        )}
         {/* After CameraRig, so the probe reads this frame's pose, not last frame's. */}
         {props.viewYaw && <ViewYawProbe viewYaw={props.viewYaw} />}
 
