@@ -85,7 +85,7 @@ export type WorldConstants = {
   lighting: LightingConstants;
   background: BackgroundConstants;
   fixedCamera: FixedCameraConstants;
-  /** GLB shown for players in 2D view; omitted, no ghost model is configured. */
+  /** GLB shown for players in 2D view. Omitted when no ghost model is configured. */
   ghostAvatar?: { model: string };
 };
 
