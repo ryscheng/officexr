@@ -12,6 +12,7 @@ import {
 } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakePlayControls } from './fakePlayControls';
+import type { PingSender } from '../ping/usePingSender';
 import { PresenceList, presenceRows } from './PresenceList';
 
 afterEach(() => {
@@ -110,7 +111,7 @@ describe('presenceRows', () => {
 const rowOf = (name: string) => screen.getByText(name).closest('li')!;
 
 describe('PresenceList', () => {
-  function seed(onRender: ProfilerOnRenderCallback = () => {}) {
+  function seed(onRender: ProfilerOnRenderCallback = () => {}, pinger?: PingSender) {
     const store = createStore({ selfId: 'me', officeId: 'o' });
     const actions = createActions(store, createBus());
     const viewYaw = createViewYaw();
@@ -137,7 +138,7 @@ describe('PresenceList', () => {
       <>
         <WorldFocus />
         <Profiler id="list" onRender={onRender}>
-          <PresenceList store={store} selfId="me" officeName="HQ" clock={clock} />
+          <PresenceList store={store} selfId="me" officeName="HQ" clock={clock} pinger={pinger} />
         </Profiler>
       </>,
       { viewYaw, controls: play.controls },
@@ -240,6 +241,31 @@ describe('PresenceList', () => {
     fireEvent.click(bob);
     expect(play.goTos).toEqual(['bob']);
     expect(focus.textContent).toBe('true');
+  });
+
+  it('offers Ping on present peers only, passes the row id and returns focus to the world', () => {
+    const pinged: string[] = [];
+    seed(undefined, { ping: (id) => pinged.push(id), isCoolingDown: () => false });
+    const pingButton = (name: string) => within(rowOf(name)).queryByRole('button', { name: `Ping ${name}` });
+    expect(pingButton('Me (you)')).toBeNull();
+    expect(pingButton('Dan')).toBeNull();
+    const focus = screen.getByRole('status', { name: 'world focus' });
+
+    fireEvent.click(pingButton('Bob')!);
+    expect(pinged).toEqual(['bob']);
+    expect(focus.textContent).toBe('true');
+  });
+
+  it('has no Ping button without a pinger', () => {
+    seed();
+    expect(screen.queryByRole('button', { name: /^Ping / })).toBeNull();
+  });
+
+  it('disables Ping during cooldown', () => {
+    seed(undefined, { ping: () => {}, isCoolingDown: (id) => id === 'bob' });
+    const disabled = (name: string) =>
+      (within(rowOf(name)).getByRole('button', { name: `Ping ${name}` }) as HTMLButtonElement).disabled;
+    expect([disabled('Ann'), disabled('Bob')]).toEqual([false, true]);
   });
 
   it('presses the Go button of the user being walked to, and says when there is no route', () => {

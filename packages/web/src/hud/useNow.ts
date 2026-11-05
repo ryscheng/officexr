@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const performanceNow = () => performance.now();
+export const performanceNow = () => performance.now();
 
 /** `clock()`, re-read every `intervalMs`. Defaults to `performance.now`, the SyncEngine clock; `clock` must be stable. */
 export function useNow(intervalMs: number, clock: () => number = performanceNow): number {

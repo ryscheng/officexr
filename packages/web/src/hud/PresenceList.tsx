@@ -1,4 +1,4 @@
-import { ArrowUp, Mic, MicOff, Navigation, type LucideIcon } from 'lucide-react';
+import { ArrowUp, Bell, Mic, MicOff, Navigation, type LucideIcon } from 'lucide-react';
 import type { DepartedPlayer, MicState, OfficeState, PlayerId, PlayerState, PresenceStatus, Store } from '@officexr/sdk';
 import { loginOf, presenceIndicator } from '@officexr/sdk';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@officexr/world/top-down';
 import { formatDistance } from './formatDistance';
 import { IconButton } from './IconButton';
+import type { PingSender } from '../ping/usePingSender';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { quantise } from './quantise';
 import { sameList } from './sameFields';
@@ -99,12 +100,15 @@ export function PresenceList({
   selfId,
   officeName,
   clock,
+  pinger,
 }: {
   store: Store;
   selfId: PlayerId;
   officeName: string;
   /** Must be stable; defaults to `performance.now`, the clock presence timestamps are on. */
   clock?: () => number;
+  /** Without it, rows have no Ping button. */
+  pinger?: PingSender;
 }) {
   const { players, departed, status } = useStoreSelector(store, selectPresence, samePresence);
   const viewYawDeg = useViewYaw() * DEG;
@@ -143,6 +147,15 @@ export function PresenceList({
               goTo(row.id);
               focusWorld();
             }}
+            onPing={
+              pinger && {
+                disabled: pinger.isCoolingDown(row.id),
+                send: () => {
+                  pinger.ping(row.id);
+                  focusWorld();
+                },
+              }
+            }
           />
         ))}
       </ul>
@@ -161,6 +174,7 @@ function PresenceRowItem({
   following,
   noRoute,
   onGo,
+  onPing,
 }: {
   row: PresenceRow;
   now: number;
@@ -169,6 +183,7 @@ function PresenceRowItem({
   following: boolean;
   noRoute: boolean;
   onGo: () => void;
+  onPing?: { disabled: boolean; send: () => void };
 }) {
   const indicator = PRESENCE_INDICATOR[row.type === 'self' ? row.status : presenceIndicator(row, now)];
   const mic = row.type === 'departed' ? null : MIC[row.mic];
@@ -195,6 +210,9 @@ function PresenceRowItem({
           />
           {formatDistance(row.distanceM)}
         </span>
+      )}
+      {row.type === 'peer' && onPing && (
+        <IconButton icon={Bell} label={`Ping ${row.label}`} disabled={onPing.disabled} size="sm" onClick={onPing.send} />
       )}
       {row.type === 'peer' && (
         <IconButton
