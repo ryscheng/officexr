@@ -31,7 +31,7 @@ type Intent =
   | { type: "point"; target: Point }
   | { type: "follow"; playerId: PlayerId };
 
-const NO_KEYS: GhostKeys = {
+export const NO_KEYS: GhostKeys = {
   forward: false,
   back: false,
   left: false,
@@ -65,6 +65,15 @@ export class GhostController {
 
   goTo(playerId: PlayerId): void {
     this.intent = { type: "follow", playerId };
+  }
+
+  cancel(): void {
+    this.intent = { type: "none" };
+  }
+
+  /** The player being followed, or null once the follow ends (arrived, cancelled, keys pressed). */
+  followTarget(): PlayerId | null {
+    return this.intent.type === "follow" ? this.intent.playerId : null;
   }
 
   step(dtSec: number): void {
