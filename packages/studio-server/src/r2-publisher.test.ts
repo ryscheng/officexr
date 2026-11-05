@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AwsV4Signer } from 'aws4fetch';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { registerCompressionCodecs } from '@officexr/world/glb-compression';
-import studioStorage from '@officexr/world/vite-plugin-storage';
+import studioStorage, { type StudioStoragePluginOptions } from '@officexr/world/vite-plugin-storage';
+import { studioBackend } from './studio-backend.ts';
 import {
   PUBLISHER_FORMAT_VERSION,
   createR2Publisher,
@@ -140,17 +141,19 @@ function triangleDoc(offset: number, opts: { bin?: string; texture?: string } = 
   return doc;
 }
 
+const MP3 = Buffer.from('ID3-fake-mp3');
 const glb = (offset: number) => new NodeIO().writeBinary(triangleDoc(offset));
 
 describe('r2 publisher', () => {
   let root: string;
   let modelsDir: string;
   let bakedLayoutsDir: string;
+  let soundsDir: string;
   let s3: Awaited<ReturnType<typeof startFakeS3>>;
   let config: R2Config;
   const servers: Server[] = [];
 
-  const dirs = () => ({ modelsDir, bakedLayoutsDir });
+  const dirs = () => ({ modelsDir, bakedLayoutsDir, soundsDir });
   const writeKind = (name: string, offset: number) =>
     new NodeIO().write(
       path.join(modelsDir, 'blocks', `${name}.gltf`),
@@ -165,7 +168,9 @@ describe('r2 publisher', () => {
     for (const dir of ['blocks', 'characters', 'animations']) {
       await mkdir(path.join(modelsDir, dir), { recursive: true });
     }
+    soundsDir = path.join(root, 'sounds');
     await mkdir(bakedLayoutsDir);
+    await mkdir(soundsDir);
     await writeKind('a', 0);
     await writeKind('b', 1);
     await writeFile(path.join(modelsDir, 'blocks', 'License.txt'), 'CC0');
@@ -240,6 +245,7 @@ describe('r2 publisher', () => {
       'models/blocks/b.gltf',
       'models/blocks/shared.png',
       'models/characters/Knight.glb',
+      'sounds/index.json',
     ]);
     const headers = (key: string) => s3.objects.get(key)!.headers;
     expect(headers('models/blocks/a.gltf')).toEqual({
@@ -405,11 +411,15 @@ describe('r2 publisher', () => {
     expect(s3.puts()).toEqual([]);
   });
 
-  describe('through the baked-layouts storage hooks', () => {
-    async function serveStorage() {
-      const publisher = createR2Publisher(config);
+  const manifestNames = () =>
+    (JSON.parse(s3.objects.get('sounds/index.json')!.body.toString()) as { sounds: { name: string }[] }).sounds
+      .map((e) => e.name)
+      .sort();
+
+  describe('through the storage hooks', () => {
+    async function serveStorage(options: StudioStoragePluginOptions, base: string) {
       const mounts: Array<[string, (req: IncomingMessage, res: ServerResponse, next: () => void) => void]> = [];
-      const plugin = studioStorage({ dataDir: root, bakedLayouts: publisher.bakedLayoutHooks });
+      const plugin = studioStorage(options);
       await (plugin.configureServer as (s: unknown) => Promise<void>)({
         middlewares: { use: (base: string, h: (typeof mounts)[number][1]) => mounts.push([base, h]) },
       });
@@ -420,11 +430,11 @@ describe('r2 publisher', () => {
       });
       servers.push(server);
       await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-      return `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/baked-layouts/lobby.glb`;
+      return `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/${base}`;
     }
 
     it('a rebake PUT uploads the layout and a DELETE removes it', async () => {
-      const url = await serveStorage();
+      const url = await serveStorage(r2Storage(), 'baked-layouts/lobby.glb');
       const bytes = await glb(5);
       expect((await fetch(url, { method: 'PUT', body: bytes })).status).toBe(204);
       await vi.waitFor(() => expect(s3.objects.get('baked-layouts/lobby.glb')?.headers[META]).toBe(sha(bytes)));
@@ -436,10 +446,51 @@ describe('r2 publisher', () => {
     it('a failing upload still answers the PUT with 204', async () => {
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});
       s3.failing.add('baked-layouts/lobby.glb');
-      const url = await serveStorage();
+      const url = await serveStorage(r2Storage(), 'baked-layouts/lobby.glb');
       expect((await fetch(url, { method: 'PUT', body: await glb(6) })).status).toBe(204);
       await vi.waitFor(() => expect(error).toHaveBeenCalled());
       expect(await readFile(path.join(bakedLayoutsDir, 'lobby.glb'))).toBeTruthy();
     });
+
+    const r2Storage = (): StudioStoragePluginOptions => {
+      const publisher = createR2Publisher(config);
+      return { dataDir: root, bakedLayouts: publisher.bakedLayoutHooks, sounds: publisher.soundHooks(soundsDir) };
+    };
+    it('a sound PUT uploads the mp3 and a manifest, and a DELETE drops both', async () => {
+      const url = await serveStorage(r2Storage(), 'sounds/ding.mp3');
+      expect((await fetch(url, { method: 'PUT', body: MP3 })).status).toBe(204);
+      await vi.waitFor(() => expect(s3.objects.has('sounds/index.json')).toBe(true));
+      expect(s3.objects.get('sounds/ding.mp3')!.headers['content-type']).toBe('audio/mpeg');
+      expect(s3.objects.get('sounds/index.json')!.headers['content-type']).toBe('application/json');
+      expect(manifestNames()).toEqual(['ding']);
+
+      expect((await fetch(url, { method: 'DELETE' })).status).toBe(204);
+      await vi.waitFor(() => expect(s3.objects.has('sounds/ding.mp3')).toBe(false));
+      await vi.waitFor(() => expect(manifestNames()).toEqual([]));
+    });
+
+    it('back-to-back sound uploads end with a manifest listing both', async () => {
+      const a = await serveStorage(r2Storage(), 'sounds/a.mp3');
+      await fetch(a, { method: 'PUT', body: MP3 });
+      await vi.waitFor(() => expect(s3.objects.has('sounds/a.mp3')).toBe(true));
+      await fetch(a.replace('a.mp3', 'b.mp3'), { method: 'PUT', body: MP3 });
+      await vi.waitFor(() => expect(manifestNames()).toEqual(['a', 'b']));
+    });
+
+    it('uploads succeed and publish nothing without R2 config', async () => {
+      const url = await serveStorage(studioBackend({ OFFICEXR_STUDIO_DATA_DIR: root }).storageOptions, 'sounds/ding.mp3');
+      expect((await fetch(url, { method: 'PUT', body: MP3 })).status).toBe(204);
+      expect(await readFile(path.join(soundsDir, 'ding.mp3'))).toEqual(MP3);
+      await new Promise((r) => setTimeout(r, 100));
+      expect(s3.log).toEqual([]);
+    });
+  });
+
+  it('sync publishes existing sounds and the manifest', async () => {
+    await writeFile(path.join(soundsDir, 'ding.mp3'), MP3);
+    await createR2Publisher(config).sync(dirs());
+    expect(s3.objects.get('sounds/ding.mp3')!.body).toEqual(MP3);
+    expect(s3.objects.get('sounds/ding.mp3')!.headers['content-type']).toBe('audio/mpeg');
+    expect(manifestNames()).toEqual(['ding']);
   });
 });

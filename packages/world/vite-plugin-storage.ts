@@ -32,6 +32,7 @@ const DEFAULT_CATALOG_FILE = path.resolve(HERE, 'world-object-kinds.json');
 const DEFAULT_WORLD_SETTINGS_FILE = path.resolve(HERE, 'world-settings.json');
 const DEFAULT_LAYOUTS_DIR = path.resolve(HERE, 'layouts');
 const DEFAULT_BAKED_LAYOUTS_DIR = path.resolve(HERE, 'baked-layouts');
+export const SOUND_EXTENSION = '.mp3';
 const DEFAULT_SOUNDS_DIR = path.resolve(HERE, 'sounds');
 
 export type StorageEntry = {
@@ -251,7 +252,7 @@ export function createStudioStorage(options: StudioStoragePluginOptions = {}): S
       makeBinaryResourceMiddleware({
         ...opts.sounds,
         dir: soundsDir,
-        extension: '.mp3',
+        extension: SOUND_EXTENSION,
         contentType: 'audio/mpeg',
         listKey: 'sounds',
         rejectDots: true,
@@ -539,10 +540,12 @@ function makeBinaryResourceMiddleware(
   };
 }
 
-async function handleListBinary(
-  { dir, extension, listKey }: BinaryResourceOpts,
-  res: ServerResponse,
-): Promise<void> {
+async function handleListBinary(opts: BinaryResourceOpts, res: ServerResponse): Promise<void> {
+  jsonResponse(res, 200, { [opts.listKey]: await listBinaryResource(opts.dir, opts.extension) });
+}
+
+/** The valid files in `dir` ending in `extension`, as the list route reports them. */
+export async function listBinaryResource(dir: string, extension: string): Promise<SoundCatalogEntry[]> {
   let entries: Dirent[] = [];
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
@@ -564,7 +567,7 @@ async function handleListBinary(
       console.warn(`[studio-storage:${path.basename(dir)}] skipping ${entry.name}:`, (err as Error).message);
     }
   }
-  jsonResponse(res, 200, { [listKey]: items });
+  return items;
 }
 
 function logHookError(opts: BinaryResourceOpts, err: unknown): void {
