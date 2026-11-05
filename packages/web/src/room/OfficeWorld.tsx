@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import type { Actions, OfficeState, PlayerId, Store } from '@officexr/sdk';
+import type { Actions, Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
@@ -8,6 +8,7 @@ import { apiUrl, paths } from '../apiOrigin';
 import { ChatPanel } from '../hud/ChatPanel';
 import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
+import { usePingReceiver } from '../ping/usePingReceiver';
 import { usePingSender } from '../ping/usePingSender';
 import { PipContents } from '../pip/PipContents';
 import { PopOutMenuItem } from '../pip/PopOutMenuItem';
@@ -59,6 +60,11 @@ function ReplacedBanner({ store }: { store: Store }) {
 
 function LocalPresence({ actions, voice }: { actions: Actions; voice: JaasVoiceAdapter | null }) {
   useLocalPresence(actions, voice);
+  return null;
+}
+
+function PingReceiver({ bus, store }: { bus: Bus; store: Store }) {
+  usePingReceiver(bus, store);
   return null;
 }
 
@@ -156,6 +162,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       {session.type === 'ready' && (
         <>
           <ReplacedBanner store={session.local.store} />
+          <PingReceiver bus={session.local.bus} store={session.local.store} />
           <LocalPresence actions={session.local.actions} voice={session.voice} />
         </>
       )}
