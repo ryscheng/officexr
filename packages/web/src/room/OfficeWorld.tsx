@@ -29,7 +29,7 @@ import { useJoinCheck } from './useJoinCheck';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
-import { detectGpu, initialViewMode, storedViewMode } from './viewMode';
+import { initialViewMode } from './viewMode';
 import { ViewModeMenuItem } from './ViewModeMenuItem';
 import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
 
@@ -79,8 +79,7 @@ function PingInboxFeed({ bus, store, inbox }: { bus: Bus; store: Store; inbox: P
 function World({ office: initialOffice, me }: { office: Office; me: Identity }) {
   const [office, setOffice] = useState(initialOffice);
   const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
-  const gpu = useMemo(() => detectGpu(), []);
-  const viewMode = useMemo(() => initialViewMode(gpu, storedViewMode()), [gpu]);
+  const viewMode = useMemo(() => initialViewMode(), []);
   const join = useJoinCheck(office.id, me.login);
   const session = useOfficeSession(office.id, me, selfId, join.state === 'go', viewMode);
   const local = session.type === 'ready' ? session.local : null;
@@ -124,7 +123,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   });
   const menu = (
     <>
-      <ViewModeMenuItem mode={viewMode} gpu={gpu} />
+      <ViewModeMenuItem mode={viewMode} />
       <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setSettingsOpen(true)} />
       <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
       <PingSettingsMenuItem onSelect={() => setPingSettingsOpen(true)} />
