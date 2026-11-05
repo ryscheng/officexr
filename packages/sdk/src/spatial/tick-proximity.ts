@@ -1,12 +1,12 @@
 import type { Bus } from '../game-state/bus.ts';
-import type { PlayerId, PlayerState, ProximitySettings } from '../game-state/types.ts';
+import type { PlayerId, PlayerState, ProximitySettings, CollisionSettings } from '../game-state/types.ts';
 import type { PairTracker, TrackerOutput } from './pair-tracker.ts';
 
 export interface ProximityTickInput {
   players: Record<PlayerId, PlayerState>;
   selfId: PlayerId;
   bus: Bus;
-  settings: ProximitySettings & { charRadius: number };
+  settings: ProximitySettings & Pick<CollisionSettings, 'charRadius'>;
   nowMs: number;
   dtSec: number;
 }

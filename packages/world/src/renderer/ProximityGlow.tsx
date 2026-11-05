@@ -184,7 +184,6 @@ export function ProximityGlow({
     const players = officeState.players;
     const ws = officeState.worldSettings;
 
-    // Advance the tracker. Emits bus events itself.
     const out = tickProximity(tracker, {
       players,
       selfId,

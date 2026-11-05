@@ -6,18 +6,17 @@ import { Communication, MockVoiceAdapter } from '../../communication/index.ts';
 const still = { x: 0, y: 0, z: 0 };
 const zone = { id: 'lounge', label: 'Lounge', min: { x: 0, z: 0 }, max: { x: 100, z: 100 } };
 
-type Headless = { client: ClientHandle; voice: MockVoiceAdapter; frame: (nowMs: number, dtSec: number) => void; entered: string[] };
-
-function headless(client: ClientHandle): Headless {
+function headless(client: ClientHandle) {
   const voice = new MockVoiceAdapter();
-  new Communication({
+  const comm = new Communication({
     officeId: 'o1',
     selfId: client.id,
     store: client.store,
     actions: client.actions,
     bus: client.bus,
     voice,
-  }).start();
+  });
+  comm.start();
   const entered: string[] = [];
   client.bus.on('proximity:entered', ({ otherId }) => entered.push(otherId));
   const tracker = new PairTracker();
@@ -34,16 +33,23 @@ function headless(client: ClientHandle): Headless {
       dtSec,
     });
   };
-  return { client, voice, frame, entered };
+  return { client, voice, frame, entered, comm };
 }
+
+const CAPSULE_CENTER_Y = 1.5; // 3D renderer reports the physics body's centre
+const FLOOR_Y = 0; // a 2D ghost reports floor height
+
+const open: ReturnType<typeof headless>[] = [];
 
 async function approach(h: ReturnType<typeof createMultiClientHarness>, a: string, b: string) {
   const A = headless(await h.add(a));
   const B = headless(await h.add(b));
+  open.push(A, B);
   h.flush();
   h.ensureMutualPresence();
-  A.client.actions.setSelfPosition({ x: 50, y: 0, z: 50 }, still, 0, false);
-  B.client.actions.setSelfPosition({ x: 51, y: 0, z: 50 }, still, 0, false);
+  const walking = { x: 0, y: 0, z: 1 };
+  A.client.actions.setSelfPosition({ x: 50, y: CAPSULE_CENTER_Y, z: 50 }, walking, 0, false);
+  B.client.actions.setSelfPosition({ x: 51, y: FLOOR_Y, z: 50 }, still, 0, false);
   for (let i = 0; i < 40; i++) {
     h.clock.advance(100);
     A.frame(h.clock.now(), 0.1);
@@ -56,11 +62,12 @@ async function approach(h: ReturnType<typeof createMultiClientHarness>, a: strin
 
 describe('integration: headless session + proximity ticks', () => {
   afterEach(() => {
+    open.splice(0).forEach((c) => c.comm.stop());
     vi.useRealTimers();
   });
 
   it.each([
-    ['2D<->3D', 'alice', 'bob'],
+    ['3D (capsule y, moving) <-> 2D (floor y)', 'alice', 'bob'],
     ['2D<->2D', 'carol', 'dave'],
   ])('%s: both clients enter proximity and share a voice room', async (_name, a, b) => {
     vi.useFakeTimers();
@@ -78,6 +85,7 @@ describe('integration: headless session + proximity ticks', () => {
     vi.useFakeTimers();
     const h = createMultiClientHarness();
     const A = headless(await h.add('alice'));
+    open.push(A);
     A.client.actions.setVoiceZones([zone]);
     A.client.actions.setSelfPosition({ x: 1, y: 0, z: 1 }, still, 0, false);
     A.frame(h.clock.now(), 0.1);
