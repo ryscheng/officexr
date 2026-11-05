@@ -6,7 +6,7 @@ import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } 
 import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
 import { ChatPanel } from '../hud/ChatPanel';
-import { PingInboxHud } from '../hud/PingInbox';
+import { PingInboxHud } from '../hud/PingInboxHud';
 import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
@@ -65,20 +65,25 @@ function LocalPresence({ actions, voice }: { actions: Actions; voice: JaasVoiceA
   return null;
 }
 
-function PingReceiver({ bus, store, inbox }: { bus: Bus; store: Store; inbox: PingInbox }) {
+function PingReceiver({ bus, store }: { bus: Bus; store: Store }) {
   usePingReceiver(bus, store);
+  return null;
+}
+
+function PingInboxFeed({ bus, store, inbox }: { bus: Bus; store: Store; inbox: PingInbox }) {
   useEffect(() => connectPingInbox(bus, store, inbox), [bus, store, inbox]);
   return null;
 }
 
 function World({ office: initialOffice, me }: { office: Office; me: Identity }) {
   const [office, setOffice] = useState(initialOffice);
-  const [pingInbox] = useState(() => new PingInbox());
   const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
   const gpu = useMemo(() => detectGpu(), []);
   const viewMode = useMemo(() => initialViewMode(gpu, storedViewMode()), [gpu]);
   const join = useJoinCheck(office.id, me.login);
   const session = useOfficeSession(office.id, me, selfId, join.state === 'go', viewMode);
+  const local = session.type === 'ready' ? session.local : null;
+  const pingInbox = useMemo(() => new PingInbox(), [local]);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
@@ -167,7 +172,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       {session.type === 'ready' && (
         <>
           <ReplacedBanner store={session.local.store} />
-          <PingReceiver bus={session.local.bus} store={session.local.store} inbox={pingInbox} />
+          <PingReceiver bus={session.local.bus} store={session.local.store} />
+          <PingInboxFeed bus={session.local.bus} store={session.local.store} inbox={pingInbox} />
           <LocalPresence actions={session.local.actions} voice={session.voice} />
         </>
       )}

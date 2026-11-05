@@ -4,6 +4,7 @@ import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { focusWorld, usePlayControls, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import { IconButton } from './IconButton';
+import { sameList } from './sameFields';
 import { useNow } from './useNow';
 
 const MAX_BADGE = 9;
@@ -16,13 +17,15 @@ const relativeTime = (ageMs: number) => {
   return minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ago`;
 };
 
-const selectPresentIds = (s: OfficeState) => Object.keys(s.players).join('\n');
+const selectPresentIds = (s: OfficeState) => Object.keys(s.players).map((id) => ({ id }));
+const samePresent = (a: { id: string }[], b: { id: string }[]) => sameList(a, b);
+const unreadLabel = (n: number) => (n === 0 ? 'Pings' : `Pings, ${n} unread`);
 
 /** Bell with an unread badge that toggles a list of the pings received this session. */
 export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store }) {
   const [open, setOpen] = useState(false);
   const { entries, unread } = useSyncExternalStore(inbox.subscribe, inbox.getSnapshot);
-  const present = new Set(useStoreSelector(store, selectPresentIds).split('\n'));
+  const present = new Set(useStoreSelector(store, selectPresentIds, samePresent).map((p) => p.id));
   const now = useNow(30_000, inbox.wallClock);
   const { goTo } = usePlayControls();
   useEffect(() => {
@@ -35,7 +38,8 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
       return;
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      const typing = e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable],dialog');
+      if (e.key === 'Escape' && !e.defaultPrevented && !typing) {
         setOpen(false);
         focusWorld();
       }
@@ -48,21 +52,26 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
     focusWorld();
   };
   return (
-    <div data-studio-panel className="pointer-events-none absolute top-[12px] right-[12px] flex flex-col items-end gap-2">
+    <div
+      data-studio-panel
+      className="pointer-events-none absolute top-[12px] right-[12px] z-20 flex flex-col items-end gap-2"
+    >
       <div className="relative">
         <IconButton
           icon={Bell}
-          label="Pings"
-          pressed={open}
+          label={unreadLabel(unread)}
+          expanded={open}
           onClick={() => {
             setOpen(!open);
             focusWorld();
           }}
         />
-        {unread > 0 && (
+        <span role="status" className="sr-only">
+          {unread > 0 ? `${unread} unread pings` : ''}
+        </span>
+        {unread > 0 && !open && (
           <span
-            role="status"
-            aria-label={`${unread} unread pings`}
+            aria-hidden
             className="pointer-events-none absolute -top-1 -right-1 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] leading-4 text-white"
           >
             {unread > MAX_BADGE ? `${MAX_BADGE}+` : unread}
@@ -74,7 +83,12 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
           <div className="mb-1 flex items-center justify-between font-medium">
             Pings
             {entries.length > 0 && (
-              <button type="button" className="font-normal underline" onMouseDown={(e) => e.preventDefault()} onClick={() => inbox.clear()}>
+              <button
+                type="button"
+                className="font-normal underline"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => inbox.clear()}
+              >
                 Clear
               </button>
             )}

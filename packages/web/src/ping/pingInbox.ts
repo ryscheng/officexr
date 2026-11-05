@@ -1,4 +1,5 @@
-import { loginOf, type Bus, type PlayerId, type Store } from '@officexr/sdk';
+import type { Bus, PlayerId, Store } from '@officexr/sdk';
+import { senderName } from './senderName';
 
 export const MAX_INBOX_ENTRIES = 10;
 
@@ -25,9 +26,15 @@ export class PingInbox {
   constructor(readonly wallClock: () => number = Date.now) {}
 
   add(fromId: PlayerId, name: string): void {
-    const entry = { id: String(this.nextId++), fromId, name, receivedAt: this.wallClock() };
+    const entry = {
+      id: String(this.nextId++),
+      fromId,
+      name,
+      receivedAt: this.wallClock(),
+    };
     this.set({
       entries: [entry, ...this.snapshot.entries].slice(0, MAX_INBOX_ENTRIES),
+      // Unread can't exceed what is still listed.
       unread: Math.min(this.snapshot.unread + 1, MAX_INBOX_ENTRIES),
     });
   }
@@ -60,6 +67,6 @@ export class PingInbox {
 /** Feeds `ping:received` into the inbox, naming the sender at receipt. Returns the unsubscribe. */
 export function connectPingInbox(bus: Bus, store: Store, inbox: PingInbox): () => void {
   return bus.on('ping:received', ({ fromId }) => {
-    inbox.add(fromId, store.getState().players[fromId]?.name || loginOf(fromId));
+    inbox.add(fromId, senderName(store, fromId));
   });
 }
