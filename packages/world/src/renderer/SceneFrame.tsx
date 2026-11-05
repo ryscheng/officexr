@@ -15,6 +15,7 @@ import type {
   Bus,
   Vec3,
 } from '@officexr/sdk';
+import { tickSession } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import { isTypingTarget } from '../react/useWorldFocus.ts';
 import type { CameraMode } from './config.ts';
@@ -831,13 +832,17 @@ export function SceneFrame({
       wasMoving.current = isMoving;
     }
 
-    actions.tick(now);
     bots?.tick(dt);
-    const current = store.getState();
-    rules.tick(current, prevState.current, bus);
-    prevState.current = store.getState();
-    sync.flushPosition();
-    handshake.tickTimers();
+    prevState.current = tickSession({
+      actions,
+      store,
+      rules,
+      bus,
+      sync,
+      handshake,
+      prevState: prevState.current,
+      nowMs: now,
+    });
   });
 
   return null;

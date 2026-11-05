@@ -8,7 +8,7 @@ import React, {
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
-import { PairTracker, type MeetingArea } from '@officexr/sdk';
+import { PairTracker, tickProximity, type MeetingArea } from '@officexr/sdk';
 import { extrapolatePos } from './Players.tsx';
 import { feetPosition } from '../physics/rules.ts';
 import type { CameraMode } from './config.ts';
@@ -185,13 +185,11 @@ export function ProximityGlow({
     const ws = officeState.worldSettings;
 
     // Advance the tracker. Emits bus events itself.
-    const out = tracker.tick(players, {
+    const out = tickProximity(tracker, {
+      players,
       selfId,
       bus,
-      charRadius: ws.charRadius,
-      proximityRadius: ws.proximityRadius,
-      proximityOuterRadius: ws.proximityOuterRadius,
-      enterDebounceMs: ws.proximityEnterDebounceMs,
+      settings: ws,
       nowMs: now,
       dtSec: dt,
     });
