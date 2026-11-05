@@ -16,7 +16,7 @@ import { Adventurer } from './Adventurer.tsx';
 import type { CameraMode, CharacterName } from './config.ts';
 import { PlayerNameTag } from './PlayerNameTag.tsx';
 import { pickCharacterForPlayer, resolvePlayerModel, type PlayerModel } from '../characters/registry.ts';
-import { BakedLayoutErrorBoundary } from './BakedLayout.tsx';
+import { ModelWithFallback } from './ModelWithFallback.tsx';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
   BODY_GROUPS,
@@ -112,10 +112,13 @@ const playerEntries = (state: OfficeState): PlayerEntry[] =>
 
 const sameEntries = (a: PlayerEntry[], b: PlayerEntry[]) =>
   a.length === b.length &&
-  a.every((p, i) => p.id === b[i].id &&
+  a.every(
+    (p, i) =>
+      p.id === b[i].id &&
       p.character === b[i].character &&
       p.model.url === b[i].model.url &&
-      p.model.ghost === b[i].model.ghost);
+      p.model.ghost === b[i].model.ghost,
+  );
 
 /** Rotate `from` toward `to` by at most `maxStep` radians along the shortest arc. */
 function stepTowardAngle(from: number, to: number, maxStep: number): number {
@@ -506,7 +509,6 @@ export function Players({
                 // Remount on a character change so the animation mixer binds to the new model's bones.
                 key={`${p.model.url}|${p.model.ghost}`}
                 playerId={p.id}
-                character={p.character}
                 model={p.model}
                 motion={motionByPlayer[p.id] ?? 'idle'}
                 invisible={isSelf && (cameraMode === 'first-person' || xrPresenting)}
@@ -544,7 +546,6 @@ export function Players({
  */
 function PerPlayerAdventurer(props: {
   playerId: string;
-  character: CharacterName;
   model: PlayerModel;
   motion: MotionState;  // now includes 'jumping'
   invisible: boolean;
@@ -558,7 +559,6 @@ function PerPlayerAdventurer(props: {
 }) {
   const {
     playerId,
-    character,
     model,
     motion,
     invisible,
@@ -589,7 +589,6 @@ function PerPlayerAdventurer(props: {
   }, [store, playerId]);
   const adventurer = (url: string) => (
     <Adventurer
-      character={character}
       url={url}
       ghost={model.ghost}
       motion={motion}
@@ -601,14 +600,7 @@ function PerPlayerAdventurer(props: {
       paused={paused}
     />
   );
-  if (model.url === model.fallbackUrl) {
-    return adventurer(model.url);
-  }
-  return (
-    <BakedLayoutErrorBoundary resetKey={model.url} fallback={adventurer(model.fallbackUrl)}>
-      {adventurer(model.url)}
-    </BakedLayoutErrorBoundary>
-  );
+  return <ModelWithFallback url={model.url} fallbackUrl={model.fallbackUrl} render={adventurer} />;
 }
 
 function readSpeeds(store: Store, playerId: string) {

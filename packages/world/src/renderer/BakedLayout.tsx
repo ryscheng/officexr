@@ -14,12 +14,10 @@
  */
 
 import React, {
-  Component,
   Suspense,
   useState,
   useEffect,
   useMemo,
-  type ErrorInfo,
   type ReactNode,
 } from 'react';
 import * as THREE from 'three';
@@ -29,6 +27,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { getVersion, subscribe } from '../app/bake-registry.ts';
+import { ResetKeyErrorBoundary } from './ResetKeyErrorBoundary.tsx';
+
+export { ResetKeyErrorBoundary as BakedLayoutErrorBoundary };
 
 /**
  * Material override for layout meshes.  Receives the existing material
@@ -122,77 +123,6 @@ function BakedLayoutScene({
 }
 
 // ---------------------------------------------------------------------------
-// Error boundary — keeps a missing/failing GLB from killing the canvas
-// ---------------------------------------------------------------------------
-
-interface BakedLayoutErrorBoundaryProps {
-  /** The layout name being loaded. Changing this resets the boundary
-   *  so a fresh bake gets a fresh load attempt. */
-  resetKey: string | undefined;
-  /** Called when the load fails (and again when a retry fails). Lets
-   *  the editor surface a "bake not ready" message in the inspector. */
-  onError?: (err: Error) => void;
-  /** Rendered while the loader is throwing. Defaults to nothing so the
-   *  rest of the scene remains visible. */
-  fallback?: ReactNode;
-  children: ReactNode;
-}
-
-interface BakedLayoutErrorBoundaryState {
-  /** Last `resetKey` we caught an error under. When the live resetKey
-   *  diverges from this one the boundary clears itself, giving the
-   *  new layout name a fresh load attempt. */
-  failedFor: string | undefined;
-}
-
-/**
- * Class-based error boundary scoped to a single baked-GLB consumer
- * (`<BakedLayout>` or `<BakedLayoutColliders>`). Catches the `useGLTF`
- * 404 / parse-failure that drei lets propagate through Suspense,
- * displays `fallback` instead of unwinding the whole R3F canvas, and
- * re-arms when the parent passes a new layout name.
- *
- * Class component is necessary — React's error-boundary API is only
- * available to class components. Everything else in this file stays
- * functional.
- */
-export class BakedLayoutErrorBoundary extends Component<
-  BakedLayoutErrorBoundaryProps,
-  BakedLayoutErrorBoundaryState
-> {
-  state: BakedLayoutErrorBoundaryState = { failedFor: undefined };
-
-  static getDerivedStateFromError(): Partial<BakedLayoutErrorBoundaryState> {
-    // We don't know the resetKey here (statics can't see props); store
-    // a sentinel and let componentDidCatch fill in the real value.
-    return { failedFor: '__pending__' };
-  }
-
-  componentDidCatch(error: Error, _info: ErrorInfo): void {
-    this.setState({ failedFor: this.props.resetKey });
-    this.props.onError?.(error);
-  }
-
-  componentDidUpdate(prevProps: BakedLayoutErrorBoundaryProps): void {
-    // New layout name? Clear the boundary so the next render gets a
-    // fresh shot at loading it.
-    if (
-      this.state.failedFor !== undefined &&
-      prevProps.resetKey !== this.props.resetKey
-    ) {
-      this.setState({ failedFor: undefined });
-    }
-  }
-
-  render(): ReactNode {
-    if (this.state.failedFor !== undefined) {
-      return this.props.fallback ?? null;
-    }
-    return this.props.children;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // BakedLayout (exported)
 // ---------------------------------------------------------------------------
 
@@ -277,7 +207,7 @@ export function BakedLayout({
   const Mesh = withCredentials ? CredentialedBakedLayoutMesh : BakedLayoutMesh;
 
   return (
-    <BakedLayoutErrorBoundary
+    <ResetKeyErrorBoundary
       resetKey={layoutName ?? gltfPath}
       onError={onLoadError}
       fallback={fallback}
@@ -288,6 +218,6 @@ export function BakedLayout({
           materialOverride={materialOverride}
         />
       </Suspense>
-    </BakedLayoutErrorBoundary>
+    </ResetKeyErrorBoundary>
   );
 }
