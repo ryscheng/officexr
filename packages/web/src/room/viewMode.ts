@@ -4,14 +4,16 @@ export type GpuSupport = 'hardware' | 'software' | 'none';
 
 const STORAGE_KEY = 'officexr:viewMode';
 
-/** Probe contexts are discarded straight away; browsers cap the live WebGL contexts. */
+/** 'hardware': WebGL without a performance caveat; 'software': only a slow fallback renderer; 'none': no WebGL.
+ * Probe contexts are discarded straight away; browsers cap the live WebGL contexts. */
 export function detectGpu(createCanvas: () => HTMLCanvasElement = () => document.createElement('canvas')): GpuSupport {
-  const probe = (attributes?: WebGLContextAttributes) => {
-    const canvas = createCanvas();
-    const gl = canvas.getContext('webgl2', attributes) ?? canvas.getContext('webgl', attributes);
+  // A canvas keeps the first context type it was asked for, so each attempt needs its own.
+  const attempt = (type: 'webgl2' | 'webgl', attributes?: WebGLContextAttributes) => {
+    const gl = createCanvas().getContext(type, attributes) as WebGLRenderingContext | null;
     gl?.getExtension('WEBGL_lose_context')?.loseContext();
     return gl != null;
   };
+  const probe = (attributes?: WebGLContextAttributes) => attempt('webgl2', attributes) || attempt('webgl', attributes);
   if (probe({ failIfMajorPerformanceCaveat: true })) {
     return 'hardware';
   }

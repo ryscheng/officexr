@@ -3,16 +3,28 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 const CloseMenuContext = createContext<() => void>(() => {});
 
 /** An action item: runs `onSelect`, then closes the menu. */
-export function RoomMenuItem({ onSelect, children }: { onSelect: () => void; children: ReactNode }) {
+export function RoomMenuItem({
+  onSelect,
+  children,
+  disabled,
+  describedBy,
+}: {
+  onSelect: () => void;
+  children: ReactNode;
+  disabled?: boolean;
+  describedBy?: string;
+}) {
   const close = useContext(CloseMenuContext);
   return (
     <button
       type="button"
+      disabled={disabled}
+      aria-describedby={describedBy}
       onClick={() => {
         onSelect();
         close();
       }}
-      className="block w-full rounded px-3 py-2 text-left hover:bg-white/10"
+      className="block w-full rounded px-3 py-2 text-left hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-transparent"
     >
       {children}
     </button>

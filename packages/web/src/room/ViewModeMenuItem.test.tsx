@@ -39,6 +39,6 @@ describe('ViewModeMenuItem', () => {
     expect(button).toHaveProperty('disabled', true);
     fireEvent.click(button);
     expect(reload).not.toHaveBeenCalled();
-    expect(screen.getByRole('status').textContent).toMatch(/WebGL/);
+    expect(button.getAttribute('aria-describedby')).toBe(screen.getByText(/WebGL/).id);
   });
 });

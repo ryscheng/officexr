@@ -1,17 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { detectGpu, initialViewMode, storedViewMode } from './viewMode';
+import { detectGpu, initialViewMode, storedViewMode, storeViewMode } from './viewMode';
 
 function canvasFactory(supported: { webgl2?: 'strict' | 'any'; webgl?: 'strict' | 'any' }, lost: string[] = []) {
-  return () =>
-    ({
+  return () => {
+    let first: string | undefined;
+    return {
       getContext: (type: 'webgl2' | 'webgl', attrs?: WebGLContextAttributes) => {
+        first ??= type;
+        if (first !== type) {
+          return null;
+        }
         const need = supported[type];
         if (!need || (need === 'any' && attrs?.failIfMajorPerformanceCaveat)) {
           return null;
         }
         return { getExtension: () => ({ loseContext: () => lost.push(type) }) };
       },
-    }) as unknown as HTMLCanvasElement;
+    } as unknown as HTMLCanvasElement;
+  };
 }
 
 describe('detectGpu', () => {
@@ -31,6 +37,18 @@ describe('detectGpu', () => {
     const lost: string[] = [];
     detectGpu(canvasFactory({ webgl2: 'strict' }, lost));
     expect(lost).toEqual(['webgl2']);
+  });
+});
+
+describe('storeViewMode', () => {
+  it('ignores a throwing storage', () => {
+    expect(() =>
+      storeViewMode('2d', {
+        setItem: () => {
+          throw new Error('blocked');
+        },
+      }),
+    ).not.toThrow();
   });
 });
 

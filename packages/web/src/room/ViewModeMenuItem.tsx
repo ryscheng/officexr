@@ -1,4 +1,6 @@
+import { useId } from 'react';
 import type { ViewMode } from '@officexr/sdk';
+import { RoomMenuItem } from './RoomMenu';
 import { storeViewMode, type GpuSupport } from './viewMode';
 
 /** Switches to the other view and reloads, which rejoins the room in it. */
@@ -11,23 +13,23 @@ export function ViewModeMenuItem({
   gpu: GpuSupport;
   reload?: () => void;
 }) {
+  const reasonId = useId();
   const next: ViewMode = mode === '2d' ? '3d' : '2d';
   const unavailable = gpu === 'none';
   return (
     <>
-      <button
-        type="button"
+      <RoomMenuItem
         disabled={unavailable}
-        onClick={() => {
+        describedBy={unavailable ? reasonId : undefined}
+        onSelect={() => {
           storeViewMode(next);
           reload();
         }}
-        className="block w-full rounded px-3 py-2 text-left hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-transparent"
       >
         {next === '2d' ? '2D view' : '3D view'}
-      </button>
+      </RoomMenuItem>
       {unavailable && (
-        <p role="status" className="px-3 pb-1 text-xs text-white/60">
+        <p id={reasonId} className="px-3 pb-1 text-xs text-white/60">
           3D needs WebGL, which this browser doesn't offer
         </p>
       )}

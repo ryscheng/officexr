@@ -10,12 +10,6 @@
 // objects itself; the injected `loadGltf` does. Keeps the Application
 // Layer free of runtime three.js dependencies per CLAUDE.md DIP.
 import type * as THREE from 'three';
-// DIP exception: the AABB measurement helper lives in the renderer
-// because it walks THREE.Object3D scene graphs — an inherently
-// THREE-coupled operation. The dependency direction is therefore
-// `app/` → `renderer/` for this one pure helper. Acceptable scope;
-// alternative was to inject `measureScene` as a fourth dependency
-// and add a renderer-side adapter, with no functional gain.
 import type {
   BakeService,
   CatalogService,
@@ -51,7 +45,8 @@ export function createBakeService(deps: {
     const kind = catalog.getKind(id);
     if (!kind) throw new Error(`measureKindFull: unknown kind "${id}"`);
     const { scene } = await loadGltf(kind.gltfPath);
-    // Loaded on use so the headless `createDefaultApi` stays free of three for bundlers.
+    // DIP exception: measuring walks THREE.Object3D, so `app/` reaches into `renderer/` for this one helper.
+    // Imported on use so bundlers keep `createDefaultApi`, and the 2D web entry with it, free of three.
     const { getKindBoundingDimensions } = await import('../renderer/cube-material.ts');
     const m = getKindBoundingDimensions(scene, kind.scale);
     return {

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Actions, OfficeState, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
-import { ApplicationProvider, ErrorBanner, TopDownPlayView, useStoreSelector } from '@officexr/world/top-down';
+import { ApplicationProvider, ErrorBanner, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
@@ -15,6 +15,7 @@ import { CallBar } from '../voice/CallBar';
 import { JaasMeeting } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
+import { PlayView3dBoundary } from './PlayView3dBoundary';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
 import { RoomMenu, RoomMenuItem } from './RoomMenu';
@@ -129,18 +130,20 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   return (
     <div className="relative h-full w-full overflow-hidden">
       {session.type === 'ready' && (
-        <Suspense fallback={null}>
-          {viewMode === '3d' ? (
-            <PlayView3d viewProps={readyViewProps(session)} local={session.local} menu={menu} onError={setBannerError}>
-              {readyHud(session)}
-            </PlayView3d>
-          ) : (
-            <TopDownPlayView {...readyViewProps(session)}>
-              <RoomMenu>{menu}</RoomMenu>
-              {readyHud(session)}
-            </TopDownPlayView>
-          )}
-        </Suspense>
+        viewMode === '3d' ? (
+          <PlayView3dBoundary>
+            <Suspense fallback={<WorldLoadingScreen title={office.name} step="Loading 3D view" />}>
+              <PlayView3d viewProps={readyViewProps(session)} local={session.local} menu={menu} onError={setBannerError}>
+                {readyHud(session)}
+              </PlayView3d>
+            </Suspense>
+          </PlayView3dBoundary>
+        ) : (
+          <TopDownPlayView {...readyViewProps(session)}>
+            <RoomMenu>{menu}</RoomMenu>
+            {readyHud(session)}
+          </TopDownPlayView>
+        )
       )}
       {session.type === 'ready' && (
         <>
