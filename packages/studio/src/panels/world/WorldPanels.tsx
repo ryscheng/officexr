@@ -26,7 +26,7 @@ import type {
   UseWorldConstantsPersistenceResult,
 } from './useWorldConstantsPersistence.ts';
 
-type SetSection = <K extends Exclude<keyof WorldConstants, 'schemaVersion'>>(
+export type SetSection = <K extends Exclude<keyof WorldConstants, 'schemaVersion'>>(
   key: K,
   update: (prev: WorldConstants[K]) => WorldConstants[K],
 ) => void;
@@ -88,7 +88,10 @@ export function WorldPanels({
         fixedCamera={worldConstants.fixedCamera}
         setSection={setSection}
       />
-      <GhostAvatarPanel ghostAvatar={worldConstants.ghostAvatar} edit={edit} />
+      <GhostAvatarPanel
+        ghostAvatar={worldConstants.ghostAvatar}
+        setSection={setSection}
+      />
       <SettingsPanel
         reset={() => edit(() => DEFAULT_WORLD_CONSTANTS)}
         exportJson={() => downloadJson(worldConstants)}
@@ -397,15 +400,17 @@ const NO_GHOST = 'none';
 
 export function GhostAvatarPanel({
   ghostAvatar,
-  edit,
+  setSection,
+  models = GHOST_MODELS,
 }: {
   ghostAvatar: WorldConstants['ghostAvatar'];
-  edit: UseWorldConstantsPersistenceResult['edit'];
+  setSection: SetSection;
+  models?: typeof GHOST_MODELS;
 }) {
   const model = ghostAvatar?.model ?? NO_GHOST;
   const options = [
     { value: NO_GHOST, label: "None (use player's character)" },
-    ...GHOST_MODELS.map((m) => ({ value: m.url, label: m.label })),
+    ...models.map((m) => ({ value: m.url, label: m.label })),
   ];
   // A saved model missing from the list stays visible rather than being dropped.
   if (!options.some((o) => o.value === model)) {
@@ -415,13 +420,11 @@ export function GhostAvatarPanel({
   return (
     <Section title="Ghost avatar">
       <SelectInput
-        label="Ghost avatar"
+        label="Model"
         value={model}
         options={options}
         onChange={(next) =>
-          edit(({ ghostAvatar: _prev, ...rest }) =>
-            next === NO_GHOST ? rest : { ...rest, ghostAvatar: { model: next } },
-          )
+          setSection('ghostAvatar', () => (next === NO_GHOST ? undefined : { model: next }))
         }
       />
     </Section>
