@@ -4,6 +4,7 @@ import { useGLTF, useAnimations } from '@react-three/drei';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { modelUrl } from '../app/asset-url.ts';
 import { CHARACTERS, type CharacterName } from './config.ts';
+import { characterUrl } from '../characters/registry.ts';
 
 const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
 const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
@@ -11,7 +12,27 @@ const ANIM_MOVEMENT_ADV = modelUrl('/models/animations/Rig_Medium_MovementAdvanc
 const ANIM_COMBAT_RANGED = modelUrl('/models/animations/Rig_Medium_CombatRanged.glb');
 export const ANIMATION_URLS = [ANIM_GENERAL, ANIM_MOVEMENT, ANIM_MOVEMENT_ADV, ANIM_COMBAT_RANGED];
 
-export const characterUrl = (character: CharacterName) => modelUrl(`/models/characters/${character}.glb`);
+export { characterUrl };
+
+export const GHOST_OPACITY = 0.6;
+
+/** Gives every mesh in `scene` its own translucent copy of its material(s), leaving the shared `useGLTF` materials untouched. */
+export function applyGhostMaterials(scene: THREE.Object3D): void {
+  const ghostOf = (m: THREE.Material) => {
+    const c = m.clone();
+    c.transparent = true;
+    c.opacity = GHOST_OPACITY;
+    // Without this, the ghost's own back faces occlude its front ones.
+    c.depthWrite = false;
+    return c;
+  };
+  scene.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) {
+      m.material = Array.isArray(m.material) ? m.material.map(ghostOf) : ghostOf(m.material);
+    }
+  });
+}
 
 for (const url of ANIMATION_URLS) {
   useGLTF.preload(url);
@@ -71,6 +92,10 @@ const LOOPING_STATES: ReadonlySet<AnimationState> = new Set([
 
 interface AdventurerProps {
   character: CharacterName;
+  /** Loads this GLB instead of `character`'s. */
+  url?: string;
+  /** Translucent, shadowless rendering for 2D-mode players. */
+  ghost?: boolean;
   /** Which clip the GAMEPLAY layer should loop. Comes from the
    * velocity-derived motion state in `Players.tsx`. */
   motion: 'idle' | 'walking' | 'running' | 'jumping';
@@ -116,6 +141,8 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
   function Adventurer(
     {
       character,
+      url: urlOverride,
+      ghost = false,
       motion,
       previewState,
       invisible,
@@ -127,7 +154,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     },
     ref,
   ) {
-    const url = characterUrl(character);
+    const url = urlOverride ?? characterUrl(character);
     const character_gltf = useGLTF(url);
     const general = useGLTF(ANIM_GENERAL);
     const movement = useGLTF(ANIM_MOVEMENT);
@@ -142,6 +169,10 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     // so characters cast onto each other.
     const scene = useMemo(() => {
       const s = cloneSkinned(character_gltf.scene);
+      if (ghost) {
+        applyGhostMaterials(s);
+        return s;
+      }
       s.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.isMesh) {
@@ -150,7 +181,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         }
       });
       return s;
-    }, [character_gltf.scene]);
+    }, [character_gltf.scene, ghost]);
 
     // Merge clips from every loaded rig. Earlier rigs win on name
     // collision (rare — Idle_A only lives in General, Walking_C only

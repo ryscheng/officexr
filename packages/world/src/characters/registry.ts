@@ -1,4 +1,5 @@
-import type { CharacterConfig, CharacterConfigs } from '@officexr/sdk';
+import type { AvatarData, CharacterConfig, CharacterConfigs, WorldConstants } from '@officexr/sdk';
+import { modelUrl } from '../app/asset-url.ts';
 
 /**
  * Built-in character models bundled with the world package. Each id
@@ -39,6 +40,32 @@ export function pickCharacterForPlayer(
     hash = (hash * 31 + playerId.charCodeAt(i)) >>> 0;
   }
   return CHARACTERS[hash % CHARACTERS.length];
+}
+
+export const characterUrl = (character: CharacterName) => modelUrl(`/models/characters/${character}.glb`);
+
+export interface PlayerModel {
+  url: string;
+  ghost: boolean;
+  /** Loaded instead of `url` when it fails; the player's own character. */
+  fallbackUrl: string;
+}
+
+/** 2D-mode players render as ghosts: the world's ghost GLB when set, else a character hashed from their id. */
+export function resolvePlayerModel(
+  playerId: string,
+  avatar: AvatarData,
+  ghostAvatar: WorldConstants['ghostAvatar'],
+): PlayerModel {
+  const own = characterUrl(pickCharacterForPlayer(playerId, avatar.model));
+  if (avatar.viewMode !== '2d') {
+    return { url: own, ghost: false, fallbackUrl: own };
+  }
+  if (ghostAvatar) {
+    return { url: modelUrl(ghostAvatar.model), ghost: true, fallbackUrl: own };
+  }
+  // ponytail: a hashed stand-in character until a ghost GLB exists in GHOST_MODELS.
+  return { url: characterUrl(pickCharacterForPlayer(playerId)), ghost: true, fallbackUrl: own };
 }
 
 /**
