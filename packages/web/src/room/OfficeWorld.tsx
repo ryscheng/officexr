@@ -20,6 +20,7 @@ import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
 import { PlayView3dBoundary } from './PlayView3dBoundary';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
+import { PingSettingsDialog, PingSettingsMenuItem } from './PingSettings';
 import { RoomMenu, RoomMenuItem } from './RoomMenu';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { useJoinCheck } from './useJoinCheck';
@@ -79,6 +80,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pingSettingsOpen, setPingSettingsOpen] = useState(false);
   useShortcutsHotkey(openShortcuts, session.type === 'ready');
   const pip = usePictureInPicture();
   const closePip = pip.close;
@@ -115,12 +117,14 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       <ViewModeMenuItem mode={viewMode} gpu={gpu} />
       <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setSettingsOpen(true)} />
       <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
+      <PingSettingsMenuItem onSelect={() => setPingSettingsOpen(true)} />
       <PopOutMenuItem pip={pip} />
     </>
   );
   const readyHud = (ready: ReadySession) => (
     <>
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {pingSettingsOpen && <PingSettingsDialog onClose={() => setPingSettingsOpen(false)} />}
       {settingsOpen && (
         <OfficeSettingsDialog office={office} me={me} onSaved={setOffice} onClose={() => setSettingsOpen(false)} />
       )}
