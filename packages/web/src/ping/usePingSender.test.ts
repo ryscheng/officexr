@@ -35,14 +35,46 @@ describe('usePingSender', () => {
     expect(sent).toEqual(['a', 'a']);
   });
 
-  it('cools down per target and re-renders when the cooldown ends', () => {
-    const { result } = renderHook(() => usePingSender(send, clock));
+  it('cools down per target and re-renders only when the timer ends the cooldown', () => {
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      const sender = usePingSender(send, clock);
+      return { ...sender, coolingA: sender.isCoolingDown('a') };
+    });
     act(() => result.current.ping('a'));
-    expect(result.current.isCoolingDown('a')).toBe(true);
+    expect(result.current.coolingA).toBe(true);
     expect(result.current.isCoolingDown('b')).toBe(false);
     act(() => result.current.ping('b'));
     expect(sent).toEqual(['a', 'b']);
-    advance(5000);
-    expect(result.current.isCoolingDown('a')).toBe(false);
+
+    const before = renders;
+    act(() => {
+      t += 5000;
+    });
+    expect(renders).toBe(before);
+    expect(result.current.coolingA).toBe(true);
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(result.current.coolingA).toBe(false);
+  });
+
+  it('waits out the remainder when the timer fires before the clock says the cooldown is over', () => {
+    const { result } = renderHook(() => {
+      const sender = usePingSender(send, clock);
+      return { ...sender, coolingA: sender.isCoolingDown('a') };
+    });
+    act(() => result.current.ping('a'));
+    act(() => {
+      t += 4000;
+      vi.advanceTimersByTime(5000);
+    });
+    expect(result.current.coolingA).toBe(true);
+    act(() => {
+      t += 1000;
+      vi.advanceTimersByTime(1000);
+    });
+    expect(result.current.coolingA).toBe(false);
   });
 });

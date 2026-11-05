@@ -243,7 +243,7 @@ describe('PresenceList', () => {
     expect(focus.textContent).toBe('true');
   });
 
-  it('offers Ping on present peers only, passes the row id and disables it while cooling down', () => {
+  it('offers Ping on present peers only, passes the row id and returns focus to the world', () => {
     const pinged: string[] = [];
     seed(undefined, { ping: (id) => pinged.push(id), isCoolingDown: () => false });
     const pingButton = (name: string) => within(rowOf(name)).queryByRole('button', { name: `Ping ${name}` });
@@ -254,6 +254,11 @@ describe('PresenceList', () => {
     fireEvent.click(pingButton('Bob')!);
     expect(pinged).toEqual(['bob']);
     expect(focus.textContent).toBe('true');
+  });
+
+  it('has no Ping button without a pinger', () => {
+    seed();
+    expect(screen.queryByRole('button', { name: /^Ping / })).toBeNull();
   });
 
   it('disables Ping during cooldown', () => {
