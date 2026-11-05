@@ -8,8 +8,13 @@ export interface PingNotifierEnv {
   window: Pick<Window, 'focus'>;
 }
 
+export type NotificationSeam = NotificationCtor & Pick<typeof Notification, 'permission' | 'requestPermission'>;
+
+export const browserNotification = (): NotificationSeam | null =>
+  typeof Notification === 'undefined' ? null : Notification;
+
 const browserEnv = (): PingNotifierEnv => ({
-  Notification: 'Notification' in window ? Notification : undefined,
+  Notification: browserNotification() ?? undefined,
   document,
   window,
 });
