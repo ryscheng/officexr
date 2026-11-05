@@ -29,7 +29,7 @@ import { useStoreSelector } from '../react/useStoreSelector.ts';
 import { createViewYaw, ViewYawProvider } from '../react/viewYaw.tsx';
 import { useStoreWorldObjects } from '../renderer/useStoreWorldObjects.ts';
 import { createGhostPlayControls } from './ghostPlayControls.ts';
-import { drawMap, drawPlayers, type MapBox } from './topDownDraw.ts';
+import { drawMap, drawPlayers, PLAYER_RADIUS_PX, type MapBox } from './topDownDraw.ts';
 import { fitTransform, playerAt, screenToWorld, unionBounds, worldToScreen, type TopDownTransform, type XZBounds } from './topDownGeometry.ts';
 
 export interface TopDownPlayViewProps {
@@ -50,7 +50,7 @@ export interface TopDownPlayViewProps {
   error?: string | null;
   onDismissError?: () => void;
   onMapApplied?: (spawnPoints: readonly Vec3[]) => void;
-  /** Pings another player; the 2D view shows a bell over a hovered player. Touch pings from the participant list. */
+  /** Pings another player; the 2D view shows a bell over a hovered player. Touch users ping from the web client's participant list. */
   onPingPlayer?: (id: PlayerId) => void;
   /** Overlays rendered above the canvas. */
   children?: React.ReactNode;
@@ -70,31 +70,34 @@ const KEY_BINDINGS: Record<string, keyof GhostKeys> = {
 const MAX_DT_SEC = 0.1;
 /** Half-size of the area shown around players when the map has nothing to fit to. */
 const EMPTY_MAP_MARGIN_M = 5;
-/** Pointer distance from a marker that counts as hovering it; larger than the marker so the pointer can travel to the bell. */
-const HOVER_RADIUS_PX = 14;
-const BELL_GAP_PX = 8;
+/** The bell starts where the hover area ends, so the pointer can travel from the marker to it. */
+const HOVER_RADIUS_PX = 2 * PLAYER_RADIUS_PX;
 
 const selectPlayers = (s: OfficeState) => s.players;
 
-function HoverBell({ store, id, transformRef, onPing, onLeave }: {
+function HoverBell({ store, id, transformRef, bellRef, onPing, onLeave }: {
   store: Store;
   id: PlayerId;
+  bellRef: React.RefObject<HTMLDivElement | null>;
   transformRef: React.RefObject<TopDownTransform | null>;
   onPing: (id: PlayerId) => void;
   onLeave: () => void;
 }) {
   const player = useStoreSelector(store, selectPlayers)[id];
+  useEffect(() => {
+    if (!player) {
+      onLeave();
+    }
+  }, [player, onLeave]);
   const t = transformRef.current;
   if (!player || !t) {
     return null;
   }
   const c = worldToScreen(t, player.pos);
+  // Beside and below the marker, clear of the name label drawn above it.
+  // ponytail: the bell follows a player who walks away under a stationary pointer until the next mousemove.
   return (
-    <div
-      data-ping-bell=""
-      onMouseLeave={onLeave}
-      style={{ position: 'absolute', left: c.x, top: c.y - BELL_GAP_PX, transform: 'translate(-50%, -100%)' }}
-    >
+    <div ref={bellRef} onMouseLeave={onLeave} style={{ position: 'absolute', left: c.x + HOVER_RADIUS_PX, top: c.y }}>
       <PingBellButton name={player.name} onPing={() => onPing(id)} />
     </div>
   );
@@ -138,6 +141,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
   const worldObjects = useStoreWorldObjects(store);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const transformRef = useRef<TopDownTransform | null>(null);
+  const bellRef = useRef<HTMLDivElement>(null);
   const [hoveredId, setHoveredId] = useState<PlayerId | null>(null);
 
   // The footprint changes per applied map; `setFootprint` keeps held keys and a go-to intent.
@@ -277,7 +281,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
   };
 
   const onMouseLeave = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!(e.relatedTarget instanceof Element && e.relatedTarget.closest('[data-ping-bell]'))) {
+    if (!(e.relatedTarget instanceof Node && bellRef.current?.contains(e.relatedTarget))) {
       setHoveredId(null);
     }
   };
@@ -296,6 +300,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
           store={store}
           id={hoveredId}
           transformRef={transformRef}
+          bellRef={bellRef}
           onPing={props.onPingPlayer}
           onLeave={() => setHoveredId(null)}
         />

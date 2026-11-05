@@ -44,6 +44,10 @@ describe('topDownGeometry', () => {
       expect(playerAt({ x: 10, y: 10 }, players, t, 'me', 5)).toBeNull();
     });
 
+    it('skips a nearer self for another player in range', () => {
+      expect(playerAt({ x: 11, y: 10 }, players, t, 'me', 15)).toBe('a');
+    });
+
     it('returns null out of range', () => {
       expect(playerAt({ x: 100, y: 100 }, players, t, 'me', 10)).toBeNull();
     });

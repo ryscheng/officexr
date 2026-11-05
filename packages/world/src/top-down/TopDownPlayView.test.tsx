@@ -17,6 +17,7 @@ import {
   emptyRoomDocument,
   newPlaceObject,
 } from '../scenes/index.ts';
+import { PLAYER_RADIUS_PX } from './topDownDraw.ts';
 import { TopDownPlayView } from './TopDownPlayView.tsx';
 
 afterEach(() => {
@@ -106,36 +107,44 @@ describe('TopDownPlayView', () => {
   });
 
   describe('ping bell', () => {
-    /** A 2D context that no-ops every call and records where each name label is drawn. */
+    /** A 2D context that no-ops every call and records the centre of each player marker. */
     function recordingContext() {
-      const labels: Record<string, { x: number; y: number }> = {};
+      const markers = new Map<string, { x: number; y: number }>();
       const ctx = new Proxy(
         {},
         {
-          get: (_, prop) => (prop === 'fillText' ? (text: string, x: number, y: number) => (labels[text] = { x, y }) : () => {}),
+          get: (_, prop) =>
+            prop === 'arc'
+              ? (x: number, y: number, r: number) => r === PLAYER_RADIUS_PX && markers.set(`${x},${y}`, { x, y })
+              : () => {},
           set: () => true,
         },
       );
-      return { ctx, labels };
+      return { ctx, markers };
     }
 
-    async function hoverBob(onPingPlayer?: (id: string) => void) {
+    /** Moves over each marker until a bell shows; self markers never show one. */
+    async function hoverMarkers(onPingPlayer?: (id: string) => void) {
       vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(400);
       vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
-      const { ctx, labels } = recordingContext();
+      const { ctx, markers } = recordingContext();
       const view = await mount({ onPingPlayer, ctx });
       await view.released();
-      await waitFor(() => expect(labels['']).toBeDefined());
+      await waitFor(() => expect(markers.size).toBe(2));
       const canvas = document.querySelector('canvas')!;
-      // Bob is unnamed; his label sits 10px above the marker centre.
-      fireEvent.mouseMove(canvas, { clientX: labels['']!.x, clientY: labels['']!.y + 10 });
+      for (const { x, y } of markers.values()) {
+        fireEvent.mouseMove(canvas, { clientX: x, clientY: y });
+        if (screen.queryByRole('button')) {
+          break;
+        }
+      }
       return { canvas };
     }
 
     it('shows a bell over a hovered player; clicking it pings without moving', async () => {
       const moveTo = vi.spyOn(GhostController.prototype, 'moveTo');
       const onPingPlayer = vi.fn();
-      await hoverBob(onPingPlayer);
+      await hoverMarkers(onPingPlayer);
       fireEvent.click(await screen.findByRole('button', { name: 'Ping player' }));
       expect(onPingPlayer).toHaveBeenCalledWith('bob');
       expect(moveTo).not.toHaveBeenCalled();
@@ -143,13 +152,13 @@ describe('TopDownPlayView', () => {
 
     it('moves when the canvas is clicked elsewhere', async () => {
       const moveTo = vi.spyOn(GhostController.prototype, 'moveTo');
-      const { canvas } = await hoverBob(vi.fn());
+      const { canvas } = await hoverMarkers(vi.fn());
       fireEvent.click(canvas, { clientX: 1, clientY: 1 });
       expect(moveTo).toHaveBeenCalled();
     });
 
     it('shows no bell without onPingPlayer', async () => {
-      await hoverBob();
+      await hoverMarkers();
       expect(screen.queryByRole('button')).toBeNull();
     });
   });
