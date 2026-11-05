@@ -1,5 +1,5 @@
 import type { PlayerId } from '../game-state/types.ts';
-import type { NetEvent } from './protocol.ts';
+import { recipientOf, type NetEvent } from './protocol.ts';
 
 export type PresenceData = Record<string, unknown>;
 
@@ -91,6 +91,13 @@ export function createInMemoryChannelHub(): Hub {
       }
     },
     broadcast(senderId, event) {
+      const targetId = recipientOf(event);
+      if (targetId !== null) {
+        if (targetId !== senderId) {
+          clients.get(targetId)?._deliver(event);
+        }
+        return;
+      }
       for (const [id, c] of clients) {
         if (id === senderId) continue;
         c._deliver(event);

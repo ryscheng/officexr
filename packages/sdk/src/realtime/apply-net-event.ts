@@ -48,6 +48,10 @@ export function applyNetEventToStore(
     case 'shot:hit':
       actions.applyHit(event.targetId, event.dmg, event.actorId);
       return;
+    case 'ping:send':
+      // ponytail: actorId is client-supplied, so the sender can be spoofed until the server enforces identity.
+      actions.receivePing(event.actorId, clock.now());
+      return;
     case 'zombie:state':
       actions.applyZombieState(event.state);
       return;

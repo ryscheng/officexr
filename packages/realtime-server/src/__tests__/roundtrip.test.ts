@@ -290,6 +290,31 @@ describe('RealtimeServer + WsChannel roundtrip', () => {
 
     a.close();
   });
+
+  it('ping:send reaches only its target and never the room mirror', async () => {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    const [a, b, c] = ['A', 'B', 'C'].map((userId) => new WsChannel({ url, userId }));
+    await Promise.all([a.subscribe(), b.subscribe(), c.subscribe()]);
+    const atB: NetEvent[] = [];
+    const atC: NetEvent[] = [];
+    const mirrorPings: unknown[] = [];
+    b.on((e) => atB.push(e));
+    c.on((e) => atC.push(e));
+    server.defaultRoom.bus.on('ping:received', (e) => mirrorPings.push(e));
+
+    await a.send({ kind: 'ping:send', v: 1, actorId: 'A', seq: 1, t: 0, targetId: 'B' });
+    await vi.waitFor(() => expect(atB.map((e) => e.kind)).toEqual(['ping:send']));
+    // Any later room event reaching C proves the ping frame, sent first, never will.
+    await a.send(makeMoveEvent('A', 2));
+    await vi.waitFor(() => expect(atC.length > 0).toBe(true));
+
+    expect(atC.map((e) => e.kind)).toEqual(['presence:position']);
+    expect(mirrorPings).toEqual([]);
+
+    a.close();
+    b.close();
+    c.close();
+  });
 });
 
 describe('WsChannel handshake', () => {
