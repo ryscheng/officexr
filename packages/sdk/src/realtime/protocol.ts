@@ -194,6 +194,7 @@ const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) })
 const ZChatMessage = z.object({ text: z.string() });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
 const ZShotHit = z.object({ targetId: z.string(), dmg: z.number() });
+const ZPingSend = z.object({ targetId: z.string().min(1) });
 const ZZombieStatePayload = z.object({ state: ZZombieState });
 const ZSnapshotRequest = z.object({});
 const ZWorldConstantsPayload = z.object({ constants: ZWorldConstants });
@@ -223,6 +224,7 @@ export type NetEvent =
   | WithEnvelope<'chat:message', 1, { text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>
   | WithEnvelope<'shot:hit', 1, { targetId: PlayerId; dmg: number }>
+  | WithEnvelope<'ping:send', 1, { targetId: PlayerId }>
   | WithEnvelope<'zombie:state', 1, { state: ZombieState }>
   | WithEnvelope<'snapshot:request', 1>
   | WithEnvelope<
@@ -245,24 +247,32 @@ export type ProtocolEntry = {
   v: number;
   schema: z.ZodTypeAny;
   authority: Authority;
+  /** `'room'` goes to every other peer; `'target'` only to the event's `targetId`. */
+  route: 'room' | 'target';
 };
 
 export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
-  'presence:position': { v: 1, schema: ZPresencePosition, authority: 'local' },
-  'presence:status': { v: 1, schema: ZPresenceStatusPayload, authority: 'local' },
-  'avatar:update': { v: 1, schema: ZAvatarUpdate, authority: 'local' },
-  'chat:message': { v: 1, schema: ZChatMessage, authority: 'local' },
-  'whiteboard:stroke': { v: 1, schema: ZWhiteboardStroke, authority: 'local' },
-  'shot:hit': { v: 1, schema: ZShotHit, authority: 'local' },
-  'zombie:state': { v: 1, schema: ZZombieStatePayload, authority: 'host' },
-  'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local' },
-  'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local' },
+  'presence:position': { v: 1, schema: ZPresencePosition, authority: 'local', route: 'room' },
+  'presence:status': { v: 1, schema: ZPresenceStatusPayload, authority: 'local', route: 'room' },
+  'avatar:update': { v: 1, schema: ZAvatarUpdate, authority: 'local', route: 'room' },
+  'chat:message': { v: 1, schema: ZChatMessage, authority: 'local', route: 'room' },
+  'whiteboard:stroke': { v: 1, schema: ZWhiteboardStroke, authority: 'local', route: 'room' },
+  'shot:hit': { v: 1, schema: ZShotHit, authority: 'local', route: 'room' },
+  'ping:send': { v: 1, schema: ZPingSend, authority: 'local', route: 'target' },
+  'zombie:state': { v: 1, schema: ZZombieStatePayload, authority: 'host', route: 'room' },
+  'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local', route: 'room' },
+  'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local', route: 'room' },
   // ponytail: the inbound router doesn't check authority; only the realtime server filters client copies, so other channels trust every peer.
-  'world:constants': { v: 1, schema: ZWorldConstantsPayload, authority: 'server' },
-  'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local' },
-  'world:characters': { v: 1, schema: ZWorldCharactersPayload, authority: 'local' },
-  'world:objects': { v: 1, schema: ZWorldObjectsPayload, authority: 'local' },
+  'world:constants': { v: 1, schema: ZWorldConstantsPayload, authority: 'server', route: 'room' },
+  'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local', route: 'room' },
+  'world:characters': { v: 1, schema: ZWorldCharactersPayload, authority: 'local', route: 'room' },
+  'world:objects': { v: 1, schema: ZWorldObjectsPayload, authority: 'local', route: 'room' },
 };
+
+/** The one player who receives `event`, or null when it goes to the whole room. */
+export function recipientOf(event: NetEvent): PlayerId | null {
+  return PROTOCOL[event.kind].route === 'target' && 'targetId' in event ? event.targetId : null;
+}
 
 // --- Validation ---
 

@@ -1,7 +1,7 @@
 import type { Actions } from '../game-state/actions.ts';
 import type { Bus } from '../game-state/bus.ts';
 import type { Store } from '../game-state/store.ts';
-import type { OfficeState } from '../game-state/types.ts';
+import type { OfficeState, PlayerId } from '../game-state/types.ts';
 import type { Channel, ChannelStatus } from './channel.ts';
 import type { NetEvent } from './protocol.ts';
 import type { Clock } from '../test-harness/time.ts';
@@ -203,6 +203,17 @@ export class SyncEngine {
   /** Manually broadcast a typed event (e.g. for screen-share signaling). */
   send(event: NetEvent): void {
     this.broadcast(event);
+  }
+
+  sendPing(targetId: PlayerId): void {
+    this.broadcast({
+      kind: 'ping:send',
+      v: 1,
+      actorId: this.store.getState().selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      targetId,
+    });
   }
 
   // --- Lifecycle ------------------------------------------------------

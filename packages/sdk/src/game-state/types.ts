@@ -419,6 +419,7 @@ export type GameEvent =
   | { kind: 'whiteboard:stroke'; stroke: Stroke }
   | { kind: 'combat:hit'; targetId: PlayerId; dmg: number; byId: PlayerId }
   | { kind: 'combat:killed'; targetId: PlayerId; byId: PlayerId }
+  | { kind: 'ping:received'; fromId: PlayerId; at: number }
   | { kind: 'inventory:added'; item: InventoryItem }
   | { kind: 'inventory:removed'; itemId: string }
   | { kind: 'voice:room-changed'; roomId: string | null }

@@ -328,3 +328,36 @@ describe('WsChannel handshake', () => {
     }
   });
 });
+
+describe('targeted events over the wire', () => {
+  it('ping:send reaches only its target and leaves the mirror store unchanged', async () => {
+    const server = new RealtimeServer({ port: 0, officeId: 'test-office' });
+    await server.start();
+    const url = `ws://127.0.0.1:${server.boundPort}/ws`;
+    const [a, b, c] = ['A', 'B', 'C'].map((userId) => new WsChannel({ url, userId }));
+    await Promise.all([a.subscribe(), b.subscribe(), c.subscribe()]);
+    const atB: NetEvent[] = [];
+    const atC: NetEvent[] = [];
+    b.on((e) => atB.push(e));
+    c.on((e) => atC.push(e));
+    const before = server.defaultRoom.store.getState();
+
+    await a.send({ kind: 'ping:send', v: 1, actorId: 'A', seq: 1, t: 0, targetId: 'B' });
+    await vi.waitFor(() => expect(atB.map((e) => e.kind)).toEqual(['ping:send']));
+    // Any later room event reaching C proves the ping frame, sent first, never will.
+    await a.send(makeMoveEvent('A', 2));
+    await vi.waitFor(() => expect(atC.length > 0).toBe(true));
+
+    expect(atC.map((e) => e.kind)).toEqual(['presence:position']);
+    const after = server.defaultRoom.store.getState();
+    expect({ ...after, players: { ...after.players, A: undefined } }).toEqual({
+      ...before,
+      players: { ...before.players, A: undefined },
+    });
+
+    a.close();
+    b.close();
+    c.close();
+    await server.stop();
+  });
+});

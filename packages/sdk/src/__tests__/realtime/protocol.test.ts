@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PROTOCOL,
+  recipientOf,
   validateNetEvent,
   versionMismatch,
   type NetEvent,
@@ -342,5 +343,20 @@ describe('presence:position — isAirborne field', () => {
       avatar: { model: 'gnome' },
     });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('ping:send', () => {
+  const ping = { kind: 'ping:send', v: 1, actorId: 'a', seq: 1, t: 0 };
+
+  it('routes to its targetId; room kinds have no recipient', () => {
+    expect(recipientOf({ ...ping, targetId: 'b' } as NetEvent)).toBe('b');
+    expect(recipientOf({ kind: 'chat:message', v: 1, actorId: 'a', seq: 1, t: 0, text: 'hi' })).toBeNull();
+  });
+
+  it('rejects a missing or empty targetId', () => {
+    expect(validateNetEvent({ ...ping, targetId: 'b' }).ok).toBe(true);
+    expect(validateNetEvent(ping).ok).toBe(false);
+    expect(validateNetEvent({ ...ping, targetId: '' }).ok).toBe(false);
   });
 });
