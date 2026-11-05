@@ -36,7 +36,7 @@ async function serve(options: Parameters<typeof studioStorage>[0]) {
   return { server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 }
 
-const BASE_PATHS = ['/api/rooms', '/api/maps', '/api/layouts', '/api/baked-layouts', '/api/scenes'];
+const BASE_PATHS = ['/api/rooms', '/api/maps', '/api/layouts', '/api/baked-layouts', '/api/sounds', '/api/scenes'];
 
 describe('studio storage plugin', () => {
   let dataDir: string | undefined;
@@ -71,6 +71,7 @@ describe('studio storage plugin', () => {
       maps: { dir: '/d/maps' },
       layouts: { dir: '/d/layouts' },
       bakedLayouts: { dir: '/d/baked-layouts' },
+      sounds: { dir: '/d/sounds' },
       legacyScenes: { dir: '/d/scenes' },
       catalog: { file: '/d/world-object-kinds.json' },
       worldSettings: { file: '/d/world-settings.json' },
@@ -201,6 +202,70 @@ describe('studio storage plugin: GET /api/baked-layouts', () => {
     await writeFile(path.join(baked, 'notes.txt'), 'x');
     const { bakedLayouts } = await list(baked);
     expect(bakedLayouts.map(({ name, size }) => ({ name, size }))).toEqual([{ name: 'hall', size: 3 }]);
+  });
+});
+
+describe('studio storage plugin: binary resources', () => {
+  let dir: string;
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    await new Promise((r) => (server ? server.close(r) : r(undefined)));
+    server = undefined;
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function start(options: Partial<Parameters<typeof studioStorage>[0]> = {}) {
+    dir = await mkdtemp(path.join(tmpdir(), 'studio-binary-'));
+    const s = await serve({ dataDir: dir, ...options });
+    server = s.server;
+    return s.url;
+  }
+
+  it('lists sounds as empty when the directory is missing', async () => {
+    const url = await start();
+    expect(await (await fetch(`${url}/api/sounds/`)).json()).toEqual({ sounds: [] });
+  });
+
+  it('round-trips a sound through PUT, list, GET, HEAD and DELETE, firing hooks', async () => {
+    const saved: Array<[string, number]> = [];
+    const deleted: string[] = [];
+    const url = await start({
+      sounds: {
+        onSaved: async (name, bytes) => void saved.push([name, bytes.length]),
+        onDeleted: async (name) => void deleted.push(name),
+      },
+    });
+    expect((await fetch(`${url}/api/sounds/ping`, { method: 'PUT', body: 'abc' })).status).toBe(204);
+
+    const list = (await (await fetch(`${url}/api/sounds/`)).json()) as { sounds: Array<{ name: string; size: number }> };
+    expect(list.sounds.map(({ name, size }) => ({ name, size }))).toEqual([{ name: 'ping', size: 3 }]);
+
+    const get = await fetch(`${url}/api/sounds/ping.mp3`);
+    expect(get.headers.get('content-type')).toBe('audio/mpeg');
+    expect(await get.text()).toBe('abc');
+    const head = await fetch(`${url}/api/sounds/ping.mp3`, { method: 'HEAD' });
+    expect([head.status, head.headers.get('content-type')]).toEqual([200, 'audio/mpeg']);
+
+    expect((await fetch(`${url}/api/sounds/ping.mp3`, { method: 'DELETE' })).status).toBe(204);
+    expect((await fetch(`${url}/api/sounds/ping.mp3`)).status).toBe(404);
+    expect(saved).toEqual([['ping', 3]]);
+    expect(deleted).toEqual(['ping']);
+  });
+
+  it('rejects invalid sound names with 400', async () => {
+    const url = await start();
+    for (const name of ['has%20space', 'foo.glb', 'x.mp3.mp3']) {
+      expect((await fetch(`${url}/api/sounds/${name}`, { method: 'PUT', body: 'x' })).status, name).toBe(400);
+    }
+  });
+
+  it('keeps baked layouts as .glb', async () => {
+    const url = await start();
+    await fetch(`${url}/api/baked-layouts/hq`, { method: 'PUT', body: 'glb' });
+    const get = await fetch(`${url}/api/baked-layouts/hq`);
+    expect([get.headers.get('content-type'), await get.text()]).toEqual(['model/gltf-binary', 'glb']);
+    expect(await readdir(path.join(dir, 'baked-layouts'))).toEqual(['hq.glb']);
   });
 });
 

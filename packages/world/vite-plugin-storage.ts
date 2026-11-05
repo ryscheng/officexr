@@ -11,6 +11,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 // the Vite config. Bypassing the barrel keeps the Node-side import
 // graph free of any `.json` modules.
 import { isValidSceneName } from './src/scenes/storage.ts';
+import type { SoundCatalogEntry } from './src/app/asset-url.ts';
 import {
   deserializeMap,
   deserializeScene,
@@ -31,6 +32,7 @@ const DEFAULT_CATALOG_FILE = path.resolve(HERE, 'world-object-kinds.json');
 const DEFAULT_WORLD_SETTINGS_FILE = path.resolve(HERE, 'world-settings.json');
 const DEFAULT_LAYOUTS_DIR = path.resolve(HERE, 'layouts');
 const DEFAULT_BAKED_LAYOUTS_DIR = path.resolve(HERE, 'baked-layouts');
+const DEFAULT_SOUNDS_DIR = path.resolve(HERE, 'sounds');
 
 export type StorageEntry = {
   kind: 'dir' | 'file';
@@ -45,6 +47,7 @@ export const STORAGE_ENTRIES = {
   maps: { kind: 'dir', name: 'maps' },
   layouts: { kind: 'dir', name: 'layouts' },
   bakedLayouts: { kind: 'dir', name: 'baked-layouts' },
+  sounds: { kind: 'dir', name: 'sounds' },
   legacyScenes: { kind: 'dir', name: 'scenes' },
   catalog: { kind: 'file', name: 'world-object-kinds.json' },
   worldSettings: { kind: 'file', name: 'world-settings.json', seed: false },
@@ -78,7 +81,7 @@ export function studioMapExists(dataDir?: string): (name: string) => Promise<boo
   };
 }
 
-export interface BakedLayoutHooks {
+export interface BinaryResourceHooks {
   onSaved?: (name: string, bytes: Buffer) => Promise<void>;
   onDeleted?: (name: string) => Promise<void>;
 }
@@ -110,7 +113,9 @@ export interface StudioStoragePluginOptions {
    * `onDeleted` run after the file is written / removed; the response does
    * not wait for them and a rejection is only logged.
    */
-  bakedLayouts?: { dir?: string; basePath?: string } & BakedLayoutHooks;
+  bakedLayouts?: { dir?: string; basePath?: string } & BinaryResourceHooks;
+  /** MP3 sound library. Default dir: `packages/world/sounds/`. Hooks as for `bakedLayouts`. */
+  sounds?: { dir?: string; basePath?: string } & BinaryResourceHooks;
   /**
    * Back-compat: the legacy `/api/scenes` endpoint serves
    * `packages/world/scenes/` so the existing Scenes editor keeps
@@ -151,6 +156,7 @@ export function createStudioStorage(options: StudioStoragePluginOptions = {}): S
     maps: { ...fromDataDir.maps, ...options.maps },
     layouts: { ...fromDataDir.layouts, ...options.layouts },
     bakedLayouts: { ...fromDataDir.bakedLayouts, ...options.bakedLayouts },
+    sounds: { ...fromDataDir.sounds, ...options.sounds },
     legacyScenes: { ...fromDataDir.legacyScenes, ...options.legacyScenes },
     catalog: { ...fromDataDir.catalog, ...options.catalog },
     worldSettings: { ...fromDataDir.worldSettings, ...options.worldSettings },
@@ -176,6 +182,8 @@ export function createStudioStorage(options: StudioStoragePluginOptions = {}): S
     /\/$/,
     '',
   );
+  const soundsDir = opts.sounds?.dir ?? DEFAULT_SOUNDS_DIR;
+  const soundsBase = (opts.sounds?.basePath ?? '/api/sounds').replace(/\/$/, '');
   const legacyScenesDir = opts.legacyScenes?.dir ?? DEFAULT_SCENES_DIR;
   const legacyScenesBase = (
     opts.legacyScenes?.basePath ?? '/api/scenes'
@@ -230,7 +238,24 @@ export function createStudioStorage(options: StudioStoragePluginOptions = {}): S
     );
     use(
       bakedLayoutsBase,
-      makeBinaryResourceMiddleware({ ...opts.bakedLayouts, dir: bakedLayoutsDir }),
+      makeBinaryResourceMiddleware({
+        ...opts.bakedLayouts,
+        dir: bakedLayoutsDir,
+        extension: '.glb',
+        contentType: 'model/gltf-binary',
+        listKey: 'bakedLayouts',
+      }),
+    );
+    use(
+      soundsBase,
+      makeBinaryResourceMiddleware({
+        ...opts.sounds,
+        dir: soundsDir,
+        extension: '.mp3',
+        contentType: 'audio/mpeg',
+        listKey: 'sounds',
+        rejectDots: true,
+      }),
     );
     if (mountLegacy) {
       use(
@@ -399,20 +424,27 @@ function makeJsonResourceMiddleware<T extends ResourceSummary>(
   };
 }
 
-interface BinaryResourceOpts extends BakedLayoutHooks {
+interface BinaryResourceOpts extends BinaryResourceHooks {
   dir: string;
+  /** Including the dot, e.g. `.glb`. */
+  extension: string;
+  contentType: string;
+  listKey: string;
+  /** Reject names that still contain a dot after the extension is stripped. */
+  rejectDots?: boolean;
 }
 
 /**
- * Middleware for binary GLB files.
+ * Middleware for a directory of binary files with one extension.
  *
- *   GET  /api/baked-layouts/:name  → application/octet-stream or 404
- *   PUT  /api/baked-layouts/:name  → 204 (body = binary GLB)
- *   DELETE /api/baked-layouts/:name → 204
- *   GET  /api/baked-layouts         → { bakedLayouts: [{ name, size, updatedAt }] }
+ *   GET  /:name     → file bytes or 404
+ *   HEAD /:name     → 200 + size or 404
+ *   PUT  /:name     → 204 (body = bytes)
+ *   DELETE /:name   → 204
+ *   GET  /          → { [listKey]: [{ name, size, updatedAt }] }
  *
- * Names must end with `.glb` — `isValidSceneName` is checked after
- * stripping the `.glb` suffix.
+ * `:name` is the bare name, optionally with the extension;
+ * `isValidSceneName` is checked on the bare name.
  */
 function makeBinaryResourceMiddleware(
   opts: BinaryResourceOpts,
@@ -424,18 +456,18 @@ function makeBinaryResourceMiddleware(
 
       if (!slug) {
         if (req.method === 'GET') {
-          return await handleListBaked(opts.dir, res);
+          return await handleListBinary(opts, res);
         }
         return badMethod(res, ['GET']);
       }
 
-      // Names look like "foo" or "foo.glb". Normalise to bare name for
-      // validation, keep the .glb extension for the actual filename.
-      const bareName = slug.endsWith('.glb') ? slug.slice(0, -4) : slug;
-      if (!isValidSceneName(bareName)) {
+      // Names look like "foo" or "foo<ext>". Normalise to bare name for
+      // validation, keep the extension for the actual filename.
+      const bareName = slug.endsWith(opts.extension) ? slug.slice(0, -opts.extension.length) : slug;
+      if (!isValidSceneName(bareName) || (opts.rejectDots && bareName.includes('.'))) {
         return jsonResponse(res, 400, { error: 'invalid resource name' });
       }
-      const filename = `${bareName}.glb`;
+      const filename = `${bareName}${opts.extension}`;
       const file = path.join(opts.dir, filename);
 
       switch (req.method) {
@@ -450,7 +482,7 @@ function makeBinaryResourceMiddleware(
             throw err;
           }
           res.statusCode = 200;
-          res.setHeader('content-type', 'model/gltf-binary');
+          res.setHeader('content-type', opts.contentType);
           res.end(data);
           return;
         }
@@ -463,7 +495,7 @@ function makeBinaryResourceMiddleware(
           try {
             const stat = await fs.stat(file);
             res.statusCode = 200;
-            res.setHeader('content-type', 'model/gltf-binary');
+            res.setHeader('content-type', opts.contentType);
             res.setHeader('content-length', String(stat.size));
             res.end();
           } catch (err) {
@@ -482,7 +514,7 @@ function makeBinaryResourceMiddleware(
           await fs.writeFile(file, data);
           res.statusCode = 204;
           res.end();
-          opts.onSaved?.(bareName, data).catch(logHookError);
+          opts.onSaved?.(bareName, data).catch((err) => logHookError(opts, err));
           return;
         }
         case 'DELETE': {
@@ -493,21 +525,24 @@ function makeBinaryResourceMiddleware(
           }
           res.statusCode = 204;
           res.end();
-          opts.onDeleted?.(bareName).catch(logHookError);
+          opts.onDeleted?.(bareName).catch((err) => logHookError(opts, err));
           return;
         }
         default:
           return badMethod(res, ['GET', 'HEAD', 'PUT', 'DELETE']);
       }
     } catch (err) {
-      console.error(`[studio-storage:baked-layouts] middleware error:`, err);
+      console.error(`[studio-storage:${path.basename(opts.dir)}] middleware error:`, err);
       jsonResponse(res, 500, { error: (err as Error).message });
       next?.();
     }
   };
 }
 
-async function handleListBaked(dir: string, res: ServerResponse): Promise<void> {
+async function handleListBinary(
+  { dir, extension, listKey }: BinaryResourceOpts,
+  res: ServerResponse,
+): Promise<void> {
   let entries: Dirent[] = [];
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
@@ -516,24 +551,24 @@ async function handleListBaked(dir: string, res: ServerResponse): Promise<void> 
       throw err;
     }
   }
-  const bakedLayouts: Array<{ name: string; size: number; updatedAt: number }> = [];
+  const items: SoundCatalogEntry[] = [];
   for (const entry of entries) {
-    const name = entry.name.slice(0, -4);
-    if (!entry.isFile() || !entry.name.endsWith('.glb') || !isValidSceneName(name)) {
+    const name = entry.name.slice(0, -extension.length);
+    if (!entry.isFile() || !entry.name.endsWith(extension) || !isValidSceneName(name)) {
       continue;
     }
     try {
       const stat = await fs.stat(path.join(dir, entry.name));
-      bakedLayouts.push({ name, size: stat.size, updatedAt: stat.mtimeMs });
+      items.push({ name, size: stat.size, updatedAt: stat.mtimeMs });
     } catch (err) {
-      console.warn(`[studio-storage:baked-layouts] skipping ${entry.name}:`, (err as Error).message);
+      console.warn(`[studio-storage:${path.basename(dir)}] skipping ${entry.name}:`, (err as Error).message);
     }
   }
-  jsonResponse(res, 200, { bakedLayouts });
+  jsonResponse(res, 200, { [listKey]: items });
 }
 
-function logHookError(err: unknown): void {
-  console.error('[studio-storage:baked-layouts] hook failed:', err);
+function logHookError(opts: BinaryResourceOpts, err: unknown): void {
+  console.error(`[studio-storage:${path.basename(opts.dir)}] hook failed:`, err);
 }
 
 interface SingleDocOpts<T> {
