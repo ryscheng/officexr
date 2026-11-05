@@ -30,6 +30,9 @@ export interface ScreenShareState {
   viewing: string | null;
 }
 
+/** IFrame API `videoType` selecting a participant's screen share rather than their camera. */
+const SCREEN_SHARE_VIDEO = 'desktop';
+
 const NO_SHARE: ScreenShareState = { canShare: false, sharing: false, viewing: null };
 
 /**
@@ -214,7 +217,12 @@ export class JaasVoiceAdapter implements VoiceAdapter {
         if (viewing && viewing !== this.share.viewing) {
           // Tile view would shrink the share to one tile of the small panel.
           api.executeCommand('setTileView', false);
-          api.setLargeVideoParticipant(viewing);
+          // A share is its own "virtual" participant, so without `desktop` this
+          // picks the sharer's camera (off, so just their avatar). Pinning keeps
+          // the dominant speaker from taking the stage back. The bundled types
+          // predate the `videoType` argument, hence `executeCommand`.
+          api.executeCommand('pinParticipant', viewing, SCREEN_SHARE_VIDEO);
+          api.executeCommand('setLargeVideoParticipant', viewing, SCREEN_SHARE_VIDEO);
         }
         this.setShare({ viewing });
       }),

@@ -11,8 +11,11 @@ class FakeJitsiApi extends EventEmitter {
   disposed = false;
   /** `audioMuteStatusChanged` reports not yet delivered. */
   private reports: boolean[] = [];
-  executeCommand(name: string) {
+  executeCommand(name: string, ...args: unknown[]) {
     this.commands.push(name);
+    if (name === 'setLargeVideoParticipant') {
+      this.largeVideo = args.join(':');
+    }
     if (name === 'toggleAudio') {
       this.toggles++;
       this.audioMuted = !this.audioMuted;
@@ -23,9 +26,6 @@ class FakeJitsiApi extends EventEmitter {
     while (this.reports.length > 0) {
       this.emit('audioMuteStatusChanged', { muted: this.reports.shift() });
     }
-  }
-  setLargeVideoParticipant(id: string) {
-    this.largeVideo = id;
   }
   dispose() {
     this.disposed = true;
@@ -245,7 +245,8 @@ describe('JaasVoiceAdapter', () => {
 
     api.emit('contentSharingParticipantsChanged', { data: ['bob', 'me'] });
     expect(voice.getShareState().viewing).toBe('bob');
-    expect(api.largeVideo).toBe('bob');
+    expect(api.largeVideo).toBe('bob:desktop');
+    expect(api.commands).toContain('pinParticipant');
 
     api.emit('contentSharingParticipantsChanged', { data: [] });
     expect(voice.getShareState().viewing).toBeNull();
