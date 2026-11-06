@@ -8,7 +8,7 @@ import {
 } from '@officexr/core-refactor';
 import type { ViewMode } from '@officexr/sdk';
 import type { Identity } from '@officexr/server/shared';
-import { createDeskClaimRequester, type RequestDeskClaim } from '../desk/requestDeskClaim';
+import { createDeskClaimRequester, type DeskClaimRequester, type RequestDeskClaim } from '../desk/requestDeskClaim';
 import { wsUrl } from '../apiOrigin';
 import { generateJaaSJwt } from '../voice/jaasJwt';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -62,6 +62,7 @@ export function useOfficeSession(
     });
     let cancelled = false;
     let office: OfficeSync | undefined;
+    let deskClaims: DeskClaimRequester | undefined;
     const character = loadCharacter(officeId, me.login);
     start({ local, channel, voice: voiceAdapter, holdSelf: true }).then(
       async (started) => {
@@ -77,7 +78,8 @@ export function useOfficeSession(
         }
         // After start, so the sync engine announces the name and character to the office.
         local.actions.upsertPlayer({ id: selfId, name: me.name, avatar: { model, viewMode } });
-        setSession({ type: 'ready', local, office: started, voice, requestDeskClaim: createDeskClaimRequester(channel) });
+        deskClaims = createDeskClaimRequester(channel);
+        setSession({ type: 'ready', local, office: started, voice, requestDeskClaim: deskClaims.request });
       },
       (err: Error) => {
         if (cancelled) {
@@ -94,6 +96,7 @@ export function useOfficeSession(
     return () => {
       cancelled = true;
       office?.stop();
+      deskClaims?.dispose();
       voiceAdapter.dispose();
       channel.close();
     };

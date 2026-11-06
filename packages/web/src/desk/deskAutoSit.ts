@@ -2,6 +2,9 @@ import { deskAreaAt, deskOwnedBy, loginOf, type OfficeState, type PlayerId, type
 
 export const DESK_AUTO_SIT_MS = 2000;
 
+/** Physics writes the resting position every frame, so stillness tolerates sub-millimetre jitter. */
+const STILL_EPSILON_M = 1e-3;
+
 export interface DeskAutoSitDeps {
   store: Store;
   selfId: PlayerId;
@@ -19,7 +22,7 @@ export function startDeskAutoSit({ store, selfId, returnToDesk, canSitAt }: Desk
   const login = loginOf(selfId);
   let spent = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let waitingAt: { x: number; y: number; z: number } | null = null;
+  let waitingAt: { x: number; z: number } | null = null;
 
   const disarm = () => {
     clearTimeout(timer);
@@ -42,13 +45,13 @@ export function startDeskAutoSit({ store, selfId, returnToDesk, canSitAt }: Desk
       disarm();
       return;
     }
-    const { x, y, z } = self.pos;
-    if (timer !== undefined && waitingAt?.x === x && waitingAt.y === y && waitingAt.z === z) {
+    const { x, z } = self.pos;
+    if (timer !== undefined && waitingAt && Math.hypot(x - waitingAt.x, z - waitingAt.z) < STILL_EPSILON_M) {
       return;
     }
     // ponytail: movement is read off position changes, so pushing against a wall counts as standing still.
     disarm();
-    waitingAt = { x, y, z };
+    waitingAt = { x, z };
     timer = setTimeout(() => {
       spent = true;
       disarm();

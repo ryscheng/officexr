@@ -69,4 +69,23 @@ describe('startDeskAutoSit', () => {
     vi.advanceTimersByTime(500);
     expect(returnToDesk).toHaveBeenCalledOnce();
   });
+
+  it('treats sub-millimetre physics jitter as standing still', () => {
+    const { move, returnToDesk } = setup();
+    move({ x: 2, z: 2 });
+    for (let t = 0; t < DESK_AUTO_SIT_MS; t += 100) {
+      move({ x: 2 + 1e-7 * (t / 100), y: 1e-7 * (t / 100), z: 2 });
+      vi.advanceTimersByTime(100);
+    }
+    expect(returnToDesk).toHaveBeenCalledOnce();
+  });
+
+  it('does not fire when the player sits by other means before the timer', () => {
+    const { move, actions, returnToDesk } = setup();
+    move({ x: 2, z: 2 });
+    vi.advanceTimersByTime(DESK_AUTO_SIT_MS - 500);
+    actions.setSelfSeat('chair');
+    vi.advanceTimersByTime(DESK_AUTO_SIT_MS);
+    expect(returnToDesk).not.toHaveBeenCalled();
+  });
 });

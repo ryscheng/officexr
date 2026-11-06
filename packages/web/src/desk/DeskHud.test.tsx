@@ -23,14 +23,16 @@ const renderHud = (
 describe('DeskHud banner', () => {
   it('offers to claim an unclaimed area, and to move when a desk is already owned', () => {
     const world = deskWorld();
-    renderHud(world);
+    const request = vi.fn<RequestDeskClaim>(() => Promise.resolve({ ok: true }));
+    renderHud(world, request);
     expect(screen.getByText('Claim desk')).toBeTruthy();
     expect(screen.queryByText('Unclaim desk')).toBeNull();
 
     act(() => world.actions.setDeskAreas([...world.store.getState().deskAreas, { id: 'd2', label: 'B', min: { x: 20, z: 20 }, max: { x: 24, z: 24 }, seatInstanceId: null }]));
     act(() => world.actions.setDeskClaims({ d2: ME }));
-    expect(screen.getByText('Move desk here')).toBeTruthy();
     expect(screen.getByText('Unclaim desk')).toBeTruthy();
+    fireEvent.click(screen.getByText('Move desk here'));
+    expect(request).toHaveBeenCalledWith('d1');
   });
 
   it('names the owner, by display name while online and by login otherwise', () => {

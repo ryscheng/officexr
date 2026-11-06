@@ -74,7 +74,7 @@ export function DeskHud({ store, requestDeskClaim }: { store: Store; requestDesk
 
   const text = banner && bannerText(banner);
   return (
-    <div data-studio-panel className="pointer-events-none absolute top-3 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
+    <div data-studio-panel className="pointer-events-none absolute bottom-32 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
       <div className="flex items-center gap-2">
         {text && <span className="rounded bg-black/55 px-2 py-1 text-xs text-white">{text}</span>}
         {banner?.type === 'claimable' && (

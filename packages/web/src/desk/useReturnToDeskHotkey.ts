@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
-import { isTypingTarget } from '@officexr/world/top-down';
+import { isHotkeyBlocked } from '../room/isHotkeyBlocked';
 
 export function useReturnToDeskHotkey(onReturn: () => void) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.altKey || e.ctrlKey || e.metaKey || e.code !== 'KeyD' || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.code !== 'KeyD' || e.repeat || isHotkeyBlocked(e)) {
         return;
       }
       e.preventDefault();
