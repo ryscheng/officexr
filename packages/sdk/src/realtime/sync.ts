@@ -288,6 +288,7 @@ export class SyncEngine {
   private announceSelf(): void {
     this.position.announceSelf();
     this.stateDiff.announceAvatar();
+    this.stateDiff.announceSeat();
     this.status.announceSelf();
   }
 

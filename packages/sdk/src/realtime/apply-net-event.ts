@@ -35,6 +35,9 @@ export function applyNetEventToStore(
         { room: event.jitsiRoom ?? null, participantId: event.jitsiParticipantId ?? null },
       );
       return;
+    case 'presence:seat':
+      actions.applyRemoteSeat(event.actorId, event.instanceId, clock.now());
+      return;
     case 'chat:message': {
       const msg: ChatMessage = {
         id: `${event.actorId}:${event.seq}`,
@@ -72,6 +75,9 @@ export function applyNetEventToStore(
       return;
     case 'world:objects':
       actions.applyRemoteWorldObjects(event.objects);
+      return;
+    case 'desk:claims':
+      actions.setDeskClaims(event.claims);
       return;
     case 'snapshot:request':
     case 'snapshot:offer':

@@ -62,6 +62,10 @@ export interface Actions {
   setWorldObjects(objects: WorldObjects): void;
   /** Local-only: never broadcast. */
   setVoiceZones(zones: VoiceZone[]): void;
+  /** Sit on the placed object instance `instanceId`, or stand up with null. */
+  setSelfSeat(instanceId: string | null): void;
+  /** Replace all desk claims. Never broadcast: only the realtime server distributes them. */
+  setDeskClaims(claims: Record<string, string>): void;
 
   // remote applications (called by sync engine)
   applyRemotePosition(
@@ -80,6 +84,7 @@ export interface Actions {
     jitsi: { room: string | null; participantId: string | null },
   ): void;
   applyRemoteAvatar(playerId: PlayerId, avatar: AvatarData, name: string, now: number): void;
+  applyRemoteSeat(playerId: PlayerId, instanceId: string | null, now: number): void;
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
   applyZombieState(z: ZombieState): void;
@@ -252,6 +257,14 @@ export function createActions(store: Store, bus?: Bus): Actions {
       store.setState(() => ({ voiceZones: zones }));
     },
 
+    setSelfSeat(instanceId) {
+      patchSelf({ seat: instanceId });
+    },
+
+    setDeskClaims(claims) {
+      store.setState(() => ({ deskClaims: { ...claims } }));
+    },
+
     setWorldObjects(objects) {
       // Defensive clone — instances are mutated by editors that may
       // share references with us. Snapshot ensures the store sees a
@@ -340,6 +353,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     applyRemoteAvatar(playerId, avatar, name, now) {
       upsertRemote(playerId, { avatar, name }, now);
+    },
+
+    applyRemoteSeat(playerId, instanceId, now) {
+      upsertRemote(playerId, { seat: instanceId }, now);
     },
 
     applyRemoteChat(msg) {
