@@ -23,7 +23,7 @@ import { WorldLoadingScreen } from '../react/LoadingScreen.tsx';
 import { PlayControlsProvider } from '../react/playControls.tsx';
 import { NavGridProvider, useBuildNavGrid } from '../react/useNavGrid.ts';
 import { usePlaySession, type PlayStorages } from '../react/usePlaySession.ts';
-import { isTypingTarget, useWorldFocus } from '../react/useWorldFocus.ts';
+import { hasCommandModifier, isTypingTarget, useWorldFocus } from '../react/useWorldFocus.ts';
 import { PingBellButton } from '../react/PingBellButton.tsx';
 import { useStoreSelector } from '../react/useStoreSelector.ts';
 import { createViewYaw, ViewYawProvider } from '../react/viewYaw.tsx';
@@ -196,8 +196,8 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
     const keys = { ...NO_KEYS };
     const onKey = (e: KeyboardEvent) => {
       const key = KEY_BINDINGS[e.code];
-      // Only keydown is filtered, so a key released inside a text field can't stay held.
-      if (!key || (e.type === 'keydown' && isTypingTarget(e.target))) {
+      // Only keydown is filtered, so a key released inside a text field or with a modifier can't stay held.
+      if (!key || (e.type === 'keydown' && (isTypingTarget(e.target) || hasCommandModifier(e)))) {
         return;
       }
       e.preventDefault();

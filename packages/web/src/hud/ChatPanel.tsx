@@ -3,7 +3,9 @@ import type { Actions, OfficeState, Store } from '@officexr/sdk';
 import { MessageSquare, SendHorizontal } from 'lucide-react';
 import { focusWorld, useStoreSelector } from '@officexr/world/top-down';
 import { IconButton } from './IconButton';
+import { isComposing } from './isComposing';
 import { CHIP, Panel, PanelTitle, TITLE_TEXT } from './ui/Panel';
+import { useEscapeLayer } from './useEscapeLayer';
 import { useChatVisibility } from './useChatVisibility';
 
 const MAX_MESSAGES = 50;
@@ -19,9 +21,6 @@ const sameNames = (a: Names, b: Names) => {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 };
-
-const isComposing = (e: { nativeEvent: KeyboardEvent }) =>
-  e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229;
 
 type ChatPanelProps = { store: Store; actions: Actions; selfId: string };
 
@@ -75,6 +74,21 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
     }
   }, [chat.length, mode]);
 
+  const handBack = (next: () => void) => {
+    inputRef.current?.blur();
+    next();
+    focusWorld();
+  };
+
+  useEscapeLayer(
+    mode === 'compose',
+    () => {
+      setDraft('');
+      handBack(hide);
+    },
+    () => containerRef.current,
+  );
+
   if (mode === 'hidden') {
     return (
       <button
@@ -89,20 +103,11 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
     );
   }
 
-  const handBack = (next: () => void) => {
-    inputRef.current?.blur();
-    next();
-    focusWorld();
-  };
-
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (isComposing(e)) {
+    if (isComposing(e.nativeEvent)) {
       return;
     }
-    if (e.key === 'Escape') {
-      setDraft('');
-      handBack(hide);
-    } else if (e.key === 'Enter') {
+    if (e.key === 'Enter') {
       if (!draft.trim()) {
         // Enter is the shortcut's toggle: on an empty draft it closes the panel.
         handBack(hide);

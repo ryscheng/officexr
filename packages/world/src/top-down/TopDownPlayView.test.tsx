@@ -111,6 +111,16 @@ describe('TopDownPlayView', () => {
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
   });
 
+  it('does not walk on a shortcut chord such as Alt+D', async () => {
+    const { alice, released } = await mount();
+    await released();
+    const start = alice.store.getState().players.alice!.pos;
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', altKey: true }));
+    await new Promise((r) => setTimeout(r, 200));
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD', altKey: true }));
+    expect(alice.store.getState().players.alice!.pos.x).toBe(start.x);
+  });
+
   it('lets a peer on the same hub see the local player after releaseSelf', async () => {
     const { bob, released } = await mount();
     expect(bob.store.getState().players.alice).toBeUndefined();

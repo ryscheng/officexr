@@ -136,17 +136,6 @@ describe('SettingsModal', () => {
     expect(exitPointerLock).toHaveBeenCalledOnce();
   });
 
-  it('keeps its Escape from window-level Escape handlers', () => {
-    const onWindowKey = vi.fn();
-    window.addEventListener('keydown', onWindowKey);
-    render(<Harness />);
-    openSettings();
-    fireEvent.keyDown(settingsDialog()!, { key: 'Escape' });
-    window.removeEventListener('keydown', onWindowKey);
-    expect(settingsDialog()).toBeNull();
-    expect(onWindowKey).not.toHaveBeenCalled();
-  });
-
   it('keeps a backdrop pointerdown from reaching elements beneath it', () => {
     const onPointerDown = vi.fn();
     render(
@@ -178,7 +167,7 @@ describe('shortcuts hotkey', () => {
     fireEvent.keyDown(window, { key: '?' });
     expect(screen.getByRole('tab', { name: 'Keybinds' }).getAttribute('aria-selected')).toBe('true');
     const panel = screen.getByRole('tabpanel');
-    expect(panel.textContent).toContain('Show keyboard shortcuts');
+    expect(panel.textContent).toContain('Open keybinds');
     expect([...panel.querySelectorAll('kbd')].map((k) => k.textContent)).toContain('?');
   });
 

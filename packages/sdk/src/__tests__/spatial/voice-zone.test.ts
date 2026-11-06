@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { voiceZoneAt } from '../../spatial/voice-zone.ts';
+import { deskAreaAt, voiceZoneAt } from '../../spatial/voice-zone.ts';
 import type { VoiceZone } from '../../game-state/types.ts';
 
 const zone = (id: string, x0: number, z0: number, x1: number, z1: number): VoiceZone => ({
@@ -34,5 +34,14 @@ describe('voiceZoneAt', () => {
     const a = zone('a', 2, 2, 6, 6);
     expect(voiceZoneAt([b, a], { x: 3, z: 3 })).toBe(a);
     expect(voiceZoneAt([a, b], { x: 3, z: 3 })).toBe(a);
+  });
+});
+
+describe('deskAreaAt', () => {
+  it('picks the smallest desk area containing the point', () => {
+    const area = (id: string, x1: number) => ({ ...zone(id, 0, 0, x1, x1), seatInstanceId: null });
+    expect(deskAreaAt([area('big', 10), area('small', 2)], { x: 1, z: 1 })?.id).toBe('small');
+    expect(deskAreaAt([area('big', 10), area('small', 2)], { x: 5, z: 5 })?.id).toBe('big');
+    expect(deskAreaAt([area('small', 2)], { x: 5, z: 5 })).toBeNull();
   });
 });

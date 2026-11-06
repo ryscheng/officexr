@@ -49,6 +49,8 @@ export interface Stack {
   voiceAdapter: VoiceAdapter;
 }
 
+export function createStack(config: WsStackConfig): WsStack;
+export function createStack(config: StackConfig): Stack;
 export function createStack(config: StackConfig): Stack {
   if (config.mode === 'local') {
     const channel = new InMemoryChannel(config.hub, config.selfId);

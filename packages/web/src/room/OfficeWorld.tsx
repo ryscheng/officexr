@@ -5,6 +5,8 @@ import { ApplicationProvider, TopDownPlayView, useStoreSelector, WorldLoadingScr
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
+import { DeskAutoSit } from '../desk/DeskAutoSit';
+import { DeskHud } from '../desk/DeskHud';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PingInboxHud } from '../hud/PingInboxHud';
 import { CallList } from '../hud/CallList';
@@ -35,6 +37,7 @@ import { closingAction, SettingRow, SettingsButton, SettingsModal } from './Sett
 import { useJoinCheck } from './useJoinCheck';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
+import { useEscapeFallback } from '../hud/useEscapeLayer';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { initialViewMode } from './viewMode';
 import { ViewModeControl } from './ViewModeControl';
@@ -100,6 +103,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pingSettingsOpen, setPingSettingsOpen] = useState(false);
   useShortcutsHotkey(openKeybinds, session.type === 'ready');
+  useEscapeFallback(openSettings, session.type === 'ready');
   const pip = usePictureInPicture();
   const closePip = pip.close;
   // The window's contents render inside PlayView, so a session that drops would leave it blank.
@@ -160,6 +164,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       )}
       {ready.voice && <JaasMeeting voice={ready.voice} />}
       {!settings.isOpen && <ClickToPlayPrompt />}
+      <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
+      {viewMode === '3d' && <DeskAutoSit store={ready.local.store} selfId={ready.local.selfId} />}
       <HudLayout
         topCentre={
           <>

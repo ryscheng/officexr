@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore, type CSSPropert
 import { JaaSMeeting } from '@jitsi/react-sdk';
 import { Maximize2, Mic, MicOff, Minimize2, MonitorOff, MonitorUp } from 'lucide-react';
 import { IconButton } from '../hud/IconButton';
+import { useEscapeLayer } from '../hud/useEscapeLayer';
 import type { JaasVoiceAdapter } from './JaasVoiceAdapter';
 import { useMicMuted } from './useMicMuted';
 
@@ -33,19 +34,7 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
       setExpanded(false);
     }
   }, [viewing]);
-  useEffect(() => {
-    if (!focused) {
-      return;
-    }
-    const onKey = (e: KeyboardEvent) => {
-      const typing = e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable],dialog');
-      if (e.key === 'Escape' && !e.defaultPrevented && !typing) {
-        setExpanded(false);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [focused]);
+  useEscapeLayer(focused, () => setExpanded(false));
   if (!meeting) {
     return null;
   }
