@@ -66,20 +66,25 @@ export function dataDirOptions(dataDir: string) {
   ) as Pick<StudioStoragePluginOptions, keyof typeof STORAGE_ENTRIES>;
 }
 
-/** Whether `name` is a map the `/api/maps` list would offer: a valid slug whose file parses as a map. */
-export function studioMapExists(dataDir?: string): (name: string) => Promise<boolean> {
+/** The map `name` as the `/api/maps` list would offer it, or null for a name that isn't a plain slug or whose file doesn't parse as a map. */
+export function studioMapLoader(dataDir?: string): (name: string) => Promise<SerializedMap | null> {
   const dir = (dataDir ? dataDirOptions(dataDir).maps?.dir : undefined) ?? DEFAULT_MAPS_DIR;
   return async (name) => {
     if (!isValidSceneName(name)) {
-      return false;
+      return null;
     }
     try {
-      deserializeMap(JSON.parse(await fs.readFile(path.join(dir, `${name}.json`), 'utf8')));
-      return true;
+      return deserializeMap(JSON.parse(await fs.readFile(path.join(dir, `${name}.json`), 'utf8')));
     } catch {
-      return false;
+      return null;
     }
   };
+}
+
+/** Whether `name` is a map the `/api/maps` list would offer. */
+export function studioMapExists(dataDir?: string): (name: string) => Promise<boolean> {
+  const load = studioMapLoader(dataDir);
+  return async (name) => (await load(name)) !== null;
 }
 
 export interface BinaryResourceHooks {

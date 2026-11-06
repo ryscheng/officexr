@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { NextHandleFunction } from 'connect';
 import { signJoinToken } from '@officexr/realtime-server/join-token';
 import { isCharacterName } from '@officexr/world/characters';
+import type { SerializedMap } from '@officexr/world/scenes';
 import { MAX_DESCRIPTION, MAX_NAME } from './officeLimits';
 import type { Identity, NewOffice, Office, OfficeUpdate } from './shared';
 
@@ -20,6 +21,18 @@ export type MapExists = (name: string) => Promise<boolean>;
 export interface OfficeCharacters {
   get: (officeId: string, login: string) => Promise<string | null>;
   set: (officeId: string, login: string, characterId: string) => Promise<void>;
+}
+
+/** Loads a studio map by name; null when it doesn't exist or isn't a valid map. */
+export type LoadMap = (name: string) => Promise<Pick<SerializedMap, 'deskAreas'> | null>;
+
+/** Desk claims per office; the database allows one desk per login and one login per desk. */
+export interface OfficeDeskClaims {
+  /** Login by desk id. */
+  list: (officeId: string) => Promise<Record<string, string>>;
+  /** Moves the login's existing claim to `deskId`; 'taken' when another login holds it. */
+  claim: (officeId: string, login: string, deskId: string) => Promise<'ok' | 'taken'>;
+  release: (officeId: string, login: string) => Promise<void>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -114,6 +127,8 @@ export function apiMiddleware(
   createOffice: CreateOffice,
   updateOffice: UpdateOffice,
   mapExists: MapExists,
+  deskClaims: OfficeDeskClaims,
+  loadMap: LoadMap,
   identity: ResolveIdentity,
   realtimeTokenSecret?: string,
 ): NextHandleFunction {
@@ -182,6 +197,41 @@ export function apiMiddleware(
           }
           await characters.set(office.id, me.login, characterId);
           return send(200, { characterId });
+        }
+        return send(405, { error: 'Method not allowed' });
+      }
+      const deskClaimsRoute = path.match(/^\/api\/offices\/([^/]+)\/desk-claims(\/me)?$/);
+      if (deskClaimsRoute) {
+        const me = identity(req);
+        if (!me) {
+          return send(401, { error: 'Not signed in' });
+        }
+        const [office] = UUID.test(deskClaimsRoute[1]) ? await queryOffices(deskClaimsRoute[1]) : [];
+        if (!office) {
+          return send(404, { error: 'Office not found' });
+        }
+        const isMe = deskClaimsRoute[2] !== undefined;
+        if (req.method === 'GET' && !isMe) {
+          return send(200, { claims: await deskClaims.list(office.id) });
+        }
+        if (req.method === 'PUT' && isMe) {
+          const body = await readJson(req);
+          if (body === TOO_LARGE) {
+            return send(413, { error: 'Body too large' });
+          }
+          const deskId = (body as { deskId?: unknown } | null)?.deskId;
+          const map = office.map_name ? await loadMap(office.map_name) : null;
+          if (typeof deskId !== 'string' || !map?.deskAreas?.some((area) => area.id === deskId)) {
+            return send(400, { error: 'Unknown desk' });
+          }
+          if ((await deskClaims.claim(office.id, me.login, deskId)) === 'taken') {
+            return send(409, { error: 'Desk taken' });
+          }
+          return send(200, { claims: await deskClaims.list(office.id) });
+        }
+        if (req.method === 'DELETE' && isMe) {
+          await deskClaims.release(office.id, me.login);
+          return send(200, { claims: await deskClaims.list(office.id) });
         }
         return send(405, { error: 'Method not allowed' });
       }

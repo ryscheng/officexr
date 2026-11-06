@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { studioMapExists } from '../../vite-plugin-storage.ts';
+import { studioMapExists, studioMapLoader } from '../../vite-plugin-storage.ts';
 
 const dataDir = mkdtempSync(path.join(tmpdir(), 'officexr-maps-'));
 mkdirSync(path.join(dataDir, 'maps'));
@@ -30,5 +30,16 @@ describe('studioMapExists', () => {
 
   it('defaults to the bundled maps', async () => {
     expect(await studioMapExists()('default')).toBe(true);
+  });
+});
+
+describe('studioMapLoader', () => {
+  const load = studioMapLoader(dataDir);
+
+  it('returns the parsed map, or null when it is missing, broken or not a slug', async () => {
+    expect((await load('good'))?.rooms).toBeDefined();
+    expect(await load('missing')).toBeNull();
+    expect(await load('broken')).toBeNull();
+    expect(await load('../secret')).toBeNull();
   });
 });

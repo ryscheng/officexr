@@ -1,8 +1,8 @@
 import connect from 'connect';
 import type { RealtimeServer } from '@officexr/realtime-server/server';
-import { createStudioStorage, studioMapExists } from '@officexr/world/vite-plugin-storage';
+import { createStudioStorage, studioMapExists, studioMapLoader } from '@officexr/world/vite-plugin-storage';
 import type { Store } from 'express-session';
-import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeCharacters, type QueryOffices, type UpdateOffice } from './api';
+import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type UpdateOffice } from './api';
 import { bearerIdentity, createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import { createCors } from './cors';
 import { configJsMiddleware } from './runtimeConfig';
@@ -12,6 +12,7 @@ import { DEFAULT_MODELS_DIR, staticDirMiddleware } from './staticDir';
 export interface AppOptions {
   queryOffices: QueryOffices;
   characters: OfficeCharacters;
+  deskClaims: OfficeDeskClaims;
   createOffice: CreateOffice;
   updateOffice: UpdateOffice;
   isLoginAllowed: IsLoginAllowed;
@@ -38,6 +39,7 @@ export interface AppOptions {
 export async function createApp({
   queryOffices,
   characters,
+  deskClaims,
   createOffice,
   updateOffice,
   isLoginAllowed,
@@ -78,6 +80,6 @@ export async function createApp({
   const cookieIdentity: ResolveIdentity = devUser ? () => devUser : sessionIdentity;
   const bearer = realtimeTokenSecret ? bearerIdentity(realtimeTokenSecret) : undefined;
   const identity: ResolveIdentity = (req) => (bearer && /^Bearer /i.test(req.headers.authorization ?? '') ? bearer(req) : cookieIdentity(req));
-  app.use(apiMiddleware(queryOffices, characters, createOffice, updateOffice, studioMapExists(studioDataDir), identity, realtimeTokenSecret));
+  app.use(apiMiddleware(queryOffices, characters, createOffice, updateOffice, studioMapExists(studioDataDir), deskClaims, studioMapLoader(studioDataDir), identity, realtimeTokenSecret));
   return app;
 }
