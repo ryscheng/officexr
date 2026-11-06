@@ -196,7 +196,6 @@ export function createInstanceGeometry(deps: {
 
   function meshTransform(position: Vec3, kindId: string, yawDeg = 0): MeshTransform {
     const origin = meshOrigin(position, kindId);
-    // Spin the mesh root about the unrotated footprint's centre.
     const local = localAABBOf(kindId);
     const centre: Vec3 = [
       origin[0] + (local.min.x + local.max.x) / 2,
