@@ -12,6 +12,7 @@ const TONE = {
 const SIZE = {
   md: { button: 'p-2 pointer-coarse:min-h-11 pointer-coarse:min-w-11', icon: 'h-4 w-4' },
   sm: { button: 'p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11', icon: 'h-3 w-3' },
+  row: { button: 'h-[26px] w-[26px] pointer-coarse:h-11 pointer-coarse:w-11', icon: 'h-3.5 w-3.5' },
   lg: { button: 'h-11 w-11 p-2.5', icon: 'h-5 w-5' },
 };
 

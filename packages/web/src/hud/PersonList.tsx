@@ -108,31 +108,45 @@ function PersonRowItem({
   const indicator =
     row.type === 'guest' ? null : PRESENCE_INDICATOR[row.type === 'self' ? row.status : presenceIndicator(row, now)];
   const mic = (row.type === 'self' || row.type === 'peer') && row.mic ? MIC[row.mic] : null;
+  const away = indicator?.label === 'Away';
   return (
-    <li className="flex items-center gap-1.5">
-      {indicator && (
-        <span
-          role="img"
-          aria-label={indicator.label}
-          title={indicator.label}
-          className={`inline-block h-2 w-2 shrink-0 rounded-full ${indicator.dot}`}
-        />
-      )}
-      {mic && <mic.Icon role="img" aria-label={mic.label} className={`h-3 w-3 shrink-0 ${mic.className}`} />}
-      <span className={`min-w-0 flex-1 truncate ${row.type === 'departed' ? 'text-white/60' : ''}`}>{row.label}</span>
-      {row.type === 'peer' && noRoute && <span className="shrink-0 text-amber-400">No route</span>}
-      {row.type === 'peer' && row.distanceM !== null && (
-        <span className="flex shrink-0 items-center gap-0.5 tabular-nums text-white/80">
-          <ArrowUp
-            aria-hidden
-            className="h-3 w-3"
-            style={{ transform: `rotate(${Math.round(row.bearingDeg + viewYawDeg)}deg)` }}
+    <li className={`flex items-center gap-2 rounded-lg px-1.5 py-1 ${row.type === 'self' ? 'bg-hud-inset' : ''}`}>
+      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hud-edge text-[10px] font-bold text-hud-text uppercase"
+      >
+        <span aria-hidden>{row.label.charAt(0)}</span>
+        {indicator && (
+          <span
+            role="img"
+            aria-label={indicator.label}
+            title={indicator.label}
+            className={`absolute -right-0.5 -bottom-0.5 h-2 w-2 rounded-full border border-hud-panel ${indicator.dot}`}
           />
-          {formatDistance(row.distanceM)}
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-xs ${row.type === 'departed' ? 'text-hud-text-2' : 'text-hud-text'}`}>
+          {row.label}
         </span>
-      )}
+        {row.type === 'peer' && (noRoute || away || row.distanceM !== null) && (
+          <span className="flex items-center gap-0.5 text-[10px] text-hud-text-2 tabular-nums">
+            {noRoute && <span className="text-hud-amber-text">No route</span>}
+            {away && <span>Away ·</span>}
+            {row.distanceM !== null && (
+              <>
+                <ArrowUp
+                  aria-hidden
+                  className="h-2.5 w-2.5"
+                  style={{ transform: `rotate(${Math.round(row.bearingDeg + viewYawDeg)}deg)` }}
+                />
+                <span>{formatDistance(row.distanceM)}</span>
+              </>
+            )}
+          </span>
+        )}
+      </span>
+      {mic && <mic.Icon role="img" aria-label={mic.label} className={`h-3 w-3 shrink-0 ${mic.className}`} />}
       {row.type === 'peer' && onPing && (
-        <IconButton icon={Bell} label={`Ping ${row.label}`} disabled={onPing.disabled} size="sm" onClick={onPing.send} />
+        <IconButton icon={Bell} label={`Ping ${row.label}`} disabled={onPing.disabled} size="row" onClick={onPing.send} />
       )}
       {row.type === 'peer' && (
         <IconButton
@@ -140,7 +154,7 @@ function PersonRowItem({
           label={`Go to ${row.label}`}
           pressed={following}
           tone={following ? 'success' : 'neutral'}
-          size="sm"
+          size="row"
           onClick={onGo}
         />
       )}

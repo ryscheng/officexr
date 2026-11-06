@@ -9,6 +9,7 @@ import { ChatPanel } from '../hud/ChatPanel';
 import { PingInboxHud } from '../hud/PingInboxHud';
 import { CallList } from '../hud/CallList';
 import { Minimap } from '../hud/Minimap';
+import { ConnectionToast } from '../hud/ConnectionToast';
 import { PresenceList } from '../hud/PresenceList';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
@@ -139,6 +140,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         <OfficeSettingsDialog office={office} me={me} onSaved={setOffice} onClose={() => setSettingsOpen(false)} />
       )}
       {ready.voice && <JaasMeeting voice={ready.voice} />}
+      <ConnectionToast store={ready.local.store} />
       <PingInboxHud inbox={pingInbox} store={ready.local.store} />
       <ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
       {/* The call bar centres while it fits; the people column pushes it aside instead of under it.

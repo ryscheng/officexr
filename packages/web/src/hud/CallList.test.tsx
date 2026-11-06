@@ -2,12 +2,19 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { createActions, createBus, createStore } from '@officexr/sdk';
 import { createViewYaw, PlayControlsProvider, ViewYawProvider } from '@officexr/world/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CallList, callRows } from './CallList';
 import { fakePlayControls } from './fakePlayControls';
 import { PresenceList } from './PresenceList';
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const player = (id: string, name: string, jitsiParticipantId: string | null) => ({
   id,
@@ -110,7 +117,7 @@ describe('CallList', () => {
     const call = within(screen.getByRole('list', { name: 'People in your call' }));
     const presence = within(screen.getByRole('list', { name: 'People in HQ' }));
     expect(screen.getByText('In call (3)')).toBeTruthy();
-    expect(call.getAllByRole('listitem').map((li) => li.textContent?.replace(/\d+ m/, ''))).toEqual(['You', 'Ann', 'Visitor']);
+    expect(call.getAllByRole('listitem').map((li) => li.querySelector('.truncate')?.textContent)).toEqual(['You', 'Ann', 'Visitor']);
     expect(call.getByRole('img', { name: 'Speaking' })).toBeTruthy();
     expect(call.getByRole('img', { name: 'Muted' })).toBeTruthy();
     expect(call.getByRole('button', { name: 'Go to Ann' })).toBeTruthy();
