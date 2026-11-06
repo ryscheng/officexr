@@ -97,6 +97,19 @@ describe('autoWalkStep', () => {
     expect(step).toEqual({ state: { type: 'arrived', targetId: 'bob' }, intent: null });
   });
 
+  it('arrives at a point only within its own radius', () => {
+    const point = { selfPos: at(0, 0), targetPos: at(0, 1), now: 100, arriveM: 0.2 };
+    expect(autoWalkStep(walking(), point, GRID, planner()).state.type).toBe('walking');
+    expect(autoWalkStep(walking(), { ...point, selfPos: at(0, 0.85) }, GRID, planner()).state.type).toBe('arrived');
+  });
+
+  it('never counts a point as arrived from no-route', () => {
+    const noRoute: TrackedAutoWalkState = { type: 'no-route', targetId: 'p', plannedAt: 100 };
+    const input = { selfPos: at(0, 0), targetPos: at(0, 0.1), now: 200, arriveM: 0.2 };
+    expect(autoWalkStep(noRoute, input, GRID, planner(null)).state.type).toBe('no-route');
+    expect(autoWalkStep(noRoute, { ...input, arriveM: undefined }, GRID, planner(null)).state.type).toBe('arrived');
+  });
+
   it('resumes walking once the target is more than 3 m away', () => {
     const arrived: TrackedAutoWalkState = { type: 'arrived', targetId: 'bob' };
     const plan = planner();

@@ -255,7 +255,7 @@ export function createInstanceGeometry(deps: {
 export function seatPoseOf(
   kind: Pick<WorldObjectKind, 'seat'>,
   instance: ObjectInstance,
-  geometry: InstanceGeometryService,
+  geometry: Pick<InstanceGeometryService, 'worldAABB'>,
 ): { position: Vec3; yawRad: number } | null {
   if (!kind.seat) {
     return null;

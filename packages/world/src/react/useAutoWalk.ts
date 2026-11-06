@@ -15,8 +15,12 @@ import { feetPosition } from '../physics/rules.ts';
 import type { AutoWalkSource } from '../renderer/moveIntent.ts';
 import type { PlayControlsSource } from './playControls.tsx';
 
-export interface AutoWalkController extends AutoWalkSource, PlayControlsSource {
+export interface AutoWalkController extends AutoWalkSource, Pick<PlayControlsSource, 'goTo' | 'cancel'> {
   setGrid(grid: NavGrid | null): void;
+  /** Walks toward the fixed `feet` position, known as `id`, until `isThere` holds, then calls `onArrive` instead of waiting. */
+  goToPoint(id: string, feet: Vec3, isThere: () => boolean, onArrive: () => void): void;
+  getState(): AutoWalkState;
+  subscribe(cb: () => void): () => void;
 }
 
 export interface AutoWalkOptions {
@@ -37,9 +41,13 @@ export function createAutoWalk(
   let state: TrackedAutoWalkState = AUTO_WALK_IDLE;
   let published: AutoWalkState = AUTO_WALK_IDLE;
   let grid: NavGrid | null = null;
+  let point: { id: string; feet: Vec3; isThere: () => boolean; onArrive: () => void } | null = null;
   const listeners = new Set<() => void>();
   const publish = (next: TrackedAutoWalkState) => {
     state = next;
+    if (next.type === 'idle') {
+      point = null;
+    }
     if (!samePublicState(published, next)) {
       published = publicState(next);
       listeners.forEach((cb) => cb());
@@ -48,12 +56,13 @@ export function createAutoWalk(
   const input = (targetId: PlayerId, selfPos: Vec3): AutoWalkInput => {
     const s = store.getState();
     const { charRadius } = s.worldSettings;
+    const self = feetPosition(selfPos, charRadius);
+    if (point?.id === targetId) {
+      // Arrival is `isThere`'s call, not distance's.
+      return { selfPos: self, targetPos: point.feet, now: now(), arriveM: 0 };
+    }
     const target = s.players[targetId];
-    return {
-      selfPos: feetPosition(selfPos, charRadius),
-      targetPos: target ? feetPosition(target.pos, charRadius) : null,
-      now: now(),
-    };
+    return { selfPos: self, targetPos: target ? feetPosition(target.pos, charRadius) : null, now: now() };
   };
   return {
     getState: () => published,
@@ -65,14 +74,28 @@ export function createAutoWalk(
       grid = next;
     },
     goTo(targetId) {
+      point = null;
       const self = store.getState().players[selfId];
       if (self) {
         publish(autoWalkGoTo(state, targetId, input(targetId, self.pos), grid, plan));
       }
     },
+    goToPoint(id, feet, isThere, onArrive) {
+      const self = store.getState().players[selfId];
+      if (self) {
+        point = { id, feet, isThere, onArrive };
+        publish(autoWalkGoTo(state, id, input(id, self.pos), grid, plan));
+      }
+    },
     cancel: () => publish(AUTO_WALK_IDLE),
     intent(selfPos) {
       if (state.type === 'idle') {
+        return null;
+      }
+      if (point?.id === state.targetId && point.isThere()) {
+        const { onArrive } = point;
+        publish(AUTO_WALK_IDLE);
+        onArrive();
         return null;
       }
       const step = autoWalkStep(state, input(state.targetId, selfPos), grid, plan);

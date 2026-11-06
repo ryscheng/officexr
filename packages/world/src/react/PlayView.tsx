@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { XRStore } from '@react-three/xr';
 import { useProgress } from '@react-three/drei';
 import type { Actions, Bus, PlayerId, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
@@ -7,7 +7,7 @@ import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import type { CameraMode } from '../renderer/config.ts';
 import type { MotionLookState } from '../renderer/motionLook.ts';
 import { Scene } from '../renderer/Scene.tsx';
-import { ErrorBanner, FocusIndicator, TopLeftHud, WorldHud, type HudRealtime } from './hud.tsx';
+import { ErrorBanner, FocusIndicator, SeatRefusalToast, TopLeftHud, WorldHud, type HudRealtime } from './hud.tsx';
 import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
 import { useCameraMode } from './useCameraMode.ts';
 import { useCoarsePointer } from './useCoarsePointer.ts';
@@ -21,6 +21,7 @@ import { useWorldFocus } from './useWorldFocus.ts';
 import { NavGridProvider, useBuildNavGrid } from './useNavGrid.ts';
 import { PlayControlsProvider } from './playControls.tsx';
 import { useAutoWalk } from './useAutoWalk.ts';
+import { playControlsOf, useSeating } from './useSeating.ts';
 import { INITIAL_WORLD_READINESS, worldReadiness } from './world-readiness.ts';
 
 export interface PlayViewProps {
@@ -76,6 +77,8 @@ export function PlayView(props: PlayViewProps) {
   const worldConstants = useWorldConstants(props.store);
   const navGrid = useBuildNavGrid(props.store);
   const autoWalk = useAutoWalk(props.store, props.selfId, navGrid);
+  const seating = useSeating(props.store, props.actions, props.selfId, autoWalk);
+  const playControls = useMemo(() => playControlsOf(autoWalk, seating), [autoWalk, seating]);
   const session = usePlaySession({
     actions: props.actions,
     mapName: props.mapName,
@@ -122,6 +125,7 @@ export function PlayView(props: PlayViewProps) {
           worldFocused={worldFocused}
           moveInputRef={moveInputRef}
           autoWalk={autoWalk}
+          seating={seating}
           spawnPoints={session.spawnPoints}
           bakedLayouts={session.bakedLayouts}
           onFrameStats={props.onFrameStats}
@@ -145,6 +149,7 @@ export function PlayView(props: PlayViewProps) {
         />
         <FocusIndicator focused={worldFocused} />
       </TopLeftHud>
+      <SeatRefusalToast seating={seating} />
       {coarsePointer && <VirtualJoystick inputRef={moveInputRef} />}
       {props.error ? (
         <ErrorBanner message={props.error} onDismiss={() => props.onDismissError?.()} />
@@ -153,7 +158,7 @@ export function PlayView(props: PlayViewProps) {
       )}
       <NavGridProvider value={navGrid}>
         <ViewYawProvider viewYaw={viewYaw}>
-          <PlayControlsProvider controls={autoWalk}>{props.children}</PlayControlsProvider>
+          <PlayControlsProvider controls={playControls}>{props.children}</PlayControlsProvider>
         </ViewYawProvider>
       </NavGridProvider>
       {!ready && (

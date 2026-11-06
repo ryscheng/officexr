@@ -2,9 +2,6 @@ import * as THREE from 'three';
 
 export const SIT_CLIP_NAME = 'Sit_Chair_Idle';
 
-/** Hips height above the root bone (metres) in the Rig_Medium bind pose, which the sit pose keeps. */
-export const SIT_POSE_HIP_HEIGHT = 0.4057;
-
 /**
  * Local bone rotations (XYZ Euler degrees) of the seated pose, keyed by the readable bone name.
  * Values are absolute local rotations, not deltas on the bind pose; bones not listed keep their bind pose.

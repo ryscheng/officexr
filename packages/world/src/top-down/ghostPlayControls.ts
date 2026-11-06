@@ -1,9 +1,10 @@
 import type { PlayerId } from '@officexr/sdk';
 import type { GhostController } from '../app/ghost-controller.ts';
 import type { AutoWalkState } from '../nav/autoWalk.ts';
-import type { PlayControlsSource } from '../react/playControls.tsx';
+import type { PlayControlsSource, SeatingState } from '../react/playControls.tsx';
 
 const IDLE: AutoWalkState = { type: 'idle' };
+const NO_SEATING: SeatingState = { nearbySeatId: null, hasDesk: false };
 
 export interface GhostPlayControls extends PlayControlsSource {
   /** Republishes the state once the controller ends a follow on its own; call after each `step`. */
@@ -40,6 +41,11 @@ export function createGhostPlayControls(controller: GhostController): GhostPlayC
       listeners.add(cb);
       return () => void listeners.delete(cb);
     },
+    // ponytail: the 2D view never sits; it only shows peers' seats from synced state.
+    sit: () => {},
+    stand: () => {},
+    returnToDesk: () => {},
+    getSeating: () => NO_SEATING,
     refresh() {
       if (state.type !== 'idle' && controller.followTarget() === null) {
         publish(IDLE);

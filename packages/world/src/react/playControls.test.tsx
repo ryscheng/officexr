@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createActions, createStore } from '@officexr/sdk';
 import { PlayControlsProvider, usePlayControls } from './playControls.tsx';
 import { createAutoWalk } from './useAutoWalk.ts';
+import { createSeating, playControlsOf } from './useSeating.ts';
+import { createInstanceGeometry } from '../app/geometry-service.ts';
 
 afterEach(() => {
   cleanup();
@@ -18,9 +20,13 @@ function renderControls() {
   actions.upsertPlayer({ id: 'bob', pos: { x: 0, y: 1, z: 10 } });
   let clock = 0;
   const autoWalk = createAutoWalk(store, 'me', { now: () => clock });
+  const catalog = { getKind: () => undefined };
+  const geometry = createInstanceGeometry({ catalog, voxelSize: 1 });
+  const seating = createSeating({ store, actions, selfId: 'me', catalog, geometry, autoWalk });
+  const controls = playControlsOf(autoWalk, seating);
   let renders = 0;
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <PlayControlsProvider controls={autoWalk}>{children}</PlayControlsProvider>
+    <PlayControlsProvider controls={controls}>{children}</PlayControlsProvider>
   );
   const hook = renderHook(
     () => {
@@ -36,6 +42,7 @@ describe('usePlayControls', () => {
   it('re-renders when the walk state changes, not on every frame', () => {
     const { result, autoWalk, renders, tick } = renderControls();
     expect(result.current.state).toEqual({ type: 'idle' });
+    expect(result.current).toMatchObject({ nearbySeatId: null, hasDesk: false });
     const initial = renders();
 
     act(() => result.current.goTo('bob'));

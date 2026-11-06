@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import type { BakedLayoutPlacement } from '../app/map-loader.ts';
+import { assertNever } from '../renderer/assertNever.ts';
+import type { SeatingController, SeatingRefusal } from './useSeating.ts';
 import type { CameraMode } from '../renderer/config.ts';
 
 export type HudRealtime = 'in-memory' | 'ws';
@@ -131,6 +133,47 @@ export function ErrorBanner({ message, onDismiss }: { message: string; onDismiss
       title={onDismiss ? 'click to dismiss' : undefined}
     >
       {message}
+    </div>
+  );
+}
+
+function refusalMessage(reason: SeatingRefusal): string {
+  return reason === 'occupied'
+    ? 'Someone is already sitting there'
+    : reason === 'not-yours'
+      ? "That's someone else's desk"
+      : reason === 'blocked'
+        ? "That chair isn't part of a usable desk"
+        : reason === 'not-touching'
+          ? 'Walk up to a chair to sit'
+          : reason === 'no-approach'
+            ? 'There is no room to get to that chair'
+            : assertNever(reason);
+}
+
+/** Says why the last sit failed, while the seating controller holds the refusal. */
+export function SeatRefusalToast({ seating }: { seating: Pick<SeatingController, 'getState' | 'subscribe'> }) {
+  const { refusal } = useSyncExternalStore(seating.subscribe, seating.getState);
+  if (refusal === null) {
+    return null;
+  }
+  return (
+    <div
+      role="status"
+      style={{
+        position: 'absolute',
+        bottom: 96,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        padding: '6px 12px',
+        background: 'rgba(0,0,0,0.7)',
+        color: '#fff',
+        font: '12px system-ui, sans-serif',
+        borderRadius: 4,
+        pointerEvents: 'none',
+      }}
+    >
+      {refusalMessage(refusal)}
     </div>
   );
 }
