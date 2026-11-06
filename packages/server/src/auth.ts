@@ -7,6 +7,7 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy, type Profile, type VerifyCallback } from 'passport-google-oauth20';
 import type pg from 'pg';
 import type { NextHandleFunction } from 'connect';
+import { verifyJoinToken } from '@officexr/realtime-server/join-token';
 import type { Identity } from './shared';
 
 export interface AuthConfig {
@@ -100,6 +101,15 @@ export function pgAllowlist(pool: pg.Pool, table: 'login_allowlist' | 'studio_al
 export function pgSessionStore(pool: pg.Pool): session.Store {
   // Non-sliding expiry: without it every request with a loaded session writes its expiry back.
   return new (connectPgSimple(session))({ pool, disableTouch: true });
+}
+
+/** The login an `api` bearer token vouches for; `null` for any other bearer. */
+export function bearerIdentity(secret: string) {
+  return (req: IncomingMessage): Identity | null => {
+    const token = req.headers.authorization?.match(/^Bearer (.+)$/i)?.[1];
+    const verified = token ? verifyJoinToken(secret, token, Date.now(), 'api') : null;
+    return verified && { login: verified.login, name: verified.login };
+  };
 }
 
 export function sessionIdentity(req: IncomingMessage): Identity | null {

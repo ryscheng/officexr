@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createBackend, type Backend } from './backend';
 
+const API_URL = 'http://127.0.0.1:1';
 const ENV = {
   // Never connected to: the pool is lazy and these specs make no query.
   SUPABASE_DB_URL: 'postgresql://unused@127.0.0.1:1/none',
@@ -21,11 +22,11 @@ afterEach(async () => {
 
 describe('createBackend', () => {
   it('without dev options, refuses to start without Google sign-in', async () => {
-    await expect(createBackend({ ...ENV, SESSION_SECRET: '' })).rejects.toThrow(/SESSION_SECRET$/);
+    await expect(createBackend({ ...ENV, SESSION_SECRET: '' }, { apiUrl: API_URL })).rejects.toThrow(/SESSION_SECRET$/);
   });
 
   it('without dev options, never signs requests in as OFFICEXR_DEV_USER_LOGIN', async () => {
-    backend = await createBackend({ ...ENV, OFFICEXR_DEV_USER_LOGIN: 'dev@example.com' });
+    backend = await createBackend({ ...ENV, OFFICEXR_DEV_USER_LOGIN: 'dev@example.com' }, { apiUrl: API_URL });
     server = createServer(backend.app);
     await new Promise<void>((resolve) => server!.listen(0, resolve));
     const res = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/me`);
@@ -33,7 +34,7 @@ describe('createBackend', () => {
   });
 
   it('with a dev user, signs every request in as that user without Google sign-in', async () => {
-    backend = await createBackend({}, { dev: { user: { login: 'dev@example.com', name: 'Dev' } } });
+    backend = await createBackend({}, { apiUrl: API_URL, dev: { user: { login: 'dev@example.com', name: 'Dev' } } });
     server = createServer(backend.app);
     await new Promise<void>((resolve) => server!.listen(0, resolve));
     const res = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/me`);

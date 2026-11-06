@@ -9,6 +9,14 @@ describe('join token', () => {
     expect(verifyJoinToken(SECRET, token, 500)).toEqual({ login: 'ann' });
   });
 
+  it('treats a token as valid only for its audience, defaulting to join', () => {
+    const join = signJoinToken(SECRET, { login: 'ann', ttlMs: 1000, now: 0 });
+    const api = signJoinToken(SECRET, { login: 'ann', ttlMs: 1000, now: 0, aud: 'api' });
+    expect(verifyJoinToken(SECRET, api, 500)).toBeNull();
+    expect(verifyJoinToken(SECRET, join, 500, 'api')).toBeNull();
+    expect(verifyJoinToken(SECRET, api, 500, 'api')).toEqual({ login: 'ann' });
+  });
+
   it('rejects a tampered payload', () => {
     const [, sig] = signJoinToken(SECRET, { login: 'ann', ttlMs: 1000, now: 0 }).split('.');
     const forged = Buffer.from(JSON.stringify({ login: 'bob', exp: 1000 })).toString('base64url');
