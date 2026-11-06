@@ -45,10 +45,22 @@ export const CHARACTER_CONTROLLER_SKIN = 0.0001;
  * the position the store holds (`players[id].pos`). */
 export const BODY_Y = 0.9;
 
+/** Hips height above the root bone (metres) in the Rig_Medium bind pose, which the sit pose keeps. */
+export const SIT_POSE_HIP_HEIGHT = 0.4057;
+
+/** Offset added to player.yaw when rotating the avatar — adjust if the GLB's
+ * default facing differs from -Z. KayKit Adventurers point at +Z by default. */
+export const AVATAR_YAW_OFFSET = Math.PI;
+
 /** Where a character stands, from its store position: the bottom of its
  * body ball, which the controller rests on the surface. */
 export function feetPosition(pos: Vec3, charRadius: number): Vec3 {
   return { x: pos.x, y: pos.y + BODY_Y - charRadius, z: pos.z };
+}
+
+/** Inverse of `feetPosition`. */
+export function bodyPosition(feet: Vec3, charRadius: number): Vec3 {
+  return { x: feet.x, y: feet.y - (BODY_Y - charRadius), z: feet.z };
 }
 
 /** Margin (m) below the lowest cube before a character counts as

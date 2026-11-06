@@ -15,8 +15,12 @@ import { feetPosition } from '../physics/rules.ts';
 import type { AutoWalkSource } from '../renderer/moveIntent.ts';
 import type { PlayControlsSource } from './playControls.tsx';
 
-export interface AutoWalkController extends AutoWalkSource, PlayControlsSource {
+export interface AutoWalkController extends AutoWalkSource, Pick<PlayControlsSource, 'goTo' | 'cancel'> {
   setGrid(grid: NavGrid | null): void;
+  /** Walks to the fixed `feet` position, known as `id`, and calls `onArrive` there instead of waiting. */
+  goToPoint(id: string, feet: Vec3, onArrive: () => void): void;
+  getState(): AutoWalkState;
+  subscribe(cb: () => void): () => void;
 }
 
 export interface AutoWalkOptions {
@@ -37,6 +41,7 @@ export function createAutoWalk(
   let state: TrackedAutoWalkState = AUTO_WALK_IDLE;
   let published: AutoWalkState = AUTO_WALK_IDLE;
   let grid: NavGrid | null = null;
+  let point: { id: string; feet: Vec3; onArrive: () => void } | null = null;
   const listeners = new Set<() => void>();
   const publish = (next: TrackedAutoWalkState) => {
     state = next;
@@ -51,7 +56,7 @@ export function createAutoWalk(
     const target = s.players[targetId];
     return {
       selfPos: feetPosition(selfPos, charRadius),
-      targetPos: target ? feetPosition(target.pos, charRadius) : null,
+      targetPos: point?.id === targetId ? point.feet : target ? feetPosition(target.pos, charRadius) : null,
       now: now(),
     };
   };
@@ -65,17 +70,35 @@ export function createAutoWalk(
       grid = next;
     },
     goTo(targetId) {
+      point = null;
       const self = store.getState().players[selfId];
       if (self) {
         publish(autoWalkGoTo(state, targetId, input(targetId, self.pos), grid, plan));
       }
     },
-    cancel: () => publish(AUTO_WALK_IDLE),
+    goToPoint(id, feet, onArrive) {
+      const self = store.getState().players[selfId];
+      if (self) {
+        point = { id, feet, onArrive };
+        publish(autoWalkGoTo(state, id, input(id, self.pos), grid, plan));
+      }
+    },
+    cancel() {
+      point = null;
+      publish(AUTO_WALK_IDLE);
+    },
     intent(selfPos) {
       if (state.type === 'idle') {
         return null;
       }
       const step = autoWalkStep(state, input(state.targetId, selfPos), grid, plan);
+      if (step.state.type === 'arrived' && point?.id === step.state.targetId) {
+        const { onArrive } = point;
+        point = null;
+        publish(AUTO_WALK_IDLE);
+        onArrive();
+        return null;
+      }
       publish(step.state);
       return step.intent;
     },

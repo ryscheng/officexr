@@ -28,7 +28,7 @@ import {
   type ColliderTag,
 } from '../physics/groups.ts';
 import { routeContactEvent } from '../physics/bridge.ts';
-import { BODY_Y } from '../physics/rules.ts';
+import { AVATAR_YAW_OFFSET, BODY_Y } from '../physics/rules.ts';
 
 interface PlayersProps {
   store: Store;
@@ -63,10 +63,6 @@ interface BumpState {
   /** Push direction (away from the other character). */
   normal: { x: number; z: number };
 }
-
-/** Offset added to player.yaw when rotating the avatar — adjust if the GLB's
- * default facing differs from -Z. KayKit Adventurers point at +Z by default. */
-const AVATAR_YAW_OFFSET = Math.PI;
 
 /** Cap on extrapolation time (s). If updates stop arriving, the projected
  * position freezes here instead of running away with stale velocity. */

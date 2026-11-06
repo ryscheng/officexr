@@ -26,6 +26,7 @@ export {
   usePlayControls,
   type PlayControls,
   type PlayControlsSource,
+  type SeatingState,
 } from './playControls.tsx';
 export type { AutoWalkState } from '../nav/autoWalk.ts';
 export { findPath } from '../nav/path.ts';

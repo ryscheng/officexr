@@ -34,6 +34,7 @@ import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
+import { isStandingSpotFree, type SeatingSource } from './seated.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -53,6 +54,8 @@ interface SceneFrameProps {
   moveInputRef?: React.MutableRefObject<MoveInput>;
   /** Steers at walk speed while there is no key or stick input; such input cancels it. Not gated by `worldFocused`. */
   autoWalk?: AutoWalkSource;
+  /** E sits through it; while seated, any movement input stands through it instead of moving. */
+  seating?: SeatingSource;
   selfId: string;
   /** Set by `Players` when the self avatar's RigidBody mounts. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
@@ -125,6 +128,7 @@ export function SceneFrame({
   viewOffsetsRef,
   moveInputRef,
   autoWalk,
+  seating,
   selfId,
   selfBodyRef,
   worldFocused,
@@ -205,6 +209,7 @@ export function SceneFrame({
   const blendStartVelXRef = useRef(0);    // airVel at the moment the landing blend began (linear lerp source)
   const blendStartVelZRef = useRef(0);
   const spaceWasDownRef = useRef(false);  // edge-trigger: was Space held last frame?
+  const eWasDownRef = useRef(false);
   useEffect(() => {
     (window as unknown as {
       __OFFICE_GRAVITY__?: { setEnabled: (v: boolean) => void };
@@ -231,6 +236,14 @@ export function SceneFrame({
         .__OFFICE_GRAVITY__;
     };
   }, []);
+
+  useEffect(
+    () =>
+      seating?.setStandingCheck((feet) =>
+        isStandingSpotFree(world, liveRigidBody(selfBodyRef.current), store.getState().worldSettings.charRadius, feet),
+      ),
+    [seating, world, store, selfBodyRef],
+  );
 
   // PlayerIds whose bodies the local character was bumping into on the
   // previous frame. Used to edge-trigger `collision:char-bump` — Rapier
@@ -284,6 +297,21 @@ export function SceneFrame({
     const now = performance.now();
     const keys = keysDown.current;
 
+    const eDown = keys.has('e');
+    if (eDown && !eWasDownRef.current) {
+      seating?.sit();
+    }
+    eWasDownRef.current = eDown;
+    const { fwd, strafe, isRunning, speedScale } = moveIntent(keys, moveInputRef?.current);
+    const hasMoveInput = fwd !== 0 || strafe !== 0;
+    if (hasMoveInput) {
+      autoWalk?.cancel();
+    }
+    const selfBeforeWalk = store.getState().players[selfId];
+    const autoWalkDir =
+      !hasMoveInput && selfBeforeWalk ? (autoWalk?.intent(selfBeforeWalk.pos) ?? null) : null;
+
+    // Read after E and auto-walk, which can seat the player, so this frame's movement doesn't overwrite the seated pose.
     const stateSnapshot = store.getState();
     const self = stateSnapshot.players[selfId];
     const body = liveRigidBody(selfBodyRef.current);
@@ -298,12 +326,6 @@ export function SceneFrame({
         stateSnapshot.worldSettings,
         stateSnapshot.characterConfigs,
       );
-    const { fwd, strafe, isRunning, speedScale } = moveIntent(keys, moveInputRef?.current);
-    const hasMoveInput = fwd !== 0 || strafe !== 0;
-    if (hasMoveInput) {
-      autoWalk?.cancel();
-    }
-    const autoWalkDir = !hasMoveInput && self ? (autoWalk?.intent(self.pos) ?? null) : null;
     const playerSpeed = autoWalkDir
       ? baseSpeed
       : (isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed) * speedScale;
@@ -313,16 +335,26 @@ export function SceneFrame({
     // animation to zero.
     const minProgress = 1 - movementBlockThreshold;
 
-    if (self && body) {
+    // Space key edge-trigger for jump: only fire on the frame the
+    // key transitions from up to down. Holding Space does not repeat.
+    const spaceDown = keys.has(' ');
+    const spacePressedThisFrame = spaceDown && !spaceWasDownRef.current;
+    spaceWasDownRef.current = spaceDown;
+
+    if (self?.seat != null && body) {
+      // No controller or gravity while seated; standing moves the store position, which the auto-warp applies next frame.
+      if (hasMoveInput || spacePressedThisFrame || autoWalkDir) {
+        seating?.stand();
+      }
+      body.setNextKinematicTranslation(self.pos);
+      verticalVelRef.current = 0;
+      airborneRef.current = false;
+      isAirborneRef.current = false;
+      wasMoving.current = false;
+    } else if (self && body) {
       // Destructure jump tunables from worldSettings for this frame.
       const { jumpVelocity, airControl, maxJumps, landingEaseMs } =
         stateSnapshot.worldSettings;
-
-      // Space key edge-trigger for jump: only fire on the frame the
-      // key transitions from up to down. Holding Space does not repeat.
-      const spaceDown = keys.has(' ');
-      const spacePressedThisFrame = spaceDown && !spaceWasDownRef.current;
-      spaceWasDownRef.current = spaceDown;
 
       // Airborne is an explicit state set on jump trigger and cleared
       // on full landing blend (or warp / respawn / gravity-off).

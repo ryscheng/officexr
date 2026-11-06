@@ -1,6 +1,8 @@
 import type { PlayerId } from '@officexr/sdk';
 import type { AutoWalkState, PlayControlsSource } from '@officexr/world/top-down';
 
+const NO_SEATING = { nearbySeatId: null, hasDesk: false };
+
 /** A `PlayControlsSource` for tests: records `goTo` calls and holds whatever state the test sets. */
 export function fakePlayControls(initial: AutoWalkState = { type: 'idle' }) {
   let state = initial;
@@ -11,6 +13,10 @@ export function fakePlayControls(initial: AutoWalkState = { type: 'idle' }) {
       goTos.push(targetId);
     },
     cancel: () => {},
+    sit: () => {},
+    stand: () => {},
+    returnToDesk: () => {},
+    getSeating: () => NO_SEATING,
     getState: () => state,
     subscribe: (cb) => {
       listeners.add(cb);
