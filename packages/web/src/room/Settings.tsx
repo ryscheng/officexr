@@ -33,20 +33,17 @@ const SettingsContext = createContext<Settings | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState(CLOSED);
-  const settings = useMemo<Settings>(() => {
-    const close = closeToWorld(() => setState(CLOSED));
-    return {
+  const close = useMemo(() => closeToWorld(() => setState(CLOSED)), []);
+  const settings = useMemo<Settings>(
+    () => ({
       ...state,
-      // A pointer-locked camera would otherwise keep turning, with the cursor hidden, behind the backdrop.
-      open: (tab) => {
-        document.exitPointerLock?.();
-        setState({ isOpen: true, tab: tab ?? null, pane: null });
-      },
+      open: (tab) => setState({ isOpen: true, tab: tab ?? null, pane: null }),
       openPane: (pane) => setState((s) => ({ ...s, pane })),
       back: () => (state.pane ? setState((s) => ({ ...s, pane: null })) : close()),
       close,
-    };
-  }, [state]);
+    }),
+    [state, close],
+  );
   return <SettingsContext.Provider value={settings}>{children}</SettingsContext.Provider>;
 }
 

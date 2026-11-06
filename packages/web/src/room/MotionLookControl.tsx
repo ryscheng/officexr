@@ -15,7 +15,6 @@ interface MotionLookControlProps {
   requestPermission?: () => Promise<MotionPermission>;
 }
 
-/** A switch, plus a Recenter button while it is on. */
 export function MotionLookControl({
   enabled,
   onEnabledChange,

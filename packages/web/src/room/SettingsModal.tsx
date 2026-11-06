@@ -1,16 +1,17 @@
-import { Fragment, useEffect, useId, useRef, type ReactNode } from 'react';
+import { Fragment, useId, type ReactNode } from 'react';
 import { Settings as SettingsIcon, X } from 'lucide-react';
 import { IconButton } from '../hud/IconButton';
 import { Keycap } from '../hud/ui/Keycap';
-import { Panel, PanelTitle } from '../hud/ui/Panel';
+import { Modal } from '../hud/ui/Modal';
+import { PanelTitle } from '../hud/ui/Panel';
 import { Tab, TabContent, TabList, Tabs } from '../hud/ui/Tabs';
 import { useSettings, type SettingsAction, type SettingsTab } from './Settings';
 
 export function SettingsButton() {
   const { open } = useSettings();
   return (
-    <div data-studio-panel className="pointer-events-none absolute top-[12px] right-[64px] z-20">
-      <IconButton icon={SettingsIcon} label="Settings" tone="accent" size="lg" onClick={() => open()} />
+    <div data-studio-panel className="pointer-events-none absolute top-[12px] right-[52px] z-20">
+      <IconButton icon={SettingsIcon} label="Settings" tone="accent" onClick={() => open()} />
     </div>
   );
 }
@@ -100,68 +101,54 @@ function OpenSettingsModal({ title, tabs, actions }: SettingsModalProps) {
   const { tab, open, back, close } = useSettings();
   const titleId = useId();
   const subtitleId = useId();
-  const ref = useRef<HTMLDivElement>(null);
-  // Focus must start inside, or Escape never reaches the modal; focusing a studio panel also releases world keys.
-  useEffect(() => ref.current?.focus(), []);
   const merged = mergeTabs(tabs);
   return (
-    <div
+    <Modal
       data-studio-panel
-      className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+      labelledBy={`${titleId} ${subtitleId}`}
+      onEscape={back}
+      className="z-40 bg-black/60"
+      panelClassName="flex max-h-full w-full max-w-3xl flex-col gap-4 overflow-auto p-5"
       onPointerDown={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          back();
-        }
-      }}
     >
-      <Panel
-        ref={ref}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`${titleId} ${subtitleId}`}
-        className="flex max-h-full w-full max-w-3xl flex-col gap-4 overflow-auto p-5 outline-none"
-      >
-        <header className="flex items-start justify-between gap-4">
-          <div>
-            <PanelTitle id={titleId} className="text-2xl">
-              Settings
-            </PanelTitle>
-            <p id={subtitleId} className="text-sm text-hud-text-2">
-              {title}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-hud-text-2">
-            <Keycap>Esc</Keycap>
-            <IconButton icon={X} label="Close" onClick={close} />
-          </div>
-        </header>
-        <div className="flex flex-col gap-5 sm:flex-row">
-          <nav className="flex shrink-0 flex-col gap-2 sm:w-56">
-            <SettingsActionButton primary onClick={close}>
-              Back to office
-            </SettingsActionButton>
-            {actions.map((action) => (
-              <Fragment key={action.id}>{action.render(close)}</Fragment>
-            ))}
-          </nav>
-          <Tabs value={tab ?? merged[0]?.id} onValueChange={open} className="min-w-0 flex-1">
-            <TabList>
-              {merged.map((t) => (
-                <Tab key={t.id} value={t.id}>
-                  {t.label}
-                </Tab>
-              ))}
-            </TabList>
-            {merged.map((t) => (
-              <TabContent key={t.id} value={t.id} className="pt-3 text-sm outline-none">
-                {t.content}
-              </TabContent>
-            ))}
-          </Tabs>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <PanelTitle id={titleId} className="text-2xl">
+            Settings
+          </PanelTitle>
+          <p id={subtitleId} className="text-sm text-hud-text-2">
+            {title}
+          </p>
         </div>
-      </Panel>
-    </div>
+        <div className="flex items-center gap-2 text-xs text-hud-text-2">
+          <Keycap>Esc</Keycap>
+          <IconButton icon={X} label="Close" onClick={close} />
+        </div>
+      </header>
+      <div className="flex flex-col gap-5 sm:flex-row">
+        <nav className="flex shrink-0 flex-col gap-2 sm:w-56">
+          <SettingsActionButton primary onClick={close}>
+            Back to office
+          </SettingsActionButton>
+          {actions.map((action) => (
+            <Fragment key={action.id}>{action.render(close)}</Fragment>
+          ))}
+        </nav>
+        <Tabs value={tab ?? merged[0]?.id} onValueChange={open} className="min-w-0 flex-1">
+          <TabList>
+            {merged.map((t) => (
+              <Tab key={t.id} value={t.id}>
+                {t.label}
+              </Tab>
+            ))}
+          </TabList>
+          {merged.map((t) => (
+            <TabContent key={t.id} value={t.id} className="pt-3 text-sm outline-none">
+              {t.content}
+            </TabContent>
+          ))}
+        </Tabs>
+      </div>
+    </Modal>
   );
 }

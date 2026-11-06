@@ -18,7 +18,6 @@ export const vrActions = (
     ? [{ id: 'vr', render: (close) => <VrAction store={store} onError={onError} close={close} /> }]
     : [];
 
-/** Closing Settings hands the keyboard back to the world, which a headset has no canvas to click to reclaim. */
 function VrAction({
   store,
   onError,

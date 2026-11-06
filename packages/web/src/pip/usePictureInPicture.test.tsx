@@ -9,7 +9,7 @@ import { MuteToggle } from '../voice/JaasMeeting';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import type { PipMediaSession } from './documentPictureInPicture';
 import { PipContents } from './PipContents';
-import { popOutActions } from './popOutAction';
+import { popOutActions } from './popOutActions';
 import { usePictureInPicture, type PictureInPictureDeps } from './usePictureInPicture';
 
 const realMatchMedia = window.matchMedia;

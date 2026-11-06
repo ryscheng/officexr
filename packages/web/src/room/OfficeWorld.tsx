@@ -15,7 +15,7 @@ import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
 import { usePingSender } from '../ping/usePingSender';
 import { PipContents } from '../pip/PipContents';
-import { popOutActions } from '../pip/popOutAction';
+import { popOutActions } from '../pip/popOutActions';
 import { usePictureInPicture } from '../pip/usePictureInPicture';
 import { CallBar } from '../voice/CallBar';
 import { JaasMeeting } from '../voice/JaasMeeting';
@@ -91,7 +91,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const pingInbox = useMemo(() => new PingInbox(), [local]);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const settings = useSettings();
-  const openSettings = settings.open;
+  const { open: openSettings, close: closeSettings } = settings;
   const openKeybinds = useCallback(() => openSettings('keybinds'), [openSettings]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pingSettingsOpen, setPingSettingsOpen] = useState(false);
@@ -104,6 +104,12 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       closePip();
     }
   }, [session.type, closePip]);
+  // Settings render inside PlayView, so they would otherwise reappear open after a rejoin.
+  useEffect(() => {
+    if (session.type !== 'ready') {
+      closeSettings();
+    }
+  }, [session.type, closeSettings]);
 
   const sendPing = useCallback((id: PlayerId) => {
     if (session.type === 'ready') {

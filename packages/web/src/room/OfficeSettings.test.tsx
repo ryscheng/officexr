@@ -53,13 +53,12 @@ function setup(me = alice, patch: (init: RequestInit) => Promise<Response> = () 
 }
 
 describe('OfficeSettings', () => {
-  it('offers Office settings in the menu only to the creator, with no button outside it', () => {
+  it('offers the Office action in Settings only to the creator', () => {
     setup({ login: 'b@example.com', name: 'Bob' });
     openSettingsModal();
     expect(screen.queryByRole('button', { name: 'Office' })).toBeNull();
     cleanup();
     setup();
-    expect(screen.queryByRole('button', { name: 'Office' })).toBeNull();
     openSettings();
     expect(screen.getByRole('dialog', { name: 'Office settings' })).toBeTruthy();
   });

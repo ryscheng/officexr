@@ -13,6 +13,8 @@ import { useShortcutsHotkey } from './useShortcutsHotkey';
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  // jsdom doesn't implement it, so a test defines it.
+  delete (document as Partial<Document>).exitPointerLock;
 });
 
 const settingsDialog = () => screen.queryByRole('dialog', { name: 'Settings HQ' });
@@ -128,10 +130,21 @@ describe('SettingsModal', () => {
 
   it('releases pointer lock on open', () => {
     const exitPointerLock = vi.fn();
-    document.exitPointerLock = exitPointerLock;
+    Object.defineProperty(document, 'exitPointerLock', { value: exitPointerLock, configurable: true, writable: true });
     render(<Harness />);
     openSettings();
     expect(exitPointerLock).toHaveBeenCalledOnce();
+  });
+
+  it('keeps its Escape from window-level Escape handlers', () => {
+    const onWindowKey = vi.fn();
+    window.addEventListener('keydown', onWindowKey);
+    render(<Harness />);
+    openSettings();
+    fireEvent.keyDown(settingsDialog()!, { key: 'Escape' });
+    window.removeEventListener('keydown', onWindowKey);
+    expect(settingsDialog()).toBeNull();
+    expect(onWindowKey).not.toHaveBeenCalled();
   });
 
   it('keeps a backdrop pointerdown from reaching elements beneath it', () => {
