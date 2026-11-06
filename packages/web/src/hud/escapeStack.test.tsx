@@ -52,6 +52,23 @@ describe('Escape stack', () => {
     expect(settingsDialog()).toBeNull();
   });
 
+  it('closes Settings before the inbox beneath it', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: /^Pings/ }));
+    openSettings();
+    esc(settingsDialog()!);
+    expect(settingsDialog()).toBeNull();
+    expect(screen.getByText('No pings yet')).toBeTruthy();
+    esc();
+    expect(screen.queryByText('No pings yet')).toBeNull();
+  });
+
+  it('keeps Settings closed while Esc is held', () => {
+    setup();
+    fireEvent.keyDown(window, { key: 'Escape', repeat: true });
+    expect(settingsDialog()).toBeNull();
+  });
+
   it('opens Settings when nothing is open and the pointer is free', () => {
     setup();
     esc();

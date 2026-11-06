@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Actions, OfficeState, Store } from '@officexr/sdk';
 import { focusWorld } from '@officexr/world/top-down';
+import { isComposing } from './isComposing';
 import { useEscapeLayer } from './useEscapeLayer';
 import { useChatVisibility } from './useChatVisibility';
 import { useStoreSelector } from '@officexr/world/top-down';
@@ -18,9 +19,6 @@ const sameNames = (a: Names, b: Names) => {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 };
-
-const isComposing = (e: { nativeEvent: KeyboardEvent }) =>
-  e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229;
 
 type ChatPanelProps = { store: Store; actions: Actions; selfId: string };
 
@@ -86,7 +84,7 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
       setDraft('');
       handBack(hide);
     },
-    true,
+    () => containerRef.current,
   );
 
   if (mode === 'hidden') {
@@ -94,7 +92,7 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (isComposing(e)) {
+    if (isComposing(e.nativeEvent)) {
       return;
     }
     if (e.key === 'Enter') {

@@ -1,9 +1,10 @@
 import { isTypingTarget } from '@officexr/world/top-down';
+import { isComposing } from './isComposing';
 
 export interface EscapeLayer {
   onEscape: () => void;
-  /** Handle Esc pressed inside a text field, for a layer that owns its input. */
-  ownsTyping?: boolean;
+  /** The layer's own element: Esc pressed in a text field inside it is handled, elsewhere it is ignored. */
+  owns?: () => Element | null;
 }
 
 /** Overlays in the order they opened. One Esc closes only the topmost; with none open, it runs the fallback. */
@@ -24,22 +25,29 @@ export class EscapeStack {
   }
 
   /** Runs on Esc when no layer is open and the pointer is free. */
-  setFallback(fallback: (() => void) | null): void {
+  setFallback(fallback: () => void): () => void {
     this.fallback = fallback;
     this.sync();
+    return () => {
+      if (this.fallback === fallback) {
+        this.fallback = null;
+        this.sync();
+      }
+    };
   }
 
   private readonly onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || e.isComposing) {
+    if (e.key !== 'Escape' || e.repeat || isComposing(e)) {
       return;
     }
+    const typing = isTypingTarget(e.target);
     const top = this.layers.at(-1);
     if (top) {
-      if (!isTypingTarget(e.target) || top.ownsTyping) {
+      if (!typing || (e.target instanceof Node && top.owns?.()?.contains(e.target))) {
         e.preventDefault();
         top.onEscape();
       }
-    } else if (this.fallback && !isTypingTarget(e.target) && this.doc.pointerLockElement == null) {
+    } else if (this.fallback && !typing && this.doc.pointerLockElement == null) {
       e.preventDefault();
       this.fallback();
     }
