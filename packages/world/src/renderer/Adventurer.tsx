@@ -5,6 +5,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import { modelUrl } from '../app/asset-url.ts';
 import { CHARACTERS } from './config.ts';
 import { characterUrl } from '../characters/registry.ts';
+import { createSitPoseClip, SIT_CLIP_NAME } from './sitPoseClip.ts';
 
 const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
 const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
@@ -40,6 +41,8 @@ export function applyGhostMaterials(scene: THREE.Object3D): THREE.Material[] {
   return clones;
 }
 
+const sitPoseClip = createSitPoseClip();
+
 for (const url of ANIMATION_URLS) {
   useGLTF.preload(url);
 }
@@ -62,7 +65,8 @@ export type AnimationState =
   | 'jumping'
   | 'shooting'
   | 'throwing'
-  | 'hit';
+  | 'hit'
+  | 'sitting';
 
 /**
  * Canonical clip name per state. Pulled from the rigs ANIM_GENERAL +
@@ -82,6 +86,7 @@ export const STATE_CLIPS: Record<AnimationState, string> = {
   shooting: '1H_Ranged_Shoot',
   throwing: '2H_Ranged_Throwing',
   hit: 'Hit_A',
+  sitting: SIT_CLIP_NAME,
 };
 
 /** Faster than authored so the bump reads as a quick recoil, not a flinch. */
@@ -94,16 +99,22 @@ const LOOPING_STATES: ReadonlySet<AnimationState> = new Set([
   'walking',
   'running',
   'jumping',  // loops while airborne
+  'sitting',
 ]);
+
+export type MotionState = Extract<
+  AnimationState,
+  'idle' | 'walking' | 'running' | 'jumping' | 'sitting'
+>;
 
 interface AdventurerProps {
   /** The GLB to load, e.g. `characterUrl(character)`. */
   url: string;
   /** Translucent, shadowless rendering for 2D-mode players. */
   ghost?: boolean;
-  /** Which clip the GAMEPLAY layer should loop. Comes from the
-   * velocity-derived motion state in `Players.tsx`. */
-  motion: 'idle' | 'walking' | 'running' | 'jumping';
+  /** Which clip the GAMEPLAY layer should loop. Derived in `Players.tsx` from
+   * the player's seat, airborne state and speed. */
+  motion: MotionState;
   /**
    * Optional preview override owned by the Character editor. When
    * non-null, plays this state's clip in place of `motion`'s. Setting
@@ -125,16 +136,6 @@ interface AdventurerProps {
    * no fade-in, no bump reactions. Used by the Mugshot mode to render
    * a deterministic, animation-free shot for snapshot testing. */
   paused?: boolean;
-}
-
-function clipForMotion(motion: AdventurerProps['motion']): string {
-  return motion === 'running'
-    ? STATE_CLIPS.running
-    : motion === 'walking'
-      ? STATE_CLIPS.walking
-      : motion === 'jumping'
-        ? STATE_CLIPS.jumping
-        : STATE_CLIPS.idle;
 }
 
 /**
@@ -203,6 +204,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         ...movement.animations,
         ...movementAdv.animations,
         ...combatRanged.animations,
+        sitPoseClip,
       ]) {
         if (seen.has(c.name)) continue;
         seen.add(c.name);
@@ -333,7 +335,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         if (actions[desired]) return desired;
         return STATE_CLIPS.idle;
       }
-      return clipForMotion(motion);
+      return STATE_CLIPS[motion];
     }, [previewState, motion, actions]);
 
     useEffect(() => {
@@ -401,6 +403,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       if (paused) return;
       if (bumpCounter === 0 || bumpCounter === lastBumpRef.current) return;
       lastBumpRef.current = bumpCounter;
+      if (motion === 'sitting') return;
       const hit = actions[STATE_CLIPS.hit];
       if (!hit) return;
       hit.reset();
@@ -417,6 +420,8 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         // starts cleanly.
         hit.stop();
       };
+      // motion is deliberately not a dep: a motion change must not cut a running Hit_A.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bumpCounter, actions, paused]);
 
     return (
