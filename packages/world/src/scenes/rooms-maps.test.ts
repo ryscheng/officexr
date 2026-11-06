@@ -230,6 +230,14 @@ describe('serializeMap + deserializeMap', () => {
     expect(() => deserializeMap(JSON.parse(JSON.stringify(m)))).toThrow(/voiceZone/);
   });
 
+  it('serializeMap passes deskAreas through and omits the key when absent', () => {
+    const base = makeFullMap();
+    const input = { name: 'm', rooms: [], spawnPoints: [], environment: base.environment };
+    const areas = [{ id: 'd1', min: { x: 0, z: 0 }, max: { x: 1, z: 1 } }];
+    expect(serializeMap({ ...input, deskAreas: areas }).deskAreas).toEqual(areas);
+    expect('deskAreas' in serializeMap(input)).toBe(false);
+  });
+
   it('round-trips deskAreas and rejects invalid ones', () => {
     const base = makeFullMap();
     const roundTrip = (deskAreas: unknown) =>
@@ -238,6 +246,8 @@ describe('serializeMap + deserializeMap', () => {
     expect(roundTrip([ok]).deskAreas).toEqual([ok]);
     expect('deskAreas' in JSON.parse(JSON.stringify(base))).toBe(false);
     expect(() => roundTrip({})).toThrow(/array/);
+    expect(() => roundTrip([null])).toThrow(/id/);
+    expect(() => roundTrip([{ ...ok, label: 3 }])).toThrow(/label/);
     expect(() => roundTrip([{ ...ok, id: '' }])).toThrow(/id/);
     expect(() => roundTrip([ok, ok])).toThrow(/collides/);
     expect(() => roundTrip([{ ...ok, id: 'r-1' }])).toThrow(/collides/);

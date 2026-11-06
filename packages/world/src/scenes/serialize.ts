@@ -498,7 +498,7 @@ export function serializeMap(input: SerializeMapInput): MapDocumentV2 {
     rooms: input.rooms,
     spawnPoints: input.spawnPoints,
     environment: input.environment,
-    deskAreas: input.deskAreas,
+    ...(input.deskAreas !== undefined && { deskAreas: input.deskAreas }),
   };
 }
 
@@ -508,7 +508,7 @@ function validateDeskAreas(raw: unknown, roomIds: ReadonlySet<string>): void {
   }
   const seen = new Set<string>();
   for (const area of raw as unknown[]) {
-    const { id, label, min, max } = (area ?? {}) as Record<string, any>;
+    const { id, label, min, max } = (area ?? {}) as Record<string, unknown>;
     if (typeof id !== 'string' || id === '') {
       throw new Error('map: every desk area needs a non-empty string `id`');
     }
@@ -519,10 +519,11 @@ function validateDeskAreas(raw: unknown, roomIds: ReadonlySet<string>): void {
     if (label !== undefined && typeof label !== 'string') {
       throw new Error(`map: desk area "${id}" label must be a string`);
     }
-    if (![min, max].every((c) => Number.isFinite(c?.x) && Number.isFinite(c?.z))) {
+    const [lo, hi] = [min, max].map((c) => (c ?? {}) as Record<string, unknown>);
+    if (![lo.x, lo.z, hi.x, hi.z].every(Number.isFinite)) {
       throw new Error(`map: desk area "${id}" needs finite min/max { x, z }`);
     }
-    if (min.x > max.x || min.z > max.z) {
+    if ((lo.x as number) > (hi.x as number) || (lo.z as number) > (hi.z as number)) {
       throw new Error(`map: desk area "${id}" min must not exceed max`);
     }
   }

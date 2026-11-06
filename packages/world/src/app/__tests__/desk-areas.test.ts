@@ -56,6 +56,11 @@ describe('resolveDeskAreas', () => {
     });
   });
 
+  it('reports multiple seats when an area has both extra chairs and extra desks', () => {
+    const r = resolve([inst('a', 'chair', 1, 1), inst('b', 'chair', 2, 1), inst('c', 'desk', 1, 3), inst('d', 'desk', 3, 3)]);
+    expect(r.violation).toBe('multiple-seats');
+  });
+
   it('judges an instance straddling the edge by its centre', () => {
     expect(resolve([inst('in', 'chair', 4, 2)]).seatInstanceId).toBe('in');
     expect(resolve([inst('out', 'chair', 4.2, 2)]).seatInstanceId).toBeNull();

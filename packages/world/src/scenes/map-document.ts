@@ -96,7 +96,7 @@ export interface MapEnvironment {
   ambientIntensity: number;
 }
 
-/** An XZ rectangle (world metres) that is a voice zone and holds at most one chair. */
+/** An XZ rectangle (world metres) that is a voice zone. An area with more than one chair or more than one desk has no seat. */
 export interface DeskArea {
   id: string;
   label?: string;
