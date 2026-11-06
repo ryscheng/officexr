@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { InMemoryMapStorage, emptyMapDocument } from '@officexr/world/scenes';
 import { useMapDocument } from '../useMapDocument.ts';
+import type { DeskAreaCheck } from '../deskAreaValidator.ts';
 
 /**
  * Tier 2 integration test: drives the real `useMapDocument` hook against
@@ -307,29 +308,40 @@ describe('useMapDocument', () => {
       expect(result.current.selection).toBeNull();
     });
 
-    it('withholds saving while an area is invalid and resumes once fixed', async () => {
-      const storage = makeStorage();
-      const save = vi.spyOn(storage, 'save');
-      // Stand-in for "two chairs inside the area": invalid until the area is renamed.
-      const validateDeskAreas = (doc: { deskAreas?: { id: string; label?: string }[] }) =>
-        (doc.deskAreas ?? [])
-          .filter((a) => a.label !== 'fixed')
-          .map((a) => ({ areaId: a.id, label: 'Desk', reason: '2 chairs' }));
-      const { result } = renderHook(() => useMapDocument({ storage, validateDeskAreas }));
-      await waitFor(() => expect(result.current.doc.name).toBe('default'));
+    it('withholds saving while the check is pending or has violations, then resumes', async () => {
+      vi.useFakeTimers();
+      try {
+        const storage = makeStorage();
+        const save = vi.spyOn(storage, 'save');
+        let check: DeskAreaCheck = { type: 'pending', reason: 'loading rooms' };
+        const { result, rerender } = renderHook(
+          ({ validateDeskAreas }) => useMapDocument({ storage, validateDeskAreas }),
+          { initialProps: { validateDeskAreas: () => check } },
+        );
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        expect(result.current.doc.name).toBe('default');
 
-      let id = '';
-      act(() => {
-        id = result.current.addDeskArea(bounds);
-      });
-      expect(result.current.deskAreaViolations).toHaveLength(1);
-      await new Promise((r) => setTimeout(r, 800));
-      expect(save).not.toHaveBeenCalled();
+        act(() => {
+          result.current.addDeskArea(bounds);
+        });
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(save).not.toHaveBeenCalled();
 
-      act(() => result.current.setDeskAreaLabel(id, 'fixed'));
-      expect(result.current.deskAreaViolations).toHaveLength(0);
-      await waitFor(() => expect(save).toHaveBeenCalledTimes(1), { timeout: 2000 });
-      expect(save.mock.calls[0][1]).toMatchObject({ deskAreas: [{ id, label: 'fixed' }] });
+        check = {
+          type: 'checked',
+          violations: [{ areaId: 'x', label: 'Desk x', reason: '2 chairs' }],
+        };
+        rerender({ validateDeskAreas: () => check });
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(save).not.toHaveBeenCalled();
+
+        check = { type: 'checked', violations: [] };
+        rerender({ validateDeskAreas: () => check });
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(save).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

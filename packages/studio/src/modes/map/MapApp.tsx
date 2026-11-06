@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApplication, useCatalogReady } from '@officexr/world/react';
-import type { SerializedMap } from '@officexr/world/scenes';
+import type { DeskArea } from '@officexr/world/scenes';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { EnvironmentPanel } from './EnvironmentPanel.tsx';
@@ -12,7 +12,12 @@ import { RoomPalette } from './RoomPalette.tsx';
 import { RoomInstanceList } from './RoomInstanceList.tsx';
 import { deskAreasOf } from './deskAreaGeometry.ts';
 import { DeskAreaList } from './DeskAreaList.tsx';
-import { findDeskAreaViolations, type DeskAreaViolation } from './deskAreaViolations.ts';
+import {
+  createDeskAreaValidator,
+  violationsOf,
+  type DeskAreaCheck,
+} from './deskAreaValidator.ts';
+import { assertNever } from '../../assertNever.ts';
 import { SpawnList } from './SpawnList.tsx';
 import { useMapDocument, type UseMapDocumentOptions } from './useMapDocument.ts';
 import { useMapRoomLibrary } from './useMapRoomLibrary.ts';
@@ -24,16 +29,18 @@ import { useMapRoomLibrary } from './useMapRoomLibrary.ts';
  * Layout:
  *   - LeftPanel:  RoomPalette (saved rooms) + MapPicker (load/new).
  *   - Main:       MapEditorCanvas (free-fly + per-room groups + spawn
- *                 markers + selection outline) with a top-right
- *                 MapToolbar overlay (Select / Move / Spawn).
- *   - SidePanel:  RoomInstanceList, SpawnList, environment panel.
+ *                 markers + desk-area rectangles + selection outline)
+ *                 with a top-right MapToolbar overlay (Select / Move /
+ *                 Spawn / Desk area).
+ *   - SidePanel:  RoomInstanceList, SpawnList, DeskAreaList, environment
+ *                 panel.
  */
 export function MapApp() {
   const { rooms: roomService, geometry, catalog } = useApplication();
   const catalogReady = useCatalogReady();
   const [validateDeskAreas, setValidateDeskAreas] = useState<
     NonNullable<UseMapDocumentOptions['validateDeskAreas']>
-  >(() => () => []);
+  >(() => (): DeskAreaCheck => ({ type: 'pending', reason: 'loading rooms' }));
   const map = useMapDocument({ validateDeskAreas });
   const referenced = useMemo(() => {
     const s = new Set<string>();
@@ -44,18 +51,33 @@ export function MapApp() {
   // The library is loaded from the document's rooms, so the validator can only
   // be built after the document exists and is handed back to it via state.
   useEffect(() => {
-    setValidateDeskAreas(() => (doc: SerializedMap) =>
-      catalogReady && doc.schemaVersion === 2
-        ? findDeskAreaViolations(
-            doc,
-            roomService.compileMap(doc, library.rooms, library.layouts).instances,
-            catalog,
-            geometry,
-          )
-        : [],
+    setValidateDeskAreas(() =>
+      createDeskAreaValidator({
+        catalogReady,
+        roomService,
+        catalog,
+        geometry,
+        library,
+      }),
     );
-  }, [catalogReady, roomService, catalog, geometry, library.rooms, library.layouts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogReady, roomService, catalog, geometry, library.rooms, library.layouts, library.settledRooms, library.settledLayouts]);
   const [tool, setTool] = useState<MapTool>('select');
+  const deskAreaViolations = violationsOf(map.deskAreaCheck);
+  const { selection, addDeskArea, setDeskAreaBounds, setSelection } = map;
+  // Dragging with a desk area selected redraws it; a fresh area is left
+  // unselected so the next drag draws another instead of resizing it.
+  const commitDeskArea = useCallback(
+    (bounds: Pick<DeskArea, 'min' | 'max'>) => {
+      if (selection !== null && selection.kind === 'desk-area') {
+        setDeskAreaBounds(selection.id, bounds);
+        return;
+      }
+      addDeskArea(bounds);
+      setSelection(null);
+    },
+    [selection, addDeskArea, setDeskAreaBounds, setSelection],
+  );
 
   // Tool keyboard shortcuts (V / M / P / R, Esc → select). Bound at window
   // scope so they work even when focus is in the canvas. Skip while
@@ -128,11 +150,11 @@ export function MapApp() {
             // another spawn.
             setTool('select');
           }}
-          onAddDeskArea={map.addDeskArea}
-          deskAreaViolations={map.deskAreaViolations}
+          onCommitDeskArea={commitDeskArea}
+          deskAreaViolations={deskAreaViolations}
           tool={tool}
         />
-        <DeskAreaErrorBanner violations={map.deskAreaViolations} />
+        <DeskAreaErrorBanner check={map.deskAreaCheck} />
         <CanvasHud mapName={map.mapName} />
         <MapToolbar tool={tool} onChange={setTool} />
       </main>
@@ -162,7 +184,7 @@ export function MapApp() {
             />
             <DeskAreaList
               areas={deskAreasOf(map.doc)}
-              violations={map.deskAreaViolations}
+              violations={deskAreaViolations}
               selection={map.selection}
               onSelect={map.setSelection}
               onRemove={map.removeDeskArea}
@@ -181,8 +203,19 @@ export function MapApp() {
   );
 }
 
-function DeskAreaErrorBanner({ violations }: { violations: readonly DeskAreaViolation[] }) {
-  if (violations.length === 0) {
+function deskAreaBannerText(check: DeskAreaCheck): string | null {
+  return check.type === 'pending'
+    ? `Not saved yet: ${check.reason}`
+    : check.type === 'checked'
+      ? check.violations.length === 0
+        ? null
+        : `Not saved: fix ${check.violations.map((v) => `${v.label} (${v.reason})`).join(', ')}`
+      : assertNever(check);
+}
+
+function DeskAreaErrorBanner({ check }: { check: DeskAreaCheck }) {
+  const text = deskAreaBannerText(check);
+  if (text === null) {
     return null;
   }
   return (
@@ -201,7 +234,7 @@ function DeskAreaErrorBanner({ violations }: { violations: readonly DeskAreaViol
         pointerEvents: 'none',
       }}
     >
-      Not saved: fix {violations.map((v) => `${v.label} (${v.reason})`).join(', ')}
+      {text}
     </div>
   );
 }

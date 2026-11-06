@@ -12,7 +12,11 @@ import {
 import { useDebouncedSave } from '../useDebouncedSave.ts';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 import { paths, studioApiOptions } from '../../apiOrigin.ts';
-import type { DeskAreaViolation } from './deskAreaViolations.ts';
+import {
+  NO_DESK_AREA_VIOLATIONS,
+  blocksSave,
+  type DeskAreaCheck,
+} from './deskAreaValidator.ts';
 import { deskAreasOf } from './deskAreaGeometry.ts';
 
 /**
@@ -25,12 +29,12 @@ export interface UseMapDocumentOptions {
   /** MapStorage to load/save through. Defaults to the Filesystem
    *  adapter with a LocalStorage fallback. */
   storage?: MapStorage;
-  /** Lists desk areas that break the one-chair/one-desk rule. While it
-   *  returns anything, auto-save is withheld. Defaults to none. */
-  validateDeskAreas?: (doc: SerializedMap) => DeskAreaViolation[];
+  /** Checks desk areas against the one-chair/one-desk rule. Auto-save is
+   *  withheld while the check is pending or finds violations. */
+  validateDeskAreas?: (doc: SerializedMap) => DeskAreaCheck;
 }
 
-const NO_VIOLATIONS = (): DeskAreaViolation[] => [];
+const NO_CHECK = (): DeskAreaCheck => NO_DESK_AREA_VIOLATIONS;
 
 const LAST_MAP_KEY = 'officexr:studio:lastMap';
 const DEFAULT_MAP_NAME = 'default';
@@ -77,8 +81,8 @@ export interface UseMapDocumentResult {
   mapName: string;
   selection: MapSelection;
   setSelection: (s: MapSelection) => void;
-  /** Desk areas currently breaking the rule; the map is not saved while non-empty. */
-  deskAreaViolations: DeskAreaViolation[];
+  /** The map is not saved while this is pending or has violations. */
+  deskAreaCheck: DeskAreaCheck;
   /** Mutators that hit the in-memory doc and rely on auto-save to
    *  persist. All of them stamp `updatedAt` so the dev-server's last-
    *  modified field stays current. */
@@ -120,7 +124,7 @@ export function useMapDocument(
   // studio booted in ?test=1 mode) → the default Filesystem stack.
   const testStorages = useTestStorages();
   const storage = options?.storage ?? testStorages?.mapStorage ?? fallbackStorage;
-  const validateDeskAreas = options?.validateDeskAreas ?? NO_VIOLATIONS;
+  const validateDeskAreas = options?.validateDeskAreas ?? NO_CHECK;
 
   const [mapName, setMapName] = useState<string>(() => {
     try {
@@ -194,7 +198,7 @@ export function useMapDocument(
     };
   }, [storage, mapName, settled]);
 
-  const deskAreaViolations = useMemo(
+  const deskAreaCheck = useMemo(
     () => validateDeskAreas(doc),
     [validateDeskAreas, doc],
   );
@@ -204,11 +208,11 @@ export function useMapDocument(
     scheduleSave(
       loadedForRef.current !== mapName ||
         json === lastSavedJsonRef.current ||
-        deskAreaViolations.length > 0
+        blocksSave(deskAreaCheck)
         ? null
         : { mapName, storage, doc, json },
     );
-  }, [doc, mapName, storage, scheduleSave, deskAreaViolations]);
+  }, [doc, mapName, storage, scheduleSave, deskAreaCheck]);
 
   const stampUpdated = useCallback(
     (mut: (prev: SerializedMap) => SerializedMap) =>
@@ -416,7 +420,7 @@ export function useMapDocument(
     mapName,
     selection,
     setSelection,
-    deskAreaViolations,
+    deskAreaCheck,
     addRoom,
     removeRoom,
     setRoomPosition,

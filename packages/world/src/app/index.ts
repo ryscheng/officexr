@@ -81,7 +81,7 @@ export {
   type SoundCatalogEntry,
 } from './asset-url.ts';
 export { resolveDeskAreas, deskAreaMembers, deskAreaLabel, type ResolvedDeskArea } from './desk-areas.ts';
-export { computeVoiceZones } from './voice-zones.ts';
+export { computeVoiceZones, computeRoomVoiceZones } from './voice-zones.ts';
 export { computeBuildingFootprint } from './building-footprint.ts';
 export { loadMap, MapNotFoundError } from './map-loader.ts';
 export type { BakedLayoutPlacement, LoadedMap, MapLoaderDeps } from './map-loader.ts';

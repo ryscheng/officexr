@@ -1,15 +1,15 @@
 import type { DeskArea, SerializedMap } from '@officexr/world/scenes';
+import { VOXEL_SIZE } from '@officexr/world/renderer';
 
-/** Desk-area corners land on the 0.5 m voxel grid. */
-const GRID = 0.5;
+type Bounds = Pick<DeskArea, 'min' | 'max'>;
 
-const snap = (v: number) => Math.round(v / GRID) * GRID;
+const snap = (v: number) => Math.round(v / VOXEL_SIZE) * VOXEL_SIZE;
 
-/** Snapped rectangle spanned by two floor points, or null when it has no area. */
+/** Voxel-grid-snapped rectangle spanned by two floor points, or null when it has no area. */
 export function snapDeskAreaBounds(
   a: { x: number; z: number },
   b: { x: number; z: number },
-): Pick<DeskArea, 'min' | 'max'> | null {
+): Bounds | null {
   const min = { x: snap(Math.min(a.x, b.x)), z: snap(Math.min(a.z, b.z)) };
   const max = { x: snap(Math.max(a.x, b.x)), z: snap(Math.max(a.z, b.z)) };
   return min.x === max.x || min.z === max.z ? null : { min, max };

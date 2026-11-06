@@ -32,6 +32,9 @@ export interface UseMapRoomLibraryResult {
   rooms: ReadonlyMap<string, RoomDocument>;
   /** Layouts linked by the loaded rooms, which `compileMap` needs for their geometry. */
   layouts: ReadonlyMap<string, LayoutDocument>;
+  /** Room / layout names whose load has finished, successfully or not. */
+  settledRooms: ReadonlySet<string>;
+  settledLayouts: ReadonlySet<string>;
   allRoomNames: readonly string[];
   loading: boolean;
   /** Refresh the room-name listing (used by RoomPalette's reload). */
@@ -78,7 +81,7 @@ export function useMapRoomLibrary(
     void refreshList();
   }, [refreshList]);
 
-  const { docs: rooms, loading } = useLoadedDocs(referenced, storage, 'room');
+  const { docs: rooms, settled: settledRooms, loading } = useLoadedDocs(referenced, storage, 'room');
 
   const layoutNames = useMemo(() => {
     const names = new Set<string>();
@@ -89,9 +92,13 @@ export function useMapRoomLibrary(
     }
     return names;
   }, [rooms]);
-  const { docs: layouts } = useLoadedDocs(layoutNames, layoutStorage, 'layout');
+  const { docs: layouts, settled: settledLayouts } = useLoadedDocs(
+    layoutNames,
+    layoutStorage,
+    'layout',
+  );
 
-  return { rooms, layouts, allRoomNames, loading, refreshList };
+  return { rooms, layouts, settledRooms, settledLayouts, allRoomNames, loading, refreshList };
 }
 
 /**
@@ -103,8 +110,9 @@ function useLoadedDocs<T>(
   names: ReadonlySet<string>,
   storage: { load(name: string): Promise<T | null> },
   kind: string,
-): { docs: ReadonlyMap<string, T>; loading: boolean } {
+): { docs: ReadonlyMap<string, T>; settled: ReadonlySet<string>; loading: boolean } {
   const [docs, setDocs] = useState<ReadonlyMap<string, T>>(() => new Map());
+  const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const tried = useRef(new Set<string>());
 
@@ -131,6 +139,7 @@ function useLoadedDocs<T>(
       for (const { name } of results) {
         tried.current.add(name);
       }
+      setSettled(new Set(tried.current));
       setDocs((prev) => {
         const next = new Map(prev);
         for (const { name, doc } of results) {
@@ -145,5 +154,5 @@ function useLoadedDocs<T>(
     };
   }, [names, storage, kind]);
 
-  return { docs, loading };
+  return { docs, settled, loading };
 }

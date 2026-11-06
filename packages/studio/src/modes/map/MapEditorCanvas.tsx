@@ -10,7 +10,7 @@ import {
   type SpawnPoint,
   type DeskArea,
 } from '@officexr/world/scenes';
-import { bakedLayoutUrl, computeVoiceZones, deskAreaLabel } from '@officexr/world/app';
+import { bakedLayoutUrl, computeRoomVoiceZones, deskAreaLabel } from '@officexr/world/app';
 import { useApplication, useCatalogReady } from '@officexr/world/react';
 import {
   BakedLayout,
@@ -27,7 +27,9 @@ import type { MapSelection } from './useMapDocument.ts';
 import type { MapTool } from './mapTools.ts';
 import { resolveRoomPointerAction } from './mapPointerActions.ts';
 import { computeRoomAabbs } from './roomAabbs.ts';
-import { deskAreasOf, snapDeskAreaBounds } from './deskAreaGeometry.ts';
+import { deskAreasOf } from './deskAreaGeometry.ts';
+import { reduceDeskAreaDrag, type DeskAreaDrag } from './deskAreaDrag.ts';
+import { assertNever } from '../../assertNever.ts';
 import type { DeskAreaViolation } from './deskAreaViolations.ts';
 import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 import { paths, STUDIO_API_ORIGIN, studioApiUrl } from '../../apiOrigin.ts';
@@ -75,7 +77,7 @@ interface MapEditorCanvasProps {
   onSelect: (sel: MapSelection) => void;
   onMoveRoom: (id: string, position: [number, number, number]) => void;
   onPlaceSpawn: (position: [number, number, number]) => void;
-  onAddDeskArea: (bounds: Pick<DeskArea, 'min' | 'max'>) => void;
+  onCommitDeskArea: (bounds: Pick<DeskArea, 'min' | 'max'>) => void;
   deskAreaViolations: readonly DeskAreaViolation[];
   /** Active map-editor tool — Select / Move / Spawn / Desk area. Determines what
    * a pointer-down on a room or on the floor does. */
@@ -129,7 +131,7 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
         violations={props.deskAreaViolations}
         selection={props.selection}
         onSelect={props.onSelect}
-        onAdd={props.onAddDeskArea}
+        onCommit={props.onCommitDeskArea}
         tool={props.tool}
       />
       <SpawnLayer
@@ -218,6 +220,7 @@ interface FloorPickerProps {
  *   - **spawn**: NO-OP. Spawns must land on a room surface, so a click
  *     that fell all the way through to the floor (no room beneath the
  *     cursor) is rejected.
+ *   - **desk-area**: NO-OP. The drawing layer handles the drag itself.
  *
  * The plane has to be large enough that a wide-FOV fly camera always
  * has it in frame; 1000 units = 500 voxels = bigger than any realistic
@@ -229,11 +232,15 @@ function FloorPicker({ onPlaceSpawn: _onPlaceSpawn, onDeselect, tool }: FloorPic
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, 0, 0]}
       onPointerDown={(e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0) {
+          return;
+        }
         e.stopPropagation();
-        // Spawn tool: ignore empty-ground clicks; spawns are
-        // room-surface-only by design.
-        if (tool === 'spawn' || tool === 'desk-area') return;
+        // Spawn tool: spawns are room-surface-only, so ignore empty ground.
+        // Desk-area tool: the drawing layer owns the gesture.
+        if (tool === 'spawn' || tool === 'desk-area') {
+          return;
+        }
         onDeselect();
       }}
     >
@@ -491,17 +498,21 @@ function RoomInstanceMesh({
             // Missing-room placeholder: no drag (we have no compiled
             // AABB), but spawn + select still route via the shared
             // decision so behavior matches a real room.
-            if (resolveRoomPointerAction(tool) === 'place-spawn') {
-              // Use the raw raycast hit Y — the surface of whatever
-              // was clicked. Voxel-rounding is intentionally gone:
-              // baked layouts may have non-voxel-aligned surfaces.
-              onPlaceSpawn([e.point.x, e.point.y, e.point.z]);
-              return;
+            const action = resolveRoomPointerAction(tool);
+            switch (action) {
+              case 'place-spawn':
+                // Raw raycast hit Y: baked layouts may have non-voxel-aligned surfaces.
+                onPlaceSpawn([e.point.x, e.point.y, e.point.z]);
+                return;
+              case 'ignore':
+                return;
+              case 'select':
+              case 'select-drag':
+                onSelect();
+                return;
+              default:
+                assertNever(action);
             }
-            if (resolveRoomPointerAction(tool) === 'ignore') {
-              return;
-            }
-            onSelect();
           }}
         >
           <boxGeometry args={[VOXEL_SIZE * 2, VOXEL_SIZE, VOXEL_SIZE * 2]} />
@@ -538,29 +549,30 @@ function RoomInstanceMesh({
         // layout in front of the raw cubes.
         e.stopPropagation();
         const action = resolveRoomPointerAction(tool);
-        if (action === 'place-spawn') {
-          // Spawn tool: drop at the raw raycast hit. `e.point.y` is
-          // the actual surface Y from R3F's raycaster — works for
-          // both cube tops and baked-layout surfaces.
-          onPlaceSpawn([e.point.x, e.point.y, e.point.z]);
-          return;
-        }
-        if (action === 'ignore') {
-          return;
-        }
-        // Select OR Move: select the room. The Move tool also kicks
-        // off a drag in the same gesture so the user doesn't have to
-        // click twice.
-        onSelect();
-        if (action === 'select-drag') {
-          // Capture the raycast hit's offset from the room anchor so
-          // the room doesn't jump its centre to the cursor on drag.
-          dragStartOffset.current = [
-            e.point.x - groupPos[0],
-            0,
-            e.point.z - groupPos[2],
-          ];
-          dragging.current = true;
+        switch (action) {
+          case 'place-spawn':
+            // `e.point.y` is the actual surface Y from R3F's raycaster — works
+            // for both cube tops and baked-layout surfaces.
+            onPlaceSpawn([e.point.x, e.point.y, e.point.z]);
+            return;
+          case 'ignore':
+            return;
+          case 'select':
+            onSelect();
+            return;
+          case 'select-drag':
+            onSelect();
+            // Capture the raycast hit's offset from the room anchor so
+            // the room doesn't jump its centre to the cursor on drag.
+            dragStartOffset.current = [
+              e.point.x - groupPos[0],
+              0,
+              e.point.z - groupPos[2],
+            ];
+            dragging.current = true;
+            return;
+          default:
+            assertNever(action);
         }
       }}
     >
@@ -630,7 +642,7 @@ function VoiceZoneLayer({
   const zones = useMemo(
     () =>
       catalogReady && doc.schemaVersion === 2
-        ? computeVoiceZones(doc, rooms, layouts, roomService, geometry)
+        ? computeRoomVoiceZones(doc, rooms, layouts, roomService, geometry)
         : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [catalogReady, doc.rooms, doc.schemaVersion, rooms, layouts, roomService, geometry],
@@ -673,7 +685,7 @@ interface DeskAreaLayerProps {
   violations: readonly DeskAreaViolation[];
   selection: MapSelection;
   onSelect: (sel: MapSelection) => void;
-  onAdd: (bounds: Pick<DeskArea, 'min' | 'max'>) => void;
+  onCommit: (bounds: Pick<DeskArea, 'min' | 'max'>) => void;
   tool: MapTool;
 }
 
@@ -720,8 +732,10 @@ function DeskAreaRect({
  * Renders desk-area rectangles and, while the Desk area tool is active,
  * owns the press-drag-release gesture on the y=0 plane. It listens on the
  * canvas element directly because the gesture must start over rooms too.
+ * In the Select tool a rectangle can be clicked on bare floor; where a room
+ * stands on it, the room's own handler wins and the side-panel list selects it.
  */
-function DeskAreaLayer({ areas, violations, selection, onSelect, onAdd, tool }: DeskAreaLayerProps) {
+function DeskAreaLayer({ areas, violations, selection, onSelect, onCommit, tool }: DeskAreaLayerProps) {
   const { camera, gl } = useThree();
   const [draft, setDraft] = useState<Pick<DeskArea, 'min' | 'max'> | null>(null);
 
@@ -742,23 +756,28 @@ function DeskAreaLayer({ areas, violations, selection, onSelect, onAdd, tool }: 
       const hit = raycaster.ray.intersectPlane(floor, new THREE.Vector3());
       return hit ? { x: hit.x, z: hit.z } : null;
     };
-    let anchor: { x: number; z: number } | null = null;
+    let drag: DeskAreaDrag = { type: 'idle' };
+    const apply = (type: 'down' | 'move' | 'up', e: PointerEvent) => {
+      const result = reduceDeskAreaDrag(drag, { type, point: floorPoint(e) });
+      drag = result.drag;
+      setDraft(drag.type === 'dragging' ? drag.draft : null);
+      if (result.commit) {
+        onCommit(result.commit);
+      }
+    };
     const onDown = (e: PointerEvent) => {
       if (e.button === 0) {
-        anchor = floorPoint(e);
+        apply('down', e);
       }
     };
     const onMove = (e: PointerEvent) => {
-      const p = anchor && floorPoint(e);
-      setDraft(anchor && p ? snapDeskAreaBounds(anchor, p) : null);
+      if (drag.type === 'dragging') {
+        apply('move', e);
+      }
     };
     const onUp = (e: PointerEvent) => {
-      const p = anchor && floorPoint(e);
-      const bounds = anchor && p ? snapDeskAreaBounds(anchor, p) : null;
-      anchor = null;
-      setDraft(null);
-      if (bounds) {
-        onAdd(bounds);
+      if (drag.type === 'dragging') {
+        apply('up', e);
       }
     };
     dom.addEventListener('pointerdown', onDown);
@@ -770,7 +789,7 @@ function DeskAreaLayer({ areas, violations, selection, onSelect, onAdd, tool }: 
       window.removeEventListener('pointerup', onUp);
       setDraft(null);
     };
-  }, [tool, camera, gl, onAdd]);
+  }, [tool, camera, gl, onCommit]);
 
   return (
     <>

@@ -1,3 +1,4 @@
+import { assertNever } from '../../assertNever.ts';
 import type { MapTool } from './mapTools.ts';
 
 /**
@@ -29,5 +30,7 @@ export function resolveRoomPointerAction(tool: MapTool): RoomPointerAction {
       return 'select';
     case 'desk-area':
       return 'ignore';
+    default:
+      return assertNever(tool);
   }
 }

@@ -1,4 +1,4 @@
-import { deskAreaLabel, deskAreaMembers, type ApplicationApi } from '@officexr/world/app';
+import { deskAreaMembers, type ApplicationApi } from '@officexr/world/app';
 import type { SerializedMap } from '@officexr/world/scenes';
 import type { WorldObjects } from '@officexr/sdk';
 import { deskAreasOf } from './deskAreaGeometry.ts';
@@ -25,6 +25,6 @@ export function findDeskAreaViolations(
     ].filter((c) => c !== null);
     return causes.length === 0
       ? []
-      : { areaId: area.id, label: deskAreaLabel(area), reason: causes.join(', ') };
+      : { areaId: area.id, label: area.label ?? `Desk ${area.id}`, reason: causes.join(', ') };
   });
 }
