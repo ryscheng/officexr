@@ -359,6 +359,17 @@ describe('studio storage plugin: map schema v2 migration', () => {
     expect(got.rooms[0].voiceZone).toBe(true);
   });
 
+  it('stores desk areas and rejects invalid ones with 400', async () => {
+    await setup();
+    const url = await boot(false);
+    const area = { id: 'd', min: { x: 0, z: 0 }, max: { x: 1, z: 1 } };
+    const putMap = (deskAreas: unknown) =>
+      fetch(`${url}/api/maps/desks`, { method: 'PUT', body: JSON.stringify({ ...emptyMapDocument('desks'), deskAreas }) });
+    expect((await putMap([area])).status).toBe(204);
+    expect((await (await fetch(`${url}/api/maps/desks`)).json()).deskAreas).toEqual([area]);
+    expect((await putMap([{ ...area, max: { x: -1, z: 1 } }])).status).toBe(400);
+  });
+
   it('stores a v1 PUT as migrated v2', async () => {
     await setup();
     const url = await boot(false);

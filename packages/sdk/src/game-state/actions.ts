@@ -15,6 +15,7 @@ import type {
   Stroke,
   Vec3,
   VoiceZone,
+  DeskAreaState,
   WorldMap,
   WorldMapLayer,
   WorldObjects,
@@ -62,6 +63,8 @@ export interface Actions {
   setWorldObjects(objects: WorldObjects): void;
   /** Local-only: never broadcast. */
   setVoiceZones(zones: VoiceZone[]): void;
+  /** Local-only: never broadcast. */
+  setDeskAreas(areas: DeskAreaState[]): void;
   /** Sit on the placed object instance `instanceId`, or stand up with null. */
   setSelfSeat(instanceId: string | null): void;
   /** Replace all desk claims. Never broadcast: only the realtime server distributes them. */
@@ -255,6 +258,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     setVoiceZones(zones) {
       store.setState(() => ({ voiceZones: zones }));
+    },
+
+    setDeskAreas(areas) {
+      store.setState(() => ({ deskAreas: areas }));
     },
 
     setSelfSeat(instanceId) {

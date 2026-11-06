@@ -96,6 +96,14 @@ export interface MapEnvironment {
   ambientIntensity: number;
 }
 
+/** An XZ rectangle (world metres) that is a voice zone. An area with more than one chair or more than one desk has no seat. */
+export interface DeskArea {
+  id: string;
+  label?: string;
+  min: { x: number; z: number };
+  max: { x: number; z: number };
+}
+
 export interface MapDocumentV1 {
   schemaVersion: 1;
   name: string;
@@ -104,6 +112,7 @@ export interface MapDocumentV1 {
   rooms: RoomInstance[];
   spawnPoints: SpawnPoint[];
   environment: MapEnvironment;
+  deskAreas?: DeskArea[];
 }
 
 /** Same shape as v1, but a placement's position and rotation now apply to baked layouts too. */

@@ -3,7 +3,7 @@ import type { OfficeState, PlayerState, ScreenShareSignal } from './types.ts';
 // JSON-shaped serialization of OfficeState. Sets become arrays. MediaStream
 // references are stripped (re-established via WebRTC after apply). World
 // constants/settings and desk claims are left out: only the realtime server supplies them.
-// Voice zones are left out: each client derives them from its own loaded map.
+// Voice zones and desk areas are left out: each client derives them from its own loaded map.
 export type SerializedOfficeState = Omit<
   OfficeState,
   | 'proximity'
@@ -15,6 +15,7 @@ export type SerializedOfficeState = Omit<
   | 'voiceZones'
   | 'callRoster'
   | 'deskClaims'
+  | 'deskAreas'
 > & {
   players: Record<
     string,

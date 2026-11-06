@@ -58,6 +58,7 @@ export {
   isBakedRoom,
 } from './commands.ts';
 export {
+  type DeskArea,
   type MapDocumentV1,
   type MapDocumentV2,
   type SerializedMap,

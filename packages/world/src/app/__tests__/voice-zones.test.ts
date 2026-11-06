@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultApi } from '../create-default-api.ts';
+import { voiceZoneAt } from '@officexr/sdk';
 import { computeVoiceZones } from '../voice-zones.ts';
 import {
   emptyLayoutDocument,
@@ -92,6 +93,28 @@ describe('computeVoiceZones', () => {
       [hall()],
     );
     expect(zones.map((z) => z.id)).toEqual(['a', 'd']);
+  });
+
+  it('emits a zone per desk area, labelled Desk by default', () => {
+    const map = {
+      ...emptyMapDocument('m'),
+      deskAreas: [
+        { id: 'd1', min: { x: 0, z: 0 }, max: { x: 2, z: 2 } },
+        { id: 'd2', label: 'Ana', min: { x: 5, z: 5 }, max: { x: 6, z: 6 } },
+      ],
+    };
+    const zones = computeVoiceZones(map, new Map(), new Map(), api.rooms, api.geometry);
+    expect(zones.map((z) => [z.id, z.label])).toEqual([['d1', 'Desk'], ['d2', 'Ana']]);
+  });
+
+  it('lets a desk area inside a flagged room win over the room zone', () => {
+    const map = {
+      ...emptyMapDocument('m'),
+      rooms: [{ id: 'z', roomName: 'hall', position: [0, 0, 0] as [number, number, number], voiceZone: true }],
+      deskAreas: [{ id: 'd', min: { x: 0, z: 0 }, max: { x: 0.1, z: 0.1 } }],
+    };
+    const zones = computeVoiceZones(map, new Map([['hall', hall()]]), new Map(), api.rooms, api.geometry);
+    expect(voiceZoneAt(zones, { x: 0.05, z: 0.05 })?.id).toBe('d');
   });
 
   it('skips a flagged placement whose room compiles to nothing', () => {
