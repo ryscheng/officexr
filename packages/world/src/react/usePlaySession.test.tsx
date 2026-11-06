@@ -19,12 +19,14 @@ import { ApplicationProvider } from './application-context.tsx';
 import { usePlaySession, type UsePlaySessionOptions } from './usePlaySession.ts';
 import { INITIAL_WORLD_READINESS, worldReadiness, type WorldReadinessEvent } from './world-readiness.ts';
 
+import kindsJson from '../../world-object-kinds.json' with { type: 'json' };
+
 afterEach(() => {
   cleanup();
 });
 
 function setup() {
-  const api = createDefaultApi({ fetcher: async () => new Response('{}', { status: 404 }) });
+  const api = createDefaultApi({ fetcher: async () => Response.json(kindsJson) });
   const room = emptyRoomDocument('room');
   room.commands.push(newPlaceObject({ kindId: 'colored_block_blue', position: [0, 0, 0] }));
   const map = emptyMapDocument('office');
@@ -41,16 +43,26 @@ function setup() {
     { id: 'c', roomName: 'baked-room', position: [40, 0, 0] },
     { id: 'd', roomName: 'annex-room', position: [0, 0, 40] },
   ];
+  const chairRoom = emptyRoomDocument('chair-room');
+  chairRoom.commands.push(newPlaceObject({ kindId: 'furniture_chair_a', position: [0, 0, 0] }));
+  const deskMap = emptyMapDocument('desk');
+  deskMap.rooms = [{ id: 'r', roomName: 'chair-room', position: [0, 0, 0] }];
+  deskMap.deskAreas = [
+    { id: 'near', min: { x: -5, z: -5 }, max: { x: 5, z: 5 } },
+    { id: 'far', min: { x: 50, z: 50 }, max: { x: 60, z: 60 } },
+  ];
   const storages = {
     maps: new InMemoryMapStorage({
       seed: [
         { name: 'office', doc: map },
         { name: 'baked', doc: bakedMap },
+        { name: 'desk', doc: deskMap },
       ],
     }),
     rooms: new InMemoryRoomStorage({
       seed: [
         { name: 'room', doc: room },
+        { name: 'chair-room', doc: chairRoom },
         { name: 'baked-room', doc: bakedRoom },
         { name: 'annex-room', doc: annexRoom },
       ],
@@ -60,6 +72,7 @@ function setup() {
   const actions = {
     setWorldObjects: vi.fn(),
     setVoiceZones: vi.fn(),
+    setDeskAreas: vi.fn(),
     setSelfPosition: vi.fn(),
   };
   const onMapApplied = vi.fn();
@@ -117,6 +130,19 @@ describe('usePlaySession', () => {
 
     rerender({ actions, mapName: 'baked' });
     await waitFor(() => expect(store.getState().voiceZones).toEqual([]));
+  });
+
+  it('puts resolved desk areas in the store with each area\'s chair', async () => {
+    const { render } = setup();
+    const store = createStore({ selfId: 'me', officeId: 'o' });
+    const { result } = render('desk', { actions: createActions(store) });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const { deskAreas, voiceZones } = store.getState();
+    expect(deskAreas.map((a) => [a.id, a.seatInstanceId?.startsWith('r/') ?? null])).toEqual([
+      ['near', true],
+      ['far', null],
+    ]);
+    expect(voiceZones.map((z) => z.id)).toEqual(['near', 'far']);
   });
 
   it('passes every layout placement through with its GLB url', async () => {

@@ -13,6 +13,7 @@ import {
 import { loadAll } from '../scenes/map-layout-placements.ts';
 import type { CatalogService, InstanceGeometryService, RoomService } from './types.ts';
 import { computeBuildingFootprint } from './building-footprint.ts';
+import { resolveDeskAreas, type ResolvedDeskArea } from './desk-areas.ts';
 import { computeVoiceZones } from './voice-zones.ts';
 
 export type { BakedLayoutPlacement };
@@ -26,7 +27,7 @@ export class MapNotFoundError extends Error {
 
 export interface MapLoaderDeps {
   storages: { maps: Pick<MapStorage, 'load'>; rooms: RoomStorage; layouts: LayoutStorage };
-  catalog: Pick<CatalogService, 'ready'>;
+  catalog: Pick<CatalogService, 'ready' | 'getKind'>;
   roomService: Pick<RoomService, 'compileMap'>;
   geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>;
 }
@@ -36,6 +37,7 @@ export interface LoadedMap {
   rooms: ReadonlyMap<string, RoomDocument>;
   worldObjects: WorldObjects;
   voiceZones: VoiceZone[];
+  deskAreas: ResolvedDeskArea[];
   /** Empty when no room is flagged `building`; consumers treat that as no restriction. */
   buildingFootprint: readonly FootprintRect[];
   spawnPoints: readonly SpawnPoint[];
@@ -67,6 +69,7 @@ export async function loadMap(
   const worldObjects = roomService.compileMap(mapDoc, rooms, layouts);
   // Hands the zone helper the compile above rather than compiling the map twice.
   const voiceZones = computeVoiceZones(mapDoc, rooms, layouts, { compileMap: () => worldObjects }, geometry);
+  const deskAreas = resolveDeskAreas(mapDoc, worldObjects.instances, catalog, geometry);
   const buildingFootprint = computeBuildingFootprint(mapDoc, worldObjects.instances, geometry);
 
   return {
@@ -74,6 +77,7 @@ export async function loadMap(
     rooms,
     worldObjects,
     voiceZones,
+    deskAreas,
     buildingFootprint,
     spawnPoints: mapDoc.spawnPoints,
     bakedLayouts,

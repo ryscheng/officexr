@@ -12,7 +12,7 @@ const NO_FOOTPRINT: readonly FootprintRect[] = [];
 export type PlayStorages = MapLoaderDeps['storages'];
 
 export interface UsePlaySessionOptions {
-  actions: Pick<Actions, 'setWorldObjects' | 'setVoiceZones' | 'setSelfPosition'>;
+  actions: Pick<Actions, 'setWorldObjects' | 'setVoiceZones' | 'setDeskAreas' | 'setSelfPosition'>;
   mapName: string;
   storages: PlayStorages;
   /** Changing this re-loads and re-applies `mapName` (reset & respawn). */
@@ -64,6 +64,7 @@ export function usePlaySession({
         }
         actions.setWorldObjects(map.worldObjects);
         actions.setVoiceZones(map.voiceZones);
+        actions.setDeskAreas(map.deskAreas.map(({ violation: _violation, ...area }) => area));
         const spawnPoints = toVec3s(map);
         const spawn = spawnPoints[0];
         if (spawn) {

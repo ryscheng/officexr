@@ -369,6 +369,15 @@ export type VoiceZone = {
   max: { x: number; z: number };
 };
 
+/** A resolved desk area: a voice-zone rectangle whose single chair, if any, is `seatInstanceId`. */
+export type DeskAreaState = {
+  id: string;
+  label: string;
+  min: { x: number; z: number };
+  max: { x: number; z: number };
+  seatInstanceId: string | null;
+};
+
 export type OfficeState = {
   selfId: PlayerId;
   officeId: string;
@@ -406,6 +415,8 @@ export type OfficeState = {
   worldObjects: WorldObjects;
   /** Local-only: never snapshotted or broadcast. */
   voiceZones: VoiceZone[];
+  /** Local-only: never snapshotted or broadcast. */
+  deskAreas: DeskAreaState[];
 };
 
 export type GameEvent =

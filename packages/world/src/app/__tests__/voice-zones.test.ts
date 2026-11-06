@@ -94,6 +94,18 @@ describe('computeVoiceZones', () => {
     expect(zones.map((z) => z.id)).toEqual(['a', 'd']);
   });
 
+  it('emits a zone per desk area, labelled Desk by default', () => {
+    const map = {
+      ...emptyMapDocument('m'),
+      deskAreas: [
+        { id: 'd1', min: { x: 0, z: 0 }, max: { x: 2, z: 2 } },
+        { id: 'd2', label: 'Ana', min: { x: 5, z: 5 }, max: { x: 6, z: 6 } },
+      ],
+    };
+    const zones = computeVoiceZones(map, new Map(), new Map(), api.rooms, api.geometry);
+    expect(zones.map((z) => [z.id, z.label])).toEqual([['d1', 'Desk'], ['d2', 'Ana']]);
+  });
+
   it('skips a flagged placement whose room compiles to nothing', () => {
     expect(
       zonesFor([{ id: 'e', roomName: 'empty', position: [0, 0, 0], voiceZone: true }], [emptyRoomDocument('empty')]),
