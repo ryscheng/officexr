@@ -11,6 +11,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { group: 'Movement', keys: 'Shift', description: 'Run' },
   { group: 'Movement', keys: 'Space', description: 'Jump' },
   { group: 'Movement', keys: 'E', description: 'Sit on the chair you are touching (move to stand up)' },
+  { group: 'Movement', keys: 'Alt/⌥ + D', description: 'Return to your desk and sit' },
   { group: 'Camera', keys: 'Alt/⌥ + P', description: 'Cycle camera mode' },
   { group: 'Camera', keys: 'Click world', description: 'Look around (first and third person)' },
   { group: 'Camera', keys: 'Esc', description: 'Release the mouse' },
