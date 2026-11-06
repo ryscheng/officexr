@@ -31,9 +31,9 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-md rounded bg-white p-4 text-sm text-black outline-none"
+        className="w-full max-w-md rounded-hud-panel border-2 border-hud-edge bg-hud-panel p-4 font-hud-body text-sm text-hud-text shadow-hud-panel outline-none"
       >
-        <h2 id={titleId} className="mb-3 text-lg font-semibold">
+        <h2 id={titleId} className="mb-3 font-hud-title text-base font-normal tracking-widest uppercase">
           {title}
         </h2>
         {children}
