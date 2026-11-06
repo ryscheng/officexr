@@ -4,6 +4,8 @@ import { createMultiClientHarness, type ClientHandle } from '@officexr/sdk/test-
 import { createInstanceGeometry } from '../app/geometry-service.ts';
 import { seatedPlayerPose } from '../app/seating.ts';
 import type { WorldObjectKind } from '../scenes/index.ts';
+import type { PlanFn } from '../nav/autoWalk.ts';
+import type { NavGrid } from '../nav/grid.ts';
 import { createAutoWalk } from './useAutoWalk.ts';
 import { createSeating } from './useSeating.ts';
 
@@ -24,7 +26,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function setup() {
+const ZERO = { x: 0, y: 0, z: 0 };
+// Feet against the back (-Z side) of 'near', whose footprint is x 0..1, z 0..1.
+const TOUCHING_NEAR = { x: 0.5, y: -0.5, z: -0.4 };
+
+async function setup(plan?: PlanFn) {
   const h = createMultiClientHarness();
   const a = await h.add('alice');
   const b = await h.add('bob');
@@ -32,8 +38,11 @@ async function setup() {
     c.actions.setWorldObjects({ cubeSize: 1, instances });
     c.actions.setDeskAreas([{ id: 'd', label: 'Desk', min: { x: 9, z: -1 }, max: { x: 12, z: 2 }, seatInstanceId: 'desk-chair' }]);
   }
-  a.actions.setSelfPosition({ x: 0.5, y: -0.5, z: -0.6 }, { x: 0, y: 0, z: 0 }, 0, false);
-  const autoWalk = createAutoWalk(a.store, 'alice', { now: () => 0 });
+  a.actions.setSelfPosition(TOUCHING_NEAR, ZERO, 0, false);
+  const autoWalk = createAutoWalk(a.store, 'alice', { now: () => 0, plan });
+  if (plan) {
+    autoWalk.setGrid({} as NavGrid);
+  }
   const seating = createSeating({ store: a.store, actions: a.actions, selfId: 'alice', catalog, geometry, autoWalk });
   const stop = seating.start();
   return { a, b, autoWalk, seating, stop };
@@ -42,15 +51,16 @@ async function setup() {
 const self = (c: ClientHandle) => c.store.getState().players[c.id]!;
 
 describe('createSeating', () => {
-  it('sits on the nearest seat at its pose and stands back up, and a second client sees both', async () => {
+  it('sits on the touched seat at its pose and stands back up, and a second client sees both', async () => {
     const { a, b, seating } = await setup();
     expect(seating.getState().nearbySeatId).toBe('near');
 
     seating.sit();
     expect(self(a).seat).toBe('near');
     expect(self(a).pos).toEqual(seatedPlayerPose({ position: [0.5, 0.5, 0.5], yawRad: 0 }, 0.4).pos);
-    expect(self(a).vel).toEqual({ x: 0, y: 0, z: 0 });
+    expect(self(a).vel).toEqual(ZERO);
     expect(b.store.getState().players.alice?.seat).toBe('near');
+    expect(seating.getState().nearbySeatId).toBeNull();
 
     seating.stand();
     expect(self(a).seat).toBeNull();
@@ -58,6 +68,21 @@ describe('createSeating', () => {
     // Behind the chair, clear of it, feet on the floor.
     expect(self(a).pos.z).toBeLessThan(-0.4);
     expect(self(a).pos.y + 0.5).toBeCloseTo(0);
+  });
+
+  it('refuses to sit without touching the chair, by E or by id', async () => {
+    vi.useFakeTimers();
+    const { a, seating } = await setup();
+    a.actions.setSelfPosition({ x: 0.5, y: -0.5, z: -1 }, ZERO, 0, false);
+    expect(seating.getState().nearbySeatId).toBeNull();
+
+    seating.sit();
+    expect(seating.getState().refusal).toBe('not-touching');
+    seating.sit('near');
+    expect(self(a).seat).toBeUndefined();
+    expect(seating.getState().refusal).toBe('not-touching');
+    vi.advanceTimersByTime(2500);
+    expect(seating.getState().refusal).toBeNull();
   });
 
   it('uses the standing check to pick a spot', async () => {
@@ -83,14 +108,18 @@ describe('createSeating', () => {
     expect(seating.getState().refusal).toBeNull();
   });
 
-  it('clears the seat when the player is teleported', async () => {
-    const { a, seating } = await setup();
+  it('clears the seat when the player is teleported, also after the controller is rebuilt', async () => {
+    const { a, b, autoWalk, seating, stop } = await setup();
     seating.sit();
-    a.actions.setSelfPosition({ x: 5, y: 0, z: 5 }, { x: 0, y: 0, z: 0 }, 0, false);
+    stop();
+    const rebuilt = createSeating({ store: a.store, actions: a.actions, selfId: 'alice', catalog, geometry, autoWalk });
+    rebuilt.start();
+    a.actions.setSelfPosition({ x: 5, y: 0, z: 5 }, ZERO, 0, false);
     expect(self(a).seat).toBeNull();
+    expect(b.store.getState().players.alice?.seat).toBeNull();
   });
 
-  it("walks the desk owner to their chair and seats them on arrival; moving cancels it", async () => {
+  it('walks the desk owner round to touch their chair and seats them on arrival; moving cancels it', async () => {
     const { a, autoWalk, seating } = await setup();
     expect(seating.getState().hasDesk).toBe(false);
     seating.returnToDesk();
@@ -103,13 +132,27 @@ describe('createSeating', () => {
     expect(autoWalk.intent(self(a).pos)?.x).toBeGreaterThan(0);
 
     autoWalk.cancel();
-    a.actions.setSelfPosition({ x: 10.5, y: -0.5, z: -1 }, { x: 0, y: 0, z: 0 }, 0, false);
-    expect(autoWalk.intent(self(a).pos)).toBeNull();
+    // A step behind the chair is not there yet.
+    a.actions.setSelfPosition({ x: 10.5, y: -0.5, z: -0.6 }, ZERO, 0, false);
+    seating.returnToDesk();
+    expect(autoWalk.intent(self(a).pos)).not.toBeNull();
     expect(self(a).seat).toBeUndefined();
 
-    seating.returnToDesk();
+    // Against the chair's back.
+    a.actions.setSelfPosition({ x: 10.5, y: -0.5, z: -0.4 }, ZERO, 0, false);
     expect(autoWalk.intent(self(a).pos)).toBeNull();
     expect(self(a).seat).toBe('desk-chair');
     expect(autoWalk.getState()).toEqual({ type: 'idle' });
+  });
+
+  it('keeps walking, not sitting, when the chair is unreachable', async () => {
+    const { a, autoWalk, seating } = await setup(() => null);
+    a.actions.setDeskClaims({ d: 'alice' });
+    a.actions.setSelfPosition({ x: 10.5, y: -0.5, z: -0.9 }, ZERO, 0, false);
+    seating.returnToDesk();
+    expect(autoWalk.getState()).toMatchObject({ type: 'no-route', targetId: 'desk-chair' });
+    expect(autoWalk.intent(self(a).pos)).toBeNull();
+    expect(self(a).seat).toBeUndefined();
+    expect(autoWalk.getState()).toMatchObject({ type: 'no-route' });
   });
 });

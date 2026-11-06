@@ -34,7 +34,7 @@ import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
-import { isStandingSpotFree, type SeatingSource } from './seated.ts';
+import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -297,11 +297,7 @@ export function SceneFrame({
     const now = performance.now();
     const keys = keysDown.current;
 
-    const eDown = keys.has('e');
-    if (eDown && !eWasDownRef.current) {
-      seating?.sit();
-    }
-    eWasDownRef.current = eDown;
+    eWasDownRef.current = sitOnPress(keys, eWasDownRef.current, seating);
     const { fwd, strafe, isRunning, speedScale } = moveIntent(keys, moveInputRef?.current);
     const hasMoveInput = fwd !== 0 || strafe !== 0;
     if (hasMoveInput) {
@@ -342,11 +338,7 @@ export function SceneFrame({
     spaceWasDownRef.current = spaceDown;
 
     if (self?.seat != null && body) {
-      // No controller or gravity while seated; standing moves the store position, which the auto-warp applies next frame.
-      if (hasMoveInput || spacePressedThisFrame || autoWalkDir) {
-        seating?.stand();
-      }
-      body.setNextKinematicTranslation(self.pos);
+      stepSeated(store, selfId, body, seating, hasMoveInput || spacePressedThisFrame || autoWalkDir !== null);
       verticalVelRef.current = 0;
       airborneRef.current = false;
       isAirborneRef.current = false;

@@ -2,12 +2,14 @@ import { useEffect, useMemo } from 'react';
 import { deskOwnedBy, loginOf, type Actions, type OfficeState, type PlayerId, type Store, type Vec3 } from '@officexr/sdk';
 import type { KindResolver } from '../app/geometry-service.ts';
 import {
+  approachSpot,
   canSit,
-  closestSeat,
+  isTouchingSeat,
+  SEAT_APPROACH_ARRIVE_M,
   seatedPlayerPose,
   seatsOf,
-  SIT_RADIUS_M,
   stepOutSpot,
+  touchingSeat,
   type Seat,
   type SitRefusal,
 } from '../app/seating.ts';
@@ -21,9 +23,12 @@ import type { AutoWalkController } from './useAutoWalk.ts';
 const REFUSAL_TOAST_MS = 2000;
 const ZERO = { x: 0, y: 0, z: 0 };
 
+/** Why a sit failed: `canSit`'s reasons, or the player isn't touching the chair. */
+export type SeatingRefusal = SitRefusal | 'not-touching';
+
 export interface SeatingControllerState extends SeatingState {
   /** Why the last sit failed, until its toast times out. */
-  refusal: SitRefusal | null;
+  refusal: SeatingRefusal | null;
 }
 
 export interface SeatingController extends SeatingSource {
@@ -77,6 +82,12 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
   };
   const standingSpot = (seat: Seat) => stepOutSpot(seat.pose, geometry.worldAABBOfInstance(seat.instance), isFree);
 
+  const refuse = (reason: SeatingRefusal) => {
+    clearTimeout(refusalTimer);
+    publish({ refusal: reason });
+    refusalTimer = setTimeout(() => publish({ refusal: null }), REFUSAL_TOAST_MS);
+  };
+
   const sit = (instanceId?: string) => {
     const s = store.getState();
     const self = s.players[selfId];
@@ -84,18 +95,22 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
       return;
     }
     const { charRadius } = s.worldSettings;
-    const seat =
-      instanceId === undefined
-        ? closestSeat(seatsOfState(s), feetPosition(self.pos, charRadius), SIT_RADIUS_M)
-        : seatById(s, instanceId);
-    if (!seat || self.seat === seat.instance.id) {
+    const feet = feetPosition(self.pos, charRadius);
+    const named = instanceId === undefined ? undefined : seatById(s, instanceId);
+    if (named === null) {
+      return;
+    }
+    const seat = named ?? touchingSeat(seatsOfState(s), feet, charRadius, geometry);
+    if (!seat || !isTouchingSeat(feet, charRadius, seat.instance, geometry)) {
+      refuse('not-touching');
+      return;
+    }
+    if (self.seat === seat.instance.id) {
       return;
     }
     const verdict = canSit(s, catalog, geometry, seat.instance, login);
     if (!verdict.ok) {
-      clearTimeout(refusalTimer);
-      publish({ refusal: verdict.reason });
-      refusalTimer = setTimeout(() => publish({ refusal: null }), REFUSAL_TOAST_MS);
+      refuse(verdict.reason);
       return;
     }
     autoWalk.cancel();
@@ -126,9 +141,11 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
       actions.setSelfSeat(null);
       return;
     }
-    const seat = self ? closestSeat(seatsOfState(s), feetPosition(self.pos, s.worldSettings.charRadius), SIT_RADIUS_M) : null;
+    const { charRadius } = s.worldSettings;
+    const seat = self ? touchingSeat(seatsOfState(s), feetPosition(self.pos, charRadius), charRadius, geometry) : null;
+    const sittable = seat && seat.instance.id !== self?.seat && canSit(s, catalog, geometry, seat.instance, login).ok;
     publish({
-      nearbySeatId: seat && canSit(s, catalog, geometry, seat.instance, login).ok ? seat.instance.id : null,
+      nearbySeatId: sittable ? seat.instance.id : null,
       hasDesk: ownDeskSeatId(s) !== null,
     });
   };
@@ -141,7 +158,8 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
       const seatId = ownDeskSeatId(s);
       const seat = seatId === null ? null : seatById(s, seatId);
       if (seat && s.players[selfId]?.seat !== seatId) {
-        autoWalk.goToPoint(seat.instance.id, standingSpot(seat), () => sit(seat.instance.id));
+        const target = approachSpot(seat.pose, geometry.worldAABBOfInstance(seat.instance), s.worldSettings.charRadius, isFree);
+        autoWalk.goToPoint(seat.instance.id, target, SEAT_APPROACH_ARRIVE_M, () => sit(seat.instance.id));
       }
     },
     setStandingCheck(check) {
@@ -158,6 +176,8 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
       return () => void listeners.delete(cb);
     },
     start() {
+      const self = store.getState().players[selfId];
+      seatedAt = self?.seat != null ? self.pos : null;
       track(store.getState());
       const unsubscribe = store.subscribeAll((next) => track(next));
       return () => {

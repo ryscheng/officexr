@@ -4,6 +4,11 @@ export function deskOwnedBy(state: Pick<OfficeState, 'deskClaims'>, login: strin
   return Object.entries(state.deskClaims).find(([, owner]) => owner === login)?.[0] ?? null;
 }
 
-export function seatOccupant(state: Pick<OfficeState, 'players'>, instanceId: string): PlayerId | null {
-  return Object.values(state.players).find((p) => p.seat === instanceId)?.id ?? null;
+/** Who sits on `instanceId`, leaving out `except`. */
+export function seatOccupant(
+  state: Pick<OfficeState, 'players'>,
+  instanceId: string,
+  except?: PlayerId,
+): PlayerId | null {
+  return Object.values(state.players).find((p) => p.seat === instanceId && p.id !== except)?.id ?? null;
 }

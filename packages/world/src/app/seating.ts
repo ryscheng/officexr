@@ -1,11 +1,15 @@
-import type { ObjectInstance, OfficeState, Vec3 } from '@officexr/sdk';
+import { seatOccupant, type ObjectInstance, type OfficeState, type Vec3 } from '@officexr/sdk';
 import { AVATAR_YAW_OFFSET, bodyPosition, SIT_POSE_HIP_HEIGHT } from '../physics/rules.ts';
 import { deskAreaMembers } from './desk-areas.ts';
 import { seatPoseOf, type KindResolver } from './geometry-service.ts';
 import type { InstanceGeometryService, WorldAABB } from './types.ts';
 
-/** How far from a seat's pose the player's feet may be to sit on it. */
-export const SIT_RADIUS_M = 1.5;
+/** Slack on "the body touches the chair", for the controller's skin and float error. */
+export const SEAT_TOUCH_EPSILON_M = 0.05;
+/** How far past the chair's surface `approachSpot` aims. */
+export const SEAT_APPROACH_OVERREACH_M = 0.1;
+/** Arrival radius at an `approachSpot`; within it, the body touches the chair. */
+export const SEAT_APPROACH_ARRIVE_M = SEAT_APPROACH_OVERREACH_M + SEAT_TOUCH_EPSILON_M / 2;
 /** Gap between a chair's footprint and the centre of a player who stands up from it. */
 export const STEP_OUT_CLEARANCE_M = 0.6;
 
@@ -18,18 +22,16 @@ export interface Seat {
   pose: SeatPose;
 }
 
-type Geometry = Pick<InstanceGeometryService, 'worldAABB' | 'worldAABBOfInstance'>;
-type SeatingState = Pick<OfficeState, 'selfId' | 'players' | 'deskAreas' | 'deskClaims'>;
+type SitState = Pick<OfficeState, 'selfId' | 'players' | 'deskAreas' | 'deskClaims'>;
 
 export function canSit(
-  state: SeatingState,
+  state: SitState,
   catalog: KindResolver,
-  geometry: Geometry,
+  geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>,
   instance: ObjectInstance,
   selfLogin: string,
 ): SitVerdict {
-  const taken = Object.values(state.players).some((p) => p.id !== state.selfId && p.seat === instance.id);
-  if (taken) {
+  if (seatOccupant(state, instance.id, state.selfId) !== null) {
     return { ok: false, reason: 'occupied' };
   }
   const desk = state.deskAreas.find((a) => a.seatInstanceId === instance.id);
@@ -56,29 +58,70 @@ export function seatsOf(
   });
 }
 
-/** The seat whose pose is closest to `feet`, within `radius`, whether or not it may be sat on. */
-export function nearestSeat(
-  state: Pick<OfficeState, 'worldObjects'>,
-  catalog: KindResolver,
-  geometry: Pick<InstanceGeometryService, 'worldAABB'>,
+/**
+ * Whether a body ball of `bodyRadius` standing at `feet` touches the instance's
+ * yaw-aware footprint, which the character controller stops it against.
+ */
+export function isTouchingSeat(
   feet: Vec3,
-  radius: number,
-): Seat | null {
-  return closestSeat(seatsOf(state.worldObjects.instances, catalog, geometry), feet, radius);
+  bodyRadius: number,
+  instance: ObjectInstance,
+  geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>,
+): boolean {
+  const { min, max } = geometry.worldAABBOfInstance(instance);
+  const dx = Math.max(min[0] - feet.x, 0, feet.x - max[0]);
+  const dz = Math.max(min[2] - feet.z, 0, feet.z - max[2]);
+  const overlapsVertically = feet.y <= max[1] && feet.y + 2 * bodyRadius >= min[1];
+  return overlapsVertically && Math.hypot(dx, dz) <= bodyRadius + SEAT_TOUCH_EPSILON_M;
 }
 
-export function closestSeat(seats: readonly Seat[], feet: Vec3, radius: number): Seat | null {
+/** Of the seats the body touches, the one whose seat pose is closest to `feet`, whether or not it may be sat on. */
+export function touchingSeat(
+  seats: readonly Seat[],
+  feet: Vec3,
+  bodyRadius: number,
+  geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>,
+): Seat | null {
   let best: Seat | null = null;
-  let bestDistance = radius;
+  let bestDistance = Infinity;
   for (const seat of seats) {
+    if (!isTouchingSeat(feet, bodyRadius, seat.instance, geometry)) {
+      continue;
+    }
     const [x, y, z] = seat.pose.position;
     const distance = Math.hypot(x - feet.x, y - feet.y, z - feet.z);
-    if (distance <= bestDistance) {
+    if (distance < bestDistance) {
       best = seat;
       bestDistance = distance;
     }
   }
   return best;
+}
+
+/** `touchingSeat` over the state's world objects. */
+export function nearestSeat(
+  state: Pick<OfficeState, 'worldObjects'>,
+  catalog: KindResolver,
+  geometry: Pick<InstanceGeometryService, 'worldAABB' | 'worldAABBOfInstance'>,
+  feet: Vec3,
+  bodyRadius: number,
+): Seat | null {
+  return touchingSeat(seatsOf(state.worldObjects.instances, catalog, geometry), feet, bodyRadius, geometry);
+}
+
+/** Spots `gap` beyond the footprint edge behind the seat, to its left and to its right, in that order. */
+function sideSpots(pose: SeatPose, footprint: WorldAABB, gap: number): Vec3[] {
+  const fx = Math.sin(pose.yawRad);
+  const fz = Math.cos(pose.yawRad);
+  const [px, , pz] = pose.position;
+  return [
+    { x: -fx, z: -fz },
+    { x: fz, z: -fx },
+    { x: -fz, z: fx },
+  ].map((dir) => {
+    const reach = exitDistance(px, pz, dir, footprint) + gap;
+    return { x: px + dir.x * reach, y: footprint.min[1], z: pz + dir.z * reach };
+  });
 }
 
 /**
@@ -87,19 +130,23 @@ export function closestSeat(seats: readonly Seat[], feet: Vec3, radius: number):
  * `isFree` accepts and falling back to behind.
  */
 export function stepOutSpot(pose: SeatPose, footprint: WorldAABB, isFree: (feet: Vec3) => boolean): Vec3 {
-  const fx = Math.sin(pose.yawRad);
-  const fz = Math.cos(pose.yawRad);
-  const [px, , pz] = pose.position;
-  const floorY = footprint.min[1];
-  const spots = [
-    { x: -fx, z: -fz },
-    { x: fz, z: -fx },
-    { x: -fz, z: fx },
-  ].map((dir) => {
-    const reach = exitDistance(px, pz, dir, footprint) + STEP_OUT_CLEARANCE_M;
-    return { x: px + dir.x * reach, y: floorY, z: pz + dir.z * reach };
-  });
+  const spots = sideSpots(pose, footprint, STEP_OUT_CLEARANCE_M);
   return spots.find(isFree) ?? spots[0];
+}
+
+/**
+ * Where to walk to sit: on the side `stepOutSpot` would pick, aimed
+ * `SEAT_APPROACH_OVERREACH_M` into where the chair stops the body, so
+ * getting within `SEAT_APPROACH_ARRIVE_M` of it means touching the chair.
+ */
+export function approachSpot(
+  pose: SeatPose,
+  footprint: WorldAABB,
+  bodyRadius: number,
+  isFree: (feet: Vec3) => boolean,
+): Vec3 {
+  const side = Math.max(0, sideSpots(pose, footprint, STEP_OUT_CLEARANCE_M).findIndex(isFree));
+  return sideSpots(pose, footprint, bodyRadius - SEAT_APPROACH_OVERREACH_M)[side];
 }
 
 /** Distance along unit `dir` from (`x`, `z`), inside `box`, to the box's edge. */

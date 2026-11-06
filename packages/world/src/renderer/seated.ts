@@ -1,10 +1,10 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { RapierRigidBody } from '@react-three/rapier';
-import type { Vec3 } from '@officexr/sdk';
+import type { PlayerId, Store, Vec3 } from '@officexr/sdk';
 
 /** What the frame loop needs from the seating controller. */
 export interface SeatingSource {
-  /** Sits on the nearest seat, if any. */
+  /** Sits on the seat the player is touching, if any. */
   sit(): void;
   stand(): void;
   /** Installs the test `stand` uses for a collider-free spot; returns its removal. */
@@ -33,4 +33,33 @@ export function isStandingSpotFree(
     self ?? undefined,
   );
   return hit === null;
+}
+
+/** Sits on the frame E goes down; returns whether E is held, for the next frame's call. */
+export function sitOnPress(keys: ReadonlySet<string>, wasDown: boolean, seating: SeatingSource | undefined): boolean {
+  const down = keys.has('e');
+  if (down && !wasDown) {
+    seating?.sit();
+  }
+  return down;
+}
+
+/**
+ * One frame of a seated self player, in place of the character controller and
+ * gravity: stands up on `wantsToMove`, then pins `body` to the stored position.
+ */
+export function stepSeated(
+  store: Store,
+  selfId: PlayerId,
+  body: RapierRigidBody,
+  seating: SeatingSource | undefined,
+  wantsToMove: boolean,
+): void {
+  if (wantsToMove) {
+    seating?.stand();
+  }
+  const pos = store.getState().players[selfId]?.pos;
+  if (pos) {
+    body.setNextKinematicTranslation(pos);
+  }
 }

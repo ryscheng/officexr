@@ -42,6 +42,8 @@ export interface AutoWalkInput {
   /** The target's feet position; null once it has left the room (sync removes a departing player). */
   targetPos: Vec3 | null;
   now: number;
+  /** Set for a fixed point: arrive within this radius, and only by walking there, never from 'no-route'. */
+  arriveM?: number;
 }
 
 export type PlanFn = typeof findPath;
@@ -75,7 +77,7 @@ export function autoWalkStep(
   if (state.type === 'idle') {
     return { state, intent: null };
   }
-  const { selfPos, targetPos, now } = input;
+  const { selfPos, targetPos, now, arriveM } = input;
   if (!targetPos) {
     return { state: AUTO_WALK_IDLE, intent: null };
   }
@@ -90,7 +92,7 @@ export function autoWalkStep(
     case 'no-route':
       // ponytail: an unreachable target makes A* flood its whole connected region every 0.5 s.
       next =
-        distance <= ARRIVE_M
+        arriveM === undefined && distance <= ARRIVE_M
           ? { type: 'arrived', targetId: state.targetId }
           : now - state.plannedAt >= REPLAN_INTERVAL_MS
             ? start()
@@ -98,7 +100,7 @@ export function autoWalkStep(
       break;
     case 'walking':
       next =
-        distance <= ARRIVE_M
+        distance <= (arriveM ?? ARRIVE_M)
           ? { type: 'arrived', targetId: state.targetId }
           : now - state.plannedAt >= REPLAN_INTERVAL_MS ||
               planarDistance(state.plannedFor, targetPos) > REPLAN_TARGET_MOVED_M

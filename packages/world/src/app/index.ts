@@ -81,7 +81,7 @@ export {
   type SoundCatalogEntry,
 } from './asset-url.ts';
 export { resolveDeskAreas, deskAreaMembers, deskAreaLabel, type ResolvedDeskArea } from './desk-areas.ts';
-export { canSit, nearestSeat, SIT_RADIUS_M, stepOutSpot, type SitRefusal, type SitVerdict } from './seating.ts';
+export { canSit, isTouchingSeat, nearestSeat, stepOutSpot, type SitRefusal, type SitVerdict } from './seating.ts';
 export { computeVoiceZones, computeRoomVoiceZones } from './voice-zones.ts';
 export { computeBuildingFootprint } from './building-footprint.ts';
 export { loadMap, MapNotFoundError } from './map-loader.ts';

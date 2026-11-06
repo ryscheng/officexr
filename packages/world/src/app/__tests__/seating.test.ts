@@ -2,12 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { createInitialOfficeState, type DeskAreaState, type ObjectInstance, type OfficeState, type Vec3 } from '@officexr/sdk';
 import type { WorldObjectKind } from '../../scenes/index.ts';
 import { createInstanceGeometry } from '../geometry-service.ts';
-import { canSit, nearestSeat, seatedPlayerPose, stepOutSpot, STEP_OUT_CLEARANCE_M, type SeatPose } from '../seating.ts';
+import {
+  approachSpot,
+  canSit,
+  isTouchingSeat,
+  nearestSeat,
+  SEAT_APPROACH_ARRIVE_M,
+  SEAT_TOUCH_EPSILON_M,
+  seatedPlayerPose,
+  stepOutSpot,
+  STEP_OUT_CLEARANCE_M,
+  type SeatPose,
+} from '../seating.ts';
 import { AVATAR_YAW_OFFSET, BODY_Y, SIT_POSE_HIP_HEIGHT } from '../../physics/rules.ts';
 
 // One-metre kinds on a one-metre grid, so voxel positions are metres.
 const kinds: Record<string, Partial<WorldObjectKind>> = {
   chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seat: { offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 } },
+  bench: { id: 'bench', dimensions: { width: 2, height: 1, depth: 1 }, seat: { offset: { x: 1, y: 0.5, z: 0.5 }, yawDeg: 0 } },
   desk: { id: 'desk', dimensions: { width: 1, height: 1, depth: 1 }, isDesk: true },
 };
 const catalog = { getKind: (id: string) => kinds[id] as WorldObjectKind | undefined };
@@ -72,17 +84,49 @@ describe('canSit', () => {
   });
 });
 
-describe('nearestSeat', () => {
-  const instances = [chair('a', 0, 0), chair('b', 3, 0), { ...chair('t', 1, 0), kindId: 'desk' }];
-  const s = state({ worldObjects: { cubeSize: 1, instances } });
+describe('isTouchingSeat', () => {
+  // The chair's footprint is x 0..1, z 0..1.
+  const c = chair('c', 0, 0);
+  const touching = (x: number, z: number, y = 0) => isTouchingSeat({ x, y, z }, 0.4, c, geometry);
 
-  it('picks the closest seat pose within the radius', () => {
-    expect(nearestSeat(s, catalog, geometry, { x: 2.6, y: 0, z: 0.5 }, 1.5)?.instance.id).toBe('b');
-    expect(nearestSeat(s, catalog, geometry, { x: 2.6, y: 0, z: 0.5 }, 1.5)?.pose.position).toEqual([3.5, 0.5, 0.5]);
+  it('counts a body against a side as touching, and one a hair further away as not', () => {
+    expect(touching(0.5, -0.4)).toBe(true);
+    expect(touching(1.4 + SEAT_TOUCH_EPSILON_M, 0.5)).toBe(true);
+    expect(touching(0.5, -0.4 - SEAT_TOUCH_EPSILON_M - 0.01)).toBe(false);
   });
 
-  it('finds nothing out of reach', () => {
-    expect(nearestSeat(s, catalog, geometry, { x: 10, y: 0, z: 10 }, 1.5)).toBeNull();
+  it('measures to a corner diagonally', () => {
+    const d = (0.4 + SEAT_TOUCH_EPSILON_M) / Math.SQRT2;
+    expect(touching(1 + d - 0.01, 1 + d - 0.01)).toBe(true);
+    expect(touching(1 + d + 0.01, 1 + d + 0.01)).toBe(false);
+  });
+
+  it('uses the rotated footprint', () => {
+    // A 2 x 1 bench at yaw 90 covers x 0.5..1.5, z -0.5..1.5.
+    const bench: ObjectInstance = { ...chair('b', 0, 0), kindId: 'bench', yawDeg: 90 };
+    expect(isTouchingSeat({ x: 1, y: 0, z: -0.85 }, 0.4, bench, geometry)).toBe(true);
+    expect(isTouchingSeat({ x: 1, y: 0, z: -0.97 }, 0.4, bench, geometry)).toBe(false);
+    expect(isTouchingSeat({ x: 0.1, y: 0, z: 1 }, 0.4, bench, geometry)).toBe(true);
+  });
+
+  it('needs the body level with the chair', () => {
+    expect(touching(0.5, -0.4, 2)).toBe(false);
+    expect(touching(0.5, -0.4, -1)).toBe(false);
+  });
+});
+
+describe('nearestSeat', () => {
+  const instances = [chair('a', 0, 0), chair('b', 1.8, 0), { ...chair('t', 3, 0), kindId: 'desk' }];
+  const s = state({ worldObjects: { cubeSize: 1, instances } });
+
+  it('picks the touched seat whose pose is closest', () => {
+    // Touches both chairs' facing sides; b's seat pose is nearer.
+    expect(nearestSeat(s, catalog, geometry, { x: 1.45, y: 0, z: 0.5 }, 0.4)?.instance.id).toBe('b');
+    expect(nearestSeat(s, catalog, geometry, { x: 1.45, y: 0, z: 0.5 }, 0.4)?.pose.position).toEqual([2.3, 0.5, 0.5]);
+  });
+
+  it('finds nothing without touching a chair', () => {
+    expect(nearestSeat(s, catalog, geometry, { x: 0.5, y: 0, z: -1 }, 0.4)).toBeNull();
   });
 });
 
@@ -112,8 +156,33 @@ describe('stepOutSpot', () => {
   });
 
   it('follows the seat facing', () => {
-    // Facing +X: behind is -X.
-    near(stepOutSpot({ ...pose, yawRad: Math.PI / 2 }, footprint, () => true), { x: 0.5 - reach, y: 0, z: 0.5 });
+    // Facing +X: behind is -X, left is -Z.
+    const east = { ...pose, yawRad: Math.PI / 2 };
+    near(stepOutSpot(east, footprint, () => true), { x: 0.5 - reach, y: 0, z: 0.5 });
+    near(stepOutSpot(east, footprint, freeExcept({ x: 0.5 - reach, y: 0, z: 0.5 })), { x: 0.5, y: 0, z: 0.5 - reach });
+    // Facing -Z: behind is +Z.
+    near(stepOutSpot({ ...pose, yawRad: Math.PI }, footprint, () => true), { x: 0.5, y: 0, z: 0.5 + reach });
+    // Facing -X: behind is +X.
+    near(stepOutSpot({ ...pose, yawRad: (3 * Math.PI) / 2 }, footprint, () => true), { x: 0.5 + reach, y: 0, z: 0.5 });
+  });
+});
+
+describe('approachSpot', () => {
+  const pose: SeatPose = { position: [0.5, 0.5, 0.5], yawRad: 0 };
+  const c = chair('c', 0, 0);
+  const footprint = geometry.worldAABBOfInstance(c);
+
+  it('aims into the chair on the step-out side, so arriving there touches it', () => {
+    const target = approachSpot(pose, footprint, 0.4, () => true);
+    expect(target.x).toBeCloseTo(0.5);
+    expect(target.z).toBeGreaterThan(-0.4);
+    expect(target.z).toBeLessThan(0);
+    expect(isTouchingSeat({ ...target, z: target.z - SEAT_APPROACH_ARRIVE_M }, 0.4, c, geometry)).toBe(true);
+  });
+
+  it('takes the side whose step-out spot is free', () => {
+    const behindBlocked = (p: Vec3) => p.z > -0.5;
+    expect(approachSpot(pose, footprint, 0.4, behindBlocked).x).toBeGreaterThan(1);
   });
 });
 

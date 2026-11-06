@@ -3,7 +3,7 @@ import type { PlayerId } from '@officexr/sdk';
 import type { AutoWalkState } from '../nav/autoWalk.ts';
 
 export interface SeatingState {
-  /** The nearest seat within reach, when the self player may sit on it. */
+  /** The seat the self player is touching, when they may sit on it and are not already on it. */
   nearbySeatId: string | null;
   /** The self player owns a desk that has a chair. */
   hasDesk: boolean;
@@ -17,7 +17,7 @@ export interface PlayControlsSource {
   getState(): AutoWalkState;
   /** Notifies changes to both `getState` and `getSeating`. */
   subscribe(cb: () => void): () => void;
-  /** Sits on `instanceId`, or on the nearest seat; a refusal shows a toast. */
+  /** Sits on `instanceId`, or on the touched seat; the player must touch it, and a refusal shows a toast. */
   sit(instanceId?: string): void;
   stand(): void;
   /** Walks to the self player's desk chair and sits on arrival; a no-op without one. */
