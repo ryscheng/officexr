@@ -19,7 +19,7 @@ export type {
 export { createCatalogService } from './catalog-service.ts';
 export type { CreateCatalogServiceOptions } from './catalog-service.ts';
 
-export { createInstanceGeometry } from './geometry-service.ts';
+export { createInstanceGeometry, seatPoseOf } from './geometry-service.ts';
 
 export { createRoomService } from './room-service.ts';
 

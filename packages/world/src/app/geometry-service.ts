@@ -115,6 +115,17 @@ function rotatedExtentsXZ(x: number, z: number, yawDeg: number): [number, number
   return [x * cos + z * sin, x * sin + z * cos];
 }
 
+/** `point` spun by `yawDeg` about the vertical axis through `centre`, in the sense of three.js `rotation.y`. */
+function yawAboutCentre(point: Vec3, centre: Vec3, yawDeg: number): Vec3 {
+  if (normalizeYawDeg(yawDeg) === 0) {
+    return point;
+  }
+  const [cos, sin] = cosSin(yawDeg);
+  const dx = point[0] - centre[0];
+  const dz = point[2] - centre[2];
+  return [centre[0] + dx * cos + dz * sin, point[1], centre[2] - dx * sin + dz * cos];
+}
+
 export function createInstanceGeometry(deps: {
   catalog: KindResolver;
   voxelSize: number;
@@ -184,23 +195,14 @@ export function createInstanceGeometry(deps: {
   }
 
   function meshTransform(position: Vec3, kindId: string, yawDeg = 0): MeshTransform {
-    const rotationY = yawRadians(yawDeg);
     const origin = meshOrigin(position, kindId);
-    if (rotationY === 0) return { position: origin, rotationY };
-    // Spin the mesh root about the unrotated footprint's centre: the
-    // centre's offset from the root, rotated, must still land on it.
     const local = localAABBOf(kindId);
-    const lx = (local.min.x + local.max.x) / 2;
-    const lz = (local.min.z + local.max.z) / 2;
-    const [cos, sin] = cosSin(yawDeg);
-    return {
-      position: [
-        origin[0] + lx - (lx * cos + lz * sin),
-        origin[1],
-        origin[2] + lz - (-lx * sin + lz * cos),
-      ],
-      rotationY,
-    };
+    const centre: Vec3 = [
+      origin[0] + (local.min.x + local.max.x) / 2,
+      origin[1],
+      origin[2] + (local.min.z + local.max.z) / 2,
+    ];
+    return { position: yawAboutCentre(origin, centre, yawDeg), rotationY: yawRadians(yawDeg) };
   }
 
   function voxelFootprint(position: Vec3, kindId: string, yawDeg = 0): VoxelFootprint {
@@ -239,5 +241,35 @@ export function createInstanceGeometry(deps: {
     meshTransform,
     voxelFootprint,
     tileStep,
+  };
+}
+
+/**
+ * World-space pose (root position in metres, facing yaw in radians) of a
+ * seat on a placed instance, or null when the kind is not sittable. In the
+ * same frame as `worldAABB`: room-local within a room, so callers apply the
+ * room's placement transform. The seat point is spun about the unrotated
+ * footprint's centre, like the mesh. `kind` supplies only the `seat`; the
+ * box comes from `instance.kindId`.
+ */
+export function seatPoseOf(
+  kind: Pick<WorldObjectKind, 'seat'>,
+  instance: ObjectInstance,
+  geometry: InstanceGeometryService,
+): { position: Vec3; yawRad: number } | null {
+  if (!kind.seat) {
+    return null;
+  }
+  const { min, max } = geometry.worldAABB(instance.position, instance.kindId);
+  const { offset, yawDeg } = kind.seat;
+  const centre: Vec3 = [(min[0] + max[0]) / 2, min[1], (min[2] + max[2]) / 2];
+  const instanceYaw = instance.yawDeg ?? 0;
+  return {
+    position: yawAboutCentre(
+      [min[0] + offset.x, min[1] + offset.y, min[2] + offset.z],
+      centre,
+      instanceYaw,
+    ),
+    yawRad: yawRadians(instanceYaw + yawDeg),
   };
 }
