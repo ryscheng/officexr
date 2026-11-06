@@ -50,7 +50,7 @@ describe('presenceRows', () => {
   it('sorts by name with self first and flags the self row', () => {
     const rows = presenceRows([player('zed', 'Zed'), player('me', 'Zoe'), player('amy', 'Amy')], [], 'me');
     expect(rows.map((r) => [r.label, r.type])).toEqual([
-      ['Zoe', 'self'],
+      ['Zoe (you)', 'self'],
       ['Amy', 'peer'],
       ['Zed', 'peer'],
     ]);
@@ -66,7 +66,7 @@ describe('presenceRows', () => {
       'me',
     );
     expect(rows.map((r) => [r.label, r.type])).toEqual([
-      ['Zoe', 'self'],
+      ['Zoe (you)', 'self'],
       ['Zed', 'peer'],
       ['Abe', 'departed'],
       ['Bea', 'departed'],
@@ -183,14 +183,11 @@ describe('PresenceList', () => {
     expect(dotOf('Me (you)', 'Away').className).toContain('bg-yellow-400');
   });
 
-  it('shows the mic state', () => {
+  it('shows no mic state', () => {
     seed();
-    const mic = (name: string) => within(rowOf(name)).queryAllByRole('img').slice(1);
-    expect(mic('Me (you)')).toEqual([]);
-    expect(mic('Ann').map((el) => el.getAttribute('aria-label'))).toEqual(['Speaking']);
-    expect(mic('Bob').map((el) => el.getAttribute('aria-label'))).toEqual(['Muted']);
-    expect(mic('Cat').map((el) => el.getAttribute('aria-label'))).toEqual(['Mic on']);
-    expect(mic('Dan')).toEqual([]);
+    for (const name of ['Me (you)', 'Ann', 'Bob', 'Cat', 'Dan']) {
+      expect(within(rowOf(name)).queryByRole('img', { name: /mic|muted|speaking/i })).toBeNull();
+    }
   });
 
   it('re-renders on a whole-metre change, not on every small move', () => {

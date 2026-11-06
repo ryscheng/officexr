@@ -7,6 +7,7 @@ import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PingInboxHud } from '../hud/PingInboxHud';
+import { CallList } from '../hud/CallList';
 import { Minimap } from '../hud/Minimap';
 import { PresenceList } from '../hud/PresenceList';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
@@ -146,6 +147,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         <div className="pointer-coarse:min-w-28">
           <div className="flex flex-col items-start gap-2 pointer-coarse:absolute pointer-coarse:bottom-37 pointer-coarse:left-0">
             <PresenceList store={ready.local.store} selfId={ready.local.selfId} officeName={office.name} pinger={pinger} />
+            <CallList store={ready.local.store} selfId={ready.local.selfId} pinger={pinger} />
             <Minimap store={ready.local.store} />
           </div>
         </div>

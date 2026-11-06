@@ -1,0 +1,117 @@
+// @vitest-environment jsdom
+import { act, cleanup, render, screen, within } from '@testing-library/react';
+import { createActions, createBus, createStore } from '@officexr/sdk';
+import { createViewYaw, PlayControlsProvider, ViewYawProvider } from '@officexr/world/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { CallList, callRows } from './CallList';
+import { fakePlayControls } from './fakePlayControls';
+import { PresenceList } from './PresenceList';
+
+afterEach(cleanup);
+
+const player = (id: string, name: string, jitsiParticipantId: string | null) => ({
+  id,
+  name,
+  status: 'available' as const,
+  mic: 'muted' as const,
+  distanceM: 3,
+  bearingDeg: 45,
+  jitsiParticipantId,
+});
+
+describe('callRows', () => {
+  it('puts You first, matches peers by participant id and sorts the rest by name', () => {
+    const rows = callRows(
+      [
+        { id: 'j-zed', displayName: 'Zed' },
+        { id: 'j-guest', displayName: 'Bea' },
+        { id: 'j-amy', displayName: 'ignored' },
+      ],
+      [player('me', 'Me', 'j-me'), player('amy', 'Amy', 'j-amy'), player('zed', 'Zed', 'j-zed')],
+      'me',
+    );
+    expect(rows.map((r) => [r.label, r.type])).toEqual([
+      ['You', 'self'],
+      ['Amy', 'peer'],
+      ['Bea', 'guest'],
+      ['Zed', 'peer'],
+    ]);
+  });
+
+  it('falls back to Guest for an unmatched participant without a name', () => {
+    const rows = callRows([{ id: 'j1', displayName: '' }], [player('me', 'Me', 'j-me')], 'me');
+    expect(rows.map((r) => r.label)).toEqual(['You', 'Guest']);
+  });
+
+  it('numbers matched windows sharing a login', () => {
+    const rows = callRows(
+      [
+        { id: 'j1', displayName: '' },
+        { id: 'j2', displayName: '' },
+      ],
+      [player('mark#a', 'Mark', 'j1'), player('mark#b', 'Mark', 'j2')],
+      'me',
+    );
+    expect(rows.map((r) => r.label)).toEqual(['Mark', 'Mark (2)']);
+  });
+});
+
+describe('CallList', () => {
+  function setup() {
+    const store = createStore({ selfId: 'me', officeId: 'o' });
+    const actions = createActions(store, createBus());
+    actions.upsertPlayer({ id: 'me', name: 'Me', pos: { x: 0, y: 0, z: 0 } });
+    actions.upsertPlayer({
+      id: 'ann',
+      name: 'Ann',
+      pos: { x: 0, y: 0, z: -12 },
+    });
+    render(
+      <PlayControlsProvider controls={fakePlayControls().controls}>
+        <ViewYawProvider viewYaw={createViewYaw()}>
+          <PresenceList store={store} selfId="me" officeName="HQ" />
+          <CallList store={store} selfId="me" />
+        </ViewYawProvider>
+      </PlayControlsProvider>,
+    );
+    return actions;
+  }
+
+  it('says when you are not in a call or still joining', () => {
+    const actions = setup();
+    expect(screen.getByText('Not in a call')).toBeTruthy();
+    expect(screen.getByText('In call (0)')).toBeTruthy();
+
+    act(() => actions.setMyJitsiRoom('room'));
+    expect(screen.getByText('Joining call…')).toBeTruthy();
+    expect(screen.getByText('In call (0)')).toBeTruthy();
+  });
+
+  it('lists a matched peer in both lists, with a mic only in the call list', () => {
+    const actions = setup();
+    act(() => {
+      actions.setMyJitsiRoom('room');
+      actions.setMyJitsiParticipantId('j-me');
+      actions.setSelfPresence({ mic: 'muted' });
+      actions.applyRemotePresence('ann', 'available', 'speaking', 0, {
+        room: 'room',
+        participantId: 'j-ann',
+      });
+      actions.callParticipantJoined('j-ann', 'Ann J');
+      actions.callParticipantJoined('j-x', 'Visitor');
+    });
+    const call = within(screen.getByRole('list', { name: 'People in your call' }));
+    const presence = within(screen.getByRole('list', { name: 'People in HQ' }));
+    expect(screen.getByText('In call (3)')).toBeTruthy();
+    expect(call.getAllByRole('listitem').map((li) => li.textContent?.replace(/\d+ m/, ''))).toEqual([
+      'You',
+      'Ann',
+      'Visitor',
+    ]);
+    expect(call.getByRole('img', { name: 'Speaking' })).toBeTruthy();
+    expect(call.getByRole('img', { name: 'Muted' })).toBeTruthy();
+    expect(call.getByRole('button', { name: 'Go to Ann' })).toBeTruthy();
+    expect(presence.getByText('Ann')).toBeTruthy();
+    expect(presence.queryByRole('img', { name: 'Speaking' })).toBeNull();
+  });
+});
