@@ -1,23 +1,12 @@
 import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { useStoreSelector } from '@officexr/world/top-down';
 import type { PingSender } from '../ping/usePingSender';
-import {
-  createLabeller,
-  PANEL_CLASS,
-  PersonList,
-  toPresencePlayer,
-  type DepartedEntry,
-  type PersonRow,
-  type PresencePlayer,
-} from './PersonList';
+import { PANEL_CLASS, PersonList, type PersonRow } from './PersonList';
+import { labelsInJoinOrder, toPresencePlayer, type DepartedEntry, type PresencePlayer } from './personRows';
 import { sameList } from './sameFields';
 
-type PresenceRow = PersonRow & { name: string };
-type Presence = {
-  players: PresencePlayer[];
-  departed: DepartedEntry[];
-  status: OfficeState['realtime']['status'];
-};
+type PresenceRow = Exclude<PersonRow, { type: 'guest' }> & { name: string };
+type Presence = { players: PresencePlayer[]; departed: DepartedEntry[]; status: OfficeState['realtime']['status'] };
 
 const byPresence = (a: PresenceRow, b: PresenceRow) =>
   Number(b.type === 'self') - Number(a.type === 'self') ||
@@ -26,30 +15,16 @@ const byPresence = (a: PresenceRow, b: PresenceRow) =>
 
 /** `players` and `departed` must be in join order; windows sharing a login are numbered by it. */
 export function presenceRows(players: PresencePlayer[], departed: DepartedEntry[], selfId: PlayerId): PresenceRow[] {
-  const labelOf = createLabeller();
+  const presentIds = new Set(players.map((p) => p.id));
+  const goneEntries = departed.filter((d) => d.name && !presentIds.has(d.id));
+  const labels = labelsInJoinOrder([...players, ...goneEntries]);
   const present = players.map((p): PresenceRow => {
-    const label = labelOf(p.id, p.name) + (p.id === selfId ? ' (you)' : '');
+    const label = `${labels.get(p.id)}${p.id === selfId ? ' (you)' : ''}`;
     return p.id === selfId
-      ? {
-          type: 'self',
-          id: p.id,
-          name: p.name,
-          label,
-          status: p.status,
-          mic: p.mic,
-        }
+      ? { type: 'self', id: p.id, name: p.name, label, status: p.status }
       : { type: 'peer', ...p, label };
   });
-  const presentIds = new Set(players.map((p) => p.id));
-  const gone = departed
-    .filter((d) => d.name && !presentIds.has(d.id))
-    .map(
-      (d): PresenceRow => ({
-        type: 'departed',
-        ...d,
-        label: labelOf(d.id, d.name),
-      }),
-    );
+  const gone = goneEntries.map((d): PresenceRow => ({ type: 'departed', ...d, label: labels.get(d.id)! }));
   return [...present.sort(byPresence), ...gone.sort(byPresence)];
 }
 
@@ -82,9 +57,7 @@ export function PresenceList({
   store: Store;
   selfId: PlayerId;
   officeName: string;
-  /** Must be stable; defaults to `performance.now`, the clock presence timestamps are on. */
   clock?: () => number;
-  /** Without it, rows have no Ping button. */
   pinger?: PingSender;
 }) {
   const { players, departed, status } = useStoreSelector(store, selectPresence, samePresence);
@@ -103,9 +76,9 @@ export function PresenceList({
       <PersonList
         label={`People in ${officeName}`}
         rows={presenceRows(players, departed, selfId)}
-        showMic={false}
         pinger={pinger}
         clock={clock}
+        announceNoRoute
       />
     </div>
   );

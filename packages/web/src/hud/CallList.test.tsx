@@ -43,16 +43,30 @@ describe('callRows', () => {
     expect(rows.map((r) => r.label)).toEqual(['You', 'Guest']);
   });
 
-  it('numbers matched windows sharing a login', () => {
+  it('numbers labels in join order across everyone, not roster order or call membership', () => {
     const rows = callRows(
       [
-        { id: 'j1', displayName: '' },
-        { id: 'j2', displayName: '' },
+        { id: 'j-b', displayName: '' },
+        { id: 'j-c', displayName: '' },
       ],
-      [player('mark#a', 'Mark', 'j1'), player('mark#b', 'Mark', 'j2')],
+      [
+        player('mark#a', 'Mark', null),
+        player('mark#b', 'Mark', 'j-b'),
+        player('me', 'Me', 'j-me'),
+        player('mark#c', 'Mark', 'j-c'),
+      ],
       'me',
     );
-    expect(rows.map((r) => r.label)).toEqual(['Mark', 'Mark (2)']);
+    expect(rows.map((r) => r.label)).toEqual(['You', 'Mark (2)', 'Mark (3)']);
+  });
+
+  it('counts self towards a shared login', () => {
+    const rows = callRows(
+      [{ id: 'j-b', displayName: '' }],
+      [player('mark#a', 'Mark', 'j-me'), player('mark#b', 'Mark', 'j-b')],
+      'mark#a',
+    );
+    expect(rows.map((r) => r.label)).toEqual(['You', 'Mark (2)']);
   });
 });
 
@@ -61,11 +75,7 @@ describe('CallList', () => {
     const store = createStore({ selfId: 'me', officeId: 'o' });
     const actions = createActions(store, createBus());
     actions.upsertPlayer({ id: 'me', name: 'Me', pos: { x: 0, y: 0, z: 0 } });
-    actions.upsertPlayer({
-      id: 'ann',
-      name: 'Ann',
-      pos: { x: 0, y: 0, z: -12 },
-    });
+    actions.upsertPlayer({ id: 'ann', name: 'Ann', pos: { x: 0, y: 0, z: -12 } });
     render(
       <PlayControlsProvider controls={fakePlayControls().controls}>
         <ViewYawProvider viewYaw={createViewYaw()}>
@@ -93,21 +103,14 @@ describe('CallList', () => {
       actions.setMyJitsiRoom('room');
       actions.setMyJitsiParticipantId('j-me');
       actions.setSelfPresence({ mic: 'muted' });
-      actions.applyRemotePresence('ann', 'available', 'speaking', 0, {
-        room: 'room',
-        participantId: 'j-ann',
-      });
+      actions.applyRemotePresence('ann', 'available', 'speaking', 0, { room: 'room', participantId: 'j-ann' });
       actions.callParticipantJoined('j-ann', 'Ann J');
       actions.callParticipantJoined('j-x', 'Visitor');
     });
     const call = within(screen.getByRole('list', { name: 'People in your call' }));
     const presence = within(screen.getByRole('list', { name: 'People in HQ' }));
     expect(screen.getByText('In call (3)')).toBeTruthy();
-    expect(call.getAllByRole('listitem').map((li) => li.textContent?.replace(/\d+ m/, ''))).toEqual([
-      'You',
-      'Ann',
-      'Visitor',
-    ]);
+    expect(call.getAllByRole('listitem').map((li) => li.textContent?.replace(/\d+ m/, ''))).toEqual(['You', 'Ann', 'Visitor']);
     expect(call.getByRole('img', { name: 'Speaking' })).toBeTruthy();
     expect(call.getByRole('img', { name: 'Muted' })).toBeTruthy();
     expect(call.getByRole('button', { name: 'Go to Ann' })).toBeTruthy();

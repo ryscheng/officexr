@@ -1,74 +1,43 @@
-import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
+import type { MicState, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { useStoreSelector } from '@officexr/world/top-down';
 import type { PingSender } from '../ping/usePingSender';
-import {
-  createLabeller,
-  PANEL_CLASS,
-  PersonList,
-  toPresencePlayer,
-  type PersonRow,
-  type PresencePlayer,
-} from './PersonList';
+import { PANEL_CLASS, PersonList, type PersonRow } from './PersonList';
+import { labelsInJoinOrder, toPresencePlayer, type PresencePlayer } from './personRows';
 import { sameList } from './sameFields';
 
-type CallPlayer = PresencePlayer & { jitsiParticipantId: string | null };
+type CallPlayer = PresencePlayer & { mic: MicState; jitsiParticipantId: string | null };
 type RosterEntry = { id: string; displayName: string };
-type Call = {
-  /** `joining` until Jitsi hands us a participant id. */
-  state: 'none' | 'joining' | 'connected';
-  players: CallPlayer[];
-  roster: RosterEntry[];
-};
+type Call = { state: 'none' | 'joining' | 'connected'; players: CallPlayer[]; roster: RosterEntry[] };
 
-/** `players` must be in join order; matched windows sharing a login are numbered by it. */
+/** `players` must be in join order and include everyone, so labels match the presence list's. */
 export function callRows(roster: RosterEntry[], players: CallPlayer[], selfId: PlayerId): PersonRow[] {
-  const labelOf = createLabeller();
-  const peers = players.filter((p) => p.id !== selfId);
-  const remote = roster.map((entry): PersonRow & { sortName: string } => {
-    const peer = peers.find((p) => p.jitsiParticipantId === entry.id);
-    if (!peer) {
-      const label = entry.displayName || 'Guest';
-      return { type: 'guest', id: entry.id, label, sortName: label };
-    }
-    return {
-      type: 'peer',
-      ...peer,
-      label: labelOf(peer.id, peer.name),
-      sortName: peer.name,
-    };
-  });
+  const labels = labelsInJoinOrder(players);
   const self = players.find((p) => p.id === selfId);
-  return [
-    ...(self
-      ? [
-          {
-            type: 'self' as const,
-            id: self.id,
-            label: 'You',
-            status: self.status,
-            mic: self.mic,
-          },
-        ]
-      : []),
-    ...remote.sort((a, b) => a.sortName.localeCompare(b.sortName)),
-  ];
+  const remote = roster
+    .map((entry): PersonRow => {
+      const peer = players.find((p) => p.id !== selfId && p.jitsiParticipantId === entry.id);
+      return peer
+        ? { type: 'peer', ...peer, label: labels.get(peer.id)! }
+        : { type: 'guest', id: entry.id, label: entry.displayName || 'Guest' };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+  return self ? [{ type: 'self', id: self.id, label: 'You', status: self.status, mic: self.mic }, ...remote] : remote;
 }
 
 const selectCall = (s: OfficeState): Call => {
   const me = s.players[s.selfId];
-  const selfPos = me?.pos;
+  const state = !me?.jitsiRoom ? 'none' : me.jitsiParticipantId ? 'connected' : 'joining';
+  if (state !== 'connected') {
+    return { state, players: [], roster: [] };
+  }
   return {
-    state: !me?.jitsiRoom ? 'none' : me.jitsiParticipantId ? 'connected' : 'joining',
-    players: Object.entries(s.players)
-      .filter(([id, p]) => id === s.selfId || p.jitsiParticipantId)
-      .map(([id, p]) => ({
-        ...toPresencePlayer(id, p, selfPos),
-        jitsiParticipantId: p.jitsiParticipantId,
-      })),
-    roster: Object.entries(s.callRoster).map(([id, { displayName }]) => ({
-      id,
-      displayName,
+    state,
+    players: Object.entries(s.players).map(([id, p]) => ({
+      ...toPresencePlayer(id, p, me.pos),
+      mic: p.mic,
+      jitsiParticipantId: p.jitsiParticipantId,
     })),
+    roster: Object.entries(s.callRoster).map(([id, { displayName }]) => ({ id, displayName })),
   };
 };
 const sameCall = (a: Call, b: Call) =>
@@ -84,9 +53,7 @@ export function CallList({
 }: {
   store: Store;
   selfId: PlayerId;
-  /** Must be stable; defaults to `performance.now`, the clock presence timestamps are on. */
   clock?: () => number;
-  /** Without it, rows have no Ping button. */
   pinger?: PingSender;
 }) {
   const { state, players, roster } = useStoreSelector(store, selectCall, sameCall);
@@ -95,7 +62,7 @@ export function CallList({
     <div data-studio-panel className={PANEL_CLASS}>
       <div className="mb-1 font-medium">In call ({rows.length})</div>
       {state === 'connected' ? (
-        <PersonList label="People in your call" rows={rows} showMic pinger={pinger} clock={clock} />
+        <PersonList label="People in your call" rows={rows} pinger={pinger} clock={clock} />
       ) : (
         <p className="text-white/70">{IDLE_TEXT[state]}</p>
       )}
