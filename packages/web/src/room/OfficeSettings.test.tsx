@@ -75,6 +75,9 @@ describe('OfficeSettings', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Debug mode' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(updated));
+    expect((await screen.findByRole('status')).textContent).toBe('Saved');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lab 2' } });
+    expect(screen.queryByRole('status')).toBeNull();
     const [url, init] = fetchMock.mock.calls.find(([, i]) => i?.method === 'PATCH')!;
     expect(url).toBe('/api/offices/o1');
     expect(JSON.parse(init!.body as string)).toEqual({ name: 'Lab', mapName: 'default', debugEnabled: true });

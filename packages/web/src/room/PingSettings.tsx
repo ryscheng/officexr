@@ -1,11 +1,11 @@
 import { useId, useState } from 'react';
 import type { SoundCatalog } from '@officexr/world/app';
+import { Switch } from '../hud/ui/Switch';
 import { assertNever } from '../ping/assertNever';
 import { browserNotification, type NotificationSeam } from '../ping/pingNotifier';
 import { previewPingSound } from '../ping/pingSound';
 import { readPingPrefs, usePingPrefs, writePingPrefs, type PingSound } from '../ping/pingPrefs';
 import { useSoundCatalog } from '../ping/useSoundCatalog';
-import { Switch } from '../hud/ui/Switch';
 import { SettingRow } from './SettingsModal';
 
 const sameSound = (a: PingSound, b: PingSound): boolean =>
@@ -18,7 +18,13 @@ const sameSound = (a: PingSound, b: PingSound): boolean =>
         : assertNever(a);
 
 const isAudible = (sound: PingSound): boolean =>
-  sound.type === 'builtin' ? true : sound.type === 'library' ? true : sound.type === 'none' ? false : assertNever(sound);
+  sound.type === 'builtin'
+    ? true
+    : sound.type === 'library'
+      ? true
+      : sound.type === 'none'
+        ? false
+        : assertNever(sound);
 
 const soundKey = (sound: PingSound): string => (sound.type === 'library' ? `library:${sound.name}` : sound.type);
 
@@ -91,11 +97,11 @@ export function NotificationsPane({
             return (
               <div
                 key={soundKey(sound)}
-                className={`flex items-center gap-2 rounded-hud-control border-2 px-3 py-2 ${
+                className={`flex items-center gap-2 rounded-hud-control border-2 ${
                   active ? 'border-hud-accent-edge bg-hud-inset' : 'border-hud-edge'
                 }`}
               >
-                <label className="flex flex-1 items-center gap-2 font-bold">
+                <label className="flex flex-1 cursor-pointer items-center gap-2 px-3 py-2 font-bold">
                   <input
                     type="radio"
                     name="ping-sound"
@@ -108,7 +114,7 @@ export function NotificationsPane({
                 {isAudible(sound) && (
                   <button
                     type="button"
-                    className="rounded-hud-control border-2 border-hud-edge bg-hud-inset px-3 py-1 text-xs font-bold hover:bg-hud-edge"
+                    className="mr-3 rounded-hud-control border-2 border-hud-edge bg-hud-inset px-3 py-1 text-xs font-bold hover:bg-hud-edge"
                     onClick={() => preview(sound, catalog)}
                   >
                     Preview<span className="sr-only"> {label}</span>

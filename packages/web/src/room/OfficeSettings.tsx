@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office, type OfficeUpdate } from '@officexr/server/shared';
 import { apiFetch, paths } from '../apiOrigin';
+import { FIELD } from '../hud/ui/fieldStyles';
+import { Switch } from '../hud/ui/Switch';
 import { errorMessage } from '../useApi';
 import { useMapNames } from '../useMapNames';
-import { Switch } from '../hud/ui/Switch';
 import type { SettingsTab } from './Settings';
 import { SettingRow, SettingsActionButton } from './SettingsModal';
 import { DEFAULT_MAP } from '@officexr/world/scenes';
@@ -16,7 +17,9 @@ function changedFields(office: Office, next: Required<OfficeUpdate>): OfficeUpda
     mapName: office.map_name ?? DEFAULT_MAP,
     debugEnabled: office.debug_enabled,
   };
-  return Object.fromEntries(Object.entries(next).filter(([key, value]) => value !== current[key as keyof typeof current]));
+  return Object.fromEntries(
+    Object.entries(next).filter(([key, value]) => value !== current[key as keyof typeof current]),
+  );
 }
 
 export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSaved: (office: Office) => void }) {
@@ -24,6 +27,7 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
   const [mapName, setMapName] = useState(office.map_name ?? DEFAULT_MAP);
   const [debug, setDebug] = useState(office.debug_enabled);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -31,6 +35,7 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
     const form = new FormData(event.currentTarget);
     setBusy(true);
     setError(null);
+    setSaved(false);
     try {
       const res = await apiFetch(paths.office(office.id), {
         method: 'PATCH',
@@ -49,6 +54,7 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
         throw new Error(errorMessage(res, body));
       }
       onSaved(body as Office);
+      setSaved(true);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -56,7 +62,7 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
     }
   };
 
-  const field = 'mt-1 block w-full rounded-hud-control border-2 border-hud-edge bg-hud-inset p-2 text-hud-text';
+  const field = `mt-1 ${FIELD}`;
   return (
     <form
       onSubmit={submit}
@@ -64,7 +70,9 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
         setMapName(office.map_name ?? DEFAULT_MAP);
         setDebug(office.debug_enabled);
         setError(null);
+        setSaved(false);
       }}
+      onChange={() => setSaved(false)}
       className="space-y-3"
     >
       <fieldset disabled={busy} className="space-y-3">
@@ -92,7 +100,14 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
           </select>
         </label>
         <SettingRow label="Debug mode (lets you join from several windows)">
-          <Switch aria-label="Debug mode" checked={debug} onCheckedChange={setDebug} />
+          <Switch
+            aria-label="Debug mode"
+            checked={debug}
+            onCheckedChange={(on) => {
+              setDebug(on);
+              setSaved(false);
+            }}
+          />
         </SettingRow>
         <div className="flex gap-2">
           <SettingsActionButton primary type="submit">
@@ -101,6 +116,11 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
           <SettingsActionButton type="reset">Cancel</SettingsActionButton>
         </div>
       </fieldset>
+      {saved && (
+        <p role="status" className="text-hud-sage-text">
+          Saved
+        </p>
+      )}
       {(error ?? mapsError) && (
         <p role="alert" className="text-hud-rose-text">
           {error ?? mapsError}

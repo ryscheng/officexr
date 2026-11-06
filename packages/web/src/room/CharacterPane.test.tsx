@@ -54,6 +54,13 @@ describe('CharacterPane', () => {
     expect(screen.queryByTestId('preview')).toBeNull();
   });
 
+  it('Escape after Back closes Settings', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('shows and saves the chosen character', async () => {
     const { local, fetchFn, onSaveResult } = setup();
     fireEvent.change(screen.getByRole('combobox', { name: 'Character' }), { target: { value: OTHER } });

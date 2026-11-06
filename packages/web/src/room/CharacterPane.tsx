@@ -4,6 +4,7 @@ import type { OfficeState } from '@officexr/sdk';
 import { CHARACTERS, pickCharacterForPlayer, type CharacterName } from '@officexr/world/characters';
 import { CharacterPreviewCanvas } from '@officexr/world/renderer';
 import type { apiFetch } from '../apiOrigin';
+import { FIELD } from '../hud/ui/fieldStyles';
 import { chooseCharacter } from './character';
 import { useSettings } from './Settings';
 import { SettingsActionButton } from './SettingsModal';
@@ -38,13 +39,13 @@ export function CharacterPane({
 }) {
   const character = useSelfCharacter(local);
   return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="h-64 flex-1 overflow-hidden rounded-hud-control bg-hud-inset">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="min-h-40 flex-1 overflow-hidden rounded-hud-control bg-hud-inset">
         <Preview character={character} />
       </div>
       <select
         aria-label="Character"
-        className="block w-full rounded-hud-control border-2 border-hud-edge bg-hud-inset p-2 font-bold text-hud-text"
+        className={`${FIELD} font-bold`}
         value={character}
         onChange={(e) =>
           chooseCharacter(local, e.target.value as CharacterName, fetchFn).then(
