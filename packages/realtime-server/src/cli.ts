@@ -10,6 +10,7 @@ const server = new RealtimeServer({
   worldConstantsUrl: process.env.OFFICEXR_WORLD_CONSTANTS_URL,
   adminToken: process.env.OFFICEXR_REALTIME_ADMIN_TOKEN,
   sessionPolicy: officeApi?.allowsMultiSession,
+  deskClaims: officeApi,
   tokenSecret,
 });
 await server.start();
