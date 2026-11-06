@@ -1,4 +1,5 @@
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
+import { SEGMENT_GROUP, SEGMENT_ITEM } from './segmentStyles';
 
 /** Single-select; Radix reports an empty string when the selected item is clicked again, which is ignored. */
 export function SegmentedControl<T extends string>({
@@ -22,13 +23,13 @@ export function SegmentedControl<T extends string>({
         }
       }}
       aria-label={ariaLabel}
-      className="inline-flex gap-1 rounded-hud-control bg-hud-inset p-1"
+      className={`inline-flex gap-1 ${SEGMENT_GROUP}`}
     >
       {options.map((option) => (
         <ToggleGroup.Item
           key={option.value}
           value={option.value}
-          className="rounded-hud-control px-3 py-1.5 font-hud-body text-sm font-bold text-hud-text-2 data-[state=on]:bg-hud-accent data-[state=on]:text-hud-on-accent pointer-coarse:min-h-11"
+          className={SEGMENT_ITEM}
         >
           {option.label}
         </ToggleGroup.Item>

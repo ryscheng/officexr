@@ -21,8 +21,8 @@
   --radius-hud-panel: 16px;
   --radius-hud-control: 14px;
 
-  --shadow-hud-panel: 0 4px 0 #0e121b, 0 12px 28px rgb(0 0 0 / 0.45);
-  --shadow-hud-control: 0 3px 0 #0e121b;
+  --shadow-hud-panel: 0 4px 0 var(--color-hud-edge-shadow), 0 12px 28px rgb(0 0 0 / 0.45);
+  --shadow-hud-control: 0 3px 0 var(--color-hud-edge-shadow);
 
   --font-hud-title: "Tiny5", sans-serif;
   --font-hud-body: "Nunito", sans-serif;

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { Panel, PanelTitle } from './hud/ui/Panel';
 
-/** A modal over the room; `data-studio-panel` keeps typing in it from driving the avatar. */
+/** A modal over the room. */
 export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
@@ -24,20 +25,19 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
         }
       }}
     >
-      <div
+      <Panel
         ref={ref}
         tabIndex={-1}
-        data-studio-panel
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-md rounded-hud-panel border-2 border-hud-edge bg-hud-panel p-4 font-hud-body text-sm text-hud-text shadow-hud-panel outline-none"
+        className="w-full max-w-md p-4 text-sm outline-none"
       >
-        <h2 id={titleId} className="mb-3 font-hud-title text-base font-normal tracking-widest uppercase">
+        <PanelTitle id={titleId} className="mb-3 text-base">
           {title}
-        </h2>
+        </PanelTitle>
         {children}
-      </div>
+      </Panel>
     </div>
   );
 }
