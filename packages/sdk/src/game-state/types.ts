@@ -383,6 +383,8 @@ export type OfficeState = {
   zombies: ZombieState;
   inventory: InventoryItem[];
   screenShares: Record<PlayerId, ScreenShareSignal>;
+  /** Local-only: the other Jitsi participants in the local user's call, keyed by Jitsi participant id. */
+  callRoster: Record<string, { displayName: string }>;
   realtime: RealtimeState;
   runtime: {
     tickRate: number;

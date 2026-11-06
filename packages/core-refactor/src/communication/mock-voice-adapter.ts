@@ -34,6 +34,7 @@ export class MockVoiceAdapter implements VoiceAdapter {
     this.currentRoom = roomId;
     this.setConnectionState('joining');
     this.setConnectionState('connected');
+    this.emitLocalParticipantJoined(`local-${roomId}`);
   }
 
   async leaveRoom(): Promise<void> {
@@ -70,26 +71,31 @@ export class MockVoiceAdapter implements VoiceAdapter {
 
   // -- test surface --
 
-  /** Test-only: simulate a remote participant joining. */
-  emitParticipantJoined(participantId: PlayerId): void {
-    if (!this.currentRoom) return;
-    this.events.emit('remote-participant-joined', {
-      roomId: this.currentRoom,
-      participantId,
-    });
+  /** Test-only: simulate a remote participant joining; `roomId` overrides the current room to model a stale event. */
+  emitParticipantJoined(participantId: PlayerId, displayName = '', roomId = this.currentRoom): void {
+    if (!roomId) return;
+    this.events.emit('remote-participant-joined', { roomId, participantId, displayName });
   }
 
-  emitParticipantLeft(participantId: PlayerId): void {
-    if (!this.currentRoom) return;
-    this.events.emit('remote-participant-left', {
-      roomId: this.currentRoom,
-      participantId,
-    });
+  emitParticipantLeft(participantId: PlayerId, roomId = this.currentRoom): void {
+    if (!roomId) return;
+    this.events.emit('remote-participant-left', { roomId, participantId });
+  }
+
+  /** Test-only: emit a connection-state change without touching the current room. */
+  emitConnectionState(state: VoiceConnectionState): void {
+    this.setConnectionState(state);
   }
 
   /** Test-only: clear recorded calls. */
   clearCalls(): void {
     this.calls.length = 0;
+  }
+
+  /** Emitted by `joinRoom`, after the room's `connected`, like the real adapters. */
+  private emitLocalParticipantJoined(participantId: string): void {
+    if (!this.currentRoom) return;
+    this.events.emit('local-participant-joined', { roomId: this.currentRoom, participantId });
   }
 
   private setConnectionState(state: VoiceConnectionState): void {

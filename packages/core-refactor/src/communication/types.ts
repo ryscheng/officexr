@@ -9,7 +9,8 @@ export type VoiceConnectionState =
 
 export interface VoiceAdapterEvents {
   'connection-state-change': { state: VoiceConnectionState; roomId: string | null };
-  'remote-participant-joined': { roomId: string; participantId: string };
+  'local-participant-joined': { roomId: string; participantId: string };
+  'remote-participant-joined': { roomId: string; participantId: string; displayName: string };
   'remote-participant-left': { roomId: string; participantId: string };
 }
 

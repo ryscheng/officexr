@@ -51,6 +51,7 @@ export function createInitialOfficeState(opts: {
     },
     inventory: [],
     screenShares: {},
+    callRoster: {},
     realtime: { status: 'connecting', snapshotTarget: null, versionWarnings: {} },
     runtime: { tickRate: 60, lastTick: 0, protocolVersion: 1 },
     worldConstants: DEFAULT_WORLD_CONSTANTS,
