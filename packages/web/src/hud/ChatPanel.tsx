@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Actions, OfficeState, Store } from '@officexr/sdk';
 import { focusWorld } from '@officexr/world/top-down';
+import { useEscapeLayer } from './useEscapeLayer';
 import { useChatVisibility } from './useChatVisibility';
 import { useStoreSelector } from '@officexr/world/top-down';
 
@@ -73,24 +74,30 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
     }
   }, [chat.length, mode]);
 
-  if (mode === 'hidden') {
-    return null;
-  }
-
   const handBack = (next: () => void) => {
     inputRef.current?.blur();
     next();
     focusWorld();
   };
 
+  useEscapeLayer(
+    mode === 'compose',
+    () => {
+      setDraft('');
+      handBack(hide);
+    },
+    true,
+  );
+
+  if (mode === 'hidden') {
+    return null;
+  }
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (isComposing(e)) {
       return;
     }
-    if (e.key === 'Escape') {
-      setDraft('');
-      handBack(hide);
-    } else if (e.key === 'Enter') {
+    if (e.key === 'Enter') {
       const text = draft.trim();
       if (!text) {
         // Enter is the shortcut's toggle: on an empty draft it closes the panel.

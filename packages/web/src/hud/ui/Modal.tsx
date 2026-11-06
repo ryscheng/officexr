@@ -1,9 +1,10 @@
 import { useEffect, useRef, type ComponentProps } from 'react';
+import { useEscapeLayer } from '../useEscapeLayer';
 import { Panel } from './Panel';
 
 /**
- * A backdrop and a focused `role="dialog"` panel. Escape calls `onEscape` and stops there, so window-level
- * Escape handlers (popovers, the meeting tile) don't also fire. Rest props go on the backdrop.
+ * A backdrop and a focused `role="dialog"` panel. Escape calls `onEscape` as the topmost overlay, even from a
+ * field inside. Rest props go on the backdrop.
  */
 export function Modal({
   labelledBy,
@@ -12,8 +13,9 @@ export function Modal({
   className,
   children,
   ...backdropProps
-}: Omit<ComponentProps<'div'>, 'onKeyDown'> & { labelledBy: string; onEscape: () => void; panelClassName: string }) {
+}: ComponentProps<'div'> & { labelledBy: string; onEscape: () => void; panelClassName: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  useEscapeLayer(true, onEscape, true);
   // Focus must start inside, or Escape never reaches the modal and assistive tech stays behind it.
   // A pointer-locked camera would otherwise keep turning, with the cursor hidden, behind the backdrop.
   useEffect(() => {
@@ -23,13 +25,6 @@ export function Modal({
   return (
     <div
       className={`pointer-events-auto fixed inset-0 flex items-center justify-center p-4 ${className}`}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          onEscape();
-        }
-      }}
       {...backdropProps}
     >
       <Panel

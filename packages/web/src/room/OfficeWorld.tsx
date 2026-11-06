@@ -32,6 +32,7 @@ import { closingAction, SettingRow, SettingsButton, SettingsModal } from './Sett
 import { useJoinCheck } from './useJoinCheck';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
+import { useEscapeFallback } from '../hud/useEscapeLayer';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { initialViewMode } from './viewMode';
 import { ViewModeControl } from './ViewModeControl';
@@ -97,6 +98,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pingSettingsOpen, setPingSettingsOpen] = useState(false);
   useShortcutsHotkey(openKeybinds, session.type === 'ready');
+  const openDefaultSettings = useCallback(() => openSettings(), [openSettings]);
+  useEscapeFallback(openDefaultSettings, session.type === 'ready');
   const pip = usePictureInPicture();
   const closePip = pip.close;
   // The window's contents render inside PlayView, so a session that drops would leave it blank.
