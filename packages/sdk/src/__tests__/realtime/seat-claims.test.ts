@@ -27,6 +27,23 @@ describe('presence:seat', () => {
     expect(seatOccupant(b.store.getState(), 'chair-1')).toBeNull();
   });
 
+  it('announces a seat taken while held once the player is released', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a', { holdSelf: true });
+    const b = await h.add('b');
+    a.actions.setSelfSeat('chair-1');
+    expect(b.store.getState().players['a']?.seat).toBeUndefined();
+
+    a.sync.releaseSelf();
+    expect(b.store.getState().players['a']?.seat).toBe('chair-1');
+  });
+
+  it('rejects malformed payloads', () => {
+    const env = { v: 1, actorId: 'a', seq: 1, t: 0 };
+    expect(validateNetEvent({ ...env, kind: 'presence:seat', instanceId: null }).ok).toBe(true);
+    expect(validateNetEvent({ ...env, kind: 'presence:seat', instanceId: 3 }).ok).toBe(false);
+  });
+
   it('is broadcast on change only', async () => {
     const h = createMultiClientHarness();
     const a = await h.add('a');
@@ -44,7 +61,7 @@ describe('presence:seat', () => {
 });
 
 describe('desk:claims', () => {
-  it('replaces the claims and is not overwritten by a snapshot', async () => {
+  it('replaces the claims', () => {
     const store = createStore({ selfId: 'me', officeId: 'o' });
     const actions = createActions(store);
     const clock = new FakeClock(0);
@@ -60,11 +77,14 @@ describe('desk:claims', () => {
     expect(store.getState().deskClaims).toEqual({ d3: 'x@example.com' });
     expect(deskOwnedBy(store.getState(), 'x@example.com')).toBe('d3');
     expect(deskOwnedBy(store.getState(), 'y@example.com')).toBeNull();
+  });
 
+  it('is not carried by a peer snapshot', async () => {
     const h = createMultiClientHarness();
     const a = await h.add('a');
     a.actions.setDeskClaims({ d1: 'a@example.com' });
     const b = await h.add('b');
+    await b.handshake.requestSnapshot();
     expect(b.store.getState().deskClaims).toEqual({});
   });
 
@@ -72,8 +92,6 @@ describe('desk:claims', () => {
     const env = { v: 1, actorId: 's', seq: 1, t: 0 };
     expect(validateNetEvent({ ...env, kind: 'desk:claims', claims: { d1: 'x' } }).ok).toBe(true);
     expect(validateNetEvent({ ...env, kind: 'desk:claims', claims: { d1: 3 } }).ok).toBe(false);
-    expect(validateNetEvent({ ...env, kind: 'presence:seat', instanceId: null }).ok).toBe(true);
-    expect(validateNetEvent({ ...env, kind: 'presence:seat', instanceId: 3 }).ok).toBe(false);
   });
 });
 

@@ -20,6 +20,7 @@ import {
   createSeqCounter,
   loginOf,
   parseWorldConstants,
+  PROTOCOL,
   validateNetEvent,
   type Actions,
   type Bus,
@@ -614,11 +615,11 @@ export class RealtimeServer {
     switch (frame.t) {
       case 'broadcast': {
         const v = validateNetEvent(frame.event);
-        // Only the server originates world constants, and a spoofed
+        // Only the server originates server-authority kinds, and a spoofed
         // server actor with a high seq would make peers dedup away every
         // later server push. The retired `world:settings` kind already
         // fails validation.
-        if (!v.ok || v.event.kind === 'world:constants' || v.event.actorId === SERVER_SELF_ID) return;
+        if (!v.ok || PROTOCOL[v.event.kind].authority === 'server' || v.event.actorId === SERVER_SELF_ID) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
         room.hub.broadcast(client.userId, v.event);
