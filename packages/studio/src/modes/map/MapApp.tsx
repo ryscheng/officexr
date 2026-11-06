@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useApplication, useCatalogReady } from '@officexr/world/react';
+import type { DeskArea } from '@officexr/world/scenes';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { EnvironmentPanel } from './EnvironmentPanel.tsx';
@@ -8,8 +10,16 @@ import { MapToolbar } from './MapToolbar.tsx';
 import { MAP_TOOLS, type MapTool } from './mapTools.ts';
 import { RoomPalette } from './RoomPalette.tsx';
 import { RoomInstanceList } from './RoomInstanceList.tsx';
+import { deskAreasOf } from './deskAreaGeometry.ts';
+import { DeskAreaList } from './DeskAreaList.tsx';
+import {
+  createDeskAreaValidator,
+  violationsOf,
+  type DeskAreaCheck,
+} from './deskAreaValidator.ts';
+import { assertNever } from '../../assertNever.ts';
 import { SpawnList } from './SpawnList.tsx';
-import { useMapDocument } from './useMapDocument.ts';
+import { useMapDocument, type UseMapDocumentOptions } from './useMapDocument.ts';
 import { useMapRoomLibrary } from './useMapRoomLibrary.ts';
 
 /**
@@ -19,21 +29,57 @@ import { useMapRoomLibrary } from './useMapRoomLibrary.ts';
  * Layout:
  *   - LeftPanel:  RoomPalette (saved rooms) + MapPicker (load/new).
  *   - Main:       MapEditorCanvas (free-fly + per-room groups + spawn
- *                 markers + selection outline) with a top-right
- *                 MapToolbar overlay (Select / Move / Spawn).
- *   - SidePanel:  RoomInstanceList, SpawnList, environment panel.
+ *                 markers + desk-area rectangles + selection outline)
+ *                 with a top-right MapToolbar overlay (Select / Move /
+ *                 Spawn / Desk area).
+ *   - SidePanel:  RoomInstanceList, SpawnList, DeskAreaList, environment
+ *                 panel.
  */
 export function MapApp() {
-  const map = useMapDocument();
+  const { rooms: roomService, geometry, catalog } = useApplication();
+  const catalogReady = useCatalogReady();
+  const [validateDeskAreas, setValidateDeskAreas] = useState<
+    NonNullable<UseMapDocumentOptions['validateDeskAreas']>
+  >(() => (): DeskAreaCheck => ({ type: 'pending', reason: 'loading rooms' }));
+  const map = useMapDocument({ validateDeskAreas });
   const referenced = useMemo(() => {
     const s = new Set<string>();
     for (const r of map.doc.rooms) s.add(r.roomName);
     return s;
   }, [map.doc.rooms]);
   const library = useMapRoomLibrary(referenced);
+  // The library is loaded from the document's rooms, so the validator can only
+  // be built after the document exists and is handed back to it via state.
+  useEffect(() => {
+    setValidateDeskAreas(() =>
+      createDeskAreaValidator({
+        catalogReady,
+        roomService,
+        catalog,
+        geometry,
+        library,
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogReady, roomService, catalog, geometry, library.rooms, library.layouts, library.settledRooms, library.settledLayouts]);
   const [tool, setTool] = useState<MapTool>('select');
+  const deskAreaViolations = violationsOf(map.deskAreaCheck);
+  const { selection, addDeskArea, setDeskAreaBounds, setSelection } = map;
+  // Dragging with a desk area selected redraws it; a fresh area is left
+  // unselected so the next drag draws another instead of resizing it.
+  const commitDeskArea = useCallback(
+    (bounds: Pick<DeskArea, 'min' | 'max'>) => {
+      if (selection !== null && selection.kind === 'desk-area') {
+        setDeskAreaBounds(selection.id, bounds);
+        return;
+      }
+      addDeskArea(bounds);
+      setSelection(null);
+    },
+    [selection, addDeskArea, setDeskAreaBounds, setSelection],
+  );
 
-  // Tool keyboard shortcuts (V / M / P, Esc → select). Bound at window
+  // Tool keyboard shortcuts (V / M / P / R, Esc → select). Bound at window
   // scope so they work even when focus is in the canvas. Skip while
   // typing in inputs so the SpawnList rename doesn't switch tools.
   useEffect(() => {
@@ -104,8 +150,11 @@ export function MapApp() {
             // another spawn.
             setTool('select');
           }}
+          onCommitDeskArea={commitDeskArea}
+          deskAreaViolations={deskAreaViolations}
           tool={tool}
         />
+        <DeskAreaErrorBanner check={map.deskAreaCheck} />
         <CanvasHud mapName={map.mapName} />
         <MapToolbar tool={tool} onChange={setTool} />
       </main>
@@ -133,6 +182,14 @@ export function MapApp() {
               onRemove={map.removeSpawn}
               onRename={map.setSpawnLabel}
             />
+            <DeskAreaList
+              areas={deskAreasOf(map.doc)}
+              violations={deskAreaViolations}
+              selection={map.selection}
+              onSelect={map.setSelection}
+              onRemove={map.removeDeskArea}
+              onRename={map.setDeskAreaLabel}
+            />
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
             <EnvironmentPanel
@@ -142,6 +199,42 @@ export function MapApp() {
           </div>
         </div>
       </SidePanel>
+    </div>
+  );
+}
+
+function deskAreaBannerText(check: DeskAreaCheck): string | null {
+  return check.type === 'pending'
+    ? `Not saved yet: ${check.reason}`
+    : check.type === 'checked'
+      ? check.violations.length === 0
+        ? null
+        : `Not saved: fix ${check.violations.map((v) => `${v.label} (${v.reason})`).join(', ')}`
+      : assertNever(check);
+}
+
+function DeskAreaErrorBanner({ check }: { check: DeskAreaCheck }) {
+  const text = deskAreaBannerText(check);
+  if (text === null) {
+    return null;
+  }
+  return (
+    <div
+      role="alert"
+      style={{
+        position: 'absolute',
+        bottom: 12,
+        left: 12,
+        maxWidth: '60%',
+        padding: '8px 12px',
+        background: 'rgba(127,29,29,0.92)',
+        color: '#fff',
+        borderRadius: 4,
+        font: '12px system-ui, sans-serif',
+        pointerEvents: 'none',
+      }}
+    >
+      {text}
     </div>
   );
 }

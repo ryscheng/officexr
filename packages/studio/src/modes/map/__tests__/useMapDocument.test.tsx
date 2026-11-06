@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { InMemoryMapStorage, emptyMapDocument } from '@officexr/world/scenes';
 import { useMapDocument } from '../useMapDocument.ts';
+import type { DeskAreaCheck } from '../deskAreaValidator.ts';
 
 /**
  * Tier 2 integration test: drives the real `useMapDocument` hook against
@@ -280,6 +281,67 @@ describe('useMapDocument', () => {
       });
       expect(save).toHaveBeenCalledTimes(1);
       expect(save.mock.calls[0][1].rooms).toHaveLength(2);
+    });
+  });
+
+  describe('desk areas', () => {
+    const bounds = { min: { x: 0, z: 0 }, max: { x: 2, z: 2 } };
+
+    it('adds, relabels, resizes and removes areas, tracking selection', async () => {
+      const { result } = renderHook(() => useMapDocument({ storage: makeStorage() }));
+      await waitFor(() => expect(result.current.doc.name).toBe('default'));
+
+      let id = '';
+      act(() => {
+        id = result.current.addDeskArea(bounds);
+      });
+      expect(result.current.selection).toEqual({ kind: 'desk-area', id });
+
+      act(() => result.current.setDeskAreaLabel(id, 'Pod A'));
+      act(() => result.current.setDeskAreaBounds(id, { min: { x: 1, z: 1 }, max: { x: 3, z: 3 } }));
+      expect((result.current.doc as { deskAreas: unknown }).deskAreas).toEqual([
+        { id, label: 'Pod A', min: { x: 1, z: 1 }, max: { x: 3, z: 3 } },
+      ]);
+
+      act(() => result.current.removeDeskArea(id));
+      expect((result.current.doc as { deskAreas: unknown[] }).deskAreas).toEqual([]);
+      expect(result.current.selection).toBeNull();
+    });
+
+    it('withholds saving while the check is pending or has violations, then resumes', async () => {
+      vi.useFakeTimers();
+      try {
+        const storage = makeStorage();
+        const save = vi.spyOn(storage, 'save');
+        let check: DeskAreaCheck = { type: 'pending', reason: 'loading rooms' };
+        const { result, rerender } = renderHook(
+          ({ validateDeskAreas }) => useMapDocument({ storage, validateDeskAreas }),
+          { initialProps: { validateDeskAreas: () => check } },
+        );
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        expect(result.current.doc.name).toBe('default');
+
+        act(() => {
+          result.current.addDeskArea(bounds);
+        });
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(save).not.toHaveBeenCalled();
+
+        check = {
+          type: 'checked',
+          violations: [{ areaId: 'x', label: 'Desk x', reason: '2 chairs' }],
+        };
+        rerender({ validateDeskAreas: () => check });
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(save).not.toHaveBeenCalled();
+
+        check = { type: 'checked', violations: [] };
+        rerender({ validateDeskAreas: () => check });
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(save).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

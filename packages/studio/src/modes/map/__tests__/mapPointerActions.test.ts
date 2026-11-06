@@ -19,8 +19,12 @@ describe('resolveRoomPointerAction', () => {
     expect(resolveRoomPointerAction('move')).toBe('select-drag');
   });
 
+  it('desk-area tool leaves room clicks to the drawing layer', () => {
+    expect(resolveRoomPointerAction('desk-area')).toBe('ignore');
+  });
+
   it('is total over MapTool (every tool resolves to an action)', () => {
-    const tools = ['select', 'move', 'spawn'] as const;
+    const tools = ['select', 'move', 'spawn', 'desk-area'] as const;
     for (const t of tools) {
       expect(resolveRoomPointerAction(t)).toBeTruthy();
     }

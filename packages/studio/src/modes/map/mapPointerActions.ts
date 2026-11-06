@@ -1,3 +1,4 @@
+import { assertNever } from '../../assertNever.ts';
 import type { MapTool } from './mapTools.ts';
 
 /**
@@ -6,6 +7,7 @@ import type { MapTool } from './mapTools.ts';
  *   - `place-spawn`  — Spawn tool: drop a spawn at the raycast hit.
  *   - `select`       — Select tool: select the room, no drag.
  *   - `select-drag`  — Move tool: select the room AND begin a drag.
+ *   - `ignore`       — Desk-area tool: the drawing layer owns the gesture.
  *
  * IMPORTANT (taxonomy F regression guard): this decision depends ONLY
  * on the active tool. It deliberately does NOT branch on the hit mesh's
@@ -16,7 +18,7 @@ import type { MapTool } from './mapTools.ts';
  * the tool means any descendant of the room group (cube OR baked
  * layout) behaves identically.
  */
-export type RoomPointerAction = 'place-spawn' | 'select' | 'select-drag';
+export type RoomPointerAction = 'place-spawn' | 'select' | 'select-drag' | 'ignore';
 
 export function resolveRoomPointerAction(tool: MapTool): RoomPointerAction {
   switch (tool) {
@@ -26,5 +28,9 @@ export function resolveRoomPointerAction(tool: MapTool): RoomPointerAction {
       return 'select-drag';
     case 'select':
       return 'select';
+    case 'desk-area':
+      return 'ignore';
+    default:
+      return assertNever(tool);
   }
 }

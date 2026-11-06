@@ -18,14 +18,24 @@ export function computeVoiceZones(
   geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>,
 ): VoiceZone[] {
   const desks = (map.deskAreas ?? []).map((area) => ({ id: area.id, label: deskAreaLabel(area), min: area.min, max: area.max }));
+  return [...computeRoomVoiceZones(map, rooms, layouts, roomService, geometry), ...desks];
+}
+
+/** The `voiceZone` placements' zones alone, without desk areas. */
+export function computeRoomVoiceZones(
+  map: MapDocumentV2,
+  rooms: ReadonlyMap<string, RoomDocument>,
+  layouts: ReadonlyMap<string, LayoutDocument>,
+  roomService: Pick<RoomService, 'compileMap'>,
+  geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>,
+): VoiceZone[] {
   const flagged = map.rooms.filter((ri) => ri.voiceZone === true);
   if (flagged.length === 0) {
-    return desks;
+    return [];
   }
   const { instances } = roomService.compileMap(map, rooms, layouts);
-  const roomZones = flagged.flatMap((ri) => {
+  return flagged.flatMap((ri) => {
     const bounds = roomXZBounds(instances, ri.id, geometry);
     return bounds ? { id: ri.id, label: rooms.get(ri.roomName)?.title ?? ri.roomName, ...bounds } : [];
   });
-  return [...roomZones, ...desks];
 }
