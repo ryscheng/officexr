@@ -109,7 +109,7 @@ export function MuteToggle({ voice }: { voice: JaasVoiceAdapter }) {
       icon={muted ? MicOff : Mic}
       label={muted ? 'Unmute microphone' : 'Mute microphone'}
       pressed={muted}
-      tone={muted ? 'danger' : 'neutral'}
+      tone={muted ? 'danger' : 'success'}
       onClick={() => voice.setMuted(!muted)}
     />
   );
