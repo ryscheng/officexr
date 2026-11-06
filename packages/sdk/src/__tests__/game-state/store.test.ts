@@ -165,6 +165,7 @@ describe('actions', () => {
       isAirborne: false,
       avatar: { model: 'default' },
       jitsiRoom: null,
+      jitsiParticipantId: null,
       status: 'available',
       mic: 'none',
     });
@@ -203,6 +204,7 @@ function makePlayer(id: string) {
     isAirborne: false,
     avatar: { model: 'default' },
     jitsiRoom: null,
+    jitsiParticipantId: null,
     status: 'available' as const,
     mic: 'none' as const,
   };

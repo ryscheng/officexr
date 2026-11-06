@@ -18,6 +18,7 @@ function player(patch: Partial<PlayerState>): PlayerState {
     isAirborne: false,
     avatar: { model: 'default' },
     jitsiRoom: null,
+    jitsiParticipantId: null,
     status: 'available',
     mic: 'none',
     ...patch,

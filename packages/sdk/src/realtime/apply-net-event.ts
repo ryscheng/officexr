@@ -27,7 +27,13 @@ export function applyNetEventToStore(
       );
       return;
     case 'presence:status':
-      actions.applyRemotePresence(event.actorId, event.status, event.mic, clock.now());
+      actions.applyRemotePresence(
+        event.actorId,
+        event.status,
+        event.mic,
+        clock.now(),
+        { room: event.jitsiRoom ?? null, participantId: event.jitsiParticipantId ?? null },
+      );
       return;
     case 'chat:message': {
       const msg: ChatMessage = {

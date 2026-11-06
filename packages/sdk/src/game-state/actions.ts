@@ -28,6 +28,7 @@ export interface Actions {
   // local intents
   setSelfPosition(pos: Vec3, vel: Vec3, yaw: number, isAirborne: boolean): void;
   setMyJitsiRoom(roomId: string | null): void;
+  setMyJitsiParticipantId(id: string | null): void;
   setSelfPresence(patch: { status?: PresenceStatus; mic?: MicState }): void;
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
@@ -68,7 +69,13 @@ export interface Actions {
     tRecv: number,
     isAirborne: boolean,
   ): void;
-  applyRemotePresence(playerId: PlayerId, status: PresenceStatus, mic: MicState, now: number): void;
+  applyRemotePresence(
+    playerId: PlayerId,
+    status: PresenceStatus,
+    mic: MicState,
+    now: number,
+    jitsi: { room: string | null; participantId: string | null },
+  ): void;
   applyRemoteAvatar(playerId: PlayerId, avatar: AvatarData, name: string, now: number): void;
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
@@ -103,6 +110,7 @@ const DEFAULT_PLAYER: Omit<PlayerState, 'id'> = {
   isAirborne: false,
   avatar: { model: 'default' },
   jitsiRoom: null,
+  jitsiParticipantId: null,
   status: 'available',
   mic: 'none',
 };
@@ -156,6 +164,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     setMyJitsiRoom(roomId) {
       patchSelf({ jitsiRoom: roomId });
+    },
+
+    setMyJitsiParticipantId(id) {
+      patchSelf({ jitsiParticipantId: id });
     },
 
     setSelfPresence({ status, mic }) {
@@ -294,8 +306,18 @@ export function createActions(store: Store, bus?: Bus): Actions {
       upsertRemote(playerId, { pos, vel, yaw, tRecv, isAirborne }, tRecv);
     },
 
-    applyRemotePresence(playerId, status, mic, now) {
-      upsertRemote(playerId, { status, mic, lastStatusAt: now }, now);
+    applyRemotePresence(playerId, status, mic, now, jitsi) {
+      upsertRemote(
+        playerId,
+        {
+          status,
+          mic,
+          jitsiRoom: jitsi.room,
+          jitsiParticipantId: jitsi.participantId,
+          lastStatusAt: now,
+        },
+        now,
+      );
     },
 
     applyRemoteAvatar(playerId, avatar, name, now) {

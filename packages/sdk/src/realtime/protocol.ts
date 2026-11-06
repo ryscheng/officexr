@@ -72,6 +72,7 @@ const ZPlayerState = z.object({
   isAirborne: z.boolean(),
   avatar: ZAvatarData,
   jitsiRoom: z.string().nullable(),
+  jitsiParticipantId: z.string().nullable().optional(),
   status: ZPresenceStatus,
   mic: ZMicState,
 });
@@ -189,7 +190,12 @@ const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
 // --- Per-kind payload schemas (without envelope) ---
 
 const ZPresencePosition = z.object({ pos: ZVec3, vel: ZVec3, yaw: z.number(), isAirborne: z.boolean() });
-const ZPresenceStatusPayload = z.object({ status: ZPresenceStatus, mic: ZMicState });
+const ZPresenceStatusPayload = z.object({
+  status: ZPresenceStatus,
+  mic: ZMicState,
+  jitsiRoom: z.string().nullable().optional(),
+  jitsiParticipantId: z.string().nullable().optional(),
+});
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) });
 const ZChatMessage = z.object({ text: z.string() });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
@@ -219,7 +225,13 @@ type WithEnvelope<K extends string, V extends number, P = {}> = Envelope & { kin
 
 export type NetEvent =
   | WithEnvelope<'presence:position', 1, { pos: Vec3; vel: Vec3; yaw: number; isAirborne: boolean }>
-  | WithEnvelope<'presence:status', 1, { status: PresenceStatus; mic: MicState }>
+  | WithEnvelope<'presence:status', 1, {
+      status: PresenceStatus;
+      mic: MicState;
+      jitsiRoom?: string | null;
+      jitsiParticipantId?: string | null;
+    }
+  >
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData; name: string }>
   | WithEnvelope<'chat:message', 1, { text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>
