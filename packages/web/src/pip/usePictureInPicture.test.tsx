@@ -4,12 +4,12 @@ import { createActions, createBus, createStore, type Store } from '@officexr/sdk
 import { createViewYaw, NavGridProvider, PlayControlsProvider, ViewYawProvider } from '@officexr/world/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakePlayControls } from '../hud/fakePlayControls';
-import { RoomMenu } from '../room/RoomMenu';
+import { openSettings, SettingsHarness } from '../room/settingsHarness';
 import { MuteToggle } from '../voice/JaasMeeting';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import type { PipMediaSession } from './documentPictureInPicture';
 import { PipContents } from './PipContents';
-import { PopOutMenuItem } from './PopOutMenuItem';
+import { popOutActions } from './popOutAction';
 import { usePictureInPicture, type PictureInPictureDeps } from './usePictureInPicture';
 
 const realMatchMedia = window.matchMedia;
@@ -99,9 +99,7 @@ function Room({ deps, store, voice }: { deps: PictureInPictureDeps; store: Store
     <NavGridProvider value={null}>
       <ViewYawProvider viewYaw={createViewYaw()}>
         <PlayControlsProvider controls={idlePlayControls}>
-          <RoomMenu>
-            <PopOutMenuItem pip={pip} />
-          </RoomMenu>
+          <SettingsHarness actions={popOutActions(pip)} />
           <MuteToggle voice={voice} />
           {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={store} voice={voice} />}
         </PlayControlsProvider>
@@ -127,7 +125,7 @@ function setup({ api = fakeApi() as ReturnType<typeof fakeApi> | null } = {}) {
     });
   };
   const popOut = async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    openSettings();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Pop out' })));
   };
   const windows = api?.windows ?? [];
@@ -138,7 +136,7 @@ function setup({ api = fakeApi() as ReturnType<typeof fakeApi> | null } = {}) {
 describe('usePictureInPicture', () => {
   it('offers nothing without the API', () => {
     const { mediaSession } = setup({ api: null });
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    openSettings();
     expect(screen.queryByRole('button', { name: 'Pop out' })).toBeNull();
     expect(mediaSession.handlers.size).toBe(0);
   });
@@ -209,7 +207,7 @@ describe('usePictureInPicture', () => {
   it('hides Pop out while a window is open', async () => {
     const { popOut } = setup();
     await popOut();
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    openSettings();
     expect(screen.queryByRole('button', { name: 'Pop out' })).toBeNull();
   });
 
@@ -247,7 +245,7 @@ describe('usePictureInPicture', () => {
       },
     };
     render(<PopOutHarness deps={{ api: fakeApi(), mediaSession: throwing }} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    openSettings();
     expect(screen.getByRole('button', { name: 'Pop out' })).toBeTruthy();
   });
 });
@@ -255,8 +253,6 @@ describe('usePictureInPicture', () => {
 function PopOutHarness({ deps }: { deps: PictureInPictureDeps }) {
   const pip = usePictureInPicture(deps);
   return (
-    <RoomMenu>
-      <PopOutMenuItem pip={pip} />
-    </RoomMenu>
+    <SettingsHarness actions={popOutActions(pip)} />
   );
 }

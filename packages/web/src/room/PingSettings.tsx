@@ -7,7 +7,6 @@ import { previewPingSound } from '../ping/pingSound';
 import { readPingPrefs, usePingPrefs, writePingPrefs, type PingSound } from '../ping/pingPrefs';
 import { useSoundCatalog } from '../ping/useSoundCatalog';
 import { closeToWorld } from './closeToWorld';
-import { RoomMenuItem } from './RoomMenu';
 
 const sameSound = (a: PingSound, b: PingSound): boolean =>
   a.type === 'builtin'
@@ -29,10 +28,6 @@ const requestPermission = (api: NotificationSeam): Promise<NotificationPermissio
     const result = api.requestPermission(resolve) as Promise<NotificationPermission> | undefined;
     result?.then(resolve, reject);
   });
-
-export function PingSettingsMenuItem({ onSelect }: { onSelect: () => void }) {
-  return <RoomMenuItem onSelect={onSelect}>Ping settings</RoomMenuItem>;
-}
 
 export function PingSettingsDialog({
   onClose,

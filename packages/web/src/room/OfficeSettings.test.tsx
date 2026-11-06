@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Identity, Office } from '@officexr/server/shared';
-import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
-import { RoomMenu } from './RoomMenu';
+import { OfficeSettingsDialog, officeSettingsActions } from './OfficeSettings';
+import { openSettings as openSettingsModal, SettingsHarness } from './settingsHarness';
 
 afterEach(() => {
   cleanup();
@@ -31,17 +31,15 @@ function Harness({ me, onSaved }: { me: Identity; onSaved: (office: Office) => v
   return (
     <>
       <output>{String(focused)}</output>
-      <RoomMenu>
-        <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setOpen(true)} />
-      </RoomMenu>
+      <SettingsHarness actions={officeSettingsActions(office, me, () => setOpen(true))} />
       {open && <OfficeSettingsDialog office={office} me={me} onSaved={onSaved} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
 const openSettings = () => {
-  fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Office settings…' }));
+  openSettingsModal();
+  fireEvent.click(screen.getByRole('button', { name: 'Office' }));
 };
 
 function setup(me = alice, patch: (init: RequestInit) => Promise<Response> = () => json(200, office)) {
@@ -57,11 +55,11 @@ function setup(me = alice, patch: (init: RequestInit) => Promise<Response> = () 
 describe('OfficeSettings', () => {
   it('offers Office settings in the menu only to the creator, with no button outside it', () => {
     setup({ login: 'b@example.com', name: 'Bob' });
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    expect(screen.queryByRole('button', { name: 'Office settings…' })).toBeNull();
+    openSettingsModal();
+    expect(screen.queryByRole('button', { name: 'Office' })).toBeNull();
     cleanup();
     setup();
-    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Office' })).toBeNull();
     openSettings();
     expect(screen.getByRole('dialog', { name: 'Office settings' })).toBeTruthy();
   });

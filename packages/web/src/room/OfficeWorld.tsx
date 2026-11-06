@@ -15,24 +15,25 @@ import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
 import { usePingSender } from '../ping/usePingSender';
 import { PipContents } from '../pip/PipContents';
-import { PopOutMenuItem } from '../pip/PopOutMenuItem';
+import { popOutActions } from '../pip/popOutAction';
 import { usePictureInPicture } from '../pip/usePictureInPicture';
 import { CallBar } from '../voice/CallBar';
 import { JaasMeeting } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
-import { OfficeSettingsDialog, OfficeSettingsMenuItem } from './OfficeSettings';
+import { OfficeSettingsDialog, officeSettingsActions } from './OfficeSettings';
 import { PlayView3dBoundary } from './PlayView3dBoundary';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
-import { PingSettingsDialog, PingSettingsMenuItem } from './PingSettings';
-import { RoomMenu, RoomMenuItem } from './RoomMenu';
-import { ShortcutsDialog } from './ShortcutsDialog';
+import { KeybindsTab } from './KeybindsTab';
+import { PingSettingsDialog } from './PingSettings';
+import { SettingsProvider, useSettings, type SettingsAction, type SettingsTab } from './Settings';
+import { closingAction, SettingRow, SettingsButton, SettingsModal } from './SettingsModal';
 import { useJoinCheck } from './useJoinCheck';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { initialViewMode } from './viewMode';
-import { ViewModeMenuItem } from './ViewModeMenuItem';
+import { ViewModeControl } from './ViewModeControl';
 import { withDefaultMap } from './withDefaultMap';
 
 const PlayView3d = lazy(() => import('./PlayView3d'));
@@ -47,7 +48,9 @@ export function OfficeWorld(props: { office: Office; me: Identity }) {
   const api = useMemo(() => createDefaultApi({ apiPath: apiUrl(paths.worldObjectKinds) }), []);
   return (
     <ApplicationProvider api={api}>
-      <World {...props} />
+      <SettingsProvider>
+        <World {...props} />
+      </SettingsProvider>
     </ApplicationProvider>
   );
 }
@@ -87,11 +90,12 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const local = session.type === 'ready' ? session.local : null;
   const pingInbox = useMemo(() => new PingInbox(), [local]);
   const [bannerError, setBannerError] = useState<string | null>(null);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  const settings = useSettings();
+  const openSettings = settings.open;
+  const openKeybinds = useCallback(() => openSettings('keybinds'), [openSettings]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pingSettingsOpen, setPingSettingsOpen] = useState(false);
-  useShortcutsHotkey(openShortcuts, session.type === 'ready');
+  useShortcutsHotkey(openKeybinds, session.type === 'ready');
   const pip = usePictureInPicture();
   const closePip = pip.close;
   // The window's contents render inside PlayView, so a session that drops would leave it blank.
@@ -123,24 +127,32 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
     onDismissError: () => setBannerError(null),
     onPingPlayer: pinger.ping,
   });
-  const menu = (
-    <>
-      <ViewModeMenuItem mode={viewMode} />
-      <OfficeSettingsMenuItem office={office} me={me} onSelect={() => setSettingsOpen(true)} />
-      <RoomMenuItem onSelect={openShortcuts}>Keyboard shortcuts</RoomMenuItem>
-      <PingSettingsMenuItem onSelect={() => setPingSettingsOpen(true)} />
-      <PopOutMenuItem pip={pip} />
-    </>
-  );
+  const sharedTabs: SettingsTab[] = [
+    {
+      id: 'controls',
+      label: 'Controls',
+      content: (
+        <SettingRow label="View">
+          <ViewModeControl mode={viewMode} />
+        </SettingRow>
+      ),
+    },
+    { id: 'keybinds', label: 'Keybinds', content: <KeybindsTab /> },
+  ];
+  const sharedActions: SettingsAction[] = [
+    closingAction('notifications', 'Notifications', () => setPingSettingsOpen(true)),
+    ...officeSettingsActions(office, me, () => setSettingsOpen(true)),
+    ...popOutActions(pip),
+  ];
   const readyHud = (ready: ReadySession) => (
     <>
-      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
       {pingSettingsOpen && <PingSettingsDialog onClose={() => setPingSettingsOpen(false)} />}
       {settingsOpen && (
         <OfficeSettingsDialog office={office} me={me} onSaved={setOffice} onClose={() => setSettingsOpen(false)} />
       )}
       {ready.voice && <JaasMeeting voice={ready.voice} />}
-      <ClickToPlayPrompt />
+      {!settings.isOpen && <ClickToPlayPrompt />}
+      <SettingsButton />
       <PingInboxHud inbox={pingInbox} store={ready.local.store} />
       <ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
       {/* The call bar centres while it fits; the people column pushes it aside instead of under it.
@@ -165,14 +177,19 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         viewMode === '3d' ? (
           <PlayView3dBoundary>
             <Suspense fallback={<WorldLoadingScreen title={office.name} step="Loading 3D view" />}>
-              <PlayView3d viewProps={readyViewProps(session)} local={session.local} menu={menu} onError={setBannerError}>
+              <PlayView3d
+                viewProps={readyViewProps(session)}
+                local={session.local}
+                settings={{ tabs: sharedTabs, actions: sharedActions }}
+                onError={setBannerError}
+              >
                 {readyHud(session)}
               </PlayView3d>
             </Suspense>
           </PlayView3dBoundary>
         ) : (
           <TopDownPlayView {...readyViewProps(session)}>
-            <RoomMenu>{menu}</RoomMenu>
+            <SettingsModal title={office.name} tabs={sharedTabs} actions={sharedActions} />
             {readyHud(session)}
           </TopDownPlayView>
         )

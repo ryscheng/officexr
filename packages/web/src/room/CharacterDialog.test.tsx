@@ -6,8 +6,9 @@ import { CHARACTERS, pickCharacterForPlayer, type CharacterName } from '@officex
 import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { apiFetch } from '../apiOrigin';
-import { CharacterDialog, CharacterMenuItem } from './CharacterDialog';
-import { RoomMenu } from './RoomMenu';
+import { CharacterDialog } from './CharacterDialog';
+import { closingAction } from './SettingsModal';
+import { openSettings, SettingsHarness } from './settingsHarness';
 
 afterEach(cleanup);
 
@@ -33,9 +34,7 @@ function Harness({
   return (
     <>
       <output>{String(focused)}</output>
-      <RoomMenu>
-        <CharacterMenuItem onSelect={() => setOpen(true)} />
-      </RoomMenu>
+      <SettingsHarness actions={[closingAction('character', 'Character', () => setOpen(true))]} />
       {open && (
         <CharacterDialog
           local={local}
@@ -54,13 +53,13 @@ function setup(status = 200) {
   const fetchFn = vi.fn(async () => new Response('{}', { status }));
   const onSaveResult = vi.fn();
   render(<Harness local={local} onSaveResult={onSaveResult} fetchFn={fetchFn} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Change character…' }));
+  openSettings();
+  fireEvent.click(screen.getByRole('button', { name: 'Character' }));
   return { local, fetchFn, onSaveResult };
 }
 
 describe('CharacterDialog', () => {
-  it('opens from the menu, previewing the current character', () => {
+  it('opens from Settings, previewing the current character', () => {
     setup();
     expect(screen.getByRole('dialog', { name: 'Character' })).toBeTruthy();
     const select = screen.getByRole('combobox', { name: 'Character' }) as HTMLSelectElement;

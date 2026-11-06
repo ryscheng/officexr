@@ -3,11 +3,13 @@ import type { PersistentLocalState } from '@officexr/core-refactor';
 import { PlayView } from '@officexr/world/react';
 import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XRStore } from '@officexr/world/renderer';
 import type { TopDownPlayViewProps } from '@officexr/world/top-down';
-import { CameraModeMenuItem } from './CameraModeMenuItem';
-import { CharacterDialog, CharacterMenuItem } from './CharacterDialog';
-import { MotionLookMenuItem } from './MotionLookMenuItem';
-import { RoomMenu, RoomMenuChoice } from './RoomMenu';
-import { VrMenuItem } from './VrMenuItem';
+import { Switch } from '../hud/ui/Switch';
+import { CameraModeControl } from './CameraModeControl';
+import { CharacterDialog } from './CharacterDialog';
+import { MotionLookControl } from './MotionLookControl';
+import type { SettingsAction, SettingsTab } from './Settings';
+import { closingAction, SettingRow, SettingsModal } from './SettingsModal';
+import { vrActions } from './VrAction';
 
 /** Created in an effect so StrictMode's remount destroys the first store, which appends a DOM overlay. */
 function useWorldXRStore(): XRStore | undefined {
@@ -24,14 +26,14 @@ function useWorldXRStore(): XRStore | undefined {
 export default function PlayView3d({
   viewProps,
   local,
-  menu,
+  settings,
   onError,
   children,
 }: {
   viewProps: Omit<TopDownPlayViewProps, 'children'>;
   local: PersistentLocalState;
-  /** Menu items shared with the 2D view. */
-  menu: ReactNode;
+  /** Settings shared with the 2D view. */
+  settings: { tabs: SettingsTab[]; actions: SettingsAction[] };
   onError: (message: string | null) => void;
   children: ReactNode;
 }) {
@@ -42,6 +44,30 @@ export default function PlayView3d({
   const [characterOpen, setCharacterOpen] = useState(false);
   const xrStore = useWorldXRStore();
   const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
+
+  const controls = (
+    <>
+      <SettingRow label="Camera">
+        <CameraModeControl value={cameraMode} onChange={setCameraMode} />
+      </SettingRow>
+      <SettingRow label="Motion look">
+        <MotionLookControl
+          enabled={motionLook.enabled}
+          onEnabledChange={(enabled) => setMotionLook((m) => ({ ...m, enabled }))}
+          onRecenter={() => setMotionLook((m) => ({ ...m, recenterKey: m.recenterKey + 1 }))}
+          unsupported={motionUnsupported}
+          onUnsupported={() => setMotionUnsupported(true)}
+        />
+      </SettingRow>
+      <SettingRow label="Invert look">
+        <Switch aria-label="Invert look" checked={invertLook} onCheckedChange={setInvertLook} />
+      </SettingRow>
+    </>
+  );
+  const actions: SettingsAction[] = [
+    closingAction('character', 'Character', () => setCharacterOpen(true)),
+    ...vrActions(xrStore, vrSupported, onError),
+  ];
 
   return (
     <PlayView
@@ -54,28 +80,11 @@ export default function PlayView3d({
       hud="player"
       xrStore={xrStore}
     >
-      <RoomMenu>
-        <CameraModeMenuItem value={cameraMode} onChange={setCameraMode} />
-        <MotionLookMenuItem
-          enabled={motionLook.enabled}
-          onEnabledChange={(enabled) => setMotionLook((m) => ({ ...m, enabled }))}
-          onRecenter={() => setMotionLook((m) => ({ ...m, recenterKey: m.recenterKey + 1 }))}
-          unsupported={motionUnsupported}
-          onUnsupported={() => setMotionUnsupported(true)}
-        />
-        <RoomMenuChoice>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={invertLook}
-            onChange={(e) => setInvertLook(e.target.checked)}
-          />
-          Invert look
-        </RoomMenuChoice>
-        <CharacterMenuItem onSelect={() => setCharacterOpen(true)} />
-        {menu}
-        {xrStore && <VrMenuItem supported={vrSupported} store={xrStore} onError={onError} />}
-      </RoomMenu>
+      <SettingsModal
+        title={viewProps.title}
+        tabs={[...settings.tabs, { id: 'controls', label: 'Controls', content: controls }]}
+        actions={[...settings.actions, ...actions]}
+      />
       {characterOpen && <CharacterDialog local={local} onSaveResult={onError} onClose={() => setCharacterOpen(false)} />}
       {children}
     </PlayView>

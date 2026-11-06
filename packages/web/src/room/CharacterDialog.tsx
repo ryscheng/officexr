@@ -7,7 +7,6 @@ import type { apiFetch } from '../apiOrigin';
 import { Dialog } from '../Dialog';
 import { chooseCharacter } from './character';
 import { closeToWorld } from './closeToWorld';
-import { RoomMenuItem } from './RoomMenu';
 
 const selfCharacter = (s: OfficeState, selfId: string) => pickCharacterForPlayer(selfId, s.players[selfId]?.avatar.model);
 
@@ -19,10 +18,6 @@ function useSelfCharacter({ store, selfId }: PersistentLocalState): CharacterNam
 
 /** Reports each save's error, or `null` once a save succeeds. */
 type SaveResult = (error: string | null) => void;
-
-export function CharacterMenuItem({ onSelect }: { onSelect: () => void }) {
-  return <RoomMenuItem onSelect={onSelect}>Change character…</RoomMenuItem>;
-}
 
 export function CharacterDialog({
   local,
