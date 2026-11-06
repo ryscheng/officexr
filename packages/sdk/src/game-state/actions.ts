@@ -185,7 +185,7 @@ export function createActions(store: Store, bus?: Bus): Actions {
     },
 
     clearCallRoster() {
-      store.setState(() => ({ callRoster: {} }));
+      store.setState((s) => (Object.keys(s.callRoster).length > 0 ? { callRoster: {} } : s));
     },
 
     setSelfPresence({ status, mic }) {

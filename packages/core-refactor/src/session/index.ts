@@ -50,7 +50,6 @@ export interface OfficeSync {
   sync: SyncEngine;
   handshake: SnapshotHandshake;
   comm: Communication;
-  callRoster: CallRosterSync;
   /** Stops sync, handshake and communication; the caller closes the channel. */
   stop: () => void;
 }
@@ -117,7 +116,6 @@ export async function startOfficeSync({
     sync,
     handshake,
     comm,
-    callRoster,
     stop: () => {
       offStatus();
       comm.stop();

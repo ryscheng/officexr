@@ -22,12 +22,11 @@ describe('CallRosterSync', () => {
 
   it('tracks remote participants and the local participant id', async () => {
     await voice.joinRoom('r1');
-    voice.emitLocalParticipantJoined('jp-me');
+    expect(selfJitsiId()).toBe('local-r1');
     voice.emitParticipantJoined('jp-a', 'Ann');
     voice.emitParticipantJoined('jp-b', 'Bob');
     voice.emitParticipantLeft('jp-a');
     expect(roster()).toEqual({ 'jp-b': { displayName: 'Bob' } });
-    expect(selfJitsiId()).toBe('jp-me');
   });
 
   it('clears the roster when switching rooms', async () => {
@@ -35,11 +34,11 @@ describe('CallRosterSync', () => {
     voice.emitParticipantJoined('jp-a', 'Ann');
     await voice.joinRoom('r2');
     expect(roster()).toEqual({});
+    expect(selfJitsiId()).toBe('local-r2');
   });
 
   it.each(['idle', 'error'] as const)('clears the roster and self id on %s', async (state) => {
     await voice.joinRoom('r1');
-    voice.emitLocalParticipantJoined('jp-me');
     voice.emitParticipantJoined('jp-a', 'Ann');
     voice.emitConnectionState(state);
     expect(roster()).toEqual({});
@@ -58,8 +57,10 @@ describe('CallRosterSync', () => {
 
   it('ignores events from a stale room', async () => {
     await voice.joinRoom('r1');
-    voice.emitStaleParticipantJoined('old', 'jp-a', 'Ann');
-    expect(roster()).toEqual({});
+    voice.emitParticipantJoined('jp-a', 'Ann');
+    voice.emitParticipantJoined('jp-b', 'Bob', 'old');
+    voice.emitParticipantLeft('jp-a', 'old');
+    expect(roster()).toEqual({ 'jp-a': { displayName: 'Ann' } });
   });
 
   it('stops listening and clears on stop', async () => {
