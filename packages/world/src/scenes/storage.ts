@@ -40,6 +40,9 @@ export interface SceneStorage {
   delete(name: string): Promise<void>;
 }
 
+/** The map an office without a `map_name` is shown. */
+export const DEFAULT_MAP = 'default';
+
 /** Slug regex enforced by every storage implementation so a scene name
  * survives both filesystems and URL paths. Letters/digits/`-_.`. */
 export const SCENE_NAME_RE = /^[A-Za-z0-9._-]+$/;

@@ -1,6 +1,4 @@
-import type { MapStorage } from '@officexr/world/scenes';
-
-export const DEFAULT_MAP = 'default';
+import { DEFAULT_MAP, type MapStorage } from '@officexr/world/scenes';
 
 type LoadableMaps = Pick<MapStorage, 'load'>;
 

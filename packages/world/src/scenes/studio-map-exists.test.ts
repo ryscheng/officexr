@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -37,7 +37,7 @@ describe('studioMapLoader', () => {
   const load = studioMapLoader(dataDir);
 
   it('returns the parsed map, or null when it is missing, broken or not a slug', async () => {
-    expect((await load('good'))?.rooms).toBeDefined();
+    expect((await load('good'))?.name).toBe(JSON.parse(readFileSync(path.resolve(__dirname, '../../maps/default.json'), 'utf8')).name);
     expect(await load('missing')).toBeNull();
     expect(await load('broken')).toBeNull();
     expect(await load('../secret')).toBeNull();

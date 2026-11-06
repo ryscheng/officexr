@@ -49,10 +49,10 @@ const updateOffice: UpdateOffice = async (id, { name, description, mapName, debu
 const deskArea = (id: string) => ({ id, min: { x: 0, z: 0 }, max: { x: 1, z: 1 } });
 const studioDataDir = mkdtempSync(path.join(tmpdir(), 'officexr-studio-'));
 mkdirSync(path.join(studioDataDir, 'maps'));
-writeFileSync(
-  path.join(studioDataDir, 'maps', 'hq.json'),
-  JSON.stringify({ ...JSON.parse(readFileSync(path.resolve(__dirname, '../../world/maps/default.json'), 'utf8')), deskAreas: [deskArea('d1'), deskArea('d2')] }),
-);
+const baseMap = JSON.parse(readFileSync(path.resolve(__dirname, '../../world/maps/default.json'), 'utf8'));
+for (const [name, ids] of [['hq', ['d1', 'd2']], ['default', ['dd']]] as const) {
+  writeFileSync(path.join(studioDataDir, 'maps', `${name}.json`), JSON.stringify({ ...baseMap, deskAreas: ids.map(deskArea) }));
+}
 const claimsByOffice = new Map<string, Map<string, string>>();
 const deskClaims: OfficeDeskClaims = {
   list: async (officeId) => Object.fromEntries(claimsByOffice.get(officeId) ?? []),
@@ -71,9 +71,10 @@ const deskClaims: OfficeDeskClaims = {
     return 'ok';
   },
   release: async (officeId, login) => {
-    for (const [desk, holder] of claimsByOffice.get(officeId) ?? []) {
+    const claims = claimsByOffice.get(officeId) ?? new Map<string, string>();
+    for (const [desk, holder] of claims) {
       if (holder === login) {
-        claimsByOffice.get(officeId)!.delete(desk);
+        claims.delete(desk);
       }
     }
   },
@@ -199,6 +200,8 @@ const headerIdentity: ResolveIdentity = (req) => {
   const login = req.headers['x-test-login'];
   return typeof login === 'string' ? { login, name: login } : null;
 };
+
+const apiDeps = { queryOffices, characters, deskClaims, createOffice, updateOffice, mapExists: async () => true, loadMap: async () => null };
 const alice = { 'x-test-login': 'a@example.com' };
 
 describe('/api/realtime-token', () => {
@@ -640,7 +643,7 @@ describe('POST /api/offices', () => {
     calls.push('createOffice');
     return createOffice(input);
   };
-  const middleware = apiMiddleware(queryOffices, characters, spyCreate, updateOffice, mapExists, deskClaims, async () => null, headerIdentity);
+  const middleware = apiMiddleware({ ...apiDeps, createOffice: spyCreate, mapExists, identity: headerIdentity });
 
   const post = async (body: unknown, headers: Record<string, string> = alice) => {
     calls.length = 0;
@@ -715,7 +718,7 @@ describe('PATCH /api/offices/:id', () => {
     updates.push(update);
     return updateOffice(id, update);
   };
-  const middleware = apiMiddleware(queryOffices, characters, createOffice, spyUpdate, async (name) => name === 'hq' || name === 'default', deskClaims, async () => null, headerIdentity);
+  const middleware = apiMiddleware({ ...apiDeps, updateOffice: spyUpdate, mapExists: async (name) => name === 'hq' || name === 'default', identity: headerIdentity });
 
   const patch = async (id: string, body: unknown, headers: Record<string, string> = alice) => {
     calls.length = 0;
@@ -779,7 +782,7 @@ describe('PATCH /api/offices/:id', () => {
   });
 
   it('is 404 when the office vanishes before the update', async () => {
-    const gone = apiMiddleware(queryOffices, characters, createOffice, async () => undefined, async () => true, deskClaims, async () => null, headerIdentity);
+    const gone = apiMiddleware({ ...apiDeps, updateOffice: async () => undefined, mapExists: async () => true, identity: headerIdentity });
     server = createServer((req, res) => gone(req, res, () => res.end()));
     await new Promise<void>((resolve) => server!.listen(0, resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -878,13 +881,28 @@ describe('/api/offices/:id/desk-claims', () => {
     expect(await list()).toEqual({ d1: 'a@example.com' });
   });
 
+  it('is 200 when re-claiming the desk you already hold', async () => {
+    await claim('d1');
+    expect((await claim('d1')).status).toBe(200);
+    expect(await list()).toEqual({ d1: 'a@example.com' });
+  });
+
+  it('validates against the default map for an office without one', async () => {
+    expect((await claim('dd', me, OTHER)).status).toBe(200);
+    expect((await claim('d1', me, OTHER)).status).toBe(400);
+  });
+
+  it('is 413 for an oversized body', async () => {
+    const res = await fetch(url(ID, '/me'), { method: 'PUT', headers: me, body: JSON.stringify({ deskId: 'd1', pad: 'x'.repeat(5000) }) });
+    expect(res.status).toBe(413);
+  });
+
   it('is 400 for desks not on the office map', async () => {
     for (const deskId of ['nope', '', 1, undefined]) {
       const res = await claim(deskId);
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: 'Unknown desk' });
     }
-    expect((await claim('d1', me, OTHER)).status).toBe(400);
     expect(await list()).toEqual({});
   });
 
@@ -913,6 +931,9 @@ describe('/api/offices/:id/desk-claims', () => {
     const headers = { authorization: `Bearer ${token}` };
     expect((await claim('d1', headers)).status).toBe(200);
     expect(await list(headers)).toEqual({ d1: 'rt@example.com' });
+    const released = await fetch(url(ID, '/me'), { method: 'DELETE', headers });
+    expect(released.status).toBe(200);
+    expect(await released.json()).toEqual({ claims: {} });
   });
 });
 

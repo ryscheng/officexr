@@ -80,6 +80,18 @@ export async function createApp({
   const cookieIdentity: ResolveIdentity = devUser ? () => devUser : sessionIdentity;
   const bearer = realtimeTokenSecret ? bearerIdentity(realtimeTokenSecret) : undefined;
   const identity: ResolveIdentity = (req) => (bearer && /^Bearer /i.test(req.headers.authorization ?? '') ? bearer(req) : cookieIdentity(req));
-  app.use(apiMiddleware(queryOffices, characters, createOffice, updateOffice, studioMapExists(studioDataDir), deskClaims, studioMapLoader(studioDataDir), identity, realtimeTokenSecret));
+  app.use(
+    apiMiddleware({
+      queryOffices,
+      characters,
+      deskClaims,
+      createOffice,
+      updateOffice,
+      mapExists: studioMapExists(studioDataDir),
+      loadMap: studioMapLoader(studioDataDir),
+      identity,
+      realtimeTokenSecret,
+    }),
+  );
   return app;
 }

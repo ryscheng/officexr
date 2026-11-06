@@ -73,22 +73,19 @@ export function createDb(connectionString: string | undefined) {
       return Object.fromEntries(rows.map((row) => [row.desk_id, row.user_login]));
     },
     claim: async (officeId, login, deskId) => {
-      const client = await getPool().connect();
       try {
-        await client.query('begin');
-        await client.query('delete from office_desk_claims where office_id = $1 and user_login = $2', [officeId, login]);
-        await client.query('insert into office_desk_claims (office_id, desk_id, user_login) values ($1, $2, $3)', [officeId, deskId, login]);
-        await client.query('commit');
+        await getPool().query(
+          `insert into office_desk_claims (office_id, desk_id, user_login) values ($1, $2, $3)
+           on conflict (office_id, user_login) do update set desk_id = excluded.desk_id, claimed_at = now()`,
+          [officeId, deskId, login],
+        );
         return 'ok';
       } catch (err) {
-        await client.query('rollback');
         const { code, constraint } = err as pg.DatabaseError;
         if (code === UNIQUE_VIOLATION && constraint === DESK_PRIMARY_KEY) {
           return 'taken';
         }
         throw err;
-      } finally {
-        client.release();
       }
     },
     release: async (officeId, login) => {
