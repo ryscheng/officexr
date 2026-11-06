@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Store } from '@officexr/sdk';
 import { focusWorld, usePlayControls, useStoreSelector } from '@officexr/world/top-down';
+import { Panel } from '../hud/ui/Panel';
 import { assertNever } from '../ping/assertNever';
 import { sameDeskBanner, selectDeskBanner, selectOwnsDesk, type DeskBanner } from './deskBanner';
 import type { RequestDeskClaim } from './requestDeskClaim';
@@ -38,7 +39,7 @@ function HudButton({ onClick, disabled, className = '', children }: { onClick: (
         onClick();
         focusWorld();
       }}
-      className={`pointer-events-auto rounded bg-black/55 px-2 py-1 text-xs text-white hover:bg-black/70 disabled:pointer-events-none disabled:opacity-50 ${className}`}
+      className={`pointer-events-auto rounded-hud-control bg-hud-panel px-3 py-1.5 font-hud-body text-xs font-bold text-hud-text hover:bg-hud-edge focus-visible:outline-2 focus-visible:outline-hud-accent disabled:pointer-events-none disabled:opacity-50 pointer-coarse:min-h-11 ${className}`}
     >
       {children}
     </button>
@@ -74,9 +75,9 @@ export function DeskHud({ store, requestDeskClaim }: { store: Store; requestDesk
 
   const text = banner && bannerText(banner);
   return (
-    <div data-studio-panel className="pointer-events-none absolute bottom-32 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
+    <div data-studio-panel className="pointer-events-none absolute top-16 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
       <div className="flex items-center gap-2">
-        {text && <span className="rounded bg-black/55 px-2 py-1 text-xs text-white">{text}</span>}
+        {text && <Panel className="px-3 py-1.5 text-xs font-bold">{text}</Panel>}
         {banner?.type === 'claimable' && (
           <HudButton disabled={pending} onClick={() => request(banner.deskId)}>
             {banner.ownsOther ? 'Move desk here' : 'Claim desk'}
@@ -95,7 +96,7 @@ export function DeskHud({ store, requestDeskClaim }: { store: Store; requestDesk
         )}
       </div>
       {error !== null && (
-        <div role="status" className="rounded bg-red-700/90 px-2 py-1 text-xs text-white">
+        <div role="status" className="rounded-hud-control bg-hud-rose px-3 py-1.5 font-hud-body text-xs font-bold text-hud-rose-text">
           {errorMessage(error)}
         </div>
       )}
