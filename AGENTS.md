@@ -143,10 +143,11 @@ Optional `OFFICEXR_REALTIME_TOKEN_SECRET` makes the server require an HMAC-signe
 (minted with `signJoinToken` from `@officexr/realtime-server/join-token`) on every `hello` and
 on `GET /rooms/:id/sessions?login=…&token=…`; the login is taken from the token. Unset keeps
 today's unauthenticated behaviour. The studio has no login, so it must point at a realtime
-server without the secret. A standalone realtime server sets `OFFICEXR_API_URL` (the web backend's
-origin, e.g. `http://host:4173`) to read office data over its API, signing a short-lived bearer
-token with the same secret; unset, no session ever counts as multi-session. The web backend needs the same value (see `packages/server/.env.example`);
-it mints the tokens at `GET /api/realtime-token`.
+server without the secret. The web backend needs the same secret (see `packages/server/.env.example`);
+it mints the join tokens at `GET /api/realtime-token`. A standalone realtime server sets
+`OFFICEXR_API_URL` (the web backend's origin, e.g. `http://host:4173`) to read office data over its
+API, signing a short-lived `api`-audience bearer token with that secret (join tokens are not accepted
+by the API, nor `api` tokens by the realtime server); unset, no session ever counts as multi-session.
 
 ---
 

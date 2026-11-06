@@ -23,8 +23,8 @@ export default defineConfig(({ mode }) => {
         configureServer: async (server) => {
           const { app, realtime, closePool } = await createBackend(env, {
             dev: { user: login ? { login, name: name ?? login } : undefined, env: devEnv },
-            // ponytail: the configured port, so a port Vite bumps because it is taken breaks the session policy.
-            apiUrl: `http://127.0.0.1:${server.config.server.port ?? 5173}`,
+            // ponytail: the configured port; a port Vite bumps because it is taken breaks the session policy.
+            apiUrl: `http://localhost:${server.config.server.port ?? 5173}`,
             worldConstantsUrl: env.OFFICEXR_WORLD_CONSTANTS_URL,
           });
           server.middlewares.use(app);

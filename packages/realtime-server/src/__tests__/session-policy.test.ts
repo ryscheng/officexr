@@ -341,17 +341,6 @@ describe('RealtimeServer sessions per login', () => {
       expect(await (await sessions(OFFICE, '?login=bob')).json()).toEqual({ connected: false, allowMulti: false });
     });
 
-    it('encodes the office id into the office URL', async () => {
-      const urls: string[] = [];
-      await startServer(async (url) => {
-        urls.push(String(url));
-        return new Response('{}', { status: 200 });
-      });
-
-      await sessions('a%2Fb%3F', '?login=ann');
-      expect(urls).toEqual(['http://web.test/api/offices/a%2Fb%3F']);
-    });
-
     it('rejects a missing or malformed login with 400', async () => {
       await startServer(debugOfficeOf('ann'));
 

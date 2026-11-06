@@ -33,7 +33,7 @@ export async function createBackend(env: Record<string, string | undefined>, { d
     tokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
     adminToken,
     worldConstantsUrl,
-    sessionPolicy: (officeId, login) => officeApi.allowsMultiSession(officeId, login),
+    sessionPolicy: officeApi.allowsMultiSession,
   });
   const app = await createApp({
     ...db,

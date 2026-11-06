@@ -41,7 +41,6 @@ import {
 } from './protocol.ts';
 import { isLogin, verifyJoinToken } from './join-token.ts';
 
-export { officeAllowsMultiSession } from './office-policy.ts';
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_PATH = '/ws';

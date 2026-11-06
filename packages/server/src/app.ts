@@ -77,7 +77,7 @@ export async function createApp({
   app.use(realtime.requestHandler);
   const cookieIdentity: ResolveIdentity = devUser ? () => devUser : sessionIdentity;
   const bearer = realtimeTokenSecret ? bearerIdentity(realtimeTokenSecret) : undefined;
-  const identity: ResolveIdentity = (req) => (bearer && req.headers.authorization ? bearer(req) : cookieIdentity(req));
+  const identity: ResolveIdentity = (req) => (bearer && /^Bearer /i.test(req.headers.authorization ?? '') ? bearer(req) : cookieIdentity(req));
   app.use(apiMiddleware(queryOffices, characters, createOffice, updateOffice, studioMapExists(studioDataDir), identity, realtimeTokenSecret));
   return app;
 }

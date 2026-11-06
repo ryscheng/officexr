@@ -4,7 +4,8 @@ import type { Duplex } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket as RawWebSocket, WebSocketServer } from 'ws';
 import { decodeFrame, encodeFrame, type Frame } from '../protocol.ts';
-import { officeAllowsMultiSession, RealtimeServer, type RealtimeServerOptions } from '../server.ts';
+import { officeAllowsMultiSession } from '../office-policy.ts';
+import { RealtimeServer, type RealtimeServerOptions } from '../server.ts';
 
 const TOKEN = 'admin-token';
 

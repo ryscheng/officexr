@@ -193,29 +193,52 @@ describe('/api/realtime-token', () => {
   });
 });
 
-describe('bearer join tokens', () => {
+describe('bearer api tokens', () => {
   const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+  const apiToken = (secret = 's3cret', now = Date.now(), ttlMs = 60_000) => signJoinToken(secret, { login: 'rt@example.com', ttlMs, now, aud: 'api' });
+  const devOptions = { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {}, realtimeTokenSecret: 's3cret' };
 
   it('authenticate the API as the token login, ahead of the dev user', async () => {
-    const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {}, realtimeTokenSecret: 's3cret' });
-    const token = signJoinToken('s3cret', { login: 'rt@example.com', ttlMs: 60_000 });
-    const res = await fetch(`${base}/api/me`, { headers: bearer(token) });
+    const base = await start('dev', devOptions);
+    const res = await fetch(`${base}/api/me`, { headers: bearer(apiToken()) });
     expect(await res.json()).toEqual({ login: 'rt@example.com', name: 'rt@example.com' });
   });
 
-  it('are 401 when forged or expired, even in dev', async () => {
-    const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {}, realtimeTokenSecret: 's3cret' });
-    const forged = signJoinToken('other', { login: 'rt@example.com', ttlMs: 60_000 });
-    const expired = signJoinToken('s3cret', { login: 'rt@example.com', ttlMs: 1_000, now: Date.now() - 2_000 });
-    for (const token of [forged, expired, 'garbage']) {
-      expect((await fetch(`${base}/api/me`, { headers: bearer(token) })).status).toBe(401);
+  it('take precedence over a signed-in session', async () => {
+    const base = await start('prod', { realtimeTokenSecret: 's3cret' });
+    const cookie = await signIn(base, 'a@example.com');
+    const res = await fetch(`${base}/api/me`, { headers: { ...cookie, ...bearer(apiToken()) } });
+    expect(((await res.json()) as Identity).login).toBe('rt@example.com');
+  });
+
+  it('are 401 when forged or expired, even in dev or with a session', async () => {
+    const dev = await start('dev', devOptions);
+    const expired = apiToken('s3cret', Date.now() - 120_000, 1_000);
+    for (const token of [apiToken('other'), expired, 'garbage']) {
+      expect((await fetch(`${dev}/api/me`, { headers: bearer(token) })).status).toBe(401);
     }
+    const prod = await start('prod', { realtimeTokenSecret: 's3cret' });
+    const cookie = await signIn(prod, 'a@example.com');
+    expect((await fetch(`${prod}/api/me`, { headers: { ...cookie, ...bearer('garbage') } })).status).toBe(401);
+  });
+
+  it('are not satisfied by a browser join token, so it cannot renew itself', async () => {
+    const base = await start('prod', { realtimeTokenSecret: 's3cret' });
+    const joinToken = signJoinToken('s3cret', { login: 'a@example.com', ttlMs: 60_000 });
+    expect((await fetch(`${base}/api/me`, { headers: bearer(joinToken) })).status).toBe(401);
+    expect((await fetch(`${base}/api/realtime-token`, { headers: bearer(joinToken) })).status).toBe(401);
   });
 
   it('are ignored without a configured secret', async () => {
-    const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {} });
-    const token = signJoinToken('s3cret', { login: 'rt@example.com', ttlMs: 60_000 });
-    expect(((await (await fetch(`${base}/api/me`, { headers: bearer(token) })).json()) as Identity).login).toBe('dev@example.com');
+    const base = await start('dev', { devUser: devOptions.devUser, auth: {} });
+    expect(((await (await fetch(`${base}/api/me`, { headers: bearer(apiToken()) })).json()) as Identity).login).toBe('dev@example.com');
+  });
+
+  it('leave a non-Bearer Authorization header to the session', async () => {
+    const base = await start('prod', { realtimeTokenSecret: 's3cret' });
+    const cookie = await signIn(base, 'a@example.com');
+    const res = await fetch(`${base}/api/me`, { headers: { ...cookie, authorization: 'Basic dXNlcjpwYXNz' } });
+    expect(((await res.json()) as Identity).login).toBe('a@example.com');
   });
 });
 

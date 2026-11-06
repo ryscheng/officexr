@@ -20,7 +20,7 @@ export function createOfficeApi({ baseUrl, tokenSecret, fetch: fetchFn = fetch, 
   const get = (path: string, login: string): Promise<Response> => {
     const headers: Record<string, string> = {};
     if (tokenSecret) {
-      headers.authorization = `Bearer ${signJoinToken(tokenSecret, { login, ttlMs: TOKEN_TTL_MS, now: now() })}`;
+      headers.authorization = `Bearer ${signJoinToken(tokenSecret, { login, ttlMs: TOKEN_TTL_MS, now: now(), aud: 'api' })}`;
     }
     return fetchFn(new URL(path, baseUrl), { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   };

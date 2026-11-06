@@ -11,17 +11,20 @@ const sign = (secret: string, payload: string): string => {
   return createHmac('sha256', secret).update(payload).digest('base64url');
 };
 
-/** Mints `base64url({login, exp}).base64url(HMAC-SHA256)`; `now` is epoch ms. */
+/** What a token may be presented to: `join` is the realtime server, `api` the backend API. A token without `aud` is a `join` token. */
+export type TokenAudience = 'join' | 'api';
+
+/** Mints `base64url({login, exp, aud?}).base64url(HMAC-SHA256)`; `now` is epoch ms. */
 export function signJoinToken(
   secret: string,
-  { login, ttlMs, now = Date.now() }: { login: string; ttlMs: number; now?: number },
+  { login, ttlMs, now = Date.now(), aud = 'join' }: { login: string; ttlMs: number; now?: number; aud?: TokenAudience },
 ): string {
-  const payload = Buffer.from(JSON.stringify({ login, exp: now + ttlMs })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ login, exp: now + ttlMs, ...(aud === 'api' && { aud }) })).toString('base64url');
   return `${payload}.${sign(secret, payload)}`;
 }
 
-/** The login a token vouches for, or `null` if it is malformed, forged, expired or names an invalid login. */
-export function verifyJoinToken(secret: string, token: string, now = Date.now()): { login: string } | null {
+/** The login a token vouches for, or `null` if it is malformed, forged, expired, minted for another audience or names an invalid login. */
+export function verifyJoinToken(secret: string, token: string, now = Date.now(), aud: TokenAudience = 'join'): { login: string } | null {
   const parts = token.split('.');
   if (parts.length !== 2) {
     return null;
@@ -34,11 +37,13 @@ export function verifyJoinToken(secret: string, token: string, now = Date.now())
     return null;
   }
   try {
-    const { login, exp } = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
       login?: unknown;
       exp?: unknown;
+      aud?: unknown;
     };
-    return isLogin(login) && typeof exp === 'number' && now < exp ? { login } : null;
+    const { login, exp } = claims;
+    return isLogin(login) && typeof exp === 'number' && now < exp && (claims.aud ?? 'join') === aud ? { login } : null;
   } catch {
     return null;
   }

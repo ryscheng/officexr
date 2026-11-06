@@ -9,7 +9,7 @@ const server = new RealtimeServer({
   port,
   worldConstantsUrl: process.env.OFFICEXR_WORLD_CONSTANTS_URL,
   adminToken: process.env.OFFICEXR_REALTIME_ADMIN_TOKEN,
-  sessionPolicy: officeApi && ((officeId, login) => officeApi.allowsMultiSession(officeId, login)),
+  sessionPolicy: officeApi?.allowsMultiSession,
   tokenSecret,
 });
 await server.start();

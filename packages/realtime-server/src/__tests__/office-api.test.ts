@@ -6,9 +6,9 @@ import { createOfficeApi } from '../office-api.ts';
 
 const SECRET = 's3cret';
 let server: Server | undefined;
-afterEach(() => {
+afterEach(async () => {
   server?.closeAllConnections();
-  server?.close();
+  await new Promise((resolve) => server?.close(resolve));
 });
 
 async function stub(handler: (req: IncomingMessage, res: import('node:http').ServerResponse) => void): Promise<string> {
@@ -51,7 +51,21 @@ describe('createOfficeApi allowsMultiSession', () => {
     await createOfficeApi({ baseUrl, tokenSecret: SECRET }).allowsMultiSession('a/b?', 'ann');
 
     expect(seen.url).toBe('/api/offices/a%2Fb%3F');
-    expect(verifyJoinToken(SECRET, seen.authorization!.replace('Bearer ', ''))).toEqual({ login: 'ann' });
+    expect(verifyJoinToken(SECRET, seen.authorization!.replace('Bearer ', ''), Date.now(), 'api')).toEqual({ login: 'ann' });
+  });
+
+  it('mints a short-lived api token from the injected clock', async () => {
+    let authorization = '';
+    const baseUrl = await stub((req, res) => {
+      authorization = req.headers.authorization!;
+      res.writeHead(200).end('{}');
+    });
+    await createOfficeApi({ baseUrl, tokenSecret: SECRET, now: () => 1_000_000 }).allowsMultiSession('o1', 'ann');
+    const token = authorization.replace('Bearer ', '');
+
+    expect(verifyJoinToken(SECRET, token, 1_000_000, 'api')).toEqual({ login: 'ann' });
+    expect(verifyJoinToken(SECRET, token, 1_000_000 + 60_000, 'api')).toBeNull();
+    expect(verifyJoinToken(SECRET, token, 1_000_000)).toBeNull();
   });
 
   it('sends no authorization without a token secret', async () => {
