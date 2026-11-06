@@ -118,6 +118,17 @@ export class StateDiffBroadcaster {
       this.announceAvatar(next);
     }
 
+    if (announceSelfAvatar && me?.seat !== prevMe?.seat) {
+      this.broadcast({
+        kind: 'presence:seat',
+        v: 1,
+        actorId: next.selfId,
+        seq: this.takeSeq(),
+        t: this.clock.now(),
+        instanceId: me?.seat ?? null,
+      });
+    }
+
     // worldMap: broadcast on any change. Same JSON-equality dedupe; the map
     // changes far less often than positions, so the stringify cost is
     // bounded.

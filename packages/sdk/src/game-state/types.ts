@@ -33,6 +33,8 @@ export type PlayerState = {
   jitsiRoom: string | null;
   status: PresenceStatus;
   mic: MicState;
+  /** Id of the placed object instance the player sits on. */
+  seat?: string | null;
   tRecv?: number;
   /** Local-only: receive time of this player's last `presence:status`. */
   lastStatusAt?: number;
@@ -403,6 +405,8 @@ export type OfficeState = {
    * Broadcast via the `world:objects` NetEvent.
    */
   worldObjects: WorldObjects;
+  /** Desk area id -> login. Only the realtime server distributes it. */
+  deskClaims: Record<string, string>;
   /** Local-only: never snapshotted or broadcast. */
   voiceZones: VoiceZone[];
 };

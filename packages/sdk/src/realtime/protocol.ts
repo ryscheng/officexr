@@ -74,6 +74,7 @@ const ZPlayerState = z.object({
   jitsiRoom: z.string().nullable(),
   status: ZPresenceStatus,
   mic: ZMicState,
+  seat: z.string().nullable().optional(),
 });
 
 const ZChatMessageObj = z.object({
@@ -190,6 +191,8 @@ const ZSerializedOfficeState: z.ZodType<SerializedOfficeState> = z.object({
 
 const ZPresencePosition = z.object({ pos: ZVec3, vel: ZVec3, yaw: z.number(), isAirborne: z.boolean() });
 const ZPresenceStatusPayload = z.object({ status: ZPresenceStatus, mic: ZMicState });
+const ZPresenceSeat = z.object({ instanceId: z.string().nullable() });
+const ZDeskClaimsPayload = z.object({ claims: z.record(z.string(), z.string()) });
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) });
 const ZChatMessage = z.object({ text: z.string() });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
@@ -220,6 +223,7 @@ type WithEnvelope<K extends string, V extends number, P = {}> = Envelope & { kin
 export type NetEvent =
   | WithEnvelope<'presence:position', 1, { pos: Vec3; vel: Vec3; yaw: number; isAirborne: boolean }>
   | WithEnvelope<'presence:status', 1, { status: PresenceStatus; mic: MicState }>
+  | WithEnvelope<'presence:seat', 1, { instanceId: string | null }>
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData; name: string }>
   | WithEnvelope<'chat:message', 1, { text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>
@@ -235,7 +239,8 @@ export type NetEvent =
   | WithEnvelope<'world:constants', 1, { constants: WorldConstants }>
   | WithEnvelope<'world:map', 1, { map: WorldMap }>
   | WithEnvelope<'world:characters', 1, { configs: CharacterConfigs }>
-  | WithEnvelope<'world:objects', 1, { objects: WorldObjects }>;
+  | WithEnvelope<'world:objects', 1, { objects: WorldObjects }>
+  | WithEnvelope<'desk:claims', 1, { claims: Record<string, string> }>;
 
 export type NetEventKind = NetEvent['kind'];
 
@@ -254,6 +259,7 @@ export type ProtocolEntry = {
 export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'presence:position': { v: 1, schema: ZPresencePosition, authority: 'local', route: 'room' },
   'presence:status': { v: 1, schema: ZPresenceStatusPayload, authority: 'local', route: 'room' },
+  'presence:seat': { v: 1, schema: ZPresenceSeat, authority: 'local', route: 'room' },
   'avatar:update': { v: 1, schema: ZAvatarUpdate, authority: 'local', route: 'room' },
   'chat:message': { v: 1, schema: ZChatMessage, authority: 'local', route: 'room' },
   'whiteboard:stroke': { v: 1, schema: ZWhiteboardStroke, authority: 'local', route: 'room' },
@@ -267,6 +273,7 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local', route: 'room' },
   'world:characters': { v: 1, schema: ZWorldCharactersPayload, authority: 'local', route: 'room' },
   'world:objects': { v: 1, schema: ZWorldObjectsPayload, authority: 'local', route: 'room' },
+  'desk:claims': { v: 1, schema: ZDeskClaimsPayload, authority: 'server', route: 'room' },
 };
 
 /** The one player who receives `event`, or null when it goes to the whole room. */

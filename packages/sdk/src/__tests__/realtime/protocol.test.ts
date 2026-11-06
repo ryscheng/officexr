@@ -22,6 +22,8 @@ describe('PROTOCOL table', () => {
       isAirborne: false,
     },
     { kind: 'chat:message', v: 1, actorId: 'a', seq: 1, t: 0, text: 'hi' },
+    { kind: 'presence:seat', v: 1, actorId: 'a', seq: 1, t: 0, instanceId: 'chair-1' },
+    { kind: 'desk:claims', v: 1, actorId: 'a', seq: 1, t: 0, claims: { d1: 'x@example.com' } },
     { kind: 'presence:status', v: 1, actorId: 'a', seq: 1, t: 0, status: 'away', mic: 'muted' },
     {
       kind: 'avatar:update',
