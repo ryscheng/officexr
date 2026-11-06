@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { ChevronUp } from 'lucide-react';
 import type { PlayerId, Store } from '@officexr/sdk';
 import { CallList, useCallRows } from '../hud/CallList';
@@ -24,19 +24,22 @@ export function CallBar({
 }) {
   const [open, setOpen] = useState(false);
   useEscapeLayer(open, () => setOpen(false));
-  const { rows } = useCallRows(store, selfId);
+  const { state, rows } = useCallRows(store, selfId);
+  const trayId = useId();
   return (
     <div className="pointer-events-none flex max-w-full flex-col items-center gap-2">
-      {open && <CallList store={store} selfId={selfId} pinger={pinger} />}
+      {open && <CallList id={trayId} store={store} selfId={selfId} pinger={pinger} />}
       <Panel className="pointer-events-auto flex max-w-full items-center gap-2 p-1.5">
         <MuteToggle voice={voice} />
-        <ZoneCallLabel store={store} />
+        <ZoneCallLabel store={store} joining={state === 'joining'} />
         <ShareScreenToggle voice={voice} />
         <button
           type="button"
           aria-expanded={open}
+          aria-controls={trayId}
+          // Keeps focus on the world so Space/Enter keep driving the avatar.
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setOpen(!open)}
+          onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1.5 rounded-hud-control bg-hud-inset px-2 py-1.5 text-xs whitespace-nowrap text-hud-text hover:bg-hud-edge pointer-coarse:min-h-11"
         >
           <span className="flex -space-x-1.5" aria-hidden>

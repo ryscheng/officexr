@@ -13,7 +13,7 @@ describe('ZoneCallLabel', () => {
     const actions = createActions(store, createBus());
     actions.upsertPlayer({ id: 'me', name: 'Me' });
     actions.setVoiceZones([{ id: 'z1', label: 'Meeting Room', min: { x: 0, z: 0 }, max: { x: 5, z: 5 } }]);
-    render(<ZoneCallLabel store={store} />);
+    render(<ZoneCallLabel store={store} joining={false} />);
     expect(screen.getByText('Not in a call')).toBeTruthy();
     expect(screen.getByText('Walk up to someone to talk')).toBeTruthy();
 

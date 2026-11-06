@@ -44,7 +44,7 @@ const selectCall = (s: OfficeState): Call => {
 const sameCall = (a: Call, b: Call) =>
   a.state === b.state && sameList(a.players, b.players) && sameList(a.roster, b.roster);
 
-/** The call's state and its rows (You first), for the call bar and its tray. */
+/** The call's state and, once connected, its rows with You first; empty otherwise. */
 export function useCallRows(store: Store, selfId: PlayerId) {
   const { state, players, roster } = useStoreSelector(store, selectCall, sameCall);
   return { state, rows: state === 'connected' ? callRows(roster, players, selfId) : [] };
@@ -55,18 +55,29 @@ export function CallList({
   selfId,
   clock,
   pinger,
+  id,
 }: {
   store: Store;
   selfId: PlayerId;
   clock?: () => number;
   pinger?: PingSender;
+  id?: string;
 }) {
   const { state, rows } = useCallRows(store, selfId);
   return (
-    <Panel className="max-h-60 w-72 max-w-full overflow-y-auto overscroll-contain p-2 text-xs">
+    <Panel
+      id={id}
+      className="pointer-events-auto max-h-60 w-72 max-w-full overflow-y-auto overscroll-contain p-2 text-xs"
+    >
       <div className="mb-1 flex items-center gap-2">
         <PanelTitle>In call</PanelTitle>
-        <span className="rounded-full bg-hud-sage px-2 text-[10px] text-hud-sage-text tabular-nums">{rows.length}</span>
+        <span
+          role="img"
+          aria-label={`${rows.length} in call`}
+          className="rounded-full bg-hud-sage px-2 text-[10px] text-hud-sage-text tabular-nums"
+        >
+          {rows.length}
+        </span>
       </div>
       {state === 'connected' ? (
         <PersonList label="People in your call" rows={rows} pinger={pinger} clock={clock} />

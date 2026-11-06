@@ -53,13 +53,17 @@ describe('CallBar', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('shows Joining call while connecting and closes on Esc', () => {
+  it('shows Joining call in the tray while connecting', () => {
     const actions = setup();
+    fireEvent.click(screen.getByRole('button', { name: /In call/ }));
+    act(() => actions.setMyJitsiRoom('room'));
+    expect(screen.getByText('Joining call', { selector: 'p' })).toBeTruthy();
+  });
+
+  it('closes the tray on Esc', () => {
+    setup();
     const toggle = screen.getByRole('button', { name: /In call/ });
     fireEvent.click(toggle);
-    act(() => actions.setMyJitsiRoom('room'));
-    expect(screen.getByText('Joining call', { exact: false })).toBeTruthy();
-
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
