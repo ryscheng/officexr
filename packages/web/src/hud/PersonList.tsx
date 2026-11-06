@@ -105,14 +105,13 @@ function PersonRowItem({
   onGo: () => void;
   onPing?: { disabled: boolean; send: () => void };
 }) {
-  const indicator =
-    row.type === 'guest' ? null : PRESENCE_INDICATOR[row.type === 'self' ? row.status : presenceIndicator(row, now)];
+  const kind = row.type === 'guest' ? null : row.type === 'self' ? row.status : presenceIndicator(row, now);
+  const indicator = kind && PRESENCE_INDICATOR[kind];
   const mic = (row.type === 'self' || row.type === 'peer') && row.mic ? MIC[row.mic] : null;
-  const away = indicator?.label === 'Away';
+  const away = row.type === 'peer' && kind === 'away';
   return (
     <li className={`flex items-center gap-2 rounded-lg px-1.5 py-1 ${row.type === 'self' ? 'bg-hud-inset' : ''}`}>
-      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hud-edge text-[10px] font-bold text-hud-text uppercase"
-      >
+      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hud-edge text-[10px] font-bold text-hud-text uppercase">
         <span aria-hidden>{row.label.charAt(0)}</span>
         {indicator && (
           <span
@@ -127,12 +126,12 @@ function PersonRowItem({
         <span className={`block truncate text-xs ${row.type === 'departed' ? 'text-hud-text-2' : 'text-hud-text'}`}>
           {row.label}
         </span>
-        {row.type === 'peer' && (noRoute || away || row.distanceM !== null) && (
+        {row.type === 'peer' && (noRoute || row.distanceM !== null) && (
           <span className="flex items-center gap-0.5 text-[10px] text-hud-text-2 tabular-nums">
             {noRoute && <span className="text-hud-amber-text">No route</span>}
-            {away && <span>Away ·</span>}
             {row.distanceM !== null && (
               <>
+                {away && <span>Away ·</span>}
                 <ArrowUp
                   aria-hidden
                   className="h-2.5 w-2.5"
@@ -146,7 +145,13 @@ function PersonRowItem({
       </span>
       {mic && <mic.Icon role="img" aria-label={mic.label} className={`h-3 w-3 shrink-0 ${mic.className}`} />}
       {row.type === 'peer' && onPing && (
-        <IconButton icon={Bell} label={`Ping ${row.label}`} disabled={onPing.disabled} size="row" onClick={onPing.send} />
+        <IconButton
+          icon={Bell}
+          label={`Ping ${row.label}`}
+          disabled={onPing.disabled}
+          size="row"
+          onClick={onPing.send}
+        />
       )}
       {row.type === 'peer' && (
         <IconButton

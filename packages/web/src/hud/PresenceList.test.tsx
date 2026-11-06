@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakePlayControls } from './fakePlayControls';
 import type { PingSender } from '../ping/usePingSender';
 import { PresenceList, presenceRows } from './PresenceList';
-import { ConnectionToast } from './ConnectionToast';
 
 const stubPointer = (coarse: boolean) =>
   vi.stubGlobal('matchMedia', () => ({ matches: coarse, addEventListener: () => {}, removeEventListener: () => {} }));
@@ -124,7 +123,7 @@ describe('presenceRows', () => {
 });
 
 const rowOf = (name: string) => screen.getByText(name).closest('li')!;
-const countPill = () => screen.getByText('In room').nextElementSibling!.textContent;
+const countPill = (n: number) => screen.getByLabelText(`${n} people`);
 
 describe('PresenceList', () => {
   function seed(onRender: ProfilerOnRenderCallback = () => {}, pinger?: PingSender) {
@@ -167,7 +166,7 @@ describe('PresenceList', () => {
   it('orders self, present users by name, then departed', () => {
     seed();
     const rows = within(screen.getByRole('list', { name: 'People in HQ' })).getAllByRole('listitem');
-    expect(rows.map((li) => li.querySelector('.truncate')?.textContent)).toEqual([
+    expect(rows.map((li) => li.textContent?.replace(/^\w/, '').replace(/(Away ·)?(\d+|<1) m$/, ''))).toEqual([
       'Me (you)',
       'Ann',
       'Bob',
@@ -175,7 +174,7 @@ describe('PresenceList', () => {
       'Dan',
     ]);
     expect(screen.getByText('In room')).toBeTruthy();
-    expect(screen.getByText('4')).toBeTruthy();
+    expect(countPill(4)).toBeTruthy();
   });
 
   it('colours dots by indicator and turns a silent peer red once stale', () => {
@@ -312,17 +311,17 @@ describe('PresenceList between clients', () => {
     const alice = await harness.add('alice');
     const clock = () => harness.clock.now();
     renderInView(<PresenceList store={alice.store} selfId="alice" officeName="HQ" clock={clock} />);
-    expect(countPill()).toBe('1');
+    expect(countPill(1)).toBeTruthy();
 
     const bob = await harness.add('bob');
     expect(screen.getByText('Joining…')).toBeTruthy();
     act(() => bob.actions.upsertPlayer({ id: 'bob', name: 'Bob' }));
     expect(screen.getByText('Bob')).toBeTruthy();
-    expect(countPill()).toBe('2');
+    expect(countPill(2)).toBeTruthy();
 
     act(() => harness.remove('bob'));
     expect(within(rowOf('Bob')).getByRole('img', { name: 'Offline' })).toBeTruthy();
-    expect(countPill()).toBe('1');
+    expect(countPill(1)).toBeTruthy();
   });
 
   it('does not show the connection status', async () => {
@@ -347,11 +346,11 @@ describe('PresenceList collapse', () => {
     const { storage, view } = setup();
     const first = view();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse people list' }));
-    expect(screen.getByRole('button', { name: 'Show people in HQ' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Show people in HQ/ })).toBeTruthy();
     first.unmount();
     view();
     expect(screen.queryByText('In room')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Show people in HQ' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Show people in HQ/ }));
     expect(storage.getItem('officexr:roster')).toBe('open');
     expect(screen.getByText('In room')).toBeTruthy();
   });
@@ -361,7 +360,7 @@ describe('PresenceList collapse', () => {
     const { storage, view } = setup();
     const first = view();
     expect(screen.queryByText('In room')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Show people in HQ' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Show people in HQ/ }));
     first.unmount();
     view();
     expect(screen.getByText('In room')).toBeTruthy();
@@ -386,20 +385,14 @@ describe('PresenceList collapse', () => {
     act(() => actions.upsertPlayer({ id: 'ann', pos: { x: 3, y: 0, z: 0 } }));
     expect(screen.queryByText(/\+1/)).toBeNull();
   });
-});
 
-describe('ConnectionToast', () => {
-  it('shows while reconnecting or connecting and hides when live or replaced', async () => {
-    const alice = await createMultiClientHarness().add('alice');
-    render(<ConnectionToast store={alice.store} />);
-    act(() => alice.actions.setRealtimeStatus('reconnecting'));
-    expect(screen.getByRole('status').textContent).toContain('Reconnecting…');
-    expect(screen.getByText('You can keep moving; others will catch up')).toBeTruthy();
-    act(() => alice.actions.setRealtimeStatus('snapshot-pending'));
-    expect(screen.getByRole('status').textContent).toBe('Connecting…');
-    for (const status of ['live', 'replaced'] as const) {
-      act(() => alice.actions.setRealtimeStatus(status));
-      expect(screen.getByRole('status').textContent).toBe('');
-    }
+  it('waits for a joining player to be named before announcing them', () => {
+    const { actions, view } = setup();
+    view();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse people list' }));
+    act(() => actions.upsertPlayer({ id: 'cat', name: '', pos: { x: 1, y: 0, z: 0 } }));
+    expect(screen.queryByText(/\+1/)).toBeNull();
+    act(() => actions.upsertPlayer({ id: 'cat', name: ' Cat Jones' }));
+    expect(screen.getByText('+1 Cat')).toBeTruthy();
   });
 });

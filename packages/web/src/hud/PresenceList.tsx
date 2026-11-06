@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PanelLeftClose, Users } from 'lucide-react';
 import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { useCoarsePointer, useStoreSelector } from '@officexr/world/top-down';
@@ -40,25 +40,23 @@ const selectPresence = (s: OfficeState): Presence => {
     departed: Object.entries(s.departed).map(([id, d]) => ({ id, ...d })),
   };
 };
-const samePresence = (a: Presence, b: Presence) =>
-  sameList(a.players, b.players) && sameList(a.departed, b.departed);
+const samePresence = (a: Presence, b: Presence) => sameList(a.players, b.players) && sameList(a.departed, b.departed);
 
 const ARRIVAL_BUBBLE_MS = 4000;
 
-const firstName = (name: string) => name.split(' ')[0];
-const selectName = (id: PlayerId) => (s: OfficeState) => s.players[id]?.name ?? '';
+const firstName = (name: string) => name.trim().split(' ')[0];
 
-/** Announces a player who joins while the roster is folded. */
+/** Announces a player who joins, or finishes naming themselves, while the roster is folded. */
 function ArrivalBubble({ store, selfId }: { store: Store; selfId: PlayerId }) {
-  const [arrival, setArrival] = useState<{ id: PlayerId } | null>(null);
+  const [arrival, setArrival] = useState<{ name: string } | null>(null);
   useEffect(
     () =>
       store.subscribe(
         (s) => s.players,
         (next, prev) => {
-          const id = Object.keys(next).find((key) => key !== selfId && !(key in prev));
-          if (id) {
-            setArrival({ id });
+          const arrived = Object.values(next).find((p) => p.id !== selfId && p.name.trim() && !prev[p.id]?.name.trim());
+          if (arrived) {
+            setArrival({ name: firstName(arrived.name) });
           }
         },
       ),
@@ -68,18 +66,12 @@ function ArrivalBubble({ store, selfId }: { store: Store; selfId: PlayerId }) {
     const timer = setTimeout(() => setArrival(null), ARRIVAL_BUBBLE_MS);
     return () => clearTimeout(timer);
   }, [arrival]);
-  return arrival && <ArrivalText store={store} id={arrival.id} />;
-}
-
-function ArrivalText({ store, id }: { store: Store; id: PlayerId }) {
-  const name = useStoreSelector(store, useMemo(() => selectName(id), [id]));
   return (
-    <span
-      role="status"
-      className="rounded-hud-control bg-hud-accent px-2 py-1 font-hud-body text-xs whitespace-nowrap text-hud-on-accent"
-    >
-      +1 {firstName(name)}
-    </span>
+    arrival && (
+      <span className="rounded-hud-control bg-hud-accent px-2 py-1 font-hud-body text-xs whitespace-nowrap text-hud-on-accent">
+        +1 {arrival.name}
+      </span>
+    )
   );
 }
 
@@ -106,7 +98,7 @@ export function PresenceList({
       <div className="pointer-events-auto flex items-center gap-2">
         <button
           type="button"
-          aria-label={`Show people in ${officeName}`}
+          aria-label={`Show people in ${officeName} (${players.length})`}
           aria-expanded={false}
           onClick={() => setCollapsed(false)}
           onMouseDown={(e) => e.preventDefault()}
@@ -124,7 +116,12 @@ export function PresenceList({
       <div className="flex items-center gap-2 px-2 py-1.5">
         <Users aria-hidden className="h-4 w-4 shrink-0" />
         <PanelTitle className="flex-1 text-xs">In room</PanelTitle>
-        <span className="rounded-full bg-hud-accent px-2 text-[10px] font-bold text-hud-on-accent">{players.length}</span>
+        <span
+          aria-label={`${players.length} people`}
+          className="rounded-full bg-hud-accent px-2 text-[10px] font-bold text-hud-on-accent"
+        >
+          {players.length}
+        </span>
         <IconButton icon={PanelLeftClose} label="Collapse people list" size="row" onClick={() => setCollapsed(true)} />
       </div>
       <div className="min-h-0 overflow-y-auto overscroll-contain px-1 pb-1">
