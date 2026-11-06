@@ -11,7 +11,7 @@
  */
 import { describe, expect, it, afterEach } from 'vitest';
 import { render, renderHook, act, cleanup } from '@testing-library/react';
-import { focusWorld, isTypingTarget, useWorldFocus } from './useWorldFocus.ts';
+import { focusWorld, hasCommandModifier, isTypingTarget, useWorldFocus } from './useWorldFocus.ts';
 
 afterEach(() => {
   cleanup();
@@ -165,5 +165,16 @@ describe('isTypingTarget', () => {
     expect(isTypingTarget(document.createElement('button'))).toBe(false);
     expect(isTypingTarget(window)).toBe(false);
     expect(isTypingTarget(null)).toBe(false);
+  });
+});
+
+describe('hasCommandModifier', () => {
+  it('flags Alt, Ctrl and Meta chords but not Shift', () => {
+    const key = (init: KeyboardEventInit) => new KeyboardEvent('keydown', init);
+    expect(hasCommandModifier(key({ altKey: true }))).toBe(true);
+    expect(hasCommandModifier(key({ ctrlKey: true }))).toBe(true);
+    expect(hasCommandModifier(key({ metaKey: true }))).toBe(true);
+    expect(hasCommandModifier(key({ shiftKey: true }))).toBe(false);
+    expect(hasCommandModifier(key({}))).toBe(false);
   });
 });

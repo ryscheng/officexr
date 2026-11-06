@@ -18,7 +18,7 @@ import type {
 } from '@officexr/sdk';
 import { tickSession } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
-import { isTypingTarget } from '../react/useWorldFocus.ts';
+import { hasCommandModifier, isTypingTarget } from '../react/useWorldFocus.ts';
 import type { CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
@@ -264,7 +264,7 @@ export function SceneFrame({
       // Also defend against keys typed into a focused <input> that
       // happens to be outside any panel — the world should never
       // capture keystrokes a real text field is consuming.
-      if (isTypingTarget(e.target)) {
+      if (isTypingTarget(e.target) || hasCommandModifier(e)) {
         return;
       }
       if (ARROW_KEYS.has(e.key) || e.key === ' ') e.preventDefault();
