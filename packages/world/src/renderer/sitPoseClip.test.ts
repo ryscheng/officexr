@@ -28,7 +28,7 @@ describe('createSitPoseClip', () => {
   it('holds one constant pose over two keyframes', () => {
     for (const track of clip.tracks) {
       expect(track.name.endsWith('.quaternion')).toBe(true);
-      expect(track.times).toHaveLength(2);
+      expect(Array.from(track.times)).toEqual([0, clip.duration]);
       const values = Array.from(track.values);
       expect(values.slice(0, 4)).toEqual(values.slice(4));
     }

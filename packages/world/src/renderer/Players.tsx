@@ -12,7 +12,8 @@ import {
 } from '@react-three/rapier';
 import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
-import { Adventurer } from './Adventurer.tsx';
+import { Adventurer, type MotionState } from './Adventurer.tsx';
+import { assertNever } from './assertNever.ts';
 import type { CameraMode, CharacterName } from './config.ts';
 import { PlayerNameTag } from './PlayerNameTag.tsx';
 import { PlayerPingBell, shouldShowPingBell } from './PlayerPingBell.tsx';
@@ -62,10 +63,6 @@ interface BumpState {
   /** Push direction (away from the other character). */
   normal: { x: number; z: number };
 }
-
-/** What animation tier a character is currently in. Derived per-frame from
- * |player.vel| against the broadcast walk and run speeds. */
-type MotionState = 'idle' | 'walking' | 'running' | 'jumping' | 'sitting';
 
 /** Offset added to player.yaw when rotating the avatar — adjust if the GLB's
  * default facing differs from -Z. KayKit Adventurers point at +Z by default. */
@@ -351,17 +348,28 @@ export function Players({
       const v = player.vel;
       const speedSq = v.x * v.x + v.z * v.z;
       const previous = motionState.current.get(id) ?? 'idle';
-      let motion: MotionState = previous;
-      if (previous === 'idle') {
-        if (speedSq >= RUN_ENTER_SQ) motion = 'running';
-        else if (speedSq >= WALK_ENTER_SQ) motion = 'walking';
-      } else if (previous === 'walking') {
-        if (speedSq >= RUN_ENTER_SQ) motion = 'running';
-        else if (speedSq <= WALK_EXIT_SQ) motion = 'idle';
-      } else {
-        if (speedSq <= WALK_EXIT_SQ) motion = 'idle';
-        else if (speedSq <= RUN_EXIT_SQ) motion = 'walking';
-      }
+      // Seat and airborne are overrides below, not locomotion tiers, so hysteresis restarts from idle.
+      const previousTier = previous === 'sitting' || previous === 'jumping' ? 'idle' : previous;
+      let motion: MotionState =
+        previousTier === 'idle'
+          ? speedSq >= RUN_ENTER_SQ
+            ? 'running'
+            : speedSq >= WALK_ENTER_SQ
+              ? 'walking'
+              : 'idle'
+          : previousTier === 'walking'
+            ? speedSq >= RUN_ENTER_SQ
+              ? 'running'
+              : speedSq <= WALK_EXIT_SQ
+                ? 'idle'
+                : 'walking'
+            : previousTier === 'running'
+              ? speedSq <= WALK_EXIT_SQ
+                ? 'idle'
+                : speedSq <= RUN_EXIT_SQ
+                  ? 'walking'
+                  : 'running'
+              : assertNever(previousTier);
       // Airborne override: if the player is in the air, force 'jumping'
       // regardless of horizontal speed. Driven by isAirborneRef for the
       // local player (frame-accurate, no re-render overhead); by
@@ -557,7 +565,7 @@ export function Players({
 function PerPlayerAdventurer(props: {
   playerId: string;
   model: PlayerModel;
-  motion: MotionState;  // now includes 'jumping'
+  motion: MotionState;
   invisible: boolean;
   animScale: number;
   bumpCounter: number;

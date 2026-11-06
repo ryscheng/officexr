@@ -12,7 +12,6 @@ const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb'
 const ANIM_MOVEMENT_ADV = modelUrl('/models/animations/Rig_Medium_MovementAdvanced.glb');
 const ANIM_COMBAT_RANGED = modelUrl('/models/animations/Rig_Medium_CombatRanged.glb');
 export const ANIMATION_URLS = [ANIM_GENERAL, ANIM_MOVEMENT, ANIM_MOVEMENT_ADV, ANIM_COMBAT_RANGED];
-const sitPoseClip = createSitPoseClip();
 
 export { characterUrl };
 
@@ -41,6 +40,8 @@ export function applyGhostMaterials(scene: THREE.Object3D): THREE.Material[] {
   });
   return clones;
 }
+
+const sitPoseClip = createSitPoseClip();
 
 for (const url of ANIMATION_URLS) {
   useGLTF.preload(url);
@@ -101,14 +102,19 @@ const LOOPING_STATES: ReadonlySet<AnimationState> = new Set([
   'sitting',
 ]);
 
+export type MotionState = Extract<
+  AnimationState,
+  'idle' | 'walking' | 'running' | 'jumping' | 'sitting'
+>;
+
 interface AdventurerProps {
   /** The GLB to load, e.g. `characterUrl(character)`. */
   url: string;
   /** Translucent, shadowless rendering for 2D-mode players. */
   ghost?: boolean;
-  /** Which clip the GAMEPLAY layer should loop. Comes from the
-   * velocity-derived motion state in `Players.tsx`. */
-  motion: 'idle' | 'walking' | 'running' | 'jumping' | 'sitting';
+  /** Which clip the GAMEPLAY layer should loop. Derived in `Players.tsx` from
+   * the player's seat, airborne state and speed. */
+  motion: MotionState;
   /**
    * Optional preview override owned by the Character editor. When
    * non-null, plays this state's clip in place of `motion`'s. Setting
@@ -397,6 +403,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       if (paused) return;
       if (bumpCounter === 0 || bumpCounter === lastBumpRef.current) return;
       lastBumpRef.current = bumpCounter;
+      if (motion === 'sitting') return;
       const hit = actions[STATE_CLIPS.hit];
       if (!hit) return;
       hit.reset();
@@ -413,6 +420,8 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         // starts cleanly.
         hit.stop();
       };
+      // motion is deliberately not a dep: a motion change must not cut a running Hit_A.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bumpCounter, actions, paused]);
 
     return (

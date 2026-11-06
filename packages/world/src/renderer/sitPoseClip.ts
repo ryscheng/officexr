@@ -14,9 +14,10 @@ const SIT_POSE_DEGREES: Record<string, readonly [number, number, number]> = {
   'upperleg.r': [90, 0, 0],
   'lowerleg.l': [90, 0, 0],
   'lowerleg.r': [90, 0, 0],
-  'foot.l': [-90, 0, 0],
-  'foot.r': [-90, 0, 0],
+  'foot.l': [-44, 0, 0],
+  'foot.r': [-44, 0, 0],
   spine: [8, 0, 0],
+  // Idle_A frame 0: the bind pose is a T-pose.
   'upperarm.l': [-52.6, 48.4, -109.2],
   'upperarm.r': [-53.1, -52.3, 98.5],
   'lowerarm.l': [0, 0, -42],
