@@ -32,8 +32,7 @@ export function applyNetEventToStore(
         event.status,
         event.mic,
         clock.now(),
-        event.jitsiRoom,
-        event.jitsiParticipantId,
+        { room: event.jitsiRoom ?? null, participantId: event.jitsiParticipantId ?? null },
       );
       return;
     case 'chat:message': {

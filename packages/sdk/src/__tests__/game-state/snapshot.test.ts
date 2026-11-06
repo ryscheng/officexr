@@ -45,16 +45,36 @@ describe('snapshot', () => {
     applySnapshot(restored, json, 0);
 
     expect(restored.players.me.hp).toBe(75);
-
-    delete json.players.me.jitsiParticipantId;
-    applySnapshot(restored, json, 0);
-    expect(restored.players.me.jitsiParticipantId).toBeNull();
     expect(restored.chat).toHaveLength(1);
     expect(restored.whiteboard.strokes).toHaveLength(1);
     expect(restored.zombies.wave).toBe(3);
     expect(restored.zombies.entities['z1'].hp).toBe(50);
     expect(restored.proximity.me).toBeInstanceOf(Set);
     expect(restored.proximity.me.has('friend')).toBe(true);
+  });
+
+  it('applies a snapshot without jitsiParticipantId as null', () => {
+    const s = createInitialOfficeState({ selfId: 'me', officeId: 'r' });
+    s.players['me'] = {
+      id: 'me',
+      name: 'Me',
+      pos: { x: 0, y: 0, z: 0 },
+      vel: { x: 0, y: 0, z: 0 },
+      yaw: 0,
+      hp: 100,
+      isDead: false,
+      isAirborne: false,
+      avatar: { model: 'gnome' },
+      jitsiRoom: null,
+      jitsiParticipantId: 'jp-me',
+      status: 'available',
+      mic: 'none',
+    };
+    const json = JSON.parse(JSON.stringify(serializeOfficeState(s)));
+    delete json.players.me.jitsiParticipantId;
+    const restored = createInitialOfficeState({ selfId: 'me', officeId: 'r' });
+    applySnapshot(restored, json, 0);
+    expect(restored.players.me.jitsiParticipantId).toBeNull();
   });
 
   it('strips MediaStream references on serialize', () => {

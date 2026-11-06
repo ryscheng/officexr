@@ -74,8 +74,7 @@ export interface Actions {
     status: PresenceStatus,
     mic: MicState,
     now: number,
-    jitsiRoom?: string | null,
-    jitsiParticipantId?: string | null,
+    jitsi: { room: string | null; participantId: string | null },
   ): void;
   applyRemoteAvatar(playerId: PlayerId, avatar: AvatarData, name: string, now: number): void;
   applyRemoteChat(msg: ChatMessage): void;
@@ -307,14 +306,14 @@ export function createActions(store: Store, bus?: Bus): Actions {
       upsertRemote(playerId, { pos, vel, yaw, tRecv, isAirborne }, tRecv);
     },
 
-    applyRemotePresence(playerId, status, mic, now, jitsiRoom, jitsiParticipantId) {
+    applyRemotePresence(playerId, status, mic, now, jitsi) {
       upsertRemote(
         playerId,
         {
           status,
           mic,
-          jitsiRoom: jitsiRoom ?? null,
-          jitsiParticipantId: jitsiParticipantId ?? null,
+          jitsiRoom: jitsi.room,
+          jitsiParticipantId: jitsi.participantId,
           lastStatusAt: now,
         },
         now,

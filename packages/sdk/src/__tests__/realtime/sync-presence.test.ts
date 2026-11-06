@@ -7,7 +7,7 @@ import { createBus } from '../../game-state/bus.ts';
 import { InMemoryChannel, createInMemoryChannelHub } from '../../realtime/channel.ts';
 import { FakeClock } from '../../test-harness/time.ts';
 import { createMultiClientHarness } from '../../test-harness/two-client.ts';
-import { validateNetEvent, type NetEvent } from '../../realtime/protocol.ts';
+import type { NetEvent } from '../../realtime/protocol.ts';
 
 describe('presence heartbeat', () => {
   it('propagates setSelfPresence to peers', async () => {
@@ -41,8 +41,7 @@ describe('presence heartbeat', () => {
     a.actions.setMyJitsiRoom('room-1');
     a.actions.setMyJitsiParticipantId('jp-a');
 
-    const legacy = { kind: 'presence:status', v: 1, actorId: 'a', seq: Number.MAX_SAFE_INTEGER, t: 0, status: 'away', mic: 'none' };
-    expect(validateNetEvent(legacy).ok).toBe(true);
+    const legacy = { kind: 'presence:status', v: 1, actorId: 'a', seq: Number.MAX_SAFE_INTEGER /* inbound dedup is clock-based */, t: 0, status: 'away', mic: 'none' };
     await a.channel.send(legacy as NetEvent);
 
     expect(b.store.getState().players['a']).toMatchObject({

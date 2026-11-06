@@ -128,9 +128,9 @@ describe('PresenceList', () => {
     peer('bob', 'Bob', { x: 0.4, z: 0 });
     peer('cat', 'Cat', { x: -3, z: 0 });
     peer('dan', 'Dan', { x: 3, z: 0 });
-    actions.applyRemotePresence('ann', 'available', 'speaking', 0);
-    actions.applyRemotePresence('bob', 'away', 'muted', 0);
-    actions.applyRemotePresence('cat', 'available', 'silent', 10_000);
+    actions.applyRemotePresence('ann', 'available', 'speaking', 0, { room: null, participantId: null });
+    actions.applyRemotePresence('bob', 'away', 'muted', 0, { room: null, participantId: null });
+    actions.applyRemotePresence('cat', 'available', 'silent', 10_000, { room: null, participantId: null });
     actions.recordDeparted('dan', 0);
     actions.removePlayer('dan');
     vi.useFakeTimers();
