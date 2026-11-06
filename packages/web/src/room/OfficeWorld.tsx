@@ -5,6 +5,8 @@ import { ApplicationProvider, ErrorBanner, TopDownPlayView, useStoreSelector, Wo
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
+import { DeskAutoSit } from '../desk/DeskAutoSit';
+import { DeskHud } from '../desk/DeskHud';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PingInboxHud } from '../hud/PingInboxHud';
 import { CallList } from '../hud/CallList';
@@ -32,6 +34,7 @@ import { SettingRow, SettingsButton, SettingsModal } from './SettingsModal';
 import { useJoinCheck } from './useJoinCheck';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
+import { useEscapeFallback } from '../hud/useEscapeLayer';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { initialViewMode } from './viewMode';
 import { ViewModeControl } from './ViewModeControl';
@@ -95,6 +98,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const { open: openSettings, close: closeSettings } = settings;
   const openKeybinds = useCallback(() => openSettings('keybinds'), [openSettings]);
   useShortcutsHotkey(openKeybinds, session.type === 'ready');
+  useEscapeFallback(openSettings, session.type === 'ready');
   const pip = usePictureInPicture();
   const closePip = pip.close;
   // The window's contents render inside PlayView, so a session that drops would leave it blank.
@@ -154,6 +158,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       {!settings.isOpen && <ClickToPlayPrompt />}
       <SettingsButton />
       <PingInboxHud inbox={pingInbox} store={ready.local.store} />
+      <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
+      {viewMode === '3d' && <DeskAutoSit store={ready.local.store} selfId={ready.local.selfId} />}
       <ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
       {/* The call bar centres while it fits; the people column pushes it aside instead of under it.
           On touch the people column sits above the joystick, so only the joystick's width is reserved. */}

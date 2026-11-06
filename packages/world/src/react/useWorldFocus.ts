@@ -7,6 +7,11 @@ export function focusWorld(): void {
   window.dispatchEvent(new Event(FOCUS_WORLD_EVENT));
 }
 
+/** Whether a key press carries a command modifier, so it is a shortcut and not movement. */
+export function hasCommandModifier(e: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey'>): boolean {
+  return e.altKey || e.ctrlKey || e.metaKey;
+}
+
 /** Whether keystrokes aimed at `target` are going into a text field. */
 export function isTypingTarget(target: EventTarget | null): boolean {
   return (

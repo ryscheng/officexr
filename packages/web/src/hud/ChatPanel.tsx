@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Actions, OfficeState, Store } from '@officexr/sdk';
 import { focusWorld } from '@officexr/world/top-down';
+import { isComposing } from './isComposing';
+import { useEscapeLayer } from './useEscapeLayer';
 import { useChatVisibility } from './useChatVisibility';
 import { useStoreSelector } from '@officexr/world/top-down';
 
@@ -17,9 +19,6 @@ const sameNames = (a: Names, b: Names) => {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 };
-
-const isComposing = (e: { nativeEvent: KeyboardEvent }) =>
-  e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229;
 
 type ChatPanelProps = { store: Store; actions: Actions; selfId: string };
 
@@ -73,24 +72,30 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
     }
   }, [chat.length, mode]);
 
-  if (mode === 'hidden') {
-    return null;
-  }
-
   const handBack = (next: () => void) => {
     inputRef.current?.blur();
     next();
     focusWorld();
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (isComposing(e)) {
-      return;
-    }
-    if (e.key === 'Escape') {
+  useEscapeLayer(
+    mode === 'compose',
+    () => {
       setDraft('');
       handBack(hide);
-    } else if (e.key === 'Enter') {
+    },
+    () => containerRef.current,
+  );
+
+  if (mode === 'hidden') {
+    return null;
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (isComposing(e.nativeEvent)) {
+      return;
+    }
+    if (e.key === 'Enter') {
       const text = draft.trim();
       if (!text) {
         // Enter is the shortcut's toggle: on an empty draft it closes the panel.
