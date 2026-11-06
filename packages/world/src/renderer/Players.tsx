@@ -65,7 +65,7 @@ interface BumpState {
 
 /** What animation tier a character is currently in. Derived per-frame from
  * |player.vel| against the broadcast walk and run speeds. */
-type MotionState = 'idle' | 'walking' | 'running' | 'jumping';
+type MotionState = 'idle' | 'walking' | 'running' | 'jumping' | 'sitting';
 
 /** Offset added to player.yaw when rotating the avatar — adjust if the GLB's
  * default facing differs from -Z. KayKit Adventurers point at +Z by default. */
@@ -374,6 +374,9 @@ export function Players({
 
       if (playerIsAirborne) {
         motion = 'jumping';
+      }
+      if (player.seat != null) {
+        motion = 'sitting';
       }
 
       nextMotion[id] = motion;

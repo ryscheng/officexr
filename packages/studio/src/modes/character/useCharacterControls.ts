@@ -11,6 +11,7 @@ const STATES: ReadonlyArray<AnimationState> = [
   'jumping',
   'shooting',
   'throwing',
+  'sitting',
 ];
 
 export interface CharacterTuning {

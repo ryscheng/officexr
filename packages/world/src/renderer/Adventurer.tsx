@@ -5,12 +5,14 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import { modelUrl } from '../app/asset-url.ts';
 import { CHARACTERS } from './config.ts';
 import { characterUrl } from '../characters/registry.ts';
+import { createSitPoseClip, SIT_CLIP_NAME } from './sitPoseClip.ts';
 
 const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
 const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
 const ANIM_MOVEMENT_ADV = modelUrl('/models/animations/Rig_Medium_MovementAdvanced.glb');
 const ANIM_COMBAT_RANGED = modelUrl('/models/animations/Rig_Medium_CombatRanged.glb');
 export const ANIMATION_URLS = [ANIM_GENERAL, ANIM_MOVEMENT, ANIM_MOVEMENT_ADV, ANIM_COMBAT_RANGED];
+const sitPoseClip = createSitPoseClip();
 
 export { characterUrl };
 
@@ -62,7 +64,8 @@ export type AnimationState =
   | 'jumping'
   | 'shooting'
   | 'throwing'
-  | 'hit';
+  | 'hit'
+  | 'sitting';
 
 /**
  * Canonical clip name per state. Pulled from the rigs ANIM_GENERAL +
@@ -82,6 +85,7 @@ export const STATE_CLIPS: Record<AnimationState, string> = {
   shooting: '1H_Ranged_Shoot',
   throwing: '2H_Ranged_Throwing',
   hit: 'Hit_A',
+  sitting: SIT_CLIP_NAME,
 };
 
 /** Faster than authored so the bump reads as a quick recoil, not a flinch. */
@@ -94,6 +98,7 @@ const LOOPING_STATES: ReadonlySet<AnimationState> = new Set([
   'walking',
   'running',
   'jumping',  // loops while airborne
+  'sitting',
 ]);
 
 interface AdventurerProps {
@@ -103,7 +108,7 @@ interface AdventurerProps {
   ghost?: boolean;
   /** Which clip the GAMEPLAY layer should loop. Comes from the
    * velocity-derived motion state in `Players.tsx`. */
-  motion: 'idle' | 'walking' | 'running' | 'jumping';
+  motion: 'idle' | 'walking' | 'running' | 'jumping' | 'sitting';
   /**
    * Optional preview override owned by the Character editor. When
    * non-null, plays this state's clip in place of `motion`'s. Setting
@@ -125,16 +130,6 @@ interface AdventurerProps {
    * no fade-in, no bump reactions. Used by the Mugshot mode to render
    * a deterministic, animation-free shot for snapshot testing. */
   paused?: boolean;
-}
-
-function clipForMotion(motion: AdventurerProps['motion']): string {
-  return motion === 'running'
-    ? STATE_CLIPS.running
-    : motion === 'walking'
-      ? STATE_CLIPS.walking
-      : motion === 'jumping'
-        ? STATE_CLIPS.jumping
-        : STATE_CLIPS.idle;
 }
 
 /**
@@ -203,6 +198,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         ...movement.animations,
         ...movementAdv.animations,
         ...combatRanged.animations,
+        sitPoseClip,
       ]) {
         if (seen.has(c.name)) continue;
         seen.add(c.name);
@@ -333,7 +329,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         if (actions[desired]) return desired;
         return STATE_CLIPS.idle;
       }
-      return clipForMotion(motion);
+      return STATE_CLIPS[motion];
     }, [previewState, motion, actions]);
 
     useEffect(() => {
