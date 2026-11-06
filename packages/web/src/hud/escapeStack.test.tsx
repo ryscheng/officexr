@@ -97,9 +97,9 @@ describe('Escape stack', () => {
   it('closes only the chat from its input', () => {
     setup();
     fireEvent.keyDown(window, { key: 'Enter' });
-    const input = screen.getByPlaceholderText('Type a message...');
+    const input = screen.getByPlaceholderText('Press Enter to chat');
     esc(input);
-    expect(screen.queryByPlaceholderText('Type a message...')).toBeNull();
+    expect(screen.queryByPlaceholderText('Press Enter to chat')).toBeNull();
     expect(settingsDialog()).toBeNull();
   });
 });

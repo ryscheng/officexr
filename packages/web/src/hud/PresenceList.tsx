@@ -8,7 +8,7 @@ import { PersonList, type PersonRow } from './PersonList';
 import { labelsInJoinOrder, toPresencePlayer, type DepartedEntry, type PresencePlayer } from './personRows';
 import { useRosterCollapsed, type RosterStorage } from './rosterPrefs';
 import { sameList } from './sameFields';
-import { Panel, PanelTitle } from './ui/Panel';
+import { CHIP, Panel, PanelTitle } from './ui/Panel';
 
 type PresenceRow = Exclude<PersonRow, { type: 'guest' }> & { name: string };
 type Presence = { players: PresencePlayer[]; departed: DepartedEntry[] };
@@ -102,7 +102,7 @@ export function PresenceList({
           aria-expanded={false}
           onClick={() => setCollapsed(false)}
           onMouseDown={(e) => e.preventDefault()}
-          className="flex flex-col items-center gap-1.5 rounded-hud-control border-2 border-hud-edge bg-hud-panel px-1.5 py-2.5 font-hud-title text-hud-text shadow-hud-control hover:bg-hud-edge pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+          className={`flex flex-col items-center gap-1.5 px-1.5 py-2.5 font-hud-title pointer-coarse:min-h-11 pointer-coarse:min-w-11 ${CHIP}`}
         >
           <Users aria-hidden className="h-4 w-4" />
           <span className="text-sm">{players.length}</span>

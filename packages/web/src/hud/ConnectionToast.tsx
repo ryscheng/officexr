@@ -17,7 +17,7 @@ const selectStatus = (s: OfficeState) => s.realtime.status;
 export function ConnectionToast({ store }: { store: Store }) {
   const message = MESSAGE[useStoreSelector(store, selectStatus)];
   return (
-    <div role="status" className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2">
+    <div role="status">
       {message && (
         <div className="rounded-hud-control bg-hud-amber px-4 py-2 text-center font-hud-body text-hud-amber-text shadow-hud-control">
           <div className="font-hud-title text-sm tracking-widest uppercase">{message.title}</div>

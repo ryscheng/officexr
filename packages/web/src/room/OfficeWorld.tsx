@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Actions, Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
-import { ApplicationProvider, ErrorBanner, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
+import { ApplicationProvider, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
@@ -13,6 +13,9 @@ import { CallList } from '../hud/CallList';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
 import { Minimap } from '../hud/Minimap';
 import { ConnectionToast } from '../hud/ConnectionToast';
+import { HudBanner } from '../hud/HudBanner';
+import { HudLayout } from '../hud/HudLayout';
+import { OfficeNamePlate } from '../hud/OfficeNamePlate';
 import { PresenceList } from '../hud/PresenceList';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
@@ -67,7 +70,7 @@ const REPLACED_MESSAGE = 'This office was opened in another window. Reload to re
 
 function ReplacedBanner({ store }: { store: Store }) {
   const replaced = useStoreSelector(store, isReplaced);
-  return replaced ? <ErrorBanner message={REPLACED_MESSAGE} /> : null;
+  return replaced ? <HudBanner message={REPLACED_MESSAGE} /> : null;
 }
 
 function LocalPresence({ actions, voice }: { actions: Actions; voice: JaasVoiceAdapter | null }) {
@@ -132,8 +135,6 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
     mapName: office.map_name ?? DEFAULT_MAP,
     title: office.name,
     storages,
-    error: bannerError,
-    onDismissError: () => setBannerError(null),
     onPingPlayer: pinger.ping,
   });
   const sharedTabs: SettingsTab[] = [
@@ -154,25 +155,41 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const readyHud = (ready: ReadySession) => (
     <>
       {ready.voice && <JaasMeeting voice={ready.voice} />}
-      <ConnectionToast store={ready.local.store} />
       {!settings.isOpen && <ClickToPlayPrompt />}
-      <SettingsButton />
-      <PingInboxHud inbox={pingInbox} store={ready.local.store} />
       <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
       {viewMode === '3d' && <DeskAutoSit store={ready.local.store} selfId={ready.local.selfId} />}
-      <ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
-      {/* The call bar centres while it fits; the people column pushes it aside instead of under it.
-          On touch the people column sits above the joystick, so only the joystick's width is reserved. */}
-      <div className="pointer-events-none absolute inset-x-3 bottom-3 grid grid-cols-[1fr_minmax(0,auto)_1fr] items-end gap-2">
-        <div className="pointer-coarse:min-w-28">
-          <div className="flex flex-col items-start gap-2 pointer-coarse:absolute pointer-coarse:bottom-37 pointer-coarse:left-0">
-            <PresenceList store={ready.local.store} selfId={ready.local.selfId} officeName={office.name} pinger={pinger} />
-            <CallList store={ready.local.store} selfId={ready.local.selfId} pinger={pinger} />
+      <HudLayout
+        topCentre={
+          <>
+            <ReplacedBanner store={ready.local.store} />
+            {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
+            <ConnectionToast store={ready.local.store} />
+          </>
+        }
+        topLeft={<OfficeNamePlate store={ready.local.store} name={office.name} />}
+        topRight={
+          <>
+            <div className="flex items-start gap-2">
+              <PingInboxHud inbox={pingInbox} store={ready.local.store} />
+              <SettingsButton />
+            </div>
             <Minimap store={ready.local.store} />
-          </div>
-        </div>
-        {ready.voice && <CallBar store={ready.local.store} voice={ready.voice} />}
-      </div>
+          </>
+        }
+        rightEdge={
+          <>
+            <PresenceList
+              store={ready.local.store}
+              selfId={ready.local.selfId}
+              officeName={office.name}
+              pinger={pinger}
+            />
+            <CallList store={ready.local.store} selfId={ready.local.selfId} pinger={pinger} />
+          </>
+        }
+        bottomCentre={ready.voice && <CallBar store={ready.local.store} voice={ready.voice} />}
+        bottomLeft={<ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />}
+      />
       {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={ready.local.store} voice={ready.voice} />}
     </>
   );
@@ -202,14 +219,13 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       )}
       {session.type === 'ready' && (
         <>
-          <ReplacedBanner store={session.local.store} />
           <PingReceiver bus={session.local.bus} store={session.local.store} />
           <PingInboxFeed bus={session.local.bus} store={session.local.store} inbox={pingInbox} />
           <LocalPresence actions={session.local.actions} voice={session.voice} />
         </>
       )}
       <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onCancel={join.cancel} />
-      {session.type === 'replaced' && <ErrorBanner message={REPLACED_MESSAGE} />}
+      {session.type === 'replaced' && <HudLayout topCentre={<HudBanner message={REPLACED_MESSAGE} />} />}
     </div>
   );
 }

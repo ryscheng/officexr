@@ -17,6 +17,7 @@ import { floorPlanTransform, navGridPath, toMinimap } from './minimapGeometry';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { quantise } from './quantise';
 import { sameFields, sameList } from './sameFields';
+import { Panel, PanelTitle } from './ui/Panel';
 import { useNow } from './useNow';
 
 const SIZE_PX = 180;
@@ -76,9 +77,9 @@ export function Minimap({
     focusWorld();
   };
   return (
-    <div data-studio-panel className="pointer-events-auto rounded bg-black/70 p-2 text-xs text-white">
-      <div className="flex items-center justify-between gap-3 font-medium">
-        Map
+    <Panel className="pointer-events-auto p-2 text-xs">
+      <div className="flex items-center justify-between gap-3 px-1">
+        <PanelTitle className="text-xs">Map</PanelTitle>
         {/* preventDefault on mousedown keeps focus off the button, so Space/Enter keep driving the world. */}
         {!alwaysOpen && (
           <button
@@ -88,14 +89,14 @@ export function Minimap({
             aria-controls={mapId}
             onMouseDown={(e) => e.preventDefault()}
             onClick={toggle}
-            className="rounded p-0.5 hover:bg-white/20"
+            className="rounded-md p-0.5 text-hud-text-2 hover:bg-hud-edge hover:text-hud-text pointer-coarse:min-h-11 pointer-coarse:min-w-11"
           >
             {open ? <ChevronDown aria-hidden className="h-3 w-3" /> : <ChevronUp aria-hidden className="h-3 w-3" />}
           </button>
         )}
       </div>
       {open && <MapView id={mapId} store={store} clock={clock} />}
-    </div>
+    </Panel>
   );
 }
 
@@ -119,7 +120,7 @@ function MapView({ id, store, clock }: { id: string; store: Store; clock?: () =>
       <clipPath id={clipId}>
         <circle cx={CENTRE} cy={CENTRE} r={MAP_PX / 2} />
       </clipPath>
-      <circle cx={CENTRE} cy={CENTRE} r={MAP_PX / 2} className="fill-white/10" />
+      <circle cx={CENTRE} cy={CENTRE} r={MAP_PX / 2} className="fill-hud-inset" />
       {self && grid && <FloorPlan grid={grid} self={self} viewYaw={viewYaw} clipId={clipId} />}
       {self && state.type === 'walking' && (
         <RouteLine
@@ -131,7 +132,12 @@ function MapView({ id, store, clock }: { id: string; store: Store; clock?: () =>
         />
       )}
       {self && peers.map((p) => <PeerMarker key={p.id} peer={p} self={self} viewYaw={viewYaw} now={now} />)}
-      <path role="img" aria-label="You" d={`M${CENTRE} ${CENTRE - 7}l5 12h-10z`} className="fill-white stroke-black/60">
+      <path
+        role="img"
+        aria-label="You"
+        d={`M${CENTRE} ${CENTRE - 7}l5 12h-10z`}
+        className="fill-hud-text stroke-hud-inset"
+      >
         <title>You</title>
       </path>
     </svg>
@@ -147,7 +153,7 @@ function PeerMarker({ peer, self, viewYaw, now }: { peer: MinimapPeer; self: Vec
     <g role="img" aria-label={`${name}, ${formatDistance(peer.distanceM)}`}>
       <title>{name}</title>
       <circle cx={cx} cy={cy} r={4} className={PRESENCE_INDICATOR[presenceIndicator(peer, now)].fill} />
-      <text x={cx} y={cy + 12} textAnchor="middle" className="fill-white text-[9px] tabular-nums">
+      <text x={cx} y={cy + 12} textAnchor="middle" className="fill-hud-text text-[9px] tabular-nums">
         {formatDistance(peer.distanceM)}
       </text>
     </g>
@@ -177,7 +183,7 @@ function RouteLine({
     <polyline
       points={[`${CENTRE},${CENTRE}`, ...points].join(' ')}
       clipPath={`url(#${clipId})`}
-      className="fill-none stroke-sky-400"
+      className="fill-none stroke-hud-accent"
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -193,7 +199,7 @@ function FloorPlan({ grid, self, viewYaw, clipId }: { grid: NavGrid; self: Vec3;
   });
   return (
     <g clipPath={`url(#${clipId})`}>
-      <path d={navGridPath(grid)} transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`} className="fill-white/40" />
+      <path d={navGridPath(grid)} transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`} className="fill-hud-edge" />
     </g>
   );
 }

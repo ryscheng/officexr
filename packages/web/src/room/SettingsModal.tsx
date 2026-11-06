@@ -10,7 +10,7 @@ import { useSettings, type SettingsAction, type SettingsPane, type SettingsTab }
 export function SettingsButton() {
   const { open } = useSettings();
   return (
-    <div data-studio-panel className="pointer-events-none absolute top-[12px] right-[52px] z-20">
+    <div data-studio-panel className="pointer-events-none flex">
       <IconButton icon={SettingsIcon} label="Settings" tone="accent" onClick={() => open()} />
     </div>
   );

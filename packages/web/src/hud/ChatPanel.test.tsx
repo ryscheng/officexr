@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatPanel } from './ChatPanel';
 import { AUTO_HIDE_MS } from './useChatVisibility';
 
-const PLACEHOLDER = 'Type a message...';
+const PLACEHOLDER = 'Press Enter to chat';
 const input = () => screen.queryByPlaceholderText(PLACEHOLDER) as HTMLInputElement | null;
 const pressEnter = () => act(() => void fireEvent.keyDown(window, { key: 'Enter' }));
 
@@ -65,6 +65,15 @@ describe('ChatPanel', () => {
     expect(store.getState().chat.map((m) => [m.authorId, m.text])).toEqual([['me', 'hi there']]);
     expect(input()!.value).toBe('');
     expect(focus.result.current).toBe(true);
+  });
+
+  it('the hidden chat button opens the input, and the send button sends', () => {
+    const { store } = setup();
+    fireEvent.click(screen.getByRole('button', { name: /chat/i }));
+    expect(document.activeElement).toBe(input());
+    fireEvent.change(input()!, { target: { value: 'hi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(store.getState().chat.map((m) => m.text)).toEqual(['hi']);
   });
 
   it('Escape and Enter on an empty draft close the panel and return the keyboard', () => {

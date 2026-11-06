@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Actions, OfficeState, Store } from '@officexr/sdk';
-import { focusWorld } from '@officexr/world/top-down';
+import { MessageSquare, SendHorizontal } from 'lucide-react';
+import { focusWorld, useStoreSelector } from '@officexr/world/top-down';
+import { IconButton } from './IconButton';
 import { isComposing } from './isComposing';
+import { CHIP, Panel, PanelTitle, TITLE_TEXT } from './ui/Panel';
 import { useEscapeLayer } from './useEscapeLayer';
 import { useChatVisibility } from './useChatVisibility';
-import { useStoreSelector } from '@officexr/world/top-down';
 
 const MAX_MESSAGES = 50;
 const MAX_LENGTH = 500;
@@ -88,7 +90,17 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
   );
 
   if (mode === 'hidden') {
-    return null;
+    return (
+      <button
+        type="button"
+        data-studio-panel
+        onClick={compose}
+        className={`pointer-events-auto flex items-center gap-2 px-3 py-1.5 text-sm pointer-coarse:min-h-11 ${CHIP} ${TITLE_TEXT}`}
+      >
+        <MessageSquare aria-hidden className="size-4" />
+        Chat · Enter
+      </button>
+    );
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -96,45 +108,60 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
       return;
     }
     if (e.key === 'Enter') {
-      const text = draft.trim();
-      if (!text) {
+      if (!draft.trim()) {
         // Enter is the shortcut's toggle: on an empty draft it closes the panel.
         handBack(hide);
         return;
       }
-      actions.appendChat({ id: `${selfId}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`, authorId: selfId, text, t: Date.now() });
-      setDraft('');
-      handBack(peek);
+      send();
     }
   };
 
+  const send = () => {
+    const text = draft.trim();
+    if (!text) {
+      return;
+    }
+    actions.appendChat({
+      id: `${selfId}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+      authorId: selfId,
+      text,
+      t: Date.now(),
+    });
+    setDraft('');
+    handBack(peek);
+  };
+
   return (
-    <div
+    <Panel
       ref={containerRef}
-      data-studio-panel="true"
-      className="absolute bottom-16 left-1/2 z-20 w-[500px] max-w-[90vw] -translate-x-1/2 text-sm text-white"
+      className="pointer-events-auto flex w-80 max-w-[calc(100vw-24px)] flex-col gap-1.5 p-2 text-sm"
     >
-      <div ref={listRef} className="max-h-[50vh] overflow-y-auto overscroll-contain rounded-t-lg bg-black/75 px-3 py-2">
+      <PanelTitle className="px-1 text-xs">Chat</PanelTitle>
+      <div ref={listRef} className="max-h-48 overflow-y-auto overscroll-contain px-1">
         {chat.slice(-MAX_MESSAGES).map((m) => (
           <div key={m.id} className="mb-1 break-words">
-            <span className="mr-1.5 text-xs text-gray-500">
+            <span className="mr-1.5 text-xs text-hud-text-2">
               {new Date(m.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
-            <span className="font-bold text-blue-400">{names[m.authorId] || m.authorId}: </span>
+            <span className="font-bold text-hud-accent">{names[m.authorId] || m.authorId}: </span>
             {m.text}
           </div>
         ))}
       </div>
-      <input
-        ref={inputRef}
-        value={draft}
-        maxLength={MAX_LENGTH}
-        onChange={(e) => setDraft(e.target.value)}
-        onFocus={compose}
-        onKeyDown={onKeyDown}
-        placeholder="Type a message..."
-        className="w-full rounded-b-lg bg-black/75 p-2 outline-none"
-      />
-    </div>
+      <div className="flex items-center gap-1.5">
+        <input
+          ref={inputRef}
+          value={draft}
+          maxLength={MAX_LENGTH}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={compose}
+          onKeyDown={onKeyDown}
+          placeholder="Press Enter to chat"
+          className="min-w-0 flex-1 rounded-hud-control bg-hud-inset px-3 py-1.5 text-hud-text outline-none placeholder:text-hud-text-2"
+        />
+        <IconButton icon={SendHorizontal} label="Send" tone="accent" disabled={!draft.trim()} onClick={send} />
+      </div>
+    </Panel>
   );
 }

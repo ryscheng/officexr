@@ -6,6 +6,7 @@ import type { PingInbox } from '../ping/pingInbox';
 import { IconButton } from './IconButton';
 import { useEscapeLayer } from './useEscapeLayer';
 import { sameList } from './sameFields';
+import { Panel, PanelTitle } from './ui/Panel';
 import { useNow } from './useNow';
 
 const MAX_BADGE = 9;
@@ -43,40 +44,35 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
     focusWorld();
   };
   return (
-    <div
-      data-studio-panel
-      className="pointer-events-none absolute top-[12px] right-[12px] z-20 flex flex-col items-end gap-2"
-    >
-      <div className="relative">
-        <IconButton
-          icon={Bell}
-          label={unreadLabel(unread)}
-          expanded={open}
-          onClick={() => {
-            setOpen(!open);
-            focusWorld();
-          }}
-        />
-        <span role="status" className="sr-only">
-          {unread > 0 ? `${unread} unread pings` : ''}
+    <div data-studio-panel className="pointer-events-none relative flex">
+      <IconButton
+        icon={Bell}
+        label={unreadLabel(unread)}
+        expanded={open}
+        onClick={() => {
+          setOpen(!open);
+          focusWorld();
+        }}
+      />
+      <span role="status" className="sr-only">
+        {unread > 0 ? `${unread} unread pings` : ''}
+      </span>
+      {unread > 0 && !open && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -top-1.5 -right-1.5 min-w-4 rounded-full border-2 border-hud-rose bg-hud-rose-text px-1 text-center text-[10px] leading-3 font-bold text-hud-rose"
+        >
+          {unread > MAX_BADGE ? `${MAX_BADGE}+` : unread}
         </span>
-        {unread > 0 && !open && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute -top-1 -right-1 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] leading-4 text-white"
-          >
-            {unread > MAX_BADGE ? `${MAX_BADGE}+` : unread}
-          </span>
-        )}
-      </div>
+      )}
       {open && (
-        <div className="pointer-events-auto max-h-60 w-60 overflow-y-auto overscroll-contain rounded bg-black/70 p-2 text-xs text-white">
-          <div className="mb-1 flex items-center justify-between font-medium">
-            Pings
+        <Panel className="pointer-events-auto absolute top-full right-0 mt-2 max-h-60 w-60 overflow-y-auto overscroll-contain p-2 text-xs">
+          <div className="mb-1 flex items-center justify-between">
+            <PanelTitle className="text-xs">Pings</PanelTitle>
             {entries.length > 0 && (
               <button
                 type="button"
-                className="font-normal underline"
+                className="text-hud-text-2 underline hover:text-hud-text"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => inbox.clear()}
               >
@@ -85,7 +81,7 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
             )}
           </div>
           {entries.length === 0 ? (
-            <p className="text-white/60">No pings yet</p>
+            <p className="text-hud-text-2">No pings yet</p>
           ) : (
             <ul aria-label="Received pings">
               {entries.map((e) => (
@@ -94,7 +90,7 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
                   <time
                     dateTime={new Date(e.receivedAt).toISOString()}
                     title={new Date(e.receivedAt).toLocaleTimeString()}
-                    className="shrink-0 text-white/70"
+                    className="shrink-0 text-hud-text-2"
                   >
                     {relativeTime(now - e.receivedAt)}
                   </time>
@@ -109,7 +105,7 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
               ))}
             </ul>
           )}
-        </div>
+        </Panel>
       )}
     </div>
   );
