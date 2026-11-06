@@ -30,7 +30,7 @@ function setup(children?: React.ReactNode) {
   const inbox = new PingInbox();
   render(
     <PlayControlsProvider controls={fakePlayControls().controls}>
-      <SettingsHarness>
+      <SettingsHarness panes={[{ id: 'pane', label: 'Pane', content: <p>pane body</p> }]}>
         <OpenSettingsOnEsc />
         <PingInboxHud inbox={inbox} store={store} />
         <ChatPanel store={store} actions={actions} selfId="me#t0" />
@@ -86,7 +86,9 @@ describe('Escape stack', () => {
     setup();
     openSettings();
     act(() => void screen.getByText('pane').click());
+    expect(screen.getByText('pane body')).toBeTruthy();
     esc(settingsDialog()!);
+    expect(screen.queryByText('pane body')).toBeNull();
     expect(settingsDialog()).not.toBeNull();
     esc(settingsDialog()!);
     expect(settingsDialog()).toBeNull();

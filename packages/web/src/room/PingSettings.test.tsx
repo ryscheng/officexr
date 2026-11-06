@@ -4,7 +4,7 @@ import type { SoundCatalog } from '@officexr/world/app';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPingPrefs, writePingPrefs, DEFAULT_PING_PREFS } from '../ping/pingPrefs';
 import type { NotificationSeam } from '../ping/pingNotifier';
-import { PingSettingsDialog } from './PingSettings';
+import { NotificationsPane } from './PingSettings';
 
 const CATALOG = { sounds: [{ name: 'bell' }, { name: 'horn' }] } as SoundCatalog;
 
@@ -16,12 +16,12 @@ const seam = (requestPermission: () => unknown, permission: NotificationPermissi
 
 function setup(notification: NotificationSeam | null = null, catalog: SoundCatalog | null = CATALOG) {
   const preview = vi.fn();
-  render(<PingSettingsDialog onClose={() => {}} notification={notification} preview={preview} catalog={catalog} />);
+  render(<NotificationsPane notification={notification} preview={preview} catalog={catalog} />);
   return preview;
 }
-const notifySwitch = () => screen.getByRole('switch') as HTMLInputElement;
+const notifySwitch = () => screen.getByRole('switch', { name: 'System notifications' }) as HTMLButtonElement;
 
-describe('PingSettingsDialog sound', () => {
+describe('NotificationsPane sound', () => {
   it('saves the chosen sound', () => {
     setup();
     fireEvent.click(screen.getByRole('radio', { name: 'horn' }));
@@ -58,7 +58,7 @@ describe('PingSettingsDialog sound', () => {
   });
 });
 
-describe('PingSettingsDialog notifications', () => {
+describe('NotificationsPane notifications', () => {
   it('saves on when permission is granted, and off again', async () => {
     setup(seam(() => Promise.resolve('granted')));
     fireEvent.click(notifySwitch());
@@ -72,7 +72,7 @@ describe('PingSettingsDialog notifications', () => {
     fireEvent.click(notifySwitch());
     await screen.findByText(/blocked/);
     expect(readPingPrefs(localStorage).notify).toBe(false);
-    expect(notifySwitch().checked).toBe(false);
+    expect(notifySwitch().getAttribute('aria-checked')).toBe('false');
   });
 
   it.each([
