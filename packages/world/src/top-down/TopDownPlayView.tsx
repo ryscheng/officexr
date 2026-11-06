@@ -23,7 +23,7 @@ import { WorldLoadingScreen } from '../react/LoadingScreen.tsx';
 import { PlayControlsProvider } from '../react/playControls.tsx';
 import { NavGridProvider, useBuildNavGrid } from '../react/useNavGrid.ts';
 import { usePlaySession, type PlayStorages } from '../react/usePlaySession.ts';
-import { isTypingTarget } from '../react/useWorldFocus.ts';
+import { isTypingTarget, useWorldFocus } from '../react/useWorldFocus.ts';
 import { PingBellButton } from '../react/PingBellButton.tsx';
 import { useStoreSelector } from '../react/useStoreSelector.ts';
 import { createViewYaw, ViewYawProvider } from '../react/viewYaw.tsx';
@@ -190,7 +190,12 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
     }
   }, [session.loaded, sync]);
 
+  const worldFocused = useWorldFocus();
   useEffect(() => {
+    if (!worldFocused) {
+      controller.setKeys(NO_KEYS);
+      return;
+    }
     const keys = { ...NO_KEYS };
     const onKey = (e: KeyboardEvent) => {
       const key = KEY_BINDINGS[e.code];
@@ -214,7 +219,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
       window.removeEventListener('keyup', onKey);
       window.removeEventListener('blur', onBlur);
     };
-  }, [controller]);
+  }, [controller, worldFocused]);
 
   useEffect(() => {
     if (!session.loaded) {

@@ -52,22 +52,18 @@ export function FocusIndicator({ focused }: { focused: boolean }) {
 
 const HUD_INSET = 12;
 const HUD_GAP = 8;
-/** Mirrors the host menu button's size in `@officexr/web`'s `RoomMenu`. */
-const HOST_MENU_SLOT = 44;
 
-/** Top-left row for the status line and focus chip; `reserveMenuSlot` leaves room for the host's menu button. */
-export function TopLeftHud({ reserveMenuSlot = false, children }: { reserveMenuSlot?: boolean; children: ReactNode }) {
-  const left = reserveMenuSlot ? HUD_INSET + HOST_MENU_SLOT + HUD_GAP : HUD_INSET;
+/** Top-left row for the status line and focus chip. */
+export function TopLeftHud({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
         position: 'absolute',
         top: HUD_INSET,
-        left,
-        maxWidth: `calc(100% - ${left + HUD_INSET}px)`,
+        left: HUD_INSET,
+        maxWidth: `calc(100% - ${2 * HUD_INSET}px)`,
         display: 'flex',
-        minHeight: reserveMenuSlot ? HOST_MENU_SLOT : undefined,
-        alignItems: reserveMenuSlot ? 'center' : 'flex-start',
+        alignItems: 'flex-start',
         gap: HUD_GAP,
         pointerEvents: 'none',
       }}
@@ -77,16 +73,14 @@ export function TopLeftHud({ reserveMenuSlot = false, children }: { reserveMenuS
   );
 }
 
-/** Flows inside `TopLeftHud`, which positions it. `statusOnly` drops the control instructions, for hosts that document them elsewhere. */
+/** Flows inside `TopLeftHud`, which positions it. */
 export function WorldHud({
   cameraMode,
   realtime,
   bakedLayouts = [],
-  statusOnly = false,
 }: {
   cameraMode: CameraMode;
   realtime: HudRealtime;
-  statusOnly?: boolean;
   bakedLayouts?: readonly Pick<BakedLayoutPlacement, 'layoutName'>[];
 }) {
   const layoutNames = [...new Set(bakedLayouts.map((p) => `"${p.layoutName}"`))];
@@ -105,8 +99,8 @@ export function WorldHud({
         whiteSpace: 'pre-line',
       }}
     >
-      {`Camera: ${cameraMode}${statusOnly ? '' : ' (Alt+P to cycle)'} · Realtime: ${realtime} · ${layoutLine}`}
-      {!statusOnly && '\nWASD to move · Click to look · Esc to release mouse'}
+      {`Camera: ${cameraMode} (Alt+P to cycle) · Realtime: ${realtime} · ${layoutLine}`}
+      {'\nWASD to move · Click to look · Esc to release mouse'}
     </div>
   );
 }

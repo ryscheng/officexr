@@ -51,8 +51,8 @@ export interface PlayViewProps {
   /** Steers the view with device motion; absent means off. */
   motionLook?: MotionLookState;
   invertLook?: boolean;
-  /** The host app provides the controls chrome: the HUD shows status only and leaves a slot at the top left for the host's menu button. */
-  hostControls?: boolean;
+  /** `'debug'` shows the camera, transport and layout status plus the focus chip; `'player'` shows none of it. */
+  hud?: 'debug' | 'player';
   /** Lets the host start immersive XR sessions; see `createWorldXRStore`. */
   xrStore?: XRStore;
   /** Shows a ping bell when hovering another player's avatar in the fixed camera. */
@@ -140,15 +140,12 @@ export function PlayView(props: PlayViewProps) {
           }
         />
       )}
-      <TopLeftHud reserveMenuSlot={props.hostControls}>
-        <WorldHud
-          cameraMode={cameraMode}
-          realtime={props.realtime}
-          bakedLayouts={session.bakedLayouts}
-          statusOnly={props.hostControls}
-        />
-        <FocusIndicator focused={worldFocused} />
-      </TopLeftHud>
+      {props.hud !== 'player' && (
+        <TopLeftHud>
+          <WorldHud cameraMode={cameraMode} realtime={props.realtime} bakedLayouts={session.bakedLayouts} />
+          <FocusIndicator focused={worldFocused} />
+        </TopLeftHud>
+      )}
       <SeatRefusalToast seating={seating} />
       {coarsePointer && <VirtualJoystick inputRef={moveInputRef} />}
       {props.error ? (
