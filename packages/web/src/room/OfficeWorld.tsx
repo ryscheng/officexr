@@ -10,6 +10,7 @@ import { PingInboxHud } from '../hud/PingInboxHud';
 import { CallList } from '../hud/CallList';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
 import { Minimap } from '../hud/Minimap';
+import { ConnectionToast } from '../hud/ConnectionToast';
 import { PresenceList } from '../hud/PresenceList';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
@@ -157,6 +158,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         <OfficeSettingsDialog office={office} me={me} onSaved={setOffice} onClose={() => setSettingsOpen(false)} />
       )}
       {ready.voice && <JaasMeeting voice={ready.voice} />}
+      <ConnectionToast store={ready.local.store} />
       {!settings.isOpen && <ClickToPlayPrompt />}
       <SettingsButton />
       <PingInboxHud inbox={pingInbox} store={ready.local.store} />

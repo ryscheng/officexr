@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Profiler, type ProfilerOnRenderCallback, type ReactNode } from 'react';
-import { createActions, createBus, createStore, type OfficeState } from '@officexr/sdk';
+import { createActions, createBus, createStore } from '@officexr/sdk';
 import { createMultiClientHarness } from '@officexr/sdk/test-harness';
 import {
   createViewYaw,
@@ -10,15 +10,29 @@ import {
   ViewYawProvider,
   type PlayControlsSource,
 } from '@officexr/world/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakePlayControls } from './fakePlayControls';
 import type { PingSender } from '../ping/usePingSender';
 import { PresenceList, presenceRows } from './PresenceList';
 
+const stubPointer = (coarse: boolean) =>
+  vi.stubGlobal('matchMedia', () => ({ matches: coarse, addEventListener: () => {}, removeEventListener: () => {} }));
+
+beforeEach(() => {
+  localStorage.clear();
+  stubPointer(false);
+});
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
+
+const memoryStorage = () => {
+  const data = new Map<string, string>();
+  return { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v) };
+};
 
 const player = (id: string, name: string) => ({
   id,
@@ -109,6 +123,7 @@ describe('presenceRows', () => {
 });
 
 const rowOf = (name: string) => screen.getByText(name).closest('li')!;
+const countPill = (n: number) => screen.getByLabelText(`${n} people`);
 
 describe('PresenceList', () => {
   function seed(onRender: ProfilerOnRenderCallback = () => {}, pinger?: PingSender) {
@@ -151,14 +166,15 @@ describe('PresenceList', () => {
   it('orders self, present users by name, then departed', () => {
     seed();
     const rows = within(screen.getByRole('list', { name: 'People in HQ' })).getAllByRole('listitem');
-    expect(rows.map((li) => li.textContent?.replace(/\d+ m|<1 m/, ''))).toEqual([
+    expect(rows.map((li) => li.textContent?.replace(/^\w/, '').replace(/(Away ·)?(\d+|<1) m$/, ''))).toEqual([
       'Me (you)',
       'Ann',
       'Bob',
       'Cat',
       'Dan',
     ]);
-    expect(screen.getByText('HQ (4)')).toBeTruthy();
+    expect(screen.getByText('In room')).toBeTruthy();
+    expect(countPill(4)).toBeTruthy();
   });
 
   it('colours dots by indicator and turns a silent peer red once stale', () => {
@@ -295,32 +311,88 @@ describe('PresenceList between clients', () => {
     const alice = await harness.add('alice');
     const clock = () => harness.clock.now();
     renderInView(<PresenceList store={alice.store} selfId="alice" officeName="HQ" clock={clock} />);
-    expect(screen.getByText('HQ (1)')).toBeTruthy();
+    expect(countPill(1)).toBeTruthy();
 
     const bob = await harness.add('bob');
     expect(screen.getByText('Joining…')).toBeTruthy();
     act(() => bob.actions.upsertPlayer({ id: 'bob', name: 'Bob' }));
     expect(screen.getByText('Bob')).toBeTruthy();
-    expect(screen.getByText('HQ (2)')).toBeTruthy();
+    expect(countPill(2)).toBeTruthy();
 
     act(() => harness.remove('bob'));
     expect(within(rowOf('Bob')).getByRole('img', { name: 'Offline' })).toBeTruthy();
-    expect(screen.getByText('HQ (1)')).toBeTruthy();
+    expect(countPill(1)).toBeTruthy();
   });
 
-  it('shows the connection status as text', async () => {
+  it('does not show the connection status', async () => {
     const alice = await createMultiClientHarness().add('alice');
     renderInView(<PresenceList store={alice.store} selfId="alice" officeName="HQ" />);
-    const expected = {
-      connecting: 'Connecting…',
-      live: 'Connected',
-      reconnecting: 'Reconnecting…',
-      'snapshot-pending': 'Connecting…',
-      replaced: 'Disconnected',
-    } satisfies Record<OfficeState['realtime']['status'], string>;
-    for (const [status, text] of Object.entries(expected)) {
-      act(() => alice.actions.setRealtimeStatus(status as keyof typeof expected));
-      expect(screen.getByText(text)).toBeTruthy();
-    }
+    act(() => alice.actions.setRealtimeStatus('reconnecting'));
+    expect(screen.queryByText(/reconnecting/i)).toBeNull();
+  });
+});
+
+describe('PresenceList collapse', () => {
+  const setup = (storage = memoryStorage()) => {
+    const store = createStore({ selfId: 'me', officeId: 'o' });
+    const actions = createActions(store, createBus());
+    actions.upsertPlayer({ id: 'me', name: 'Me', pos: { x: 0, y: 0, z: 0 } });
+    const view = () =>
+      renderInView(<PresenceList store={store} selfId="me" officeName="HQ" storage={storage} />);
+    return { actions, storage, view };
+  };
+
+  it('persists the folded state through the injected storage', () => {
+    const { storage, view } = setup();
+    const first = view();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse people list' }));
+    expect(screen.getByRole('button', { name: /^Show people in HQ/ })).toBeTruthy();
+    first.unmount();
+    view();
+    expect(screen.queryByText('In room')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Show people in HQ/ }));
+    expect(storage.getItem('officexr:roster')).toBe('open');
+    expect(screen.getByText('In room')).toBeTruthy();
+  });
+
+  it('defaults to folded on a coarse pointer, unless the user chose open', () => {
+    stubPointer(true);
+    const { storage, view } = setup();
+    const first = view();
+    expect(screen.queryByText('In room')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Show people in HQ/ }));
+    first.unmount();
+    view();
+    expect(screen.getByText('In room')).toBeTruthy();
+    expect(storage.getItem('officexr:roster')).toBe('open');
+  });
+
+  it('announces a join with +1 while folded for about 4s, and not while open', () => {
+    const { actions, view } = setup();
+    view();
+    act(() => actions.upsertPlayer({ id: 'ann', name: 'Ann Lee', pos: { x: 1, y: 0, z: 0 } }));
+    expect(screen.queryByText(/\+1/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse people list' }));
+    vi.useFakeTimers();
+    act(() => actions.upsertPlayer({ id: 'bob', name: 'Bob', pos: { x: 2, y: 0, z: 0 } }));
+    expect(screen.getByText('+1 Bob')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(3900));
+    expect(screen.getByText('+1 Bob')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.queryByText(/\+1/)).toBeNull();
+
+    act(() => actions.upsertPlayer({ id: 'ann', pos: { x: 3, y: 0, z: 0 } }));
+    expect(screen.queryByText(/\+1/)).toBeNull();
+  });
+
+  it('waits for a joining player to be named before announcing them', () => {
+    const { actions, view } = setup();
+    view();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse people list' }));
+    act(() => actions.upsertPlayer({ id: 'cat', name: '', pos: { x: 1, y: 0, z: 0 } }));
+    expect(screen.queryByText(/\+1/)).toBeNull();
+    act(() => actions.upsertPlayer({ id: 'cat', name: ' Cat Jones' }));
+    expect(screen.getByText('+1 Cat')).toBeTruthy();
   });
 });
