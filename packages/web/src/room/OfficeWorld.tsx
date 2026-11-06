@@ -21,14 +21,14 @@ import { usePictureInPicture } from '../pip/usePictureInPicture';
 import { CallBar } from '../voice/CallBar';
 import { JaasMeeting } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
-import { OfficeSettingsDialog, officeSettingsActions } from './OfficeSettings';
+import { officeSettingsTabs } from './OfficeSettings';
 import { PlayView3dBoundary } from './PlayView3dBoundary';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
 import { KeybindsTab } from './KeybindsTab';
-import { PingSettingsDialog } from './PingSettings';
+import { NotificationsPane } from './PingSettings';
 import { SettingsProvider, useSettings, type SettingsAction, type SettingsTab } from './Settings';
-import { closingAction, SettingRow, SettingsButton, SettingsModal } from './SettingsModal';
+import { SettingRow, SettingsButton, SettingsModal } from './SettingsModal';
 import { useJoinCheck } from './useJoinCheck';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
@@ -94,8 +94,6 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const settings = useSettings();
   const { open: openSettings, close: closeSettings } = settings;
   const openKeybinds = useCallback(() => openSettings('keybinds'), [openSettings]);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [pingSettingsOpen, setPingSettingsOpen] = useState(false);
   useShortcutsHotkey(openKeybinds, session.type === 'ready');
   const pip = usePictureInPicture();
   const closePip = pip.close;
@@ -145,18 +143,12 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       ),
     },
     { id: 'keybinds', label: 'Keybinds', content: <KeybindsTab /> },
+    { id: 'notifications', label: 'Notifications', content: <NotificationsPane /> },
+    ...officeSettingsTabs(office, me, setOffice),
   ];
-  const sharedActions: SettingsAction[] = [
-    closingAction('notifications', 'Notifications', () => setPingSettingsOpen(true)),
-    ...officeSettingsActions(office, me, () => setSettingsOpen(true)),
-    ...popOutActions(pip),
-  ];
+  const sharedActions: SettingsAction[] = popOutActions(pip);
   const readyHud = (ready: ReadySession) => (
     <>
-      {pingSettingsOpen && <PingSettingsDialog onClose={() => setPingSettingsOpen(false)} />}
-      {settingsOpen && (
-        <OfficeSettingsDialog office={office} me={me} onSaved={setOffice} onClose={() => setSettingsOpen(false)} />
-      )}
       {ready.voice && <JaasMeeting voice={ready.voice} />}
       <ConnectionToast store={ready.local.store} />
       {!settings.isOpen && <ClickToPlayPrompt />}

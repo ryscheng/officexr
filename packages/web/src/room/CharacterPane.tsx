@@ -4,11 +4,12 @@ import type { OfficeState } from '@officexr/sdk';
 import { CHARACTERS, pickCharacterForPlayer, type CharacterName } from '@officexr/world/characters';
 import { CharacterPreviewCanvas } from '@officexr/world/renderer';
 import type { apiFetch } from '../apiOrigin';
-import { Dialog } from '../Dialog';
 import { chooseCharacter } from './character';
-import { closeToWorld } from './closeToWorld';
+import { useSettings } from './Settings';
+import { SettingsActionButton } from './SettingsModal';
 
-const selfCharacter = (s: OfficeState, selfId: string) => pickCharacterForPlayer(selfId, s.players[selfId]?.avatar.model);
+const selfCharacter = (s: OfficeState, selfId: string) =>
+  pickCharacterForPlayer(selfId, s.players[selfId]?.avatar.model);
 
 function useSelfCharacter({ store, selfId }: PersistentLocalState): CharacterName {
   const [character, setCharacter] = useState(() => selfCharacter(store.getState(), selfId));
@@ -16,32 +17,34 @@ function useSelfCharacter({ store, selfId }: PersistentLocalState): CharacterNam
   return character;
 }
 
+export function CharacterAction() {
+  const { openPane } = useSettings();
+  return <SettingsActionButton onClick={() => openPane('character')}>Character</SettingsActionButton>;
+}
+
 /** Reports each save's error, or `null` once a save succeeds. */
 type SaveResult = (error: string | null) => void;
 
-export function CharacterDialog({
+export function CharacterPane({
   local,
   onSaveResult,
-  onClose,
   Preview = CharacterPreviewCanvas,
   fetchFn,
 }: {
   local: PersistentLocalState;
   onSaveResult: SaveResult;
-  onClose: () => void;
   Preview?: ComponentType<{ character: CharacterName }>;
   fetchFn?: typeof apiFetch;
 }) {
   const character = useSelfCharacter(local);
-  const close = closeToWorld(onClose);
   return (
-    <Dialog title="Character" onClose={close}>
-      <div className="mb-3 h-40 overflow-hidden rounded">
+    <div className="flex h-full flex-col gap-3">
+      <div className="h-64 flex-1 overflow-hidden rounded-hud-control bg-hud-inset">
         <Preview character={character} />
       </div>
       <select
         aria-label="Character"
-        className="block w-full rounded border p-2"
+        className="block w-full rounded-hud-control border-2 border-hud-edge bg-hud-inset p-2 font-bold text-hud-text"
         value={character}
         onChange={(e) =>
           chooseCharacter(local, e.target.value as CharacterName, fetchFn).then(
@@ -54,11 +57,6 @@ export function CharacterDialog({
           <option key={c}>{c}</option>
         ))}
       </select>
-      <div className="mt-3 flex justify-end">
-        <button type="button" onClick={close} className="rounded bg-black px-4 py-2 text-white">
-          Done
-        </button>
-      </div>
-    </Dialog>
+    </div>
   );
 }

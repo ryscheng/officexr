@@ -1,5 +1,5 @@
 import { Fragment, useId, type ReactNode } from 'react';
-import { Settings as SettingsIcon, X } from 'lucide-react';
+import { ArrowLeft, Settings as SettingsIcon, X } from 'lucide-react';
 import { IconButton } from '../hud/IconButton';
 import { Keycap } from '../hud/ui/Keycap';
 import { Modal } from '../hud/ui/Modal';
@@ -19,15 +19,17 @@ export function SettingsButton() {
 export function SettingsActionButton({
   onClick,
   primary = false,
+  type = 'button',
   children,
 }: {
-  onClick: () => void;
+  onClick?: () => void;
   primary?: boolean;
+  type?: 'button' | 'submit' | 'reset';
   children: ReactNode;
 }) {
   return (
     <button
-      type="button"
+      type={type}
       onClick={onClick}
       className={`w-full rounded-hud-control border-2 px-4 py-3 text-left font-hud-title text-sm font-normal tracking-widest uppercase shadow-hud-control ${
         primary
@@ -90,6 +92,8 @@ function mergeTabs(tabs: readonly SettingsTab[]): SettingsTab[] {
 interface SettingsModalProps {
   title?: string;
   tabs: readonly SettingsTab[];
+  /** Full-height views opened with `openPane`, shown in place of the tabs. */
+  panes?: readonly SettingsTab[];
   actions: readonly SettingsAction[];
 }
 
@@ -97,11 +101,12 @@ export function SettingsModal(props: SettingsModalProps) {
   return useSettings().isOpen ? <OpenSettingsModal {...props} /> : null;
 }
 
-function OpenSettingsModal({ title, tabs, actions }: SettingsModalProps) {
-  const { tab, open, back, close } = useSettings();
+function OpenSettingsModal({ title, tabs, panes = [], actions }: SettingsModalProps) {
+  const { tab, pane, open, back, close } = useSettings();
   const titleId = useId();
   const subtitleId = useId();
   const merged = mergeTabs(tabs);
+  const openPane = panes.find((p) => p.id === pane);
   return (
     <Modal
       data-studio-panel
@@ -134,20 +139,30 @@ function OpenSettingsModal({ title, tabs, actions }: SettingsModalProps) {
             <Fragment key={action.id}>{action.render(close)}</Fragment>
           ))}
         </nav>
-        <Tabs value={tab ?? merged[0]?.id} onValueChange={open} className="min-w-0 flex-1">
-          <TabList>
+        {openPane ? (
+          <section className="flex min-w-0 flex-1 flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <IconButton icon={ArrowLeft} label="Back" onClick={back} />
+              <PanelTitle className="text-lg">{openPane.label}</PanelTitle>
+            </div>
+            <div className="flex-1 text-sm">{openPane.content}</div>
+          </section>
+        ) : (
+          <Tabs value={tab ?? merged[0]?.id} onValueChange={open} className="min-w-0 flex-1">
+            <TabList>
+              {merged.map((t) => (
+                <Tab key={t.id} value={t.id}>
+                  {t.label}
+                </Tab>
+              ))}
+            </TabList>
             {merged.map((t) => (
-              <Tab key={t.id} value={t.id}>
-                {t.label}
-              </Tab>
+              <TabContent key={t.id} value={t.id} className="pt-3 text-sm outline-none">
+                {t.content}
+              </TabContent>
             ))}
-          </TabList>
-          {merged.map((t) => (
-            <TabContent key={t.id} value={t.id} className="pt-3 text-sm outline-none">
-              {t.content}
-            </TabContent>
-          ))}
-        </Tabs>
+          </Tabs>
+        )}
       </div>
     </Modal>
   );

@@ -6,17 +6,19 @@ import { SettingsButton, SettingsModal } from './SettingsModal';
 /** Test support: the gear and the modal over the given contributions. */
 export function SettingsHarness({
   tabs = [],
+  panes,
   actions = [],
   children,
 }: {
   tabs?: SettingsTab[];
+  panes?: SettingsTab[];
   actions?: SettingsAction[];
   children?: ReactNode;
 }) {
   return (
     <SettingsProvider>
       <SettingsButton />
-      <SettingsModal title="HQ" tabs={tabs} actions={actions} />
+      <SettingsModal title="HQ" tabs={tabs} panes={panes} actions={actions} />
       {children}
     </SettingsProvider>
   );

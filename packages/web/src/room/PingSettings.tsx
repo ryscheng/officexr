@@ -1,12 +1,12 @@
 import { useId, useState } from 'react';
 import type { SoundCatalog } from '@officexr/world/app';
-import { Dialog } from '../Dialog';
 import { assertNever } from '../ping/assertNever';
 import { browserNotification, type NotificationSeam } from '../ping/pingNotifier';
 import { previewPingSound } from '../ping/pingSound';
 import { readPingPrefs, usePingPrefs, writePingPrefs, type PingSound } from '../ping/pingPrefs';
 import { useSoundCatalog } from '../ping/useSoundCatalog';
-import { closeToWorld } from './closeToWorld';
+import { Switch } from '../hud/ui/Switch';
+import { SettingRow } from './SettingsModal';
 
 const sameSound = (a: PingSound, b: PingSound): boolean =>
   a.type === 'builtin'
@@ -29,13 +29,11 @@ const requestPermission = (api: NotificationSeam): Promise<NotificationPermissio
     result?.then(resolve, reject);
   });
 
-export function PingSettingsDialog({
-  onClose,
+export function NotificationsPane({
   notification = browserNotification(),
   preview = previewPingSound,
   catalog: catalogOverride,
 }: {
-  onClose: () => void;
   notification?: NotificationSeam | null;
   preview?: (sound: PingSound, catalog?: SoundCatalog | null) => void;
   catalog?: SoundCatalog | null;
@@ -84,52 +82,64 @@ export function PingSettingsDialog({
       : null;
 
   return (
-    <Dialog title="Ping settings" onClose={closeToWorld(onClose)}>
-      <fieldset className="mb-4">
-        <legend className="mb-1 font-medium">Sound</legend>
-        {options.map(({ label, sound }) => (
-          <div key={soundKey(sound)} className="flex items-center gap-2 py-0.5">
-            <label className="flex flex-1 items-center gap-2">
-              <input
-                type="radio"
-                name="ping-sound"
-                checked={sameSound(selected, sound)}
-                onChange={() => writePingPrefs(localStorage, { ...prefs, sound })}
-              />
-              {label}
-            </label>
-            {isAudible(sound) && (
-              <button type="button" className="rounded border px-2 py-0.5" onClick={() => preview(sound, catalog)}>
-                Preview<span className="sr-only"> {label}</span>
-              </button>
-            )}
-          </div>
-        ))}
+    <div className="space-y-5">
+      <fieldset>
+        <legend className="mb-2 font-hud-title text-sm font-normal tracking-widest uppercase">Sound</legend>
+        <div className="space-y-2">
+          {options.map(({ label, sound }) => {
+            const active = sameSound(selected, sound);
+            return (
+              <div
+                key={soundKey(sound)}
+                className={`flex items-center gap-2 rounded-hud-control border-2 px-3 py-2 ${
+                  active ? 'border-hud-accent-edge bg-hud-inset' : 'border-hud-edge'
+                }`}
+              >
+                <label className="flex flex-1 items-center gap-2 font-bold">
+                  <input
+                    type="radio"
+                    name="ping-sound"
+                    className="accent-hud-accent"
+                    checked={active}
+                    onChange={() => writePingPrefs(localStorage, { ...prefs, sound })}
+                  />
+                  {label}
+                </label>
+                {isAudible(sound) && (
+                  <button
+                    type="button"
+                    className="rounded-hud-control border-2 border-hud-edge bg-hud-inset px-3 py-1 text-xs font-bold hover:bg-hud-edge"
+                    onClick={() => preview(sound, catalog)}
+                  >
+                    Preview<span className="sr-only"> {label}</span>
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
         {stale && (
-          <p role="status" className="mt-1 text-xs text-gray-600">
+          <p role="status" className="mt-2 text-xs text-hud-text-2">
             Your chosen sound is no longer available, so the built-in chime plays.
           </p>
         )}
       </fieldset>
       <section>
-        <h3 className="mb-1 font-medium">Notifications</h3>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            role="switch"
+        <SettingRow label="System notifications">
+          <Switch
+            aria-label="System notifications"
             checked={prefs.notify}
             disabled={!notification || pending}
             aria-describedby={hint ? hintId : undefined}
-            onChange={(e) => toggleNotify(e.target.checked)}
+            onCheckedChange={toggleNotify}
           />
-          Show a system notification for pings
-        </label>
+        </SettingRow>
         {hint && (
-          <p id={hintId} role="status" className="mt-1 text-xs text-gray-600">
+          <p id={hintId} role="status" className="text-xs text-hud-text-2">
             {hint}
           </p>
         )}
       </section>
-    </Dialog>
+    </div>
   );
 }
