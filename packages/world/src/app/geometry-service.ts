@@ -241,3 +241,35 @@ export function createInstanceGeometry(deps: {
     tileStep,
   };
 }
+
+/**
+ * World-space pose (feet position in metres, facing yaw in radians) of a
+ * seat on a placed instance, or null when the kind is not sittable. The
+ * seat offset is carried through the instance yaw about the unrotated
+ * footprint's centre, like the mesh.
+ */
+export function seatPoseOf(
+  kind: Pick<WorldObjectKind, 'id' | 'seat'>,
+  instance: ObjectInstance,
+  geometry: InstanceGeometryService,
+): { position: Vec3; yawRad: number } | null {
+  if (!kind.seat) {
+    return null;
+  }
+  const { min, max } = geometry.worldAABB(instance.position, kind.id);
+  const { offset, yawDeg } = kind.seat;
+  const cx = (max[0] - min[0]) / 2;
+  const cz = (max[2] - min[2]) / 2;
+  const dx = offset.x - cx;
+  const dz = offset.z - cz;
+  const instanceYaw = instance.yawDeg ?? 0;
+  const [cos, sin] = cosSin(instanceYaw);
+  return {
+    position: [
+      min[0] + cx + dx * cos + dz * sin,
+      min[1] + offset.y,
+      min[2] + cz - dx * sin + dz * cos,
+    ],
+    yawRad: yawRadians(instanceYaw + yawDeg),
+  };
+}

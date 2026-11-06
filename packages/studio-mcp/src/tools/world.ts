@@ -34,7 +34,7 @@ export function registerWorldTools(
     {
       description:
         'Read the catalog of world-object kinds (id, label, model path, swatch, walkable, scale, material ' +
-        'overrides, rotationStepDeg). Rooms and layouts reference kinds by id. `scale` is a unitless uniform multiplier (1 = model ' +
+        'overrides, rotationStepDeg, seat, isDesk). Rooms and layouts reference kinds by id. `scale` is a unitless uniform multiplier (1 = model ' +
         'size unchanged); dimensions are in metres. ' +
         YAW_CONTRACT,
     },
@@ -51,6 +51,8 @@ export function registerWorldTools(
         'Replace the whole world-object-kind catalog; it is validated and nothing is written if invalid. ' +
         'Call get_world_object_kinds first and edit that document; `scale` is a unitless multiplier (1 = unchanged). ' +
         '`rotationStepDeg` must be a positive integer dividing 360, else the catalog is rejected. ' +
+        '`seat` ({offset: {x, y, z}, yawDeg}) marks a kind sittable: offset is in metres from the model\'s localAABB min corner in the unrotated frame (where a seated avatar\'s feet go), yawDeg is the facing relative to the kind\'s forward; ' +
+        '`isDesk` (boolean) marks a desk. Both are optional and must be well-formed, else the catalog is rejected. ' +
         YAW_CONTRACT,
       inputSchema: { catalog: documentSchema },
     },

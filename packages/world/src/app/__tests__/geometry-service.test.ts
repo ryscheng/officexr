@@ -12,7 +12,7 @@
  *     so the local AABB lower-left lands at world position*vs.
  */
 import { describe, it, expect } from 'vitest';
-import { createInstanceGeometry } from '../geometry-service.ts';
+import { createInstanceGeometry, seatPoseOf } from '../geometry-service.ts';
 import type { CatalogService } from '../types.ts';
 import type {
   WorldObjectKind,
@@ -284,5 +284,39 @@ describe('InstanceGeometry — primitive diagnostic boxes', () => {
     const { position } = geom.meshTransform([0, 0, 0], '__primitive_blue', 90);
     const aabb = geom.worldAABB([0, 0, 0], '__primitive_blue', 90);
     expect(position.map((v, i) => v - (aabb.min[i] + aabb.max[i]) / 2)).toEqual([0, 0, 0]);
+  });
+});
+
+describe('seatPoseOf', () => {
+  // 1 × 1 × 2 footprint at voxel (2, 0, 4): world min corner (1, 0, 2), centre (1.5, _, 3).
+  const chair = {
+    ...makeKind('chair', { width: 1, height: 1, depth: 2 }, {
+      min: { x: -0.5, y: 0, z: -1 },
+      max: { x: 0.5, y: 1, z: 1 },
+    }),
+    seat: { offset: { x: 0.5, y: 0.45, z: 1.5 }, yawDeg: 30 },
+  };
+  const geom = createInstanceGeometry({ catalog: makeCatalog([chair]), voxelSize: VS });
+  const instance = (yawDeg: number) => ({
+    id: 'i',
+    sourceCommandId: 'c',
+    kindId: 'chair',
+    position: [2, 0, 4] as [number, number, number],
+    yawDeg,
+  });
+
+  it.each([
+    [0, [1.5, 0.45, 3.5]],
+    [90, [2, 0.45, 3]],
+    [180, [1.5, 0.45, 2.5]],
+    [270, [1, 0.45, 3]],
+  ])('carries the offset through yaw %d about the footprint centre', (yaw, expected) => {
+    const pose = seatPoseOf(chair, instance(yaw), geom);
+    pose!.position.forEach((v, i) => expect(v).toBeCloseTo(expected[i], 9));
+    expect(pose!.yawRad).toBeCloseTo(((yaw + 30) * Math.PI) / 180 % (2 * Math.PI), 9);
+  });
+
+  it('is null for a kind without a seat', () => {
+    expect(seatPoseOf({ id: 'chair' }, instance(0), geom)).toBeNull();
   });
 });

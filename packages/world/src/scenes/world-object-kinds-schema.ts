@@ -131,6 +131,18 @@ export interface WorldObjectKind {
   /** Allowed yaw increment in degrees: a positive integer dividing 360.
    * Absent means 90. */
   rotationStepDeg?: number;
+  /** Where an avatar sits on this kind. `offset` is in metres from the
+   * `localAABB` min corner in the unrotated frame (the avatar's feet);
+   * `yawDeg` is the facing relative to the kind's forward. Absent means
+   * not sittable. */
+  seat?: SeatSpec;
+  /** Counts as a desk. Absent means false. */
+  isDesk?: boolean;
+}
+
+export interface SeatSpec {
+  offset: { x: number; y: number; z: number };
+  yawDeg: number;
 }
 
 export const DEFAULT_ROTATION_STEP_DEG = 90;
@@ -370,6 +382,8 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     colliderShape: normalizeColliderShape(k.colliderShape),
     colliderComplexity: normalizeColliderComplexity(k.colliderComplexity, idx),
     rotationStepDeg: normalizeRotationStep(k.rotationStepDeg, idx),
+    seat: normalizeSeat(k.seat, idx),
+    isDesk: normalizeIsDesk(k.isDesk, idx),
   };
 }
 
@@ -388,6 +402,31 @@ function normalizeRotationStep(raw: unknown, idx: number): number | undefined {
     throw new Error(
       `world-object-kind-catalog: kinds[${idx}].rotationStepDeg must be a positive integer dividing 360, got ${String(raw)}`,
     );
+  }
+  return raw;
+}
+
+function normalizeSeat(raw: unknown, idx: number): SeatSpec | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const seat = raw as { offset?: Record<string, unknown>; yawDeg?: unknown } | null;
+  const offset = seat?.offset;
+  const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  if (!offset || !finite(offset.x) || !finite(offset.y) || !finite(offset.z) || !finite(seat?.yawDeg)) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].seat must be { offset: { x, y, z }, yawDeg } of finite numbers, got ${JSON.stringify(raw)}`,
+    );
+  }
+  return { offset: { x: offset.x, y: offset.y, z: offset.z }, yawDeg: seat.yawDeg };
+}
+
+function normalizeIsDesk(raw: unknown, idx: number): boolean | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (typeof raw !== 'boolean') {
+    throw new Error(`world-object-kind-catalog: kinds[${idx}].isDesk must be a boolean, got ${String(raw)}`);
   }
   return raw;
 }
