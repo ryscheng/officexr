@@ -5,7 +5,8 @@ import { Dialog } from '../Dialog';
 import { errorMessage } from '../useApi';
 import { useMapNames } from '../useMapNames';
 import { closeToWorld } from './closeToWorld';
-import { RoomMenuItem } from './RoomMenu';
+import type { SettingsAction } from './Settings';
+import { closingAction } from './SettingsModal';
 import { DEFAULT_MAP } from '@officexr/world/scenes';
 
 /** Only the fields that differ, so an untouched map (or one since removed) can't fail the save. */
@@ -113,10 +114,9 @@ function SettingsForm({ office, onSaved, onClose }: { office: Office; onSaved: (
 
 export const isOfficeCreator = (me: Identity, office: Office) => me.login === office.created_by_login;
 
-/** The creator's menu entry for the Office settings dialog; renders nothing for anyone else. */
-export function OfficeSettingsMenuItem({ office, me, onSelect }: { office: Office; me: Identity; onSelect: () => void }) {
-  return isOfficeCreator(me, office) ? <RoomMenuItem onSelect={onSelect}>Office settings…</RoomMenuItem> : null;
-}
+/** The creator's Settings action for the Office settings dialog; none for anyone else. */
+export const officeSettingsActions = (office: Office, me: Identity, onSelect: () => void): SettingsAction[] =>
+  isOfficeCreator(me, office) ? [closingAction('office', 'Office', onSelect)] : [];
 
 /** The creator's Office settings dialog; renders nothing for anyone else. */
 export function OfficeSettingsDialog({
