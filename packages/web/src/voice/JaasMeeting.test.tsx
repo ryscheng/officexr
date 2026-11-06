@@ -2,7 +2,7 @@
 import { EventEmitter } from 'node:events';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type IJitsiMeetExternalApi from '@jitsi/react-sdk/lib/types/IJitsiMeetExternalApi';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from './JaasMeeting';
 import { JaasVoiceAdapter, MAX_MUTE_CORRECTIONS } from './JaasVoiceAdapter';
 
@@ -20,7 +20,14 @@ vi.mock('@jitsi/react-sdk', () => ({
   ),
 }));
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const newVoice = () => new JaasVoiceAdapter({ appId: 'app', jwt: Promise.resolve('jwt'), displayName: 'Alice' });
 

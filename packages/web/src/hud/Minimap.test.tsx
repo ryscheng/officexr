@@ -198,8 +198,9 @@ describe('Minimap', () => {
     expect(button.getAttribute('aria-controls')).toBe(map()?.id);
     cleanup();
     seed({ coarse: true });
-    expect(screen.getByRole('button', { name: 'Show map' }).getAttribute('aria-expanded')).toBe('false');
-    expect(map()).toBeNull();
+    const thumbnail = screen.getByRole('button', { name: 'Show map' });
+    expect(thumbnail.getAttribute('aria-expanded')).toBe('false');
+    expect(thumbnail.querySelector('svg')).toBeTruthy();
   });
 
   it('hides the toggle and stays open when always open, even on a coarse pointer', () => {

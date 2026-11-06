@@ -7,9 +7,10 @@ import { fakePlayControls } from '../hud/fakePlayControls';
 import { CallBar } from './CallBar';
 import type { JaasVoiceAdapter } from './JaasVoiceAdapter';
 
-beforeEach(() => {
-  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
-});
+const stubPointer = (coarse: boolean) =>
+  vi.stubGlobal('matchMedia', () => ({ matches: coarse, addEventListener: () => {}, removeEventListener: () => {} }));
+
+beforeEach(() => stubPointer(false));
 
 afterEach(() => {
   cleanup();
@@ -39,6 +40,21 @@ function setup() {
 }
 
 describe('CallBar', () => {
+  it('collapses to the mic toggle and the people toggle on a coarse pointer', () => {
+    stubPointer(true);
+    setup();
+    expect(screen.getByRole('button', { name: /microphone/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /share/i })).toBeNull();
+    const people = screen.getByLabelText('In call, 0').closest('button')!;
+    fireEvent.click(people);
+    expect(people.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('keeps the share toggle on a fine pointer', () => {
+    setup();
+    expect(screen.getByRole('button', { name: /share/i })).toBeTruthy();
+  });
+
   it('opens and closes the tray from the toggle and reflects it in aria-expanded', () => {
     setup();
     const toggle = screen.getByRole('button', { name: /In call/ });

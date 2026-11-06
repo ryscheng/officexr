@@ -31,11 +31,14 @@ export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentr
           {rightEdge}
         </div>
       </div>
-      <div data-hud-zone="bottomCentre" className="absolute inset-x-0 bottom-0 flex justify-center">
+      <div
+        data-hud-zone="bottomCentre"
+        className="absolute inset-x-0 bottom-0 flex justify-center pointer-coarse:justify-end"
+      >
         {bottomCentre}
       </div>
-      {/* On touch the virtual joystick owns the bottom-left corner. */}
-      <div data-hud-zone="bottomLeft" className="absolute bottom-0 left-0 pointer-coarse:bottom-30">
+      {/* On touch the virtual joystick owns the bottom-left corner, so the zone sits beside it. */}
+      <div data-hud-zone="bottomLeft" className="absolute bottom-0 left-0 pointer-coarse:left-30">
         {bottomLeft}
       </div>
     </div>

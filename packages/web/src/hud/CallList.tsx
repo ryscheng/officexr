@@ -67,7 +67,7 @@ export function CallList({
   return (
     <Panel
       id={id}
-      className="pointer-events-auto max-h-60 w-72 max-w-full overflow-y-auto overscroll-contain p-2 text-xs"
+      className="pointer-events-auto max-h-60 w-72 pointer-coarse:max-h-[40dvh] max-w-full overflow-y-auto overscroll-contain p-2 text-xs"
     >
       <div className="mb-1 flex items-center gap-2">
         <PanelTitle>In call</PanelTitle>
