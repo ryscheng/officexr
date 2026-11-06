@@ -2,8 +2,8 @@ import connect from 'connect';
 import type { RealtimeServer } from '@officexr/realtime-server/server';
 import { createStudioStorage, studioMapExists } from '@officexr/world/vite-plugin-storage';
 import type { Store } from 'express-session';
-import { apiMiddleware, type CreateOffice, type OfficeCharacters, type QueryOffices, type UpdateOffice } from './api';
-import { createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
+import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeCharacters, type QueryOffices, type UpdateOffice } from './api';
+import { bearerIdentity, createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import { createCors } from './cors';
 import { configJsMiddleware } from './runtimeConfig';
 import type { Identity } from './shared';
@@ -75,8 +75,9 @@ export async function createApp({
   app.use(staticDirMiddleware('/models', modelsDir));
   app.use(configJsMiddleware(dev?.env));
   app.use(realtime.requestHandler);
-  app.use(
-    apiMiddleware(queryOffices, characters, createOffice, updateOffice, studioMapExists(studioDataDir), devUser ? () => devUser : sessionIdentity, realtimeTokenSecret),
-  );
+  const cookieIdentity: ResolveIdentity = devUser ? () => devUser : sessionIdentity;
+  const bearer = realtimeTokenSecret ? bearerIdentity(realtimeTokenSecret) : undefined;
+  const identity: ResolveIdentity = (req) => (bearer && req.headers.authorization ? bearer(req) : cookieIdentity(req));
+  app.use(apiMiddleware(queryOffices, characters, createOffice, updateOffice, studioMapExists(studioDataDir), identity, realtimeTokenSecret));
   return app;
 }

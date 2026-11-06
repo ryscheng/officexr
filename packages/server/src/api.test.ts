@@ -3,7 +3,7 @@ import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { verifyJoinToken } from '@officexr/realtime-server/join-token';
+import { signJoinToken, verifyJoinToken } from '@officexr/realtime-server/join-token';
 import { RealtimeServer } from '@officexr/realtime-server/server';
 import connect from 'connect';
 import session from 'express-session';
@@ -190,6 +190,32 @@ describe('/api/realtime-token', () => {
   it.each([undefined, ''])('is 404 when the secret is %j', async (secret) => {
     const base = await start('prod', { realtimeTokenSecret: secret });
     expect((await fetch(`${base}/api/realtime-token`, { headers: await signIn(base, 'a@example.com') })).status).toBe(404);
+  });
+});
+
+describe('bearer join tokens', () => {
+  const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+  it('authenticate the API as the token login, ahead of the dev user', async () => {
+    const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {}, realtimeTokenSecret: 's3cret' });
+    const token = signJoinToken('s3cret', { login: 'rt@example.com', ttlMs: 60_000 });
+    const res = await fetch(`${base}/api/me`, { headers: bearer(token) });
+    expect(await res.json()).toEqual({ login: 'rt@example.com', name: 'rt@example.com' });
+  });
+
+  it('are 401 when forged or expired, even in dev', async () => {
+    const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {}, realtimeTokenSecret: 's3cret' });
+    const forged = signJoinToken('other', { login: 'rt@example.com', ttlMs: 60_000 });
+    const expired = signJoinToken('s3cret', { login: 'rt@example.com', ttlMs: 1_000, now: Date.now() - 2_000 });
+    for (const token of [forged, expired, 'garbage']) {
+      expect((await fetch(`${base}/api/me`, { headers: bearer(token) })).status).toBe(401);
+    }
+  });
+
+  it('are ignored without a configured secret', async () => {
+    const base = await start('dev', { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {} });
+    const token = signJoinToken('s3cret', { login: 'rt@example.com', ttlMs: 60_000 });
+    expect(((await (await fetch(`${base}/api/me`, { headers: bearer(token) })).json()) as Identity).login).toBe('dev@example.com');
   });
 });
 

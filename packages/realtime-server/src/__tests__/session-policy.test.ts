@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelStatus, PlayerId } from '@officexr/sdk';
 import { WebSocket as RawWebSocket } from 'ws';
-import { fetchSessionPolicy } from '../office-policy.ts';
+import { createOfficeApi } from '../office-api.ts';
 import { RealtimeServer } from '../server.ts';
 import { decodeFrame, encodeFrame, REPLACED_CLOSE_CODE, type Frame, type HelloFrame } from '../protocol.ts';
 import { WsChannel, type WsChannelOptions } from '../ws-channel.ts';
 
 const OFFICE = 'office-1';
-const OFFICE_URL = 'http://web.test/api/offices/{id}';
+const API_URL = 'http://web.test';
 
-type FakeFetch = (url: string, init?: RequestInit) => Promise<Response>;
+type FakeFetch = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
 function officeFetch(office: unknown, status = 200): FakeFetch {
   return async () => new Response(JSON.stringify(office), { status });
@@ -44,7 +44,7 @@ describe('RealtimeServer sessions per login', () => {
     const fetchImpl = (fetchFn ?? fetch) as typeof fetch;
     server = new RealtimeServer({
       port: 0,
-      sessionPolicy: (officeId, login) => fetchSessionPolicy(OFFICE_URL, officeId, login, fetchImpl),
+      sessionPolicy: createOfficeApi({ baseUrl: API_URL, fetch: fetchImpl }).allowsMultiSession,
     });
     await server.start();
     port = server.boundPort;
@@ -344,7 +344,7 @@ describe('RealtimeServer sessions per login', () => {
     it('encodes the office id into the office URL', async () => {
       const urls: string[] = [];
       await startServer(async (url) => {
-        urls.push(url);
+        urls.push(String(url));
         return new Response('{}', { status: 200 });
       });
 
