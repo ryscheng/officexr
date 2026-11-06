@@ -9,7 +9,7 @@ const useShareState = (voice: JaasVoiceAdapter) => useSyncExternalStore(voice.on
 
 // Kept in-viewport but invisible: fully off-screen, Chrome throttles the iframe's timers and the XMPP connection never completes.
 const HIDDEN: CSSProperties = { bottom: 0, right: 0, opacity: 0, zIndex: -1 };
-const SHOWING_SHARE: CSSProperties = { top: 64, right: 12, borderRadius: 4, overflow: 'hidden', zIndex: 10 };
+const SHOWING_SHARE: CSSProperties = { top: 64, right: 12, zIndex: 10 };
 const FOCUSED_SHARE: CSSProperties = { inset: 16, zIndex: 40, pointerEvents: 'auto' };
 
 // The SDK's iframe is height: 100% of a div it creates without a height, so it would collapse to 150px.
@@ -62,7 +62,11 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
           onMouseDown={() => setExpanded(false)}
         />
       )}
-      <div key={meeting.key} style={{ position: 'fixed', ...wrapperStyle }}>
+      <div
+        key={meeting.key}
+        className="overflow-hidden rounded-hud-panel border-2 border-hud-edge bg-hud-inset shadow-hud-panel"
+        style={{ position: 'fixed', ...wrapperStyle }}
+      >
         <JaaSMeeting
           appId={voice.options.appId}
           jwt={meeting.jwt}
