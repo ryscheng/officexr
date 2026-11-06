@@ -20,9 +20,10 @@ vi.mock('@jitsi/react-sdk', () => ({
   ),
 }));
 
-beforeEach(() => {
-  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
-});
+const stubPointer = (coarse: boolean) =>
+  vi.stubGlobal('matchMedia', () => ({ matches: coarse, addEventListener: () => {}, removeEventListener: () => {} }));
+
+beforeEach(() => stubPointer(false));
 
 afterEach(() => {
   cleanup();
@@ -182,6 +183,13 @@ describe('JaasMeeting focus toggle', () => {
     act(() => void api.emit('contentSharingParticipantsChanged', { data: ['bob'] }));
     return { voice, api };
   }
+
+  it('shrinks the share frame on a coarse pointer', async () => {
+    stubPointer(true);
+    await showShare();
+    expect(wrapper().style.width).toBe('288px');
+    expect(wrapper().style.height).toBe('162px');
+  });
 
   it('has no toggle until a share is shown', async () => {
     const voice = newVoice();

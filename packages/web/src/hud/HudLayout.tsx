@@ -26,7 +26,7 @@ export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentr
         {/* The padding keeps the panels' drop shadows inside the scroll box, which would clip them. */}
         <div
           data-hud-zone="rightEdge"
-          className="-mr-3 flex min-h-0 flex-col items-end gap-2 overflow-y-auto overscroll-contain pr-3 pb-10 pl-8"
+          className="-mr-3 flex min-h-0 flex-col items-end gap-2 overflow-y-auto overscroll-contain pr-3 pb-10 pl-8 pointer-coarse:pb-16"
         >
           {rightEdge}
         </div>

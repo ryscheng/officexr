@@ -33,5 +33,6 @@ export { findPath } from '../nav/path.ts';
 export { feetPosition } from '../physics/rules.ts';
 export type { NavGrid } from '../nav/grid.ts';
 export { useCoarsePointer } from './useCoarsePointer.ts';
+export { useMediaQuery } from './useMediaQuery.ts';
 export { createViewYaw, useViewYaw, ViewYawProvider, type ViewYaw } from './viewYaw.tsx';
 export { planarDistance, relativeBearing } from './relativeGeometry.ts';

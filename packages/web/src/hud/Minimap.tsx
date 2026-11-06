@@ -82,6 +82,7 @@ export function Minimap({
         type="button"
         aria-label="Show map"
         aria-expanded={false}
+        onMouseDown={(e) => e.preventDefault()}
         onClick={toggle}
         className={`pointer-events-auto p-1 ${CHIP}`}
       >

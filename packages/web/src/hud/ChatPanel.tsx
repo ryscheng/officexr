@@ -94,12 +94,11 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
       <button
         type="button"
         data-studio-panel
-        aria-label="Chat"
         onClick={compose}
         className={`pointer-events-auto flex items-center gap-2 px-3 py-1.5 text-sm pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center pointer-coarse:px-2 ${CHIP} ${TITLE_TEXT}`}
       >
         <MessageSquare aria-hidden className="size-4" />
-        <span className="pointer-coarse:hidden">Chat · Enter</span>
+        <span className="pointer-coarse:sr-only">Chat · Enter</span>
       </button>
     );
   }
