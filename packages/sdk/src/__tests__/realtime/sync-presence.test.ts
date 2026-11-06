@@ -7,7 +7,7 @@ import { createBus } from '../../game-state/bus.ts';
 import { InMemoryChannel, createInMemoryChannelHub } from '../../realtime/channel.ts';
 import { FakeClock } from '../../test-harness/time.ts';
 import { createMultiClientHarness } from '../../test-harness/two-client.ts';
-import type { NetEvent } from '../../realtime/protocol.ts';
+import { validateNetEvent, type NetEvent } from '../../realtime/protocol.ts';
 
 describe('presence heartbeat', () => {
   it('propagates setSelfPresence to peers', async () => {
@@ -18,6 +18,38 @@ describe('presence heartbeat', () => {
     a.actions.setSelfPresence({ status: 'away', mic: 'speaking' });
 
     expect(b.store.getState().players['a']).toMatchObject({ status: 'away', mic: 'speaking' });
+  });
+
+  it('propagates jitsiRoom and jitsiParticipantId, including clearing', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    const b = await h.add('b');
+
+    a.actions.setMyJitsiRoom('room-1');
+    a.actions.setMyJitsiParticipantId('jp-a');
+    expect(b.store.getState().players['a']).toMatchObject({ jitsiRoom: 'room-1', jitsiParticipantId: 'jp-a' });
+
+    a.actions.setMyJitsiRoom(null);
+    a.actions.setMyJitsiParticipantId(null);
+    expect(b.store.getState().players['a']).toMatchObject({ jitsiRoom: null, jitsiParticipantId: null });
+  });
+
+  it('applies a presence:status without the jitsi fields as null', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    const b = await h.add('b');
+    a.actions.setMyJitsiRoom('room-1');
+    a.actions.setMyJitsiParticipantId('jp-a');
+
+    const legacy = { kind: 'presence:status', v: 1, actorId: 'a', seq: Number.MAX_SAFE_INTEGER, t: 0, status: 'away', mic: 'none' };
+    expect(validateNetEvent(legacy).ok).toBe(true);
+    await a.channel.send(legacy as NetEvent);
+
+    expect(b.store.getState().players['a']).toMatchObject({
+      status: 'away',
+      jitsiRoom: null,
+      jitsiParticipantId: null,
+    });
   });
 
   it('re-sends every 5 s with no change, advancing lastStatusAt', async () => {

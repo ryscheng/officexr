@@ -16,6 +16,7 @@ describe('snapshot', () => {
       isAirborne: false,
       avatar: { model: 'gnome' },
       jitsiRoom: null,
+      jitsiParticipantId: null,
       status: 'available',
       mic: 'none',
     };
@@ -44,6 +45,10 @@ describe('snapshot', () => {
     applySnapshot(restored, json, 0);
 
     expect(restored.players.me.hp).toBe(75);
+
+    delete json.players.me.jitsiParticipantId;
+    applySnapshot(restored, json, 0);
+    expect(restored.players.me.jitsiParticipantId).toBeNull();
     expect(restored.chat).toHaveLength(1);
     expect(restored.whiteboard.strokes).toHaveLength(1);
     expect(restored.zombies.wave).toBe(3);
@@ -74,6 +79,7 @@ describe('snapshot', () => {
       isAirborne: false,
       avatar: { model: 'default' },
       jitsiRoom: null,
+      jitsiParticipantId: null,
       status: 'available',
       mic: 'none',
       tRecv: 99999,
@@ -97,6 +103,7 @@ describe('snapshot', () => {
       isAirborne: false,
       avatar: { model: 'default' },
       jitsiRoom: null,
+      jitsiParticipantId: null,
       status: 'away',
       mic: 'muted',
       lastStatusAt: 5,
