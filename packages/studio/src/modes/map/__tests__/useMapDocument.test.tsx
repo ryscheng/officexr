@@ -282,4 +282,54 @@ describe('useMapDocument', () => {
       expect(save.mock.calls[0][1].rooms).toHaveLength(2);
     });
   });
+
+  describe('desk areas', () => {
+    const bounds = { min: { x: 0, z: 0 }, max: { x: 2, z: 2 } };
+
+    it('adds, relabels, resizes and removes areas, tracking selection', async () => {
+      const { result } = renderHook(() => useMapDocument({ storage: makeStorage() }));
+      await waitFor(() => expect(result.current.doc.name).toBe('default'));
+
+      let id = '';
+      act(() => {
+        id = result.current.addDeskArea(bounds);
+      });
+      expect(result.current.selection).toEqual({ kind: 'desk-area', id });
+
+      act(() => result.current.setDeskAreaLabel(id, 'Pod A'));
+      act(() => result.current.setDeskAreaBounds(id, { min: { x: 1, z: 1 }, max: { x: 3, z: 3 } }));
+      expect((result.current.doc as { deskAreas: unknown }).deskAreas).toEqual([
+        { id, label: 'Pod A', min: { x: 1, z: 1 }, max: { x: 3, z: 3 } },
+      ]);
+
+      act(() => result.current.removeDeskArea(id));
+      expect((result.current.doc as { deskAreas: unknown[] }).deskAreas).toEqual([]);
+      expect(result.current.selection).toBeNull();
+    });
+
+    it('withholds saving while an area is invalid and resumes once fixed', async () => {
+      const storage = makeStorage();
+      const save = vi.spyOn(storage, 'save');
+      // Stand-in for "two chairs inside the area": invalid until the area is renamed.
+      const validateDeskAreas = (doc: { deskAreas?: { id: string; label?: string }[] }) =>
+        (doc.deskAreas ?? [])
+          .filter((a) => a.label !== 'fixed')
+          .map((a) => ({ areaId: a.id, label: 'Desk', reason: '2 chairs' }));
+      const { result } = renderHook(() => useMapDocument({ storage, validateDeskAreas }));
+      await waitFor(() => expect(result.current.doc.name).toBe('default'));
+
+      let id = '';
+      act(() => {
+        id = result.current.addDeskArea(bounds);
+      });
+      expect(result.current.deskAreaViolations).toHaveLength(1);
+      await new Promise((r) => setTimeout(r, 800));
+      expect(save).not.toHaveBeenCalled();
+
+      act(() => result.current.setDeskAreaLabel(id, 'fixed'));
+      expect(result.current.deskAreaViolations).toHaveLength(0);
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(1), { timeout: 2000 });
+      expect(save.mock.calls[0][1]).toMatchObject({ deskAreas: [{ id, label: 'fixed' }] });
+    });
+  });
 });

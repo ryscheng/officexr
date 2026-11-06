@@ -1,15 +1,16 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Environment, Sky, Stars } from '@react-three/drei';
+import { Environment, Html, Sky, Stars } from '@react-three/drei';
 import {
   type LayoutDocument,
   type SerializedMap,
   type RoomDocument,
   type RoomInstance,
   type SpawnPoint,
+  type DeskArea,
 } from '@officexr/world/scenes';
-import { bakedLayoutUrl, computeVoiceZones } from '@officexr/world/app';
+import { bakedLayoutUrl, computeVoiceZones, deskAreaLabel } from '@officexr/world/app';
 import { useApplication, useCatalogReady } from '@officexr/world/react';
 import {
   BakedLayout,
@@ -26,6 +27,8 @@ import type { MapSelection } from './useMapDocument.ts';
 import type { MapTool } from './mapTools.ts';
 import { resolveRoomPointerAction } from './mapPointerActions.ts';
 import { computeRoomAabbs } from './roomAabbs.ts';
+import { deskAreasOf, snapDeskAreaBounds } from './deskAreaGeometry.ts';
+import type { DeskAreaViolation } from './deskAreaViolations.ts';
 import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 import { paths, STUDIO_API_ORIGIN, studioApiUrl } from '../../apiOrigin.ts';
 import {
@@ -72,7 +75,9 @@ interface MapEditorCanvasProps {
   onSelect: (sel: MapSelection) => void;
   onMoveRoom: (id: string, position: [number, number, number]) => void;
   onPlaceSpawn: (position: [number, number, number]) => void;
-  /** Active map-editor tool — Select / Move / Spawn. Determines what
+  onAddDeskArea: (bounds: Pick<DeskArea, 'min' | 'max'>) => void;
+  deskAreaViolations: readonly DeskAreaViolation[];
+  /** Active map-editor tool — Select / Move / Spawn / Desk area. Determines what
    * a pointer-down on a room or on the floor does. */
   tool: MapTool;
 }
@@ -119,6 +124,14 @@ export function MapEditorCanvas(props: MapEditorCanvasProps) {
         onPlaceSpawn={props.onPlaceSpawn}
       />
       <VoiceZoneLayer doc={props.doc} rooms={props.rooms} layouts={props.layouts} />
+      <DeskAreaLayer
+        areas={deskAreasOf(props.doc)}
+        violations={props.deskAreaViolations}
+        selection={props.selection}
+        onSelect={props.onSelect}
+        onAdd={props.onAddDeskArea}
+        tool={props.tool}
+      />
       <SpawnLayer
         spawns={props.doc.spawnPoints}
         selection={props.selection}
@@ -220,7 +233,7 @@ function FloorPicker({ onPlaceSpawn: _onPlaceSpawn, onDeselect, tool }: FloorPic
         e.stopPropagation();
         // Spawn tool: ignore empty-ground clicks; spawns are
         // room-surface-only by design.
-        if (tool === 'spawn') return;
+        if (tool === 'spawn' || tool === 'desk-area') return;
         onDeselect();
       }}
     >
@@ -485,6 +498,9 @@ function RoomInstanceMesh({
               onPlaceSpawn([e.point.x, e.point.y, e.point.z]);
               return;
             }
+            if (resolveRoomPointerAction(tool) === 'ignore') {
+              return;
+            }
             onSelect();
           }}
         >
@@ -527,6 +543,9 @@ function RoomInstanceMesh({
           // the actual surface Y from R3F's raycaster — works for
           // both cube tops and baked-layout surfaces.
           onPlaceSpawn([e.point.x, e.point.y, e.point.z]);
+          return;
+        }
+        if (action === 'ignore') {
           return;
         }
         // Select OR Move: select the room. The Move tool also kicks
@@ -637,6 +656,147 @@ function VoiceZoneLayer({
           />
         </mesh>
       ))}
+    </>
+  );
+}
+
+// --- Desk areas ---------------------------------------------------
+
+const DESK_AREA_Y = 0.06;
+
+function deskAreaColor(invalid: boolean, selected: boolean): string {
+  return invalid ? '#ef4444' : selected ? '#fde047' : '#22d3ee';
+}
+
+interface DeskAreaLayerProps {
+  areas: readonly DeskArea[];
+  violations: readonly DeskAreaViolation[];
+  selection: MapSelection;
+  onSelect: (sel: MapSelection) => void;
+  onAdd: (bounds: Pick<DeskArea, 'min' | 'max'>) => void;
+  tool: MapTool;
+}
+
+function DeskAreaRect({
+  bounds,
+  color,
+  label,
+  onPointerDown,
+}: {
+  bounds: Pick<DeskArea, 'min' | 'max'>;
+  color: string;
+  label?: string;
+  onPointerDown?: (e: { button: number; stopPropagation: () => void }) => void;
+}) {
+  const { min, max } = bounds;
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[(min.x + max.x) / 2, DESK_AREA_Y, (min.z + max.z) / 2]}
+      renderOrder={1}
+      onPointerDown={onPointerDown}
+    >
+      <planeGeometry args={[max.x - min.x, max.z - min.z]} />
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={0.35}
+        depthTest={false}
+        depthWrite={false}
+        toneMapped={false}
+      />
+      {label ? (
+        <Html center pointerEvents="none" zIndexRange={[4, 0]}>
+          <div style={{ color: '#fff', font: '12px system-ui, sans-serif', whiteSpace: 'nowrap' }}>
+            {label}
+          </div>
+        </Html>
+      ) : null}
+    </mesh>
+  );
+}
+
+/**
+ * Renders desk-area rectangles and, while the Desk area tool is active,
+ * owns the press-drag-release gesture on the y=0 plane. It listens on the
+ * canvas element directly because the gesture must start over rooms too.
+ */
+function DeskAreaLayer({ areas, violations, selection, onSelect, onAdd, tool }: DeskAreaLayerProps) {
+  const { camera, gl } = useThree();
+  const [draft, setDraft] = useState<Pick<DeskArea, 'min' | 'max'> | null>(null);
+
+  useEffect(() => {
+    if (tool !== 'desk-area') {
+      return;
+    }
+    const dom = gl.domElement;
+    const raycaster = new THREE.Raycaster();
+    const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const floorPoint = (e: PointerEvent) => {
+      const rect = dom.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(ndc, camera);
+      const hit = raycaster.ray.intersectPlane(floor, new THREE.Vector3());
+      return hit ? { x: hit.x, z: hit.z } : null;
+    };
+    let anchor: { x: number; z: number } | null = null;
+    const onDown = (e: PointerEvent) => {
+      if (e.button === 0) {
+        anchor = floorPoint(e);
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      const p = anchor && floorPoint(e);
+      setDraft(anchor && p ? snapDeskAreaBounds(anchor, p) : null);
+    };
+    const onUp = (e: PointerEvent) => {
+      const p = anchor && floorPoint(e);
+      const bounds = anchor && p ? snapDeskAreaBounds(anchor, p) : null;
+      anchor = null;
+      setDraft(null);
+      if (bounds) {
+        onAdd(bounds);
+      }
+    };
+    dom.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      dom.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setDraft(null);
+    };
+  }, [tool, camera, gl, onAdd]);
+
+  return (
+    <>
+      {areas.map((a) => (
+        <DeskAreaRect
+          key={a.id}
+          bounds={a}
+          label={deskAreaLabel(a)}
+          color={deskAreaColor(
+            violations.some((v) => v.areaId === a.id),
+            selection !== null && selection.kind === 'desk-area' && selection.id === a.id,
+          )}
+          onPointerDown={
+            tool === 'select'
+              ? (e) => {
+                  if (e.button !== 0) {
+                    return;
+                  }
+                  e.stopPropagation();
+                  onSelect({ kind: 'desk-area', id: a.id });
+                }
+              : undefined
+          }
+        />
+      ))}
+      {draft ? <DeskAreaRect bounds={draft} color="#fde047" /> : null}
     </>
   );
 }

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useApplication, useCatalogReady } from '@officexr/world/react';
+import type { SerializedMap } from '@officexr/world/scenes';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { EnvironmentPanel } from './EnvironmentPanel.tsx';
@@ -8,8 +10,11 @@ import { MapToolbar } from './MapToolbar.tsx';
 import { MAP_TOOLS, type MapTool } from './mapTools.ts';
 import { RoomPalette } from './RoomPalette.tsx';
 import { RoomInstanceList } from './RoomInstanceList.tsx';
+import { deskAreasOf } from './deskAreaGeometry.ts';
+import { DeskAreaList } from './DeskAreaList.tsx';
+import { findDeskAreaViolations, type DeskAreaViolation } from './deskAreaViolations.ts';
 import { SpawnList } from './SpawnList.tsx';
-import { useMapDocument } from './useMapDocument.ts';
+import { useMapDocument, type UseMapDocumentOptions } from './useMapDocument.ts';
 import { useMapRoomLibrary } from './useMapRoomLibrary.ts';
 
 /**
@@ -24,16 +29,35 @@ import { useMapRoomLibrary } from './useMapRoomLibrary.ts';
  *   - SidePanel:  RoomInstanceList, SpawnList, environment panel.
  */
 export function MapApp() {
-  const map = useMapDocument();
+  const { rooms: roomService, geometry, catalog } = useApplication();
+  const catalogReady = useCatalogReady();
+  const [validateDeskAreas, setValidateDeskAreas] = useState<
+    NonNullable<UseMapDocumentOptions['validateDeskAreas']>
+  >(() => () => []);
+  const map = useMapDocument({ validateDeskAreas });
   const referenced = useMemo(() => {
     const s = new Set<string>();
     for (const r of map.doc.rooms) s.add(r.roomName);
     return s;
   }, [map.doc.rooms]);
   const library = useMapRoomLibrary(referenced);
+  // The library is loaded from the document's rooms, so the validator can only
+  // be built after the document exists and is handed back to it via state.
+  useEffect(() => {
+    setValidateDeskAreas(() => (doc: SerializedMap) =>
+      catalogReady && doc.schemaVersion === 2
+        ? findDeskAreaViolations(
+            doc,
+            roomService.compileMap(doc, library.rooms, library.layouts).instances,
+            catalog,
+            geometry,
+          )
+        : [],
+    );
+  }, [catalogReady, roomService, catalog, geometry, library.rooms, library.layouts]);
   const [tool, setTool] = useState<MapTool>('select');
 
-  // Tool keyboard shortcuts (V / M / P, Esc → select). Bound at window
+  // Tool keyboard shortcuts (V / M / P / R, Esc → select). Bound at window
   // scope so they work even when focus is in the canvas. Skip while
   // typing in inputs so the SpawnList rename doesn't switch tools.
   useEffect(() => {
@@ -104,8 +128,11 @@ export function MapApp() {
             // another spawn.
             setTool('select');
           }}
+          onAddDeskArea={map.addDeskArea}
+          deskAreaViolations={map.deskAreaViolations}
           tool={tool}
         />
+        <DeskAreaErrorBanner violations={map.deskAreaViolations} />
         <CanvasHud mapName={map.mapName} />
         <MapToolbar tool={tool} onChange={setTool} />
       </main>
@@ -133,6 +160,14 @@ export function MapApp() {
               onRemove={map.removeSpawn}
               onRename={map.setSpawnLabel}
             />
+            <DeskAreaList
+              areas={deskAreasOf(map.doc)}
+              violations={map.deskAreaViolations}
+              selection={map.selection}
+              onSelect={map.setSelection}
+              onRemove={map.removeDeskArea}
+              onRename={map.setDeskAreaLabel}
+            />
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
             <EnvironmentPanel
@@ -142,6 +177,31 @@ export function MapApp() {
           </div>
         </div>
       </SidePanel>
+    </div>
+  );
+}
+
+function DeskAreaErrorBanner({ violations }: { violations: readonly DeskAreaViolation[] }) {
+  if (violations.length === 0) {
+    return null;
+  }
+  return (
+    <div
+      role="alert"
+      style={{
+        position: 'absolute',
+        bottom: 12,
+        left: 12,
+        maxWidth: '60%',
+        padding: '8px 12px',
+        background: 'rgba(127,29,29,0.92)',
+        color: '#fff',
+        borderRadius: 4,
+        font: '12px system-ui, sans-serif',
+        pointerEvents: 'none',
+      }}
+    >
+      Not saved: fix {violations.map((v) => `${v.label} (${v.reason})`).join(', ')}
     </div>
   );
 }

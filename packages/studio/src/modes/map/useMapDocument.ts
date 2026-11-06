@@ -7,10 +7,13 @@ import {
   type MapStorage,
   type RoomInstance,
   type SpawnPoint,
+  type DeskArea,
 } from '@officexr/world/scenes';
 import { useDebouncedSave } from '../useDebouncedSave.ts';
 import { useTestStorages } from '../../test-harness/TestStorageContext.tsx';
 import { paths, studioApiOptions } from '../../apiOrigin.ts';
+import type { DeskAreaViolation } from './deskAreaViolations.ts';
+import { deskAreasOf } from './deskAreaGeometry.ts';
 
 /**
  * Optional configuration for `useMapDocument`. Mirrors
@@ -22,7 +25,12 @@ export interface UseMapDocumentOptions {
   /** MapStorage to load/save through. Defaults to the Filesystem
    *  adapter with a LocalStorage fallback. */
   storage?: MapStorage;
+  /** Lists desk areas that break the one-chair/one-desk rule. While it
+   *  returns anything, auto-save is withheld. Defaults to none. */
+  validateDeskAreas?: (doc: SerializedMap) => DeskAreaViolation[];
 }
+
+const NO_VIOLATIONS = (): DeskAreaViolation[] => [];
 
 const LAST_MAP_KEY = 'officexr:studio:lastMap';
 const DEFAULT_MAP_NAME = 'default';
@@ -39,6 +47,7 @@ function mintInstanceId(prefix: string): string {
  * selected at a time:
  *   - `{ kind: 'room', id }` — a `RoomInstance` (drag/rotate/delete).
  *   - `{ kind: 'spawn', id }` — a `SpawnPoint` (rename/delete).
+ *   - `{ kind: 'desk-area', id }` — a `DeskArea` (rename/delete).
  *   - `null` — nothing selected.
  *
  * Same shape promoted to a single field keeps the click-to-select
@@ -50,6 +59,7 @@ function mintInstanceId(prefix: string): string {
 export type MapSelection =
   | { kind: 'room'; id: string }
   | { kind: 'spawn'; id: string }
+  | { kind: 'desk-area'; id: string }
   | null;
 
 /**
@@ -67,6 +77,8 @@ export interface UseMapDocumentResult {
   mapName: string;
   selection: MapSelection;
   setSelection: (s: MapSelection) => void;
+  /** Desk areas currently breaking the rule; the map is not saved while non-empty. */
+  deskAreaViolations: DeskAreaViolation[];
   /** Mutators that hit the in-memory doc and rely on auto-save to
    *  persist. All of them stamp `updatedAt` so the dev-server's last-
    *  modified field stays current. */
@@ -80,6 +92,10 @@ export interface UseMapDocumentResult {
   removeSpawn: (id: string) => void;
   setSpawnLabel: (id: string, label: string) => void;
   setSpawnPosition: (id: string, position: [number, number, number]) => void;
+  addDeskArea: (bounds: Pick<DeskArea, 'min' | 'max'>) => string;
+  removeDeskArea: (id: string) => void;
+  setDeskAreaLabel: (id: string, label: string) => void;
+  setDeskAreaBounds: (id: string, bounds: Pick<DeskArea, 'min' | 'max'>) => void;
   setEnvironment: (
     update: (env: SerializedMap['environment']) => SerializedMap['environment'],
   ) => void;
@@ -104,6 +120,7 @@ export function useMapDocument(
   // studio booted in ?test=1 mode) → the default Filesystem stack.
   const testStorages = useTestStorages();
   const storage = options?.storage ?? testStorages?.mapStorage ?? fallbackStorage;
+  const validateDeskAreas = options?.validateDeskAreas ?? NO_VIOLATIONS;
 
   const [mapName, setMapName] = useState<string>(() => {
     try {
@@ -177,14 +194,21 @@ export function useMapDocument(
     };
   }, [storage, mapName, settled]);
 
+  const deskAreaViolations = useMemo(
+    () => validateDeskAreas(doc),
+    [validateDeskAreas, doc],
+  );
+
   useEffect(() => {
     const json = JSON.stringify(doc);
     scheduleSave(
-      loadedForRef.current !== mapName || json === lastSavedJsonRef.current
+      loadedForRef.current !== mapName ||
+        json === lastSavedJsonRef.current ||
+        deskAreaViolations.length > 0
         ? null
         : { mapName, storage, doc, json },
     );
-  }, [doc, mapName, storage, scheduleSave]);
+  }, [doc, mapName, storage, scheduleSave, deskAreaViolations]);
 
   const stampUpdated = useCallback(
     (mut: (prev: SerializedMap) => SerializedMap) =>
@@ -313,6 +337,53 @@ export function useMapDocument(
     [stampUpdated],
   );
 
+  const addDeskArea = useCallback(
+    (bounds: Pick<DeskArea, 'min' | 'max'>) => {
+      const id = mintInstanceId('desk');
+      stampUpdated((prev) => ({
+        ...prev,
+        deskAreas: [...deskAreasOf(prev), { id, ...bounds }],
+      }));
+      setSelection({ kind: 'desk-area', id });
+      return id;
+    },
+    [stampUpdated],
+  );
+
+  const updateDeskArea = useCallback(
+    (id: string, patch: Partial<DeskArea>) => {
+      stampUpdated((prev) => ({
+        ...prev,
+        deskAreas: deskAreasOf(prev).map((a) =>
+          a.id === id ? { ...a, ...patch } : a,
+        ),
+      }));
+    },
+    [stampUpdated],
+  );
+
+  const removeDeskArea = useCallback(
+    (id: string) => {
+      stampUpdated((prev) => ({
+        ...prev,
+        deskAreas: deskAreasOf(prev).filter((a) => a.id !== id),
+      }));
+      setSelection((prev) =>
+        prev && prev.kind === 'desk-area' && prev.id === id ? null : prev,
+      );
+    },
+    [stampUpdated],
+  );
+
+  const setDeskAreaLabel = useCallback(
+    (id: string, label: string) => updateDeskArea(id, { label: label || undefined }),
+    [updateDeskArea],
+  );
+  const setDeskAreaBounds = useCallback(
+    (id: string, bounds: Pick<DeskArea, 'min' | 'max'>) => updateDeskArea(id, bounds),
+    [updateDeskArea],
+  );
+
   const setEnvironment = useCallback(
     (update: (env: SerializedMap['environment']) => SerializedMap['environment']) => {
       stampUpdated((prev) => ({ ...prev, environment: update(prev.environment) }));
@@ -345,6 +416,7 @@ export function useMapDocument(
     mapName,
     selection,
     setSelection,
+    deskAreaViolations,
     addRoom,
     removeRoom,
     setRoomPosition,
@@ -355,6 +427,10 @@ export function useMapDocument(
     removeSpawn,
     setSpawnLabel,
     setSpawnPosition,
+    addDeskArea,
+    removeDeskArea,
+    setDeskAreaLabel,
+    setDeskAreaBounds,
     setEnvironment,
     loadMap,
     newMap,

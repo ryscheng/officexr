@@ -13,12 +13,14 @@
  *   - **spawn**: click on a room cube or a room's baked-layout
  *     surface to drop a SpawnPoint at the raycast hit. Empty-ground
  *     clicks are ignored — spawns only land on a room surface.
+ *   - **desk-area**: press and drag on the floor to draw a desk-area
+ *     rectangle, snapped to the half-voxel grid.
  *
  * Kept deliberately narrower than `scene-editor/tools.ts` (which has
  * `add`, `delete`, `tile`, etc.) — the Map editor composes whole
  * rooms, not individual cubes, so the tool surface is different.
  */
-export type MapTool = 'select' | 'move' | 'spawn';
+export type MapTool = 'select' | 'move' | 'spawn' | 'desk-area';
 
 export interface MapToolDef {
   tool: MapTool;
@@ -48,5 +50,11 @@ export const MAP_TOOLS: readonly MapToolDef[] = [
     description:
       'Click a room surface to drop a spawn point. Empty ground is ignored.',
     shortcut: 'P',
+  },
+  {
+    tool: 'desk-area',
+    label: 'Desk area',
+    description: 'Drag on the floor to draw a desk area.',
+    shortcut: 'R',
   },
 ];
