@@ -6,7 +6,7 @@ import { errorMessage } from '../useApi';
 import { useMapNames } from '../useMapNames';
 import { closeToWorld } from './closeToWorld';
 import { RoomMenuItem } from './RoomMenu';
-import { DEFAULT_MAP } from './withDefaultMap';
+import { DEFAULT_MAP } from '@officexr/world/scenes';
 
 /** Only the fields that differ, so an untouched map (or one since removed) can't fail the save. */
 function changedFields(office: Office, next: Required<OfficeUpdate>): OfficeUpdate {

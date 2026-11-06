@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -9,7 +9,7 @@ import connect from 'connect';
 import session from 'express-session';
 import type { Profile } from 'passport-google-oauth20';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { apiMiddleware, type CreateOffice, type OfficeCharacters, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
+import { apiMiddleware, type CreateOffice, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
 import { createApp } from './app';
 import { parseFrontendOrigins } from './cors';
 import { createGoogleStrategy, createSessionReader, emailDomain, parseCookieDomain, safeReturnTarget, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
@@ -45,6 +45,39 @@ const updateOffice: UpdateOffice = async (id, { name, description, mapName, debu
     map_name: mapName ?? office.map_name,
     debug_enabled: debugEnabled ?? office.debug_enabled,
   };
+};
+const deskArea = (id: string) => ({ id, min: { x: 0, z: 0 }, max: { x: 1, z: 1 } });
+const studioDataDir = mkdtempSync(path.join(tmpdir(), 'officexr-studio-'));
+mkdirSync(path.join(studioDataDir, 'maps'));
+const baseMap = JSON.parse(readFileSync(path.resolve(__dirname, '../../world/maps/default.json'), 'utf8'));
+for (const [name, ids] of [['hq', ['d1', 'd2']], ['default', ['dd']]] as const) {
+  writeFileSync(path.join(studioDataDir, 'maps', `${name}.json`), JSON.stringify({ ...baseMap, deskAreas: ids.map(deskArea) }));
+}
+const claimsByOffice = new Map<string, Map<string, string>>();
+const deskClaims: OfficeDeskClaims = {
+  list: async (officeId) => Object.fromEntries(claimsByOffice.get(officeId) ?? []),
+  claim: async (officeId, login, deskId) => {
+    const claims = claimsByOffice.get(officeId) ?? new Map<string, string>();
+    claimsByOffice.set(officeId, claims);
+    if (claims.has(deskId) && claims.get(deskId) !== login) {
+      return 'taken';
+    }
+    for (const [desk, holder] of claims) {
+      if (holder === login) {
+        claims.delete(desk);
+      }
+    }
+    claims.set(deskId, login);
+    return 'ok';
+  },
+  release: async (officeId, login) => {
+    const claims = claimsByOffice.get(officeId) ?? new Map<string, string>();
+    for (const [desk, holder] of claims) {
+      if (holder === login) {
+        claims.delete(desk);
+      }
+    }
+  },
 };
 const storedCharacters = new Map<string, string>();
 const characters: OfficeCharacters = {
@@ -99,15 +132,17 @@ interface StartOptions {
   realtimeTokenSecret?: string;
   frontendOrigins?: string[];
   cookieDomain?: string;
+  studioDataDir?: string;
 }
 
 async function start(
   mode: Mode,
-  { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret, frontendOrigins, cookieDomain }: StartOptions = {},
+  { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret, frontendOrigins, cookieDomain, studioDataDir }: StartOptions = {},
 ): Promise<string> {
   const app = await createApp({
     queryOffices,
     characters,
+    deskClaims,
     createOffice,
     updateOffice,
     isLoginAllowed,
@@ -119,6 +154,7 @@ async function start(
     frontendOrigins,
     cookieDomain,
     modelsDir,
+    studioDataDir,
     dev: mode === 'dev' ? { user: devUser } : undefined,
   });
   server = createServer(app);
@@ -164,6 +200,8 @@ const headerIdentity: ResolveIdentity = (req) => {
   const login = req.headers['x-test-login'];
   return typeof login === 'string' ? { login, name: login } : null;
 };
+
+const apiDeps = { queryOffices, characters, deskClaims, createOffice, updateOffice, mapExists: async () => true, loadMap: async () => null };
 const alice = { 'x-test-login': 'a@example.com' };
 
 describe('/api/realtime-token', () => {
@@ -605,7 +643,7 @@ describe('POST /api/offices', () => {
     calls.push('createOffice');
     return createOffice(input);
   };
-  const middleware = apiMiddleware(queryOffices, characters, spyCreate, updateOffice, mapExists, headerIdentity);
+  const middleware = apiMiddleware({ ...apiDeps, createOffice: spyCreate, mapExists, identity: headerIdentity });
 
   const post = async (body: unknown, headers: Record<string, string> = alice) => {
     calls.length = 0;
@@ -680,7 +718,7 @@ describe('PATCH /api/offices/:id', () => {
     updates.push(update);
     return updateOffice(id, update);
   };
-  const middleware = apiMiddleware(queryOffices, characters, createOffice, spyUpdate, async (name) => name === 'hq' || name === 'default', headerIdentity);
+  const middleware = apiMiddleware({ ...apiDeps, updateOffice: spyUpdate, mapExists: async (name) => name === 'hq' || name === 'default', identity: headerIdentity });
 
   const patch = async (id: string, body: unknown, headers: Record<string, string> = alice) => {
     calls.length = 0;
@@ -744,7 +782,7 @@ describe('PATCH /api/offices/:id', () => {
   });
 
   it('is 404 when the office vanishes before the update', async () => {
-    const gone = apiMiddleware(queryOffices, characters, createOffice, async () => undefined, async () => true, headerIdentity);
+    const gone = apiMiddleware({ ...apiDeps, updateOffice: async () => undefined, mapExists: async () => true, identity: headerIdentity });
     server = createServer((req, res) => gone(req, res, () => res.end()));
     await new Promise<void>((resolve) => server!.listen(0, resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -808,6 +846,94 @@ describe('/api/offices/:id/character', () => {
     expect((await put(missing, { characterId: 'Mage' })).status).toBe(404);
     expect((await fetch(`${base}/api/offices/${missing}/character`, { headers: me })).status).toBe(404);
     expect((await fetch(`${base}/api/offices/not-a-uuid/character`, { headers: me })).status).toBe(404);
+  });
+});
+
+describe('/api/offices/:id/desk-claims', () => {
+  let base: string;
+  let me: Record<string, string>;
+  let bob: Record<string, string>;
+  const url = (officeId = ID, suffix = '') => `${base}/api/offices/${officeId}/desk-claims${suffix}`;
+  const claim = (deskId: unknown, headers = me, officeId = ID) =>
+    fetch(url(officeId, '/me'), { method: 'PUT', headers, body: JSON.stringify({ deskId }) });
+  const list = async (headers = me) => (await (await fetch(url(), { headers })).json()).claims;
+  beforeEach(async () => {
+    claimsByOffice.clear();
+    base = await start('prod', { realtimeTokenSecret: 's3cret', studioDataDir });
+    me = await signIn(base, 'a@example.com');
+    bob = await signIn(base, 'b@example.com');
+  });
+
+  it('claims, lists and moves a claim between desks', async () => {
+    expect(await list()).toEqual({});
+    const res = await claim('d1');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ claims: { d1: 'a@example.com' } });
+    expect(await (await claim('d2')).json()).toEqual({ claims: { d2: 'a@example.com' } });
+    expect(await list(bob)).toEqual({ d2: 'a@example.com' });
+  });
+
+  it('is 409 for a desk another login holds, leaving the claims alone', async () => {
+    await claim('d1');
+    const res = await claim('d1', bob);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'Desk taken' });
+    expect(await list()).toEqual({ d1: 'a@example.com' });
+  });
+
+  it('is 200 when re-claiming the desk you already hold', async () => {
+    await claim('d1');
+    expect((await claim('d1')).status).toBe(200);
+    expect(await list()).toEqual({ d1: 'a@example.com' });
+  });
+
+  it('validates against the default map for an office without one', async () => {
+    expect((await claim('dd', me, OTHER)).status).toBe(200);
+    expect((await claim('d1', me, OTHER)).status).toBe(400);
+  });
+
+  it('is 413 for an oversized body', async () => {
+    const res = await fetch(url(ID, '/me'), { method: 'PUT', headers: me, body: JSON.stringify({ deskId: 'd1', pad: 'x'.repeat(5000) }) });
+    expect(res.status).toBe(413);
+  });
+
+  it('is 400 for desks not on the office map', async () => {
+    for (const deskId of ['nope', '', 1, undefined]) {
+      const res = await claim(deskId);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Unknown desk' });
+    }
+    expect(await list()).toEqual({});
+  });
+
+  it('releases idempotently', async () => {
+    await claim('d1');
+    for (let i = 0; i < 2; i++) {
+      const res = await fetch(url(ID, '/me'), { method: 'DELETE', headers: me });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ claims: {} });
+    }
+  });
+
+  it('is 401 without identity and 404 for unknown offices', async () => {
+    expect((await fetch(url())).status).toBe(401);
+    expect((await fetch(url(ID, '/me'), { method: 'DELETE' })).status).toBe(401);
+    expect((await fetch(url('22222222-2222-4222-8222-222222222222'), { headers: me })).status).toBe(404);
+  });
+
+  it('is 405 for other methods', async () => {
+    expect((await fetch(url(), { method: 'PUT', headers: me, body: '{}' })).status).toBe(405);
+    expect((await fetch(url(ID, '/me'), { headers: me })).status).toBe(405);
+  });
+
+  it('works with a bearer api token', async () => {
+    const token = signJoinToken('s3cret', { login: 'rt@example.com', ttlMs: 60_000, aud: 'api' });
+    const headers = { authorization: `Bearer ${token}` };
+    expect((await claim('d1', headers)).status).toBe(200);
+    expect(await list(headers)).toEqual({ d1: 'rt@example.com' });
+    const released = await fetch(url(ID, '/me'), { method: 'DELETE', headers });
+    expect(released.status).toBe(200);
+    expect(await released.json()).toEqual({ claims: {} });
   });
 });
 

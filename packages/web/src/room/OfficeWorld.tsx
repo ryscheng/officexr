@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import type { Actions, Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, ErrorBanner, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
-import { FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
+import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
 import { ChatPanel } from '../hud/ChatPanel';
@@ -32,7 +32,7 @@ import { useOfficeSession, type OfficeSession } from './useOfficeSession';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { initialViewMode } from './viewMode';
 import { ViewModeMenuItem } from './ViewModeMenuItem';
-import { DEFAULT_MAP, withDefaultMap } from './withDefaultMap';
+import { withDefaultMap } from './withDefaultMap';
 
 const PlayView3d = lazy(() => import('./PlayView3d'));
 

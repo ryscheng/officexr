@@ -3,6 +3,7 @@ export {
   type SceneSummary,
   httpError,
   isValidSceneName,
+  DEFAULT_MAP,
   SCENE_NAME_RE,
 } from './storage.ts';
 export {

@@ -4,7 +4,7 @@ import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office } from '@officexr
 import { apiFetch, paths } from '../apiOrigin';
 import { Async } from '../Async';
 import { SignInLink } from '../SignIn';
-import { DEFAULT_MAP } from '../room/withDefaultMap';
+import { DEFAULT_MAP } from '@officexr/world/scenes';
 import { errorMessage, useApi, type ApiState } from '../useApi';
 import { useMapNames } from '../useMapNames';
 
