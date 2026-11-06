@@ -7,6 +7,7 @@ const port = Number(env.PORT) || 4173;
 const adminPort = Number(env.ADMIN_PORT) || 8787;
 const { app, realtime, closePool } = await createBackend(env, {
   adminToken: env.OFFICEXR_REALTIME_ADMIN_TOKEN,
+  apiUrl: `http://127.0.0.1:${port}`,
   worldConstantsUrl: env.OFFICEXR_WORLD_CONSTANTS_URL ?? `http://127.0.0.1:${port}/api/world-settings`,
 });
 

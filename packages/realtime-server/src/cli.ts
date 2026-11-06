@@ -1,16 +1,16 @@
-import { fetchSessionPolicy } from './office-policy.ts';
+import { createOfficeApi } from './office-api.ts';
 import { RealtimeServer } from './server.ts';
 
 const port = Number(process.env.REALTIME_PORT || 8787);
-const officeUrl = process.env.OFFICEXR_OFFICE_URL;
+const tokenSecret = process.env.OFFICEXR_REALTIME_TOKEN_SECRET;
+const apiUrl = process.env.OFFICEXR_API_URL;
+const officeApi = apiUrl ? createOfficeApi({ baseUrl: apiUrl, tokenSecret }) : undefined;
 const server = new RealtimeServer({
   port,
   worldConstantsUrl: process.env.OFFICEXR_WORLD_CONSTANTS_URL,
   adminToken: process.env.OFFICEXR_REALTIME_ADMIN_TOKEN,
-  sessionPolicy: officeUrl
-    ? (officeId, login) => fetchSessionPolicy(officeUrl, officeId, login, fetch)
-    : undefined,
-  tokenSecret: process.env.OFFICEXR_REALTIME_TOKEN_SECRET,
+  sessionPolicy: officeApi?.allowsMultiSession,
+  tokenSecret,
 });
 await server.start();
 console.log(`[realtime-server] listening on :${port}`);

@@ -52,6 +52,13 @@ describe('RealtimeServer join tokens', () => {
     await server.stop();
   });
 
+  it('refuses an api-audience token on hello and on sessions', async () => {
+    await start();
+    const apiToken = signJoinToken(SECRET, { login: 'ann', ttlMs: 60_000, now: T0, aud: 'api' });
+    expect(await tryJoin({ userId: 'ann', token: apiToken })).toMatch(/^rejected/);
+    expect((await sessions(`?login=ann&token=${encodeURIComponent(apiToken)}`)).status).toBe(401);
+  });
+
   it('admits a valid token, for the bare login and for its session ids', async () => {
     await start();
     expect(await tryJoin({ userId: 'ann', token: tokenFor('ann') })).toBe('joined');

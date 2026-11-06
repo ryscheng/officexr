@@ -25,7 +25,7 @@ officexr/
 │   │   └── vite.config.ts # dev only: mounts @officexr/server's app and an in-process realtime office
 │   ├── server/           # @officexr/server — web backend
 │   │   ├── src/          # main.ts (entrypoint), backend.ts (createBackend: db + realtime + app, shared with `pnpm dev`), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
-│   │   │                 # sessionPolicy.ts, runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
+│   │   │                 # runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
@@ -143,8 +143,11 @@ Optional `OFFICEXR_REALTIME_TOKEN_SECRET` makes the server require an HMAC-signe
 (minted with `signJoinToken` from `@officexr/realtime-server/join-token`) on every `hello` and
 on `GET /rooms/:id/sessions?login=…&token=…`; the login is taken from the token. Unset keeps
 today's unauthenticated behaviour. The studio has no login, so it must point at a realtime
-server without the secret. The web backend needs the same value (see `packages/server/.env.example`);
-it mints the tokens at `GET /api/realtime-token`.
+server without the secret. The web backend needs the same secret (see `packages/server/.env.example`);
+it mints the join tokens at `GET /api/realtime-token`. A standalone realtime server sets
+`OFFICEXR_API_URL` (the web backend's origin, e.g. `http://host:4173`) to read office data over its
+API, signing a short-lived `api`-audience bearer token with that secret (join tokens are not accepted
+by the API, nor `api` tokens by the realtime server); unset, no session ever counts as multi-session.
 
 ---
 
