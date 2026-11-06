@@ -145,6 +145,38 @@ describe('createSeating', () => {
     expect(autoWalk.getState()).toEqual({ type: 'idle' });
   });
 
+  it('arrives by touching the chair on any side, not just the one it aims at', async () => {
+    const { a, autoWalk, seating } = await setup();
+    a.actions.setDeskClaims({ d: 'alice' });
+    a.actions.setSelfPosition({ x: 12, y: -0.5, z: 0.5 }, ZERO, 0, false);
+    seating.returnToDesk();
+    expect(autoWalk.getState()).toMatchObject({ type: 'walking', targetId: 'desk-chair' });
+    // Against the chair's +X side, away from the behind spot it aims at.
+    a.actions.setSelfPosition({ x: 11.4, y: -0.5, z: 0.5 }, ZERO, 0, false);
+    expect(autoWalk.intent(self(a).pos)).toBeNull();
+    expect(self(a).seat).toBe('desk-chair');
+  });
+
+  it('sits straight away when already touching the desk chair', async () => {
+    const { a, autoWalk, seating } = await setup();
+    a.actions.setDeskClaims({ d: 'alice' });
+    a.actions.setSelfPosition({ x: 10.5, y: -0.5, z: -0.4 }, ZERO, 0, false);
+    seating.returnToDesk();
+    expect(self(a).seat).toBe('desk-chair');
+    expect(autoWalk.getState()).toEqual({ type: 'idle' });
+  });
+
+  it('refuses instead of walking when no side of the chair has room', async () => {
+    vi.useFakeTimers();
+    const { a, autoWalk, seating } = await setup();
+    a.actions.setDeskClaims({ d: 'alice' });
+    a.actions.setSelfPosition({ x: 5, y: -0.5, z: 5 }, ZERO, 0, false);
+    seating.setStandingCheck(() => false);
+    seating.returnToDesk();
+    expect(autoWalk.getState()).toEqual({ type: 'idle' });
+    expect(seating.getState().refusal).toBe('no-approach');
+  });
+
   it('keeps walking, not sitting, when the chair is unreachable', async () => {
     const { a, autoWalk, seating } = await setup(() => null);
     a.actions.setDeskClaims({ d: 'alice' });

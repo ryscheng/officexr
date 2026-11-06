@@ -7,7 +7,6 @@ import {
   canSit,
   isTouchingSeat,
   nearestSeat,
-  SEAT_APPROACH_ARRIVE_M,
   SEAT_TOUCH_EPSILON_M,
   seatedPlayerPose,
   stepOutSpot,
@@ -65,7 +64,7 @@ describe('canSit', () => {
     expect(canSit(s, catalog, geometry, inside, 'me')).toEqual({ ok: false, reason: 'not-yours' });
   });
 
-  it("refuses a chair someone else sits on, but not one the player's own seat", () => {
+  it('refuses a chair someone else sits on, but not the one the player sits on', () => {
     const s = state({ players: { 'bob#1': seatedPlayer('bob#1', 'far') } });
     expect(canSit(s, catalog, geometry, outside, 'me')).toEqual({ ok: false, reason: 'occupied' });
     const own = state({ players: { 'me#1': seatedPlayer('me#1', 'far') } });
@@ -172,17 +171,21 @@ describe('approachSpot', () => {
   const c = chair('c', 0, 0);
   const footprint = geometry.worldAABBOfInstance(c);
 
-  it('aims into the chair on the step-out side, so arriving there touches it', () => {
+  it('aims just into the chair on the step-out side, where a body stopped by it touches it', () => {
     const target = approachSpot(pose, footprint, 0.4, () => true);
-    expect(target.x).toBeCloseTo(0.5);
-    expect(target.z).toBeGreaterThan(-0.4);
-    expect(target.z).toBeLessThan(0);
-    expect(isTouchingSeat({ ...target, z: target.z - SEAT_APPROACH_ARRIVE_M }, 0.4, c, geometry)).toBe(true);
+    expect(target?.x).toBeCloseTo(0.5);
+    expect(target?.z).toBeGreaterThan(-0.4);
+    expect(target?.z).toBeLessThan(0);
+    expect(isTouchingSeat({ x: 0.5, y: 0, z: -0.4 }, 0.4, c, geometry)).toBe(true);
   });
 
   it('takes the side whose step-out spot is free', () => {
     const behindBlocked = (p: Vec3) => p.z > -0.5;
-    expect(approachSpot(pose, footprint, 0.4, behindBlocked).x).toBeGreaterThan(1);
+    expect(approachSpot(pose, footprint, 0.4, behindBlocked)?.x).toBeGreaterThan(1);
+  });
+
+  it('gives up when no side has room', () => {
+    expect(approachSpot(pose, footprint, 0.4, () => false)).toBeNull();
   });
 });
 

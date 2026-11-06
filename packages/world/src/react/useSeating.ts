@@ -5,11 +5,10 @@ import {
   approachSpot,
   canSit,
   isTouchingSeat,
-  SEAT_APPROACH_ARRIVE_M,
+  nearestSeat,
   seatedPlayerPose,
-  seatsOf,
+  seatOf,
   stepOutSpot,
-  touchingSeat,
   type Seat,
   type SitRefusal,
 } from '../app/seating.ts';
@@ -23,8 +22,8 @@ import type { AutoWalkController } from './useAutoWalk.ts';
 const REFUSAL_TOAST_MS = 2000;
 const ZERO = { x: 0, y: 0, z: 0 };
 
-/** Why a sit failed: `canSit`'s reasons, or the player isn't touching the chair. */
-export type SeatingRefusal = SitRefusal | 'not-touching';
+/** Why a sit failed: `canSit`'s reasons, the player isn't touching the chair, or no side of it has room to walk up to. */
+export type SeatingRefusal = SitRefusal | 'not-touching' | 'no-approach';
 
 export interface SeatingControllerState extends SeatingState {
   /** Why the last sit failed, until its toast times out. */
@@ -66,16 +65,12 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
   /** Where `sit` put the player; any other position while seated means a teleport. */
   let seatedAt: Vec3 | null = null;
 
-  let seatsFor: OfficeState['worldObjects'] | null = null;
-  let seats: Seat[] = [];
-  const seatsOfState = (s: OfficeState) => {
-    if (s.worldObjects !== seatsFor) {
-      seatsFor = s.worldObjects;
-      seats = seatsOf(s.worldObjects.instances, catalog, geometry);
-    }
-    return seats;
+  const seatById = (s: OfficeState, id: string) => seatOf(s, catalog, geometry, id);
+  const touches = (s: OfficeState, seat: Seat) => {
+    const self = s.players[selfId];
+    const { charRadius } = s.worldSettings;
+    return self !== undefined && isTouchingSeat(feetPosition(self.pos, charRadius), charRadius, seat.instance, geometry);
   };
-  const seatById = (s: OfficeState, id: string) => seatsOfState(s).find((seat) => seat.instance.id === id) ?? null;
   const ownDeskSeatId = (s: OfficeState) => {
     const deskId = deskOwnedBy(s, login);
     return s.deskAreas.find((a) => a.id === deskId)?.seatInstanceId ?? null;
@@ -100,8 +95,8 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
     if (named === null) {
       return;
     }
-    const seat = named ?? touchingSeat(seatsOfState(s), feet, charRadius, geometry);
-    if (!seat || !isTouchingSeat(feet, charRadius, seat.instance, geometry)) {
+    const seat = named ?? nearestSeat(s, catalog, geometry, feet, charRadius);
+    if (!seat || !touches(s, seat)) {
       refuse('not-touching');
       return;
     }
@@ -142,7 +137,7 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
       return;
     }
     const { charRadius } = s.worldSettings;
-    const seat = self ? touchingSeat(seatsOfState(s), feetPosition(self.pos, charRadius), charRadius, geometry) : null;
+    const seat = self ? nearestSeat(s, catalog, geometry, feetPosition(self.pos, charRadius), charRadius) : null;
     const sittable = seat && seat.instance.id !== self?.seat && canSit(s, catalog, geometry, seat.instance, login).ok;
     publish({
       nearbySeatId: sittable ? seat.instance.id : null,
@@ -157,10 +152,24 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
       const s = store.getState();
       const seatId = ownDeskSeatId(s);
       const seat = seatId === null ? null : seatById(s, seatId);
-      if (seat && s.players[selfId]?.seat !== seatId) {
-        const target = approachSpot(seat.pose, geometry.worldAABBOfInstance(seat.instance), s.worldSettings.charRadius, isFree);
-        autoWalk.goToPoint(seat.instance.id, target, SEAT_APPROACH_ARRIVE_M, () => sit(seat.instance.id));
+      if (!seat || s.players[selfId]?.seat === seatId) {
+        return;
       }
+      if (touches(s, seat)) {
+        sit(seat.instance.id);
+        return;
+      }
+      const target = approachSpot(seat.pose, geometry.worldAABBOfInstance(seat.instance), s.worldSettings.charRadius, isFree);
+      if (!target) {
+        refuse('no-approach');
+        return;
+      }
+      autoWalk.goToPoint(
+        seat.instance.id,
+        target,
+        () => touches(store.getState(), seat),
+        () => sit(seat.instance.id),
+      );
     },
     setStandingCheck(check) {
       isFree = check;

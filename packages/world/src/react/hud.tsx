@@ -146,7 +146,9 @@ function refusalMessage(reason: SeatingRefusal): string {
         ? "That chair isn't part of a usable desk"
         : reason === 'not-touching'
           ? 'Walk up to a chair to sit'
-          : assertNever(reason);
+          : reason === 'no-approach'
+            ? 'There is no room to get to that chair'
+            : assertNever(reason);
 }
 
 /** Says why the last sit failed, while the seating controller holds the refusal. */
