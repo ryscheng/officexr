@@ -41,6 +41,7 @@ import {
   type HelloFrame,
 } from './protocol.ts';
 import { isLogin, verifyJoinToken } from './join-token.ts';
+import { createDeskClaimHandler, type DeskClaimsApi } from './desk-claims.ts';
 
 
 const DEFAULT_PORT = 8787;
@@ -66,6 +67,9 @@ export interface RealtimeServerOptions {
   /** Consulted on each join for whether `login` may hold several sessions
    * in `officeId`. A rejection counts as `false`; unset means never. */
   sessionPolicy?: (officeId: string, login: string) => Promise<boolean>;
+  /** Persists desk claims. Unset means every claim is refused as `unavailable`
+   * and rooms start with none. */
+  deskClaims?: DeskClaimsApi;
   /** HMAC secret for join tokens. When set, every `hello` and every
    * `/rooms/:id/sessions` request must carry a token signed with it, and
    * the login comes from the token. Unset or empty means no enforcement. */
@@ -112,11 +116,13 @@ export class Room {
     readonly officeId: string,
     private readonly takeServerSeq: () => number,
     worldConstants: WorldConstants,
+    deskClaims: Record<string, string> = {},
   ) {
     this.store = createStore({ selfId: SERVER_SELF_ID, officeId });
     this.bus = createBus();
     this.actions = createActions(this.store, this.bus);
     this.actions.setWorldConstants(worldConstants);
+    this.actions.setDeskClaims(deskClaims);
 
     // The mirror receives every hub fan-out except its own broadcasts,
     // so server-originated events must also be applied to the store
@@ -152,6 +158,23 @@ export class Room {
     void this.mirror.send(this.worldConstantsEvent(seq));
   }
 
+  /** Adopt `claims` and fan them out to every hub peer. */
+  pushDeskClaims(claims: Record<string, string>): void {
+    this.actions.setDeskClaims(claims);
+    void this.mirror.send(this.deskClaimsEvent(this.takeServerSeq()));
+  }
+
+  private deskClaimsEvent(seq: number): NetEvent {
+    return {
+      kind: 'desk:claims',
+      v: 1,
+      actorId: SERVER_SELF_ID,
+      seq,
+      t: Date.now(),
+      claims: this.store.getState().deskClaims,
+    };
+  }
+
   private worldConstantsEvent(seq: number): NetEvent {
     return {
       kind: 'world:constants',
@@ -176,9 +199,10 @@ export class Room {
   }
 
   /** Build the snapshot events sent to a freshly-joined client: the
-   * room's `world:constants`, then `presence:position` and (for players
-   * who have announced a name) the equivalent `avatar:update` for every
-   * other present player.
+   * room's `world:constants` and `desk:claims`, then `presence:position`,
+   * `presence:seat` (for seated players) and (for players who have
+   * announced a name) the equivalent `avatar:update` for every other
+   * present player.
    *
    * We intentionally do **NOT** include `world:map` here. The browser
    * owns it; applying the server's copy on connect would silently
@@ -191,7 +215,10 @@ export class Room {
    * `BotServer.getInitialWorld` seed. */
   buildSnapshotFor(joinerId: PlayerId): NetEvent[] {
     const state = this.store.getState();
-    const events: NetEvent[] = [this.worldConstantsEvent(this.takeServerSeq())];
+    const events: NetEvent[] = [
+      this.worldConstantsEvent(this.takeServerSeq()),
+      this.deskClaimsEvent(this.takeServerSeq()),
+    ];
     const present = new Set([...this.hub.present(), ...this.clients.keys()]);
     let seq = 1;
 
@@ -208,6 +235,16 @@ export class Room {
         yaw: p.yaw,
         isAirborne: p.isAirborne ?? false,
       });
+      if (p.seat != null) {
+        events.push({
+          kind: 'presence:seat',
+          v: 1,
+          actorId: id as PlayerId,
+          seq: seq++,
+          t: Date.now(),
+          instanceId: p.seat,
+        });
+      }
       // The store's default name is '', so a name means the player sent
       // an avatar:update.
       if (p.name) {
@@ -249,6 +286,8 @@ export class RealtimeServer {
   private readonly worldConstantsUrl: string | undefined;
   private readonly adminToken: string | undefined;
   private readonly sessionPolicy: RealtimeServerOptions['sessionPolicy'];
+  private readonly deskClaims: DeskClaimsApi | undefined;
+  private readonly pendingRooms = new Map<string, Promise<Room>>();
   private readonly tokenSecret: string | undefined;
   private readonly now: () => number;
   private readonly fetch: typeof fetch;
@@ -264,6 +303,7 @@ export class RealtimeServer {
     this.worldConstantsUrl = opts.worldConstantsUrl;
     this.adminToken = opts.adminToken;
     this.sessionPolicy = opts.sessionPolicy;
+    this.deskClaims = opts.deskClaims;
     this.tokenSecret = opts.tokenSecret || undefined;
     this.now = opts.now ?? Date.now;
     this.fetch = opts.fetch ?? globalThis.fetch;
@@ -274,6 +314,7 @@ export class RealtimeServer {
       this.worldConstants,
     );
     this.rooms.set(this.defaultRoom.officeId, this.defaultRoom);
+    this.onCustomFrame(createDeskClaimHandler(this.deskClaims));
   }
 
   /** Register a handler for custom (`{ t: 'custom' }`) frames. Returns
@@ -491,15 +532,36 @@ export class RealtimeServer {
     return typeof officeId === 'string' && officeId !== '' ? officeId : this.defaultRoom.officeId;
   }
 
-  private roomFor(officeId: unknown): Room {
-    const id = this.officeIdOf(officeId);
+  /** The office's room, created on first use with its claims loaded as `login`.
+   * Concurrent callers share one load. */
+  private roomFor(id: string, login: string): Promise<Room> {
     // ponytail: office ids and room count are unbounded; fine on a tailnet-only server.
-    let room = this.rooms.get(id);
-    if (!room) {
-      room = new Room(id, this.takeServerSeq, this.worldConstants);
-      this.rooms.set(id, room);
+    const existing = this.rooms.get(id);
+    if (existing) {
+      return Promise.resolve(existing);
     }
+    let pending = this.pendingRooms.get(id);
+    if (!pending) {
+      pending = this.createRoom(id, login).finally(() => this.pendingRooms.delete(id));
+      this.pendingRooms.set(id, pending);
+    }
+    return pending;
+  }
+
+  private async createRoom(id: string, login: string): Promise<Room> {
+    const loaded = await this.deskClaims?.listDeskClaims(id, login);
+    const room = new Room(id, this.takeServerSeq, this.worldConstants, loaded?.ok ? loaded.claims : {});
+    this.rooms.set(id, room);
+    // Every waiting joiner continues before this fires, so a room nobody joined (they hung up mid-load) goes now.
+    setImmediate(() => this.dropIfEmpty(room));
     return room;
+  }
+
+  private dropIfEmpty(room: Room): void {
+    if (room.clients.size === 0 && room !== this.defaultRoom && this.rooms.get(room.officeId) === room) {
+      room.close();
+      this.rooms.delete(room.officeId);
+    }
   }
 
   private onConnection(ws: WebSocket, _req: IncomingMessage): void {
@@ -525,9 +587,11 @@ export class RealtimeServer {
         const helloSeq = ++this.helloSeq;
         const officeId = this.officeIdOf(frame.officeId);
         this.allowsMultiSession(officeId, login)
-          .then((allowMulti) => {
+          .then(async (allowMulti) => {
             if (ws.readyState !== ws.OPEN || !this.wss) return;
-            room = this.roomFor(officeId);
+            const joined = await this.roomFor(officeId, login);
+            if (ws.readyState !== ws.OPEN || !this.wss) return;
+            room = joined;
             client = this.acceptClient(room, ws, { userId: frame.userId, login, helloSeq }, allowMulti);
           })
           .catch((err: unknown) => {
@@ -600,14 +664,7 @@ export class RealtimeServer {
     // room recreated since.
     if (room.clients.get(client.userId) !== client) return;
     room.clients.delete(client.userId);
-    if (
-      room.clients.size === 0 &&
-      room !== this.defaultRoom &&
-      this.rooms.get(room.officeId) === room
-    ) {
-      room.close();
-      this.rooms.delete(room.officeId);
-    }
+    this.dropIfEmpty(room);
   }
 
   private handleFrame(room: Room, client: WsClient, frame: Frame): void {

@@ -183,8 +183,10 @@ describe('RealtimeServer world constants', () => {
     await vi.waitFor(() => expect(atB.map((e) => e.kind)).toContain('presence:position'));
     expect(atB.map((e) => [e.kind, e.actorId])).toEqual([
       ['world:constants', 'server'],
+      ['desk:claims', 'server'],
       ['presence:position', 'A'],
     ]);
+    expect(atB.find((e) => e.kind === 'desk:claims')).toMatchObject({ claims: {} });
     expect(server.defaultRoom.store.getState().worldConstants).toEqual(DEFAULT_WORLD_CONSTANTS);
 
     await put(port, constantsWithSpeed(6));
