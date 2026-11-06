@@ -239,7 +239,11 @@ export class SyncEngine {
       () => {
         if (!this.heldSelf) this.status.announceSelf();
       },
-      (a, b) => a?.status === b?.status && a?.mic === b?.mic,
+      (a, b) =>
+        a?.status === b?.status &&
+        a?.mic === b?.mic &&
+        a?.jitsiRoom === b?.jitsiRoom &&
+        a?.jitsiParticipantId === b?.jitsiParticipantId,
     );
     this.offChannel = this.channel.on((event) => this.inbound.onInbound(event));
     // When a peer's channel disconnects, the hub fires presence-leave for

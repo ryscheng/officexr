@@ -31,6 +31,7 @@ export type PlayerState = {
   isAirborne: boolean;
   avatar: AvatarData;
   jitsiRoom: string | null;
+  jitsiParticipantId: string | null;
   status: PresenceStatus;
   mic: MicState;
   /** Id of the placed object instance the player sits on. */

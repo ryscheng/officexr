@@ -5,6 +5,7 @@ import {
   CUBE_KIND_CATEGORIES,
   type CubeKindCategory,
   type OptimizationMode,
+  type SeatSpec,
   type WorldObjectKind,
 } from '@officexr/world';
 import { getKindBoundingDimensions } from '@officexr/world/renderer';
@@ -202,6 +203,23 @@ export function ObjectKindEditorPanel({ kind, applyPatch }: ObjectKindEditorPane
         />
       </Section>
 
+      <Section title="Seating">
+        <Toggle
+          label="sittable"
+          value={kind.seat !== undefined}
+          onChange={(sittable) => applyPatch({ seat: sittable ? defaultSeat(kind) : undefined })}
+          hint="Offset is in metres from the model's min corner, unrotated: the seated avatar's root rests on the seat surface, so y is the cushion top."
+        />
+        {kind.seat && (
+          <SeatFields seat={kind.seat} onChange={(seat) => applyPatch({ seat })} />
+        )}
+        <Toggle
+          label="is desk"
+          value={kind.isDesk ?? false}
+          onChange={(isDesk) => applyPatch({ isDesk: isDesk || undefined })}
+        />
+      </Section>
+
       <Section title="Optimization">
         <SelectInput
           label="mode"
@@ -212,6 +230,34 @@ export function ObjectKindEditorPanel({ kind, applyPatch }: ObjectKindEditorPane
         <Readonly label="" value="scaffold — no runtime effect" />
       </Section>
     </Panel>
+  );
+}
+
+function defaultSeat(kind: WorldObjectKind): SeatSpec {
+  const { width = 0, height = 0, depth = 0 } = kind.dimensions ?? {};
+  return { offset: { x: width / 2, y: height * 0.45, z: depth / 2 }, yawDeg: 0 };
+}
+
+function SeatFields({ seat, onChange }: { seat: SeatSpec; onChange: (seat: SeatSpec) => void }) {
+  const axes = ['x', 'y', 'z'] as const;
+  return (
+    <>
+      {axes.map((axis) => (
+        <NumberInput
+          key={axis}
+          label={`offset ${axis}`}
+          value={seat.offset[axis]}
+          step={0.05}
+          onChange={(v) => onChange({ ...seat, offset: { ...seat.offset, [axis]: v } })}
+        />
+      ))}
+      <NumberInput
+        label="yaw"
+        value={seat.yawDeg}
+        step={15}
+        onChange={(yawDeg) => onChange({ ...seat, yawDeg })}
+      />
+    </>
   );
 }
 

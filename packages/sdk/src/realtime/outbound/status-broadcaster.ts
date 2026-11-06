@@ -49,6 +49,8 @@ export class StatusBroadcaster {
       t: now,
       status: me.status,
       mic: me.mic,
+      jitsiRoom: me.jitsiRoom,
+      jitsiParticipantId: me.jitsiParticipantId,
     });
   }
 

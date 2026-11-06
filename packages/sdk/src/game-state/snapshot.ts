@@ -8,7 +8,12 @@ export type SerializedOfficeState = Omit<
   OfficeState,
   'proximity' | 'players' | 'departed' | 'screenShares' | 'worldConstants' | 'worldSettings' | 'voiceZones' | 'deskClaims'
 > & {
-  players: Record<string, Omit<PlayerState, 'tRecv' | 'lastStatusAt' | 'firstSeenAt'>>;
+  players: Record<
+    string,
+    Omit<PlayerState, 'tRecv' | 'lastStatusAt' | 'firstSeenAt' | 'jitsiParticipantId'> & {
+      jitsiParticipantId?: string | null;
+    }
+  >;
   proximity: Record<string, string[]>;
   screenShares: Record<string, Omit<ScreenShareSignal, 'stream'> & { stream: null }>;
 };
@@ -59,7 +64,8 @@ export function applySnapshot(target: OfficeState, snap: SerializedOfficeState, 
   target.players = {};
   for (const [id, p] of Object.entries(snap.players)) {
     // tRecv intentionally omitted
-    target.players[id] = id === selfId ? { ...p } : { ...p, firstSeenAt: now };
+    const player = { ...p, jitsiParticipantId: p.jitsiParticipantId ?? null };
+    target.players[id] = id === selfId ? player : { ...player, firstSeenAt: now };
   }
 
   target.proximity = {};

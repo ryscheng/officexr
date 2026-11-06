@@ -161,6 +161,38 @@ describe('normalizeKind — rotationStepDeg', () => {
   });
 });
 
+describe('normalizeKind — seat and isDesk', () => {
+  const seat = { offset: { x: 0.375, y: 0.55, z: 0.4 }, yawDeg: 180 };
+
+  it('keeps both through a catalog round-trip and omits them when absent', () => {
+    const catalog = validateWorldObjectKindCatalog({
+      schemaVersion: 1,
+      updatedAt: 0,
+      kinds: [minimalRaw('furniture', { seat, isDesk: true }), minimalRaw('block', { id: 'plain' })],
+    });
+    expect(catalog.kinds[0].seat).toEqual(seat);
+    expect(catalog.kinds[0].isDesk).toBe(true);
+    const plain = JSON.parse(JSON.stringify(catalog.kinds[1]));
+    expect(plain).not.toHaveProperty('seat');
+    expect(plain).not.toHaveProperty('isDesk');
+  });
+
+  it.each([
+    null,
+    {},
+    { offset: { x: 0, y: 0, z: 0 } },
+    { offset: { x: 0, y: 0 }, yawDeg: 0 },
+    { offset: { x: 0, y: 0, z: Number.NaN }, yawDeg: 0 },
+    { offset: { x: 0, y: 0, z: 0 }, yawDeg: '0' },
+  ])('rejects malformed seat %j', (bad) => {
+    expect(() => normalizeKind(minimalRaw('block', { seat: bad }), 4)).toThrow(/kinds\[4\]\.seat/);
+  });
+
+  it('rejects a non-boolean isDesk', () => {
+    expect(() => normalizeKind(minimalRaw('block', { isDesk: 'yes' }), 2)).toThrow(/kinds\[2\]\.isDesk/);
+  });
+});
+
 describe('isYawAllowed', () => {
   it('defaults to 90° steps', () => {
     expect(isYawAllowed(undefined, 270)).toBe(true);

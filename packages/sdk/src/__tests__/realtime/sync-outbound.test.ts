@@ -25,6 +25,7 @@ function setupOne(opts: { selfId: string }) {
     isDead: false,
     avatar: { model: 'default' },
     jitsiRoom: null,
+    jitsiParticipantId: null,
     status: 'available',
     mic: 'none',
   });

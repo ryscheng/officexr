@@ -168,6 +168,27 @@ describe('PROTOCOL table', () => {
     },
   ];
 
+  it('snapshot:offer accepts a player without jitsiParticipantId', () => {
+    const offer = structuredClone(SAMPLE_EVENTS.find((e) => e.kind === 'snapshot:offer')!) as any;
+    offer.state.players = {
+      a: {
+        id: 'a',
+        name: 'A',
+        pos: { x: 0, y: 0, z: 0 },
+        vel: { x: 0, y: 0, z: 0 },
+        yaw: 0,
+        hp: 100,
+        isDead: false,
+        isAirborne: false,
+        avatar: { model: 'default' },
+        jitsiRoom: null,
+        status: 'available',
+        mic: 'none',
+      },
+    };
+    expect(validateNetEvent(offer).ok).toBe(true);
+  });
+
   it('every NetEvent kind has an entry in PROTOCOL with v + schema + authority', () => {
     const sampleKinds = new Set(SAMPLE_EVENTS.map((e) => e.kind));
     const protocolKinds = new Set(Object.keys(PROTOCOL));
@@ -306,6 +327,10 @@ function makePresencePositionEvent(overrides: Record<string, unknown> = {}) {
 
 describe('presence:status', () => {
   const base = { kind: 'presence:status', v: 1, actorId: 'a', seq: 1, t: 0, status: 'available', mic: 'none' };
+
+  it('accepts a payload without the jitsi fields', () => {
+    expect(validateNetEvent(base).ok).toBe(true);
+  });
 
   it.each([
     ['status', { status: 'active' }],

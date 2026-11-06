@@ -87,6 +87,7 @@ export {
   type CubeKindCatalogV1,
   type CubeKindCategory,
   type OptimizationMode,
+  type SeatSpec,
   CUBE_KIND_CATEGORIES,
   WORLD_OBJECT_KIND_DEFAULTS,
   CUBE_KIND_DEFAULTS,

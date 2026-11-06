@@ -14,6 +14,7 @@ function fakePlayer(id: string, x: number, z: number): PlayerState {
     isAirborne: false,
     avatar: { model: 'default' },
     jitsiRoom: null,
+    jitsiParticipantId: null,
     status: 'available',
     mic: 'none',
   };

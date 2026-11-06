@@ -20,6 +20,37 @@ describe('presence heartbeat', () => {
     expect(b.store.getState().players['a']).toMatchObject({ status: 'away', mic: 'speaking' });
   });
 
+  it('propagates jitsiRoom and jitsiParticipantId, including clearing', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    const b = await h.add('b');
+
+    a.actions.setMyJitsiRoom('room-1');
+    a.actions.setMyJitsiParticipantId('jp-a');
+    expect(b.store.getState().players['a']).toMatchObject({ jitsiRoom: 'room-1', jitsiParticipantId: 'jp-a' });
+
+    a.actions.setMyJitsiRoom(null);
+    a.actions.setMyJitsiParticipantId(null);
+    expect(b.store.getState().players['a']).toMatchObject({ jitsiRoom: null, jitsiParticipantId: null });
+  });
+
+  it('applies a presence:status without the jitsi fields as null', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    const b = await h.add('b');
+    a.actions.setMyJitsiRoom('room-1');
+    a.actions.setMyJitsiParticipantId('jp-a');
+
+    const legacy = { kind: 'presence:status', v: 1, actorId: 'a', seq: Number.MAX_SAFE_INTEGER /* inbound dedup is clock-based */, t: 0, status: 'away', mic: 'none' };
+    await a.channel.send(legacy as NetEvent);
+
+    expect(b.store.getState().players['a']).toMatchObject({
+      status: 'away',
+      jitsiRoom: null,
+      jitsiParticipantId: null,
+    });
+  });
+
   it('re-sends every 5 s with no change, advancing lastStatusAt', async () => {
     const h = createMultiClientHarness();
     const b = await h.add('b');
