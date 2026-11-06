@@ -3,3 +3,4 @@ export * from './jitsi-room.ts';
 export * from './voice-event-emitter.ts';
 export * from './mock-voice-adapter.ts';
 export * from './communication.ts';
+export * from './call-roster-sync.ts';

@@ -9,6 +9,7 @@ import {
   SyncEngine,
 } from '@officexr/sdk';
 import type { Actions, Bus, Channel, PlayerId, RuleRegistry, Store } from '@officexr/sdk';
+import { CallRosterSync } from '../communication/call-roster-sync.ts';
 import { Communication } from '../communication/communication.ts';
 import type { VoiceAdapter } from '../communication/types.ts';
 
@@ -96,6 +97,7 @@ export async function startOfficeSync({
     bus: local.bus,
     voice,
   });
+  const callRoster = new CallRosterSync({ actions: local.actions, voice });
 
   // `closed` only follows our own close() on unmount; there is nothing left to show.
   const offStatus = channel.onStatusChange((status) => {
@@ -108,6 +110,7 @@ export async function startOfficeSync({
   sync.start();
   handshake.start();
   comm.start();
+  callRoster.start();
 
   return {
     sync,
@@ -116,6 +119,7 @@ export async function startOfficeSync({
     stop: () => {
       offStatus();
       comm.stop();
+      callRoster.stop();
       sync.stop();
       handshake.stop();
     },

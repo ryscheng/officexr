@@ -151,7 +151,7 @@ describe('RealtimeServer world constants', () => {
     await closed;
   });
 
-  it('does not relay client-sent world events or a spoofed server actor', async () => {
+  it('does not relay client-sent server-authority events or a spoofed server actor', async () => {
     const { server, port } = await startServer();
     const url = `ws://127.0.0.1:${port}/ws`;
     const bChannel = new WsChannel({ url, userId: 'B' });
@@ -168,6 +168,7 @@ describe('RealtimeServer world constants', () => {
     const envelope = { v: 1, actorId: 'A', seq: 1, t: 0 };
     const send = (event: object) => a.send(JSON.stringify({ t: 'broadcast', from: 'A', event }));
     send({ ...envelope, kind: 'world:constants', constants: constantsWithSpeed(9) });
+    send({ ...envelope, seq: 4, kind: 'desk:claims', claims: { d1: 'A' } });
     send({ ...envelope, seq: 2, kind: 'world:settings', settings: { playerSpeed: 9 } });
     const position = {
       kind: 'presence:position',

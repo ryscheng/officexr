@@ -74,7 +74,7 @@ export class StateDiffBroadcaster {
     this.lastWorldObjectsJson = JSON.stringify(initial.worldObjects);
   }
 
-  onStoreChange(next: OfficeState, prev: OfficeState, announceSelfAvatar = true): void {
+  onStoreChange(next: OfficeState, prev: OfficeState, selfLive = true): void {
     // chat: send any newly-appended messages whose author is self
     if (next.chat.length > prev.chat.length) {
       const added = next.chat.slice(this.lastChatLen);
@@ -114,8 +114,12 @@ export class StateDiffBroadcaster {
 
     const me = next.players[next.selfId];
     const prevMe = prev.players[prev.selfId];
-    if (announceSelfAvatar && (me?.name !== prevMe?.name || me?.avatar !== prevMe?.avatar)) {
+    if (selfLive && (me?.name !== prevMe?.name || me?.avatar !== prevMe?.avatar)) {
       this.announceAvatar(next);
+    }
+
+    if (selfLive && me?.seat !== prevMe?.seat) {
+      this.announceSeat(next);
     }
 
     // worldMap: broadcast on any change. Same JSON-equality dedupe; the map
@@ -220,6 +224,17 @@ export class StateDiffBroadcaster {
       t: this.clock.now(),
       avatar: me.avatar,
       name: me.name,
+    });
+  }
+
+  announceSeat(state: OfficeState = this.store.getState()): void {
+    this.broadcast({
+      kind: 'presence:seat',
+      v: 1,
+      actorId: state.selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      instanceId: state.players[state.selfId]?.seat ?? null,
     });
   }
 

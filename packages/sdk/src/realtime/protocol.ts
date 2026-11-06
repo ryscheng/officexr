@@ -75,6 +75,7 @@ const ZPlayerState = z.object({
   jitsiParticipantId: z.string().nullable().optional(),
   status: ZPresenceStatus,
   mic: ZMicState,
+  seat: z.string().nullable().optional(),
 });
 
 const ZChatMessageObj = z.object({
@@ -196,6 +197,8 @@ const ZPresenceStatusPayload = z.object({
   jitsiRoom: z.string().nullable().optional(),
   jitsiParticipantId: z.string().nullable().optional(),
 });
+const ZPresenceSeat = z.object({ instanceId: z.string().nullable() });
+const ZDeskClaimsPayload = z.object({ claims: z.record(z.string(), z.string()) });
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) });
 const ZChatMessage = z.object({ text: z.string() });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
@@ -232,6 +235,7 @@ export type NetEvent =
       jitsiParticipantId?: string | null;
     }
   >
+  | WithEnvelope<'presence:seat', 1, { instanceId: string | null }>
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData; name: string }>
   | WithEnvelope<'chat:message', 1, { text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>
@@ -247,7 +251,8 @@ export type NetEvent =
   | WithEnvelope<'world:constants', 1, { constants: WorldConstants }>
   | WithEnvelope<'world:map', 1, { map: WorldMap }>
   | WithEnvelope<'world:characters', 1, { configs: CharacterConfigs }>
-  | WithEnvelope<'world:objects', 1, { objects: WorldObjects }>;
+  | WithEnvelope<'world:objects', 1, { objects: WorldObjects }>
+  | WithEnvelope<'desk:claims', 1, { claims: Record<string, string> }>;
 
 export type NetEventKind = NetEvent['kind'];
 
@@ -266,6 +271,7 @@ export type ProtocolEntry = {
 export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'presence:position': { v: 1, schema: ZPresencePosition, authority: 'local', route: 'room' },
   'presence:status': { v: 1, schema: ZPresenceStatusPayload, authority: 'local', route: 'room' },
+  'presence:seat': { v: 1, schema: ZPresenceSeat, authority: 'local', route: 'room' },
   'avatar:update': { v: 1, schema: ZAvatarUpdate, authority: 'local', route: 'room' },
   'chat:message': { v: 1, schema: ZChatMessage, authority: 'local', route: 'room' },
   'whiteboard:stroke': { v: 1, schema: ZWhiteboardStroke, authority: 'local', route: 'room' },
@@ -274,11 +280,12 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'zombie:state': { v: 1, schema: ZZombieStatePayload, authority: 'host', route: 'room' },
   'snapshot:request': { v: 1, schema: ZSnapshotRequest, authority: 'local', route: 'room' },
   'snapshot:offer': { v: 1, schema: ZSnapshotOffer, authority: 'local', route: 'room' },
-  // ponytail: the inbound router doesn't check authority; only the realtime server filters client copies, so other channels trust every peer.
+  // ponytail: the inbound router doesn't check authority; only the realtime server filters client copies of every server-authority kind, so other channels trust every peer.
   'world:constants': { v: 1, schema: ZWorldConstantsPayload, authority: 'server', route: 'room' },
   'world:map': { v: 1, schema: ZWorldMapPayload, authority: 'local', route: 'room' },
   'world:characters': { v: 1, schema: ZWorldCharactersPayload, authority: 'local', route: 'room' },
   'world:objects': { v: 1, schema: ZWorldObjectsPayload, authority: 'local', route: 'room' },
+  'desk:claims': { v: 1, schema: ZDeskClaimsPayload, authority: 'server', route: 'room' },
 };
 
 /** The one player who receives `event`, or null when it goes to the whole room. */

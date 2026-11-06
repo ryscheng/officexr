@@ -30,6 +30,9 @@ export interface Actions {
   setSelfPosition(pos: Vec3, vel: Vec3, yaw: number, isAirborne: boolean): void;
   setMyJitsiRoom(roomId: string | null): void;
   setMyJitsiParticipantId(id: string | null): void;
+  callParticipantJoined(participantId: string, displayName: string): void;
+  callParticipantLeft(participantId: string): void;
+  clearCallRoster(): void;
   setSelfPresence(patch: { status?: PresenceStatus; mic?: MicState }): void;
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
@@ -62,6 +65,10 @@ export interface Actions {
   setVoiceZones(zones: VoiceZone[]): void;
   /** Local-only: never broadcast. */
   setDeskAreas(areas: DeskAreaState[]): void;
+  /** Sit on the placed object instance `instanceId`, or stand up with null. */
+  setSelfSeat(instanceId: string | null): void;
+  /** Replace all desk claims. Never broadcast: only the realtime server distributes them. */
+  setDeskClaims(claims: Record<string, string>): void;
 
   // remote applications (called by sync engine)
   applyRemotePosition(
@@ -80,6 +87,7 @@ export interface Actions {
     jitsi: { room: string | null; participantId: string | null },
   ): void;
   applyRemoteAvatar(playerId: PlayerId, avatar: AvatarData, name: string, now: number): void;
+  applyRemoteSeat(playerId: PlayerId, instanceId: string | null, now: number): void;
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
   applyZombieState(z: ZombieState): void;
@@ -173,6 +181,21 @@ export function createActions(store: Store, bus?: Bus): Actions {
       patchSelf({ jitsiParticipantId: id });
     },
 
+    callParticipantJoined(participantId, displayName) {
+      store.setState((s) => ({ callRoster: { ...s.callRoster, [participantId]: { displayName } } }));
+    },
+
+    callParticipantLeft(participantId) {
+      store.setState((s) => {
+        const { [participantId]: _left, ...callRoster } = s.callRoster;
+        return { callRoster };
+      });
+    },
+
+    clearCallRoster() {
+      store.setState((s) => (Object.keys(s.callRoster).length > 0 ? { callRoster: {} } : s));
+    },
+
     setSelfPresence({ status, mic }) {
       patchSelf({ ...(status && { status }), ...(mic && { mic }) });
     },
@@ -239,6 +262,14 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     setDeskAreas(areas) {
       store.setState(() => ({ deskAreas: areas }));
+    },
+
+    setSelfSeat(instanceId) {
+      patchSelf({ seat: instanceId });
+    },
+
+    setDeskClaims(claims) {
+      store.setState(() => ({ deskClaims: { ...claims } }));
     },
 
     setWorldObjects(objects) {
@@ -329,6 +360,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     applyRemoteAvatar(playerId, avatar, name, now) {
       upsertRemote(playerId, { avatar, name }, now);
+    },
+
+    applyRemoteSeat(playerId, instanceId, now) {
+      upsertRemote(playerId, { seat: instanceId }, now);
     },
 
     applyRemoteChat(msg) {
