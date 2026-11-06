@@ -132,7 +132,8 @@ export interface WorldObjectKind {
    * Absent means 90. */
   rotationStepDeg?: number;
   /** Where an avatar sits on this kind. `offset` is in metres from the
-   * `localAABB` min corner in the unrotated frame (the avatar's feet);
+   * `localAABB` min corner in the unrotated frame (the avatar's root rests
+   * on the seat surface: y is the cushion top);
    * `yawDeg` is the facing relative to the kind's forward. Absent means
    * not sittable. */
   seat?: SeatSpec;

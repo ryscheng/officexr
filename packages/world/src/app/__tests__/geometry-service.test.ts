@@ -288,13 +288,13 @@ describe('InstanceGeometry — primitive diagnostic boxes', () => {
 });
 
 describe('seatPoseOf', () => {
-  // 1 × 1 × 2 footprint at voxel (2, 0, 4): world min corner (1, 0, 2), centre (1.5, _, 3).
+  // 1 × 1 × 2 footprint at voxel (2, 0, 4): world min corner (1, 0, 2).
   const chair = {
     ...makeKind('chair', { width: 1, height: 1, depth: 2 }, {
       min: { x: -0.5, y: 0, z: -1 },
       max: { x: 0.5, y: 1, z: 1 },
     }),
-    seat: { offset: { x: 0.5, y: 0.45, z: 1.5 }, yawDeg: 30 },
+    seat: { offset: { x: 0.2, y: 0.45, z: 1.5 }, yawDeg: 30 },
   };
   const geom = createInstanceGeometry({ catalog: makeCatalog([chair]), voxelSize: VS });
   const instance = (yawDeg: number) => ({
@@ -305,18 +305,27 @@ describe('seatPoseOf', () => {
     yawDeg,
   });
 
-  it.each([
-    [0, [1.5, 0.45, 3.5]],
-    [90, [2, 0.45, 3]],
-    [180, [1.5, 0.45, 2.5]],
-    [270, [1, 0.45, 3]],
-  ])('carries the offset through yaw %d about the footprint centre', (yaw, expected) => {
-    const pose = seatPoseOf(chair, instance(yaw), geom);
-    pose!.position.forEach((v, i) => expect(v).toBeCloseTo(expected[i], 9));
-    expect(pose!.yawRad).toBeCloseTo(((yaw + 30) * Math.PI) / 180 % (2 * Math.PI), 9);
+  it('places the unrotated seat at the offset from the min corner', () => {
+    expect(seatPoseOf(chair, instance(0), geom)!.position).toEqual([1.2, 0.45, 3.5]);
+  });
+
+  it.each([0, 90, 180, 270])('lands where the mesh carries the local seat point at yaw %d', (yaw) => {
+    const mesh = geom.meshTransform([2, 0, 4], 'chair', yaw);
+    const { offset } = chair.seat;
+    const [x, y, z] = [offset.x - 0.5, offset.y, offset.z - 1];
+    const cos = Math.cos(mesh.rotationY);
+    const sin = Math.sin(mesh.rotationY);
+    const expected = [
+      mesh.position[0] + x * cos + z * sin,
+      mesh.position[1] + y,
+      mesh.position[2] - x * sin + z * cos,
+    ];
+    const pose = seatPoseOf(chair, instance(yaw), geom)!;
+    pose.position.forEach((v, i) => expect(v).toBeCloseTo(expected[i], 9));
+    expect(pose.yawRad).toBeCloseTo((((yaw + 30) % 360) * Math.PI) / 180, 9);
   });
 
   it('is null for a kind without a seat', () => {
-    expect(seatPoseOf({ id: 'chair' }, instance(0), geom)).toBeNull();
+    expect(seatPoseOf({}, instance(0), geom)).toBeNull();
   });
 });

@@ -208,7 +208,7 @@ export function ObjectKindEditorPanel({ kind, applyPatch }: ObjectKindEditorPane
           label="sittable"
           value={kind.seat !== undefined}
           onChange={(sittable) => applyPatch({ seat: sittable ? defaultSeat(kind) : undefined })}
-          hint="Offset is in metres from the model's min corner, unrotated: where a seated avatar's feet go."
+          hint="Offset is in metres from the model's min corner, unrotated: the seated avatar's root rests on the seat surface, so y is the cushion top."
         />
         {kind.seat && (
           <SeatFields seat={kind.seat} onChange={(seat) => applyPatch({ seat })} />

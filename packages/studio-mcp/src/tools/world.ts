@@ -51,7 +51,7 @@ export function registerWorldTools(
         'Replace the whole world-object-kind catalog; it is validated and nothing is written if invalid. ' +
         'Call get_world_object_kinds first and edit that document; `scale` is a unitless multiplier (1 = unchanged). ' +
         '`rotationStepDeg` must be a positive integer dividing 360, else the catalog is rejected. ' +
-        '`seat` ({offset: {x, y, z}, yawDeg}) marks a kind sittable: offset is in metres from the model\'s localAABB min corner in the unrotated frame (where a seated avatar\'s feet go), yawDeg is the facing relative to the kind\'s forward; ' +
+        '`seat` ({offset: {x, y, z}, yawDeg}) marks a kind sittable: offset is in metres from the model\'s localAABB min corner in the unrotated frame (the seated avatar\'s root rests on the seat surface, so y is the cushion top), yawDeg is the facing relative to the kind\'s forward; ' +
         '`isDesk` (boolean) marks a desk. Both are optional and must be well-formed, else the catalog is rejected. ' +
         YAW_CONTRACT,
       inputSchema: { catalog: documentSchema },
@@ -69,7 +69,7 @@ export function registerWorldTools(
         'Update some kinds in the world-object-kind catalog without resending the rest. Each entry is ' +
         '{id, ...fields}: the given top-level fields replace that kind\'s fields, and fields not given stay ' +
         'as they are. Every id must already exist. The patched catalog is validated as a whole, and nothing ' +
-        'is written if any entry fails. Returns the patched ids. ' +
+        'is written if any entry fails. Returns the patched ids. A field cannot be cleared here (so `seat` and `isDesk` cannot be removed); use put_world_object_kinds. ' +
         YAW_CONTRACT,
       inputSchema: { kinds: z.array(z.object({ id: z.string() }).passthrough()).min(1) },
     },
