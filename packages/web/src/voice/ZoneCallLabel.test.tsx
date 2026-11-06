@@ -8,18 +8,19 @@ import { ZoneCallLabel } from './ZoneCallLabel';
 afterEach(cleanup);
 
 describe('ZoneCallLabel', () => {
-  it('names the zone while the player is in its call, and nothing for proximity or no call', () => {
+  it('names the zone in a zone call, the proximity call otherwise, and prompts when not in a call', () => {
     const store = createStore({ selfId: 'me', officeId: 'o' });
     const actions = createActions(store, createBus());
     actions.upsertPlayer({ id: 'me', name: 'Me' });
     actions.setVoiceZones([{ id: 'z1', label: 'Meeting Room', min: { x: 0, z: 0 }, max: { x: 5, z: 5 } }]);
-    const { container } = render(<ZoneCallLabel store={store} />);
-    expect(container.textContent).toBe('');
+    render(<ZoneCallLabel store={store} joining={false} />);
+    expect(screen.getByText('Not in a call')).toBeTruthy();
+    expect(screen.getByText('Walk up to someone to talk')).toBeTruthy();
 
     act(() => actions.setMyJitsiRoom(deriveZoneRoom('o', 'z1')));
-    expect(screen.getByText('In Meeting Room call')).toBeTruthy();
+    expect(screen.getByText('Meeting Room')).toBeTruthy();
 
     act(() => actions.setMyJitsiRoom('room-o-me'));
-    expect(container.textContent).toBe('');
+    expect(screen.getByText('Proximity call')).toBeTruthy();
   });
 });

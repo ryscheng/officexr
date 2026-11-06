@@ -9,9 +9,6 @@ import { DEG, type PresencePlayer } from './personRows';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { useNow } from './useNow';
 
-export const PANEL_CLASS =
-  'pointer-events-auto max-h-60 max-w-72 overflow-y-auto overscroll-contain rounded bg-black/70 p-2 text-xs text-white';
-
 /** `mic` is absent where the list doesn't show it. */
 export type PersonRow = { id: PlayerId; label: string } & (
   | { type: 'self'; status: PresenceStatus; mic?: MicState }
@@ -22,9 +19,9 @@ export type PersonRow = { id: PlayerId; label: string } & (
 
 const MIC = {
   none: null,
-  muted: { Icon: MicOff, label: 'Muted', className: 'text-red-400' },
+  muted: { Icon: MicOff, label: 'Muted', className: 'text-hud-rose-text' },
   silent: { Icon: Mic, label: 'Mic on', className: 'opacity-50' },
-  speaking: { Icon: Mic, label: 'Speaking', className: 'motion-safe:animate-pulse text-green-400' },
+  speaking: { Icon: Mic, label: 'Speaking', className: 'motion-safe:animate-pulse text-hud-sage-text' },
 } satisfies Record<MicState, { Icon: LucideIcon; label: string; className: string } | null>;
 
 export function PersonList({
@@ -143,7 +140,7 @@ function PersonRowItem({
           </span>
         )}
       </span>
-      {mic && <mic.Icon role="img" aria-label={mic.label} className={`h-3 w-3 shrink-0 ${mic.className}`} />}
+      {mic && <mic.Icon role="img" aria-label={mic.label} className={`h-[13px] w-[13px] shrink-0 ${mic.className}`} />}
       {row.type === 'peer' && onPing && (
         <IconButton
           icon={Bell}

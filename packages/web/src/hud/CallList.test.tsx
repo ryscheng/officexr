@@ -97,11 +97,10 @@ describe('CallList', () => {
   it('says when you are not in a call or still joining', () => {
     const actions = setup();
     expect(screen.getByText('Not in a call')).toBeTruthy();
-    expect(screen.getByText('In call (0)')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '0 in call' })).toBeTruthy();
 
     act(() => actions.setMyJitsiRoom('room'));
-    expect(screen.getByText('Joining call…')).toBeTruthy();
-    expect(screen.getByText('In call (0)')).toBeTruthy();
+    expect(screen.getByText('Joining call', { selector: 'p' })).toBeTruthy();
   });
 
   it('lists a matched peer in both lists, with a mic only in the call list', () => {
@@ -116,7 +115,7 @@ describe('CallList', () => {
     });
     const call = within(screen.getByRole('list', { name: 'People in your call' }));
     const presence = within(screen.getByRole('list', { name: 'People in HQ' }));
-    expect(screen.getByText('In call (3)')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '3 in call' })).toBeTruthy();
     expect(call.getAllByRole('listitem').map((li) => li.querySelector('.truncate')?.textContent)).toEqual(['You', 'Ann', 'Visitor']);
     expect(call.getByRole('img', { name: 'Speaking' })).toBeTruthy();
     expect(call.getByRole('img', { name: 'Muted' })).toBeTruthy();

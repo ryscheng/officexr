@@ -9,7 +9,6 @@ import { DeskAutoSit } from '../desk/DeskAutoSit';
 import { DeskHud } from '../desk/DeskHud';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PingInboxHud } from '../hud/PingInboxHud';
-import { CallList } from '../hud/CallList';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
 import { Minimap } from '../hud/Minimap';
 import { ConnectionToast } from '../hud/ConnectionToast';
@@ -177,17 +176,18 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           </>
         }
         rightEdge={
-          <>
-            <PresenceList
-              store={ready.local.store}
-              selfId={ready.local.selfId}
-              officeName={office.name}
-              pinger={pinger}
-            />
-            <CallList store={ready.local.store} selfId={ready.local.selfId} pinger={pinger} />
-          </>
+          <PresenceList
+            store={ready.local.store}
+            selfId={ready.local.selfId}
+            officeName={office.name}
+            pinger={pinger}
+          />
         }
-        bottomCentre={ready.voice && <CallBar store={ready.local.store} voice={ready.voice} />}
+        bottomCentre={
+          ready.voice && (
+            <CallBar store={ready.local.store} selfId={ready.local.selfId} voice={ready.voice} pinger={pinger} />
+          )
+        }
         bottomLeft={<ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />}
       />
       {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={ready.local.store} voice={ready.voice} />}
