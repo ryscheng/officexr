@@ -67,7 +67,6 @@ export function RoomMenu({ children }: { children: ReactNode }) {
     };
   }, [open]);
 
-  // px (not rem) so the button matches `HOST_MENU_SLOT` in `@officexr/world` at any browser font size.
   return (
     <div ref={ref} data-studio-panel className="pointer-events-none absolute top-[12px] left-[12px] z-20 flex flex-col items-start gap-2">
       <button

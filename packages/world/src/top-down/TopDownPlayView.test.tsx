@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMultiClientHarness } from '@officexr/sdk/test-harness';
 import { GhostController } from '../app/ghost-controller.ts';
 import { createDefaultApi } from '../app/create-default-api.ts';
 import { ApplicationProvider } from '../react/application-context.tsx';
 import { usePlayControls } from '../react/playControls.tsx';
 import { useNavGrid } from '../react/useNavGrid.ts';
+import { focusWorld } from '../react/useWorldFocus.ts';
 import { useViewYaw } from '../react/viewYaw.tsx';
 import {
   InMemoryLayoutStorage,
@@ -90,6 +91,23 @@ describe('TopDownPlayView', () => {
     const startZ = alice.store.getState().players.alice!.pos.z;
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
     await waitFor(() => expect(alice.store.getState().players.alice!.pos.z).toBeLessThan(startZ - 0.05));
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
+  });
+
+  it('ignores movement keys once focus moves into a panel, until the world is refocused', async () => {
+    const { alice, released } = await mount();
+    await released();
+    const z = () => alice.store.getState().players.alice!.pos.z;
+    const startZ = z();
+    render(<aside data-studio-panel="true"><button>in panel</button></aside>);
+    fireEvent.mouseDown(screen.getByText('in panel'));
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(z()).toBe(startZ);
+
+    act(() => focusWorld());
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
+    await waitFor(() => expect(z()).toBeLessThan(startZ - 0.05));
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
   });
 

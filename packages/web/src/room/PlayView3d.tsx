@@ -51,7 +51,7 @@ export default function PlayView3d({
       onCameraModeChange={setCameraMode}
       motionLook={motionLook}
       invertLook={invertLook}
-      hostControls
+      hud="player"
       xrStore={xrStore}
     >
       <RoomMenu>
