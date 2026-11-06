@@ -34,6 +34,7 @@ export class MockVoiceAdapter implements VoiceAdapter {
     this.currentRoom = roomId;
     this.setConnectionState('joining');
     this.setConnectionState('connected');
+    this.emitLocalParticipantJoined(`local-${roomId}`);
   }
 
   async leaveRoom(): Promise<void> {
@@ -71,12 +72,28 @@ export class MockVoiceAdapter implements VoiceAdapter {
   // -- test surface --
 
   /** Test-only: simulate a remote participant joining. */
-  emitParticipantJoined(participantId: PlayerId): void {
+  emitParticipantJoined(participantId: PlayerId, displayName = ''): void {
     if (!this.currentRoom) return;
     this.events.emit('remote-participant-joined', {
       roomId: this.currentRoom,
       participantId,
+      displayName,
     });
+  }
+
+  emitLocalParticipantJoined(participantId: string): void {
+    if (!this.currentRoom) return;
+    this.events.emit('local-participant-joined', { roomId: this.currentRoom, participantId });
+  }
+
+  /** Test-only: simulate a late event from a room we already left. */
+  emitStaleParticipantJoined(roomId: string, participantId: string, displayName = ''): void {
+    this.events.emit('remote-participant-joined', { roomId, participantId, displayName });
+  }
+
+  /** Test-only: emit a connection-state change without touching the current room. */
+  emitConnectionState(state: VoiceConnectionState): void {
+    this.setConnectionState(state);
   }
 
   emitParticipantLeft(participantId: PlayerId): void {

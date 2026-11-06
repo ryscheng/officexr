@@ -190,6 +190,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
         this.localId = id;
         this.joined = true;
         this.setState('connected');
+        this.events.emit('local-participant-joined', { roomId, participantId: id });
         this.applyMute();
       }),
     );
@@ -249,7 +250,9 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     );
     api.on(
       'participantJoined',
-      ifCurrent(({ id }: { id: string }) => this.events.emit('remote-participant-joined', { roomId, participantId: id })),
+      ifCurrent(({ id, displayName }: { id: string; displayName?: string }) =>
+        this.events.emit('remote-participant-joined', { roomId, participantId: id, displayName: displayName ?? '' }),
+      ),
     );
     api.on(
       'participantLeft',
