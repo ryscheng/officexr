@@ -13,11 +13,16 @@
     "db:migrate": "supabase db push --yes --workdir ../.. --db-url \"$SUPABASE_DB_URL\""
   },
   "dependencies": {
+    "@fontsource/nunito": "^5.3.0",
+    "@fontsource/tiny5": "^5.3.0",
     "@jitsi/react-sdk": "^1.4.4",
     "@officexr/core-refactor": "workspace:*",
     "@officexr/sdk": "workspace:*",
     "@officexr/server": "workspace:*",
     "@officexr/world": "workspace:*",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.2.1",
+    "@radix-ui/react-toggle-group": "^1.2.1",
     "@radix-ui/react-tooltip": "^1.1.7",
     "lucide-react": "^0.475.0",
     "react": "19.2.3",

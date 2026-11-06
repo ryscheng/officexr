@@ -3,14 +3,16 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import type { LucideIcon } from 'lucide-react';
 
 const TONE = {
-  neutral: 'bg-black/55 hover:bg-black/70',
-  danger: 'bg-red-700/80 hover:bg-red-700',
-  success: 'bg-green-700/80 hover:bg-green-700',
+  neutral: 'bg-hud-panel text-hud-text hover:bg-hud-edge',
+  accent: 'bg-hud-accent text-hud-on-accent hover:bg-hud-accent-edge',
+  danger: 'bg-hud-rose text-hud-rose-text hover:brightness-125',
+  success: 'bg-hud-sage text-hud-sage-text hover:brightness-125',
 };
 
 const SIZE = {
-  md: { button: 'p-2', icon: 'h-4 w-4' },
-  sm: { button: 'p-0.5', icon: 'h-3 w-3' },
+  md: { button: 'p-2 pointer-coarse:min-h-11 pointer-coarse:min-w-11', icon: 'h-4 w-4' },
+  sm: { button: 'p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11', icon: 'h-3 w-3' },
+  lg: { button: 'h-11 w-11 p-2.5', icon: 'h-5 w-5' },
 };
 
 /** Where `IconButton` tooltips portal to, for buttons rendered into another document; defaults to `document.body`. */
@@ -56,14 +58,14 @@ export function IconButton({
               aria-expanded={expanded}
               disabled={disabled}
               onClick={onClick}
-              className={`rounded text-white disabled:pointer-events-none disabled:opacity-50 ${SIZE[size].button} ${TONE[tone]}`}
+              className={`inline-flex items-center justify-center rounded-hud-control disabled:pointer-events-none disabled:opacity-50 ${SIZE[size].button} ${TONE[tone]}`}
             >
               <Icon aria-hidden className={SIZE[size].icon} />
             </button>
           </span>
         </Tooltip.Trigger>
         <Tooltip.Portal container={tooltipContainer}>
-          <Tooltip.Content sideOffset={6} className="z-50 rounded bg-black/80 px-2 py-1 text-xs text-white">
+          <Tooltip.Content sideOffset={6} className="z-50 rounded-lg bg-hud-inset px-2 py-1 font-hud-body text-xs text-hud-text">
             {label}
           </Tooltip.Content>
         </Tooltip.Portal>
