@@ -7,6 +7,9 @@ export interface SettingsTab {
   content: ReactNode;
 }
 
+/** A full-height view opened with `openPane`, shown in place of the tabs. */
+export type SettingsPane = SettingsTab;
+
 export interface SettingsAction {
   id: string;
   render: (close: () => void) => ReactNode;

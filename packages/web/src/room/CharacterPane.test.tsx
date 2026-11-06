@@ -1,13 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { useState } from 'react';
-import { createPersistentLocalState, type PersistentLocalState } from '@officexr/core-refactor';
+import { createPersistentLocalState } from '@officexr/core-refactor';
 import { CHARACTERS, pickCharacterForPlayer, type CharacterName } from '@officexr/world/characters';
-import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { apiFetch } from '../apiOrigin';
-import { CharacterDialog } from './CharacterDialog';
-import { closingAction } from './SettingsModal';
+import { CharacterAction, CharacterPane } from './CharacterPane';
 import { openSettings, SettingsHarness } from './settingsHarness';
 
 afterEach(cleanup);
@@ -20,50 +16,49 @@ function FakePreview({ character }: { character: CharacterName }) {
   return <p data-testid="preview">{character}</p>;
 }
 
-function Harness({
-  local,
-  onSaveResult,
-  fetchFn,
-}: {
-  local: PersistentLocalState;
-  onSaveResult: (error: string | null) => void;
-  fetchFn: typeof apiFetch;
-}) {
-  const focused = useWorldFocus();
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <output>{String(focused)}</output>
-      <SettingsHarness actions={[closingAction('character', 'Character', () => setOpen(true))]} />
-      {open && (
-        <CharacterDialog
-          local={local}
-          onSaveResult={onSaveResult}
-          onClose={() => setOpen(false)}
-          Preview={FakePreview}
-          fetchFn={fetchFn}
-        />
-      )}
-    </>
-  );
-}
-
 function setup(status = 200) {
   const local = createPersistentLocalState({ selfId: SELF, officeId: OFFICE });
   const fetchFn = vi.fn(async () => new Response('{}', { status }));
   const onSaveResult = vi.fn();
-  render(<Harness local={local} onSaveResult={onSaveResult} fetchFn={fetchFn} />);
+  render(
+    <SettingsHarness
+      tabs={[{ id: 'controls', label: 'Controls', content: <p>Controls tab</p> }]}
+      panes={[
+        {
+          id: 'character',
+          label: 'Character',
+          content: <CharacterPane local={local} onSaveResult={onSaveResult} Preview={FakePreview} fetchFn={fetchFn} />,
+        },
+      ]}
+      actions={[{ id: 'character', render: () => <CharacterAction /> }]}
+    />,
+  );
   openSettings();
   fireEvent.click(screen.getByRole('button', { name: 'Character' }));
   return { local, fetchFn, onSaveResult };
 }
 
-describe('CharacterDialog', () => {
-  it('opens from Settings, previewing the current character', () => {
+describe('CharacterPane', () => {
+  it('opens inside Settings, previewing the current character', () => {
     setup();
-    expect(screen.getByRole('dialog', { name: 'Character' })).toBeTruthy();
+    expect(screen.queryByText('Controls tab')).toBeNull();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
     const select = screen.getByRole('combobox', { name: 'Character' }) as HTMLSelectElement;
     expect(screen.getByTestId('preview').textContent).toBe(select.value);
+  });
+
+  it('Back returns to the tabs', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByText('Controls tab')).toBeTruthy();
+    expect(screen.queryByTestId('preview')).toBeNull();
+  });
+
+  it('Escape after Back closes Settings', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('shows and saves the chosen character', async () => {
@@ -82,17 +77,5 @@ describe('CharacterDialog', () => {
     const { onSaveResult } = setup(500);
     fireEvent.change(screen.getByRole('combobox', { name: 'Character' }), { target: { value: OTHER } });
     await waitFor(() => expect(onSaveResult).toHaveBeenCalledWith('Could not save the character: HTTP 500'));
-  });
-
-  it.each([
-    ['Escape', () => fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })],
-    ['a backdrop press', () => fireEvent.mouseDown(screen.getByRole('dialog').parentElement!)],
-    ['Done', () => fireEvent.click(screen.getByRole('button', { name: 'Done' }))],
-  ])('hands keyboard control back to the world when closed by %s', (_, close) => {
-    setup();
-    expect(screen.getByRole('status').textContent).toBe('false');
-    close();
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByRole('status').textContent).toBe('true');
   });
 });

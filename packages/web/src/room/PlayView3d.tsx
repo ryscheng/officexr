@@ -5,10 +5,10 @@ import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XR
 import type { TopDownPlayViewProps } from '@officexr/world/top-down';
 import { Switch } from '../hud/ui/Switch';
 import { CameraModeControl } from './CameraModeControl';
-import { CharacterDialog } from './CharacterDialog';
+import { CharacterAction, CharacterPane } from './CharacterPane';
 import { MotionLookControl } from './MotionLookControl';
 import type { SettingsAction, SettingsTab } from './Settings';
-import { closingAction, SettingRow, SettingsModal } from './SettingsModal';
+import { SettingRow, SettingsModal } from './SettingsModal';
 import { vrActions } from './VrAction';
 
 /** Created in an effect so StrictMode's remount destroys the first store, which appends a DOM overlay. */
@@ -41,7 +41,6 @@ export default function PlayView3d({
   const [motionLook, setMotionLook] = useState({ enabled: false, recenterKey: 0 });
   const [motionUnsupported, setMotionUnsupported] = useState(false);
   const [invertLook, setInvertLook] = useState(false);
-  const [characterOpen, setCharacterOpen] = useState(false);
   const xrStore = useWorldXRStore();
   const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
 
@@ -65,7 +64,7 @@ export default function PlayView3d({
     </>
   );
   const actions: SettingsAction[] = [
-    closingAction('character', 'Character', () => setCharacterOpen(true)),
+    { id: 'character', render: () => <CharacterAction /> },
     ...vrActions(xrStore, vrSupported, onError),
   ];
 
@@ -83,9 +82,11 @@ export default function PlayView3d({
       <SettingsModal
         title={viewProps.title}
         tabs={[...settings.tabs, { id: 'controls', label: 'Controls', content: controls }]}
+        panes={[
+          { id: 'character', label: 'Character', content: <CharacterPane local={local} onSaveResult={onError} /> },
+        ]}
         actions={[...settings.actions, ...actions]}
       />
-      {characterOpen && <CharacterDialog local={local} onSaveResult={onError} onClose={() => setCharacterOpen(false)} />}
       {children}
     </PlayView>
   );
