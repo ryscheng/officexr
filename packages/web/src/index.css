@@ -26,4 +26,15 @@
 
   --font-hud-title: "Tiny5", sans-serif;
   --font-hud-body: "Nunito", sans-serif;
+
+  --animate-hud-bob: hud-bob 1.6s ease-in-out infinite;
+  @keyframes hud-bob {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
 }
