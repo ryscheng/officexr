@@ -554,7 +554,8 @@ export class RealtimeServer {
       load = this.deskClaims
         .listDeskClaims(room.officeId, login)
         .then((loaded) => {
-          if (loaded.ok) {
+          // A claim that landed while this was in flight already set the newer list.
+          if (loaded.ok && !room.claimsLoaded) {
             room.pushDeskClaims(loaded.claims);
           }
         })
@@ -569,7 +570,8 @@ export class RealtimeServer {
   }
 
   private dropIfEmpty(room: Room): void {
-    if (room.clients.size === 0 && room !== this.defaultRoom && this.rooms.get(room.officeId) === room) {
+    // A joiner waiting on the claims load will be accepted into this room; the load reschedules the drop when it settles.
+    if (room.clients.size === 0 && !this.claimLoads.has(room) && room !== this.defaultRoom && this.rooms.get(room.officeId) === room) {
       room.close();
       this.rooms.delete(room.officeId);
     }

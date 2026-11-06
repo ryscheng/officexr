@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DESK_CLAIM_RESULT_KIND, type DeskClaimResult, type NetEvent } from '@officexr/sdk';
@@ -11,11 +11,17 @@ const SECRET = 'api-secret';
 const DESKS = new Set(['d1', 'd2']);
 
 /** The backend's desk-claim routes over an in-memory table; `down` makes every request 503. */
-async function startBackend(): Promise<{ url: string; stop: () => Promise<void>; setDown: (down: boolean) => void; calls: string[]; claims: Record<string, string> }> {
+async function startBackend(): Promise<{ url: string; stop: () => Promise<void>; setDown: (down: boolean) => void; setDelay: (ms: number) => void; calls: string[]; arrived: string[]; claims: Record<string, string> }> {
   const claims: Record<string, string> = {};
   const calls: string[] = [];
   let down = false;
+  let delayMs = 0;
+  const arrived: string[] = [];
   const server: Server = createServer((req, res) => {
+    arrived.push(`${req.method} ${req.url}`);
+    setTimeout(() => handle(req, res), delayMs);
+  });
+  const handle = (req: IncomingMessage, res: ServerResponse): void => {
     const login = verifyJoinToken(SECRET, (req.headers.authorization ?? '').replace('Bearer ', ''), Date.now(), 'api')?.login;
     const route = /^\/api\/offices\/([^/]+)\/desk-claims(\/me)?$/.exec(req.url ?? '');
     if (down || !login || !route) {
@@ -52,7 +58,7 @@ async function startBackend(): Promise<{ url: string; stop: () => Promise<void>;
         }
       });
     }
-  });
+  };
   await new Promise<void>((resolve) => server.listen(0, resolve));
   return {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
@@ -63,7 +69,11 @@ async function startBackend(): Promise<{ url: string; stop: () => Promise<void>;
     setDown: (value) => {
       down = value;
     },
+    setDelay: (ms) => {
+      delayMs = ms;
+    },
     calls,
+    arrived,
     claims,
   };
 }
@@ -207,5 +217,23 @@ describe('desk claims through the realtime server', () => {
     const second = await join('dan');
     expect(claimsIn(second.events)).toEqual([{ d2: 'cat' }]);
     await vi.waitFor(() => expect(claimsIn(first.events).at(-1)).toEqual({ d2: 'cat' }));
+  });
+
+  it('keeps a room alive for a joiner waiting on its claims load when the only client leaves', async () => {
+    const { join, backend } = await setup();
+    backend.setDown(true);
+    const ann = await join('ann');
+    backend.setDown(false);
+    backend.setDelay(300);
+    const arrivedBefore = backend.arrived.length;
+    const bobJoin = join('bob');
+    await vi.waitFor(() => expect(backend.arrived.length).toBeGreaterThan(arrivedBefore));
+    ann.channel.close();
+    const bob = await bobJoin;
+    backend.setDelay(0);
+
+    const cat = await join('cat');
+    bob.claim('d1');
+    await vi.waitFor(() => expect(claimsIn(cat.events).at(-1)).toEqual({ d1: 'bob' }));
   });
 });
