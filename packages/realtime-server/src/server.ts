@@ -107,6 +107,8 @@ export class Room {
   readonly actions: Actions;
   readonly bus: Bus;
   readonly clients = new Map<PlayerId, WsClient>();
+  /** Whether `deskClaims` came from the backend rather than being the empty default. */
+  claimsLoaded = false;
   private readonly mirror: InMemoryChannel;
   private readonly offMirror: () => void;
 
@@ -116,13 +118,11 @@ export class Room {
     readonly officeId: string,
     private readonly takeServerSeq: () => number,
     worldConstants: WorldConstants,
-    deskClaims: Record<string, string> = {},
   ) {
     this.store = createStore({ selfId: SERVER_SELF_ID, officeId });
     this.bus = createBus();
     this.actions = createActions(this.store, this.bus);
     this.actions.setWorldConstants(worldConstants);
-    this.actions.setDeskClaims(deskClaims);
 
     // The mirror receives every hub fan-out except its own broadcasts,
     // so server-originated events must also be applied to the store
@@ -158,8 +158,9 @@ export class Room {
     void this.mirror.send(this.worldConstantsEvent(seq));
   }
 
-  /** Adopt `claims` and fan them out to every hub peer. */
+  /** Adopt the backend's `claims` and fan them out to every hub peer. */
   pushDeskClaims(claims: Record<string, string>): void {
+    this.claimsLoaded = true;
     this.actions.setDeskClaims(claims);
     void this.mirror.send(this.deskClaimsEvent(this.takeServerSeq()));
   }
@@ -287,7 +288,7 @@ export class RealtimeServer {
   private readonly adminToken: string | undefined;
   private readonly sessionPolicy: RealtimeServerOptions['sessionPolicy'];
   private readonly deskClaims: DeskClaimsApi | undefined;
-  private readonly pendingRooms = new Map<string, Promise<Room>>();
+  private readonly claimLoads = new Map<Room, Promise<void>>();
   private readonly tokenSecret: string | undefined;
   private readonly now: () => number;
   private readonly fetch: typeof fetch;
@@ -532,29 +533,39 @@ export class RealtimeServer {
     return typeof officeId === 'string' && officeId !== '' ? officeId : this.defaultRoom.officeId;
   }
 
-  /** The office's room, created on first use with its claims loaded as `login`.
-   * Concurrent callers share one load. */
-  private roomFor(id: string, login: string): Promise<Room> {
+  private roomFor(id: string): Room {
     // ponytail: office ids and room count are unbounded; fine on a tailnet-only server.
-    const existing = this.rooms.get(id);
-    if (existing) {
-      return Promise.resolve(existing);
+    let room = this.rooms.get(id);
+    if (!room) {
+      room = new Room(id, this.takeServerSeq, this.worldConstants);
+      this.rooms.set(id, room);
     }
-    let pending = this.pendingRooms.get(id);
-    if (!pending) {
-      pending = this.createRoom(id, login).finally(() => this.pendingRooms.delete(id));
-      this.pendingRooms.set(id, pending);
-    }
-    return pending;
+    return room;
   }
 
-  private async createRoom(id: string, login: string): Promise<Room> {
-    const loaded = await this.deskClaims?.listDeskClaims(id, login);
-    const room = new Room(id, this.takeServerSeq, this.worldConstants, loaded?.ok ? loaded.claims : {});
-    this.rooms.set(id, room);
-    // Every waiting joiner continues before this fires, so a room nobody joined (they hung up mid-load) goes now.
-    setImmediate(() => this.dropIfEmpty(room));
-    return room;
+  /** Loads `room`'s claims as `login` until a load succeeds, so a backend outage at one join
+   * doesn't leave the room showing every desk free. Concurrent callers share one load. */
+  private ensureClaimsLoaded(room: Room, login: string): Promise<void> {
+    if (!this.deskClaims || room.claimsLoaded) {
+      return Promise.resolve();
+    }
+    let load = this.claimLoads.get(room);
+    if (!load) {
+      load = this.deskClaims
+        .listDeskClaims(room.officeId, login)
+        .then((loaded) => {
+          if (loaded.ok) {
+            room.pushDeskClaims(loaded.claims);
+          }
+        })
+        .finally(() => {
+          this.claimLoads.delete(room);
+          // Every waiting joiner continues before this fires, so a room nobody joined (they hung up mid-load) goes now.
+          setImmediate(() => this.dropIfEmpty(room));
+        });
+      this.claimLoads.set(room, load);
+    }
+    return load;
   }
 
   private dropIfEmpty(room: Room): void {
@@ -589,7 +600,8 @@ export class RealtimeServer {
         this.allowsMultiSession(officeId, login)
           .then(async (allowMulti) => {
             if (ws.readyState !== ws.OPEN || !this.wss) return;
-            const joined = await this.roomFor(officeId, login);
+            const joined = this.roomFor(officeId);
+            await this.ensureClaimsLoaded(joined, login);
             if (ws.readyState !== ws.OPEN || !this.wss) return;
             room = joined;
             client = this.acceptClient(room, ws, { userId: frame.userId, login, helloSeq }, allowMulti);

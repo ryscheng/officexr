@@ -11,7 +11,7 @@ const SECRET = 'api-secret';
 const DESKS = new Set(['d1', 'd2']);
 
 /** The backend's desk-claim routes over an in-memory table; `down` makes every request 503. */
-async function startBackend(): Promise<{ url: string; stop: () => Promise<void>; setDown: (down: boolean) => void; calls: string[] }> {
+async function startBackend(): Promise<{ url: string; stop: () => Promise<void>; setDown: (down: boolean) => void; calls: string[]; claims: Record<string, string> }> {
   const claims: Record<string, string> = {};
   const calls: string[] = [];
   let down = false;
@@ -64,6 +64,7 @@ async function startBackend(): Promise<{ url: string; stop: () => Promise<void>;
       down = value;
     },
     calls,
+    claims,
   };
 }
 
@@ -77,7 +78,7 @@ describe('desk claims through the realtime server', () => {
     }
   });
 
-  async function setup(apiUp = true) {
+  async function setup({ apiUp = true } = {}) {
     const backend = await startBackend();
     cleanups.push(backend.stop);
     const server = new RealtimeServer({
@@ -167,20 +168,18 @@ describe('desk claims through the realtime server', () => {
   it('shows a late joiner who is already seated', async () => {
     const { join } = await setup();
     const ann = await join('ann');
+    const watcher = await join('watcher');
     const envelope = { v: 1 as const, actorId: 'ann', t: Date.now() };
     await ann.channel.send({ ...envelope, seq: 1, kind: 'presence:position', pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, isAirborne: false } as NetEvent);
     await ann.channel.send({ ...envelope, seq: 2, kind: 'presence:seat', instanceId: 'chair-1' } as NetEvent);
-    await settle();
+    await vi.waitFor(() => expect(watcher.events).toContainEqual(expect.objectContaining({ kind: 'presence:seat' })));
 
     const late = await join('bob');
     expect(late.events).toContainEqual(expect.objectContaining({ kind: 'presence:seat', actorId: 'ann', instanceId: 'chair-1' }));
   });
 
-  it.each([
-    ['the API is down', false, true],
-    ['no API is configured', true, false],
-  ])('replies unavailable and starts empty when %s', async (_name, _up, apiConfigured) => {
-    const { join, backend } = await setup(apiConfigured);
+  it('replies unavailable and starts empty when the API is down', async () => {
+    const { join, backend } = await setup();
     backend.setDown(true);
     const ann = await join('ann');
     expect(claimsIn(ann.events)).toEqual([{}]);
@@ -188,5 +187,25 @@ describe('desk claims through the realtime server', () => {
     await vi.waitFor(() => expect(ann.results).toEqual([{ ok: false, error: 'unavailable' }]));
     expect(claimsIn(ann.events)).toEqual([{}]);
   });
-});
 
+  it('replies unavailable and starts empty when no API is configured', async () => {
+    const { join } = await setup({ apiUp: false });
+    const ann = await join('ann');
+    expect(claimsIn(ann.events)).toEqual([{}]);
+    ann.claim('d1');
+    await vi.waitFor(() => expect(ann.results).toEqual([{ ok: false, error: 'unavailable' }]));
+  });
+
+  it('retries the claims load at the next join after a failed one', async () => {
+    const { join, backend } = await setup();
+    backend.setDown(true);
+    const first = await join('bob');
+    expect(claimsIn(first.events)).toEqual([{}]);
+
+    backend.claims.d2 = 'cat';
+    backend.setDown(false);
+    const second = await join('dan');
+    expect(claimsIn(second.events)).toEqual([{ d2: 'cat' }]);
+    await vi.waitFor(() => expect(claimsIn(first.events).at(-1)).toEqual({ d2: 'cat' }));
+  });
+});

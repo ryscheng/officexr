@@ -12,11 +12,10 @@ export type DeskClaimsApi = Pick<OfficeApi, 'listDeskClaims' | 'claimDesk' | 're
 
 const UNAVAILABLE: DeskClaimOutcome = { ok: false, error: 'unavailable' };
 
-/** Per-room tail of pending claim calls: replies come back in call order, so the last broadcast is never a stale list. */
-const queues = new WeakMap<Room, Promise<unknown>>();
-
 /** Handles `desk:claim` frames by persisting through `api`, replying to the sender and broadcasting the new claims. Without an API every claim is `unavailable`. */
 export function createDeskClaimHandler(api: DeskClaimsApi | undefined): CustomFrameHandler {
+  /** Per-room tail of pending claim calls: replies come back in call order, so the last broadcast is never a stale list. */
+  const queues = new WeakMap<Room, Promise<unknown>>();
   return (client, kind, payload, room) => {
     if (kind !== DESK_CLAIM_KIND) {
       return false;
