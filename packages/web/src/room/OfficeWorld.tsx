@@ -159,10 +159,15 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         <OfficeSettingsDialog office={office} me={me} onSaved={setOffice} onClose={() => setSettingsOpen(false)} />
       )}
       {ready.voice && <JaasMeeting voice={ready.voice} />}
-      <ConnectionToast store={ready.local.store} />
       {!settings.isOpen && <ClickToPlayPrompt />}
-      {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
       <HudLayout
+        topCentre={
+          <>
+            <ReplacedBanner store={ready.local.store} />
+            {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
+            <ConnectionToast store={ready.local.store} />
+          </>
+        }
         topLeft={<OfficeNamePlate store={ready.local.store} name={office.name} />}
         topRight={
           <>
@@ -216,14 +221,13 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       )}
       {session.type === 'ready' && (
         <>
-          <ReplacedBanner store={session.local.store} />
           <PingReceiver bus={session.local.bus} store={session.local.store} />
           <PingInboxFeed bus={session.local.bus} store={session.local.store} inbox={pingInbox} />
           <LocalPresence actions={session.local.actions} voice={session.voice} />
         </>
       )}
       <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onCancel={join.cancel} />
-      {session.type === 'replaced' && <HudBanner message={REPLACED_MESSAGE} />}
+      {session.type === 'replaced' && <HudLayout topCentre={<HudBanner message={REPLACED_MESSAGE} />} />}
     </div>
   );
 }

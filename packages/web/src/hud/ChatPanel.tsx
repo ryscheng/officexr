@@ -3,7 +3,7 @@ import type { Actions, OfficeState, Store } from '@officexr/sdk';
 import { MessageSquare, SendHorizontal } from 'lucide-react';
 import { focusWorld, useStoreSelector } from '@officexr/world/top-down';
 import { IconButton } from './IconButton';
-import { Panel, PanelTitle } from './ui/Panel';
+import { CHIP, Panel, PanelTitle, TITLE_TEXT } from './ui/Panel';
 import { useChatVisibility } from './useChatVisibility';
 
 const MAX_MESSAGES = 50;
@@ -81,7 +81,7 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
         type="button"
         data-studio-panel
         onClick={compose}
-        className="pointer-events-auto flex items-center gap-2 rounded-hud-control border-2 border-hud-edge bg-hud-panel px-3 py-1.5 font-hud-title text-sm font-normal tracking-widest text-hud-text uppercase shadow-hud-control hover:bg-hud-edge pointer-coarse:min-h-11"
+        className={`pointer-events-auto flex items-center gap-2 px-3 py-1.5 text-sm pointer-coarse:min-h-11 ${CHIP} ${TITLE_TEXT}`}
       >
         <MessageSquare aria-hidden className="size-4" />
         Chat · Enter
@@ -114,6 +114,9 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
 
   const send = () => {
     const text = draft.trim();
+    if (!text) {
+      return;
+    }
     actions.appendChat({
       id: `${selfId}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
       authorId: selfId,

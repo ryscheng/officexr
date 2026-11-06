@@ -46,9 +46,6 @@ export interface TopDownPlayViewProps {
   /** Changing this re-loads and re-applies `mapName`. */
   reloadKey?: number;
   storages: PlayStorages;
-  /** Shown in place of a map-load error; dismissing it calls `onDismissError`. */
-  error?: string | null;
-  onDismissError?: () => void;
   onMapApplied?: (spawnPoints: readonly Vec3[]) => void;
   /** Pings another player; the 2D view shows a bell over a hovered player. Touch users ping from the web client's participant list. */
   onPingPlayer?: (id: PlayerId) => void;
@@ -310,11 +307,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
           onLeave={() => setHoveredId(null)}
         />
       )}
-      {props.error ? (
-        <ErrorBanner message={props.error} onDismiss={() => props.onDismissError?.()} />
-      ) : (
-        session.error && <ErrorBanner message={session.error} onDismiss={session.dismissError} />
-      )}
+      {session.error && <ErrorBanner message={session.error} onDismiss={session.dismissError} />}
       <NavGridProvider value={navGrid}>
         <ViewYawProvider viewYaw={viewYaw}>
           <PlayControlsProvider controls={controls}>{props.children}</PlayControlsProvider>

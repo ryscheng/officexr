@@ -7,7 +7,7 @@ export function HudBanner({ message, onDismiss }: { message: string; onDismiss?:
     <div
       role="alert"
       data-studio-panel
-      className="pointer-events-auto absolute top-3 left-1/2 z-30 flex max-w-[90vw] -translate-x-1/2 items-center gap-2 rounded-hud-control border-2 border-hud-rose-text/40 bg-hud-rose py-1.5 pr-1.5 pl-4 font-hud-body text-sm text-hud-rose-text shadow-hud-control"
+      className="pointer-events-auto flex max-w-[90vw] items-center gap-2 rounded-hud-control border-2 border-hud-rose-text/40 bg-hud-rose py-1.5 pr-1.5 pl-4 font-hud-body text-sm text-hud-rose-text shadow-hud-control"
     >
       <span className="py-1">{message}</span>
       {onDismiss && <IconButton icon={X} label="Dismiss" tone="danger" size="row" onClick={onDismiss} />}
