@@ -6,7 +6,7 @@ import type { OfficeState, PlayerState, ScreenShareSignal } from './types.ts';
 // Voice zones are left out: each client derives them from its own loaded map.
 export type SerializedOfficeState = Omit<
   OfficeState,
-  'proximity' | 'players' | 'departed' | 'screenShares' | 'worldConstants' | 'worldSettings' | 'voiceZones'
+  'proximity' | 'players' | 'departed' | 'screenShares' | 'worldConstants' | 'worldSettings' | 'voiceZones' | 'callRoster'
 > & {
   players: Record<
     string,

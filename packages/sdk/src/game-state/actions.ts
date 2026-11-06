@@ -29,6 +29,9 @@ export interface Actions {
   setSelfPosition(pos: Vec3, vel: Vec3, yaw: number, isAirborne: boolean): void;
   setMyJitsiRoom(roomId: string | null): void;
   setMyJitsiParticipantId(id: string | null): void;
+  callParticipantJoined(participantId: string, displayName: string): void;
+  callParticipantLeft(participantId: string): void;
+  clearCallRoster(): void;
   setSelfPresence(patch: { status?: PresenceStatus; mic?: MicState }): void;
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
@@ -168,6 +171,21 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     setMyJitsiParticipantId(id) {
       patchSelf({ jitsiParticipantId: id });
+    },
+
+    callParticipantJoined(participantId, displayName) {
+      store.setState((s) => ({ callRoster: { ...s.callRoster, [participantId]: { displayName } } }));
+    },
+
+    callParticipantLeft(participantId) {
+      store.setState((s) => {
+        const { [participantId]: _left, ...callRoster } = s.callRoster;
+        return { callRoster };
+      });
+    },
+
+    clearCallRoster() {
+      store.setState((s) => (Object.keys(s.callRoster).length > 0 ? { callRoster: {} } : s));
     },
 
     setSelfPresence({ status, mic }) {

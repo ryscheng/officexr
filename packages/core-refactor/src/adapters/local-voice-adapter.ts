@@ -47,6 +47,7 @@ export class LocalVoiceAdapter implements VoiceAdapter {
     this.setConnectionState('joining');
     this.currentRoom = roomId;
     this.setConnectionState('connected');
+    this.fire('local-participant-joined', { roomId, participantId: 'local-user' });
     this.onRoomJoined?.(roomId);
 
     this.pendingTimeout = setTimeout(() => {
@@ -55,6 +56,7 @@ export class LocalVoiceAdapter implements VoiceAdapter {
       this.fire('remote-participant-joined', {
         roomId,
         participantId: this.fakeParticipantId,
+        displayName: 'Local bot',
       });
     }, this.participantJoinDelay);
   }

@@ -70,6 +70,24 @@ describe('JaasVoiceAdapter', () => {
     expect(states.at(-1)).toBe('idle');
   });
 
+  it('reports the local id after connecting, and remote display names', async () => {
+    const { voice } = setup();
+    const events: unknown[] = [];
+    voice.on('connection-state-change', ({ state }) => events.push(state));
+    voice.on('local-participant-joined', (e) => events.push(e));
+    voice.on('remote-participant-joined', (e) => events.push(e));
+    const api = await joinedMeeting(voice);
+    api.emit('participantJoined', { id: 'p1', displayName: 'Ann' });
+    api.emit('participantJoined', { id: 'p2' });
+    expect(events).toEqual([
+      'joining',
+      'connected',
+      { roomId: 'room-a', participantId: 'me' },
+      { roomId: 'room-a', participantId: 'p1', displayName: 'Ann' },
+      { roomId: 'room-a', participantId: 'p2', displayName: '' },
+    ]);
+  });
+
   it('disposes a meeting that loads after the room changed', async () => {
     const { voice } = setup();
     await voice.joinRoom('room-a');
