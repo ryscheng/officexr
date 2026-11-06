@@ -14,6 +14,7 @@ import { Minimap } from '../hud/Minimap';
 import { ConnectionToast } from '../hud/ConnectionToast';
 import { HudBanner } from '../hud/HudBanner';
 import { HudLayout } from '../hud/HudLayout';
+import { RotatePrompt } from '../hud/RotatePrompt';
 import { OfficeNamePlate } from '../hud/OfficeNamePlate';
 import { PresenceList } from '../hud/PresenceList';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
@@ -225,6 +226,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         </>
       )}
       <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onCancel={join.cancel} />
+      <RotatePrompt />
       {session.type === 'replaced' && <HudLayout topCentre={<HudBanner message={REPLACED_MESSAGE} />} />}
     </div>
   );

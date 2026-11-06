@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { JaaSMeeting } from '@jitsi/react-sdk';
+import { useCoarsePointer } from '@officexr/world/top-down';
 import { Maximize2, Mic, MicOff, Minimize2, MonitorOff, MonitorUp } from 'lucide-react';
 import { IconButton } from '../hud/IconButton';
 import { useEscapeLayer } from '../hud/useEscapeLayer';
@@ -12,6 +13,7 @@ const useShareState = (voice: JaasVoiceAdapter) => useSyncExternalStore(voice.on
 const HIDDEN: CSSProperties = { bottom: 0, right: 0, opacity: 0, zIndex: -1 };
 // Under the office name plate: the right-hand HUD column would cover it.
 const SHOWING_SHARE: CSSProperties = { top: 80, left: 12, zIndex: 10 };
+const COARSE_SHARE_SIZE = { width: 288, height: 162 };
 const FOCUSED_SHARE: CSSProperties = { inset: 16, zIndex: 40, pointerEvents: 'auto' };
 
 // The SDK's iframe is height: 100% of a div it creates without a height, so it would collapse to 150px.
@@ -28,6 +30,7 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
   const meeting = useSyncExternalStore(subscribe, () => voice.getMeeting());
   const { viewing } = useShareState(voice);
   const [expanded, setExpanded] = useState(false);
+  const coarse = useCoarsePointer();
   const focused = expanded && viewing !== null;
   useEffect(() => {
     if (viewing === null) {
@@ -41,7 +44,11 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
   const startMuted = voice.isMuted();
   const wrapperStyle: CSSProperties = focused
     ? FOCUSED_SHARE
-    : { width: 480, height: 270, pointerEvents: 'none', ...(viewing ? SHOWING_SHARE : HIDDEN) };
+    : {
+        ...(coarse ? COARSE_SHARE_SIZE : { width: 480, height: 270 }),
+        pointerEvents: 'none',
+        ...(viewing ? SHOWING_SHARE : HIDDEN),
+      };
   return (
     <>
       {focused && (

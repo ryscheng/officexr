@@ -4,6 +4,8 @@ import type { PingSender } from '../ping/usePingSender';
 import { PersonList, type PersonRow } from './PersonList';
 import { labelsInJoinOrder, toPresencePlayer, type PresencePlayer } from './personRows';
 import { sameList } from './sameFields';
+import { ShareScreenToggle } from '../voice/JaasMeeting';
+import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { Panel, PanelTitle } from './ui/Panel';
 
 type CallPlayer = PresencePlayer & { mic: MicState; jitsiParticipantId: string | null };
@@ -56,18 +58,21 @@ export function CallList({
   clock,
   pinger,
   id,
+  voice,
 }: {
   store: Store;
   selfId: PlayerId;
   clock?: () => number;
   pinger?: PingSender;
   id?: string;
+  /** On touch the bar drops its share toggle, so the tray offers it. */
+  voice?: JaasVoiceAdapter;
 }) {
   const { state, rows } = useCallRows(store, selfId);
   return (
     <Panel
       id={id}
-      className="pointer-events-auto max-h-60 w-72 max-w-full overflow-y-auto overscroll-contain p-2 text-xs"
+      className="pointer-events-auto max-h-60 w-72 pointer-coarse:max-h-[40dvh] max-w-full overflow-y-auto overscroll-contain p-2 text-xs"
     >
       <div className="mb-1 flex items-center gap-2">
         <PanelTitle>In call</PanelTitle>
@@ -78,6 +83,11 @@ export function CallList({
         >
           {rows.length}
         </span>
+        {voice && (
+          <span className="ml-auto hidden pointer-coarse:inline-flex">
+            <ShareScreenToggle voice={voice} />
+          </span>
+        )}
       </div>
       {state === 'connected' ? (
         <PersonList label="People in your call" rows={rows} pinger={pinger} clock={clock} />

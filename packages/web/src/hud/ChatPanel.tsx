@@ -95,10 +95,10 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
         type="button"
         data-studio-panel
         onClick={compose}
-        className={`pointer-events-auto flex items-center gap-2 px-3 py-1.5 text-sm pointer-coarse:min-h-11 ${CHIP} ${TITLE_TEXT}`}
+        className={`pointer-events-auto flex items-center gap-2 px-3 py-1.5 text-sm pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center pointer-coarse:px-2 ${CHIP} ${TITLE_TEXT}`}
       >
         <MessageSquare aria-hidden className="size-4" />
-        Chat · Enter
+        <span className="pointer-coarse:sr-only">Chat · Enter</span>
       </button>
     );
   }

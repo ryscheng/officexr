@@ -17,7 +17,7 @@ import { floorPlanTransform, navGridPath, toMinimap } from './minimapGeometry';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { quantise } from './quantise';
 import { sameFields, sameList } from './sameFields';
-import { Panel, PanelTitle } from './ui/Panel';
+import { CHIP, Panel, PanelTitle } from './ui/Panel';
 import { useNow } from './useNow';
 
 const SIZE_PX = 180;
@@ -76,6 +76,20 @@ export function Minimap({
     setExpanded((o) => !o);
     focusWorld();
   };
+  if (coarse && !open) {
+    return (
+      <button
+        type="button"
+        aria-label="Show map"
+        aria-expanded={false}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={toggle}
+        className={`pointer-events-auto p-1 ${CHIP}`}
+      >
+        <MapView store={store} clock={clock} className="block size-20" />
+      </button>
+    );
+  }
   return (
     <Panel className="pointer-events-auto p-2 text-xs">
       <div className="flex items-center justify-between gap-3 px-1">
@@ -100,7 +114,17 @@ export function Minimap({
   );
 }
 
-function MapView({ id, store, clock }: { id: string; store: Store; clock?: () => number }) {
+function MapView({
+  id,
+  store,
+  clock,
+  className = 'mt-1 block',
+}: {
+  id?: string;
+  store: Store;
+  clock?: () => number;
+  className?: string;
+}) {
   const { self, peers } = useStoreSelector(store, selectPositions, samePositions);
   const clipId = useId();
   const viewYaw = useViewYaw();
@@ -115,7 +139,7 @@ function MapView({ id, store, clock }: { id: string; store: Store; clock?: () =>
       width={SIZE_PX}
       height={SIZE_PX}
       viewBox={`0 0 ${SIZE_PX} ${SIZE_PX}`}
-      className="mt-1 block"
+      className={className}
     >
       <clipPath id={clipId}>
         <circle cx={CENTRE} cy={CENTRE} r={MAP_PX / 2} />

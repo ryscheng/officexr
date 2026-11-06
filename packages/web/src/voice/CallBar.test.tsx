@@ -7,9 +7,10 @@ import { fakePlayControls } from '../hud/fakePlayControls';
 import { CallBar } from './CallBar';
 import type { JaasVoiceAdapter } from './JaasVoiceAdapter';
 
-beforeEach(() => {
-  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
-});
+const stubPointer = (coarse: boolean) =>
+  vi.stubGlobal('matchMedia', () => ({ matches: coarse, addEventListener: () => {}, removeEventListener: () => {} }));
+
+beforeEach(() => stubPointer(false));
 
 afterEach(() => {
   cleanup();
@@ -39,6 +40,24 @@ function setup() {
 }
 
 describe('CallBar', () => {
+  it('gates the label, share toggle and avatars to a fine pointer and shows the count on a coarse one', () => {
+    setup();
+    const coarseHidden = (el: Element) => el.closest('.pointer-coarse\\:hidden') !== null;
+    expect(coarseHidden(screen.getByRole('button', { name: 'Share screen' }))).toBe(true);
+    expect(coarseHidden(screen.getByRole('button', { name: /microphone/ }))).toBe(false);
+    const people = screen.getByRole('button', { name: 'In call, 0' });
+    expect(coarseHidden(people)).toBe(false);
+    expect(people.querySelector('.pointer-coarse\\:inline')?.textContent).toBe('0');
+  });
+
+  it('offers screen share in the tray for a coarse pointer', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: /In call/ }));
+    const shares = screen.getAllByRole('button', { name: 'Share screen' });
+    expect(shares).toHaveLength(2);
+    expect(shares[0].closest('.pointer-coarse\\:inline-flex')).not.toBeNull();
+  });
+
   it('opens and closes the tray from the toggle and reflects it in aria-expanded', () => {
     setup();
     const toggle = screen.getByRole('button', { name: /In call/ });

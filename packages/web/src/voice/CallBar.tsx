@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { ChevronUp } from 'lucide-react';
+import { ChevronUp, Users } from 'lucide-react';
 import type { PlayerId, Store } from '@officexr/sdk';
 import { CallList, useCallRows } from '../hud/CallList';
 import { useEscapeLayer } from '../hud/useEscapeLayer';
@@ -27,22 +27,26 @@ export function CallBar({
   const { state, rows } = useCallRows(store, selfId);
   const trayId = useId();
   return (
-    <div className="pointer-events-none flex max-w-full flex-col items-center gap-2">
-      {open && <CallList id={trayId} store={store} selfId={selfId} pinger={pinger} />}
+    <div className="pointer-events-none flex max-w-full flex-col items-center gap-2 pointer-coarse:items-end">
+      {open && <CallList id={trayId} store={store} selfId={selfId} pinger={pinger} voice={voice} />}
       <Panel className="pointer-events-auto flex max-w-full items-center gap-2 p-1.5">
         <MuteToggle voice={voice} />
-        <ZoneCallLabel store={store} joining={state === 'joining'} />
-        <ShareScreenToggle voice={voice} />
+        <div className="contents pointer-coarse:hidden">
+          <ZoneCallLabel store={store} joining={state === 'joining'} />
+          <ShareScreenToggle voice={voice} />
+        </div>
         <button
           type="button"
           aria-expanded={open}
           aria-controls={trayId}
+          aria-label={`In call, ${rows.length}`}
           // Keeps focus on the world so Space/Enter keep driving the avatar.
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1.5 rounded-hud-control bg-hud-inset px-2 py-1.5 text-xs whitespace-nowrap text-hud-text hover:bg-hud-edge pointer-coarse:min-h-11"
         >
-          <span className="flex -space-x-1.5" aria-hidden>
+          <Users aria-hidden className="hidden h-4 w-4 pointer-coarse:block" />
+          <span className="flex -space-x-1.5 pointer-coarse:hidden" aria-hidden>
             {rows.slice(0, PREVIEW_AVATARS).map((row) => (
               <span
                 key={row.id}
@@ -52,7 +56,8 @@ export function CallBar({
               </span>
             ))}
           </span>
-          In call · {rows.length}
+          <span className="pointer-coarse:hidden">In call · {rows.length}</span>
+          <span className="hidden pointer-coarse:inline">{rows.length}</span>
           <ChevronUp aria-hidden className={`h-3.5 w-3.5 ${open ? 'rotate-180' : ''}`} />
         </button>
       </Panel>

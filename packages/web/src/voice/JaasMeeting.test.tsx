@@ -2,7 +2,7 @@
 import { EventEmitter } from 'node:events';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type IJitsiMeetExternalApi from '@jitsi/react-sdk/lib/types/IJitsiMeetExternalApi';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JaasMeeting, MuteToggle, ShareScreenToggle } from './JaasMeeting';
 import { JaasVoiceAdapter, MAX_MUTE_CORRECTIONS } from './JaasVoiceAdapter';
 
@@ -20,7 +20,15 @@ vi.mock('@jitsi/react-sdk', () => ({
   ),
 }));
 
-afterEach(cleanup);
+const stubPointer = (coarse: boolean) =>
+  vi.stubGlobal('matchMedia', () => ({ matches: coarse, addEventListener: () => {}, removeEventListener: () => {} }));
+
+beforeEach(() => stubPointer(false));
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const newVoice = () => new JaasVoiceAdapter({ appId: 'app', jwt: Promise.resolve('jwt'), displayName: 'Alice' });
 
@@ -175,6 +183,13 @@ describe('JaasMeeting focus toggle', () => {
     act(() => void api.emit('contentSharingParticipantsChanged', { data: ['bob'] }));
     return { voice, api };
   }
+
+  it('shrinks the share frame on a coarse pointer', async () => {
+    stubPointer(true);
+    await showShare();
+    expect(wrapper().style.width).toBe('288px');
+    expect(wrapper().style.height).toBe('162px');
+  });
 
   it('has no toggle until a share is shown', async () => {
     const voice = newVoice();
