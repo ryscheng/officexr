@@ -1,4 +1,4 @@
-export type ShortcutGroup = 'Movement' | 'Camera' | 'Chat' | 'Help';
+export type ShortcutGroup = 'Movement' | 'Camera' | 'Chat' | 'Menu';
 
 export interface Shortcut {
   group: ShortcutGroup;
@@ -17,8 +17,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { group: 'Camera', keys: 'Esc', description: 'Release the mouse' },
   { group: 'Chat', keys: 'Enter', description: 'Open chat, send a message, or close an empty chat' },
   { group: 'Chat', keys: 'Esc', description: 'Close chat' },
-  { group: 'Help', keys: '?', description: 'Show keyboard shortcuts' },
-  { group: 'Help', keys: 'Esc', description: 'Close menus and dialogs' },
+  { group: 'Menu', keys: 'Esc', description: 'Open settings (when the mouse is free)' },
+  { group: 'Menu', keys: 'Esc', description: 'Back, then close settings' },
+  { group: 'Menu', keys: '?', description: 'Open keybinds' },
 ];
 
 export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [...new Set(SHORTCUTS.map((s) => s.group))];

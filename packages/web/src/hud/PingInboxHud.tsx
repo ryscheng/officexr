@@ -4,6 +4,7 @@ import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { focusWorld, usePlayControls, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import { IconButton } from './IconButton';
+import { useEscapeLayer } from './useEscapeLayer';
 import { sameList } from './sameFields';
 import { useNow } from './useNow';
 
@@ -33,20 +34,10 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
       inbox.markAllRead();
     }
   }, [open, inbox, unread]);
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const onKey = (e: KeyboardEvent) => {
-      const typing = e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable],dialog');
-      if (e.key === 'Escape' && !e.defaultPrevented && !typing) {
-        setOpen(false);
-        focusWorld();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
+  useEscapeLayer(open, () => {
+    setOpen(false);
+    focusWorld();
+  });
   const go = (id: PlayerId) => {
     goTo(id);
     focusWorld();
