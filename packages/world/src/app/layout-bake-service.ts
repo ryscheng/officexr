@@ -99,7 +99,7 @@ export interface BakeResultBytes {
  *
  * @param doc         The layout document to bake.
  * @param kindLookup  Resolver for kind IDs → `WorldObjectKind`.
- * @param gltfLoader  Async loader that returns raw GLB bytes for a URL.
+ * @param gltfLoader  Async loader that returns GLB bytes or a decoded `Document` for a kind.
  * @param geometry    Canonical voxel→world transform service. The bake
  *                    uses `geometry.meshTransform(position, kindId, yawDeg)` so the
  *                    baked GLB matches the runtime renderer's positioning
@@ -107,10 +107,17 @@ export interface BakeResultBytes {
  *                    `<ObjectInstances>` consumes — no bespoke math here.
  * @param options     Optional bake options (IO instance, optimizer).
  */
+/**
+ * Returns a kind's source model as GLB bytes, or as an already-decoded
+ * `Document` (which skips a re-encode that would need the same codecs the
+ * decoder used).
+ */
+export type GltfLoader = (url: string, kind: WorldObjectKind) => Promise<Uint8Array | Document>;
+
 export async function bakeLayout(
   doc: LayoutDocument,
   kindLookup: KindLookup,
-  gltfLoader: (url: string) => Promise<Uint8Array>,
+  gltfLoader: GltfLoader,
   geometry: InstanceGeometryService,
   options?: BakeOptions,
 ): Promise<BakeResultBytes> {
@@ -130,17 +137,19 @@ export async function bakeLayout(
 
   const io: PlatformIO = options?.io ?? new WebIO();
 
-  // Cache loaded source documents by gltfPath to avoid redundant network/fs
+  // Cache loaded source documents by sourceObject or gltfPath to avoid redundant network/fs
   // fetches and re-parses when the same kind appears multiple times.
   const sourceDocCache = new Map<string, Document>();
 
-  async function loadSourceDoc(url: string): Promise<Document> {
-    const cached = sourceDocCache.get(url);
+  async function loadSourceDoc(kind: WorldObjectKind): Promise<Document> {
+    const url = kind.sourceObject ?? kind.gltfPath;
+    const cacheKey = url;
+    const cached = sourceDocCache.get(cacheKey);
     if (cached) return cached;
 
-    let bytes: Uint8Array;
+    let loaded: Uint8Array | Document;
     try {
-      bytes = await gltfLoader(url);
+      loaded = await gltfLoader(kind.gltfPath, kind);
     } catch (err) {
       throw new Error(
         `bakeLayout("${doc.name}"): failed to load GLTF for "${url}": ${(err as Error).message}`,
@@ -149,14 +158,14 @@ export async function bakeLayout(
 
     let sourceDoc: Document;
     try {
-      sourceDoc = await io.readBinary(bytes);
+      sourceDoc = loaded instanceof Document ? loaded : await io.readBinary(loaded);
     } catch (err) {
       throw new Error(
         `bakeLayout("${doc.name}"): failed to parse GLTF for "${url}": ${(err as Error).message}`,
       );
     }
 
-    sourceDocCache.set(url, sourceDoc);
+    sourceDocCache.set(cacheKey, sourceDoc);
     return sourceDoc;
   }
 
@@ -176,7 +185,7 @@ export async function bakeLayout(
 
     seenKindIds.add(inst.kindId);
 
-    const sourceDoc = await loadSourceDoc(kind.gltfPath);
+    const sourceDoc = await loadSourceDoc(kind);
 
     // Merge the source document into the output document.  mergeDocuments
     // returns a property-map that maps each source Property to its freshly-

@@ -31,13 +31,15 @@ export type McpApp = StudioStorageApp;
 /** The production options: a real Chromium renderer and one lock and job registry for the process. */
 export function createStudioMcpOptions({
   modelRoot,
+  sourceReader,
   chromiumPath,
-}: Pick<StudioMcpOptions, 'modelRoot'> & {
+}: Pick<StudioMcpOptions, 'modelRoot' | 'sourceReader'> & {
   /** Chromium that `render_view` launches; Playwright's own download when unset. */
   chromiumPath?: string;
 }): StudioMcpOptions {
   return {
     modelRoot,
+    sourceReader,
     heavyWorkLock: new HeavyWorkLock('a bake or render'),
     renderer: createChromiumRenderer({ executablePath: chromiumPath }),
     bakeJobs: new BakeJobs(),

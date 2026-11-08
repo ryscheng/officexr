@@ -18,6 +18,7 @@
     "./vite-plugin-bots": "./vite-plugin-bots.ts",
     "./bake-layout-glb": "./src/app/bake-layout-glb.ts",
     "./bake-source": "./src/app/evaluate-bake.ts",
+    "./model-source": "./src/app/model-source.ts",
     "./glb-compression": "./src/app/glb-compression.ts",
     "./asset-content-type": "./src/app/asset-content-type.ts"
   },

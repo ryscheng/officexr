@@ -48,6 +48,8 @@ export interface WorldObjectKind {
   label: string;
   /** Public URL the renderer loads via `useGLTF`. */
   gltfPath: string;
+  /** Private raw source key (`packs/<pack>/...`); layout bakes read it instead of `gltfPath`. */
+  sourceObject?: string;
   /** CSS hex used for the palette swatch + spawn-marker fallback. */
   swatch: string;
   /** Whether characters can stand on / pass through this object. */
@@ -334,6 +336,21 @@ function normalizeTilingAxes(
   return { x: blockDefault, y: blockDefault, z: blockDefault };
 }
 
+const SOURCE_OBJECT_PATTERN = /^packs\/[A-Za-z0-9._-]+\/[^\\]+\.(glb|gltf)$/;
+
+function normalizeSourceObject(raw: unknown, idx: number): string {
+  if (
+    typeof raw !== 'string' ||
+    !SOURCE_OBJECT_PATTERN.test(raw) ||
+    raw.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')
+  ) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].sourceObject must be a normalized "packs/<pack>/<path>.glb|.gltf" key`,
+    );
+  }
+  return raw;
+}
+
 export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
   if (!raw || typeof raw !== 'object') {
     throw new Error(`world-object-kind-catalog: kinds[${idx}] is not an object`);
@@ -353,6 +370,7 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     id: requireString('id'),
     label: requireString('label'),
     gltfPath: requireString('gltfPath'),
+    ...(k.sourceObject === undefined ? {} : { sourceObject: normalizeSourceObject(k.sourceObject, idx) }),
     swatch: requireString('swatch'),
     walkable: Boolean(k.walkable ?? false),
     scale: typeof k.scale === 'number' ? k.scale : WORLD_OBJECT_KIND_DEFAULTS.scale,

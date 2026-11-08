@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { ModelSourceReader } from '@officexr/world/model-source';
 import type { StudioDocuments } from './studio-documents.ts';
 import type { HeavyWorkLock } from './heavy-work-lock.ts';
 import type { ViewRenderer } from './renderer.ts';
@@ -16,6 +17,8 @@ import { registerWorldTools } from './tools/world.ts';
 export interface StudioMcpOptions {
   /** Directory the catalog's `/models/...` paths resolve against when baking. */
   modelRoot: string;
+  /** Reads catalog kinds' private `sourceObject` models when baking. */
+  sourceReader?: ModelSourceReader;
   /** Shared across requests: each request builds a fresh server, and a bake peaks near 290 MB. */
   heavyWorkLock: HeavyWorkLock;
   renderer: ViewRenderer;
@@ -28,14 +31,14 @@ export interface StudioMcpOptions {
 /** `studioOrigin` is where this request reached the studio; the renderer loads its render page from there. */
 export function createStudioMcpServer(
   docs: StudioDocuments,
-  { modelRoot, heavyWorkLock, renderer, bakeJobs, bakeLayout = bakeLayoutLazily }: StudioMcpOptions,
+  { modelRoot, sourceReader, heavyWorkLock, renderer, bakeJobs, bakeLayout = bakeLayoutLazily }: StudioMcpOptions,
   studioOrigin: string,
 ): McpServer {
   const server = new McpServer({ name: 'officexr-studio', version: '0.1.0' });
   registerRoomTools(server, docs);
   registerMapTools(server, docs);
   registerLayoutTools(server, docs);
-  const bakeDeps = { docs, modelRoot, bake: bakeLayout };
+  const bakeDeps = { docs, modelRoot, sourceReader, bake: bakeLayout };
   registerBakedLayoutTools(server, heavyWorkLock, bakeDeps);
   registerMapBakeTools(server, heavyWorkLock, bakeJobs, bakeDeps);
   registerRenderTools(server, docs, studioOrigin, renderer, heavyWorkLock);

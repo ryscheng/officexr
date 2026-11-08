@@ -72,6 +72,30 @@ describe('normalizeKind — tilingAxes', () => {
 // normalizeKind — gravity
 // ---------------------------------------------------------------------------
 
+describe('normalizeKind — sourceObject', () => {
+  it('is absent by default', () => {
+    expect('sourceObject' in normalizeKind(minimalRaw(), 0)).toBe(false);
+  });
+
+  it.each(['packs/kenney/chair.glb', 'packs/a.b-c_1/sub dir/chair.gltf'])('accepts %s', (sourceObject) => {
+    expect(normalizeKind(minimalRaw('block', { sourceObject }), 0).sourceObject).toBe(sourceObject);
+  });
+
+  it.each([
+    'chair.glb',
+    '/packs/kenney/chair.glb',
+    'packs/kenney/../other/chair.glb',
+    'packs/kenney/./chair.glb',
+    'packs/kenney//chair.glb',
+    'packs/kenney/a\\chair.glb',
+    'packs/kenney/chair.png',
+    'packs/../chair.glb',
+    42,
+  ])('rejects %s', (sourceObject) => {
+    expect(() => normalizeKind(minimalRaw('block', { sourceObject }), 0)).toThrow('sourceObject');
+  });
+});
+
 describe('normalizeKind — gravity', () => {
   it('defaults false when absent', () => {
     const kind = normalizeKind(minimalRaw(), 0);
