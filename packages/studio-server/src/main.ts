@@ -95,7 +95,7 @@ const publicServer = createPublicServer({
   isStudioAllowed: cacheAllowlist(pgAllowlist(pool, 'studio_allowlist')),
   oauth:
     oauthEnv.type === 'enabled'
-      ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin: cacheAllowlist(pgAllowlist(pool, 'admin_allowlist')) }).handler
+      ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin: cacheAllowlist(pgAllowlist(pool, 'admin_allowlist')), mcp: internal.mcp }).handler
       : undefined,
 });
 if (oauthEnv.type === 'disabled') {

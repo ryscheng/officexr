@@ -2,7 +2,8 @@ import type { NextHandleFunction } from 'connect';
 import express, { type RequestHandler } from 'express';
 import { sessionIdentity } from '@officexr/server';
 import { InvalidClientError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
-import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
+import { getOAuthProtectedResourceMetadataUrl, mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { pathname } from '../http.ts';
 import type { IsAllowed } from '../studio-gate.ts';
@@ -67,6 +68,8 @@ export function createOAuthApp(opts: {
   /** The web backend's `PUBLIC_URL`, where `/auth/google` signs users in. */
   webPublicUrl: string;
   now?: () => Date;
+  /** Served at `/mcp` behind a bearer token for an admin, audience-bound to `${issuerUrl}/mcp`. */
+  mcp?: NextHandleFunction;
 }): { handler: NextHandleFunction; verifyAccessToken: (token: string) => Promise<AuthInfo> } {
   const issuerUrl = new URL(opts.issuerUrl);
   const resource = new URL('/mcp', issuerUrl);
@@ -89,8 +92,19 @@ export function createOAuthApp(opts: {
   });
   app.use(['/token', '/revoke'], express.urlencoded({ extended: false }), requireClientSecret(opts.store));
   app.use(mcpAuthRouter({ provider, issuerUrl, resourceServerUrl: resource }));
+  if (opts.mcp) {
+    app.use(
+      '/mcp',
+      requireBearerAuth({
+        verifier: provider,
+        resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resource),
+        expectedResource: resource,
+      }),
+      opts.mcp,
+    );
+  }
 
-  // Express swaps the prototypes of every request it handles, so only OAuth requests are handed to it.
+  // Express swaps the prototypes of every request it handles, so only OAuth and /mcp requests are handed to it.
   const paths = new Set([
     '/.well-known/oauth-authorization-server',
     '/.well-known/oauth-protected-resource/mcp',
@@ -99,6 +113,7 @@ export function createOAuthApp(opts: {
     '/token',
     '/register',
     '/revoke',
+    ...(opts.mcp ? ['/mcp'] : []),
   ]);
   return {
     handler: (req, res, next) => (paths.has(pathname(req) ?? '') ? app(req as express.Request, res as express.Response, next) : next()),
