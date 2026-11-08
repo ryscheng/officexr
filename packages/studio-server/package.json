@@ -15,6 +15,7 @@
   "dependencies": {
     "@gltf-transform/core": "^4.1.2",
     "@google-cloud/storage": "7.22.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "@officexr/sdk": "workspace:*",
     "@officexr/server": "workspace:*",
     "@officexr/studio-mcp": "workspace:*",

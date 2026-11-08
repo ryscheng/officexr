@@ -13,7 +13,7 @@ import { createStudioStorage } from '@officexr/world/vite-plugin-storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { createInternalServer, createPublicServer, type StudioListener } from './app.ts';
-import { cacheIsStudioAllowed, type IsStudioAllowed } from './studio-gate.ts';
+import { cacheAllowlist, type IsAllowed } from './studio-gate.ts';
 
 const DOWN = 'http://127.0.0.1:1';
 const SECRET = 'test-secret';
@@ -21,7 +21,7 @@ const FRONTEND = 'https://studio.example.com';
 const ALLOWED = 'allowed@example.com';
 
 let sessionStore: session.MemoryStore;
-let isStudioAllowed: IsStudioAllowed;
+let isStudioAllowed: IsAllowed;
 
 /** A session cookie for `login`, stored the way the web backend's sign-in leaves it. */
 async function signIn(login: string) {
@@ -276,12 +276,12 @@ describe('public server', () => {
   });
 });
 
-describe('cacheIsStudioAllowed', () => {
+describe('cacheAllowlist', () => {
   it('reuses an answer for the ttl and does not remember failures', async () => {
     let clock = 0;
     let lookups = 0;
     let fail = true;
-    const cached = cacheIsStudioAllowed(
+    const cached = cacheAllowlist(
       async () => {
         lookups++;
         if (fail) {

@@ -69,7 +69,7 @@ officexr/
   `PUBLIC_PORT` (default 5175) also serves `/api/*` and `/models`; everything else is a 404. The public
   port (`studio-gate.ts`) requires the web backend's session cookie for a login on the SQL-managed
   `studio_allowlist` (as well as `login_allowlist`, to sign in) on every request and `/ws` upgrade, and
-  serves `GET /api/me` (200 / 401 / 403). It needs `SESSION_SECRET`, `SUPABASE_DB_URL` and `COOKIE_DOMAIN`
+  serves `GET /api/me` (200 / 401 / 403). The SQL-managed `admin_allowlist` table names the logins allowed to authorize MCP OAuth clients (`/mcp`). It needs `SESSION_SECRET`, `SUPABASE_DB_URL` and `COOKIE_DOMAIN`
   matching the web backend, plus `FRONTEND_ORIGINS` (CORS; the first origin sets cookie `secure` and must sit
   under `COOKIE_DOMAIN`); example insert in the README. Both ports share
   one storage instance, so save hooks fire once per write. Other env: `OFFICEXR_STUDIO_DATA_DIR`

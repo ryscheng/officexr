@@ -335,6 +335,9 @@ importers:
       '@google-cloud/storage':
         specifier: 7.22.0
         version: 7.22.0
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.0
+        version: 1.32.0(zod@3.25.76)
       '@officexr/sdk':
         specifier: workspace:*
         version: link:../sdk
@@ -11130,7 +11133,7 @@ snapshots:
 
   is-core-module@2.16.1:
     dependencies:
-      hasown: 2.0.4
+      hasown: 2.0.2
     optional: true
 
   is-directory@0.3.1:

@@ -151,6 +151,12 @@ The studio backend is a separate process, `pnpm --filter @officexr/studio-server
   insert into studio_allowlist (kind, value) values ('email', 'someone@example.com');
   ```
 
+  `admin_allowlist` (same shape) lists who may authorize MCP clients:
+
+  ```sql
+  insert into admin_allowlist (kind, value) values ('email', 'someone@example.com');
+  ```
+
 ## Building
 
 ```bash
