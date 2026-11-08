@@ -46,10 +46,15 @@ export function ObjectApp() {
         <ObjectPreviewCanvas kind={catalog.selectedKind} />
         <PreviewHud kind={catalog.selectedKind ? catalog.selectedKind.id : null} />
         <div className="absolute right-3 top-3 flex flex-col items-end gap-2">
-          <Button size="sm" onClick={() => setUploadOpen((open) => !open)}>
+          <Button
+            size="sm"
+            aria-expanded={uploadOpen}
+            aria-controls="model-upload-panel"
+            onClick={() => setUploadOpen((open) => !open)}
+          >
             Upload models
           </Button>
-          {uploadOpen && <ModelUploadPanel onFinalized={catalog.upsertKinds} />}
+          <ModelUploadPanel id="model-upload-panel" hidden={!uploadOpen} onFinalized={catalog.upsertKind} />
         </div>
       </main>
       <SidePanel>

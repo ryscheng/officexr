@@ -1,13 +1,13 @@
 /**
- * Object editor model upload panel in hermetic mode (`?test=1`): a fake
- * `ModelSourcesClient` stands in for the REST API and GCS, so the whole
- * pick -> upload -> finalize -> catalog refresh flow runs without a backend.
+ * Object editor "Upload models" panel in hermetic mode (`?test=1`): a fake
+ * `ModelSourcesClient` (seeded as `modelSourcesClient`) stands in for the REST API and GCS.
+ * Covers pick, upload, a busy finalize that retries, and the new kind reaching KindList.
  */
 
 import { expect, test } from '@playwright/test';
 import { goToModeHermetic } from './helpers.ts';
 
-test('uploads a folder, finalizes only the entries, and lists the new kinds', async ({ page }) => {
+test('uploads files, retries a busy finalize, and lists the new kind', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as { __OFFICEXR_TEST_SEED__: Record<string, unknown>; __puts: string[] };
     w.__puts = [];
@@ -19,11 +19,11 @@ test('uploads a folder, finalizes only the entries, and lists the new kinds', as
         put: async (target: { path: string }) => {
           w.__puts.push(target.path);
         },
+        recoverKind: async () => null,
         finalize: async (_pack: string, entry: string) => {
           // First call is busy so the "studio busy" state is exercised.
           if (finalizeCalls++ === 0) {
-            const { StudioBusyError } = await import('/src/modes/object/upload/modelSourcesClient.ts');
-            throw new StudioBusyError();
+            throw Object.assign(new Error('studio busy'), { name: 'StudioBusyError' });
           }
           return {
             id: `uploaded/${entry}`,
@@ -38,10 +38,10 @@ test('uploads a folder, finalizes only the entries, and lists the new kinds', as
   await goToModeHermetic(page, 'object');
 
   await page.getByRole('button', { name: 'Upload models' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Upload models' });
+  const dialog = page.getByRole('region', { name: 'Upload models' });
   await dialog.getByLabel('Pack name').fill('office');
   const png = Buffer.from('png');
-  await dialog.getByLabel('Pick files').setInputFiles([
+  await dialog.getByLabel('Files', { exact: true }).setInputFiles([
     { name: 'chair.glb', mimeType: 'model/gltf-binary', buffer: Buffer.from('glb') },
     { name: 'tex.png', mimeType: 'image/png', buffer: png },
     { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('no') },

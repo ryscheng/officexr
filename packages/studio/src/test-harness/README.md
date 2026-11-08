@@ -97,7 +97,8 @@ storages seeded from `window.__OFFICEXR_TEST_SEED__`. The
 
 Sounds mode reads its in-memory `InMemorySoundLibraryStorage` from the
 `soundStorage` entry of `TestStorages`; seed it with
-`sounds: [{ name, bytes: number[] }]` (see `tests/playwright/sounds-editor.spec.ts`).
+`sounds: [{ name, bytes: number[] }]` (see `tests/playwright/sounds-editor.spec.ts`),
+`modelSourcesClient` (a `ModelSourcesClient` object, set from an `addInitScript` function since it is not JSON; see `tests/playwright/model-upload-hermetic.spec.ts`).
 
 In test mode `window.__OFFICEXR_TEST_API__.worldConstantsSaves` lists every
 document saved to the world-constants storage, so a spec can assert what the
@@ -109,7 +110,7 @@ gitignored `packages/world/world-settings.json` is never loaded.
 **CI** runs `pnpm test:e2e:ci`, now scoped to: `map-editor`,
 `map-editor-hermetic`, `object-editor`, `routing`, `room-editor`,
 `debug-mode`, `character-on-surface`, `debug-world-constants-hermetic`,
-`render-page`, `render-view-mcp`, and `sounds-editor`.
+`render-page`, `render-view-mcp`, `sounds-editor`, and `model-upload-hermetic`.
 
 The previously-rotted specs are repaired:
 

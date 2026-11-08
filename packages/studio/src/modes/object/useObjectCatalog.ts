@@ -29,8 +29,8 @@ export interface UseObjectCatalogResult {
   selectedKind: WorldObjectKind | null;
   setSelectedKindId: (id: string | null) => void;
   applyPatch: (partial: Partial<WorldObjectKind>) => void;
-  /** Adds or replaces kinds the server already persisted (e.g. after a model finalize). */
-  upsertKinds: (incoming: readonly WorldObjectKind[]) => void;
+  /** Adds or replaces a kind the server already persisted (e.g. after a model finalize). */
+  upsertKind: (incoming: WorldObjectKind) => void;
 }
 
 const LAST_KIND_KEY = 'officexr:studio:lastObjectKind';
@@ -138,15 +138,20 @@ export function useObjectCatalog(): UseObjectCatalogResult {
     [selectedKindId, scheduleSave, catalogService],
   );
 
-  const upsertKinds = useCallback(
-    (incoming: readonly WorldObjectKind[]) => {
+  // ponytail: only kinds this tab finalizes are merged; kinds from other tabs or MCP appear after a reload.
+  const upsertKind = useCallback(
+    (incoming: WorldObjectKind) => {
       const current = catalogService.getCatalog();
-      const ids = new Set(incoming.map((k) => k.id));
-      catalogService.replaceCatalog({
+      const next = {
         ...current,
         updatedAt: Date.now(),
-        kinds: [...current.kinds.filter((k) => !ids.has(k.id)), ...incoming],
-      });
+        kinds: [...current.kinds.filter((k) => k.id !== incoming.id), incoming],
+      };
+      catalogService.replaceCatalog(next);
+      // A debounced save already holds the pre-merge catalog; without this it would PUT it and drop the kind server-side.
+      if (pendingSave.current) {
+        pendingSave.current = next;
+      }
     },
     [catalogService],
   );
@@ -157,6 +162,6 @@ export function useObjectCatalog(): UseObjectCatalogResult {
     selectedKind,
     setSelectedKindId,
     applyPatch,
-    upsertKinds,
+    upsertKind,
   };
 }
