@@ -13,9 +13,11 @@ export type StoredToken = Grant & { kind: TokenKind };
  * SHA-256 hashes are stored. A client's `client_secret` is never returned: check it with `verifyClientSecret`.
  */
 export interface OAuthStore {
+  /** Omits `client_secret`, so the SDK's `authenticateClient` can't check it: verify confidential clients with `verifyClientSecret`. */
   getClient(clientId: string): Promise<OAuthClientInformationFull | null>;
   /** Throws if `client_id` is already registered. */
   registerClient(client: OAuthClientInformationFull): Promise<void>;
+  /** False for an unknown, secretless or wrong-secret client, or one whose `client_secret_expires_at` (epoch seconds, 0 = never) has passed. */
   verifyClientSecret(clientId: string, secret: string): Promise<boolean>;
   /** Throws if the client is unknown. */
   saveCode(code: string, grant: CodeGrant): Promise<void>;
@@ -50,6 +52,9 @@ const toGrant = (row: GrantRow): Grant => ({
   expiresAt: row.expires_at,
 });
 
+const copyGrant = <T extends Grant>(grant: T): T => ({ ...grant, scopes: [...grant.scopes], expiresAt: new Date(grant.expiresAt) });
+
+// ponytail: expired and consumed codes and tokens are never purged; add a periodic delete once the tables grow.
 export class PgOAuthStore implements OAuthStore {
   constructor(private readonly pool: pg.Pool) {}
 
@@ -72,7 +77,9 @@ export class PgOAuthStore implements OAuthStore {
 
   async verifyClientSecret(clientId: string, secret: string) {
     const { rows } = await this.pool.query<{ ok: boolean }>(
-      'select secret_hash = $2 as ok from mcp_oauth_clients where client_id = $1 and secret_hash is not null',
+      `select secret_hash = $2
+         and coalesce((metadata->>'client_secret_expires_at')::bigint, 0) not between 1 and extract(epoch from now()) as ok
+       from mcp_oauth_clients where client_id = $1 and secret_hash is not null`,
       [clientId, sha256(secret)],
     );
     return rows[0]?.ok ?? false;
@@ -94,7 +101,7 @@ export class PgOAuthStore implements OAuthStore {
       [sha256(code)],
     );
     const row = rows[0];
-    return row && { ...toGrant(row), codeChallenge: row.code_challenge, redirectUri: row.redirect_uri };
+    return row ? { ...toGrant(row), codeChallenge: row.code_challenge, redirectUri: row.redirect_uri } : null;
   }
 
   async saveToken(token: string, kind: TokenKind, grant: Grant) {
@@ -112,7 +119,7 @@ export class PgOAuthStore implements OAuthStore {
       [sha256(token)],
     );
     const row = rows[0];
-    return row && { ...toGrant(row), kind: row.kind };
+    return row ? { ...toGrant(row), kind: row.kind } : null;
   }
 
   async revokeToken(token: string) {
@@ -150,8 +157,12 @@ export class InMemoryOAuthStore implements OAuthStore {
   }
 
   async verifyClientSecret(clientId: string, secret: string) {
-    const hash = this.clients.get(clientId)?.secretHash;
-    return hash != null && hash === sha256(secret);
+    const entry = this.clients.get(clientId);
+    if (entry?.secretHash == null || entry.secretHash !== sha256(secret)) {
+      return false;
+    }
+    const expiresAt = entry.client.client_secret_expires_at ?? 0;
+    return expiresAt === 0 || expiresAt * 1000 > this.now().getTime();
   }
 
   async saveCode(code: string, grant: CodeGrant) {
@@ -165,7 +176,7 @@ export class InMemoryOAuthStore implements OAuthStore {
       return null;
     }
     entry.consumed = true;
-    return entry.grant;
+    return copyGrant(entry.grant);
   }
 
   async saveToken(token: string, kind: TokenKind, grant: Grant) {
@@ -175,7 +186,7 @@ export class InMemoryOAuthStore implements OAuthStore {
 
   async findToken(token: string) {
     const entry = this.tokens.get(sha256(token));
-    return entry && !entry.revoked && entry.token.expiresAt > this.now() ? entry.token : null;
+    return entry && !entry.revoked && entry.token.expiresAt > this.now() ? copyGrant(entry.token) : null;
   }
 
   async revokeToken(token: string) {

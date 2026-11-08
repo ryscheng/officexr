@@ -31,6 +31,18 @@ function oauthStoreContract(name: string, create: () => OAuthStore) {
       expect(await store.verifyClientSecret('nope', 's3cret')).toBe(false);
     });
 
+    it('rejects a secret whose client_secret_expires_at has passed', async () => {
+      const store = create();
+      const past = Math.floor(Date.now() / 1000) - 60;
+      const future = Math.floor(Date.now() / 1000) + 3600;
+      await store.registerClient({ ...client, client_id: 'expired', client_secret_expires_at: past });
+      await store.registerClient({ ...client, client_id: 'fresh', client_secret_expires_at: future });
+      await store.registerClient({ ...client, client_id: 'forever', client_secret_expires_at: 0 });
+      expect(await store.verifyClientSecret('expired', 's3cret')).toBe(false);
+      expect(await store.verifyClientSecret('fresh', 's3cret')).toBe(true);
+      expect(await store.verifyClientSecret('forever', 's3cret')).toBe(true);
+    });
+
     it('rejects a duplicate client and a secretless client never verifies', async () => {
       const store = await seeded();
       await expect(store.registerClient(client)).rejects.toThrow();
