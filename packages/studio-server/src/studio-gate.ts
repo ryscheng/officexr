@@ -10,15 +10,15 @@ type SessionReader = ReturnType<typeof createSessionReader>;
 export type Access = { type: 'allowed'; identity: Identity } | { type: 'denied'; status: 401 | 403; error: string };
 
 /** Remembers each login's answer for `ttlMs`; a failed lookup is not remembered. */
-export function cacheIsStudioAllowed(isStudioAllowed: IsStudioAllowed, ttlMs = 60_000, now = Date.now): IsStudioAllowed {
-  // ponytail: studio_allowlist changes, additions and removals alike, take up to ttlMs to apply.
+export function cacheAllowlist(isAllowed: IsStudioAllowed, ttlMs = 60_000, now = Date.now): IsStudioAllowed {
+  // ponytail: allowlist changes, additions and removals alike, take up to ttlMs to apply.
   const answers = new Map<string, { allowed: boolean; expires: number }>();
   return async (login) => {
     const cached = answers.get(login);
     if (cached && cached.expires > now()) {
       return cached.allowed;
     }
-    const allowed = await isStudioAllowed(login);
+    const allowed = await isAllowed(login);
     answers.set(login, { allowed, expires: now() + ttlMs });
     return allowed;
   };

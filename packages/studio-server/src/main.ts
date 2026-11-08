@@ -9,7 +9,7 @@ import { createStudioMcpOptions } from '@officexr/studio-mcp/mount-mcp';
 import { createStudioStorage, seedDataDir } from '@officexr/world/vite-plugin-storage';
 import { createInternalServer, createPublicServer } from './app.ts';
 import { studioBackend } from './studio-backend.ts';
-import { cacheIsStudioAllowed } from './studio-gate.ts';
+import { cacheAllowlist } from './studio-gate.ts';
 
 const env = process.env;
 const port = Number(env.PORT) || 5174;
@@ -62,7 +62,7 @@ const publicServer = createPublicServer({
   realtimeTarget,
   frontendOrigins,
   sessionReader,
-  isStudioAllowed: cacheIsStudioAllowed(pgAllowlist(pool, 'studio_allowlist')),
+  isStudioAllowed: cacheAllowlist(pgAllowlist(pool, 'studio_allowlist')),
 });
 
 await Promise.all([listen(internal.server, port), listen(publicServer.server, publicPort)]);
