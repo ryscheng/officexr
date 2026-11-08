@@ -311,12 +311,15 @@ describe('MCP OAuth server', () => {
 });
 
 describe('parseOAuthEnv', () => {
-  it('enables the server only with both URLs, each a plain origin', () => {
+  it('enables the server only with both URLs, each normalized to a plain origin', () => {
     expect(parseOAuthEnv({})).toEqual({ type: 'disabled' });
     expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: ISSUER, OFFICEXR_WEB_PUBLIC_URL: WEB })).toEqual({ type: 'enabled', issuerUrl: ISSUER, webPublicUrl: WEB });
     expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: ISSUER }).type).toBe('invalid');
     expect(parseOAuthEnv({ OFFICEXR_WEB_PUBLIC_URL: WEB }).type).toBe('invalid');
-    for (const bad of [`${ISSUER}/`, `${ISSUER}/api`, `${ISSUER}?x=1`, `${ISSUER}#x`, 'studio-api.example.com']) {
+    for (const loose of [`${ISSUER}/`, ` ${ISSUER}\n`]) {
+      expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: loose, OFFICEXR_WEB_PUBLIC_URL: `${WEB}/\n` })).toEqual({ type: 'enabled', issuerUrl: ISSUER, webPublicUrl: WEB });
+    }
+    for (const bad of [`${ISSUER}/api`, `${ISSUER}?x=1`, `${ISSUER}#x`, 'studio-api.example.com']) {
       expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: bad, OFFICEXR_WEB_PUBLIC_URL: WEB })).toMatchObject({ type: 'invalid', problem: expect.stringContaining('STUDIO_PUBLIC_URL') });
       expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: ISSUER, OFFICEXR_WEB_PUBLIC_URL: bad.replace(ISSUER, WEB) })).toMatchObject({
         type: 'invalid',
