@@ -9,7 +9,9 @@ import { close } from '@officexr/server/listen';
 import { staticDirMiddleware } from '@officexr/server/static';
 import { loopbackOrigin, mcpHandler, type McpOptions } from '@officexr/studio-mcp/mount-mcp';
 import type { StudioStorage } from '@officexr/world/vite-plugin-storage';
+import type { ModelSources } from '@officexr/studio-mcp/model-sources';
 import { pathname } from './http.ts';
+import { modelSourceRoutes } from './model-sources/routes.ts';
 import { sendJson, studioGate, upgradeAccess, type Access, type IsAllowed } from './studio-gate.ts';
 
 export interface StudioListener {
@@ -170,6 +172,8 @@ export function createPublicServer(opts: {
   frontendOrigins: string[];
   sessionReader: ReturnType<typeof createSessionReader>;
   isStudioAllowed: IsAllowed;
+  /** `null` when no model-source bucket is configured: its routes answer 503. */
+  modelSources: ModelSources | null;
   /** Mounted ahead of the gate, e.g. `createOAuthApp(...).handler`. */
   oauth?: connect.NextHandleFunction;
 }): StudioListener {
@@ -183,6 +187,7 @@ export function createPublicServer(opts: {
     app.use(opts.oauth);
   }
   app.use(studioGate(opts.sessionReader, opts.isStudioAllowed));
+  app.use('/api/model-sources', modelSourceRoutes(opts.modelSources));
   opts.storage.mount(app);
   mountModels(app, opts);
   const authorizeUpgrade = upgradeAccess(opts.sessionReader, opts.isStudioAllowed, opts.frontendOrigins);

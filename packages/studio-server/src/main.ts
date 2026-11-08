@@ -66,23 +66,21 @@ const mcp = createStudioMcpOptions({
   chromiumPath: env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined,
   sourceReader: modelSources ?? undefined,
 });
+const modelSourcesService = modelSources
+  ? new ModelSourcesService({
+      store: modelSources,
+      catalog: () => loopbackDocuments(loopbackOrigin(internal.server)).catalog,
+      heavyWorkLock: mcp.heavyWorkLock,
+      uploadedModelsDir: backend.uploadedModelsDir,
+      publishModel: backend.publishModel,
+    })
+  : null;
 const internal = createInternalServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
   uploadedModelsDir: backend.uploadedModelsDir,
   studioDist,
-  mcp: modelSources
-    ? {
-        ...mcp,
-        modelSources: new ModelSourcesService({
-          store: modelSources,
-          catalog: () => loopbackDocuments(loopbackOrigin(internal.server)).catalog,
-          heavyWorkLock: mcp.heavyWorkLock,
-          uploadedModelsDir: backend.uploadedModelsDir,
-          publishModel: backend.publishModel,
-        }),
-      }
-    : mcp,
+  mcp: modelSourcesService ? { ...mcp, modelSources: modelSourcesService } : mcp,
   realtimeTarget,
 });
 const publicServer = createPublicServer({
@@ -93,6 +91,7 @@ const publicServer = createPublicServer({
   frontendOrigins,
   sessionReader,
   isStudioAllowed: cacheAllowlist(pgAllowlist(pool, 'studio_allowlist')),
+  modelSources: modelSourcesService,
   oauth:
     oauthEnv.type === 'enabled'
       ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin: cacheAllowlist(pgAllowlist(pool, 'admin_allowlist')), mcp: internal.mcp }).handler
