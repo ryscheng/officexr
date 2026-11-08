@@ -42,6 +42,7 @@ if (!(await access(path.join(studioDist, 'index.html')).then(() => true, () => f
 if (backend.dataDir) {
   await seedDataDir(backend.dataDir);
 }
+await backend.ensureUploadedModelsDir();
 const storage = createStudioStorage(backend.storageOptions);
 await storage.migrate();
 backend.startR2Sync();

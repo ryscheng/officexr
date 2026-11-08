@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_MODELS_DIR } from '@officexr/server/static';
+import { DEFAULT_MODELS_DIR, staticDirMiddleware } from '@officexr/server/static';
 import { STORAGE_ENTRIES, type StudioStoragePluginOptions } from '@officexr/world/vite-plugin-storage';
 import { pushWorldConstants } from './push-world-constants.ts';
 import { createR2Publisher, r2ConfigFromEnv, type R2Publisher } from './r2-publisher.ts';
@@ -10,12 +10,12 @@ import { createR2Publisher, r2ConfigFromEnv, type R2Publisher } from './r2-publi
 const WORLD_DIR = fileURLToPath(new URL('../../world', import.meta.url));
 
 /** Where server-generated models persist: `$OFFICEXR_STUDIO_DATA_DIR/models`, else the gitignored `packages/world/uploaded-models`. */
-export const uploadedModelsDir = (env: NodeJS.ProcessEnv) =>
+export const uploadedModelsDirFor = (env: NodeJS.ProcessEnv) =>
   env.OFFICEXR_STUDIO_DATA_DIR ? path.join(env.OFFICEXR_STUDIO_DATA_DIR, 'models') : path.join(WORLD_DIR, 'uploaded-models');
 
-/** Top-level directory names of the models bundled in the image, which an uploaded pack must not reuse. */
-export async function bundledModelPacks(): Promise<Set<string>> {
-  const entries = await readdir(DEFAULT_MODELS_DIR, { withFileTypes: true });
+/** Packs are the top-level directories of `dir` (the bundled models by default); an uploaded pack must not reuse one. */
+export async function bundledModelPacks(dir: string = DEFAULT_MODELS_DIR): Promise<Set<string>> {
+  const entries = await readdir(dir, { withFileTypes: true });
   return new Set(entries.filter((e) => e.isDirectory()).map((e) => e.name));
 }
 
@@ -31,7 +31,7 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
       .filter(Boolean),
   );
   const adminToken = env.OFFICEXR_REALTIME_ADMIN_TOKEN ?? randomUUID();
-  const uploadedDir = uploadedModelsDir(env);
+  const uploadedDir = uploadedModelsDirFor(env);
   const soundsDir = path.join(dataDir ?? WORLD_DIR, STORAGE_ENTRIES.sounds.name);
 
   // Created on first server start or layout/sound hook, so `vite build` never builds one.
@@ -73,12 +73,27 @@ export function studioBackend(env: NodeJS.ProcessEnv) {
         ? `[r2-publisher] publishing assets to bucket ${bucket}`
         : '[r2-publisher] off: OFFICEXR_R2_ENDPOINT/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY not all set',
     );
-    void mkdir(uploadedDir, { recursive: true }).then(() => r2Publisher()?.sync({
+    void r2Publisher()?.sync({
       modelsDirs: [DEFAULT_MODELS_DIR, uploadedDir],
       bakedLayoutsDir: path.join(dataDir ?? WORLD_DIR, STORAGE_ENTRIES.bakedLayouts.name),
       soundsDir,
-    }));
+    });
   };
 
-  return { dataDir, uploadedModelsDir: uploadedDir, pushTargets, adminToken, storageOptions, startR2Sync, publishModel };
+  /** Must resolve before `startR2Sync`, whose model listing fails on a missing dir. */
+  const ensureUploadedModelsDir = async (): Promise<void> => {
+    await mkdir(uploadedDir, { recursive: true });
+  };
+
+  return {
+    dataDir,
+    uploadedModelsDir: uploadedDir,
+    uploadedModelsMiddleware: staticDirMiddleware('/models', uploadedDir),
+    pushTargets,
+    adminToken,
+    storageOptions,
+    startR2Sync,
+    ensureUploadedModelsDir,
+    publishModel,
+  };
 }

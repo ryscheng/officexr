@@ -399,6 +399,24 @@ describe('r2 publisher', () => {
     expect(s3.objects.has('models/pack/b.glb')).toBe(true);
   });
 
+  it('publishModel rejects traversal, absolute paths and non-glb files', async () => {
+    await writeFile(path.join(uploadedDir, 'pack', 'a.gltf'), '{}');
+    await writeFile(path.join(path.dirname(uploadedDir), 'outside.glb'), await glb(5));
+    const publisher = createR2Publisher(config);
+    const before = s3.objects.size;
+    for (const rel of ['../outside.glb', 'pack/../../outside.glb', '/etc/passwd.glb', '..']) {
+      await expect(publisher.publishModel(uploadedDir, rel)).rejects.toThrow(/escapes the models dir/);
+    }
+    await expect(publisher.publishModel(uploadedDir, 'pack/a.gltf')).rejects.toThrow(/must be a \.glb/);
+    expect(s3.objects.size).toBe(before);
+  });
+
+  it('publishModel keys a non-normalized path like the full sync', async () => {
+    await writeFile(path.join(uploadedDir, 'pack', 'a.glb'), await glb(5));
+    await createR2Publisher(config).publishModel(uploadedDir, 'pack/./sub/../a.glb');
+    expect(s3.objects.has('models/pack/a.glb')).toBe(true);
+  });
+
   it('uploads an already-compressed layout as-is', async () => {
     await createR2Publisher(config).sync(dirs());
     const bytes = s3.objects.get('baked-layouts/office.glb')!.body;
