@@ -11,6 +11,7 @@ import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/share
 import session from 'express-session';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
 import { createSessionReader } from '@officexr/server';
+import { ModelSourceServiceError, type ModelSources } from '@officexr/studio-mcp/model-sources';
 import { createStudioMcpOptions, HeavyWorkLock, loopbackDocuments, loopbackOrigin, type ViewRenderer } from '@officexr/studio-mcp/mount-mcp';
 import { emptyRoomDocument } from '@officexr/world/scenes';
 import { createStudioStorage } from '@officexr/world/vite-plugin-storage';
@@ -45,7 +46,7 @@ const listen = async (server: Server) => {
 };
 
 /** `oauth` receives the internal server's `/mcp` handler to serve behind bearer auth. */
-async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => NextHandleFunction, renderer?: ViewRenderer) {
+async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => NextHandleFunction, renderer?: ViewRenderer, modelSources: ModelSources | null = null) {
   const storage = createStudioStorage({
     dataDir: path.join(dir, 'data'),
     worldSettings: {
@@ -74,6 +75,7 @@ async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => 
     frontendOrigins: [FRONTEND],
     sessionReader: createSessionReader({ sessionSecret: SECRET, sessionStore, secure: false }),
     isStudioAllowed: (login) => isStudioAllowed(login),
+    modelSources,
     oauth: oauth?.(internal.mcp),
   });
   listeners.push(internal, pub);
@@ -330,6 +332,121 @@ describe('public server', () => {
     };
     expect(await rawUpgradeEnds(pub, '/ws', await signIn(ALLOWED))).toMatch(/^HTTP\/1\.1 500 /);
     expect(upgrades).toBe(0);
+  });
+});
+
+describe('public model-source routes', () => {
+  const kind = { id: 'kit/a' } as never;
+  const calls: unknown[][] = [];
+  let failure: ModelSourceServiceError | Error | null;
+  const fake: ModelSources = {
+    requestUpload: async (...args) => {
+      calls.push(['requestUpload', ...args]);
+      if (failure) {
+        throw failure;
+      }
+      return { uploads: [] };
+    },
+    finalize: async (...args) => {
+      calls.push(['finalize', ...args]);
+      if (failure) {
+        throw failure;
+      }
+      return { kind };
+    },
+    list: async (...args) => {
+      calls.push(['list', ...args]);
+      return { packs: [] };
+    },
+  };
+  const post = (origin: string, route: string, body: unknown, cookie: string) =>
+    fetch(`${origin}/api/model-sources/${route}`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json', origin: FRONTEND },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+  const upload = { pack: 'kit', files: [{ path: 'a.glb', sha256: 'a'.repeat(64), sizeBytes: 3 }] };
+
+  beforeEach(() => {
+    calls.length = 0;
+    failure = null;
+  });
+
+  it('answers 401 and 403 through the gate without reaching the service', async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, fake);
+    expect((await post(pub, 'upload-url', upload, '')).status).toBe(401);
+    expect((await fetch(`${pub}/api/model-sources`)).status).toBe(401);
+    expect((await post(pub, 'finalize', { pack: 'kit', entry: 'a.glb' }, await signIn('other@example.com'))).status).toBe(403);
+    expect(calls).toEqual([]);
+  });
+
+  it('serves upload-url, finalize and list for an allowed login', async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, fake);
+    const cookie = await signIn(ALLOWED);
+    const uploadRes = await post(pub, 'upload-url', upload, cookie);
+    expect(uploadRes.status).toBe(200);
+    expect(uploadRes.headers.get('access-control-allow-credentials')).toBe('true');
+    expect(await uploadRes.json()).toEqual({ uploads: [] });
+    const finalized = await post(pub, 'finalize', { pack: 'kit', entry: 'a.glb' }, cookie);
+    expect(await finalized.json()).toEqual({ kind });
+    const listed = await fetch(`${pub}/api/model-sources?pack=kit`, { headers: { cookie } });
+    expect(await listed.json()).toEqual({ packs: [] });
+    expect(calls).toEqual([['requestUpload', 'kit', upload.files], ['finalize', 'kit', 'a.glb'], ['list', 'kit']]);
+  });
+
+  it.each([
+    ['validation', 400],
+    ['busy', 409],
+    ['not_configured', 503],
+  ] as const)('maps a %s service error to %i', async (type, status) => {
+    const { pub } = await boot(DOWN, undefined, undefined, fake);
+    failure = new ModelSourceServiceError({ type, message: 'because' });
+    const res = await post(pub, 'finalize', { pack: 'kit', entry: 'a.glb' }, await signIn(ALLOWED));
+    expect(res.status).toBe(status);
+    expect(await res.json()).toEqual({ error: 'because' });
+  });
+
+  it('answers 500 without the error message for an unexpected failure', async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, fake);
+    failure = new Error('secret bucket path');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await post(pub, 'finalize', { pack: 'kit', entry: 'a.glb' }, await signIn(ALLOWED));
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain('secret');
+  });
+
+  it.each([
+    ['upload-url', { pack: 1, files: [] }],
+    ['upload-url', { pack: 'kit', files: [{ path: 'a', sha256: 'x' }] }],
+    ['upload-url', { pack: 'kit' }],
+    ['finalize', { pack: 'kit' }],
+    ['finalize', '[1]'],
+    ['finalize', '{not json'],
+  ])('answers 400 for a malformed %s body without calling the service', async (route, body) => {
+    const { pub } = await boot(DOWN, undefined, undefined, fake);
+    expect((await post(pub, route, body, await signIn(ALLOWED))).status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
+  it('answers 413 for an oversized body', async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, fake);
+    const res = await post(pub, 'finalize', { pack: 'kit', entry: 'x'.repeat(300_000) }, await signIn(ALLOWED));
+    expect(res.status).toBe(413);
+  });
+
+  it('answers 503 on every route when no service is configured', async () => {
+    const { pub } = await boot();
+    const cookie = await signIn(ALLOWED);
+    expect((await post(pub, 'upload-url', upload, cookie)).status).toBe(503);
+    expect((await post(pub, 'finalize', { pack: 'kit', entry: 'a.glb' }, cookie)).status).toBe(503);
+    expect((await fetch(`${pub}/api/model-sources`, { headers: { cookie } })).status).toBe(503);
+  });
+
+  it('is not served by the internal server', async () => {
+    const { internal } = await boot(DOWN, undefined, undefined, fake);
+    const res = await fetch(`${internal}/api/model-sources`);
+    expect(res.status).not.toBe(200);
+    expect(calls).toEqual([]);
   });
 });
 
