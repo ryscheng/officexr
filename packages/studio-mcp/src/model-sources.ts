@@ -35,8 +35,11 @@ export type ModelSourceError =
   | { type: 'not_configured'; message: string };
 
 export class ModelSourceServiceError extends Error {
-  constructor(readonly error: ModelSourceError) {
+  readonly error: ModelSourceError;
+
+  constructor(error: ModelSourceError) {
     super(error.message);
+    this.error = error;
     this.name = 'ModelSourceServiceError';
   }
 }
