@@ -1,4 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ModelSourceReader } from '@officexr/world/model-source';
 import type { LayoutDocument, WorldObjectKindCatalogV1 } from '@officexr/world/scenes';
 import type { HeavyWorkLock } from '../heavy-work-lock.ts';
 import type { StudioDocuments } from '../studio-documents.ts';
@@ -10,11 +11,13 @@ export type BakeLayout = (input: {
   layout: LayoutDocument;
   modelRoot: string;
   catalog: WorldObjectKindCatalogV1 | null;
+  sourceReader?: ModelSourceReader;
 }) => Promise<{ glb: Uint8Array; meta: { optimizerId: string } }>;
 
 export interface BakeDeps {
   docs: StudioDocuments;
   modelRoot: string;
+  sourceReader?: ModelSourceReader;
   bake: BakeLayout;
 }
 
@@ -25,12 +28,12 @@ export const bakeLayoutLazily: BakeLayout = async (input) => {
 };
 
 /** Bakes the stored layout against the live catalog and saves the GLB; throws if the layout is missing or the bake fails. */
-export async function bakeOne(name: string, { docs, modelRoot, bake }: BakeDeps) {
+export async function bakeOne(name: string, { docs, modelRoot, sourceReader, bake }: BakeDeps) {
   const layout = await docs.layouts.load(checkedName(name));
   if (!layout) {
     throw new Error(`layout "${name}" not found`);
   }
-  const { glb, meta } = await bake({ layout, modelRoot, catalog: await docs.catalog.load() });
+  const { glb, meta } = await bake({ layout, modelRoot, sourceReader, catalog: await docs.catalog.load() });
   await docs.bakedLayouts.save(name, glb);
   return { bytes: glb.length, optimizer: meta.optimizerId };
 }

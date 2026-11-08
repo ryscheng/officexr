@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { emptyLayoutDocument, type LayoutDocument } from '../scenes/layout-document.ts';
 import type { WorldObjectKindCatalogV1 } from '../scenes/world-object-kinds-schema.ts';
+import { Document, NodeIO } from '@gltf-transform/core';
 import { bakeLayoutGlb } from './bake-layout-glb.ts';
 
 const defaults = JSON.parse(
@@ -29,5 +30,49 @@ describe('bakeLayoutGlb', () => {
     await expect(
       bakeLayoutGlb({ layout, modelRoot: '/srv/public', catalog: withGltfPath('/models/..foo.gltf') }),
     ).rejects.not.toThrow('outside the model root');
+  });
+
+  describe('sourceObject kinds', () => {
+    const withSource = (sourceObject: string): WorldObjectKindCatalogV1 => ({
+      ...defaults,
+      kinds: defaults.kinds.map((k) =>
+        k.id === 'colored_block_blue' ? { ...k, gltfPath: '/models/missing.glb', sourceObject } : k,
+      ),
+    });
+
+    it('fails clearly without a source reader', async () => {
+      await expect(
+        bakeLayoutGlb({ layout, modelRoot: '/srv/public', catalog: withSource('packs/p/a.glb') }),
+      ).rejects.toThrow(/colored_block_blue.*private sources aren't configured/);
+    });
+
+    it('reads the kind from the reader and never from modelRoot', async () => {
+      const doc = new Document();
+      const buffer = doc.createBuffer();
+      const position = doc
+        .createAccessor()
+        .setType('VEC3')
+        .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
+        .setBuffer(buffer);
+      const prim = doc.createPrimitive().setAttribute('POSITION', position);
+      const mesh = doc.createMesh().addPrimitive(prim);
+      doc.createScene().addChild(doc.createNode().setMesh(mesh));
+      const glb = await new NodeIO().writeBinary(doc);
+      const reads: string[] = [];
+      const sourceReader = {
+        read: async (key: string) => {
+          reads.push(key);
+          return glb;
+        },
+      };
+      const { glb: baked } = await bakeLayoutGlb({
+        layout,
+        modelRoot: '/nonexistent',
+        catalog: withSource('packs/p/a.glb'),
+        sourceReader,
+      });
+      expect(baked.length).toBeGreaterThan(0);
+      expect(reads).toEqual(['packs/p/a.glb']);
+    });
   });
 });
