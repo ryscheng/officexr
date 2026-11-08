@@ -1,8 +1,11 @@
 import { Storage, type Bucket } from '@google-cloud/storage';
-import { GoogleAuth, Impersonated } from 'google-auth-library';
+import { GoogleAuth, Impersonated, type AuthClient } from 'google-auth-library';
+import { assetContentType } from '@officexr/world/asset-content-type';
 import type { ModelSourceReader } from '@officexr/world/model-source';
 
 const UPLOAD_TTL_MS = 15 * 60 * 1000;
+/** Extensions a source upload may have; `assetContentType` covers all of them. */
+const UPLOAD_EXTENSIONS = new Set(['.glb', '.gltf', '.bin', '.png', '.jpg', '.jpeg', '.webp']);
 
 export interface SignedUpload {
   url: string;
@@ -25,15 +28,39 @@ export interface ModelSourceEntry {
 
 /** Private model sources under `packs/<pack>/<path>`. There is deliberately no way to get a read URL. */
 export interface ModelSourceStore extends ModelSourceReader {
-  signUpload(key: string, opts: { sha256: string; sizeBytes: number; contentType: string }): Promise<SignedUpload>;
+  /** The content type comes from the key's extension; unsupported extensions are rejected. */
+  signUpload(key: string, opts: { sha256: string; sizeBytes: number }): Promise<SignedUpload>;
   stat(key: string): Promise<ModelSourceStat | null>;
   list(prefix: string): Promise<ModelSourceEntry[]>;
 }
 
+/** Last line of defence: `packs/<pack>/<path>` with no empty, `.` or `..` segments and no backslashes. */
 function assertKey(key: string): void {
-  if (!key.startsWith('packs/') || key.split('/').includes('..')) {
+  const segments = key.split('/');
+  const ok =
+    segments.length >= 3 &&
+    segments[0] === 'packs' &&
+    !key.includes('\\') &&
+    segments.every((seg) => seg !== '' && seg !== '.' && seg !== '..');
+  if (!ok) {
     throw new Error(`invalid model source key "${key}"`);
   }
+}
+
+function uploadContentType(key: string): string {
+  const ext = /\.[^./]+$/.exec(key)?.[0].toLowerCase();
+  if (!ext || !UPLOAD_EXTENSIONS.has(ext)) {
+    throw new Error(`model source "${key}" has an unsupported extension`);
+  }
+  return assetContentType(key);
+}
+
+function metaNumber(value: unknown, what: string, key: string): number {
+  const n = Number(value);
+  if (value === undefined || value === null || !Number.isFinite(n)) {
+    throw new Error(`model source "${key}" has no ${what} metadata`);
+  }
+  return n;
 }
 
 /** Resolves `task`, mapping a 404 to `null`. */
@@ -55,11 +82,18 @@ export class GcsModelSourceStore implements ModelSourceStore {
    */
   constructor(
     private readonly bucket: Pick<Bucket, 'file' | 'getFiles'>,
-    private readonly signingBucket: Pick<Bucket, 'file'> = bucket,
+    private readonly signingBucket: Pick<Bucket, 'file'>,
   ) {}
 
-  async signUpload(key: string, { sha256, sizeBytes, contentType }: { sha256: string; sizeBytes: number; contentType: string }) {
+  async signUpload(key: string, { sha256, sizeBytes }: { sha256: string; sizeBytes: number }) {
     assertKey(key);
+    const contentType = uploadContentType(key);
+    if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 1) {
+      throw new Error(`invalid upload size ${sizeBytes}`);
+    }
+    if (!/^[0-9a-f]{64}$/.test(sha256)) {
+      throw new Error('sha256 must be 64 lowercase hex characters');
+    }
     const extensionHeaders = {
       'x-goog-content-length-range': `${sizeBytes},${sizeBytes}`,
       'x-goog-meta-sha256': sha256,
@@ -88,24 +122,35 @@ export class GcsModelSourceStore implements ModelSourceStore {
       return null;
     }
     const sha = res[0].metadata?.sha256;
-    return { sizeBytes: Number(res[0].size), sha256Meta: typeof sha === 'string' ? sha : null };
+    return { sizeBytes: metaNumber(res[0].size, 'size', key), sha256Meta: typeof sha === 'string' ? sha : null };
   }
 
   async list(prefix: string): Promise<ModelSourceEntry[]> {
-    assertKey(prefix);
+    if (!prefix.startsWith('packs/') || prefix.split('/').includes('..')) {
+      throw new Error(`invalid model source prefix "${prefix}"`);
+    }
     const [files] = await this.bucket.getFiles({ prefix });
     return files.map((f) => ({
       key: f.name,
-      sizeBytes: Number(f.metadata.size),
-      updated: new Date(String(f.metadata.updated)),
+      sizeBytes: metaNumber(f.metadata.size, 'size', f.name),
+      updated: new Date(metaNumber(Date.parse(String(f.metadata.updated)), 'updated', f.name)),
     }));
   }
 }
 
 /**
- * Builds the store from `OFFICEXR_MODEL_SOURCES_BUCKET` + `OFFICEXR_MODEL_SOURCES_SIGNER_EMAIL`; `null` when neither is set.
- * Upload URLs are signed as the signer by impersonating it through IAM `signBlob`, so the pod needs no key.
+ * Builds the store whose upload URLs are signed as `signerEmail`: `sourceClient` impersonates it through IAM
+ * `signBlob`, so no key is needed. Reads, stat and list keep the ambient credentials.
  */
+export function createGcsModelSourceStore(bucketName: string, signerEmail: string, sourceClient: AuthClient) {
+  const signer = new Impersonated({ sourceClient, targetPrincipal: signerEmail });
+  return new GcsModelSourceStore(
+    new Storage().bucket(bucketName),
+    new Storage({ authClient: signer }).bucket(bucketName),
+  );
+}
+
+/** Reads `OFFICEXR_MODEL_SOURCES_BUCKET` + `OFFICEXR_MODEL_SOURCES_SIGNER_EMAIL`; `null` when neither is set. */
 export async function modelSourceStoreFromEnv(env: NodeJS.ProcessEnv): Promise<ModelSourceStore | null> {
   const bucketName = env.OFFICEXR_MODEL_SOURCES_BUCKET?.trim();
   const signerEmail = env.OFFICEXR_MODEL_SOURCES_SIGNER_EMAIL?.trim();
@@ -115,13 +160,6 @@ export async function modelSourceStoreFromEnv(env: NodeJS.ProcessEnv): Promise<M
   if (!bucketName || !signerEmail) {
     throw new Error('OFFICEXR_MODEL_SOURCES_BUCKET and OFFICEXR_MODEL_SOURCES_SIGNER_EMAIL must be set together');
   }
-  const impersonated = new Impersonated({
-    sourceClient: await new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] }).getClient(),
-    targetPrincipal: signerEmail,
-    targetScopes: ['https://www.googleapis.com/auth/devstorage.read_write'],
-  });
-  return new GcsModelSourceStore(
-    new Storage().bucket(bucketName),
-    new Storage({ authClient: impersonated }).bucket(bucketName),
-  );
+  const sourceClient = await new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] }).getClient();
+  return createGcsModelSourceStore(bucketName, signerEmail, sourceClient);
 }
