@@ -5,9 +5,10 @@ import pg from 'pg';
 import { createSessionReader, parseCookieDomain, parseFrontendOrigins, pgAllowlist, pgSessionStore } from '@officexr/server';
 import { listen } from '@officexr/server/listen';
 import { DEFAULT_MODELS_DIR } from '@officexr/server/static';
-import { createStudioMcpOptions } from '@officexr/studio-mcp/mount-mcp';
+import { createStudioMcpOptions, loopbackDocuments, loopbackOrigin } from '@officexr/studio-mcp/mount-mcp';
 import { createStudioStorage, seedDataDir } from '@officexr/world/vite-plugin-storage';
 import { createInternalServer, createPublicServer } from './app.ts';
+import { ModelSourcesService } from './model-sources/service.ts';
 import { modelSourceStoreFromEnv } from './model-sources/store.ts';
 import { studioBackend } from './studio-backend.ts';
 import { cacheAllowlist } from './studio-gate.ts';
@@ -53,16 +54,28 @@ if (!modelSources) {
   console.log('[studio-server] private model sources are disabled: OFFICEXR_MODEL_SOURCES_BUCKET is not set');
 }
 
+const mcp = createStudioMcpOptions({
+  modelRoot: fileURLToPath(new URL('../../studio/public', import.meta.url)),
+  chromiumPath: env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined,
+  sourceReader: modelSources ?? undefined,
+});
 const internal = createInternalServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
   uploadedModelsDir: backend.uploadedModelsDir,
   studioDist,
-  mcp: createStudioMcpOptions({
-    modelRoot: fileURLToPath(new URL('../../studio/public', import.meta.url)),
-    chromiumPath: env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined,
-    sourceReader: modelSources ?? undefined,
-  }),
+  mcp: modelSources
+    ? {
+        ...mcp,
+        modelSources: new ModelSourcesService({
+          store: modelSources,
+          catalog: () => loopbackDocuments(loopbackOrigin(internal.server)).catalog,
+          heavyWorkLock: mcp.heavyWorkLock,
+          uploadedModelsDir: backend.uploadedModelsDir,
+          publishModel: backend.publishModel,
+        }),
+      }
+    : mcp,
   realtimeTarget,
 });
 const publicServer = createPublicServer({

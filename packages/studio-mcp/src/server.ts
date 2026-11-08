@@ -4,12 +4,14 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { ModelSourceReader } from '@officexr/world/model-source';
 import type { StudioDocuments } from './studio-documents.ts';
 import type { HeavyWorkLock } from './heavy-work-lock.ts';
+import type { ModelSources } from './model-sources.ts';
 import type { ViewRenderer } from './renderer.ts';
 import { type BakeLayout, bakeLayoutLazily, registerBakedLayoutTools } from './tools/baked-layouts.ts';
 import { BakeJobs } from './tools/bake-jobs.ts';
 import { registerMapBakeTools } from './tools/map-bakes.ts';
 import { registerLayoutTools } from './tools/layouts.ts';
 import { registerMapTools } from './tools/maps.ts';
+import { registerModelSourceTools } from './tools/model-sources.ts';
 import { registerRenderTools } from './tools/render.ts';
 import { registerRoomTools } from './tools/rooms.ts';
 import { registerWorldTools } from './tools/world.ts';
@@ -26,12 +28,14 @@ export interface StudioMcpOptions {
   bakeJobs: BakeJobs;
   /** Defaults to the real bake; tests inject a stub. */
   bakeLayout?: BakeLayout;
+  /** Registers the model-source upload tools when present. */
+  modelSources?: ModelSources;
 }
 
 /** `studioOrigin` is where this request reached the studio; the renderer loads its render page from there. */
 export function createStudioMcpServer(
   docs: StudioDocuments,
-  { modelRoot, sourceReader, heavyWorkLock, renderer, bakeJobs, bakeLayout = bakeLayoutLazily }: StudioMcpOptions,
+  { modelRoot, sourceReader, heavyWorkLock, renderer, bakeJobs, bakeLayout = bakeLayoutLazily, modelSources }: StudioMcpOptions,
   studioOrigin: string,
 ): McpServer {
   const server = new McpServer({ name: 'officexr-studio', version: '0.1.0' });
@@ -43,6 +47,9 @@ export function createStudioMcpServer(
   registerMapBakeTools(server, heavyWorkLock, bakeJobs, bakeDeps);
   registerRenderTools(server, docs, studioOrigin, renderer, heavyWorkLock);
   registerWorldTools(server, docs);
+  if (modelSources) {
+    registerModelSourceTools(server, modelSources);
+  }
   return server;
 }
 

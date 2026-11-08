@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/vite-plugin.ts",
-    "./mount-mcp": "./src/mount-mcp.ts"
+    "./mount-mcp": "./src/mount-mcp.ts",
+    "./model-sources": "./src/model-sources.ts"
   },
   "scripts": {
     "test": "vitest run",

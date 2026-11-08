@@ -20,6 +20,7 @@
     "./bake-source": "./src/app/evaluate-bake.ts",
     "./model-source": "./src/app/model-source.ts",
     "./glb-compression": "./src/app/glb-compression.ts",
+    "./bake-optimizers": "./src/app/bake-optimizers.ts",
     "./asset-content-type": "./src/app/asset-content-type.ts"
   },
   "scripts": {
