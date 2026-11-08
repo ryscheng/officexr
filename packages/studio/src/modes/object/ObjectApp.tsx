@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Button } from '../../components/ui/button.tsx';
 import { LeftPanel } from '../../ui/LeftPanel.tsx';
 import { SidePanel } from '../../ui/SidePanel.tsx';
 import { ObjectKindEditorPanel } from './ObjectKindEditorPanel.tsx';
 import { KindList } from './KindList.tsx';
 import { ObjectPreviewCanvas } from './ObjectPreviewCanvas.tsx';
 import { useObjectCatalog } from './useObjectCatalog.ts';
+import { ModelUploadPanel } from './upload/ModelUploadPanel.tsx';
 
 /**
  * Object editor. Three panes:
@@ -21,6 +23,7 @@ import { useObjectCatalog } from './useObjectCatalog.ts';
  */
 export function ObjectApp() {
   const catalog = useObjectCatalog();
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   return (
     <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0 }}>
@@ -42,6 +45,17 @@ export function ObjectApp() {
       >
         <ObjectPreviewCanvas kind={catalog.selectedKind} />
         <PreviewHud kind={catalog.selectedKind ? catalog.selectedKind.id : null} />
+        <div className="absolute right-3 top-3 flex flex-col items-end gap-2">
+          <Button
+            size="sm"
+            aria-expanded={uploadOpen}
+            aria-controls="model-upload-panel"
+            onClick={() => setUploadOpen((open) => !open)}
+          >
+            Upload models
+          </Button>
+          <ModelUploadPanel id="model-upload-panel" hidden={!uploadOpen} onFinalized={catalog.upsertKind} />
+        </div>
       </main>
       <SidePanel>
         <ObjectKindEditorPanel

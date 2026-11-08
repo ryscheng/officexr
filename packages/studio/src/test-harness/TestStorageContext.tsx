@@ -5,6 +5,7 @@ import type {
   RoomStorage,
   WorldConstantsStorage,
 } from '@officexr/world/scenes';
+import type { ModelSourcesClient } from '../modes/object/upload/modelSourcesClient.ts';
 import type { SoundLibraryStorage } from '../modes/sounds/soundLibraryStorage.ts';
 
 /**
@@ -24,6 +25,7 @@ export interface TestStorages {
   layoutStorage?: LayoutStorage;
   worldConstantsStorage?: WorldConstantsStorage;
   soundStorage?: SoundLibraryStorage;
+  modelSourcesClient?: ModelSourcesClient;
 }
 
 const TestStorageCtx = createContext<TestStorages | null>(null);
