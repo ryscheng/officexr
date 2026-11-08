@@ -166,6 +166,8 @@ export function createPublicServer(opts: {
   frontendOrigins: string[];
   sessionReader: ReturnType<typeof createSessionReader>;
   isStudioAllowed: IsAllowed;
+  /** Mounted ahead of the gate, e.g. `createOAuthApp(...).handler`. */
+  oauth?: connect.NextHandleFunction;
 }): StudioListener {
   const app = connect();
   const server = createServer(app);
@@ -173,6 +175,9 @@ export function createPublicServer(opts: {
     app.use(createCors(opts.frontendOrigins));
   }
   opts.sessionReader.middlewares.forEach((middleware) => app.use(middleware));
+  if (opts.oauth) {
+    app.use(opts.oauth);
+  }
   app.use(studioGate(opts.sessionReader, opts.isStudioAllowed));
   opts.storage.mount(app);
   mountModels(app, opts);
