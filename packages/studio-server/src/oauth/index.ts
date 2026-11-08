@@ -16,21 +16,33 @@ export type OAuthEnv =
   | { type: 'enabled'; issuerUrl: string; webPublicUrl: string }
   | { type: 'invalid'; problem: string };
 
-const isOrigin = (url: string) => URL.parse(url)?.origin === url;
+/**
+ * The origin `url` names, or `null` when it carries a path, query or fragment. Surrounding whitespace and a bare
+ * trailing slash are tolerated because the web server reads the same shared secret as a looser `PUBLIC_URL`.
+ */
+function toOrigin(url: string): string | null {
+  const parsed = URL.parse(url.trim());
+  const isPlain = parsed && /^https?:$/.test(parsed.protocol) && parsed.pathname === '/' && !parsed.search && !parsed.hash;
+  return isPlain && !parsed.username && !parsed.password ? parsed.origin : null;
+}
 
 /** The MCP OAuth server runs only when both `STUDIO_PUBLIC_URL` and `OFFICEXR_WEB_PUBLIC_URL` are set, each to a plain origin. */
 export function parseOAuthEnv(env: Record<string, string | undefined>): OAuthEnv {
-  const issuerUrl = env.STUDIO_PUBLIC_URL;
-  const webPublicUrl = env.OFFICEXR_WEB_PUBLIC_URL;
-  if (!issuerUrl && !webPublicUrl) {
+  const rawIssuer = env.STUDIO_PUBLIC_URL?.trim();
+  const rawWeb = env.OFFICEXR_WEB_PUBLIC_URL?.trim();
+  if (!rawIssuer && !rawWeb) {
     return { type: 'disabled' };
   }
-  if (!issuerUrl || !webPublicUrl) {
+  if (!rawIssuer || !rawWeb) {
     return { type: 'invalid', problem: 'the MCP OAuth server needs both STUDIO_PUBLIC_URL and OFFICEXR_WEB_PUBLIC_URL' };
   }
-  const notOrigin = Object.entries({ STUDIO_PUBLIC_URL: issuerUrl, OFFICEXR_WEB_PUBLIC_URL: webPublicUrl }).find(([, url]) => !isOrigin(url));
-  if (notOrigin) {
-    return { type: 'invalid', problem: `${notOrigin[0]} must be an origin like https://example.com, with no path or trailing slash` };
+  const issuerUrl = toOrigin(rawIssuer);
+  if (!issuerUrl) {
+    return { type: 'invalid', problem: 'STUDIO_PUBLIC_URL must be an origin like https://example.com, with no path' };
+  }
+  const webPublicUrl = toOrigin(rawWeb);
+  if (!webPublicUrl) {
+    return { type: 'invalid', problem: 'OFFICEXR_WEB_PUBLIC_URL must be an origin like https://example.com, with no path' };
   }
   return { type: 'enabled', issuerUrl, webPublicUrl };
 }
