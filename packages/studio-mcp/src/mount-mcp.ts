@@ -26,6 +26,8 @@ function loopbackDocuments(origin: string): StudioDocuments {
   };
 }
 
+export type { ViewRenderer } from './renderer.ts';
+
 export type McpApp = StudioStorageApp;
 
 /** The production options: a real Chromium renderer and one lock and job registry for the process. */
@@ -87,8 +89,13 @@ export function mcpPostHandler(options: McpOptions): NodeMiddleware {
   };
 }
 
+/** The `/mcp` endpoint as one handler: POST runs the server, anything else is a 405. Mount it behind any auth the host needs. */
+export function mcpHandler(options: McpOptions): NodeMiddleware {
+  const post = mcpPostHandler(options);
+  return (req, res, next) => mcpMethodGuard(req, res, () => post(req, res, next));
+}
+
 /** Mounts `POST /mcp` on any connect-style app. */
 export function mountMcp(app: McpApp, options: McpOptions): void {
-  app.use('/mcp', mcpMethodGuard);
-  app.use('/mcp', mcpPostHandler(options));
+  app.use('/mcp', mcpHandler(options));
 }

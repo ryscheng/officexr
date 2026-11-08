@@ -162,7 +162,8 @@ The studio backend is a separate process, `pnpm --filter @officexr/studio-server
   `https://officexr-studio-api.karibalabs.co`; tokens are issued for `${STUDIO_PUBLIC_URL}/mcp`) and
   `OFFICEXR_WEB_PUBLIC_URL` (the web backend's `PUBLIC_URL`) are set, each as a plain origin; with neither it is off,
   and with only one the process refuses to start. Admins sign in through the web backend's `/auth/google`, so its
-  `FRONTEND_ORIGINS` must include `STUDIO_PUBLIC_URL` for the sign-in to return to `/authorize`.
+  `FRONTEND_ORIGINS` must include `STUDIO_PUBLIC_URL` for the sign-in to return to `/authorize`. With the OAuth server on, the public port also serves the studio MCP at `/mcp`,
+  reachable only with a bearer token issued to an `admin_allowlist` login (no session cookie needed).
 
 ## Building
 
