@@ -8,6 +8,8 @@ import { DEFAULT_MODELS_DIR } from '@officexr/server/static';
 import { createStudioMcpOptions } from '@officexr/studio-mcp/mount-mcp';
 import { createStudioStorage, seedDataDir } from '@officexr/world/vite-plugin-storage';
 import { createInternalServer, createPublicServer } from './app.ts';
+import { createOAuthApp, parseOAuthEnv } from './oauth/index.ts';
+import { PgOAuthStore } from './oauth/store.ts';
 import { studioBackend } from './studio-backend.ts';
 import { cacheAllowlist } from './studio-gate.ts';
 
@@ -20,6 +22,11 @@ const backend = studioBackend(env);
 
 if (!env.SESSION_SECRET || !env.SUPABASE_DB_URL) {
   console.error('[studio-server] SESSION_SECRET and SUPABASE_DB_URL must be set: the public port requires sign-in');
+  process.exit(1);
+}
+const oauthEnv = parseOAuthEnv(env);
+if (oauthEnv.type === 'invalid') {
+  console.error(`[studio-server] ${oauthEnv.missing} must be set too: the MCP OAuth server needs STUDIO_PUBLIC_URL and OFFICEXR_WEB_PUBLIC_URL`);
   process.exit(1);
 }
 const frontendOrigins = parseFrontendOrigins(env.FRONTEND_ORIGINS);
@@ -66,7 +73,14 @@ const publicServer = createPublicServer({
   frontendOrigins,
   sessionReader,
   isStudioAllowed: cacheAllowlist(pgAllowlist(pool, 'studio_allowlist')),
+  oauth:
+    oauthEnv.type === 'enabled'
+      ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin: cacheAllowlist(pgAllowlist(pool, 'admin_allowlist')) }).handler
+      : undefined,
 });
+if (oauthEnv.type === 'disabled') {
+  console.log('[studio-server] MCP OAuth server disabled: set STUDIO_PUBLIC_URL and OFFICEXR_WEB_PUBLIC_URL to enable it');
+}
 
 await Promise.all([listen(internal.server, port), listen(publicServer.server, publicPort)]);
 console.log(`[studio-server] internal on :${port}, public on :${publicPort}`);

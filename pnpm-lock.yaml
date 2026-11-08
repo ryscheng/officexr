@@ -350,6 +350,9 @@ importers:
       '@types/connect':
         specifier: ^3.4.38
         version: 3.4.38
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
       '@types/http-proxy':
         specifier: ^1.17.16
         version: 1.17.17
@@ -362,6 +365,9 @@ importers:
       connect:
         specifier: ^3.7.0
         version: 3.7.0
+      express:
+        specifier: ^5.2.1
+        version: 5.3.0
       http-proxy:
         specifier: ^1.18.1
         version: 1.18.1

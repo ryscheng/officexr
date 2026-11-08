@@ -19,10 +19,12 @@
     "@officexr/studio-mcp": "workspace:*",
     "@officexr/world": "workspace:*",
     "@types/connect": "^3.4.38",
+    "@types/express": "^5.0.6",
     "@types/http-proxy": "^1.17.16",
     "@types/pg": "^8.23.1",
     "aws4fetch": "^1.0.20",
     "connect": "^3.7.0",
+    "express": "^5.2.1",
     "http-proxy": "^1.18.1",
     "pg": "^8.23.1",
     "tsx": "^4.19.2"
