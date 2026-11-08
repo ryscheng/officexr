@@ -10,7 +10,7 @@
  */
 
 import { bakeLayout } from './layout-bake-service.ts';
-import type { KindLookup } from './layout-bake-service.ts';
+import type { GltfLoader, KindLookup } from './layout-bake-service.ts';
 import type { InstanceGeometryService } from './types.ts';
 import type { LayoutDocument } from '../scenes/layout-document.ts';
 
@@ -31,7 +31,7 @@ export interface BakeResult {
 
 export interface BakeDeps {
   kindLookup: KindLookup;
-  gltfLoader: (url: string) => Promise<Uint8Array>;
+  gltfLoader: GltfLoader;
   /**
    * Persist the baked GLB (PUT to `/api/baked-layouts/:name`).
    * Injected so tests can run without a network.

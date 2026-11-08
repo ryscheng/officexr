@@ -1,13 +1,13 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { ModelSourceReader } from '@officexr/world/model-source';
 import type { StudioDocuments } from './studio-documents.ts';
 import type { HeavyWorkLock } from './heavy-work-lock.ts';
 import type { ViewRenderer } from './renderer.ts';
 import { type BakeLayout, bakeLayoutLazily, registerBakedLayoutTools } from './tools/baked-layouts.ts';
 import { BakeJobs } from './tools/bake-jobs.ts';
 import { registerMapBakeTools } from './tools/map-bakes.ts';
-import type { ModelSourceReader } from '@officexr/world/model-source';
 import { registerLayoutTools } from './tools/layouts.ts';
 import { registerMapTools } from './tools/maps.ts';
 import { registerRenderTools } from './tools/render.ts';

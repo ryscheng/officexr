@@ -1,7 +1,10 @@
 import { NodeIO, type Document } from '@gltf-transform/core';
 import { registerCompressionCodecs } from './glb-compression.ts';
 
-/** Reads raw model sources by object key; `null` when the key does not exist. */
+/**
+ * Reads raw model sources by object key; `null` when the key does not exist.
+ * Keys are raw object keys: the reader must not URL-decode or interpret them.
+ */
 export interface ModelSourceReader {
   read(key: string): Promise<Uint8Array | null>;
 }
@@ -19,7 +22,13 @@ interface GltfJson {
 function resolveInPack(entryKey: string, uri: string): string {
   const packPrefix = entryKey.split('/').slice(0, 2).join('/') + '/';
   const segments = entryKey.split('/').slice(0, -1);
-  for (const seg of decodeURIComponent(uri).split('/')) {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(uri);
+  } catch {
+    throw new Error(`model source "${entryKey}": resource "${uri}" is not a valid URI`);
+  }
+  for (const seg of decoded.split('/')) {
     if (seg === '..') {
       segments.pop();
     } else if (seg !== '.' && seg !== '') {

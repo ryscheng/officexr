@@ -69,7 +69,12 @@ export function createBrowserBakeDeps(
   // resources (.bin, textures) relative to the URL.
   const webio = new FetchWebIO(fetch);
 
-  const gltfLoader: BakeDeps['gltfLoader'] = async (url: string) => {
+  const gltfLoader: BakeDeps['gltfLoader'] = async (url, kind) => {
+    if (kind.sourceObject) {
+      throw new Error(
+        `createBrowserBakeDeps gltfLoader: kind "${kind.id}" has a private model source, which can't be baked in the browser`,
+      );
+    }
     let doc;
     try {
       doc = await webio.read(`${modelBaseUrl}${url}`);

@@ -2,7 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { emptyLayoutDocument, type LayoutDocument } from '../scenes/layout-document.ts';
 import type { WorldObjectKindCatalogV1 } from '../scenes/world-object-kinds-schema.ts';
-import { Document, NodeIO } from '@gltf-transform/core';
+import { NodeIO } from '@gltf-transform/core';
+import { compressDocument, registerCompressionCodecs } from './glb-compression.ts';
+import { triangleDoc } from './test-fixtures.ts';
 import { bakeLayoutGlb } from './bake-layout-glb.ts';
 
 const defaults = JSON.parse(
@@ -47,17 +49,7 @@ describe('bakeLayoutGlb', () => {
     });
 
     it('reads the kind from the reader and never from modelRoot', async () => {
-      const doc = new Document();
-      const buffer = doc.createBuffer();
-      const position = doc
-        .createAccessor()
-        .setType('VEC3')
-        .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
-        .setBuffer(buffer);
-      const prim = doc.createPrimitive().setAttribute('POSITION', position);
-      const mesh = doc.createMesh().addPrimitive(prim);
-      doc.createScene().addChild(doc.createNode().setMesh(mesh));
-      const glb = await new NodeIO().writeBinary(doc);
+      const glb = await new NodeIO().writeBinary(triangleDoc());
       const reads: string[] = [];
       const sourceReader = {
         read: async (key: string) => {
@@ -73,6 +65,19 @@ describe('bakeLayoutGlb', () => {
       });
       expect(baked.length).toBeGreaterThan(0);
       expect(reads).toEqual(['packs/p/a.glb']);
+    });
+
+    it('bakes a meshopt-compressed source', async () => {
+      const source = triangleDoc();
+      await source.transform(compressDocument);
+      const glb = await (await registerCompressionCodecs(new NodeIO())).writeBinary(source);
+      const { glb: baked } = await bakeLayoutGlb({
+        layout,
+        modelRoot: '/nonexistent',
+        catalog: withSource('packs/p/a.glb'),
+        sourceReader: { read: async () => glb },
+      });
+      expect(baked.length).toBeGreaterThan(0);
     });
   });
 });

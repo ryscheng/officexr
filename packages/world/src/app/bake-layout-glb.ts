@@ -6,14 +6,12 @@ import type { LayoutDocument } from '../scenes/layout-document.ts';
 import {
   catalogKindLookup,
   validateWorldObjectKindCatalog,
-  type WorldObjectKind,
   type WorldObjectKindCatalogV1,
 } from '../scenes/world-object-kinds-schema.ts';
 import { VOXEL_SIZE } from '../renderer/config.ts';
 import { createInstanceGeometry } from './geometry-service.ts';
 import { readSourceGltf, type ModelSourceReader } from './model-source.ts';
-import { registerCompressionCodecs } from './glb-compression.ts';
-import { bakeLayout, type BakeResultBytes } from './layout-bake-service.ts';
+import { bakeLayout, type BakeResultBytes, type GltfLoader } from './layout-bake-service.ts';
 
 const WORLD_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -53,14 +51,12 @@ export async function bakeLayoutGlb({
 
   // Re-emitting as a GLB lets catalog entries stay multi-file .gltf bundles.
   const io = new NodeIO();
-  const loadGltf = async (url: string, kind: WorldObjectKind) => {
+  const loadGltf: GltfLoader = async (url, kind) => {
     if (kind.sourceObject) {
       if (!sourceReader) {
         throw new Error(`kind "${kind.id}" has a private model source, but private sources aren't configured`);
       }
-      return (await registerCompressionCodecs(new NodeIO())).writeBinary(
-        await readSourceGltf(sourceReader, kind.sourceObject),
-      );
+      return readSourceGltf(sourceReader, kind.sourceObject);
     }
     const file = path.resolve(modelRoot, url.replace(/^\//, ''));
     const rel = path.relative(modelRoot, file);

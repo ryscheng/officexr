@@ -1,19 +1,7 @@
 import { Document, NodeIO } from '@gltf-transform/core';
 import { describe, expect, it } from 'vitest';
+import { triangleDoc } from './test-fixtures.ts';
 import { readSourceGltf, type ModelSourceReader } from './model-source.ts';
-
-function triangleDoc(): Document {
-  const doc = new Document();
-  const buffer = doc.createBuffer();
-  const position = doc
-    .createAccessor()
-    .setType('VEC3')
-    .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
-    .setBuffer(buffer);
-  const mesh = doc.createMesh('tri').addPrimitive(doc.createPrimitive().setAttribute('POSITION', position));
-  doc.createScene().addChild(doc.createNode().setMesh(mesh));
-  return doc;
-}
 
 const mapReader = (files: Map<string, Uint8Array>): ModelSourceReader => ({
   read: async (key) => files.get(key) ?? null,
