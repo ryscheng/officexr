@@ -78,6 +78,8 @@ officexr/
   Server-generated models persist in the uploaded-models dir (`$OFFICEXR_STUDIO_DATA_DIR/models`, else the gitignored
   `packages/world/uploaded-models`), created at startup and R2-synced under `models/`; `/models` serves it before the bundled models.
   `pnpm --filter @officexr/studio dev` keeps running the same storage, MCP and hooks inside Vite, including `/models` from the uploaded dir.
+  The model-source upload tools (`request_model_upload`, `finalize_model`, `list_model_sources`; `model-sources/service.ts`) are wired only by
+  studio-server's `main.ts` when the store is configured; the Vite dev studio doesn't register them.
 - **Database.** The backend (`packages/server/src/db.ts`) reads and
   writes Postgres via `pg` using `SUPABASE_DB_URL`; the browser never talks to the
   database. Offices and per-office character choices live there.

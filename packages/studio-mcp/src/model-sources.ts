@@ -48,7 +48,3 @@ export interface ModelSources {
   finalize(pack: string, entry: string): Promise<{ kind: WorldObjectKind }>;
   list(pack?: string): Promise<{ packs: ModelSourcePack[] }>;
 }
-
-export const assertNever = (value: never): never => {
-  throw new Error(`Unhandled variant: ${JSON.stringify(value)}`);
-};

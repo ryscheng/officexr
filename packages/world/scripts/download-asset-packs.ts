@@ -24,7 +24,11 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateWorldObjectKindCatalog } from '../src/scenes/world-object-kinds-schema.ts';
+import {
+  kindLabelFromFileName,
+  newWorldObjectKind,
+  validateWorldObjectKindCatalog,
+} from '../src/scenes/world-object-kinds-schema.ts';
 import type {
   WorldObjectKindCatalogV1,
   CubeKindCategory,
@@ -121,15 +125,6 @@ function slugify(name: string): string {
     .toLowerCase();
 }
 
-function humanize(name: string): string {
-  return name
-    .replace(/\.gltf$/i, '')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 function entryForGltf(
   packId: CubeKindCategory,
   gltfAbsPath: string,
@@ -137,25 +132,13 @@ function entryForGltf(
 ): WorldObjectKind {
   const rel = relative(STUDIO_PUBLIC, gltfAbsPath).replace(/\\/g, '/');
   const basename = gltfAbsPath.split(/[\\/]/).pop() ?? '';
-  return {
+  return newWorldObjectKind({
     id: `${packId}_${slugify(basename)}`,
-    label: humanize(basename),
+    label: kindLabelFromFileName(basename),
     gltfPath: '/' + rel,
     swatch,
-    walkable: false,
-    scale: 1,
-    tint: null,
-    opacity: 1,
-    roughness: null,
-    metalness: null,
-    emissive: null,
-    emissiveIntensity: 0,
     category: packId,
-    tilingAxes: { x: packId === 'block', y: packId === 'block', z: packId === 'block' },
-    gravity: false,
-    isLayoutObject: false,
-    optimization: 'none' as const,
-  };
+  });
 }
 
 async function loadCatalog(): Promise<WorldObjectKindCatalogV1> {

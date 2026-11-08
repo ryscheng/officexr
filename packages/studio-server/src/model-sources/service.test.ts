@@ -148,6 +148,36 @@ describe('finalize', () => {
     expect((await rejection(service.finalize('furniture', 'chair.glb'))).message).toContain('bundled');
   });
 
+  it('never echoes the source bytes of a malformed .gltf', async () => {
+    store.put('packs/kit/chair.gltf', new TextEncoder().encode('{"secret-source-bytes": nope'));
+    const error = await rejection(service.finalize('kit', 'chair.gltf'));
+    expect(error).toEqual({ type: 'validation', message: expect.stringContaining('is not a valid glTF') });
+    expect(error.message).not.toContain('secret');
+  });
+
+  it('rejects an entry whose kind would be invalid before writing or publishing anything', async () => {
+    store.put('packs/kit/_.glb', await gridGlb());
+    const error = await rejection(service.finalize('kit', '_.glb'));
+    expect(error.type).toBe('validation');
+    expect(published).toEqual([]);
+    await expect(readFile(path.join(dir, 'kit/_.glb'))).rejects.toThrow();
+    expect(catalog.doc).toBeNull();
+  });
+
+  it('rejects a .gltf whose kind id a .glb of the same stem already owns', async () => {
+    store.put('packs/kit/chair.glb', await gridGlb());
+    await service.finalize('kit', 'chair.glb');
+    const { json, resources } = await new NodeIO().writeJSON(gridDoc());
+    json.buffers![0].uri = 'chair.bin';
+    store.put('packs/kit/chair.gltf', new TextEncoder().encode(JSON.stringify(json)));
+    store.put('packs/kit/chair.bin', Object.values(resources)[0]);
+    published = [];
+
+    const error = await rejection(service.finalize('kit', 'chair.gltf'));
+    expect(error).toEqual({ type: 'validation', message: 'kind "kit/chair" already belongs to "packs/kit/chair.glb"' });
+    expect(published).toEqual([]);
+  });
+
   it('is busy while a bake or render holds the lock', async () => {
     store.put('packs/kit/chair.glb', await gridGlb());
     const release = lock.acquire();

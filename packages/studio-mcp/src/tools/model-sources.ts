@@ -1,8 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { assertNever, type ModelSourceError, ModelSourceServiceError, type ModelSources } from '../model-sources.ts';
+import { type ModelSourceError, ModelSourceServiceError, type ModelSources } from '../model-sources.ts';
 import { errorResult, guard, jsonResult } from './shared.ts';
+
+const assertNever = (value: never): never => {
+  throw new Error(`Unhandled variant: ${JSON.stringify(value)}`);
+};
 
 const errorText = (error: ModelSourceError): string =>
   error.type === 'validation'
@@ -49,9 +53,11 @@ export function registerModelSourceTools(server: McpServer, modelSources: ModelS
     {
       description:
         'Turn an uploaded .glb or .gltf entry (with every buffer and image it references uploaded) into a catalog kind ' +
-        '"<pack>/<entry without extension>": a simplified, compressed derivative is served as its model, and layout bakes ' +
-        'read the raw upload. Re-finalizing updates the model and keeps the kind\'s other fields. Fails while a bake or ' +
-        'render is running; retry shortly.',
+        '"<pack>/<entry without extension>" (rejected if another entry, e.g. x.glb vs x.gltf, owns that id): a simplified, compressed derivative is served as its model, and layout bakes ' +
+        'read the raw upload. Re-finalizing updates the model and keeps the kind\'s other fields, including localAABB, ' +
+        'dimensions and collider fields, which may then be stale if the geometry changed. Fails while a bake or render is ' +
+        'running; retry shortly. A very large model can outlast the ~60 s request cap; the work still completes, so check ' +
+        'list_model_sources before retrying.',
       inputSchema: { pack: packSchema, entry: z.string().describe('Pack-relative path of the .glb or .gltf.') },
     },
     (args) => serviceCall(() => modelSources.finalize(args.pack, args.entry)),

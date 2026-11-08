@@ -15,19 +15,20 @@ import { readSourceGltf, type ModelSourceReader } from '@officexr/world/model-so
 import {
   type CatalogStorage,
   isValidSceneName,
+  kindLabelFromFileName,
+  newWorldObjectKind,
+  normalizeKind,
   validateWorldObjectKindCatalog,
   type WorldObjectKind,
   type WorldObjectKindCatalogV1,
 } from '@officexr/world/scenes';
 import { bundledModelPacks } from '../studio-backend.ts';
-import type { ModelSourceStore } from './store.ts';
+import { type ModelSourceStore, SHA256_PATTERN, UPLOAD_EXTENSION } from './store.ts';
 
 const MAX_FILES_PER_REQUEST = 50;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const PATH_PATTERN = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
-const UPLOAD_EXTENSION = /\.(glb|gltf|bin|png|jpg|jpeg|webp)$/;
 const ENTRY_EXTENSION = /\.(glb|gltf)$/;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export interface ModelSourcesServiceDeps {
   store: ModelSourceStore;
@@ -87,35 +88,28 @@ function verifiedReader(store: ModelSourceStore): ModelSourceReader {
   };
 }
 
-function humanize(stem: string): string {
-  return path.posix
-    .basename(stem)
-    .replace(/[_-]+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
+const emptyCatalog = (): WorldObjectKindCatalogV1 => ({ schemaVersion: 1, updatedAt: 0, kinds: [] });
 
-/** Catalog defaults for a new kind, as `download-asset-packs.ts` builds its entries. */
-function newKind(id: string, stem: string, gltfPath: string): WorldObjectKind {
-  return {
-    id,
-    label: humanize(stem),
-    gltfPath,
-    swatch: '#64748b',
-    walkable: false,
-    scale: 1,
-    tint: null,
-    opacity: 1,
-    roughness: null,
-    metalness: null,
-    emissive: null,
-    emissiveIntensity: 0,
-    category: 'furniture',
-    tilingAxes: { x: false, y: false, z: false },
-    gravity: false,
-    isLayoutObject: false,
-    optimization: 'none',
-  };
+/** `catalog` with the kind for `sourceObject` added or repointed; rejects an id another source already owns. */
+function withKind(
+  catalog: WorldObjectKindCatalogV1,
+  { id, label, gltfPath, sourceObject }: { id: string; label: string; gltfPath: string; sourceObject: string },
+): { catalog: WorldObjectKindCatalogV1; kind: WorldObjectKind } {
+  const existing = catalog.kinds.find((k) => k.id === id);
+  if (existing && existing.sourceObject !== sourceObject) {
+    throw invalid(`kind "${id}" already belongs to ${existing.sourceObject ? `"${existing.sourceObject}"` : 'a model without a private source'}`);
+  }
+  let kind: WorldObjectKind;
+  try {
+    kind = normalizeKind(
+      { ...(existing ?? newWorldObjectKind({ id, label, gltfPath, swatch: '#64748b', category: 'furniture' })), gltfPath, sourceObject },
+      0,
+    );
+  } catch (err) {
+    throw invalid(`kind "${id}" would be invalid: ${(err as Error).message}`);
+  }
+  const kinds = existing ? catalog.kinds.map((k) => (k.id === id ? kind : k)) : [...catalog.kinds, kind];
+  return { catalog: { ...catalog, updatedAt: Date.now(), kinds }, kind };
 }
 
 export class ModelSourcesService implements ModelSources {
@@ -150,6 +144,9 @@ export class ModelSourcesService implements ModelSources {
   async finalize(pack: string, entry: string) {
     await this.checkPack(pack);
     checkPath(entry, ENTRY_EXTENSION);
+    const stem = entry.replace(ENTRY_EXTENSION, '');
+    const rel = `${pack}/${stem}.glb`;
+    const kindFields = { id: `${pack}/${stem}`, label: kindLabelFromFileName(path.posix.basename(entry)), sourceObject: sourceKey(pack, entry) };
     let release: () => void;
     try {
       release = this.deps.heavyWorkLock.acquire();
@@ -157,22 +154,20 @@ export class ModelSourcesService implements ModelSources {
       throw new ModelSourceServiceError({ type: 'busy', message: (err as Error).message });
     }
     try {
-      const glb = await this.buildDerivative(sourceKey(pack, entry));
-      const stem = entry.replace(ENTRY_EXTENSION, '');
-      const rel = `${pack}/${stem}.glb`;
+      withKind((await this.deps.catalog().load()) ?? emptyCatalog(), { ...kindFields, gltfPath: `/models/${rel}` });
+      const glb = await this.buildDerivative(kindFields.sourceObject);
       const file = path.join(this.deps.uploadedModelsDir, rel);
       await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, glb);
       await this.deps.publishModel(rel);
       // The content hash changes `gltfPath` on every new derivative, so bakes of layouts using the kind turn stale
       // (their fingerprint covers the catalog entry, not the source bytes) and cached copies of the old GLB are bypassed.
-      const kind = await this.upsertKind({
-        id: `${pack}/${stem}`,
-        stem,
-        gltfPath: `/models/${rel}?v=${sha256Hex(glb).slice(0, 12)}`,
-        sourceObject: sourceKey(pack, entry),
-      });
-      return { kind };
+      const gltfPath = `/models/${rel}?v=${sha256Hex(glb).slice(0, 12)}`;
+      // ponytail: the Object editor PUTs its whole catalog on any edit; a tab opened before this save drops or reverts the kind.
+      const catalog = this.deps.catalog();
+      const updated = withKind((await catalog.load()) ?? emptyCatalog(), { ...kindFields, gltfPath });
+      await catalog.save(validateWorldObjectKindCatalog(updated.catalog));
+      return { kind: updated.kind };
     } finally {
       release();
     }
@@ -183,22 +178,15 @@ export class ModelSourcesService implements ModelSources {
     try {
       doc = await readSourceGltf(verifiedReader(this.deps.store), entryKey);
     } catch (err) {
-      throw err instanceof ModelSourceServiceError ? err : invalid((err as Error).message);
+      // readSourceGltf's own errors can quote source content (a JSON.parse snippet, a resource URI); never echo it.
+      if (err instanceof ModelSourceServiceError) {
+        throw err;
+      }
+      throw invalid(`"${entryKey}" is not a valid glTF or GLB, or references a file outside its pack`);
     }
     await resolveOptimizer('simplify-aggressive').apply(doc);
     await doc.transform(compressDocument);
     return (await registerCompressionCodecs(new NodeIO())).writeBinary(doc);
-  }
-
-  // ponytail: read-modify-write over HTTP; a simultaneous editor save of the catalog loses to whichever writes last.
-  private async upsertKind({ id, stem, gltfPath, sourceObject }: { id: string; stem: string; gltfPath: string; sourceObject: string }) {
-    const catalog = this.deps.catalog();
-    const current: WorldObjectKindCatalogV1 = (await catalog.load()) ?? { schemaVersion: 1, updatedAt: 0, kinds: [] };
-    const existing = current.kinds.find((k) => k.id === id);
-    const kind = { ...(existing ?? newKind(id, stem, gltfPath)), gltfPath, sourceObject };
-    const kinds = existing ? current.kinds.map((k) => (k.id === id ? kind : k)) : [...current.kinds, kind];
-    await catalog.save(validateWorldObjectKindCatalog({ ...current, updatedAt: Date.now(), kinds }));
-    return kind;
   }
 
   async list(pack?: string) {
