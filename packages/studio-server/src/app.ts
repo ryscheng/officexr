@@ -10,7 +10,7 @@ import { staticDirMiddleware } from '@officexr/server/static';
 import { loopbackOrigin, mountMcp, type McpOptions } from '@officexr/studio-mcp/mount-mcp';
 import type { StudioStorage } from '@officexr/world/vite-plugin-storage';
 import { pathname } from './http.ts';
-import { sendJson, studioGate, upgradeAccess, type Access, type IsStudioAllowed } from './studio-gate.ts';
+import { sendJson, studioGate, upgradeAccess, type Access, type IsAllowed } from './studio-gate.ts';
 
 export interface StudioListener {
   server: Server;
@@ -165,7 +165,7 @@ export function createPublicServer(opts: {
   realtimeTarget: string;
   frontendOrigins: string[];
   sessionReader: ReturnType<typeof createSessionReader>;
-  isStudioAllowed: IsStudioAllowed;
+  isStudioAllowed: IsAllowed;
 }): StudioListener {
   const app = connect();
   const server = createServer(app);

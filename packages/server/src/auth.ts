@@ -88,7 +88,7 @@ export const createGoogleStrategy: GoogleStrategyFactory = (config, verify) =>
   );
 
 /** Whether an email, or its domain, is on `table`: a `(kind, value)` allowlist like `login_allowlist`. */
-export function pgAllowlist(pool: pg.Pool, table: 'login_allowlist' | 'studio_allowlist'): IsLoginAllowed {
+export function pgAllowlist(pool: pg.Pool, table: 'login_allowlist' | 'studio_allowlist' | 'admin_allowlist'): IsLoginAllowed {
   return async (email) => {
     const { rows } = await pool.query<{ allowed: boolean }>(
       `select exists (select 1 from ${table} where (kind = 'email' and value = $1) or (kind = 'domain' and value = $2)) as allowed`,
