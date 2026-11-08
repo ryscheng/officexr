@@ -146,6 +146,29 @@ describe('MCP OAuth server', () => {
     expect(next.pathname + next.search).toBe(new URL(url).pathname + new URL(url).search);
   });
 
+  it('answers 401 rather than a sign-in redirect for a POST without a session, which would lose its params', async () => {
+    const { client_id } = await register();
+    const res = await postForm('/authorize', {
+      response_type: 'code',
+      client_id,
+      redirect_uri: REDIRECT,
+      code_challenge: pkce().challenge,
+      code_challenge_method: 'S256',
+      resource: RESOURCE,
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('answers 400 without redirecting for an unregistered redirect_uri', async () => {
+    const { client_id } = await register();
+    const url = new URL(authorizeUrl(client_id, pkce().challenge));
+    url.searchParams.set('redirect_uri', 'https://evil.example.com/callback');
+    const res = await get(url.href, await signIn(ADMIN));
+    expect(res.status).toBe(400);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
   it('answers 403 and issues nothing for a signed-in non-admin', async () => {
     const { client_id } = await register();
     const res = await get(authorizeUrl(client_id, pkce().challenge), await signIn('someone@example.com'));
@@ -223,6 +246,36 @@ describe('MCP OAuth server', () => {
     expect(racing.map((r) => r.status).sort()).toEqual([200, 400]);
   });
 
+  it('refuses to exchange a code or refresh token once the login left the admin allowlist', async () => {
+    const pending = await authorizedCode();
+    const issued = await authorizedCode();
+    const { refresh_token } = await (await exchangeCode(issued.client.client_id, issued.code, issued.verifier)).json();
+    const refresh = () => postForm('/token', { grant_type: 'refresh_token', client_id: issued.client.client_id, refresh_token });
+
+    admins.delete(ADMIN);
+    expect((await (await exchangeCode(pending.client.client_id, pending.code, pending.verifier)).json()).error).toBe('invalid_grant');
+    expect((await (await refresh()).json()).error).toBe('invalid_grant');
+    admins.add(ADMIN);
+    expect((await refresh()).status).toBe(400);
+  });
+
+  it('refuses another client’s code or refresh token, and ignores its revocation', async () => {
+    const { client, verifier, code } = await authorizedCode();
+    const other = await register();
+    expect((await exchangeCode(other.client_id, code, verifier)).status).toBe(400);
+
+    const second = await authorizedCode();
+    const { access_token, refresh_token } = await (await exchangeCode(second.client.client_id, second.code, second.verifier)).json();
+    const refresh = (clientId: string) => postForm('/token', { grant_type: 'refresh_token', client_id: clientId, refresh_token });
+    expect((await refresh(other.client_id)).status).toBe(400);
+
+    expect((await postForm('/revoke', { client_id: other.client_id, token: access_token })).status).toBe(200);
+    await oauth.verifyAccessToken(access_token);
+    expect((await refresh(second.client.client_id)).status).toBe(200);
+    // The store can't read a code without consuming it, so another client's attempt spends it.
+    expect((await exchangeCode(client.client_id, code, verifier)).status).toBe(400);
+  });
+
   it('rejects an expired access token and one whose login left the admin allowlist', async () => {
     const { client, verifier, code } = await authorizedCode();
     const { access_token } = await (await exchangeCode(client.client_id, code, verifier)).json();
@@ -258,10 +311,17 @@ describe('MCP OAuth server', () => {
 });
 
 describe('parseOAuthEnv', () => {
-  it('enables the server only with both URLs and refuses just one', () => {
+  it('enables the server only with both URLs, each a plain origin', () => {
     expect(parseOAuthEnv({})).toEqual({ type: 'disabled' });
     expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: ISSUER, OFFICEXR_WEB_PUBLIC_URL: WEB })).toEqual({ type: 'enabled', issuerUrl: ISSUER, webPublicUrl: WEB });
-    expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: ISSUER })).toEqual({ type: 'invalid', missing: 'OFFICEXR_WEB_PUBLIC_URL' });
-    expect(parseOAuthEnv({ OFFICEXR_WEB_PUBLIC_URL: WEB })).toEqual({ type: 'invalid', missing: 'STUDIO_PUBLIC_URL' });
+    expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: ISSUER }).type).toBe('invalid');
+    expect(parseOAuthEnv({ OFFICEXR_WEB_PUBLIC_URL: WEB }).type).toBe('invalid');
+    for (const bad of [`${ISSUER}/`, `${ISSUER}/api`, `${ISSUER}?x=1`, `${ISSUER}#x`, 'studio-api.example.com']) {
+      expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: bad, OFFICEXR_WEB_PUBLIC_URL: WEB })).toMatchObject({ type: 'invalid', problem: expect.stringContaining('STUDIO_PUBLIC_URL') });
+      expect(parseOAuthEnv({ STUDIO_PUBLIC_URL: ISSUER, OFFICEXR_WEB_PUBLIC_URL: bad.replace(ISSUER, WEB) })).toMatchObject({
+        type: 'invalid',
+        problem: expect.stringContaining('OFFICEXR_WEB_PUBLIC_URL'),
+      });
+    }
   });
 });

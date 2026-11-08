@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Response } from 'express';
 import { sessionIdentity } from '@officexr/server';
 import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
@@ -6,8 +7,9 @@ import type { AuthorizationParams, OAuthServerProvider } from '@modelcontextprot
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { OAuthClientInformationFull, OAuthTokenRevocationRequest, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { IsAllowed } from '../studio-gate.ts';
-import { sendConsentPage, sendForbidden, TakeOnce } from './consent.ts';
-import { newOpaqueToken, type CodeGrant, type Grant, type OAuthStore } from './store.ts';
+import { sendConsentPage, sendError } from './consent.ts';
+import { newOpaqueToken, type Grant, type OAuthStore } from './store.ts';
+import { TakeOnce } from './take-once.ts';
 
 const MINUTE_MS = 60_000;
 const CODE_TTL_MS = 10 * MINUTE_MS;
@@ -19,12 +21,11 @@ type PendingConsent = { clientId: string; login: string; params: AuthorizationPa
 
 /** Issues tokens only to logins `isAdmin` accepts, and only after the admin approves the consent page. */
 export class AdminOAuthProvider implements OAuthServerProvider {
-  readonly skipLocalPkceValidation = false;
+  // PKCE is checked in `exchangeAuthorizationCode`, against the code it consumes: the store can't read a code without spending it.
+  readonly skipLocalPkceValidation = true;
   readonly clientsStore: OAuthRegisteredClientsStore;
+  // ponytail: pending consents live in memory, so a restart drops them and the server must run as one replica.
   private readonly consents: TakeOnce<PendingConsent>;
-  // The SDK reads the challenge before exchanging the code, but the store can only consume a code, so the
-  // grant consumed for the challenge waits here for the exchange in the same request.
-  private readonly challenged: TakeOnce<CodeGrant>;
 
   constructor(
     private readonly store: OAuthStore,
@@ -44,7 +45,6 @@ export class AdminOAuthProvider implements OAuthServerProvider {
       },
     };
     this.consents = new TakeOnce(CONSENT_TTL_MS, now);
-    this.challenged = new TakeOnce(CODE_TTL_MS, now);
   }
 
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response) {
@@ -53,6 +53,10 @@ export class AdminOAuthProvider implements OAuthServerProvider {
     }
     const req = res.req;
     const identity = sessionIdentity(req);
+    if (!identity && req.method !== 'GET') {
+      sendError(res, 401, 'Sign in to OfficeXR, then start again from your MCP client.');
+      return;
+    }
     if (!identity) {
       const signIn = new URL(this.signInUrl);
       signIn.searchParams.set('next', new URL(req.originalUrl, this.resource).href);
@@ -60,7 +64,7 @@ export class AdminOAuthProvider implements OAuthServerProvider {
       return;
     }
     if (!(await this.isAdmin(identity.login))) {
-      sendForbidden(res, `${identity.login} is not allowed to authorize MCP clients.`);
+      sendError(res, 403, `${identity.login} is not allowed to authorize MCP clients.`);
       return;
     }
     const csrfToken = newOpaqueToken();
@@ -93,31 +97,32 @@ export class AdminOAuthProvider implements OAuthServerProvider {
     return redirect.href;
   }
 
-  async challengeForAuthorizationCode(client: OAuthClientInformationFull, code: string) {
-    const grant = await this.store.consumeCode(code);
-    if (!grant || grant.clientId !== client.client_id) {
-      throw new InvalidGrantError('Invalid authorization code');
-    }
-    this.challenged.put(code, grant);
-    return grant.codeChallenge;
+  async challengeForAuthorizationCode(): Promise<string> {
+    throw new Error('unused: skipLocalPkceValidation is set');
   }
 
   async exchangeAuthorizationCode(
     client: OAuthClientInformationFull,
     code: string,
-    _codeVerifier?: string,
+    codeVerifier?: string,
     redirectUri?: string,
     resource?: URL,
   ) {
-    const grant = this.challenged.take(code);
+    const grant = await this.store.consumeCode(code);
     if (!grant || grant.clientId !== client.client_id) {
       throw new InvalidGrantError('Invalid authorization code');
+    }
+    if (codeVerifier === undefined || createHash('sha256').update(codeVerifier).digest('base64url') !== grant.codeChallenge) {
+      throw new InvalidGrantError('code_verifier does not match the challenge');
     }
     if (redirectUri !== undefined && redirectUri !== grant.redirectUri) {
       throw new InvalidGrantError('redirect_uri does not match the authorization request');
     }
     if (resource !== undefined && resource.href !== grant.resource) {
       throw new InvalidTargetError('resource does not match the authorization request');
+    }
+    if (!(await this.isAdmin(grant.login))) {
+      throw new InvalidGrantError('Not an admin');
     }
     return this.issueTokens(grant);
   }
@@ -132,6 +137,10 @@ export class AdminOAuthProvider implements OAuthServerProvider {
     }
     if (resource !== undefined && resource.href !== grant.resource) {
       throw new InvalidTargetError('resource does not match the original grant');
+    }
+    if (!(await this.isAdmin(grant.login))) {
+      await this.store.revokeRefreshToken(refreshToken);
+      throw new InvalidGrantError('Not an admin');
     }
     // Only the request that actually revokes the token may rotate it, so two concurrent refreshes can't both succeed.
     if (!(await this.store.revokeRefreshToken(refreshToken))) {

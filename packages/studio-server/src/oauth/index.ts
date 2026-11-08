@@ -6,26 +6,32 @@ import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { pathname } from '../http.ts';
 import type { IsAllowed } from '../studio-gate.ts';
-import { sendForbidden } from './consent.ts';
+import { sendError } from './consent.ts';
 import { AdminOAuthProvider } from './provider.ts';
 import type { OAuthStore } from './store.ts';
 
 export type OAuthEnv =
   | { type: 'disabled' }
   | { type: 'enabled'; issuerUrl: string; webPublicUrl: string }
-  | { type: 'invalid'; missing: string };
+  | { type: 'invalid'; problem: string };
 
-/** The MCP OAuth server runs only when both `STUDIO_PUBLIC_URL` and `OFFICEXR_WEB_PUBLIC_URL` are set. */
+const isOrigin = (url: string) => URL.parse(url)?.origin === url;
+
+/** The MCP OAuth server runs only when both `STUDIO_PUBLIC_URL` and `OFFICEXR_WEB_PUBLIC_URL` are set, each to a plain origin. */
 export function parseOAuthEnv(env: Record<string, string | undefined>): OAuthEnv {
   const issuerUrl = env.STUDIO_PUBLIC_URL;
   const webPublicUrl = env.OFFICEXR_WEB_PUBLIC_URL;
-  if (issuerUrl && webPublicUrl) {
-    return { type: 'enabled', issuerUrl, webPublicUrl };
+  if (!issuerUrl && !webPublicUrl) {
+    return { type: 'disabled' };
   }
-  if (issuerUrl || webPublicUrl) {
-    return { type: 'invalid', missing: issuerUrl ? 'OFFICEXR_WEB_PUBLIC_URL' : 'STUDIO_PUBLIC_URL' };
+  if (!issuerUrl || !webPublicUrl) {
+    return { type: 'invalid', problem: 'the MCP OAuth server needs both STUDIO_PUBLIC_URL and OFFICEXR_WEB_PUBLIC_URL' };
   }
-  return { type: 'disabled' };
+  const notOrigin = Object.entries({ STUDIO_PUBLIC_URL: issuerUrl, OFFICEXR_WEB_PUBLIC_URL: webPublicUrl }).find(([, url]) => !isOrigin(url));
+  if (notOrigin) {
+    return { type: 'invalid', problem: `${notOrigin[0]} must be an origin like https://example.com, with no path or trailing slash` };
+  }
+  return { type: 'enabled', issuerUrl, webPublicUrl };
 }
 
 /**
@@ -68,7 +74,8 @@ export function createOAuthApp(opts: {
 
   const app = express();
   app.disable('x-powered-by');
-  // Behind the Cloudflare tunnel, so the SDK's rate limits key on the client's address rather than the tunnel's.
+  // Exactly one hop, the Cloudflare tunnel, sits in front, and nothing reaches the port directly; so the SDK's rate
+  // limits key on the client's address rather than the tunnel's, and a client can't spoof it.
   app.set('trust proxy', 1);
   app.post('/authorize/consent', express.urlencoded({ extended: false }), async (req, res) => {
     const identity = sessionIdentity(req);
@@ -77,7 +84,7 @@ export function createOAuthApp(opts: {
     if (location) {
       res.redirect(302, location);
     } else {
-      sendForbidden(res, 'This authorization request is invalid or has expired. Start again from your MCP client.');
+      sendError(res, 403, 'This authorization request is invalid or has expired. Start again from your MCP client.');
     }
   });
   app.use(['/token', '/revoke'], express.urlencoded({ extended: false }), requireClientSecret(opts.store));

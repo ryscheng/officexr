@@ -26,7 +26,7 @@ if (!env.SESSION_SECRET || !env.SUPABASE_DB_URL) {
 }
 const oauthEnv = parseOAuthEnv(env);
 if (oauthEnv.type === 'invalid') {
-  console.error(`[studio-server] ${oauthEnv.missing} must be set too: the MCP OAuth server needs STUDIO_PUBLIC_URL and OFFICEXR_WEB_PUBLIC_URL`);
+  console.error(`[studio-server] ${oauthEnv.problem}`);
   process.exit(1);
 }
 const frontendOrigins = parseFrontendOrigins(env.FRONTEND_ORIGINS);
