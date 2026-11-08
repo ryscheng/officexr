@@ -10,6 +10,7 @@ import { createStudioStorage, seedDataDir } from '@officexr/world/vite-plugin-st
 import { createInternalServer, createPublicServer } from './app.ts';
 import { createOAuthApp, parseOAuthEnv } from './oauth/index.ts';
 import { PgOAuthStore } from './oauth/store.ts';
+import { modelSourceStoreFromEnv } from './model-sources/store.ts';
 import { studioBackend } from './studio-backend.ts';
 import { cacheAllowlist } from './studio-gate.ts';
 
@@ -54,6 +55,11 @@ const storage = createStudioStorage(backend.storageOptions);
 await storage.migrate();
 backend.startR2Sync();
 
+const modelSources = await modelSourceStoreFromEnv(env);
+if (!modelSources) {
+  console.log('[studio-server] private model sources are disabled: OFFICEXR_MODEL_SOURCES_BUCKET is not set');
+}
+
 const internal = createInternalServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
@@ -62,6 +68,7 @@ const internal = createInternalServer({
   mcp: createStudioMcpOptions({
     modelRoot: fileURLToPath(new URL('../../studio/public', import.meta.url)),
     chromiumPath: env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined,
+    sourceReader: modelSources ?? undefined,
   }),
   realtimeTarget,
 });
