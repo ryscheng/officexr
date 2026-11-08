@@ -7,7 +7,7 @@ import httpProxy from 'http-proxy';
 import { createCors, type createSessionReader } from '@officexr/server';
 import { close } from '@officexr/server/listen';
 import { staticDirMiddleware } from '@officexr/server/static';
-import { loopbackOrigin, mountMcp, type McpOptions } from '@officexr/studio-mcp/mount-mcp';
+import { loopbackOrigin, mcpHandler, type McpOptions } from '@officexr/studio-mcp/mount-mcp';
 import type { StudioStorage } from '@officexr/world/vite-plugin-storage';
 import { pathname } from './http.ts';
 import { sendJson, studioGate, upgradeAccess, type Access, type IsAllowed } from './studio-gate.ts';
@@ -124,12 +124,16 @@ export function createInternalServer(opts: {
   studioDist: string;
   mcp: Omit<McpOptions, 'origin'>;
   realtimeTarget: string;
-}): StudioListener {
+}): StudioListener & {
+  /** The `/mcp` endpoint on this listener, so another listener can serve the same options with loopback to this one. */
+  mcp: connect.NextHandleFunction;
+} {
   const app = connect();
   const server = createServer(app);
   opts.storage.mount(app);
   mountModels(app, opts);
-  mountMcp(app, { ...opts.mcp, origin: () => loopbackOrigin(server) });
+  const mcp = mcpHandler({ ...opts.mcp, origin: () => loopbackOrigin(server) });
+  app.use('/mcp', mcp);
   const dropTunnels = proxyRealtime(app, server, opts.realtimeTarget);
   app.use((req, res, next) => {
     const p = pathname(req);
@@ -153,7 +157,7 @@ export function createInternalServer(opts: {
     }, next);
   });
   app.use(staticDirMiddleware('/studio', opts.studioDist));
-  return listener(server, dropTunnels);
+  return { ...listener(server, dropTunnels), mcp };
 }
 
 /** Studio storage, `/models` and the realtime proxy, each only for a signed-in user on `studio_allowlist`, plus `GET /api/me`. */

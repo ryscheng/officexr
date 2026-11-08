@@ -100,11 +100,11 @@ export function createOAuthApp(opts: {
         resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resource),
         expectedResource: resource,
       }),
-      opts.mcp as RequestHandler,
+      opts.mcp,
     );
   }
 
-  // Express swaps the prototypes of every request it handles, so only OAuth requests are handed to it.
+  // Express swaps the prototypes of every request it handles, so only OAuth and /mcp requests are handed to it.
   const paths = new Set([
     '/.well-known/oauth-authorization-server',
     '/.well-known/oauth-protected-resource/mcp',

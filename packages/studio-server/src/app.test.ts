@@ -11,9 +11,7 @@ import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/share
 import session from 'express-session';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
 import { createSessionReader } from '@officexr/server';
-import { createStudioMcpOptions, loopbackOrigin, mcpHandler } from '@officexr/studio-mcp/mount-mcp';
-
-type ViewRenderer = ReturnType<typeof createStudioMcpOptions>['renderer'];
+import { createStudioMcpOptions, loopbackOrigin, type ViewRenderer } from '@officexr/studio-mcp/mount-mcp';
 import { emptyRoomDocument } from '@officexr/world/scenes';
 import { createStudioStorage } from '@officexr/world/vite-plugin-storage';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,7 +42,7 @@ const listen = async (server: Server) => {
   return loopbackOrigin(server);
 };
 
-/** `oauth` receives the public `/mcp` handler, which shares its options with the internal server's. */
+/** `oauth` receives the internal server's `/mcp` handler to serve behind bearer auth. */
 async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => NextHandleFunction, renderer?: ViewRenderer) {
   const storage = createStudioStorage({
     dataDir: path.join(dir, 'data'),
@@ -74,7 +72,7 @@ async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => 
     frontendOrigins: [FRONTEND],
     sessionReader: createSessionReader({ sessionSecret: SECRET, sessionStore, secure: false }),
     isStudioAllowed: (login) => isStudioAllowed(login),
-    oauth: oauth?.(mcpHandler({ ...mcp, origin: () => loopbackOrigin(internal.server) })),
+    oauth: oauth?.(internal.mcp),
   });
   listeners.push(internal, pub);
   for (const { server } of [internal, pub]) {
@@ -407,8 +405,8 @@ describe('public /mcp', () => {
       (mcp) => createOAuthApp({ store, isAdmin: async (login) => login === ALLOWED, issuerUrl: ISSUER, webPublicUrl: 'https://web.example.com', mcp }).handler,
       renderer,
     );
-    const token = async (value: string, resource = `${ISSUER}/mcp`, login = ALLOWED) =>
-      store.saveToken(value, 'access', { clientId: 'c', login, scopes: [], resource, expiresAt: new Date(Date.now() + 60_000) });
+    const token = async (value: string, resource = `${ISSUER}/mcp`, login = ALLOWED, expiresAt = new Date(Date.now() + 60_000)) =>
+      store.saveToken(value, 'access', { clientId: 'c', login, scopes: [], resource, expiresAt });
     return { ...booted, token };
   }
 
@@ -422,8 +420,9 @@ describe('public /mcp', () => {
     const { pub, token } = await bootWithOAuth();
     await token('other-audience', 'https://elsewhere.example.com/mcp');
     await token('retired-admin', undefined, 'former@example.com');
+    await token('expired', undefined, ALLOWED, new Date(Date.now() - 1000));
     const cookie = await signIn(ALLOWED);
-    for (const headers of [{} as Record<string, string>, { cookie }, { authorization: 'Bearer nope' }, { authorization: 'Bearer other-audience' }, { authorization: 'Bearer retired-admin' }]) {
+    for (const headers of [{} as Record<string, string>, { cookie }, { authorization: 'Bearer nope' }, { authorization: 'Bearer other-audience' }, { authorization: 'Bearer retired-admin' }, { authorization: 'Bearer expired' }]) {
       const res = await fetch(`${pub}/mcp`, { ...mcpRequest, headers: { ...mcpRequest.headers, ...headers } });
       expect(res.status).toBe(401);
       expect(res.headers.get('www-authenticate')).toContain(`resource_metadata="${METADATA}"`);

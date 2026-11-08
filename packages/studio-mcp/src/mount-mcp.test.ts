@@ -33,13 +33,13 @@ const options = (origin: () => string) => ({
 });
 
 describe('mountMcp', () => {
-  it('guards then handles /mcp on a plain app, answering GET with 405', async () => {
+  it('guards and handles /mcp on a plain app, answering GET with 405', async () => {
     const { app, mounts } = plainApp();
     mountMcp(app, options(() => 'http://127.0.0.1:1'));
-    expect(mounts).toHaveLength(2);
+    expect(mounts).toHaveLength(1);
     server = createServer((req, res) => {
       req.url = req.url!.replace(/^\/mcp/, '') || '/';
-      void mounts[0][1](req, res, () => void mounts[1][1](req, res, () => {}));
+      void mounts[0][1](req, res, () => {});
     });
     await new Promise<void>((r) => server!.listen(0, r));
     const res = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`);
@@ -60,7 +60,7 @@ describe('mountMcp', () => {
     const origin = `http://127.0.0.1:${(storageServer.address() as AddressInfo).port}`;
     const { app, mounts } = plainApp();
     mountMcp(app, options(() => origin));
-    server = createServer((req, res) => void mounts[1][1](req, res, () => {}));
+    server = createServer((req, res) => void mounts[0][1](req, res, () => {}));
     await new Promise<void>((r) => server!.listen(0, r));
     const client = new Client({ name: 'test', version: '0' });
     await client.connect(
