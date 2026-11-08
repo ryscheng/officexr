@@ -74,7 +74,7 @@ officexr/
   under `COOKIE_DOMAIN`); example insert in the README. Both ports share
   one storage instance, so save hooks fire once per write. Other env: `OFFICEXR_STUDIO_DATA_DIR`
   (seeded from `packages/world` on first boot), `OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS` +
-  `OFFICEXR_REALTIME_ADMIN_TOKEN`, `OFFICEXR_R2_*`, `OFFICEXR_RENDER_CHROMIUM_PATH`.
+  `OFFICEXR_REALTIME_ADMIN_TOKEN`, `OFFICEXR_R2_*`, `OFFICEXR_RENDER_CHROMIUM_PATH`, and `OFFICEXR_MODEL_SOURCES_BUCKET` + `OFFICEXR_MODEL_SOURCES_SIGNER_EMAIL` (set together; private GCS model sources, `model-sources/store.ts`, the bake `sourceReader`; upload URLs are signed as the signer GSA).
   Server-generated models persist in the uploaded-models dir (`$OFFICEXR_STUDIO_DATA_DIR/models`, else the gitignored
   `packages/world/uploaded-models`), created at startup and R2-synced under `models/`; `/models` serves it before the bundled models.
   `pnpm --filter @officexr/studio dev` keeps running the same storage, MCP and hooks inside Vite, including `/models` from the uploaded dir.
