@@ -92,6 +92,8 @@ export {
   type SeatSpec,
   CUBE_KIND_CATEGORIES,
   WORLD_OBJECT_KIND_DEFAULTS,
+  newWorldObjectKind,
+  kindLabelFromFileName,
   CUBE_KIND_DEFAULTS,
   validateWorldObjectKindCatalog,
   validateCubeKindCatalog,

@@ -14,8 +14,10 @@ import { handleMcpRequest, type StudioMcpOptions } from './server.ts';
 import type { StudioDocuments } from './studio-documents.ts';
 import { BakeJobs } from './tools/bake-jobs.ts';
 
+export { HeavyWorkLock };
+
 /** Clients for the studio's own REST surface, so validation, hooks and disk I/O stay in `vite-plugin-storage.ts`. */
-function loopbackDocuments(origin: string): StudioDocuments {
+export function loopbackDocuments(origin: string): StudioDocuments {
   return {
     rooms: new FilesystemRoomStorage({ basePath: `${origin}/api/rooms` }),
     maps: new FilesystemMapStorage({ basePath: `${origin}/api/maps` }),

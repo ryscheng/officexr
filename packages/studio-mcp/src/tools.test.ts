@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { HeavyWorkLock } from './heavy-work-lock.ts';
+import { ModelSourceServiceError, type ModelSources } from './model-sources.ts';
 import type { BakeLayout } from './tools/baked-layouts.ts';
 import type { RenderRequest, RenderResult, ViewRenderer } from './renderer.ts';
 import { createStudioMcpServer, type StudioMcpOptions } from './server.ts';
@@ -766,6 +767,74 @@ describe('studio MCP tools', () => {
       expect(refused).toMatchObject({ isError: true, content: [{ text: busy.text }] });
       bakeGate.resolve();
       await baking;
+    });
+  });
+
+  describe('model sources', () => {
+    const kind = validateWorldObjectKindCatalog({
+      schemaVersion: 1,
+      kinds: [{ id: 'kit/chair', label: 'Chair', gltfPath: '/models/kit/chair.glb', swatch: '#000', sourceObject: 'packs/kit/chair.glb' }],
+    }).kinds[0];
+
+    function fakeModelSources(): ModelSources & { calls: unknown[][] } {
+      const calls: unknown[][] = [];
+      return {
+        calls,
+        requestUpload: async (pack, files) => {
+          calls.push(['requestUpload', pack, files]);
+          return {
+            uploads: files.map((f) => ({ path: f.path, url: `https://u/${f.path}`, method: 'PUT' as const, headers: {}, expiresAt: 'x' })),
+          };
+        },
+        finalize: async (pack, entry) => {
+          calls.push(['finalize', pack, entry]);
+          if (entry === 'busy.glb') {
+            throw new ModelSourceServiceError({ type: 'busy', message: 'a bake or render is already in progress; retry shortly' });
+          }
+          if (entry === 'bad.glb') {
+            throw new ModelSourceServiceError({ type: 'validation', message: '"packs/kit/bad.glb" has not been uploaded' });
+          }
+          return { kind };
+        },
+        list: async (pack) => {
+          calls.push(['list', pack]);
+          return { packs: [{ pack: 'kit', files: [], finalizedEntries: ['chair.glb'] }] };
+        },
+      };
+    }
+
+    it('are registered only with a ModelSources', async () => {
+      const without = (await (await connect()).client.listTools()).tools.map((t) => t.name);
+      expect(without).not.toContain('finalize_model');
+      const { client } = await connect({}, undefined, { modelSources: fakeModelSources() });
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      expect(names).toEqual(expect.arrayContaining(['request_model_upload', 'finalize_model', 'list_model_sources']));
+    });
+
+    it('pass arguments through and return the service result as JSON', async () => {
+      const modelSources = fakeModelSources();
+      const { call } = await connect({}, undefined, { modelSources });
+      const files = [{ path: 'chair.glb', sha256: 'a'.repeat(64), sizeBytes: 3 }];
+      expect(JSON.parse((await call('request_model_upload', { pack: 'kit', files })).text).uploads[0].url).toBe('https://u/chair.glb');
+      expect(JSON.parse((await call('finalize_model', { pack: 'kit', entry: 'chair.glb' })).text)).toEqual({ kind });
+      expect(JSON.parse((await call('list_model_sources')).text).packs[0].finalizedEntries).toEqual(['chair.glb']);
+      expect(modelSources.calls).toEqual([
+        ['requestUpload', 'kit', files],
+        ['finalize', 'kit', 'chair.glb'],
+        ['list', undefined],
+      ]);
+    });
+
+    it('turn service errors into tool errors', async () => {
+      const { call } = await connect({}, undefined, { modelSources: fakeModelSources() });
+      expect(await call('finalize_model', { pack: 'kit', entry: 'bad.glb' })).toEqual({
+        isError: true,
+        text: 'invalid request: "packs/kit/bad.glb" has not been uploaded',
+      });
+      expect(await call('finalize_model', { pack: 'kit', entry: 'busy.glb' })).toEqual({
+        isError: true,
+        text: 'a bake or render is already in progress; retry shortly',
+      });
     });
   });
 });

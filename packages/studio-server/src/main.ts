@@ -5,9 +5,10 @@ import pg from 'pg';
 import { createSessionReader, parseCookieDomain, parseFrontendOrigins, pgAllowlist, pgSessionStore } from '@officexr/server';
 import { listen } from '@officexr/server/listen';
 import { DEFAULT_MODELS_DIR } from '@officexr/server/static';
-import { createStudioMcpOptions } from '@officexr/studio-mcp/mount-mcp';
+import { createStudioMcpOptions, loopbackDocuments, loopbackOrigin } from '@officexr/studio-mcp/mount-mcp';
 import { createStudioStorage, seedDataDir } from '@officexr/world/vite-plugin-storage';
 import { createInternalServer, createPublicServer } from './app.ts';
+import { ModelSourcesService } from './model-sources/service.ts';
 import { createOAuthApp, parseOAuthEnv } from './oauth/index.ts';
 import { PgOAuthStore } from './oauth/store.ts';
 import { modelSourceStoreFromEnv } from './model-sources/store.ts';
@@ -70,7 +71,18 @@ const internal = createInternalServer({
   modelsDir: DEFAULT_MODELS_DIR,
   uploadedModelsDir: backend.uploadedModelsDir,
   studioDist,
-  mcp,
+  mcp: modelSources
+    ? {
+        ...mcp,
+        modelSources: new ModelSourcesService({
+          store: modelSources,
+          catalog: () => loopbackDocuments(loopbackOrigin(internal.server)).catalog,
+          heavyWorkLock: mcp.heavyWorkLock,
+          uploadedModelsDir: backend.uploadedModelsDir,
+          publishModel: backend.publishModel,
+        }),
+      }
+    : mcp,
   realtimeTarget,
 });
 const publicServer = createPublicServer({

@@ -290,6 +290,24 @@ export const WORLD_OBJECT_KIND_DEFAULTS = {
   optimization: 'none' as OptimizationMode,
 } as const;
 
+/** A new kind with the "no change" defaults; tiling follows `category` as in `normalizeKind`. */
+export function newWorldObjectKind(
+  fields: Pick<WorldObjectKind, 'id' | 'label' | 'gltfPath' | 'swatch' | 'category'>,
+): WorldObjectKind {
+  const tiles = fields.category === 'block';
+  return { ...WORLD_OBJECT_KIND_DEFAULTS, walkable: false, ...fields, tilingAxes: { x: tiles, y: tiles, z: tiles } };
+}
+
+/** `Office_Chair-2.gltf` → `Office Chair 2`: a kind label from a model file name. */
+export function kindLabelFromFileName(name: string): string {
+  return name
+    .replace(/\.(gltf|glb)$/i, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /** Validate + normalize a parsed JSON object into a WorldObjectKindCatalogV1.
  * Throws on invalid input so the loader can surface the failure to
  * the user instead of silently substituting a stale value. */

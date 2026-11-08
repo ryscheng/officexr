@@ -1,19 +1,15 @@
 import { Storage, type Bucket } from '@google-cloud/storage';
 import { GoogleAuth, Impersonated, type AuthClient } from 'google-auth-library';
 import { assetContentType } from '@officexr/world/asset-content-type';
+import type { SignedUpload as SignedUploadResponse } from '@officexr/studio-mcp/model-sources';
 import type { ModelSourceReader } from '@officexr/world/model-source';
 
 const UPLOAD_TTL_MS = 15 * 60 * 1000;
-/** Extensions a source upload may have; `assetContentType` covers all of them. */
-const UPLOAD_EXTENSIONS = new Set(['.glb', '.gltf', '.bin', '.png', '.jpg', '.jpeg', '.webp']);
+/** Extensions (lowercase only) a source upload may have; `assetContentType` covers all of them. */
+export const UPLOAD_EXTENSION = /\.(glb|gltf|bin|png|jpg|jpeg|webp)$/;
+export const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
-export interface SignedUpload {
-  url: string;
-  method: 'PUT';
-  /** Exactly the headers the client must send; the signature binds them. */
-  headers: Record<string, string>;
-  expiresAt: Date;
-}
+export type SignedUpload = Omit<SignedUploadResponse, 'path' | 'expiresAt'> & { expiresAt: Date };
 
 export interface ModelSourceStat {
   sizeBytes: number;
@@ -48,8 +44,7 @@ function assertKey(key: string): void {
 }
 
 function uploadContentType(key: string): string {
-  const ext = /\.[^./]+$/.exec(key)?.[0].toLowerCase();
-  if (!ext || !UPLOAD_EXTENSIONS.has(ext)) {
+  if (!UPLOAD_EXTENSION.test(key)) {
     throw new Error(`model source "${key}" has an unsupported extension`);
   }
   return assetContentType(key);
@@ -91,7 +86,7 @@ export class GcsModelSourceStore implements ModelSourceStore {
     if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 1) {
       throw new Error(`invalid upload size ${sizeBytes}`);
     }
-    if (!/^[0-9a-f]{64}$/.test(sha256)) {
+    if (!SHA256_PATTERN.test(sha256)) {
       throw new Error('sha256 must be 64 lowercase hex characters');
     }
     const extensionHeaders = {

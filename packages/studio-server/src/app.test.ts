@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { connect as netConnect } from 'node:net';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
@@ -11,12 +11,14 @@ import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/share
 import session from 'express-session';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
 import { createSessionReader } from '@officexr/server';
-import { createStudioMcpOptions, loopbackOrigin, type ViewRenderer } from '@officexr/studio-mcp/mount-mcp';
+import { createStudioMcpOptions, HeavyWorkLock, loopbackDocuments, loopbackOrigin, type ViewRenderer } from '@officexr/studio-mcp/mount-mcp';
 import { emptyRoomDocument } from '@officexr/world/scenes';
 import { createStudioStorage } from '@officexr/world/vite-plugin-storage';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { createInternalServer, createPublicServer, type StudioListener } from './app.ts';
+import { ModelSourcesService } from './model-sources/service.ts';
+import { gridGlb, InMemoryModelSourceStore } from './model-sources/test-fixtures.ts';
 import { createOAuthApp } from './oauth/index.ts';
 import { InMemoryOAuthStore } from './oauth/store.ts';
 import { cacheAllowlist, type IsAllowed } from './studio-gate.ts';
@@ -187,6 +189,36 @@ describe.each(['internal', 'pub'] as const)('/models on the %s port', (port) => 
     expect(await text('bundled-only.glb')).toBe('bundled');
     expect(await text('missing.glb')).toBe(404);
   });
+});
+
+it('serves a finalized derivative at its gltfPath on both ports, and the raw source nowhere', async () => {
+  const { internal, pub } = await boot();
+  const store = new InMemoryModelSourceStore();
+  const raw = await gridGlb();
+  store.put('packs/kit/chair.glb', raw);
+  const service = new ModelSourcesService({
+    store,
+    catalog: () => loopbackDocuments(internal).catalog,
+    heavyWorkLock: new HeavyWorkLock('a bake or render'),
+    uploadedModelsDir: path.join(dir, 'uploaded'),
+    publishModel: async () => {},
+    bundledPacks: async () => new Set(),
+  });
+
+  const { kind } = await service.finalize('kit', 'chair.glb');
+
+  const derivative = await readFile(path.join(dir, 'uploaded', 'kit', 'chair.glb'));
+  const headers = { cookie: await signIn(ALLOWED) };
+  for (const base of [internal, pub]) {
+    const served = await fetch(`${base}${kind.gltfPath}`, { headers });
+    expect(Buffer.from(await served.arrayBuffer())).toEqual(derivative);
+    for (const rawPath of ['/packs/kit/chair.glb', '/models/packs/kit/chair.glb', '/api/packs/kit/chair.glb']) {
+      expect((await fetch(`${base}${rawPath}`, { headers })).status).toBe(404);
+    }
+  }
+  expect(derivative.equals(Buffer.from(raw))).toBe(false);
+  const catalog = await (await fetch(`${internal}/api/world-object-kinds`)).json();
+  expect(catalog.kinds.find((k: { id: string }) => k.id === 'kit/chair')).toMatchObject({ sourceObject: 'packs/kit/chair.glb' });
 });
 
 describe('public server', () => {
