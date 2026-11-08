@@ -49,6 +49,7 @@ backend.startR2Sync();
 const internal = createInternalServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
+  uploadedModelsDir: backend.uploadedModelsDir,
   studioDist,
   mcp: createStudioMcpOptions({
     modelRoot: fileURLToPath(new URL('../../studio/public', import.meta.url)),
@@ -59,6 +60,7 @@ const internal = createInternalServer({
 const publicServer = createPublicServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
+  uploadedModelsDir: backend.uploadedModelsDir,
   realtimeTarget,
   frontendOrigins,
   sessionReader,

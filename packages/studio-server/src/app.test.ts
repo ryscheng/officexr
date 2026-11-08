@@ -53,9 +53,11 @@ async function boot(realtimeTarget = DOWN) {
     },
   });
   const modelsDir = path.join(dir, 'models');
+  const uploadedModelsDir = path.join(dir, 'uploaded');
   const internal = createInternalServer({
     storage,
     modelsDir,
+    uploadedModelsDir,
     studioDist: path.join(dir, 'dist'),
     mcp: createStudioMcpOptions({ modelRoot: dir }),
     realtimeTarget,
@@ -63,6 +65,7 @@ async function boot(realtimeTarget = DOWN) {
   const pub = createPublicServer({
     storage,
     modelsDir,
+    uploadedModelsDir,
     realtimeTarget,
     frontendOrigins: [FRONTEND],
     sessionReader: createSessionReader({ sessionSecret: SECRET, sessionStore, secure: false }),
@@ -160,6 +163,26 @@ describe('internal server', () => {
       expect(redirect.headers.get('location')).toBe('/studio/');
     }
     expect((await fetch(`${internal}/studio/app.js`)).headers.get('content-type')).toBe('text/javascript');
+  });
+});
+
+describe.each(['internal', 'pub'] as const)('/models on the %s port', (port) => {
+  it('serves uploaded files first, then bundled ones, else 404', async () => {
+    const booted = await boot();
+    await mkdir(path.join(dir, 'uploaded', 'pack'), { recursive: true });
+    await writeFile(path.join(dir, 'uploaded', 'pack', 'a.glb'), 'uploaded');
+    await writeFile(path.join(dir, 'uploaded', 'chair.glb'), 'uploaded-chair');
+    await writeFile(path.join(dir, 'models', 'bundled-only.glb'), 'bundled');
+    const base = booted[port];
+    const headers = port === 'pub' ? { cookie: await signIn(ALLOWED) } : undefined;
+    const text = async (rel: string) => {
+      const res = await fetch(`${base}/models/${rel}`, { headers });
+      return res.status === 200 ? res.text() : res.status;
+    };
+    expect(await text('pack/a.glb')).toBe('uploaded');
+    expect(await text('chair.glb')).toBe('uploaded-chair');
+    expect(await text('bundled-only.glb')).toBe('bundled');
+    expect(await text('missing.glb')).toBe(404);
   });
 });
 

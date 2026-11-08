@@ -153,7 +153,8 @@ describe('r2 publisher', () => {
   let config: R2Config;
   const servers: Server[] = [];
 
-  const dirs = () => ({ modelsDir, bakedLayoutsDir, soundsDir });
+  let uploadedDir: string;
+  const dirs = () => ({ modelsDirs: [modelsDir, uploadedDir], bakedLayoutsDir, soundsDir });
   const writeKind = (name: string, offset: number) =>
     new NodeIO().write(
       path.join(modelsDir, 'blocks', `${name}.gltf`),
@@ -169,6 +170,8 @@ describe('r2 publisher', () => {
       await mkdir(path.join(modelsDir, dir), { recursive: true });
     }
     soundsDir = path.join(root, 'sounds');
+    uploadedDir = path.join(root, 'uploaded');
+    await mkdir(path.join(uploadedDir, 'pack'), { recursive: true });
     await mkdir(bakedLayoutsDir);
     await mkdir(soundsDir);
     await writeKind('a', 0);
@@ -381,6 +384,19 @@ describe('r2 publisher', () => {
     const io = await registerCompressionCodecs(new NodeIO());
     const doc = await io.readBinary(layout);
     expect(doc.getRoot().listExtensionsUsed().map((e) => e.extensionName)).toContain('EXT_meshopt_compression');
+  });
+
+  it('syncs the uploaded dir under models/, and publishModel PUTs one key', async () => {
+    await writeFile(path.join(uploadedDir, 'pack', 'a.glb'), await glb(5));
+    const publisher = createR2Publisher(config);
+    await publisher.sync(dirs());
+    expect(s3.objects.has('models/pack/a.glb')).toBe(true);
+    expect(s3.objects.has('models/characters/Knight.glb')).toBe(true);
+    await writeFile(path.join(uploadedDir, 'pack', 'b.glb'), await glb(6));
+    const before = s3.objects.size;
+    await publisher.publishModel(uploadedDir, 'pack/b.glb');
+    expect(s3.objects.size).toBe(before + 1);
+    expect(s3.objects.has('models/pack/b.glb')).toBe(true);
   });
 
   it('uploads an already-compressed layout as-is', async () => {

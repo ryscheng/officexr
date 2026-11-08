@@ -33,7 +33,8 @@ type Unit = GltfUnit | ({ type: 'file' } & File) | { type: 'invalid'; key: strin
 type Upload = { key: string; bytes: Uint8Array };
 
 interface SyncDirs {
-  modelsDir: string;
+  /** Walked in order; later dirs win a key shared with an earlier one. */
+  modelsDirs: string[];
   bakedLayoutsDir: string;
   soundsDir: string;
 }
@@ -197,7 +198,7 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
     let units: Unit[];
     try {
       units = [
-        ...(await modelUnits(dirs.modelsDir)),
+        ...(await Promise.all(dirs.modelsDirs.map(modelUnits))).flat(),
         ...(await bakedLayoutUnits(dirs.bakedLayoutsDir)),
         ...(await soundUnits(dirs.soundsDir)),
       ];
@@ -229,6 +230,11 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
 
   return {
     sync,
+    /** Publishes `<modelsDir>/<rel>` as `models/<rel>`, with the full sync's compression and sha skip. */
+    publishModel: (modelsDir: string, rel: string) =>
+      enqueue(async () => {
+        await publishBytes(`models/${rel}`, await readFile(path.join(modelsDir, rel)));
+      }),
     /** Storage hooks for `/api/baked-layouts`: mirror each rebake and delete to the bucket. */
     bakedLayoutHooks: {
       onSaved: (name: string, bytes: Uint8Array) =>
