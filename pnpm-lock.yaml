@@ -353,6 +353,9 @@ importers:
       '@types/connect':
         specifier: ^3.4.38
         version: 3.4.38
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
       '@types/http-proxy':
         specifier: ^1.17.16
         version: 1.17.17
@@ -365,6 +368,9 @@ importers:
       connect:
         specifier: ^3.7.0
         version: 3.7.0
+      express:
+        specifier: ^5.2.1
+        version: 5.3.0
       google-auth-library:
         specifier: 9.15.1
         version: 9.15.1
@@ -10892,7 +10898,7 @@ snapshots:
       get-proto: 1.0.1
       gopd: 1.2.0
       has-symbols: 1.1.0
-      hasown: 2.0.2
+      hasown: 2.0.4
       math-intrinsics: 1.1.0
 
   get-nonce@1.0.1: {}
@@ -11133,7 +11139,7 @@ snapshots:
 
   is-core-module@2.16.1:
     dependencies:
-      hasown: 2.0.2
+      hasown: 2.0.4
     optional: true
 
   is-directory@0.3.1:

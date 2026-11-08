@@ -1,10 +1,10 @@
-import { createHmac, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { connect as netConnect } from 'node:net';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
+import type { NextHandleFunction } from 'connect';
 import session from 'express-session';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
 import { createSessionReader } from '@officexr/server';
@@ -13,7 +13,10 @@ import { createStudioStorage } from '@officexr/world/vite-plugin-storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { createInternalServer, createPublicServer, type StudioListener } from './app.ts';
+import { createOAuthApp } from './oauth/index.ts';
+import { InMemoryOAuthStore } from './oauth/store.ts';
 import { cacheAllowlist, type IsAllowed } from './studio-gate.ts';
+import { signIn as signInAs } from './test-sign-in.ts';
 
 const DOWN = 'http://127.0.0.1:1';
 const SECRET = 'test-secret';
@@ -23,14 +26,7 @@ const ALLOWED = 'allowed@example.com';
 let sessionStore: session.MemoryStore;
 let isStudioAllowed: IsAllowed;
 
-/** A session cookie for `login`, stored the way the web backend's sign-in leaves it. */
-async function signIn(login: string) {
-  const sid = randomUUID();
-  const sess = { cookie: { originalMaxAge: null, path: '/' }, passport: { user: { login, name: login } } };
-  await new Promise<void>((resolve, reject) => sessionStore.set(sid, sess as unknown as session.SessionData, (err) => (err ? reject(err) : resolve())));
-  const signature = createHmac('sha256', SECRET).update(sid).digest('base64').replace(/=+$/, '');
-  return `officexr.sid=${encodeURIComponent(`s:${sid}.${signature}`)}`;
-}
+const signIn = (login: string) => signInAs(sessionStore, SECRET, login);
 
 let dir: string;
 let saves: number;
@@ -42,7 +38,7 @@ const listen = async (server: Server) => {
   return loopbackOrigin(server);
 };
 
-async function boot(realtimeTarget = DOWN) {
+async function boot(realtimeTarget = DOWN, oauth?: NextHandleFunction) {
   const storage = createStudioStorage({
     dataDir: path.join(dir, 'data'),
     worldSettings: {
@@ -70,6 +66,7 @@ async function boot(realtimeTarget = DOWN) {
     frontendOrigins: [FRONTEND],
     sessionReader: createSessionReader({ sessionSecret: SECRET, sessionStore, secure: false }),
     isStudioAllowed: (login) => isStudioAllowed(login),
+    oauth,
   });
   listeners.push(internal, pub);
   for (const { server } of [internal, pub]) {
@@ -202,6 +199,28 @@ describe('public server', () => {
       expect(res.status).toBe(401);
       expect(await res.json()).toEqual({ error: 'Not signed in' });
     }
+  });
+
+  it('serves no OAuth routes unless the OAuth app is mounted', async () => {
+    const { pub } = await boot();
+    expect((await fetch(`${pub}/.well-known/oauth-authorization-server`)).status).toBe(401);
+  });
+
+  it('serves the OAuth routes without a session, passing every other path on to the gate', async () => {
+    const oauth = createOAuthApp({
+      store: new InMemoryOAuthStore(),
+      isAdmin: async () => true,
+      issuerUrl: 'https://studio-api.example.com',
+      webPublicUrl: 'https://web.example.com',
+    });
+    const { pub } = await boot(DOWN, oauth.handler);
+    const metadata = await fetch(`${pub}/.well-known/oauth-authorization-server`);
+    expect(metadata.status).toBe(200);
+    expect((await metadata.json()).issuer).toBe('https://studio-api.example.com/');
+    expect((await fetch(`${pub}/api/maps`)).status).toBe(401);
+    const res = await fetch(`${pub}/api/me`, { headers: { cookie: await signIn(ALLOWED) } });
+    expect(await res.json()).toEqual({ login: ALLOWED, name: ALLOWED });
+    expect(res.headers.get('x-powered-by')).toBeNull();
   });
 
   it('answers 403 for a signed-in login not on the studio allowlist', async () => {

@@ -157,6 +157,13 @@ The studio backend is a separate process, `pnpm --filter @officexr/studio-server
   insert into admin_allowlist (kind, value) values ('email', 'someone@example.com');
   ```
 
+  The public port also serves an MCP OAuth server (`/.well-known/oauth-authorization-server`, `/authorize`,
+  `/token`, `/register`, `/revoke`) when both `STUDIO_PUBLIC_URL` (this port's external origin, e.g.
+  `https://officexr-studio-api.karibalabs.co`; tokens are issued for `${STUDIO_PUBLIC_URL}/mcp`) and
+  `OFFICEXR_WEB_PUBLIC_URL` (the web backend's `PUBLIC_URL`) are set, each as a plain origin; with neither it is off,
+  and with only one the process refuses to start. Admins sign in through the web backend's `/auth/google`, so its
+  `FRONTEND_ORIGINS` must include `STUDIO_PUBLIC_URL` for the sign-in to return to `/authorize`.
+
 ## Building
 
 ```bash
