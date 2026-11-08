@@ -46,9 +46,17 @@ export default defineConfig(({ command }) => ({
         if (backend.dataDir) {
           await seedDataDir(backend.dataDir);
         }
+        await backend.ensureUploadedModelsDir();
       },
     },
-    // After the seed, so the sync sees seeded layouts.
+    // Registered directly (not in a returned callback) so it runs ahead of Vite's public dir, like the servers.
+    {
+      name: 'officexr:uploaded-models',
+      configureServer(server) {
+        server.middlewares.use(backend.uploadedModelsMiddleware);
+      },
+    },
+    // After the seed, so the sync sees seeded layouts and the uploaded dir exists.
     {
       name: 'officexr:r2-publish',
       configureServer: backend.startR2Sync,

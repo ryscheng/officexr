@@ -75,7 +75,9 @@ officexr/
   one storage instance, so save hooks fire once per write. Other env: `OFFICEXR_STUDIO_DATA_DIR`
   (seeded from `packages/world` on first boot), `OFFICEXR_WORLD_CONSTANTS_PUSH_TARGETS` +
   `OFFICEXR_REALTIME_ADMIN_TOKEN`, `OFFICEXR_R2_*`, `OFFICEXR_RENDER_CHROMIUM_PATH`.
-  `pnpm --filter @officexr/studio dev` keeps running the same storage, MCP and hooks inside Vite.
+  Server-generated models persist in the uploaded-models dir (`$OFFICEXR_STUDIO_DATA_DIR/models`, else the gitignored
+  `packages/world/uploaded-models`), created at startup and R2-synced under `models/`; `/models` serves it before the bundled models.
+  `pnpm --filter @officexr/studio dev` keeps running the same storage, MCP and hooks inside Vite, including `/models` from the uploaded dir.
 - **Database.** The backend (`packages/server/src/db.ts`) reads and
   writes Postgres via `pg` using `SUPABASE_DB_URL`; the browser never talks to the
   database. Offices and per-office character choices live there.
