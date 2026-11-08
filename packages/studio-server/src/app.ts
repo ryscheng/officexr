@@ -108,10 +108,19 @@ function listener(server: Server, dropTunnels: () => void): StudioListener {
   };
 }
 
+function mountModels(app: connect.Server, opts: { modelsDir: string; uploadedModelsDir?: string }) {
+  if (opts.uploadedModelsDir) {
+    app.use(staticDirMiddleware('/models', opts.uploadedModelsDir));
+  }
+  app.use(staticDirMiddleware('/models', opts.modelsDir));
+}
+
 /** Studio storage, `/models`, `/mcp`, the realtime proxy and the built studio SPA. */
 export function createInternalServer(opts: {
   storage: StudioStorage;
   modelsDir: string;
+  /** Served at `/models` before `modelsDir`. */
+  uploadedModelsDir?: string;
   studioDist: string;
   mcp: Omit<McpOptions, 'origin'>;
   realtimeTarget: string;
@@ -119,7 +128,7 @@ export function createInternalServer(opts: {
   const app = connect();
   const server = createServer(app);
   opts.storage.mount(app);
-  app.use(staticDirMiddleware('/models', opts.modelsDir));
+  mountModels(app, opts);
   mountMcp(app, { ...opts.mcp, origin: () => loopbackOrigin(server) });
   const dropTunnels = proxyRealtime(app, server, opts.realtimeTarget);
   app.use((req, res, next) => {
@@ -151,6 +160,8 @@ export function createInternalServer(opts: {
 export function createPublicServer(opts: {
   storage: StudioStorage;
   modelsDir: string;
+  /** Served at `/models` before `modelsDir`. */
+  uploadedModelsDir?: string;
   realtimeTarget: string;
   frontendOrigins: string[];
   sessionReader: ReturnType<typeof createSessionReader>;
@@ -164,7 +175,7 @@ export function createPublicServer(opts: {
   opts.sessionReader.middlewares.forEach((middleware) => app.use(middleware));
   app.use(studioGate(opts.sessionReader, opts.isStudioAllowed));
   opts.storage.mount(app);
-  app.use(staticDirMiddleware('/models', opts.modelsDir));
+  mountModels(app, opts);
   const authorizeUpgrade = upgradeAccess(opts.sessionReader, opts.isStudioAllowed, opts.frontendOrigins);
   const dropTunnels = proxyRealtime(app, server, opts.realtimeTarget, authorizeUpgrade);
   // Replaces connect's default handler, which sends the stack trace unless NODE_ENV is production.

@@ -33,7 +33,8 @@ type Unit = GltfUnit | ({ type: 'file' } & File) | { type: 'invalid'; key: strin
 type Upload = { key: string; bytes: Uint8Array };
 
 interface SyncDirs {
-  modelsDir: string;
+  /** Each dir's files publish under `models/`; a key present in two dirs would upload from both on every sync, so callers keep them disjoint. */
+  modelsDirs: string[];
   bakedLayoutsDir: string;
   soundsDir: string;
 }
@@ -197,7 +198,7 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
     let units: Unit[];
     try {
       units = [
-        ...(await modelUnits(dirs.modelsDir)),
+        ...(await Promise.all(dirs.modelsDirs.map(modelUnits))).flat(),
         ...(await bakedLayoutUnits(dirs.bakedLayoutsDir)),
         ...(await soundUnits(dirs.soundsDir)),
       ];
@@ -229,6 +230,15 @@ export function createR2Publisher(config: R2Config, fetchFn: typeof fetch = fetc
 
   return {
     sync,
+    /**
+     * Publishes the `.glb` at `<modelsDir>/<rel>` as `models/<rel>`, with the full sync's compression and sha skip.
+     * Rejects non-`.glb` files (a `.gltf` needs its resources) and any `rel` that escapes `modelsDir`.
+     */
+    publishModel: (modelsDir: string, rel: string) =>
+      enqueue(async () => {
+        const { key, file } = modelFile(modelsDir, rel);
+        await publishBytes(key, await readFile(file));
+      }),
     /** Storage hooks for `/api/baked-layouts`: mirror each rebake and delete to the bucket. */
     bakedLayoutHooks: {
       onSaved: (name: string, bytes: Uint8Array) =>
@@ -280,6 +290,23 @@ function glbJson(bytes: Uint8Array) {
 
 function encodeKey(key: string) {
   return key.split('/').map(encodeURIComponent).join('/');
+}
+
+/** The key and file for an uploaded `.glb` at `rel`, keyed as `modelUnits` keys it. */
+function modelFile(modelsDir: string, rel: string): { key: string; file: string } {
+  const normalized = path.posix.normalize(rel.split(path.sep).join('/'));
+  if (path.posix.isAbsolute(normalized) || normalized === '..' || normalized.startsWith('../')) {
+    throw new Error(`model path ${rel} escapes the models dir`);
+  }
+  if (!normalized.endsWith('.glb')) {
+    throw new Error(`model ${rel} must be a .glb; only .glb uploads can be published singly`);
+  }
+  const root = path.resolve(modelsDir);
+  const file = path.resolve(root, normalized);
+  if (!file.startsWith(root + path.sep)) {
+    throw new Error(`model path ${rel} escapes the models dir`);
+  }
+  return { key: `models/${normalized}`, file };
 }
 
 /** One unit per `.gltf` (with the files it references) and per file no `.gltf` references. */

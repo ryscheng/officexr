@@ -67,6 +67,9 @@ playwright-report/
 # Layout JSON sources (packages/world/layouts/) are tracked.
 packages/world/baked-layouts/
 
+# Server-generated model derivatives (see studio-server uploadedModelsDir).
+packages/world/uploaded-models/
+
 # Playwright scratch documents. The editor specs save maps/rooms with a
 # generated `pw-test-<random>` name; these are throwaway artifacts.
 packages/world/maps/pw-test-*.json

@@ -42,6 +42,7 @@ if (!(await access(path.join(studioDist, 'index.html')).then(() => true, () => f
 if (backend.dataDir) {
   await seedDataDir(backend.dataDir);
 }
+await backend.ensureUploadedModelsDir();
 const storage = createStudioStorage(backend.storageOptions);
 await storage.migrate();
 backend.startR2Sync();
@@ -49,6 +50,7 @@ backend.startR2Sync();
 const internal = createInternalServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
+  uploadedModelsDir: backend.uploadedModelsDir,
   studioDist,
   mcp: createStudioMcpOptions({
     modelRoot: fileURLToPath(new URL('../../studio/public', import.meta.url)),
@@ -59,6 +61,7 @@ const internal = createInternalServer({
 const publicServer = createPublicServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
+  uploadedModelsDir: backend.uploadedModelsDir,
   realtimeTarget,
   frontendOrigins,
   sessionReader,
