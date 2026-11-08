@@ -29,6 +29,8 @@ export interface UseObjectCatalogResult {
   selectedKind: WorldObjectKind | null;
   setSelectedKindId: (id: string | null) => void;
   applyPatch: (partial: Partial<WorldObjectKind>) => void;
+  /** Adds or replaces kinds the server already persisted (e.g. after a model finalize). */
+  upsertKinds: (incoming: readonly WorldObjectKind[]) => void;
 }
 
 const LAST_KIND_KEY = 'officexr:studio:lastObjectKind';
@@ -136,11 +138,25 @@ export function useObjectCatalog(): UseObjectCatalogResult {
     [selectedKindId, scheduleSave, catalogService],
   );
 
+  const upsertKinds = useCallback(
+    (incoming: readonly WorldObjectKind[]) => {
+      const current = catalogService.getCatalog();
+      const ids = new Set(incoming.map((k) => k.id));
+      catalogService.replaceCatalog({
+        ...current,
+        updatedAt: Date.now(),
+        kinds: [...current.kinds.filter((k) => !ids.has(k.id)), ...incoming],
+      });
+    },
+    [catalogService],
+  );
+
   return {
     kinds,
     selectedKindId,
     selectedKind,
     setSelectedKindId,
     applyPatch,
+    upsertKinds,
   };
 }
