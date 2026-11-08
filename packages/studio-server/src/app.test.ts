@@ -5,12 +5,18 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
 import type { NextHandleFunction } from 'connect';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
 import session from 'express-session';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
 import { createSessionReader } from '@officexr/server';
-import { createStudioMcpOptions, loopbackOrigin } from '@officexr/studio-mcp/mount-mcp';
+import { createStudioMcpOptions, loopbackOrigin, mcpHandler } from '@officexr/studio-mcp/mount-mcp';
+
+type ViewRenderer = ReturnType<typeof createStudioMcpOptions>['renderer'];
+import { emptyRoomDocument } from '@officexr/world/scenes';
 import { createStudioStorage } from '@officexr/world/vite-plugin-storage';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { createInternalServer, createPublicServer, type StudioListener } from './app.ts';
 import { createOAuthApp } from './oauth/index.ts';
@@ -38,7 +44,8 @@ const listen = async (server: Server) => {
   return loopbackOrigin(server);
 };
 
-async function boot(realtimeTarget = DOWN, oauth?: NextHandleFunction) {
+/** `oauth` receives the public `/mcp` handler, which shares its options with the internal server's. */
+async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => NextHandleFunction, renderer?: ViewRenderer) {
   const storage = createStudioStorage({
     dataDir: path.join(dir, 'data'),
     worldSettings: {
@@ -50,12 +57,13 @@ async function boot(realtimeTarget = DOWN, oauth?: NextHandleFunction) {
   });
   const modelsDir = path.join(dir, 'models');
   const uploadedModelsDir = path.join(dir, 'uploaded');
+  const mcp = { ...createStudioMcpOptions({ modelRoot: dir }), ...(renderer && { renderer }) };
   const internal = createInternalServer({
     storage,
     modelsDir,
     uploadedModelsDir,
     studioDist: path.join(dir, 'dist'),
-    mcp: createStudioMcpOptions({ modelRoot: dir }),
+    mcp,
     realtimeTarget,
   });
   const pub = createPublicServer({
@@ -66,7 +74,7 @@ async function boot(realtimeTarget = DOWN, oauth?: NextHandleFunction) {
     frontendOrigins: [FRONTEND],
     sessionReader: createSessionReader({ sessionSecret: SECRET, sessionStore, secure: false }),
     isStudioAllowed: (login) => isStudioAllowed(login),
-    oauth,
+    oauth: oauth?.(mcpHandler({ ...mcp, origin: () => loopbackOrigin(internal.server) })),
   });
   listeners.push(internal, pub);
   for (const { server } of [internal, pub]) {
@@ -184,7 +192,7 @@ describe.each(['internal', 'pub'] as const)('/models on the %s port', (port) => 
 });
 
 describe('public server', () => {
-  it('serves /models but not /mcp or the SPA', async () => {
+  it('serves /models but not the SPA, and no /mcp without the OAuth app', async () => {
     const { pub } = await boot();
     const headers = { cookie: await signIn(ALLOWED) };
     expect(await (await fetch(`${pub}/models/chair.glb`, { headers })).text()).toBe('glb');
@@ -213,7 +221,7 @@ describe('public server', () => {
       issuerUrl: 'https://studio-api.example.com',
       webPublicUrl: 'https://web.example.com',
     });
-    const { pub } = await boot(DOWN, oauth.handler);
+    const { pub } = await boot(DOWN, () => oauth.handler);
     const metadata = await fetch(`${pub}/.well-known/oauth-authorization-server`);
     expect(metadata.status).toBe(200);
     expect((await metadata.json()).issuer).toBe('https://studio-api.example.com/');
@@ -384,4 +392,96 @@ it('serves one storage on both ports, firing a save hook once per write', async 
   expect(res.status).toBe(204);
   expect(await (await fetch(`${internal}/api/world-settings`)).json()).toEqual(DEFAULT_WORLD_CONSTANTS);
   expect(saves).toBe(1);
+});
+
+describe('public /mcp', () => {
+  const ISSUER = 'https://studio-api.example.com';
+  const METADATA = `${ISSUER}/.well-known/oauth-protected-resource/mcp`;
+  const mcpRequest = { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) };
+
+  async function bootWithOAuth(renderer?: ViewRenderer) {
+    const store = new InMemoryOAuthStore();
+    await store.registerClient({ client_id: 'c', redirect_uris: ['https://client.example.com/cb'] } as OAuthClientInformationFull);
+    const booted = await boot(
+      DOWN,
+      (mcp) => createOAuthApp({ store, isAdmin: async (login) => login === ALLOWED, issuerUrl: ISSUER, webPublicUrl: 'https://web.example.com', mcp }).handler,
+      renderer,
+    );
+    const token = async (value: string, resource = `${ISSUER}/mcp`, login = ALLOWED) =>
+      store.saveToken(value, 'access', { clientId: 'c', login, scopes: [], resource, expiresAt: new Date(Date.now() + 60_000) });
+    return { ...booted, token };
+  }
+
+  const connectClient = async (pub: string, token: string) => {
+    const client = new Client({ name: 'test', version: '0' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${pub}/mcp`), { requestInit: { headers: { authorization: `Bearer ${token}` } } }));
+    return client;
+  };
+
+  it('answers 401 pointing at the resource metadata without a valid token, even for a signed-in studio user', async () => {
+    const { pub, token } = await bootWithOAuth();
+    await token('other-audience', 'https://elsewhere.example.com/mcp');
+    await token('retired-admin', undefined, 'former@example.com');
+    const cookie = await signIn(ALLOWED);
+    for (const headers of [{} as Record<string, string>, { cookie }, { authorization: 'Bearer nope' }, { authorization: 'Bearer other-audience' }, { authorization: 'Bearer retired-admin' }]) {
+      const res = await fetch(`${pub}/mcp`, { ...mcpRequest, headers: { ...mcpRequest.headers, ...headers } });
+      expect(res.status).toBe(401);
+      expect(res.headers.get('www-authenticate')).toContain(`resource_metadata="${METADATA}"`);
+    }
+  });
+
+  it('serves the protected-resource metadata', async () => {
+    const { pub } = await bootWithOAuth();
+    const metadata = await (await fetch(`${pub}/.well-known/oauth-protected-resource/mcp`)).json();
+    expect(metadata.resource).toBe(`${ISSUER}/mcp`);
+    expect(metadata.authorization_servers).toEqual([`${ISSUER}/`]);
+  });
+
+  it('lists and calls the studio tools for an admin token while the internal /mcp stays open', async () => {
+    const rendered: string[] = [];
+    const { pub, internal, token } = await bootWithOAuth({
+      render: async (origin) => {
+        rendered.push(origin);
+        return { png: new Uint8Array([1]), bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
+      },
+    });
+    await token('admin-token');
+    const client = await connectClient(pub, 'admin-token');
+    try {
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain('list_maps');
+      await client.callTool({ name: 'put_room', arguments: { name: 'hall', room: emptyRoomDocument('hall') } });
+      expect(await client.callTool({ name: 'list_maps', arguments: {} })).not.toHaveProperty('isError', true);
+      expect(await client.callTool({ name: 'render_view', arguments: { target: { type: 'room', name: 'hall' }, camera: 'top' } })).not.toHaveProperty('isError', true);
+      expect(rendered).toEqual([internal]);
+    } finally {
+      await client.close();
+    }
+    expect((await fetch(`${internal}/mcp`, mcpRequest)).status).toBe(200);
+  });
+
+  it('shares the heavy-work lock between the ports', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const { pub, internal, token } = await bootWithOAuth({
+      render: async () => {
+        await held;
+        return { png: new Uint8Array([1]), bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
+      },
+    });
+    await token('admin-token');
+    const publicClient = await connectClient(pub, 'admin-token');
+    const internalClient = new Client({ name: 'test', version: '0' });
+    await internalClient.connect(new StreamableHTTPClientTransport(new URL(`${internal}/mcp`)));
+    try {
+      await publicClient.callTool({ name: 'put_room', arguments: { name: 'hall', room: emptyRoomDocument('hall') } });
+      const args = { target: { type: 'room', name: 'hall' }, camera: 'top' };
+      const first = publicClient.callTool({ name: 'render_view', arguments: args });
+      await vi.waitFor(async () => expect(await internalClient.callTool({ name: 'render_view', arguments: args })).toHaveProperty('isError', true));
+      release();
+      expect(await first).not.toHaveProperty('isError', true);
+    } finally {
+      release();
+      await Promise.all([publicClient.close(), internalClient.close()]);
+    }
+  });
 });

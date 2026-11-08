@@ -69,7 +69,7 @@ officexr/
   `PUBLIC_PORT` (default 5175) also serves `/api/*` and `/models`; everything else is a 404. The public
   port (`studio-gate.ts`) requires the web backend's session cookie for a login on the SQL-managed
   `studio_allowlist` (as well as `login_allowlist`, to sign in) on every request and `/ws` upgrade, and
-  serves `GET /api/me` (200 / 401 / 403). The SQL-managed `admin_allowlist` table names the logins allowed to authorize MCP OAuth clients (`/mcp`). With both `STUDIO_PUBLIC_URL` (the public port's external origin, the OAuth issuer; `/mcp` under it is the only token `resource`) and `OFFICEXR_WEB_PUBLIC_URL` (the web backend's `PUBLIC_URL`, whose `/auth/google` signs admins in) set, the public port also serves an MCP OAuth server (`src/oauth/`) ahead of the gate: metadata, `/authorize` with an admin consent page, `/token`, `/register` and `/revoke`; Both must be plain origins (no path or trailing slash). With neither it is off; with only one, or a non-origin, the server refuses to start. The sign-in round trip needs the web backend's `FRONTEND_ORIGINS` to include `STUDIO_PUBLIC_URL`, or `safeReturnTarget` drops the `next=` back to `/authorize`. It needs `SESSION_SECRET`, `SUPABASE_DB_URL` and `COOKIE_DOMAIN`
+  serves `GET /api/me` (200 / 401 / 403). The SQL-managed `admin_allowlist` table names the logins allowed to authorize MCP OAuth clients (`/mcp`). With both `STUDIO_PUBLIC_URL` (the public port's external origin, the OAuth issuer; `/mcp` under it is the only token `resource`) and `OFFICEXR_WEB_PUBLIC_URL` (the web backend's `PUBLIC_URL`, whose `/auth/google` signs admins in) set, the public port also serves an MCP OAuth server (`src/oauth/`) ahead of the gate: metadata, `/authorize` with an admin consent page, `/token`, `/register` and `/revoke`, plus `/mcp` itself (the studio MCP, OAuth bearer tokens only: no session cookie or `studio_allowlist`; the token's login must still be on `admin_allowlist` and its audience exactly `${STUDIO_PUBLIC_URL}/mcp`; it shares one `StudioMcpOptions`, lock and bake jobs with the internal port's `/mcp`, whose loopback and `render_view` target the internal port). Without OAuth the public `/mcp` is a 404. Both must be plain origins (no path or trailing slash). With neither it is off; with only one, or a non-origin, the server refuses to start. The sign-in round trip needs the web backend's `FRONTEND_ORIGINS` to include `STUDIO_PUBLIC_URL`, or `safeReturnTarget` drops the `next=` back to `/authorize`. It needs `SESSION_SECRET`, `SUPABASE_DB_URL` and `COOKIE_DOMAIN`
   matching the web backend, plus `FRONTEND_ORIGINS` (CORS; the first origin sets cookie `secure` and must sit
   under `COOKIE_DOMAIN`); example insert in the README. Both ports share
   one storage instance, so save hooks fire once per write. Other env: `OFFICEXR_STUDIO_DATA_DIR`
@@ -91,6 +91,8 @@ officexr/
   studio debug mode uses the same stack with an in-memory or WebSocket channel.
 - **Voice.** Proximity voice uses JaaS (Jitsi as a Service) rooms, with the JWT minted
   in the browser from the `VITE_JAAS_*` values served at `/config.js`.
+- **Connect Claude to the studio MCP.** Add a custom connector with URL
+  `https://officexr-studio-api.karibalabs.co/mcp` and sign in as an `admin_allowlist` login when prompted.
 
 ---
 

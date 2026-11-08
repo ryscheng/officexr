@@ -87,6 +87,12 @@ export function mcpPostHandler(options: McpOptions): NodeMiddleware {
   };
 }
 
+/** `POST` handling for `/mcp` as one handler, for hosts that mount it behind their own auth. */
+export function mcpHandler(options: McpOptions): NodeMiddleware {
+  const post = mcpPostHandler(options);
+  return (req, res, next) => mcpMethodGuard(req, res, () => post(req, res, next));
+}
+
 /** Mounts `POST /mcp` on any connect-style app. */
 export function mountMcp(app: McpApp, options: McpOptions): void {
   app.use('/mcp', mcpMethodGuard);

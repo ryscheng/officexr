@@ -5,7 +5,7 @@ import pg from 'pg';
 import { createSessionReader, parseCookieDomain, parseFrontendOrigins, pgAllowlist, pgSessionStore } from '@officexr/server';
 import { listen } from '@officexr/server/listen';
 import { DEFAULT_MODELS_DIR } from '@officexr/server/static';
-import { createStudioMcpOptions } from '@officexr/studio-mcp/mount-mcp';
+import { createStudioMcpOptions, loopbackOrigin, mcpHandler } from '@officexr/studio-mcp/mount-mcp';
 import { createStudioStorage, seedDataDir } from '@officexr/world/vite-plugin-storage';
 import { createInternalServer, createPublicServer } from './app.ts';
 import { createOAuthApp, parseOAuthEnv } from './oauth/index.ts';
@@ -60,16 +60,17 @@ if (!modelSources) {
   console.log('[studio-server] private model sources are disabled: OFFICEXR_MODEL_SOURCES_BUCKET is not set');
 }
 
+const mcp = createStudioMcpOptions({
+  modelRoot: fileURLToPath(new URL('../../studio/public', import.meta.url)),
+  chromiumPath: env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined,
+  sourceReader: modelSources ?? undefined,
+});
 const internal = createInternalServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
   uploadedModelsDir: backend.uploadedModelsDir,
   studioDist,
-  mcp: createStudioMcpOptions({
-    modelRoot: fileURLToPath(new URL('../../studio/public', import.meta.url)),
-    chromiumPath: env.OFFICEXR_RENDER_CHROMIUM_PATH || undefined,
-    sourceReader: modelSources ?? undefined,
-  }),
+  mcp,
   realtimeTarget,
 });
 const publicServer = createPublicServer({
@@ -82,7 +83,7 @@ const publicServer = createPublicServer({
   isStudioAllowed: cacheAllowlist(pgAllowlist(pool, 'studio_allowlist')),
   oauth:
     oauthEnv.type === 'enabled'
-      ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin: cacheAllowlist(pgAllowlist(pool, 'admin_allowlist')) }).handler
+      ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin: cacheAllowlist(pgAllowlist(pool, 'admin_allowlist')), mcp: mcpHandler({ ...mcp, origin: () => loopbackOrigin(internal.server) }) }).handler
       : undefined,
 });
 if (oauthEnv.type === 'disabled') {
