@@ -888,10 +888,22 @@ describe('studio MCP tools', () => {
       expect(agentTokens.calls).toEqual([]);
     });
 
+    it('refuse when authInfo has no login', async () => {
+      const agentTokens = fakeAgentTokens();
+      const { call } = await connect({}, undefined, { agentTokens }, { ...authInfo, extra: {} });
+      expect((await call('request_api_token', { purpose: 'p' })).isError).toBe(true);
+      expect((await call('get_api_token', { requestId: 'r1' })).isError).toBe(true);
+      expect(agentTokens.calls).toEqual([]);
+    });
+
     it('pass the login and client id through and return the result as JSON', async () => {
       const agentTokens = fakeAgentTokens();
       const { call } = await connect({}, undefined, { agentTokens }, authInfo);
-      expect(JSON.parse((await call('request_api_token', { purpose: 'bake' })).text).requestId).toBe('r1');
+      expect(JSON.parse((await call('request_api_token', { purpose: 'bake' })).text)).toEqual({
+        requestId: 'r1',
+        approvalUrl: 'https://app/approve/r1',
+        expiresAt: 'x',
+      });
       expect(JSON.parse((await call('get_api_token', { requestId: 'r1' })).text)).toEqual({
         status: 'approved',
         token: 'tok',

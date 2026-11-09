@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { AgentTokenServiceError, type AgentTokens } from '../agent-tokens.ts';
+import type { AgentTokens } from '../agent-tokens.ts';
 import { errorResult, guard, jsonResult } from './shared.ts';
 
 /** Runs `work` for the OAuth-authenticated user; the internal port has no `authInfo`, so the tools refuse there. */
@@ -15,14 +15,7 @@ function asAuthenticatedUser(
     if (!authInfo || typeof login !== 'string' || !login) {
       return errorResult('this tool works only on the authenticated public /mcp endpoint');
     }
-    try {
-      return jsonResult(await work(login, authInfo.clientId));
-    } catch (err) {
-      if (err instanceof AgentTokenServiceError) {
-        return errorResult(err.error.message);
-      }
-      throw err;
-    }
+    return jsonResult(await work(login, authInfo.clientId));
   });
 }
 
@@ -46,7 +39,7 @@ export function registerAgentTokenTools(server: McpServer, agentTokens: AgentTok
         'Collect the token for a request_api_token requestId. Returns {status}: while "pending", poll every few seconds, because once approved ' +
         'the token must be collected within 60 seconds. "approved" returns {token, expiresAt, apiBaseUrl} exactly once, so store it; it is valid ' +
         'for 60 minutes as "Authorization: Bearer <token>" on <apiBaseUrl>/api/*. "denied", "expired" or "claimed" mean start a new request with request_api_token.',
-      inputSchema: { requestId: z.string().describe('The requestId returned by request_api_token.') },
+      inputSchema: { requestId: z.string().min(1).max(64).describe('The requestId returned by request_api_token.') },
     },
     (args, extra) => asAuthenticatedUser(extra.authInfo, (login, clientId) => agentTokens.poll(login, clientId, args.requestId)),
   );
