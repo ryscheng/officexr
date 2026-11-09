@@ -377,6 +377,9 @@ importers:
       http-proxy:
         specifier: ^1.18.1
         version: 1.18.1
+      jose:
+        specifier: ^6.2.13
+        version: 6.2.13
       pg:
         specifier: ^8.23.1
         version: 8.23.1

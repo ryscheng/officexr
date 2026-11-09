@@ -29,6 +29,7 @@
     "express": "^5.2.1",
     "google-auth-library": "9.15.1",
     "http-proxy": "^1.18.1",
+    "jose": "^6.2.13",
     "pg": "^8.23.1",
     "tsx": "^4.19.2"
   },

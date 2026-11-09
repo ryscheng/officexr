@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/vite-plugin.ts",
     "./mount-mcp": "./src/mount-mcp.ts",
-    "./model-sources": "./src/model-sources.ts"
+    "./model-sources": "./src/model-sources.ts",
+    "./agent-tokens": "./src/agent-tokens.ts"
   },
   "scripts": {
     "test": "vitest run",
