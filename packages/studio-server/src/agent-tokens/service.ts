@@ -17,7 +17,6 @@ const MAX_PURPOSE_LENGTH = 200;
 export class AgentTokenService implements AgentTokens {
   private readonly store: AgentTokenRequestStore;
   private readonly secret: Uint8Array;
-  /** `STUDIO_PUBLIC_URL`. */
   private readonly issuer: string;
   private readonly studioAppUrl: string;
   private readonly now: () => Date;
@@ -31,13 +30,17 @@ export class AgentTokenService implements AgentTokens {
   }
 
   async request(login: string, input: { purpose: string; clientId: string }): Promise<TokenRequestResult> {
+    const purpose = input.purpose.trim();
+    if (purpose.length === 0 || purpose.length > MAX_PURPOSE_LENGTH) {
+      throw new AgentTokenServiceError({ type: 'validation', message: `purpose must be 1-${MAX_PURPOSE_LENGTH} characters` });
+    }
     const id = randomBytes(16).toString('base64url');
     const expiresAt = new Date(this.now().getTime() + PENDING_MS);
     await this.store.create({
       id,
       login: login.toLowerCase(),
       clientId: input.clientId,
-      purpose: input.purpose.slice(0, MAX_PURPOSE_LENGTH),
+      purpose,
       expiresAt,
     });
     return { requestId: id, approvalUrl: `${this.studioAppUrl}/?agentTokenRequest=${id}`, expiresAt: expiresAt.toISOString() };
@@ -59,7 +62,8 @@ export class AgentTokenService implements AgentTokens {
       return { status: 'expired' };
     }
     if (!(await this.store.claim(requestId, request.login, clientId))) {
-      return { status: 'claimed' };
+      const current = await this.store.get(requestId);
+      return { status: current?.status === 'claimed' ? 'claimed' : 'expired' };
     }
     const { token, expiresAt } = await this.mint(request, now);
     return { status: 'approved', token, expiresAt: expiresAt.toISOString(), apiBaseUrl: this.issuer };

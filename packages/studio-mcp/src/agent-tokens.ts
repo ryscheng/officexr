@@ -20,6 +20,7 @@ export type PollResult =
   | { status: 'approved'; token: string; expiresAt: string; apiBaseUrl: string };
 
 export type AgentTokenError =
+  | { type: 'validation'; message: string }
   | { type: 'not_found'; message: string }
   | { type: 'not_pending'; message: string }
   | { type: 'expired'; message: string };

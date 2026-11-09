@@ -2,7 +2,7 @@ import { SignJWT } from 'jose';
 import { describe, expect, it } from 'vitest';
 import { AgentTokenServiceError } from '@officexr/studio-mcp/agent-tokens';
 import { AgentTokenService } from './service.ts';
-import { InMemoryAgentTokenRequestStore } from './store.ts';
+import { InMemoryAgentTokenRequestStore, type AgentTokenRequestStore } from './store.ts';
 
 const T0 = new Date('2030-01-01T00:00:00Z').getTime();
 const SECRET = 's'.repeat(32);
@@ -92,6 +92,28 @@ describe('AgentTokenService', () => {
     clock.t += 600_000;
     await expect(service.approve(login, stale)).rejects.toBeInstanceOf(AgentTokenServiceError);
     await expect(service.approve(login, stale)).rejects.toMatchObject({ error: { type: 'expired' } });
+  });
+
+  it('rejects an empty or over-long purpose', async () => {
+    const { service } = setup();
+    for (const purpose of ['  ', 'x'.repeat(201)]) {
+      await expect(service.request(login, { purpose, clientId: 'c1' })).rejects.toMatchObject({ error: { type: 'validation' } });
+    }
+  });
+
+  it('polls expired when the store refuses a claim that did not happen', async () => {
+    const inner = new InMemoryAgentTokenRequestStore(() => new Date(T0));
+    const store: AgentTokenRequestStore = {
+      create: (r) => inner.create(r),
+      get: (id) => inner.get(id),
+      listPending: (l) => inner.listPending(l),
+      decide: (id, l, o) => inner.decide(id, l, o),
+      claim: async () => false,
+    };
+    const service = new AgentTokenService({ store, secret: SECRET, issuer: ISSUER, studioAppUrl: 'https://app.example', now: () => new Date(T0) });
+    const id = await requested(service);
+    await service.approve(login, id);
+    expect(await service.poll(login, 'c1', id)).toEqual({ status: 'expired' });
   });
 
   describe('verify', () => {

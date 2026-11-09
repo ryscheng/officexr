@@ -5,7 +5,7 @@ create table if not exists public.agent_token_requests (
   id         text        primary key,
   login      text        not null,
   client_id  text        not null,
-  purpose    text        not null,
+  purpose    text        not null check (char_length(purpose) between 1 and 200),
   status     text        not null default 'pending' check (status in ('pending', 'approved', 'denied', 'claimed')),
   created_at timestamptz not null default now(),
   expires_at timestamptz not null,

@@ -9,7 +9,6 @@ export type AgentTokenRequest = {
   purpose: string;
   status: AgentTokenRequestStatus;
   createdAt: Date;
-  /** Pending deadline. */
   expiresAt: Date;
   decidedAt: Date | null;
   claimedAt: Date | null;
@@ -17,7 +16,6 @@ export type AgentTokenRequest = {
 
 export type NewAgentTokenRequest = Pick<AgentTokenRequest, 'id' | 'login' | 'clientId' | 'purpose' | 'expiresAt'>;
 
-/** How long an approved request can be collected. */
 export const CLAIM_WINDOW_MS = 60_000;
 
 /**
@@ -133,6 +131,7 @@ export class InMemoryAgentTokenRequestStore implements AgentTokenRequestStore {
     const now = this.now();
     return [...this.requests.values()]
       .filter((r) => r.login === login && r.status === 'pending' && r.expiresAt > now)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((r) => ({ ...r }));
   }
 
