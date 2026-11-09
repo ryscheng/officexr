@@ -101,7 +101,7 @@ const internal = createInternalServer({
   modelsDir: DEFAULT_MODELS_DIR,
   uploadedModelsDir: backend.uploadedModelsDir,
   studioDist,
-  mcp: modelSourcesService ? { ...mcp, modelSources: modelSourcesService } : mcp,
+  mcp: { ...mcp, modelSources: modelSourcesService ?? undefined, agentTokens: agentTokens ?? undefined },
   realtimeTarget,
 });
 const isAdmin = cacheAllowlist(pgAllowlist(pool, 'admin_allowlist'));
