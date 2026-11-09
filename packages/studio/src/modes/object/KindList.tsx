@@ -12,20 +12,21 @@ interface KindListProps {
 }
 
 /**
- * Left-panel kind picker. Kinds are grouped by `category` (block,
- * furniture, prototype, restaurant) with collapsible sections. Each
+ * Left-panel kind picker. Kinds are grouped by `category` (in
+ * `CUBE_KIND_CATEGORIES` order) with collapsible sections. Each
  * row shows a swatch chip + label + a small walkable badge if the
  * kind is walkable. A filter input narrows the visible kinds by
  * substring match against the id or label.
  *
- * Designed to handle the 281-entry post-`asset-packs:install`
- * catalog without scrolling becoming painful: collapse the sections
- * the user isn't browsing.
+ * Designed to handle a catalog of thousands of kinds without
+ * scrolling becoming painful: collapse the sections the user isn't
+ * browsing.
  */
 export function KindList({ kinds, selectedKindId, onSelect }: KindListProps) {
   const [filter, setFilter] = useState<string>('');
   const [collapsed, setCollapsed] = useState<Set<CubeKindCategory>>(
-    () => new Set(['prototype', 'restaurant']),
+    // The pack-sized categories run to thousands of kinds; open only the small ones.
+    () => new Set(CUBE_KIND_CATEGORIES.filter((c) => c !== 'block' && c !== 'furniture')),
   );
 
   const byCategory = useMemo(() => {
