@@ -4,10 +4,12 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { ModelSourceReader } from '@officexr/world/model-source';
 import type { StudioDocuments } from './studio-documents.ts';
 import type { HeavyWorkLock } from './heavy-work-lock.ts';
+import type { AgentTokens } from './agent-tokens.ts';
 import type { ModelSources } from './model-sources.ts';
 import type { ViewRenderer } from './renderer.ts';
 import { type BakeLayout, bakeLayoutLazily, registerBakedLayoutTools } from './tools/baked-layouts.ts';
 import { BakeJobs } from './tools/bake-jobs.ts';
+import { registerAgentTokenTools } from './tools/agent-tokens.ts';
 import { registerMapBakeTools } from './tools/map-bakes.ts';
 import { registerLayoutTools } from './tools/layouts.ts';
 import { registerMapTools } from './tools/maps.ts';
@@ -30,12 +32,14 @@ export interface StudioMcpOptions {
   bakeLayout?: BakeLayout;
   /** Registers the model-source upload tools when present. */
   modelSources?: ModelSources;
+  /** Registers the API-token request tools when present; they need the public endpoint's `authInfo`. */
+  agentTokens?: AgentTokens;
 }
 
 /** `studioOrigin` is where this request reached the studio; the renderer loads its render page from there. */
 export function createStudioMcpServer(
   docs: StudioDocuments,
-  { modelRoot, sourceReader, heavyWorkLock, renderer, bakeJobs, bakeLayout = bakeLayoutLazily, modelSources }: StudioMcpOptions,
+  { modelRoot, sourceReader, heavyWorkLock, renderer, bakeJobs, bakeLayout = bakeLayoutLazily, modelSources, agentTokens }: StudioMcpOptions,
   studioOrigin: string,
 ): McpServer {
   const server = new McpServer({ name: 'officexr-studio', version: '0.1.0' });
@@ -49,6 +53,9 @@ export function createStudioMcpServer(
   registerWorldTools(server, docs);
   if (modelSources) {
     registerModelSourceTools(server, modelSources);
+  }
+  if (agentTokens) {
+    registerAgentTokenTools(server, agentTokens);
   }
   return server;
 }
