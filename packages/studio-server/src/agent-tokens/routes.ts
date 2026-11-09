@@ -2,11 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { NextHandleFunction } from 'connect';
 import { AgentTokenServiceError, type AgentTokenError, type AgentTokens } from '@officexr/studio-mcp/agent-tokens';
 import type { createSessionReader } from '@officexr/server';
+import { assertNever } from '../http.ts';
 import { sendJson } from '../studio-gate.ts';
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unhandled variant: ${JSON.stringify(value)}`);
-};
 
 const statusOf = (error: AgentTokenError): number =>
   error.type === 'validation'

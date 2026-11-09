@@ -104,6 +104,7 @@ const internal = createInternalServer({
   mcp: { ...mcp, modelSources: modelSourcesService ?? undefined, agentTokens: agentTokens ?? undefined },
   realtimeTarget,
 });
+const isAdmin = cacheAllowlist(pgAllowlist(pool, 'admin_allowlist'));
 const publicServer = createPublicServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
@@ -112,11 +113,13 @@ const publicServer = createPublicServer({
   frontendOrigins,
   sessionReader,
   isStudioAllowed: cacheAllowlist(pgAllowlist(pool, 'studio_allowlist')),
+  isAdmin,
+  verifyApiToken: agentTokens ? (token) => agentTokens.verify(token) : undefined,
   modelSources: modelSourcesService,
   agentTokens,
   oauth:
     oauthEnv.type === 'enabled'
-      ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin: cacheAllowlist(pgAllowlist(pool, 'admin_allowlist')), mcp: internal.mcp }).handler
+      ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin, mcp: internal.mcp }).handler
       : undefined,
 });
 if (oauthEnv.type === 'disabled') {
