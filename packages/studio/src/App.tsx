@@ -13,6 +13,7 @@ import {
 } from '@officexr/world/scenes';
 import type { WorldConstants } from '@officexr/sdk';
 import type { ModelSourcesClient } from './modes/object/upload/modelSourcesClient.ts';
+import type { AgentTokensClient } from './agent-tokens/agentTokensClient.ts';
 import { InMemorySoundLibraryStorage } from './modes/sounds/soundLibraryStorage.ts';
 import { StudioPage } from './StudioPage.tsx';
 import { paths, STUDIO_API_ORIGIN, studioApiUrl, studioFetch } from './apiOrigin.ts';
@@ -38,6 +39,7 @@ interface TestSeed {
   sounds?: Array<{ name: string; bytes: number[] }>;
   /** Not JSON: a spec sets it from an `addInitScript` function. */
   modelSourcesClient?: ModelSourcesClient;
+  agentTokensClient?: AgentTokensClient;
 }
 
 /** Build the hermetic in-memory storages for `?test=1` mode, seeding
@@ -55,6 +57,7 @@ function buildTestStorages(): TestStorages {
     worldConstantsStorage,
     soundStorage: new InMemorySoundLibraryStorage({ seed: seed?.sounds }),
     modelSourcesClient: seed?.modelSourcesClient,
+    agentTokensClient: seed?.agentTokensClient,
   };
 }
 

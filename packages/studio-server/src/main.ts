@@ -113,6 +113,7 @@ const publicServer = createPublicServer({
   sessionReader,
   isStudioAllowed: cacheAllowlist(pgAllowlist(pool, 'studio_allowlist')),
   modelSources: modelSourcesService,
+  agentTokens,
   oauth:
     oauthEnv.type === 'enabled'
       ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin: cacheAllowlist(pgAllowlist(pool, 'admin_allowlist')), mcp: internal.mcp }).handler

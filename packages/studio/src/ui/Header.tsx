@@ -35,6 +35,7 @@ export function isStudioMode(value: unknown): value is StudioMode {
 interface HeaderProps {
   active: StudioMode;
   onChange: (mode: StudioMode) => void;
+  onToggleAgentTokens: () => void;
 }
 
 /**
@@ -42,7 +43,7 @@ interface HeaderProps {
  * on the right. Each mode mounts a completely separate application
  * below; the header is the only chrome they share.
  */
-export function Header({ active, onChange }: HeaderProps) {
+export function Header({ active, onChange, onToggleAgentTokens }: HeaderProps) {
   return (
     <header
       style={{
@@ -95,6 +96,13 @@ export function Header({ active, onChange }: HeaderProps) {
           );
         })}
       </nav>
+      <button
+        type="button"
+        onClick={onToggleAgentTokens}
+        style={{ padding: '6px 14px', border: 0, borderRadius: 4, cursor: 'pointer', background: 'transparent', color: '#cbd5e1', fontSize: 13 }}
+      >
+        Agent tokens
+      </button>
     </header>
   );
 }

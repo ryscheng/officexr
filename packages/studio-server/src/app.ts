@@ -12,6 +12,8 @@ import type { StudioStorage } from '@officexr/world/vite-plugin-storage';
 import type { ModelSources } from '@officexr/studio-mcp/model-sources';
 import { pathname } from './http.ts';
 import { modelSourceRoutes } from './model-sources/routes.ts';
+import { agentTokenRoutes } from './agent-tokens/routes.ts';
+import type { AgentTokens } from '@officexr/studio-mcp/agent-tokens';
 import { sendJson, studioGate, upgradeAccess, type Access, type IsAllowed } from './studio-gate.ts';
 
 export interface StudioListener {
@@ -174,6 +176,8 @@ export function createPublicServer(opts: {
   isStudioAllowed: IsAllowed;
   /** `null` when no model-source bucket is configured: its routes answer 503. */
   modelSources: ModelSources | null;
+  /** `null` when agent tokens are not configured: `/api/agent-token-requests` answers 503. */
+  agentTokens: AgentTokens | null;
   /** Mounted ahead of the gate, e.g. `createOAuthApp(...).handler`. */
   oauth?: connect.NextHandleFunction;
 }): StudioListener {
@@ -188,6 +192,7 @@ export function createPublicServer(opts: {
   }
   app.use(studioGate(opts.sessionReader, opts.isStudioAllowed));
   app.use('/api/model-sources', modelSourceRoutes(opts.modelSources));
+  app.use('/api/agent-token-requests', agentTokenRoutes(opts.agentTokens, opts.sessionReader));
   opts.storage.mount(app);
   mountModels(app, opts);
   const authorizeUpgrade = upgradeAccess(opts.sessionReader, opts.isStudioAllowed, opts.frontendOrigins);
