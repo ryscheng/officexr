@@ -345,7 +345,7 @@ describe('public bearer API tokens', () => {
   const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
   beforeEach(() => {
-    verifyApiToken = async (token) => (token === 'good' ? { login: ALLOWED } : token === 'stranger' ? { login: 'stranger@example.com' } : null);
+    verifyApiToken = async (token) => (token === 'good' ? { login: ALLOWED } : null);
   });
 
   it('acts as the token user on /api, including /api/me', async () => {
@@ -369,18 +369,18 @@ describe('public bearer API tokens', () => {
 
   it('re-checks both allowlists on every request', async () => {
     const { pub } = await boot();
-    verifyApiToken = async () => ({ login: 'stranger@example.com' });
-    isStudioAllowed = async () => true;
+    const status = async () => (await fetch(`${pub}/api/maps`, { headers: bearer('good') })).status;
+    expect(await status()).toBe(200);
     isAdmin = async () => false;
-    expect((await fetch(`${pub}/api/maps`, { headers: bearer('stranger') })).status).toBe(403);
-    isStudioAllowed = async () => false;
+    expect(await status()).toBe(403);
     isAdmin = async () => true;
-    expect((await fetch(`${pub}/api/maps`, { headers: bearer('stranger') })).status).toBe(403);
+    isStudioAllowed = async () => false;
+    expect(await status()).toBe(403);
   });
 
   it('refuses a bearer token on the token approval routes', async () => {
     const { pub } = await boot();
-    for (const urlPath of ['/api/agent-token-requests', '/api/agent-token-requests/abc/approve']) {
+    for (const urlPath of ['/api/agent-token-requests', '/api/agent-token-requests/', '/api/agent-token-requests/abc/approve', '/api/Agent-Token-Requests/abc/approve']) {
       expect((await fetch(`${pub}${urlPath}`, { headers: bearer('good') })).status).toBe(403);
     }
   });
