@@ -9,6 +9,9 @@ import { createStudioMcpOptions, loopbackDocuments, loopbackOrigin } from '@offi
 import { createStudioStorage, seedDataDir } from '@officexr/world/vite-plugin-storage';
 import { createInternalServer, createPublicServer } from './app.ts';
 import { ModelSourcesService } from './model-sources/service.ts';
+import { AgentTokenService } from './agent-tokens/service.ts';
+import { PgAgentTokenRequestStore } from './agent-tokens/store.ts';
+import { parseAgentTokenEnv } from './agent-tokens/index.ts';
 import { createOAuthApp, parseOAuthEnv } from './oauth/index.ts';
 import { PgOAuthStore } from './oauth/store.ts';
 import { modelSourceStoreFromEnv } from './model-sources/store.ts';
@@ -29,6 +32,11 @@ if (!env.SESSION_SECRET || !env.SUPABASE_DB_URL) {
 const oauthEnv = parseOAuthEnv(env);
 if (oauthEnv.type === 'invalid') {
   console.error(`[studio-server] ${oauthEnv.problem}`);
+  process.exit(1);
+}
+const agentTokenEnv = parseAgentTokenEnv(env, oauthEnv);
+if (agentTokenEnv.type === 'invalid') {
+  console.error(`[studio-server] ${agentTokenEnv.problem}`);
   process.exit(1);
 }
 const frontendOrigins = parseFrontendOrigins(env.FRONTEND_ORIGINS);
@@ -59,6 +67,19 @@ backend.startR2Sync();
 const modelSources = await modelSourceStoreFromEnv(env);
 if (!modelSources) {
   console.log('[studio-server] private model sources are disabled: OFFICEXR_MODEL_SOURCES_BUCKET is not set');
+}
+
+const agentTokens =
+  agentTokenEnv.type === 'enabled'
+    ? new AgentTokenService({
+        store: new PgAgentTokenRequestStore(pool),
+        secret: agentTokenEnv.secret,
+        issuer: agentTokenEnv.issuerUrl,
+        studioAppUrl: agentTokenEnv.studioAppUrl,
+      })
+    : null;
+if (!agentTokens) {
+  console.log('[studio-server] agent API tokens disabled: set OFFICEXR_STUDIO_API_JWT_SECRET and STUDIO_APP_URL to enable them');
 }
 
 const mcp = createStudioMcpOptions({
