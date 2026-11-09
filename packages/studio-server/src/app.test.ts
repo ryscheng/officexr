@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
-import type { NextHandleFunction } from 'connect';
+import connect, { type NextHandleFunction } from 'connect';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
@@ -12,6 +12,7 @@ import session from 'express-session';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
 import { createSessionReader } from '@officexr/server';
 import { AgentTokenServiceError, type AgentTokens } from '@officexr/studio-mcp/agent-tokens';
+import { agentTokenRoutes } from './agent-tokens/routes.ts';
 import { ModelSourceServiceError, type ModelSources } from '@officexr/studio-mcp/model-sources';
 import { createStudioMcpOptions, HeavyWorkLock, loopbackDocuments, loopbackOrigin, type ViewRenderer } from '@officexr/studio-mcp/mount-mcp';
 import { emptyRoomDocument } from '@officexr/world/scenes';
@@ -707,11 +708,27 @@ describe('public agent-token routes', () => {
     expect(calls).toEqual([]);
   });
 
-  it('refuses a request without a session identity with 403', async () => {
-    const { pub } = await boot(DOWN, undefined, undefined, null, fake);
-    const res = await fetch(`${pub}/api/agent-token-requests`, { headers: { authorization: 'Bearer abc' } });
-    expect([401, 403]).toContain(res.status);
+  it('refuses with 403 when the routes see no session identity, without calling the service', async () => {
+    const app = connect();
+    app.use('/api/agent-token-requests', agentTokenRoutes(fake, { sessionIdentity: () => null } as unknown as ReturnType<typeof createSessionReader>));
+    const origin = await listen(createServer(app));
+    expect((await fetch(`${origin}/api/agent-token-requests`)).status).toBe(403);
+    expect((await post(origin, 'r1/approve', '')).status).toBe(403);
     expect(calls).toEqual([]);
+  });
+
+  it('answers 404 for a malformed id', async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, null, fake);
+    expect((await post(pub, '%E0/approve', await signIn(ALLOWED))).status).toBe(404);
+    expect(calls).toEqual([]);
+  });
+
+  it("passes only the cookie user's login, so another user's id is a 404", async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, null, fake);
+    failure = new AgentTokenServiceError({ type: 'not_found', message: 'nope' });
+    const res = await post(pub, 'theirs/approve', await signIn(ALLOWED));
+    expect(res.status).toBe(404);
+    expect(calls).toEqual([['approve', ALLOWED, 'theirs']]);
   });
 
   it('answers 503 for a null service', async () => {

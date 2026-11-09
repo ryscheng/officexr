@@ -44,8 +44,8 @@ export function agentTokenRoutes(
       sendJson(res, 403, { error: 'A signed-in session is required' });
       return true;
     }
-    // A cookie-authenticated POST must be a non-simple request: a cross-site form can't send application/json, and CORS
-    // only allows FRONTEND_ORIGINS to preflight it.
+    // A cookie-authenticated POST must be a non-simple request: a cross-site form can't send application/json, and
+    // only FRONTEND_ORIGINS pass the CORS preflight it forces.
     if (match && req.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') {
       sendJson(res, 415, { error: 'Content-Type must be application/json' });
       return true;
@@ -61,10 +61,13 @@ export function agentTokenRoutes(
         sendJson(res, 200, { status: 'denied' });
       }
     } catch (err) {
-      if (!(err instanceof AgentTokenServiceError)) {
+      if (err instanceof URIError) {
+        sendJson(res, 404, { error: 'Request not found' });
+      } else if (err instanceof AgentTokenServiceError) {
+        sendJson(res, statusOf(err.error), { error: err.error.message });
+      } else {
         throw err;
       }
-      sendJson(res, statusOf(err.error), { error: err.error.message });
     }
     return true;
   };

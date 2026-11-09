@@ -35,7 +35,7 @@ test('opens from an approval link, highlights the request and approves it', asyn
   await expect(linked).toContainText('Gives this agent a 60-minute API token that acts as you.');
   await linked.getByRole('button', { name: 'Approve' }).click();
 
-  await expect(panel.getByText('Approved. Your agent can now collect its token.')).toBeVisible();
+  await expect(panel.getByText('Approved. Your agent has 60 seconds to collect its token.')).toBeVisible();
   await expect(panel.getByText('purpose abc')).toHaveCount(0);
   await expect(panel.getByText('purpose other')).toBeVisible();
 });

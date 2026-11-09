@@ -1,5 +1,5 @@
 import type { PendingTokenRequest } from '@officexr/studio-mcp/agent-tokens';
-import { studioApiUrl, studioFetch } from '../apiOrigin.ts';
+import { paths, studioApiUrl, studioFetch } from '../apiOrigin.ts';
 
 export interface AgentTokensClient {
   listPending(): Promise<PendingTokenRequest[]>;
@@ -7,7 +7,7 @@ export interface AgentTokensClient {
   deny(id: string): Promise<void>;
 }
 
-const base = '/api/agent-token-requests';
+const base = paths.agentTokenRequests;
 
 export function createAgentTokensClient(fetchImpl: typeof fetch = studioFetch): AgentTokensClient {
   async function request<T>(path: string, init?: RequestInit): Promise<T> {

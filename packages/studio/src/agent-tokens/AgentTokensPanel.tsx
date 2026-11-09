@@ -26,6 +26,7 @@ export function AgentTokensPanel({ highlightId, onClose }: AgentTokensPanelProps
   const refresh = useCallback(async () => {
     try {
       setRequests(await client.listPending());
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -36,13 +37,18 @@ export function AgentTokensPanel({ highlightId, onClose }: AgentTokensPanelProps
 
   const decide = async (id: string, decision: 'approve' | 'deny') => {
     setError(null);
+    setMessage(null);
+    let failure: string | null = null;
     try {
       await client[decision](id);
-      setMessage(decision === 'approve' ? 'Approved. Your agent can now collect its token.' : 'Denied.');
+      setMessage(decision === 'approve' ? 'Approved. Your agent has 60 seconds to collect its token.' : 'Denied.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      failure = err instanceof Error ? err.message : String(err);
     }
     await refresh();
+    if (failure) {
+      setError(failure);
+    }
   };
 
   const missing = highlightId && requests && !requests.some((r) => r.id === highlightId);
