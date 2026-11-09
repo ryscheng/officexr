@@ -22,7 +22,7 @@ import { ModelSourcesService } from './model-sources/service.ts';
 import { gridGlb, InMemoryModelSourceStore } from './model-sources/test-fixtures.ts';
 import { createOAuthApp } from './oauth/index.ts';
 import { InMemoryOAuthStore } from './oauth/store.ts';
-import { cacheAllowlist, type IsAllowed } from './studio-gate.ts';
+import { cacheAllowlist, type IsAllowed, type VerifyApiToken } from './studio-gate.ts';
 import { signIn as signInAs } from './test-sign-in.ts';
 
 const DOWN = 'http://127.0.0.1:1';
@@ -32,6 +32,8 @@ const ALLOWED = 'allowed@example.com';
 
 let sessionStore: session.MemoryStore;
 let isStudioAllowed: IsAllowed;
+let isAdmin: IsAllowed;
+let verifyApiToken: VerifyApiToken | undefined;
 
 const signIn = (login: string) => signInAs(sessionStore, SECRET, login);
 
@@ -75,6 +77,8 @@ async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => 
     frontendOrigins: [FRONTEND],
     sessionReader: createSessionReader({ sessionSecret: SECRET, sessionStore, secure: false }),
     isStudioAllowed: (login) => isStudioAllowed(login),
+    isAdmin: (login) => isAdmin(login),
+    verifyApiToken: verifyApiToken && ((token) => verifyApiToken!(token)),
     modelSources,
     oauth: oauth?.(internal.mcp),
   });
@@ -132,6 +136,8 @@ beforeEach(async () => {
   saves = 0;
   sessionStore = new session.MemoryStore();
   isStudioAllowed = async (login) => login === ALLOWED;
+  isAdmin = async (login) => login === ALLOWED;
+  verifyApiToken = undefined;
   await mkdir(path.join(dir, 'models'));
   await writeFile(path.join(dir, 'models', 'chair.glb'), 'glb');
   await mkdir(path.join(dir, 'dist'));
@@ -332,6 +338,70 @@ describe('public server', () => {
     };
     expect(await rawUpgradeEnds(pub, '/ws', await signIn(ALLOWED))).toMatch(/^HTTP\/1\.1 500 /);
     expect(upgrades).toBe(0);
+  });
+});
+
+describe('public bearer API tokens', () => {
+  const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+  beforeEach(() => {
+    verifyApiToken = async (token) => (token === 'good' ? { login: ALLOWED } : null);
+  });
+
+  it('acts as the token user on /api, including /api/me', async () => {
+    const { pub } = await boot();
+    const me = await fetch(`${pub}/api/me`, { headers: bearer('good') });
+    expect(await me.json()).toEqual({ login: ALLOWED, name: ALLOWED });
+    expect((await fetch(`${pub}/api/maps`, { headers: bearer('good') })).status).toBe(200);
+    expect((await fetch(`${pub}/api/model-sources`, { headers: bearer('good') })).status).toBe(503);
+  });
+
+  it('answers 401 invalid_token for a bad token even with a valid cookie', async () => {
+    const { pub } = await boot();
+    const cookie = await signIn(ALLOWED);
+    for (const token of ['garbage', 'expired']) {
+      const res = await fetch(`${pub}/api/me`, { headers: { ...bearer(token), cookie } });
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: 'Invalid token' });
+      expect(res.headers.get('www-authenticate')).toBe('Bearer error="invalid_token"');
+    }
+  });
+
+  it('re-checks both allowlists on every request', async () => {
+    const { pub } = await boot();
+    const status = async () => (await fetch(`${pub}/api/maps`, { headers: bearer('good') })).status;
+    expect(await status()).toBe(200);
+    isAdmin = async () => false;
+    expect(await status()).toBe(403);
+    isAdmin = async () => true;
+    isStudioAllowed = async () => false;
+    expect(await status()).toBe(403);
+  });
+
+  it('refuses a bearer token on the token approval routes', async () => {
+    const { pub } = await boot();
+    for (const urlPath of ['/api/agent-token-requests', '/api/agent-token-requests/', '/api/agent-token-requests/abc/approve', '/api/Agent-Token-Requests/abc/approve']) {
+      expect((await fetch(`${pub}${urlPath}`, { headers: bearer('good') })).status).toBe(403);
+    }
+  });
+
+  it('is ignored outside /api, where the cookie rules apply', async () => {
+    const { pub } = await boot();
+    expect((await fetch(`${pub}/models/chair.glb`, { headers: bearer('good') })).status).toBe(401);
+    const res = await fetch(`${pub}/models/chair.glb`, { headers: { ...bearer('garbage'), cookie: await signIn(ALLOWED) } });
+    expect(await res.text()).toBe('glb');
+  });
+
+  it('is refused with 401 when API tokens are disabled', async () => {
+    verifyApiToken = undefined;
+    const { pub } = await boot();
+    expect((await fetch(`${pub}/api/me`, { headers: { ...bearer('good'), cookie: await signIn(ALLOWED) } })).status).toBe(401);
+  });
+
+  it('leaves /mcp to its OAuth token', async () => {
+    const oauth = createOAuthApp({ store: new InMemoryOAuthStore(), isAdmin: async () => true, issuerUrl: 'https://studio-api.example.com', webPublicUrl: 'https://web.example.com' });
+    const { pub } = await boot(DOWN, () => oauth.handler);
+    expect((await fetch(`${pub}/mcp`, { method: 'POST', headers: bearer('good') })).status).toBe(401);
   });
 });
 

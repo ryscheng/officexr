@@ -2,11 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { NextHandleFunction } from 'connect';
 import express from 'express';
 import { ModelSourceServiceError, type ModelSourceError, type ModelSources, type UploadFile } from '@officexr/studio-mcp/model-sources';
+import { assertNever } from '../http.ts';
 import { sendJson } from '../studio-gate.ts';
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unhandled variant: ${JSON.stringify(value)}`);
-};
 
 const statusOf = (error: ModelSourceError): number =>
   error.type === 'validation' ? 400 : error.type === 'busy' ? 409 : error.type === 'not_configured' ? 503 : assertNever(error);
