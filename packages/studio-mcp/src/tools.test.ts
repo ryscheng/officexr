@@ -1,4 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
 import {
@@ -22,6 +23,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { HeavyWorkLock } from './heavy-work-lock.ts';
+import { AgentTokenServiceError, type AgentTokens } from './agent-tokens.ts';
 import { ModelSourceServiceError, type ModelSources } from './model-sources.ts';
 import type { BakeLayout } from './tools/baked-layouts.ts';
 import type { RenderRequest, RenderResult, ViewRenderer } from './renderer.ts';
@@ -77,6 +79,7 @@ async function connect(
   overrides: Partial<StudioDocuments> = {},
   renderer: ViewRenderer = new FakeRenderer(),
   extra: Partial<StudioMcpOptions> = {},
+  authInfo?: AuthInfo,
 ) {
   const docs: StudioDocuments = {
     rooms: new InMemoryRoomStorage(),
@@ -95,6 +98,10 @@ async function connect(
     bakeJobs: new BakeJobs(),
     ...extra,
   };
+  if (authInfo) {
+    const send = clientSide.send.bind(clientSide);
+    clientSide.send = (message, sendOptions) => send(message, { ...sendOptions, authInfo });
+  }
   await createStudioMcpServer(docs, options, 'http://studio.test').connect(serverSide);
   const client = new Client({ name: 'test', version: '0' });
   await client.connect(clientSide);
@@ -835,6 +842,71 @@ describe('studio MCP tools', () => {
         isError: true,
         text: 'a bake or render is already in progress; retry shortly',
       });
+    });
+  });
+
+  describe('agent tokens', () => {
+    const authInfo: AuthInfo = { token: 't', clientId: 'client-1', scopes: [], extra: { login: 'alice' } };
+
+    function fakeAgentTokens(): AgentTokens & { calls: unknown[][] } {
+      const calls: unknown[][] = [];
+      const unused = async (): Promise<never> => {
+        throw new Error('unused');
+      };
+      return {
+        calls,
+        request: async (login, input) => {
+          calls.push(['request', login, input]);
+          return { requestId: 'r1', approvalUrl: 'https://app/approve/r1', expiresAt: 'x' };
+        },
+        poll: async (login, clientId, requestId) => {
+          calls.push(['poll', login, clientId, requestId]);
+          if (requestId === 'missing') {
+            throw new AgentTokenServiceError({ type: 'not_found', message: 'no such request' });
+          }
+          return { status: 'approved', token: 'tok', expiresAt: 'y', apiBaseUrl: 'https://api' };
+        },
+        listPending: unused,
+        approve: unused,
+        deny: unused,
+      };
+    }
+
+    it('are registered only with an AgentTokens', async () => {
+      const without = (await (await connect()).client.listTools()).tools.map((t) => t.name);
+      expect(without).not.toContain('request_api_token');
+      const { client } = await connect({}, undefined, { agentTokens: fakeAgentTokens() });
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      expect(names).toEqual(expect.arrayContaining(['request_api_token', 'get_api_token']));
+    });
+
+    it('refuse without authInfo', async () => {
+      const agentTokens = fakeAgentTokens();
+      const { call } = await connect({}, undefined, { agentTokens });
+      expect((await call('request_api_token', { purpose: 'p' })).isError).toBe(true);
+      expect((await call('get_api_token', { requestId: 'r1' })).isError).toBe(true);
+      expect(agentTokens.calls).toEqual([]);
+    });
+
+    it('pass the login and client id through and return the result as JSON', async () => {
+      const agentTokens = fakeAgentTokens();
+      const { call } = await connect({}, undefined, { agentTokens }, authInfo);
+      expect(JSON.parse((await call('request_api_token', { purpose: 'bake' })).text).requestId).toBe('r1');
+      expect(JSON.parse((await call('get_api_token', { requestId: 'r1' })).text)).toEqual({
+        status: 'approved',
+        token: 'tok',
+        expiresAt: 'y',
+        apiBaseUrl: 'https://api',
+      });
+      expect(agentTokens.calls).toEqual([
+        ['request', 'alice', { purpose: 'bake', clientId: 'client-1' }],
+        ['poll', 'alice', 'client-1', 'r1'],
+      ]);
+    });
+
+    it('turn service errors into tool errors', async () => {
+      const { call } = await connect({}, undefined, { agentTokens: fakeAgentTokens() }, authInfo);
+      expect(await call('get_api_token', { requestId: 'missing' })).toEqual({ isError: true, text: 'no such request' });
     });
   });
 });

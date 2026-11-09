@@ -77,6 +77,7 @@ officexr/
   `OFFICEXR_REALTIME_ADMIN_TOKEN`, `OFFICEXR_R2_*`, `OFFICEXR_RENDER_CHROMIUM_PATH`, and `OFFICEXR_MODEL_SOURCES_BUCKET` + `OFFICEXR_MODEL_SOURCES_SIGNER_EMAIL` (set together; private GCS model sources, `model-sources/store.ts`, the bake `sourceReader`; upload URLs are signed as the signer GSA).
   Server-generated models persist in the uploaded-models dir (`$OFFICEXR_STUDIO_DATA_DIR/models`, else the gitignored
   `packages/world/uploaded-models`), created at startup and R2-synced under `models/`; `/models` serves it before the bundled models.
+  With `OFFICEXR_STUDIO_API_JWT_SECRET` + `STUDIO_APP_URL` set, the studio MCP also registers `request_api_token {purpose}` (returns `{requestId, approvalUrl, expiresAt}`; the same user approves it at `approvalUrl` within 10 minutes) and `get_api_token {requestId}` (poll; once approved the token is returned exactly once and must be collected within 60 seconds by the requesting OAuth client). The token is a 60-minute JWT sent as `Authorization: Bearer <token>` to `<apiBaseUrl>/api/*` on the public port, acting as the approving login. Both tools need the OAuth `authInfo`, so they refuse on the internal `:5174/mcp`.
   `pnpm --filter @officexr/studio dev` keeps running the same storage, MCP and hooks inside Vite, including `/models` from the uploaded dir.
   The model-source upload tools (`request_model_upload`, `finalize_model`, `list_model_sources`; `model-sources/service.ts`) are wired only by
   studio-server's `main.ts` when the store is configured; the Vite dev studio doesn't register them.
