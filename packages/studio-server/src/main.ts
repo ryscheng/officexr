@@ -116,6 +116,7 @@ const publicServer = createPublicServer({
   isAdmin,
   verifyApiToken: agentTokens ? (token) => agentTokens.verify(token) : undefined,
   modelSources: modelSourcesService,
+  agentTokens,
   oauth:
     oauthEnv.type === 'enabled'
       ? createOAuthApp({ issuerUrl: oauthEnv.issuerUrl, webPublicUrl: oauthEnv.webPublicUrl, store: new PgOAuthStore(pool), isAdmin, mcp: internal.mcp }).handler

@@ -18,6 +18,7 @@ export const paths = {
   worldObjectKinds: '/api/world-object-kinds',
   worldSettings: '/api/world-settings',
   sounds: '/api/sounds',
+  agentTokenRequests: '/api/agent-token-requests',
 };
 
 /** `{ basePath, fetch }` for a world `Filesystem*Storage` talking to the studio API at `path`. */

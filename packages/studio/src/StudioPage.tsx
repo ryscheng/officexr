@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Header, isStudioMode, type StudioMode } from './ui/Header.tsx';
+import { AgentTokensPanel, linkedRequestId } from './agent-tokens/AgentTokensPanel.tsx';
 import { BakeStatusBar } from './ui/BakeStatusBar.tsx';
 import { PerfFooter } from './ui/PerfFooter.tsx';
 import { DebugApp } from './modes/debug/DebugApp.tsx';
@@ -34,6 +35,9 @@ export function StudioPage() {
   const [studioMode, setStudioMode] = useState<StudioMode>(() =>
     readHashMode() ?? DEFAULT_MODE,
   );
+
+  const [highlightId] = useState(linkedRequestId);
+  const [agentTokensOpen, setAgentTokensOpen] = useState(highlightId !== null);
 
   // `?perfFooter=0` suppresses the perf footer for pixel-capture
   // contexts. The Playwright motion-keyframe specs screenshot the
@@ -83,7 +87,8 @@ export function StudioPage() {
         color: '#fafafa',
       }}
     >
-      <Header active={studioMode} onChange={setStudioMode} />
+      <Header active={studioMode} onChange={setStudioMode} onToggleAgentTokens={() => setAgentTokensOpen((open) => !open)} />
+      {agentTokensOpen && <AgentTokensPanel highlightId={highlightId} onClose={() => setAgentTokensOpen(false)} />}
       {/* Global bake-status indicator. Sits directly below the header
           across every mode so the user always knows what bakes are
           in flight, regardless of which editor is open. The drawer

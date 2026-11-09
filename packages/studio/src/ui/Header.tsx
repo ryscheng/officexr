@@ -32,9 +32,21 @@ export function isStudioMode(value: unknown): value is StudioMode {
   );
 }
 
+const tabStyle = (isActive: boolean): React.CSSProperties => ({
+  padding: '6px 14px',
+  border: 0,
+  borderRadius: 4,
+  cursor: 'pointer',
+  background: isActive ? '#3b82f6' : 'transparent',
+  color: isActive ? '#fff' : '#cbd5e1',
+  fontWeight: isActive ? 600 : 400,
+  fontSize: 13,
+});
+
 interface HeaderProps {
   active: StudioMode;
   onChange: (mode: StudioMode) => void;
+  onToggleAgentTokens: () => void;
 }
 
 /**
@@ -42,7 +54,7 @@ interface HeaderProps {
  * on the right. Each mode mounts a completely separate application
  * below; the header is the only chrome they share.
  */
-export function Header({ active, onChange }: HeaderProps) {
+export function Header({ active, onChange, onToggleAgentTokens }: HeaderProps) {
   return (
     <header
       style={{
@@ -79,22 +91,20 @@ export function Header({ active, onChange }: HeaderProps) {
               aria-selected={isActive}
               title={m.description}
               onClick={() => onChange(m.mode)}
-              style={{
-                padding: '6px 14px',
-                border: 0,
-                borderRadius: 4,
-                cursor: 'pointer',
-                background: isActive ? '#3b82f6' : 'transparent',
-                color: isActive ? '#fff' : '#cbd5e1',
-                fontWeight: isActive ? 600 : 400,
-                fontSize: 13,
-              }}
+              style={tabStyle(isActive)}
             >
               {m.label}
             </button>
           );
         })}
       </nav>
+      <button
+        type="button"
+        onClick={onToggleAgentTokens}
+        style={tabStyle(false)}
+      >
+        Agent tokens
+      </button>
     </header>
   );
 }

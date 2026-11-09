@@ -4,13 +4,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
-import type { NextHandleFunction } from 'connect';
+import connect, { type NextHandleFunction } from 'connect';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
 import session from 'express-session';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
 import { createSessionReader } from '@officexr/server';
+import { AgentTokenServiceError, type AgentTokens } from '@officexr/studio-mcp/agent-tokens';
+import { agentTokenRoutes } from './agent-tokens/routes.ts';
 import { ModelSourceServiceError, type ModelSources } from '@officexr/studio-mcp/model-sources';
 import { createStudioMcpOptions, HeavyWorkLock, loopbackDocuments, loopbackOrigin, type ViewRenderer } from '@officexr/studio-mcp/mount-mcp';
 import { emptyRoomDocument } from '@officexr/world/scenes';
@@ -48,7 +50,7 @@ const listen = async (server: Server) => {
 };
 
 /** `oauth` receives the internal server's `/mcp` handler to serve behind bearer auth. */
-async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => NextHandleFunction, renderer?: ViewRenderer, modelSources: ModelSources | null = null) {
+async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => NextHandleFunction, renderer?: ViewRenderer, modelSources: ModelSources | null = null, agentTokens: AgentTokens | null = null) {
   const storage = createStudioStorage({
     dataDir: path.join(dir, 'data'),
     worldSettings: {
@@ -80,6 +82,7 @@ async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => 
     isAdmin: (login) => isAdmin(login),
     verifyApiToken: verifyApiToken && ((token) => verifyApiToken!(token)),
     modelSources,
+    agentTokens,
     oauth: oauth?.(internal.mcp),
   });
   listeners.push(internal, pub);
@@ -701,5 +704,105 @@ describe('public /mcp', () => {
       release();
       await Promise.all([publicClient.close(), internalClient.close()]);
     }
+  });
+});
+
+describe('public agent-token routes', () => {
+  const pending = { id: 'r1', purpose: 'bake', clientId: 'c', createdAt: '2026-01-01T00:00:00Z', expiresAt: '2026-01-01T00:10:00Z' };
+  const calls: unknown[][] = [];
+  let failure: AgentTokenServiceError | null;
+  const fake: AgentTokens = {
+    request: async () => {
+      throw new Error('unused');
+    },
+    poll: async () => {
+      throw new Error('unused');
+    },
+    listPending: async (login) => {
+      calls.push(['list', login]);
+      return [pending];
+    },
+    approve: async (login, id) => {
+      calls.push(['approve', login, id]);
+      if (failure) {
+        throw failure;
+      }
+    },
+    deny: async (login, id) => {
+      calls.push(['deny', login, id]);
+      if (failure) {
+        throw failure;
+      }
+    },
+  };
+  const post = (origin: string, route: string, cookie: string, contentType: string | null = 'application/json') =>
+    fetch(`${origin}/api/agent-token-requests/${route}`, {
+      method: 'POST',
+      headers: { cookie, ...(contentType && { 'content-type': contentType }) },
+      body: '{}',
+    });
+
+  beforeEach(() => {
+    calls.length = 0;
+    failure = null;
+  });
+
+  it('lists, approves and denies for the cookie user', async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, null, fake);
+    const cookie = await signIn(ALLOWED);
+    const listed = await fetch(`${pub}/api/agent-token-requests`, { headers: { cookie } });
+    expect(await listed.json()).toEqual({ requests: [pending] });
+    const approved = await post(pub, 'r1/approve', cookie, 'application/json; charset=utf-8');
+    expect(await approved.json()).toEqual({ status: 'approved' });
+    expect(await (await post(pub, 'r2/deny', cookie)).json()).toEqual({ status: 'denied' });
+    expect(calls).toEqual([['list', ALLOWED], ['approve', ALLOWED, 'r1'], ['deny', ALLOWED, 'r2']]);
+  });
+
+  it.each([
+    ['not_found', 404],
+    ['not_pending', 409],
+    ['expired', 410],
+  ] as const)('maps %s to %i', async (type, status) => {
+    const { pub } = await boot(DOWN, undefined, undefined, null, fake);
+    failure = new AgentTokenServiceError({ type, message: 'because' });
+    const res = await post(pub, 'r1/approve', await signIn(ALLOWED));
+    expect(res.status).toBe(status);
+    expect(await res.json()).toEqual({ error: 'because' });
+  });
+
+  it('answers 415 without a JSON media type and does not call the service', async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, null, fake);
+    const cookie = await signIn(ALLOWED);
+    expect((await post(pub, 'r1/approve', cookie, 'text/plain')).status).toBe(415);
+    expect((await post(pub, 'r1/deny', cookie, null)).status).toBe(415);
+    expect(calls).toEqual([]);
+  });
+
+  it('refuses with 403 when the routes see no session identity, without calling the service', async () => {
+    const app = connect();
+    app.use('/api/agent-token-requests', agentTokenRoutes(fake, { sessionIdentity: () => null } as unknown as ReturnType<typeof createSessionReader>));
+    const origin = await listen(createServer(app));
+    expect((await fetch(`${origin}/api/agent-token-requests`)).status).toBe(403);
+    expect((await post(origin, 'r1/approve', '')).status).toBe(403);
+    expect(calls).toEqual([]);
+  });
+
+  it('answers 404 for a malformed id', async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, null, fake);
+    expect((await post(pub, '%E0/approve', await signIn(ALLOWED))).status).toBe(404);
+    expect(calls).toEqual([]);
+  });
+
+  it("passes only the cookie user's login, so another user's id is a 404", async () => {
+    const { pub } = await boot(DOWN, undefined, undefined, null, fake);
+    failure = new AgentTokenServiceError({ type: 'not_found', message: 'nope' });
+    const res = await post(pub, 'theirs/approve', await signIn(ALLOWED));
+    expect(res.status).toBe(404);
+    expect(calls).toEqual([['approve', ALLOWED, 'theirs']]);
+  });
+
+  it('answers 503 for a null service', async () => {
+    const { pub } = await boot();
+    expect((await fetch(`${pub}/api/agent-token-requests`, { headers: { cookie: await signIn(ALLOWED) } })).status).toBe(503);
   });
 });

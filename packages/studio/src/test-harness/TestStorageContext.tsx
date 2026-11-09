@@ -6,6 +6,7 @@ import type {
   WorldConstantsStorage,
 } from '@officexr/world/scenes';
 import type { ModelSourcesClient } from '../modes/object/upload/modelSourcesClient.ts';
+import type { AgentTokensClient } from '../agent-tokens/agentTokensClient.ts';
 import type { SoundLibraryStorage } from '../modes/sounds/soundLibraryStorage.ts';
 
 /**
@@ -26,6 +27,7 @@ export interface TestStorages {
   worldConstantsStorage?: WorldConstantsStorage;
   soundStorage?: SoundLibraryStorage;
   modelSourcesClient?: ModelSourcesClient;
+  agentTokensClient?: AgentTokensClient;
 }
 
 const TestStorageCtx = createContext<TestStorages | null>(null);
