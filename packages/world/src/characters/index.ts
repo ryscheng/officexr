@@ -1,5 +1,5 @@
 export {
-  BASE_CHARACTER_OPTIONS,
+  baseCharacterOptions,
   CHARACTERS,
   catalogCharacterOptions,
   catalogCharacters,

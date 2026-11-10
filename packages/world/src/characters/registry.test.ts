@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setAssetBaseUrl } from '../app/asset-url.ts';
 import {
   CHARACTERS,
   catalogCharacters,
@@ -6,6 +7,7 @@ import {
   characterUrl,
   isKnownCharacter,
   pickCharacterForPlayer,
+  resolveCharacter,
   resolvePlayerModel,
 } from './registry.ts';
 import type { CubeKindCategory } from '../scenes/world-object-kinds-schema.ts';
@@ -93,5 +95,15 @@ describe('resolvePlayerModel', () => {
     expect(asMage).toMatchObject({ ghost: true, fallbackUrl: own });
     expect(resolvePlayerModel('a', { model: 'Knight', viewMode: '2d' }, undefined).url).toBe(asMage.url);
     expect(resolvePlayerModel('a', { model: 'Mage', viewMode: '2d' }, undefined)).toEqual(asMage);
+  });
+});
+
+describe('asset base', () => {
+  afterEach(() => setAssetBaseUrl(null));
+
+  it('resolves built-in URLs against an asset base set after this module loaded', () => {
+    setAssetBaseUrl('https://cdn.example');
+    expect(resolveCharacter('a', 'Rogue').url).toBe('https://cdn.example/models/characters/Rogue.glb');
+    expect(resolvePlayerModel('a', { model: 'Rogue' }, undefined).url).toBe('https://cdn.example/models/characters/Rogue.glb');
   });
 });

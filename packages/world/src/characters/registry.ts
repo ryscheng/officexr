@@ -43,11 +43,17 @@ export function isCharacterName(value: unknown): value is CharacterName {
 
 export const characterUrl = (character: CharacterName) => modelUrl(`/models/characters/${character}.glb`);
 
-export const BASE_CHARACTER_OPTIONS: readonly CharacterOption[] = CHARACTERS.map((name) => ({
+const baseCharacterOption = (name: CharacterName): CharacterOption => ({
   id: name,
   label: name.replace(/_/g, ' '),
   url: characterUrl(name),
-}));
+});
+
+/** The built-ins as pickable characters. A function, not a constant: the URLs
+ * need the asset base, which the app sets after this module loads. */
+export function baseCharacterOptions(): CharacterOption[] {
+  return CHARACTERS.map(baseCharacterOption);
+}
 
 /** The catalog's `character` kinds as pickable characters. A kind whose id is a built-in name is left out, so it can't shadow that built-in. */
 export function catalogCharacters(
@@ -69,7 +75,7 @@ export function catalogCharacterOptions(catalog: CatalogCharacters): CharacterOp
 
 /** Every pickable character: the built-ins first, then the catalog's, by label. */
 export function characterOptions(catalog: CatalogCharacters = NO_CATALOG_CHARACTERS): CharacterOption[] {
-  return [...BASE_CHARACTER_OPTIONS, ...catalogCharacterOptions(catalog)];
+  return [...baseCharacterOptions(), ...catalogCharacterOptions(catalog)];
 }
 
 /** Whether `value` names a built-in character or one of `catalog`'s. */
@@ -97,7 +103,7 @@ export function resolveCharacter(
     return fromCatalog;
   }
   const name = isCharacterName(model) ? model : hashedCharacter(playerId);
-  return BASE_CHARACTER_OPTIONS[CHARACTERS.indexOf(name)];
+  return baseCharacterOption(name);
 }
 
 /** The id of {@link resolveCharacter}'s pick. */
