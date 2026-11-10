@@ -18,10 +18,11 @@ import { normalizeYawDeg } from './commands.ts';
 /** Category groups the Object editor and the room palette use to sort
  * kinds. `block` covers tileable cube sets (the original blocks and
  * KayKit BlockBits); the themed ones (`nature`, `dungeon`, …) mostly
- * follow an asset pack; `weapons` / `tools` / `resources` / `props`
- * collect loose items from grab-bag packs. `character` is for avatar
- * meshes — the room palette filters these out so they don't appear as
- * placeable objects. Order here is the display order. */
+ * follow an asset pack; `weapon` / `tools` / `resources` / `games` /
+ * `prop` collect loose items. `character` is for avatar meshes — the
+ * room palette filters these out so they don't appear as placeable
+ * objects. Order here is the display order; the names match what the
+ * production catalog already stores, so renaming one breaks its load. */
 export const CUBE_KIND_CATEGORIES = [
   'block',
   'furniture',
@@ -32,12 +33,12 @@ export const CUBE_KIND_CATEGORIES = [
   'platformer',
   'city',
   'space',
-  'seasonal',
+  'decoration',
   'games',
-  'weapons',
+  'weapon',
   'tools',
   'resources',
-  'props',
+  'prop',
   'character',
 ] as const;
 
