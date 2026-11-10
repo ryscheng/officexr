@@ -8,8 +8,9 @@ import {
   pickCharacterForPlayer,
   resolvePlayerModel,
 } from './registry.ts';
+import type { CubeKindCategory } from '../scenes/world-object-kinds-schema.ts';
 
-const kind = (id: string, category: string, label = id) => ({ id, label, gltfPath: `/models/packs/${id}.glb`, category } as const);
+const kind = (id: string, category: CubeKindCategory, label = id) => ({ id, label, gltfPath: `/models/packs/${id}.glb`, category });
 const NECRO = 'kaykit-skeletons/characters/gltf/Necromancer';
 const catalog = catalogCharacters([
   kind(NECRO, 'character', 'Necromancer'),
