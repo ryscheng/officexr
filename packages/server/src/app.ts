@@ -1,6 +1,6 @@
 import connect from 'connect';
 import type { RealtimeServer } from '@officexr/realtime-server/server';
-import { createStudioStorage, studioMapExists, studioMapLoader } from '@officexr/world/vite-plugin-storage';
+import { createStudioStorage, studioCatalogCharacters, studioMapExists, studioMapLoader } from '@officexr/world/vite-plugin-storage';
 import type { Store } from 'express-session';
 import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type UpdateOffice } from './api';
 import { bearerIdentity, createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
@@ -89,6 +89,7 @@ export async function createApp({
       updateOffice,
       mapExists: studioMapExists(studioDataDir),
       loadMap: studioMapLoader(studioDataDir),
+      loadCatalogCharacters: studioCatalogCharacters(studioDataDir),
       identity,
       realtimeTokenSecret,
     }),

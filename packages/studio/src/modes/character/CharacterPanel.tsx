@@ -1,5 +1,6 @@
 import React from 'react';
-import { CHARACTERS, type CharacterName } from '@officexr/world';
+import { characterOptions } from '@officexr/world';
+import { useCatalogCharacters } from '@officexr/world/react';
 import type { AnimationState } from '@officexr/world/renderer';
 
 import { Button } from '../../components/ui/button.tsx';
@@ -31,13 +32,15 @@ interface CharacterPanelProps {
  *     Persists to localStorage via the hook's mirror effect.
  */
 export function CharacterPanel({ ctrl }: CharacterPanelProps) {
+  const catalog = useCatalogCharacters();
+  const options = characterOptions(catalog).map((c) => ({ value: c.id, label: c.label }));
   return (
     <Panel>
       <Section title="Character">
         <SelectInput
           label="model"
           value={ctrl.character}
-          options={CHARACTERS as unknown as readonly CharacterName[]}
+          options={options}
           onChange={(model) => ctrl.setCharacter(model)}
         />
         <Toggle

@@ -6,6 +6,8 @@ import {
 } from './CharacterEditorCanvas.tsx';
 import { CharacterPanel } from './CharacterPanel.tsx';
 import { useCharacterControls } from './useCharacterControls.ts';
+import { resolveCharacter } from '@officexr/world';
+import { useCatalogCharacters } from '@officexr/world/react';
 
 /**
  * Standalone Characters editor application. Mounts its own canvas
@@ -22,6 +24,7 @@ import { useCharacterControls } from './useCharacterControls.ts';
  */
 export function CharacterApp() {
   const ctrl = useCharacterControls();
+  const catalog = useCatalogCharacters();
   const [hover, setHover] = useState<CharacterPartHover | null>(null);
 
   return (
@@ -37,6 +40,7 @@ export function CharacterApp() {
       >
         <CharacterEditorCanvas
           character={ctrl.character}
+          url={resolveCharacter('', ctrl.character, catalog).url}
           previewState={ctrl.previewState}
           inControl={ctrl.inControl}
           idleSpeed={ctrl.idleAnimSpeed}

@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { NextHandleFunction } from 'connect';
 import { signJoinToken } from '@officexr/realtime-server/join-token';
-import { isCharacterName } from '@officexr/world/characters';
+import { isKnownCharacter, type CatalogCharacters } from '@officexr/world/characters';
 import { DEFAULT_MAP, type SerializedMap } from '@officexr/world/scenes';
 import { MAX_DESCRIPTION, MAX_NAME } from './officeLimits';
 import type { Identity, NewOffice, Office, OfficeUpdate } from './shared';
@@ -129,6 +129,8 @@ export interface ApiOptions {
   updateOffice: UpdateOffice;
   mapExists: MapExists;
   loadMap: LoadMap;
+  /** The catalog's characters, which players may pick besides the built-ins. */
+  loadCatalogCharacters: () => Promise<CatalogCharacters>;
   identity: ResolveIdentity;
   realtimeTokenSecret?: string;
 }
@@ -141,6 +143,7 @@ export function apiMiddleware({
   updateOffice,
   mapExists,
   loadMap,
+  loadCatalogCharacters,
   identity,
   realtimeTokenSecret,
 }: ApiOptions): NextHandleFunction {
@@ -206,7 +209,7 @@ export function apiMiddleware({
               return send(413, { error: 'Body too large' });
             }
             const characterId = (body as { characterId?: unknown } | null)?.characterId;
-            if (!isCharacterName(characterId)) {
+            if (!isKnownCharacter(characterId, await loadCatalogCharacters())) {
               return send(400, { error: 'Unknown character' });
             }
             await characters.set(office.id, me.login, characterId);

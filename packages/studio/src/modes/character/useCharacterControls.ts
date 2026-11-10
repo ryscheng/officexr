@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CHARACTERS, type CharacterName } from '@officexr/world';
+import { CHARACTERS } from '@officexr/world';
 import type { AnimationState } from '@officexr/world/renderer';
 import type { CharacterConfig, CharacterConfigs } from '@officexr/sdk';
 import { CharacterStorage } from './character-storage.ts';
@@ -24,7 +24,8 @@ export interface CharacterTuning {
 }
 
 export interface CharacterEditorState {
-  character: CharacterName;
+  /** A built-in character name or a catalog character kind id. */
+  character: string;
   previewState: AnimationState;
   inControl: boolean;
   /** The full tuning surface for the current character. */
@@ -36,7 +37,7 @@ export interface CharacterEditorState {
   walkAnimSpeed: number;
   runAnimSpeed: number;
   /** Setters the panel wires to controls. */
-  setCharacter: (next: CharacterName) => void;
+  setCharacter: (next: string) => void;
   setPreviewState: (next: AnimationState) => void;
   setInControl: (next: boolean) => void;
   setTuningField: <K extends keyof CharacterTuning>(
@@ -72,7 +73,7 @@ const TUNING_DEFAULTS: CharacterTuning = {
 export function useCharacterControls(): CharacterEditorState {
   const storage = useMemo(() => new CharacterStorage(), []);
   const [configs, setConfigs] = useState<CharacterConfigs>(() => storage.load());
-  const [character, setCharacter] = useState<CharacterName>(CHARACTERS[0]);
+  const [character, setCharacter] = useState<string>(CHARACTERS[0]);
   const [previewState, setPreviewState] = useState<AnimationState>('idle');
   const [inControl, setInControl] = useState(false);
 

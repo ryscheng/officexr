@@ -2,6 +2,7 @@ export {
   ApplicationProvider,
   useApplication,
   useCatalog,
+  useCatalogCharacters,
   useCatalogReady,
   useKind,
   useInstanceAABB,
