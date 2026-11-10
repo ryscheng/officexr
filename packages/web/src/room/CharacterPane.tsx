@@ -1,7 +1,7 @@
 import { useEffect, useState, type ComponentType } from 'react';
 import type { PersistentLocalState } from '@officexr/core-refactor';
 import type { OfficeState } from '@officexr/sdk';
-import { BASE_CHARACTER_OPTIONS, catalogCharacterOptions, resolveCharacter, type CatalogCharacters, type CharacterOption } from '@officexr/world/characters';
+import { baseCharacterOptions, catalogCharacterOptions, resolveCharacter, type CatalogCharacters, type CharacterOption } from '@officexr/world/characters';
 import { useCatalogCharacters } from '@officexr/world/react';
 import { CharacterPreviewCanvas } from '@officexr/world/renderer';
 import type { apiFetch } from '../apiOrigin';
@@ -56,7 +56,7 @@ export function CharacterPane({
           )
         }
       >
-        <CharacterOptions options={BASE_CHARACTER_OPTIONS} />
+        <CharacterOptions options={baseCharacterOptions()} />
         {uploaded.length > 0 && (
           <optgroup label="More characters">
             <CharacterOptions options={uploaded} />
