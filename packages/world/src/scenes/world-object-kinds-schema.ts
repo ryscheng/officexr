@@ -15,26 +15,33 @@
 
 import { normalizeYawDeg } from './commands.ts';
 
-/** Category groups the Object editor uses to sort kinds in its
- * left-panel list. `block` covers the original KayKit BlockBits set;
- * the others are seeded by Task 4 (KayKit Furniture / Prototype /
- * Restaurant packs). `character` is for avatar-related kinds (e.g.
- * character meshes from asset packs) — the room palette filters these
- * out so they don't appear as placeable objects. */
-export type CubeKindCategory =
-  | 'block'
-  | 'furniture'
-  | 'prototype'
-  | 'restaurant'
-  | 'character';
-
-export const CUBE_KIND_CATEGORIES: readonly CubeKindCategory[] = [
+/** Category groups the Object editor and the room palette use to sort
+ * kinds. `block` covers tileable cube sets (the original blocks and
+ * KayKit BlockBits); the themed ones (`nature`, `dungeon`, …) mostly
+ * follow an asset pack; `weapons` / `tools` / `resources` / `props`
+ * collect loose items from grab-bag packs. `character` is for avatar
+ * meshes — the room palette filters these out so they don't appear as
+ * placeable objects. Order here is the display order. */
+export const CUBE_KIND_CATEGORIES = [
   'block',
   'furniture',
   'prototype',
   'restaurant',
+  'nature',
+  'dungeon',
+  'platformer',
+  'city',
+  'space',
+  'seasonal',
+  'games',
+  'weapons',
+  'tools',
+  'resources',
+  'props',
   'character',
-];
+] as const;
+
+export type CubeKindCategory = (typeof CUBE_KIND_CATEGORIES)[number];
 
 // OCP: optimization enum — any new variant added here will produce a compile
 // error in the renderer switch (if one is added) because the exhaustive type
@@ -381,9 +388,7 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     }
     return v;
   };
-  const category: CubeKindCategory = isCategory(k.category)
-    ? (k.category as CubeKindCategory)
-    : WORLD_OBJECT_KIND_DEFAULTS.category;
+  const category = normalizeCategory(k.category, idx);
   return {
     id: requireString('id'),
     label: requireString('label'),
@@ -560,6 +565,20 @@ function normalizeLocalAABB(raw: unknown):
 
 function isCategory(v: unknown): v is CubeKindCategory {
   return typeof v === 'string' && (CUBE_KIND_CATEGORIES as readonly string[]).includes(v);
+}
+
+/** A missing category is a legacy `CubeKindDef` and becomes the default;
+ * an unknown one is rejected so a typo can't silently land in `block`. */
+function normalizeCategory(raw: unknown, idx: number): CubeKindCategory {
+  if (raw === undefined) {
+    return WORLD_OBJECT_KIND_DEFAULTS.category;
+  }
+  if (!isCategory(raw)) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].category must be one of ${CUBE_KIND_CATEGORIES.join(', ')}`,
+    );
+  }
+  return raw;
 }
 
 function normalizeColliderShape(raw: unknown): ColliderShapeSpec | undefined {

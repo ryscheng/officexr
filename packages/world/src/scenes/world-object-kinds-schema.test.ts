@@ -29,6 +29,22 @@ function minimalRaw(category = 'block', overrides: Record<string, unknown> = {})
 // normalizeKind — tilingAxes
 // ---------------------------------------------------------------------------
 
+describe('normalizeKind — category', () => {
+  it('defaults a missing category to block', () => {
+    const raw = minimalRaw('block') as Record<string, unknown>;
+    delete raw.category;
+    expect(normalizeKind(raw, 0).category).toBe('block');
+  });
+
+  it('keeps a known non-block category', () => {
+    expect(normalizeKind(minimalRaw('nature'), 0).category).toBe('nature');
+  });
+
+  it('rejects an unknown category instead of coercing it to block', () => {
+    expect(() => normalizeKind(minimalRaw('shrubbery'), 3)).toThrow(/kinds\[3\]\.category/);
+  });
+});
+
 describe('normalizeKind — tilingAxes', () => {
   it('block category defaults all axes tileable', () => {
     const kind = normalizeKind(minimalRaw('block'), 0);
