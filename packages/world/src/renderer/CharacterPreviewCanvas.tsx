@@ -1,8 +1,7 @@
 import React, { type ReactNode } from 'react';
 import type * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
-import { Adventurer, characterUrl } from './Adventurer.tsx';
-import type { CharacterName } from './config.ts';
+import { Adventurer } from './Adventurer.tsx';
 import { EndlessGrid } from './EndlessGrid.tsx';
 import { DEFAULT_EDITOR_LIGHTING, LightingRig } from './LightingRig.tsx';
 
@@ -13,8 +12,7 @@ const CHARACTER_PREVIEW_LIGHTING = {
   ambientFillIntensity: 0.7,
 };
 
-type CharacterPreviewCanvasProps = Omit<React.ComponentProps<typeof Adventurer>, 'ref' | 'motion' | 'url'> & {
-  character: CharacterName;
+type CharacterPreviewCanvasProps = Omit<React.ComponentProps<typeof Adventurer>, 'ref' | 'motion'> & {
   motion?: React.ComponentProps<typeof Adventurer>['motion'];
   /** The character's wrapping group, for callers that move or turn it. */
   groupRef?: React.Ref<THREE.Group>;
@@ -23,7 +21,7 @@ type CharacterPreviewCanvasProps = Omit<React.ComponentProps<typeof Adventurer>,
 };
 
 /** A canvas showing one character, facing the camera, on an endless grid. */
-export function CharacterPreviewCanvas({ character, groupRef, children, motion = 'idle', ...adventurer }: CharacterPreviewCanvasProps) {
+export function CharacterPreviewCanvas({ url, groupRef, children, motion = 'idle', ...adventurer }: CharacterPreviewCanvasProps) {
   return (
     <Canvas
       camera={{ position: [0, 3.2, 4.5], fov: 45, near: 0.1, far: 200 }}
@@ -36,7 +34,7 @@ export function CharacterPreviewCanvas({ character, groupRef, children, motion =
       <EndlessGrid />
       <group ref={groupRef}>
         {/* Remount on a model change so the animation mixer binds to the new model's bones. */}
-        <Adventurer key={character} url={characterUrl(character)} motion={motion} {...adventurer} />
+        <Adventurer key={url} url={url} motion={motion} {...adventurer} />
       </group>
       {children}
     </Canvas>

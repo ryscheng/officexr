@@ -14,10 +14,11 @@ import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { Adventurer, type MotionState } from './Adventurer.tsx';
 import { assertNever } from './assertNever.ts';
-import type { CameraMode, CharacterName } from './config.ts';
+import type { CameraMode } from './config.ts';
 import { PlayerNameTag } from './PlayerNameTag.tsx';
 import { PlayerPingBell, shouldShowPingBell } from './PlayerPingBell.tsx';
-import { pickCharacterForPlayer, resolvePlayerModel, type PlayerModel } from '../characters/registry.ts';
+import { pickCharacterForPlayer, resolvePlayerModel, type CatalogCharacters, type PlayerModel } from '../characters/registry.ts';
+import { useCatalogCharacters } from '../react/application-context.tsx';
 import { ModelWithFallback } from './ModelWithFallback.tsx';
 import { liveRigidBody } from './liveRigidBody.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
@@ -93,17 +94,17 @@ export function extrapolatePos(
 
 interface PlayerEntry {
   id: string;
-  character: CharacterName;
+  character: string;
   model: PlayerModel;
 }
 
 const WALK_THRESHOLD = 0.05;
 
-const playerEntries = (state: OfficeState): PlayerEntry[] =>
+const playerEntries = (state: OfficeState, catalog: CatalogCharacters): PlayerEntry[] =>
   Object.entries(state.players).map(([id, player]) => ({
     id,
-    character: pickCharacterForPlayer(id, player.avatar.model),
-    model: resolvePlayerModel(id, player.avatar, state.worldConstants.ghostAvatar),
+    character: pickCharacterForPlayer(id, player.avatar.model, catalog),
+    model: resolvePlayerModel(id, player.avatar, state.worldConstants.ghostAvatar, catalog),
   }));
 
 const sameEntries = (a: PlayerEntry[], b: PlayerEntry[]) =>
@@ -171,12 +172,21 @@ export function Players({
     proximityOuterRadius,
   } = worldSettings;
   const runSpeed = playerSpeed * runSpeedMultiplier;
+  const catalog = useCatalogCharacters();
   const [players, setPlayers] = useState<PlayerEntry[]>(() =>
-    playerEntries(store.getState()),
+    playerEntries(store.getState(), catalog),
   );
 
   // Re-render only when the player set or someone's character changes, not on movement.
-  useEffect(() => store.subscribe(playerEntries, setPlayers, sameEntries), [store]);
+  useEffect(() => {
+    const entries = (s: OfficeState) => playerEntries(s, catalog);
+    // The catalog can load after the store, so re-resolve against the new one.
+    setPlayers((prev) => {
+      const next = entries(store.getState());
+      return sameEntries(prev, next) ? prev : next;
+    });
+    return store.subscribe(entries, setPlayers, sameEntries);
+  }, [store, catalog]);
 
   // Per-player rigid body refs — peers driven from store each frame; self is
   // wired through `selfBodyRef` and driven by the character controller.

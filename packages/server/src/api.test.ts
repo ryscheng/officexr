@@ -53,6 +53,12 @@ const baseMap = JSON.parse(readFileSync(path.resolve(__dirname, '../../world/map
 for (const [name, ids] of [['hq', ['d1', 'd2']], ['default', ['dd']]] as const) {
   writeFileSync(path.join(studioDataDir, 'maps', `${name}.json`), JSON.stringify({ ...baseMap, deskAreas: ids.map(deskArea) }));
 }
+const NECROMANCER = 'kaykit-skeletons/characters/gltf/Necromancer';
+const catalogKind = (id: string, category: string) => ({ id, label: id, gltfPath: `/models/${id}.glb`, swatch: '#64748b', category });
+writeFileSync(
+  path.join(studioDataDir, 'world-object-kinds.json'),
+  JSON.stringify({ schemaVersion: 1, updatedAt: 1, kinds: [catalogKind(NECROMANCER, 'character'), catalogKind('kaykit-skeletons/assets/gltf/Skeleton_Axe', 'prop')] }),
+);
 const claimsByOffice = new Map<string, Map<string, string>>();
 const deskClaims: OfficeDeskClaims = {
   list: async (officeId) => Object.fromEntries(claimsByOffice.get(officeId) ?? []),
@@ -201,7 +207,16 @@ const headerIdentity: ResolveIdentity = (req) => {
   return typeof login === 'string' ? { login, name: login } : null;
 };
 
-const apiDeps = { queryOffices, characters, deskClaims, createOffice, updateOffice, mapExists: async () => true, loadMap: async () => null };
+const apiDeps = {
+  queryOffices,
+  characters,
+  deskClaims,
+  createOffice,
+  updateOffice,
+  mapExists: async () => true,
+  loadMap: async () => null,
+  loadCatalogCharacters: async () => new Map(),
+};
 const alice = { 'x-test-login': 'a@example.com' };
 
 describe('/api/realtime-token', () => {
@@ -811,7 +826,7 @@ describe('/api/offices/:id/character', () => {
     (await (await fetch(`${base}/api/offices/${officeId}/character`, { headers })).json()).characterId;
   beforeEach(async () => {
     storedCharacters.clear();
-    base = await start('prod');
+    base = await start('prod', { studioDataDir });
     me = await signIn(base, 'a@example.com');
     bob = await signIn(base, 'b@example.com');
   });
@@ -826,8 +841,14 @@ describe('/api/offices/:id/character', () => {
     expect(await get(ID, bob)).toBe('Rogue');
   });
 
+  it('accepts a catalog character', async () => {
+    expect((await put(ID, { characterId: NECROMANCER })).status).toBe(200);
+    expect(await get(ID)).toBe(NECROMANCER);
+  });
+
   it('rejects unknown characters and malformed bodies', async () => {
     expect((await put(ID, { characterId: 'Dragon' })).status).toBe(400);
+    expect((await put(ID, { characterId: 'kaykit-skeletons/assets/gltf/Skeleton_Axe' })).status).toBe(400);
     expect((await put(ID, 'not json')).status).toBe(400);
     const raw = await fetch(`${base}/api/offices/${ID}/character`, { method: 'PUT', headers: me, body: '{' });
     expect(raw.status).toBe(400);

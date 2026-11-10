@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { CharacterPreviewCanvas, type AnimationState } from '@officexr/world/renderer';
-import type { CharacterName } from '@officexr/world';
 import { CanvasFrameStats } from '../../perf/CanvasFrameStats.tsx';
 
 type Motion = 'idle' | 'walking' | 'running';
@@ -22,7 +21,10 @@ export interface CharacterPartHover {
 }
 
 interface CharacterEditorCanvasProps {
-  character: CharacterName;
+  /** A built-in character name or a catalog character kind id. */
+  character: string;
+  /** The character's GLB. */
+  url: string;
   /** Animation state to preview when not in control. */
   previewState: AnimationState;
   /** When true, WASD moves the character and the camera follows in
@@ -57,7 +59,7 @@ export function CharacterEditorCanvas(props: CharacterEditorCanvasProps) {
   const [motion, setMotion] = useState<Motion>('idle');
   return (
     <CharacterPreviewCanvas
-      character={props.character}
+      url={props.url}
       motion={motion}
       // In control mode the velocity-derived motion takes over from the selected preview clip.
       previewState={props.inControl ? undefined : props.previewState}

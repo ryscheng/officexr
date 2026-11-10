@@ -19,6 +19,8 @@ import {
   migrateToV5,
 } from './src/scenes/serialize.ts';
 import { isBakedRoom } from './src/scenes/commands.ts';
+import { catalogCharacters, type CatalogCharacters } from './src/characters/registry.ts';
+import { validateWorldObjectKindCatalog } from './src/scenes/world-object-kinds-schema.ts';
 import { deserializeLayout } from './src/scenes/layout-document.ts';
 import type { MapDocumentV2, SerializedMap } from './src/scenes/map-document.ts';
 import { parseWorldConstants, type WorldConstants } from '@officexr/sdk';
@@ -77,6 +79,18 @@ export function studioMapLoader(dataDir?: string): (name: string) => Promise<Ser
       return deserializeMap(JSON.parse(await fs.readFile(path.join(dir, `${name}.json`), 'utf8')));
     } catch {
       return null;
+    }
+  };
+}
+
+/** The catalog's characters as `/api/world-object-kinds` serves the catalog; none when it is missing or doesn't parse. */
+export function studioCatalogCharacters(dataDir?: string): () => Promise<CatalogCharacters> {
+  const file = (dataDir ? dataDirOptions(dataDir).catalog?.file : undefined) ?? DEFAULT_CATALOG_FILE;
+  return async () => {
+    try {
+      return catalogCharacters(validateWorldObjectKindCatalog(JSON.parse(await fs.readFile(file, 'utf8'))).kinds);
+    } catch {
+      return new Map();
     }
   };
 }
