@@ -45,6 +45,21 @@ describe('callRows', () => {
     ]);
   });
 
+  it('does not list self again when the roster carries its own participant', () => {
+    const rows = callRows(
+      [
+        { id: 'j-me', displayName: 'Me' },
+        { id: 'j-amy', displayName: 'Amy' },
+      ],
+      [player('me', 'Me', 'j-me'), player('amy', 'Amy', 'j-amy')],
+      'me',
+    );
+    expect(rows.map((r) => [r.label, r.type])).toEqual([
+      ['You', 'self'],
+      ['Amy', 'peer'],
+    ]);
+  });
+
   it('falls back to Guest for an unmatched participant without a name', () => {
     const rows = callRows([{ id: 'j1', displayName: '' }], [player('me', 'Me', 'j-me')], 'me');
     expect(rows.map((r) => r.label)).toEqual(['You', 'Guest']);
