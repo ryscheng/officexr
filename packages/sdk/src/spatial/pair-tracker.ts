@@ -47,6 +47,10 @@ export interface TrackerOptions {
   nowMs: number;
   /** Frame delta-time in seconds, for damping. */
   dtSec: number;
+  /** Players that pair with nobody this frame: their pairs lose overlap
+   * and they are ejected from any area, so the usual `exiting` /
+   * `exited` events fire for them. */
+  excluded?: ReadonlySet<PlayerId>;
 }
 
 /** Per-player visibility rule output: the strongest state we should
@@ -127,6 +131,7 @@ export class PairTracker {
       enterDebounceMs,
       nowMs,
       dtSec,
+      excluded,
     } = opts;
 
     const outerLimit = 2 * charRadius + proximityOuterRadius;
@@ -146,6 +151,15 @@ export class PairTracker {
         if (!players[m]) area.members.delete(m);
       }
     }
+    // Excluded players leave their areas before admission, so no pair
+    // with them is flipped to `entered` this frame.
+    if (excluded && excluded.size > 0) {
+      for (const area of this.areas.values()) {
+        for (const m of [...area.members]) {
+          if (excluded.has(m)) this.eject(area, m, bus, selfId);
+        }
+      }
+    }
 
     // Step 1: per-pair geometric measurement. Build up "did this pair
     // start outer overlapping this frame?" / "is it inner overlapping?"
@@ -157,6 +171,7 @@ export class PairTracker {
       for (let j = i + 1; j < ids.length; j++) {
         const a = ids[i];
         const b = ids[j];
+        if (excluded?.has(a) || excluded?.has(b)) continue;
         const pa = players[a];
         const pb = players[b];
         const dx = pa.pos.x - pb.pos.x;
@@ -293,16 +308,7 @@ export class PairTracker {
         }
       }
       for (const m of ejected) {
-        area.members.delete(m);
-        for (const other of area.members) {
-          const key = pairKey(m, other);
-          const rec = this.pairs.get(key);
-          if (!rec) continue;
-          if (rec.state === 'entered') {
-            rec.state = 'exiting';
-            emitPairEvent(bus, selfId, key, 'proximity:exiting');
-          }
-        }
+        this.eject(area, m, bus, selfId);
       }
       // Dissolve area if only 0 or 1 members remain.
       if (area.members.size <= 1) {
@@ -388,6 +394,19 @@ export class PairTracker {
       areas: this.outAreas,
       conversationFocus: focus,
     };
+  }
+
+  /** Removes `m` from `area`; its `entered` pairs with the remaining members go to `exiting`. */
+  private eject(area: InternalArea, m: PlayerId, bus: Bus, selfId: PlayerId): void {
+    area.members.delete(m);
+    for (const other of area.members) {
+      const key = pairKey(m, other);
+      const rec = this.pairs.get(key);
+      if (rec?.state === 'entered') {
+        rec.state = 'exiting';
+        emitPairEvent(bus, selfId, key, 'proximity:exiting');
+      }
+    }
   }
 
   private areaContaining(p: PlayerId): InternalArea | undefined {

@@ -26,6 +26,7 @@ function headless(client: ClientHandle) {
     const state = client.store.getState();
     tickProximity(tracker, {
       players: state.players,
+      voiceZones: state.voiceZones,
       selfId: client.id,
       bus: client.bus,
       settings: state.worldSettings,

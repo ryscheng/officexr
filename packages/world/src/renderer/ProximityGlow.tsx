@@ -186,6 +186,7 @@ export function ProximityGlow({
 
     const out = tickProximity(tracker, {
       players,
+      voiceZones: officeState.voiceZones,
       selfId,
       bus,
       settings: ws,
