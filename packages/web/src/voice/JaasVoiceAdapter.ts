@@ -250,9 +250,12 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     );
     api.on(
       'participantJoined',
-      ifCurrent(({ id, displayName }: { id: string; displayName?: string }) =>
-        this.events.emit('remote-participant-joined', { roomId, participantId: id, displayName: displayName ?? '' }),
-      ),
+      ifCurrent(({ id, displayName }: { id: string; displayName?: string }) => {
+        // The IFrame API can echo the local participant here; it isn't remote.
+        if (id !== this.localId) {
+          this.events.emit('remote-participant-joined', { roomId, participantId: id, displayName: displayName ?? '' });
+        }
+      }),
     );
     api.on(
       'participantLeft',

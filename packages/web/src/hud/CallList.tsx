@@ -16,7 +16,10 @@ type Call = { state: 'none' | 'joining' | 'connected'; players: CallPlayer[]; ro
 export function callRows(roster: RosterEntry[], players: CallPlayer[], selfId: PlayerId): PersonRow[] {
   const labels = labelsInJoinOrder(players);
   const self = players.find((p) => p.id === selfId);
+  // Jitsi can report the local participant through `participantJoined` too,
+  // so drop it here or it shows up again as a guest beside You.
   const remote = roster
+    .filter((entry) => entry.id !== self?.jitsiParticipantId)
     .map((entry): PersonRow => {
       const peer = players.find((p) => p.id !== selfId && p.jitsiParticipantId === entry.id);
       return peer
