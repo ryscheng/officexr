@@ -22,12 +22,14 @@ import type { AutoWalkController } from './useAutoWalk.ts';
 const REFUSAL_TOAST_MS = 2000;
 const ZERO = { x: 0, y: 0, z: 0 };
 
-/** Why a sit failed: `canSit`'s reasons, the player isn't touching the chair, or no side of it has room to walk up to. */
-export type SeatingRefusal = SitRefusal | 'not-touching' | 'no-approach';
+/** Why a sit failed: `canSit`'s reasons, or the player isn't touching the chair. */
+export type SeatingRefusal = SitRefusal | 'not-touching';
 
 export interface SeatingControllerState extends SeatingState {
   /** Why the last sit failed, until its toast times out. */
   refusal: SeatingRefusal | null;
+  /** How many times `returnToDesk` has teleported the player; each change is one flash. */
+  teleports: number;
 }
 
 export interface SeatingController extends SeatingSource {
@@ -51,11 +53,16 @@ export interface SeatingDeps {
 /** Sits the self player of `store` on seats and stands them back up. */
 export function createSeating({ store, actions, selfId, catalog, geometry, autoWalk }: SeatingDeps): SeatingController {
   const login = loginOf(selfId);
-  let state: SeatingControllerState = { nearbySeatId: null, hasDesk: false, refusal: null };
+  let state: SeatingControllerState = { nearbySeatId: null, hasDesk: false, refusal: null, teleports: 0 };
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<SeatingControllerState>) => {
     const next = { ...state, ...patch };
-    if (next.nearbySeatId !== state.nearbySeatId || next.hasDesk !== state.hasDesk || next.refusal !== state.refusal) {
+    if (
+      next.nearbySeatId !== state.nearbySeatId ||
+      next.hasDesk !== state.hasDesk ||
+      next.refusal !== state.refusal ||
+      next.teleports !== state.teleports
+    ) {
       state = next;
       listeners.forEach((cb) => cb());
     }
@@ -103,16 +110,29 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
     if (self.seat === seat.instance.id) {
       return;
     }
+    seatOn(s, seat);
+  };
+
+  /** Puts the self player on `seat` wherever they stand; false when `canSit` refuses. */
+  const seatOn = (s: OfficeState, seat: Seat): boolean => {
     const verdict = canSit(s, catalog, geometry, seat.instance, login);
     if (!verdict.ok) {
       refuse(verdict.reason);
-      return;
+      return false;
     }
     autoWalk.cancel();
-    const { pos, yaw } = seatedPlayerPose(seat.pose, charRadius);
+    const { pos, yaw } = seatedPlayerPose(seat.pose, s.worldSettings.charRadius);
     seatedAt = pos;
     actions.setSelfPosition(pos, ZERO, yaw, false);
     actions.setSelfSeat(seat.instance.id);
+    return true;
+  };
+
+  /** The fallback when walking can't get there: straight into the chair, with a flash. */
+  const teleportTo = (seat: Seat) => {
+    if (seatOn(store.getState(), seat)) {
+      publish({ teleports: state.teleports + 1 });
+    }
   };
 
   const stand = () => {
@@ -161,7 +181,7 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
       }
       const target = approachSpot(seat.pose, geometry.worldAABBOfInstance(seat.instance), s.worldSettings.charRadius, isFree);
       if (!target) {
-        refuse('no-approach');
+        teleportTo(seat);
         return;
       }
       autoWalk.goToPoint(
@@ -169,6 +189,7 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
         target,
         () => touches(store.getState(), seat),
         () => sit(seat.instance.id),
+        () => teleportTo(seat),
       );
     },
     setStandingCheck(check) {

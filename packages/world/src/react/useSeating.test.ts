@@ -30,7 +30,7 @@ const ZERO = { x: 0, y: 0, z: 0 };
 // Feet against the back (-Z side) of 'near', whose footprint is x 0..1, z 0..1.
 const TOUCHING_NEAR = { x: 0.5, y: -0.5, z: -0.4 };
 
-async function setup(plan?: PlanFn) {
+async function setup(plan?: PlanFn, now: () => number = () => 0) {
   const h = createMultiClientHarness();
   const a = await h.add('alice');
   const b = await h.add('bob');
@@ -39,7 +39,7 @@ async function setup(plan?: PlanFn) {
     c.actions.setDeskAreas([{ id: 'd', label: 'Desk', min: { x: 9, z: -1 }, max: { x: 12, z: 2 }, seatInstanceId: 'desk-chair' }]);
   }
   a.actions.setSelfPosition(TOUCHING_NEAR, ZERO, 0, false);
-  const autoWalk = createAutoWalk(a.store, 'alice', { now: () => 0, plan });
+  const autoWalk = createAutoWalk(a.store, 'alice', { now, plan });
   if (plan) {
     autoWalk.setGrid({} as NavGrid);
   }
@@ -166,25 +166,61 @@ describe('createSeating', () => {
     expect(autoWalk.getState()).toEqual({ type: 'idle' });
   });
 
-  it('refuses instead of walking when no side of the chair has room', async () => {
-    vi.useFakeTimers();
-    const { a, autoWalk, seating } = await setup();
+  it('teleports onto the desk chair, with a flash, when no side of it has room', async () => {
+    const { a, b, autoWalk, seating } = await setup();
     a.actions.setDeskClaims({ d: 'alice' });
     a.actions.setSelfPosition({ x: 5, y: -0.5, z: 5 }, ZERO, 0, false);
     seating.setStandingCheck(() => false);
     seating.returnToDesk();
+    expect(self(a).seat).toBe('desk-chair');
+    expect(self(a).pos).toEqual(seatedPlayerPose({ position: [10.5, 0.5, 0.5], yawRad: 0 }, 0.4).pos);
+    expect(b.store.getState().players.alice?.seat).toBe('desk-chair');
     expect(autoWalk.getState()).toEqual({ type: 'idle' });
-    expect(seating.getState().refusal).toBe('no-approach');
+    expect(seating.getState()).toMatchObject({ refusal: null, teleports: 1 });
   });
 
-  it('keeps walking, not sitting, when the chair is unreachable', async () => {
+  it('teleports onto the desk chair when no route reaches it', async () => {
     const { a, autoWalk, seating } = await setup(() => null);
     a.actions.setDeskClaims({ d: 'alice' });
     a.actions.setSelfPosition({ x: 10.5, y: -0.5, z: -0.9 }, ZERO, 0, false);
     seating.returnToDesk();
-    expect(autoWalk.getState()).toMatchObject({ type: 'no-route', targetId: 'desk-chair' });
-    expect(autoWalk.intent(self(a).pos)).toBeNull();
+    expect(self(a).seat).toBe('desk-chair');
+    expect(autoWalk.getState()).toEqual({ type: 'idle' });
+    expect(seating.getState().teleports).toBe(1);
+  });
+
+  it('teleports once a walk to the desk chair loses its route for good', async () => {
+    let routable = true;
+    let clock = 0;
+    const { a, autoWalk, seating } = await setup(
+      () => (routable ? [] : null),
+      () => clock,
+    );
+    a.actions.setDeskClaims({ d: 'alice' });
+    a.actions.setSelfPosition({ x: 5, y: -0.5, z: 5 }, ZERO, 0, false);
+    seating.returnToDesk();
+    expect(autoWalk.getState()).toMatchObject({ type: 'walking', targetId: 'desk-chair' });
+
+    routable = false;
+    clock = 600;
+    expect(autoWalk.intent(self(a).pos)).not.toBeNull();
     expect(self(a).seat).toBeUndefined();
-    expect(autoWalk.getState()).toMatchObject({ type: 'no-route' });
+
+    clock = 2000;
+    expect(autoWalk.intent(self(a).pos)).toBeNull();
+    expect(self(a).seat).toBe('desk-chair');
+    expect(seating.getState().teleports).toBe(1);
+  });
+
+  it("refuses rather than teleports onto a chair someone else is sitting on", async () => {
+    vi.useFakeTimers();
+    const { a, b, seating } = await setup(() => null);
+    a.actions.setDeskClaims({ d: 'alice' });
+    b.actions.setSelfPosition({ x: 10.5, y: -0.5, z: -0.4 }, ZERO, 0, false);
+    b.actions.setSelfSeat('desk-chair');
+    a.actions.setSelfPosition({ x: 5, y: -0.5, z: 5 }, ZERO, 0, false);
+    seating.returnToDesk();
+    expect(self(a).seat).toBeUndefined();
+    expect(seating.getState()).toMatchObject({ refusal: 'occupied', teleports: 0 });
   });
 });

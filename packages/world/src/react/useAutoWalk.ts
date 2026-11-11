@@ -17,8 +17,11 @@ import type { PlayControlsSource } from './playControls.tsx';
 
 export interface AutoWalkController extends AutoWalkSource, Pick<PlayControlsSource, 'goTo' | 'cancel'> {
   setGrid(grid: NavGrid | null): void;
-  /** Walks toward the fixed `feet` position, known as `id`, until `isThere` holds, then calls `onArrive` instead of waiting. */
-  goToPoint(id: string, feet: Vec3, isThere: () => boolean, onArrive: () => void): void;
+  /**
+   * Walks toward the fixed `feet` position, known as `id`, until `isThere` holds, then calls `onArrive` instead of
+   * waiting. When no route gets there, stops and calls `onUnreachable` instead.
+   */
+  goToPoint(id: string, feet: Vec3, isThere: () => boolean, onArrive: () => void, onUnreachable: () => void): void;
   getState(): AutoWalkState;
   subscribe(cb: () => void): () => void;
 }
@@ -41,7 +44,13 @@ export function createAutoWalk(
   let state: TrackedAutoWalkState = AUTO_WALK_IDLE;
   let published: AutoWalkState = AUTO_WALK_IDLE;
   let grid: NavGrid | null = null;
-  let point: { id: string; feet: Vec3; isThere: () => boolean; onArrive: () => void } | null = null;
+  let point: {
+    id: string;
+    feet: Vec3;
+    isThere: () => boolean;
+    onArrive: () => void;
+    onUnreachable: () => void;
+  } | null = null;
   const listeners = new Set<() => void>();
   const publish = (next: TrackedAutoWalkState) => {
     state = next;
@@ -64,6 +73,16 @@ export function createAutoWalk(
     const target = s.players[targetId];
     return { selfPos: self, targetPos: target ? feetPosition(target.pos, charRadius) : null, now: now() };
   };
+  /** A fixed point, unlike a player, won't move into reach, so its 'no-route' is final. */
+  const giveUpIfUnreachable = () => {
+    if (state.type !== 'no-route' || point?.id !== state.targetId) {
+      return false;
+    }
+    const { onUnreachable } = point;
+    publish(AUTO_WALK_IDLE);
+    onUnreachable();
+    return true;
+  };
   return {
     getState: () => published,
     subscribe(cb) {
@@ -80,11 +99,12 @@ export function createAutoWalk(
         publish(autoWalkGoTo(state, targetId, input(targetId, self.pos), grid, plan));
       }
     },
-    goToPoint(id, feet, isThere, onArrive) {
+    goToPoint(id, feet, isThere, onArrive, onUnreachable) {
       const self = store.getState().players[selfId];
       if (self) {
-        point = { id, feet, isThere, onArrive };
+        point = { id, feet, isThere, onArrive, onUnreachable };
         publish(autoWalkGoTo(state, id, input(id, self.pos), grid, plan));
+        giveUpIfUnreachable();
       }
     },
     cancel: () => publish(AUTO_WALK_IDLE),
@@ -100,7 +120,7 @@ export function createAutoWalk(
       }
       const step = autoWalkStep(state, input(state.targetId, selfPos), grid, plan);
       publish(step.state);
-      return step.intent;
+      return giveUpIfUnreachable() ? null : step.intent;
     },
   };
 }

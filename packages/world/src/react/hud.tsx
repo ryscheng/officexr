@@ -140,9 +140,7 @@ function refusalMessage(reason: SeatingRefusal): string {
         ? "That chair isn't part of a usable desk"
         : reason === 'not-touching'
           ? 'Walk up to a chair to sit'
-          : reason === 'no-approach'
-            ? 'There is no room to get to that chair'
-            : assertNever(reason);
+          : assertNever(reason);
 }
 
 /** Says why the last sit failed, while the seating controller holds the refusal. */
@@ -169,5 +167,42 @@ export function SeatRefusalToast({ seating }: { seating: Pick<SeatingController,
     >
       {refusalMessage(refusal)}
     </div>
+  );
+}
+
+const TELEPORT_FLASH_MS = 450;
+
+/** A white flash over the view each time the seating controller teleports the player. */
+export function TeleportFlash({ seating }: { seating: Pick<SeatingController, 'getState' | 'subscribe'> }) {
+  const { teleports } = useSyncExternalStore(seating.subscribe, seating.getState);
+  if (teleports === 0) {
+    return null;
+  }
+  return (
+    <>
+      <style>{`
+        @keyframes officexr-teleport-flash {
+          0% { opacity: 0.95; }
+          100% { opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          [data-teleport-flash] { animation-duration: 150ms !important; }
+        }
+      `}</style>
+      {/* Keyed on the count so each teleport remounts and replays the animation. */}
+      <div
+        key={teleports}
+        data-teleport-flash=""
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'radial-gradient(circle, #fff 0%, #e0f2ff 60%, #9fd3ff 100%)',
+          pointerEvents: 'none',
+          opacity: 0,
+          animation: `officexr-teleport-flash ${TELEPORT_FLASH_MS}ms ease-out`,
+        }}
+      />
+    </>
   );
 }
