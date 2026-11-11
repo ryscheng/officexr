@@ -1,5 +1,12 @@
 import { useState, type FormEvent } from 'react';
-import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office, type OfficeUpdate } from '@officexr/server/shared';
+import {
+  MAX_DESCRIPTION,
+  MAX_NAME,
+  isOfficeCreator,
+  type Identity,
+  type Office,
+  type OfficeUpdate,
+} from '@officexr/server/shared';
 import { apiFetch, paths } from '../apiOrigin';
 import { FIELD } from '../hud/ui/fieldStyles';
 import { Switch } from '../hud/ui/Switch';
@@ -129,8 +136,6 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
     </form>
   );
 }
-
-export const isOfficeCreator = (me: Identity, office: Office) => me.login === office.created_by_login;
 
 /** The creator's Office tab; none for anyone else. */
 export const officeSettingsTabs = (office: Office, me: Identity, onSaved: (office: Office) => void): SettingsTab[] =>

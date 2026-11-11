@@ -25,6 +25,9 @@ export interface Identity {
   name: string;
 }
 
+/** Only an office's creator may change its settings; offices without a recorded creator have none. */
+export const isOfficeCreator = (me: Identity, office: Office) => me.login === office.created_by_login;
+
 export const RUNTIME_CONFIG_KEYS = [
   'VITE_JAAS_APP_ID',
   'VITE_JAAS_API_KEY_ID',
