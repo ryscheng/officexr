@@ -1,7 +1,8 @@
+import RAPIER from '@dimforge/rapier3d-compat';
 import { describe, expect, it, vi } from 'vitest';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { createActions, createStore } from '@officexr/sdk';
-import { sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
+import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
 
 function fakeSeating(onStand: () => void = () => {}) {
   return { sit: vi.fn(), stand: vi.fn(onStand), setStandingCheck: vi.fn() } satisfies SeatingSource;
@@ -41,5 +42,29 @@ describe('stepSeated', () => {
     stepSeated(store, 'me', asBody, seating, true);
     expect(seating.stand).toHaveBeenCalledTimes(1);
     expect(body.setNextKinematicTranslation).toHaveBeenCalledWith({ x: 5, y: 0, z: 6 });
+  });
+});
+
+describe('isStandingSpotFree', () => {
+  const R = 0.4;
+  /** A floor slab whose top sits 0.15 m above y = 0, the way a placed floor tile does. */
+  async function worldWithSlab() {
+    await RAPIER.init();
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    world.createCollider(RAPIER.ColliderDesc.cuboid(10, 0.075, 10).setTranslation(0, 0.075, 0));
+    return world;
+  }
+
+  it('stands the probe on a floor slab that starts above the chair footprint', async () => {
+    const world = await worldWithSlab();
+    world.step();
+    expect(isStandingSpotFree(world, null, R, { x: 0, y: 0, z: 0 })).toBe(true);
+  });
+
+  it('still sees an obstacle standing on the slab', async () => {
+    const world = await worldWithSlab();
+    world.createCollider(RAPIER.ColliderDesc.cuboid(0.3, 0.5, 0.3).setTranslation(0.5, 0.65, 0));
+    world.step();
+    expect(isStandingSpotFree(world, null, R, { x: 0, y: 0, z: 0 })).toBe(false);
   });
 });

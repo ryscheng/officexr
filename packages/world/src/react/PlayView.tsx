@@ -7,7 +7,15 @@ import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import type { CameraMode } from '../renderer/config.ts';
 import type { MotionLookState } from '../renderer/motionLook.ts';
 import { Scene } from '../renderer/Scene.tsx';
-import { ErrorBanner, FocusIndicator, SeatRefusalToast, TopLeftHud, WorldHud, type HudRealtime } from './hud.tsx';
+import {
+  ErrorBanner,
+  FocusIndicator,
+  SeatRefusalToast,
+  TeleportFlash,
+  TopLeftHud,
+  WorldHud,
+  type HudRealtime,
+} from './hud.tsx';
 import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
 import { useCameraMode } from './useCameraMode.ts';
 import { useCoarsePointer } from './useCoarsePointer.ts';
@@ -146,6 +154,7 @@ export function PlayView(props: PlayViewProps) {
           <FocusIndicator focused={worldFocused} />
         </TopLeftHud>
       )}
+      <TeleportFlash seating={seating} />
       <SeatRefusalToast seating={seating} />
       {coarsePointer && <VirtualJoystick inputRef={moveInputRef} />}
       {props.error ? (
