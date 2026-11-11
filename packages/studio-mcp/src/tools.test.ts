@@ -321,6 +321,40 @@ describe('studio MCP tools', () => {
     expect((await call('delete_baked_layout', { name: '../x' })).isError).toBe(true);
   });
 
+  describe('sub-grid positions', () => {
+    const at = (position: unknown, extra: object[] = []) => [
+      { id: 'p1', op: 'placeObject', kindId: 'crate', position },
+      ...extra,
+    ];
+
+    it.each([
+      ['room', 'put_room', 'get_room', 'rooms', emptyRoomDocument('r')],
+      ['layout', 'put_layout', 'get_layout', 'layouts', emptyLayoutDocument('r')],
+    ] as const)('%s: accepts a 1 mm sub-grid position, rejects off-grid values and sub-grid extrudes', async (noun, put, get, _store, empty) => {
+      const { call } = await connect();
+      const ok = await call(put, { name: 'r', [noun]: { ...empty, commands: at([0.5, 0.3, 1.25]) } });
+      expect(ok.isError).toBe(false);
+      expect(JSON.parse((await call(get, { name: 'r' })).text).commands[0].position).toEqual([0.5, 0.3, 1.25]);
+
+      const offGrid = await call(put, { name: 'x', [noun]: { ...empty, commands: at([0, 0.0005, 0]) } });
+      expect(offGrid.isError).toBe(true);
+      expect(offGrid.text).toMatch(/position.*sub-grid/);
+
+      const extrude = { id: 'e1', op: 'extrude', targetCommandId: 'p1', face: 'px', count: 2 };
+      const bad = await call(put, { name: 'y', [noun]: { ...empty, commands: at([0, 0.3, 0], [extrude]) } });
+      expect(bad.isError).toBe(true);
+      expect(bad.text).toMatch(/cannot target sub-grid/);
+    });
+
+    it('lists the position contract in the room and layout tool descriptions', async () => {
+      const { client } = await connect();
+      const tools = (await client.listTools()).tools;
+      for (const name of ['put_room', 'put_layout']) {
+        expect(tools.find((t) => t.name === name)?.description).toContain('sub-grid');
+      }
+    });
+  });
+
   describe('check_map_bakes', () => {
     const kind = { id: 'crate', label: 'Crate', gltfPath: '/crate.gltf', swatch: '#fff' };
     const crateLayout = (name: string) => ({

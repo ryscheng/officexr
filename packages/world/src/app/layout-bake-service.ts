@@ -199,8 +199,8 @@ export async function bakeLayout(
     const wrapperNode = outDoc.createNode(`inst_${inst.id}`);
 
     // Apply the canonical voxel→world transform via the geometry service.
-    // Instance positions are in VOXEL coordinates (integer voxel
-    // anchors); the geometry service converts these (and the yaw about the
+    // Instance positions are in VOXEL coordinates (whole or
+    // sub-grid voxel anchors); the geometry service converts these (and the yaw about the
     // footprint centre) to the mesh-root transform that matches the runtime
     // renderer's <ObjectInstances>, so bake and runtime stay in lockstep.
     const { position, rotationY } = geometry.meshTransform(

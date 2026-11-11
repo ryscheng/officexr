@@ -6,6 +6,7 @@ import type {
   SceneCommand,
   SceneDocument,
 } from './commands.ts';
+import { isGridPosition } from './commands.ts';
 
 /** Minimum shape `compileScene` actually consumes: a command list.
  * Both `SceneDocument` (v2) and `RoomDocument` (v3) satisfy this, so
@@ -30,8 +31,13 @@ type CompileInput = SceneDocument | RoomDocument | { commands: SceneCommand[] };
  *     focus the right command on selection); its `kindId` inherits
  *     from the target's first instance.
  *
+ * Positions are voxels, usually whole; a placeObject may sit on the
+ * `POSITION_QUANTUM_VOXELS` sub-grid and compiles to an instance at that
+ * exact position.
+ *
  * Edge cases handled:
  *   - Unknown `targetCommandId` → no-op (logged but doesn't throw).
+ *   - Extrude whose target is a sub-grid placement → no-op (warned).
  *   - `count <= 0` → no-op.
  *   - Two objects occupying the same voxel after extrude → the later
  *     wins (the earlier instance is dropped from the global set).
@@ -83,6 +89,13 @@ export function compileScene(
       case 'extrude': {
         const target = byCommand.get(cmd.targetCommandId);
         if (!target || target.length === 0 || cmd.count <= 1) break;
+        // Extrude steps whole-voxel strides from whole-voxel sources only;
+        // a sub-grid source is rejected at deserialize time
+        // (`parseCommandPositions`), this guards in-memory docs.
+        if (!target.every((i) => isGridPosition(i.position))) {
+          console.warn(`compileScene: extrude "${cmd.id}" skipped, its target is a sub-grid placement`);
+          break;
+        }
         const { kindId, yawDeg } = target[0];
         const layer = outerLayer(target, cmd.face);
         const normal = faceNormal(cmd.face);

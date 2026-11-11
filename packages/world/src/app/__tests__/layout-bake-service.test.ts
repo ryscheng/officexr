@@ -413,6 +413,39 @@ describe('bakeLayout', () => {
     expect(t1x - t0x).toBeCloseTo(2, 6);
   });
 
+  it('bakes a sub-grid placement at its exact position (thin floor tile + rug)', async () => {
+    const blockBytes = await makeTrivialGlb('cube');
+    const kindMap = new Map<string, WorldObjectKind>([
+      [
+        'cube',
+        {
+          ...makeKind('cube', '/models/cube.glb'),
+          dimensions: { width: 2, height: 2, depth: 2 },
+          localAABB: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+        },
+      ],
+    ]);
+    const baseGeometry = makeGeometry(kindMap, 0.5);
+    const translations: Array<readonly [number, number, number]> = [];
+    const geometry: typeof baseGeometry = {
+      ...baseGeometry,
+      meshTransform(position, kindId, yawDeg) {
+        const transform = baseGeometry.meshTransform(position, kindId, yawDeg);
+        translations.push(transform.position);
+        return transform;
+      },
+    };
+    const doc = makeLayoutDoc('sub-grid', [
+      { id: 'c1', op: 'placeObject', kindId: 'cube', position: [0, 0.3, 0.5] },
+    ]);
+    await bakeLayout(doc, (id) => kindMap.get(id), async () => blockBytes, geometry, { io });
+    expect(translations).toHaveLength(1);
+    // meshRoot = position * vs - local.min = (0, 0.15, 0.25) + 1
+    expect(translations[0][0]).toBeCloseTo(1, 9);
+    expect(translations[0][1]).toBeCloseTo(1.15, 9);
+    expect(translations[0][2]).toBeCloseTo(1.25, 9);
+  });
+
   it('emits fewer primitives than naive count after optimization', async () => {
     // Task 05 acceptance criterion: feed N instances of the same kind and
     // assert the post-prune primitive count is strictly less than N. This

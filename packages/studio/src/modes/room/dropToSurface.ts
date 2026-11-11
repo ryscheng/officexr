@@ -1,4 +1,8 @@
+import { quantizeVoxel } from '@officexr/world/scenes';
 import type { FootprintOf } from './footprint.ts';
+
+/** Float slack (voxels) when comparing a support's top with the drop's bottom. */
+const EPS = 1e-6;
 
 /**
  * Settles a gravity-enabled object proposed at `proposedVoxel` onto the
@@ -6,6 +10,11 @@ import type { FootprintOf } from './footprint.ts';
  * supports whose top is at or below the proposed footprint's bottom count.
  * The world floor is not a support: with none, returns `null` and the
  * placement is rejected.
+ *
+ * Footprints may be exact (sub-grid placements, thin kinds — see
+ * `createFootprintOf`), so the settled Y can be sub-grid: a lamp lands on a
+ * 1.0 m desk top, a rug on a 0.15 m floor tile. It is quantized to the
+ * `POSITION_QUANTUM_VOXELS` sub-grid.
  */
 export function dropToSurface(
   proposedVoxel: [number, number, number],
@@ -24,9 +33,9 @@ export function dropToSurface(
 
   for (const inst of worldObjects.instances) {
     const fp = footprintOf(inst.position, inst.kindId, inst.yawDeg);
-    if (fp.max[1] > box.min[1]) continue;
-    if (fp.max[0] <= box.min[0] || fp.min[0] >= box.max[0]) continue;
-    if (fp.max[2] <= box.min[2] || fp.min[2] >= box.max[2]) continue;
+    if (fp.max[1] > box.min[1] + EPS) continue;
+    if (fp.max[0] <= box.min[0] + EPS || fp.min[0] >= box.max[0] - EPS) continue;
+    if (fp.max[2] <= box.min[2] + EPS || fp.min[2] >= box.max[2] - EPS) continue;
     supportTop = Math.max(supportTop, fp.max[1]);
   }
 
@@ -34,5 +43,5 @@ export function dropToSurface(
     return null;
   }
   const [px, py, pz] = proposedVoxel;
-  return [px, py + supportTop - box.min[1], pz];
+  return [px, quantizeVoxel(py + supportTop - box.min[1]), pz];
 }

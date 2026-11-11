@@ -581,6 +581,14 @@ describe('snapToVoxel — cube hit on a yawed target', () => {
   });
 });
 
+/** A placed object's occupancy box in metres — what the editor feeds the
+ * face snap as `NearbyObjectInfo.aabb`. */
+const footprintBoxM = (p: readonly [number, number, number], kindId: string, yawDeg?: number) => {
+  const { min, max } = footprintOf(p, kindId, yawDeg);
+  const m = (v: readonly number[]) => [v[0] * 0.5, v[1] * 0.5, v[2] * 0.5] as const;
+  return { min: m(min), max: m(max) };
+};
+
 describe('face-snapped placement agrees with the footprint overlap guard', () => {
   it('a yawed odd-sized kind with float noise lands flush beside itself, not inside', () => {
     // Turned 90 degrees at the origin the neighbour covers x [2,3); its AABB's
@@ -589,7 +597,7 @@ describe('face-snapped placement agrees with the footprint overlap guard', () =>
     const voxel = snapToNearestFace(
       { x: 1.4, y: 0.5, z: 0.5 },
       newObjectShape(geometry, NOISY_WALL.id, 90),
-      [{ position: [0, 0, 0], aabb: geometry.worldAABB([0, 0, 0], NOISY_WALL.id, 90) }],
+      [{ position: [0, 0, 0], aabb: footprintBoxM([0, 0, 0], NOISY_WALL.id, 90) }],
       0.5,
       1.5,
     )!;

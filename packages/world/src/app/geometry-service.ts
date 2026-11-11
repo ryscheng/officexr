@@ -223,7 +223,11 @@ export function createInstanceGeometry(deps: {
   }
 
   function tileStep(kindId: string, yawDeg = 0): Vec3 {
-    const size = kindSize(catalog.getKind(kindId));
+    // Mugshot / hermetic-test primitive boxes aren't catalog kinds; step by
+    // their real size (as `localAABBOf` does), not the one-voxel fallback.
+    const size: Vec3 | undefined = kindId.startsWith(PRIMITIVE_KIND_PREFIX)
+      ? [PRIMITIVE_BLOCK_SIZE, PRIMITIVE_BLOCK_SIZE, PRIMITIVE_BLOCK_SIZE]
+      : kindSize(catalog.getKind(kindId));
     if (!size) return [1, 1, 1];
     const [w, d] = rotatedExtentsXZ(size[0], size[2], yawDeg);
     return [
