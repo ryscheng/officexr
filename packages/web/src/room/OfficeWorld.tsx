@@ -26,6 +26,7 @@ import { usePictureInPicture } from '../pip/usePictureInPicture';
 import { CallBar } from '../voice/CallBar';
 import { JaasMeeting } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
+import { useMuteHotkey } from '../voice/useMuteHotkey';
 import { officeSettingsTabs } from './OfficeSettings';
 import { PlayView3dBoundary } from './PlayView3dBoundary';
 import { PreWorld } from './PreWorld';
@@ -75,6 +76,11 @@ function ReplacedBanner({ store }: { store: Store }) {
 
 function LocalPresence({ actions, voice }: { actions: Actions; voice: JaasVoiceAdapter | null }) {
   useLocalPresence(actions, voice);
+  return null;
+}
+
+function MuteHotkey({ voice }: { voice: JaasVoiceAdapter }) {
+  useMuteHotkey(voice);
   return null;
 }
 
@@ -155,6 +161,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const readyHud = (ready: ReadySession) => (
     <>
       {ready.voice && <JaasMeeting voice={ready.voice} />}
+      {ready.voice && <MuteHotkey voice={ready.voice} />}
       {!settings.isOpen && <ClickToPlayPrompt />}
       <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
       {viewMode === '3d' && <DeskAutoSit store={ready.local.store} selfId={ready.local.selfId} />}

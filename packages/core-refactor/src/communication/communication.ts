@@ -1,5 +1,4 @@
 import {
-  voiceZoneAt,
   type Actions,
   type Bus,
   type OfficeState,
@@ -8,6 +7,7 @@ import {
 } from '@officexr/sdk';
 import { deriveJitsiRoom, deriveZoneRoom } from './jitsi-room.ts';
 import type { VoiceAdapter } from './types.ts';
+import { playersInZones, zonePresence, zonePresenceKey, type ZonePresence } from './zone-presence.ts';
 
 /** Runs `fn` after `ms`; returns a function that cancels it. */
 export type Schedule = (fn: () => void, ms: number) => () => void;
@@ -46,7 +46,10 @@ interface CommunicationOpts {
  *   peer jittering on the sensor edge doesn't drop the call,
  * - while the local player stands in a voice zone (after a dwell, held for
  *   {@link LEAVE_DEBOUNCE_MS} after leaving), joins that zone's room instead
- *   of the proximity room,
+ *   of the proximity room, muted. A desk zone only dwells while the player
+ *   and someone else are both stopped in it, and is held only while someone
+ *   else is still there (see {@link zonePresence}); proximity never pairs a
+ *   player standing in any voice or desk zone,
  * - mirrors the chosen room into state.players[selfId].jitsiRoom.
  */
 export class Communication {
@@ -65,8 +68,11 @@ export class Communication {
   private started = false;
   private cancelLeave: (() => void) | null = null;
   private offZone: (() => void) | null = null;
+  private offZoneOccupants: (() => void) | null = null;
   /** Room of the zone currently held: dwelled into and not yet exit-debounced. */
   private zoneRoom: string | null = null;
+  /** Room the pending dwell will hold. */
+  private dwellRoom: string | null = null;
   private cancelDwell: (() => void) | null = null;
   private cancelZoneExit: (() => void) | null = null;
 
@@ -91,12 +97,15 @@ export class Communication {
       this.nearby.delete(otherId);
       void this.recompute();
     });
-    const selectZone = (s: OfficeState): string | null => {
-      const pos = s.players[this.selfId]?.pos;
-      return pos ? (voiceZoneAt(s.voiceZones, pos)?.id ?? null) : null;
-    };
-    this.offZone = this.store.subscribe(selectZone, (zoneId) => this.onZoneChange(zoneId));
-    this.onZoneChange(selectZone(this.store.getState()));
+    this.offZone = this.store.subscribe(
+      (st) => zonePresenceKey(zonePresence(st, this.selfId)),
+      () => this.onZonePresence(),
+    );
+    this.onZonePresence();
+    this.offZoneOccupants = this.store.subscribe(
+      (st) => [...playersInZones(st)].sort().join('\n'),
+      () => void this.recompute(),
+    );
     // Seed nearby from the store in case proximity has already been computed
     // before Communication started (e.g. coming back from a renderer crash).
     const initial = this.store.getState().proximity[this.selfId];
@@ -111,6 +120,7 @@ export class Communication {
     this.offEntered?.();
     this.offExited?.();
     this.offZone?.();
+    this.offZoneOccupants?.();
     this.started = false;
     this.cancelPendingLeave();
     this.cancelPendingDwell();
@@ -130,31 +140,44 @@ export class Communication {
     return this.nearby;
   }
 
-  private onZoneChange(zoneId: string | null): void {
-    this.cancelPendingDwell();
-    if (zoneId === null) {
-      if (this.zoneRoom !== null && !this.cancelZoneExit) {
-        this.cancelZoneExit = this.schedule(() => {
-          this.cancelZoneExit = null;
-          this.zoneRoom = null;
-          void this.recompute(true);
-        }, LEAVE_DEBOUNCE_MS);
-      }
+  private onZonePresence(): void {
+    const p: ZonePresence = zonePresence(this.store.getState(), this.selfId);
+    const room = p.type === 'inside' ? deriveZoneRoom(this.officeId, p.zoneId) : null;
+    if (p.type === 'inside' && room === this.zoneRoom && p.canStay) {
+      this.cancelPendingDwell();
+      this.cancelPendingZoneExit();
       return;
     }
-    this.cancelPendingZoneExit();
-    const room = deriveZoneRoom(this.officeId, zoneId);
-    if (room === this.zoneRoom) return;
-    this.cancelDwell = this.schedule(() => {
-      this.cancelDwell = null;
-      this.zoneRoom = room;
-      void this.recompute();
-    }, ZONE_ENTER_DWELL_MS);
+    const entering = p.type === 'inside' && room !== this.zoneRoom && p.canEnter;
+    if (!entering) {
+      this.cancelPendingDwell();
+    } else if (room !== this.dwellRoom) {
+      this.cancelPendingDwell();
+      this.dwellRoom = room;
+      this.cancelDwell = this.schedule(() => {
+        this.cancelDwell = null;
+        this.dwellRoom = null;
+        this.cancelPendingZoneExit();
+        this.zoneRoom = room;
+        void this.recompute();
+      }, ZONE_ENTER_DWELL_MS);
+    }
+    // While dwelling into the next zone the current zone call is kept; the dwell switches it.
+    if (entering) {
+      this.cancelPendingZoneExit();
+    } else if (this.zoneRoom !== null && !this.cancelZoneExit) {
+      this.cancelZoneExit = this.schedule(() => {
+        this.cancelZoneExit = null;
+        this.zoneRoom = null;
+        void this.recompute(true);
+        this.onZonePresence();
+      }, LEAVE_DEBOUNCE_MS);
+    }
   }
 
   /** `leaveNow` skips the leave debounce when the target is null (the zone hold already served as one). */
   private async recompute(leaveNow = false): Promise<void> {
-    const target = this.zoneRoom ?? deriveJitsiRoom(this.officeId, this.selfId, this.nearby);
+    const target = this.zoneRoom ?? deriveJitsiRoom(this.officeId, this.selfId, this.proximityPeers());
     if (target === null) {
       if (leaveNow) {
         if (this.currentRoom !== null) {
@@ -171,12 +194,23 @@ export class Communication {
     this.cancelPendingLeave();
     if (target === this.currentRoom) return;
     this.setRoom(target);
+    if (target === this.zoneRoom) {
+      // Zone calls can be large and are joined by standing still, so nobody goes live by accident.
+      this.voice.setMuted(true);
+    }
     await this.voice.joinRoom(target, { selfId: this.selfId });
+  }
+
+  /** Nearby peers to share a proximity call with: none while either side stands in a voice or desk zone. */
+  private proximityPeers(): PlayerId[] {
+    const inZones = playersInZones(this.store.getState());
+    return inZones.has(this.selfId) ? [] : [...this.nearby].filter((id) => !inZones.has(id));
   }
 
   private cancelPendingDwell(): void {
     this.cancelDwell?.();
     this.cancelDwell = null;
+    this.dwellRoom = null;
   }
 
   private cancelPendingZoneExit(): void {

@@ -197,6 +197,17 @@ describe('Communication', () => {
       expect(ctx.store.getState().players['alice'].jitsiRoom).toBe('zone-o1-lounge');
     });
 
+    it('mutes before joining a zone call, but not a proximity call', () => {
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      expect(ctx.voice.calls.some((c) => c.type === 'setMuted')).toBe(false);
+      walkTo(5);
+      ctx.timer.advance(500);
+      expect(ctx.voice.calls.slice(-2)).toEqual([
+        { type: 'setMuted', muted: true },
+        { type: 'joinRoom', roomId: 'zone-o1-lounge', selfId: 'alice' },
+      ]);
+    });
+
     it('overrides proximity peers, before and after the dwell', () => {
       ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
       walkTo(5);
@@ -277,10 +288,11 @@ describe('Communication', () => {
       expect(ctx.voice.calls).toHaveLength(0);
       ctx.timer.advance(1);
       expect(ctx.voice.calls).toEqual([
+        { type: 'setMuted', muted: true },
         { type: 'joinRoom', roomId: 'zone-o1-boardroom', selfId: 'alice' },
       ]);
       ctx.timer.advance(5000);
-      expect(ctx.voice.calls).toHaveLength(1);
+      expect(ctx.voice.calls).toHaveLength(2);
     });
 
     it('stop() cancels a pending exit hold', () => {
@@ -305,12 +317,137 @@ describe('Communication', () => {
       expect(joins()).toEqual(['room-o1-alice']);
     });
 
+    it('takes no proximity call while standing in a voice zone', () => {
+      walkTo(5);
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+      ctx.timer.advance(500);
+      expect(joins()).toEqual(['zone-o1-lounge']);
+    });
+
+    it('takes no proximity call with a peer standing in a voice zone, until they step out', () => {
+      ctx.actions.upsertPlayer({ id: 'bob', name: 'bob' });
+      ctx.actions.applyRemotePosition('bob', { x: 9, y: 0, z: 5 }, { x: 0, y: 0, z: 0 }, 0, 0, false);
+      walkTo(11);
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      ctx.timer.advance(5000);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+      ctx.actions.applyRemotePosition('bob', { x: 12, y: 0, z: 5 }, { x: 0, y: 0, z: 0 }, 0, 0, false);
+      expect(ctx.comm.getCurrentRoom()).toBe('room-o1-alice');
+    });
+
     it('stop() cancels a pending dwell', () => {
       walkTo(5);
       ctx.comm.stop();
       ctx.voice.clearCalls();
       ctx.timer.advance(5000);
       expect(ctx.voice.calls).toHaveLength(0);
+    });
+  });
+
+  describe('desk zones', () => {
+    const desk = { id: 'desk1', label: 'Desk', min: { x: 0, z: 0 }, max: { x: 4, z: 4 } };
+    const moving = { x: 3, y: 0, z: 0 };
+    const still = { x: 0, y: 0, z: 0 };
+    const DESK_ROOM = 'zone-o1-desk1';
+
+    const placeSelf = (x: number, vel = still, airborne = false): void =>
+      ctx.actions.setSelfPosition({ x, y: 0, z: 2 }, vel, 0, airborne);
+    const placeBob = (x: number, vel = still): void => {
+      ctx.actions.upsertPlayer({ id: 'bob', name: 'bob' });
+      ctx.actions.applyRemotePosition('bob', { x, y: 0, z: 2 }, vel, 0, 0, false);
+    };
+
+    beforeEach(() => {
+      ctx.actions.setVoiceZones([desk]);
+      ctx.actions.setDeskAreas([{ ...desk, seatInstanceId: null }]);
+      placeSelf(100);
+    });
+
+    it('never calls a lone player at a desk', () => {
+      placeSelf(2);
+      ctx.timer.advance(5000);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+    });
+
+    it('joins 500ms after both players have stopped in the desk zone', () => {
+      placeBob(1);
+      placeSelf(2, moving);
+      ctx.timer.advance(5000);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+      placeSelf(2);
+      ctx.timer.advance(499);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+      ctx.timer.advance(1);
+      expect(ctx.comm.getCurrentRoom()).toBe(DESK_ROOM);
+    });
+
+    it('never joins while walking, running or jumping through, however slowly', () => {
+      placeBob(1);
+      for (let x = 0; x <= 4; x += 0.5) {
+        placeSelf(x, moving, x === 2);
+        ctx.timer.advance(400);
+      }
+      placeSelf(100);
+      ctx.timer.advance(5000);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+    });
+
+    it('restarts the 500ms when the player moves again before it elapses', () => {
+      placeBob(1);
+      placeSelf(2);
+      ctx.timer.advance(400);
+      placeSelf(2.5, moving);
+      placeSelf(2.5);
+      ctx.timer.advance(400);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+      ctx.timer.advance(100);
+      expect(ctx.comm.getCurrentRoom()).toBe(DESK_ROOM);
+    });
+
+    it('does not join a peer who is only passing through', () => {
+      placeSelf(2);
+      placeBob(1, moving);
+      ctx.timer.advance(5000);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+    });
+
+    it('keeps the call while moving around inside the zone', () => {
+      placeBob(1);
+      placeSelf(2);
+      ctx.timer.advance(500);
+      placeSelf(3, moving);
+      ctx.timer.advance(5000);
+      expect(ctx.comm.getCurrentRoom()).toBe(DESK_ROOM);
+    });
+
+    it('leaves 1.5s after the other player walks off', () => {
+      placeBob(1);
+      placeSelf(2);
+      ctx.timer.advance(500);
+      placeBob(100, moving);
+      ctx.timer.advance(1499);
+      expect(ctx.comm.getCurrentRoom()).toBe(DESK_ROOM);
+      ctx.timer.advance(1);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+    });
+
+    it('takes no proximity call while standing in a desk zone', () => {
+      placeSelf(2);
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      placeBob(6);
+      ctx.timer.advance(5000);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+    });
+
+    it('takes no proximity call with a peer standing in a desk zone', () => {
+      placeBob(2);
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      placeSelf(6);
+      ctx.timer.advance(5000);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+      placeBob(10);
+      expect(ctx.comm.getCurrentRoom()).toBe('room-o1-alice');
     });
   });
 });
