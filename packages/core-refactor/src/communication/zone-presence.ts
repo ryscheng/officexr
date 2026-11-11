@@ -45,16 +45,14 @@ export function zonePresenceKey(p: ZonePresence): string {
   return p.type === 'outside' ? 'outside' : `${p.zoneId}|${p.canEnter}|${p.canStay}`;
 }
 
-/** Players standing in a desk zone. Their calls are the desk zone's alone, so proximity never pairs them. */
-export function playersInDeskZones(s: OfficeState): Set<PlayerId> {
+/** Players standing in any voice or desk zone. Their calls are the zone's alone, so proximity never pairs them. */
+export function playersInZones(s: OfficeState): Set<PlayerId> {
   const ids = new Set<PlayerId>();
-  if (s.deskAreas.length === 0) {
+  if (s.voiceZones.length === 0) {
     return ids;
   }
-  const deskIds = new Set(s.deskAreas.map((a) => a.id));
   for (const p of Object.values(s.players)) {
-    const zone = voiceZoneAt(s.voiceZones, p.pos);
-    if (zone && deskIds.has(zone.id)) {
+    if (voiceZoneAt(s.voiceZones, p.pos)) {
       ids.add(p.id);
     }
   }

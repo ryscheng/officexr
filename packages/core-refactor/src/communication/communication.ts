@@ -7,7 +7,7 @@ import {
 } from '@officexr/sdk';
 import { deriveJitsiRoom, deriveZoneRoom } from './jitsi-room.ts';
 import type { VoiceAdapter } from './types.ts';
-import { playersInDeskZones, zonePresence, zonePresenceKey, type ZonePresence } from './zone-presence.ts';
+import { playersInZones, zonePresence, zonePresenceKey, type ZonePresence } from './zone-presence.ts';
 
 /** Runs `fn` after `ms`; returns a function that cancels it. */
 export type Schedule = (fn: () => void, ms: number) => () => void;
@@ -49,7 +49,7 @@ interface CommunicationOpts {
  *   of the proximity room, muted. A desk zone only dwells while the player
  *   and someone else are both stopped in it, and is held only while someone
  *   else is still there (see {@link zonePresence}); proximity never pairs a
- *   player standing in a desk zone,
+ *   player standing in any voice or desk zone,
  * - mirrors the chosen room into state.players[selfId].jitsiRoom.
  */
 export class Communication {
@@ -68,7 +68,7 @@ export class Communication {
   private started = false;
   private cancelLeave: (() => void) | null = null;
   private offZone: (() => void) | null = null;
-  private offDeskOccupants: (() => void) | null = null;
+  private offZoneOccupants: (() => void) | null = null;
   /** Room of the zone currently held: dwelled into and not yet exit-debounced. */
   private zoneRoom: string | null = null;
   /** Room the pending dwell will hold. */
@@ -102,8 +102,8 @@ export class Communication {
       () => this.onZonePresence(),
     );
     this.onZonePresence();
-    this.offDeskOccupants = this.store.subscribe(
-      (st) => [...playersInDeskZones(st)].sort().join('\n'),
+    this.offZoneOccupants = this.store.subscribe(
+      (st) => [...playersInZones(st)].sort().join('\n'),
       () => void this.recompute(),
     );
     // Seed nearby from the store in case proximity has already been computed
@@ -120,7 +120,7 @@ export class Communication {
     this.offEntered?.();
     this.offExited?.();
     this.offZone?.();
-    this.offDeskOccupants?.();
+    this.offZoneOccupants?.();
     this.started = false;
     this.cancelPendingLeave();
     this.cancelPendingDwell();
@@ -201,10 +201,10 @@ export class Communication {
     await this.voice.joinRoom(target, { selfId: this.selfId });
   }
 
-  /** Nearby peers to share a proximity call with: none while either side stands in a desk zone. */
+  /** Nearby peers to share a proximity call with: none while either side stands in a voice or desk zone. */
   private proximityPeers(): PlayerId[] {
-    const atDesks = playersInDeskZones(this.store.getState());
-    return atDesks.has(this.selfId) ? [] : [...this.nearby].filter((id) => !atDesks.has(id));
+    const inZones = playersInZones(this.store.getState());
+    return inZones.has(this.selfId) ? [] : [...this.nearby].filter((id) => !inZones.has(id));
   }
 
   private cancelPendingDwell(): void {

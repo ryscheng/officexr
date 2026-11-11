@@ -317,6 +317,25 @@ describe('Communication', () => {
       expect(joins()).toEqual(['room-o1-alice']);
     });
 
+    it('takes no proximity call while standing in a voice zone', () => {
+      walkTo(5);
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+      ctx.timer.advance(500);
+      expect(joins()).toEqual(['zone-o1-lounge']);
+    });
+
+    it('takes no proximity call with a peer standing in a voice zone, until they step out', () => {
+      ctx.actions.upsertPlayer({ id: 'bob', name: 'bob' });
+      ctx.actions.applyRemotePosition('bob', { x: 9, y: 0, z: 5 }, { x: 0, y: 0, z: 0 }, 0, 0, false);
+      walkTo(11);
+      ctx.bus.emit({ kind: 'proximity:entered', otherId: 'bob' });
+      ctx.timer.advance(5000);
+      expect(ctx.comm.getCurrentRoom()).toBeNull();
+      ctx.actions.applyRemotePosition('bob', { x: 12, y: 0, z: 5 }, { x: 0, y: 0, z: 0 }, 0, 0, false);
+      expect(ctx.comm.getCurrentRoom()).toBe('room-o1-alice');
+    });
+
     it('stop() cancels a pending dwell', () => {
       walkTo(5);
       ctx.comm.stop();
