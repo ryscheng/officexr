@@ -17,11 +17,18 @@ const json = (status: number, body: unknown) =>
 const ready: ApiState<Identity> = { type: 'ready', data: { login: 'a@example.com', name: 'Alice' } };
 const unidentified: ApiState<Identity> = { type: 'error', message: 'Not signed in' };
 
-function setup(me: ApiState<Identity>, offices: Office[] | number, post?: (init: RequestInit) => Promise<Response>) {
+function setup(
+  me: ApiState<Identity>,
+  offices: Office[] | number,
+  post?: (init: RequestInit) => Promise<Response>,
+  patch?: (url: string, init: RequestInit) => Promise<Response>,
+) {
   const fetchMock = vi.fn((url: string, init?: RequestInit) =>
     url === '/api/offices' && init?.method === 'POST'
       ? post!(init)
-      : url === '/api/offices'
+      : init?.method === 'PATCH'
+        ? patch!(url, init)
+        : url === '/api/offices'
         ? typeof offices === 'number'
           ? json(offices, { error: 'Boom' })
           : json(200, offices)
@@ -55,6 +62,45 @@ describe('Home', () => {
     expect(hq?.textContent).toContain('Main');
     expect(hq?.textContent).toContain('Map: hq');
     expect(screen.getByText('Annex').closest('a')?.textContent).toContain('Map: default');
+  });
+
+  const mine: Office = {
+    id: 'o1',
+    name: 'HQ',
+    description: null,
+    map_name: 'default',
+    created_by_login: 'a@example.com',
+    debug_enabled: false,
+  };
+
+  it("lets the office's creator change its map from the list", async () => {
+    const patch = vi.fn((_url: string, init: RequestInit) =>
+      json(200, { ...mine, map_name: JSON.parse(init.body as string).mapName }),
+    );
+    setup(ready, [mine, { ...mine, id: 'o2', name: 'Annex', created_by_login: 'b@example.com' }], undefined, patch);
+    await screen.findAllByRole('option', { name: 'hq' });
+    expect(screen.queryByLabelText('Map for Annex')).toBeNull();
+    expect(screen.getByText('Annex').closest('a')?.textContent).toContain('Map: default');
+    fireEvent.change(screen.getByLabelText('Map for HQ'), { target: { value: 'hq' } });
+    await waitFor(() => expect((screen.getByLabelText('Map for HQ') as HTMLSelectElement).value).toBe('hq'));
+    expect(patch).toHaveBeenCalledTimes(1);
+    const [url, init] = patch.mock.calls[0];
+    expect(url).toBe('/api/offices/o1');
+    expect(JSON.parse(init.body as string)).toEqual({ mapName: 'hq' });
+  });
+
+  it('keeps the old map and shows the error when changing it fails', async () => {
+    setup(ready, [mine], undefined, () => json(400, { error: 'Unknown map' }));
+    await screen.findAllByRole('option', { name: 'hq' });
+    fireEvent.change(screen.getByLabelText('Map for HQ'), { target: { value: 'hq' } });
+    expect((await screen.findByRole('alert')).textContent).toBe('Unknown map');
+    expect((screen.getByLabelText('Map for HQ') as HTMLSelectElement).value).toBe('default');
+  });
+
+  it('offers no map picker when signed out', async () => {
+    setup(unidentified, [mine]);
+    expect(await screen.findByText('HQ')).toBeTruthy();
+    expect(screen.queryByLabelText('Map for HQ')).toBeNull();
   });
 
   it('shows an error in place of the list when offices fail to load', async () => {

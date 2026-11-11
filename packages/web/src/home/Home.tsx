@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MAX_DESCRIPTION, MAX_NAME, type Identity, type Office } from '@officexr/server/shared';
+import { MAX_DESCRIPTION, MAX_NAME, isOfficeCreator, type Identity, type Office } from '@officexr/server/shared';
 import { apiFetch, paths } from '../apiOrigin';
 import { Async } from '../Async';
 import { SignInLink } from '../SignIn';
@@ -8,7 +8,77 @@ import { DEFAULT_MAP } from '@officexr/world/scenes';
 import { errorMessage, useApi, type ApiState } from '../useApi';
 import { useMapNames } from '../useMapNames';
 
-function OfficeList() {
+/** Lets the office's creator switch its map from the office list; saves on change. */
+function OfficeMapPicker({ office, maps, onSaved }: { office: Office; maps: string[]; onSaved: (office: Office) => void }) {
+  const current = office.map_name ?? DEFAULT_MAP;
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const change = async (mapName: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch(paths.office(office.id), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapName }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(errorMessage(res, body));
+      }
+      onSaved(body as Office);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-t px-3 py-2 text-xs text-gray-500">
+      <label className="flex items-center gap-2">
+        Map
+        <select
+          aria-label={`Map for ${office.name}`}
+          value={current}
+          disabled={busy}
+          onChange={(e) => void change(e.target.value)}
+          className="rounded border p-1 text-gray-900 disabled:opacity-50"
+        >
+          {/* Keeps the current map selectable even when the studio no longer lists it. */}
+          {[...new Set([...maps, current])].map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error && (
+        <p role="alert" className="mt-1 text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function OfficeCard({ office: initial, me, maps }: { office: Office; me: Identity | null; maps: string[] }) {
+  const [office, setOffice] = useState(initial);
+  const canChangeMap = me !== null && isOfficeCreator(me, office);
+  return (
+    <li className="rounded border">
+      <Link to={`/room/${office.id}`} className="block p-3 hover:bg-gray-50">
+        <span className="font-medium">{office.name}</span>
+        {office.description && <span className="block text-sm text-gray-600">{office.description}</span>}
+        {!canChangeMap && <span className="block text-xs text-gray-500">Map: {office.map_name ?? DEFAULT_MAP}</span>}
+      </Link>
+      {canChangeMap && <OfficeMapPicker office={office} maps={maps} onSaved={setOffice} />}
+    </li>
+  );
+}
+
+function OfficeList({ me, maps }: { me: Identity | null; maps: string[] }) {
   return (
     <Async state={useApi<Office[]>(paths.offices)}>
       {(offices) =>
@@ -17,13 +87,7 @@ function OfficeList() {
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
             {offices.map((office) => (
-              <li key={office.id}>
-                <Link to={`/room/${office.id}`} className="block rounded border p-3 hover:bg-gray-50">
-                  <span className="font-medium">{office.name}</span>
-                  {office.description && <span className="block text-sm text-gray-600">{office.description}</span>}
-                  <span className="block text-xs text-gray-500">Map: {office.map_name ?? DEFAULT_MAP}</span>
-                </Link>
-              </li>
+              <OfficeCard key={office.id} office={office} me={me} maps={maps} />
             ))}
           </ul>
         )
@@ -32,9 +96,16 @@ function OfficeList() {
   );
 }
 
-function CreateOfficeForm({ identified }: { identified: boolean }) {
+function CreateOfficeForm({
+  identified,
+  maps,
+  mapsError,
+}: {
+  identified: boolean;
+  maps: string[];
+  mapsError: string | null;
+}) {
   const navigate = useNavigate();
-  const { maps, error: mapsError } = useMapNames();
   const [picked, setPicked] = useState('');
   const mapName = picked || (maps.includes(DEFAULT_MAP) ? DEFAULT_MAP : (maps[0] ?? ''));
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +208,8 @@ function SignOutButton() {
 }
 
 export function Home({ me }: { me: ApiState<Identity> }) {
+  const { maps, error: mapsError } = useMapNames();
+  const identity = me.type === 'ready' ? me.data : null;
   return (
     <main className="mx-auto max-w-2xl p-6">
       <header className="mb-6 flex items-baseline justify-between">
@@ -158,8 +231,8 @@ export function Home({ me }: { me: ApiState<Identity> }) {
           </span>
         )}
       </header>
-      <OfficeList />
-      <CreateOfficeForm identified={me.type === 'ready'} />
+      <OfficeList me={identity} maps={maps} />
+      <CreateOfficeForm identified={identity !== null} maps={maps} mapsError={mapsError} />
     </main>
   );
 }
