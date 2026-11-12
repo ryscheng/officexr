@@ -1,9 +1,12 @@
 import React, { type ReactNode } from 'react';
 import type * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
-import { Adventurer } from './Adventurer.tsx';
+import { Adventurer, ANIMATION_URLS } from './Adventurer.tsx';
 import { EndlessGrid } from './EndlessGrid.tsx';
 import { DEFAULT_EDITOR_LIGHTING, LightingRig } from './LightingRig.tsx';
+import { logModelError } from './ModelWithFallback.tsx';
+import { ResetKeyErrorBoundary } from './ResetKeyErrorBoundary.tsx';
+import { SwapWhenLoaded } from './SwapWhenLoaded.tsx';
 
 const CHARACTER_PREVIEW_LIGHTING = {
   ...DEFAULT_EDITOR_LIGHTING,
@@ -20,6 +23,9 @@ type CharacterPreviewCanvasProps = Omit<React.ComponentProps<typeof Adventurer>,
   children?: ReactNode;
 };
 
+const sameUrl = (url: string) => url;
+const modelUrls = (url: string) => [url, ...ANIMATION_URLS];
+
 /** A canvas showing one character, facing the camera, on an endless grid. */
 export function CharacterPreviewCanvas({ url, groupRef, children, motion = 'idle', ...adventurer }: CharacterPreviewCanvasProps) {
   return (
@@ -33,8 +39,20 @@ export function CharacterPreviewCanvas({ url, groupRef, children, motion = 'idle
       <color attach="background" args={['#0a0a0a']} />
       <EndlessGrid />
       <group ref={groupRef}>
-        {/* Remount on a model change so the animation mixer binds to the new model's bones. */}
-        <Adventurer key={url} url={url} motion={motion} {...adventurer} />
+        {/* R3F's <Canvas> rethrows a suspension or error from inside it into the host tree, where
+            the nearest boundary can be the one around the whole world view. Both stop here, and
+            the previous model stays up while the next one downloads. */}
+        <SwapWhenLoaded
+          value={url}
+          keyOf={sameUrl}
+          urlsOf={modelUrls}
+          render={(shown) => (
+            <ResetKeyErrorBoundary resetKey={shown} onError={logModelError(shown)}>
+              {/* Remount on a model change so the animation mixer binds to the new model's bones. */}
+              <Adventurer key={shown} url={shown} motion={motion} {...adventurer} />
+            </ResetKeyErrorBoundary>
+          )}
+        />
       </group>
       {children}
     </Canvas>
