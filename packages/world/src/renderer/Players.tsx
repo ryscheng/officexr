@@ -12,7 +12,7 @@ import {
 } from '@react-three/rapier';
 import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
-import { Adventurer, type MotionState } from './Adventurer.tsx';
+import { Adventurer, ANIMATION_URLS, type MotionState } from './Adventurer.tsx';
 import { assertNever } from './assertNever.ts';
 import type { CameraMode } from './config.ts';
 import { PlayerNameTag } from './PlayerNameTag.tsx';
@@ -20,6 +20,7 @@ import { PlayerPingBell, shouldShowPingBell } from './PlayerPingBell.tsx';
 import { pickCharacterForPlayer, resolvePlayerModel, type CatalogCharacters, type PlayerModel } from '../characters/registry.ts';
 import { useCatalogCharacters } from '../react/application-context.tsx';
 import { ModelWithFallback } from './ModelWithFallback.tsx';
+import { SwapWhenLoaded } from './SwapWhenLoaded.tsx';
 import { liveRigidBody } from './liveRigidBody.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
@@ -526,20 +527,27 @@ export function Players({
                 else groupRefs.current.delete(p.id);
               }}
             >
-              <PerPlayerAdventurer
-                // Remount on a character change so the animation mixer binds to the new model's bones.
-                key={`${p.model.url}|${p.model.ghost}`}
-                playerId={p.id}
-                model={p.model}
-                motion={motionByPlayer[p.id] ?? 'idle'}
-                invisible={isSelf && (cameraMode === 'first-person' || xrPresenting)}
-                animScale={animScaleByPlayer[p.id] ?? 1}
-                bumpCounter={bumpCounters[p.id] ?? 0}
-                store={store}
-                fallbackIdleSpeed={idleAnimSpeed}
-                fallbackWalkSpeed={walkAnimSpeed}
-                fallbackRunSpeed={runAnimSpeed}
-                paused={paused}
+              <SwapWhenLoaded
+                value={p.model}
+                keyOf={modelKey}
+                urlsOf={modelUrls}
+                render={(model) => (
+                  <PerPlayerAdventurer
+                    // Remount on a character change so the animation mixer binds to the new model's bones.
+                    key={modelKey(model)}
+                    playerId={p.id}
+                    model={model}
+                    motion={motionByPlayer[p.id] ?? 'idle'}
+                    invisible={isSelf && (cameraMode === 'first-person' || xrPresenting)}
+                    animScale={animScaleByPlayer[p.id] ?? 1}
+                    bumpCounter={bumpCounters[p.id] ?? 0}
+                    store={store}
+                    fallbackIdleSpeed={idleAnimSpeed}
+                    fallbackWalkSpeed={walkAnimSpeed}
+                    fallbackRunSpeed={runAnimSpeed}
+                    paused={paused}
+                  />
+                )}
               />
               <PlayerNameTag
                 store={store}
@@ -557,6 +565,9 @@ export function Players({
     </>
   );
 }
+
+const modelKey = (m: PlayerModel) => `${m.url}|${m.ghost}`;
+const modelUrls = (m: PlayerModel) => [m.url, ...ANIMATION_URLS];
 
 /**
  * Per-player Adventurer wrapper that resolves animation speeds against
