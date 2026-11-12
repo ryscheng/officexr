@@ -8,7 +8,9 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    # Playwright 1.60 can't install chromium's deps on ubuntu-latest (26.04); move back once a
+    # Playwright release supports it.
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
