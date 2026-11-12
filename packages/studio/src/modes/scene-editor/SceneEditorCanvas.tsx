@@ -383,15 +383,24 @@ export function SceneEditorCanvas({ backend }: SceneEditorCanvasProps) {
     [stepForKind],
   );
 
-  // World-space AABBs of every existing placed object — fed to the
-  // face-snap so it can pull the cursor toward flush adjacency with
-  // any nearby object. Recomputed when the compiled scene changes.
+  // World-space occupancy boxes (footprints in metres) of every existing
+  // placed object — fed to the face-snap so it can pull the cursor toward
+  // flush adjacency with any nearby object. Footprints rather than raw
+  // AABBs so the snapped face agrees with the overlap guard: grid-snapped
+  // for whole-voxel placements, exact for sub-grid ones and thin kinds (a
+  // 0.15 m floor tile's top). Recomputed when the compiled scene changes.
   const nearbyObjects = useMemo(() => {
-    return props.compiled.instances.map((inst) => ({
-      position: inst.position,
-      aabb: geomService.worldAABB(inst.position, inst.kindId, inst.yawDeg),
-    }));
-  }, [props.compiled.instances, geomService]);
+    return props.compiled.instances.map((inst) => {
+      const { min, max } = footprintOf(inst.position, inst.kindId, inst.yawDeg);
+      return {
+        position: inst.position,
+        aabb: {
+          min: [min[0] * voxelSize, min[1] * voxelSize, min[2] * voxelSize] as const,
+          max: [max[0] * voxelSize, max[1] * voxelSize, max[2] * voxelSize] as const,
+        },
+      };
+    });
+  }, [props.compiled.instances, footprintOf, voxelSize]);
 
   // Pull radius in metres. Generous enough that the cursor inside
   // OR within a small buffer around any object's AABB always snaps
@@ -1696,6 +1705,25 @@ interface BakedLayoutPickerProps {
   children: React.ReactNode;
 }
 
+/** A hit's world-space normal must point at least this far up for the hit to
+ * count as a surface to rest on (cos ≈ 45°). */
+const UP_FACING_MIN_Y = 0.7;
+
+/**
+ * A pick on the baked layout mesh as a floor hit. An up-facing hit (the top
+ * of a 0.15 m floor tile, a platform) carries `exactY` so the placement rests
+ * on that surface's exact, sub-grid height; a hit on a wall's side keeps the
+ * whole-voxel rounding.
+ */
+function bakedSurfaceHit(e: ThreeEvent<PointerEvent>): SnapHit {
+  const normal = e.face?.normal.clone().transformDirection(e.object.matrixWorld);
+  return {
+    kind: 'floor',
+    point: { x: e.point.x, y: e.point.y, z: e.point.z },
+    ...(normal && normal.y >= UP_FACING_MIN_Y && { exactY: true }),
+  };
+}
+
 function BakedLayoutPicker({
   tool,
   stagedKindId,
@@ -1708,10 +1736,7 @@ function BakedLayoutPicker({
     if (tool !== 'add' && tool !== 'tile') return;
     if (!stagedKindId) return;
     e.stopPropagation();
-    onHoverFloor({
-      kind: 'floor',
-      point: { x: e.point.x, y: e.point.y, z: e.point.z },
-    });
+    onHoverFloor(bakedSurfaceHit(e));
   };
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
@@ -1722,10 +1747,7 @@ function BakedLayoutPicker({
     const startX = e.clientX;
     const startY = e.clientY;
     let moved = false;
-    const hit: SnapHit = {
-      kind: 'floor',
-      point: { x: e.point.x, y: e.point.y, z: e.point.z },
-    };
+    const hit = bakedSurfaceHit(e);
     const onMove = (m: PointerEvent) => {
       if (
         Math.abs(m.clientX - startX) > 4 ||

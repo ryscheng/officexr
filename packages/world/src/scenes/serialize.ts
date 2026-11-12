@@ -2,6 +2,7 @@ import type { CharacterConfigs, Vec3, WorldMap } from '@officexr/sdk';
 import {
   emptyDocument,
   newPlaceCube,
+  parseCommandPositions,
   parseCommandYaws,
   type PlaceObjectCommand,
   type RoomDocument,
@@ -188,7 +189,7 @@ export function deserializeScene(raw: unknown): SerializedScene {
     throw new Error('scene: missing string `name`');
   }
   if (Array.isArray(obj.commands)) {
-    obj.commands = parseCommandYaws(obj.commands, 'scene');
+    obj.commands = parseCommandPositions(parseCommandYaws(obj.commands, 'scene'), 'scene');
   }
   switch (obj.schemaVersion) {
     case 1:
@@ -561,6 +562,10 @@ export function deserializeMap(raw: unknown): SerializedMap {
     const zone = (ri as { voiceZone?: unknown }).voiceZone;
     if (zone !== undefined && typeof zone !== 'boolean') {
       throw new Error(`map: room voiceZone must be a boolean, got ${String(zone)}`);
+    }
+    const pos = (ri as { position?: unknown }).position;
+    if (!Array.isArray(pos) || pos.length !== 3 || !pos.every((v) => Number.isInteger(v))) {
+      throw new Error(`map: room position must be three integer voxel offsets, got ${JSON.stringify(pos)}`);
     }
     const building = (ri as { building?: unknown }).building;
     if (building !== undefined && typeof building !== 'boolean') {

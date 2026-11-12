@@ -109,7 +109,8 @@ type ObjectInstancesProps =
  * (tint, opacity, roughness, metalness, emissive) and the per-kind
  * default scale propagate from the Object editor.
  *
- * Coords: each instance's `position` is integer voxel space; world
+ * Coords: each instance's `position` is voxel space (whole
+ * voxels, or the `POSITION_QUANTUM_VOXELS` sub-grid); world
  * position = `position * voxelSize` (SDK field named `cubeSize` for back-compat).
  */
 export function ObjectInstances(props: ObjectInstancesProps) {

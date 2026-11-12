@@ -113,6 +113,23 @@ describe('InstanceGeometry — canonical anchor-lower-left convention', () => {
     expect(b.max[0]).toBe(4);
   });
 
+  it('a primitive diagnostic box steps by its 2 m size', () => {
+    expect(geom.tileStep('__primitive_blue')).toEqual([4, 4, 4]);
+  });
+
+  it('a sub-grid position anchors the AABB and mesh at position * voxelSize exactly', () => {
+    // A block resting on a 0.15 m floor tile: voxel y = 0.15 / 0.5 = 0.3.
+    const aabb = geom.worldAABB([0.5, 0.3, 1.25], 'colored_block_blue');
+    expect(aabb.min[0]).toBeCloseTo(0.25, 12);
+    expect(aabb.min[1]).toBeCloseTo(0.15, 12);
+    expect(aabb.min[2]).toBeCloseTo(0.625, 12);
+    expect(aabb.max[1]).toBeCloseTo(2.15, 12);
+    const origin = geom.meshOrigin([0.5, 0.3, 1.25], 'colored_block_blue');
+    expect(origin[1]).toBeCloseTo(1.15, 12);
+    const { position } = geom.meshTransform([0.5, 0.3, 1.25], 'colored_block_blue', 90);
+    expect(position[1]).toBeCloseTo(1.15, 12);
+  });
+
   it('Cube Prototype Large A at voxel (0,0,0) → world AABB (0,0,0)→(4,4,4)', () => {
     const aabb = geom.worldAABB([0, 0, 0], 'prototype_cube_prototype_large_a');
     expect(aabb.min).toEqual([0, 0, 0]);

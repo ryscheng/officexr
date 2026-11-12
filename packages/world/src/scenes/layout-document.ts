@@ -16,7 +16,7 @@
  *   the bake service, not here.
  */
 
-import { parseCommandYaws, type SceneCommand, type CommandGroup } from './commands.ts';
+import { parseCommandPositions, parseCommandYaws, type SceneCommand, type CommandGroup } from './commands.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -119,7 +119,10 @@ export function deserializeLayout(raw: unknown): LayoutDocument {
     name: obj.name,
     title: typeof obj.title === 'string' ? obj.title : undefined,
     updatedAt: typeof obj.updatedAt === 'number' ? obj.updatedAt : undefined,
-    commands: parseCommandYaws(obj.commands as SceneCommand[], 'layout'),
+    commands: parseCommandPositions(
+      parseCommandYaws(obj.commands as SceneCommand[], 'layout'),
+      'layout',
+    ),
     groups:
       obj.groups && typeof obj.groups === 'object' && !Array.isArray(obj.groups)
         ? (obj.groups as Record<string, CommandGroup>)

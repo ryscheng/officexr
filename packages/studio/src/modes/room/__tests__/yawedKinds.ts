@@ -46,7 +46,14 @@ export const NOISY = kind('noisy', 1.0000001, 0.5, 0.5);
 // box edges sit within noise of a half voxel.
 export const NOISY_WALL = kind('noisy-wall', 1.9999999, 1.5, 0.5);
 
-const kinds = [WALL, BEAM, PEG, CUBE, NOISY, NOISY_WALL];
+// A 3.5 m-square, 0.15 m-thin floor slab: its height is not a whole voxel.
+export const TILE = kind('tile', 3.5, 0.15, 3.5);
+// A 1 × 1.5 m rug, 0.1 m thick.
+export const RUG = kind('rug', 1, 0.1, 1.5);
+// A 3 × 1 m desk, 1.0 m tall (its top is a whole voxel above its base).
+export const DESK = kind('desk', 3, 1, 1);
+
+const kinds = [WALL, BEAM, PEG, CUBE, NOISY, NOISY_WALL, TILE, RUG, DESK];
 
 export const geometry = createInstanceGeometry({
   catalog: { getKind: (id) => kinds.find((k) => k.id === id) },

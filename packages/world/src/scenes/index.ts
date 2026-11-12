@@ -57,6 +57,11 @@ export {
   emptyDocument,
   emptyRoomDocument,
   isBakedRoom,
+  POSITION_QUANTUM_VOXELS,
+  quantizeVoxel,
+  quantizePosition,
+  isGridPosition,
+  parseCommandPositions,
 } from './commands.ts';
 export {
   type DeskArea,

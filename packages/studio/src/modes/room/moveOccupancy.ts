@@ -1,34 +1,17 @@
 import type { SceneCommand } from '@officexr/world/scenes';
 import type { VoxelFootprint } from '@officexr/world/app';
-import type { FootprintOf } from './footprint.ts';
-
-/**
- * Returns a string key uniquely identifying a voxel position.
- * Used to build occupancy sets for collision detection.
- */
-export function voxelKey(p: [number, number, number]): string {
-  return `${p[0]},${p[1]},${p[2]}`;
-}
-
-function* voxelsOf(box: VoxelFootprint): Generator<string> {
-  for (let x = box.min[0]; x < box.max[0]; x++) {
-    for (let y = box.min[1]; y < box.max[1]; y++) {
-      for (let z = box.min[2]; z < box.max[2]; z++) {
-        yield voxelKey([x, y, z]);
-      }
-    }
-  }
-}
+import { boxesOverlap, type FootprintOf } from './footprint.ts';
 
 /**
  * Checks whether proposed new positions for a set of moving objects
  * would collide with any non-moving objects in the room.
  *
  * Both the moving objects' proposed positions and the existing
- * non-moving objects' positions are expanded into their multi-voxel
- * footprints — a 2 m cube on the 0.5 m grid occupies a 4×4×4 voxel
- * block. The check returns 'blocked' if ANY voxel of a moving
- * footprint overlaps ANY voxel of a non-moving footprint.
+ * non-moving objects' positions are expanded into their footprints — a
+ * 2 m cube on the 0.5 m grid occupies a 4×4×4 voxel block; a sub-grid
+ * placement or a thin kind occupies its exact box (see
+ * `createFootprintOf`). The check returns 'blocked' if ANY moving
+ * footprint shares volume with ANY non-moving footprint.
  *
  * @param doc - The current room document
  * @param movingIds - Command ids of objects being moved (excluded from
@@ -44,16 +27,14 @@ export function checkMoveOccupancy(
   proposedPositions: ReadonlyMap<string, [number, number, number]>,
   footprintOf: FootprintOf,
 ): 'ok' | 'blocked' {
-  const occupancy = new Set<string>();
+  const occupied: VoxelFootprint[] = [];
   const moving = new Map<string, { kindId: string; yawDeg?: number }>();
   for (const c of doc.commands) {
     if (c.op !== 'placeObject') continue;
     if (movingIds.has(c.id)) {
       moving.set(c.id, c);
     } else {
-      for (const key of voxelsOf(footprintOf(c.position, c.kindId, c.yawDeg))) {
-        occupancy.add(key);
-      }
+      occupied.push(footprintOf(c.position, c.kindId, c.yawDeg));
     }
   }
 
@@ -61,10 +42,8 @@ export function checkMoveOccupancy(
     const mover = moving.get(id);
     if (!mover) continue;
     const box = footprintOf(pos, mover.kindId, mover.yawDeg);
-    for (const key of voxelsOf(box)) {
-      if (occupancy.has(key)) {
-        return 'blocked';
-      }
+    if (occupied.some((fp) => boxesOverlap(box, fp))) {
+      return 'blocked';
     }
   }
 

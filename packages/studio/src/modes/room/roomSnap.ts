@@ -21,12 +21,18 @@
  * `snapToVoxel` produces a reasonable target.
  */
 
+import { quantizeVoxel } from '@officexr/world/scenes';
 import { metresToVoxel } from './footprint.ts';
 
 export interface FloorHit {
   kind: 'floor';
   /** World-space point of the raycast hit on the y = 0 plane. */
   point: { x: number; y: number; z: number };
+  /** The hit is on a real up-facing surface (e.g. the top of a baked
+   * layout's 0.15 m floor tile) rather than the build-height picker
+   * plane: snap Y to that surface's exact height (sub-grid) instead of
+   * rounding it to the nearest whole voxel. */
+  exactY?: boolean;
 }
 
 export interface CubeHit {
@@ -124,19 +130,21 @@ export function snapToVoxel(
   // cases.
   return [
     Math.round(hit.point.x / voxelSize / sx) * sx,
-    Math.round(hit.point.y / voxelSize),
+    hit.exactY ? quantizeVoxel(hit.point.y / voxelSize) : Math.round(hit.point.y / voxelSize),
     Math.round(hit.point.z / voxelSize / sz) * sz,
   ];
 }
 
 /** Info about an existing placed object for snap-to-face computation.
- * Always carries the object's full world-space AABB (computed by the
- * canonical geometry service) so the snap math stays agnostic to GLTF
- * origin conventions. */
+ * Always carries the object's world-space occupancy box (its editor
+ * footprint in metres — see `createFootprintOf`: grid-snapped for
+ * whole-voxel placements, exact for sub-grid ones and thin kinds) so the
+ * snap math stays agnostic to GLTF origin conventions and agrees with the
+ * overlap guard. */
 export interface NearbyObjectInfo {
   /** Voxel position of the placed object. */
   position: readonly [number, number, number];
-  /** World-space AABB of the placed object, in metres. */
+  /** World-space occupancy box of the placed object, in metres. */
   aabb: {
     min: readonly [number, number, number];
     max: readonly [number, number, number];
@@ -432,6 +440,7 @@ export function snapToNearestFace(
       obj.aabb,
       viewport.cameraY,
     );
+    let faceUsed: Face = primaryFace;
     let anchor = computeFlushAnchor(
       primaryFace,
       obj.aabb,
@@ -453,27 +462,76 @@ export function snapToNearestFace(
       const stackFace: Face = above ? '+y' : '-y';
       if (stackFace === primaryFace) continue;
       anchor = computeFlushAnchor(stackFace, obj.aabb, hitWorldPoint, newObject);
+      faceUsed = stackFace;
       if (wouldOverlap(anchor)) {
         // Stack target also overlaps — try the other side.
         const flipFace: Face = above ? '-y' : '+y';
         if (flipFace === primaryFace) continue;
         anchor = computeFlushAnchor(flipFace, obj.aabb, hitWorldPoint, newObject);
+        faceUsed = flipFace;
         if (wouldOverlap(anchor)) continue;
       }
     }
 
     bestDist = aabbDist;
     bestVoxel = positionOfBox(
-      [
-        metresToVoxel(anchor[0], voxelSize),
-        metresToVoxel(anchor[1], voxelSize),
-        metresToVoxel(anchor[2], voxelSize),
-      ],
+      surfaceSnapBox(anchor, faceUsed, obj.aabb, hitWorldPoint, newObject, voxelSize),
       newObject,
     );
   }
 
   return bestVoxel;
+}
+
+/** Distance (m) from a face's centre within which the in-plane snap
+ * centres the new object on that face instead of using the grid. */
+export const CENTRE_SNAP_M = 0.25;
+
+const FACE_AXIS: Record<Face, 0 | 1 | 2> = {
+  '+x': 0,
+  '-x': 0,
+  '+y': 1,
+  '-y': 1,
+  '+z': 2,
+  '-z': 2,
+};
+
+/**
+ * Turns a flush metre anchor into the new object's box min corner, in voxels:
+ *   - Along the face normal it is exact (sub-grid quantized), so the new
+ *     object sits ON the surface — a rug on a 0.15 m tile, a lamp on a 1.0 m
+ *     desk. For a whole-voxel target this is the same whole voxel as before.
+ *   - Along the face it follows the 0.5 m grid, except that on a top or
+ *     bottom face, within `CENTRE_SNAP_M` of the face's centre, it centres
+ *     on the face — a 3 m desk centred on a 3.5 m floor slab. Side faces
+ *     keep the grid along the face.
+ *   - Against a side face it never sinks below the target's bottom, so an
+ *     object placed beside a desk on a floor tile stands on the tile's level.
+ */
+function surfaceSnapBox(
+  anchor: readonly [number, number, number],
+  face: Face,
+  target: { min: readonly number[]; max: readonly number[] },
+  cursor: { x: number; y: number; z: number },
+  newObject: NewObjectShape,
+  voxelSize: number,
+): [number, number, number] {
+  const normalAxis = FACE_AXIS[face];
+  const size = [newObject.width, newObject.height, newObject.depth];
+  const cur = [cursor.x, cursor.y, cursor.z];
+  const box = [0, 1, 2].map((a) =>
+    a === normalAxis ? quantizeVoxel(anchor[a] / voxelSize) : metresToVoxel(anchor[a], voxelSize),
+  ) as [number, number, number];
+  for (const a of normalAxis === 1 ? ([0, 2] as const) : []) {
+    const centre = (target.min[a] + target.max[a]) / 2;
+    if (Math.abs(cur[a] - centre) <= CENTRE_SNAP_M) {
+      box[a] = quantizeVoxel((centre - size[a] / 2) / voxelSize);
+    }
+  }
+  if (normalAxis !== 1) {
+    box[1] = Math.max(box[1], quantizeVoxel(target.min[1] / voxelSize));
+  }
+  return box;
 }
 
 /** The nearby object whose AABB the new object's box at metre `anchor` (its min corner) would overlap. */
@@ -522,10 +580,12 @@ export function snapToGridOrStack(
   );
   if (overlapped) {
     const { min, max } = overlapped.aabb;
+    // Exact (sub-grid) stack height, so the box rests on the overlapped
+    // object's real top — a whole voxel for whole-voxel objects.
     box[1] =
       cameraY >= (min[1] + max[1]) / 2
-        ? metresToVoxel(max[1], voxelSize)
-        : metresToVoxel(min[1] - newObject.height, voxelSize);
+        ? quantizeVoxel(max[1] / voxelSize)
+        : quantizeVoxel((min[1] - newObject.height) / voxelSize);
   }
   return positionOfBox(box, newObject);
 }

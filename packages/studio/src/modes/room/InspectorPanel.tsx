@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useCatalog } from '@officexr/world/react';
-import { isYawAllowed } from '@officexr/world/scenes';
+import { isYawAllowed, quantizePosition } from '@officexr/world/scenes';
 import {
   bakedLayoutUrl,
   getBakeState,
@@ -307,6 +307,9 @@ function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
   const kindOptions = useMemo(() => kinds.map((k) => k.id), [kinds]);
   const kind = kinds.find((k) => k.id === command.kindId);
   const yawDeg = command.yawDeg ?? 0;
+  const extrudeTarget = roomDoc.doc.commands.some(
+    (c) => c.op === 'extrude' && c.targetCommandId === command.id,
+  );
   const yawOptions = useMemo(() => {
     const allowed = Array.from({ length: 360 }, (_, deg) => deg)
       .filter((deg) => isYawAllowed(kind, deg))
@@ -331,16 +334,25 @@ function PlaceObjectInspector({ command, roomDoc }: PlaceObjectProps) {
         <Vector3Input
           label="position"
           value={command.position}
-          step={1}
-          digits={0}
+          step={extrudeTarget ? 1 : 0.1}
+          digits={extrudeTarget ? 0 : 3}
           onChange={(pos) =>
-            roomDoc.setPositionForCommand(command.id, [
-              Math.round(pos[0]),
-              Math.round(pos[1]),
-              Math.round(pos[2]),
-            ])
+            roomDoc.setPositionForCommand(
+              command.id,
+              // An extrude source stays on the whole-voxel grid (extrude can't
+              // target a sub-grid placement); anything else may sit on the
+              // 1 mm sub-grid, e.g. on a thin floor tile or a desk top.
+              extrudeTarget
+                ? [Math.round(pos[0]), Math.round(pos[1]), Math.round(pos[2])]
+                : quantizePosition(pos),
+            )
           }
         />
+        {extrudeTarget ? (
+          <p className="px-3 text-xs text-muted-foreground">
+            Whole voxels only: an extrude repeats this object.
+          </p>
+        ) : null}
         <SelectInput
           label="yaw°"
           value={String(yawDeg)}

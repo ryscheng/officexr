@@ -22,15 +22,19 @@ export const CUBE_FACES: readonly CubeFace[] = [
   'nz',
 ];
 
-/** Place a single world object at integer voxel coords. The first
- * command in a scene is almost always a placeObject. */
+/** Place a single world object at voxel coords. The first command in a
+ * scene is almost always a placeObject. */
 export interface PlaceObjectCommand {
   id: string;
   /** v4 canonical op string. v3 on-disk files used 'placeCube' —
    * migrateRoomV3toV4 in serialize.ts rewrites them on load. */
   op: 'placeObject';
   kindId: string;
-  /** Min corner of the object's unrotated footprint. */
+  /** Min corner of the object's unrotated footprint, in voxels. Usually
+   * integers (the grid); may be fractional on the `POSITION_QUANTUM_VOXELS`
+   * sub-grid so an object can sit exactly on another's surface (a rug on
+   * a 0.15 m floor tile, a lamp on a 1.0 m desk) or be centred in a cell.
+   * An `extrude` may not target a sub-grid placement. */
   position: [number, number, number];
   /** Yaw about +Y in degrees, [0, 360), in the sense of three.js
    * `rotation.y`, pivoting on the unrotated footprint's centre. Absent
@@ -181,6 +185,90 @@ export function parseCommandYaws<T>(commands: T[], label: string): T[] {
     }
     return { ...cmd, yawDeg: normalizeYawDeg(c.yawDeg) };
   });
+}
+
+/**
+ * Sub-grid resolution of a placeObject `position`, in voxels: 0.002 voxel
+ * = 1 mm at the 0.5 m voxel. Positions are stored rounded to this so float
+ * noise never reaches disk and `compileScene`'s position-keyed dedupe
+ * stays deterministic.
+ */
+export const POSITION_QUANTUM_VOXELS = 0.002;
+const QUANTA_PER_VOXEL = Math.round(1 / POSITION_QUANTUM_VOXELS);
+
+/** `v` rounded to the nearest `POSITION_QUANTUM_VOXELS` (and `-0` → `0`). */
+export function quantizeVoxel(v: number): number {
+  const q = Math.round(v * QUANTA_PER_VOXEL) / QUANTA_PER_VOXEL;
+  return q === 0 ? 0 : q;
+}
+
+/** `p` with every axis rounded to the sub-grid quantum. */
+export function quantizePosition(
+  p: readonly [number, number, number],
+): [number, number, number] {
+  return [quantizeVoxel(p[0]), quantizeVoxel(p[1]), quantizeVoxel(p[2])];
+}
+
+/** Whether every axis of `p` is a whole voxel (the classic grid). */
+export function isGridPosition(p: readonly number[]): boolean {
+  return p.every((v) => Number.isInteger(v));
+}
+
+/** How far off the quantum a stored value may be and still be accepted
+ * (and normalised) rather than rejected — covers decimal-to-binary noise
+ * such as 0.15 / 0.5 = 0.30000000000000004. */
+const QUANTUM_TOLERANCE = 1e-6;
+
+/**
+ * Validates each placeObject's `position` and returns the commands with
+ * positions normalised onto the sub-grid. Throws when a position is not
+ * three finite numbers on the `POSITION_QUANTUM_VOXELS` grid, or when an
+ * `extrude` chain resolves to a sub-grid placement (extrude only steps
+ * whole-voxel sources). `label` prefixes the error message.
+ */
+export function parseCommandPositions<T>(commands: T[], label: string): T[] {
+  const placedAt = new Map<string, readonly number[]>();
+  const extrudeTarget = new Map<string, string>();
+  const out = commands.map((cmd, i) => {
+    const c = cmd as { id?: unknown; op?: unknown; position?: unknown; targetCommandId?: unknown };
+    if (c?.op === 'extrude' && typeof c.id === 'string' && typeof c.targetCommandId === 'string') {
+      extrudeTarget.set(c.id, c.targetCommandId);
+      return cmd;
+    }
+    if (c?.op !== 'placeObject') return cmd;
+    const p = c.position;
+    if (!Array.isArray(p) || p.length !== 3 || !p.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+      throw new Error(`${label}: commands[${i}].position must be three finite numbers`);
+    }
+    const q = quantizePosition(p as [number, number, number]);
+    if (q.some((v, a) => Math.abs(v - (p[a] as number)) > QUANTUM_TOLERANCE)) {
+      throw new Error(
+        `${label}: commands[${i}].position ${JSON.stringify(p)} must be on the ` +
+          `${POSITION_QUANTUM_VOXELS}-voxel sub-grid`,
+      );
+    }
+    if (typeof c.id === 'string') placedAt.set(c.id, q);
+    return { ...cmd, position: q };
+  });
+  for (const [extrudeId, firstTarget] of extrudeTarget) {
+    const seen = new Set<string>([extrudeId]);
+    let target: string | undefined = firstTarget;
+    while (target !== undefined && !seen.has(target)) {
+      seen.add(target);
+      const pos = placedAt.get(target);
+      if (pos) {
+        if (!isGridPosition(pos)) {
+          throw new Error(
+            `${label}: extrude "${extrudeId}" cannot target sub-grid placement "${target}" ` +
+              `at ${JSON.stringify(pos)}; place each copy with its own placeObject instead`,
+          );
+        }
+        break;
+      }
+      target = extrudeTarget.get(target);
+    }
+  }
+  return out;
 }
 
 /** @deprecated Use newPlaceObject */

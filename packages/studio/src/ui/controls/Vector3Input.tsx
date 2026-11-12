@@ -39,6 +39,9 @@ export function Vector3Input({
   className,
 }: Vector3InputProps) {
   const [x, y, z] = value;
+  // Accessible name per axis ("position Y") so tests and screen readers can
+  // address each scrubber; only when the label is plain text.
+  const nameOf = (axis: string) => (typeof label === 'string' ? `${label} ${axis}` : undefined);
   const set = (i: 0 | 1 | 2, v: number) => {
     const next: [number, number, number] = [x, y, z];
     next[i] = v;
@@ -47,9 +50,9 @@ export function Vector3Input({
   return (
     <Field label={label} layout="stacked" className={className}>
       <div className="grid w-full grid-cols-3 gap-2">
-        <AxisInput axis="X" value={x} step={step} min={min} max={max} digits={digits} onChange={(v) => set(0, v)} />
-        <AxisInput axis="Y" value={y} step={step} min={min} max={max} digits={digits} onChange={(v) => set(1, v)} />
-        <AxisInput axis="Z" value={z} step={step} min={min} max={max} digits={digits} onChange={(v) => set(2, v)} />
+        <AxisInput axis="X" name={nameOf('X')} value={x} step={step} min={min} max={max} digits={digits} onChange={(v) => set(0, v)} />
+        <AxisInput axis="Y" name={nameOf('Y')} value={y} step={step} min={min} max={max} digits={digits} onChange={(v) => set(1, v)} />
+        <AxisInput axis="Z" name={nameOf('Z')} value={z} step={step} min={min} max={max} digits={digits} onChange={(v) => set(2, v)} />
       </div>
     </Field>
   );
@@ -57,6 +60,8 @@ export function Vector3Input({
 
 interface AxisProps {
   axis: 'X' | 'Y' | 'Z';
+  /** Accessible name of the axis scrubber. */
+  name?: string;
   value: number;
   step: number;
   min?: number;
@@ -83,6 +88,7 @@ function AxisInput(props: AxisProps) {
         min={props.min}
         max={props.max}
         digits={props.digits}
+        name={props.name}
         onChange={props.onChange}
       />
     </div>
@@ -96,6 +102,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/utils.ts';
 
 interface InlineNumberProps {
+  name?: string;
   value: number;
   step: number;
   min?: number;
@@ -104,7 +111,7 @@ interface InlineNumberProps {
   onChange: (next: number) => void;
 }
 
-function InlineNumber({ value, step, min, max, digits, onChange }: InlineNumberProps) {
+function InlineNumber({ name, value, step, min, max, digits, onChange }: InlineNumberProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(format(value, step, digits));
   useEffect(() => {
@@ -146,6 +153,7 @@ function InlineNumber({ value, step, min, max, digits, onChange }: InlineNumberP
           }
         }}
         type="text"
+        aria-label={name}
         inputMode="numeric"
         className="w-full rounded-sm border border-input bg-secondary px-1.5 py-0.5 text-right text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring tabular-nums"
       />
@@ -155,6 +163,7 @@ function InlineNumber({ value, step, min, max, digits, onChange }: InlineNumberP
   return (
     <button
       type="button"
+      aria-label={name}
       onPointerDown={scrub.onPointerDown}
       onClick={(e) => {
         if (scrub.isDragging()) {
