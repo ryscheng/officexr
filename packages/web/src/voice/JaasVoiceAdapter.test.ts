@@ -34,8 +34,8 @@ class FakeJitsiApi extends EventEmitter {
 
 const asApi = (fake: FakeJitsiApi) => fake as unknown as IJitsiMeetExternalApi;
 
-function setup(jwt: Promise<string> = Promise.resolve('jwt')) {
-  const voice = new JaasVoiceAdapter({ appId: 'app', jwt, displayName: 'Alice' });
+function setup(getJwt: () => Promise<string> = () => Promise.resolve('jwt')) {
+  const voice = new JaasVoiceAdapter({ appId: 'app', getJwt, displayName: 'Alice' });
   const states: string[] = [];
   voice.on('connection-state-change', ({ state }) => states.push(state));
   return { voice, states };
@@ -109,11 +109,20 @@ describe('JaasVoiceAdapter', () => {
 
   it('goes to error when the JWT cannot be minted', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { voice, states } = setup(Promise.reject(new Error('bad key')));
+    const { voice, states } = setup(() => Promise.reject(new Error('bad key')));
     await voice.joinRoom('room-a');
     expect(states).toEqual(['joining', 'error']);
     expect(voice.getMeeting()).toBeNull();
     error.mockRestore();
+  });
+
+  it('asks for a JWT on every join, so an expiring one can be refreshed', async () => {
+    const tokens = ['first', 'second'];
+    const { voice } = setup(async () => tokens.shift()!);
+    await voice.joinRoom('room-a');
+    expect(voice.getMeeting()?.jwt).toBe('first');
+    await voice.joinRoom('room-b');
+    expect(voice.getMeeting()?.jwt).toBe('second');
   });
 
   it('rejoins the same room after a fatal error', async () => {

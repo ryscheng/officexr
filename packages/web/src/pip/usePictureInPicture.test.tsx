@@ -115,7 +115,7 @@ function setup({ api = fakeApi() as ReturnType<typeof fakeApi> | null } = {}) {
   const actions = createActions(store, createBus());
   actions.upsertPlayer({ id: 'me', name: 'Me', pos: { x: 0, y: 0, z: 0 } });
   actions.upsertPlayer({ id: 'ann', name: 'Ann', pos: { x: 0, y: 0, z: -5 } });
-  const voice = new JaasVoiceAdapter({ appId: 'app', jwt: Promise.resolve('jwt'), displayName: 'Me' });
+  const voice = new JaasVoiceAdapter({ appId: 'app', getJwt: () => Promise.resolve('jwt'), displayName: 'Me' });
   const { unmount } = render(<Room deps={{ api, mediaSession, doc }} store={store} voice={voice} />);
   const enterPip = async (times = 1) => {
     await act(async () => {

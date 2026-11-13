@@ -25,8 +25,8 @@ officexr/
 │   │   └── vite.config.ts # dev only: mounts @officexr/server's app and an in-process realtime office
 │   ├── server/           # @officexr/server — web backend
 │   │   ├── src/          # main.ts (entrypoint), backend.ts (createBackend: db + realtime + app, shared with `pnpm dev`), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
-│   │   │                 # runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
-│   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_*, OFFICEXR_ASSET_BASE_URL
+│   │   │                 # jaasToken.ts (server-side JaaS JWT signing), runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
+│   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_APP_ID, OFFICEXR_JAAS_* (server-only), OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
 │   ├── studio-server/    # @officexr/studio-server — studio backend: main.ts (entrypoint), app.ts (internal + public servers), studio-gate.ts (public-port sign-in gate),
@@ -92,8 +92,11 @@ officexr/
   `@officexr/realtime-server` instance the backend runs in-process. `pnpm dev` runs its
   own, so web dev no longer shares an office with `pnpm bots:start` or the studio. The
   studio debug mode uses the same stack with an in-memory or WebSocket channel.
-- **Voice.** Proximity voice uses JaaS (Jitsi as a Service) rooms, with the JWT minted
-  in the browser from the `VITE_JAAS_*` values served at `/config.js`.
+- **Voice.** Proximity voice uses JaaS (Jitsi as a Service) rooms. The server mints each
+  signed-in user's JaaS JWT at `GET /api/offices/:id/voice-token` (`jaasToken.ts`, claims from
+  the session, never the request) with the server-only `OFFICEXR_JAAS_PRIVATE_KEY` /
+  `OFFICEXR_JAAS_API_KEY_ID`; `/config.js` serves only the public `VITE_JAAS_APP_ID`. Never add
+  a JaaS secret to `RUNTIME_CONFIG_KEYS`.
 
 ---
 

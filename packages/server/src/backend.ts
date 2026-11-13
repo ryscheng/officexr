@@ -5,6 +5,7 @@ import { createApp, type AppOptions } from './app';
 import { authConfigFromEnv, parseCookieDomain } from './auth';
 import { parseFrontendOrigins } from './cors';
 import { createDb } from './db';
+import { jaasConfigFromEnv } from './jaasToken';
 
 export interface BackendOptions {
   dev?: AppOptions['dev'];
@@ -43,6 +44,7 @@ export async function createBackend(env: Record<string, string | undefined>, { d
     cookieDomain,
     realtime,
     realtimeTokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
+    jaas: jaasConfigFromEnv(env),
     studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,
     dev,
   });

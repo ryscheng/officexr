@@ -14,6 +14,7 @@ export const paths = {
   office: (id: string) => `/api/offices/${encodeURIComponent(id)}`,
   character: (id: string) => `/api/offices/${encodeURIComponent(id)}/character`,
   realtimeToken: '/api/realtime-token',
+  voiceToken: (id: string) => `/api/offices/${encodeURIComponent(id)}/voice-token`,
   sessions: (id: string, login: string, token?: string) =>
     `/rooms/${encodeURIComponent(id)}/sessions?login=${encodeURIComponent(login)}${token ? `&token=${encodeURIComponent(token)}` : ''}`,
   signIn: '/auth/google',
