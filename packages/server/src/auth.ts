@@ -9,6 +9,7 @@ import type pg from 'pg';
 import type { NextHandleFunction } from 'connect';
 import { verifyJoinToken } from '@officexr/realtime-server/join-token';
 import type { Identity } from './shared';
+import { isAllowedOrigin } from './cors';
 
 export interface AuthConfig {
   googleClientId: string;
@@ -187,7 +188,7 @@ export function safeReturnTarget(next: unknown, origins: string[]): string {
   const url = URL.parse(next);
   // `blob:https://host/` reports the inner origin, so the scheme is checked too.
   const isPlainHttp = url && (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password;
-  return isPlainHttp && origins.includes(url.origin) ? url.href : landing;
+  return isPlainHttp && isAllowedOrigin(url.origin, origins) ? url.href : landing;
 }
 
 function redirect(res: ServerResponse, location: string) {

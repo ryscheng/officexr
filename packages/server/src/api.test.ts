@@ -11,7 +11,7 @@ import type { Profile } from 'passport-google-oauth20';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { apiMiddleware, type CreateOffice, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
 import { createApp } from './app';
-import { parseFrontendOrigins } from './cors';
+import { isAllowedOrigin, parseFrontendOrigins } from './cors';
 import { createGoogleStrategy, createSessionReader, emailDomain, parseCookieDomain, safeReturnTarget, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import type { Identity, Office } from './shared';
 
@@ -480,6 +480,55 @@ describe('parseFrontendOrigins', () => {
 
   it.each(['studio.karibalabs.co', `${STUDIO}/`, `${STUDIO}/app`, 'ftp://studio.karibalabs.co', 'https://', `${STUDIO}?x=1`, '*'])('rejects %s', (bad) => {
     expect(() => parseFrontendOrigins(`${STUDIO},${bad}`)).toThrow(/FRONTEND_ORIGINS/);
+  });
+});
+
+describe('wildcard frontend origins', () => {
+  const PREVIEWS = 'https://*.officexr.pages.dev';
+  const PREVIEW = 'https://3f2a9c1b.officexr.pages.dev';
+
+  it('parses an https wildcard after an exact first origin', () => {
+    expect(parseFrontendOrigins(`${STUDIO}, ${PREVIEWS}`)).toEqual([STUDIO, PREVIEWS]);
+  });
+
+  it.each(['https://*', 'https://*.dev', 'http://*.officexr.pages.dev', 'https://*officexr.pages.dev', 'https://a.*.pages.dev', 'https://*.*.pages.dev', 'https://*.officexr.pages.dev/', 'https://*.OfficeXR.pages.dev'])(
+    'rejects %s',
+    (bad) => {
+      expect(() => parseFrontendOrigins(`${STUDIO},${bad}`)).toThrow(/FRONTEND_ORIGINS/);
+    },
+  );
+
+  it('rejects a wildcard as the first origin', () => {
+    expect(() => parseFrontendOrigins(`${PREVIEWS},${STUDIO}`)).toThrow(/exact origin/);
+  });
+
+  it.each([PREVIEW, 'https://feature-branch.officexr.pages.dev'])('allows %s', (origin) => {
+    expect(isAllowedOrigin(origin, [STUDIO, PREVIEWS])).toBe(true);
+  });
+
+  it.each([
+    'https://officexr.pages.dev',
+    'https://.officexr.pages.dev',
+    'https://a.b.officexr.pages.dev',
+    'https://evil.com/.officexr.pages.dev',
+    'https://evilofficexr.pages.dev',
+    'https://-x.officexr.pages.dev',
+    'http://abc.officexr.pages.dev',
+    'https://abc.officexr.pages.dev:8443',
+    'https://abc.officexr.pages.dev.evil.com',
+    undefined,
+  ])('refuses %s', (origin) => {
+    expect(isAllowedOrigin(origin, [STUDIO, PREVIEWS])).toBe(false);
+  });
+
+  it('gives a preview origin credentialed CORS and accepts it as a sign-in return target', async () => {
+    const base = await start('prod', { frontendOrigins: [STUDIO, PREVIEWS] });
+    const res = await fetch(`${base}/api/offices`, { method: 'OPTIONS', headers: { origin: PREVIEW, 'access-control-request-method': 'PUT' } });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe(PREVIEW);
+    expect(res.headers.get('access-control-allow-credentials')).toBe('true');
+    expect(safeReturnTarget(`${PREVIEW}/studio/`, [STUDIO, PREVIEWS])).toBe(`${PREVIEW}/studio/`);
+    expect(safeReturnTarget('https://officexr.pages.dev/', [STUDIO, PREVIEWS])).toBe(`${STUDIO}/`);
   });
 });
 

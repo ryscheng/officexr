@@ -1,6 +1,6 @@
 import { ServerResponse, type IncomingMessage } from 'node:http';
 import type { NextHandleFunction } from 'connect';
-import type { createSessionReader } from '@officexr/server';
+import { isAllowedOrigin, type createSessionReader } from '@officexr/server';
 import type { Identity } from '@officexr/server/shared';
 import { assertNever, pathname } from './http.ts';
 
@@ -99,7 +99,7 @@ export function studioGate(reader: SessionReader, isStudioAllowed: IsAllowed, is
 export function upgradeAccess(reader: SessionReader, isStudioAllowed: IsAllowed, frontendOrigins: string[]) {
   return async (req: IncomingMessage): Promise<Access> => {
     const origin = req.headers.origin;
-    if (frontendOrigins.length && origin !== undefined && !frontendOrigins.includes(origin)) {
+    if (frontendOrigins.length && origin !== undefined && !isAllowedOrigin(origin, frontendOrigins)) {
       return { type: 'denied', status: 403, error: 'Origin not allowed' };
     }
     // The session middlewares only read from the response here: the session is never modified, so nothing is written.
