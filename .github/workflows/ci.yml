@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Long-running integration branch for the shared Rust engine; sub-issue PRs target it.
+    branches: [main, feature/bevy-prototype]
 
 jobs:
   build-and-test:
