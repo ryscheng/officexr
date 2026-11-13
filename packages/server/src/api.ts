@@ -3,6 +3,7 @@ import type { NextHandleFunction } from 'connect';
 import { signJoinToken } from '@officexr/realtime-server/join-token';
 import { isKnownCharacter, type CatalogCharacters } from '@officexr/world/characters';
 import { DEFAULT_MAP, type SerializedMap } from '@officexr/world/scenes';
+import type { JaasToken } from './jaasToken';
 import { MAX_DESCRIPTION, MAX_NAME } from './officeLimits';
 import type { Identity, NewOffice, Office, OfficeUpdate } from './shared';
 
@@ -38,6 +39,9 @@ export interface OfficeDeskClaims {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type ResolveIdentity = (req: IncomingMessage) => Identity | null;
+
+/** Mints a JaaS voice token for the signed-in user in `office`. */
+export type SignVoiceToken = (me: Identity, office: Office) => Promise<JaasToken>;
 
 const JOIN_TOKEN_TTL_MS = 120_000;
 const MAX_BODY_BYTES = 4096;
@@ -133,6 +137,8 @@ export interface ApiOptions {
   loadCatalogCharacters: () => Promise<CatalogCharacters>;
   identity: ResolveIdentity;
   realtimeTokenSecret?: string;
+  /** Unset when JaaS isn't configured, which makes `/api/offices/:id/voice-token` a 404. */
+  signVoiceToken?: SignVoiceToken;
 }
 
 export function apiMiddleware({
@@ -146,6 +152,7 @@ export function apiMiddleware({
   loadCatalogCharacters,
   identity,
   realtimeTokenSecret,
+  signVoiceToken,
 }: ApiOptions): NextHandleFunction {
   return async (req, res, next) => {
     const path = req.url?.split('?')[0] ?? '';
@@ -217,6 +224,16 @@ export function apiMiddleware({
           }
           return send(405, { error: 'Method not allowed' });
         });
+      }
+      const voiceOffice = path.match(/^\/api\/offices\/([^/]+)\/voice-token$/)?.[1];
+      if (voiceOffice) {
+        if (req.method !== 'GET') {
+          return send(405, { error: 'Method not allowed' });
+        }
+        if (!signVoiceToken) {
+          return send(404, { error: 'Voice is not enabled' });
+        }
+        return withOffice(voiceOffice, async (me, office) => send(200, await signVoiceToken(me, office)));
       }
       const deskClaimsRoute = path.match(/^\/api\/offices\/([^/]+)\/desk-claims(\/me)?$/);
       if (deskClaimsRoute) {

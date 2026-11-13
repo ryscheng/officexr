@@ -28,6 +28,7 @@
     "cookie": "^1.1.1",
     "cors": "^2.8.6",
     "express-session": "^1.19.0",
+    "jose": "^6.2.13",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "pg": "^8.23.1",

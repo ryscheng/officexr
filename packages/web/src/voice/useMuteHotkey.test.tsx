@@ -9,7 +9,7 @@ function Harness({ voice }: { voice: JaasVoiceAdapter }) {
   return <input aria-label="chat" />;
 }
 
-const adapter = () => new JaasVoiceAdapter({ appId: 'app', jwt: Promise.resolve('jwt'), displayName: 'Me' });
+const adapter = () => new JaasVoiceAdapter({ appId: 'app', getJwt: () => Promise.resolve('jwt'), displayName: 'Me' });
 
 describe('useMuteHotkey', () => {
   afterEach(cleanup);

@@ -78,10 +78,18 @@ OFFICEXR_DEV_USER_NAME=You                # `pnpm dev` only
 # PUBLIC_URL=https://officexr.example.com # redirect URI: ${PUBLIC_URL}/auth/google/callback
 # FRONTEND_ORIGINS=https://app.example.com # optional; see "Sign-in"
 # COOKIE_DOMAIN=example.com                # optional; see "Sign-in"
-VITE_JAAS_APP_ID=your-jaas-app-id
-VITE_JAAS_API_KEY_ID=your-jaas-api-key-id
-VITE_JAAS_PRIVATE_KEY=your-jaas-private-key-base64
+VITE_JAAS_APP_ID=your-jaas-app-id                # public; served to browsers at /config.js
+OFFICEXR_JAAS_API_KEY_ID=your-jaas-api-key-id    # server-only
+OFFICEXR_JAAS_PRIVATE_KEY=your-jaas-private-key-base64  # server-only; PEM (\n escapes) or base64 of the PEM
 ```
+
+### Voice (JaaS)
+
+The backend signs each signed-in user's JaaS JWT at `GET /api/offices/:id/voice-token` (1-hour tokens; the
+client refreshes before joining a call once a token is near expiry). The private key and API key id are
+server-only env and are never served at `/config.js`; only the public `VITE_JAAS_APP_ID` is. Voice is on when
+`/config.js` has the app id and the endpoint returns a token. `VITE_JAAS_API_KEY_ID` / `VITE_JAAS_PRIVATE_KEY`
+are still read as a deprecated fallback for one release; set the `OFFICEXR_JAAS_*` names instead.
 
 ### Sign-in
 
