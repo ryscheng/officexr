@@ -335,7 +335,7 @@ export const ZNetEvent = z.discriminatedUnion('kind', [
 type Flat<T> = T extends unknown ? { [K in keyof T]: T[K] } : never;
 type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Assert<T extends true> = T;
-export type ZNetEventMatchesNetEvent = Assert<Equals<Flat<z.infer<typeof ZNetEvent>>, Flat<NetEvent>>>;
+type ZNetEventMatchesNetEvent = Assert<Equals<Flat<z.infer<typeof ZNetEvent>>, Flat<NetEvent>>>;
 
 export type ValidationResult =
   | { ok: true; event: NetEvent }
