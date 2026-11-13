@@ -63,3 +63,26 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  rust:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install linker
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang lld
+
+      - name: Install toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace

@@ -268,7 +268,7 @@ export type ProtocolEntry = {
   route: 'room' | 'target';
 };
 
-export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
+export const PROTOCOL = {
   'presence:position': { v: 1, schema: ZPresencePosition, authority: 'local', route: 'room' },
   'presence:status': { v: 1, schema: ZPresenceStatusPayload, authority: 'local', route: 'room' },
   'presence:seat': { v: 1, schema: ZPresenceSeat, authority: 'local', route: 'room' },
@@ -286,7 +286,7 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'world:characters': { v: 1, schema: ZWorldCharactersPayload, authority: 'local', route: 'room' },
   'world:objects': { v: 1, schema: ZWorldObjectsPayload, authority: 'local', route: 'room' },
   'desk:claims': { v: 1, schema: ZDeskClaimsPayload, authority: 'server', route: 'room' },
-};
+} as const satisfies Record<NetEventKind, ProtocolEntry>;
 
 /** The one player who receives `event`, or null when it goes to the whole room. */
 export function recipientOf(event: NetEvent): PlayerId | null {
@@ -306,6 +306,35 @@ const ZEnvelope = z.object({
   seq: z.number(),
   t: z.number(),
 });
+
+const withEnvelope = <K extends string, V extends number, S extends z.AnyZodObject>(
+  kind: K,
+  entry: { v: V; schema: S },
+) => ZEnvelope.extend({ kind: z.literal(kind), v: z.literal(entry.v) }).merge(entry.schema);
+
+/** Wire schema of every NetEvent: envelope fields, literal `kind`/`v`, and the kind's payload. */
+export const ZNetEvent = z.discriminatedUnion('kind', [
+  withEnvelope('presence:position', PROTOCOL['presence:position']),
+  withEnvelope('presence:status', PROTOCOL['presence:status']),
+  withEnvelope('presence:seat', PROTOCOL['presence:seat']),
+  withEnvelope('avatar:update', PROTOCOL['avatar:update']),
+  withEnvelope('chat:message', PROTOCOL['chat:message']),
+  withEnvelope('whiteboard:stroke', PROTOCOL['whiteboard:stroke']),
+  withEnvelope('shot:hit', PROTOCOL['shot:hit']),
+  withEnvelope('ping:send', PROTOCOL['ping:send']),
+  withEnvelope('zombie:state', PROTOCOL['zombie:state']),
+  withEnvelope('snapshot:request', PROTOCOL['snapshot:request']),
+  withEnvelope('snapshot:offer', PROTOCOL['snapshot:offer']),
+  withEnvelope('world:constants', PROTOCOL['world:constants']),
+  withEnvelope('world:map', PROTOCOL['world:map']),
+  withEnvelope('world:characters', PROTOCOL['world:characters']),
+  withEnvelope('world:objects', PROTOCOL['world:objects']),
+  withEnvelope('desk:claims', PROTOCOL['desk:claims']),
+]);
+
+type Equals<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const zNetEventMatchesNetEvent: Equals<z.infer<typeof ZNetEvent>, NetEvent> = true;
+void zNetEventMatchesNetEvent;
 
 export type ValidationResult =
   | { ok: true; event: NetEvent }
