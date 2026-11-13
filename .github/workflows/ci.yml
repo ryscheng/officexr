@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Long-running integration branch for the shared Rust engine; sub-issue PRs target it.
+    branches: [main, ravenac95/oso-7372-prove-a-shared-rust-engine-for-the]
 
 jobs:
   build-and-test:
