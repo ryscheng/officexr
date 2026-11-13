@@ -27,6 +27,19 @@ export function layoutIdPrefix(roomInstanceId: string): string {
   return `${roomInstanceId}/layout/`;
 }
 
+export type ExcludeInstance = (instance: ObjectInstance) => boolean;
+
+/** Matches the instances `compileMap` compiled from these placements' layouts; undefined when there are none. */
+export function excludeLayoutInstances(
+  placements: readonly { roomInstanceId: string }[] | undefined,
+): ExcludeInstance | undefined {
+  if (!placements?.length) {
+    return undefined;
+  }
+  const prefixes = placements.map((p) => layoutIdPrefix(p.roomInstanceId));
+  return (instance) => prefixes.some((prefix) => instance.id.startsWith(prefix));
+}
+
 /**
  * Pure replay of a `MapDocumentV2` against the rooms it references.
  * For each `RoomInstance`:

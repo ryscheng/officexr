@@ -64,7 +64,7 @@ export const PRIMITIVE_KIND_PREFIX = '__primitive_';
  * the collider matches the mesh exactly. */
 export const PRIMITIVE_BLOCK_SIZE = 2;
 
-function localAABBFor(kind: WorldObjectKind | undefined, voxelSize: number): LocalAABB {
+function localAABBFor(kind: GeometryKind | undefined, voxelSize: number): LocalAABB {
   if (kind?.localAABB) return kind.localAABB;
   // Fallback 1: dimensions present, origin convention unknown — assume
   // X/Z-centered, Y-bottom (the prototype-cube / KayKit-Furniture default).
@@ -85,7 +85,7 @@ function localAABBFor(kind: WorldObjectKind | undefined, voxelSize: number): Loc
 }
 
 /** Size (m) the tile step derives from: `dimensions`, else `localAABB`. */
-function kindSize(kind: WorldObjectKind | undefined): Vec3 | undefined {
+function kindSize(kind: GeometryKind | undefined): Vec3 | undefined {
   if (kind?.dimensions) {
     const { width, height, depth } = kind.dimensions;
     return [width, height, depth];
@@ -126,8 +126,11 @@ function yawAboutCentre(point: Vec3, centre: Vec3, yawDeg: number): Vec3 {
   return [centre[0] + dx * cos + dz * sin, point[1], centre[2] - dx * sin + dz * cos];
 }
 
+/** The kind fields geometry reads, so headless callers can pass bare collider data. */
+export type GeometryKind = Pick<WorldObjectKind, 'localAABB' | 'dimensions'>;
+
 export function createInstanceGeometry(deps: {
-  catalog: KindResolver;
+  catalog: { getKind(id: string): GeometryKind | undefined };
   voxelSize: number;
 }): InstanceGeometryService {
   const { catalog, voxelSize } = deps;

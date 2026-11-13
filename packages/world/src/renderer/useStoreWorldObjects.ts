@@ -1,20 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
-import type { BakedLayoutPlacement } from '../app/map-loader.ts';
-import { layoutIdPrefix } from '../scenes/compile-map.ts';
+import type { Store, WorldObjects } from '@officexr/sdk';
+import type { ExcludeInstance } from '../scenes/compile-map.ts';
 
-export type ExcludeInstance = (instance: ObjectInstance) => boolean;
-
-/** Matches the instances `compileMap` compiled from these placements' layouts; undefined when there are none. */
-export function excludeLayoutInstances(
-  placements: readonly Pick<BakedLayoutPlacement, 'roomInstanceId'>[] | undefined,
-): ExcludeInstance | undefined {
-  if (!placements?.length) {
-    return undefined;
-  }
-  const prefixes = placements.map((p) => layoutIdPrefix(p.roomInstanceId));
-  return (instance) => prefixes.some((prefix) => instance.id.startsWith(prefix));
-}
+export { excludeLayoutInstances, type ExcludeInstance } from '../scenes/compile-map.ts';
 
 /**
  * Follows `store`'s `worldObjects`, leaving out the instances `exclude` matches.

@@ -1,12 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useEffectEvent, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import {
-  useRapier,
-  type RapierRigidBody,
-} from '@react-three/rapier';
+import type { RapierRigidBody } from '@react-three/rapier';
 import { liveRigidBody } from './liveRigidBody.ts';
-import RAPIER from '@dimforge/rapier3d-compat';
 import type {
   Actions,
   Store,
@@ -19,22 +15,15 @@ import type {
 import { tickSession } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import { hasCommandModifier, isTypingTarget } from '../react/useWorldFocus.ts';
+import { useApplication } from '../react/application-context.tsx';
 import type { CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
-import {
-  CHARACTER_CONTROLLER_SKIN,
-  FLOOR_PROBE_RANGE,
-  GRAVITY as GAME_GRAVITY,
-  pickRespawnPosition,
-  respawnThreshold,
-  shouldRespawnFalling,
-} from '../physics/rules.ts';
-import { stepAirVelocity } from '../physics/air-control.ts';
-import { horizontalProgress } from '../physics/blocking.ts';
-import { tryStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
-import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
+import { sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
+import { extrapolatePos } from './Players.tsx';
+import { useStoreWorldObjects } from './useStoreWorldObjects.ts';
+import type { SimBakedColliders, SimCore, SimPeer } from '../sim/SimCore.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -57,8 +46,14 @@ interface SceneFrameProps {
   /** E sits through it; while seated, any movement input stands through it instead of moving. */
   seating?: SeatingSource;
   selfId: string;
-  /** Set by `Players` when the self avatar's RigidBody mounts. */
+  /** Set by `Players` when the self avatar's RigidBody mounts; mirrors the sim's position for the proximity sensors. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
+  /** Builds the local player's movement simulation; called once per mount, after Rapier has loaded. */
+  createSim: (charRadius: number) => SimCore;
+  /** Loaded baked layouts' colliders; their rooms' instances collide through these instead. */
+  bakedColliders: readonly SimBakedColliders[];
+  /** Called once the sim collides with `bakedColliders`, with their room instance ids. */
+  onBakedCollidersApplied?: (roomInstanceIds: readonly string[]) => void;
   /** When false, keyboard input is released from the in-world
    * character: keydown is ignored, and any held keys are cleared
    * so the character stops mid-stride. Toggled by the studio's
@@ -85,6 +80,7 @@ interface SceneFrameProps {
 }
 
 const headsetForward = new THREE.Vector3();
+const peerPos = new THREE.Vector3();
 
 const ARROW_KEYS = new Set([
   'ArrowUp',
@@ -93,25 +89,13 @@ const ARROW_KEYS = new Set([
   'ArrowRight',
 ]);
 
-// Same gravity constant the bot physics worlds use — see
-// `packages/world/src/physics/rules.ts`. Imported under an alias so
-// the per-frame closure can still refer to it as `GRAVITY` for
-// readability without colliding with anything else named `GRAVITY`.
-const GRAVITY = GAME_GRAVITY;
-
 /**
- * Owns the per-frame loop: WASD movement (via Rapier's
- * `KinematicCharacterController`), world tick, rule evaluation, sync
- * flushing, bot updates. Mounted once inside `<Canvas>`, downstream of
- * `<Physics>`.
- *
- * The character controller is the load-bearing replacement for the old
- * `resolveMovement`. It walks the self body's collider against every
- * other collider in the Rapier world (other players, walls, future
- * obstacles) and yields a "corrected" movement vector that slides
- * along contacts and stops at solid geometry. We feed that result
- * back into `actions.setSelfPosition` so the store + broadcast stay
- * consistent with where the body actually ended up.
+ * Owns the per-frame loop: input into the local player's `SimCore`
+ * step, world tick, rule evaluation, sync flushing, bot updates.
+ * Mounted once inside `<Canvas>`, downstream of `<Physics>`, whose self
+ * body it keeps on the sim's position. Each step's result goes back
+ * into `actions.setSelfPosition` so the store + broadcast stay
+ * consistent with where the character actually ended up.
  */
 export function SceneFrame({
   store,
@@ -131,6 +115,9 @@ export function SceneFrame({
   seating,
   selfId,
   selfBodyRef,
+  createSim,
+  bakedColliders,
+  onBakedCollidersApplied,
   worldFocused,
   spawnPoints,
   isAirborneRef,
@@ -159,55 +146,27 @@ export function SceneFrame({
   const prevState = React.useRef(store.getState());
   const wasMoving = React.useRef(false);
 
-  const { world } = useRapier();
-
-  // The character controller is created lazily on first frame instead
-  // of in a useMemo. `<Physics>` proxies the underlying Rapier World
-  // through a getter that lazily instantiates `new RAPIER.World(...)`
-  // on first property access. During render, calling
-  // `world.createCharacterController(...)` would trigger that lazy
-  // init — but the proxy and the controller live for the
-  // *worldProxy's* lifetime, which can outlast individual Physics
-  // re-renders (StrictMode double-mount, HMR, Leva-driven option
-  // changes that change `gravity` / `numSolverIterations` etc and
-  // rebuild Physics' inner context). A controller created against a
-  // freed/reset world later resolves to `undefined` when
-  // `computeColliderMovement` is called, which is the white-screen
-  // bug we hit on first WASD press. Re-acquiring the controller from
-  // the live world inside useFrame makes this resilient.
-  const controllerRef = useRef<RAPIER.KinematicCharacterController | null>(
-    null,
-  );
-  const controllerWorldRef = useRef<unknown>(null);
-  // Vertical velocity (m/s) for the local player. Accumulates `GRAVITY
-  // * dt` every frame and resets to 0 whenever the character controller
-  // reports `computedGrounded()`. The Rapier `Physics` world's gravity
-  // vector ONLY drives dynamic bodies — our player is kinematic, so the
-  // controller integrates gravity itself via the desired translation we
-  // pass into `computeColliderMovement`.
-  const verticalVelRef = useRef(0);
-  // Test hook: when false, gravity is skipped (vertical velocity stays
-  // at 0). The deterministic visual regression test flips this off so
-  // it can pin the player to a fixed pos without the body drifting
-  // away each frame. Production code never reads or writes this.
+  const simRef = useRef<SimCore | null>(null);
+  // Mugshot's gravity-off mode, which also drops the warp threshold below to zero.
   const gravityEnabledRef = useRef(true);
-  // Jump state refs — all declared here so the per-frame closure can
-  // mutate them without re-binding useFrame. Declared BEFORE the
-  // `__OFFICE_GRAVITY__` effect so its `setEnabled` closure can
-  // reference them without TS "used before declaration" errors.
-  // Tracks "this character actively jumped and has not finished the
-  // landing blend yet". Drives the broadcast `isAirborne` flag and the
-  // 'jumping' animation. Critically NOT inferred from
-  // `jumpsRemainingRef < maxJumps` — the ref starts at 0 (refilled on
-  // first grounded frame), so that derivation would misclassify the
-  // spawn frame as airborne.
-  const airborneRef = useRef(false);
-  const jumpsRemainingRef = useRef(0);    // refilled to maxJumps on landing
-  const airVelXRef = useRef(0);           // captured/deflected horizontal velocity while airborne
-  const airVelZRef = useRef(0);
-  const landingBlendTRef = useRef(0);     // ms elapsed in the landing ease blend
-  const blendStartVelXRef = useRef(0);    // airVel at the moment the landing blend began (linear lerp source)
-  const blendStartVelZRef = useRef(0);
+  useEffect(() => {
+    const sim = createSim(store.getState().worldSettings.charRadius);
+    sim.setGravityEnabled(gravityEnabledRef.current);
+    simRef.current = sim;
+    return () => {
+      simRef.current = null;
+      sim.dispose();
+    };
+  }, [createSim, store]);
+
+  const { catalog, voxelSize } = useApplication();
+  const worldObjects = useStoreWorldObjects(store);
+  const notifyBakedApplied = useEffectEvent((ids: readonly string[]) => onBakedCollidersApplied?.(ids));
+  useEffect(() => {
+    simRef.current?.setStaticColliders(worldObjects, { voxelSize, kinds: catalog.listKinds() }, bakedColliders);
+    notifyBakedApplied(bakedColliders.map((b) => b.roomInstanceId));
+  }, [createSim, worldObjects, voxelSize, catalog, bakedColliders]);
+
   const spaceWasDownRef = useRef(false);  // edge-trigger: was Space held last frame?
   const eWasDownRef = useRef(false);
   useEffect(() => {
@@ -216,19 +175,7 @@ export function SceneFrame({
     }).__OFFICE_GRAVITY__ = {
       setEnabled: (v: boolean) => {
         gravityEnabledRef.current = v;
-        if (!v) {
-          // Gravity-off mode (Mugshot): treat the character as
-          // grounded — clear any jump/landing state but do NOT zero
-          // `jumpsRemainingRef`. Zeroing it would make every frame
-          // classify as airborne (since 0 < maxJumps), permanently
-          // pinning the avatar in the `'jumping'` animation pose
-          // and forcing the airborne broadcast branch.
-          verticalVelRef.current = 0;
-          airborneRef.current = false;
-          airVelXRef.current = 0;
-          airVelZRef.current = 0;
-          landingBlendTRef.current = 0;
-        }
+        simRef.current?.setGravityEnabled(v);
       },
     };
     return () => {
@@ -236,20 +183,6 @@ export function SceneFrame({
         .__OFFICE_GRAVITY__;
     };
   }, []);
-
-  useEffect(
-    () =>
-      seating?.setStandingCheck((feet) =>
-        isStandingSpotFree(world, liveRigidBody(selfBodyRef.current), store.getState().worldSettings.charRadius, feet),
-      ),
-    [seating, world, store, selfBodyRef],
-  );
-
-  // PlayerIds whose bodies the local character was bumping into on the
-  // previous frame. Used to edge-trigger `collision:char-bump` — Rapier
-  // reports a collision every frame two characters are in contact, but
-  // we only want one bump event per touch.
-  const bumpingPeersRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     // Gate on the React-managed `worldFocused` flag (mirrored into
@@ -281,21 +214,11 @@ export function SceneFrame({
     };
   }, []);
 
-  // SRP violation: SceneFrame owns WASD input, physics step, gravity,
-  // respawn, broadcast, and bot/world ticks. This is a pre-existing bend
-  // forced by React/r3f: `useRapier()` must be called inside the Canvas
-  // component tree, and `useFrame` must be called from a mounted component,
-  // so the per-frame physics step cannot be split into a separate module
-  // without a significant r3f refactor. The dual-gate respawn rule and
-  // intent-verb pattern are adopted here to ensure behavioral parity with
-  // BotCharacterMovement without restructuring the component model.
-  // What would remove this: extract SceneFrame's physics step into a
-  // headless class that accepts `world` + `controller` as constructor args,
-  // wrapping it in a thin r3f component that calls useRapier/useFrame.
   useFrame(({ gl }, dtSec) => {
     const dt = dtSec * 1000;
     const now = performance.now();
     const keys = keysDown.current;
+    const sim = simRef.current;
 
     eWasDownRef.current = sitOnPress(keys, eWasDownRef.current, seating);
     const { fwd, strafe, isRunning, speedScale } = moveIntent(keys, moveInputRef?.current);
@@ -311,7 +234,7 @@ export function SceneFrame({
     const stateSnapshot = store.getState();
     const self = stateSnapshot.players[selfId];
     const body = liveRigidBody(selfBodyRef.current);
-    const { movementBlockThreshold } = stateSnapshot.worldSettings;
+    const { worldSettings } = stateSnapshot;
     // Resolve per-character overrides for the local model — each
     // character can have its own speed / run multiplier, falling back
     // to WorldSettings defaults via resolveCharacterTunables.
@@ -319,17 +242,12 @@ export function SceneFrame({
     const { playerSpeed: baseSpeed, runSpeedMultiplier } =
       resolveCharacterTunables(
         selfModel,
-        stateSnapshot.worldSettings,
+        worldSettings,
         stateSnapshot.characterConfigs,
       );
     const playerSpeed = autoWalkDir
       ? baseSpeed
       : (isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed) * speedScale;
-    // movementBlockThreshold = "fraction of intent that must be
-    // *blocked* to count as 'fully stopped'". So if 90% (default) of
-    // intent is blocked, we want progress < 0.1 to snap velocity and
-    // animation to zero.
-    const minProgress = 1 - movementBlockThreshold;
 
     // Space key edge-trigger for jump: only fire on the frame the
     // key transitions from up to down. Holding Space does not repeat.
@@ -337,34 +255,29 @@ export function SceneFrame({
     const spacePressedThisFrame = spaceDown && !spaceWasDownRef.current;
     spaceWasDownRef.current = spaceDown;
 
+    if (sim) {
+      // Peers collide where Players draws them this frame.
+      const peers: SimPeer[] = [];
+      for (const [id, p] of Object.entries(stateSnapshot.players)) {
+        if (id !== selfId) {
+          const { x, y, z } = extrapolatePos(p, now, peerPos);
+          peers.push({ id, pos: { x, y, z } });
+        }
+      }
+      sim.syncPeers(peers, worldSettings.charRadius);
+    }
+
     if (self?.seat != null && body) {
       stepSeated(store, selfId, body, seating, hasMoveInput || spacePressedThisFrame || autoWalkDir !== null);
-      verticalVelRef.current = 0;
-      airborneRef.current = false;
+      sim?.teleport(store.getState().players[selfId]?.pos ?? self.pos);
       isAirborneRef.current = false;
       wasMoving.current = false;
-    } else if (self && body) {
-      // Destructure jump tunables from worldSettings for this frame.
-      const { jumpVelocity, airControl, maxJumps, landingEaseMs } =
-        stateSnapshot.worldSettings;
-
-      // Airborne is an explicit state set on jump trigger and cleared
-      // on full landing blend (or warp / respawn / gravity-off).
-      const isAirborne = airborneRef.current;
-
-      // Write to the ref each frame so Players.tsx can read it
-      // without a React re-render.
-      isAirborneRef.current = isAirborne;
-
+    } else if (self && body && sim) {
       // Auto-warp detector. If the store's pos has been mutated to
-      // somewhere far from where the body actually is (a map-switch
-      // spawn or a test-driven `store.setState`), teleport the body
-      // to match this frame and SKIP the rest of the movement
-      // integration — otherwise the bottom-of-loop
-      // `setNextKinematicTranslation(t + corrected)` (which reads
-      // body.translation() — still the pre-warp value because the
-      // physics step hasn't run yet) would clobber the warp back to
-      // the old position.
+      // somewhere far from where the sim has the player (a map-switch
+      // spawn or a test-driven `store.setState`), teleport there this
+      // frame and SKIP the movement step, which would otherwise move
+      // on from the old position and clobber the warp.
       //
       // This is what lets `useMapPicker` drop the player from the
       // sky by just calling `setSelfPosition(skyPos, ...)` — no
@@ -379,480 +292,81 @@ export function SceneFrame({
       // mugshot Y-slider's 0.01 m granularity — moves the body
       // immediately. With gravity off there's no per-frame jitter
       // to filter out.
-      const t0 = body.translation();
-      const dx0 = self.pos.x - t0.x;
-      const dy0 = self.pos.y - t0.y;
-      const dz0 = self.pos.z - t0.z;
+      const before = sim.position();
+      const dx0 = self.pos.x - before.x;
+      const dy0 = self.pos.y - before.y;
+      const dz0 = self.pos.z - before.z;
       const warpThresholdSq = gravityEnabledRef.current ? 0.25 : 0;
-      const warped = dx0 * dx0 + dy0 * dy0 + dz0 * dz0 > warpThresholdSq;
-      if (warped) {
+      let isMoving = false;
+      if (dx0 * dx0 + dy0 * dy0 + dz0 * dz0 > warpThresholdSq) {
+        sim.teleport(self.pos);
         body.setNextKinematicTranslation(self.pos);
-        verticalVelRef.current = 0;
-        // Reset jump state so a teleport doesn't leave the player
-        // mid-jump with a depleted counter.
-        airborneRef.current = false;
-        jumpsRemainingRef.current = maxJumps;
-        airVelXRef.current = 0;
-        airVelZRef.current = 0;
-        landingBlendTRef.current = 0;
+        isAirborneRef.current = false;
         // Reset moving/idle so the moving→idle edge-trigger below
         // doesn't fire spuriously after a teleport.
         wasMoving.current = false;
-      }
-
-      // Intent verb (mirrors CharacterMovement interface):
-      // isRunning + (fwd || strafe) → 'run' verb
-      // !isRunning + (fwd || strafe) → 'walk' verb
-      // neither → 'stop' verb
-      // Horizontal intent: camera-relative from keys or the stick, else
-      // world-space from auto-walk. Zero when neither steers; we still
-      // run the controller below so gravity can apply.
-      let dx = 0;
-      let dz = 0;
-      let horizMove = 0;
-      let intendsMove = false;
-      let movementYaw = self.yaw;
-      if (hasMoveInput) {
-        const cameraYaw = xrPresenting
-          ? yawFromDirection(gl.xr.getCamera().getWorldDirection(headsetForward))
-          : cameraMode === 'fixed'
-            ? fixedMovementYaw(
-                fixedAzimuthDeg,
-                viewOffsetsRef.current.fixedAzimuthOffsetRad,
-                fixedMovementYawOffsetDeg,
-              )
-            : yawRef.current;
-        const forwardX = -Math.sin(cameraYaw);
-        const forwardZ = -Math.cos(cameraYaw);
-        const rightX = Math.cos(cameraYaw);
-        const rightZ = -Math.sin(cameraYaw);
-        dx = forwardX * fwd + rightX * strafe;
-        dz = forwardZ * fwd + rightZ * strafe;
-      } else if (autoWalkDir) {
-        dx = autoWalkDir.x;
-        dz = autoWalkDir.z;
-      }
-      const len = Math.hypot(dx, dz);
-      if (len > 0) {
-        dx /= len;
-        dz /= len;
-        horizMove = (playerSpeed * dt) / 1000;
-        movementYaw = yawFromDirection({ x: dx, z: dz });
-        intendsMove = true;
-      }
-
-      // Find the body's primary collider — Rapier's controller works
-      // on a single collider, and we registered three (body + 2
-      // sensors). The first non-sensor collider IS the body
-      // collider; sensors don't push, so we want the body.
-      let bodyCollider = null;
-      for (let i = 0; i < body.numColliders(); i++) {
-        const c = body.collider(i);
-        if (!c.isSensor()) {
-          bodyCollider = c;
-          break;
+      } else {
+        // Horizontal intent: camera-relative from keys or the stick, else
+        // world-space from auto-walk. Zero when neither steers; the sim
+        // still steps so gravity can apply.
+        let dx = 0;
+        let dz = 0;
+        if (hasMoveInput) {
+          const cameraYaw = xrPresenting
+            ? yawFromDirection(gl.xr.getCamera().getWorldDirection(headsetForward))
+            : cameraMode === 'fixed'
+              ? fixedMovementYaw(
+                  fixedAzimuthDeg,
+                  viewOffsetsRef.current.fixedAzimuthOffsetRad,
+                  fixedMovementYawOffsetDeg,
+                )
+              : yawRef.current;
+          const forwardX = -Math.sin(cameraYaw);
+          const forwardZ = -Math.cos(cameraYaw);
+          const rightX = Math.cos(cameraYaw);
+          const rightZ = -Math.sin(cameraYaw);
+          dx = forwardX * fwd + rightX * strafe;
+          dz = forwardZ * fwd + rightZ * strafe;
+        } else if (autoWalkDir) {
+          dx = autoWalkDir.x;
+          dz = autoWalkDir.z;
         }
-      }
-      let isMoving = false;
-      if (bodyCollider && !warped) {
-        // Lazily create or refresh the character controller. If the
-        // world proxy has swapped its underlying World (e.g. Physics
-        // rebuilt after a settings change), reattach and reset
-        // vertical velocity so we don't carry a stale fall speed
-        // across the world swap.
-        if (
-          !controllerRef.current ||
-          controllerWorldRef.current !== world
-        ) {
-          const c = world.createCharacterController(CHARACTER_CONTROLLER_SKIN);
-          c.setApplyImpulsesToDynamicBodies(false);
-          c.setSlideEnabled(true);
-          c.setUp({ x: 0, y: 1, z: 0 });
-          // Stick to the ground when walking off a small ledge or
-          // down a slight slope — prevents the character from
-          // hovering for a frame when transitioning between cubes
-          // that are nominally at the same height but pixel-diff
-          // because of physics solver tolerance.
-          c.enableSnapToGround(0.3);
-          // NO Rapier autostep — deliberately; see the matching note
-          // in BotPhysicsWorld's controller setup. Step climbing is
-          // handled by the shared step-up assist below, which (unlike
-          // engine autostep) refuses to climb other characters.
-          controllerRef.current = c;
-          controllerWorldRef.current = world;
-          verticalVelRef.current = 0;
-        }
-        const controller = controllerRef.current;
-        if (!controller) return;
+        const len = Math.hypot(dx, dz);
+        const dir = len > 0 ? { x: dx / len, z: dz / len } : { x: 0, z: 0 };
 
-        // Integrate gravity. Rapier's KinematicCharacterController
-        // does not auto-apply the Physics world's gravity vector to
-        // kinematic bodies — gravity here is a manual integration
-        // baked into the `desired` translation we pass to
-        // `computeColliderMovement`. The controller then resolves
-        // that translation against ground colliders.
-        const dtSec = dt / 1000;
-        if (gravityEnabledRef.current) {
-          verticalVelRef.current += GRAVITY * dtSec;
-        } else {
-          verticalVelRef.current = 0;
+        const result = sim.step({
+          dtSec,
+          nowMs: now,
+          dir,
+          speed: playerSpeed,
+          running: isRunning && !autoWalkDir,
+          yaw: len > 0 ? yawFromDirection(dir) : self.yaw,
+          jump: spacePressedThisFrame,
+          settings: worldSettings,
+          spawnPoints: spawnsRef.current,
+        });
+        isAirborneRef.current = result.isAirborne;
+
+        // Bilateral: `normal` points out of the peer, the way self is pushed.
+        for (const { otherId, normal } of result.bumps) {
+          bus.emit({ kind: 'collision:char-bump', selfId, otherId, normal });
+          bus.emit({
+            kind: 'collision:char-bump',
+            selfId: otherId,
+            otherId: selfId,
+            normal: { x: -normal.x, z: -normal.z },
+          });
         }
 
-        // --- Grounded handling + landing blend ---
-        // Must happen BEFORE the jump trigger so we know if we landed
-        // this frame and can properly clear airborne state.
-        if (controller.computedGrounded()) {
-          verticalVelRef.current = 0;
-          if (airborneRef.current) {
-            // Capture start-of-blend airVel once so the blend is a true
-            // linear lerp toward zero (not a compounding `*= (1-t)`).
-            if (landingBlendTRef.current === 0) {
-              blendStartVelXRef.current = airVelXRef.current;
-              blendStartVelZRef.current = airVelZRef.current;
-            }
-            landingBlendTRef.current += dt;
-            if (landingEaseMs <= 0 || landingBlendTRef.current >= landingEaseMs) {
-              // Blend complete (or instant hard-stop).
-              airborneRef.current = false;
-              jumpsRemainingRef.current = maxJumps;
-              airVelXRef.current = 0;
-              airVelZRef.current = 0;
-              landingBlendTRef.current = 0;
-            } else {
-              // Linear lerp from `blendStart*` toward zero over the
-              // configured ease duration.
-              const t = landingBlendTRef.current / landingEaseMs;
-              airVelXRef.current = blendStartVelXRef.current * (1 - t);
-              airVelZRef.current = blendStartVelZRef.current * (1 - t);
-            }
-          } else {
-            // On the ground without an active jump — refill the
-            // counter so the first Space press from rest works, and
-            // make sure any stale blend timer is cleared.
-            jumpsRemainingRef.current = maxJumps;
-            landingBlendTRef.current = 0;
-          }
-        }
-
-        // --- Jump trigger ---
-        // Placed after grounded handling so a freshly-landed frame
-        // that also receives a Space press correctly re-grants a jump.
-        // Also requires gravity to be enabled — disable-gravity mode
-        // (Mugshot) treats the character as frozen on the ground.
-        if (
-          spacePressedThisFrame &&
-          jumpsRemainingRef.current > 0 &&
-          !warped &&
-          gravityEnabledRef.current
-        ) {
-          verticalVelRef.current = jumpVelocity;
-          if (!airborneRef.current) {
-            // First jump from ground: capture current movement intent as
-            // the air-vel baseline. dx/dz are normalised direction
-            // unit vectors; multiply by playerSpeed to get m/s.
-            // Standing-still jump → 0 carry.
-            airVelXRef.current = dx * playerSpeed;
-            airVelZRef.current = dz * playerSpeed;
-          }
-          // Second jump: airVelXRef/Z already hold mid-air deflected values.
-          airborneRef.current = true;
-          jumpsRemainingRef.current--;
-          landingBlendTRef.current = 0; // cancel any active landing blend
-        }
-
-        // --- Horizontal movement (airborne vs. ground) ---
-        let moveX: number;
-        let moveZ: number;
-
-        if (isAirborne) {
-          // During the landing ease the lerp above owns airVel; steering only applies in flight.
-          if (airborneRef.current && landingBlendTRef.current === 0) {
-            const next = stepAirVelocity(
-              { x: airVelXRef.current, z: airVelZRef.current },
-              { x: dx * playerSpeed, z: dz * playerSpeed },
-              airControl,
-              dtSec,
-            );
-            airVelXRef.current = next.x;
-            airVelZRef.current = next.z;
-          }
-          moveX = airVelXRef.current * dtSec;
-          moveZ = airVelZRef.current * dtSec;
-        } else {
-          moveX = dx * horizMove;
-          moveZ = dz * horizMove;
-        }
-
-        // EXCLUDE_SENSORS: the proximity rings (inner/outer) are
-        // sensors. Without this flag the character controller
-        // treats them as solid geometry — the local player would
-        // physically bump into the *invisible* proximity sphere
-        // around every other character. Rapier's `sensor: true`
-        // only disables the dynamics solver's penetration push;
-        // movement resolution uses the query pipeline, which needs
-        // this flag to skip sensors.
-        controller.computeColliderMovement(
-          bodyCollider,
-          {
-            x: moveX,
-            y: verticalVelRef.current * dtSec,
-            z: moveZ,
-          },
-          RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-        );
-        const corrected = controller.computedMovement();
-
-        // Climb-aware gravity reset — the player half of the autostep
-        // pairing (see BotPhysicsWorld.step() for the bot half). While
-        // autostep lifts the body over a step face, computedGrounded()
-        // flickers false (the ball is climbing, not resting), so the
-        // grounded reset above never fires and gravity accumulates
-        // across the staircase — eventually tripping the fall-respawn
-        // gate mid-climb. When the controller moved us upward or flat
-        // (corrected.y >= 0) despite a downward integrated velocity,
-        // we're being lifted, not falling: zero the fall speed.
-        //
-        // The `< 0` guard is the difference from the bot version: bots
-        // never jump, but a player's jump ascent has POSITIVE vertical
-        // velocity and corrected.y > 0 — resetting then would kill the
-        // jump at its first frame. Falling-only reset leaves jumps
-        // untouched.
-        if (verticalVelRef.current < 0 && corrected.y >= 0) {
-          verticalVelRef.current = 0;
-        }
-
-        // Edge-trigger bilateral `collision:char-bump` events for
-        // every peer character we're newly touching. The Rapier
-        // character controller resolves movement via the query
-        // pipeline (it *slides* rather than collides), so the
-        // contact pipeline never fires `onCollisionEnter` for the
-        // bodies it walked the character past. We walk the
-        // controller's own collision list and convert any contact
-        // with another player's RigidBody into a bump event.
-        const touchedThisFrame = new Set<string>();
-        const n = controller.numComputedCollisions();
-        for (let i = 0; i < n; i++) {
-          const coll = controller.computedCollision(i);
-          if (!coll || !coll.collider) continue;
-          const otherRb = coll.collider.parent();
-          if (!otherRb) continue;
-          const otherUd = otherRb.userData as
-            | { playerId?: string }
-            | undefined;
-          const otherId = otherUd?.playerId;
-          if (!otherId || otherId === selfId) continue;
-          touchedThisFrame.add(otherId);
-          if (!bumpingPeersRef.current.has(otherId)) {
-            // `normal1` points OUT of the obstacle in world space.
-            // For self that's the direction we get pushed; for the
-            // other character it's the reverse.
-            const nrm = coll.normal1;
-            bus.emit({
-              kind: 'collision:char-bump',
-              selfId,
-              otherId,
-              normal: { x: nrm.x, z: nrm.z },
-            });
-            bus.emit({
-              kind: 'collision:char-bump',
-              selfId: otherId,
-              otherId: selfId,
-              normal: { x: -nrm.x, z: -nrm.z },
-            });
-          }
-        }
-        bumpingPeersRef.current = touchedThisFrame;
-
-        // `movementBlockThreshold` from worldSettings controls when
-        // we treat "blocked enough" as fully stopped — preserving
-        // the original behaviour where pushing into a wall snaps
-        // the walking animation back to idle. Only applies when the
-        // user is intentionally moving; gravity-only frames don't
-        // count as "blocked horizontal movement".
-        //
-        // Unified blocking decision: horizontalProgress() is shared with
-        // BotPhysicsWorld (bot path) via physics/blocking.ts — single
-        // source of truth for both human and bot movement-blocking.
-        //
-        // DIP note: SceneFrame (renderer) and BotPhysicsWorld (physics)
-        // each run their own Rapier world and gravity integration because
-        // SceneFrame lives inside the r3f Canvas with @react-three/rapier
-        // while BotPhysicsWorld is a headless Rapier instance. The full
-        // CharacterMovement interface (gravity, position application, anim
-        // derivation) is therefore still duplicated across the two paths.
-        // What IS now unified is the blocking-decision scalar:
-        // horizontalProgress replaces the old magnitude-ratio in SceneFrame
-        // and the inline dot-product in BotPhysicsWorld, so both paths
-        // agree on when "the character is blocked". To remove the remaining
-        // duplication, SceneFrame would need to be refactored onto a
-        // SceneFrameCharacterMovement impl of CharacterMovement — tracked
-        // as a future step in refactor-plan/.
-        const progress = horizontalProgress(
-          { x: corrected.x, z: corrected.z },
-          { x: moveX, z: moveZ },
-        );
-        let horizBlocked = intendsMove && progress < minProgress;
-        let moveDelta = { x: corrected.x, y: corrected.y, z: corrected.z };
-
-        // Step-up assist (shared with bots — physics/step-up.ts): a
-        // blocked, grounded, non-jumping character pushing into a
-        // climbable ledge (stair riser ≤ STEP_UP_MAX_HEIGHT) hops onto
-        // it. Rapier's autostep cannot lift the ball collider over the
-        // honest scanned 0.5 m risers, so without this the player
-        // wedges at the first step. The probe teleports the body for
-        // its sweeps and restores it; we re-apply the returned delta
-        // through the normal pipeline below.
-        // `touchedThisFrame.size === 0` (no peer contact) is
-        // load-bearing: a player blocked by another CHARACTER must
-        // bump, not climb onto their head — see the bot-side guard in
-        // BotPhysicsWorld.step() for the failure mode.
-        if (
-          horizBlocked &&
-          touchedThisFrame.size === 0 &&
-          controller.computedGrounded() &&
-          verticalVelRef.current <= 0
-        ) {
-          const hop = tryStepUp(
-            {
-              compute: (desired) => {
-                controller.computeColliderMovement(
-                  bodyCollider,
-                  desired,
-                  RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-                );
-                const c = controller.computedMovement();
-                return {
-                  x: c.x,
-                  y: c.y,
-                  z: c.z,
-                  grounded: controller.computedGrounded(),
-                };
-              },
-              getTranslation: () => {
-                const bt = body.translation();
-                return { x: bt.x, y: bt.y, z: bt.z };
-              },
-              setTranslation: (p) => {
-                body.setTranslation({ x: p.x, y: p.y, z: p.z }, true);
-                world.propagateModifiedBodyPositionsToColliders();
-              },
-              lastContactIsCharacter: () => {
-                const n = controller.numComputedCollisions();
-                for (let i = 0; i < n; i++) {
-                  const coll = controller.computedCollision(i);
-                  const otherRb = coll?.collider?.parent();
-                  const ud = otherRb?.userData as
-                    | { playerId?: string }
-                    | undefined;
-                  if (ud?.playerId) return true;
-                }
-                return false;
-              },
-            },
-            moveX,
-            moveZ,
-          );
-          if (hop) {
-            moveDelta = hop;
-            horizBlocked = false;
-            verticalVelRef.current = 0;
-          }
-          // The probe sweeps clobbered the controller's computed
-          // state; the grounded check at the top of the NEXT frame
-          // reads it. Re-run the frame's real sweep so the controller
-          // reflects the actual frame, not the last probe.
-          controller.computeColliderMovement(
-            bodyCollider,
-            {
-              x: moveX,
-              y: verticalVelRef.current * dtSec,
-              z: moveZ,
-            },
-            RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-          );
-        }
-
-        const t = body.translation();
-        let newPos = {
-          x: horizBlocked ? t.x : t.x + moveDelta.x,
-          y: t.y + moveDelta.y,
-          z: horizBlocked ? t.z : t.z + moveDelta.z,
-        };
-
-        // Fall-respawn — dual-gate rule (matches BotCharacterMovement / BotDriver).
-        // Primary gate: both (a) no floor found within FLOOR_PROBE_RANGE and
-        // (b) falling fast enough (shouldRespawnFalling). This fires before the
-        // character exits the bottom of the world so respawns feel responsive.
-        // Backstop: Y-floor threshold (respawnThreshold) is retained as a
-        // last-resort safety net for edge cases where the primary gate misses
-        // (e.g. floor probe briefly inconclusive or map geometry very sparse).
-        const floorRay = new RAPIER.Ray(
-          { x: newPos.x, y: newPos.y, z: newPos.z },
-          { x: 0, y: -1, z: 0 },
-        );
-        const floorHit = world.castRay(
-          floorRay,
-          FLOOR_PROBE_RANGE,
-          true,
-          RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-        );
-        const hasFloorUnderneath = floorHit !== null;
-        // Pass `spawnsRef.current` so the backstop has a finite floor
-        // reference even for baked-layout maps whose platforms live in
-        // the GLB rather than in `worldObjects.instances` (otherwise
-        // the threshold collapses to -Infinity and never fires).
-        const backstopThreshold = respawnThreshold(
-          stateSnapshot.worldObjects,
-          spawnsRef.current,
-        );
-        if (
-          shouldRespawnFalling(verticalVelRef.current, hasFloorUnderneath) ||
-          newPos.y < backstopThreshold
-        ) {
-          const r = pickRespawnPosition(spawnsRef.current);
-          if (r) {
-            newPos = r;
-            verticalVelRef.current = 0;
-            // Reset jump state on respawn so the player starts fresh.
-            airborneRef.current = false;
-            jumpsRemainingRef.current = maxJumps;
-            airVelXRef.current = 0;
-            airVelZRef.current = 0;
-            landingBlendTRef.current = 0;
-            // Skip animation transitions; treat as a teleport. The
-            // body warp happens via the same auto-warp path that
-            // handles spawn-from-sky: setSelfPosition(r) updates the
-            // store, and the auto-warp at the top of the next frame
-            // moves the body to match.
-          }
-        }
-
-        body.setNextKinematicTranslation(newPos);
-
-        // Broadcast velocity and isAirborne. While airborne, use the
-        // carried air velocity so peers extrapolate the correct mid-air
-        // trajectory.
-        const broadcastVel = isAirborne
-          ? { x: airVelXRef.current, y: 0, z: airVelZRef.current }
-          : (intendsMove && !horizBlocked)
-            ? { x: dx * playerSpeed * progress, y: 0, z: dz * playerSpeed * progress }
-            : { x: 0, y: 0, z: 0 };
-        const broadcastYaw = intendsMove ? movementYaw : self.yaw;
-
-        if (isAirborne || (intendsMove && !horizBlocked)) {
-          actions.setSelfPosition(newPos, broadcastVel, broadcastYaw, isAirborne);
-          isMoving = isAirborne || (intendsMove && !horizBlocked);
-        } else {
-          actions.setSelfPosition(newPos, { x: 0, y: 0, z: 0 }, broadcastYaw, false);
-        }
+        body.setNextKinematicTranslation(result.newPos);
+        actions.setSelfPosition(result.newPos, result.broadcastVel, result.broadcastYaw, result.isAirborne);
+        isMoving = result.moved;
       }
       // On the moving → idle transition, zero out the velocity once so
       // the renderer (and remote peers) see the stop. While airborne,
       // isMoving is true so this branch never fires mid-air.
       if (!isMoving && wasMoving.current) {
-        const t = body?.translation();
-        const stopPos = t ? { x: t.x, y: t.y, z: t.z } : self.pos;
-        actions.setSelfPosition(stopPos, { x: 0, y: 0, z: 0 }, self.yaw, false);
+        actions.setSelfPosition(before, { x: 0, y: 0, z: 0 }, self.yaw, false);
       }
       wasMoving.current = isMoving;
     }

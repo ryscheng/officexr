@@ -1,5 +1,7 @@
+import { useEffect, type RefObject } from 'react';
 import RAPIER from '@dimforge/rapier3d-compat';
-import type { RapierRigidBody } from '@react-three/rapier';
+import { useRapier, type RapierRigidBody } from '@react-three/rapier';
+import { liveRigidBody } from './liveRigidBody.ts';
 import type { PlayerId, Store, Vec3 } from '@officexr/sdk';
 import { STEP_UP_MAX_HEIGHT } from '../physics/step-up.ts';
 
@@ -86,4 +88,25 @@ export function stepSeated(
   if (pos) {
     body.setNextKinematicTranslation(pos);
   }
+}
+
+/** Installs `seating`'s standing check against the `<Physics>` world it is mounted in. */
+export function StandingCheck({
+  store,
+  seating,
+  selfBodyRef,
+}: {
+  store: Store;
+  seating?: SeatingSource;
+  selfBodyRef: RefObject<RapierRigidBody | null>;
+}): null {
+  const { world } = useRapier();
+  useEffect(
+    () =>
+      seating?.setStandingCheck((feet) =>
+        isStandingSpotFree(world, liveRigidBody(selfBodyRef.current), store.getState().worldSettings.charRadius, feet),
+      ),
+    [seating, world, store, selfBodyRef],
+  );
+  return null;
 }

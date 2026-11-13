@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Physics, type RapierRigidBody } from '@react-three/rapier';
@@ -38,7 +38,10 @@ import type { BakedLayoutPlacement } from '../app/map-loader.ts';
 import type { ViewConfig } from './viewConfig.ts';
 import type { ViewOffsets } from './lookControls.ts';
 import type { AutoWalkSource, MoveInput } from './moveIntent.ts';
-import type { SeatingSource } from './seated.ts';
+import { StandingCheck, type SeatingSource } from './seated.ts';
+import type { ColliderDescriptor } from '../physics/rules.ts';
+import type { SimBakedColliders, SimCore } from '../sim/SimCore.ts';
+import { TsSimCore } from '../sim/TsSimCore.ts';
 
 /**
  * Each frame, anchor the sun (directional light + its target) to the
@@ -87,6 +90,8 @@ function OptionalXR({ store, children }: { store?: XRStore; children: React.Reac
 }
 
 const noopSubscribe = () => () => {};
+
+const createTsSimCore = (charRadius: number): SimCore => new TsSimCore(charRadius);
 
 /** A layout placement with the URL of its baked GLB, e.g. `/api/baked-layouts/lobby`. */
 export interface SceneBakedLayout extends BakedLayoutPlacement {
@@ -166,6 +171,28 @@ interface SceneProps {
 export function Scene(props: SceneProps) {
   const { store, selfId, cameraMode, sync, bakedLayouts } = props;
   const excludeBakedInstance = useMemo(() => excludeLayoutInstances(bakedLayouts), [bakedLayouts]);
+  const [loadedBakedColliders, setLoadedBakedColliders] = useState<
+    ReadonlyMap<string, readonly ColliderDescriptor[]>
+  >(new Map());
+  const bakedColliders = useMemo(
+    (): SimBakedColliders[] =>
+      (bakedLayouts ?? []).flatMap((p) => {
+        const colliders = loadedBakedColliders.get(p.roomInstanceId);
+        if (!colliders) {
+          return [];
+        }
+        const { position, rotation } = placementTransform(p);
+        return [
+          {
+            roomInstanceId: p.roomInstanceId,
+            position: { x: position[0], y: position[1], z: position[2] },
+            yawRad: rotation[1],
+            colliders,
+          },
+        ];
+      }),
+    [bakedLayouts, loadedBakedColliders],
+  );
   const { proximity, lighting, background, fixedCamera } = props.view;
   const worldFocused = props.worldFocused ?? true;
   const { xrStore } = props;
@@ -208,7 +235,7 @@ export function Scene(props: SceneProps) {
   const sunLightTargetRef = useRef<THREE.Object3D | null>(null);
 
   // Set by `Players` when the self avatar's `RigidBody` mounts; SceneFrame
-  // reads it each frame to drive the `KinematicCharacterController`.
+  // moves it to the sim's position each frame.
   const selfBodyRef = useRef<RapierRigidBody | null>(null);
 
   // Mutated each frame by SceneFrame to true while the local player is
@@ -267,15 +294,12 @@ export function Scene(props: SceneProps) {
       {props.onFrameStats && <FrameStatsProbe onSample={props.onFrameStats} />}
       <Suspense fallback={null}>
         {/*
-          <Physics> wraps everything that needs Rapier — characters,
-          map colliders, the per-frame movement loop. The gravity
-          vector here drives DYNAMIC bodies; the local player is a
-          kinematic body whose character controller integrates
-          gravity manually in `SceneFrame` (Rapier doesn't auto-apply
-          the world's gravity to kinematic bodies). The two values
-          should stay in sync so any future dynamic body falls at
-          the same rate the player does. `timeStep="vary"` lets
-          Rapier sub-step at the real frame delta.
+          SRP: <Physics> no longer moves the local player (SceneFrame's
+          SimCore does) but still hosts the character bodies whose
+          sensors raise proximity and bump events (Players →
+          physics/bridge.ts) and the colliders the seating standing
+          check probes, so map colliders live in both worlds until
+          those move into SimCore.
         */}
         <Physics gravity={[0, -20, 0]} timeStep="vary">
         <MapColliders store={store} exclude={excludeBakedInstance} />
@@ -290,7 +314,9 @@ export function Scene(props: SceneProps) {
                 gltfPath={p.gltfPath}
                 layoutName={p.layoutName}
                 transform={transform}
-                onReady={() => props.onCollidersReady?.(p.roomInstanceId)}
+                onReady={(colliders) =>
+                  setLoadedBakedColliders((prev) => new Map(prev).set(p.roomInstanceId, colliders))
+                }
                 onError={props.onCollidersError}
               />
             </React.Fragment>
@@ -412,11 +438,15 @@ export function Scene(props: SceneProps) {
           autoWalk={props.autoWalk}
           seating={props.seating}
           selfBodyRef={selfBodyRef}
+          createSim={createTsSimCore}
+          bakedColliders={bakedColliders}
+          onBakedCollidersApplied={(ids) => ids.forEach((id) => props.onCollidersReady?.(id))}
           worldFocused={worldFocused}
           spawnPoints={props.spawnPoints}
           isAirborneRef={isAirborneRef}
           xrPresenting={xrPresenting}
         />
+        <StandingCheck store={store} seating={props.seating} selfBodyRef={selfBodyRef} />
         {props.onModelsReady && (
           <ModelsReady store={store} selfId={selfId} onReady={props.onModelsReady} />
         )}

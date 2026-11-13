@@ -2,7 +2,6 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import type { PlayerId, Vec3, WorldObjects, WorldSettings } from '@officexr/sdk';
 import {
   BODY_GROUPS,
-  WALL_GROUPS,
   INNER_SENSOR_GROUPS,
   OUTER_SENSOR_GROUPS,
   type ColliderTag,
@@ -15,15 +14,9 @@ import {
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp, type StepUpProbe } from '../physics/step-up.ts';
+import { kccStepUpProbe } from '../physics/kcc-step-up-probe.ts';
+import { ColliderSync } from '../physics/collider-sync.ts';
 
-
-/** Per-peer kinematic mirror body the bot maintains in its own Rapier
- * world. Their positions are kept in sync with the SDK store's last
- * extrapolated peer positions every tick. */
-interface PeerMirror {
-  body: RAPIER.RigidBody;
-  collider: RAPIER.Collider;
-}
 
 /** Result of one `step()` — the corrected movement vector from the
  * character controller, fraction of intent that survived contact, and
@@ -96,12 +89,12 @@ export class BotPhysicsWorld {
   private body: RAPIER.RigidBody;
   private bodyCollider: RAPIER.Collider;
   private controller: RAPIER.KinematicCharacterController;
+  private readonly stepUpProbe: StepUpProbe;
 
-  /** One fixed RigidBody per cube in the active map. Rebuilt by
-   * `syncCubes` whenever the WorldObjects fingerprint changes — the
-   * picker pushes a new snapshot on every map switch, and the
-   * bot's store sees that broadcast just like a peer would. */
-  private mapColliderBodies: RAPIER.RigidBody[] = [];
+  /** The map's static colliders (rebuilt by `syncCubes` whenever the
+   * WorldObjects fingerprint changes — the picker pushes a new snapshot
+   * on every map switch) and the per-peer kinematic mirror bodies. */
+  private colliders: ColliderSync;
   private cubesSource: WorldObjects | null = null;
   private cubesFingerprint: string | null = null;
   /** Per-frame integrated fall speed. Accumulates `GRAVITY * dt`
@@ -110,9 +103,8 @@ export class BotPhysicsWorld {
    * — we integrate it ourselves and pass into the controller's
    * desired-translation, mirroring `SceneFrame`'s player loop. */
   private verticalVel = 0;
-  private peerMirrors = new Map<PlayerId, PeerMirror>();
-  /** Collider handle → tag, for the bridge routing in
-   * `drainSensorEvents`. */
+  /** Own collider handle → tag, for the bridge routing in
+   * `drainSensorEvents`. Peer mirrors are tagged via `tagOf`. */
   private tagByHandle = new Map<number, ColliderTag>();
   /** Pairs of (selfCollider.handle, otherCollider.handle) that were
    * intersecting at the end of the previous step. Diff against the
@@ -121,10 +113,6 @@ export class BotPhysicsWorld {
   /** Player IDs the controller was bumping into on the previous frame,
    * for edge-triggering bump events. */
   private bumpingPeers = new Set<PlayerId>();
-  /** Mapping from peer-mirror collider handle → playerId, so the
-   * character controller's collision list can be translated into a
-   * peer ID for the bump event. */
-  private peerByColliderHandle = new Map<number, PlayerId>();
   /** The last position applied via `applyTranslation` (or `teleport`). This
    * is the position scheduled via `setNextKinematicTranslation` that WILL be
    * committed to the Rapier broadphase on the next `stepWorld()` call. Using
@@ -145,6 +133,7 @@ export class BotPhysicsWorld {
     // and the local player fall at identical rates. Kinematic bodies
     // don't auto-apply it — see `verticalVel` integration in step().
     this.world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
+    this.colliders = new ColliderSync(this.world);
 
     const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
       opts.startPos.x,
@@ -212,6 +201,14 @@ export class BotPhysicsWorld {
     // (kinematic peers can't be excluded via includeDynamicBodies).
     // Ledge climbing is handled explicitly by the shared step-up
     // assist (physics/step-up.ts), which has a peer-contact guard.
+    this.stepUpProbe = kccStepUpProbe(
+      this.world,
+      this.controller,
+      this.body,
+      this.bodyCollider,
+      (handle) => this.tagOf(handle)?.kind === 'body',
+      BODY_GROUPS,
+    );
   }
 
   /** Current bot pose in world space. */
@@ -274,35 +271,9 @@ export class BotPhysicsWorld {
       worldObjects.instances.map((i) => [i.kindId, i.position, i.yawDeg ?? 0]),
     ]);
     if (this.cubesFingerprint === fingerprint) return;
-    for (const b of this.mapColliderBodies) this.world.removeRigidBody(b);
-    this.mapColliderBodies = [];
-    for (const c of worldObjectsToColliders(worldObjects, this.instanceAABB, this.colliderShape)) {
-      if (c.type === 'cuboid') {
-        const desc = RAPIER.RigidBodyDesc.fixed().setTranslation(
-          c.center.x,
-          c.center.y,
-          c.center.z,
-        );
-        const body = this.world.createRigidBody(desc);
-        const cdesc = RAPIER.ColliderDesc.cuboid(
-          c.halfExtents.x,
-          c.halfExtents.y,
-          c.halfExtents.z,
-        ).setCollisionGroups(WALL_GROUPS);
-        this.world.createCollider(cdesc, body);
-        this.mapColliderBodies.push(body);
-      } else {
-        // Slope kinds: world-space trimesh (vertices already placed),
-        // so the fixed body sits at the origin.
-        const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-        const cdesc = RAPIER.ColliderDesc.trimesh(
-          new Float32Array(c.vertices),
-          new Uint32Array(c.indices),
-        ).setCollisionGroups(WALL_GROUPS);
-        this.world.createCollider(cdesc, body);
-        this.mapColliderBodies.push(body);
-      }
-    }
+    this.colliders.setStatic([
+      { colliders: worldObjectsToColliders(worldObjects, this.instanceAABB, this.colliderShape) },
+    ]);
     this.cubesFingerprint = fingerprint;
   }
 
@@ -314,11 +285,10 @@ export class BotPhysicsWorld {
     _nowMs: number,
     charRadius: number,
   ): void {
-    const seen = new Set<PlayerId>();
+    const mirrorPositions = new Map<PlayerId, Vec3>();
 
     for (const [id, p] of Object.entries(players)) {
       if (id === this.selfId) continue;
-      seen.add(id as PlayerId);
       // Use the raw stored position for the physics mirror (no extrapolation),
       // but clamped so the mirror sphere's 3D contact surface never overlaps
       // our own sphere (the "start-inside-collider" pass-through guard).
@@ -392,37 +362,10 @@ export class BotPhysicsWorld {
         }
         // If hSq <= 0 (bots vertically too far apart to touch), leave mirrorBodyPos = p.pos.
       }
-      const ePos = mirrorBodyPos;
-      let mirror = this.peerMirrors.get(id as PlayerId);
-      if (!mirror) {
-        const bdesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-          ePos.x,
-          ePos.y,
-          ePos.z,
-        );
-        const mb = this.world.createRigidBody(bdesc);
-        const cdesc = RAPIER.ColliderDesc.ball(charRadius)
-          .setTranslation(0, BODY_Y, 0)
-          .setCollisionGroups(BODY_GROUPS)
-          .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
-          .setActiveCollisionTypes(RAPIER.ActiveCollisionTypes.ALL);
-        const mc = this.world.createCollider(cdesc, mb);
-        this.tagByHandle.set(mc.handle, { kind: 'body', ownerId: id });
-        this.peerByColliderHandle.set(mc.handle, id as PlayerId);
-        mirror = { body: mb, collider: mc };
-        this.peerMirrors.set(id as PlayerId, mirror);
-      } else {
-        mirror.body.setNextKinematicTranslation({ x: ePos.x, y: ePos.y, z: ePos.z });
-      }
+      mirrorPositions.set(id as PlayerId, mirrorBodyPos);
     }
 
-    // Remove mirrors for peers that left.
-    for (const [id, mirror] of this.peerMirrors) {
-      if (seen.has(id)) continue;
-      this.tagByHandle.delete(mirror.collider.handle);
-      this.peerByColliderHandle.delete(mirror.collider.handle);
-      this.world.removeRigidBody(mirror.body);
-      this.peerMirrors.delete(id);
+    for (const id of this.colliders.syncPeers(mirrorPositions, charRadius)) {
       // Forget any bump-state for a peer that left so a new
       // same-named peer would re-trigger the bump on first contact.
       this.bumpingPeers.delete(id);
@@ -497,7 +440,7 @@ export class BotPhysicsWorld {
     for (let i = 0; i < n; i++) {
       const coll = this.controller.computedCollision(i);
       if (!coll || !coll.collider) continue;
-      const otherId = this.peerByColliderHandle.get(coll.collider.handle);
+      const otherId = this.colliders.peerIdOf(coll.collider.handle);
       if (!otherId) continue; // wall or unknown
       next.add(otherId);
       if (this.bumpingPeers.has(otherId)) continue;
@@ -563,46 +506,6 @@ export class BotPhysicsWorld {
     };
   }
 
-  /** Adapter exposing this world's controller/body pair to the shared
-   * step-up assist. `setTranslation` propagates the probe pose to the
-   * colliders immediately so subsequent sweeps see it. */
-  private readonly stepUpProbe: StepUpProbe = {
-    compute: (desired) => {
-      this.controller.computeColliderMovement(
-        this.bodyCollider,
-        desired,
-        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-        BODY_GROUPS,
-      );
-      const c = this.controller.computedMovement();
-      return {
-        x: c.x,
-        y: c.y,
-        z: c.z,
-        grounded: this.controller.computedGrounded(),
-      };
-    },
-    getTranslation: () => {
-      const t = this.body.translation();
-      return { x: t.x, y: t.y, z: t.z };
-    },
-    setTranslation: (p) => {
-      this.body.setTranslation({ x: p.x, y: p.y, z: p.z }, true);
-      this.world.propagateModifiedBodyPositionsToColliders();
-    },
-    lastContactIsCharacter: () => {
-      const n = this.controller.numComputedCollisions();
-      for (let i = 0; i < n; i++) {
-        const coll = this.controller.computedCollision(i);
-        if (!coll?.collider) continue;
-        const handle = coll.collider.handle;
-        if (this.peerByColliderHandle.has(handle)) return true;
-        if (this.tagByHandle.get(handle)?.kind === 'body') return true;
-      }
-      return false;
-    },
-  };
-
   /** Commit an absolute world-space pose to the bot's body. ALL
    * three components are written — y is no longer pinned, since
    * gravity drives vertical motion. */
@@ -642,7 +545,7 @@ export class BotPhysicsWorld {
     // Body-vs-body contact events (entered only).
     this.world.contactPairsWith(this.bodyCollider, (other) => {
       const a = this.tagByHandle.get(this.bodyCollider.handle);
-      const b = this.tagByHandle.get(other.handle);
+      const b = this.tagOf(other.handle);
       if (a && b) events.push({ a, b, started: true });
     });
 
@@ -655,7 +558,7 @@ export class BotPhysicsWorld {
         next.add(key);
         if (!this.prevIntersections.has(key)) {
           const a = this.tagByHandle.get(sensorCollider.handle);
-          const b = this.tagByHandle.get(other.handle);
+          const b = this.tagOf(other.handle);
           if (a && b) events.push({ a, b, started: true });
         }
       });
@@ -669,8 +572,8 @@ export class BotPhysicsWorld {
     for (const key of this.prevIntersections) {
       if (next.has(key)) continue;
       const [hA, hB] = key.split(':').map(Number);
-      const a = this.tagByHandle.get(hA);
-      const b = this.tagByHandle.get(hB);
+      const a = this.tagOf(hA);
+      const b = this.tagOf(hB);
       if (a && b) events.push({ a, b, started: false });
     }
     this.prevIntersections = next;
@@ -678,13 +581,15 @@ export class BotPhysicsWorld {
     return events;
   }
 
+  private tagOf(handle: number): ColliderTag | undefined {
+    const peerId = this.colliders.peerIdOf(handle);
+    return peerId ? { kind: 'body', ownerId: peerId } : this.tagByHandle.get(handle);
+  }
+
   dispose(): void {
     this.world.free();
-    this.peerMirrors.clear();
-    this.peerByColliderHandle.clear();
     this.tagByHandle.clear();
     this.prevIntersections.clear();
     this.bumpingPeers.clear();
-    this.mapColliderBodies = [];
   }
 }

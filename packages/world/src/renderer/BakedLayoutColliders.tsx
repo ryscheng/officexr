@@ -23,13 +23,14 @@
  * `three` IS allowed in renderer files per CLAUDE.md rules.
  */
 
-import React, { Suspense, useEffect, useEffectEvent } from 'react';
+import React, { Suspense, useEffect, useEffectEvent, useMemo } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import { RigidBody, CuboidCollider, TrimeshCollider } from '@react-three/rapier';
 import { getVersion } from '../app/bake-registry.ts';
 import { parseEmbeddedColliders } from '../app/baked-collider-extras.ts';
 import { WALL_GROUPS } from '../physics/groups.ts';
+import type { ColliderDescriptor } from '../physics/rules.ts';
 import { BakedLayoutErrorBoundary } from './BakedLayout.tsx';
 import type { PlacementTransform } from './placement-transform.ts';
 
@@ -37,16 +38,11 @@ import type { PlacementTransform } from './placement-transform.ts';
 // Inner component (inside Suspense — can use useGLTF)
 // ---------------------------------------------------------------------------
 
-interface MeshAABB {
-  center: [number, number, number];
-  halfExtents: [number, number, number];
-}
-
-function extractMeshAABBs(scene: THREE.Object3D): MeshAABB[] {
+function extractMeshAABBs(scene: THREE.Object3D): ColliderDescriptor[] {
   const box = new THREE.Box3();
   const center = new THREE.Vector3();
   const size = new THREE.Vector3();
-  const results: MeshAABB[] = [];
+  const results: ColliderDescriptor[] = [];
 
   // Force a matrix update so `setFromObject(mesh)` sees current
   // transforms even though we haven't rendered yet.
@@ -63,81 +59,71 @@ function extractMeshAABBs(scene: THREE.Object3D): MeshAABB[] {
     box.getSize(size);
 
     results.push({
-      center: [center.x, center.y, center.z],
-      halfExtents: [size.x / 2, size.y / 2, size.z / 2],
+      type: 'cuboid',
+      center: { x: center.x, y: center.y, z: center.z },
+      halfExtents: { x: size.x / 2, y: size.y / 2, z: size.z / 2 },
     });
   });
 
   return results;
 }
 
-interface BakedLayoutCollidersInnerProps {
-  effectiveUrl: string;
-  transform?: PlacementTransform;
-  onReady?: () => void;
-}
-
-function BakedLayoutCollidersInner({ effectiveUrl, transform, onReady }: BakedLayoutCollidersInnerProps) {
-  const gltf = useGLTF(effectiveUrl);
-  // Child effects run first, so the colliders below exist by the time this fires.
-  const notifyReady = useEffectEvent(() => onReady?.());
-  useEffect(() => {
-    notifyReady();
-  }, [effectiveUrl]);
-
-  // Preferred path: the physics descriptors the bake embedded in the
-  // scene extras (GLTFLoader surfaces glTF `extras` as `userData`).
-  const embedded = parseEmbeddedColliders(gltf.scene.userData);
-
+/** The bake's embedded physics descriptors, else (stale pre-extras bake) per-mesh AABBs. */
+function layoutColliders(scene: THREE.Object3D, effectiveUrl: string): ColliderDescriptor[] {
+  // GLTFLoader surfaces glTF `extras` as `userData`.
+  const embedded = parseEmbeddedColliders(scene.userData);
   if (embedded) {
-    if (embedded.length === 0) return null;
-    return (
-      <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }} {...transform}>
-        {embedded.map((d, i) =>
-          d.type === 'cuboid' ? (
-            <CuboidCollider
-              key={i}
-              position={[d.center.x, d.center.y, d.center.z]}
-              args={[d.halfExtents.x, d.halfExtents.y, d.halfExtents.z]}
-              collisionGroups={WALL_GROUPS}
-            />
-          ) : (
-            <TrimeshCollider
-              key={i}
-              args={[
-                new Float32Array(d.vertices),
-                new Uint32Array(d.indices),
-              ]}
-              collisionGroups={WALL_GROUPS}
-            />
-          ),
-        )}
-      </RigidBody>
-    );
+    return embedded;
   }
-
-  // Stale bake (pre-extras GLB). Its meshes are still one-per-object
-  // (the old non-merging pipeline), so per-mesh AABBs remain a valid
-  // collider source. Warn so the user knows to re-save the layout —
-  // a re-bake upgrades it to embedded colliders + merged visuals.
+  // A stale bake's meshes are still one-per-object (the old
+  // non-merging pipeline), so per-mesh AABBs remain a valid collider
+  // source. Warn so the user knows to re-save the layout — a re-bake
+  // upgrades it to embedded colliders + merged visuals.
   console.warn(
     `[BakedLayoutColliders] "${effectiveUrl}" carries no embedded collider ` +
       'extras (stale bake). Falling back to per-mesh AABB colliders; ' +
       're-save the layout to re-bake it.',
   );
-  const aabbs = extractMeshAABBs(gltf.scene);
-  if (aabbs.length === 0) return null;
+  return extractMeshAABBs(scene);
+}
 
+interface BakedLayoutCollidersInnerProps {
+  effectiveUrl: string;
+  transform?: PlacementTransform;
+  onReady?: (colliders: readonly ColliderDescriptor[]) => void;
+}
+
+function BakedLayoutCollidersInner({ effectiveUrl, transform, onReady }: BakedLayoutCollidersInnerProps) {
+  const gltf = useGLTF(effectiveUrl);
+  const colliders = useMemo(() => layoutColliders(gltf.scene, effectiveUrl), [gltf.scene, effectiveUrl]);
+  // Child effects run first, so the colliders below exist by the time this fires.
+  const notifyReady = useEffectEvent(() => onReady?.(colliders));
+  useEffect(() => {
+    notifyReady();
+  }, [effectiveUrl]);
+
+  if (colliders.length === 0) return null;
   return (
     <RigidBody type="fixed" colliders={false} userData={{ kind: 'wall' }} {...transform}>
-      {aabbs.map((aabb, i) => (
-        <CuboidCollider
-          key={i}
-          position={aabb.center}
-          args={aabb.halfExtents}
-          collisionGroups={WALL_GROUPS}
-        />
-      ))}
+      {colliders.map((d, i) =>
+        d.type === 'cuboid' ? (
+          <CuboidCollider
+            key={i}
+            position={[d.center.x, d.center.y, d.center.z]}
+            args={[d.halfExtents.x, d.halfExtents.y, d.halfExtents.z]}
+            collisionGroups={WALL_GROUPS}
+          />
+        ) : (
+          <TrimeshCollider
+            key={i}
+            args={[
+              new Float32Array(d.vertices),
+              new Uint32Array(d.indices),
+            ]}
+            collisionGroups={WALL_GROUPS}
+          />
+        ),
+      )}
     </RigidBody>
   );
 }
@@ -158,7 +144,7 @@ export interface BakedLayoutCollidersProps {
   /** Where the layout is placed; the colliders are layout-local, so this goes on their `RigidBody`. */
   transform?: PlacementTransform;
   /** Fires once the colliders have mounted (also when there are none), again per new layout. */
-  onReady?: () => void;
+  onReady?: (colliders: readonly ColliderDescriptor[]) => void;
   onError?: (error: Error) => void;
 }
 

@@ -8,7 +8,7 @@
  * dual-gate fall-respawn gating.
  *
  * DIP: this file lives in the headless physics layer. It has no Three,
- * no React, no r3f imports. SceneFrame (React) and BotDriver (Rapier)
+ * no React, no r3f imports. SimCore and BotDriver
  * depend on this interface — not the reverse.
  *
  * SRP: the interface owns only "intent verb → corrected move + state".
@@ -49,9 +49,9 @@ export interface CharacterMoveResult {
 }
 
 /**
- * Intent-command interface. One implementation per physics context
- * (BotCharacterMovement for headless Rapier; SceneFrameCharacterMovement
- * for the r3f-hosted Rapier world inside the Canvas).
+ * Intent-command interface, implemented for bots by BotCharacterMovement.
+ * The local player's `SimCore` steps on plain-data input instead and
+ * returns the same `CharacterMoveResult`.
  *
  * OCP design note: `dtSec` is part of every verb so that each
  * implementation can integrate gravity and compute physics-correct deltas
