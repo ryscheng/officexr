@@ -1,4 +1,5 @@
 import { ZNetEvent } from '@officexr/sdk';
+import { ZodFirstPartyTypeKind } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ZFrame, ZPresenceData } from './protocol.ts';
 
@@ -9,8 +10,18 @@ export function protocolSchemaJson(): string {
   const schema = zodToJsonSchema(ZFrame, {
     name: 'Frame',
     definitions: { NetEvent: ZNetEvent, PresenceData: ZPresenceData },
+    // Inline everything: typify can't resolve the deep pointer $refs the default strategy emits.
+    $refStrategy: 'none',
+    // Peers may send extra keys, so only `.strict()` objects are closed.
+    removeAdditionalStrategy: 'strict',
+    // Exactly one branch of a discriminated union matches; zod-to-json-schema emits `anyOf`.
+    postProcess: (json, def) => {
+      if (json && 'anyOf' in json && 'typeName' in def && def.typeName === ZodFirstPartyTypeKind.ZodDiscriminatedUnion) {
+        const { anyOf, ...rest } = json;
+        return { ...rest, oneOf: anyOf };
+      }
+      return json;
+    },
   });
-  // zod-to-json-schema emits `anyOf` for unions, `$ref` paths included. Every union here has mutually
-  // exclusive branches (tagged by `t`/`kind`, or nullable), so `oneOf` is the tighter contract for typify.
-  return `${JSON.stringify(schema, null, 2).replaceAll('anyOf', 'oneOf')}\n`;
+  return `${JSON.stringify(schema, null, 2)}\n`;
 }

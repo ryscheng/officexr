@@ -74,7 +74,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang lld
 
       - name: Install toolchain
-        run: rustup show active-toolchain || rustup toolchain install
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
 

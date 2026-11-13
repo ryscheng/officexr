@@ -307,7 +307,7 @@ const ZEnvelope = z.object({
   t: z.number(),
 });
 
-const withEnvelope = <K extends string, V extends number, S extends z.AnyZodObject>(
+const withEnvelope = <K extends NetEventKind, V extends number, S extends z.AnyZodObject>(
   kind: K,
   entry: { v: V; schema: S },
 ) => ZEnvelope.extend({ kind: z.literal(kind), v: z.literal(entry.v) }).merge(entry.schema);
@@ -332,9 +332,10 @@ export const ZNetEvent = z.discriminatedUnion('kind', [
   withEnvelope('desk:claims', PROTOCOL['desk:claims']),
 ]);
 
-type Equals<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
-const zNetEventMatchesNetEvent: Equals<z.infer<typeof ZNetEvent>, NetEvent> = true;
-void zNetEventMatchesNetEvent;
+type Flat<T> = T extends unknown ? { [K in keyof T]: T[K] } : never;
+type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Assert<T extends true> = T;
+export type ZNetEventMatchesNetEvent = Assert<Equals<Flat<z.infer<typeof ZNetEvent>>, Flat<NetEvent>>>;
 
 export type ValidationResult =
   | { ok: true; event: NetEvent }

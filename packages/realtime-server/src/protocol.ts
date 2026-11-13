@@ -82,7 +82,7 @@ export const ZCustomFrame = z.object({
   /** App-defined sub-kind. */
   kind: z.string(),
   /** Arbitrary JSON-serialisable payload. */
-  payload: z.unknown(),
+  payload: z.unknown().refine((value) => value !== undefined),
 });
 
 /**
@@ -107,8 +107,9 @@ export type SnapshotFrame = z.infer<typeof ZSnapshotFrame>;
 export type BroadcastFrame = z.infer<typeof ZBroadcastFrame>;
 export type TrackPresenceFrame = z.infer<typeof ZTrackPresenceFrame>;
 export type PresenceFrame = z.infer<typeof ZPresenceFrame>;
-export type CustomFrame = z.infer<typeof ZCustomFrame>;
-export type Frame = z.infer<typeof ZFrame>;
+// z.unknown() makes the key optional in z.infer; the wire type keeps it required.
+export type CustomFrame = Omit<z.infer<typeof ZCustomFrame>, 'payload'> & { payload: unknown };
+export type Frame = Exclude<z.infer<typeof ZFrame>, { t: 'custom' }> | CustomFrame;
 
 /** Type guard for narrowing a parsed frame. */
 export function isFrame(value: unknown): value is Frame {
