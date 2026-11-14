@@ -17,6 +17,7 @@
     "@officexr/core-refactor": "workspace:*",
     "@officexr/realtime-server": "workspace:*",
     "@officexr/sdk": "workspace:*",
+    "@officexr/server": "workspace:*",
     "@officexr/studio-mcp": "workspace:*",
     "@officexr/world": "workspace:*",
     "@radix-ui/react-checkbox": "^1.1.5",

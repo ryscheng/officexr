@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./shared": "./src/shared.ts",
+    "./preview-token": "./src/previewTokenBrowser.ts",
     "./static": "./src/staticDir.ts",
     "./listen": "./src/listen.ts"
   },

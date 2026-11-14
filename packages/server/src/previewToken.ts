@@ -2,9 +2,7 @@ import { createHmac } from 'node:crypto';
 import { jwtVerify, SignJWT } from 'jose';
 import { isLogin } from '@officexr/realtime-server/join-token';
 import type { Identity } from './shared';
-
-/** The URL fragment parameter that carries a preview token back to the frontend. */
-export const PREVIEW_TOKEN_PARAM = 'officexr_token';
+import { PREVIEW_TOKEN_PARAM } from './previewTokenBrowser';
 
 const AUDIENCE = 'officexr-preview';
 export const PREVIEW_TOKEN_TTL_SECONDS = 10 * 60;

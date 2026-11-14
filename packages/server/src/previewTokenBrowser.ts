@@ -3,7 +3,7 @@
  * Sign-in hands them a short-lived token in the URL fragment instead; it lives in sessionStorage and rides on API
  * calls as `Authorization: Bearer`.
  */
-const PARAM = 'officexr_token';
+export const PREVIEW_TOKEN_PARAM = 'officexr_token';
 const STORAGE_KEY = 'officexr.previewToken';
 
 type TokenStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -33,7 +33,7 @@ function expiry(token: string): number | null {
 /** Moves a sign-in's token from the URL fragment into storage and strips it from the address bar and history. */
 export function capturePreviewToken(loc: Location = window.location, hist: History = window.history, storage = sessionStore()) {
   const params = new URLSearchParams(loc.hash.slice(1));
-  const token = params.get(PARAM);
+  const token = params.get(PREVIEW_TOKEN_PARAM);
   if (token === null) {
     return;
   }
@@ -42,11 +42,10 @@ export function capturePreviewToken(loc: Location = window.location, hist: Histo
   } catch {
     memoryToken = token;
   }
-  params.delete(PARAM);
+  params.delete(PREVIEW_TOKEN_PARAM);
   const hash = params.toString();
   hist.replaceState(hist.state, '', `${loc.pathname}${loc.search}${hash ? `#${hash}` : ''}`);
 }
-
 
 /** The stored preview token, or `null` when there is none or it has expired (an expired one is dropped). */
 export function previewToken(storage = sessionStore(), now = Date.now()): string | null {
@@ -74,4 +73,16 @@ export function clearPreviewToken(storage = sessionStore()) {
   } catch {
     // Nothing stored that could be read back.
   }
+}
+
+/** `init` for fetching `input` with the stored preview token as `Authorization: Bearer`, or `init` unchanged without one. */
+export function withPreviewTokenHeader(input: RequestInfo | URL, init?: RequestInit): RequestInit | undefined {
+  const token = previewToken();
+  if (token === null) {
+    return init;
+  }
+  // `init.headers` replaces a `Request`'s own headers, so they are carried over.
+  const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+  headers.set('Authorization', `Bearer ${token}`);
+  return { ...init, headers };
 }

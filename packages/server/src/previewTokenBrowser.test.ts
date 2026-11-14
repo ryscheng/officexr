@@ -1,6 +1,5 @@
-// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { capturePreviewToken, clearPreviewToken, previewToken } from './previewToken';
+import { capturePreviewToken, clearPreviewToken, previewToken } from './previewTokenBrowser';
 
 const NOW = Date.UTC(2026, 0, 1);
 const b64url = (value: unknown) => btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

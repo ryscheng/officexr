@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { MAX_DESCRIPTION, MAX_NAME, isOfficeCreator, type Identity, type Office } from '@officexr/server/shared';
 import { apiFetch, paths } from '../apiOrigin';
 import { Async } from '../Async';
-import { clearPreviewToken } from '../previewToken';
+import { clearPreviewToken } from '@officexr/server/preview-token';
 import { SignInLink } from '../SignIn';
 import { DEFAULT_MAP } from '@officexr/world/scenes';
 import { errorMessage, useApi, type ApiState } from '../useApi';

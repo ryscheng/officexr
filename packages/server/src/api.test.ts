@@ -15,7 +15,8 @@ import { apiMiddleware, type CreateOffice, type OfficeCharacters, type OfficeDes
 import { createApp } from './app';
 import { isAllowedOrigin, parseFrontendOrigins } from './cors';
 import { JAAS_TOKEN_TTL_SECONDS, jaasConfigFromEnv, jaasUserId, type JaasConfig } from './jaasToken';
-import { PREVIEW_TOKEN_PARAM, PREVIEW_TOKEN_TTL_SECONDS, PreviewTokens } from './previewToken';
+import { PREVIEW_TOKEN_TTL_SECONDS, PreviewTokens } from './previewToken';
+import { PREVIEW_TOKEN_PARAM } from './previewTokenBrowser';
 import { createGoogleStrategy, createSessionReader, emailDomain, parseCookieDomain, safeReturnTarget, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import type { Identity, Office } from './shared';
 

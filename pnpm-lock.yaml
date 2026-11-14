@@ -180,6 +180,9 @@ importers:
       '@officexr/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@officexr/server':
+        specifier: workspace:*
+        version: link:../server
       '@officexr/studio-mcp':
         specifier: workspace:*
         version: link:../studio-mcp

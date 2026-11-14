@@ -1,6 +1,7 @@
 import { ServerResponse, type IncomingMessage } from 'node:http';
 import type { NextHandleFunction } from 'connect';
 import { isAllowedOrigin, type createSessionReader } from '@officexr/server';
+import { PREVIEW_TOKEN_PARAM } from '@officexr/server/preview-token';
 import type { Identity } from '@officexr/server/shared';
 import { assertNever, pathname } from './http.ts';
 
@@ -8,6 +9,8 @@ export type IsAllowed = (login: string) => Promise<boolean>;
 type SessionReader = ReturnType<typeof createSessionReader>;
 
 export type VerifyApiToken = (token: string) => Promise<{ login: string } | null>;
+/** `PreviewTokens.verify`: the web backend's stand-in for its session cookie on frontends the cookie can't reach. */
+export type VerifyPreviewToken = (token: string) => Promise<Identity | null>;
 
 /** Where a request's identity came from: the session cookie (possibly absent) or a verified bearer token. */
 type Source = { type: 'session'; identity: Identity | null } | { type: 'bearer'; identity: Identity };
@@ -57,12 +60,26 @@ export function sendJson(res: ServerResponse, status: number, body: unknown) {
 /**
  * Mount after the session reader's middlewares. Answers `GET /api/me` itself, refuses every request without an
  * allowed identity, and passes allowed ones on; a failed allowlist lookup goes to the error handler.
- * On `/api/*` a Bearer studio API token replaces the cookie; bearer callers must be on both the studio and admin allowlists.
+ * A Bearer preview token stands in for the session cookie, as its user. Any other Bearer on `/api/*` must be a studio
+ * API token, whose callers must be on both the studio and admin allowlists.
  */
-export function studioGate(reader: SessionReader, isStudioAllowed: IsAllowed, isAdmin: IsAllowed, verifyApiToken?: VerifyApiToken): NextHandleFunction {
+export function studioGate(
+  reader: SessionReader,
+  isStudioAllowed: IsAllowed,
+  isAdmin: IsAllowed,
+  verifyApiToken?: VerifyApiToken,
+  verifyPreviewToken?: VerifyPreviewToken,
+): NextHandleFunction {
   const identify = async (req: IncomingMessage): Promise<Source | Extract<Access, { type: 'denied' }>> => {
     const path = pathname(req);
-    const token = isUnder(path, '/api') ? bearerToken(req) : undefined;
+    const bearer = bearerToken(req);
+    const preview = bearer === undefined ? null : await verifyPreviewToken?.(bearer);
+    if (preview) {
+      // So routes that read the session user, like the token approvals, act for the preview token's user.
+      (req as { user?: Identity }).user = preview;
+      return { type: 'session', identity: preview };
+    }
+    const token = isUnder(path, '/api') ? bearer : undefined;
     if (token === undefined) {
       return { type: 'session', identity: reader.sessionIdentity(req) };
     }
@@ -92,15 +109,28 @@ export function studioGate(reader: SessionReader, isStudioAllowed: IsAllowed, is
   };
 }
 
+/** `url` without its preview token, so the token isn't forwarded upstream. */
+export function withoutPreviewToken(url: string): string {
+  const parsed = new URL(url, 'http://localhost');
+  parsed.searchParams.delete(PREVIEW_TOKEN_PARAM);
+  return `${parsed.pathname}${parsed.search}`;
+}
+
 /**
  * The same check for a WebSocket upgrade, which never reaches the app's middleware stack. CORS doesn't cover
  * WebSockets and the cookie rides on handshakes from any same-site page, so a foreign `Origin` is refused first.
  */
-export function upgradeAccess(reader: SessionReader, isStudioAllowed: IsAllowed, frontendOrigins: string[]) {
+export function upgradeAccess(reader: SessionReader, isStudioAllowed: IsAllowed, frontendOrigins: string[], verifyPreviewToken?: VerifyPreviewToken) {
   return async (req: IncomingMessage): Promise<Access> => {
     const origin = req.headers.origin;
     if (frontendOrigins.length && origin !== undefined && !isAllowedOrigin(origin, frontendOrigins)) {
       return { type: 'denied', status: 403, error: 'Origin not allowed' };
+    }
+    // Browsers can't set headers on a WebSocket handshake, so a preview token comes in the query string.
+    const token = new URL(req.url ?? '/', 'http://localhost').searchParams.get(PREVIEW_TOKEN_PARAM);
+    const preview = token === null ? null : await verifyPreviewToken?.(token);
+    if (preview) {
+      return access({ type: 'session', identity: preview }, isStudioAllowed);
     }
     // The session middlewares only read from the response here: the session is never modified, so nothing is written.
     const res = new ServerResponse(req);

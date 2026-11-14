@@ -1,3 +1,5 @@
+import { withPreviewTokenHeader } from '@officexr/server/preview-token';
+
 /** Studio API origin without a trailing slash; `''` keeps every call same-origin. */
 export const STUDIO_API_ORIGIN = (import.meta.env.VITE_STUDIO_API_ORIGIN ?? '').replace(/\/$/, '');
 
@@ -6,8 +8,14 @@ export const WEB_API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? '').replace(/\
 
 export const studioApiUrl = (path: string) => `${STUDIO_API_ORIGIN}${path}`;
 
-// The studio API gates every request on the shared session cookie, which a cross-origin fetch only sends with credentials.
-export const studioFetch: typeof fetch = (input, init) => fetch(input, { credentials: 'include', ...init });
+const isStudioApi = (input: RequestInfo | URL) =>
+  new URL(input instanceof Request ? input.url : input, window.location.href).origin ===
+  (STUDIO_API_ORIGIN ? new URL(STUDIO_API_ORIGIN).origin : window.location.origin);
+
+// The studio API gates every request on the shared session cookie, which a cross-origin fetch only sends with credentials;
+// a preview deployment the cookie can't reach sends its preview token instead, to the studio API alone.
+export const studioFetch: typeof fetch = (input, init) =>
+  fetch(input, { credentials: 'include', ...(isStudioApi(input) ? withPreviewTokenHeader(input, init) : init) });
 
 export const paths = {
   me: '/api/me',

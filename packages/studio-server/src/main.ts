@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { createSessionReader, parseCookieDomain, parseFrontendOrigins, pgAllowlist, pgSessionStore } from '@officexr/server';
+import { createSessionReader, parseCookieDomain, parseFrontendOrigins, pgAllowlist, pgSessionStore, PreviewTokens } from '@officexr/server';
 import { listen } from '@officexr/server/listen';
 import { DEFAULT_MODELS_DIR } from '@officexr/server/static';
 import { createStudioMcpOptions, loopbackDocuments, loopbackOrigin } from '@officexr/studio-mcp/mount-mcp';
@@ -105,6 +105,8 @@ const internal = createInternalServer({
   realtimeTarget,
 });
 const isAdmin = cacheAllowlist(pgAllowlist(pool, 'admin_allowlist'));
+// The web backend signs preview tokens as its `PUBLIC_URL`, which `OFFICEXR_WEB_PUBLIC_URL` names.
+const previewTokens = oauthEnv.type === 'enabled' ? new PreviewTokens({ sessionSecret: env.SESSION_SECRET, issuer: oauthEnv.webPublicUrl }) : null;
 const publicServer = createPublicServer({
   storage,
   modelsDir: DEFAULT_MODELS_DIR,
@@ -115,6 +117,7 @@ const publicServer = createPublicServer({
   isStudioAllowed: cacheAllowlist(pgAllowlist(pool, 'studio_allowlist')),
   isAdmin,
   verifyApiToken: agentTokens ? (token) => agentTokens.verify(token) : undefined,
+  verifyPreviewToken: previewTokens ? (token) => previewTokens.verify(token) : undefined,
   modelSources: modelSourcesService,
   agentTokens,
   oauth:
