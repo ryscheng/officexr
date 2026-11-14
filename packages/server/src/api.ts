@@ -38,7 +38,7 @@ export interface OfficeDeskClaims {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type ResolveIdentity = (req: IncomingMessage) => Identity | null;
+export type ResolveIdentity = (req: IncomingMessage) => Identity | null | Promise<Identity | null>;
 
 /** Mints a JaaS voice token for the signed-in user in `office`. */
 export type SignVoiceToken = (me: Identity, office: Office) => Promise<JaasToken>;
@@ -166,7 +166,7 @@ export function apiMiddleware({
     };
     /** Runs `handle` for the signed-in user and the office `officeId`, or answers 401 / 404. */
     const withOffice = async (officeId: string, handle: (me: Identity, office: Office) => Promise<void>) => {
-      const me = identity(req);
+      const me = await identity(req);
       if (!me) {
         return send(401, { error: 'Not signed in' });
       }
@@ -175,7 +175,7 @@ export function apiMiddleware({
     };
     try {
       if (path === '/api/me') {
-        const me = identity(req);
+        const me = await identity(req);
         return me ? send(200, me) : send(401, { error: 'Not signed in' });
       }
       if (path === '/api/realtime-token') {
@@ -183,7 +183,7 @@ export function apiMiddleware({
         if (!realtimeTokenSecret) {
           return send(404, { error: 'Realtime tokens are not enabled' });
         }
-        const me = identity(req);
+        const me = await identity(req);
         if (!me) {
           return send(401, { error: 'Not signed in' });
         }
@@ -191,7 +191,7 @@ export function apiMiddleware({
       }
       if (path === '/api/offices') {
         if (req.method === 'POST') {
-          const me = identity(req);
+          const me = await identity(req);
           if (!me) {
             return send(401, { error: 'Not signed in' });
           }
@@ -269,7 +269,7 @@ export function apiMiddleware({
         if (req.method !== 'GET' && req.method !== 'PATCH') {
           return send(405, { error: 'Method not allowed' });
         }
-        const me = identity(req);
+        const me = await identity(req);
         if (req.method === 'PATCH' && !me) {
           return send(401, { error: 'Not signed in' });
         }

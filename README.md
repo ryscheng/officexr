@@ -105,7 +105,8 @@ insert into login_allowlist (kind, value) values ('email', 'someone@gmail.com');
 ```
 
 To serve the SPAs from other origins, set `FRONTEND_ORIGINS` to their comma-separated exact origins
-(`https://app.example.com`, no path). They may then call the API with credentials and pass an absolute
+(`https://app.example.com`, no path), or https wildcards like `https://*.officexr.pages.dev` whose `*` matches
+exactly one DNS label (Cloudflare Pages preview and branch URLs); the first entry must be exact. They may then call the API with credentials and pass an absolute
 `?next=` on one of them to `/auth/google`; the first origin is the default landing page and where
 `login_error` redirects go. Unset means same-origin only. The frontends must be same-site with
 `PUBLIC_URL` (same registrable domain), because the session cookie is `SameSite=Lax`. Set `COOKIE_DOMAIN`
@@ -197,7 +198,13 @@ studio asks signed-out users to sign in through the web backend, so the studio b
 its frontend origins, and `VITE_API_ORIGIN` must be set too since the sign-in link points at it.
 
 The backend must allow the Pages origin as a frontend origin (CORS and sign-in `next`) and set
-`OFFICEXR_ASSET_BASE_URL`, since it doesn't serve `/baked-layouts/*` itself.
+`OFFICEXR_ASSET_BASE_URL`, since it doesn't serve `/baked-layouts/*` itself. To let preview deployments
+call the API too, add `https://*.<project>.pages.dev` to the web backend's `FRONTEND_ORIGINS`. A `pages.dev`
+preview is cross-site with the backend, so the `SameSite=Lax` session cookie never reaches it. Instead, a sign-in
+returning to an allowlisted origin outside `COOKIE_DOMAIN` (or `PUBLIC_URL`'s host without one) gets a 10-minute
+JWT in the URL fragment (`#officexr_token=…`), signed with a key derived from `SESSION_SECRET`. The web SPA keeps
+it in `sessionStorage` and sends it as `Authorization: Bearer`; once it expires, the user signs in again. The
+studio doesn't take these tokens yet, so the studio API only works from a same-site origin.
 
 ## License
 

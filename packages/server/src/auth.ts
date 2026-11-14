@@ -9,6 +9,8 @@ import type pg from 'pg';
 import type { NextHandleFunction } from 'connect';
 import { verifyJoinToken } from '@officexr/realtime-server/join-token';
 import type { Identity } from './shared';
+import { isAllowedOrigin } from './cors';
+import { cookieReaches, withPreviewToken, type PreviewTokens } from './previewToken';
 
 export interface AuthConfig {
   googleClientId: string;
@@ -187,7 +189,7 @@ export function safeReturnTarget(next: unknown, origins: string[]): string {
   const url = URL.parse(next);
   // `blob:https://host/` reports the inner origin, so the scheme is checked too.
   const isPlainHttp = url && (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password;
-  return isPlainHttp && origins.includes(url.origin) ? url.href : landing;
+  return isPlainHttp && isAllowedOrigin(url.origin, origins) ? url.href : landing;
 }
 
 function redirect(res: ServerResponse, location: string) {
@@ -211,6 +213,8 @@ interface AuthOptions {
   /** Allowlisted frontend origins; the first is where sign-in lands by default and where failures go. */
   frontendOrigins?: string[];
   cookieDomain?: string;
+  /** Hands a token to sign-ins returning to a frontend the session cookie can't reach; without it they get only the cookie. */
+  previewTokens?: PreviewTokens;
 }
 
 /** Session, passport and the `/auth/*` routes, in order; each runs only for `/auth/*` and `/api/*` requests. */
@@ -221,11 +225,19 @@ export function createAuth({
   googleStrategy = createGoogleStrategy,
   frontendOrigins = [],
   cookieDomain,
+  previewTokens,
 }: AuthOptions): NextHandleFunction[] {
   const secure = new URL(config.publicUrl).protocol === 'https:';
   const reader = buildSessionReader({ sessionSecret: config.sessionSecret, sessionStore, cookieDomain, secure });
   const auth = reader.passport;
   const landing = landingUrl(frontendOrigins);
+  const cookieScope = cookieDomain ?? new URL(config.publicUrl).hostname;
+  /** Where a signed-in user goes: `returnTo`, carrying a preview token when it is on a site the cookie doesn't reach. */
+  const signedInTarget = async (returnTo: unknown, user: Identity): Promise<string> => {
+    const target = safeReturnTarget(returnTo, frontendOrigins);
+    const url = URL.parse(target);
+    return previewTokens && url && !cookieReaches(url, cookieScope) ? withPreviewToken(url, await previewTokens.sign(user)) : target;
+  };
   // With a cookie domain, browsers keep the old host-only cookie too and send it first, so it must be expired.
   const expireHostOnlyCookie = (res: ServerResponse) => {
     if (cookieDomain) {
@@ -274,7 +286,13 @@ export function createAuth({
             return fail('failed');
           }
           expireHostOnlyCookie(res);
-          redirect(res, safeReturnTarget(info?.state?.returnTo, frontendOrigins));
+          signedInTarget(info?.state?.returnTo, user).then(
+            (target) => redirect(res, target),
+            (signErr: unknown) => {
+              console.error(signErr);
+              fail('failed');
+            },
+          );
         });
       })(req, res, next);
     }

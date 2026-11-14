@@ -13,8 +13,9 @@ import type { Profile } from 'passport-google-oauth20';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiMiddleware, type CreateOffice, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
 import { createApp } from './app';
-import { parseFrontendOrigins } from './cors';
+import { isAllowedOrigin, parseFrontendOrigins } from './cors';
 import { JAAS_TOKEN_TTL_SECONDS, jaasConfigFromEnv, jaasUserId, type JaasConfig } from './jaasToken';
+import { PREVIEW_TOKEN_PARAM, PREVIEW_TOKEN_TTL_SECONDS, PreviewTokens } from './previewToken';
 import { createGoogleStrategy, createSessionReader, emailDomain, parseCookieDomain, safeReturnTarget, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import type { Identity, Office } from './shared';
 
@@ -520,7 +521,7 @@ describe('CORS', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe(STUDIO);
     expect(res.headers.get('access-control-allow-credentials')).toBe('true');
     expect(res.headers.get('access-control-allow-methods')).toBe('GET,HEAD,POST,PUT,PATCH,DELETE');
-    expect(res.headers.get('access-control-allow-headers')).toBe('Content-Type');
+    expect(res.headers.get('access-control-allow-headers')).toBe('Content-Type,Authorization');
     expect(res.headers.get('access-control-max-age')).toBe('600');
   });
 
@@ -566,6 +567,110 @@ describe('parseFrontendOrigins', () => {
 
   it.each(['studio.karibalabs.co', `${STUDIO}/`, `${STUDIO}/app`, 'ftp://studio.karibalabs.co', 'https://', `${STUDIO}?x=1`, '*'])('rejects %s', (bad) => {
     expect(() => parseFrontendOrigins(`${STUDIO},${bad}`)).toThrow(/FRONTEND_ORIGINS/);
+  });
+});
+
+describe('wildcard frontend origins', () => {
+  const PREVIEWS = 'https://*.officexr.pages.dev';
+  const PREVIEW = 'https://3f2a9c1b.officexr.pages.dev';
+
+  it('parses an https wildcard after an exact first origin', () => {
+    expect(parseFrontendOrigins(`${STUDIO}, ${PREVIEWS}`)).toEqual([STUDIO, PREVIEWS]);
+  });
+
+  it.each(['https://*', 'https://*.dev', 'http://*.officexr.pages.dev', 'https://*officexr.pages.dev', 'https://a.*.pages.dev', 'https://*.*.pages.dev', 'https://*.officexr.pages.dev/', 'https://*.OfficeXR.pages.dev'])(
+    'rejects %s',
+    (bad) => {
+      expect(() => parseFrontendOrigins(`${STUDIO},${bad}`)).toThrow(/FRONTEND_ORIGINS/);
+    },
+  );
+
+  it('rejects a wildcard as the first origin', () => {
+    expect(() => parseFrontendOrigins(`${PREVIEWS},${STUDIO}`)).toThrow(/exact origin/);
+  });
+
+  it.each([PREVIEW, 'https://feature-branch.officexr.pages.dev'])('allows %s', (origin) => {
+    expect(isAllowedOrigin(origin, [STUDIO, PREVIEWS])).toBe(true);
+  });
+
+  it.each([
+    'https://officexr.pages.dev',
+    'https://.officexr.pages.dev',
+    'https://a.b.officexr.pages.dev',
+    'https://evil.com/.officexr.pages.dev',
+    'https://evilofficexr.pages.dev',
+    'https://-x.officexr.pages.dev',
+    'http://abc.officexr.pages.dev',
+    'https://abc.officexr.pages.dev:8443',
+    'https://abc.officexr.pages.dev.evil.com',
+    undefined,
+  ])('refuses %s', (origin) => {
+    expect(isAllowedOrigin(origin, [STUDIO, PREVIEWS])).toBe(false);
+  });
+
+  it('gives a preview origin credentialed CORS and accepts it as a sign-in return target', async () => {
+    const base = await start('prod', { frontendOrigins: [STUDIO, PREVIEWS] });
+    const res = await fetch(`${base}/api/offices`, { method: 'OPTIONS', headers: { origin: PREVIEW, 'access-control-request-method': 'PUT' } });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe(PREVIEW);
+    expect(res.headers.get('access-control-allow-credentials')).toBe('true');
+    expect(safeReturnTarget(`${PREVIEW}/studio/`, [STUDIO, PREVIEWS])).toBe(`${PREVIEW}/studio/`);
+    expect(safeReturnTarget('https://officexr.pages.dev/', [STUDIO, PREVIEWS])).toBe(`${STUDIO}/`);
+  });
+});
+
+describe('preview tokens', () => {
+  const PREVIEWS = 'https://*.officexr-5zb.pages.dev';
+  const PREVIEW = 'https://297c4523.officexr-5zb.pages.dev';
+  const ORIGINS_WITH_PREVIEWS = ['http://app.officexr.test', PREVIEWS];
+  const tokenIn = (location: string | null) => new URLSearchParams(new URL(location!).hash.slice(1)).get(PREVIEW_TOKEN_PARAM);
+  const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+  it('hands a sign-in returning to a cross-site preview a token that works as a bearer for /api/me', async () => {
+    const base = await start('prod', { frontendOrigins: ORIGINS_WITH_PREVIEWS, cookieDomain: 'officexr.test' });
+    const { location } = await googleLogin(base, googleProfile('a@example.com', { name: 'Alice' }), `${PREVIEW}/room/x?y=1#old`);
+    expect(location!.startsWith(`${PREVIEW}/room/x?y=1#${PREVIEW_TOKEN_PARAM}=`)).toBe(true);
+    const res = await fetch(`${base}/api/me`, { headers: { ...bearer(tokenIn(location)!), origin: PREVIEW } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ login: 'a@example.com', name: 'Alice' });
+    expect(res.headers.get('access-control-allow-origin')).toBe(PREVIEW);
+  });
+
+  it.each(['http://app.officexr.test/room/x', '/room/x'])('hands no token to %s, which the cookie reaches', async (next) => {
+    const base = await start('prod', { frontendOrigins: ORIGINS_WITH_PREVIEWS, cookieDomain: 'officexr.test' });
+    const { location } = await googleLogin(base, googleProfile('a@example.com'), next);
+    expect(location).toBe(next);
+  });
+
+  it('hands no token to a preview that is not allowlisted', async () => {
+    const base = await start('prod', { frontendOrigins: ['http://app.officexr.test'], cookieDomain: 'officexr.test' });
+    const { location } = await googleLogin(base, googleProfile('a@example.com'), `${PREVIEW}/`);
+    expect(location).toBe('http://app.officexr.test/');
+  });
+
+  it('refuses expired, forged and foreign tokens without falling back to the cookie', async () => {
+    const base = await start('prod', { frontendOrigins: ORIGINS_WITH_PREVIEWS });
+    const { cookie } = await signIn(base, 'a@example.com');
+    const at = (ms: number) => new PreviewTokens({ sessionSecret: AUTH.sessionSecret, issuer: AUTH.publicUrl, now: () => new Date(ms) });
+    const identity = { login: 'a@example.com', name: 'A' };
+    const expired = await at(Date.now() - (PREVIEW_TOKEN_TTL_SECONDS + 10) * 1000).sign(identity);
+    const valid = await at(Date.now()).sign(identity);
+    const forged = await new PreviewTokens({ sessionSecret: 'other-secret', issuer: AUTH.publicUrl }).sign(identity);
+    const otherIssuer = await new PreviewTokens({ sessionSecret: AUTH.sessionSecret, issuer: 'http://elsewhere.test' }).sign(identity);
+    for (const token of [expired, forged, otherIssuer, `${valid}x`, 'garbage']) {
+      expect((await fetch(`${base}/api/me`, { headers: { ...bearer(token), cookie } })).status).toBe(401);
+    }
+    expect((await fetch(`${base}/api/me`, { headers: bearer(valid) })).status).toBe(200);
+  });
+
+  it('expires after ten minutes', async () => {
+    let now = Date.UTC(2026, 0, 1);
+    const tokens = new PreviewTokens({ sessionSecret: 's', issuer: 'http://officexr.test', now: () => new Date(now) });
+    const token = await tokens.sign({ login: 'a@example.com', name: 'A' });
+    now += (PREVIEW_TOKEN_TTL_SECONDS - 1) * 1000;
+    expect(await tokens.verify(token)).toEqual({ login: 'a@example.com', name: 'A' });
+    now += 10 * 1000;
+    expect(await tokens.verify(token)).toBeNull();
   });
 });
 
@@ -628,7 +733,7 @@ describe('safeReturnTarget', () => {
 
 describe('sign-in with frontend origins', () => {
   it('returns to an allowlisted absolute next, and to the first origin otherwise', async () => {
-    const base = await start('prod', { frontendOrigins: ORIGINS });
+    const base = await start('prod', { frontendOrigins: ORIGINS, cookieDomain: 'karibalabs.co' });
     expect((await googleLogin(base, googleProfile('a@example.com'), `${STUDIO}/studio/`)).location).toBe(`${STUDIO}/studio/`);
     expect((await googleLogin(base, googleProfile('a@example.com'), 'https://evil.example/')).location).toBe(`${STUDIO}/`);
     expect((await googleLogin(base, googleProfile('a@example.com'))).location).toBe(`${STUDIO}/`);
