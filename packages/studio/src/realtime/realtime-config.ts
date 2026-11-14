@@ -8,6 +8,7 @@
  * directly to it.
  */
 
+import { PREVIEW_TOKEN_PARAM, previewToken } from '@officexr/server/preview-token';
 import { STUDIO_API_ORIGIN, studioFetch } from '../apiOrigin.ts';
 
 const LOCAL_DEFAULT_HOST = 'http://127.0.0.1:8787';
@@ -30,15 +31,19 @@ function originHttpToWs(origin: string): string {
  * Resolve config for the browser. Defaults to `${origin}/ws` /
  * `${origin}/health` on the studio API origin when set; otherwise on the
  * page's origin, so the Vite proxy carries the traffic.
- * `VITE_REALTIME_URL` / `VITE_HEALTH_URL` override.
+ * `VITE_REALTIME_URL` / `VITE_HEALTH_URL` override. A browser can't set headers on a WebSocket, so a preview token
+ * rides in the studio API's `/ws` query string.
  */
 export function browserRealtimeConfig(): RealtimeConfig {
   const env: Record<string, string | undefined> = import.meta.env ?? {};
   const origin =
     STUDIO_API_ORIGIN ||
     (typeof window !== 'undefined' && window.location?.origin ? window.location.origin : LOCAL_DEFAULT_HOST);
+  // ponytail: reconnects reuse this token, so once it expires they get 401 until the user signs in again.
+  const token = STUDIO_API_ORIGIN ? previewToken() : null;
+  const query = token === null ? '' : `?${PREVIEW_TOKEN_PARAM}=${encodeURIComponent(token)}`;
   return {
-    url: env.VITE_REALTIME_URL ?? `${originHttpToWs(origin)}${DEFAULT_PATH}`,
+    url: env.VITE_REALTIME_URL ?? `${originHttpToWs(origin)}${DEFAULT_PATH}${query}`,
     healthUrl: env.VITE_HEALTH_URL ?? `${origin}/health`,
     officeId: env.VITE_OFFICE_ID ?? 'debug-office',
   };

@@ -14,7 +14,7 @@ import { pathname } from './http.ts';
 import { modelSourceRoutes } from './model-sources/routes.ts';
 import { agentTokenRoutes } from './agent-tokens/routes.ts';
 import type { AgentTokens } from '@officexr/studio-mcp/agent-tokens';
-import { sendJson, studioGate, upgradeAccess, type Access, type IsAllowed, type VerifyApiToken } from './studio-gate.ts';
+import { sendJson, studioGate, upgradeAccess, withoutPreviewToken, type Access, type IsAllowed, type VerifyApiToken, type VerifyPreviewToken } from './studio-gate.ts';
 
 export interface StudioListener {
   server: Server;
@@ -76,6 +76,7 @@ function proxyRealtime(
           return;
         }
         if (access.type === 'allowed') {
+          req.url = withoutPreviewToken(req.url ?? '/');
           proxy.ws(req, socket, head);
         } else {
           refuseUpgrade(socket, access.status);
@@ -177,6 +178,8 @@ export function createPublicServer(opts: {
   isAdmin: IsAllowed;
   /** Absent when agent API tokens are disabled: the gate then refuses any bearer header on `/api/*`. */
   verifyApiToken?: VerifyApiToken;
+  /** Absent when the web backend's issuer isn't configured: preview tokens are then never accepted. */
+  verifyPreviewToken?: VerifyPreviewToken;
   /** `null` when no model-source bucket is configured: its routes answer 503. */
   modelSources: ModelSources | null;
   /** `null` when agent tokens are not configured: `/api/agent-token-requests` answers 503. */
@@ -193,12 +196,12 @@ export function createPublicServer(opts: {
   if (opts.oauth) {
     app.use(opts.oauth);
   }
-  app.use(studioGate(opts.sessionReader, opts.isStudioAllowed, opts.isAdmin, opts.verifyApiToken));
+  app.use(studioGate(opts.sessionReader, opts.isStudioAllowed, opts.isAdmin, opts.verifyApiToken, opts.verifyPreviewToken));
   app.use('/api/model-sources', modelSourceRoutes(opts.modelSources));
   app.use('/api/agent-token-requests', agentTokenRoutes(opts.agentTokens, opts.sessionReader));
   opts.storage.mount(app);
   mountModels(app, opts);
-  const authorizeUpgrade = upgradeAccess(opts.sessionReader, opts.isStudioAllowed, opts.frontendOrigins);
+  const authorizeUpgrade = upgradeAccess(opts.sessionReader, opts.isStudioAllowed, opts.frontendOrigins, opts.verifyPreviewToken);
   const dropTunnels = proxyRealtime(app, server, opts.realtimeTarget, authorizeUpgrade);
   // Replaces connect's default handler, which sends the stack trace unless NODE_ENV is production.
   app.use((err: Error, _req: IncomingMessage, res: ServerResponse, _next: connect.NextFunction) => {

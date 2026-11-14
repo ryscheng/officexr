@@ -22,6 +22,17 @@ describe('browserRealtimeConfig', () => {
     });
   });
 
+  it('carries a stored preview token in the ws URL', async () => {
+    const token = `h.${btoa(JSON.stringify({ exp: Date.now() / 1000 + 600 })).replace(/=+$/, '')}.s`;
+    window.sessionStorage.setItem('officexr.previewToken', token);
+    try {
+      const { browserRealtimeConfig } = await load({ VITE_STUDIO_API_ORIGIN: 'https://studio.example' });
+      expect(browserRealtimeConfig().url).toBe(`wss://studio.example/ws?officexr_token=${token}`);
+    } finally {
+      window.sessionStorage.clear();
+    }
+  });
+
   it('lets VITE_REALTIME_URL / VITE_HEALTH_URL override the studio API origin', async () => {
     const { browserRealtimeConfig } = await load({
       VITE_STUDIO_API_ORIGIN: 'https://studio.example',

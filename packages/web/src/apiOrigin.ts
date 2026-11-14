@@ -1,4 +1,4 @@
-import { previewToken } from './previewToken';
+import { withPreviewTokenHeader } from '@officexr/server/preview-token';
 
 /** Backend origin without a trailing slash; `''` keeps every call same-origin. */
 export const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? '').replace(/\/$/, '');
@@ -9,15 +9,7 @@ export const apiUrl = (path: string) => `${API_ORIGIN}${path}`;
  * The session cookie is SameSite=Lax, so a cross-origin backend only sees it with credentials included. A preview
  * deployment has no cookie the backend can see and sends its preview token instead.
  */
-export const apiFetch = (path: string, init?: RequestInit) => {
-  const token = previewToken();
-  if (token === null) {
-    return fetch(apiUrl(path), { credentials: 'include', ...init });
-  }
-  const headers = new Headers(init?.headers);
-  headers.set('Authorization', `Bearer ${token}`);
-  return fetch(apiUrl(path), { credentials: 'include', ...init, headers });
-};
+export const apiFetch = (path: string, init?: RequestInit) => fetch(apiUrl(path), { credentials: 'include', ...withPreviewTokenHeader(path, init) });
 
 export const wsUrl = () => `${(API_ORIGIN || window.location.origin).replace(/^http/, 'ws')}/ws`;
 

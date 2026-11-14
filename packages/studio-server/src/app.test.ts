@@ -8,9 +8,11 @@ import connect, { type NextHandleFunction } from 'connect';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
+import { createHmac } from 'node:crypto';
 import session from 'express-session';
+import { SignJWT } from 'jose';
 import { DEFAULT_WORLD_CONSTANTS } from '@officexr/sdk';
-import { createSessionReader } from '@officexr/server';
+import { createSessionReader, PreviewTokens } from '@officexr/server';
 import { AgentTokenServiceError, type AgentTokens } from '@officexr/studio-mcp/agent-tokens';
 import { agentTokenRoutes } from './agent-tokens/routes.ts';
 import { ModelSourceServiceError, type ModelSources } from '@officexr/studio-mcp/model-sources';
@@ -24,7 +26,7 @@ import { ModelSourcesService } from './model-sources/service.ts';
 import { gridGlb, InMemoryModelSourceStore } from './model-sources/test-fixtures.ts';
 import { createOAuthApp } from './oauth/index.ts';
 import { InMemoryOAuthStore } from './oauth/store.ts';
-import { cacheAllowlist, type IsAllowed, type VerifyApiToken } from './studio-gate.ts';
+import { cacheAllowlist, type IsAllowed, type VerifyApiToken, type VerifyPreviewToken } from './studio-gate.ts';
 import { signIn as signInAs } from './test-sign-in.ts';
 
 const DOWN = 'http://127.0.0.1:1';
@@ -36,6 +38,7 @@ let sessionStore: session.MemoryStore;
 let isStudioAllowed: IsAllowed;
 let isAdmin: IsAllowed;
 let verifyApiToken: VerifyApiToken | undefined;
+let verifyPreviewToken: VerifyPreviewToken | undefined;
 
 const signIn = (login: string) => signInAs(sessionStore, SECRET, login);
 
@@ -81,6 +84,7 @@ async function boot(realtimeTarget = DOWN, oauth?: (mcp: NextHandleFunction) => 
     isStudioAllowed: (login) => isStudioAllowed(login),
     isAdmin: (login) => isAdmin(login),
     verifyApiToken: verifyApiToken && ((token) => verifyApiToken!(token)),
+    verifyPreviewToken,
     modelSources,
     agentTokens,
     oauth: oauth?.(internal.mcp),
@@ -141,6 +145,7 @@ beforeEach(async () => {
   isStudioAllowed = async (login) => login === ALLOWED;
   isAdmin = async (login) => login === ALLOWED;
   verifyApiToken = undefined;
+  verifyPreviewToken = undefined;
   await mkdir(path.join(dir, 'models'));
   await writeFile(path.join(dir, 'models', 'chair.glb'), 'glb');
   await mkdir(path.join(dir, 'dist'));
@@ -405,6 +410,102 @@ describe('public bearer API tokens', () => {
     const oauth = createOAuthApp({ store: new InMemoryOAuthStore(), isAdmin: async () => true, issuerUrl: 'https://studio-api.example.com', webPublicUrl: 'https://web.example.com' });
     const { pub } = await boot(DOWN, () => oauth.handler);
     expect((await fetch(`${pub}/mcp`, { method: 'POST', headers: bearer('good') })).status).toBe(401);
+  });
+});
+
+describe('public preview tokens', () => {
+  const ISSUER = 'https://web.example.com';
+  const STUDIO_ONLY = 'studio-only@example.com';
+  const NOW = Date.UTC(2026, 0, 1);
+  const tokens = (sessionSecret = SECRET, issuer = ISSUER, at = NOW) => new PreviewTokens({ sessionSecret, issuer, now: () => new Date(at) });
+  const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+  const mint = (login: string) => tokens().sign({ login, name: login });
+
+  beforeEach(() => {
+    isStudioAllowed = async (login) => login === ALLOWED || login === STUDIO_ONLY;
+    verifyPreviewToken = (token) => tokens().verify(token);
+  });
+
+  it('acts as a studio-allowlisted user who is not an admin', async () => {
+    const { pub } = await boot();
+    const headers = bearer(await mint(STUDIO_ONLY));
+    const me = await fetch(`${pub}/api/me`, { headers });
+    expect(await me.json()).toEqual({ login: STUDIO_ONLY, name: STUDIO_ONLY });
+    expect((await fetch(`${pub}/api/maps`, { headers })).status).toBe(200);
+    expect(await (await fetch(`${pub}/models/chair.glb`, { headers })).text()).toBe('glb');
+  });
+
+  it('refuses a user off the studio allowlist', async () => {
+    const { pub } = await boot();
+    expect((await fetch(`${pub}/api/me`, { headers: bearer(await mint('other@example.com')) })).status).toBe(403);
+  });
+
+  it('answers 401 for an expired, forged, wrong-issuer or wrong-audience token', async () => {
+    const identity = { login: STUDIO_ONLY, name: STUDIO_ONLY };
+    const key = createHmac('sha256', SECRET).update('officexr preview token v1').digest();
+    const wrongAudience = await new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setSubject(STUDIO_ONLY).setIssuer(ISSUER).setAudience('officexr-other').setExpirationTime(NOW / 1000 + 600).sign(key);
+    const bad = [
+      await tokens(SECRET, ISSUER, NOW - 11 * 60_000).sign(identity),
+      await tokens('other-secret').sign(identity),
+      await tokens(SECRET, 'https://elsewhere.example.com').sign(identity),
+      wrongAudience,
+    ];
+    const { pub } = await boot();
+    const cookie = await signIn(ALLOWED);
+    for (const token of bad) {
+      expect((await fetch(`${pub}/api/me`, { headers: { ...bearer(token), cookie } })).status).toBe(401);
+    }
+  });
+
+  it('lets the token user use the approval routes like a cookie session', async () => {
+    const listPending = vi.fn(async () => []);
+    const agentTokens = { listPending } as unknown as AgentTokens;
+    const { pub } = await boot(DOWN, undefined, undefined, null, agentTokens);
+    const res = await fetch(`${pub}/api/agent-token-requests`, { headers: bearer(await mint(STUDIO_ONLY)) });
+    expect(res.status).toBe(200);
+    expect(listPending).toHaveBeenCalledWith(STUDIO_ONLY);
+  });
+
+  it('still holds an agent API token to the admin allowlist', async () => {
+    verifyApiToken = async (token) => (token === 'agent' ? { login: STUDIO_ONLY } : null);
+    const { pub } = await boot();
+    expect((await fetch(`${pub}/api/me`, { headers: bearer('agent') })).status).toBe(403);
+  });
+
+  it('leaves cookie sessions unchanged without a token', async () => {
+    const { pub } = await boot();
+    expect((await fetch(`${pub}/api/me`, { headers: { cookie: await signIn(STUDIO_ONLY) } })).status).toBe(200);
+    expect((await fetch(`${pub}/api/me`)).status).toBe(401);
+  });
+
+  it('opens the realtime socket with the token in the query string', async () => {
+    const { pub } = await boot(await realtimeStub());
+    const ws = new WebSocket(`${pub.replace('http', 'ws')}/ws?officexr_token=${await mint(STUDIO_ONLY)}`, { origin: FRONTEND });
+    await new Promise((resolve, reject) => ws.once('open', resolve).once('error', reject));
+    ws.close();
+    const expired = await tokens(SECRET, ISSUER, NOW - 11 * 60_000).sign({ login: STUDIO_ONLY, name: STUDIO_ONLY });
+    for (const token of ['garbage', expired]) {
+      expect(await rawUpgradeEnds(pub, `/ws?officexr_token=${token}`, undefined, FRONTEND)).toMatch(/^HTTP\/1\.1 401 /);
+    }
+  });
+
+  it('strips the token before proxying /ws upstream', async () => {
+    const upstream = createServer();
+    const wss = new WebSocketServer({ server: upstream });
+    const seen: string[] = [];
+    wss.on('connection', (socket, req) => seen.push(req.url ?? ''));
+    listeners.push({ server: upstream, close: () => new Promise((r) => wss.close(() => upstream.close(() => r()))) });
+    await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+    const { pub } = await boot(loopbackOrigin(upstream));
+    const ws = new WebSocket(`${pub.replace('http', 'ws')}/ws?room=a&officexr_token=${await mint(STUDIO_ONLY)}`, { origin: FRONTEND });
+    await new Promise((resolve, reject) => ws.once('open', resolve).once('error', reject));
+    ws.close();
+    expect(seen).toEqual(['/ws?room=a']);
+  });
+
+  it('only takes the query-string token on /ws', async () => {
+    const { pub } = await boot();
+    expect((await fetch(`${pub}/api/me?officexr_token=${await mint(STUDIO_ONLY)}`)).status).toBe(401);
   });
 });
 

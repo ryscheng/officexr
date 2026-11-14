@@ -173,6 +173,8 @@ The studio backend is a separate process, `pnpm --filter @officexr/studio-server
   and with only one the process refuses to start. Admins sign in through the web backend's `/auth/google`, so its
   `FRONTEND_ORIGINS` must include `STUDIO_PUBLIC_URL` for the sign-in to return to `/authorize`. With the OAuth server on, the public port also serves the studio MCP at `/mcp`,
   reachable only with a bearer token issued to an `admin_allowlist` login (no session cookie needed).
+  `OFFICEXR_WEB_PUBLIC_URL` is also the issuer of the web backend's preview tokens (see "Cloudflare Pages"), so with
+  it set, and the same `SESSION_SECRET`, the public port accepts them in place of the session cookie.
 
 ## Building
 
@@ -204,7 +206,14 @@ preview is cross-site with the backend, so the `SameSite=Lax` session cookie nev
 returning to an allowlisted origin outside `COOKIE_DOMAIN` (or `PUBLIC_URL`'s host without one) gets a 10-minute
 JWT in the URL fragment (`#officexr_token=…`), signed with a key derived from `SESSION_SECRET`. The web SPA keeps
 it in `sessionStorage` and sends it as `Authorization: Bearer`; once it expires, the user signs in again. The
-studio doesn't take these tokens yet, so the studio API only works from a same-site origin.
+studio does the same with its studio API (and puts the token in the `/ws` query string, since a WebSocket can't carry
+headers). The studio backend verifies it with the web backend's `SESSION_SECRET` and its `PUBLIC_URL` as the issuer,
+which it reads from `OFFICEXR_WEB_PUBLIC_URL` (so its MCP OAuth server must be on), and treats it like a session
+cookie: the login must be on `studio_allowlist`. For a studio preview, also add `https://*.<project>.pages.dev` to the
+studio backend's `FRONTEND_ORIGINS`. Files the studio's 3D loaders fetch from the studio API (baked layouts, and
+models when baking in the browser) don't carry the token, so on a preview they still fail (ponytail: they'd need a
+token-carrying loader). The `/ws` connection keeps the token it opened with, so reconnects after it expires fail until
+the user signs in again.
 
 ## License
 

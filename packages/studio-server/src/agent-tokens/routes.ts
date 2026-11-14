@@ -19,8 +19,8 @@ const statusOf = (error: AgentTokenError): number =>
 const decision = /^\/([^/]+)\/(approve|deny)$/;
 
 /**
- * Mount at `/api/agent-token-requests`, after the gate. Acts only for the session-cookie user: the identity comes from
- * the cookie, never from a Bearer token. With a `null` service every route answers 503.
+ * Mount at `/api/agent-token-requests`, after the gate. Acts only for the session user: the identity comes from the
+ * cookie or a preview token, never from a studio API token. With a `null` service every route answers 503.
  */
 export function agentTokenRoutes(
   service: AgentTokens | null,

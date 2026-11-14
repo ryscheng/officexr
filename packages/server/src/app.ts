@@ -72,8 +72,9 @@ export async function createApp({
   await storage.migrate();
   // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
   storage.mount(app);
+  // The issuer is an origin so it matches the studio backend's `OFFICEXR_WEB_PUBLIC_URL`, which verifies these too.
   const previewTokens =
-    parsedAuth.type === 'valid' ? new PreviewTokens({ sessionSecret: parsedAuth.config.sessionSecret, issuer: parsedAuth.config.publicUrl }) : undefined;
+    parsedAuth.type === 'valid' ? new PreviewTokens({ sessionSecret: parsedAuth.config.sessionSecret, issuer: new URL(parsedAuth.config.publicUrl).origin }) : undefined;
   if (parsedAuth.type === 'valid') {
     for (const middleware of createAuth({ config: parsedAuth.config, sessionStore: sessionStore(), isLoginAllowed, googleStrategy, frontendOrigins, cookieDomain, previewTokens })) {
       app.use(middleware);
