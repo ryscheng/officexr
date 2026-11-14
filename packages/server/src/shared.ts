@@ -28,9 +28,11 @@ export interface Identity {
 /** Only an office's creator may change its settings; offices without a recorded creator have none. */
 export const isOfficeCreator = (me: Identity, office: Office) => me.login === office.created_by_login;
 
+/**
+ * The env keys `/config.js` serves to every browser: public values only. The JaaS API key id and private key are
+ * server-only (`OFFICEXR_JAAS_*`, see `jaasToken.ts`) and must never be added here.
+ */
 export const RUNTIME_CONFIG_KEYS = [
   'VITE_JAAS_APP_ID',
-  'VITE_JAAS_API_KEY_ID',
-  'VITE_JAAS_PRIVATE_KEY',
   'OFFICEXR_ASSET_BASE_URL',
 ] as const;

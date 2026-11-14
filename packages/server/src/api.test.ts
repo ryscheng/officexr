@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -7,11 +8,13 @@ import { signJoinToken, verifyJoinToken } from '@officexr/realtime-server/join-t
 import { RealtimeServer } from '@officexr/realtime-server/server';
 import connect from 'connect';
 import session from 'express-session';
+import { decodeProtectedHeader, jwtVerify } from 'jose';
 import type { Profile } from 'passport-google-oauth20';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiMiddleware, type CreateOffice, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
 import { createApp } from './app';
 import { isAllowedOrigin, parseFrontendOrigins } from './cors';
+import { JAAS_TOKEN_TTL_SECONDS, jaasConfigFromEnv, jaasUserId, type JaasConfig } from './jaasToken';
 import { PREVIEW_TOKEN_PARAM, PREVIEW_TOKEN_TTL_SECONDS, PreviewTokens } from './previewToken';
 import { createGoogleStrategy, createSessionReader, emailDomain, parseCookieDomain, safeReturnTarget, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import type { Identity, Office } from './shared';
@@ -140,11 +143,12 @@ interface StartOptions {
   frontendOrigins?: string[];
   cookieDomain?: string;
   studioDataDir?: string;
+  jaas?: JaasConfig;
 }
 
 async function start(
   mode: Mode,
-  { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret, frontendOrigins, cookieDomain, studioDataDir }: StartOptions = {},
+  { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret, frontendOrigins, cookieDomain, studioDataDir, jaas }: StartOptions = {},
 ): Promise<string> {
   const app = await createApp({
     queryOffices,
@@ -158,6 +162,7 @@ async function start(
     googleStrategy: fakeGoogle,
     realtime: new RealtimeServer(),
     realtimeTokenSecret,
+    jaas,
     frontendOrigins,
     cookieDomain,
     modelsDir,
@@ -244,6 +249,87 @@ describe('/api/realtime-token', () => {
   it.each([undefined, ''])('is 404 when the secret is %j', async (secret) => {
     const base = await start('prod', { realtimeTokenSecret: secret });
     expect((await fetch(`${base}/api/realtime-token`, { headers: await signIn(base, 'a@example.com') })).status).toBe(404);
+  });
+});
+
+describe('/api/offices/:id/voice-token', () => {
+  // A throwaway keypair: the test never touches a real JaaS key.
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+  const jaas = jaasConfigFromEnv({ VITE_JAAS_APP_ID: 'vpaas-magic-cookie-test', OFFICEXR_JAAS_API_KEY_ID: 'kid-1', OFFICEXR_JAAS_PRIVATE_KEY: pem })!;
+  const url = (base: string, id = ID) => `${base}/api/offices/${id}/voice-token`;
+
+  it('is 401 without a session', async () => {
+    const base = await start('prod', { jaas });
+    const res = await fetch(url(base));
+    expect(res.status).toBe(401);
+    expect(await res.text()).not.toContain('.');
+  });
+
+  it("mints a JaaS token for the session's user that verifies with the matching public key", async () => {
+    const base = await start('prod', { jaas });
+    const before = Math.floor(Date.now() / 1000);
+    // Client-supplied identity is ignored: only the session decides who the token is for.
+    const res = await fetch(`${url(base)}?name=Mallory&id=evil&moderator=false`, { headers: { ...(await signIn(base, 'a@example.com', 'Alice')), 'x-test-login': 'b@example.com' } });
+    expect(res.status).toBe(200);
+    const { token, expiresAt } = (await res.json()) as { token: string; expiresAt: number };
+    const { payload } = await jwtVerify(token, publicKey, { algorithms: ['RS256'], issuer: 'chat', audience: 'jitsi', subject: 'vpaas-magic-cookie-test' });
+    expect(decodeProtectedHeader(token)).toEqual({ alg: 'RS256', kid: 'kid-1', typ: 'JWT' });
+    expect(payload).toMatchObject({
+      room: '*',
+      context: {
+        user: { moderator: true, name: 'Alice', id: jaasUserId('a@example.com'), avatar: '', email: '' },
+        features: { livestreaming: 'false', recording: 'false', transcription: 'false', 'outbound-call': 'false' },
+      },
+    });
+    expect(payload.iat).toBeGreaterThanOrEqual(before);
+    expect(payload.exp).toBe(payload.iat! + JAAS_TOKEN_TTL_SECONDS);
+    expect(payload.nbf).toBe(payload.iat! - 60);
+    expect(expiresAt).toBe(payload.exp! * 1000);
+    expect(JSON.stringify(payload)).not.toContain('a@example.com');
+  });
+
+  it('does not verify with another key', async () => {
+    const base = await start('prod', { jaas });
+    const { token } = (await (await fetch(url(base), { headers: await signIn(base, 'a@example.com') })).json()) as { token: string };
+    const other = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey;
+    await expect(jwtVerify(token, other)).rejects.toThrow();
+  });
+
+  it('is 404 for an unknown office', async () => {
+    const base = await start('prod', { jaas });
+    const headers = await signIn(base, 'a@example.com');
+    expect((await fetch(url(base, '22222222-2222-4222-8222-222222222222'), { headers })).status).toBe(404);
+    expect((await fetch(url(base, 'nope'), { headers })).status).toBe(404);
+  });
+
+  it('is 404 when JaaS is not configured', async () => {
+    const base = await start('prod');
+    expect((await fetch(url(base), { headers: await signIn(base, 'a@example.com') })).status).toBe(404);
+  });
+
+  it('is 405 for anything but GET', async () => {
+    const base = await start('prod', { jaas });
+    expect((await fetch(url(base), { method: 'POST', headers: await signIn(base, 'a@example.com') })).status).toBe(405);
+  });
+
+  it('accepts the base64 of the PEM, and escaped newlines, as the deployed env stores it', async () => {
+    const env = { VITE_JAAS_APP_ID: 'app', OFFICEXR_JAAS_API_KEY_ID: 'kid' };
+    expect(jaasConfigFromEnv({ ...env, OFFICEXR_JAAS_PRIVATE_KEY: Buffer.from(pem).toString('base64') })).toBeDefined();
+    expect(jaasConfigFromEnv({ ...env, OFFICEXR_JAAS_PRIVATE_KEY: pem.replace(/\n/g, '\\n') })).toBeDefined();
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(jaasConfigFromEnv({ ...env, OFFICEXR_JAAS_PRIVATE_KEY: 'garbage' })).toBeUndefined();
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('voice is off'));
+    error.mockRestore();
+    expect(jaasConfigFromEnv(env)).toBeUndefined();
+  });
+
+  it('falls back to the deprecated VITE_ names, with a warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const legacy = jaasConfigFromEnv({ VITE_JAAS_APP_ID: 'app', VITE_JAAS_API_KEY_ID: 'old-kid', VITE_JAAS_PRIVATE_KEY: Buffer.from(pem).toString('base64') });
+    expect(legacy?.apiKeyId).toBe('old-kid');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('deprecated'));
+    warn.mockRestore();
   });
 });
 
@@ -1119,6 +1205,33 @@ describe('/config.js', () => {
     } finally {
       delete process.env.GOOGLE_CLIENT_SECRET;
       delete process.env.SESSION_SECRET;
+    }
+  });
+
+  it('never serves the JaaS private key or API key id, even when set (old or new names)', async () => {
+    const secrets = {
+      VITE_JAAS_PRIVATE_KEY: 'legacy-private-key',
+      OFFICEXR_JAAS_PRIVATE_KEY: 'server-private-key',
+      VITE_JAAS_API_KEY_ID: 'legacy-key-id',
+      OFFICEXR_JAAS_API_KEY_ID: 'server-key-id',
+      VITE_JAAS_APP_ID: 'vpaas-magic-cookie-public',
+    };
+    Object.assign(process.env, secrets);
+    try {
+      for (const mode of ['prod', 'dev'] as const) {
+        const base = await start(mode, mode === 'dev' ? { devUser: { login: 'dev@example.com', name: 'Dev' }, auth: {} } : {});
+        const body = await (await fetch(`${base}/config.js`)).text();
+        for (const secret of ['legacy-private-key', 'server-private-key', 'legacy-key-id', 'server-key-id']) {
+          expect(body).not.toContain(secret);
+        }
+        expect(body).not.toContain('PRIVATE_KEY');
+        expect(body).toContain('"VITE_JAAS_APP_ID":"vpaas-magic-cookie-public"');
+        server?.close();
+      }
+    } finally {
+      for (const key of Object.keys(secrets)) {
+        delete process.env[key];
+      }
     }
   });
 });

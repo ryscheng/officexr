@@ -10,7 +10,8 @@ import {
 export const MAX_MUTE_CORRECTIONS = 4;
 export interface JaasVoiceOptions {
   appId: string;
-  jwt: Promise<string>;
+  /** A JaaS JWT for the next meeting; called on every join so an expiring token can be refreshed. */
+  getJwt: () => Promise<string>;
   displayName: string;
 }
 
@@ -70,9 +71,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
   private muteListeners = new Set<() => void>();
   private lastMicMuted = false;
 
-  constructor(readonly options: JaasVoiceOptions) {
-    options.jwt.catch((err: unknown) => console.error('JaaS JWT generation failed:', err));
-  }
+  constructor(readonly options: JaasVoiceOptions) {}
 
   async joinRoom(roomId: string | null): Promise<void> {
     if (roomId === null) {
@@ -85,7 +84,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
     this.setMeeting(null);
     this.setState('joining');
     try {
-      const [jwt, roomName] = await Promise.all([this.options.jwt, jitsiRoomName(roomId)]);
+      const [jwt, roomName] = await Promise.all([this.options.getJwt(), jitsiRoomName(roomId)]);
       if (this.room === roomId) {
         this.setMeeting({ key: ++this.meetingCount, roomName, jwt });
       }

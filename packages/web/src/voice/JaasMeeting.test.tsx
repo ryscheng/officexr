@@ -30,7 +30,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const newVoice = () => new JaasVoiceAdapter({ appId: 'app', jwt: Promise.resolve('jwt'), displayName: 'Alice' });
+const newVoice = () => new JaasVoiceAdapter({ appId: 'app', getJwt: () => Promise.resolve('jwt'), displayName: 'Alice' });
 
 async function joinMeeting(voice: JaasVoiceAdapter) {
   const api = new FakeJitsiApi();

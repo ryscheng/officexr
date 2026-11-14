@@ -7,8 +7,8 @@ OfficeXR is a pnpm monorepo whose deployables are the browser client
 `@officexr/web` and its backend `@officexr/server`. It renders offices with the world renderer (`@officexr/world`)
 from maps authored in `@officexr/studio`, syncs players through a WebSocket
 realtime server that the backend runs in-process, reads Postgres server-side, and takes identity from
-Google sign-in (Postgres-backed sessions). JaaS (Jitsi as a Service) handles proximity voice; the browser mints
-its own JaaS JWT via the Web Crypto API.
+Google sign-in (Postgres-backed sessions). JaaS (Jitsi as a Service) handles proximity voice; the web backend mints
+each user's JaaS JWT (`/api/offices/:id/voice-token`), so the private key never leaves the server.
 
 ## 1. System Architecture
 

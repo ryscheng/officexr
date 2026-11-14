@@ -6,6 +6,7 @@ import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeChar
 import { bearerIdentity, createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import { createCors } from './cors';
 import { PreviewTokens } from './previewToken';
+import { signJaasToken, type JaasConfig } from './jaasToken';
 import { configJsMiddleware } from './runtimeConfig';
 import type { Identity } from './shared';
 import { DEFAULT_MODELS_DIR, staticDirMiddleware } from './staticDir';
@@ -29,6 +30,8 @@ export interface AppOptions {
   realtime: Pick<RealtimeServer, 'requestHandler'>;
   /** Must equal the realtime server's `OFFICEXR_REALTIME_TOKEN_SECRET`; unset disables `/api/realtime-token`. */
   realtimeTokenSecret?: string;
+  /** Server-only JaaS signing settings (`jaasConfigFromEnv`); unset disables `/api/offices/:id/voice-token`. */
+  jaas?: JaasConfig;
   /** Studio data dir served read-only under `/api`; the storage defaults when unset. */
   studioDataDir?: string;
   /** Character and object models served at `/models`. Default: the studio's `public/models`. */
@@ -51,6 +54,7 @@ export async function createApp({
   cookieDomain,
   realtime,
   realtimeTokenSecret,
+  jaas,
   studioDataDir,
   modelsDir = DEFAULT_MODELS_DIR,
   dev,
@@ -102,6 +106,7 @@ export async function createApp({
       loadCatalogCharacters: studioCatalogCharacters(studioDataDir),
       identity,
       realtimeTokenSecret,
+      signVoiceToken: jaas && ((me, office) => signJaasToken(jaas, me, office)),
     }),
   );
   return app;
