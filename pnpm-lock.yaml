@@ -125,6 +125,9 @@ importers:
       express-session:
         specifier: ^1.19.0
         version: 1.19.0
+      jose:
+        specifier: ^6.2.13
+        version: 6.2.13
       passport:
         specifier: ^0.7.0
         version: 0.7.0

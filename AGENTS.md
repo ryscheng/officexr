@@ -127,7 +127,7 @@ Identity comes from Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
 trailing slash; the Google OAuth redirect URI is `${PUBLIC_URL}/auth/google/callback`).
 `pnpm --filter @officexr/server start` refuses to boot unless all four are set. When `PUBLIC_URL` is
 https the session cookie is Secure, so the TLS terminator must send
-`X-Forwarded-Proto: https`. `FRONTEND_ORIGINS` (comma-separated exact origins or one-label https wildcards like `https://*.officexr.pages.dev`, matched by `isAllowedOrigin`; the first must be exact; unset = same-origin only)
+`X-Forwarded-Proto: https`. `FRONTEND_ORIGINS` (comma-separated exact origins or one-label https wildcards like `https://*.officexr.pages.dev`, matched by `isAllowedOrigin`; the first must be exact; unset = same-origin only; a sign-in returning to one outside the cookie's scope gets a 10-minute preview JWT in the `#officexr_token=` fragment, see `previewToken.ts`, which the web SPA sends as `Authorization: Bearer`)
 allowlists SPAs on other origins for credentialed CORS and as `?next=` return targets (the first is the
 default landing and the `login_error` target); they must be same-site with `PUBLIC_URL` because the cookie
 is `SameSite=Lax`. `COOKIE_DOMAIN` (e.g. `karibalabs.co`, must contain `PUBLIC_URL`'s host) shares the

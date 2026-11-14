@@ -66,7 +66,8 @@ export function createCors(origins: string[]): NextHandleFunction {
     origin: true,
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type'],
+    // `Authorization` carries preview tokens from frontends the session cookie can't reach.
+    allowedHeaders: ['Content-Type', 'Authorization'],
     maxAge: 600,
   }) as unknown as NextHandleFunction;
   return (req, res, next) => {

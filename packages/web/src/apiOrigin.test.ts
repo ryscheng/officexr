@@ -34,6 +34,26 @@ describe('apiFetch', () => {
   });
 });
 
+describe('apiFetch with a preview token', () => {
+  afterEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  it('sends it as a bearer, keeping the caller\'s headers', async () => {
+    const payload = btoa(JSON.stringify({ exp: Date.now() / 1000 + 600 })).replace(/=+$/, '');
+    const token = `h.${payload}.s`;
+    window.sessionStorage.setItem('officexr.previewToken', token);
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response());
+    vi.stubGlobal('fetch', fetchMock);
+    const { apiFetch } = await load('https://api.example.com');
+    await apiFetch('/api/offices', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const init = fetchMock.mock.calls[0][1]!;
+    expect(init.method).toBe('POST');
+    expect(new Headers(init.headers).get('authorization')).toBe(`Bearer ${token}`);
+    expect(new Headers(init.headers).get('content-type')).toBe('application/json');
+  });
+});
+
 describe('wsUrl', () => {
   it('follows the page origin when unset', async () => {
     vi.stubGlobal('location', { origin: 'https://app.example.com' });

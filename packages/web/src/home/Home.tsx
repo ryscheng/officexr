@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { MAX_DESCRIPTION, MAX_NAME, isOfficeCreator, type Identity, type Office } from '@officexr/server/shared';
 import { apiFetch, paths } from '../apiOrigin';
 import { Async } from '../Async';
+import { clearPreviewToken } from '../previewToken';
 import { SignInLink } from '../SignIn';
 import { DEFAULT_MAP } from '@officexr/world/scenes';
 import { errorMessage, useApi, type ApiState } from '../useApi';
@@ -186,6 +187,7 @@ function SignOutButton() {
       if (!res.ok) {
         throw new Error(errorMessage(res, await res.json().catch(() => null)));
       }
+      clearPreviewToken();
       window.location.assign('/');
     } catch (err) {
       setError((err as Error).message);

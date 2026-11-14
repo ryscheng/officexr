@@ -5,6 +5,7 @@ import type { Store } from 'express-session';
 import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type UpdateOffice } from './api';
 import { bearerIdentity, createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import { createCors } from './cors';
+import { PreviewTokens } from './previewToken';
 import { configJsMiddleware } from './runtimeConfig';
 import type { Identity } from './shared';
 import { DEFAULT_MODELS_DIR, staticDirMiddleware } from './staticDir';
@@ -67,8 +68,10 @@ export async function createApp({
   await storage.migrate();
   // Before `apiMiddleware`, which answers every other `/api/*` path with a 404.
   storage.mount(app);
+  const previewTokens =
+    parsedAuth.type === 'valid' ? new PreviewTokens({ sessionSecret: parsedAuth.config.sessionSecret, issuer: parsedAuth.config.publicUrl }) : undefined;
   if (parsedAuth.type === 'valid') {
-    for (const middleware of createAuth({ config: parsedAuth.config, sessionStore: sessionStore(), isLoginAllowed, googleStrategy, frontendOrigins, cookieDomain })) {
+    for (const middleware of createAuth({ config: parsedAuth.config, sessionStore: sessionStore(), isLoginAllowed, googleStrategy, frontendOrigins, cookieDomain, previewTokens })) {
       app.use(middleware);
     }
   } else if (!devUser) {
@@ -78,8 +81,15 @@ export async function createApp({
   app.use(configJsMiddleware(dev?.env));
   app.use(realtime.requestHandler);
   const cookieIdentity: ResolveIdentity = devUser ? () => devUser : sessionIdentity;
-  const bearer = realtimeTokenSecret ? bearerIdentity(realtimeTokenSecret) : undefined;
-  const identity: ResolveIdentity = (req) => (bearer && /^Bearer /i.test(req.headers.authorization ?? '') ? bearer(req) : cookieIdentity(req));
+  const realtimeBearer = realtimeTokenSecret ? bearerIdentity(realtimeTokenSecret) : undefined;
+  // A Bearer header replaces the cookie when this app verifies any: the realtime server's `api` token, else a preview token.
+  const identity: ResolveIdentity = async (req) => {
+    const token = req.headers.authorization?.match(/^Bearer (.+)$/i)?.[1];
+    if (token === undefined || (!realtimeBearer && !previewTokens)) {
+      return cookieIdentity(req);
+    }
+    return realtimeBearer?.(req) ?? (await previewTokens?.verify(token)) ?? null;
+  };
   app.use(
     apiMiddleware({
       queryOffices,
