@@ -18,8 +18,10 @@ import {
   emptyRoomDocument,
   newPlaceObject,
 } from '../scenes/index.ts';
-import { PLAYER_RADIUS_PX } from './topDownDraw.ts';
+import { DEFAULT_ZOOM } from './topDownCamera.ts';
+import { characterHeight } from './topDownCharacter.ts';
 import { TopDownPlayView } from './TopDownPlayView.tsx';
+import { useCameraControls } from './cameraControls.tsx';
 
 afterEach(() => {
   cleanup();
@@ -135,44 +137,43 @@ describe('TopDownPlayView', () => {
   });
 
   describe('ping bell', () => {
-    /** A 2D context that no-ops every call and records the centre of each player marker. */
-    function recordingContext() {
-      const markers = new Map<string, { x: number; y: number }>();
-      const ctx = new Proxy(
+    /** A 2D context that no-ops every call; text measures zero wide. */
+    function silentContext() {
+      return new Proxy(
         {},
         {
-          get: (_, prop) =>
-            prop === 'arc'
-              ? (x: number, y: number, r: number) => r === PLAYER_RADIUS_PX && markers.set(`${x},${y}`, { x, y })
-              : () => {},
+          get: (_, prop) => (prop === 'measureText' ? () => ({ width: 0 }) : () => {}),
           set: () => true,
         },
       );
-      return { ctx, markers };
     }
 
-    /** Moves over each marker until a bell shows; self markers never show one. */
-    async function hoverMarkers(onPingPlayer?: (id: string) => void) {
+    /**
+     * Hovers bob's character. The camera starts centred on alice at the default zoom (the
+     * test map is smaller than the screen), so bob is drawn at his offset from her; his body
+     * stands above his feet.
+     */
+    async function hoverBob(onPingPlayer?: (id: string) => void) {
       vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(400);
       vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
-      const { ctx, markers } = recordingContext();
-      const view = await mount({ onPingPlayer, ctx });
+      const view = await mount({ onPingPlayer, ctx: silentContext() });
       await view.released();
-      await waitFor(() => expect(markers.size).toBe(2));
+      // Wait for a few frames so the camera has placed itself on alice.
+      await new Promise((r) => setTimeout(r, 100));
+      const { alice: a, bob: b } = view.alice.store.getState().players;
+      const x = 200 + (b!.pos.x - a!.pos.x) * DEFAULT_ZOOM;
+      const y = 200 + (b!.pos.z - a!.pos.z) * DEFAULT_ZOOM - characterHeight(DEFAULT_ZOOM) * 0.45;
+      expect(x).toBeGreaterThan(0);
+      expect(x).toBeLessThan(400);
       const canvas = document.querySelector('canvas')!;
-      for (const { x, y } of markers.values()) {
-        fireEvent.mouseMove(canvas, { clientX: x, clientY: y });
-        if (screen.queryByRole('button')) {
-          break;
-        }
-      }
+      fireEvent.mouseMove(canvas, { clientX: x, clientY: y });
       return { canvas };
     }
 
     it('shows a bell over a hovered player; clicking it pings without moving', async () => {
       const moveTo = vi.spyOn(GhostController.prototype, 'moveTo');
       const onPingPlayer = vi.fn();
-      await hoverMarkers(onPingPlayer);
+      await hoverBob(onPingPlayer);
       fireEvent.click(await screen.findByRole('button', { name: 'Ping player' }));
       expect(onPingPlayer).toHaveBeenCalledWith('bob');
       expect(moveTo).not.toHaveBeenCalled();
@@ -180,14 +181,44 @@ describe('TopDownPlayView', () => {
 
     it('moves when the canvas is clicked elsewhere', async () => {
       const moveTo = vi.spyOn(GhostController.prototype, 'moveTo');
-      const { canvas } = await hoverMarkers(vi.fn());
+      const { canvas } = await hoverBob(vi.fn());
       fireEvent.click(canvas, { clientX: 1, clientY: 1 });
       expect(moveTo).toHaveBeenCalled();
     });
 
     it('shows no bell without onPingPlayer', async () => {
-      await hoverMarkers();
+      await hoverBob();
       expect(screen.queryByRole('button')).toBeNull();
     });
+  });
+
+  it('provides 2D camera controls to its children', async () => {
+    function Zoom() {
+      const camera = useCameraControls();
+      return <div data-testid="zoom">{camera ? `following ${camera.snapshot.following}` : 'none'}</div>;
+    }
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext');
+    getContext.mockImplementation((() => null) as typeof HTMLCanvasElement.prototype.getContext);
+    const harness = createMultiClientHarness();
+    const alice = await harness.add('alice', { holdSelf: true });
+    const api = createDefaultApi({ fetcher: async () => new Response('{}', { status: 404 }) });
+    render(
+      <ApplicationProvider api={api}>
+        <TopDownPlayView
+          store={alice.store}
+          actions={alice.actions}
+          rules={alice.rules}
+          bus={alice.bus}
+          sync={alice.sync}
+          handshake={alice.handshake}
+          selfId="alice"
+          mapName="office"
+          storages={storages()}
+        >
+          <Zoom />
+        </TopDownPlayView>
+      </ApplicationProvider>,
+    );
+    expect(screen.getByTestId('zoom').textContent).toBe('following true');
   });
 });

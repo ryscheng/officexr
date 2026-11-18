@@ -1,21 +1,24 @@
 import type { ReactNode } from 'react';
 import type { ApiState } from './useApi';
+import { InlineAlert } from './hud/ui/InlineAlert';
+import { Spinner } from './page/PageShell';
 
 export function Async<T>({
   state,
-  loading = <p>Loading…</p>,
+  loading = <Spinner label="Loading…" />,
+  error = (message) => <InlineAlert>{message}</InlineAlert>,
   children,
 }: {
   state: ApiState<T>;
   loading?: ReactNode;
+  /** Renders the failure; defaults to an inline alert. */
+  error?: (message: string) => ReactNode;
   children: (data: T) => ReactNode;
 }) {
   return state.type === 'loading' ? (
     loading
   ) : state.type === 'error' ? (
-    <p role="alert" className="text-red-600">
-      {state.message}
-    </p>
+    error(state.message)
   ) : (
     children(state.data)
   );

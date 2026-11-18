@@ -20,14 +20,15 @@ officexr/
 ├── packages/
 │   ├── web/              # @officexr/web — office app (SPA only)
 │   │   ├── index.html    # SPA shell (entry: src/main.tsx)
-│   │   ├── src/          # App.tsx (routing), home/ (office list + create form), room/ (OfficeWorld, session, characters),
-│   │   │                 # hud/ (chat), voice/ (JaaS proximity voice)
+│   │   ├── src/          # App.tsx (routing), home/ (office list + create form), page/ (shell for pages outside the world), room/ (OfficeWorld, session, characters),
+│   │   │                 # hud/ (chat, roster, zoom; hud/ui/ is the shared control kit), voice/ (JaaS proximity voice)
 │   │   └── vite.config.ts # dev only: mounts @officexr/server's app and an in-process realtime office
 │   ├── server/           # @officexr/server — web backend
 │   │   ├── src/          # main.ts (entrypoint), backend.ts (createBackend: db + realtime + app, shared with `pnpm dev`), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
 │   │   │                 # jaasToken.ts (server-side JaaS JWT signing), runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_APP_ID, OFFICEXR_JAAS_* (server-only), OFFICEXR_ASSET_BASE_URL
-│   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
+│   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds; top-down/ is the Canvas2D 2D view
+│   │                     # (camera, archetype painters, character sprites; no three)
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
 │   ├── studio-server/    # @officexr/studio-server — studio backend: main.ts (entrypoint), app.ts (internal + public servers), studio-gate.ts (public-port sign-in gate),
 │   │                     # studio-backend.ts (storage hooks + R2 sync, shared with the Vite studio), r2-publisher.ts, push-world-constants.ts

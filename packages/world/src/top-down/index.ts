@@ -1,4 +1,7 @@
 export { TopDownPlayView, type TopDownPlayViewProps } from './TopDownPlayView.tsx';
+export { useCameraControls, type CameraControls, type CameraSnapshot } from './cameraControls.tsx';
+export { PALETTE, RUG_COLOURS, SHIRT_COLOURS } from './topDownPalette.ts';
+export { hashString } from './topDownScene.ts';
 export {
   ApplicationProvider,
   useApplication,

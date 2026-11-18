@@ -168,16 +168,31 @@ function MapView({
   );
 }
 
+/** How far a rim-pinned peer's label sits in from its dot, towards the centre, so it stays inside the map. */
+const RIM_LABEL_INSET_PX = 13;
+
 function PeerMarker({ peer, self, viewYaw, now }: { peer: MinimapPeer; self: Vec3; viewYaw: number; now: number }) {
-  const { x, y } = toMinimap(self, viewYaw, peer, { rangeM: RANGE_M, sizePx: MAP_PX });
+  const { x, y, clamped } = toMinimap(self, viewYaw, peer, { rangeM: RANGE_M, sizePx: MAP_PX });
   const cx = x + RIM_INSET_PX;
   const cy = y + RIM_INSET_PX;
   const name = peer.name || 'Joining…';
+  // Out of range: the dot rides the rim with a chevron pointing their way, and the label sits inside.
+  const angle = Math.atan2(cy - CENTRE, cx - CENTRE);
+  const label = clamped
+    ? { x: cx - Math.cos(angle) * RIM_LABEL_INSET_PX, y: cy - Math.sin(angle) * RIM_LABEL_INSET_PX + 3 }
+    : { x: cx, y: cy + 12 };
   return (
     <g role="img" aria-label={`${name}, ${formatDistance(peer.distanceM)}`}>
       <title>{name}</title>
-      <circle cx={cx} cy={cy} r={4} className={PRESENCE_INDICATOR[presenceIndicator(peer, now)].fill} />
-      <text x={cx} y={cy + 12} textAnchor="middle" className="fill-hud-text text-[9px] tabular-nums">
+      {clamped && (
+        <path
+          d="M5 0L-2 -4V4z"
+          transform={`translate(${cx} ${cy}) rotate(${(angle * 180) / Math.PI})`}
+          className={PRESENCE_INDICATOR[presenceIndicator(peer, now)].fill}
+        />
+      )}
+      <circle cx={cx} cy={cy} r={clamped ? 3 : 4} className={PRESENCE_INDICATOR[presenceIndicator(peer, now)].fill} />
+      <text x={label.x} y={label.y} textAnchor="middle" className="fill-hud-text text-[9px] font-bold tabular-nums">
         {formatDistance(peer.distanceM)}
       </text>
     </g>

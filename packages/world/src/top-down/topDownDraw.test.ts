@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { PlayerState } from '@officexr/sdk';
-import { drawMap, drawPlayers, STYLE, type TopDownContext } from './topDownDraw.ts';
+import { drawFrame, itemGeometry, LAYERS, type TopDownContext, type TopDownFrame } from './topDownDraw.ts';
+import { ELEVATION } from './topDownPainters.ts';
+import { PALETTE } from './topDownPalette.ts';
+import { buildScene, type ResolveInstance } from './topDownScene.ts';
+import { STILL } from './topDownMotion.ts';
 
-type Call = { op: string; args: unknown[]; fillStyle: unknown; strokeStyle: unknown };
+type Call = { op: string; args: unknown[]; fillStyle: unknown };
 
-/** Records every draw call with the styles in effect at the time. */
+/** Records every draw call with the fill style in effect at the time. */
 function recordingContext(): { ctx: TopDownContext; calls: Call[] } {
   const calls: Call[] = [];
   const state: Record<string, unknown> = {};
@@ -13,8 +17,10 @@ function recordingContext(): { ctx: TopDownContext; calls: Call[] } {
       if (prop in target) {
         return target[prop];
       }
-      return (...args: unknown[]) =>
-        calls.push({ op: prop, args, fillStyle: target.fillStyle, strokeStyle: target.strokeStyle });
+      if (prop === 'measureText') {
+        return (text: string) => ({ width: text.length * 6 });
+      }
+      return (...args: unknown[]) => calls.push({ op: prop, args, fillStyle: target.fillStyle });
     },
     set(target, prop: string, value) {
       target[prop] = value;
@@ -24,54 +30,81 @@ function recordingContext(): { ctx: TopDownContext; calls: Call[] } {
   return { ctx, calls };
 }
 
-const IDENTITY = { scale: 1, offsetX: 0, offsetY: 0 };
-const SIZE = { width: 100, height: 100 };
+const desk = { id: 'desk', label: 'Desk', category: 'furniture' as const, isLayoutObject: false, isDesk: true };
+const resolveDesk: ResolveInstance = () => ({ kind: desk, aabb: { min: [0, 0, 0], max: [2, 0.75, 1] } });
 
-function player(id: string, viewMode: '2d' | '3d', x: number): PlayerState {
-  return { id, name: id, pos: { x, y: 0, z: 0 }, yaw: 0, avatar: { viewMode } } as unknown as PlayerState;
+function player(id: string, x: number, z: number, extra: Partial<PlayerState> = {}): PlayerState {
+  return { id, name: id, pos: { x, y: 0, z }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, status: 'available', mic: 'none', avatar: { model: 'a' }, ...extra } as PlayerState;
 }
 
-describe('drawMap', () => {
-  it('styles layout objects apart from furniture and outlines the footprint', () => {
-    const { ctx, calls } = recordingContext();
-    drawMap(
-      ctx,
-      IDENTITY,
-      SIZE,
-      [
-        { min: { x: 1, z: 1 }, max: { x: 2, z: 2 }, layout: false },
-        { min: { x: 0, z: 0 }, max: { x: 10, z: 10 }, layout: true },
-      ],
-      [{ min: { x: -1, z: -1 }, max: { x: 11, z: 11 } }],
-    );
-    const fills = calls.filter((c) => c.op === 'fillRect').slice(1);
-    expect(fills.map((c) => [c.args, c.fillStyle])).toEqual([
-      [[0, 0, 10, 10], STYLE.layoutFill],
-      [[1, 1, 1, 1], STYLE.furnitureFill],
-    ]);
-    expect(
-      calls.filter((c) => c.op === 'strokeRect' && c.strokeStyle === STYLE.footprintStroke).map((c) => c.args),
-    ).toEqual([[-1, -1, 12, 12]]);
+function frame(overrides: Partial<TopDownFrame> = {}): TopDownFrame {
+  return {
+    t: { scale: 40, offsetX: 100, offsetY: 100 },
+    size: { width: 400, height: 400 },
+    timeSec: 0,
+    scene: buildScene([{ id: 'd', sourceCommandId: 'd', kindId: 'desk', position: [0, 0, 0] }], resolveDesk, []),
+    zones: [],
+    desks: [],
+    players: {},
+    motion: () => STILL,
+    selfId: 'me',
+    hoveredId: null,
+    rings: { inner: 3, outer: 5 },
+    destination: null,
+    ...overrides,
+  };
+}
+
+describe('itemGeometry', () => {
+  it('lifts the top face by the height and exposes the south face below it', () => {
+    const scene = frame().scene;
+    const g = itemGeometry(scene.items[0], { scale: 40, offsetX: 0, offsetY: 0 });
+    const lift = 0.75 * 40 * ELEVATION;
+    expect(g.floor).toEqual({ x: 0, y: 0, w: 80, h: 40 });
+    expect(g.top).toEqual({ x: 0, y: -lift, w: 80, h: 40 });
+    expect(g.front).toEqual({ x: 0, y: 40 - lift, w: 80, h: lift });
   });
 });
 
-describe('drawPlayers', () => {
-  it('draws 2D players distinctly from 3D ones, plus the self rings', () => {
+describe('drawFrame', () => {
+  it('runs every layer, starting with the lawn', () => {
     const { ctx, calls } = recordingContext();
-    drawPlayers(
+    drawFrame(ctx, frame());
+    expect(LAYERS.length).toBeGreaterThan(5);
+    expect(calls[0]).toMatchObject({ op: 'fillRect', args: [0, 0, 400, 400], fillStyle: PALETTE.lawn });
+  });
+
+  it('draws a player south of a desk after the desk, and one north of it before', () => {
+    const { ctx, calls } = recordingContext();
+    drawFrame(ctx, frame({ players: { north: player('north', 1, -0.5), south: player('south', 1, 1.5) } }));
+    const tag = (name: string) => calls.findIndex((c) => c.op === 'fillText' && c.args[0] === name);
+    const deskTop = calls.findIndex((c) => c.fillStyle === PALETTE.deskTop);
+    // Each character's ellipses (shadow, head, hair) sit on x=140: the first are `north`'s, the last `south`'s.
+    const shadows = calls.flatMap((c, i) => (c.op === 'ellipse' && c.args[0] === 140 ? [i] : []));
+    expect(shadows[0]).toBeLessThan(deskTop);
+    expect(shadows[shadows.length - 1]).toBeGreaterThan(deskTop);
+    // Name tags float above everything.
+    expect(tag('north')).toBeGreaterThan(deskTop);
+    expect(tag('south')).toBeGreaterThan(deskTop);
+  });
+
+  it('hides others’ name tags when zoomed far out, but keeps yours', () => {
+    const { ctx, calls } = recordingContext();
+    drawFrame(ctx, frame({ t: { scale: 10, offsetX: 100, offsetY: 100 }, players: { me: player('me', 0, 0), you: player('you', 2, 2) } }));
+    expect(calls.filter((c) => c.op === 'fillText').map((c) => c.args[0])).toEqual(['me']);
+  });
+
+  it('labels voice zones and claimed desks', () => {
+    const { ctx, calls } = recordingContext();
+    drawFrame(
       ctx,
-      IDENTITY,
-      { me: player('me', '3d', 0), ghost: player('ghost', '2d', 20), body: player('body', '3d', 40) },
-      'me',
-      { inner: 3, outer: 5 },
+      frame({
+        zones: [{ id: 'z', label: 'Product team', min: { x: 0, z: 0 }, max: { x: 5, z: 5 } }],
+        desks: [{ min: { x: 0, z: 0 }, max: { x: 2, z: 2 }, owner: 'Brad' }],
+      }),
     );
-    const dotFill = (x: number) =>
-      calls.find((c) => c.op === 'fill' && calls[calls.indexOf(c) - 1]?.args[0] === x)?.fillStyle;
-    expect(dotFill(20)).toBe(STYLE.player2d);
-    expect(dotFill(40)).toBe(STYLE.player3d);
-    expect(dotFill(0)).toBe(STYLE.self);
-    expect(calls.filter((c) => c.op === 'fillText').map((c) => c.args[0])).toEqual(['me', 'ghost', 'body']);
-    const rings = calls.filter((c) => c.op === 'arc' && c.args[0] === 0).map((c) => c.args[2]);
-    expect(rings).toEqual([3, 5, 6]);
+    const texts = calls.filter((c) => c.op === 'fillText').map((c) => c.args[0]);
+    expect(texts).toContain('Product team');
+    expect(texts).toContain("Brad's desk");
   });
 });

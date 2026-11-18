@@ -50,3 +50,11 @@
     }
   }
 }
+
+/* Pages outside the world share the HUD's navy, so overscroll and the first paint match. */
+@layer base {
+  html {
+    background-color: var(--color-hud-inset);
+    color-scheme: dark;
+  }
+}

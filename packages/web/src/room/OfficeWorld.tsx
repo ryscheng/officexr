@@ -17,6 +17,7 @@ import { HudLayout } from '../hud/HudLayout';
 import { RotatePrompt } from '../hud/RotatePrompt';
 import { OfficeNamePlate } from '../hud/OfficeNamePlate';
 import { PresenceList } from '../hud/PresenceList';
+import { ZoomControls } from '../hud/ZoomControls';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
 import { usePingSender } from '../ping/usePingSender';
@@ -165,7 +166,6 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       {ready.voice && <JaasMeeting voice={ready.voice} />}
       {ready.voice && <MuteHotkey voice={ready.voice} />}
       {!settings.isOpen && <ClickToPlayPrompt />}
-      <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
       {viewMode === '3d' && <DeskAutoSit store={ready.local.store} selfId={ready.local.selfId} />}
       <HudLayout
         topCentre={
@@ -173,6 +173,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
             <ReplacedBanner store={ready.local.store} />
             {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
             <ConnectionToast store={ready.local.store} />
+            <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
           </>
         }
         topLeft={<OfficeNamePlate store={ready.local.store} name={office.name} />}
@@ -199,6 +200,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           )
         }
         bottomLeft={<ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />}
+        bottomRight={<ZoomControls />}
       />
       {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={ready.local.store} voice={ready.voice} />}
     </>

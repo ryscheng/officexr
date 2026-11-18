@@ -1,4 +1,8 @@
 import { API_ORIGIN, apiUrl, paths } from './apiOrigin';
+import { buttonClass } from './hud/ui/Button';
+import { InlineAlert } from './hud/ui/InlineAlert';
+import { Panel } from './hud/ui/Panel';
+import { BrandMark, PageShell } from './page/PageShell';
 
 const LOGIN_ERRORS: Record<string, string> = {
   not_allowed: "This Google account isn't allowed to use OfficeXR. Ask an admin to add it.",
@@ -28,14 +32,17 @@ export function SignInLink({ className }: { className: string }) {
 export function SignIn() {
   const loginError = new URLSearchParams(window.location.search).get('login_error');
   return (
-    <main className="mx-auto max-w-sm p-6 text-center">
-      <h1 className="mb-6 text-2xl font-semibold">OfficeXR</h1>
-      {loginError !== null && (
-        <p role="alert" className="mb-4 text-red-600">
-          {LOGIN_ERRORS[loginError] ?? 'Sign-in failed, please try again.'}
-        </p>
-      )}
-      <SignInLink className="inline-block rounded bg-black px-4 py-2 text-white" />
-    </main>
+    <PageShell centred>
+      <main className="w-full max-w-sm">
+        <Panel className="flex flex-col items-center gap-5 px-6 py-8 text-center">
+          <BrandMark size="lg" />
+          <p className="text-sm text-hud-text-2">Your team's office, one walk away. Sign in to join.</p>
+          {loginError !== null && (
+            <InlineAlert className="w-full text-left">{LOGIN_ERRORS[loginError] ?? 'Sign-in failed, please try again.'}</InlineAlert>
+          )}
+          <SignInLink className={buttonClass('primary', 'lg', 'w-full')} />
+        </Panel>
+      </main>
+    </PageShell>
   );
 }

@@ -75,6 +75,11 @@ export class GhostController {
     this.intent = { type: "none" };
   }
 
+  /** Where a `moveTo` is heading, or null once it arrives, is replaced, or keys take over. */
+  destination(): Point | null {
+    return this.intent.type === "point" ? this.intent.target : null;
+  }
+
   /** The player being followed, or null once the follow ends (arrived, cancelled, keys pressed). */
   followTarget(): PlayerId | null {
     return this.intent.type === "follow" ? this.intent.playerId : null;
