@@ -39,6 +39,8 @@ export interface MicActivityMeter {
   /** Releases the mic and reports not speaking. */
   stop(): void;
   onChange(listener: (speaking: boolean) => void): () => void;
+  /** Fires on every sample above `SPEAKING_LEVEL`, with no hold: unlike `onChange` it signals steady speech. */
+  onLoud(listener: () => void): () => void;
 }
 
 const TICK_MS = 100;
@@ -61,6 +63,7 @@ const browserMicDeps = (): MicActivityDeps => ({
  */
 export function createMicActivityMeter(deps: MicActivityDeps = browserMicDeps()): MicActivityMeter {
   const listeners = new Set<(speaking: boolean) => void>();
+  const loudListeners = new Set<() => void>();
   let release: (() => void) | null = null;
   let wanted = false;
   // Lets a stop() (or stop/start) while the permission prompt is open discard the stale stream.
@@ -94,7 +97,11 @@ export function createMicActivityMeter(deps: MicActivityDeps = browserMicDeps())
       const removeGestures = resumeOnGesture(live, deps.gestureTarget);
       const cancelTimer = deps.setInterval(() => {
         analyser.getFloatTimeDomainData(samples);
-        report(speakingFromLevel(rms(samples), deps.now(), state));
+        const level = rms(samples);
+        if (level > SPEAKING_LEVEL) {
+          loudListeners.forEach((listener) => listener());
+        }
+        report(speakingFromLevel(level, deps.now(), state));
       }, TICK_MS);
       release = () => {
         cancelTimer();
@@ -138,6 +145,12 @@ export function createMicActivityMeter(deps: MicActivityDeps = browserMicDeps())
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
+      };
+    },
+    onLoud(listener) {
+      loudListeners.add(listener);
+      return () => {
+        loudListeners.delete(listener);
       };
     },
   };

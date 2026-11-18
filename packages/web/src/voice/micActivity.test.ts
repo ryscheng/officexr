@@ -146,6 +146,19 @@ describe('createMicActivityMeter', () => {
     expect(t.changes).toEqual([true, false, true, false]);
   });
 
+  it('fires onLoud on each loud sample and not on quiet ones', async () => {
+    const t = setup();
+    let loud = 0;
+    t.meter.onLoud(() => loud++);
+    t.meter.start();
+    await flush();
+    t.hear(0.5, 0);
+    t.hear(0.5, 100);
+    t.hear(0, 200);
+    expect(loud).toBe(2);
+    expect(t.changes).toEqual([true]);
+  });
+
   it('opens one stream however often it is started', async () => {
     const t = setup();
     t.meter.start();

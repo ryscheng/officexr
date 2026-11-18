@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import type { Actions, Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
+import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
@@ -36,6 +36,7 @@ import { NotificationsPane } from './PingSettings';
 import { SettingsProvider, useSettings, type SettingsAction, type SettingsTab } from './Settings';
 import { SettingRow, SettingsButton, SettingsModal } from './SettingsModal';
 import { useJoinCheck } from './useJoinCheck';
+import { useLocalActivity } from './useLocalActivity';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
 import { useEscapeFallback } from '../hud/useEscapeLayer';
@@ -74,8 +75,9 @@ function ReplacedBanner({ store }: { store: Store }) {
   return replaced ? <HudBanner message={REPLACED_MESSAGE} /> : null;
 }
 
-function LocalPresence({ actions, voice }: { actions: Actions; voice: JaasVoiceAdapter | null }) {
-  useLocalPresence(actions, voice);
+function LocalPresence({ local, voice }: { local: ReadySession['local']; voice: JaasVoiceAdapter | null }) {
+  const markActive = useLocalActivity(local.store, local.actions, local.selfId);
+  useLocalPresence(local.actions, voice, undefined, markActive);
   return null;
 }
 
@@ -229,7 +231,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
         <>
           <PingReceiver bus={session.local.bus} store={session.local.store} />
           <PingInboxFeed bus={session.local.bus} store={session.local.store} inbox={pingInbox} />
-          <LocalPresence actions={session.local.actions} voice={session.voice} />
+          <LocalPresence local={session.local} voice={session.voice} />
         </>
       )}
       <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onCancel={join.cancel} />

@@ -25,6 +25,7 @@ export function useLocalPresence(
   actions: Pick<Actions, 'setSelfPresence'>,
   voice: PresenceVoice | null,
   { readDocument, createMeter }: LocalPresenceDeps = browserDeps,
+  onMicLoud?: () => void,
 ): void {
   useEffect(() => {
     // The SDK starts every player as available with no mic.
@@ -58,10 +59,15 @@ export function useLocalPresence(
       if (inCall() && !meter) {
         const created = createMeter();
         meter = created;
-        stopListening = created.onChange((next) => {
+        const stopChange = created.onChange((next) => {
           speaking = next;
           push();
         });
+        const stopLoud = onMicLoud ? created.onLoud(onMicLoud) : () => {};
+        stopListening = () => {
+          stopChange();
+          stopLoud();
+        };
       } else if (!inCall() && meter) {
         releaseMeter();
       }
@@ -91,5 +97,5 @@ export function useLocalPresence(
       window.removeEventListener('blur', push);
       releaseMeter();
     };
-  }, [actions, voice, readDocument, createMeter]);
+  }, [actions, voice, readDocument, createMeter, onMicLoud]);
 }
