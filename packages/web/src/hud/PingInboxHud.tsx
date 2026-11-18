@@ -4,20 +4,13 @@ import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { focusWorld, usePlayControls, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import { IconButton } from './IconButton';
+import { relativeTime } from './relativeTime';
 import { useEscapeLayer } from './useEscapeLayer';
 import { sameList } from './sameFields';
 import { Panel, PanelTitle } from './ui/Panel';
 import { useNow } from './useNow';
 
 const MAX_BADGE = 9;
-
-const relativeTime = (ageMs: number) => {
-  const minutes = Math.floor(ageMs / 60_000);
-  if (minutes < 1) {
-    return 'just now';
-  }
-  return minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ago`;
-};
 
 const selectPresentIds = (s: OfficeState) => Object.keys(s.players).map((id) => ({ id }));
 const samePresent = (a: { id: string }[], b: { id: string }[]) => sameList(a, b);

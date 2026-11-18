@@ -5,7 +5,7 @@ import { quantise } from './quantise';
 
 export const DEG = 180 / Math.PI;
 
-export type PresencePlayer = Pick<PlayerState, 'id' | 'name' | 'status' | 'lastStatusAt' | 'firstSeenAt'> & {
+export type PresencePlayer = Pick<PlayerState, 'id' | 'name' | 'status' | 'lastStatusAt' | 'firstSeenAt' | 'lastActiveAt'> & {
   /** Null until your own position is known. */
   distanceM: number | null;
   /** Bearing for a view yaw of 0, in degrees rounded to 5°. */
@@ -19,6 +19,7 @@ export const toPresencePlayer = (id: PlayerId, p: OfficeState['players'][PlayerI
   status: p.status,
   lastStatusAt: p.lastStatusAt,
   firstSeenAt: p.firstSeenAt,
+  lastActiveAt: p.lastActiveAt,
   distanceM: selfPos ? Math.floor(planarDistance(selfPos, p.pos)) : null,
   bearingDeg: selfPos ? quantise(relativeBearing(selfPos, 0, p.pos) * DEG, 5) : 0,
 });

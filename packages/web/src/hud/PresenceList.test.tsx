@@ -192,6 +192,32 @@ describe('PresenceList', () => {
     expect(dotOf('Bob', 'Away')).toBeTruthy();
   });
 
+  it('shows how long ago an idle peer was last active, from a minute on', () => {
+    const { actions } = seed();
+    const idle = (id: string, idleMs?: number) =>
+      actions.applyRemotePresence(id, 'available', 'none', 0, { room: null, participantId: null }, idleMs);
+    act(() => {
+      idle('ann', 5 * 60_000);
+      idle('bob', 30_000);
+      idle('cat');
+    });
+    expect(within(rowOf('Ann')).getByText(/^Active 5m ago ·$/)).toBeTruthy();
+    expect(within(rowOf('Bob')).queryByText(/Active/)).toBeNull();
+    expect(within(rowOf('Cat')).queryByText(/Active/)).toBeNull();
+    expect(within(rowOf('Me (you)')).queryByText(/Active/)).toBeNull();
+    expect(within(rowOf('Dan')).queryByText(/Active/)).toBeNull();
+  });
+
+  it('shows the active text alone, without a trailing dot, while the distance is unknown', () => {
+    const store = createStore({ selfId: 'me', officeId: 'o' });
+    const actions = createActions(store, createBus());
+    actions.upsertPlayer({ id: 'ann', name: 'Ann', pos: { x: 0, y: 0, z: -12 } });
+    actions.applyRemotePresence('ann', 'available', 'none', 0, { room: null, participantId: null }, 5 * 60_000);
+    vi.useFakeTimers();
+    renderInView(<PresenceList store={store} selfId="me" officeName="HQ" clock={() => 0} />);
+    expect(rowOf('Ann').querySelector('.tabular-nums')?.textContent).toBe('Active 5m ago');
+  });
+
   it('shows your own dot from your status', () => {
     const { actions } = seed();
     expect(dotOf('Me (you)', 'Available')).toBeTruthy();
