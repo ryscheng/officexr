@@ -39,6 +39,8 @@ export type PlayerState = {
   tRecv?: number;
   /** Local-only: receive time of this player's last `presence:status`. */
   lastStatusAt?: number;
+  /** Local-only: last input time (self) or receive time minus the peer's reported `idleMs`; same clock as `lastStatusAt`. */
+  lastActiveAt?: number;
   /** Local-only: when this remote player was first upserted here. */
   firstSeenAt?: number;
 };

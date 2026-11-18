@@ -33,6 +33,7 @@ export function applyNetEventToStore(
         event.mic,
         clock.now(),
         { room: event.jitsiRoom ?? null, participantId: event.jitsiParticipantId ?? null },
+        event.idleMs,
       );
       return;
     case 'presence:seat':

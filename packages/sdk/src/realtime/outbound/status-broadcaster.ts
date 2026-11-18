@@ -51,6 +51,7 @@ export class StatusBroadcaster {
       mic: me.mic,
       jitsiRoom: me.jitsiRoom,
       jitsiParticipantId: me.jitsiParticipantId,
+      ...(me.lastActiveAt !== undefined && { idleMs: Math.max(0, Math.round(now - me.lastActiveAt)) }),
     });
   }
 

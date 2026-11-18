@@ -213,6 +213,15 @@ describe('PROTOCOL table', () => {
     }
   });
 
+  it('presence:status accepts an optional non-negative idleMs', () => {
+    const status = (extra: object) =>
+      validateNetEvent({ kind: 'presence:status', v: 1, actorId: 'a', seq: 1, t: 0, status: 'available', mic: 'none', ...extra });
+    expect(status({}).ok).toBe(true);
+    expect(status({ idleMs: 0 }).ok).toBe(true);
+    expect(status({ idleMs: 1200 }).ok).toBe(true);
+    expect(status({ idleMs: -1 }).ok).toBe(false);
+  });
+
   it('avatar:update accepts viewMode, treats it as optional, and rejects invalid values', () => {
     const avatarUpdate = (avatar: unknown) =>
       validateNetEvent({ kind: 'avatar:update', v: 1, actorId: 'a', seq: 1, t: 0, name: 'A', avatar });

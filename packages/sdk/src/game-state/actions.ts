@@ -33,6 +33,7 @@ export interface Actions {
   callParticipantJoined(participantId: string, displayName: string): void;
   callParticipantLeft(participantId: string): void;
   clearCallRoster(): void;
+  markSelfActive(now: number): void;
   setSelfPresence(patch: { status?: PresenceStatus; mic?: MicState }): void;
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
@@ -85,6 +86,7 @@ export interface Actions {
     mic: MicState,
     now: number,
     jitsi: { room: string | null; participantId: string | null },
+    idleMs?: number,
   ): void;
   applyRemoteAvatar(playerId: PlayerId, avatar: AvatarData, name: string, now: number): void;
   applyRemoteSeat(playerId: PlayerId, instanceId: string | null, now: number): void;
@@ -194,6 +196,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     clearCallRoster() {
       store.setState((s) => (Object.keys(s.callRoster).length > 0 ? { callRoster: {} } : s));
+    },
+
+    markSelfActive(now) {
+      patchSelf({ lastActiveAt: now });
     },
 
     setSelfPresence({ status, mic }) {
@@ -344,7 +350,7 @@ export function createActions(store: Store, bus?: Bus): Actions {
       upsertRemote(playerId, { pos, vel, yaw, tRecv, isAirborne }, tRecv);
     },
 
-    applyRemotePresence(playerId, status, mic, now, jitsi) {
+    applyRemotePresence(playerId, status, mic, now, jitsi, idleMs) {
       upsertRemote(
         playerId,
         {
@@ -353,6 +359,7 @@ export function createActions(store: Store, bus?: Bus): Actions {
           jitsiRoom: jitsi.room,
           jitsiParticipantId: jitsi.participantId,
           lastStatusAt: now,
+          lastActiveAt: idleMs === undefined ? undefined : now - idleMs,
         },
         now,
       );
