@@ -43,7 +43,7 @@ describe('apiFetch with a preview token', () => {
     const payload = btoa(JSON.stringify({ exp: Date.now() / 1000 + 600 })).replace(/=+$/, '');
     const token = `h.${payload}.s`;
     window.sessionStorage.setItem('officexr.previewToken', token);
-    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response());
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response());
     vi.stubGlobal('fetch', fetchMock);
     const { apiFetch } = await load('https://api.example.com');
     await apiFetch('/api/offices', { method: 'POST', headers: { 'Content-Type': 'application/json' } });

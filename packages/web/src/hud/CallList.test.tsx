@@ -138,4 +138,19 @@ describe('CallList', () => {
     expect(presence.getByText('Ann')).toBeTruthy();
     expect(presence.queryByRole('img', { name: 'Speaking' })).toBeNull();
   });
+
+  it('shows how long ago a peer was last active, and nothing on a guest row', () => {
+    const actions = setup();
+    act(() => {
+      actions.setMyJitsiRoom('room');
+      actions.setMyJitsiParticipantId('j-me');
+      actions.applyRemotePresence('ann', 'available', 'none', 0, { room: 'room', participantId: 'j-ann' }, 5 * 60_000);
+      actions.callParticipantJoined('j-ann', 'Ann J');
+      actions.callParticipantJoined('j-x', 'Visitor');
+    });
+    const call = within(screen.getByRole('list', { name: 'People in your call' }));
+    expect(call.getAllByText(/Active 5m ago/)).toHaveLength(1);
+    const guest = call.getAllByRole('listitem').find((li) => li.textContent?.includes('Visitor'));
+    expect(guest?.textContent).not.toContain('Active');
+  });
 });
