@@ -150,4 +150,14 @@ describe('snapshot', () => {
     const wire = serializeOfficeState(s);
     expect(() => JSON.parse(JSON.stringify(wire))).not.toThrow();
   });
+
+  it('strips lastActiveAt from snapshots', () => {
+    const s = createInitialOfficeState({ selfId: 'me', officeId: 'r' });
+    s.players['me'] = {
+      id: 'me', name: 'Me', pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, hp: 100,
+      isDead: false, isAirborne: false, avatar: { model: 'gnome' }, jitsiRoom: null, jitsiParticipantId: null,
+      status: 'available', mic: 'none', lastActiveAt: 5,
+    };
+    expect(serializeOfficeState(s).players['me']).not.toHaveProperty('lastActiveAt');
+  });
 });

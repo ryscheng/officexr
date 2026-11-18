@@ -19,7 +19,7 @@ export type SerializedOfficeState = Omit<
 > & {
   players: Record<
     string,
-    Omit<PlayerState, 'tRecv' | 'lastStatusAt' | 'firstSeenAt' | 'jitsiParticipantId'> & {
+    Omit<PlayerState, 'tRecv' | 'lastStatusAt' | 'firstSeenAt' | 'lastActiveAt' | 'jitsiParticipantId'> & {
       jitsiParticipantId?: string | null;
     }
   >;
@@ -30,7 +30,7 @@ export type SerializedOfficeState = Omit<
 export function serializeOfficeState(state: OfficeState): SerializedOfficeState {
   const players: SerializedOfficeState['players'] = {};
   for (const [id, p] of Object.entries(state.players)) {
-    const { tRecv: _tRecv, lastStatusAt: _lastStatusAt, firstSeenAt: _firstSeenAt, ...rest } = p;
+    const { tRecv: _tRecv, lastStatusAt: _lastStatusAt, firstSeenAt: _firstSeenAt, lastActiveAt: _lastActiveAt, ...rest } = p;
     players[id] = rest;
   }
 
@@ -70,11 +70,13 @@ export function applySnapshot(target: OfficeState, snap: SerializedOfficeState, 
   const selfId = target.selfId;
   const officeId = target.officeId;
 
+  const selfLastActiveAt = target.players[selfId]?.lastActiveAt;
+
   target.players = {};
   for (const [id, p] of Object.entries(snap.players)) {
     // tRecv intentionally omitted
     const player = { ...p, jitsiParticipantId: p.jitsiParticipantId ?? null };
-    target.players[id] = id === selfId ? player : { ...player, firstSeenAt: now };
+    target.players[id] = id === selfId ? { ...player, lastActiveAt: selfLastActiveAt } : { ...player, firstSeenAt: now };
   }
 
   target.proximity = {};

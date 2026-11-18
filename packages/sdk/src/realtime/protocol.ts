@@ -196,6 +196,7 @@ const ZPresenceStatusPayload = z.object({
   mic: ZMicState,
   jitsiRoom: z.string().nullable().optional(),
   jitsiParticipantId: z.string().nullable().optional(),
+  idleMs: z.number().nonnegative().optional(),
 });
 const ZPresenceSeat = z.object({ instanceId: z.string().nullable() });
 const ZDeskClaimsPayload = z.object({ claims: z.record(z.string(), z.string()) });
@@ -233,6 +234,7 @@ export type NetEvent =
       mic: MicState;
       jitsiRoom?: string | null;
       jitsiParticipantId?: string | null;
+      idleMs?: number;
     }
   >
   | WithEnvelope<'presence:seat', 1, { instanceId: string | null }>

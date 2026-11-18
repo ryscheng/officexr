@@ -202,3 +202,77 @@ describe('avatar viewMode', () => {
     expect(c.store.getState().players['a']?.avatar.viewMode).toBe('2d');
   });
 });
+
+describe('lastActiveAt', () => {
+  const peerActive = (h: ReturnType<typeof createMultiClientHarness>, c: { store: { getState(): any } }) =>
+    c.store.getState().players['a']?.lastActiveAt;
+
+  it('reaches peers via the heartbeat idleMs', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    const b = await h.add('b');
+    a.actions.markSelfActive(h.clock.now());
+    const t0 = h.clock.now();
+
+    h.step(5_000);
+
+    expect(peerActive(h, b)).toBe(t0);
+  });
+
+  it('is undefined for a peer that never sends idleMs, and cleared when it stops', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    const b = await h.add('b');
+    h.step(5_000);
+    expect(peerActive(h, b)).toBeUndefined();
+
+    a.actions.markSelfActive(h.clock.now());
+    h.step(5_000);
+    expect(peerActive(h, b)).toBeDefined();
+
+    const noIdle = { kind: 'presence:status', v: 1, actorId: 'a', seq: Number.MAX_SAFE_INTEGER, t: 0, status: 'available', mic: 'none' };
+    await a.channel.send(noIdle as NetEvent);
+    expect(peerActive(h, b)).toBeUndefined();
+  });
+
+  it('reaches a late joiner after one heartbeat, not from the snapshot', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    await h.add('b');
+    a.actions.markSelfActive(h.clock.now());
+    const t0 = h.clock.now();
+    h.step(1_000);
+
+    const c = await h.add('c');
+    await c.handshake.requestSnapshot();
+    expect(peerActive(h, c)).toBeUndefined();
+
+    h.step(5_000);
+    expect(peerActive(h, c)).toBe(t0);
+  });
+
+  it('survives the receiver applying its own join snapshot', async () => {
+    const h = createMultiClientHarness();
+    await h.add('a');
+    const c = await h.add('c');
+    c.actions.markSelfActive(42);
+
+    await c.handshake.requestSnapshot();
+
+    expect(c.store.getState().players['c']?.lastActiveAt).toBe(42);
+  });
+
+  it('causes no extra broadcast between heartbeats', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('a');
+    const b = await h.add('b');
+    const fromA: NetEvent[] = [];
+    b.channel.on((e) => {
+      if (e.actorId === 'a') fromA.push(e);
+    });
+
+    for (let i = 0; i < 5; i++) a.actions.markSelfActive(h.clock.now());
+
+    expect(fromA).toEqual([]);
+  });
+});
