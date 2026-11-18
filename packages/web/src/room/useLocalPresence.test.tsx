@@ -11,6 +11,7 @@ afterEach(cleanup);
 class FakeMeter implements MicActivityMeter {
   running = false;
   private listeners = new Set<(speaking: boolean) => void>();
+  private loudListeners = new Set<() => void>();
   start() {
     this.running = true;
   }
@@ -21,6 +22,13 @@ class FakeMeter implements MicActivityMeter {
   onChange(listener: (speaking: boolean) => void) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+  onLoud(listener: () => void) {
+    this.loudListeners.add(listener);
+    return () => this.loudListeners.delete(listener);
+  }
+  loud() {
+    this.loudListeners.forEach((listener) => listener());
   }
   say(speaking: boolean) {
     this.listeners.forEach((listener) => listener(speaking));
@@ -67,7 +75,7 @@ function setup(voice: FakeVoice | null) {
     },
   };
   const setSelfPresence = vi.fn<(patch: { status?: PresenceStatus; mic?: MicState }) => void>();
-  const { unmount } = renderHook(() => useLocalPresence({ setSelfPresence }, voice, deps));
+  const { unmount } = renderHook(() => useLocalPresence({ setSelfPresence }, voice, undefined, deps));
   return { doc, meters, setSelfPresence, unmount };
 }
 
@@ -103,7 +111,7 @@ describe('useLocalPresence', () => {
   it('is away from mount when the tab starts hidden', () => {
     const doc = { hidden: true, focused: true };
     const setSelfPresence = vi.fn();
-    renderHook(() => useLocalPresence({ setSelfPresence }, null, { readDocument: () => doc, createMeter: () => new FakeMeter() }));
+    renderHook(() => useLocalPresence({ setSelfPresence }, null, undefined, { readDocument: () => doc, createMeter: () => new FakeMeter() }));
     expect(setSelfPresence).toHaveBeenCalledExactlyOnceWith({ status: 'away', mic: 'none' });
   });
 
@@ -192,5 +200,23 @@ describe('useLocalPresence', () => {
     act(() => voice.setState('connected'));
     expect(meters[0].running).toBe(false);
     expect(setSelfPresence).toHaveBeenLastCalledWith({ status: 'available', mic: 'muted' });
+  });
+
+  it('calls onMicLoud on loud samples from the call meter until it is released', () => {
+    const voice = new FakeVoice();
+    const meters: FakeMeter[] = [];
+    const onMicLoud = vi.fn();
+    const deps: LocalPresenceDeps = {
+      readDocument: () => ({ hidden: false, focused: true }),
+      createMeter: () => meters[meters.push(new FakeMeter()) - 1],
+    };
+    renderHook(() => useLocalPresence({ setSelfPresence: vi.fn() }, voice, onMicLoud, deps));
+    act(() => voice.setState('connected'));
+    meters[0].loud();
+    expect(onMicLoud).toHaveBeenCalledTimes(1);
+
+    act(() => voice.setState('idle'));
+    meters[0].loud();
+    expect(onMicLoud).toHaveBeenCalledTimes(1);
   });
 });

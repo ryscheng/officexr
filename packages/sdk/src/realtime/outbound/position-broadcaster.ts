@@ -30,6 +30,13 @@ function angleDelta(a: number, b: number): number {
   return d > Math.PI ? Math.PI * 2 - d : d;
 }
 
+type Pose = { pos: Vec3; yaw: number };
+
+/** Whether `a` is past the broadcast thresholds (`deltaP` / `deltaY`) from `b`. */
+export function poseMoved(a: Pose, b: Pose): boolean {
+  return distance(a.pos, b.pos) > POSITION_CONSTANTS.deltaP || angleDelta(a.yaw, b.yaw) > POSITION_CONSTANTS.deltaY;
+}
+
 type BroadcastFn = (event: NetEvent) => void;
 type SeqFn = () => number;
 
@@ -123,11 +130,9 @@ export class PositionBroadcaster {
       return;
     }
 
-    const dPos = distance(me.pos, this.lastSentPos);
-    const dYaw = angleDelta(me.yaw, this.lastSentYaw);
     const dt = now - this.lastSentTMs;
     const aboveCeiling = dt < 1000 / POSITION_CONSTANTS.maxHz;
-    const movedEnough = dPos > POSITION_CONSTANTS.deltaP || dYaw > POSITION_CONSTANTS.deltaY;
+    const movedEnough = poseMoved(me, { pos: this.lastSentPos, yaw: this.lastSentYaw });
     // Force a broadcast when the airborne flag flips so peers can flip
     // the jump animation immediately, without waiting for the stop-grace
     // packet (which would lag by up to `stopGraceMs` for a stationary
