@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { createActions, createBus, createStore, type Store } from '@officexr/sdk';
-import { createViewYaw, NavGridProvider, PlayControlsProvider, ViewYawProvider } from '@officexr/world/react';
+import { createDefaultApi } from '@officexr/world/app';
+import { ApplicationProvider, createViewYaw, NavGridProvider, PlayControlsProvider, ViewYawProvider } from '@officexr/world/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakePlayControls } from '../hud/fakePlayControls';
 import { openSettings, SettingsHarness } from '../room/settingsHarness';
@@ -14,6 +15,8 @@ import { usePictureInPicture, type PictureInPictureDeps } from './usePictureInPi
 
 const realMatchMedia = window.matchMedia;
 const idlePlayControls = fakePlayControls().controls;
+/** The minimap's floor plan reads the catalog; an empty one is enough here. */
+const offlineApi = createDefaultApi({ fetcher: async () => new Response('{}', { status: 404 }) });
 
 beforeEach(() => {
   window.matchMedia = ((query: string) => ({
@@ -96,15 +99,17 @@ function fakeDocument() {
 function Room({ deps, store, voice }: { deps: PictureInPictureDeps; store: Store; voice: JaasVoiceAdapter }) {
   const pip = usePictureInPicture(deps);
   return (
-    <NavGridProvider value={null}>
-      <ViewYawProvider viewYaw={createViewYaw()}>
-        <PlayControlsProvider controls={idlePlayControls}>
-          <SettingsHarness actions={popOutActions(pip)} />
-          <MuteToggle voice={voice} />
-          {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={store} voice={voice} />}
-        </PlayControlsProvider>
-      </ViewYawProvider>
-    </NavGridProvider>
+    <ApplicationProvider api={offlineApi}>
+      <NavGridProvider value={null}>
+        <ViewYawProvider viewYaw={createViewYaw()}>
+          <PlayControlsProvider controls={idlePlayControls}>
+            <SettingsHarness actions={popOutActions(pip)} />
+            <MuteToggle voice={voice} />
+            {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={store} voice={voice} />}
+          </PlayControlsProvider>
+        </ViewYawProvider>
+      </NavGridProvider>
+    </ApplicationProvider>
   );
 }
 

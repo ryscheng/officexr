@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import type { Store } from '@officexr/sdk';
 import { TooltipContainer } from '../hud/IconButton';
-import { Minimap } from '../hud/Minimap';
+import { OfficeMinimap } from '../hud/OfficeMinimap';
 import { MuteToggle } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 
@@ -21,7 +21,7 @@ export function PipContents({
       <div className="min-h-screen bg-neutral-900 p-2">
         <div className="relative">
           {/* ponytail: Chrome's intensive throttling can slow a long-hidden tab's timers to once a minute, so dots may turn red late. */}
-          <Minimap store={store} alwaysOpen />
+          <OfficeMinimap store={store} alwaysOpen />
           {voice && (
             <div className="absolute right-1 bottom-1">
               <MuteToggle voice={voice} />

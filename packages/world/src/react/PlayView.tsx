@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { XRStore } from '@react-three/xr';
 import { useProgress } from '@react-three/drei';
-import type { Actions, Bus, FixedCameraConstants, PlayerId, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
+import type { Actions, Bus, PlayerId, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
+import type { FixedCameraViewConfig } from '../renderer/viewConfig.ts';
 import type { BotPool } from '../bot/BotPool.ts';
 import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import type { CameraMode } from '../renderer/config.ts';
@@ -56,7 +57,7 @@ export interface PlayViewProps {
   /** Makes the camera mode controlled; Alt+P then reports through `onCameraModeChange`. */
   cameraMode?: CameraMode;
   /** Overrides the world's fixed-camera framing (e.g. the web client's overhead 2D view). Must be stable. */
-  fixedCamera?: Partial<FixedCameraConstants>;
+  fixedCamera?: Partial<FixedCameraViewConfig>;
   onCameraModeChange?: (mode: CameraMode) => void;
   /** Steers the view with device motion; absent means off. */
   motionLook?: MotionLookState;

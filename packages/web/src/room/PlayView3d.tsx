@@ -23,9 +23,19 @@ function useWorldXRStore(): XRStore | undefined {
 
 /**
  * The 2D view: the same 3D scene through the fixed follow camera, swung due south and tilted
- * steeply down so the office reads like a floor plan (Gather-style). Wheel and pinch still zoom.
+ * steeply down so the office reads like a floor plan (Gather-style). A long lens from high up
+ * keeps walls from leaning, and the pinned distance puts you at the centre: the look ray at
+ * `pitchDeg` passes through your chest, (height − 0.9 m) / tan(65°) away. Wheel and pinch zoom.
  */
-const OVERHEAD_CAMERA = { azimuthDeg: 180, pitchDeg: -65 } as const;
+const OVERHEAD_HEIGHT_M = 60;
+const OVERHEAD_PITCH_DEG = -65;
+const OVERHEAD_CAMERA = {
+  azimuthDeg: 180,
+  pitchDeg: OVERHEAD_PITCH_DEG,
+  height: OVERHEAD_HEIGHT_M,
+  fov: 20,
+  distanceM: (OVERHEAD_HEIGHT_M - 0.9) / Math.tan((-OVERHEAD_PITCH_DEG * Math.PI) / 180),
+} as const;
 
 /** Everything that reaches three/R3F, lazily loaded by `OfficeWorld`. */
 export default function PlayView3d({

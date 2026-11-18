@@ -48,6 +48,28 @@ export function floorPlanTransform(
   };
 }
 
+/**
+ * Maps world (x, z) metres onto the map `toMinimap` draws, with `selfPos` at `centre`: the
+ * transform for anything drawn in world coordinates (the floor plan).
+ */
+export function worldPlanTransform(
+  selfPos: Vec3,
+  viewYaw: number,
+  { rangeM, sizePx, centre }: { rangeM: number; sizePx: number; centre: number },
+): SvgMatrix {
+  const scale = sizePx / rangeM;
+  const cos = Math.cos(viewYaw) * scale;
+  const sin = Math.sin(viewYaw) * scale;
+  return {
+    a: cos,
+    b: sin,
+    c: -sin,
+    d: cos,
+    e: centre - cos * selfPos.x + sin * selfPos.z,
+    f: centre - sin * selfPos.x - cos * selfPos.z,
+  };
+}
+
 const paths = new WeakMap<NavGrid, string>();
 
 type Run = { i0: number; i1: number; fromRow: number };

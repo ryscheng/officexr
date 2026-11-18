@@ -13,7 +13,8 @@ import {
   type NavGrid,
 } from '@officexr/world/top-down';
 import { formatDistance } from './formatDistance';
-import { floorPlanTransform, navGridPath, toMinimap } from './minimapGeometry';
+import { floorPlanTransform, navGridPath, toMinimap, worldPlanTransform } from './minimapGeometry';
+import type { PlanRect, PlanTone } from './minimapPlan';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { quantise } from './quantise';
 import { sameFields, sameList } from './sameFields';
@@ -24,20 +25,25 @@ const SIZE_PX = 180;
 /** Leaves room outside the map's circle for the labels of users pinned to its rim. */
 const RIM_INSET_PX = 12;
 const MAP_PX = SIZE_PX - 2 * RIM_INSET_PX;
-const RANGE_M = 40;
+/** Metres across the map: close enough to read desks, far enough to see the room you're in. */
+const RANGE_M = 28;
 const CENTRE = SIZE_PX / 2;
+/** The map is a rounded tile, like a maps-app widget. */
+const MAP_RADIUS_PX = 18;
 
 type MinimapPeer = Pick<PlayerState, 'id' | 'name' | 'status' | 'lastStatusAt' | 'firstSeenAt'> &
   Vec3 & { distanceM: number };
-type Positions = { self: Vec3 | null; peers: MinimapPeer[] };
+/** `selfYaw` is quantised to 10°, so turning re-renders only when the arrow visibly turns. */
+type Positions = { self: Vec3 | null; selfYaw: number; peers: MinimapPeer[] };
 
 const selectPositions = (s: OfficeState): Positions => {
   const selfPos = s.players[s.selfId]?.pos;
   if (!selfPos) {
-    return { self: null, peers: [] };
+    return { self: null, selfYaw: 0, peers: [] };
   }
   return {
     self: { x: quantise(selfPos.x, 0.25), y: 0, z: quantise(selfPos.z, 0.25) },
+    selfYaw: quantise(s.players[s.selfId]?.yaw ?? 0, Math.PI / 18),
     peers: Object.values(s.players)
       .filter((p) => p.id !== s.selfId)
       .map((p) => ({
@@ -54,6 +60,7 @@ const selectPositions = (s: OfficeState): Positions => {
   };
 };
 const samePositions = (a: Positions, b: Positions) =>
+  a.selfYaw === b.selfYaw &&
   (a.self === b.self || (a.self !== null && b.self !== null && sameFields(a.self, b.self))) &&
   sameList(a.peers, b.peers);
 
@@ -61,12 +68,15 @@ export function Minimap({
   store,
   clock,
   alwaysOpen = false,
+  plan,
 }: {
   store: Store;
   /** Must be stable; defaults to `performance.now`, the clock presence timestamps are on. */
   clock?: () => number;
   /** Hides the collapse toggle and keeps the map shown. */
   alwaysOpen?: boolean;
+  /** The office's floor plan in world metres (see `OfficeMinimap`); without it only walkable floor is drawn. */
+  plan?: readonly PlanRect[];
 }) {
   const coarse = useCoarsePointer();
   const [expanded, setExpanded] = useState(!coarse);
@@ -86,7 +96,7 @@ export function Minimap({
         onClick={toggle}
         className={`pointer-events-auto p-1 ${CHIP}`}
       >
-        <MapView store={store} clock={clock} className="block size-20" />
+        <MapView store={store} clock={clock} plan={plan} className="block size-20" />
       </button>
     );
   }
@@ -110,7 +120,7 @@ export function Minimap({
           </button>
         )}
       </div>
-      {open && <MapView id={mapId} store={store} clock={clock} />}
+      {open && <MapView id={mapId} store={store} clock={clock} plan={plan} />}
     </Panel>
   );
 }
@@ -119,19 +129,23 @@ function MapView({
   id,
   store,
   clock,
+  plan,
   className = 'mt-1 block h-auto w-full',
 }: {
   id?: string;
   store: Store;
   clock?: () => number;
+  plan?: readonly PlanRect[];
   className?: string;
 }) {
-  const { self, peers } = useStoreSelector(store, selectPositions, samePositions);
+  const { self, selfYaw, peers } = useStoreSelector(store, selectPositions, samePositions);
   const clipId = useId();
   const viewYaw = useViewYaw();
   const now = useNow(1000, clock);
   const grid = useNavGrid();
   const { state } = usePlayControls();
+  // Yaw turns counter-clockwise seen from above; the map is turned so the view's yaw points up.
+  const heading = (-(selfYaw - viewYaw) * 180) / Math.PI;
   return (
     <svg
       id={id}
@@ -143,10 +157,11 @@ function MapView({
       className={className}
     >
       <clipPath id={clipId}>
-        <circle cx={CENTRE} cy={CENTRE} r={MAP_PX / 2} />
+        <rect width={SIZE_PX} height={SIZE_PX} rx={MAP_RADIUS_PX} />
       </clipPath>
-      <circle cx={CENTRE} cy={CENTRE} r={MAP_PX / 2} className="fill-hud-inset" />
+      <rect width={SIZE_PX} height={SIZE_PX} rx={MAP_RADIUS_PX} className="fill-[#e7eaf0]" />
       {self && grid && <FloorPlan grid={grid} self={self} viewYaw={viewYaw} clipId={clipId} />}
+      {self && plan && plan.length > 0 && <PlanLayer plan={plan} self={self} viewYaw={viewYaw} clipId={clipId} />}
       {self && state.type === 'walking' && (
         <RouteLine
           route={state.route}
@@ -157,45 +172,92 @@ function MapView({
         />
       )}
       {self && peers.map((p) => <PeerMarker key={p.id} peer={p} self={self} viewYaw={viewYaw} now={now} />)}
-      <path
-        role="img"
-        aria-label="You"
-        d={`M${CENTRE} ${CENTRE - 7}l5 12h-10z`}
-        className="fill-hud-text stroke-hud-inset"
-      >
+      {/* You: a navigation arrow pointing where you face, on a soft halo, like a maps app. */}
+      <g role="img" aria-label="You">
         <title>You</title>
-      </path>
+        <circle cx={CENTRE} cy={CENTRE} r={13} className="fill-hud-accent/15" />
+        <g transform={`translate(${CENTRE} ${CENTRE}) rotate(${heading})`}>
+          <path d="M0 -8.5L6.5 6.5L0 3L-6.5 6.5Z" strokeWidth={1.75} strokeLinejoin="round" className="fill-hud-accent stroke-white" />
+        </g>
+      </g>
+      <rect width={SIZE_PX} height={SIZE_PX} rx={MAP_RADIUS_PX} className="fill-none stroke-black/5" />
     </svg>
   );
 }
 
-/** How far a rim-pinned peer's label sits in from its dot, towards the centre, so it stays inside the map. */
-const RIM_LABEL_INSET_PX = 13;
+/** Pastel, low-detail fills: a floor plan you read at a glance, not a picture of the room. */
+const PLAN_FILL: Record<PlanTone, string> = {
+  floor: 'fill-[#f6f1e8]',
+  rug: 'fill-[#e7ddf3]',
+  desk: 'fill-[#ddbb94]',
+  seat: 'fill-[#a9bfe0]',
+  furniture: 'fill-[#cdd2db]',
+  wall: 'fill-[#7c8496]',
+};
 
+/** The office's objects, drawn in world metres under one transform, so moving only rewrites the matrix. */
+function PlanLayer({ plan, self, viewYaw, clipId }: { plan: readonly PlanRect[]; self: Vec3; viewYaw: number; clipId: string }) {
+  const { a, b, c, d, e, f } = worldPlanTransform(self, viewYaw, { rangeM: RANGE_M, sizePx: MAP_PX, centre: CENTRE });
+  return (
+    <g clipPath={`url(#${clipId})`}>
+      <g transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`}>
+        {plan.map((r, i) => (
+          <rect key={i} x={r.x} y={r.z} width={r.w} height={r.d} rx={r.tone === 'wall' ? 0 : 0.15} className={PLAN_FILL[r.tone]} />
+        ))}
+      </g>
+    </g>
+  );
+}
+
+/** How far a rim-pinned peer's label sits in from its dot, towards the centre, so it stays inside the map. */
+const RIM_LABEL_INSET_PX = 15;
+const AVATAR_R = 6;
+
+/**
+ * A person: their initial on a white disc ringed in their presence colour. Out of range they ride
+ * the rim, smaller, with a chevron pointing their way and their distance; in range the map itself
+ * shows how far (and the roster and the accessible name say it).
+ */
 function PeerMarker({ peer, self, viewYaw, now }: { peer: MinimapPeer; self: Vec3; viewYaw: number; now: number }) {
   const { x, y, clamped } = toMinimap(self, viewYaw, peer, { rangeM: RANGE_M, sizePx: MAP_PX });
   const cx = x + RIM_INSET_PX;
   const cy = y + RIM_INSET_PX;
   const name = peer.name || 'Joining…';
-  // Out of range: the dot rides the rim with a chevron pointing their way, and the label sits inside.
+  const presence = PRESENCE_INDICATOR[presenceIndicator(peer, now)].fill;
+  const r = clamped ? AVATAR_R - 2 : AVATAR_R;
   const angle = Math.atan2(cy - CENTRE, cx - CENTRE);
-  const label = clamped
-    ? { x: cx - Math.cos(angle) * RIM_LABEL_INSET_PX, y: cy - Math.sin(angle) * RIM_LABEL_INSET_PX + 3 }
-    : { x: cx, y: cy + 12 };
+  const label = { x: cx - Math.cos(angle) * RIM_LABEL_INSET_PX, y: cy - Math.sin(angle) * RIM_LABEL_INSET_PX + 3 };
   return (
     <g role="img" aria-label={`${name}, ${formatDistance(peer.distanceM)}`}>
       <title>{name}</title>
+      <circle cx={cx} cy={cy} r={r + 1.75} strokeWidth={1} className={`${presence} stroke-white`} />
+      <circle cx={cx} cy={cy} r={r} className="fill-white" />
       {clamped && (
-        <path
-          d="M5 0L-2 -4V4z"
-          transform={`translate(${cx} ${cy}) rotate(${(angle * 180) / Math.PI})`}
-          className={PRESENCE_INDICATOR[presenceIndicator(peer, now)].fill}
-        />
+        <g transform={`translate(${cx} ${cy}) rotate(${(angle * 180) / Math.PI}) translate(${r + 4} 0)`}>
+          <path d="M4 0L-1 -3.5V3.5z" className={presence} />
+        </g>
       )}
-      <circle cx={cx} cy={cy} r={clamped ? 3 : 4} className={PRESENCE_INDICATOR[presenceIndicator(peer, now)].fill} />
-      <text x={label.x} y={label.y} textAnchor="middle" className="fill-hud-text text-[9px] font-bold tabular-nums">
-        {formatDistance(peer.distanceM)}
+      <text
+        x={cx}
+        y={cy + (clamped ? 2.6 : 2.9)}
+        textAnchor="middle"
+        aria-hidden
+        className={`fill-hud-text font-bold uppercase ${clamped ? 'text-[7px]' : 'text-[8px]'}`}
+      >
+        {name.charAt(0)}
       </text>
+      {clamped && (
+        <text
+          x={label.x}
+          y={label.y}
+          textAnchor="middle"
+          strokeWidth={3}
+          paintOrder="stroke"
+          className="fill-hud-text stroke-white text-[8.5px] font-semibold tabular-nums"
+        >
+          {formatDistance(peer.distanceM)}
+        </text>
+      )}
     </g>
   );
 }
@@ -239,7 +301,7 @@ function FloorPlan({ grid, self, viewYaw, clipId }: { grid: NavGrid; self: Vec3;
   });
   return (
     <g clipPath={`url(#${clipId})`}>
-      <path d={navGridPath(grid)} transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`} className="fill-hud-edge" />
+      <path d={navGridPath(grid)} transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`} className="fill-white" />
     </g>
   );
 }

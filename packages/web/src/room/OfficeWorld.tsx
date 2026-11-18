@@ -10,7 +10,7 @@ import { DeskHud } from '../desk/DeskHud';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PingInboxHud } from '../hud/PingInboxHud';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
-import { Minimap } from '../hud/Minimap';
+import { OfficeMinimap } from '../hud/OfficeMinimap';
 import { ConnectionToast } from '../hud/ConnectionToast';
 import { HudBanner } from '../hud/HudBanner';
 import { HudLayout } from '../hud/HudLayout';
@@ -182,7 +182,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
               <PingInboxHud inbox={pingInbox} store={ready.local.store} />
               <SettingsButton />
             </div>
-            <Minimap store={ready.local.store} />
+            <OfficeMinimap store={ready.local.store} />
           </>
         }
         rightEdge={
