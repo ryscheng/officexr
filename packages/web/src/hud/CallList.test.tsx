@@ -94,6 +94,7 @@ describe('callRows', () => {
 
 describe('CallList', () => {
   function setup() {
+    const clock = () => 0;
     const store = createStore({ selfId: 'me', officeId: 'o' });
     const actions = createActions(store, createBus());
     actions.upsertPlayer({ id: 'me', name: 'Me', pos: { x: 0, y: 0, z: 0 } });
@@ -101,8 +102,8 @@ describe('CallList', () => {
     render(
       <PlayControlsProvider controls={fakePlayControls().controls}>
         <ViewYawProvider viewYaw={createViewYaw()}>
-          <PresenceList store={store} selfId="me" officeName="HQ" />
-          <CallList store={store} selfId="me" />
+          <PresenceList store={store} selfId="me" officeName="HQ" clock={clock} />
+          <CallList store={store} selfId="me" clock={clock} />
         </ViewYawProvider>
       </PlayControlsProvider>,
     );
