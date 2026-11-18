@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { XRStore } from '@react-three/xr';
 import { useProgress } from '@react-three/drei';
-import type { Actions, Bus, PlayerId, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
+import type { Actions, Bus, FixedCameraConstants, PlayerId, RuleRegistry, Store, SyncEngine, SnapshotHandshake, Vec3 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import type { CameraMode } from '../renderer/config.ts';
@@ -55,6 +55,8 @@ export interface PlayViewProps {
   onFrameStats?: (sample: FrameStatsSample | null) => void;
   /** Makes the camera mode controlled; Alt+P then reports through `onCameraModeChange`. */
   cameraMode?: CameraMode;
+  /** Overrides the world's fixed-camera framing (e.g. the web client's overhead 2D view). Must be stable. */
+  fixedCamera?: Partial<FixedCameraConstants>;
   onCameraModeChange?: (mode: CameraMode) => void;
   /** Steers the view with device motion; absent means off. */
   motionLook?: MotionLookState;
@@ -83,6 +85,11 @@ export function PlayView(props: PlayViewProps) {
   const coarsePointer = useCoarsePointer();
   const [viewYaw] = useState(createViewYaw);
   const worldConstants = useWorldConstants(props.store);
+  const { fixedCamera } = props;
+  const view = useMemo(
+    () => (fixedCamera ? { ...worldConstants, fixedCamera: { ...worldConstants.fixedCamera, ...fixedCamera } } : worldConstants),
+    [worldConstants, fixedCamera],
+  );
   const navGrid = useBuildNavGrid(props.store);
   const autoWalk = useAutoWalk(props.store, props.selfId, navGrid);
   const seating = useSeating(props.store, props.actions, props.selfId, autoWalk);
@@ -129,7 +136,7 @@ export function PlayView(props: PlayViewProps) {
           cameraMode={cameraMode}
           motionLook={props.motionLook}
           invertLook={props.invertLook}
-          view={worldConstants}
+          view={view}
           worldFocused={worldFocused}
           moveInputRef={moveInputRef}
           autoWalk={autoWalk}

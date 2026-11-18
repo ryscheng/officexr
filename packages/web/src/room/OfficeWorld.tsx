@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
-import { ApplicationProvider, TopDownPlayView, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
+import { ApplicationProvider, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
@@ -17,7 +17,6 @@ import { HudLayout } from '../hud/HudLayout';
 import { RotatePrompt } from '../hud/RotatePrompt';
 import { OfficeNamePlate } from '../hud/OfficeNamePlate';
 import { PresenceList } from '../hud/PresenceList';
-import { ZoomControls } from '../hud/ZoomControls';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
 import { usePingSender } from '../ping/usePingSender';
@@ -35,7 +34,7 @@ import { playerIdFor } from './playerId';
 import { KeybindsTab } from './KeybindsTab';
 import { NotificationsPane } from './PingSettings';
 import { SettingsProvider, useSettings, type SettingsAction, type SettingsTab } from './Settings';
-import { SettingRow, SettingsButton, SettingsModal } from './SettingsModal';
+import { SettingRow, SettingsButton } from './SettingsModal';
 import { useJoinCheck } from './useJoinCheck';
 import { useLocalActivity } from './useLocalActivity';
 import { useLocalPresence } from './useLocalPresence';
@@ -102,7 +101,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
   const viewMode = useMemo(() => initialViewMode(), []);
   const join = useJoinCheck(office.id, me.login);
-  const session = useOfficeSession(office.id, me, selfId, join.state === 'go', viewMode);
+  const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
   const local = session.type === 'ready' ? session.local : null;
   const pingInbox = useMemo(() => new PingInbox(), [local]);
   const [bannerError, setBannerError] = useState<string | null>(null);
@@ -166,7 +165,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       {ready.voice && <JaasMeeting voice={ready.voice} />}
       {ready.voice && <MuteHotkey voice={ready.voice} />}
       {!settings.isOpen && <ClickToPlayPrompt />}
-      {viewMode === '3d' && <DeskAutoSit store={ready.local.store} selfId={ready.local.selfId} />}
+      <DeskAutoSit store={ready.local.store} selfId={ready.local.selfId} />
       <HudLayout
         topCentre={
           <>
@@ -200,7 +199,6 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           )
         }
         bottomLeft={<ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />}
-        bottomRight={<ZoomControls />}
       />
       {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={ready.local.store} voice={ready.voice} />}
     </>
@@ -209,25 +207,19 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   return (
     <div className="relative h-full w-full overflow-hidden">
       {session.type === 'ready' && (
-        viewMode === '3d' ? (
-          <PlayView3dBoundary>
-            <Suspense fallback={<WorldLoadingScreen title={office.name} step="Loading 3D view" />}>
-              <PlayView3d
-                viewProps={readyViewProps(session)}
-                local={session.local}
-                settings={{ tabs: sharedTabs, actions: sharedActions }}
-                onError={setBannerError}
-              >
-                {readyHud(session)}
-              </PlayView3d>
-            </Suspense>
-          </PlayView3dBoundary>
-        ) : (
-          <TopDownPlayView {...readyViewProps(session)}>
-            <SettingsModal title={office.name} tabs={sharedTabs} actions={sharedActions} />
-            {readyHud(session)}
-          </TopDownPlayView>
-        )
+        <PlayView3dBoundary>
+          <Suspense fallback={<WorldLoadingScreen title={office.name} step="Loading the office" />}>
+            <PlayView3d
+              viewProps={readyViewProps(session)}
+              overhead={viewMode === '2d'}
+              local={session.local}
+              settings={{ tabs: sharedTabs, actions: sharedActions }}
+              onError={setBannerError}
+            >
+              {readyHud(session)}
+            </PlayView3d>
+          </Suspense>
+        </PlayView3dBoundary>
       )}
       {session.type === 'ready' && (
         <>

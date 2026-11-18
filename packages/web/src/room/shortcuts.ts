@@ -15,8 +15,6 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { group: 'Camera', keys: 'Alt/⌥ + P', description: 'Cycle camera mode' },
   { group: 'Camera', keys: 'Click world', description: 'Look around (first and third person)' },
   { group: 'Camera', keys: 'Esc', description: 'Release the mouse' },
-  { group: 'Camera', keys: '+ / −', description: 'Zoom the 2D map in or out (or scroll, or pinch)' },
-  { group: 'Camera', keys: '0', description: 'Centre the 2D map on you (drag the map to look around)' },
   { group: 'Voice', keys: 'Alt/⌥ + M', description: 'Mute or unmute your microphone (zone calls start muted)' },
   { group: 'Chat', keys: 'Enter', description: 'Open chat, send a message, or close an empty chat' },
   { group: 'Chat', keys: 'Esc', description: 'Close chat' },

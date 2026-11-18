@@ -32,7 +32,6 @@
     "state:backup": "tsx scripts/state-backup.ts",
     "state:reset": "tsx scripts/state-reset.ts",
     "gen:thumbnails": "tsx scripts/gen-thumbnails.ts",
-    "bake:sprites": "tsx scripts/bake-sprites.ts",
     "bake:dimensions": "tsx scripts/bake-kind-dimensions.ts",
     "bake:layout": "tsx scripts/bake-layout.ts",
     "test:bounds-visual": "tsx scripts/test-bounds-visual.ts",

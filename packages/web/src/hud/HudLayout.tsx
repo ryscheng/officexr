@@ -7,12 +7,10 @@ type Slots = {
   rightEdge?: ReactNode;
   bottomCentre?: ReactNode;
   bottomLeft?: ReactNode;
-  /** Pointer-only tools (the 2D zoom buttons); touch has pinch, and the call bar owns this corner there. */
-  bottomRight?: ReactNode;
 };
 
 /** Places the in-office HUD in fixed zones around the edges; the top centre stacks toasts and banners. */
-export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentre, bottomLeft, bottomRight }: Slots) {
+export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentre, bottomLeft }: Slots) {
   return (
     <div className="pointer-events-none absolute inset-3 z-20">
       <div data-hud-zone="topLeft" className="absolute top-0 left-0 flex flex-col items-start gap-2">
@@ -21,8 +19,7 @@ export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentr
       <div data-hud-zone="topCentre" className="absolute inset-x-0 top-0 flex flex-col items-center gap-2">
         {topCentre}
       </div>
-      {/* One right-hand column: the roster scrolls in whatever height the top and bottom zones leave it. */}
-      <div className="absolute inset-y-0 right-0 flex flex-col items-end gap-2">
+      <div className="absolute top-0 right-0 flex max-h-full flex-col items-end gap-2">
         <div data-hud-zone="topRight" className="flex flex-col items-end gap-2">
           {topRight}
         </div>
@@ -32,9 +29,6 @@ export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentr
           className="-mr-3 flex min-h-0 flex-col items-end gap-2 overflow-y-auto overscroll-contain pr-3 pb-10 pl-8 pointer-coarse:pb-16"
         >
           {rightEdge}
-        </div>
-        <div data-hud-zone="bottomRight" className="mt-auto pointer-coarse:hidden">
-          {bottomRight}
         </div>
       </div>
       <div

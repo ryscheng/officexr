@@ -27,9 +27,8 @@ officexr/
 │   │   ├── src/          # main.ts (entrypoint), backend.ts (createBackend: db + realtime + app, shared with `pnpm dev`), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
 │   │   │                 # jaasToken.ts (server-side JaaS JWT signing), runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_APP_ID, OFFICEXR_JAAS_* (server-only), OFFICEXR_ASSET_BASE_URL
-│   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds; top-down/ is the Canvas2D 2D view
-│   │                     # (camera, baked sprites with procedural fallbacks; no three). sprites/ holds the art `bake:sprites`
-│   │                     # renders from the KayKit models (see sprites/README.md)
+│   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds; top-down/ is the three-free
+│   │                     # entry the web HUD imports hooks from
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
 │   ├── studio-server/    # @officexr/studio-server — studio backend: main.ts (entrypoint), app.ts (internal + public servers), studio-gate.ts (public-port sign-in gate),
 │   │                     # studio-backend.ts (storage hooks + R2 sync, shared with the Vite studio), r2-publisher.ts, push-world-constants.ts
@@ -191,13 +190,11 @@ Files on disk:
 - `packages/world/maps/*.json` (`default.json` is the seed)
 - `packages/world/cube-kinds.json` (+ `cube-kinds.default.json` fallback)
 
-### 2D view art
+### 2D view
 
-The 2D view draws furniture and characters from sprites baked out of the KayKit models
-(`packages/world/sprites/`, manifest `src/top-down/spriteManifest.ts`). Re-run
-`pnpm --filter @officexr/world bake:sprites` after `pnpm asset-packs:install` when the catalog's
-furniture/restaurant kinds or the characters change, or when the 2D projection (`ELEVATION`)
-changes. Kinds without a sprite fall back to the archetype painters in `topDownPainters.ts`.
+The web client's 2D view is the 3D view (`PlayView3d`) with the fixed follow camera locked
+overhead (`OVERHEAD_CAMERA`, passed to `PlayView` as `fixedCamera`): same scene, models,
+physics and seating, no separate renderer.
 
 ### Web HUD theme
 

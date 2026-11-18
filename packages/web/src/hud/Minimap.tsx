@@ -91,7 +91,8 @@ export function Minimap({
     );
   }
   return (
-    <Panel className="pointer-events-auto p-2 text-xs">
+    // Same width as the roster below it, so the right-hand column reads as one stack.
+    <Panel className="pointer-events-auto w-60 p-2 text-xs">
       <div className="flex items-center justify-between gap-3 px-1">
         <PanelTitle className="text-xs">Map</PanelTitle>
         {/* preventDefault on mousedown keeps focus off the button, so Space/Enter keep driving the world. */}
@@ -118,7 +119,7 @@ function MapView({
   id,
   store,
   clock,
-  className = 'mt-1 block',
+  className = 'mt-1 block h-auto w-full',
 }: {
   id?: string;
   store: Store;

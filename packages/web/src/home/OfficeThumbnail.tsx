@@ -1,9 +1,37 @@
-import { PALETTE, SPRITE_MANIFEST, hashString, type CharacterSheet, type KindSprite } from '@officexr/world/top-down';
+/** The few colours the picture uses: a warm office floor, white desks, wood, plants. */
+const PALETTE = {
+  planks: '#f1e4d1',
+  plankLine: '#e4d3bc',
+  wallTop: '#6f7789',
+  wallFront: '#ded9cf',
+  deskTop: '#fbfbfd',
+  deskFront: '#b8c1cf',
+  monitorScreen: '#5b8def',
+  chairSeat: '#56627a',
+  woodTop: '#d9a877',
+  woodFront: '#b07a4b',
+  sofaTop: '#eaa56b',
+  sofaFront: '#c47f45',
+  potTop: '#cf7a52',
+  leafDark: '#3f8f4c',
+  leafLight: '#5cb26a',
+  shadow: 'rgba(30, 36, 51, 0.16)',
+} as const;
+const RUG_COLOURS = ['#a9c6ea', '#f3c6a3', '#cbb8e6', '#b6dec8', '#f2b8c6'] as const;
+const SHIRT_COLOURS = ['#5b8def', '#ef6f6c', '#45b37f', '#f2a541', '#9b6bdf', '#2bb5b5', '#e86aa6', '#4c566a'] as const;
 
-/** Thumbnail units per metre: the card shows a 26 × 14 m slice of office. */
-const U = 6;
-const W = 26 * U;
-const H = 14 * U;
+/** FNV-1a, so an office keeps its picture across reloads. */
+function hashString(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+const W = 160;
+const H = 84;
 
 /** mulberry32: a tiny seeded generator, so an office always gets the same picture. */
 function random(seed: number) {
@@ -16,105 +44,89 @@ function random(seed: number) {
   };
 }
 
-/** One frame of a baked kind strip, its footprint corner at (x, z) metres, cropped with a nested viewBox. */
-function Kind({ id, x, z, yaw = 0 }: { id: string; x: number; z: number; yaw?: number }) {
-  const sprite: KindSprite | undefined = SPRITE_MANIFEST.kinds[id];
-  const f = sprite?.frames.find((frame) => frame.yawDeg === yaw);
-  if (!sprite || !f) {
-    return null;
-  }
-  const s = U / SPRITE_MANIFEST.kindPpm;
-  const sheetW = Math.max(...sprite.frames.map((frame) => frame.x + frame.w));
-  const sheetH = Math.max(...sprite.frames.map((frame) => frame.h));
+function DeskPod({ x, y }: { x: number; y: number }) {
   return (
-    <svg x={x * U - f.ax * s} y={z * U - f.ay * s} width={f.w * s} height={f.h * s} viewBox={`${f.x} ${f.y} ${f.w} ${f.h}`}>
-      <image href={sprite.url} width={sheetW} height={sheetH} />
-    </svg>
+    <g>
+      {[x + 4, x + 14].map((cx) => (
+        <rect key={cx} x={cx} y={y - 5} width={6} height={4} rx={1.5} fill={PALETTE.chairSeat} />
+      ))}
+      <rect x={x} y={y} width={24} height={10} rx={1.5} fill={PALETTE.deskTop} />
+      <rect x={x} y={y + 10} width={24} height={3} fill={PALETTE.deskFront} />
+      {[x + 4, x + 14].map((cx) => (
+        <rect key={cx} x={cx} y={y + 6} width={6} height={2.5} rx={0.5} fill={PALETTE.monitorScreen} />
+      ))}
+      {[x + 4, x + 14].map((cx) => (
+        <rect key={cx} x={cx} y={y + 15} width={6} height={4} rx={1.5} fill={PALETTE.chairSeat} />
+      ))}
+    </g>
   );
 }
 
-/** A baked character standing idle, facing the viewer, feet at (x, z) metres. */
-function Person({ name, x, z }: { name: string; x: number; z: number }) {
-  const sheet: CharacterSheet | undefined = SPRITE_MANIFEST.characters[name];
-  if (!sheet) {
-    return null;
-  }
-  const s = (U / SPRITE_MANIFEST.characterPpm) * 1.1;
-  const columns = sheet.columns.sit + 1;
+function Plant({ x, y }: { x: number; y: number }) {
   return (
-    <svg
-      x={x * U - sheet.anchor.x * s}
-      y={z * U - sheet.anchor.y * s}
-      width={sheet.cell.w * s}
-      height={sheet.cell.h * s}
-      viewBox={`${sheet.columns.idle * sheet.cell.w} 0 ${sheet.cell.w} ${sheet.cell.h}`}
-    >
-      <image href={sheet.url} width={sheet.cell.w * columns} height={sheet.cell.h * sheet.directions.length} />
-    </svg>
-  );
-}
-
-/** A desk with a chair on each side of each end, as in the office's pods. */
-function Pod({ x, z }: { x: number; z: number }) {
-  return (
-    <>
-      <Kind id="furniture_chair_c" x={x + 0.4} z={z - 0.95} />
-      <Kind id="furniture_chair_c" x={x + 1.85} z={z - 0.95} />
-      <Kind id="furniture_table_medium_long" x={x} z={z} />
-      <Kind id="furniture_chair_c" x={x + 0.4} z={z + 2.05} yaw={180} />
-      <Kind id="furniture_chair_c" x={x + 1.85} z={z + 2.05} yaw={180} />
-    </>
+    <g>
+      <rect x={x - 2.5} y={y} width={5} height={4} rx={1} fill={PALETTE.potTop} />
+      <circle cx={x - 2} cy={y - 1} r={3} fill={PALETTE.leafDark} />
+      <circle cx={x + 2} cy={y - 1.5} r={3} fill={PALETTE.leafLight} />
+      <circle cx={x} cy={y - 3.5} r={2.8} fill={PALETTE.leafLight} />
+    </g>
   );
 }
 
 /**
- * A slice of office drawn with the 2D view's own baked sprites: desk pods, a lounge or a meeting
- * table, plants and a few people. Decorative, and stable per office so each card is recognisable.
+ * A little floor plan in the office's colours: desk pods, a meeting table or a lounge, plants
+ * and a few people. Decorative, and stable per office so each card is recognisable.
  */
 export function OfficeThumbnail({ seed, className = '' }: { seed: string; className?: string }) {
   const rand = random(hashString(seed));
-  const characters = Object.keys(SPRITE_MANIFEST.characters);
-  const pick = () => characters[Math.floor(rand() * characters.length)];
-  const pods = 2 + Math.floor(rand() * 2);
+  const pods = 2 + Math.floor(rand() * 3);
   const lounge = rand() > 0.5;
-  const people = [
-    { name: pick(), x: 3.2 + rand() * 6, z: 7.8 },
-    { name: pick(), x: 11 + rand() * 4, z: 12.2 },
-    { name: pick(), x: 19.5 + rand() * 3, z: lounge ? 11.6 : 12.4 },
-  ];
+  const rug = RUG_COLOURS[Math.floor(rand() * RUG_COLOURS.length)];
+  const people = Array.from({ length: 2 + Math.floor(rand() * 3) }, () => ({
+    x: 12 + rand() * 90,
+    y: 30 + rand() * 44,
+    shirt: SHIRT_COLOURS[Math.floor(rand() * SHIRT_COLOURS.length)],
+  }));
   return (
     <svg aria-hidden viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice" className={className}>
       <rect width={W} height={H} fill={PALETTE.planks} />
-      {Array.from({ length: Math.ceil(H / (U / 2)) }, (_, i) => (
-        <line key={i} x1={0} x2={W} y1={(i * U) / 2 + 0.25} y2={(i * U) / 2 + 0.25} stroke={PALETTE.plankLine} strokeWidth={0.4} />
+      {Array.from({ length: Math.ceil(H / 6) }, (_, i) => (
+        <line key={i} x1={0} x2={W} y1={i * 6 + 0.5} y2={i * 6 + 0.5} stroke={PALETTE.plankLine} strokeWidth={0.6} />
       ))}
-      <rect width={W} height={U * 0.9} fill={PALETTE.wallFront} />
-      <rect width={W} height={U * 0.25} fill={PALETTE.wallTop} />
-      <Kind id="furniture_shelf_b_large_decorated" x={12.5} z={0.2} />
-      <Kind id="furniture_cactus_medium_a" x={0.4} z={0.4} />
-      {lounge ? (
-        <>
-          <Kind id="furniture_rug_rectangle_stripes_a" x={18.5} z={6.5} />
-          <Kind id="furniture_couch_pillows" x={19} z={4.6} />
-          <Kind id="furniture_table_low" x={19.3} z={7.4} />
-        </>
-      ) : (
-        <>
-          <Kind id="restaurant_chair_a" x={20.6} z={4.2} />
-          <Kind id="restaurant_table_round_a" x={19.5} z={5.3} />
-          <Kind id="restaurant_chair_a" x={20.6} z={8.6} yaw={180} />
-        </>
-      )}
+      <rect width={W} height={9} fill={PALETTE.wallTop} />
+      <rect y={5} width={W} height={6} fill={PALETTE.wallFront} />
+      <rect x={112} y={9} width={4} height={H} fill={PALETTE.wallFront} />
       {Array.from({ length: pods }, (_, i) => (
-        <Pod key={i} x={1 + i * 4.6} z={3} />
+        <DeskPod key={i} x={8 + (i % 3) * 32} y={i < 3 ? 22 : 54} />
       ))}
-      <Kind id="furniture_lamp_standing" x={24.4} z={1} />
-      <Kind id="furniture_cactus_small_a" x={24.8} z={12.6} />
-      {people
-        .sort((a, b) => a.z - b.z)
-        .map((p, i) => (
-          <Person key={i} name={p.name} x={p.x} z={p.z} />
-        ))}
+      {lounge ? (
+        <g>
+          <rect x={122} y={30} width={32} height={34} rx={5} fill={rug} />
+          <rect x={126} y={33} width={24} height={7} rx={2} fill={PALETTE.sofaTop} />
+          <rect x={126} y={39} width={24} height={2.5} fill={PALETTE.sofaFront} />
+          <circle cx={138} cy={52} r={5} fill={PALETTE.woodTop} />
+        </g>
+      ) : (
+        <g>
+          {[124, 133, 142].map((cx) => (
+            <rect key={cx} x={cx} y={26} width={6} height={4} rx={1.5} fill={PALETTE.woodFront} />
+          ))}
+          <rect x={122} y={32} width={30} height={16} rx={2} fill={PALETTE.woodTop} />
+          <rect x={122} y={48} width={30} height={3} fill={PALETTE.woodFront} />
+          {[124, 133, 142].map((cx) => (
+            <rect key={cx} x={cx} y={53} width={6} height={4} rx={1.5} fill={PALETTE.woodFront} />
+          ))}
+        </g>
+      )}
+      <Plant x={152} y={74} />
+      <Plant x={104} y={16} />
+      {people.map((p, i) => (
+        <g key={i}>
+          <ellipse cx={p.x} cy={p.y + 4} rx={3} ry={1.2} fill={PALETTE.shadow} />
+          <rect x={p.x - 2.2} y={p.y - 1} width={4.4} height={5} rx={1.6} fill={p.shirt} />
+          <circle cx={p.x} cy={p.y - 2.5} r={2.3} fill="#f1c7a8" />
+        </g>
+      ))}
     </svg>
   );
 }

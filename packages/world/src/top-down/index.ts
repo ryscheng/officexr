@@ -1,9 +1,3 @@
-export { TopDownPlayView, type TopDownPlayViewProps } from './TopDownPlayView.tsx';
-export { useCameraControls, type CameraControls, type CameraSnapshot } from './cameraControls.tsx';
-export { PALETTE } from './topDownPalette.ts';
-export { hashString } from './topDownScene.ts';
-export { SPRITE_MANIFEST } from './spriteManifest.ts';
-export type { CharacterSheet, KindSprite, SpriteManifest } from './sprites.ts';
 export {
   ApplicationProvider,
   useApplication,

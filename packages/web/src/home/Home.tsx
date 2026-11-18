@@ -305,15 +305,18 @@ export function Home({ me }: { me: ApiState<Identity> }) {
         </header>
       }
     >
-      <main className="grid flex-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <section aria-label="Offices" className="space-y-5">
-          <div>
-            <h1 className="font-hud-title text-4xl font-semibold tracking-tight">Pick an office</h1>
-            <p className="mt-1 text-sm text-hud-text-2">Walk in, see who's around, and talk by walking up to them.</p>
-          </div>
-          <OfficeList me={identity} maps={maps} />
-        </section>
-        <CreateOfficeForm identified={identity !== null} maps={maps} mapsError={mapsError} />
+      <main className="flex flex-1 flex-col gap-6">
+        <div>
+          <h1 className="font-hud-title text-4xl font-semibold tracking-tight">Pick an office</h1>
+          <p className="mt-1 text-sm text-hud-text-2">Walk in, see who's around, and talk by walking up to them.</p>
+        </div>
+        {/* The heading spans both columns, so the form's top lines up with the first row of cards. */}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <section aria-label="Offices">
+            <OfficeList me={identity} maps={maps} />
+          </section>
+          <CreateOfficeForm identified={identity !== null} maps={maps} mapsError={mapsError} />
+        </div>
       </main>
     </PageShell>
   );
