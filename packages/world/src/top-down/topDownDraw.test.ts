@@ -5,6 +5,7 @@ import { ELEVATION } from './topDownPainters.ts';
 import { PALETTE } from './topDownPalette.ts';
 import { buildScene, type ResolveInstance } from './topDownScene.ts';
 import { STILL } from './topDownMotion.ts';
+import { NO_SPRITES } from './sprites.ts';
 
 type Call = { op: string; args: unknown[]; fillStyle: unknown };
 
@@ -47,6 +48,7 @@ function frame(overrides: Partial<TopDownFrame> = {}): TopDownFrame {
     desks: [],
     players: {},
     motion: () => STILL,
+    sprites: NO_SPRITES,
     selfId: 'me',
     hoveredId: null,
     rings: { inner: 3, outer: 5 },

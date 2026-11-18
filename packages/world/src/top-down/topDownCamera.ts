@@ -14,10 +14,10 @@ export interface ZoomLimits {
   max: number;
 }
 
-/** About a desk and its neighbours across a laptop screen, close to Gather's default. */
-export const DEFAULT_ZOOM = 48;
+/** A pod of desks and the people at them across a laptop screen, close to Gather's default. */
+export const DEFAULT_ZOOM = 64;
 /** Close enough to read a desk's monitors. */
-export const MAX_ZOOM = 140;
+export const MAX_ZOOM = 160;
 /** Each zoom button press or keypress. */
 export const ZOOM_STEP = 1.25;
 /** How quickly the camera catches up with you, per second; higher is snappier. */

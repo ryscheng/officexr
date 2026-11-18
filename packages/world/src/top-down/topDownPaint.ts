@@ -29,6 +29,7 @@ export type TopDownContext = Pick<
   | 'stroke'
   | 'fillText'
   | 'measureText'
+  | 'drawImage'
 >;
 
 /** A screen rectangle in CSS pixels. */

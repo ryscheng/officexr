@@ -16,6 +16,7 @@ export function SettingsButton() {
   );
 }
 
+/** A row in the Settings sidebar's action list (Back to office, Pop out, Character, …). */
 export function SettingsActionButton({
   onClick,
   primary = false,
@@ -31,10 +32,10 @@ export function SettingsActionButton({
     <button
       type={type}
       onClick={onClick}
-      className={`w-full rounded-hud-control border-2 px-4 py-3 text-left disabled:pointer-events-none disabled:opacity-50 font-hud-title text-sm font-normal tracking-widest uppercase shadow-hud-control ${
+      className={`w-full rounded-lg px-3 py-1.5 text-left font-hud-body text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-hud-accent pointer-coarse:min-h-11 ${
         primary
-          ? 'border-hud-text bg-hud-text text-hud-on-accent'
-          : 'border-hud-edge bg-hud-inset text-hud-text hover:bg-hud-edge'
+          ? 'bg-hud-text font-semibold text-white shadow-hud-control hover:bg-black'
+          : 'font-medium text-hud-text hover:bg-hud-hover'
       }`}
     >
       {children}
@@ -57,10 +58,11 @@ export const closingAction = (id: string, label: string, onSelect: () => void): 
   ),
 });
 
+/** One setting as a rounded, grouped-list row: label on the left, control on the right. */
 export function SettingRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 py-2">
-      <span className="font-bold">{label}</span>
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white/70 px-4 py-2.5 shadow-[0_0_0_0.5px_rgb(15_23_42/0.08)]">
+      <span className="text-[13px] font-medium">{label}</span>
       <div className="flex items-center gap-2">{children}</div>
     </div>
   );
@@ -111,8 +113,8 @@ function PaneView({ pane, onBack }: { pane: SettingsPane; onBack: () => void }) 
   return (
     <section ref={ref} tabIndex={-1} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 outline-none">
       <div className="flex items-center gap-2">
-        <IconButton icon={ArrowLeft} label="Back" onClick={onBack} />
-        <PanelTitle className="text-lg">{pane.label}</PanelTitle>
+        <IconButton icon={ArrowLeft} label="Back" size="row" onClick={onBack} />
+        <span className="text-xs font-medium text-hud-text-2">Back to settings</span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col text-sm">{pane.content}</div>
     </section>
@@ -125,57 +127,68 @@ function OpenSettingsModal({ title, tabs, panes = [], actions }: SettingsModalPr
   const subtitleId = useId();
   const merged = mergeTabs(tabs);
   const openPane = panes.find((p) => p.id === pane);
+  const current = merged.find((t) => t.id === tab) ?? merged[0];
   return (
     <Modal
       data-studio-panel
       labelledBy={`${titleId} ${subtitleId}`}
       onEscape={openPane ? back : close}
-      className="z-40 bg-black/60"
-      panelClassName={`flex max-h-full w-full max-w-3xl flex-col gap-4 overflow-auto p-5 ${openPane ? 'h-full' : ''}`}
+      className="z-40 bg-[rgb(15_23_42/0.16)]"
+      panelClassName="flex h-[min(620px,100%)] w-full max-w-4xl flex-col overflow-hidden sm:flex-row"
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <PanelTitle id={titleId} className="text-2xl">
-            Settings
-          </PanelTitle>
-          <p id={subtitleId} className="text-sm text-hud-text-2">
-            {title}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-hud-text-2">
-          <Keycap>Esc</Keycap>
-          <IconButton icon={X} label="Close" onClick={close} />
-        </div>
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 sm:flex-row">
-        <nav className="flex shrink-0 flex-col gap-2 sm:w-56">
-          <SettingsActionButton primary onClick={close}>
-            Back to office
-          </SettingsActionButton>
-          {actions.map((action) => (
-            <Fragment key={action.id}>{action.render(close)}</Fragment>
-          ))}
-        </nav>
-        {openPane ? (
-          <PaneView pane={openPane} onBack={back} />
-        ) : (
-          <Tabs value={tab ?? merged[0]?.id} onValueChange={open} className="min-w-0 flex-1">
-            <TabList>
+      {/* macOS System Settings: a frosted source list, then the chosen section on a lighter pane. */}
+      <Tabs value={current?.id} onValueChange={open} orientation="vertical" className="contents">
+        <aside className="flex shrink-0 flex-col gap-4 border-hud-separator bg-black/[0.025] p-3 sm:w-60 sm:border-r">
+          <div className="px-2 pt-1">
+            <PanelTitle id={titleId} className="text-[15px]">
+              Settings
+            </PanelTitle>
+            <p id={subtitleId} className="truncate text-xs text-hud-text-2">
+              {title}
+            </p>
+          </div>
+          {!openPane && (
+            <TabList variant="sidebar" aria-label="Settings sections">
               {merged.map((t) => (
-                <Tab key={t.id} value={t.id}>
+                <Tab key={t.id} value={t.id} variant="sidebar">
                   {t.label}
                 </Tab>
               ))}
             </TabList>
-            {merged.map((t) => (
-              <TabContent key={t.id} value={t.id} className="pt-3 text-sm outline-none">
-                {t.content}
-              </TabContent>
+          )}
+          <nav aria-label="Settings actions" className="mt-auto flex flex-col gap-0.5 border-t border-hud-separator pt-3">
+            {actions.map((action) => (
+              <Fragment key={action.id}>{action.render(close)}</Fragment>
             ))}
-          </Tabs>
-        )}
-      </div>
+            <div className="pt-2">
+              <SettingsActionButton primary onClick={close}>
+                Back to office
+              </SettingsActionButton>
+            </div>
+          </nav>
+        </aside>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <header className="flex items-center justify-between gap-4 px-6 pt-5 pb-3">
+            <h3 className="font-hud-title text-xl font-semibold tracking-tight">{openPane ? openPane.label : current?.label}</h3>
+            <div className="flex items-center gap-2 text-xs text-hud-text-2">
+              <Keycap>Esc</Keycap>
+              <IconButton icon={X} label="Close" size="row" onClick={close} />
+            </div>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6">
+            {openPane ? (
+              <PaneView pane={openPane} onBack={back} />
+            ) : (
+              merged.map((t) => (
+                <TabContent key={t.id} value={t.id} className="space-y-2 text-[13px] outline-none">
+                  {t.content}
+                </TabContent>
+              ))
+            )}
+          </div>
+        </div>
+      </Tabs>
     </Modal>
   );
 }

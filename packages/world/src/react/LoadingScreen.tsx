@@ -1,20 +1,21 @@
 /**
- * The web HUD's tokens (packages/web/src/index.css), inlined because this package ships no
- * stylesheet: the loading screen hands over to the HUD and must look like it. The studio has
- * neither font loaded, so both fall back to system faces there.
+ * The web HUD's liquid-glass tokens (packages/web/src/index.css), inlined because this package
+ * ships no stylesheet: the loading screen hands over to the HUD and must look like it.
  */
 const HUD = {
-  inset: '#161b27',
-  edge: '#34405a',
-  text: '#e8edf7',
-  text2: '#9aa6bd',
-  accent: '#7fb2ff',
-  onAccent: '#0f1420',
-  accentShadow: '#2b4f96',
-  rose: '#3a1c22',
-  roseText: '#ff8a8a',
-  body: 'Nunito, system-ui, sans-serif',
-  title: 'Tiny5, system-ui, sans-serif',
+  wallpaper:
+    'radial-gradient(at 15% 8%, #c7dbff 0, transparent 45%), radial-gradient(at 88% 4%, #f1d6ff 0, transparent 42%), ' +
+    'radial-gradient(at 78% 92%, #ffe0c8 0, transparent 45%), radial-gradient(at 8% 88%, #c9efe4 0, transparent 42%), #eef1f6',
+  track: 'rgba(0, 0, 0, 0.1)',
+  text: '#1d1d1f',
+  text2: 'rgba(60, 60, 67, 0.64)',
+  accent: '#007aff',
+  onAccent: '#ffffff',
+  accentShadow: 'rgba(0, 122, 255, 0.32)',
+  rose: 'rgba(255, 59, 48, 0.12)',
+  roseText: '#d1281e',
+  body: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif',
+  title: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif',
 } as const;
 
 export interface WorldLoadingScreenProps {
@@ -44,20 +45,20 @@ export function WorldLoadingScreen({ title, step, progress, error, slow, onReloa
         gap: 14,
         padding: 16,
         textAlign: 'center',
-        background: `radial-gradient(ellipse at top, rgba(127, 178, 255, 0.12), transparent 60%), ${HUD.inset}`,
+        background: HUD.wallpaper,
         color: HUD.text2,
-        font: `600 14px ${HUD.body}`,
+        font: `500 14px ${HUD.body}`,
       }}
     >
       <style>{'@keyframes officexr-spin{to{transform:rotate(360deg)}}'}</style>
-      {title && <div style={{ font: `24px ${HUD.title}`, letterSpacing: '0.1em', textTransform: 'uppercase', color: HUD.text }}>{title}</div>}
+      {title && <div style={{ font: `600 28px ${HUD.title}`, letterSpacing: '-0.02em', color: HUD.text }}>{title}</div>}
       {!error && (
         <div
           aria-hidden
           style={{
             width: 28,
             height: 28,
-            border: `3px solid ${HUD.edge}`,
+            border: `2.5px solid ${HUD.track}`,
             borderTopColor: HUD.accent,
             borderRadius: '50%',
             animation: 'officexr-spin 0.8s linear infinite',
@@ -76,7 +77,7 @@ export function WorldLoadingScreen({ title, step, progress, error, slow, onReloa
             maxWidth: '80vw',
             height: 8,
             borderRadius: 4,
-            background: HUD.edge,
+            background: HUD.track,
             overflow: 'hidden',
           }}
         >
@@ -89,29 +90,29 @@ export function WorldLoadingScreen({ title, step, progress, error, slow, onReloa
           style={{
             padding: '8px 14px',
             background: HUD.rose,
-            border: '2px solid rgba(255, 138, 138, 0.3)',
+            border: '1px solid rgba(209, 40, 30, 0.2)',
             color: HUD.roseText,
             borderRadius: 14,
-            font: `600 13px ${HUD.body}`,
+            font: `500 13px ${HUD.body}`,
             maxWidth: 'min(420px, 90vw)',
           }}
         >
           {error}
         </div>
       )}
-      {!error && slow && <div style={{ font: `600 12px ${HUD.body}` }}>This is taking longer than usual.</div>}
+      {!error && slow && <div style={{ font: `500 12px ${HUD.body}` }}>This is taking longer than usual.</div>}
       {(error || slow) && (
         <button
           type="button"
           onClick={reload}
           style={{
             padding: '8px 18px',
-            font: `700 14px ${HUD.body}`,
+            font: `600 14px ${HUD.body}`,
             color: HUD.onAccent,
             background: HUD.accent,
             border: 'none',
-            borderRadius: 14,
-            boxShadow: `0 3px 0 ${HUD.accentShadow}`,
+            borderRadius: 12,
+            boxShadow: `0 1px 3px ${HUD.accentShadow}`,
             cursor: 'pointer',
           }}
         >

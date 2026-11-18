@@ -3,10 +3,10 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import type { LucideIcon } from 'lucide-react';
 
 const TONE = {
-  neutral: 'bg-hud-panel text-hud-text hover:bg-hud-edge',
-  accent: 'bg-hud-accent text-hud-on-accent hover:bg-hud-accent-edge',
-  danger: 'bg-hud-rose text-hud-rose-text hover:brightness-125',
-  success: 'bg-hud-sage text-hud-sage-text hover:brightness-125',
+  neutral: 'bg-white/55 text-hud-text shadow-hud-control hover:bg-white/90',
+  accent: 'bg-hud-accent text-hud-on-accent shadow-[0_1px_3px_var(--color-hud-accent-shadow)] hover:bg-hud-accent-edge',
+  danger: 'bg-hud-rose text-hud-rose-text hover:bg-[rgb(255_59_48/0.2)]',
+  success: 'bg-hud-sage text-hud-sage-text hover:bg-[rgb(52_199_89/0.24)]',
 };
 
 const SIZE = {
@@ -59,14 +59,14 @@ export function IconButton({
               aria-expanded={expanded}
               disabled={disabled}
               onClick={onClick}
-              className={`inline-flex items-center justify-center rounded-hud-control disabled:pointer-events-none disabled:opacity-50 ${SIZE[size].button} ${TONE[tone]}`}
+              className={`inline-flex items-center justify-center rounded-hud-control transition-colors focus-visible:outline-2 focus-visible:outline-hud-accent disabled:pointer-events-none disabled:opacity-40 ${SIZE[size].button} ${TONE[tone]}`}
             >
               <Icon aria-hidden className={SIZE[size].icon} />
             </button>
           </span>
         </Tooltip.Trigger>
         <Tooltip.Portal container={tooltipContainer}>
-          <Tooltip.Content sideOffset={6} className="z-50 rounded-lg bg-hud-inset px-2 py-1 font-hud-body text-xs text-hud-text">
+          <Tooltip.Content sideOffset={6} className="z-50 rounded-lg bg-[rgb(29_29_31/0.86)] px-2 py-1 font-hud-body text-xs font-medium text-white shadow-hud-control backdrop-blur-md">
             {label}
           </Tooltip.Content>
         </Tooltip.Portal>

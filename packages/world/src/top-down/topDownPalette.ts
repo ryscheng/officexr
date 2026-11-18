@@ -16,10 +16,11 @@ export const PALETTE = {
   footprintEdge: 'rgba(84, 62, 38, 0.28)',
   shadow: 'rgba(30, 36, 51, 0.16)',
 
-  wallTop: '#8a92a6',
-  wallFront: '#5e667a',
-  wallBase: '#454c5e',
-  wallHighlight: '#a3abbd',
+  /** Gather-style walls: a dark cap line over a light wall face with a baseboard. */
+  wallTop: '#6f7789',
+  wallFront: '#ded9cf',
+  wallBase: '#bdb4a6',
+  wallHighlight: '#8a92a3',
 
   deskTop: '#fbfbfd',
   deskEdge: '#d9dee7',
@@ -71,18 +72,20 @@ export const PALETTE = {
   blockTop: '#ddd0b8',
   blockFront: '#bba98a',
 
-  /** Name tags and labels share the HUD's panel colours. */
-  tag: 'rgba(30, 36, 51, 0.88)',
-  tagText: '#e8edf7',
-  tagSelfEdge: '#7fb2ff',
-  zoneLabel: 'rgba(255, 255, 255, 0.82)',
-  zoneLabelText: '#5c6478',
-  available: '#6fd99a',
-  away: '#ffd58a',
+  /** Name tags and labels share the HUD's liquid-glass colours. */
+  tag: 'rgba(255, 255, 255, 0.92)',
+  tagText: '#1d1d1f',
+  tagSelf: '#007aff',
+  tagSelfText: '#ffffff',
+  tagShadow: 'rgba(15, 23, 42, 0.22)',
+  zoneLabel: 'rgba(255, 255, 255, 0.86)',
+  zoneLabelText: 'rgba(60, 60, 67, 0.8)',
+  available: '#34c759',
+  away: '#ff9f0a',
   speaking: '#4ade80',
-  accent: '#7fb2ff',
-  accentDeep: '#3d7be0',
-  destination: '#3d7be0',
+  accent: '#007aff',
+  accentDeep: '#0066d6',
+  destination: '#007aff',
 } as const;
 
 /** Rug colours, picked per instance. */

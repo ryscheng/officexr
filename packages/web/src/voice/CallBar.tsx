@@ -43,14 +43,14 @@ export function CallBar({
           // Keeps focus on the world so Space/Enter keep driving the avatar.
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1.5 rounded-hud-control bg-hud-inset px-2 py-1.5 text-xs whitespace-nowrap text-hud-text hover:bg-hud-edge pointer-coarse:min-h-11"
+          className="flex items-center gap-1.5 rounded-hud-control bg-hud-inset px-2 py-1.5 text-xs whitespace-nowrap text-hud-text hover:bg-hud-hover pointer-coarse:min-h-11"
         >
           <Users aria-hidden className="hidden h-4 w-4 pointer-coarse:block" />
           <span className="flex -space-x-1.5 pointer-coarse:hidden" aria-hidden>
             {rows.slice(0, PREVIEW_AVATARS).map((row) => (
               <span
                 key={row.id}
-                className="flex h-5 w-5 items-center justify-center rounded-full border border-hud-panel bg-hud-edge text-[9px] font-bold uppercase"
+                className="flex h-5 w-5 items-center justify-center rounded-full border border-white bg-hud-avatar text-[9px] font-bold uppercase"
               >
                 {row.label.charAt(0)}
               </span>

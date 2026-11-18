@@ -99,7 +99,7 @@ export function DeskHud({ store, requestDeskClaim }: { store: Store; requestDesk
         )}
       </div>
       {error !== null && (
-        <div role="status" className="rounded-hud-control border-2 border-hud-rose-text/30 bg-hud-rose px-3 py-1.5 font-hud-body text-xs font-bold text-hud-rose-text shadow-hud-control">
+        <div role="status" className="rounded-hud-control border border-hud-rose-text/30 bg-hud-rose px-3 py-1.5 font-hud-body text-xs font-bold text-hud-rose-text shadow-hud-control">
           {errorMessage(error)}
         </div>
       )}

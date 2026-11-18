@@ -55,13 +55,13 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
         <div
           key="backdrop"
           data-studio-panel
-          className="fixed inset-0 z-40 bg-black/50"
+          className="fixed inset-0 z-40 bg-[rgb(15_23_42/0.16)]"
           onMouseDown={() => setExpanded(false)}
         />
       )}
       <div
         key={meeting.key}
-        className="overflow-hidden rounded-hud-panel border-2 border-hud-edge bg-hud-inset shadow-hud-panel"
+        className="overflow-hidden rounded-hud-panel border border-hud-edge bg-hud-inset shadow-hud-panel"
         style={{ position: 'fixed', ...wrapperStyle }}
       >
         <JaaSMeeting

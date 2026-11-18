@@ -35,6 +35,9 @@ export interface ArchetypeSize {
 
 /** Below this a layout object is a floor rather than a wall. */
 const FLOOR_MAX_HEIGHT_M = 0.3;
+/** A layout slab at least this wide both ways, and no taller than a step, is a floor (e.g. a raised kitchen floor). */
+const SLAB_MIN_SPAN_M = 1.5;
+const SLAB_MAX_HEIGHT_M = 0.8;
 /** Below this anything else lies flat on the floor. */
 const FLAT_MAX_HEIGHT_M = 0.12;
 /** A seat at least this wide holds more than one person. */
@@ -73,20 +76,23 @@ function searchText(kind: ArchetypeKind): string {
 }
 
 /**
- * How the 2D view draws a kind. Structure (layout objects) goes by height alone; furniture
- * by the kind's own flags (`isDesk`, `seat`), then its name, then its shape.
+ * How the 2D view draws a kind. Structure (layout objects) goes by shape: low or slab-like is a
+ * floor, the rest is wall. Furniture goes by the kind's own flags (`isDesk`, `seat`), then its
+ * name, then its shape.
  */
 export function classifyKind(kind: ArchetypeKind, size: ArchetypeSize): Archetype {
   if (kind.isLayoutObject) {
-    return size.height < FLOOR_MAX_HEIGHT_M ? 'floor' : 'wall';
+    const slab = Math.min(size.width, size.depth) >= SLAB_MIN_SPAN_M && size.height <= SLAB_MAX_HEIGHT_M;
+    return size.height < FLOOR_MAX_HEIGHT_M || slab ? 'floor' : 'wall';
   }
   if (kind.seat) {
     return Math.max(size.width, size.depth) >= SOFA_MIN_WIDTH_M ? 'sofa' : 'chair';
   }
-  if (kind.isDesk) {
-    return Math.max(size.width, size.depth) >= DESK_MIN_SPAN_M ? 'desk' : 'table';
-  }
   const text = searchText(kind);
+  if (kind.isDesk) {
+    // Round tables are for meetings and coffee, not workstations, whatever their desk flag says.
+    return Math.max(size.width, size.depth) >= DESK_MIN_SPAN_M && !/\bround\b/.test(text) ? 'desk' : 'table';
+  }
   const rule = KEYWORD_RULES.find((r) => r.pattern.test(text));
   if (rule) {
     return rule.archetype;

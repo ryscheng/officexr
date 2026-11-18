@@ -5,8 +5,9 @@ export const SIT_CLIP_NAME = 'Sit_Chair_Idle';
 /**
  * Local bone rotations (XYZ Euler degrees) of the seated pose, keyed by the readable bone name.
  * Values are absolute local rotations, not deltas on the bind pose; bones not listed keep their bind pose.
+ * Exported for the 2D sprite bake (`scripts/bake-sprites.ts`), which poses seated sprites the same way.
  */
-const SIT_POSE_DEGREES: Record<string, readonly [number, number, number]> = {
+export const SIT_POSE_DEGREES: Record<string, readonly [number, number, number]> = {
   'upperleg.l': [90, 0, 0],
   'upperleg.r': [90, 0, 0],
   'lowerleg.l': [90, 0, 0],

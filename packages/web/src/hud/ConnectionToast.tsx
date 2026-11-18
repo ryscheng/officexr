@@ -20,7 +20,7 @@ export function ConnectionToast({ store }: { store: Store }) {
     <div role="status">
       {message && (
         <div className="rounded-hud-control bg-hud-amber px-4 py-2 text-center font-hud-body text-hud-amber-text shadow-hud-control">
-          <div className="font-hud-title text-sm tracking-widest uppercase">{message.title}</div>
+          <div className="text-sm font-semibold">{message.title}</div>
           {message.detail && <div className="text-xs">{message.detail}</div>}
         </div>
       )}

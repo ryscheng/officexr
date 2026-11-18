@@ -17,11 +17,13 @@ describe('classifyKind', () => {
   it('splits structure into floors and walls by height', () => {
     expect(classifyKind(kind('a', 'Anything', { isLayoutObject: true }), size(4, 4, 0.1))).toBe('floor');
     expect(classifyKind(kind('b', 'Anything', { isLayoutObject: true }), size(4, 0.2, 3))).toBe('wall');
+    expect(classifyKind(kind('c', 'Kitchen floor', { isLayoutObject: true }), size(4, 4, 0.5))).toBe('floor');
   });
 
   it('trusts the catalog flags before the name', () => {
     expect(classifyKind(kind('furniture_table_medium', 'Table Medium', { isDesk: true }), size(2, 1, 0.75))).toBe('desk');
     expect(classifyKind(kind('furniture_table_small', 'Table Small', { isDesk: true }), size(0.7, 0.7, 0.75))).toBe('table');
+    expect(classifyKind(kind('restaurant_table_round_a', 'Table Round A', { isDesk: true }), size(3, 3, 1))).toBe('table');
     expect(classifyKind(kind('furniture_couch', 'Couch', { seat }), size(3, 1.6, 1.2))).toBe('sofa');
     expect(classifyKind(kind('furniture_chair_a', 'Chair A', { seat }), size(0.75, 0.85, 1.25))).toBe('chair');
   });
@@ -83,10 +85,11 @@ describe('buildScene', () => {
     expect(scene.bounds).toEqual({ min: { x: -5, z: -5 }, max: { x: 5, z: 5 } });
   });
 
-  it('puts a chair’s backrest behind the sitter: south at yaw 0, north at 180', () => {
-    const scene = buildScene([inst('c0', 'chair'), inst('c180', 'chair', 180)], resolve, []);
-    expect(scene.byId.get('c0')?.back).toBe('s');
-    expect(scene.byId.get('c180')?.back).toBe('n');
+  it('puts a chair’s backrest where the model has it: north at yaw 0, west at 90, south at 180', () => {
+    const scene = buildScene([inst('c0', 'chair'), inst('c90', 'chair', 90), inst('c180', 'chair', 180)], resolve, []);
+    expect(scene.byId.get('c0')?.back).toBe('n');
+    expect(scene.byId.get('c90')?.back).toBe('w');
+    expect(scene.byId.get('c180')?.back).toBe('s');
   });
 
   it('gives a desk a workstation for each chair pulled up to it', () => {

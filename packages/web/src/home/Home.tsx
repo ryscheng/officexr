@@ -16,7 +16,7 @@ import { Panel, PanelTitle } from '../hud/ui/Panel';
 import { BrandLink, PageShell } from '../page/PageShell';
 import { OfficeThumbnail } from './OfficeThumbnail';
 
-const LABEL = 'block text-xs font-bold tracking-wide text-hud-text-2 uppercase';
+const LABEL = 'block px-0.5 text-[13px] font-medium text-hud-text-2';
 
 /** Lets the office's creator switch its map from the office list; saves on change. */
 function OfficeMapPicker({ office, maps, onSaved }: { office: Office; maps: string[]; onSaved: (office: Office) => void }) {
@@ -46,7 +46,7 @@ function OfficeMapPicker({ office, maps, onSaved }: { office: Office; maps: stri
   };
 
   return (
-    <div className="border-t-2 border-hud-edge px-4 py-2.5">
+    <div className="border-t border-hud-separator px-4 py-2.5">
       <div className="flex items-center gap-2 text-xs text-hud-text-2">
         <MapIcon aria-hidden className="size-3.5 shrink-0" />
         <select
@@ -54,7 +54,7 @@ function OfficeMapPicker({ office, maps, onSaved }: { office: Office; maps: stri
           value={current}
           disabled={busy}
           onChange={(e) => void change(e.target.value)}
-          className="min-w-0 flex-1 rounded-lg border-2 border-hud-edge bg-hud-inset px-2 py-1 text-xs text-hud-text disabled:opacity-50"
+          className="min-w-0 flex-1 rounded-lg border border-black/5 bg-hud-inset px-2 py-1 text-xs text-hud-text disabled:opacity-50"
         >
           {/* Keeps the current map selectable even when the studio no longer lists it. */}
           {[...new Set([...maps, current])].map((name) => (
@@ -71,7 +71,7 @@ function OfficeMapPicker({ office, maps, onSaved }: { office: Office; maps: stri
 
 function MapChip({ name }: { name: string }) {
   return (
-    <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-hud-inset px-2 py-0.5 text-[11px] font-semibold text-hud-text-2">
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-hud-inset px-2 py-0.5 text-[11px] font-medium text-hud-text-2">
       <MapIcon aria-hidden className="size-3 shrink-0" />
       <span className="truncate">Map: {name}</span>
     </span>
@@ -88,10 +88,12 @@ function OfficeCard({ office: initial, me, maps }: { office: Office; me: Identit
           to={`/room/${office.id}`}
           className="flex flex-1 flex-col outline-none focus-visible:ring-2 focus-visible:ring-hud-accent focus-visible:ring-inset"
         >
-          <OfficeThumbnail seed={office.id} className="block h-28 w-full border-b-2 border-hud-edge" />
+          <span className="block p-2 pb-0">
+            <OfficeThumbnail seed={office.id} className="block h-32 w-full rounded-[16px] shadow-[inset_0_0_0_0.5px_rgb(0_0_0/0.08)]" />
+          </span>
           <span className="flex flex-1 flex-col gap-1.5 p-4">
             <span className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-base font-extrabold">{office.name}</span>
+              <span className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">{office.name}</span>
               <ArrowRight
                 aria-hidden
                 className="size-4 shrink-0 text-hud-accent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
@@ -117,7 +119,7 @@ function OfficeListSkeleton() {
   return (
     <ul aria-hidden className={officeGrid}>
       {[0, 1].map((i) => (
-        <li key={i} className="h-52 animate-pulse rounded-hud-panel border-2 border-hud-edge bg-hud-panel/60" />
+        <li key={i} className="h-56 animate-pulse rounded-hud-panel border border-hud-edge bg-white/40" />
       ))}
     </ul>
   );
@@ -186,10 +188,10 @@ function CreateOfficeForm({
     <Panel className="p-5 lg:sticky lg:top-6">
       <form onSubmit={submit} aria-labelledby={ids.title} className="space-y-4">
         <div className="flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-hud-inset text-hud-accent">
+          <span className="flex size-7 items-center justify-center rounded-lg bg-hud-accent/12 text-hud-accent">
             <Plus aria-hidden className="size-4" />
           </span>
-          <PanelTitle id={ids.title} className="text-base">
+          <PanelTitle id={ids.title} className="text-[15px]">
             Create an office
           </PanelTitle>
         </div>
@@ -199,7 +201,7 @@ function CreateOfficeForm({
             <label htmlFor={ids.name} className={LABEL}>
               Name
             </label>
-            <input id={ids.name} name="name" required maxLength={MAX_NAME} placeholder="Design studio" className={`${FIELD} text-sm placeholder:text-hud-text-2/60`} />
+            <input id={ids.name} name="name" required maxLength={MAX_NAME} placeholder="Design studio" className={`${FIELD} text-sm placeholder:text-hud-text-2/70`} />
           </div>
           <div className="space-y-1.5">
             <label htmlFor={ids.description} className={LABEL}>
@@ -211,7 +213,7 @@ function CreateOfficeForm({
               rows={2}
               maxLength={MAX_DESCRIPTION}
               placeholder="Where the team hangs out"
-              className={`${FIELD} resize-none text-sm placeholder:text-hud-text-2/60`}
+              className={`${FIELD} resize-none text-sm placeholder:text-hud-text-2/70`}
             />
           </div>
           <div className="space-y-1.5">
@@ -273,8 +275,8 @@ function SignOutButton() {
 /** The signed-in user's chip: initial, name, sign out. */
 function UserChip({ me }: { me: Identity }) {
   return (
-    <span className="flex min-w-0 items-center gap-2 rounded-hud-control border-2 border-hud-edge bg-hud-panel py-1 pr-1 pl-1 shadow-hud-control">
-      <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-hud-edge text-xs font-bold uppercase">
+    <span className="hud-glass flex min-w-0 items-center gap-2 rounded-full border border-hud-edge py-1 pr-1 pl-1 shadow-hud-control">
+      <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-hud-avatar text-xs font-bold uppercase">
         {me.name.charAt(0)}
       </span>
       <span className="min-w-0 truncate text-sm font-semibold max-sm:hidden">{me.name}</span>
@@ -306,7 +308,7 @@ export function Home({ me }: { me: ApiState<Identity> }) {
       <main className="grid flex-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <section aria-label="Offices" className="space-y-5">
           <div>
-            <h1 className="font-hud-title text-3xl tracking-widest">Pick an office</h1>
+            <h1 className="font-hud-title text-4xl font-semibold tracking-tight">Pick an office</h1>
             <p className="mt-1 text-sm text-hud-text-2">Walk in, see who's around, and talk by walking up to them.</p>
           </div>
           <OfficeList me={identity} maps={maps} />

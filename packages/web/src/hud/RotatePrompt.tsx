@@ -9,8 +9,8 @@ export function RotatePrompt() {
     return null;
   }
   return (
-    <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
-      <Panel role="alert" className="flex max-w-xs flex-col items-center gap-3 p-6 text-center">
+    <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-[rgb(15_23_42/0.28)] p-6">
+      <Panel role="alert" material="thick" className="flex max-w-xs flex-col items-center gap-3 p-6 text-center">
         <Smartphone aria-hidden className="size-12 text-hud-accent motion-safe:animate-hud-turn" />
         <PanelTitle className="text-lg">Turn your phone</PanelTitle>
         <p className="text-sm text-hud-text-2">

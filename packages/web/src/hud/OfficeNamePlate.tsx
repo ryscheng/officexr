@@ -13,7 +13,7 @@ export function OfficeNamePlate({ store, name }: { store: Store; name: string })
         <Building2 aria-hidden className="size-4" />
       </span>
       <div className="min-w-0">
-        <div className="truncate font-hud-title text-sm font-normal tracking-widest">{name}</div>
+        <div className="truncate font-hud-title text-sm font-semibold tracking-tight">{name}</div>
         <div className="text-xs text-hud-text-2 pointer-coarse:hidden">{present} here</div>
       </div>
     </Panel>

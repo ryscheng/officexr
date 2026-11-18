@@ -6,10 +6,10 @@ export function KeybindsTab() {
     <div className="space-y-4">
       {SHORTCUT_GROUPS.map((group) => (
         <section key={group}>
-          <h3 className="mb-1 font-hud-title font-normal tracking-widest text-hud-text-2 uppercase">{group}</h3>
-          <dl className="space-y-1">
+          <h3 className="mb-1.5 px-1 text-xs font-semibold text-hud-text-2">{group}</h3>
+          <dl className="divide-y divide-hud-separator overflow-hidden rounded-xl bg-white/70 shadow-[0_0_0_0.5px_rgb(15_23_42/0.08)]">
             {SHORTCUTS.filter((s) => s.group === group).map((s) => (
-              <div key={s.keys + s.description} className="flex items-center justify-between gap-4">
+              <div key={s.keys + s.description} className="flex items-center justify-between gap-4 px-4 py-2">
                 <dt>{s.description}</dt>
                 <dd>
                   <Keycap>{s.keys}</Keycap>

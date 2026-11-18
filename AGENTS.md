@@ -28,7 +28,8 @@ officexr/
 │   │   │                 # jaasToken.ts (server-side JaaS JWT signing), runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_APP_ID, OFFICEXR_JAAS_* (server-only), OFFICEXR_ASSET_BASE_URL
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds; top-down/ is the Canvas2D 2D view
-│   │                     # (camera, archetype painters, character sprites; no three)
+│   │                     # (camera, baked sprites with procedural fallbacks; no three). sprites/ holds the art `bake:sprites`
+│   │                     # renders from the KayKit models (see sprites/README.md)
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
 │   ├── studio-server/    # @officexr/studio-server — studio backend: main.ts (entrypoint), app.ts (internal + public servers), studio-gate.ts (public-port sign-in gate),
 │   │                     # studio-backend.ts (storage hooks + R2 sync, shared with the Vite studio), r2-publisher.ts, push-world-constants.ts
@@ -189,6 +190,22 @@ Files on disk:
 - `packages/world/rooms/*.json`
 - `packages/world/maps/*.json` (`default.json` is the seed)
 - `packages/world/cube-kinds.json` (+ `cube-kinds.default.json` fallback)
+
+### 2D view art
+
+The 2D view draws furniture and characters from sprites baked out of the KayKit models
+(`packages/world/sprites/`, manifest `src/top-down/spriteManifest.ts`). Re-run
+`pnpm --filter @officexr/world bake:sprites` after `pnpm asset-packs:install` when the catalog's
+furniture/restaurant kinds or the characters change, or when the 2D projection (`ELEVATION`)
+changes. Kinds without a sprite fall back to the archetype painters in `topDownPainters.ts`.
+
+### Web HUD theme
+
+The web HUD, settings and pages share one light liquid-glass theme: the `@theme` tokens and the
+`hud-glass` / `hud-glass-thick` utilities in `packages/web/src/index.css`, the system font stack
+(SF Pro on Apple devices), and the kit in `packages/web/src/hud/ui/` (`Panel` with a `material`,
+`Button`, `IconButton`, `Tabs` with `segment` / `sidebar` variants, `Switch`, `Keycap`). Restyle
+through the tokens and the kit rather than per component.
 
 ### Studio control kit
 

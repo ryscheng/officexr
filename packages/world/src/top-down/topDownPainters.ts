@@ -7,7 +7,7 @@ import type { DeskSeat, SceneItem, Side } from './topDownScene.ts';
  * Screen pixels a metre of height lifts a surface, per pixel-per-metre of zoom: the
  * three-quarter view that shows a top face and the south face below it.
  */
-export const ELEVATION = 0.5;
+export const ELEVATION = 0.6;
 
 /** One item's screen geometry in the three-quarter view. */
 export interface ItemGeometry {
@@ -67,7 +67,7 @@ function raised(ctx: TopDownContext, r: Rect, by: number, top: string, front: st
 const opposite: Record<Side, Side> = { n: 's', s: 'n', e: 'w', w: 'e' };
 
 /** A monitor (and keyboard) on a desk top for the chair at `seat`, screen towards the chair. */
-function workstation(ctx: TopDownContext, top: Rect, seat: DeskSeat, px: number): void {
+export function workstation(ctx: TopDownContext, top: Rect, seat: DeskSeat, px: number): void {
   const horizontal = seat.side === 'n' || seat.side === 's';
   const span = horizontal ? top.h : top.w;
   // Single-sided desks put the screen near the far edge; double-sided ones leave the middle free.

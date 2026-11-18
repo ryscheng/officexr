@@ -111,7 +111,7 @@ function PersonRowItem({
   const activeText = idleMs >= 60_000 ? `Active ${relativeTime(idleMs)}` : null;
   return (
     <li className={`flex items-center gap-2 rounded-lg px-1.5 py-1 ${row.type === 'self' ? 'bg-hud-inset' : ''}`}>
-      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hud-edge text-[10px] font-bold text-hud-text uppercase">
+      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hud-avatar text-[10px] font-bold text-hud-text uppercase">
         <span aria-hidden>{row.label.charAt(0)}</span>
         {indicator && (
           <span

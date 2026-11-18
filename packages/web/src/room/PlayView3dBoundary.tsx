@@ -25,16 +25,16 @@ export class PlayView3dBoundary extends Component<
     }
     const reload = this.props.reload ?? (() => window.location.reload());
     return (
-      <div role="alert" className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-black text-white">
-        <p>The 3D view hit an error.</p>
-        <p className="max-w-md px-4 text-center text-xs text-white/60">{error.message}</p>
+      <div role="alert" className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#eef1f6] font-hud-body text-hud-text">
+        <p className="text-lg font-semibold">The 3D view hit an error.</p>
+        <p className="max-w-md px-4 text-center text-xs text-hud-text-2">{error.message}</p>
         <div className="flex gap-2">
-          <button type="button" className="rounded bg-white/20 px-3 py-2 hover:bg-white/30" onClick={reload}>
+          <button type="button" className="rounded-hud-control bg-hud-accent px-4 py-2 text-sm font-semibold text-white hover:bg-hud-accent-edge" onClick={reload}>
             Reload
           </button>
           <button
             type="button"
-            className="rounded bg-white/10 px-3 py-2 hover:bg-white/20"
+            className="rounded-hud-control bg-white px-4 py-2 text-sm font-semibold shadow-hud-control hover:bg-white/80"
             onClick={() => {
               storeViewMode('2d');
               reload();

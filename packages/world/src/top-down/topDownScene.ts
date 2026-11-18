@@ -13,6 +13,9 @@ export interface DeskSeat {
 
 export interface SceneItem extends XZBounds {
   id: string;
+  /** Which sprite to draw, at which yaw. */
+  kindId: string;
+  yawDeg: number;
   archetype: Archetype;
   /** Bottom and top of the world AABB, in metres. */
   minY: number;
@@ -63,15 +66,15 @@ export function sideOf(dir: XZ): Side {
 }
 
 /**
- * A seated avatar faces `yaw(instance + seat)` with yaw 0 looking -Z (see `AVATAR_YAW_OFFSET`),
- * so the backrest is on the opposite side: +Z at yaw 0.
+ * The KayKit seats have their backrest on -Z at yaw 0 (the baked sprites show it), and yaw
+ * turns counter-clockwise seen from above, like `yawAboutCentre`.
  */
 function backrestSide(instance: ObjectInstance, kind: ArchetypeKind): Side | null {
   if (!kind.seat) {
     return null;
   }
   const yaw = (((instance.yawDeg ?? 0) + kind.seat.yawDeg) * Math.PI) / 180;
-  return sideOf({ x: Math.sin(yaw), z: Math.cos(yaw) });
+  return sideOf({ x: -Math.sin(yaw), z: -Math.cos(yaw) });
 }
 
 const centre = (b: XZBounds): XZ => ({ x: (b.min.x + b.max.x) / 2, z: (b.min.z + b.max.z) / 2 });
@@ -116,6 +119,8 @@ export function buildScene(
     const size = { width: aabb.max[0] - aabb.min[0], depth: aabb.max[2] - aabb.min[2], height: aabb.max[1] - aabb.min[1] };
     all.push({
       id: instance.id,
+      kindId: instance.kindId,
+      yawDeg: instance.yawDeg ?? 0,
       archetype: classifyKind(kind, size),
       min: { x: aabb.min[0], z: aabb.min[2] },
       max: { x: aabb.max[0], z: aabb.max[2] },

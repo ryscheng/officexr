@@ -36,6 +36,8 @@ import { drawFrame, type DeskLabel } from './topDownDraw.ts';
 import { playerAt, screenToWorld, unionBounds, worldToScreen, type ScreenPoint, type TopDownTransform, type XZBounds } from './topDownGeometry.ts';
 import { PlayerMotion } from './topDownMotion.ts';
 import { buildScene, type ResolveInstance, type TopDownScene } from './topDownScene.ts';
+import { SPRITE_MANIFEST } from './spriteManifest.ts';
+import { createSpriteSource } from './sprites.ts';
 import { useCanvasGestures, type CanvasGestureHandlers } from './useCanvasGestures.ts';
 
 export interface TopDownPlayViewProps {
@@ -162,6 +164,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
   const [tracker] = useState(() => new PairTracker());
   const [camera] = useState(() => new TopDownCameraController());
   const [motion] = useState(() => new PlayerMotion());
+  const [sprites] = useState(() => createSpriteSource(SPRITE_MANIFEST));
   const worldObjects = useStoreWorldObjects(store);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const transformRef = useRef<TopDownTransform | null>(null);
@@ -321,6 +324,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
         desks: deskLabels(state),
         players: state.players,
         motion: (id) => motion.sample(id),
+        sprites,
         selfId,
         hoveredId,
         rings: { inner: state.worldSettings.proximityRadius, outer: state.worldSettings.proximityOuterRadius },
@@ -328,7 +332,7 @@ export function TopDownPlayView(props: TopDownPlayViewProps) {
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [session.loaded, store, actions, rules, bus, sync, handshake, selfId, controller, controls, tracker, camera, motion]);
+  }, [session.loaded, store, actions, rules, bus, sync, handshake, selfId, controller, controls, tracker, camera, motion, sprites]);
 
   const onPingPlayer = props.onPingPlayer;
   const gestures = useMemo<CanvasGestureHandlers>(

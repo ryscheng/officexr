@@ -13,7 +13,8 @@ import { Switch } from '../hud/ui/Switch';
 import { errorMessage } from '../useApi';
 import { useMapNames } from '../useMapNames';
 import type { SettingsTab } from './Settings';
-import { SettingRow, SettingsActionButton } from './SettingsModal';
+import { Button } from '../hud/ui/Button';
+import { SettingRow } from './SettingsModal';
 import { DEFAULT_MAP } from '@officexr/world/scenes';
 
 /** Only the fields that differ, so an untouched map (or one since removed) can't fail the save. */
@@ -83,11 +84,11 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
       className="space-y-3"
     >
       <fieldset disabled={busy} className="space-y-3">
-        <label className="block font-bold">
+        <label className="block text-[13px] font-medium text-hud-text-2">
           Name
           <input name="name" required maxLength={MAX_NAME} defaultValue={office.name} className={field} />
         </label>
-        <label className="block font-bold">
+        <label className="block text-[13px] font-medium text-hud-text-2">
           Description
           <textarea
             name="description"
@@ -96,7 +97,7 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
             className={field}
           />
         </label>
-        <label className="block font-bold">
+        <label className="block text-[13px] font-medium text-hud-text-2">
           Map
           <select value={mapName} onChange={(e) => setMapName(e.target.value)} className={field}>
             {[...new Set([...maps, mapName])].map((name) => (
@@ -116,11 +117,11 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
             }}
           />
         </SettingRow>
-        <div className="flex gap-2">
-          <SettingsActionButton primary type="submit">
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="reset">Cancel</Button>
+          <Button type="submit" tone="primary">
             Save
-          </SettingsActionButton>
-          <SettingsActionButton type="reset">Cancel</SettingsActionButton>
+          </Button>
         </div>
       </fieldset>
       {saved && (

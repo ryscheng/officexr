@@ -54,7 +54,7 @@ export function MotionLookControl({
           <button
             type="button"
             onClick={onRecenter}
-            className="rounded-hud-control border-2 border-hud-edge bg-hud-inset px-3 py-1 hover:bg-hud-edge"
+            className="rounded-hud-control border border-hud-edge bg-hud-inset px-3 py-1 hover:bg-hud-hover"
           >
             Recenter
           </button>

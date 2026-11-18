@@ -1,10 +1,11 @@
 import type { PlayerId, PlayerState, VoiceZone } from '@officexr/sdk';
 import { characterHeight, drawCharacter, drawNameTag } from './topDownCharacter.ts';
 import type { MotionSample } from './topDownMotion.ts';
-import { fillEllipse, intersects, roundedRectPath, type Rect, type TopDownContext } from './topDownPaint.ts';
-import { ARCHETYPE_STYLES, ELEVATION, type ItemGeometry } from './topDownPainters.ts';
+import { fillEllipse, inset, intersects, roundedRectPath, type Rect, type TopDownContext } from './topDownPaint.ts';
+import { ARCHETYPE_STYLES, ELEVATION, workstation, type ItemGeometry } from './topDownPainters.ts';
+import type { Facing, SpriteSource } from './sprites.ts';
 import { PALETTE, ZONE_EDGES, ZONE_TINTS } from './topDownPalette.ts';
-import { hashString, type SceneItem, type TopDownScene } from './topDownScene.ts';
+import { hashString, type SceneItem, type Side, type TopDownScene } from './topDownScene.ts';
 import { worldToScreen, type TopDownTransform, type XZ, type XZBounds } from './topDownGeometry.ts';
 
 export type { TopDownContext } from './topDownPaint.ts';
@@ -30,6 +31,8 @@ export interface TopDownFrame {
   desks: readonly DeskLabel[];
   players: Readonly<Record<PlayerId, PlayerState>>;
   motion: (id: PlayerId) => MotionSample;
+  /** Baked art; anything it can't supply (yet) falls back to the procedural painters. */
+  sprites: SpriteSource;
   selfId: PlayerId;
   hoveredId: PlayerId | null;
   rings: ProximityRings;
@@ -45,8 +48,9 @@ const CULL_MARGIN_PX = 120;
 const TAGS_MIN_ZOOM = 18;
 /** Desk owner labels show from this zoom up. */
 const DESK_LABELS_MIN_ZOOM = 30;
-const LABEL_FONT = '700 12px Nunito, system-ui, sans-serif';
-const SMALL_LABEL_FONT = '700 10px Nunito, system-ui, sans-serif';
+const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif';
+const LABEL_FONT = `600 12px ${SYSTEM_FONT}`;
+const SMALL_LABEL_FONT = `600 10px ${SYSTEM_FONT}`;
 
 const viewport = (f: TopDownFrame): Rect => ({
   x: -CULL_MARGIN_PX,
@@ -74,6 +78,28 @@ export function itemGeometry(item: SceneItem, t: TopDownTransform): ItemGeometry
     front: { x: floor.x, y: floor.y + floor.h - lift, w: floor.w, h: lift - base },
     px,
   };
+}
+
+/**
+ * One item: its baked sprite, footprint corner on the footprint corner, when it has one; its
+ * archetype's painter otherwise. A desk with chairs pulled up gets a workstation per chair on top.
+ */
+function paintItem(ctx: TopDownContext, item: SceneItem, g: ItemGeometry, t: TopDownTransform, sprites: SpriteSource): void {
+  const sprite = sprites.kind(item.kindId, item.yawDeg);
+  if (!sprite) {
+    ARCHETYPE_STYLES[item.archetype].paint({ ctx, item, g });
+    return;
+  }
+  const { image, frame, ppm } = sprite;
+  const s = t.scale / ppm;
+  const base = Math.max(item.minY, 0) * t.scale * ELEVATION;
+  ctx.drawImage(image, frame.x, frame.y, frame.w, frame.h, g.floor.x - frame.ax * s, g.floor.y - base - frame.ay * s, frame.w * s, frame.h * s);
+  if (item.archetype === 'desk' && item.seats.length > 0) {
+    // The model's real top, not the painter's capped one.
+    const lift = base + (item.maxY - Math.max(item.minY, 0)) * t.scale * ELEVATION;
+    const top = inset({ ...g.floor, y: g.floor.y - lift }, t.scale * 0.06);
+    item.seats.forEach((seat) => workstation(ctx, top, seat, t.scale));
+  }
 }
 
 const onScreen = (g: ItemGeometry, view: Rect) =>
@@ -106,15 +132,15 @@ const drawGround: Layer = (ctx, f) => {
   }
 };
 
-const paintFlat = (match: (item: SceneItem) => boolean): Layer => (ctx, f) => {
+const paintFlat = (match: (item: SceneItem, f: TopDownFrame) => boolean): Layer => (ctx, f) => {
   const view = viewport(f);
   for (const item of f.scene.floors) {
-    if (!match(item)) {
+    if (!match(item, f)) {
       continue;
     }
     const g = itemGeometry(item, f.t);
     if (intersects(g.floor, view)) {
-      ARCHETYPE_STYLES[item.archetype].paint({ ctx, item, g });
+      paintItem(ctx, item, g, f.t, f.sprites);
     }
   }
 };
@@ -207,6 +233,9 @@ const drawShadows: Layer = (ctx, f) => {
     if (shape === 'round') {
       const radius = Math.min(r.w, r.h) * 0.42;
       ctx.ellipse(r.x + r.w / 2 + off, r.y + r.h / 2 + off, radius, radius * 0.6, 0, 0, Math.PI * 2);
+    } else if (f.sprites.kind(item.kindId, item.yawDeg)) {
+      // Baked art has its own silhouette (round tables, couches); a soft contact ellipse suits any of them.
+      ctx.ellipse(r.x + r.w / 2 + off, r.y + r.h / 2 + off * 1.5, r.w * 0.5, r.h * 0.46, 0, 0, Math.PI * 2);
     } else {
       roundedRectPath(ctx, { x: r.x + off, y: r.y + off * 1.5, w: r.w, h: r.h }, Math.min(r.w, r.h) * 0.2);
     }
@@ -220,14 +249,14 @@ const drawProximity: Layer = (ctx, f) => {
     return;
   }
   const c = worldToScreen(f.t, self.pos);
-  ctx.fillStyle = 'rgba(127, 178, 255, 0.10)';
-  ctx.strokeStyle = 'rgba(61, 123, 224, 0.45)';
+  ctx.fillStyle = 'rgba(0, 122, 255, 0.06)';
+  ctx.strokeStyle = 'rgba(0, 122, 255, 0.4)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.arc(c.x, c.y, f.rings.inner * f.t.scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-  ctx.strokeStyle = 'rgba(61, 123, 224, 0.25)';
+  ctx.strokeStyle = 'rgba(0, 122, 255, 0.22)';
   ctx.setLineDash([5, 5]);
   ctx.beginPath();
   ctx.arc(c.x, c.y, f.rings.outer * f.t.scale, 0, Math.PI * 2);
@@ -254,14 +283,30 @@ const drawDestination: Layer = (ctx, f) => {
 
 type Drawable = { depth: number; draw: () => void };
 
-/** The seated player draws just in front of their chair; everyone else by where they stand. */
+/**
+ * Everyone draws by where they stand, except a seated player, who draws against their seat:
+ * behind it when its backrest faces the viewer (so the backrest hides their lower half, as
+ * Gather's foreground layer does), in front of it otherwise.
+ */
 function playerDepth(p: PlayerState, scene: TopDownScene): number {
   const seat = p.seat ? scene.byId.get(p.seat) : undefined;
-  return seat ? seat.max.z + seat.minY + 1e-3 : p.pos.z;
+  if (!seat) {
+    return p.pos.z;
+  }
+  const depth = seat.max.z + seat.minY;
+  return seat.back === 's' ? depth - 1e-3 : depth + 1e-3;
 }
 
 /** A seated character sits on the seat cushion, above the floor. */
-const SEAT_LIFT_M = 0.3;
+const SEAT_LIFT_M = 0.1;
+
+/** Pixels a player stands above the floor: on a raised floor (their height), or on a seat cushion. */
+function standingLift(p: PlayerState, px: number): number {
+  return (Math.max(p.pos.y, 0) + (p.seat ? SEAT_LIFT_M : 0)) * px * ELEVATION;
+}
+
+/** Seated, you face away from the backrest. */
+const FACING_FROM_BACKREST: Record<Side, Facing> = { n: 'down', s: 'up', w: 'right', e: 'left' };
 
 /** Furniture and characters back to front, so whoever stands south of a desk hides its front. */
 const drawStanding: Layer = (ctx, f) => {
@@ -271,7 +316,7 @@ const drawStanding: Layer = (ctx, f) => {
     const g = itemGeometry(item, f.t);
     if (onScreen(g, view)) {
       // Something resting on another item (a monitor on a desk) draws after its support.
-      drawables.push({ depth: item.max.z + item.minY, draw: () => ARCHETYPE_STYLES[item.archetype].paint({ ctx, item, g }) });
+      drawables.push({ depth: item.max.z + item.minY, draw: () => paintItem(ctx, item, g, f.t, f.sprites) });
     }
   }
   for (const [id, p] of Object.entries(f.players)) {
@@ -279,12 +324,15 @@ const drawStanding: Layer = (ctx, f) => {
     if (c.x < view.x || c.x > view.x + view.w || c.y < view.y || c.y > view.y + view.h) {
       continue;
     }
-    const lift = p.seat ? SEAT_LIFT_M * f.t.scale * ELEVATION : 0;
+    const lift = standingLift(p, f.t.scale);
+    const backrest = p.seat ? f.scene.byId.get(p.seat)?.back : null;
     drawables.push({
       depth: playerDepth(p, f.scene),
       draw: () =>
         drawCharacter(ctx, {
           player: p,
+          sprite: f.sprites.character(p.avatar.model, id),
+          facing: backrest ? FACING_FROM_BACKREST[backrest] : undefined,
           x: c.x,
           y: c.y - lift,
           px: f.t.scale,
@@ -339,7 +387,7 @@ const drawNameTags: Layer = (ctx, f) => {
     .filter(([id, p]) => showAll || id === f.selfId || id === f.hoveredId || p.mic === 'speaking')
     .map(([id, p]) => {
       const c = worldToScreen(f.t, p.pos);
-      const lift = p.seat ? SEAT_LIFT_M * f.t.scale * ELEVATION : 0;
+      const lift = standingLift(p, f.t.scale);
       return { id, p, x: c.x, bottom: c.y - lift - H - 4 };
     })
     .filter((tag) => tag.x > -CULL_MARGIN_PX && tag.x < f.size.width + CULL_MARGIN_PX && tag.bottom > -20 && tag.bottom < f.size.height + H)
@@ -352,9 +400,10 @@ const drawNameTags: Layer = (ctx, f) => {
 /** Back to front. Each layer is one concern; add a layer rather than growing one. */
 export const LAYERS: readonly Layer[] = [
   drawGround,
-  paintFlat((item) => item.archetype === 'floor'),
+  // Plain structural floors go under the office planks; floors with baked art (a kitchen's tiles) and rugs go over them.
+  paintFlat((item, f) => item.archetype === 'floor' && !f.sprites.kind(item.kindId, item.yawDeg)),
   drawFootprint,
-  paintFlat((item) => item.archetype !== 'floor'),
+  paintFlat((item, f) => item.archetype !== 'floor' || f.sprites.kind(item.kindId, item.yawDeg) !== null),
   drawZones,
   drawShadows,
   drawProximity,

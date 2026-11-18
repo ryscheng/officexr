@@ -1,31 +1,43 @@
 @import "tailwindcss";
 
 @theme {
-  --color-hud-panel: #1e2433;
-  --color-hud-inset: #161b27;
-  --color-hud-edge: #34405a;
-  --color-hud-edge-shadow: #0e121b;
-  --color-hud-text: #e8edf7;
-  --color-hud-text-2: #9aa6bd;
-  --color-hud-accent: #7fb2ff;
-  --color-hud-on-accent: #0f1420;
-  --color-hud-accent-edge: #5a8fe6;
-  --color-hud-accent-shadow: #2b4f96;
-  --color-hud-sage: #173326;
-  --color-hud-sage-text: #6fd99a;
-  --color-hud-rose: #3a1c22;
-  --color-hud-rose-text: #ff8a8a;
-  --color-hud-amber: #3a2f14;
-  --color-hud-amber-text: #ffd58a;
+  /*
+   * Liquid glass, light: translucent white surfaces over the world, a hairline light rim, soft
+   * layered shadows, Apple-blue accent and the system font (SF Pro on Apple devices). Every HUD,
+   * settings and page surface reads these tokens, so a re-theme happens here.
+   */
+  --color-hud-panel: rgb(255 255 255 / 0.66);
+  --color-hud-panel-solid: #f7f8fa;
+  --color-hud-inset: rgb(118 118 128 / 0.12);
+  --color-hud-edge: rgb(255 255 255 / 0.72);
+  --color-hud-edge-shadow: rgb(15 23 42 / 0.08);
+  --color-hud-hover: rgb(15 23 42 / 0.06);
+  --color-hud-separator: rgb(60 60 67 / 0.14);
+  --color-hud-avatar: #e3e8f0;
+  --color-hud-text: #1d1d1f;
+  --color-hud-text-2: rgb(60 60 67 / 0.64);
+  --color-hud-accent: #007aff;
+  --color-hud-on-accent: #ffffff;
+  --color-hud-accent-edge: #0066d6;
+  --color-hud-accent-shadow: rgb(0 122 255 / 0.32);
+  --color-hud-sage: rgb(52 199 89 / 0.16);
+  --color-hud-sage-text: #1d8a3c;
+  --color-hud-rose: rgb(255 59 48 / 0.12);
+  --color-hud-rose-text: #d1281e;
+  --color-hud-amber: rgb(255 159 10 / 0.16);
+  --color-hud-amber-text: #a85a00;
 
-  --radius-hud-panel: 16px;
-  --radius-hud-control: 14px;
+  --radius-hud-panel: 22px;
+  --radius-hud-control: 12px;
 
-  --shadow-hud-panel: 0 4px 0 var(--color-hud-edge-shadow), 0 12px 28px rgb(0 0 0 / 0.45);
-  --shadow-hud-control: 0 3px 0 var(--color-hud-edge-shadow);
+  --shadow-hud-panel: 0 0 0 0.5px rgb(15 23 42 / 0.06), 0 12px 32px -8px rgb(15 23 42 / 0.22), 0 2px 8px rgb(15 23 42 / 0.06),
+    inset 0 1px 0 rgb(255 255 255 / 0.85);
+  --shadow-hud-control: 0 0 0 0.5px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.7);
 
-  --font-hud-title: "Tiny5", sans-serif;
-  --font-hud-body: "Nunito", sans-serif;
+  --font-hud-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    sans-serif;
+  --font-hud-title: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", "Inter", "Segoe UI Variable Display", "Segoe UI",
+    system-ui, sans-serif;
 
   --animate-hud-turn: hud-turn 2.4s ease-in-out infinite;
   @keyframes hud-turn {
@@ -51,10 +63,25 @@
   }
 }
 
-/* Pages outside the world share the HUD's navy, so overscroll and the first paint match. */
+/* The frosted material every floating surface uses; backdrop blur is what makes it glass. */
+@utility hud-glass {
+  background-color: var(--color-hud-panel);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+
+/* Modals and sheets: more frosting, so the world behind reads as atmosphere rather than detail. */
+@utility hud-glass-thick {
+  background-color: rgb(250 250 252 / 0.86);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(40px) saturate(180%);
+}
+
 @layer base {
   html {
-    background-color: var(--color-hud-inset);
-    color-scheme: dark;
+    background-color: #eef1f6;
+    color-scheme: light;
+    font-family: var(--font-hud-body);
+    -webkit-font-smoothing: antialiased;
   }
 }
