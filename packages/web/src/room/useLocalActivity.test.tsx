@@ -13,16 +13,36 @@ function setup() {
   const sdk = createActions(store);
   sdk.upsertPlayer({ id: SELF });
   const target = new EventTarget();
+  const registered: { type: string; options: unknown }[] = [];
+  const removed: { type: string; options: unknown }[] = [];
+  const recordingTarget = {
+    addEventListener: (type: string, fn: never, options?: unknown) => {
+      registered.push({ type, options });
+      target.addEventListener(type, fn, options as AddEventListenerOptions);
+    },
+    removeEventListener: (type: string, fn: never, options?: unknown) => {
+      removed.push({ type, options });
+      target.removeEventListener(type, fn, options as AddEventListenerOptions);
+    },
+  };
   let now = 0;
   const markSelfActive = vi.fn<(at: number) => void>();
-  const view = renderHook(() => useLocalActivity(store, { markSelfActive }, SELF, { target, clock: () => now }));
+  const view = renderHook(() => useLocalActivity(store, { markSelfActive }, SELF, { target: recordingTarget, clock: () => now }));
   const advance = (ms: number) => void (now += ms);
   const moveTo = (x: number, yaw = 0) =>
     act(() => sdk.setSelfPosition({ x, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, yaw, false));
-  return { store, target, markSelfActive, advance, moveTo, view };
+  return { store, target, registered, removed, markSelfActive, advance, moveTo, view };
 }
 
 describe('useLocalActivity', () => {
+  it('registers and removes capture, passive listeners', () => {
+    const { registered, removed, view } = setup();
+    const expected = ['keydown', 'pointerdown', 'pointermove', 'wheel'].map((type) => ({ type, options: { capture: true, passive: true } }));
+    expect(registered).toEqual(expected);
+    view.unmount();
+    expect(removed).toEqual(expected);
+  });
+
   it('marks once on mount', () => {
     const { markSelfActive } = setup();
     expect(markSelfActive).toHaveBeenCalledExactlyOnceWith(0);
@@ -52,6 +72,17 @@ describe('useLocalActivity', () => {
     moveTo(0);
     moveTo(POSITION_CONSTANTS.deltaP / 10, POSITION_CONSTANTS.deltaY / 10);
     expect(markSelfActive).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not mark when yaw wraps around pi without turning', () => {
+    const { markSelfActive, advance, moveTo } = setup();
+    moveTo(0, Math.PI - 0.01);
+    advance(1000);
+    moveTo(0, -Math.PI + 0.01);
+    expect(markSelfActive).toHaveBeenCalledTimes(2);
+    advance(1000);
+    moveTo(0, Math.PI - 0.01);
+    expect(markSelfActive).toHaveBeenCalledTimes(2);
   });
 
   it('keeps comparing against the last marking pose while throttled', () => {

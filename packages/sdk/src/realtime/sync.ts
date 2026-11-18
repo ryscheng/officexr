@@ -12,13 +12,14 @@ import { InboundRouter } from './inbound/router.ts';
 import {
   PositionBroadcaster,
   POSITION_CONSTANTS,
+  poseMoved,
 } from './outbound/position-broadcaster.ts';
 import { StateDiffBroadcaster } from './outbound/state-diff-broadcaster.ts';
 import { StatusBroadcaster } from './outbound/status-broadcaster.ts';
 
 // Re-export so existing consumers keep working without their import paths
 // changing.
-export { applyNetEventToStore, POSITION_CONSTANTS };
+export { applyNetEventToStore, POSITION_CONSTANTS, poseMoved };
 
 const HEARTBEAT_TICK_MS = 1_000;
 

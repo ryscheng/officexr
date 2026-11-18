@@ -24,8 +24,8 @@ const browserDeps: LocalPresenceDeps = {
 export function useLocalPresence(
   actions: Pick<Actions, 'setSelfPresence'>,
   voice: PresenceVoice | null,
-  { readDocument, createMeter }: LocalPresenceDeps = browserDeps,
   onMicLoud?: () => void,
+  { readDocument, createMeter }: LocalPresenceDeps = browserDeps,
 ): void {
   useEffect(() => {
     // The SDK starts every player as available with no mic.

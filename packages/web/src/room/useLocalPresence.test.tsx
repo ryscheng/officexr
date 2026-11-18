@@ -75,7 +75,7 @@ function setup(voice: FakeVoice | null) {
     },
   };
   const setSelfPresence = vi.fn<(patch: { status?: PresenceStatus; mic?: MicState }) => void>();
-  const { unmount } = renderHook(() => useLocalPresence({ setSelfPresence }, voice, deps));
+  const { unmount } = renderHook(() => useLocalPresence({ setSelfPresence }, voice, undefined, deps));
   return { doc, meters, setSelfPresence, unmount };
 }
 
@@ -111,7 +111,7 @@ describe('useLocalPresence', () => {
   it('is away from mount when the tab starts hidden', () => {
     const doc = { hidden: true, focused: true };
     const setSelfPresence = vi.fn();
-    renderHook(() => useLocalPresence({ setSelfPresence }, null, { readDocument: () => doc, createMeter: () => new FakeMeter() }));
+    renderHook(() => useLocalPresence({ setSelfPresence }, null, undefined, { readDocument: () => doc, createMeter: () => new FakeMeter() }));
     expect(setSelfPresence).toHaveBeenCalledExactlyOnceWith({ status: 'away', mic: 'none' });
   });
 
@@ -210,7 +210,7 @@ describe('useLocalPresence', () => {
       readDocument: () => ({ hidden: false, focused: true }),
       createMeter: () => meters[meters.push(new FakeMeter()) - 1],
     };
-    renderHook(() => useLocalPresence({ setSelfPresence: vi.fn() }, voice, deps, onMicLoud));
+    renderHook(() => useLocalPresence({ setSelfPresence: vi.fn() }, voice, onMicLoud, deps));
     act(() => voice.setState('connected'));
     meters[0].loud();
     expect(onMicLoud).toHaveBeenCalledTimes(1);

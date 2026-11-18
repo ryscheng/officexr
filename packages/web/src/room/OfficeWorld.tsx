@@ -77,7 +77,7 @@ function ReplacedBanner({ store }: { store: Store }) {
 
 function LocalPresence({ local, voice }: { local: ReadySession['local']; voice: JaasVoiceAdapter | null }) {
   const markActive = useLocalActivity(local.store, local.actions, local.selfId);
-  useLocalPresence(local.actions, voice, undefined, markActive);
+  useLocalPresence(local.actions, voice, markActive);
   return null;
 }
 
