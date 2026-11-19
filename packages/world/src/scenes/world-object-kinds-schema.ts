@@ -151,11 +151,18 @@ export interface WorldObjectKind {
   isDesk?: boolean;
   water?: WaterSpec;
   ride?: RideSpec;
+  holdable?: HoldableSpec;
 }
 
 export interface WaterSpec {
   surfaceHeight: number;
   rim: number;
+}
+
+/** A stand holding an item a player can pick up; `emptyKindId` is what the stand looks like while it is held. */
+export interface HoldableSpec {
+  item: 'wand';
+  emptyKindId: string;
 }
 
 export const RIDE_VEHICLES = ['scooter', 'tricycle'] as const;
@@ -443,6 +450,7 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     isDesk: normalizeIsDesk(k.isDesk, idx),
     water: normalizeWater(k.water, k.rotationStepDeg, idx),
     ride: normalizeRide(k.ride, idx),
+    holdable: normalizeHoldable(k.holdable, idx),
   };
 }
 
@@ -510,6 +518,19 @@ function normalizeRide(raw: unknown, idx: number): RideSpec | undefined {
     );
   }
   return { vehicle: vehicle as RideVehicle };
+}
+
+function normalizeHoldable(raw: unknown, idx: number): HoldableSpec | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const spec = raw as { item?: unknown; emptyKindId?: unknown } | null;
+  if (spec?.item !== 'wand' || typeof spec.emptyKindId !== 'string' || spec.emptyKindId === '') {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].holdable must be { item: 'wand', emptyKindId: string }, got ${JSON.stringify(raw)}`,
+    );
+  }
+  return { item: 'wand', emptyKindId: spec.emptyKindId };
 }
 
 function normalizeIsDesk(raw: unknown, idx: number): boolean | undefined {

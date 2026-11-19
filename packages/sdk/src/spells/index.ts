@@ -2,7 +2,7 @@ import { colorBurst } from './color-burst.ts';
 import { fireball } from './fireball.ts';
 import { levitate } from './levitate.ts';
 import { shrink } from './shrink.ts';
-import type { SpellStrategy } from './types.ts';
+import type { SpellStrategy, SpellVisual } from './types.ts';
 
 export * from './types.ts';
 
@@ -75,4 +75,10 @@ export function pickSpellTarget(
 export function activeEffect(effects: Record<string, SpellEffect>, playerId: string, now: number): SpellEffect | null {
   const effect = effects[playerId];
   return effect && now < effect.endsAt ? effect : null;
+}
+
+/** How the spell looks on `playerId` now; null before the bolt lands or once the effect is over. */
+export function currentVisual(effects: Record<string, SpellEffect>, playerId: string, now: number): SpellVisual | null {
+  const effect = activeEffect(effects, playerId, now);
+  return effect && now >= effect.startsAt ? SPELLS[effect.spell].visual(now - effect.startsAt) : null;
 }

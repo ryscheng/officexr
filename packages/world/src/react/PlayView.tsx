@@ -31,6 +31,7 @@ import { NavGridProvider, useBuildNavGrid } from './useNavGrid.ts';
 import { PlayControlsProvider } from './playControls.tsx';
 import { useAutoWalk } from './useAutoWalk.ts';
 import { playControlsOf, useSeating } from './useSeating.ts';
+import type { PlacementHost } from '../motion/place-mode.ts';
 import { INITIAL_WORLD_READINESS, worldReadiness } from './world-readiness.ts';
 
 export interface PlayViewProps {
@@ -68,6 +69,8 @@ export interface PlayViewProps {
   xrStore?: XRStore;
   /** Shows a ping bell when hovering another player's avatar in the fixed camera. */
   onPingPlayer?: (id: PlayerId) => void;
+  /** Lets the player place props; absent where nobody builds. */
+  placement?: PlacementHost;
   /** Overlays rendered above the scene and HUD. */
   children?: React.ReactNode;
 }
@@ -149,6 +152,7 @@ export function PlayView(props: PlayViewProps) {
           xrStore={props.xrStore}
           selfReady={ready}
           onPingPlayer={props.onPingPlayer}
+          placement={props.placement}
           onModelsReady={() => dispatch({ type: 'modelsReady' })}
           onCollidersReady={(roomInstanceId) => dispatch({ type: 'collidersReady', roomInstanceId })}
           onCollidersError={(err) =>

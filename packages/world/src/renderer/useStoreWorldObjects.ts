@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
+import { propToInstance, type ObjectInstance, type PlacedProp, type Store, type WorldObjects } from '@officexr/sdk';
 import type { BakedLayoutPlacement } from '../app/map-loader.ts';
 import { layoutIdPrefix } from '../scenes/compile-map.ts';
 
@@ -17,7 +17,7 @@ export function excludeLayoutInstances(
 }
 
 /**
- * Follows `store`'s `worldObjects`, leaving out the instances `exclude` matches.
+ * Follows `store`'s `worldObjects` plus the props players placed, leaving out the instances `exclude` matches.
  * `exclude` must be referentially stable, or the result is a new object every render.
  */
 export function useStoreWorldObjects(store: Store, exclude?: ExcludeInstance): WorldObjects {
@@ -29,8 +29,16 @@ export function useStoreWorldObjects(store: Store, exclude?: ExcludeInstance): W
     setSnapshot(store.getState().worldObjects);
     return store.subscribe((s) => s.worldObjects, setSnapshot);
   }, [store]);
-  return useMemo(
-    () => (exclude ? { ...snapshot, instances: snapshot.instances.filter((i) => !exclude(i)) } : snapshot),
-    [snapshot, exclude],
-  );
+  const [placed, setPlaced] = useState<PlacedProp[]>(() => store.getState().placedProps);
+  useEffect(() => {
+    setPlaced(store.getState().placedProps);
+    return store.subscribe((s) => s.placedProps, setPlaced);
+  }, [store]);
+  return useMemo(() => {
+    if (!exclude && placed.length === 0) {
+      return snapshot;
+    }
+    const base = exclude ? snapshot.instances.filter((i) => !exclude(i)) : snapshot.instances;
+    return { ...snapshot, instances: placed.length ? [...base, ...placed.map(propToInstance)] : base };
+  }, [snapshot, exclude, placed]);
 }

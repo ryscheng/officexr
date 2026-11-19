@@ -158,9 +158,32 @@ function tricycle() {
   ]);
 }
 
+function wandStand(withWand: boolean) {
+  SIZE = 1;
+  const stone = empty();
+  addBox(stone, 0, 0.04, 0, 0.7, 0.08, 0.7);
+  addBox(stone, 0, 0.42, 0, 0.2, 0.7, 0.2);
+  addBox(stone, 0, 0.8, 0, 0.5, 0.06, 0.5);
+  const trim = empty();
+  addBox(trim, 0, 0.1, 0, 0.74, 0.04, 0.74);
+  addBox(trim, 0, 0.84, 0, 0.54, 0.03, 0.54);
+  const parts = [
+    { mesh: stone, color: rgb('#5b3ea6'), emissive: rgb('#5b3ea6'), roughness: 0.6 },
+    { mesh: trim, color: rgb('#ffd23f'), emissive: rgb('#ffd23f'), roughness: 0.4 },
+  ];
+  if (withWand) {
+    const shaft = empty();
+    addBox(shaft, 0, 1.12, 0, 0.045, 0.55, 0.045);
+    const tip = empty();
+    addBox(tip, 0, 1.42, 0, 0.1, 0.1, 0.1);
+    parts.push({ mesh: shaft, color: rgb('#6b3f1d'), emissive: rgb('#000000'), roughness: 0.8 }, { mesh: tip, color: rgb('#fff3c4'), emissive: rgb('#ffe27a'), roughness: 0.3 });
+  }
+  return build(withWand ? 'wand_stand' : 'wand_stand_empty', parts);
+}
+
 mkdirSync(OUT_DIR, { recursive: true });
 const io = new NodeIO();
-for (const [file, doc] of [['pool.gltf', pool()], ['scooter.gltf', scooter()], ['tricycle.gltf', tricycle()]] as const) {
+for (const [file, doc] of [['pool.gltf', pool()], ['scooter.gltf', scooter()], ['tricycle.gltf', tricycle()], ['wand_stand.gltf', wandStand(true)], ['wand_stand_empty.gltf', wandStand(false)]] as const) {
   await io.write(resolve(OUT_DIR, file), doc);
   console.log('wrote', file);
 }

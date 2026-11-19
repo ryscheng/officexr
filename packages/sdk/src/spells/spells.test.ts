@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   activeEffect,
+  currentVisual,
   cycleSpell,
   DEFAULT_SPELL,
   effectFromCast,
@@ -92,5 +93,13 @@ describe('spell targeting and timing', () => {
     expect(activeEffect({ b: effect }, 'b', 8999)).toBe(effect);
     expect(activeEffect({ b: effect }, 'b', 9000)).toBeNull();
     expect(activeEffect({ b: effect }, 'c', 6500)).toBeNull();
+  });
+
+  it('shows the effect only while it runs', () => {
+    const effects = { b: effectFromCast('a', cast, 0) };
+    expect(currentVisual(effects, 'b', 500)).toBeNull();
+    expect(currentVisual(effects, 'b', 1200)?.smoke).toBe(true);
+    expect(currentVisual(effects, 'b', 4000)).toBeNull();
+    expect(currentVisual(effects, 'c', 1200)).toBeNull();
   });
 });
