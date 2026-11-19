@@ -12,7 +12,6 @@ export interface WaterVolume {
   surfaceY: number;
 }
 
-/** The swimmable water of every placed object whose kind declares `water`, rim excluded. */
 export function waterVolumes(
   instances: readonly ObjectInstance[],
   catalog: Pick<KindResolver, 'getKind'>,

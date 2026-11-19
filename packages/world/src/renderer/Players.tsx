@@ -70,7 +70,6 @@ interface PlayersProps {
   onPingPlayer?: (id: PlayerId) => void;
 }
 
-/** What a posed player's avatar needs from React: the clip and the vehicle under it. */
 interface PoseView {
   clip: string;
   timeScale: number;
@@ -789,7 +788,6 @@ function readSpeeds(store: Store, playerId: string) {
   return { idle: tun.idleAnimSpeed, walk: tun.walkAnimSpeed, run: tun.runAnimSpeed };
 }
 
-/** The scooter or tricycle under a rider, drawn from the same model as the rack it came from. */
 function PlayerVehicle({ vehicle, ghost }: { vehicle: RideVehicle; ghost: boolean }) {
   const gltf = useGLTF(modelUrl(RIDE_STRATEGIES[vehicle].model));
   const scene = useMemo(() => {

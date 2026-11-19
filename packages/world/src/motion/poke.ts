@@ -9,11 +9,10 @@ export const POKE_TURN_S = 0.9;
 export interface PokeActor {
   x: number;
   z: number;
-  /** Store yaw: forward is `(-sin yaw, -cos yaw)`. */
+  /** Store yaw: forward is (-sin, -cos). */
   yaw: number;
 }
 
-/** The closest other player in reach and in front of `poker`, or null when the poke hits air. */
 export function pickPokeTarget(
   poker: PokeActor,
   others: readonly (Pick<PokeActor, 'x' | 'z'> & { id: PlayerId })[],
@@ -38,7 +37,6 @@ export function pickPokeTarget(
   return best;
 }
 
-/** Store yaw that makes a character face from `from` toward `to`. */
 export function yawToward(from: { x: number; z: number }, to: { x: number; z: number }): number {
   return Math.atan2(-(to.x - from.x), -(to.z - from.z));
 }

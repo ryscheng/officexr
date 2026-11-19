@@ -6,12 +6,10 @@ export const POKE_SPARK_DELAY_S = 0.1;
 export const POKE_SPARK_LIFE_S = 0.55;
 const RAYS = 6;
 
-/** Progress 0..1 of the cue at `age` seconds: 0 until the delay passes, 1 once it has run its life. */
 export function sparkProgress(age: number): number {
   return Math.min(1, Math.max(0, (age - POKE_SPARK_DELAY_S) / POKE_SPARK_LIFE_S));
 }
 
-/** A small ring and burst of rays where a poke lands; faces the camera, grows and fades, then calls `onDone`. */
 export function PokeSpark({ position, onDone }: { position: [number, number, number]; onDone: () => void }) {
   const group = useRef<THREE.Group>(null);
   const ring = useRef<THREE.Mesh>(null);

@@ -4,7 +4,6 @@ import { senderName } from '../ping/senderName';
 
 export const POKE_TOAST_MS = 2500;
 
-/** Shows "poked by <name>" for a moment whenever another player's poke lands on the local player. */
 export function PokeToast({ bus, store, selfId }: { bus: Bus; store: Store; selfId: PlayerId }) {
   const [poker, setPoker] = useState<string | null>(null);
 

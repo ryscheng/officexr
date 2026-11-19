@@ -69,7 +69,6 @@ export interface Actions {
   setDeskAreas(areas: DeskAreaState[]): void;
   /** Sit on the placed object instance `instanceId`, or stand up with null. */
   setSelfSeat(instanceId: string | null): void;
-  /** Swim or ride, or null to be on foot again. */
   setSelfPose(pose: PlayerPose | null, rack?: string | null): void;
   /** Replace all desk claims. Never broadcast: only the realtime server distributes them. */
   setDeskClaims(claims: Record<string, string>): void;

@@ -149,20 +149,15 @@ export interface WorldObjectKind {
   seat?: SeatSpec;
   /** Counts as a desk. Absent means false. */
   isDesk?: boolean;
-  /** Makes the object a pool: players inside its footprint, minus the rim, swim. Absent means no water. */
   water?: WaterSpec;
-  /** Makes the object a rack for a rideable vehicle: a player next to it can mount the vehicle. Absent means not rideable. */
   ride?: RideSpec;
 }
 
 export interface WaterSpec {
-  /** Water surface height in metres above the instance's base. */
   surfaceHeight: number;
-  /** Rim thickness in metres, kept out of the swimmable area. */
   rim: number;
 }
 
-/** The vehicles a player can ride, as `PlayerPose` names them. */
 export const RIDE_VEHICLES = ['scooter', 'tricycle'] as const;
 export type RideVehicle = (typeof RIDE_VEHICLES)[number];
 

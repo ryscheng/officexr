@@ -4,25 +4,21 @@ import type { InstanceGeometryService } from '../app/types.ts';
 import type { RideVehicle } from '../scenes/world-object-kinds-schema.ts';
 
 export interface RideStrategy {
-  /** Top speed in m/s. */
+  /** m/s. */
   topSpeed: number;
   accel: number;
   brake: number;
-  /** Heading change in rad/s at standstill; turning slows by `turnAtSpeed` at top speed. */
+  /** rad/s at standstill. */
   turnRate: number;
   turnAtSpeed: number;
-  /** Radians of body roll per (rad/s of turn × m/s of speed); 0 keeps the rider upright. */
+  /** rad of roll per (rad/s turn x m/s speed). */
   leanGain: number;
   leanMax: number;
   /** Metres the rider's feet sit above the ground. */
   deckHeight: number;
-  /** Clip the rider plays; the vehicle model carries the rest of the pose. */
   clip: string;
-  /** Rider forward pitch in radians. */
   riderPitch: number;
-  /** Extra top speed multiplier while sprinting. */
   boost: number;
-  /** Vehicle model, served from the models folder. */
   model: string;
 }
 
@@ -67,7 +63,6 @@ export const newRide = (heading: number): RideState => ({ heading, speed: 0, yaw
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
-/** One step of steering and speed: heading turns toward the intended direction at a speed-dependent rate. */
 export function stepRide(
   ride: RideState,
   vehicle: RideVehicle,
@@ -93,7 +88,7 @@ export function stepRide(
 
 export const rideDirection = (ride: RideState) => ({ x: Math.sin(ride.heading), z: Math.cos(ride.heading) });
 
-/** Body roll into a turn; positive leans toward the player's left. */
+/** Positive leans toward the player's left. */
 export function leanOf(vehicle: RideVehicle, yawRate: number, speed: number): number {
   const s = RIDE_STRATEGIES[vehicle];
   return Math.max(-s.leanMax, Math.min(s.leanMax, yawRate * speed * s.leanGain));
@@ -106,7 +101,6 @@ export interface RideStand {
 
 export const MOUNT_REACH_M = 1.3;
 
-/** The nearest vehicle rack the player at `feet` is within reach of, measured to its footprint. */
 export function nearestRideStand(
   instances: readonly ObjectInstance[],
   catalog: Pick<KindResolver, 'getKind'>,

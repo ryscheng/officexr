@@ -60,7 +60,6 @@ function Water({ volume, uniforms }: { volume: WaterVolume; uniforms: { uTime: {
   );
 }
 
-/** The animated surface of every pool placed in the world. */
 export function WaterVolumes({ store }: { store: Store }) {
   const volumes = useWaterVolumes(store);
   const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);

@@ -6,14 +6,12 @@ import type { WaterVolume } from './water.ts';
 
 export interface SelfMotion {
   pose: PlayerPose | null;
-  /** The rack the current ride started at, null otherwise. */
   rack: string | null;
   ride: RideState;
 }
 
 export const newSelfMotion = (): SelfMotion => ({ pose: null, rack: null, ride: newRide(0) });
 
-/** What the self player's movement needs to know about the scene, kept apart from where it comes from. */
 export interface MotionWorld {
   waterAt(x: number, z: number): WaterVolume | null;
   rideNear(feet: Vec3): { vehicle: RideVehicle; rackId: string } | null;
@@ -21,20 +19,17 @@ export interface MotionWorld {
 
 export interface SelfMotionInput {
   feet: Vec3;
-  /** Camera-relative intent as a world direction; null without input. */
   dir: { x: number; z: number } | null;
   sprint: boolean;
-  /** Mount/dismount pressed this frame. */
   mount: boolean;
-  /** Heading the player faces, as `atan2(x, z)` of the world direction. */
+  /** atan2(x, z) of the world direction the player faces. */
   heading: number;
   dt: number;
 }
 
 export interface SelfMotionOutput {
-  /** World direction to move in; null stands still. */
   dir: { x: number; z: number } | null;
-  /** Speed override in m/s; null uses the normal walk/run speed. */
+  /** m/s; null uses the normal walk/run speed. */
   speed: number | null;
   canJump: boolean;
 }
@@ -58,7 +53,6 @@ function rideOutput(sm: SelfMotion, vehicle: RideVehicle, i: SelfMotionInput): S
   return { dir: sm.ride.speed > 0.05 ? rideDirection(sm.ride) : null, speed: sm.ride.speed, canJump: false };
 }
 
-/** Swims when in water, mounts or dismounts on the mount key, and returns this frame's movement. */
 export function stepSelfMotion(sm: SelfMotion, input: SelfMotionInput, world: MotionWorld): SelfMotionOutput {
   const water = world.waterAt(input.feet.x, input.feet.z);
   const inWater = water !== null && input.feet.y <= water.surfaceY + 0.05;

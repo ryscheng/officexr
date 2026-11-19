@@ -217,7 +217,6 @@ export class SyncEngine {
     });
   }
 
-  /** Everyone in the room sees the poke; `targetId` is null when it reached nobody. */
   sendPoke(targetId: PlayerId | null): void {
     this.broadcast({
       kind: 'poke:send',

@@ -18,7 +18,6 @@ export type AvatarData = {
   accessories?: string[];
 };
 
-/** Body poses that replace the walk/idle animation: swimming, or riding a placed vehicle. */
 export const PLAYER_POSES = ['swim', 'scooter', 'tricycle'] as const;
 export type PlayerPose = (typeof PLAYER_POSES)[number];
 
@@ -40,9 +39,7 @@ export type PlayerState = {
   mic: MicState;
   /** Id of the placed object instance the player sits on. */
   seat?: string | null;
-  /** Swimming or riding; null or absent while on foot. Broadcast via presence:pose. */
   pose?: PlayerPose | null;
-  /** Id of the rack a rider took the vehicle from, so peers can draw it empty. */
   poseRack?: string | null;
   tRecv?: number;
   /** Local-only: receive time of this player's last `presence:status`. */
@@ -448,7 +445,6 @@ export type GameEvent =
   | { kind: 'combat:hit'; targetId: PlayerId; dmg: number; byId: PlayerId }
   | { kind: 'combat:killed'; targetId: PlayerId; byId: PlayerId }
   | { kind: 'ping:received'; fromId: PlayerId; at: number }
-  /** `targetId` is null when the poke reached nobody. Emitted for the poker too, so their own avatar plays it. */
   | { kind: 'poke:received'; fromId: PlayerId; targetId: PlayerId | null; at: number }
   | { kind: 'inventory:added'; item: InventoryItem }
   | { kind: 'inventory:removed'; itemId: string }

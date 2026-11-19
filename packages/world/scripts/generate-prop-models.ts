@@ -1,11 +1,6 @@
 #!/usr/bin/env tsx
-/**
- * Writes the low-poly pool, scooter and tricycle models to
- * packages/studio/public/models/props/. Models face +Z; origin is the
- * footprint centre at ground level.
- *
- * Usage: pnpm --filter @officexr/world exec tsx scripts/generate-prop-models.ts
- */
+// Usage: pnpm --filter @officexr/world exec tsx scripts/generate-prop-models.ts
+// Models face +Z; origin is the footprint centre at ground level.
 import { Document, NodeIO, type Material } from '@gltf-transform/core';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -13,14 +8,12 @@ import { fileURLToPath } from 'node:url';
 
 const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../studio/public/models/props');
 
-/** Uniform size of the model being built: the characters are about two metres tall, so the vehicles are drawn large. */
 let SIZE = 1;
 
 type Mesh = { positions: number[]; normals: number[]; indices: number[] };
 
 const empty = (): Mesh => ({ positions: [], normals: [], indices: [] });
 
-/** An axis-aligned box centred on (cx, cy, cz). */
 function addBox(m: Mesh, cx: number, cy: number, cz: number, w: number, h: number, d: number) {
   [cx, cy, cz, w, h, d] = [cx, cy, cz, w, h, d].map((v) => v * SIZE) as [number, number, number, number, number, number];
   const faces: [number[], number[][]][] = [
@@ -41,7 +34,6 @@ function addBox(m: Mesh, cx: number, cy: number, cz: number, w: number, h: numbe
   }
 }
 
-/** A cylinder whose axis runs along X (a wheel). */
 function addWheel(m: Mesh, cx: number, cy: number, cz: number, radius: number, width: number, segments = 14) {
   [cx, cy, cz, radius, width] = [cx, cy, cz, radius, width].map((v) => v * SIZE) as [number, number, number, number, number];
   for (let s = 0; s < segments; s++) {
@@ -137,7 +129,7 @@ function scooter() {
   ]);
 }
 
-/** The seat is centred on the origin, where the rider's root rests, 0.34 up (times the size). */
+/** Seat centred on the origin, where the rider's root rests: 0.34 up, times SIZE. */
 function tricycle() {
   SIZE = 1.6;
   const frame = empty();

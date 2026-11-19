@@ -91,7 +91,7 @@ export const STATE_CLIPS: Record<AnimationState, string> = {
   sitting: SIT_CLIP_NAME,
 };
 
-/** The poke clip only drives the arm, and the mixer averages it with the clip under it; this weight lets it win there. */
+/** The poke clip drives only the arm and the mixer averages it with the clip below; this weight lets it win. */
 const POKE_ARM_WEIGHT = 8;
 
 /** Faster than authored so the bump reads as a quick recoil, not a flinch. */
@@ -128,9 +128,7 @@ interface AdventurerProps {
   previewState?: AnimationState;
   /** If true, hide the body so first-person view doesn't see itself. */
   invisible?: boolean;
-  /** A clip that replaces the idle/walk/run one, for poses such as swimming or riding; loops at `timeScale`. */
   clipOverride?: { name: string; timeScale: number };
-  /** Monotonic counter: every increment plays the arm-out poke once over the current clip. */
   pokeCounter?: number;
   /** Time-scale multiplier for the idle clip (1 = authored speed). */
   idleSpeed?: number;

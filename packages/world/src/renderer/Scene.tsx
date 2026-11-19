@@ -90,7 +90,7 @@ function OptionalXR({ store, children }: { store?: XRStore; children: React.Reac
 
 const noopSubscribe = () => () => {};
 
-/** Ids of the racks whose vehicle a player is riding, joined with `|`; '' when none, so it compares by value. */
+/** Joined with `|` so the selector result compares by value. */
 function occupiedRacks(players: Record<string, { poseRack?: string | null }>): string {
   return Object.values(players)
     .flatMap((p) => (p.poseRack ? [p.poseRack] : []))

@@ -7,7 +7,6 @@ import { useApplication, useCatalog } from '../react/application-context.tsx';
 import { useStoreWorldObjects } from './useStoreWorldObjects.ts';
 import { useWaterVolumes } from './useWaterVolumes.ts';
 
-/** What the self player's swim and ride logic reads of the placed objects, rebuilt when they change. */
 export function useMotionWorld(store: Store): MotionWorld {
   const { geometry, catalog } = useApplication();
   const volumes = useWaterVolumes(store);
