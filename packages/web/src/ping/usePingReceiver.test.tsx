@@ -49,6 +49,14 @@ describe('usePingReceiver', () => {
     expect(deps.notify).toHaveBeenCalledWith(prefs, 'grace');
   });
 
+  it('stays silent in focus mode', async () => {
+    const { ping, deps } = setup({ 'ada#t1': { name: 'Ada' }, 'me#t0': { name: 'Me', focus: true } as never });
+    await act(async () => {});
+    ping('ada#t1');
+    expect(deps.play).not.toHaveBeenCalled();
+    expect(deps.notify).not.toHaveBeenCalled();
+  });
+
   it('prepares on mount and stops listening on unmount', async () => {
     const { ping, deps, view } = setup({});
     await act(async () => {});

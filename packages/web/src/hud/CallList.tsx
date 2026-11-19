@@ -27,7 +27,22 @@ export function callRows(roster: RosterEntry[], players: CallPlayer[], selfId: P
         : { type: 'guest', id: entry.id, label: entry.displayName || 'Guest' };
     })
     .sort((a, b) => a.label.localeCompare(b.label));
-  return self ? [{ type: 'self', id: self.id, label: 'You', status: self.status, mic: self.mic }, ...remote] : remote;
+  return self
+    ? [
+        {
+          type: 'self',
+          id: self.id,
+          label: 'You',
+          status: self.status,
+          mic: self.mic,
+          statusText: self.statusText,
+          statusEmoji: self.statusEmoji,
+          focus: self.focus,
+          handRaised: self.handRaised,
+        },
+        ...remote,
+      ]
+    : remote;
 }
 
 const selectCall = (s: OfficeState): Call => {

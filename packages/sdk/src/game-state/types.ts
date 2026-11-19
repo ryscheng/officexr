@@ -24,6 +24,18 @@ export type PlayerPose = (typeof PLAYER_POSES)[number];
 export const EMOTE_IDS = ['wave', 'thumbs-up', 'heart', 'laugh', 'clap', 'party', 'question'] as const;
 export type EmoteId = (typeof EMOTE_IDS)[number];
 
+export const EMOTE_INFO: Record<EmoteId, { glyph: string; label: string }> = {
+  wave: { glyph: '👋', label: 'Wave' },
+  'thumbs-up': { glyph: '👍', label: 'Thumbs up' },
+  heart: { glyph: '❤️', label: 'Heart' },
+  laugh: { glyph: '😂', label: 'Laugh' },
+  clap: { glyph: '👏', label: 'Clap' },
+  party: { glyph: '🎉', label: 'Party' },
+  question: { glyph: '❓', label: 'Question' },
+};
+
+export const EMOTE_BUBBLE_MS = 3000;
+
 export const STATUS_TEXT_MAX = 60;
 export const STATUS_EMOJI_MAX = 16;
 

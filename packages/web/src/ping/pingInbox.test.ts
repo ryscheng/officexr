@@ -43,4 +43,14 @@ describe('connectPingInbox', () => {
     bus.emit({ kind: 'ping:received', fromId: 'ada#t1', at: 3 });
     expect(inbox.getSnapshot().entries).toHaveLength(2);
   });
+
+  it('still queues a ping while the local player is in focus mode', () => {
+    const bus = createBus();
+    const store = createStore({ selfId: 'me#t0', officeId: 'o' });
+    store.setState((s) => ({ ...s, players: { 'me#t0': { name: 'Me', focus: true }, 'ada#t1': { name: 'Ada' } } as never }));
+    const inbox = new PingInbox();
+    connectPingInbox(bus, store, inbox);
+    bus.emit({ kind: 'ping:received', fromId: 'ada#t1', at: 1 });
+    expect(inbox.getSnapshot()).toMatchObject({ unread: 1 });
+  });
 });
