@@ -4,6 +4,7 @@ import type {
   CharacterConfigs,
   MicState,
   PlayerId,
+  PlayerPose,
   PresenceStatus,
   Stroke,
   Vec3,
@@ -12,6 +13,7 @@ import type {
   ZombieState,
 } from '../game-state/types.ts';
 import { ZWorldConstants, type WorldConstants } from '../game-state/world-constants.ts';
+import { PLAYER_POSES } from '../game-state/types.ts';
 import type { SerializedOfficeState } from '../game-state/snapshot.ts';
 
 // --- Envelope ---
@@ -76,6 +78,8 @@ const ZPlayerState = z.object({
   status: ZPresenceStatus,
   mic: ZMicState,
   seat: z.string().nullable().optional(),
+  pose: z.enum(PLAYER_POSES).nullable().optional(),
+  poseRack: z.string().nullable().optional(),
 });
 
 const ZChatMessageObj = z.object({
@@ -199,6 +203,8 @@ const ZPresenceStatusPayload = z.object({
   idleMs: z.number().nonnegative().optional(),
 });
 const ZPresenceSeat = z.object({ instanceId: z.string().nullable() });
+const ZPresencePose = z.object({ pose: z.enum(PLAYER_POSES).nullable(), rack: z.string().nullable().optional() });
+const ZPokeSend = z.object({ targetId: z.string().min(1).nullable() });
 const ZDeskClaimsPayload = z.object({ claims: z.record(z.string(), z.string()) });
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) });
 const ZChatMessage = z.object({ text: z.string() });
@@ -238,6 +244,8 @@ export type NetEvent =
     }
   >
   | WithEnvelope<'presence:seat', 1, { instanceId: string | null }>
+  | WithEnvelope<'presence:pose', 1, { pose: PlayerPose | null; rack?: string | null }>
+  | WithEnvelope<'poke:send', 1, { targetId: PlayerId | null }>
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData; name: string }>
   | WithEnvelope<'chat:message', 1, { text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>
@@ -274,6 +282,8 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'presence:position': { v: 1, schema: ZPresencePosition, authority: 'local', route: 'room' },
   'presence:status': { v: 1, schema: ZPresenceStatusPayload, authority: 'local', route: 'room' },
   'presence:seat': { v: 1, schema: ZPresenceSeat, authority: 'local', route: 'room' },
+  'presence:pose': { v: 1, schema: ZPresencePose, authority: 'local', route: 'room' },
+  'poke:send': { v: 1, schema: ZPokeSend, authority: 'local', route: 'room' },
   'avatar:update': { v: 1, schema: ZAvatarUpdate, authority: 'local', route: 'room' },
   'chat:message': { v: 1, schema: ZChatMessage, authority: 'local', route: 'room' },
   'whiteboard:stroke': { v: 1, schema: ZWhiteboardStroke, authority: 'local', route: 'room' },

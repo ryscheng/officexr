@@ -18,6 +18,9 @@ export type AvatarData = {
   accessories?: string[];
 };
 
+export const PLAYER_POSES = ['swim', 'scooter', 'tricycle'] as const;
+export type PlayerPose = (typeof PLAYER_POSES)[number];
+
 export type PlayerState = {
   id: PlayerId;
   name: string;
@@ -36,6 +39,8 @@ export type PlayerState = {
   mic: MicState;
   /** Id of the placed object instance the player sits on. */
   seat?: string | null;
+  pose?: PlayerPose | null;
+  poseRack?: string | null;
   tRecv?: number;
   /** Local-only: receive time of this player's last `presence:status`. */
   lastStatusAt?: number;
@@ -440,6 +445,7 @@ export type GameEvent =
   | { kind: 'combat:hit'; targetId: PlayerId; dmg: number; byId: PlayerId }
   | { kind: 'combat:killed'; targetId: PlayerId; byId: PlayerId }
   | { kind: 'ping:received'; fromId: PlayerId; at: number }
+  | { kind: 'poke:received'; fromId: PlayerId; targetId: PlayerId | null; at: number }
   | { kind: 'inventory:added'; item: InventoryItem }
   | { kind: 'inventory:removed'; itemId: string }
   | { kind: 'voice:room-changed'; roomId: string | null }

@@ -141,6 +141,13 @@ export class Room {
     };
   }
 
+  /** A player who left keeps no pose or seat, or a later joiner would replay it. */
+  clearBodyState(userId: PlayerId): void {
+    if (!this.store.getState().players[userId]) return;
+    this.actions.applyRemotePose(userId, null, Date.now());
+    this.actions.applyRemoteSeat(userId, null, Date.now());
+  }
+
   sessionsOf(login: string): WsClient[] {
     return [...this.clients.values()].filter((c) => loginOf(c.userId) === login);
   }
@@ -244,6 +251,17 @@ export class Room {
           seq: seq++,
           t: Date.now(),
           instanceId: p.seat,
+        });
+      }
+      if (p.pose != null) {
+        events.push({
+          kind: 'presence:pose',
+          v: 1,
+          actorId: id as PlayerId,
+          seq: seq++,
+          t: Date.now(),
+          pose: p.pose,
+          rack: p.poseRack ?? null,
         });
       }
       // The store's default name is '', so a name means the player sent
@@ -678,6 +696,7 @@ export class RealtimeServer {
     // room recreated since.
     if (room.clients.get(client.userId) !== client) return;
     room.clients.delete(client.userId);
+    room.clearBodyState(client.userId);
     this.dropIfEmpty(room);
   }
 

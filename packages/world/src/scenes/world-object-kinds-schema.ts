@@ -149,6 +149,20 @@ export interface WorldObjectKind {
   seat?: SeatSpec;
   /** Counts as a desk. Absent means false. */
   isDesk?: boolean;
+  water?: WaterSpec;
+  ride?: RideSpec;
+}
+
+export interface WaterSpec {
+  surfaceHeight: number;
+  rim: number;
+}
+
+export const RIDE_VEHICLES = ['scooter', 'tricycle'] as const;
+export type RideVehicle = (typeof RIDE_VEHICLES)[number];
+
+export interface RideSpec {
+  vehicle: RideVehicle;
 }
 
 export interface SeatSpec {
@@ -427,6 +441,8 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     rotationStepDeg: normalizeRotationStep(k.rotationStepDeg, idx),
     seat: normalizeSeat(k.seat, idx),
     isDesk: normalizeIsDesk(k.isDesk, idx),
+    water: normalizeWater(k.water, k.rotationStepDeg, idx),
+    ride: normalizeRide(k.ride, idx),
   };
 }
 
@@ -462,6 +478,38 @@ function normalizeSeat(raw: unknown, idx: number): SeatSpec | undefined {
     );
   }
   return { offset: { x: offset.x, y: offset.y, z: offset.z }, yawDeg: seat.yawDeg };
+}
+
+function normalizeWater(raw: unknown, rotationStepDeg: unknown, idx: number): WaterSpec | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (typeof rotationStepDeg === 'number' && rotationStepDeg % 90 !== 0) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].water needs a rotationStepDeg that is a multiple of 90, got ${rotationStepDeg}`,
+    );
+  }
+  const water = raw as { surfaceHeight?: unknown; rim?: unknown } | null;
+  const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
+  if (!positive(water?.surfaceHeight) || !positive(water?.rim)) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].water must be { surfaceHeight, rim } of positive numbers, got ${JSON.stringify(raw)}`,
+    );
+  }
+  return { surfaceHeight: water.surfaceHeight, rim: water.rim };
+}
+
+function normalizeRide(raw: unknown, idx: number): RideSpec | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const vehicle = (raw as { vehicle?: unknown } | null)?.vehicle;
+  if (!(RIDE_VEHICLES as readonly unknown[]).includes(vehicle)) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].ride must be { vehicle: ${RIDE_VEHICLES.join(' | ')} }, got ${JSON.stringify(raw)}`,
+    );
+  }
+  return { vehicle: vehicle as RideVehicle };
 }
 
 function normalizeIsDesk(raw: unknown, idx: number): boolean | undefined {

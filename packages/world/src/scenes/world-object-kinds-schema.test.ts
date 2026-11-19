@@ -233,6 +233,42 @@ describe('normalizeKind — seat and isDesk', () => {
   });
 });
 
+describe('normalizeKind — water and ride', () => {
+  it('keeps both through a catalog round-trip and omits them when absent', () => {
+    const catalog = validateWorldObjectKindCatalog({
+      schemaVersion: 1,
+      updatedAt: 0,
+      kinds: [
+        minimalRaw('prop', { id: 'pool', water: { surfaceHeight: 0.4, rim: 0.35 } }),
+        minimalRaw('prop', { id: 'scooter', ride: { vehicle: 'scooter' } }),
+        minimalRaw('block', { id: 'plain' }),
+      ],
+    });
+    expect(catalog.kinds[0].water).toEqual({ surfaceHeight: 0.4, rim: 0.35 });
+    expect(catalog.kinds[1].ride).toEqual({ vehicle: 'scooter' });
+    const plain = JSON.parse(JSON.stringify(catalog.kinds[2]));
+    expect(plain).not.toHaveProperty('water');
+    expect(plain).not.toHaveProperty('ride');
+  });
+
+  it.each([null, {}, { surfaceHeight: 0.4 }, { surfaceHeight: -1, rim: 0.3 }, { surfaceHeight: '1', rim: 0.3 }])(
+    'rejects malformed water %j',
+    (bad) => {
+      expect(() => normalizeKind(minimalRaw('block', { water: bad }), 5)).toThrow(/kinds\[5\]\.water/);
+    },
+  );
+
+  it('rejects water on a kind that rotates in steps other than quarter turns', () => {
+    const water = { surfaceHeight: 0.4, rim: 0.3 };
+    expect(() => normalizeKind(minimalRaw('block', { water, rotationStepDeg: 45 }), 7)).toThrow(/kinds\[7\]\.water/);
+    expect(normalizeKind(minimalRaw('block', { water, rotationStepDeg: 180 }), 7).water).toEqual(water);
+  });
+
+  it.each([null, {}, { vehicle: 'hoverboard' }])('rejects malformed ride %j', (bad) => {
+    expect(() => normalizeKind(minimalRaw('block', { ride: bad }), 6)).toThrow(/kinds\[6\]\.ride/);
+  });
+});
+
 describe('isYawAllowed', () => {
   it('defaults to 90° steps', () => {
     expect(isYawAllowed(undefined, 270)).toBe(true);

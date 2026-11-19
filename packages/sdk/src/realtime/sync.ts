@@ -217,6 +217,17 @@ export class SyncEngine {
     });
   }
 
+  sendPoke(targetId: PlayerId | null): void {
+    this.broadcast({
+      kind: 'poke:send',
+      v: 1,
+      actorId: this.store.getState().selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      targetId,
+    });
+  }
+
   // --- Lifecycle ------------------------------------------------------
 
   start(): void {
@@ -228,6 +239,8 @@ export class SyncEngine {
     this.stateDiff.captureBaseline();
     if (!this.heldSelf) {
       this.position.announceSelf();
+      this.stateDiff.announceSeat();
+      this.stateDiff.announcePose();
       this.status.announceSelf();
     }
     this.heartbeat = this.timers.setInterval(() => this.tickHeartbeat(), HEARTBEAT_TICK_MS);
@@ -290,6 +303,7 @@ export class SyncEngine {
     this.position.announceSelf();
     this.stateDiff.announceAvatar();
     this.stateDiff.announceSeat();
+    this.stateDiff.announcePose();
     this.status.announceSelf();
   }
 

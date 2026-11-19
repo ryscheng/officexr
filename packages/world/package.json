@@ -10,6 +10,7 @@
     "./top-down": "./src/top-down/index.ts",
     "./renderer": "./src/renderer/index.ts",
     "./physics": "./src/physics/index.ts",
+    "./motion": "./src/motion/index.ts",
     "./bot": "./src/bot/index.ts",
     "./characters": "./src/characters/index.ts",
     "./scenes": "./src/scenes/index.ts",

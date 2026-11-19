@@ -22,6 +22,7 @@ export { requestMotionPermission, type MotionLookState, type MotionPermission } 
 export { SceneFrame } from './SceneFrame.tsx';
 export { createWorldXRStore } from './xrStore.ts';
 export { useXRSessionModeSupported, type XRStore } from '@react-three/xr';
+export { WaterVolumes } from './WaterVolumes.tsx';
 export { ObjectInstances, type MaterialOverride } from './ObjectInstances.tsx';
 export {
   LightingRig,

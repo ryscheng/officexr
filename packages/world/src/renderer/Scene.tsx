@@ -25,6 +25,8 @@ import { XRAvatarOrigin } from './XRAvatarOrigin.tsx';
 import type { MotionLookState } from './motionLook.ts';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
+import { WaterVolumes } from './WaterVolumes.tsx';
+import { excludeRacks, occupiedRacks } from './occupiedRacks.ts';
 import { BakedLayout } from './BakedLayout.tsx';
 import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
@@ -87,6 +89,7 @@ function OptionalXR({ store, children }: { store?: XRStore; children: React.Reac
 }
 
 const noopSubscribe = () => () => {};
+
 
 /** A layout placement with the URL of its baked GLB, e.g. `/api/baked-layouts/lobby`. */
 export interface SceneBakedLayout extends BakedLayoutPlacement {
@@ -166,6 +169,12 @@ interface SceneProps {
 export function Scene(props: SceneProps) {
   const { store, selfId, cameraMode, sync, bakedLayouts } = props;
   const excludeBakedInstance = useMemo(() => excludeLayoutInstances(bakedLayouts), [bakedLayouts]);
+  const subscribeRacks = useCallback(
+    (onChange: () => void) => store.subscribe((s) => occupiedRacks(s.players), onChange),
+    [store],
+  );
+  const racksInUse = useSyncExternalStore(subscribeRacks, () => occupiedRacks(store.getState().players));
+  const excludeRidden = useMemo(() => excludeRacks(racksInUse, excludeBakedInstance), [racksInUse, excludeBakedInstance]);
   const { proximity, lighting, background, fixedCamera } = props.view;
   const worldFocused = props.worldFocused ?? true;
   const { xrStore } = props;
@@ -278,7 +287,7 @@ export function Scene(props: SceneProps) {
           Rapier sub-step at the real frame delta.
         */}
         <Physics gravity={[0, -20, 0]} timeStep="vary">
-        <MapColliders store={store} exclude={excludeBakedInstance} />
+        <MapColliders store={store} exclude={excludeRidden} />
         {bakedLayouts?.map((p) => {
           const transform = placementTransform(p);
           return (
@@ -326,7 +335,8 @@ export function Scene(props: SceneProps) {
           }
         />
 
-        <ObjectInstances store={store} exclude={excludeBakedInstance} />
+        <ObjectInstances store={store} exclude={excludeRidden} />
+        <WaterVolumes store={store} />
 
         <Players
           store={store}

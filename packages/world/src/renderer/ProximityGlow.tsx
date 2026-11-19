@@ -225,6 +225,7 @@ export function ProximityGlow({
       setSparklingVersion((v) => v + 1);
     }
 
+    // A swimmer or rider has no disc: it would hide the vehicle.
     // Per-player disc positions / colors. NOTE: `entered` players have
     // their personal disc hidden (the MeetingArea visual covers them),
     // so we force opacity to fade out for those.
@@ -240,7 +241,7 @@ export function ProximityGlow({
       // over their visual.
       const inMeetingArea = discState === 'entered';
       const isPulsing = discState === 'entering' || discState === 'exiting';
-      const target = inMeetingArea
+      const target = inMeetingArea || p.pose
         ? 0
         : isPulsing
           ? intensity * pulse

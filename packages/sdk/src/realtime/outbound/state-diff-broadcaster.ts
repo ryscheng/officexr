@@ -122,6 +122,10 @@ export class StateDiffBroadcaster {
       this.announceSeat(next);
     }
 
+    if (selfLive && ((me?.pose ?? null) !== (prevMe?.pose ?? null) || (me?.poseRack ?? null) !== (prevMe?.poseRack ?? null))) {
+      this.announcePose(next);
+    }
+
     // worldMap: broadcast on any change. Same JSON-equality dedupe; the map
     // changes far less often than positions, so the stringify cost is
     // bounded.
@@ -235,6 +239,18 @@ export class StateDiffBroadcaster {
       seq: this.takeSeq(),
       t: this.clock.now(),
       instanceId: state.players[state.selfId]?.seat ?? null,
+    });
+  }
+
+  announcePose(state: OfficeState = this.store.getState()): void {
+    this.broadcast({
+      kind: 'presence:pose',
+      v: 1,
+      actorId: state.selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      pose: state.players[state.selfId]?.pose ?? null,
+      rack: state.players[state.selfId]?.poseRack ?? null,
     });
   }
 

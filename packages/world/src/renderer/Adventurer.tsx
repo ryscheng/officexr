@@ -6,6 +6,7 @@ import { modelUrl } from '../app/asset-url.ts';
 import { CHARACTERS } from './config.ts';
 import { characterUrl } from '../characters/registry.ts';
 import { createSitPoseClip, SIT_CLIP_NAME } from './sitPoseClip.ts';
+import { createPokeClip, POKE_CLIP_NAME } from './pokeClip.ts';
 
 const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
 const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
@@ -42,6 +43,7 @@ export function applyGhostMaterials(scene: THREE.Object3D): THREE.Material[] {
 }
 
 const sitPoseClip = createSitPoseClip();
+const pokeClip = createPokeClip();
 
 for (const url of ANIMATION_URLS) {
   useGLTF.preload(url);
@@ -89,6 +91,9 @@ export const STATE_CLIPS: Record<AnimationState, string> = {
   sitting: SIT_CLIP_NAME,
 };
 
+/** The poke clip drives only the arm and the mixer averages it with the clip below; this weight lets it win. */
+const POKE_ARM_WEIGHT = 8;
+
 /** Faster than authored so the bump reads as a quick recoil, not a flinch. */
 const HIT_TIME_SCALE = 1.6;
 
@@ -123,6 +128,8 @@ interface AdventurerProps {
   previewState?: AnimationState;
   /** If true, hide the body so first-person view doesn't see itself. */
   invisible?: boolean;
+  clipOverride?: { name: string; timeScale: number };
+  pokeCounter?: number;
   /** Time-scale multiplier for the idle clip (1 = authored speed). */
   idleSpeed?: number;
   /** Time-scale multiplier for the walking clip. */
@@ -150,6 +157,8 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       ghost = false,
       motion,
       previewState,
+      clipOverride,
+      pokeCounter = 0,
       invisible,
       idleSpeed = 1,
       walkSpeed = 1,
@@ -205,6 +214,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         ...movementAdv.animations,
         ...combatRanged.animations,
         sitPoseClip,
+        pokeClip,
       ]) {
         if (seen.has(c.name)) continue;
         seen.add(c.name);
@@ -330,13 +340,14 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     // the gameplay-driven motion. Falls back to idle if the requested
     // clip isn't in the loaded rigs (e.g. CombatRanged failed to load).
     const activeClipName = useMemo(() => {
+      if (clipOverride && actions[clipOverride.name]) return clipOverride.name;
       if (previewState) {
         const desired = STATE_CLIPS[previewState];
         if (actions[desired]) return desired;
         return STATE_CLIPS.idle;
       }
       return STATE_CLIPS[motion];
-    }, [previewState, motion, actions]);
+    }, [previewState, motion, actions, clipOverride?.name]);
 
     useEffect(() => {
       if (paused) return;
@@ -345,7 +356,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       // Non-looping previews (jump/shoot/throw) clamp at the final
       // frame so the editor's "show me this pose" feels stable.
       const isLooping =
-        !previewState || LOOPING_STATES.has(previewState);
+        clipOverride !== undefined || !previewState || LOOPING_STATES.has(previewState);
       if (isLooping) {
         target.setLoop(THREE.LoopRepeat, Infinity);
         target.clampWhenFinished = false;
@@ -358,6 +369,12 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         target.fadeOut(0.2);
       };
     }, [activeClipName, actions, previewState, paused]);
+
+    useEffect(() => {
+      if (paused || !clipOverride) return;
+      const action = actions[clipOverride.name];
+      if (action) action.timeScale = clipOverride.timeScale;
+    }, [actions, clipOverride?.name, clipOverride?.timeScale, paused]);
 
     // Apply timeScale to the clips. Done in a separate effect so dragging the
     // Leva slider doesn't restart the animation.
@@ -423,6 +440,48 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       // motion is deliberately not a dep: a motion change must not cut a running Hit_A.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bumpCounter, actions, paused]);
+
+    const finger = useMemo(() => {
+      const mesh = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.035, 0.2, 4, 8),
+        new THREE.MeshStandardMaterial({ color: '#f2c19a', roughness: 0.6 }),
+      );
+      mesh.rotation.z = -Math.PI / 2;
+      mesh.position.set(0.2, 0, 0);
+      mesh.visible = false;
+      mesh.castShadow = true;
+      return mesh;
+    }, []);
+    useEffect(() => {
+      const hand = scene.getObjectByName('handr');
+      hand?.add(finger);
+      return () => {
+        hand?.remove(finger);
+      };
+    }, [scene, finger]);
+    const lastPokeRef = useRef(0);
+    useEffect(() => {
+      if (paused || pokeCounter === 0 || pokeCounter === lastPokeRef.current) return;
+      lastPokeRef.current = pokeCounter;
+      const poke = actions[POKE_CLIP_NAME];
+      if (!poke) return;
+      poke.reset();
+      poke.setEffectiveWeight(POKE_ARM_WEIGHT);
+      poke.setLoop(THREE.LoopOnce, 1);
+      poke.clampWhenFinished = false;
+      poke.fadeIn(0.05).play();
+      finger.visible = true;
+      const fadeId = setTimeout(() => poke.fadeOut(0.12), Math.max(0, poke.getClip().duration * 1000 - 130));
+      const fingerId = setTimeout(() => {
+        finger.visible = false;
+      }, poke.getClip().duration * 1000 - 100);
+      return () => {
+        clearTimeout(fadeId);
+        clearTimeout(fingerId);
+        finger.visible = false;
+        poke.stop();
+      };
+    }, [pokeCounter, actions, paused, finger]);
 
     return (
       <group ref={ref}>
