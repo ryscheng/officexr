@@ -11,10 +11,10 @@ const REST: Record<string, Degrees> = {
   'lowerarm.r': [0, 0, 44],
 };
 
-/** The arm stretched straight out in front, the way a poke reaches. */
+/** The arm stretched straight out in front, slightly raised: the T-pose arm turned to point along +Z. */
 const EXTENDED: Record<string, Degrees> = {
-  'upperarm.r': [-12, -88, 98.5],
-  'lowerarm.r': [0, 0, 4],
+  'upperarm.r': [-96.8, 7.2, -180],
+  'lowerarm.r': [0, 0, 6.3],
 };
 
 const KEYS: readonly { t: number; pose: Record<string, Degrees> }[] = [

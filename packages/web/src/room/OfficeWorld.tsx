@@ -19,6 +19,7 @@ import { OfficeNamePlate } from '../hud/OfficeNamePlate';
 import { PresenceList } from '../hud/PresenceList';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
+import { PokeToast } from '../hud/PokeToast';
 import { usePingSender } from '../ping/usePingSender';
 import { PipContents } from '../pip/PipContents';
 import { popOutActions } from '../pip/popOutActions';
@@ -182,6 +183,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
             <ReplacedBanner store={ready.local.store} />
             {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
             <ConnectionToast store={ready.local.store} />
+            <PokeToast bus={ready.local.bus} store={ready.local.store} selfId={ready.local.selfId} />
             <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
           </>
         }

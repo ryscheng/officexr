@@ -91,6 +91,9 @@ export const STATE_CLIPS: Record<AnimationState, string> = {
   sitting: SIT_CLIP_NAME,
 };
 
+/** The poke clip only drives the arm, and the mixer averages it with the clip under it; this weight lets it win there. */
+const POKE_ARM_WEIGHT = 8;
+
 /** Faster than authored so the bump reads as a quick recoil, not a flinch. */
 const HIT_TIME_SCALE = 1.6;
 
@@ -447,6 +450,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       const poke = actions[POKE_CLIP_NAME];
       if (!poke) return;
       poke.reset();
+      poke.setEffectiveWeight(POKE_ARM_WEIGHT);
       poke.setLoop(THREE.LoopOnce, 1);
       poke.clampWhenFinished = false;
       poke.fadeIn(0.05).play();
