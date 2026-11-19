@@ -61,6 +61,8 @@ export function createInitialOfficeState(opts: {
     voiceZones: [],
     deskAreas: [],
     deskClaims: {},
+    placedProps: [],
+    spellEffects: {},
     worldObjects: {
       cubeSize: DEFAULT_WORLD_OBJECTS.cubeSize,
       instances: [...DEFAULT_WORLD_OBJECTS.instances],

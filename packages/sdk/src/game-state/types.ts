@@ -4,6 +4,9 @@ import {
   type WorldConstants,
 } from './world-constants.ts';
 
+import type { PlacedProp } from '../placement/props.ts';
+import type { SpellCast, SpellEffect } from '../spells/index.ts';
+
 export type PlayerId = string;
 
 export type Vec3 = { x: number; y: number; z: number };
@@ -20,6 +23,9 @@ export type AvatarData = {
 
 export const PLAYER_POSES = ['swim', 'scooter', 'tricycle'] as const;
 export type PlayerPose = (typeof PLAYER_POSES)[number];
+
+export const HELD_ITEMS = ['wand'] as const;
+export type HeldItem = (typeof HELD_ITEMS)[number];
 
 export type PlayerState = {
   id: PlayerId;
@@ -41,6 +47,9 @@ export type PlayerState = {
   seat?: string | null;
   pose?: PlayerPose | null;
   poseRack?: string | null;
+  /** The item in the player's hand, taken from the stand `heldStand`. */
+  held?: HeldItem | null;
+  heldStand?: string | null;
   tRecv?: number;
   /** Local-only: receive time of this player's last `presence:status`. */
   lastStatusAt?: number;
@@ -426,6 +435,10 @@ export type OfficeState = {
   worldObjects: WorldObjects;
   /** Desk area id -> login. Only the realtime server distributes it. */
   deskClaims: Record<string, string>;
+  /** Props players placed in this office. Only the realtime server distributes them. */
+  placedProps: PlacedProp[];
+  /** Running spell effect per target. Never snapshotted: the realtime server replays them as `spell:effect`. */
+  spellEffects: Record<PlayerId, SpellEffect>;
   /** Local-only: never snapshotted or broadcast. */
   voiceZones: VoiceZone[];
   /** Local-only: never snapshotted or broadcast. */
@@ -445,6 +458,7 @@ export type GameEvent =
   | { kind: 'combat:hit'; targetId: PlayerId; dmg: number; byId: PlayerId }
   | { kind: 'combat:killed'; targetId: PlayerId; byId: PlayerId }
   | { kind: 'ping:received'; fromId: PlayerId; at: number }
+  | { kind: 'spell:cast'; casterId: PlayerId; cast: SpellCast; at: number }
   | { kind: 'poke:received'; fromId: PlayerId; targetId: PlayerId | null; at: number }
   | { kind: 'inventory:added'; item: InventoryItem }
   | { kind: 'inventory:removed'; itemId: string }

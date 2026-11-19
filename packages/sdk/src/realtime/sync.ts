@@ -4,6 +4,7 @@ import type { Store } from '../game-state/store.ts';
 import type { OfficeState, PlayerId } from '../game-state/types.ts';
 import type { Channel, ChannelStatus } from './channel.ts';
 import type { NetEvent } from './protocol.ts';
+import type { SpellCast } from '../spells/index.ts';
 import type { Clock } from '../test-harness/time.ts';
 import { applyNetEventToStore } from './apply-net-event.ts';
 import { InboundSeqTable } from './inbound-seq-table.ts';
@@ -228,6 +229,17 @@ export class SyncEngine {
     });
   }
 
+  sendCast(cast: SpellCast): void {
+    this.broadcast({
+      kind: 'spell:cast',
+      v: 1,
+      actorId: this.store.getState().selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      ...cast,
+    });
+  }
+
   // --- Lifecycle ------------------------------------------------------
 
   start(): void {
@@ -241,6 +253,7 @@ export class SyncEngine {
       this.position.announceSelf();
       this.stateDiff.announceSeat();
       this.stateDiff.announcePose();
+      this.stateDiff.announceHeld();
       this.status.announceSelf();
     }
     this.heartbeat = this.timers.setInterval(() => this.tickHeartbeat(), HEARTBEAT_TICK_MS);
@@ -304,6 +317,7 @@ export class SyncEngine {
     this.stateDiff.announceAvatar();
     this.stateDiff.announceSeat();
     this.stateDiff.announcePose();
+    this.stateDiff.announceHeld();
     this.status.announceSelf();
   }
 

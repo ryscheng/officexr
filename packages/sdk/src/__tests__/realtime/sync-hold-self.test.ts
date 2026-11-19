@@ -32,7 +32,7 @@ describe('SyncEngine holdSelf', () => {
     bob.sync.releaseSelf();
 
     expect(bob.sync.isSelfHeld()).toBe(false);
-    expect(fromBob.map((e) => e.kind).sort()).toEqual(['avatar:update', 'presence:pose', 'presence:position', 'presence:seat', 'presence:status']);
+    expect(fromBob.map((e) => e.kind).sort()).toEqual(['avatar:update', 'presence:held', 'presence:pose', 'presence:position', 'presence:seat', 'presence:status']);
     expect(alice.store.getState().players['bob']).toMatchObject({
       name: 'Bob',
       pos: { x: 3, y: 0, z: 1 },

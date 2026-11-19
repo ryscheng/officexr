@@ -42,6 +42,29 @@ export function applyNetEventToStore(
     case 'presence:pose':
       actions.applyRemotePose(event.actorId, event.pose, clock.now(), event.rack ?? null);
       return;
+    case 'presence:held':
+      actions.applyRemoteHeld(event.actorId, event.held, clock.now(), event.stand ?? null);
+      return;
+    case 'spell:cast':
+      actions.receiveSpellCast(
+        event.actorId,
+        { spell: event.spell, origin: event.origin, dir: event.dir, distance: event.distance, targetId: event.targetId },
+        clock.now(),
+      );
+      return;
+    case 'spell:effect': {
+      const startsAt = clock.now() - event.elapsedMs;
+      actions.setSpellEffect(event.targetId, {
+        spell: event.spell,
+        casterId: event.casterId,
+        startsAt,
+        endsAt: clock.now() + event.remainingMs,
+      });
+      return;
+    }
+    case 'office:props':
+      actions.setPlacedProps(event.props);
+      return;
     case 'poke:send':
       actions.receivePoke(event.actorId, event.targetId, clock.now());
       return;
