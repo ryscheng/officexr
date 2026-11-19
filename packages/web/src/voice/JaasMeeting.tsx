@@ -61,7 +61,7 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
       )}
       <div
         key={meeting.key}
-        className="overflow-hidden rounded-hud-panel border-2 border-hud-edge bg-hud-inset shadow-hud-panel"
+        className="overflow-hidden rounded-hud-panel border border-hud-edge bg-hud-inset shadow-hud-panel"
         style={{ position: 'fixed', ...wrapperStyle }}
       >
         <JaaSMeeting

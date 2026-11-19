@@ -20,14 +20,15 @@ officexr/
 ├── packages/
 │   ├── web/              # @officexr/web — office app (SPA only)
 │   │   ├── index.html    # SPA shell (entry: src/main.tsx)
-│   │   ├── src/          # App.tsx (routing), home/ (office list + create form), room/ (OfficeWorld, session, characters),
-│   │   │                 # hud/ (chat), voice/ (JaaS proximity voice)
+│   │   ├── src/          # App.tsx (routing), home/ (office list + create form), page/ (shell for pages outside the world), room/ (OfficeWorld, session, characters),
+│   │   │                 # hud/ (chat, roster, zoom; hud/ui/ is the shared control kit), voice/ (JaaS proximity voice)
 │   │   └── vite.config.ts # dev only: mounts @officexr/server's app and an in-process realtime office
 │   ├── server/           # @officexr/server — web backend
 │   │   ├── src/          # main.ts (entrypoint), backend.ts (createBackend: db + realtime + app, shared with `pnpm dev`), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
 │   │   │                 # jaasToken.ts (server-side JaaS JWT signing), runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
 │   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_APP_ID, OFFICEXR_JAAS_* (server-only), OFFICEXR_ASSET_BASE_URL
-│   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds
+│   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds; top-down/ is the three-free
+│   │                     # entry the web HUD imports hooks from
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
 │   ├── studio-server/    # @officexr/studio-server — studio backend: main.ts (entrypoint), app.ts (internal + public servers), studio-gate.ts (public-port sign-in gate),
 │   │                     # studio-backend.ts (storage hooks + R2 sync, shared with the Vite studio), r2-publisher.ts, push-world-constants.ts
@@ -188,6 +189,25 @@ Files on disk:
 - `packages/world/rooms/*.json`
 - `packages/world/maps/*.json` (`default.json` is the seed)
 - `packages/world/cube-kinds.json` (+ `cube-kinds.default.json` fallback)
+
+### 2D view
+
+The web client's 2D view is the 3D view (`PlayView3d`) with the fixed follow camera locked
+overhead (`OVERHEAD_CAMERA`, passed to `PlayView` as `fixedCamera`): same scene, models,
+physics and seating, no separate renderer.
+
+### Web HUD theme
+
+The web HUD, settings and pages share one light liquid-glass theme: the `@theme` tokens and the
+`hud-glass` / `hud-glass-thick` utilities in `packages/web/src/index.css`, the system font stack
+(SF Pro on Apple devices), and the kit in `packages/web/src/hud/ui/` (`Panel` with a `material`,
+`Button`, `IconButton`, `Tabs` with `segment` / `sidebar` variants, `Switch`, `Keycap`). Restyle
+through the tokens and the kit rather than per component. A dark appearance (macOS-style)
+redefines the same tokens under `:root[data-theme="dark"]`; `theme/appearance.ts` sets
+`data-theme` from Settings → Appearance (Light / Dark / Auto, stored in localStorage, Auto follows
+the system) and is initialised in `main.tsx` before the first paint. Use tokens, never raw
+`white`/hex, so both appearances stay correct; the world's loading screen reads the same CSS
+variables with light fallbacks.
 
 ### Studio control kit
 

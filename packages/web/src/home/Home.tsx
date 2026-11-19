@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ArrowRight, Map as MapIcon, Plus } from 'lucide-react';
 import { MAX_DESCRIPTION, MAX_NAME, isOfficeCreator, type Identity, type Office } from '@officexr/server/shared';
 import { apiFetch, paths } from '../apiOrigin';
 import { Async } from '../Async';
@@ -8,6 +9,14 @@ import { SignInLink } from '../SignIn';
 import { DEFAULT_MAP } from '@officexr/world/scenes';
 import { errorMessage, useApi, type ApiState } from '../useApi';
 import { useMapNames } from '../useMapNames';
+import { Button, buttonClass } from '../hud/ui/Button';
+import { FIELD } from '../hud/ui/fieldStyles';
+import { InlineAlert } from '../hud/ui/InlineAlert';
+import { Panel, PanelTitle } from '../hud/ui/Panel';
+import { BrandLink, PageShell } from '../page/PageShell';
+import { OfficeThumbnail } from './OfficeThumbnail';
+
+const LABEL = 'block px-0.5 text-[13px] font-medium text-hud-text-2';
 
 /** Lets the office's creator switch its map from the office list; saves on change. */
 function OfficeMapPicker({ office, maps, onSaved }: { office: Office; maps: string[]; onSaved: (office: Office) => void }) {
@@ -37,15 +46,15 @@ function OfficeMapPicker({ office, maps, onSaved }: { office: Office; maps: stri
   };
 
   return (
-    <div className="border-t px-3 py-2 text-xs text-gray-500">
-      <label className="flex items-center gap-2">
-        Map
+    <div className="border-t border-hud-separator px-4 py-2.5">
+      <div className="flex items-center gap-2 text-xs text-hud-text-2">
+        <MapIcon aria-hidden className="size-3.5 shrink-0" />
         <select
           aria-label={`Map for ${office.name}`}
           value={current}
           disabled={busy}
           onChange={(e) => void change(e.target.value)}
-          className="rounded border p-1 text-gray-900 disabled:opacity-50"
+          className="min-w-0 flex-1 rounded-lg border border-hud-hairline bg-hud-inset px-2 py-1 text-xs text-hud-text disabled:opacity-50"
         >
           {/* Keeps the current map selectable even when the studio no longer lists it. */}
           {[...new Set([...maps, current])].map((name) => (
@@ -54,13 +63,18 @@ function OfficeMapPicker({ office, maps, onSaved }: { office: Office; maps: stri
             </option>
           ))}
         </select>
-      </label>
-      {error && (
-        <p role="alert" className="mt-1 text-red-600">
-          {error}
-        </p>
-      )}
+      </div>
+      {error && <InlineAlert className="mt-2 text-xs">{error}</InlineAlert>}
     </div>
+  );
+}
+
+function MapChip({ name }: { name: string }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-hud-inset px-2 py-0.5 text-[11px] font-medium text-hud-text-2">
+      <MapIcon aria-hidden className="size-3 shrink-0" />
+      <span className="truncate">Map: {name}</span>
+    </span>
   );
 }
 
@@ -68,25 +82,60 @@ function OfficeCard({ office: initial, me, maps }: { office: Office; me: Identit
   const [office, setOffice] = useState(initial);
   const canChangeMap = me !== null && isOfficeCreator(me, office);
   return (
-    <li className="rounded border">
-      <Link to={`/room/${office.id}`} className="block p-3 hover:bg-gray-50">
-        <span className="font-medium">{office.name}</span>
-        {office.description && <span className="block text-sm text-gray-600">{office.description}</span>}
-        {!canChangeMap && <span className="block text-xs text-gray-500">Map: {office.map_name ?? DEFAULT_MAP}</span>}
-      </Link>
-      {canChangeMap && <OfficeMapPicker office={office} maps={maps} onSaved={setOffice} />}
+    <li>
+      <Panel className="group flex h-full flex-col overflow-hidden transition-transform duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5">
+        <Link
+          to={`/room/${office.id}`}
+          className="flex flex-1 flex-col outline-none focus-visible:ring-2 focus-visible:ring-hud-accent focus-visible:ring-inset"
+        >
+          <span className="block p-2 pb-0">
+            <OfficeThumbnail seed={office.id} className="block h-32 w-full rounded-[16px] shadow-[inset_0_0_0_0.5px_rgb(0_0_0/0.08)]" />
+          </span>
+          <span className="flex flex-1 flex-col gap-1.5 p-4">
+            <span className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">{office.name}</span>
+              <ArrowRight
+                aria-hidden
+                className="size-4 shrink-0 text-hud-accent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              />
+            </span>
+            {office.description && <span className="line-clamp-2 text-sm text-hud-text-2">{office.description}</span>}
+            {!canChangeMap && (
+              <span className="mt-auto pt-1">
+                <MapChip name={office.map_name ?? DEFAULT_MAP} />
+              </span>
+            )}
+          </span>
+        </Link>
+        {canChangeMap && <OfficeMapPicker office={office} maps={maps} onSaved={setOffice} />}
+      </Panel>
     </li>
+  );
+}
+
+const officeGrid = 'grid gap-4 sm:grid-cols-2';
+
+function OfficeListSkeleton() {
+  return (
+    <ul aria-hidden className={officeGrid}>
+      {[0, 1].map((i) => (
+        <li key={i} className="h-56 animate-pulse rounded-hud-panel border border-hud-edge bg-hud-surface" />
+      ))}
+    </ul>
   );
 }
 
 function OfficeList({ me, maps }: { me: Identity | null; maps: string[] }) {
   return (
-    <Async state={useApi<Office[]>(paths.offices)}>
+    <Async state={useApi<Office[]>(paths.offices)} loading={<OfficeListSkeleton />}>
       {(offices) =>
         offices.length === 0 ? (
-          <p className="text-gray-600">No offices yet. Create the first one below.</p>
+          <Panel className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+            <OfficeThumbnail seed="empty" className="h-24 w-44 rounded-hud-control opacity-80" />
+            <p className="text-sm text-hud-text-2">No offices yet. Create the first one to get your team in.</p>
+          </Panel>
         ) : (
-          <ul className="grid gap-3 sm:grid-cols-2">
+          <ul className={officeGrid}>
             {offices.map((office) => (
               <OfficeCard key={office.id} office={office} me={me} maps={maps} />
             ))}
@@ -111,6 +160,7 @@ function CreateOfficeForm({
   const mapName = picked || (maps.includes(DEFAULT_MAP) ? DEFAULT_MAP : (maps[0] ?? ''));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const ids = { title: useId(), name: useId(), description: useId(), map: useId() };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -135,43 +185,56 @@ function CreateOfficeForm({
   };
 
   return (
-    <form onSubmit={submit} className="mt-8 space-y-3">
-      <h2 className="text-lg font-semibold">Create an office</h2>
-      {!identified && <p className="text-sm text-gray-600">Creating an office requires signing in.</p>}
-      <fieldset disabled={!identified || busy} className="space-y-3">
-        <label className="block text-sm">
-          Name
-          <input name="name" required maxLength={MAX_NAME} className="mt-1 block w-full rounded border p-2" />
-        </label>
-        <label className="block text-sm">
-          Description (optional)
-          <textarea name="description" maxLength={MAX_DESCRIPTION} className="mt-1 block w-full rounded border p-2" />
-        </label>
-        <label className="block text-sm">
-          Map
-          <select
-            required
-            value={mapName}
-            onChange={(e) => setPicked(e.target.value)}
-            className="mt-1 block w-full rounded border p-2"
-          >
-            {maps.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">
-          Create office
-        </button>
-      </fieldset>
-      {(error ?? mapsError) && (
-        <p role="alert" className="text-red-600">
-          {error ?? mapsError}
-        </p>
-      )}
-    </form>
+    <Panel className="p-5 lg:sticky lg:top-6">
+      <form onSubmit={submit} aria-labelledby={ids.title} className="space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="flex size-7 items-center justify-center rounded-lg bg-hud-accent/12 text-hud-accent">
+            <Plus aria-hidden className="size-4" />
+          </span>
+          <PanelTitle id={ids.title} className="text-[15px]">
+            Create an office
+          </PanelTitle>
+        </div>
+        {!identified && <p className="text-sm text-hud-text-2">Creating an office requires signing in.</p>}
+        <fieldset disabled={!identified || busy} className="space-y-4 disabled:opacity-60">
+          <div className="space-y-1.5">
+            <label htmlFor={ids.name} className={LABEL}>
+              Name
+            </label>
+            <input id={ids.name} name="name" required maxLength={MAX_NAME} placeholder="Design studio" className={`${FIELD} text-sm placeholder:text-hud-text-2/70`} />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor={ids.description} className={LABEL}>
+              Description (optional)
+            </label>
+            <textarea
+              id={ids.description}
+              name="description"
+              rows={2}
+              maxLength={MAX_DESCRIPTION}
+              placeholder="Where the team hangs out"
+              className={`${FIELD} resize-none text-sm placeholder:text-hud-text-2/70`}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor={ids.map} className={LABEL}>
+              Map
+            </label>
+            <select id={ids.map} required value={mapName} onChange={(e) => setPicked(e.target.value)} className={`${FIELD} text-sm`}>
+              {maps.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button type="submit" tone="primary" className="w-full">
+            Create office
+          </Button>
+        </fieldset>
+        {(error ?? mapsError) && <InlineAlert>{error ?? mapsError}</InlineAlert>}
+      </form>
+    </Panel>
   );
 }
 
@@ -197,15 +260,28 @@ function SignOutButton() {
 
   return (
     <>
-      <button type="button" onClick={signOut} disabled={busy} className="underline disabled:opacity-50">
-        Sign out
-      </button>
       {error && (
-        <span role="alert" className="text-red-600">
+        <span role="alert" className="text-xs text-hud-rose-text">
           {error}
         </span>
       )}
+      <Button tone="ghost" size="sm" onClick={signOut} disabled={busy}>
+        Sign out
+      </Button>
     </>
+  );
+}
+
+/** The signed-in user's chip: initial, name, sign out. */
+function UserChip({ me }: { me: Identity }) {
+  return (
+    <span className="hud-glass flex min-w-0 items-center gap-2 rounded-full border border-hud-edge py-1 pr-1 pl-1 shadow-hud-control">
+      <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-hud-avatar text-xs font-bold uppercase">
+        {me.name.charAt(0)}
+      </span>
+      <span className="min-w-0 truncate text-sm font-semibold max-sm:hidden">{me.name}</span>
+      <SignOutButton />
+    </span>
   );
 }
 
@@ -213,28 +289,35 @@ export function Home({ me }: { me: ApiState<Identity> }) {
   const { maps, error: mapsError } = useMapNames();
   const identity = me.type === 'ready' ? me.data : null;
   return (
-    <main className="mx-auto max-w-2xl p-6">
-      <header className="mb-6 flex items-baseline justify-between">
-        <Link to="/" className="text-2xl font-semibold">
-          OfficeXR
-        </Link>
-        {me.type === 'ready' && (
-          <span className="flex items-baseline gap-3 text-sm">
-            {me.data.name}
-            <SignOutButton />
-          </span>
-        )}
-        {me.type === 'error' && (
-          <span className="flex items-baseline gap-3 text-sm">
-            <span role="alert" className="text-red-600">
-              {me.message}
+    <PageShell
+      header={
+        <header className="mb-10 flex items-center justify-between gap-4">
+          <BrandLink />
+          {me.type === 'ready' && <UserChip me={me.data} />}
+          {me.type === 'error' && (
+            <span className="flex min-w-0 items-center gap-3 text-sm">
+              <span role="alert" className="truncate text-hud-rose-text">
+                {me.message}
+              </span>
+              <SignInLink className={buttonClass('primary', 'sm')} />
             </span>
-            <SignInLink className="rounded bg-black px-3 py-1 text-white" />
-          </span>
-        )}
-      </header>
-      <OfficeList me={identity} maps={maps} />
-      <CreateOfficeForm identified={identity !== null} maps={maps} mapsError={mapsError} />
-    </main>
+          )}
+        </header>
+      }
+    >
+      <main className="flex flex-1 flex-col gap-6">
+        <div>
+          <h1 className="font-hud-title text-4xl font-semibold tracking-tight">Pick an office</h1>
+          <p className="mt-1 text-sm text-hud-text-2">Walk in, see who's around, and talk by walking up to them.</p>
+        </div>
+        {/* The heading spans both columns, so the form's top lines up with the first row of cards. */}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <section aria-label="Offices">
+            <OfficeList me={identity} maps={maps} />
+          </section>
+          <CreateOfficeForm identified={identity !== null} maps={maps} mapsError={mapsError} />
+        </div>
+      </main>
+    </PageShell>
   );
 }

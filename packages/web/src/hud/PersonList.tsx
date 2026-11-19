@@ -111,7 +111,7 @@ function PersonRowItem({
   const activeText = idleMs >= 60_000 ? `Active ${relativeTime(idleMs)}` : null;
   return (
     <li className={`flex items-center gap-2 rounded-lg px-1.5 py-1 ${row.type === 'self' ? 'bg-hud-inset' : ''}`}>
-      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hud-edge text-[10px] font-bold text-hud-text uppercase">
+      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hud-avatar text-[10px] font-bold text-hud-text uppercase">
         <span aria-hidden>{row.label.charAt(0)}</span>
         {indicator && (
           <span
@@ -127,24 +127,29 @@ function PersonRowItem({
           {row.label}
         </span>
         {row.type === 'peer' && (noRoute || activeText || row.distanceM !== null) && (
-          <span className="flex items-center gap-0.5 text-[10px] text-hud-text-2 tabular-nums">
-            {noRoute && <span className="text-hud-amber-text">No route</span>}
-            {away && row.distanceM !== null && <span>Away ·</span>}
-            {activeText && (
-              <span>
-                {activeText}
-                {row.distanceM !== null && ' ·'}
+          // One line that never wraps: the status truncates, the distance keeps its room.
+          <span className="flex min-w-0 items-center gap-1 text-[10px] whitespace-nowrap text-hud-text-2 tabular-nums">
+            {(noRoute || (away && row.distanceM !== null) || activeText) && (
+              <span className="min-w-0 truncate">
+                {noRoute && <span className="mr-1 text-hud-amber-text">No route</span>}
+                {away && row.distanceM !== null && <span className="mr-1">Away ·</span>}
+                {activeText && (
+                  <span>
+                    {activeText}
+                    {row.distanceM !== null && ' ·'}
+                  </span>
+                )}
               </span>
             )}
             {row.distanceM !== null && (
-              <>
+              <span className="flex shrink-0 items-center gap-0.5">
                 <ArrowUp
                   aria-hidden
                   className="h-2.5 w-2.5"
                   style={{ transform: `rotate(${Math.round(row.bearingDeg + viewYawDeg)}deg)` }}
                 />
                 <span>{formatDistance(row.distanceM)}</span>
-              </>
+              </span>
             )}
           </span>
         )}

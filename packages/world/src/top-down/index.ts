@@ -1,4 +1,3 @@
-export { TopDownPlayView, type TopDownPlayViewProps } from './TopDownPlayView.tsx';
 export {
   ApplicationProvider,
   useApplication,

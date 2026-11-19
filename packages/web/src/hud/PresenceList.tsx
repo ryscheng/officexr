@@ -102,7 +102,7 @@ export function PresenceList({
           aria-expanded={false}
           onClick={() => setCollapsed(false)}
           onMouseDown={(e) => e.preventDefault()}
-          className={`flex flex-col items-center gap-1.5 px-1.5 py-2.5 font-hud-title pointer-coarse:min-h-11 pointer-coarse:min-w-11 ${CHIP}`}
+          className={`flex flex-col items-center gap-1.5 px-1.5 py-2.5 font-semibold pointer-coarse:min-h-11 pointer-coarse:min-w-11 ${CHIP}`}
         >
           <Users aria-hidden className="h-4 w-4" />
           <span className="text-sm">{players.length}</span>
@@ -112,7 +112,7 @@ export function PresenceList({
     );
   }
   return (
-    <Panel className="pointer-events-auto flex max-h-60 w-56 flex-col">
+    <Panel className="pointer-events-auto flex max-h-72 w-60 flex-col">
       <div className="flex items-center gap-2 px-2 py-1.5">
         <Users aria-hidden className="h-4 w-4 shrink-0" />
         <PanelTitle className="flex-1 text-xs">In room</PanelTitle>

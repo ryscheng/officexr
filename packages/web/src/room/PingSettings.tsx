@@ -90,18 +90,18 @@ export function NotificationsPane({
   return (
     <div className="space-y-5">
       <fieldset>
-        <legend className="mb-2 font-hud-title text-sm font-normal tracking-widest uppercase">Sound</legend>
+        <legend className="mb-2 text-xs font-semibold text-hud-text-2">Sound</legend>
         <div className="space-y-2">
           {options.map(({ label, sound }) => {
             const active = sameSound(selected, sound);
             return (
               <div
                 key={soundKey(sound)}
-                className={`flex items-center gap-2 rounded-hud-control border-2 ${
-                  active ? 'border-hud-accent-edge bg-hud-inset' : 'border-hud-edge'
+                className={`flex items-center gap-2 rounded-xl bg-hud-surface shadow-[0_0_0_0.5px_var(--color-hud-hairline)] ${
+                  active ? 'ring-2 ring-hud-accent' : ''
                 }`}
               >
-                <label className="flex flex-1 cursor-pointer items-center gap-2 px-3 py-2 font-bold">
+                <label className="flex flex-1 cursor-pointer items-center gap-2 px-4 py-2.5 font-medium">
                   <input
                     type="radio"
                     name="ping-sound"
@@ -114,7 +114,7 @@ export function NotificationsPane({
                 {isAudible(sound) && (
                   <button
                     type="button"
-                    className="mr-3 rounded-hud-control border-2 border-hud-edge bg-hud-inset px-3 py-1 text-xs font-bold hover:bg-hud-edge"
+                    className="mr-3 rounded-lg bg-hud-inset px-3 py-1 text-xs font-semibold hover:bg-hud-hover"
                     onClick={() => preview(sound, catalog)}
                   >
                     Preview<span className="sr-only"> {label}</span>

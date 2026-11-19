@@ -103,8 +103,9 @@ describe('Minimap', () => {
     expect(marker('You')).toBeTruthy();
     expect(dotOf('Ann').getAttribute('class')).toContain('fill-green-500');
     expect(dotOf('Bob').getAttribute('class')).toContain('fill-yellow-400');
-    expect(screen.getByRole('img', { name: 'Ann, 12 m' }).textContent).toBe('Ann12 m');
-    expect(screen.getByRole('img', { name: 'Bob, <1 m' }).textContent).toBe('Bob<1 m');
+    // In range: the title and the initial on the avatar; the distance is in the accessible name.
+    expect(screen.getByRole('img', { name: 'Ann, 12 m' }).textContent).toBe('AnnA');
+    expect(screen.getByRole('img', { name: 'Bob, <1 m' }).textContent).toBe('BobB');
     expect(screen.queryByRole('img', { name: /^Dan/ })).toBeNull();
   });
 

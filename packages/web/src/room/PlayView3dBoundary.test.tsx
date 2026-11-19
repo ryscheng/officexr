@@ -36,11 +36,4 @@ describe('PlayView3dBoundary', () => {
     expect(reload).toHaveBeenCalledOnce();
     expect(localStorage.getItem('officexr:viewMode')).toBeNull();
   });
-
-  it('switches to 2D only when asked', () => {
-    const reload = renderCrashed();
-    fireEvent.click(screen.getByRole('button', { name: 'Switch to 2D' }));
-    expect(localStorage.getItem('officexr:viewMode')).toBe('2d');
-    expect(reload).toHaveBeenCalledOnce();
-  });
 });

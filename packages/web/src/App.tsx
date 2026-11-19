@@ -5,11 +5,13 @@ import { WorldLoadingScreen } from '@officexr/world/top-down';
 import { paths } from './apiOrigin';
 import { Async } from './Async';
 import { Home } from './home/Home';
+import { PageShell, Spinner } from './page/PageShell';
 import { OfficeWorld } from './room/OfficeWorld';
 import { SignIn } from './SignIn';
 import { useApi } from './useApi';
 
 const roomLoading = <WorldLoadingScreen step="Loading office…" />;
+const roomError = (message: string) => <WorldLoadingScreen step="Couldn't open this office" error={message} />;
 
 function Room({ me }: { me: Identity }) {
   // The `/room/:id` route guarantees the id.
@@ -33,7 +35,7 @@ function Room({ me }: { me: Identity }) {
   }, []);
   return (
     <div className="fixed inset-0 touch-manipulation overflow-hidden">
-      <Async state={useApi<Office>(paths.office(id))} loading={roomLoading}>
+      <Async state={useApi<Office>(paths.office(id))} loading={roomLoading} error={roomError}>
         {(office) => <OfficeWorld key={office.id} office={office} me={me} />}
       </Async>
     </div>
@@ -43,7 +45,11 @@ function Room({ me }: { me: Identity }) {
 export default function App() {
   const me = useApi<Identity>(paths.me);
   if (me.type === 'loading') {
-    return <p className="p-6">Loading…</p>;
+    return (
+      <PageShell centred>
+        <Spinner label="Loading…" />
+      </PageShell>
+    );
   }
   if (me.type === 'error' && me.status === 401) {
     return <SignIn />;
@@ -55,7 +61,7 @@ export default function App() {
         <Route
           path="/room/:id"
           element={
-            <Async state={me} loading={roomLoading}>
+            <Async state={me} loading={roomLoading} error={roomError}>
               {(identity) => <Room me={identity} />}
             </Async>
           }
