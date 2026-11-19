@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { NextHandleFunction } from 'connect';
+import { MAX_PLACED_PROPS, PLACED_ID_PREFIX, ZPropOp, type PlacedProp, type PropOp } from '@officexr/sdk';
 import { signJoinToken } from '@officexr/realtime-server/join-token';
 import { isKnownCharacter, type CatalogCharacters } from '@officexr/world/characters';
 import { DEFAULT_MAP, type SerializedMap } from '@officexr/world/scenes';
@@ -34,6 +36,16 @@ export interface OfficeDeskClaims {
   /** Moves the login's existing claim to `deskId`; 'taken' when another login holds it. */
   claim: (officeId: string, login: string, deskId: string) => Promise<'ok' | 'taken'>;
   release: (officeId: string, login: string) => Promise<void>;
+}
+
+/** Props players placed in an office. Every op returns the full list, as the database leaves it. */
+export interface OfficePlacedProps {
+  list: (officeId: string) => Promise<PlacedProp[]>;
+  /** Adds a prop, or 'limit' when the office already holds `MAX_PLACED_PROPS`. */
+  add: (officeId: string, prop: Omit<PlacedProp, 'id'> & { id: string }, placedBy: string) => Promise<'ok' | 'limit'>;
+  /** Moves or turns a prop; 'not-found' when it is gone. */
+  update: (officeId: string, prop: PlacedProp) => Promise<'ok' | 'not-found'>;
+  remove: (officeId: string, id: string) => Promise<'ok' | 'not-found'>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -125,10 +137,22 @@ async function parseNewOffice(body: unknown, mapExists: MapExists): Promise<Omit
   return { name: update.name, description: update.description ?? null, mapName: update.mapName };
 }
 
+async function applyPropOp(props: OfficePlacedProps, officeId: string, login: string, op: PropOp): Promise<'ok' | 'limit' | 'not-found'> {
+  if (op.op === 'remove') {
+    return props.remove(officeId, op.id);
+  }
+  const placement = { kindId: op.kindId, position: op.position, yawDeg: op.yawDeg };
+  if (op.op === 'update') {
+    return props.update(officeId, { id: op.id, ...placement });
+  }
+  return props.add(officeId, { id: `${PLACED_ID_PREFIX}${randomUUID()}`, ...placement }, login);
+}
+
 export interface ApiOptions {
   queryOffices: QueryOffices;
   characters: OfficeCharacters;
   deskClaims: OfficeDeskClaims;
+  placedProps: OfficePlacedProps;
   createOffice: CreateOffice;
   updateOffice: UpdateOffice;
   mapExists: MapExists;
@@ -145,6 +169,7 @@ export function apiMiddleware({
   queryOffices,
   characters,
   deskClaims,
+  placedProps,
   createOffice,
   updateOffice,
   mapExists,
@@ -262,6 +287,30 @@ export function apiMiddleware({
             return send(200, { claims: await deskClaims.list(office.id) });
           }
           return send(405, { error: 'Method not allowed' });
+        });
+      }
+      const propsRoute = path.match(/^\/api\/offices\/([^/]+)\/props$/)?.[1];
+      if (propsRoute) {
+        return withOffice(propsRoute, async (me, office) => {
+          if (req.method === 'GET') {
+            return send(200, { props: await placedProps.list(office.id) });
+          }
+          if (req.method !== 'POST') {
+            return send(405, { error: 'Method not allowed' });
+          }
+          const body = await readJson(req);
+          if (body === TOO_LARGE) {
+            return send(413, { error: 'Body too large' });
+          }
+          const parsed = ZPropOp.safeParse(body);
+          if (!parsed.success) {
+            return send(400, { error: 'invalid' });
+          }
+          const outcome = await applyPropOp(placedProps, office.id, me.login, parsed.data);
+          if (outcome !== 'ok') {
+            return send(outcome === 'limit' ? 409 : 404, { error: outcome });
+          }
+          return send(200, { props: await placedProps.list(office.id) });
         });
       }
       const id = path.match(/^\/api\/offices\/([^/]+)$/)?.[1];

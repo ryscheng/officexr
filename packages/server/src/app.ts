@@ -2,7 +2,7 @@ import connect from 'connect';
 import type { RealtimeServer } from '@officexr/realtime-server/server';
 import { createStudioStorage, studioCatalogCharacters, studioMapExists, studioMapLoader } from '@officexr/world/vite-plugin-storage';
 import type { Store } from 'express-session';
-import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type UpdateOffice } from './api';
+import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeCharacters, type OfficeDeskClaims, OfficePlacedProps, type QueryOffices, type UpdateOffice } from './api';
 import { bearerIdentity, createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import { createCors } from './cors';
 import { PreviewTokens } from './previewToken';
@@ -15,6 +15,7 @@ export interface AppOptions {
   queryOffices: QueryOffices;
   characters: OfficeCharacters;
   deskClaims: OfficeDeskClaims;
+  placedProps: OfficePlacedProps;
   createOffice: CreateOffice;
   updateOffice: UpdateOffice;
   isLoginAllowed: IsLoginAllowed;
@@ -44,6 +45,7 @@ export async function createApp({
   queryOffices,
   characters,
   deskClaims,
+  placedProps,
   createOffice,
   updateOffice,
   isLoginAllowed,
@@ -100,6 +102,7 @@ export async function createApp({
       queryOffices,
       characters,
       deskClaims,
+      placedProps,
       createOffice,
       updateOffice,
       mapExists: studioMapExists(studioDataDir),

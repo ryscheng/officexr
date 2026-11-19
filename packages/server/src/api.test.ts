@@ -11,7 +11,8 @@ import session from 'express-session';
 import { decodeProtectedHeader, jwtVerify } from 'jose';
 import type { Profile } from 'passport-google-oauth20';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiMiddleware, type CreateOffice, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
+import { MAX_PLACED_PROPS, type PlacedProp } from '@officexr/sdk';
+import { apiMiddleware, type CreateOffice, type OfficeCharacters, type OfficeDeskClaims, type OfficePlacedProps, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
 import { createApp } from './app';
 import { isAllowedOrigin, parseFrontendOrigins } from './cors';
 import { JAAS_TOKEN_TTL_SECONDS, jaasConfigFromEnv, jaasUserId, type JaasConfig } from './jaasToken';
@@ -90,6 +91,28 @@ const deskClaims: OfficeDeskClaims = {
     }
   },
 };
+const propsByOffice = new Map<string, Map<string, PlacedProp>>();
+const placedProps: OfficePlacedProps = {
+  list: async (officeId) => [...(propsByOffice.get(officeId)?.values() ?? [])],
+  add: async (officeId, prop) => {
+    const props = propsByOffice.get(officeId) ?? new Map<string, PlacedProp>();
+    propsByOffice.set(officeId, props);
+    if (props.size >= MAX_PLACED_PROPS) {
+      return 'limit';
+    }
+    props.set(prop.id, prop);
+    return 'ok';
+  },
+  update: async (officeId, prop) => {
+    const props = propsByOffice.get(officeId);
+    if (!props?.has(prop.id)) {
+      return 'not-found';
+    }
+    props.set(prop.id, prop);
+    return 'ok';
+  },
+  remove: async (officeId, id) => (propsByOffice.get(officeId)?.delete(id) ? 'ok' : 'not-found'),
+};
 const storedCharacters = new Map<string, string>();
 const characters: OfficeCharacters = {
   get: async (officeId, login) => storedCharacters.get(`${officeId}/${login}`) ?? null,
@@ -155,6 +178,7 @@ async function start(
     queryOffices,
     characters,
     deskClaims,
+    placedProps,
     createOffice,
     updateOffice,
     isLoginAllowed,
@@ -218,6 +242,7 @@ const apiDeps = {
   queryOffices,
   characters,
   deskClaims,
+  placedProps,
   createOffice,
   updateOffice,
   mapExists: async () => true,
@@ -1246,5 +1271,74 @@ describe('createApp routing', () => {
     expect(await (await fetch(`${base}/rooms/${ID}/sessions?login=a@example.com`)).json()).toEqual({ connected: false, allowMulti: false });
     expect((await fetch(`${base}/api/nope`)).status).toBe(404);
     expect((await fetch(`${base}/`)).status).toBe(404);
+  });
+});
+
+describe('/api/offices/:id/props', () => {
+  let base: string;
+  let me: Record<string, string>;
+  const url = (officeId = ID) => `${base}/api/offices/${officeId}/props`;
+  const post = (body: unknown, headers = me, officeId = ID) => fetch(url(officeId), { method: 'POST', headers, body: JSON.stringify(body) });
+  const pool = { op: 'place', kindId: 'prop_pool', position: [4, 4, 6], yawDeg: 0 };
+  const list = async (headers = me) => (await (await fetch(url(), { headers })).json()).props;
+  beforeEach(async () => {
+    propsByOffice.clear();
+    base = await start('prod', { realtimeTokenSecret: 's3cret', studioDataDir });
+    me = await signIn(base, 'a@example.com');
+  });
+
+  it('is 401 without a session', async () => {
+    expect((await fetch(url())).status).toBe(401);
+    expect((await fetch(url(), { method: 'POST', body: JSON.stringify(pool) })).status).toBe(401);
+  });
+
+  it('places, turns, moves and removes a prop, returning the list each time', async () => {
+    const placed = await (await post(pool)).json();
+    expect(placed.props).toEqual([{ id: expect.stringMatching(/^placed:/), kindId: 'prop_pool', position: [4, 4, 6], yawDeg: 0 }]);
+    const { id } = placed.props[0];
+    const moved = await (await post({ op: 'update', id, kindId: 'prop_pool', position: [5, 4, 6.5], yawDeg: 90 })).json();
+    expect(moved.props[0]).toMatchObject({ id, position: [5, 4, 6.5], yawDeg: 90 });
+    expect(await list()).toEqual(moved.props);
+    expect(await (await post({ op: 'remove', id })).json()).toEqual({ props: [] });
+  });
+
+  it('lets any signed-in login remove a prop another login placed', async () => {
+    const bob = await signIn(base, 'b@example.com');
+    const { props } = await (await post(pool)).json();
+    expect((await post({ op: 'remove', id: props[0].id }, bob)).status).toBe(200);
+    expect(await list()).toEqual([]);
+  });
+
+  it('is 400 for a kind outside the curated set, an off-grid position or a diagonal yaw', async () => {
+    for (const bad of [
+      { ...pool, kindId: 'cube' },
+      { ...pool, position: [4.3, 4, 6] },
+      { ...pool, position: [4, 4, Number.NaN] },
+      { ...pool, yawDeg: 45 },
+      { op: 'place' },
+      { op: 'teleport' },
+    ]) {
+      expect((await post(bad)).status).toBe(400);
+    }
+    expect(await list()).toEqual([]);
+  });
+
+  it('is 409 past the limit, leaving the list alone', async () => {
+    for (let i = 0; i < MAX_PLACED_PROPS; i++) {
+      expect((await post({ ...pool, position: [i, 4, 0] })).status).toBe(200);
+    }
+    expect((await post(pool)).status).toBe(409);
+    expect(await list()).toHaveLength(MAX_PLACED_PROPS);
+  });
+
+  it('is 404 for a prop that is gone, and for an office that is not there', async () => {
+    expect((await post({ op: 'remove', id: 'placed:none' })).status).toBe(404);
+    expect((await post({ ...pool, op: 'update', id: 'placed:none' })).status).toBe(404);
+    expect((await post(pool, me, '99999999-9999-4999-8999-999999999999')).status).toBe(404);
+  });
+
+  it('is 413 for an oversized body and 405 for other methods', async () => {
+    expect((await post({ ...pool, pad: 'x'.repeat(5000) })).status).toBe(413);
+    expect((await fetch(url(), { method: 'DELETE', headers: me })).status).toBe(405);
   });
 });

@@ -36,6 +36,7 @@ export async function createBackend(env: Record<string, string | undefined>, { d
     worldConstantsUrl,
     sessionPolicy: officeApi.allowsMultiSession,
     deskClaims: officeApi,
+    placedProps: officeApi,
   });
   const app = await createApp({
     ...db,

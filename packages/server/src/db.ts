@@ -1,5 +1,6 @@
 import pg from 'pg';
-import type { CreateOffice, OfficeCharacters, OfficeDeskClaims, QueryOffices, UpdateOffice } from './api';
+import { MAX_PLACED_PROPS, type PlacedProp, type PlaceableKindId } from '@officexr/sdk';
+import type { CreateOffice, OfficeCharacters, OfficeDeskClaims, OfficePlacedProps, QueryOffices, UpdateOffice } from './api';
 import { pgAllowlist, pgSessionStore, type IsLoginAllowed } from './auth';
 import type { Office, OfficeUpdate } from './shared';
 
@@ -92,6 +93,35 @@ export function createDb(connectionString: string | undefined) {
       await getPool().query('delete from office_desk_claims where office_id = $1 and user_login = $2', [officeId, login]);
     },
   };
+  const propColumns = 'id, kind_id, x, y, z, yaw_deg';
+  type PropRow = { id: string; kind_id: string; x: number; y: number; z: number; yaw_deg: number };
+  const placedProps: OfficePlacedProps = {
+    list: async (officeId) => {
+      const { rows } = await getPool().query<PropRow>(`select ${propColumns} from office_props where office_id = $1 order by created_at, id`, [officeId]);
+      return rows.map((r): PlacedProp => ({ id: r.id, kindId: r.kind_id as PlaceableKindId, position: [r.x, r.y, r.z], yawDeg: r.yaw_deg }));
+    },
+    add: async (officeId, prop, placedBy) => {
+      // One statement, so two racing placements cannot both pass the count.
+      const { rowCount } = await getPool().query(
+        `insert into office_props (office_id, id, kind_id, x, y, z, yaw_deg, placed_by)
+         select $1, $2, $3, $4, $5, $6, $7, $8
+         where (select count(*) from office_props where office_id = $1) < $9`,
+        [officeId, prop.id, prop.kindId, ...prop.position, prop.yawDeg, placedBy, MAX_PLACED_PROPS],
+      );
+      return rowCount ? 'ok' : 'limit';
+    },
+    update: async (officeId, prop) => {
+      const { rowCount } = await getPool().query(
+        'update office_props set x = $3, y = $4, z = $5, yaw_deg = $6 where office_id = $1 and id = $2',
+        [officeId, prop.id, ...prop.position, prop.yawDeg],
+      );
+      return rowCount ? 'ok' : 'not-found';
+    },
+    remove: async (officeId, id) => {
+      const { rowCount } = await getPool().query('delete from office_props where office_id = $1 and id = $2', [officeId, id]);
+      return rowCount ? 'ok' : 'not-found';
+    },
+  };
   const isLoginAllowed: IsLoginAllowed = (email) => pgAllowlist(getPool(), 'login_allowlist')(email);
   const close = async () => {
     const closing = pool;
@@ -104,6 +134,7 @@ export function createDb(connectionString: string | undefined) {
     updateOffice,
     characters,
     deskClaims,
+    placedProps,
     isLoginAllowed,
     sessionStore: () => pgSessionStore(getPool()),
     close,

@@ -89,6 +89,9 @@ importers:
       '@officexr/realtime-server':
         specifier: workspace:*
         version: link:../realtime-server
+      '@officexr/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       '@officexr/world':
         specifier: workspace:*
         version: link:../world

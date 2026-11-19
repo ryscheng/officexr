@@ -11,6 +11,7 @@ const server = new RealtimeServer({
   adminToken: process.env.OFFICEXR_REALTIME_ADMIN_TOKEN,
   sessionPolicy: officeApi?.allowsMultiSession,
   deskClaims: officeApi,
+  placedProps: officeApi,
   tokenSecret,
 });
 await server.start();

@@ -25,6 +25,7 @@ import {
   type Actions,
   type Bus,
   type NetEvent,
+  type PlacedProp,
   type PlayerId,
   type PresenceData,
   type Store,
@@ -42,6 +43,8 @@ import {
 } from './protocol.ts';
 import { isLogin, verifyJoinToken } from './join-token.ts';
 import { createDeskClaimHandler, type DeskClaimsApi } from './desk-claims.ts';
+import { createPlacedPropsHandler, type PlacedPropsApi } from './placed-props.ts';
+import { SpellCastGuard } from './spell-guard.ts';
 
 
 const DEFAULT_PORT = 8787;
@@ -70,6 +73,9 @@ export interface RealtimeServerOptions {
   /** Persists desk claims. Unset means every claim is refused as `unavailable`
    * and rooms start with none. */
   deskClaims?: DeskClaimsApi;
+  /** Persists placed props. Unset means every placement is refused as `unavailable`
+   * and rooms start with none. */
+  placedProps?: PlacedPropsApi;
   /** HMAC secret for join tokens. When set, every `hello` and every
    * `/rooms/:id/sessions` request must carry a token signed with it, and
    * the login comes from the token. Unset or empty means no enforcement. */
@@ -109,6 +115,8 @@ export class Room {
   readonly clients = new Map<PlayerId, WsClient>();
   /** Whether `deskClaims` came from the backend rather than being the empty default. */
   claimsLoaded = false;
+  propsLoaded = false;
+  readonly spellGuard = new SpellCastGuard();
   private readonly mirror: InMemoryChannel;
   private readonly offMirror: () => void;
 
@@ -146,6 +154,8 @@ export class Room {
     if (!this.store.getState().players[userId]) return;
     this.actions.applyRemotePose(userId, null, Date.now());
     this.actions.applyRemoteSeat(userId, null, Date.now());
+    this.actions.applyRemoteHeld(userId, null, Date.now());
+    this.spellGuard.forget(userId);
   }
 
   sessionsOf(login: string): WsClient[] {
@@ -170,6 +180,38 @@ export class Room {
     this.claimsLoaded = true;
     this.actions.setDeskClaims(claims);
     void this.mirror.send(this.deskClaimsEvent(this.takeServerSeq()));
+  }
+
+  /** Adopt the backend's placed `props` and fan them out to every hub peer. */
+  pushPlacedProps(props: PlacedProp[]): void {
+    this.propsLoaded = true;
+    this.actions.setPlacedProps(props);
+    void this.mirror.send(this.officePropsEvent(this.takeServerSeq()));
+  }
+
+  private officePropsEvent(seq: number): NetEvent {
+    return { kind: 'office:props', v: 1, actorId: SERVER_SELF_ID, seq, t: Date.now(), props: this.store.getState().placedProps };
+  }
+
+  /** A joiner sees each spell effect still running, as time left and time gone. */
+  private spellEffectEvents(): NetEvent[] {
+    const now = Date.now();
+    return Object.entries(this.store.getState().spellEffects).flatMap(([targetId, e]) =>
+      e.endsAt > now
+        ? [{
+            kind: 'spell:effect' as const,
+            v: 1 as const,
+            actorId: SERVER_SELF_ID,
+            seq: this.takeServerSeq(),
+            t: now,
+            targetId,
+            spell: e.spell,
+            casterId: e.casterId,
+            remainingMs: e.endsAt - now,
+            elapsedMs: now - e.startsAt,
+          }]
+        : [],
+    );
   }
 
   private deskClaimsEvent(seq: number): NetEvent {
@@ -226,6 +268,8 @@ export class Room {
     const events: NetEvent[] = [
       this.worldConstantsEvent(this.takeServerSeq()),
       this.deskClaimsEvent(this.takeServerSeq()),
+      this.officePropsEvent(this.takeServerSeq()),
+      ...this.spellEffectEvents(),
     ];
     const present = new Set([...this.hub.present(), ...this.clients.keys()]);
     let seq = 1;
@@ -266,6 +310,17 @@ export class Room {
       }
       // The store's default name is '', so a name means the player sent
       // an avatar:update.
+      if (p.held != null) {
+        events.push({
+          kind: 'presence:held',
+          v: 1,
+          actorId: id as PlayerId,
+          seq: seq++,
+          t: Date.now(),
+          held: p.held,
+          stand: p.heldStand ?? null,
+        });
+      }
       if (p.name) {
         events.push({
           kind: 'avatar:update',
@@ -306,6 +361,7 @@ export class RealtimeServer {
   private readonly adminToken: string | undefined;
   private readonly sessionPolicy: RealtimeServerOptions['sessionPolicy'];
   private readonly deskClaims: DeskClaimsApi | undefined;
+  private readonly placedProps: PlacedPropsApi | undefined;
   private readonly claimLoads = new Map<Room, Promise<void>>();
   private readonly tokenSecret: string | undefined;
   private readonly now: () => number;
@@ -323,6 +379,7 @@ export class RealtimeServer {
     this.adminToken = opts.adminToken;
     this.sessionPolicy = opts.sessionPolicy;
     this.deskClaims = opts.deskClaims;
+    this.placedProps = opts.placedProps;
     this.tokenSecret = opts.tokenSecret || undefined;
     this.now = opts.now ?? Date.now;
     this.fetch = opts.fetch ?? globalThis.fetch;
@@ -334,6 +391,7 @@ export class RealtimeServer {
     );
     this.rooms.set(this.defaultRoom.officeId, this.defaultRoom);
     this.onCustomFrame(createDeskClaimHandler(this.deskClaims));
+    this.onCustomFrame(createPlacedPropsHandler(this.placedProps));
   }
 
   /** Register a handler for custom (`{ t: 'custom' }`) frames. Returns
@@ -564,19 +622,30 @@ export class RealtimeServer {
   /** Loads `room`'s claims as `login` until a load succeeds, so a backend outage at one join
    * doesn't leave the room showing every desk free. Concurrent callers share one load. */
   private ensureClaimsLoaded(room: Room, login: string): Promise<void> {
-    if (!this.deskClaims || room.claimsLoaded) {
+    const needClaims = this.deskClaims && !room.claimsLoaded;
+    const needProps = this.placedProps && !room.propsLoaded;
+    if (!needClaims && !needProps) {
       return Promise.resolve();
     }
     let load = this.claimLoads.get(room);
     if (!load) {
-      load = this.deskClaims
-        .listDeskClaims(room.officeId, login)
-        .then((loaded) => {
-          // A claim that landed while this was in flight already set the newer list.
-          if (loaded.ok && !room.claimsLoaded) {
-            room.pushDeskClaims(loaded.claims);
-          }
-        })
+      const claims = needClaims
+        ? this.deskClaims!.listDeskClaims(room.officeId, login).then((loaded) => {
+            // A claim that landed while this was in flight already set the newer list.
+            if (loaded.ok && !room.claimsLoaded) {
+              room.pushDeskClaims(loaded.claims);
+            }
+          })
+        : Promise.resolve();
+      const props = needProps
+        ? this.placedProps!.listProps(room.officeId, login).then((loaded) => {
+            if (loaded.ok && !room.propsLoaded) {
+              room.pushPlacedProps(loaded.props);
+            }
+          })
+        : Promise.resolve();
+      load = Promise.all([claims, props])
+        .then(() => undefined)
         .finally(() => {
           this.claimLoads.delete(room);
           // Every waiting joiner continues before this fires, so a room nobody joined (they hung up mid-load) goes now.
@@ -709,6 +778,7 @@ export class RealtimeServer {
         // later server push. The retired `world:settings` kind already
         // fails validation.
         if (!v.ok || PROTOCOL[v.event.kind].authority === 'server' || v.event.actorId === SERVER_SELF_ID) return;
+        if (v.event.kind === 'spell:cast' && !room.spellGuard.allow(client.userId, v.event.actorId, room.store.getState().players[client.userId]?.held ?? null, Date.now())) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
         room.hub.broadcast(client.userId, v.event);
