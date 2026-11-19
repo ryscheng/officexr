@@ -149,6 +149,25 @@ export interface WorldObjectKind {
   seat?: SeatSpec;
   /** Counts as a desk. Absent means false. */
   isDesk?: boolean;
+  /** Makes the object a pool: players inside its footprint, minus the rim, swim. Absent means no water. */
+  water?: WaterSpec;
+  /** Makes the object a rack for a rideable vehicle: a player next to it can mount the vehicle. Absent means not rideable. */
+  ride?: RideSpec;
+}
+
+export interface WaterSpec {
+  /** Water surface height in metres above the instance's base. */
+  surfaceHeight: number;
+  /** Rim thickness in metres, kept out of the swimmable area. */
+  rim: number;
+}
+
+/** The vehicles a player can ride, as `PlayerPose` names them. */
+export const RIDE_VEHICLES = ['scooter', 'tricycle'] as const;
+export type RideVehicle = (typeof RIDE_VEHICLES)[number];
+
+export interface RideSpec {
+  vehicle: RideVehicle;
 }
 
 export interface SeatSpec {
@@ -427,6 +446,8 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     rotationStepDeg: normalizeRotationStep(k.rotationStepDeg, idx),
     seat: normalizeSeat(k.seat, idx),
     isDesk: normalizeIsDesk(k.isDesk, idx),
+    water: normalizeWater(k.water, idx),
+    ride: normalizeRide(k.ride, idx),
   };
 }
 
@@ -462,6 +483,33 @@ function normalizeSeat(raw: unknown, idx: number): SeatSpec | undefined {
     );
   }
   return { offset: { x: offset.x, y: offset.y, z: offset.z }, yawDeg: seat.yawDeg };
+}
+
+function normalizeWater(raw: unknown, idx: number): WaterSpec | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const water = raw as { surfaceHeight?: unknown; rim?: unknown } | null;
+  const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
+  if (!positive(water?.surfaceHeight) || !positive(water?.rim)) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].water must be { surfaceHeight, rim } of positive numbers, got ${JSON.stringify(raw)}`,
+    );
+  }
+  return { surfaceHeight: water.surfaceHeight, rim: water.rim };
+}
+
+function normalizeRide(raw: unknown, idx: number): RideSpec | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const vehicle = (raw as { vehicle?: unknown } | null)?.vehicle;
+  if (!(RIDE_VEHICLES as readonly unknown[]).includes(vehicle)) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].ride must be { vehicle: ${RIDE_VEHICLES.join(' | ')} }, got ${JSON.stringify(raw)}`,
+    );
+  }
+  return { vehicle: vehicle as RideVehicle };
 }
 
 function normalizeIsDesk(raw: unknown, idx: number): boolean | undefined {
