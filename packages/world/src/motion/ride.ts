@@ -39,7 +39,7 @@ export const RIDE_STRATEGIES: Record<RideVehicle, RideStrategy> = {
     clip: 'Idle_A',
     riderPitch: 0.1,
     boost: 1.25,
-    model: '/models/props/scooter.glb',
+    model: '/models/props/scooter.gltf',
   },
   tricycle: {
     topSpeed: 3.6,
@@ -53,7 +53,7 @@ export const RIDE_STRATEGIES: Record<RideVehicle, RideStrategy> = {
     clip: 'Sit_Chair_Idle',
     riderPitch: 0.05,
     boost: 1,
-    model: '/models/props/tricycle.glb',
+    model: '/models/props/tricycle.gltf',
   },
 };
 
