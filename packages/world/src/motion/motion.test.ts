@@ -44,6 +44,11 @@ describe('waterVolumes', () => {
     ]);
   });
 
+  it('makes no water for a pool turned off the quarter turns', () => {
+    expect(waterVolumes([{ ...instance('pool-1', 'pool'), yawDeg: 45 }], catalog, geometry)).toEqual([]);
+    expect(waterVolumes([{ ...instance('pool-1', 'pool'), yawDeg: 270 }], catalog, geometry)).toHaveLength(1);
+  });
+
   it('finds the water under a point and nothing at the rim or outside', () => {
     expect(waterAt(volumes, 3, 2)?.id).toBe('pool-1');
     expect(waterAt(volumes, 0.2, 2)).toBeNull();
@@ -151,6 +156,13 @@ describe('ride', () => {
     expect(d.z).toBeCloseTo(0);
   });
 
+  it('skips a rack another player already rides from', () => {
+    const racks = [instance('s', 'scooter')];
+    const near = { x: 10.5, y: 0, z: 11.2 };
+    expect(nearestRideStand(racks, catalog, geometry, near, undefined, new Set(['s']))).toBeNull();
+    expect(nearestRideStand(racks, catalog, geometry, near, undefined, new Set(['other']))?.vehicle).toBe('scooter');
+  });
+
   it('finds a rack within reach and none beyond it', () => {
     const racks = [instance('s', 'scooter'), instance('c', 'chair')];
     expect(nearestRideStand(racks, catalog, geometry, { x: 10.5, y: 0, z: 11.2 })?.vehicle).toBe('scooter');
@@ -219,11 +231,12 @@ describe('self motion', () => {
     expect(sm.pose).toBe('swim');
   });
 
-  it('drops a ride into the water as a swim', () => {
+  it('drops a ride into the water as a swim and lets the vehicle go back to its rack', () => {
     const sm = newSelfMotion();
     stepSelfMotion(sm, input({ mount: true, dir: null }), world(false, true));
     stepSelfMotion(sm, input(), world(true, false));
     expect(sm.pose).toBe('swim');
+    expect(sm.rack).toBeNull();
   });
 });
 

@@ -239,6 +239,8 @@ export class SyncEngine {
     this.stateDiff.captureBaseline();
     if (!this.heldSelf) {
       this.position.announceSelf();
+      this.stateDiff.announceSeat();
+      this.stateDiff.announcePose();
       this.status.announceSelf();
     }
     this.heartbeat = this.timers.setInterval(() => this.tickHeartbeat(), HEARTBEAT_TICK_MS);

@@ -61,7 +61,7 @@ export function stepSelfMotion(sm: SelfMotion, input: SelfMotionInput, world: Mo
   } else if (!inWater && sm.pose === 'swim') {
     sm.pose = null;
   }
-  if (sm.pose === null) {
+  if (sm.pose !== 'scooter' && sm.pose !== 'tricycle') {
     sm.rack = null;
   }
   if (input.mount && sm.pose !== 'swim') {

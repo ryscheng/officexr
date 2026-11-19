@@ -20,7 +20,7 @@ export function waterVolumes(
   const volumes: WaterVolume[] = [];
   for (const instance of instances) {
     const water = catalog.getKind(instance.kindId)?.water;
-    if (!water) {
+    if (!water || (instance.yawDeg ?? 0) % 90 !== 0) {
       continue;
     }
     const { min, max } = geometry.worldAABBOfInstance(instance);

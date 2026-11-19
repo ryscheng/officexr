@@ -100,6 +100,7 @@ export interface RideStand {
 }
 
 export const MOUNT_REACH_M = 1.3;
+const NO_RACKS: ReadonlySet<string> = new Set();
 
 export function nearestRideStand(
   instances: readonly ObjectInstance[],
@@ -107,12 +108,13 @@ export function nearestRideStand(
   geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>,
   feet: Vec3,
   reach: number = MOUNT_REACH_M,
+  taken: ReadonlySet<string> = NO_RACKS,
 ): RideStand | null {
   let best: RideStand | null = null;
   let bestDistance = reach;
   for (const instance of instances) {
     const ride = catalog.getKind(instance.kindId)?.ride;
-    if (!ride) {
+    if (!ride || taken.has(instance.id)) {
       continue;
     }
     const { min, max } = geometry.worldAABBOfInstance(instance);

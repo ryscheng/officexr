@@ -9,7 +9,6 @@ import { lightBasis, snapToShadowTexel } from './shadow-snap.ts';
 import { MapColliders } from './MapColliders.tsx';
 import { excludeLayoutInstances } from './useStoreWorldObjects.ts';
 import type {
-  ObjectInstance,
   Actions,
   Bus,
   PlayerId,
@@ -27,6 +26,7 @@ import type { MotionLookState } from './motionLook.ts';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
 import { WaterVolumes } from './WaterVolumes.tsx';
+import { excludeRacks, occupiedRacks } from './occupiedRacks.ts';
 import { BakedLayout } from './BakedLayout.tsx';
 import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
@@ -90,13 +90,6 @@ function OptionalXR({ store, children }: { store?: XRStore; children: React.Reac
 
 const noopSubscribe = () => () => {};
 
-/** Joined with `|` so the selector result compares by value. */
-function occupiedRacks(players: Record<string, { poseRack?: string | null }>): string {
-  return Object.values(players)
-    .flatMap((p) => (p.poseRack ? [p.poseRack] : []))
-    .sort()
-    .join('|');
-}
 
 /** A layout placement with the URL of its baked GLB, e.g. `/api/baked-layouts/lobby`. */
 export interface SceneBakedLayout extends BakedLayoutPlacement {
@@ -181,11 +174,7 @@ export function Scene(props: SceneProps) {
     [store],
   );
   const racksInUse = useSyncExternalStore(subscribeRacks, () => occupiedRacks(store.getState().players));
-  const excludeVisual = useMemo(() => {
-    if (!racksInUse) return excludeBakedInstance;
-    const empty = new Set(racksInUse.split('|'));
-    return (instance: ObjectInstance) => empty.has(instance.id) || (excludeBakedInstance?.(instance) ?? false);
-  }, [racksInUse, excludeBakedInstance]);
+  const excludeRidden = useMemo(() => excludeRacks(racksInUse, excludeBakedInstance), [racksInUse, excludeBakedInstance]);
   const { proximity, lighting, background, fixedCamera } = props.view;
   const worldFocused = props.worldFocused ?? true;
   const { xrStore } = props;
@@ -298,7 +287,7 @@ export function Scene(props: SceneProps) {
           Rapier sub-step at the real frame delta.
         */}
         <Physics gravity={[0, -20, 0]} timeStep="vary">
-        <MapColliders store={store} exclude={excludeBakedInstance} />
+        <MapColliders store={store} exclude={excludeRidden} />
         {bakedLayouts?.map((p) => {
           const transform = placementTransform(p);
           return (
@@ -346,7 +335,7 @@ export function Scene(props: SceneProps) {
           }
         />
 
-        <ObjectInstances store={store} exclude={excludeVisual} />
+        <ObjectInstances store={store} exclude={excludeRidden} />
         <WaterVolumes store={store} />
 
         <Players

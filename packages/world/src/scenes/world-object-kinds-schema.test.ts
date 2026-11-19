@@ -258,6 +258,12 @@ describe('normalizeKind — water and ride', () => {
     },
   );
 
+  it('rejects water on a kind that rotates in steps other than quarter turns', () => {
+    const water = { surfaceHeight: 0.4, rim: 0.3 };
+    expect(() => normalizeKind(minimalRaw('block', { water, rotationStepDeg: 45 }), 7)).toThrow(/kinds\[7\]\.water/);
+    expect(normalizeKind(minimalRaw('block', { water, rotationStepDeg: 180 }), 7).water).toEqual(water);
+  });
+
   it.each([null, {}, { vehicle: 'hoverboard' }])('rejects malformed ride %j', (bad) => {
     expect(() => normalizeKind(minimalRaw('block', { ride: bad }), 6)).toThrow(/kinds\[6\]\.ride/);
   });

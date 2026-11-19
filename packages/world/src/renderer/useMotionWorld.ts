@@ -16,10 +16,14 @@ export function useMotionWorld(store: Store): MotionWorld {
     () => ({
       waterAt: (x, z) => waterAt(volumes, x, z),
       rideNear: (feet) => {
-        const stand = nearestRideStand(worldObjects.instances, catalog, geometry, feet);
+        const { players, selfId } = store.getState();
+        const taken = new Set(
+          Object.values(players).flatMap((p) => (p.id !== selfId && p.poseRack ? [p.poseRack] : [])),
+        );
+        const stand = nearestRideStand(worldObjects.instances, catalog, geometry, feet, undefined, taken);
         return stand && { vehicle: stand.vehicle, rackId: stand.instance.id };
       },
     }),
-    [volumes, worldObjects, kinds, catalog, geometry],
+    [volumes, worldObjects, kinds, catalog, geometry, store],
   );
 }

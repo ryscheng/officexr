@@ -28,6 +28,15 @@ describe('PokeToast', () => {
     expect(screen.queryByText('Poked by Alice')).toBeNull();
   });
 
+  it('keeps the toast up for the full time after a second poke by the same player', () => {
+    const bus = setup();
+    act(() => bus.emit({ kind: 'poke:received', fromId: 'alice@example.com', targetId: 'me@example.com', at: 0 }));
+    act(() => void vi.advanceTimersByTime(POKE_TOAST_MS - 100));
+    act(() => bus.emit({ kind: 'poke:received', fromId: 'alice@example.com', targetId: 'me@example.com', at: 1 }));
+    act(() => void vi.advanceTimersByTime(200));
+    expect(screen.getByText('Poked by Alice')).toBeTruthy();
+  });
+
   it('stays quiet for other targets, for pokes at nobody and for your own poke', () => {
     const bus = setup();
     act(() => bus.emit({ kind: 'poke:received', fromId: 'alice@example.com', targetId: 'bob@example.com', at: 1 }));

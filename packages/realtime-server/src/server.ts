@@ -141,6 +141,13 @@ export class Room {
     };
   }
 
+  /** A player who left keeps no pose or seat, or a later joiner would replay it. */
+  clearBodyState(userId: PlayerId): void {
+    if (!this.store.getState().players[userId]) return;
+    this.actions.applyRemotePose(userId, null, Date.now());
+    this.actions.applyRemoteSeat(userId, null, Date.now());
+  }
+
   sessionsOf(login: string): WsClient[] {
     return [...this.clients.values()].filter((c) => loginOf(c.userId) === login);
   }
@@ -689,6 +696,7 @@ export class RealtimeServer {
     // room recreated since.
     if (room.clients.get(client.userId) !== client) return;
     room.clients.delete(client.userId);
+    room.clearBodyState(client.userId);
     this.dropIfEmpty(room);
   }
 

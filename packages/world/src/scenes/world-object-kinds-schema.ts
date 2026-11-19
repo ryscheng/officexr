@@ -441,7 +441,7 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     rotationStepDeg: normalizeRotationStep(k.rotationStepDeg, idx),
     seat: normalizeSeat(k.seat, idx),
     isDesk: normalizeIsDesk(k.isDesk, idx),
-    water: normalizeWater(k.water, idx),
+    water: normalizeWater(k.water, k.rotationStepDeg, idx),
     ride: normalizeRide(k.ride, idx),
   };
 }
@@ -480,9 +480,14 @@ function normalizeSeat(raw: unknown, idx: number): SeatSpec | undefined {
   return { offset: { x: offset.x, y: offset.y, z: offset.z }, yawDeg: seat.yawDeg };
 }
 
-function normalizeWater(raw: unknown, idx: number): WaterSpec | undefined {
+function normalizeWater(raw: unknown, rotationStepDeg: unknown, idx: number): WaterSpec | undefined {
   if (raw === undefined) {
     return undefined;
+  }
+  if (typeof rotationStepDeg === 'number' && rotationStepDeg % 90 !== 0) {
+    throw new Error(
+      `world-object-kind-catalog: kinds[${idx}].water needs a rotationStepDeg that is a multiple of 90, got ${rotationStepDeg}`,
+    );
   }
   const water = raw as { surfaceHeight?: unknown; rim?: unknown } | null;
   const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
