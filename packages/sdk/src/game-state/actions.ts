@@ -23,7 +23,7 @@ import type {
   WorldObjects,
   ZombieState,
 } from './types.ts';
-import { STATUS_EMOJI_MAX, STATUS_TEXT_MAX } from './types.ts';
+import { STATUS_EMOJI_MAX, STATUS_TEXT_MAX, isStatusEmoji } from './types.ts';
 import { DEPARTED_LINGER_MS } from './presence.ts';
 import { worldSettingsFromConstants, type WorldConstants } from './world-constants.ts';
 import { cloneWorldMap } from './world-map.ts';
@@ -32,8 +32,10 @@ export type RichStatus = { statusText?: string | null; statusEmoji?: string | nu
 
 const cleanStatusText = (text: string | null | undefined): string | null =>
   text?.trim().slice(0, STATUS_TEXT_MAX) || null;
-const cleanStatusEmoji = (emoji: string | null | undefined): string | null =>
-  emoji?.trim().slice(0, STATUS_EMOJI_MAX) || null;
+const cleanStatusEmoji = (emoji: string | null | undefined): string | null => {
+  const s = emoji?.trim().slice(0, STATUS_EMOJI_MAX);
+  return s && isStatusEmoji(s) ? s : null;
+};
 
 export interface Actions {
   // local intents

@@ -14,7 +14,7 @@ import type {
   ZombieState,
 } from '../game-state/types.ts';
 import { ZWorldConstants, type WorldConstants } from '../game-state/world-constants.ts';
-import { EMOTE_IDS, PLAYER_POSES, STATUS_EMOJI_MAX, STATUS_TEXT_MAX } from '../game-state/types.ts';
+import { EMOTE_IDS, PLAYER_POSES, STATUS_EMOJI_MAX, STATUS_TEXT_MAX, isStatusEmoji } from '../game-state/types.ts';
 import type { SerializedOfficeState } from '../game-state/snapshot.ts';
 
 // --- Envelope ---
@@ -207,7 +207,7 @@ const ZPresenceStatusPayload = z.object({
   jitsiParticipantId: z.string().nullable().optional(),
   idleMs: z.number().nonnegative().optional(),
   statusText: z.string().max(STATUS_TEXT_MAX).nullable().optional(),
-  statusEmoji: z.string().max(STATUS_EMOJI_MAX).nullable().optional(),
+  statusEmoji: z.string().max(STATUS_EMOJI_MAX).refine(isStatusEmoji).nullable().optional(),
   focus: z.boolean().optional(),
 });
 const ZPresenceSeat = z.object({ instanceId: z.string().nullable() });

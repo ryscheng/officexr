@@ -39,6 +39,8 @@ export const EMOTE_BUBBLE_MS = 3000;
 export const STATUS_TEXT_MAX = 60;
 export const STATUS_EMOJI_MAX = 16;
 
+export const isStatusEmoji = (s: string): boolean => !/[\p{L}\p{N}\p{P}]/u.test(s);
+
 export type PlayerState = {
   id: PlayerId;
   name: string;

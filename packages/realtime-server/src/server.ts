@@ -108,6 +108,7 @@ export class Room {
   readonly actions: Actions;
   readonly bus: Bus;
   readonly clients = new Map<PlayerId, WsClient>();
+  private readonly emoteLimits = new Map<PlayerId, EmoteRateLimit>();
   /** Whether `deskClaims` came from the backend rather than being the empty default. */
   claimsLoaded = false;
   private readonly mirror: InMemoryChannel;
@@ -149,6 +150,13 @@ export class Room {
     this.actions.applyRemoteSeat(userId, null, Date.now());
     this.actions.applyRemoteHand(userId, false, Date.now());
     this.actions.upsertPlayer({ id: userId, statusText: null, statusEmoji: null, focus: false });
+  }
+
+  /** Keyed by player, not socket, so a reconnect does not reset the limit. */
+  allowEmote(userId: PlayerId, now: number): boolean {
+    let limit = this.emoteLimits.get(userId);
+    if (!limit) this.emoteLimits.set(userId, (limit = new EmoteRateLimit()));
+    return limit.allow(now);
   }
 
   sessionsOf(login: string): WsClient[] {
@@ -693,6 +701,7 @@ export class RealtimeServer {
     }
     for (const rival of rivals) {
       room.clients.delete(rival.userId);
+      room.clearBodyState(rival.userId);
       rival.replace();
     }
 
@@ -740,7 +749,7 @@ export class RealtimeServer {
         if (!v.ok || PROTOCOL[v.event.kind].authority === 'server' || v.event.actorId === SERVER_SELF_ID) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
-        if (v.event.kind === 'emote:send' && !client.emoteLimit.allow(Date.now())) return;
+        if (v.event.kind === 'emote:send' && !room.allowEmote(client.userId, Date.now())) return;
         room.hub.broadcast(client.userId, v.event);
         return;
       }
@@ -895,7 +904,6 @@ function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
  */
 export class WsClient {
   readonly userId: PlayerId;
-  readonly emoteLimit = new EmoteRateLimit();
   private readonly ws: WebSocket;
   private readonly channel: InMemoryChannel;
   private offBroadcast: (() => void) | null = null;
