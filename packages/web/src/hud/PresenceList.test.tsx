@@ -96,6 +96,13 @@ describe('presenceRows', () => {
     expect(presenceRows([], [{ id: 'bob', name: '', leftAt: 0 }], 'me')).toEqual([]);
   });
 
+  it('carries the status fields on the self row and on peers', () => {
+    const rich = { statusText: 'Out', statusEmoji: '🌴', focus: true, handRaised: true };
+    const [self, peer] = presenceRows([{ ...player('me', 'Me'), ...rich }, { ...player('amy', 'Amy'), ...rich }], [], 'me');
+    expect(self).toMatchObject(rich);
+    expect(peer).toMatchObject(rich);
+  });
+
   it('gives distance and bearing to peers only', () => {
     const [self, peer] = presenceRows([player('me', 'Me'), player('amy', 'Amy')], [], 'me');
     expect(self).not.toHaveProperty('distanceM');
@@ -230,6 +237,41 @@ describe('PresenceList', () => {
     for (const name of ['Me (you)', 'Ann', 'Bob', 'Cat', 'Dan']) {
       expect(within(rowOf(name)).queryByRole('img', { name: /mic|muted|speaking/i })).toBeNull();
     }
+  });
+
+  it('shows a peer status line, focus icon and raised hand, and nothing for peers without them', () => {
+    const { actions } = seed();
+    act(() => {
+      actions.applyRemotePresence('ann', 'available', 'none', 0, { room: null, participantId: null }, undefined, {
+        statusText: 'Writing docs',
+        statusEmoji: '📝',
+        focus: true,
+      });
+      actions.applyRemoteHand('ann', true, 0);
+    });
+    const ann = within(rowOf('Ann'));
+    expect(ann.getByText('📝 Writing docs')).toBeTruthy();
+    expect(ann.getByRole('img', { name: 'In focus mode' })).toBeTruthy();
+    expect(ann.getByRole('img', { name: 'Hand raised' })).toBeTruthy();
+    expect(within(rowOf('Bob')).queryByRole('img', { name: /focus|hand/i })).toBeNull();
+
+    act(() => actions.applyRemoteHand('ann', false, 1));
+    expect(within(rowOf('Ann')).queryByRole('img', { name: 'Hand raised' })).toBeNull();
+  });
+
+  it('shows your own status, and makes your name open the editor only when asked', () => {
+    const store = createStore({ selfId: 'me', officeId: 'o' });
+    const actions = createActions(store, createBus());
+    actions.upsertPlayer({ id: 'me', name: 'Me' });
+    actions.setSelfRichStatus({ statusText: 'Heads down', statusEmoji: '🎧', focus: true });
+    const onEditSelf = vi.fn();
+    vi.useFakeTimers();
+    renderInView(<PresenceList store={store} selfId="me" officeName="HQ" clock={() => 0} onEditSelf={onEditSelf} />);
+    const me = within(rowOf('Me (you)'));
+    expect(me.getByText('🎧 Heads down')).toBeTruthy();
+    expect(me.getByRole('img', { name: 'In focus mode' })).toBeTruthy();
+    fireEvent.click(me.getByRole('button', { name: 'Me (you)' }));
+    expect(onEditSelf).toHaveBeenCalledOnce();
   });
 
   it('re-renders on a whole-metre change, not on every small move', () => {

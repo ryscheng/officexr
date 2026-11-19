@@ -30,6 +30,7 @@ import {
   type Store,
   type WorldConstants,
 } from '@officexr/sdk';
+import { EmoteRateLimit } from './emote-rate-limit.ts';
 import {
   decodeFrame,
   encodeFrame,
@@ -107,6 +108,7 @@ export class Room {
   readonly actions: Actions;
   readonly bus: Bus;
   readonly clients = new Map<PlayerId, WsClient>();
+  private readonly emoteLimits = new Map<PlayerId, EmoteRateLimit>();
   /** Whether `deskClaims` came from the backend rather than being the empty default. */
   claimsLoaded = false;
   private readonly mirror: InMemoryChannel;
@@ -146,6 +148,15 @@ export class Room {
     if (!this.store.getState().players[userId]) return;
     this.actions.applyRemotePose(userId, null, Date.now());
     this.actions.applyRemoteSeat(userId, null, Date.now());
+    this.actions.applyRemoteHand(userId, false, Date.now());
+    this.actions.upsertPlayer({ id: userId, statusText: null, statusEmoji: null, focus: false });
+  }
+
+  /** Keyed by player, not socket, so a reconnect does not reset the limit. */
+  allowEmote(userId: PlayerId, now: number): boolean {
+    let limit = this.emoteLimits.get(userId);
+    if (!limit) this.emoteLimits.set(userId, (limit = new EmoteRateLimit()));
+    return limit.allow(now);
   }
 
   sessionsOf(login: string): WsClient[] {
@@ -262,6 +273,32 @@ export class Room {
           t: Date.now(),
           pose: p.pose,
           rack: p.poseRack ?? null,
+        });
+      }
+      if (p.handRaised) {
+        events.push({
+          kind: 'presence:hand',
+          v: 1,
+          actorId: id as PlayerId,
+          seq: seq++,
+          t: Date.now(),
+          raised: true,
+        });
+      }
+      if (p.statusText || p.statusEmoji || p.focus) {
+        events.push({
+          kind: 'presence:status',
+          v: 1,
+          actorId: id as PlayerId,
+          seq: seq++,
+          t: Date.now(),
+          status: p.status,
+          mic: p.mic,
+          jitsiRoom: p.jitsiRoom,
+          jitsiParticipantId: p.jitsiParticipantId,
+          ...(p.statusText && { statusText: p.statusText }),
+          ...(p.statusEmoji && { statusEmoji: p.statusEmoji }),
+          ...(p.focus && { focus: true }),
         });
       }
       // The store's default name is '', so a name means the player sent
@@ -664,6 +701,7 @@ export class RealtimeServer {
     }
     for (const rival of rivals) {
       room.clients.delete(rival.userId);
+      room.clearBodyState(rival.userId);
       rival.replace();
     }
 
@@ -711,6 +749,7 @@ export class RealtimeServer {
         if (!v.ok || PROTOCOL[v.event.kind].authority === 'server' || v.event.actorId === SERVER_SELF_ID) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
+        if (v.event.kind === 'emote:send' && !room.allowEmote(client.userId, Date.now())) return;
         room.hub.broadcast(client.userId, v.event);
         return;
       }

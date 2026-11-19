@@ -51,6 +51,9 @@ export class StatusBroadcaster {
       mic: me.mic,
       jitsiRoom: me.jitsiRoom,
       jitsiParticipantId: me.jitsiParticipantId,
+      ...(me.statusText != null && { statusText: me.statusText }),
+      ...(me.statusEmoji != null && { statusEmoji: me.statusEmoji }),
+      ...(me.focus && { focus: true }),
       ...(me.lastActiveAt !== undefined && { idleMs: Math.max(0, Math.round(now - me.lastActiveAt)) }),
     });
   }

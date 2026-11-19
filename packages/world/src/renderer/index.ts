@@ -11,6 +11,7 @@ export {
 } from './Adventurer.tsx';
 export { Players } from './Players.tsx';
 export { PlayerNameTag } from './PlayerNameTag.tsx';
+export { PlayerBubbles } from './PlayerBubbles.tsx';
 export { CharacterPreviewCanvas } from './CharacterPreviewCanvas.tsx';
 export { MapColliders } from './MapColliders.tsx';
 export { BakedLayout, BakedLayoutErrorBoundary, type BakedLayoutProps } from './BakedLayout.tsx';
