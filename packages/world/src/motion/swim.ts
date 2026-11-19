@@ -32,8 +32,8 @@ export function stepPitch(current: number, target: number, dt: number): number {
 
 export const SWIM_STRATEGIES: Record<SwimState, SwimStrategy> = {
   tread: { speed: 0, clip: 'T-Pose', refSpeed: 0, pitch: -PRONE_PITCH, sink: 0.1 },
-  paddle: { speed: 2.2, clip: 'Running_B', refSpeed: 3.2, pitch: PRONE_PITCH, sink: -0.1 },
-  stroke: { speed: 3.4, clip: 'Running_A', refSpeed: 3.2, pitch: PRONE_PITCH, sink: -0.1 },
+  paddle: { speed: 2.2, clip: 'Running_B', refSpeed: 3.2, pitch: PRONE_PITCH, sink: -0.3 },
+  stroke: { speed: 3.4, clip: 'Running_A', refSpeed: 3.2, pitch: PRONE_PITCH, sink: -0.3 },
 };
 
 const MOVING_SPEED = 0.15;
