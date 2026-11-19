@@ -7,6 +7,7 @@ import {
   type PersistentLocalState,
 } from '@officexr/core-refactor';
 import type { Identity } from '@officexr/server/shared';
+import { createPropOpRequester, type PropOpRequester, type RequestPropOp } from '../place/requestPropOp';
 import { createDeskClaimRequester, type DeskClaimRequester, type RequestDeskClaim } from '../desk/requestDeskClaim';
 import { wsUrl } from '../apiOrigin';
 import { fetchJaasToken, jaasTokenSource } from '../voice/jaasToken';
@@ -17,7 +18,7 @@ import { fetchRealtimeToken } from './realtimeToken';
 
 export type OfficeSession =
   | { type: 'connecting' }
-  | { type: 'ready'; local: PersistentLocalState; office: OfficeSync; voice: JaasVoiceAdapter | null; requestDeskClaim: RequestDeskClaim }
+  | { type: 'ready'; local: PersistentLocalState; office: OfficeSync; voice: JaasVoiceAdapter | null; requestDeskClaim: RequestDeskClaim; requestPropOp: RequestPropOp }
   | { type: 'replaced' }
   | { type: 'error'; message: string };
 
@@ -82,6 +83,7 @@ export function useOfficeSession(
       });
       let office: OfficeSync | undefined;
       let deskClaims: DeskClaimRequester | undefined;
+      let propOps: PropOpRequester | undefined;
       const character = loadCharacter(officeId, me.login);
       start({ local, channel, voice: voiceAdapter, holdSelf: true }).then(
         async (started) => {
@@ -98,7 +100,8 @@ export function useOfficeSession(
           // After start, so the sync engine announces the name and character to the office.
           local.actions.upsertPlayer({ id: selfId, name: me.name, avatar: { model } });
           deskClaims = createDeskClaimRequester(channel);
-          setSession({ type: 'ready', local, office: started, voice, requestDeskClaim: deskClaims.request });
+          propOps = createPropOpRequester(channel);
+          setSession({ type: 'ready', local, office: started, voice, requestDeskClaim: deskClaims.request, requestPropOp: propOps.request });
         },
         (err: Error) => {
           if (cancelled) {
@@ -115,6 +118,7 @@ export function useOfficeSession(
       return () => {
         office?.stop();
         deskClaims?.dispose();
+        propOps?.dispose();
         voiceAdapter.dispose();
         channel.close();
       };

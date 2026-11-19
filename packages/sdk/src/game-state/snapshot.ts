@@ -18,6 +18,7 @@ export type SerializedOfficeState = Omit<
   | 'deskAreas'
   | 'placedProps'
   | 'spellEffects'
+  | 'selectedSpell'
 > & {
   players: Record<
     string,

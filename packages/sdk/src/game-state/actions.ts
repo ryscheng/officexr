@@ -24,7 +24,7 @@ import type {
   ZombieState,
 } from './types.ts';
 import type { PlacedProp } from '../placement/props.ts';
-import { effectFromCast, type SpellCast, type SpellEffect } from '../spells/index.ts';
+import { effectFromCast, type SpellCast, type SpellEffect, type SpellId } from '../spells/index.ts';
 import { DEPARTED_LINGER_MS } from './presence.ts';
 import { worldSettingsFromConstants, type WorldConstants } from './world-constants.ts';
 import { cloneWorldMap } from './world-map.ts';
@@ -74,6 +74,7 @@ export interface Actions {
   setSelfSeat(instanceId: string | null): void;
   setSelfPose(pose: PlayerPose | null, rack?: string | null): void;
   setSelfHeld(held: HeldItem | null, stand?: string | null): void;
+  setSelectedSpell(spell: SpellId): void;
   /** Replace the office's placed props. Never broadcast: only the realtime server distributes them. */
   setPlacedProps(props: PlacedProp[]): void;
   /** Replace the effect on `targetId`, as a late joiner learns of it. */
@@ -295,6 +296,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     setSelfHeld(held, stand = null) {
       patchSelf({ held, heldStand: held === null ? null : stand });
+    },
+
+    setSelectedSpell(spell) {
+      store.setState(() => ({ selectedSpell: spell }));
     },
 
     setPlacedProps(props) {

@@ -1,3 +1,4 @@
+import { DEFAULT_SPELL } from '../spells/index.ts';
 import { createStore as createZustandStore } from 'zustand/vanilla';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { DEFAULT_WORLD_MAP, DEFAULT_WORLD_OBJECTS } from './types.ts';
@@ -62,6 +63,7 @@ export function createInitialOfficeState(opts: {
     deskAreas: [],
     deskClaims: {},
     placedProps: [],
+    selectedSpell: DEFAULT_SPELL,
     spellEffects: {},
     worldObjects: {
       cubeSize: DEFAULT_WORLD_OBJECTS.cubeSize,

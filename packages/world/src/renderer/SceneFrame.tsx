@@ -375,6 +375,7 @@ export function SceneFrame({
     const spellMoveScale = selfSpell?.moveSpeedScale ?? 1;
     const holdingWand = self?.held === 'wand';
     const feetNow = self ? feetPosition(self.pos, stateSnapshot.worldSettings.charRadius) : null;
+    itemsRef.current.spell = stateSnapshot.selectedSpell;
     const items = stepSelfItems(itemsRef.current, {
       now: Date.now(),
       fPressed: mountPressedThisFrame,
@@ -385,6 +386,9 @@ export function SceneFrame({
       seated: self?.seat != null,
       standNear: mountPressedThisFrame && !holdingWand && feetNow ? motionWorldRef.current.wandStandNear(feetNow) : null,
     });
+    if (itemsRef.current.spell !== stateSnapshot.selectedSpell) {
+      actions.setSelectedSpell(itemsRef.current.spell);
+    }
     if (items.action?.kind === 'pickup') {
       actions.setSelfHeld('wand', items.action.standId);
     } else if (items.action?.kind === 'putback') {

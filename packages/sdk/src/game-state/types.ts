@@ -5,7 +5,7 @@ import {
 } from './world-constants.ts';
 
 import type { PlacedProp } from '../placement/props.ts';
-import type { SpellCast, SpellEffect } from '../spells/index.ts';
+import type { SpellCast, SpellEffect, SpellId } from '../spells/index.ts';
 
 export type PlayerId = string;
 
@@ -439,6 +439,8 @@ export type OfficeState = {
   placedProps: PlacedProp[];
   /** Running spell effect per target. Never snapshotted: the realtime server replays them as `spell:effect`. */
   spellEffects: Record<PlayerId, SpellEffect>;
+  /** Local-only: the spell the wand casts next. Never snapshotted or broadcast. */
+  selectedSpell: SpellId;
   /** Local-only: never snapshotted or broadcast. */
   voiceZones: VoiceZone[];
   /** Local-only: never snapshotted or broadcast. */
