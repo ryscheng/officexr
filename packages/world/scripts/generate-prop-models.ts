@@ -13,12 +13,16 @@ import { fileURLToPath } from 'node:url';
 
 const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../studio/public/models/props');
 
+/** Uniform size of the model being built: the characters are about two metres tall, so the vehicles are drawn large. */
+let SIZE = 1;
+
 type Mesh = { positions: number[]; normals: number[]; indices: number[] };
 
 const empty = (): Mesh => ({ positions: [], normals: [], indices: [] });
 
 /** An axis-aligned box centred on (cx, cy, cz). */
 function addBox(m: Mesh, cx: number, cy: number, cz: number, w: number, h: number, d: number) {
+  [cx, cy, cz, w, h, d] = [cx, cy, cz, w, h, d].map((v) => v * SIZE) as [number, number, number, number, number, number];
   const faces: [number[], number[][]][] = [
     [[1, 0, 0], [[1, -1, -1], [1, 1, -1], [1, 1, 1], [1, -1, 1]]],
     [[-1, 0, 0], [[-1, -1, 1], [-1, 1, 1], [-1, 1, -1], [-1, -1, -1]]],
@@ -39,6 +43,7 @@ function addBox(m: Mesh, cx: number, cy: number, cz: number, w: number, h: numbe
 
 /** A cylinder whose axis runs along X (a wheel). */
 function addWheel(m: Mesh, cx: number, cy: number, cz: number, radius: number, width: number, segments = 14) {
+  [cx, cy, cz, radius, width] = [cx, cy, cz, radius, width].map((v) => v * SIZE) as [number, number, number, number, number];
   for (let s = 0; s < segments; s++) {
     const a0 = (s / segments) * Math.PI * 2;
     const a1 = ((s + 1) / segments) * Math.PI * 2;
@@ -89,6 +94,7 @@ const rgb = (hex: string): [number, number, number] => {
 };
 
 function pool() {
+  SIZE = 1;
   const size = 4.5;
   const rim = 0.35;
   const height = 0.45;
@@ -106,6 +112,7 @@ function pool() {
 }
 
 function scooter() {
+  SIZE = 1.4;
   const deck = empty();
   addBox(deck, 0, 0.12, 0, 0.2, 0.04, 0.72);
   const metal = empty();
@@ -127,6 +134,7 @@ function scooter() {
 }
 
 function tricycle() {
+  SIZE = 1.5;
   const frame = empty();
   addBox(frame, 0, 0.3, 0.1, 0.05, 0.05, 0.9);
   addBox(frame, 0, 0.5, 0.42, 0.05, 0.5, 0.05);
