@@ -59,10 +59,8 @@ export type PlayerState = {
   seat?: string | null;
   pose?: PlayerPose | null;
   poseRack?: string | null;
-  /** Custom status line, at most `STATUS_TEXT_MAX` characters. */
   statusText?: string | null;
   statusEmoji?: string | null;
-  /** Focus (do not disturb): peers see an icon and this player's pings and pokes stay silent. */
   focus?: boolean;
   handRaised?: boolean;
   tRecv?: number;

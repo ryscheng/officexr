@@ -1,7 +1,6 @@
 export const EMOTE_BURST = 4;
 export const EMOTE_WINDOW_MS = 4000;
 
-/** Sliding window: at most {@link EMOTE_BURST} emotes per {@link EMOTE_WINDOW_MS} from one sender. */
 export class EmoteRateLimit {
   private sent: number[] = [];
 

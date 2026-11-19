@@ -45,7 +45,6 @@ export interface Actions {
   clearCallRoster(): void;
   markSelfActive(now: number): void;
   setSelfPresence(patch: { status?: PresenceStatus; mic?: MicState }): void;
-  /** Sets the custom status line, its emoji and the focus flag; the text is trimmed and capped. */
   setSelfRichStatus(patch: RichStatus): void;
   setSelfHand(raised: boolean): void;
   appendChat(msg: ChatMessage): void;

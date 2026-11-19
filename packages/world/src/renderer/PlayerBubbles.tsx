@@ -8,7 +8,6 @@ export const RAISED_HAND_GLYPH = '✋';
 
 type ShownEmote = { emote: EmoteId; n: number };
 
-/** The emote `playerId` last sent, for `EMOTE_BUBBLE_MS`; a repeat restarts the timer and the pop. */
 export function usePlayerEmote(bus: Bus, playerId: PlayerId, lifeMs: number = EMOTE_BUBBLE_MS): ShownEmote | null {
   const [shown, setShown] = useState<ShownEmote | null>(null);
   useEffect(
@@ -38,10 +37,6 @@ export function usePlayerHandRaised(store: Store, playerId: PlayerId): boolean {
 export const shouldShowBubbles = (paused: boolean, handRaised: boolean, emote: ShownEmote | null): boolean =>
   !paused && (handRaised || emote !== null);
 
-/**
- * Raised-hand and emote icons above a player's name tag. Must be a child of the
- * per-player group so it follows the character.
- */
 export function PlayerBubbles(props: { store: Store; bus: Bus; playerId: PlayerId; paused: boolean }) {
   const { store, bus, playerId, paused } = props;
   const emote = usePlayerEmote(bus, playerId);

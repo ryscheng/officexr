@@ -7,7 +7,6 @@ export interface StatusHotkeyActions {
   toggleFocus(): void;
 }
 
-/** H raises or lowers your hand, R opens the emote picker, Alt+N toggles focus mode. */
 export function useStatusHotkeys(actions: StatusHotkeyActions, enabled = true) {
   useEffect(() => {
     if (!enabled) {

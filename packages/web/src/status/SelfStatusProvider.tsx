@@ -11,16 +11,13 @@ export type StatusHud = SelfStatus & {
   setStatusMenuOpen: (open: boolean) => void;
   emoteMenuOpen: boolean;
   setEmoteMenuOpen: (open: boolean) => void;
-  /** Ignored while the previous emote is still cooling down. */
   sendEmote: (emote: EmoteId) => void;
 };
 
 const StatusHudContext = createContext<StatusHud | null>(null);
 
-/** The status controls' state, or null outside a provider so shared lists render without them. */
 export const useStatusHud = (): StatusHud | null => useContext(StatusHudContext);
 
-/** Owns the local status, raised hand and emote state, and the H, R and Alt+N keys that drive them. */
 export function SelfStatusProvider({
   store,
   actions,
@@ -35,7 +32,6 @@ export function SelfStatusProvider({
   sync: Pick<SyncEngine, 'sendEmote'>;
   selfId: PlayerId;
   storage?: StatusStorage;
-  /** Must be stable. */
   clock?: () => number;
   children: ReactNode;
 }) {

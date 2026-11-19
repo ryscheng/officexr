@@ -32,10 +32,6 @@ const selectSelf =
 const sameSelf = (a: ReturnType<ReturnType<typeof selectSelf>>, b: typeof a) =>
   a.text === b.text && a.emoji === b.emoji && a.focus === b.focus && a.handRaised === b.handRaised;
 
-/**
- * The local player's status line, focus flag and raised hand. The saved status is applied once on
- * mount, which the sync engine announces like any change; every edit is saved back. `storage` defaults to `localStorage`, or nothing where that is blocked.
- */
 export function useSelfStatus(
   store: Store,
   actions: Pick<Actions, 'setSelfRichStatus' | 'setSelfHand'>,

@@ -41,7 +41,6 @@ export function PersonList({
   clock?: () => number;
   /** Render the "No route" live region; mount it in one list only so it is announced once. */
   announceNoRoute?: boolean;
-  /** Makes your own name a button that runs this, to edit your status. */
   onEditSelf?: () => void;
 }) {
   const viewYawDeg = useViewYaw() * DEG;

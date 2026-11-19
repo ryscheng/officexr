@@ -22,7 +22,6 @@ const browserDeps: PingReceiverDeps = {
   notify: maybeNotify,
 };
 
-/** Plays the chosen sound, and maybe notifies, when another player pings the local one; silent in focus mode. */
 export function usePingReceiver(bus: Bus, store: Store, deps: PingReceiverDeps = browserDeps): void {
   const catalog = useSoundCatalog();
   useEffect(() => deps.prepare(), [deps]);

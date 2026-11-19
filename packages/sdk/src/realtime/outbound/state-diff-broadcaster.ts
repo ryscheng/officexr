@@ -246,7 +246,6 @@ export class StateDiffBroadcaster {
     });
   }
 
-  /** A lowered hand is the default for peers, so only a raised one needs re-announcing. */
   announceHandIfRaised(state: OfficeState = this.store.getState()): void {
     if (state.players[state.selfId]?.handRaised) this.announceHand(state);
   }

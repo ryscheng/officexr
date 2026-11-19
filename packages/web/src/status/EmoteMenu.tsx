@@ -7,7 +7,6 @@ import { Keycap } from '../hud/ui/Keycap';
 import { Panel, PanelTitle } from '../hud/ui/Panel';
 import { useStatusHud } from './SelfStatusProvider';
 
-/** The emote picker button with its popover, and the raise-hand toggle beside it. */
 export function EmoteMenu() {
   const hud = useStatusHud();
   const open = hud?.emoteMenuOpen ?? false;
