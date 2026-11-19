@@ -1,18 +1,18 @@
-import { ArrowUp, Bell, Mic, MicOff, Navigation, type LucideIcon } from 'lucide-react';
+import { ArrowUp, Bell, BellOff, Hand, Mic, MicOff, Navigation, type LucideIcon } from 'lucide-react';
 import type { DepartedPlayer, MicState, PlayerId, PresenceStatus } from '@officexr/sdk';
 import { presenceIndicator } from '@officexr/sdk';
 import { focusWorld, usePlayControls, useViewYaw } from '@officexr/world/top-down';
 import { formatDistance } from './formatDistance';
 import { IconButton } from './IconButton';
 import type { PingSender } from '../ping/usePingSender';
-import { DEG, type PresencePlayer } from './personRows';
+import { DEG, type PresencePlayer, type RichPresence } from './personRows';
 import { relativeTime } from './relativeTime';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { useNow } from './useNow';
 
 /** `mic` is absent where the list doesn't show it. */
 export type PersonRow = { id: PlayerId; label: string } & (
-  | { type: 'self'; status: PresenceStatus; mic?: MicState }
+  | ({ type: 'self'; status: PresenceStatus; mic?: MicState } & RichPresence)
   | ({ type: 'peer'; mic?: MicState } & Omit<PresencePlayer, 'id' | 'name'>)
   | ({ type: 'departed' } & Omit<DepartedPlayer, 'name'>)
   | { type: 'guest' }
@@ -31,6 +31,7 @@ export function PersonList({
   pinger,
   clock,
   announceNoRoute,
+  onEditSelf,
 }: {
   label: string;
   rows: PersonRow[];
@@ -40,6 +41,7 @@ export function PersonList({
   clock?: () => number;
   /** Render the "No route" live region; mount it in one list only so it is announced once. */
   announceNoRoute?: boolean;
+  onEditSelf?: () => void;
 }) {
   const viewYawDeg = useViewYaw() * DEG;
   const now = useNow(1000, clock);
@@ -59,6 +61,7 @@ export function PersonList({
             viewYawDeg={viewYawDeg}
             following={row.id === following}
             noRoute={row.id === unreachable}
+            onEditSelf={onEditSelf}
             onGo={() => {
               goTo(row.id);
               focusWorld();
@@ -91,6 +94,7 @@ function PersonRowItem({
   viewYawDeg,
   following,
   noRoute,
+  onEditSelf,
   onGo,
   onPing,
 }: {
@@ -100,6 +104,7 @@ function PersonRowItem({
   /** Whether the auto-walk targets this user, so clicking Go again cancels it. */
   following: boolean;
   noRoute: boolean;
+  onEditSelf?: () => void;
   onGo: () => void;
   onPing?: { disabled: boolean; send: () => void };
 }) {
@@ -108,6 +113,8 @@ function PersonRowItem({
   const mic = (row.type === 'self' || row.type === 'peer') && row.mic ? MIC[row.mic] : null;
   const away = row.type === 'peer' && kind === 'away';
   const idleMs = row.type === 'peer' && row.lastActiveAt !== undefined ? now - row.lastActiveAt : 0;
+  const rich = row.type === 'self' || row.type === 'peer' ? row : null;
+  const statusLine = [rich?.statusEmoji, rich?.statusText].filter(Boolean).join(' ');
   const activeText = idleMs >= 60_000 ? `Active ${relativeTime(idleMs)}` : null;
   return (
     <li className={`flex items-center gap-2 rounded-lg px-1.5 py-1 ${row.type === 'self' ? 'bg-hud-inset' : ''}`}>
@@ -123,9 +130,22 @@ function PersonRowItem({
         )}
       </span>
       <span className="min-w-0 flex-1">
-        <span className={`block truncate text-xs ${row.type === 'departed' ? 'text-hud-text-2' : 'text-hud-text'}`}>
-          {row.label}
-        </span>
+        {row.type === 'self' && onEditSelf ? (
+          <button
+            type="button"
+            title="Set your status"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onEditSelf}
+            className="block max-w-full truncate text-left text-xs text-hud-text hover:underline"
+          >
+            {row.label}
+          </button>
+        ) : (
+          <span className={`block truncate text-xs ${row.type === 'departed' ? 'text-hud-text-2' : 'text-hud-text'}`}>
+            {row.label}
+          </span>
+        )}
+        {statusLine && <span className="block truncate text-[10px] text-hud-text-2">{statusLine}</span>}
         {row.type === 'peer' && (noRoute || activeText || row.distanceM !== null) && (
           // One line that never wraps: the status truncates, the distance keeps its room.
           <span className="flex min-w-0 items-center gap-1 text-[10px] whitespace-nowrap text-hud-text-2 tabular-nums">
@@ -154,6 +174,12 @@ function PersonRowItem({
           </span>
         )}
       </span>
+      {rich?.focus && (
+        <BellOff role="img" aria-label="In focus mode" className="h-[13px] w-[13px] shrink-0 text-hud-accent" />
+      )}
+      {rich?.handRaised && (
+        <Hand role="img" aria-label="Hand raised" className="h-[13px] w-[13px] shrink-0 text-hud-amber-text" />
+      )}
       {mic && <mic.Icon role="img" aria-label={mic.label} className={`h-[13px] w-[13px] shrink-0 ${mic.className}`} />}
       {row.type === 'peer' && onPing && (
         <IconButton

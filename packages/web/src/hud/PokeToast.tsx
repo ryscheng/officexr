@@ -10,7 +10,7 @@ export function PokeToast({ bus, store, selfId }: { bus: Bus; store: Store; self
   useEffect(
     () =>
       bus.on('poke:received', ({ fromId, targetId }) => {
-        if (targetId === selfId && fromId !== selfId) {
+        if (targetId === selfId && fromId !== selfId && !store.getState().players[selfId]?.focus) {
           setPoke({ poker: senderName(store, fromId) });
         }
       }),

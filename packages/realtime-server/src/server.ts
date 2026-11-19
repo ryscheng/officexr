@@ -30,6 +30,7 @@ import {
   type Store,
   type WorldConstants,
 } from '@officexr/sdk';
+import { EmoteRateLimit } from './emote-rate-limit.ts';
 import {
   decodeFrame,
   encodeFrame,
@@ -146,6 +147,8 @@ export class Room {
     if (!this.store.getState().players[userId]) return;
     this.actions.applyRemotePose(userId, null, Date.now());
     this.actions.applyRemoteSeat(userId, null, Date.now());
+    this.actions.applyRemoteHand(userId, false, Date.now());
+    this.actions.upsertPlayer({ id: userId, statusText: null, statusEmoji: null, focus: false });
   }
 
   sessionsOf(login: string): WsClient[] {
@@ -262,6 +265,32 @@ export class Room {
           t: Date.now(),
           pose: p.pose,
           rack: p.poseRack ?? null,
+        });
+      }
+      if (p.handRaised) {
+        events.push({
+          kind: 'presence:hand',
+          v: 1,
+          actorId: id as PlayerId,
+          seq: seq++,
+          t: Date.now(),
+          raised: true,
+        });
+      }
+      if (p.statusText || p.statusEmoji || p.focus) {
+        events.push({
+          kind: 'presence:status',
+          v: 1,
+          actorId: id as PlayerId,
+          seq: seq++,
+          t: Date.now(),
+          status: p.status,
+          mic: p.mic,
+          jitsiRoom: p.jitsiRoom,
+          jitsiParticipantId: p.jitsiParticipantId,
+          ...(p.statusText && { statusText: p.statusText }),
+          ...(p.statusEmoji && { statusEmoji: p.statusEmoji }),
+          ...(p.focus && { focus: true }),
         });
       }
       // The store's default name is '', so a name means the player sent
@@ -711,6 +740,7 @@ export class RealtimeServer {
         if (!v.ok || PROTOCOL[v.event.kind].authority === 'server' || v.event.actorId === SERVER_SELF_ID) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
+        if (v.event.kind === 'emote:send' && !client.emoteLimit.allow(Date.now())) return;
         room.hub.broadcast(client.userId, v.event);
         return;
       }
@@ -865,6 +895,7 @@ function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
  */
 export class WsClient {
   readonly userId: PlayerId;
+  readonly emoteLimit = new EmoteRateLimit();
   private readonly ws: WebSocket;
   private readonly channel: InMemoryChannel;
   private offBroadcast: (() => void) | null = null;

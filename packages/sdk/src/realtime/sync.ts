@@ -1,7 +1,7 @@
 import type { Actions } from '../game-state/actions.ts';
 import type { Bus } from '../game-state/bus.ts';
 import type { Store } from '../game-state/store.ts';
-import type { OfficeState, PlayerId } from '../game-state/types.ts';
+import type { EmoteId, OfficeState, PlayerId } from '../game-state/types.ts';
 import type { Channel, ChannelStatus } from './channel.ts';
 import type { NetEvent } from './protocol.ts';
 import type { Clock } from '../test-harness/time.ts';
@@ -217,6 +217,17 @@ export class SyncEngine {
     });
   }
 
+  sendEmote(emote: EmoteId): void {
+    this.broadcast({
+      kind: 'emote:send',
+      v: 1,
+      actorId: this.store.getState().selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      emote,
+    });
+  }
+
   sendPoke(targetId: PlayerId | null): void {
     this.broadcast({
       kind: 'poke:send',
@@ -241,6 +252,7 @@ export class SyncEngine {
       this.position.announceSelf();
       this.stateDiff.announceSeat();
       this.stateDiff.announcePose();
+      this.stateDiff.announceHandIfRaised();
       this.status.announceSelf();
     }
     this.heartbeat = this.timers.setInterval(() => this.tickHeartbeat(), HEARTBEAT_TICK_MS);
@@ -257,7 +269,10 @@ export class SyncEngine {
         a?.status === b?.status &&
         a?.mic === b?.mic &&
         a?.jitsiRoom === b?.jitsiRoom &&
-        a?.jitsiParticipantId === b?.jitsiParticipantId,
+        a?.jitsiParticipantId === b?.jitsiParticipantId &&
+        a?.statusText === b?.statusText &&
+        a?.statusEmoji === b?.statusEmoji &&
+        a?.focus === b?.focus,
     );
     this.offChannel = this.channel.on((event) => this.inbound.onInbound(event));
     // When a peer's channel disconnects, the hub fires presence-leave for
@@ -304,6 +319,7 @@ export class SyncEngine {
     this.stateDiff.announceAvatar();
     this.stateDiff.announceSeat();
     this.stateDiff.announcePose();
+    this.stateDiff.announceHandIfRaised();
     this.status.announceSelf();
   }
 
