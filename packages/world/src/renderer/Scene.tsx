@@ -25,6 +25,7 @@ import { XRAvatarOrigin } from './XRAvatarOrigin.tsx';
 import type { MotionLookState } from './motionLook.ts';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
+import { WaterVolumes } from './WaterVolumes.tsx';
 import { BakedLayout } from './BakedLayout.tsx';
 import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
 import { ProximityGlow } from './ProximityGlow.tsx';
@@ -327,6 +328,7 @@ export function Scene(props: SceneProps) {
         />
 
         <ObjectInstances store={store} exclude={excludeBakedInstance} />
+        <WaterVolumes store={store} />
 
         <Players
           store={store}

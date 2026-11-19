@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import {
@@ -13,6 +13,16 @@ import {
 import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { Adventurer, ANIMATION_URLS, type MotionState } from './Adventurer.tsx';
+import { POKE_TURN_S, yawToward } from '../motion/poke.ts';
+import { POSE_VISUALS } from '../motion/poseVisual.ts';
+import { leanOf, RIDE_STRATEGIES } from '../motion/ride.ts';
+import { AT_REST, floatTarget, stepBuoyancy, swimStateOf, type Buoyancy } from '../motion/swim.ts';
+import { waterAt } from '../motion/water.ts';
+import { useWaterVolumes } from './useWaterVolumes.ts';
+import { wrapAngle } from './lookControls.ts';
+import { modelUrl } from '../app/asset-url.ts';
+import { useGLTF } from '@react-three/drei';
+import type { RideVehicle } from '../scenes/world-object-kinds-schema.ts';
 import { assertNever } from './assertNever.ts';
 import type { CameraMode } from './config.ts';
 import { PlayerNameTag } from './PlayerNameTag.tsx';
@@ -30,7 +40,7 @@ import {
   type ColliderTag,
 } from '../physics/groups.ts';
 import { routeContactEvent } from '../physics/bridge.ts';
-import { AVATAR_YAW_OFFSET, BODY_Y } from '../physics/rules.ts';
+import { AVATAR_YAW_OFFSET, BODY_Y, feetPosition } from '../physics/rules.ts';
 
 interface PlayersProps {
   store: Store;
@@ -57,6 +67,13 @@ interface PlayersProps {
   /** Hides the self avatar, as in first-person, while an immersive XR session is presenting. */
   xrPresenting: boolean;
   onPingPlayer?: (id: PlayerId) => void;
+}
+
+/** What a posed player's avatar needs from React: the clip and the vehicle under it. */
+interface PoseView {
+  clip: string;
+  timeScale: number;
+  vehicle: RideVehicle | null;
 }
 
 interface BumpState {
@@ -226,6 +243,39 @@ export function Players({
     });
   }, [bus]);
 
+  const poseGroupRefs = useRef<Map<string, THREE.Group>>(new Map());
+  const poseKeys = useRef<Map<string, string>>(new Map());
+  const [poseByPlayer, setPoseByPlayer] = useState<Record<string, PoseView | null>>({});
+  const buoyancy = useRef<Map<string, Buoyancy>>(new Map());
+  const lastYaw = useRef<Map<string, number>>(new Map());
+  const yawRate = useRef<Map<string, number>>(new Map());
+  const turnToward = useRef<Map<string, { yaw: number; until: number }>>(new Map());
+  const [pokeCounters, setPokeCounters] = useState<Record<string, number>>({});
+  const waterVolumes = useWaterVolumes(store);
+  const waterVolumesRef = useRef(waterVolumes);
+  waterVolumesRef.current = waterVolumes;
+
+  useEffect(() => {
+    return bus.on('poke:received', ({ fromId, targetId }) => {
+      setPokeCounters((prev) => ({ ...prev, [fromId]: (prev[fromId] ?? 0) + 1 }));
+      const players = store.getState().players;
+      const from = players[fromId];
+      const target = targetId ? players[targetId] : undefined;
+      if (!targetId || !from || !target) return;
+      const dx = target.pos.x - from.pos.x;
+      const dz = target.pos.z - from.pos.z;
+      const len = Math.hypot(dx, dz) || 1;
+      bumps.current.set(targetId, { startMs: performance.now(), normal: { x: dx / len, z: dz / len } });
+      setBumpCounters((prev) => ({ ...prev, [targetId]: (prev[targetId] ?? 0) + 1 }));
+      if (targetId !== selfId) {
+        turnToward.current.set(targetId, {
+          yaw: yawToward(target.pos, from.pos),
+          until: performance.now() + POKE_TURN_S * 1000,
+        });
+      }
+    });
+  }, [bus, store, selfId]);
+
   const tmpVec = useMemo(() => new THREE.Vector3(), []);
 
   // --- Rapier → bus event bridge -----------------------------------
@@ -287,6 +337,8 @@ export function Players({
     const nextMotion: Record<string, MotionState> = {};
     let animScaleChanged = false;
     const nextAnimScales: Record<string, number> = {};
+    let poseChanged = false;
+    const nextPoses: Record<string, PoseView | null> = {};
     const runThreshold = (playerSpeed + runSpeed) / 2;
     const WALK_ENTER_SQ = (WALK_THRESHOLD * 1.5) * (WALK_THRESHOLD * 1.5);
     const WALK_EXIT_SQ = WALK_THRESHOLD * WALK_THRESHOLD;
@@ -347,7 +399,9 @@ export function Players({
       // the cube top. Bump is x/z only.
       grp.position.set(bumpX, BODY_Y - charRadius, bumpZ);
 
-      const targetYaw = (player.yaw ?? 0) + AVATAR_YAW_OFFSET;
+      const flinch = turnToward.current.get(id);
+      if (flinch && now > flinch.until) turnToward.current.delete(id);
+      const targetYaw = (flinch && now <= flinch.until ? flinch.yaw : (player.yaw ?? 0)) + AVATAR_YAW_OFFSET;
       const prev = currentYaw.current.get(id) ?? targetYaw;
       grp.rotation.y = stepTowardAngle(prev, targetYaw, turnSpeed * dt);
       currentYaw.current.set(id, grp.rotation.y);
@@ -394,6 +448,45 @@ export function Players({
         motion = 'sitting';
       }
 
+      const speedNow = Math.hypot(v.x, v.z);
+      const pose = player.pose ?? null;
+      const visual = pose ? POSE_VISUALS[pose](speedNow) : null;
+      const poseGroup = poseGroupRefs.current.get(id);
+      const yawNow = player.yaw ?? 0;
+      const yawDelta = wrapAngle(yawNow - (lastYaw.current.get(id) ?? yawNow));
+      lastYaw.current.set(id, yawNow);
+      const prevRate = yawRate.current.get(id) ?? 0;
+      const smoothedRate = prevRate + ((dt > 0 ? yawDelta / dt : 0) - prevRate) * Math.min(1, 10 * dt);
+      yawRate.current.set(id, smoothedRate);
+      if (poseGroup) {
+        if (visual) {
+          let lift = visual.lift;
+          if (visual.floats) {
+            const volume = waterAt(waterVolumesRef.current, player.pos.x, player.pos.z);
+            const feetY = feetPosition(player.pos, charRadius).y;
+            const target = volume ? floatTarget(volume.surfaceY, feetY, swimStateOf(speedNow), now / 1000) : 0;
+            const next = stepBuoyancy(buoyancy.current.get(id) ?? AT_REST, target, dt);
+            buoyancy.current.set(id, next);
+            lift = next.lift;
+          } else {
+            buoyancy.current.delete(id);
+          }
+          poseGroup.position.y = lift;
+          poseGroup.rotation.x = visual.pitch;
+          poseGroup.rotation.z = visual.vehicle ? leanOf(visual.vehicle, smoothedRate, speedNow) : 0;
+        } else {
+          buoyancy.current.delete(id);
+          poseGroup.position.y = 0;
+          poseGroup.rotation.set(0, 0, 0);
+        }
+      }
+      const poseKey = visual ? `${visual.clip}|${visual.vehicle}|${Math.round(visual.timeScale * 10)}` : '';
+      if (poseKeys.current.get(id) !== poseKey) {
+        poseKeys.current.set(id, poseKey);
+        poseChanged = true;
+      }
+      nextPoses[id] = visual ? { clip: visual.clip, timeScale: Math.round(visual.timeScale * 10) / 10, vehicle: visual.vehicle } : null;
+
       nextMotion[id] = motion;
       if (previous !== motion) {
         motionState.current.set(id, motion);
@@ -417,6 +510,7 @@ export function Players({
 
     if (motionChanged) setMotionByPlayer(nextMotion);
     if (animScaleChanged) setAnimScaleByPlayer(nextAnimScales);
+    if (poseChanged) setPoseByPlayer(nextPoses);
   });
 
   // Every character body in this scene is a kinematic-position rigid
@@ -527,6 +621,17 @@ export function Players({
                 else groupRefs.current.delete(p.id);
               }}
             >
+              <group
+                ref={(g: THREE.Group | null) => {
+                  if (g) poseGroupRefs.current.set(p.id, g);
+                  else poseGroupRefs.current.delete(p.id);
+                }}
+              >
+              {poseByPlayer[p.id]?.vehicle && (
+                <Suspense fallback={null}>
+                  <PlayerVehicle vehicle={poseByPlayer[p.id]!.vehicle!} ghost={p.model.ghost} />
+                </Suspense>
+              )}
               <SwapWhenLoaded
                 value={p.model}
                 keyOf={modelKey}
@@ -541,6 +646,8 @@ export function Players({
                     invisible={isSelf && (cameraMode === 'first-person' || xrPresenting)}
                     animScale={animScaleByPlayer[p.id] ?? 1}
                     bumpCounter={bumpCounters[p.id] ?? 0}
+                    pokeCounter={pokeCounters[p.id] ?? 0}
+                    pose={poseByPlayer[p.id] ?? null}
                     store={store}
                     fallbackIdleSpeed={idleAnimSpeed}
                     fallbackWalkSpeed={walkAnimSpeed}
@@ -549,6 +656,7 @@ export function Players({
                   />
                 )}
               />
+              </group>
               <PlayerNameTag
                 store={store}
                 playerId={p.id}
@@ -586,6 +694,8 @@ function PerPlayerAdventurer(props: {
   invisible: boolean;
   animScale: number;
   bumpCounter: number;
+  pokeCounter: number;
+  pose: PoseView | null;
   store: Store;
   fallbackIdleSpeed: number;
   fallbackWalkSpeed: number;
@@ -599,6 +709,8 @@ function PerPlayerAdventurer(props: {
     invisible,
     animScale,
     bumpCounter,
+    pokeCounter,
+    pose,
     store,
     paused,
   } = props;
@@ -632,6 +744,8 @@ function PerPlayerAdventurer(props: {
       walkSpeed={tunedSpeeds.walk * animScale}
       runSpeed={tunedSpeeds.run * animScale}
       bumpCounter={bumpCounter}
+      pokeCounter={pokeCounter}
+      clipOverride={pose ? { name: pose.clip, timeScale: pose.timeScale } : undefined}
       paused={paused}
     />
   );
@@ -643,4 +757,21 @@ function readSpeeds(store: Store, playerId: string) {
   const model = s.players[playerId]?.avatar.model ?? 'default';
   const tun = resolveCharacterTunables(model, s.worldSettings, s.characterConfigs);
   return { idle: tun.idleAnimSpeed, walk: tun.walkAnimSpeed, run: tun.runAnimSpeed };
+}
+
+/** The scooter or tricycle under a rider, drawn from the same model as the rack it came from. */
+function PlayerVehicle({ vehicle, ghost }: { vehicle: RideVehicle; ghost: boolean }) {
+  const gltf = useGLTF(modelUrl(RIDE_STRATEGIES[vehicle].model));
+  const scene = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    clone.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        m.castShadow = !ghost;
+        m.receiveShadow = !ghost;
+      }
+    });
+    return clone;
+  }, [gltf.scene, ghost]);
+  return <primitive object={scene} />;
 }

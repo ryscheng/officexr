@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "name": "pool_party",
+  "title": "Pool party",
+  "updatedAt": 1793200000000,
+  "rooms": [
+    {
+      "id": "room-1",
+      "roomName": "pool-party",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotationY": 0,
+      "building": true
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "spawn-pool",
+      "label": "by the pool",
+      "position": [
+        6,
+        3,
+        6
+      ]
+    }
+  ],
+  "environment": {
+    "sun": {
+      "positionX": 20,
+      "positionY": 40,
+      "positionZ": 20,
+      "color": "#ffffff",
+      "intensity": 1.4
+    },
+    "sky": null,
+    "stars": {
+      "enabled": true,
+      "radius": 100,
+      "depth": 50,
+      "count": 5000,
+      "factor": 4,
+      "saturation": 0,
+      "fade": true
+    },
+    "hdri": null,
+    "ambientIntensity": 0.15
+  }
+}

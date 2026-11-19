@@ -23,6 +23,7 @@ import type { CameraMode } from './config.ts';
 import { resolveCharacterTunables } from '../characters/resolve.ts';
 import {
   CHARACTER_CONTROLLER_SKIN,
+  feetPosition,
   FLOOR_PROBE_RANGE,
   GRAVITY as GAME_GRAVITY,
   pickRespawnPosition,
@@ -35,6 +36,9 @@ import { tryStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
 import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
+import { newSelfMotion, stepSelfMotion } from '../motion/self-motion.ts';
+import { pickPokeTarget, POKE_COOLDOWN_S } from '../motion/poke.ts';
+import { useMotionWorld } from './useMotionWorld.ts';
 
 interface SceneFrameProps {
   store: Store;
@@ -210,6 +214,13 @@ export function SceneFrame({
   const blendStartVelZRef = useRef(0);
   const spaceWasDownRef = useRef(false);  // edge-trigger: was Space held last frame?
   const eWasDownRef = useRef(false);
+  const mountWasDownRef = useRef(false);
+  const pokeWasDownRef = useRef(false);
+  const lastPokeAtRef = useRef(-Infinity);
+  const selfMotionRef = useRef(newSelfMotion());
+  const motionWorld = useMotionWorld(store);
+  const motionWorldRef = useRef(motionWorld);
+  motionWorldRef.current = motionWorld;
   useEffect(() => {
     (window as unknown as {
       __OFFICE_GRAVITY__?: { setEnabled: (v: boolean) => void };
@@ -322,7 +333,7 @@ export function SceneFrame({
         stateSnapshot.worldSettings,
         stateSnapshot.characterConfigs,
       );
-    const playerSpeed = autoWalkDir
+    let playerSpeed = autoWalkDir
       ? baseSpeed
       : (isRunning ? baseSpeed * runSpeedMultiplier : baseSpeed) * speedScale;
     // movementBlockThreshold = "fraction of intent that must be
@@ -337,7 +348,27 @@ export function SceneFrame({
     const spacePressedThisFrame = spaceDown && !spaceWasDownRef.current;
     spaceWasDownRef.current = spaceDown;
 
+    const mountDown = keys.has('f');
+    const mountPressedThisFrame = mountDown && !mountWasDownRef.current;
+    mountWasDownRef.current = mountDown;
+    const pokeDown = keys.has('q');
+    const pokePressedThisFrame = pokeDown && !pokeWasDownRef.current;
+    pokeWasDownRef.current = pokeDown;
+    if (pokePressedThisFrame && self && now - lastPokeAtRef.current > POKE_COOLDOWN_S * 1000) {
+      lastPokeAtRef.current = now;
+      const others = Object.values(stateSnapshot.players)
+        .filter((p) => p.id !== selfId && !p.isDead)
+        .map((p) => ({ id: p.id, x: p.pos.x, z: p.pos.z }));
+      const targetId = pickPokeTarget({ x: self.pos.x, z: self.pos.z, yaw: self.yaw }, others);
+      actions.receivePoke(selfId, targetId, now);
+      sync.sendPoke(targetId);
+    }
+
     if (self?.seat != null && body) {
+      if (selfMotionRef.current.pose !== null) {
+        selfMotionRef.current.pose = null;
+        actions.setSelfPose(null);
+      }
       stepSeated(store, selfId, body, seating, hasMoveInput || spacePressedThisFrame || autoWalkDir !== null);
       verticalVelRef.current = 0;
       airborneRef.current = false;
@@ -432,7 +463,28 @@ export function SceneFrame({
         dx = autoWalkDir.x;
         dz = autoWalkDir.z;
       }
-      const len = Math.hypot(dx, dz);
+      let len = Math.hypot(dx, dz);
+      const motionOut = stepSelfMotion(
+        selfMotionRef.current,
+        {
+          feet: feetPosition(self.pos, stateSnapshot.worldSettings.charRadius),
+          dir: len > 0 ? { x: dx / len, z: dz / len } : null,
+          sprint: isRunning,
+          mount: mountPressedThisFrame,
+          heading: Math.atan2(-Math.sin(self.yaw), -Math.cos(self.yaw)),
+          dt: dt / 1000,
+        },
+        motionWorldRef.current,
+      );
+      if ((self.pose ?? null) !== selfMotionRef.current.pose) {
+        actions.setSelfPose(selfMotionRef.current.pose);
+      }
+      if (motionOut.speed !== null) {
+        dx = motionOut.dir?.x ?? 0;
+        dz = motionOut.dir?.z ?? 0;
+        len = Math.hypot(dx, dz);
+        playerSpeed = motionOut.speed;
+      }
       if (len > 0) {
         dx /= len;
         dz /= len;
@@ -541,6 +593,7 @@ export function SceneFrame({
         // (Mugshot) treats the character as frozen on the ground.
         if (
           spacePressedThisFrame &&
+          motionOut.canJump &&
           jumpsRemainingRef.current > 0 &&
           !warped &&
           gravityEnabledRef.current

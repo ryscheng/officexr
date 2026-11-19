@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 5,
+  "name": "pool-party",
+  "title": "Pool party",
+  "updatedAt": 1793200000000,
+  "layoutName": "platform",
+  "commands": [
+    {
+      "id": "place-pool-1",
+      "op": "placeObject",
+      "kindId": "prop_pool",
+      "position": [
+        22,
+        4,
+        16
+      ]
+    },
+    {
+      "id": "place-scooter-1",
+      "op": "placeObject",
+      "kindId": "prop_scooter_rack",
+      "position": [
+        14,
+        4,
+        18
+      ]
+    },
+    {
+      "id": "place-tricycle-1",
+      "op": "placeObject",
+      "kindId": "prop_tricycle_rack",
+      "position": [
+        14,
+        4,
+        24
+      ]
+    }
+  ],
+  "groups": {}
+}
