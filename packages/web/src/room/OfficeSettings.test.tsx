@@ -55,10 +55,10 @@ function setup(me = alice, patch: (init: RequestInit) => Promise<Response> = () 
 }
 
 describe('OfficeSettings', () => {
-  it('offers the Office tab only to the creator', () => {
+  it('offers the Office tab to any signed-in user', () => {
     setup({ login: 'b@example.com', name: 'Bob' });
-    openSettingsModal();
-    expect(screen.queryByRole('tab', { name: 'Office' })).toBeNull();
+    openSettings();
+    expect(screen.getByLabelText('Name')).toBeTruthy();
     cleanup();
     setup();
     openSettings();
@@ -109,10 +109,10 @@ describe('OfficeSettings', () => {
   });
 
   it("shows the server's error and keeps the form", async () => {
-    const { onSaved } = setup(alice, () => json(403, { error: 'Only the office creator can change its settings' }));
+    const { onSaved } = setup(alice, () => json(400, { error: 'Unknown map' }));
     openSettings();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('Only the office creator can change its settings');
+    expect((await screen.findByRole('alert')).textContent).toBe('Unknown map');
     expect(onSaved).not.toHaveBeenCalled();
   });
 });

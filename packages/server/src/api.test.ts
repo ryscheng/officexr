@@ -958,14 +958,10 @@ describe('PATCH /api/offices/:id', () => {
     expect(await res.json()).toEqual({ ...offices[0], debug_enabled: true });
   });
 
-  it('is 403 for another login, and for an office without a creator', async () => {
-    const forbidden = { error: 'Only the office creator can change its settings' };
+  it('lets any signed-in login change the settings, also of an office without a creator', async () => {
     for (const [id, headers] of [[ID, bob], [OTHER, alice]] as const) {
-      const res = await patch(id, { name: 'Lab' }, headers);
-      expect(res.status).toBe(403);
-      expect(await res.json()).toEqual(forbidden);
+      expect((await patch(id, { name: 'Lab' }, headers)).status).toBe(200);
     }
-    expect(calls).toEqual([]);
   });
 
   it('is 401 without identity and 404 for unknown or invalid ids', async () => {
