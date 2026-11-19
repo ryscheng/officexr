@@ -15,7 +15,6 @@ import { ConnectionToast } from '../hud/ConnectionToast';
 import { HudBanner } from '../hud/HudBanner';
 import { HudLayout } from '../hud/HudLayout';
 import { RotatePrompt } from '../hud/RotatePrompt';
-import { OfficeNamePlate } from '../hud/OfficeNamePlate';
 import { PresenceList } from '../hud/PresenceList';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
@@ -187,7 +186,11 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
             <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
           </>
         }
-        topLeft={<OfficeNamePlate store={ready.local.store} name={office.name} />}
+        topLeft={
+          ready.voice && (
+            <CallBar store={ready.local.store} selfId={ready.local.selfId} voice={ready.voice} pinger={pinger} />
+          )
+        }
         topRight={
           <>
             <div className="flex items-start gap-2">
@@ -204,11 +207,6 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
             officeName={office.name}
             pinger={pinger}
           />
-        }
-        bottomCentre={
-          ready.voice && (
-            <CallBar store={ready.local.store} selfId={ready.local.selfId} voice={ready.voice} pinger={pinger} />
-          )
         }
         bottomLeft={<ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />}
       />

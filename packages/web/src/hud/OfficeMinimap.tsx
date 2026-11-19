@@ -3,18 +3,25 @@ import type { OfficeState, Store } from '@officexr/sdk';
 import { useApplication, useCatalog, useStoreSelector } from '@officexr/world/top-down';
 import { buildPlan, type PlanRect } from './minimapPlan';
 import { Minimap } from './Minimap';
+import { quantise } from './quantise';
 
 const selectObjects = (s: OfficeState) => s.worldObjects;
+/** Your height in half metres, so the plan rebuilds when you change level, not as you bob or jump a little. */
+const selectRootY = (s: OfficeState) => {
+  const y = s.players[s.selfId]?.pos.y;
+  return y === undefined ? undefined : quantise(y, 0.5);
+};
 
-/** The map's placed objects as a floor plan, rebuilt when the objects or the catalog change. */
+/** The map's placed objects as a floor plan, rebuilt when the objects, the catalog or your level change. */
 export function useMapPlan(store: Store): readonly PlanRect[] {
   const objects = useStoreSelector(store, selectObjects);
+  const rootY = useStoreSelector(store, selectRootY);
   const { geometry, catalog } = useApplication();
   const kinds = useCatalog();
   return useMemo(
-    () => buildPlan(objects.instances, (i) => geometry.worldAABBOfInstance(i), (id) => catalog.getKind(id)),
+    () => buildPlan(objects.instances, (i) => geometry.worldAABBOfInstance(i), (id) => catalog.getKind(id), rootY),
     // `kinds` changes when the catalog loads, which changes what `catalog.getKind` returns.
-    [objects, geometry, catalog, kinds],
+    [objects, geometry, catalog, kinds, rootY],
   );
 }
 

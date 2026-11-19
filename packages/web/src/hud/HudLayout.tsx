@@ -5,12 +5,11 @@ type Slots = {
   topCentre?: ReactNode;
   topRight?: ReactNode;
   rightEdge?: ReactNode;
-  bottomCentre?: ReactNode;
   bottomLeft?: ReactNode;
 };
 
 /** Places the in-office HUD in fixed zones around the edges; the top centre stacks toasts and banners. */
-export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentre, bottomLeft }: Slots) {
+export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomLeft }: Slots) {
   return (
     <div className="pointer-events-none absolute inset-3 z-20">
       <div data-hud-zone="topLeft" className="absolute top-0 left-0 flex flex-col items-start gap-2">
@@ -30,12 +29,6 @@ export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentr
         >
           {rightEdge}
         </div>
-      </div>
-      <div
-        data-hud-zone="bottomCentre"
-        className="absolute inset-x-0 bottom-0 flex justify-center pointer-coarse:justify-end"
-      >
-        {bottomCentre}
       </div>
       {/* On touch the virtual joystick owns the bottom-left corner, so the zone sits beside it. */}
       <div data-hud-zone="bottomLeft" className="absolute bottom-0 left-0 pointer-coarse:left-30">

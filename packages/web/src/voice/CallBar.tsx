@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { ChevronUp, Users } from 'lucide-react';
+import { ChevronDown, Users } from 'lucide-react';
 import type { PlayerId, Store } from '@officexr/sdk';
 import { CallList, useCallRows } from '../hud/CallList';
 import { useEscapeLayer } from '../hud/useEscapeLayer';
@@ -27,8 +27,9 @@ export function CallBar({
   const { state, rows } = useCallRows(store, selfId);
   const trayId = useId();
   return (
-    <div className="pointer-events-none flex max-w-full flex-col items-center gap-2 pointer-coarse:items-end">
-      {open && <CallList id={trayId} store={store} selfId={selfId} pinger={pinger} voice={voice} />}
+    // The top-left capsule: the mic is in the first spot the eye (and, holding a phone sideways, the left
+    // thumb) lands on, clear of the joystick and chat below; the call tray drops down under it.
+    <div className="pointer-events-none flex max-w-full flex-col items-start gap-2">
       <Panel className="pointer-events-auto flex max-w-full items-center gap-2 p-1.5">
         <MuteToggle voice={voice} />
         <div className="contents pointer-coarse:hidden">
@@ -58,9 +59,10 @@ export function CallBar({
           </span>
           <span className="pointer-coarse:hidden">In call · {rows.length}</span>
           <span className="hidden pointer-coarse:inline">{rows.length}</span>
-          <ChevronUp aria-hidden className={`h-3.5 w-3.5 ${open ? 'rotate-180' : ''}`} />
+          <ChevronDown aria-hidden className={`h-3.5 w-3.5 ${open ? 'rotate-180' : ''}`} />
         </button>
       </Panel>
+      {open && <CallList id={trayId} store={store} selfId={selfId} pinger={pinger} voice={voice} />}
     </div>
   );
 }

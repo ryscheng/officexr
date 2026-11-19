@@ -12,6 +12,15 @@ describe('planTone', () => {
     expect(planTone({ isLayoutObject: false }, 0.05)).toBe('rug');
     expect(planTone(undefined, 1)).toBe('furniture');
   });
+
+  it('reads a solid block under your feet as floor and one rising past them as a wall', () => {
+    // 2 m cubes: the floor's top is at y=0, where you stand (store root 0.5 m under the feet).
+    expect(planTone({ isLayoutObject: true }, 2, 0, -0.5)).toBe('floor');
+    expect(planTone({ isLayoutObject: true }, 2, 2, -0.5)).toBe('wall');
+    // A step up still reads as floor; a lower terrace too.
+    expect(planTone({ isLayoutObject: true }, 2, 0.4, -0.5)).toBe('floor');
+    expect(planTone({ isLayoutObject: true }, 2, -4, -0.5)).toBe('floor');
+  });
 });
 
 describe('buildPlan', () => {
@@ -31,6 +40,16 @@ describe('buildPlan', () => {
     const plan = buildPlan([inst('a', 'wall'), inst('b', 'desk'), inst('c', 'floor')], (i) => boxes[i.kindId], (id) => kinds[id]);
     expect(plan.map((r) => r.tone)).toEqual(['floor', 'desk', 'wall']);
     expect(plan[1]).toEqual({ x: 1, z: 1, w: 2, d: 1, tone: 'desk' });
+  });
+
+  it('keeps furniture on a floor built from blocks visible, under the walls only', () => {
+    const blocks: Record<string, { min: number[]; max: number[] }> = {
+      ...boxes,
+      floor: { min: [-5, -2, -5], max: [5, 0, 5] },
+      wall: { min: [0, 0, 0], max: [4, 2, 2] },
+    };
+    const plan = buildPlan([inst('a', 'wall'), inst('b', 'desk'), inst('c', 'floor')], (i) => blocks[i.kindId], (id) => kinds[id], -0.5);
+    expect(plan.map((r) => r.tone)).toEqual(['floor', 'desk', 'wall']);
   });
 });
 

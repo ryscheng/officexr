@@ -117,7 +117,9 @@
   --color-hud-panel: rgb(32 32 34 / 0.78);
   --color-hud-panel-solid: #1c1c1e;
   --color-hud-inset: rgb(118 118 128 / 0.24);
-  --color-hud-edge: rgb(255 255 255 / 0.1);
+  /* Near-invisible: a solid light ring reads as a white outline on dark glass. The rim's light is the
+     specular inset in --shadow-hud-panel / --shadow-hud-control instead. */
+  --color-hud-edge: rgb(255 255 255 / 0.03);
   --color-hud-edge-shadow: rgb(0 0 0 / 0.4);
   --color-hud-hover: rgb(255 255 255 / 0.08);
   --color-hud-separator: rgb(84 84 88 / 0.6);
@@ -136,7 +138,7 @@
   --color-hud-surface: rgb(255 255 255 / 0.07);
   --color-hud-surface-hover: rgb(255 255 255 / 0.13);
   --color-hud-thumb: #636366;
-  --color-hud-hairline: rgb(255 255 255 / 0.1);
+  --color-hud-hairline: rgb(255 255 255 / 0.06);
   --color-hud-track: rgb(120 120 128 / 0.4);
   --color-hud-tooltip: rgb(58 58 60 / 0.95);
   --color-hud-backdrop: rgb(0 0 0 / 0.4);
@@ -152,9 +154,14 @@
   --color-map-seat: #4d6d9e;
   --color-map-furniture: #58585e;
   --color-map-wall: #c7c7cc;
-  --shadow-hud-panel: 0 0 0 0.5px rgb(0 0 0 / 0.5), 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.3),
-    inset 0 1px 0 rgb(255 255 255 / 0.08);
-  --shadow-hud-control: 0 0 0 0.5px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  /*
+   * Liquid glass rim: a dark hairline outside separates the glass from the world, and light catches the
+   * top-left edge and fades along the sides (an offset inset highlight) instead of a uniform white ring.
+   */
+  --shadow-hud-panel: 0 0 0 0.5px rgb(0 0 0 / 0.7), 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.3),
+    inset 0.5px 1px 0 rgb(255 255 255 / 0.09), inset -0.5px -0.5px 0 rgb(255 255 255 / 0.03);
+  --shadow-hud-control: 0 0 0 0.5px rgb(0 0 0 / 0.6), 0 1px 3px rgb(0 0 0 / 0.4), inset 0.5px 1px 0 rgb(255 255 255 / 0.08),
+    inset -0.5px -0.5px 0 rgb(255 255 255 / 0.03);
   --hud-wallpaper: radial-gradient(at 15% 8%, #1d2b52 0, transparent 50%), radial-gradient(at 88% 4%, #3a1f4d 0, transparent 45%),
     radial-gradient(at 78% 92%, #4a2a1f 0, transparent 45%), radial-gradient(at 8% 88%, #12362e 0, transparent 45%), #111113;
 }

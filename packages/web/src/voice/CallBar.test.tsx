@@ -55,7 +55,8 @@ describe('CallBar', () => {
     fireEvent.click(screen.getByRole('button', { name: /In call/ }));
     const shares = screen.getAllByRole('button', { name: 'Share screen' });
     expect(shares).toHaveLength(2);
-    expect(shares[0].closest('.pointer-coarse\\:inline-flex')).not.toBeNull();
+    // The tray drops down below the bar, so its toggle is the second; only it shows on touch.
+    expect(shares.map((b) => b.closest('.pointer-coarse\\:inline-flex') !== null)).toEqual([false, true]);
   });
 
   it('opens and closes the tray from the toggle and reflects it in aria-expanded', () => {
