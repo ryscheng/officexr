@@ -26,6 +26,31 @@
   --color-hud-rose-text: #d1281e;
   --color-hud-amber: rgb(255 159 10 / 0.16);
   --color-hud-amber-text: #a85a00;
+  /* Rows, keycaps and neutral buttons sitting on the glass, and their hover. */
+  --color-hud-surface: rgb(255 255 255 / 0.7);
+  --color-hud-surface-hover: rgb(255 255 255 / 0.92);
+  /* The chosen item's raised thumb in a segmented control. */
+  --color-hud-thumb: #ffffff;
+  /* Hairline borders and the 0.5px rings around rows. */
+  --color-hud-hairline: rgb(15 23 42 / 0.08);
+  --color-hud-track: rgb(120 120 128 / 0.24);
+  --color-hud-tooltip: rgb(29 29 31 / 0.86);
+  --color-hud-backdrop: rgb(15 23 42 / 0.16);
+  --color-hud-sidebar: rgb(0 0 0 / 0.025);
+  --color-hud-panel-thick: rgb(250 250 252 / 0.86);
+  /* The colour that separates marks from what's behind them: white in light, near-black in dark. */
+  --color-hud-contrast: #ffffff;
+  --color-hud-page: #eef1f6;
+
+  /* The minimap's floor plan: pastel, low-detail fills. */
+  --color-map-bg: #e7eaf0;
+  --color-map-walkable: #ffffff;
+  --color-map-floor: #f6f1e8;
+  --color-map-rug: #e7ddf3;
+  --color-map-desk: #ddbb94;
+  --color-map-seat: #a9bfe0;
+  --color-map-furniture: #cdd2db;
+  --color-map-wall: #7c8496;
 
   --radius-hud-panel: 22px;
   --radius-hud-control: 12px;
@@ -72,14 +97,71 @@
 
 /* Modals and sheets: more frosting, so the world behind reads as atmosphere rather than detail. */
 @utility hud-glass-thick {
-  background-color: rgb(250 250 252 / 0.86);
+  background-color: var(--color-hud-panel-thick);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   backdrop-filter: blur(40px) saturate(180%);
 }
 
+/* The page wallpaper behind pages and the loading screen; the glass refracts it. */
+:root {
+  --hud-wallpaper: radial-gradient(at 15% 8%, #c7dbff 0, transparent 45%), radial-gradient(at 88% 4%, #f1d6ff 0, transparent 42%),
+    radial-gradient(at 78% 92%, #ffe0c8 0, transparent 45%), radial-gradient(at 8% 88%, #c9efe4 0, transparent 42%), #eef1f6;
+}
+
+/*
+ * Dark appearance, after macOS's: graphite glass, light hairlines, the brighter dark-mode system
+ * colours. `appearance.ts` sets data-theme on <html> from Settings → Appearance (or the system on Auto).
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-hud-panel: rgb(32 32 34 / 0.78);
+  --color-hud-panel-solid: #1c1c1e;
+  --color-hud-inset: rgb(118 118 128 / 0.24);
+  --color-hud-edge: rgb(255 255 255 / 0.1);
+  --color-hud-edge-shadow: rgb(0 0 0 / 0.4);
+  --color-hud-hover: rgb(255 255 255 / 0.08);
+  --color-hud-separator: rgb(84 84 88 / 0.6);
+  --color-hud-avatar: #3a3a3c;
+  --color-hud-text: #f5f5f7;
+  --color-hud-text-2: rgb(235 235 245 / 0.6);
+  --color-hud-accent: #0a84ff;
+  --color-hud-accent-edge: #409cff;
+  --color-hud-accent-shadow: rgb(10 132 255 / 0.4);
+  --color-hud-sage: rgb(48 209 88 / 0.2);
+  --color-hud-sage-text: #30d158;
+  --color-hud-rose: rgb(255 69 58 / 0.2);
+  --color-hud-rose-text: #ff6961;
+  --color-hud-amber: rgb(255 159 10 / 0.2);
+  --color-hud-amber-text: #ffb340;
+  --color-hud-surface: rgb(255 255 255 / 0.07);
+  --color-hud-surface-hover: rgb(255 255 255 / 0.13);
+  --color-hud-thumb: #636366;
+  --color-hud-hairline: rgb(255 255 255 / 0.1);
+  --color-hud-track: rgb(120 120 128 / 0.4);
+  --color-hud-tooltip: rgb(58 58 60 / 0.95);
+  --color-hud-backdrop: rgb(0 0 0 / 0.4);
+  --color-hud-sidebar: rgb(255 255 255 / 0.03);
+  --color-hud-panel-thick: rgb(30 30 32 / 0.9);
+  --color-hud-contrast: #1c1c1e;
+  --color-hud-page: #161618;
+  --color-map-bg: #2c2c2e;
+  --color-map-walkable: #3a3a3c;
+  --color-map-floor: #3d3a36;
+  --color-map-rug: #4a3f5c;
+  --color-map-desk: #8f6c4a;
+  --color-map-seat: #4d6d9e;
+  --color-map-furniture: #58585e;
+  --color-map-wall: #c7c7cc;
+  --shadow-hud-panel: 0 0 0 0.5px rgb(0 0 0 / 0.5), 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.3),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --shadow-hud-control: 0 0 0 0.5px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --hud-wallpaper: radial-gradient(at 15% 8%, #1d2b52 0, transparent 50%), radial-gradient(at 88% 4%, #3a1f4d 0, transparent 45%),
+    radial-gradient(at 78% 92%, #4a2a1f 0, transparent 45%), radial-gradient(at 8% 88%, #12362e 0, transparent 45%), #111113;
+}
+
 @layer base {
   html {
-    background-color: #eef1f6;
+    background-color: var(--color-hud-page);
     color-scheme: light;
     font-family: var(--font-hud-body);
     -webkit-font-smoothing: antialiased;

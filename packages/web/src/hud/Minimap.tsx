@@ -158,7 +158,7 @@ function MapView({
       <clipPath id={clipId}>
         <rect width={SIZE_PX} height={SIZE_PX} rx={MAP_RADIUS_PX} />
       </clipPath>
-      <rect width={SIZE_PX} height={SIZE_PX} rx={MAP_RADIUS_PX} className="fill-[#e7eaf0]" />
+      <rect width={SIZE_PX} height={SIZE_PX} rx={MAP_RADIUS_PX} className="fill-map-bg" />
       {self && grid && <FloorPlan grid={grid} self={self} viewYaw={viewYaw} clipId={clipId} />}
       {self && plan && plan.length > 0 && <PlanLayer plan={plan} self={self} viewYaw={viewYaw} clipId={clipId} />}
       {self && state.type === 'walking' && (
@@ -176,22 +176,22 @@ function MapView({
         <title>You</title>
         <circle cx={CENTRE} cy={CENTRE} r={13} className="fill-hud-accent/15" />
         <g transform={`translate(${CENTRE} ${CENTRE}) rotate(${heading})`}>
-          <path d="M0 -8.5L6.5 6.5L0 3L-6.5 6.5Z" strokeWidth={1.75} strokeLinejoin="round" className="fill-hud-accent stroke-white" />
+          <path d="M0 -8.5L6.5 6.5L0 3L-6.5 6.5Z" strokeWidth={1.75} strokeLinejoin="round" className="fill-hud-accent stroke-hud-contrast" />
         </g>
       </g>
-      <rect width={SIZE_PX} height={SIZE_PX} rx={MAP_RADIUS_PX} className="fill-none stroke-black/5" />
+      <rect width={SIZE_PX} height={SIZE_PX} rx={MAP_RADIUS_PX} className="fill-none stroke-hud-hairline" />
     </svg>
   );
 }
 
 /** Pastel, low-detail fills: a floor plan you read at a glance, not a picture of the room. */
 const PLAN_FILL: Record<PlanTone, string> = {
-  floor: 'fill-[#f6f1e8]',
-  rug: 'fill-[#e7ddf3]',
-  desk: 'fill-[#ddbb94]',
-  seat: 'fill-[#a9bfe0]',
-  furniture: 'fill-[#cdd2db]',
-  wall: 'fill-[#7c8496]',
+  floor: 'fill-map-floor',
+  rug: 'fill-map-rug',
+  desk: 'fill-map-desk',
+  seat: 'fill-map-seat',
+  furniture: 'fill-map-furniture',
+  wall: 'fill-map-wall',
 };
 
 /** The office's objects, drawn in world metres under one transform, so moving only rewrites the matrix. */
@@ -229,8 +229,8 @@ function PeerMarker({ peer, self, viewYaw, now }: { peer: MinimapPeer; self: Vec
   return (
     <g role="img" aria-label={`${name}, ${formatDistance(peer.distanceM)}`}>
       <title>{name}</title>
-      <circle cx={cx} cy={cy} r={r + 1.75} strokeWidth={1} className={`${presence} stroke-white`} />
-      <circle cx={cx} cy={cy} r={r} className="fill-white" />
+      <circle cx={cx} cy={cy} r={r + 1.75} strokeWidth={1} className={`${presence} stroke-hud-contrast`} />
+      <circle cx={cx} cy={cy} r={r} className="fill-hud-contrast" />
       {clamped && (
         <g transform={`translate(${cx} ${cy}) rotate(${(angle * 180) / Math.PI}) translate(${r + 4} 0)`}>
           <path d="M4 0L-1 -3.5V3.5z" className={presence} />
@@ -252,7 +252,7 @@ function PeerMarker({ peer, self, viewYaw, now }: { peer: MinimapPeer; self: Vec
           textAnchor="middle"
           strokeWidth={3}
           paintOrder="stroke"
-          className="fill-hud-text stroke-white text-[8.5px] font-semibold tabular-nums"
+          className="fill-hud-text stroke-hud-contrast text-[8.5px] font-semibold tabular-nums"
         >
           {formatDistance(peer.distanceM)}
         </text>
@@ -300,7 +300,7 @@ function FloorPlan({ grid, self, viewYaw, clipId }: { grid: NavGrid; self: Vec3;
   });
   return (
     <g clipPath={`url(#${clipId})`}>
-      <path d={navGridPath(grid)} transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`} className="fill-white" />
+      <path d={navGridPath(grid)} transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`} className="fill-map-walkable" />
     </g>
   );
 }

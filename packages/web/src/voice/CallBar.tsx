@@ -50,7 +50,7 @@ export function CallBar({
             {rows.slice(0, PREVIEW_AVATARS).map((row) => (
               <span
                 key={row.id}
-                className="flex h-5 w-5 items-center justify-center rounded-full border border-white bg-hud-avatar text-[9px] font-bold uppercase"
+                className="flex h-5 w-5 items-center justify-center rounded-full border border-hud-contrast bg-hud-avatar text-[9px] font-bold uppercase"
               >
                 {row.label.charAt(0)}
               </span>

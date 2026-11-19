@@ -9,7 +9,7 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
     <Modal
       labelledBy={titleId}
       onEscape={onClose}
-      className="z-50 bg-[rgb(15_23_42/0.16)]"
+      className="z-50 bg-hud-backdrop"
       panelClassName="w-full max-w-md p-5 text-sm"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) {

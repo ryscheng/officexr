@@ -3,7 +3,8 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import type { LucideIcon } from 'lucide-react';
 
 const TONE = {
-  neutral: 'bg-white/55 text-hud-text shadow-hud-control hover:bg-white/90',
+  // The glass material, so a button floating over the world keeps its contrast in both appearances.
+  neutral: 'hud-glass text-hud-text shadow-hud-control hover:bg-hud-panel-thick',
   accent: 'bg-hud-accent text-hud-on-accent shadow-[0_1px_3px_var(--color-hud-accent-shadow)] hover:bg-hud-accent-edge',
   danger: 'bg-hud-rose text-hud-rose-text hover:bg-[rgb(255_59_48/0.2)]',
   success: 'bg-hud-sage text-hud-sage-text hover:bg-[rgb(52_199_89/0.24)]',
@@ -66,7 +67,7 @@ export function IconButton({
           </span>
         </Tooltip.Trigger>
         <Tooltip.Portal container={tooltipContainer}>
-          <Tooltip.Content sideOffset={6} className="z-50 rounded-lg bg-[rgb(29_29_31/0.86)] px-2 py-1 font-hud-body text-xs font-medium text-white shadow-hud-control backdrop-blur-md">
+          <Tooltip.Content sideOffset={6} className="z-50 rounded-lg bg-hud-tooltip px-2 py-1 font-hud-body text-xs font-medium text-white shadow-hud-control backdrop-blur-md">
             {label}
           </Tooltip.Content>
         </Tooltip.Portal>

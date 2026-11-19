@@ -13,7 +13,7 @@ const MATERIAL = {
 } as const;
 
 /** A compact control-sized glass surface, e.g. a folded panel's tab. */
-export const CHIP = 'rounded-hud-control hud-glass border border-hud-edge text-hud-text shadow-hud-control hover:bg-white/85';
+export const CHIP = 'rounded-hud-control hud-glass border border-hud-edge text-hud-text shadow-hud-control hover:bg-hud-panel-thick';
 
 /** The `data-studio-panel` attribute keeps typing inside from driving the avatar. */
 export function Panel({ className = '', material = 'regular', ...props }: ComponentProps<'div'> & { material?: keyof typeof MATERIAL }) {

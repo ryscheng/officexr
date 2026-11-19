@@ -41,6 +41,7 @@ import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
 import { useEscapeFallback } from '../hud/useEscapeLayer';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
+import { AppearancePicker } from '../theme/AppearancePicker';
 import { initialViewMode } from './viewMode';
 import { ViewModeControl } from './ViewModeControl';
 import { withDefaultMap } from './withDefaultMap';
@@ -152,6 +153,15 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       content: (
         <SettingRow label="View">
           <ViewModeControl mode={viewMode} />
+        </SettingRow>
+      ),
+    },
+    {
+      id: 'appearance',
+      label: 'Appearance',
+      content: (
+        <SettingRow label="Appearance">
+          <AppearancePicker />
         </SettingRow>
       ),
     },

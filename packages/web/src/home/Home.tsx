@@ -54,7 +54,7 @@ function OfficeMapPicker({ office, maps, onSaved }: { office: Office; maps: stri
           value={current}
           disabled={busy}
           onChange={(e) => void change(e.target.value)}
-          className="min-w-0 flex-1 rounded-lg border border-black/5 bg-hud-inset px-2 py-1 text-xs text-hud-text disabled:opacity-50"
+          className="min-w-0 flex-1 rounded-lg border border-hud-hairline bg-hud-inset px-2 py-1 text-xs text-hud-text disabled:opacity-50"
         >
           {/* Keeps the current map selectable even when the studio no longer lists it. */}
           {[...new Set([...maps, current])].map((name) => (
@@ -119,7 +119,7 @@ function OfficeListSkeleton() {
   return (
     <ul aria-hidden className={officeGrid}>
       {[0, 1].map((i) => (
-        <li key={i} className="h-56 animate-pulse rounded-hud-panel border border-hud-edge bg-white/40" />
+        <li key={i} className="h-56 animate-pulse rounded-hud-panel border border-hud-edge bg-hud-surface" />
       ))}
     </ul>
   );

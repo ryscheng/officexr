@@ -61,7 +61,7 @@ export const closingAction = (id: string, label: string, onSelect: () => void): 
 /** One setting as a rounded, grouped-list row: label on the left, control on the right. */
 export function SettingRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white/70 px-4 py-2.5 shadow-[0_0_0_0.5px_rgb(15_23_42/0.08)]">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-hud-surface px-4 py-2.5 shadow-[0_0_0_0.5px_var(--color-hud-hairline)]">
       <span className="text-[13px] font-medium">{label}</span>
       <div className="flex items-center gap-2">{children}</div>
     </div>
@@ -133,13 +133,13 @@ function OpenSettingsModal({ title, tabs, panes = [], actions }: SettingsModalPr
       data-studio-panel
       labelledBy={`${titleId} ${subtitleId}`}
       onEscape={openPane ? back : close}
-      className="z-40 bg-[rgb(15_23_42/0.16)]"
+      className="z-40 bg-hud-backdrop"
       panelClassName="flex h-[min(620px,100%)] w-full max-w-4xl flex-col overflow-hidden sm:flex-row"
       onPointerDown={(e) => e.stopPropagation()}
     >
       {/* macOS System Settings: a frosted source list, then the chosen section on a lighter pane. */}
       <Tabs value={current?.id} onValueChange={open} orientation="vertical" className="contents">
-        <aside className="flex shrink-0 flex-col gap-4 border-hud-separator bg-black/[0.025] p-3 sm:w-60 sm:border-r">
+        <aside className="flex shrink-0 flex-col gap-4 border-hud-separator bg-hud-sidebar p-3 sm:w-60 sm:border-r">
           <div className="px-2 pt-1">
             <PanelTitle id={titleId} className="text-[15px]">
               Settings

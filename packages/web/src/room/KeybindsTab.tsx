@@ -7,7 +7,7 @@ export function KeybindsTab() {
       {SHORTCUT_GROUPS.map((group) => (
         <section key={group}>
           <h3 className="mb-1.5 px-1 text-xs font-semibold text-hud-text-2">{group}</h3>
-          <dl className="divide-y divide-hud-separator overflow-hidden rounded-xl bg-white/70 shadow-[0_0_0_0.5px_rgb(15_23_42/0.08)]">
+          <dl className="divide-y divide-hud-separator overflow-hidden rounded-xl bg-hud-surface shadow-[0_0_0_0.5px_var(--color-hud-hairline)]">
             {SHORTCUTS.filter((s) => s.group === group).map((s) => (
               <div key={s.keys + s.description} className="flex items-center justify-between gap-4 px-4 py-2">
                 <dt>{s.description}</dt>

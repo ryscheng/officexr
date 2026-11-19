@@ -97,7 +97,7 @@ export function NotificationsPane({
             return (
               <div
                 key={soundKey(sound)}
-                className={`flex items-center gap-2 rounded-xl bg-white/70 shadow-[0_0_0_0.5px_rgb(15_23_42/0.08)] ${
+                className={`flex items-center gap-2 rounded-xl bg-hud-surface shadow-[0_0_0_0.5px_var(--color-hud-hairline)] ${
                   active ? 'ring-2 ring-hud-accent' : ''
                 }`}
               >

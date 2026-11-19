@@ -23,7 +23,7 @@ export class PlayView3dBoundary extends Component<
     }
     const reload = this.props.reload ?? (() => window.location.reload());
     return (
-      <div role="alert" className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#eef1f6] font-hud-body text-hud-text">
+      <div role="alert" className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-hud-page font-hud-body text-hud-text">
         <p className="text-lg font-semibold">The office view hit an error.</p>
         <p className="max-w-md px-4 text-center text-xs text-hud-text-2">{error.message}</p>
         <div className="flex gap-2">

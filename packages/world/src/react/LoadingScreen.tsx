@@ -1,19 +1,21 @@
 /**
- * The web HUD's liquid-glass tokens (packages/web/src/index.css), inlined because this package
- * ships no stylesheet: the loading screen hands over to the HUD and must look like it.
+ * The web HUD's liquid-glass tokens (packages/web/src/index.css), read as CSS variables because
+ * this package ships no stylesheet: the loading screen follows the web app's light or dark
+ * appearance, and falls back to the light values where no theme is defined (the studio).
  */
+const LIGHT_WALLPAPER =
+  'radial-gradient(at 15% 8%, #c7dbff 0, transparent 45%), radial-gradient(at 88% 4%, #f1d6ff 0, transparent 42%), ' +
+  'radial-gradient(at 78% 92%, #ffe0c8 0, transparent 45%), radial-gradient(at 8% 88%, #c9efe4 0, transparent 42%), #eef1f6';
 const HUD = {
-  wallpaper:
-    'radial-gradient(at 15% 8%, #c7dbff 0, transparent 45%), radial-gradient(at 88% 4%, #f1d6ff 0, transparent 42%), ' +
-    'radial-gradient(at 78% 92%, #ffe0c8 0, transparent 45%), radial-gradient(at 8% 88%, #c9efe4 0, transparent 42%), #eef1f6',
-  track: 'rgba(0, 0, 0, 0.1)',
-  text: '#1d1d1f',
-  text2: 'rgba(60, 60, 67, 0.64)',
-  accent: '#007aff',
-  onAccent: '#ffffff',
-  accentShadow: 'rgba(0, 122, 255, 0.32)',
-  rose: 'rgba(255, 59, 48, 0.12)',
-  roseText: '#d1281e',
+  wallpaper: `var(--hud-wallpaper, ${LIGHT_WALLPAPER})`,
+  track: 'var(--color-hud-track, rgba(0, 0, 0, 0.1))',
+  text: 'var(--color-hud-text, #1d1d1f)',
+  text2: 'var(--color-hud-text-2, rgba(60, 60, 67, 0.64))',
+  accent: 'var(--color-hud-accent, #007aff)',
+  onAccent: 'var(--color-hud-on-accent, #ffffff)',
+  accentShadow: 'var(--color-hud-accent-shadow, rgba(0, 122, 255, 0.32))',
+  rose: 'var(--color-hud-rose, rgba(255, 59, 48, 0.12))',
+  roseText: 'var(--color-hud-rose-text, #d1281e)',
   body: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif',
   title: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif',
 } as const;

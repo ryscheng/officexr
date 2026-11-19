@@ -29,20 +29,19 @@ export function BrandLink() {
 export function Spinner({ label }: { label: string }) {
   return (
     <div role="status" className="flex flex-col items-center gap-3 font-hud-body text-sm text-hud-text-2">
-      <span aria-hidden className="size-6 animate-spin rounded-full border-[2.5px] border-black/10 border-t-hud-accent" />
+      <span aria-hidden className="size-6 animate-spin rounded-full border-[2.5px] border-hud-track border-t-hud-accent" />
       {label}
     </div>
   );
 }
 
-/** A soft, colourful wallpaper the glass refracts, like a macOS desktop behind its windows. */
-const WALLPAPER =
-  'bg-[#eef1f6] bg-[radial-gradient(at_15%_8%,#c7dbff_0,transparent_45%),radial-gradient(at_88%_4%,#f1d6ff_0,transparent_42%),radial-gradient(at_78%_92%,#ffe0c8_0,transparent_45%),radial-gradient(at_8%_88%,#c9efe4_0,transparent_42%)]';
+/** A soft, colourful wallpaper the glass refracts, like a macOS desktop behind its windows (`--hud-wallpaper`, per theme). */
+const WALLPAPER = '[background:var(--hud-wallpaper)]';
 
 /** A full page outside the world (office list, sign-in, loading): glass over the wallpaper. */
 export function PageShell({ header, centred = false, children }: { header?: ReactNode; centred?: boolean; children: ReactNode }) {
   return (
-    <div className={`relative min-h-dvh overflow-x-hidden bg-fixed font-hud-body text-hud-text ${WALLPAPER}`}>
+    <div className={`relative min-h-dvh overflow-x-hidden font-hud-body text-hud-text ${WALLPAPER}`}>
       <div className={`relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 sm:px-8 ${centred ? 'items-center justify-center py-10' : 'py-6'}`}>
         {header}
         {children}

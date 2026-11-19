@@ -202,7 +202,12 @@ The web HUD, settings and pages share one light liquid-glass theme: the `@theme`
 `hud-glass` / `hud-glass-thick` utilities in `packages/web/src/index.css`, the system font stack
 (SF Pro on Apple devices), and the kit in `packages/web/src/hud/ui/` (`Panel` with a `material`,
 `Button`, `IconButton`, `Tabs` with `segment` / `sidebar` variants, `Switch`, `Keycap`). Restyle
-through the tokens and the kit rather than per component.
+through the tokens and the kit rather than per component. A dark appearance (macOS-style)
+redefines the same tokens under `:root[data-theme="dark"]`; `theme/appearance.ts` sets
+`data-theme` from Settings → Appearance (Light / Dark / Auto, stored in localStorage, Auto follows
+the system) and is initialised in `main.tsx` before the first paint. Use tokens, never raw
+`white`/hex, so both appearances stay correct; the world's loading screen reads the same CSS
+variables with light fallbacks.
 
 ### Studio control kit
 
