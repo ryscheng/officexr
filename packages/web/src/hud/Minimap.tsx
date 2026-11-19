@@ -25,8 +25,7 @@ const SIZE_PX = 180;
 /** Leaves room outside the map's circle for the labels of users pinned to its rim. */
 const RIM_INSET_PX = 12;
 const MAP_PX = SIZE_PX - 2 * RIM_INSET_PX;
-/** Metres across the map: close enough to read desks, far enough to see the room you're in. */
-const RANGE_M = 28;
+const RANGE_M = 40;
 const CENTRE = SIZE_PX / 2;
 /** The map is a rounded tile, like a maps-app widget. */
 const MAP_RADIUS_PX = 18;
