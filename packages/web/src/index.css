@@ -64,18 +64,6 @@
   --font-hud-title: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", "Inter", "Segoe UI Variable Display", "Segoe UI",
     system-ui, sans-serif;
 
-  --animate-hud-turn: hud-turn 2.4s ease-in-out infinite;
-  @keyframes hud-turn {
-    0%,
-    20% {
-      transform: rotate(0);
-    }
-    60%,
-    100% {
-      transform: rotate(-90deg);
-    }
-  }
-
   --animate-hud-bob: hud-bob 1.6s ease-in-out infinite;
   @keyframes hud-bob {
     0%,

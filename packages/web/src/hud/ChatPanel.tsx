@@ -135,7 +135,7 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
   return (
     <Panel
       ref={containerRef}
-      className="pointer-events-auto flex w-80 max-w-[calc(100vw-24px)] flex-col gap-1.5 p-2 text-sm"
+      className="pointer-events-auto flex w-80 max-w-full flex-col gap-1.5 p-2 text-sm"
     >
       <PanelTitle className="px-1 text-xs">Chat</PanelTitle>
       <div ref={listRef} className="max-h-48 overflow-y-auto overscroll-contain px-1">
