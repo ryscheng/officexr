@@ -13,13 +13,14 @@ import {
 import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { Adventurer, ANIMATION_URLS, type MotionState } from './Adventurer.tsx';
-import { POKE_TURN_S, yawToward } from '../motion/poke.ts';
+import { POKE_REACH_M, POKE_TURN_S, yawToward } from '../motion/poke.ts';
 import { POSE_VISUALS } from '../motion/poseVisual.ts';
 import { leanOf, RIDE_STRATEGIES } from '../motion/ride.ts';
-import { AT_REST, floatTarget, stepBuoyancy, swimStateOf, type Buoyancy } from '../motion/swim.ts';
+import { AT_REST, BODY_CENTRE_M, floatSway, floatTarget, stepBuoyancy, stepPitch, swimStateOf, type Buoyancy } from '../motion/swim.ts';
 import { waterAt } from '../motion/water.ts';
 import { useWaterVolumes } from './useWaterVolumes.ts';
 import { wrapAngle } from './lookControls.ts';
+import { PokeSpark } from './PokeSpark.tsx';
 import { modelUrl } from '../app/asset-url.ts';
 import { useGLTF } from '@react-three/drei';
 import type { RideVehicle } from '../scenes/world-object-kinds-schema.ts';
@@ -247,9 +248,12 @@ export function Players({
   const poseKeys = useRef<Map<string, string>>(new Map());
   const [poseByPlayer, setPoseByPlayer] = useState<Record<string, PoseView | null>>({});
   const buoyancy = useRef<Map<string, Buoyancy>>(new Map());
+  const bodyPitch = useRef<Map<string, number>>(new Map());
   const lastYaw = useRef<Map<string, number>>(new Map());
   const yawRate = useRef<Map<string, number>>(new Map());
   const turnToward = useRef<Map<string, { yaw: number; until: number }>>(new Map());
+  const [sparks, setSparks] = useState<{ id: number; position: [number, number, number] }[]>([]);
+  const sparkId = useRef(0);
   const [pokeCounters, setPokeCounters] = useState<Record<string, number>>({});
   const waterVolumes = useWaterVolumes(store);
   const waterVolumesRef = useRef(waterVolumes);
@@ -260,6 +264,21 @@ export function Players({
       setPokeCounters((prev) => ({ ...prev, [fromId]: (prev[fromId] ?? 0) + 1 }));
       const players = store.getState().players;
       const from = players[fromId];
+      if (from) {
+        const reach = POKE_REACH_M * 0.65;
+        const id = ++sparkId.current;
+        setSparks((prev) => [
+          ...prev,
+          {
+            id,
+            position: [
+              from.pos.x - Math.sin(from.yaw) * reach,
+              feetPosition(from.pos, charRadius).y + 1.05,
+              from.pos.z - Math.cos(from.yaw) * reach,
+            ],
+          },
+        ]);
+      }
       const target = targetId ? players[targetId] : undefined;
       if (!targetId || !from || !target) return;
       const dx = target.pos.x - from.pos.x;
@@ -274,7 +293,7 @@ export function Players({
         });
       }
     });
-  }, [bus, store, selfId]);
+  }, [bus, store, selfId, charRadius]);
 
   const tmpVec = useMemo(() => new THREE.Vector3(), []);
 
@@ -472,11 +491,19 @@ export function Players({
             buoyancy.current.delete(id);
           }
           poseGroup.position.y = lift;
-          poseGroup.rotation.x = visual.pitch;
-          poseGroup.rotation.z = visual.vehicle ? leanOf(visual.vehicle, smoothedRate, speedNow) : 0;
+          const pitch = stepPitch(bodyPitch.current.get(id) ?? visual.pitch, visual.pitch, dt);
+          bodyPitch.current.set(id, pitch);
+          poseGroup.rotation.x = pitch;
+          poseGroup.position.z = visual.floats ? -Math.sin(pitch) * BODY_CENTRE_M : 0;
+          poseGroup.rotation.z = visual.vehicle
+            ? leanOf(visual.vehicle, smoothedRate, speedNow)
+            : visual.floats && swimStateOf(speedNow) === 'tread'
+              ? floatSway(now / 1000)
+              : 0;
         } else {
           buoyancy.current.delete(id);
-          poseGroup.position.y = 0;
+          bodyPitch.current.delete(id);
+          poseGroup.position.set(0, 0, 0);
           poseGroup.rotation.set(0, 0, 0);
         }
       }
@@ -526,6 +553,9 @@ export function Players({
 
   return (
     <>
+      {sparks.map((s) => (
+        <PokeSpark key={s.id} position={s.position} onDone={() => setSparks((prev) => prev.filter((p) => p.id !== s.id))} />
+      ))}
       {players.filter((p) => selfReady || p.id !== selfId).map((p) => {
         const isSelf = p.id === selfId;
         const bodyTag: ColliderTag = { kind: 'body', ownerId: p.id };

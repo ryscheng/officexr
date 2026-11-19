@@ -9,6 +9,7 @@ import { lightBasis, snapToShadowTexel } from './shadow-snap.ts';
 import { MapColliders } from './MapColliders.tsx';
 import { excludeLayoutInstances } from './useStoreWorldObjects.ts';
 import type {
+  ObjectInstance,
   Actions,
   Bus,
   PlayerId,
@@ -89,6 +90,14 @@ function OptionalXR({ store, children }: { store?: XRStore; children: React.Reac
 
 const noopSubscribe = () => () => {};
 
+/** Ids of the racks whose vehicle a player is riding, joined with `|`; '' when none, so it compares by value. */
+function occupiedRacks(players: Record<string, { poseRack?: string | null }>): string {
+  return Object.values(players)
+    .flatMap((p) => (p.poseRack ? [p.poseRack] : []))
+    .sort()
+    .join('|');
+}
+
 /** A layout placement with the URL of its baked GLB, e.g. `/api/baked-layouts/lobby`. */
 export interface SceneBakedLayout extends BakedLayoutPlacement {
   gltfPath: string;
@@ -167,6 +176,16 @@ interface SceneProps {
 export function Scene(props: SceneProps) {
   const { store, selfId, cameraMode, sync, bakedLayouts } = props;
   const excludeBakedInstance = useMemo(() => excludeLayoutInstances(bakedLayouts), [bakedLayouts]);
+  const subscribeRacks = useCallback(
+    (onChange: () => void) => store.subscribe((s) => occupiedRacks(s.players), onChange),
+    [store],
+  );
+  const racksInUse = useSyncExternalStore(subscribeRacks, () => occupiedRacks(store.getState().players));
+  const excludeVisual = useMemo(() => {
+    if (!racksInUse) return excludeBakedInstance;
+    const empty = new Set(racksInUse.split('|'));
+    return (instance: ObjectInstance) => empty.has(instance.id) || (excludeBakedInstance?.(instance) ?? false);
+  }, [racksInUse, excludeBakedInstance]);
   const { proximity, lighting, background, fixedCamera } = props.view;
   const worldFocused = props.worldFocused ?? true;
   const { xrStore } = props;
@@ -327,7 +346,7 @@ export function Scene(props: SceneProps) {
           }
         />
 
-        <ObjectInstances store={store} exclude={excludeBakedInstance} />
+        <ObjectInstances store={store} exclude={excludeVisual} />
         <WaterVolumes store={store} />
 
         <Players

@@ -122,7 +122,7 @@ export class StateDiffBroadcaster {
       this.announceSeat(next);
     }
 
-    if (selfLive && (me?.pose ?? null) !== (prevMe?.pose ?? null)) {
+    if (selfLive && ((me?.pose ?? null) !== (prevMe?.pose ?? null) || (me?.poseRack ?? null) !== (prevMe?.poseRack ?? null))) {
       this.announcePose(next);
     }
 
@@ -250,6 +250,7 @@ export class StateDiffBroadcaster {
       seq: this.takeSeq(),
       t: this.clock.now(),
       pose: state.players[state.selfId]?.pose ?? null,
+      rack: state.players[state.selfId]?.poseRack ?? null,
     });
   }
 

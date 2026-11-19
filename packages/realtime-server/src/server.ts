@@ -254,6 +254,7 @@ export class Room {
           seq: seq++,
           t: Date.now(),
           pose: p.pose,
+          rack: p.poseRack ?? null,
         });
       }
       // The store's default name is '', so a name means the player sent

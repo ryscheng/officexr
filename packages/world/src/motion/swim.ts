@@ -3,20 +3,37 @@ export type SwimState = 'tread' | 'paddle' | 'stroke';
 export interface SwimStrategy {
   /** Horizontal speed in m/s the player moves at in this state. */
   speed: number;
-  /** Animation clip that plays; `Crawling` is the prone rig pose. */
+  /** Animation clip that plays; a running clip tilted face down reads as a front crawl, with alternating arms and kicking legs. */
   clip: string;
-  /** Speed the clip is authored for, in m/s; the playback rate scales with speed / this. 0 plays at 1x. */
+  /** Speed the clip plays at 1x, in m/s; the playback rate scales with speed / this. 0 plays at 1x. */
   refSpeed: number;
   /** Forward pitch of the body in radians: 0 upright, π/2 lying face down. */
   pitch: number;
-  /** Metres the body sinks below the surface: the waterline sits this far above the feet. */
+  /** Metres the waterline sits below the body's axis: how deep the body rides. */
   sink: number;
 }
 
+/** Tilt of a swimmer in radians (about 86°): forward lies face down for the crawl, backward lies face up when floating. */
+export const PRONE_PITCH = 1.5;
+
+/** Seconds a pitch change takes to settle (about 95% of the way). */
+export const PITCH_BLEND_S = 0.4;
+
+/** Metres from the feet to the middle of the body, which the tilt swings sideways. */
+export const BODY_CENTRE_M = 0.7;
+
+/** Slow roll of a floating body in radians, from the time in seconds. */
+export const floatSway = (time: number): number => Math.sin(time * 0.9) * 0.07;
+
+/** One step of the body tilt toward `target`, so tread and swim blend instead of snapping. */
+export function stepPitch(current: number, target: number, dt: number): number {
+  return target + (current - target) * Math.exp((-3 * dt) / PITCH_BLEND_S);
+}
+
 export const SWIM_STRATEGIES: Record<SwimState, SwimStrategy> = {
-  tread: { speed: 0, clip: 'Idle_A', refSpeed: 0, pitch: 0.12, sink: 0.35 },
-  paddle: { speed: 2.2, clip: 'Crawling', refSpeed: 2.2, pitch: 1.2, sink: 0.22 },
-  stroke: { speed: 3.4, clip: 'Crawling', refSpeed: 2.2, pitch: 1.35, sink: 0.2 },
+  tread: { speed: 0, clip: 'T-Pose', refSpeed: 0, pitch: -PRONE_PITCH, sink: 0.1 },
+  paddle: { speed: 2.2, clip: 'Running_B', refSpeed: 3.2, pitch: PRONE_PITCH, sink: -0.1 },
+  stroke: { speed: 3.4, clip: 'Running_A', refSpeed: 3.2, pitch: PRONE_PITCH, sink: -0.1 },
 };
 
 const MOVING_SPEED = 0.15;
@@ -38,13 +55,16 @@ export interface Buoyancy {
 
 const SPRING = 60;
 const DAMPING = 9;
-const BOB_AMPLITUDE = 0.02;
-const BOB_RATE = 2.4;
+const BOB_AMPLITUDE = 0.015;
+const BOB_RATE = Math.PI;
 
-/** Where the body floats above the player's feet: the waterline minus how far the state sinks, with a gentle bob. */
+/** Lowest the body goes below the player's feet; the floor under a shallow pool hides the legs. */
+export const MIN_LIFT = -0.7;
+
+/** Where the body floats relative to the player's feet: the waterline minus the state's waterline height, with a gentle bob. */
 export function floatTarget(surfaceY: number, feetY: number, state: SwimState, time: number): number {
-  const bob = Math.sin(time * BOB_RATE) * BOB_AMPLITUDE * (state === 'tread' ? 1.6 : 0.6);
-  return Math.max(0, surfaceY - feetY - SWIM_STRATEGIES[state].sink + bob);
+  const bob = Math.sin(time * BOB_RATE) * BOB_AMPLITUDE * (state === 'tread' ? 1.7 : 0.5);
+  return Math.max(MIN_LIFT, surfaceY - feetY - SWIM_STRATEGIES[state].sink + bob);
 }
 
 /** One spring-damper step of the floating body toward `target`; semi-implicit so it stays stable at 60 Hz. */

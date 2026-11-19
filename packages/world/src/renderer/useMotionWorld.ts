@@ -16,7 +16,10 @@ export function useMotionWorld(store: Store): MotionWorld {
   return useMemo<MotionWorld>(
     () => ({
       waterAt: (x, z) => waterAt(volumes, x, z),
-      rideNear: (feet) => nearestRideStand(worldObjects.instances, catalog, geometry, feet),
+      rideNear: (feet) => {
+        const stand = nearestRideStand(worldObjects.instances, catalog, geometry, feet);
+        return stand && { vehicle: stand.vehicle, rackId: stand.instance.id };
+      },
     }),
     [volumes, worldObjects, kinds, catalog, geometry],
   );

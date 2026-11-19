@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 export const POKE_CLIP_NAME = 'Poke_Point';
-export const POKE_CLIP_DURATION = 0.6;
+export const POKE_CLIP_DURATION = 0.9;
 
 type Degrees = readonly [number, number, number];
 
@@ -19,8 +19,8 @@ const EXTENDED: Record<string, Degrees> = {
 
 const KEYS: readonly { t: number; pose: Record<string, Degrees> }[] = [
   { t: 0, pose: REST },
-  { t: 0.14, pose: EXTENDED },
-  { t: 0.34, pose: EXTENDED },
+  { t: 0.12, pose: EXTENDED },
+  { t: 0.62, pose: EXTENDED },
   { t: POKE_CLIP_DURATION, pose: REST },
 ];
 

@@ -6,15 +6,17 @@ import type { WaterVolume } from './water.ts';
 
 export interface SelfMotion {
   pose: PlayerPose | null;
+  /** The rack the current ride started at, null otherwise. */
+  rack: string | null;
   ride: RideState;
 }
 
-export const newSelfMotion = (): SelfMotion => ({ pose: null, ride: newRide(0) });
+export const newSelfMotion = (): SelfMotion => ({ pose: null, rack: null, ride: newRide(0) });
 
 /** What the self player's movement needs to know about the scene, kept apart from where it comes from. */
 export interface MotionWorld {
   waterAt(x: number, z: number): WaterVolume | null;
-  rideNear(feet: Vec3): { vehicle: RideVehicle } | null;
+  rideNear(feet: Vec3): { vehicle: RideVehicle; rackId: string } | null;
 }
 
 export interface SelfMotionInput {
@@ -65,13 +67,18 @@ export function stepSelfMotion(sm: SelfMotion, input: SelfMotionInput, world: Mo
   } else if (!inWater && sm.pose === 'swim') {
     sm.pose = null;
   }
+  if (sm.pose === null) {
+    sm.rack = null;
+  }
   if (input.mount && sm.pose !== 'swim') {
     if (sm.pose !== null) {
       sm.pose = null;
+      sm.rack = null;
     } else {
       const stand = world.rideNear(input.feet);
       if (stand) {
         sm.pose = stand.vehicle;
+        sm.rack = stand.rackId;
         sm.ride = newRide(input.heading);
       }
     }

@@ -42,6 +42,8 @@ export type PlayerState = {
   seat?: string | null;
   /** Swimming or riding; null or absent while on foot. Broadcast via presence:pose. */
   pose?: PlayerPose | null;
+  /** Id of the rack a rider took the vehicle from, so peers can draw it empty. */
+  poseRack?: string | null;
   tRecv?: number;
   /** Local-only: receive time of this player's last `presence:status`. */
   lastStatusAt?: number;

@@ -62,7 +62,7 @@ function addWheel(m: Mesh, cx: number, cy: number, cz: number, radius: number, w
   }
 }
 
-function build(name: string, parts: { mesh: Mesh; color: [number, number, number]; roughness?: number; metalness?: number }[]) {
+function build(name: string, parts: { mesh: Mesh; color: [number, number, number]; emissive?: [number, number, number]; roughness?: number; metalness?: number }[]) {
   const doc = new Document();
   const buffer = doc.createBuffer();
   const scene = doc.createScene(name);
@@ -74,7 +74,8 @@ function build(name: string, parts: { mesh: Mesh; color: [number, number, number
       .createMaterial()
       .setBaseColorFactor([...part.color, 1])
       .setRoughnessFactor(part.roughness ?? 0.7)
-      .setMetallicFactor(part.metalness ?? 0);
+      .setMetallicFactor(part.metalness ?? 0)
+      .setEmissiveFactor(part.emissive ? (part.emissive.map((v) => v * 0.35) as [number, number, number]) : [0, 0, 0]);
     const prim = doc
       .createPrimitive()
       .setMaterial(material)
@@ -112,48 +113,56 @@ function pool() {
 }
 
 function scooter() {
-  SIZE = 1.4;
+  SIZE = 1.5;
   const deck = empty();
-  addBox(deck, 0, 0.12, 0, 0.2, 0.04, 0.72);
+  addBox(deck, 0, 0.1, 0, 0.36, 0.08, 0.95);
   const metal = empty();
-  addBox(metal, 0, 0.55, 0.5, 0.035, 0.9, 0.035);
-  addBox(metal, 0, 1.0, 0.5, 0.5, 0.035, 0.035);
-  addBox(metal, 0, 0.14, 0.5, 0.05, 0.1, 0.05);
+  addBox(metal, 0, 0.46, 0.56, 0.07, 0.72, 0.07);
+  addBox(metal, 0, 0.82, 0.56, 0.62, 0.06, 0.06);
+  addBox(metal, 0, 0.16, 0.56, 0.1, 0.14, 0.1);
   const rubber = empty();
-  addWheel(rubber, 0, 0.1, 0.56, 0.1, 0.05);
-  addWheel(rubber, 0, 0.1, -0.5, 0.1, 0.05);
+  addWheel(rubber, 0, 0.14, 0.64, 0.14, 0.1);
+  addWheel(rubber, 0, 0.14, -0.58, 0.14, 0.1);
   const grips = empty();
-  addBox(grips, -0.27, 1.0, 0.5, 0.1, 0.05, 0.05);
-  addBox(grips, 0.27, 1.0, 0.5, 0.1, 0.05, 0.05);
+  addBox(grips, -0.36, 0.82, 0.56, 0.14, 0.08, 0.08);
+  addBox(grips, 0.36, 0.82, 0.56, 0.14, 0.08, 0.08);
+  const glow = empty();
+  addBox(glow, 0, 0.15, 0.2, 0.3, 0.02, 0.5);
   return build('scooter', [
-    { mesh: deck, color: rgb('#ff7a59') },
-    { mesh: metal, color: rgb('#c9d3dc'), roughness: 0.35, metalness: 0.6 },
-    { mesh: rubber, color: rgb('#25262e'), roughness: 0.9 },
-    { mesh: grips, color: rgb('#ffd166') },
+    { mesh: deck, color: rgb('#ff4f2e'), emissive: rgb('#ff4f2e'), roughness: 0.5 },
+    { mesh: metal, color: rgb('#e8eef5'), roughness: 0.3, metalness: 0.4 },
+    { mesh: rubber, color: rgb('#2a2b34'), roughness: 0.9 },
+    { mesh: grips, color: rgb('#ffe14d'), emissive: rgb('#ffe14d') },
+    { mesh: glow, color: rgb('#fff3c4'), emissive: rgb('#fff3c4') },
   ]);
 }
 
+/** The seat is centred on the origin, where the rider's root rests, 0.34 up (times the size). */
 function tricycle() {
-  SIZE = 1.5;
+  SIZE = 1.6;
   const frame = empty();
-  addBox(frame, 0, 0.3, 0.1, 0.05, 0.05, 0.9);
-  addBox(frame, 0, 0.5, 0.42, 0.05, 0.5, 0.05);
-  addBox(frame, 0, 0.74, 0.42, 0.5, 0.04, 0.04);
-  addBox(frame, -0.27, 0.2, -0.3, 0.04, 0.04, 0.04);
+  addBox(frame, 0, 0.26, 0.28, 0.08, 0.08, 0.7);
+  addBox(frame, 0, 0.48, 0.58, 0.08, 0.5, 0.08);
+  addBox(frame, 0, 0.76, 0.58, 0.58, 0.06, 0.06);
+  addBox(frame, 0, 0.2, -0.2, 0.62, 0.06, 0.06);
   const seat = empty();
-  addBox(seat, 0, 0.34, -0.15, 0.3, 0.05, 0.3);
+  addBox(seat, 0, 0.31, -0.02, 0.4, 0.06, 0.4);
   const rubber = empty();
-  addWheel(rubber, 0, 0.2, 0.45, 0.2, 0.06);
-  addWheel(rubber, -0.27, 0.12, -0.32, 0.12, 0.05);
-  addWheel(rubber, 0.27, 0.12, -0.32, 0.12, 0.05);
+  addWheel(rubber, 0, 0.22, 0.58, 0.22, 0.1);
+  addWheel(rubber, -0.34, 0.14, -0.2, 0.14, 0.08);
+  addWheel(rubber, 0.34, 0.14, -0.2, 0.14, 0.08);
   const pedals = empty();
-  addBox(pedals, -0.14, 0.16, 0.45, 0.08, 0.03, 0.14);
-  addBox(pedals, 0.14, 0.26, 0.45, 0.08, 0.03, 0.14);
+  addBox(pedals, -0.16, 0.06, 0.28, 0.12, 0.04, 0.2);
+  addBox(pedals, 0.16, 0.06, 0.28, 0.12, 0.04, 0.2);
+  const grips = empty();
+  addBox(grips, -0.34, 0.76, 0.58, 0.14, 0.08, 0.08);
+  addBox(grips, 0.34, 0.76, 0.58, 0.14, 0.08, 0.08);
   return build('tricycle', [
-    { mesh: frame, color: rgb('#2fb7a6'), roughness: 0.4, metalness: 0.2 },
-    { mesh: seat, color: rgb('#ffd166') },
-    { mesh: rubber, color: rgb('#25262e'), roughness: 0.9 },
-    { mesh: pedals, color: rgb('#ef476f') },
+    { mesh: frame, color: rgb('#12d6b9'), emissive: rgb('#12d6b9'), roughness: 0.4 },
+    { mesh: seat, color: rgb('#ffd23f'), emissive: rgb('#ffd23f') },
+    { mesh: rubber, color: rgb('#2a2b34'), roughness: 0.9 },
+    { mesh: pedals, color: rgb('#ff3d6e'), emissive: rgb('#ff3d6e') },
+    { mesh: grips, color: rgb('#ff3d6e'), emissive: rgb('#ff3d6e') },
   ]);
 }
 

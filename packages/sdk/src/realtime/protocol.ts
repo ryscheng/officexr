@@ -79,6 +79,7 @@ const ZPlayerState = z.object({
   mic: ZMicState,
   seat: z.string().nullable().optional(),
   pose: z.enum(PLAYER_POSES).nullable().optional(),
+  poseRack: z.string().nullable().optional(),
 });
 
 const ZChatMessageObj = z.object({
@@ -202,7 +203,7 @@ const ZPresenceStatusPayload = z.object({
   idleMs: z.number().nonnegative().optional(),
 });
 const ZPresenceSeat = z.object({ instanceId: z.string().nullable() });
-const ZPresencePose = z.object({ pose: z.enum(PLAYER_POSES).nullable() });
+const ZPresencePose = z.object({ pose: z.enum(PLAYER_POSES).nullable(), rack: z.string().nullable().optional() });
 const ZPokeSend = z.object({ targetId: z.string().min(1).nullable() });
 const ZDeskClaimsPayload = z.object({ claims: z.record(z.string(), z.string()) });
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) });
@@ -243,7 +244,7 @@ export type NetEvent =
     }
   >
   | WithEnvelope<'presence:seat', 1, { instanceId: string | null }>
-  | WithEnvelope<'presence:pose', 1, { pose: PlayerPose | null }>
+  | WithEnvelope<'presence:pose', 1, { pose: PlayerPose | null; rack?: string | null }>
   | WithEnvelope<'poke:send', 1, { targetId: PlayerId | null }>
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData; name: string }>
   | WithEnvelope<'chat:message', 1, { text: string }>

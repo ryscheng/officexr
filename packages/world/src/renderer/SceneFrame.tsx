@@ -476,8 +476,8 @@ export function SceneFrame({
         },
         motionWorldRef.current,
       );
-      if ((self.pose ?? null) !== selfMotionRef.current.pose) {
-        actions.setSelfPose(selfMotionRef.current.pose);
+      if ((self.pose ?? null) !== selfMotionRef.current.pose || (self.poseRack ?? null) !== selfMotionRef.current.rack) {
+        actions.setSelfPose(selfMotionRef.current.pose, selfMotionRef.current.rack);
       }
       if (motionOut.speed !== null) {
         dx = motionOut.dir?.x ?? 0;

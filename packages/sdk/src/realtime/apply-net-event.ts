@@ -40,7 +40,7 @@ export function applyNetEventToStore(
       actions.applyRemoteSeat(event.actorId, event.instanceId, clock.now());
       return;
     case 'presence:pose':
-      actions.applyRemotePose(event.actorId, event.pose, clock.now());
+      actions.applyRemotePose(event.actorId, event.pose, clock.now(), event.rack ?? null);
       return;
     case 'poke:send':
       actions.receivePoke(event.actorId, event.targetId, clock.now());

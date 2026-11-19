@@ -30,6 +30,18 @@ describe('presence:pose', () => {
     expect(seen.filter((k) => k === 'presence:pose')).toHaveLength(1);
   });
 
+  it('tells peers which rack a rider took the vehicle from, and clears it on dismount', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('A');
+    const b = await h.add('B');
+
+    a.actions.setSelfPose('tricycle', 'rack-7');
+    expect(b.store.getState().players['A']).toMatchObject({ pose: 'tricycle', poseRack: 'rack-7' });
+
+    a.actions.setSelfPose(null);
+    expect(b.store.getState().players['A']).toMatchObject({ pose: null, poseRack: null });
+  });
+
   it('rejects a pose the protocol does not know', () => {
     const base = { kind: 'presence:pose', v: 1, actorId: 'A', seq: 1, t: 0 };
     expect(validateNetEvent({ ...base, pose: 'hoverboard' }).ok).toBe(false);

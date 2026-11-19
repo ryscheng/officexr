@@ -443,6 +443,24 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bumpCounter, actions, paused]);
 
+    const finger = useMemo(() => {
+      const mesh = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.035, 0.2, 4, 8),
+        new THREE.MeshStandardMaterial({ color: '#f2c19a', roughness: 0.6 }),
+      );
+      mesh.rotation.z = -Math.PI / 2;
+      mesh.position.set(0.2, 0, 0);
+      mesh.visible = false;
+      mesh.castShadow = true;
+      return mesh;
+    }, []);
+    useEffect(() => {
+      const hand = scene.getObjectByName('handr');
+      hand?.add(finger);
+      return () => {
+        hand?.remove(finger);
+      };
+    }, [scene, finger]);
     const lastPokeRef = useRef(0);
     useEffect(() => {
       if (paused || pokeCounter === 0 || pokeCounter === lastPokeRef.current) return;
@@ -454,12 +472,18 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       poke.setLoop(THREE.LoopOnce, 1);
       poke.clampWhenFinished = false;
       poke.fadeIn(0.05).play();
+      finger.visible = true;
       const fadeId = setTimeout(() => poke.fadeOut(0.12), Math.max(0, poke.getClip().duration * 1000 - 130));
+      const fingerId = setTimeout(() => {
+        finger.visible = false;
+      }, poke.getClip().duration * 1000 - 100);
       return () => {
         clearTimeout(fadeId);
+        clearTimeout(fingerId);
+        finger.visible = false;
         poke.stop();
       };
-    }, [pokeCounter, actions, paused]);
+    }, [pokeCounter, actions, paused, finger]);
 
     return (
       <group ref={ref}>

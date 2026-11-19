@@ -7,7 +7,11 @@ import { leanOf, newRide, nearestRideStand, RIDE_STRATEGIES, rideDirection, step
 import { newSelfMotion, stepSelfMotion, type MotionWorld, type SelfMotionInput } from './self-motion.ts';
 import {
   AT_REST,
+  floatSway,
   floatTarget,
+  MIN_LIFT,
+  PRONE_PITCH,
+  stepPitch,
   stepBuoyancy,
   SWIM_STRATEGIES,
   swimStateForInput,
@@ -57,10 +61,36 @@ describe('swim', () => {
     expect(swimStateForInput(true, true)).toBe('stroke');
   });
 
-  it('floats the body lower when treading than when swimming, never below the feet', () => {
-    expect(floatTarget(0.4, 0, 'tread', 0)).toBeCloseTo(0.05, 5);
+  it('rides a floating back a little under the surface and a crawling front a little over the axis', () => {
+    expect(floatTarget(0.4, 0, 'tread', 0)).toBeCloseTo(0.4 - SWIM_STRATEGIES.tread.sink, 5);
     expect(floatTarget(0.4, 0, 'paddle', 0)).toBeGreaterThan(floatTarget(0.4, 0, 'tread', 0));
-    expect(floatTarget(0.4, 0.5, 'tread', 0)).toBe(0);
+  });
+
+  it('bobs a few centimetres about once every two seconds', () => {
+    const heights = Array.from({ length: 200 }, (_, n) => floatTarget(1, 0, 'tread', n * 0.01));
+    const swing = Math.max(...heights) - Math.min(...heights);
+    expect(swing).toBeGreaterThan(0.04);
+    expect(swing).toBeLessThan(0.07);
+    expect(floatTarget(1, 0, 'tread', 0)).toBeCloseTo(floatTarget(1, 0, 'tread', 2), 2);
+  });
+
+  it('sways slowly and only a little', () => {
+    const sways = Array.from({ length: 100 }, (_, n) => floatSway(n * 0.1));
+    expect(Math.max(...sways)).toBeLessThan(0.1);
+    expect(Math.min(...sways)).toBeGreaterThan(-0.1);
+  });
+
+  it('turns from on its back to face down over about 0.4 s without overshooting', () => {
+    let pitch = -PRONE_PITCH;
+    for (let n = 0; n < 24; n++) pitch = stepPitch(pitch, PRONE_PITCH, 1 / 60);
+    const settled = (pitch + PRONE_PITCH) / (2 * PRONE_PITCH);
+    expect(settled).toBeGreaterThan(0.9);
+    expect(settled).toBeLessThan(1);
+    expect(stepPitch(0.5, 0.5, 1 / 60)).toBeCloseTo(0.5);
+  });
+
+  it('never lowers the body further than the floor can hide', () => {
+    expect(floatTarget(0.4, 3, 'tread', 0)).toBe(MIN_LIFT);
   });
 
   it('settles on the float height without overshooting wildly', () => {
@@ -132,7 +162,7 @@ describe('self motion', () => {
   const pool = { id: 'p', minX: 0, maxX: 6, minZ: 0, maxZ: 4, baseY: 0, surfaceY: 0.4 };
   const world = (inWater: boolean, stand: boolean): MotionWorld => ({
     waterAt: () => (inWater ? pool : null),
-    rideNear: () => (stand ? { vehicle: 'scooter' } : null),
+    rideNear: () => (stand ? { vehicle: 'scooter', rackId: 'rack-1' } : null),
   });
   const input = (over: Partial<SelfMotionInput> = {}): SelfMotionInput => ({
     feet: { x: 3, y: 0, z: 2 },
@@ -174,11 +204,13 @@ describe('self motion', () => {
     expect(sm.pose).toBeNull();
     stepSelfMotion(sm, input({ mount: true, dir: null }), world(false, true));
     expect(sm.pose).toBe('scooter');
+    expect(sm.rack).toBe('rack-1');
     const out = stepSelfMotion(sm, input(), world(false, false));
     expect(out.canJump).toBe(false);
     expect(out.speed).toBeGreaterThan(0);
     stepSelfMotion(sm, input({ mount: true }), world(false, false));
     expect(sm.pose).toBeNull();
+    expect(sm.rack).toBeNull();
   });
 
   it('cannot mount while swimming', () => {
@@ -196,10 +228,12 @@ describe('self motion', () => {
 });
 
 describe('pose visuals', () => {
-  it('floats a swimmer prone while moving and upright while treading', () => {
-    expect(POSE_VISUALS.swim(0)).toMatchObject({ clip: 'Idle_A', floats: true });
-    expect(POSE_VISUALS.swim(2.2)).toMatchObject({ clip: 'Crawling', floats: true });
-    expect(POSE_VISUALS.swim(2.2).pitch).toBeGreaterThan(POSE_VISUALS.swim(0).pitch);
+  it('floats a swimmer on its back at rest and turns it face down to swim', () => {
+    expect(POSE_VISUALS.swim(0)).toMatchObject({ clip: 'T-Pose', floats: true });
+    expect(POSE_VISUALS.swim(2.2)).toMatchObject({ clip: 'Running_B', floats: true });
+    expect(POSE_VISUALS.swim(3.4).clip).toBe('Running_A');
+    expect(POSE_VISUALS.swim(2.2).pitch).toBeCloseTo(PRONE_PITCH);
+    expect(POSE_VISUALS.swim(0).pitch).toBeCloseTo(-PRONE_PITCH);
   });
 
   it('puts a rider on the vehicle, off the ground by its deck height', () => {
