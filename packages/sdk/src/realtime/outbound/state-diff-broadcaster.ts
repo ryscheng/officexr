@@ -126,6 +126,10 @@ export class StateDiffBroadcaster {
       this.announcePose(next);
     }
 
+    if (selfLive && (me?.handRaised ?? false) !== (prevMe?.handRaised ?? false)) {
+      this.announceHand(next);
+    }
+
     // worldMap: broadcast on any change. Same JSON-equality dedupe; the map
     // changes far less often than positions, so the stringify cost is
     // bounded.
@@ -239,6 +243,22 @@ export class StateDiffBroadcaster {
       seq: this.takeSeq(),
       t: this.clock.now(),
       instanceId: state.players[state.selfId]?.seat ?? null,
+    });
+  }
+
+  /** A lowered hand is the default for peers, so only a raised one needs re-announcing. */
+  announceHandIfRaised(state: OfficeState = this.store.getState()): void {
+    if (state.players[state.selfId]?.handRaised) this.announceHand(state);
+  }
+
+  announceHand(state: OfficeState = this.store.getState()): void {
+    this.broadcast({
+      kind: 'presence:hand',
+      v: 1,
+      actorId: state.selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      raised: state.players[state.selfId]?.handRaised ?? false,
     });
   }
 

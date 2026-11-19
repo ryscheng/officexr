@@ -6,6 +6,7 @@ import type {
   CharacterConfigs,
   ChatMessage,
   CubeKindId,
+  EmoteId,
   InventoryItem,
   MicState,
   PlayerId,
@@ -22,9 +23,17 @@ import type {
   WorldObjects,
   ZombieState,
 } from './types.ts';
+import { STATUS_EMOJI_MAX, STATUS_TEXT_MAX } from './types.ts';
 import { DEPARTED_LINGER_MS } from './presence.ts';
 import { worldSettingsFromConstants, type WorldConstants } from './world-constants.ts';
 import { cloneWorldMap } from './world-map.ts';
+
+export type RichStatus = { statusText?: string | null; statusEmoji?: string | null; focus?: boolean };
+
+const cleanStatusText = (text: string | null | undefined): string | null =>
+  text?.trim().slice(0, STATUS_TEXT_MAX) || null;
+const cleanStatusEmoji = (emoji: string | null | undefined): string | null =>
+  emoji?.trim().slice(0, STATUS_EMOJI_MAX) || null;
 
 export interface Actions {
   // local intents
@@ -36,6 +45,9 @@ export interface Actions {
   clearCallRoster(): void;
   markSelfActive(now: number): void;
   setSelfPresence(patch: { status?: PresenceStatus; mic?: MicState }): void;
+  /** Sets the custom status line, its emoji and the focus flag; the text is trimmed and capped. */
+  setSelfRichStatus(patch: RichStatus): void;
+  setSelfHand(raised: boolean): void;
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
   applyHit(targetId: PlayerId, dmg: number, byId: PlayerId): void;
@@ -89,7 +101,10 @@ export interface Actions {
     now: number,
     jitsi: { room: string | null; participantId: string | null },
     idleMs?: number,
+    rich?: RichStatus,
   ): void;
+  applyRemoteHand(playerId: PlayerId, raised: boolean, now: number): void;
+  receiveEmote(fromId: PlayerId, emote: EmoteId, at: number): void;
   applyRemoteAvatar(playerId: PlayerId, avatar: AvatarData, name: string, now: number): void;
   applyRemoteSeat(playerId: PlayerId, instanceId: string | null, now: number): void;
   applyRemotePose(playerId: PlayerId, pose: PlayerPose | null, now: number, rack?: string | null): void;
@@ -208,6 +223,18 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     setSelfPresence({ status, mic }) {
       patchSelf({ ...(status && { status }), ...(mic && { mic }) });
+    },
+
+    setSelfRichStatus({ statusText, statusEmoji, focus }) {
+      patchSelf({
+        ...(statusText !== undefined && { statusText: cleanStatusText(statusText) }),
+        ...(statusEmoji !== undefined && { statusEmoji: cleanStatusEmoji(statusEmoji) }),
+        ...(focus !== undefined && { focus }),
+      });
+    },
+
+    setSelfHand(raised) {
+      patchSelf({ handRaised: raised });
     },
 
     setWorldConstants(next) {
@@ -358,12 +385,15 @@ export function createActions(store: Store, bus?: Bus): Actions {
       upsertRemote(playerId, { pos, vel, yaw, tRecv, isAirborne }, tRecv);
     },
 
-    applyRemotePresence(playerId, status, mic, now, jitsi, idleMs) {
+    applyRemotePresence(playerId, status, mic, now, jitsi, idleMs, rich) {
       upsertRemote(
         playerId,
         {
           status,
           mic,
+          statusText: cleanStatusText(rich?.statusText),
+          statusEmoji: cleanStatusEmoji(rich?.statusEmoji),
+          focus: rich?.focus ?? false,
           jitsiRoom: jitsi.room,
           jitsiParticipantId: jitsi.participantId,
           lastStatusAt: now,
@@ -387,6 +417,14 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     receivePoke(fromId, targetId, at) {
       bus?.emit({ kind: 'poke:received', fromId, targetId, at });
+    },
+
+    applyRemoteHand(playerId, raised, now) {
+      upsertRemote(playerId, { handRaised: raised }, now);
+    },
+
+    receiveEmote(fromId, emote, at) {
+      bus?.emit({ kind: 'emote:received', fromId, emote, at });
     },
 
     applyRemoteChat(msg) {

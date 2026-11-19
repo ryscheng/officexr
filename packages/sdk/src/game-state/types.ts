@@ -21,6 +21,12 @@ export type AvatarData = {
 export const PLAYER_POSES = ['swim', 'scooter', 'tricycle'] as const;
 export type PlayerPose = (typeof PLAYER_POSES)[number];
 
+export const EMOTE_IDS = ['wave', 'thumbs-up', 'heart', 'laugh', 'clap', 'party', 'question'] as const;
+export type EmoteId = (typeof EMOTE_IDS)[number];
+
+export const STATUS_TEXT_MAX = 60;
+export const STATUS_EMOJI_MAX = 16;
+
 export type PlayerState = {
   id: PlayerId;
   name: string;
@@ -41,6 +47,12 @@ export type PlayerState = {
   seat?: string | null;
   pose?: PlayerPose | null;
   poseRack?: string | null;
+  /** Custom status line, at most `STATUS_TEXT_MAX` characters. */
+  statusText?: string | null;
+  statusEmoji?: string | null;
+  /** Focus (do not disturb): peers see an icon and this player's pings and pokes stay silent. */
+  focus?: boolean;
+  handRaised?: boolean;
   tRecv?: number;
   /** Local-only: receive time of this player's last `presence:status`. */
   lastStatusAt?: number;
@@ -446,6 +458,7 @@ export type GameEvent =
   | { kind: 'combat:killed'; targetId: PlayerId; byId: PlayerId }
   | { kind: 'ping:received'; fromId: PlayerId; at: number }
   | { kind: 'poke:received'; fromId: PlayerId; targetId: PlayerId | null; at: number }
+  | { kind: 'emote:received'; fromId: PlayerId; emote: EmoteId; at: number }
   | { kind: 'inventory:added'; item: InventoryItem }
   | { kind: 'inventory:removed'; itemId: string }
   | { kind: 'voice:room-changed'; roomId: string | null }
