@@ -21,6 +21,7 @@ import { usePingReceiver } from '../ping/usePingReceiver';
 import { PokeToast } from '../hud/PokeToast';
 import { usePingSender } from '../ping/usePingSender';
 import { EmoteMenu } from '../status/EmoteMenu';
+import { StatusMobileActions } from '../status/mobileStatusActions';
 import { focusedTargetName } from '../status/focusNotice';
 import { FocusPingToast, type FocusNotice } from '../status/FocusPingToast';
 import { PresenceListWithStatus } from '../status/PresenceListWithStatus';
@@ -189,6 +190,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       sync={ready.office.sync}
       selfId={ready.local.selfId}
     >
+      <StatusMobileActions />
       {ready.voice && <JaasMeeting voice={ready.voice} />}
       {ready.voice && <MuteHotkey voice={ready.voice} />}
       {!settings.isOpen && <ClickToPlayPrompt />}

@@ -37,7 +37,9 @@ import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookCont
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
 import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
 import { newSelfMotion, stepSelfMotion } from '../motion/self-motion.ts';
-import { pickPokeTarget, POKE_COOLDOWN_S } from '../motion/poke.ts';
+import { pokeFacing, POKE_COOLDOWN_S } from '../motion/poke.ts';
+import type { ActionInput } from '../input/action-input.ts';
+import { interactKind, type ActionContextStore } from '../input/action-context.ts';
 import { useMotionWorld } from './useMotionWorld.ts';
 
 interface SceneFrameProps {
@@ -60,6 +62,10 @@ interface SceneFrameProps {
   autoWalk?: AutoWalkSource;
   /** E sits through it; while seated, any movement input stands through it instead of moving. */
   seating?: SeatingSource;
+  /** Actions held by on-screen buttons; read like keys. Not gated by `worldFocused`. */
+  actionInput?: ActionInput;
+  /** Receives what the Interact button would do; refreshed a few times a second. */
+  actionContext?: ActionContextStore;
   selfId: string;
   /** Set by `Players` when the self avatar's RigidBody mounts. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
@@ -87,6 +93,8 @@ interface SceneFrameProps {
   /** While an immersive XR session is presenting, movement follows the headset's yaw. */
   xrPresenting: boolean;
 }
+
+const ACTION_CONTEXT_INTERVAL_MS = 150;
 
 const headsetForward = new THREE.Vector3();
 
@@ -133,6 +141,8 @@ export function SceneFrame({
   moveInputRef,
   autoWalk,
   seating,
+  actionInput,
+  actionContext,
   selfId,
   selfBodyRef,
   worldFocused,
@@ -216,6 +226,7 @@ export function SceneFrame({
   const eWasDownRef = useRef(false);
   const mountWasDownRef = useRef(false);
   const pokeWasDownRef = useRef(false);
+  const lastContextAtRef = useRef(0);
   const lastPokeAtRef = useRef(-Infinity);
   const selfMotionRef = useRef(newSelfMotion());
   const motionWorld = useMotionWorld(store);
@@ -306,7 +317,7 @@ export function SceneFrame({
   useFrame(({ gl }, dtSec) => {
     const dt = dtSec * 1000;
     const now = performance.now();
-    const keys = keysDown.current;
+    const keys = actionInput ? actionInput.mergeInto(keysDown.current) : keysDown.current;
 
     eWasDownRef.current = sitOnPress(keys, eWasDownRef.current, seating);
     const { fwd, strafe, isRunning, speedScale } = moveIntent(keys, moveInputRef?.current);
@@ -356,12 +367,22 @@ export function SceneFrame({
     pokeWasDownRef.current = pokeDown;
     if (pokePressedThisFrame && self && now - lastPokeAtRef.current > POKE_COOLDOWN_S * 1000) {
       lastPokeAtRef.current = now;
-      const others = Object.values(stateSnapshot.players)
-        .filter((p) => p.id !== selfId && !p.isDead)
-        .map((p) => ({ id: p.id, x: p.pos.x, z: p.pos.z }));
-      const targetId = pickPokeTarget({ x: self.pos.x, z: self.pos.z, yaw: self.yaw }, others);
-      actions.receivePoke(selfId, targetId, now);
-      sync.sendPoke(targetId);
+      pokeFacing(stateSnapshot, selfId, actions, sync, now);
+    }
+
+    if (actionContext && self && now - lastContextAtRef.current > ACTION_CONTEXT_INTERVAL_MS) {
+      lastContextAtRef.current = now;
+      actionContext.set({
+        interact: interactKind(
+          {
+            pose: selfMotionRef.current.pose,
+            seated: self.seat != null,
+            nearbySeat: (seating?.getState?.().nearbySeatId ?? null) !== null,
+            feet: feetPosition(self.pos, stateSnapshot.worldSettings.charRadius),
+          },
+          motionWorldRef.current,
+        ),
+      });
     }
 
     if (self?.seat != null && body) {

@@ -37,3 +37,15 @@ export { useCoarsePointer } from './useCoarsePointer.ts';
 export { useMediaQuery } from './useMediaQuery.ts';
 export { createViewYaw, useViewYaw, ViewYawProvider, type ViewYaw } from './viewYaw.tsx';
 export { planarDistance, relativeBearing } from './relativeGeometry.ts';
+export {
+  PAD_SLOTS,
+  MobileActionRegistry,
+  visibleActions,
+  type MobileAction,
+  type MobileActionContext,
+  type PadSlot,
+} from './mobile-actions.ts';
+export { useMobileActions } from './mobileActionsContext.tsx';
+export { WORLD_MOBILE_ACTIONS } from './worldMobileActions.tsx';
+export { ACTION_KEYS, ActionInput, type ActionId } from '../input/action-input.ts';
+export { interactKind, type ActionContext, type InteractKind } from '../input/action-context.ts';

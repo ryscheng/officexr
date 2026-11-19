@@ -23,6 +23,8 @@ import { Players } from './Players.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { XRAvatarOrigin } from './XRAvatarOrigin.tsx';
 import type { MotionLookState } from './motionLook.ts';
+import type { ActionInput } from '../input/action-input.ts';
+import type { ActionContextStore } from '../input/action-context.ts';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
 import { WaterVolumes } from './WaterVolumes.tsx';
@@ -120,6 +122,10 @@ interface SceneProps {
   worldFocused?: boolean;
   /** Analog walking input from a touch joystick; absent where there is none. */
   moveInputRef?: React.MutableRefObject<MoveInput>;
+  /** Actions held by on-screen buttons, read like keys; absent where there are none. */
+  actionInput?: ActionInput;
+  /** Receives what the Interact button would do; absent where there is no button. */
+  actionContext?: ActionContextStore;
   /** World-space steering used while there is no key or stick input; absent where nothing auto-walks. */
   autoWalk?: AutoWalkSource;
   /** Sitting and standing for the self player; absent where nobody sits. */
@@ -421,6 +427,8 @@ export function Scene(props: SceneProps) {
           moveInputRef={props.moveInputRef}
           autoWalk={props.autoWalk}
           seating={props.seating}
+          actionInput={props.actionInput}
+          actionContext={props.actionContext}
           selfBodyRef={selfBodyRef}
           worldFocused={worldFocused}
           spawnPoints={props.spawnPoints}
