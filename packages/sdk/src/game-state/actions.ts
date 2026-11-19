@@ -9,6 +9,7 @@ import type {
   InventoryItem,
   MicState,
   PlayerId,
+  PlayerPose,
   PlayerState,
   PresenceStatus,
   RealtimeStatus,
@@ -68,6 +69,8 @@ export interface Actions {
   setDeskAreas(areas: DeskAreaState[]): void;
   /** Sit on the placed object instance `instanceId`, or stand up with null. */
   setSelfSeat(instanceId: string | null): void;
+  /** Swim or ride, or null to be on foot again. */
+  setSelfPose(pose: PlayerPose | null): void;
   /** Replace all desk claims. Never broadcast: only the realtime server distributes them. */
   setDeskClaims(claims: Record<string, string>): void;
 
@@ -90,6 +93,8 @@ export interface Actions {
   ): void;
   applyRemoteAvatar(playerId: PlayerId, avatar: AvatarData, name: string, now: number): void;
   applyRemoteSeat(playerId: PlayerId, instanceId: string | null, now: number): void;
+  applyRemotePose(playerId: PlayerId, pose: PlayerPose | null, now: number): void;
+  receivePoke(fromId: PlayerId, targetId: PlayerId | null, at: number): void;
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
   applyZombieState(z: ZombieState): void;
@@ -274,6 +279,10 @@ export function createActions(store: Store, bus?: Bus): Actions {
       patchSelf({ seat: instanceId });
     },
 
+    setSelfPose(pose) {
+      patchSelf({ pose });
+    },
+
     setDeskClaims(claims) {
       store.setState(() => ({ deskClaims: { ...claims } }));
     },
@@ -371,6 +380,14 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     applyRemoteSeat(playerId, instanceId, now) {
       upsertRemote(playerId, { seat: instanceId }, now);
+    },
+
+    applyRemotePose(playerId, pose, now) {
+      upsertRemote(playerId, { pose }, now);
+    },
+
+    receivePoke(fromId, targetId, at) {
+      bus?.emit({ kind: 'poke:received', fromId, targetId, at });
     },
 
     applyRemoteChat(msg) {

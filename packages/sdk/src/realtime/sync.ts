@@ -217,6 +217,18 @@ export class SyncEngine {
     });
   }
 
+  /** Everyone in the room sees the poke; `targetId` is null when it reached nobody. */
+  sendPoke(targetId: PlayerId | null): void {
+    this.broadcast({
+      kind: 'poke:send',
+      v: 1,
+      actorId: this.store.getState().selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      targetId,
+    });
+  }
+
   // --- Lifecycle ------------------------------------------------------
 
   start(): void {
@@ -290,6 +302,7 @@ export class SyncEngine {
     this.position.announceSelf();
     this.stateDiff.announceAvatar();
     this.stateDiff.announceSeat();
+    this.stateDiff.announcePose();
     this.status.announceSelf();
   }
 

@@ -39,6 +39,12 @@ export function applyNetEventToStore(
     case 'presence:seat':
       actions.applyRemoteSeat(event.actorId, event.instanceId, clock.now());
       return;
+    case 'presence:pose':
+      actions.applyRemotePose(event.actorId, event.pose, clock.now());
+      return;
+    case 'poke:send':
+      actions.receivePoke(event.actorId, event.targetId, clock.now());
+      return;
     case 'chat:message': {
       const msg: ChatMessage = {
         id: `${event.actorId}:${event.seq}`,

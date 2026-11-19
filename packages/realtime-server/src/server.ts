@@ -246,6 +246,16 @@ export class Room {
           instanceId: p.seat,
         });
       }
+      if (p.pose != null) {
+        events.push({
+          kind: 'presence:pose',
+          v: 1,
+          actorId: id as PlayerId,
+          seq: seq++,
+          t: Date.now(),
+          pose: p.pose,
+        });
+      }
       // The store's default name is '', so a name means the player sent
       // an avatar:update.
       if (p.name) {
