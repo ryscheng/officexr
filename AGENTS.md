@@ -190,6 +190,21 @@ Files on disk:
 - `packages/world/maps/*.json` (`default.json` is the seed)
 - `packages/world/cube-kinds.json` (+ `cube-kinds.default.json` fallback)
 
+### Swimming, rides and pokes
+
+Three kinds of placed objects and one key add movement to the office scene (`packages/world/src/motion/`, headless
+and unit-tested; the renderer only plays it):
+
+- **Pool** (`water: { surfaceHeight, rim }` on a kind, e.g. `prop_pool`): a player inside the footprint minus the rim
+  swims (`pose: 'swim'`). Shift swims faster; Space does nothing in water. Walk over the rim to get in or out.
+- **Rides** (`ride: { vehicle }` on a kind, e.g. `prop_scooter_rack`, `prop_tricycle_rack`): the object is a rack. F next to
+  it mounts the vehicle (`pose: 'scooter' | 'tricycle'`), F again dismounts. The rack stays where it is.
+- **Poke** (Q): reaches whoever stands in front of you within arm range; they flinch, turn toward you and see a toast.
+- The pose travels as `presence:pose` and the poke as `poke:send` (SDK `protocol.ts`); peers derive the swim stroke, the
+  lean and the buoyancy from the pose and the broadcast velocity.
+- `prop_*` kinds and models come from `packages/world/scripts/generate-prop-models.ts`; the `pool_party` map shows all three.
+  The default catalog fallback stays at the original 12 blocks, so these kinds exist only in `world-object-kinds.json`.
+
 ### 2D view
 
 The web client's 2D view is the 3D view (`PlayView3d`) with the fixed follow camera locked

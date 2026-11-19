@@ -4,8 +4,11 @@ import { modelUrl } from '@officexr/world/app';
 import {
   CUBE_KIND_CATEGORIES,
   type CubeKindCategory,
+  RIDE_VEHICLES,
   type OptimizationMode,
+  type RideVehicle,
   type SeatSpec,
+  type WaterSpec,
   type WorldObjectKind,
 } from '@officexr/world';
 import { getKindBoundingDimensions } from '@officexr/world/renderer';
@@ -220,6 +223,23 @@ export function ObjectKindEditorPanel({ kind, applyPatch }: ObjectKindEditorPane
         />
       </Section>
 
+      <Section title="Water and rides">
+        <Toggle
+          label="water"
+          value={kind.water !== undefined}
+          onChange={(on) => applyPatch({ water: on ? DEFAULT_WATER : undefined })}
+          hint="Players inside the footprint, minus the rim, swim. The rim is the part of the footprint kept dry, in metres."
+        />
+        {kind.water && <WaterFields water={kind.water} onChange={(water) => applyPatch({ water })} />}
+        <SelectInput
+          label="ride"
+          value={kind.ride?.vehicle ?? NO_RIDE}
+          options={[NO_RIDE, ...RIDE_VEHICLES] as readonly (RideVehicle | typeof NO_RIDE)[]}
+          onChange={(vehicle) => applyPatch({ ride: vehicle === NO_RIDE ? undefined : { vehicle } })}
+        />
+        <Readonly label="" value="a rack: players next to it press F to ride" />
+      </Section>
+
       <Section title="Optimization">
         <SelectInput
           label="mode"
@@ -236,6 +256,28 @@ export function ObjectKindEditorPanel({ kind, applyPatch }: ObjectKindEditorPane
 function defaultSeat(kind: WorldObjectKind): SeatSpec {
   const { width = 0, height = 0, depth = 0 } = kind.dimensions ?? {};
   return { offset: { x: width / 2, y: height * 0.45, z: depth / 2 }, yawDeg: 0 };
+}
+
+const NO_RIDE = 'none';
+const DEFAULT_WATER: WaterSpec = { surfaceHeight: 0.4, rim: 0.4 };
+
+function WaterFields({ water, onChange }: { water: WaterSpec; onChange: (water: WaterSpec) => void }) {
+  return (
+    <>
+      <NumberInput
+        label="surface height"
+        value={water.surfaceHeight}
+        step={0.05}
+        onChange={(surfaceHeight) => onChange({ ...water, surfaceHeight: Math.max(0.05, surfaceHeight) })}
+      />
+      <NumberInput
+        label="rim"
+        value={water.rim}
+        step={0.05}
+        onChange={(rim) => onChange({ ...water, rim: Math.max(0.05, rim) })}
+      />
+    </>
+  );
 }
 
 function SeatFields({ seat, onChange }: { seat: SeatSpec; onChange: (seat: SeatSpec) => void }) {
