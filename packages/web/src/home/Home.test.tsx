@@ -60,8 +60,8 @@ describe('Home', () => {
     const hq = (await screen.findByText('HQ')).closest('a');
     expect(hq?.getAttribute('href')).toBe('/room/o1');
     expect(hq?.textContent).toContain('Main');
-    expect(hq?.textContent).toContain('Map: hq');
-    expect(screen.getByText('Annex').closest('a')?.textContent).toContain('Map: default');
+    expect((await screen.findByLabelText('Map for HQ') as HTMLSelectElement).value).toBe('hq');
+    expect((screen.getByLabelText('Map for Annex') as HTMLSelectElement).value).toBe('default');
   });
 
   const mine: Office = {
@@ -73,14 +73,13 @@ describe('Home', () => {
     debug_enabled: false,
   };
 
-  it("lets the office's creator change its map from the list", async () => {
+  it("lets any signed-in user change an office's map from the list", async () => {
     const patch = vi.fn((_url: string, init: RequestInit) =>
       json(200, { ...mine, map_name: JSON.parse(init.body as string).mapName }),
     );
     setup(ready, [mine, { ...mine, id: 'o2', name: 'Annex', created_by_login: 'b@example.com' }], undefined, patch);
     await screen.findAllByRole('option', { name: 'hq' });
-    expect(screen.queryByLabelText('Map for Annex')).toBeNull();
-    expect(screen.getByText('Annex').closest('a')?.textContent).toContain('Map: default');
+    expect(screen.getByLabelText('Map for Annex')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Map for HQ'), { target: { value: 'hq' } });
     await waitFor(() => expect((screen.getByLabelText('Map for HQ') as HTMLSelectElement).value).toBe('hq'));
     expect(patch).toHaveBeenCalledTimes(1);

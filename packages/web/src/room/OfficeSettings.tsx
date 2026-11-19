@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import {
   MAX_DESCRIPTION,
   MAX_NAME,
-  isOfficeCreator,
+  canEditOffice,
   type Identity,
   type Office,
   type OfficeUpdate,
@@ -138,8 +138,7 @@ export function OfficeSettingsPane({ office, onSaved }: { office: Office; onSave
   );
 }
 
-/** The creator's Office tab; none for anyone else. */
 export const officeSettingsTabs = (office: Office, me: Identity, onSaved: (office: Office) => void): SettingsTab[] =>
-  isOfficeCreator(me, office)
+  canEditOffice(me)
     ? [{ id: 'office', label: 'Office', content: <OfficeSettingsPane office={office} onSaved={onSaved} /> }]
     : [];

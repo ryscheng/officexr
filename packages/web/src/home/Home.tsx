@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Map as MapIcon, Plus } from 'lucide-react';
-import { MAX_DESCRIPTION, MAX_NAME, isOfficeCreator, type Identity, type Office } from '@officexr/server/shared';
+import { MAX_DESCRIPTION, MAX_NAME, canEditOffice, type Identity, type Office } from '@officexr/server/shared';
 import { apiFetch, paths } from '../apiOrigin';
 import { Async } from '../Async';
 import { clearPreviewToken } from '@officexr/server/preview-token';
@@ -80,7 +80,7 @@ function MapChip({ name }: { name: string }) {
 
 function OfficeCard({ office: initial, me, maps }: { office: Office; me: Identity | null; maps: string[] }) {
   const [office, setOffice] = useState(initial);
-  const canChangeMap = me !== null && isOfficeCreator(me, office);
+  const canChangeMap = canEditOffice(me);
   return (
     <li>
       <Panel className="group flex h-full flex-col overflow-hidden transition-transform duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5">
