@@ -399,4 +399,19 @@ describe('seedDataDir', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('seeds a fresh dir fully and records every bundled kind in the ledger', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'seed-'));
+    try {
+      await seedDataDir(dir);
+      const bundled = JSON.parse(await readFile(path.join(import.meta.dirname, '../../world-object-kinds.json'), 'utf8'));
+      const seeded = JSON.parse(await readFile(path.join(dir, 'world-object-kinds.json'), 'utf8'));
+      expect(seeded.kinds).toEqual(bundled.kinds);
+      const ledger = JSON.parse(await readFile(path.join(dir, '.seeded-bundle.json'), 'utf8'));
+      expect(ledger.kinds).toEqual(bundled.kinds.map((k: { id: string }) => k.id));
+      expect(await readdir(path.join(dir, 'maps'))).toContain('pool_party.json');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
