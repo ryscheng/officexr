@@ -1,4 +1,5 @@
-import type { Actions, DeskClaimant, EmoteId, PlacedProp, PlayerId, PlayerState, Store } from '@officexr/sdk';
+import type { Actions, DeskClaimant, EmoteId, PlacedProp, PlayerId, PlayerState, Store, VoiceZone } from '@officexr/sdk';
+import { PREVIEW_ZONES } from './previewMissions';
 
 export const SELF_ID = 'avery@example.test';
 export const SELF_NAME = 'Avery Preview';
@@ -24,6 +25,10 @@ export interface Scenario {
   steps?: string[];
   /** Desks in metres east and south of the spawn point, each with a chair and its claimant. */
   desks?: { id: string; at: [number, number]; login: string; claimant?: DeskClaimant }[];
+  /** Rooms for the mission places and the map; the seed replaces the map's own zones. */
+  zones?: VoiceZone[];
+  /** Starts without a missions API, as on a server that predates it. */
+  missions?: 'seeded' | 'empty' | 'unsupported';
 }
 
 const prop = (n: number, kindId: PlacedProp['kindId'], x: number, z: number, yawDeg = 0): PlacedProp => ({
@@ -80,6 +85,8 @@ const chat = [
 export const SCENARIOS: Record<string, Scenario> = {
   crowd: {
     id: 'crowd',
+    zones: PREVIEW_ZONES,
+    missions: 'seeded',
     title: 'Busy office',
     self: { statusText: 'Heads down on the HUD', statusEmoji: '🛠️' },
     players: crowd,
@@ -88,6 +95,28 @@ export const SCENARIOS: Record<string, Scenario> = {
     props: PROPS,
     emotes: [{ from: 'fatima@example.test', emote: 'party' }],
     poke: 'bao@example.test',
+  },
+  missions: {
+    id: 'missions',
+    title: 'Missions, one current, near a person',
+    self: { statusText: 'Heads down on the HUD', statusEmoji: '🛠️' },
+    players: [...crowd.slice(0, 3), { id: 'ines@example.test', name: 'Ines Moreau', at: [2, 1] }],
+    chat: [{ from: 'bao@example.test', text: 'Lunch at 12?' }],
+    call: ['Bao Tran'],
+    props: PROPS,
+    zones: PREVIEW_ZONES,
+    missions: 'seeded',
+    steps: ['Go to Meeting room 1'],
+  },
+  'missions-old-server': {
+    id: 'missions-old-server',
+    title: 'Server without the missions API',
+    self: {},
+    players: crowd.slice(0, 2),
+    chat: [],
+    call: [],
+    props: [],
+    missions: 'unsupported',
   },
   frozen: {
     id: 'frozen',
@@ -114,6 +143,8 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   wand: {
     id: 'wand',
+    zones: PREVIEW_ZONES,
+    missions: 'seeded',
     title: 'Wand held, spell active',
     self: { held: 'wand', heldStand: 'placed:4' },
     players: crowd,
@@ -124,6 +155,8 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   build: {
     id: 'build',
+    zones: PREVIEW_ZONES,
+    missions: 'seeded',
     title: 'Build panel open',
     self: {},
     players: crowd.slice(0, 3),
@@ -134,6 +167,8 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   focus: {
     id: 'focus',
+    zones: PREVIEW_ZONES,
+    missions: 'seeded',
     title: 'Focus on, hand raised, long status',
     self: {
       focus: true,
@@ -149,6 +184,8 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   full: {
     id: 'full',
+    zones: PREVIEW_ZONES,
+    missions: 'seeded',
     title: 'Full roster, long names, full call',
     self: { statusText: 'Presenting', statusEmoji: '🎤' },
     players: [
@@ -193,6 +230,7 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
     });
   }
   actions.setPlacedProps(scenario.props);
+  const unseedZones = scenario.zones ? seedZones(scenario.zones, deps) : () => {};
   const unseedDesks = scenario.desks ? seedDesks(scenario.desks, deps) : () => {};
   scenario.chat.forEach((m, i) =>
     actions.applyRemoteChat({ id: `m${i}`, authorId: m.from, text: m.text, t: Date.now() - (scenario.chat.length - i) * 60_000 }),
@@ -220,7 +258,17 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
   return () => {
     timers.forEach(clearInterval);
     unseedDesks();
+    unseedZones();
   };
+}
+
+/** Seeds the rooms, and again whenever the map load replaces them. */
+function seedZones(zones: VoiceZone[], { store, actions }: { store: Store; actions: Actions }): () => void {
+  const apply = () => {
+    if (store.getState().voiceZones !== zones) actions.setVoiceZones(zones);
+  };
+  apply();
+  return store.subscribe((s) => s.voiceZones, apply);
 }
 
 const DESK_CHAIR_KIND = 'furniture_chair_a';

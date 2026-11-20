@@ -1,0 +1,11 @@
+.mission-marker {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #0a84ff;
+  color: #fff;
+  font: 600 12px/1.4 system-ui, sans-serif;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+}

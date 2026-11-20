@@ -6,7 +6,7 @@ import {
   type OfficeSync,
   type PersistentLocalState,
 } from '@officexr/core-refactor';
-import { HELD_DENIED_KIND, INTEGRATION_NOTICE_KIND, ZIntegrationNotice } from '@officexr/sdk';
+import { HELD_DENIED_KIND, INTEGRATION_NOTICE_KIND, MISSIONS_CHANGED_KIND, ZIntegrationNotice, ZMissionsChanged } from '@officexr/sdk';
 import type { Identity } from '@officexr/server/shared';
 import { createPropOpRequester, type PropOpRequester, type RequestPropOp } from '../place/requestPropOp';
 import { createDeskClaimRequester, type DeskClaimRequester, type RequestDeskClaim } from '../desk/requestDeskClaim';
@@ -17,9 +17,11 @@ import { getJaasAppId } from '../voice/runtimeConfig';
 import { loadCharacter } from './character';
 import { fetchRealtimeToken } from './realtimeToken';
 
+export type SubscribeMissionsChanged = (listener: (officeId: string) => void) => () => void;
+
 export type OfficeSession =
   | { type: 'connecting' }
-  | { type: 'ready'; local: PersistentLocalState; office: OfficeSync; voice: JaasVoiceAdapter | null; requestDeskClaim: RequestDeskClaim; requestPropOp: RequestPropOp }
+  | { type: 'ready'; local: PersistentLocalState; office: OfficeSync; voice: JaasVoiceAdapter | null; requestDeskClaim: RequestDeskClaim; requestPropOp: RequestPropOp; subscribeMissionsChanged?: SubscribeMissionsChanged }
   | { type: 'replaced' }
   | { type: 'error'; message: string };
 
@@ -112,7 +114,14 @@ export function useOfficeSession(
               local.actions.applyRemoteChat({ id: `notice:${Date.now()}:${noticeCount++}`, authorId: notice.data.from, text: notice.data.text, t: Date.now() });
             }
           });
-          setSession({ type: 'ready', local, office: started, voice, requestDeskClaim: deskClaims.request, requestPropOp: propOps.request });
+          const subscribeMissionsChanged: SubscribeMissionsChanged = (listener) =>
+            channel.onCustom(MISSIONS_CHANGED_KIND, (payload) => {
+              const changed = ZMissionsChanged.safeParse(payload);
+              if (changed.success) {
+                listener(changed.data.officeId);
+              }
+            });
+          setSession({ type: 'ready', local, office: started, voice, requestDeskClaim: deskClaims.request, requestPropOp: propOps.request, subscribeMissionsChanged });
         },
         (err: Error) => {
           if (cancelled) {

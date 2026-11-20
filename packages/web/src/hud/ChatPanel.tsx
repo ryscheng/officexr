@@ -4,6 +4,7 @@ import { MessageSquare, SendHorizontal } from 'lucide-react';
 import { focusWorld, useStoreSelector } from '@officexr/world/top-down';
 import { IconButton } from './IconButton';
 import { isComposing } from './isComposing';
+import { Keycap } from './ui/Keycap';
 import { CHIP, Panel, PanelTitle, TITLE_TEXT } from './ui/Panel';
 import { useEscapeLayer } from './useEscapeLayer';
 import { useChatVisibility } from './useChatVisibility';
@@ -22,12 +23,23 @@ const sameNames = (a: Names, b: Names) => {
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 };
 
-type ChatPanelProps = { store: Store; actions: Actions; selfId: string };
+type ChatPanelProps = {
+  store: Store;
+  actions: Actions;
+  selfId: string;
+  /** Shared with a parent that has its own chat button; the panel keeps its own when absent. */
+  visibility?: ReturnType<typeof useChatVisibility>;
+  /** Handles `/mission <title>`; the panel then shows a system line instead of sending the text. */
+  onMissionCommand?: (title: string) => Promise<boolean>;
+};
 
-export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
+const MISSION_COMMAND = /^\/mission\s+(\S.*)$/i;
+
+export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand }: ChatPanelProps) {
   const chat = useStoreSelector(store, selectChat);
   const names = useStoreSelector(store, selectNames, sameNames);
-  const { mode, compose, peek, hide } = useChatVisibility(chat.length);
+  const own = useChatVisibility(chat.length);
+  const { mode, compose, peek, hide } = visibility ?? own;
   const [draft, setDraft] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -90,15 +102,21 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
   );
 
   if (mode === 'hidden') {
+    const last = chat.at(-1);
     return (
       <button
         type="button"
         data-studio-panel
         onClick={compose}
-        className={`pointer-events-auto flex items-center gap-2 px-3 py-1.5 text-sm pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center pointer-coarse:px-2 ${CHIP} ${TITLE_TEXT}`}
+        className={`pointer-events-auto flex w-86 max-w-[calc(100vw-24px)] items-center gap-2 px-3 py-2 text-left text-sm pointer-coarse:hidden ${CHIP} rounded-hud-panel ${TITLE_TEXT}`}
       >
-        <MessageSquare aria-hidden className="size-4" />
-        <span className="pointer-coarse:sr-only">Chat · Enter</span>
+        <MessageSquare aria-hidden className="size-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate font-normal">
+          {last ? `${names[last.authorId] || last.authorId}: ${last.text}` : 'Chat'}
+        </span>
+        <span className="pointer-coarse:hidden">
+          <Keycap>Enter</Keycap>
+        </span>
       </button>
     );
   }
@@ -122,6 +140,11 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
     if (!text) {
       return;
     }
+    const command = onMissionCommand && MISSION_COMMAND.exec(text);
+    if (command) {
+      void sendMissionCommand(command[1].trim().slice(0, 140));
+      return;
+    }
     actions.appendChat({
       id: `${selfId}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
       authorId: selfId,
@@ -132,10 +155,22 @@ export function ChatPanel({ store, actions, selfId }: ChatPanelProps) {
     handBack(peek);
   };
 
+  const sendMissionCommand = async (title: string) => {
+    setDraft('');
+    const added = await onMissionCommand!(title);
+    actions.applyRemoteChat({
+      id: `mission:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      authorId: 'Missions',
+      text: added ? `Added mission "${title}"` : 'Could not add the mission',
+      t: Date.now(),
+    });
+    handBack(peek);
+  };
+
   return (
     <Panel
       ref={containerRef}
-      className="pointer-events-auto flex w-80 max-w-[calc(100vw-24px)] flex-col gap-1.5 p-2 text-sm"
+      className="pointer-events-auto flex w-86 max-w-[calc(100vw-24px)] flex-col gap-1.5 p-2 text-sm"
     >
       <PanelTitle className="px-1 text-xs">Chat</PanelTitle>
       <div ref={listRef} className="max-h-48 overflow-y-auto overscroll-contain px-1">
