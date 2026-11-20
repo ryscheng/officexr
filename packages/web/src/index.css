@@ -132,6 +132,11 @@
   --hud-share-top: 80px;
 }
 
+/* While in a call a sheet stops under the call pill, so mute and leave stay reachable. */
+:root[data-hud-call] {
+  --hud-sheet-top: var(--hud-sheet-top-in-call, calc(var(--hud-inset-top) + 64px));
+}
+
 /*
  * Phone portrait placement, in one place (the rules are in docs/hud-review/android-hud-best-practice.md).
  * Rows under the top bar: bar 56 px, then the call pill (68 px) when in a call, then the mission chip (56 px), then toasts.
@@ -146,6 +151,7 @@
     --hud-portrait-bar-row: 3.5rem;
     --hud-portrait-call-row: 4.25rem;
     --hud-portrait-chip-row: 3.5rem;
+    --hud-sheet-top-in-call: calc(var(--hud-inset-top) + 64px + var(--hud-portrait-call-row));
     --hud-seat-toast-bottom: calc(var(--hud-inset-bottom) + 14rem);
     --hud-error-top: calc(var(--hud-inset-top) + 7.5rem);
     --hud-share-top: calc(var(--hud-inset-top) + 12.5rem);

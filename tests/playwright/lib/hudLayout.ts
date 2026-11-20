@@ -162,15 +162,8 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
     }
     if (name === 'keyboard') {
       const { width, height } = page.viewportSize()!;
-      const cdp = await page.context().newCDPSession(page);
-      await cdp.send('Emulation.setDeviceMetricsOverride', {
-        width,
-        height: height - Math.round(height * 0.42),
-        deviceScaleFactor: 1,
-        mobile: true,
-        screenWidth: width,
-        screenHeight: height,
-      });
+      // Playwright shrinks the screen with the viewport, so keep the window taller than wide to stay in portrait.
+      await page.setViewportSize({ width, height: Math.max(height - Math.round(height * 0.42), width + 20) });
       await page.waitForTimeout(800);
       continue;
     }

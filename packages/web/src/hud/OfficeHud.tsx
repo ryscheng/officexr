@@ -108,6 +108,15 @@ export function OfficeHud({
   const missionsFold = useFold('missions', coarse);
   const inCall = useCallRows(store, selfId).state !== 'none';
   const spots = useOfficeSpots(store);
+  useEffect(() => {
+    if (!(narrow && inCall)) {
+      return;
+    }
+    document.documentElement.dataset.hudCall = '';
+    return () => {
+      delete document.documentElement.dataset.hudCall;
+    };
+  }, [narrow, inCall]);
   const plan = useMapPlan(store);
 
   const chatShowsLog = chatVisibility.mode === 'compose' || (chatVisibility.mode === 'peek' && !narrow);

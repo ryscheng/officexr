@@ -29,9 +29,16 @@ for (const device of HUD_DEVICES.filter((d) => !deviceFilter || deviceFilter.inc
         test.skip(existsSync(path.join(out, `${base}.json`)) && !process.env.HUD_CAPTURE_FORCE, 'already captured');
         const { page, close } = await openHudPreview(browser, device, scenario, theme);
         try {
-          await runScenarioSteps(page, scenario);
           await applySafeArea(page, device.safe);
-          await page.screenshot({ path: path.join(out, `${base}.png`), timeout: 60_000 });
+          await runScenarioSteps(page, scenario);
+          if (scenario === 'chat-peek') {
+            // The preview lasts 5 s and a software-GL screenshot can take longer, so grab the frame straight from the browser.
+            const cdp = await page.context().newCDPSession(page);
+            const { data } = await cdp.send('Page.captureScreenshot');
+            writeFileSync(path.join(out, `${base}.png`), Buffer.from(data, 'base64'));
+          } else {
+            await page.screenshot({ path: path.join(out, `${base}.png`), timeout: 60_000 });
+          }
           const boxes = await collectHudBoxes(page);
           const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
           const report = {
