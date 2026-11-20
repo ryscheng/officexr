@@ -1,0 +1,459 @@
+{
+ "viewport": {
+  "width": 1194,
+  "height": 834
+ },
+ "overlaps": [
+  [
+   "Jump",
+   "Ping Fatima Al-Sayed"
+  ],
+  [
+   "Jump",
+   "Go to Fatima Al-Sayed"
+  ],
+  [
+   "Jump",
+   "Ping Gustavo Ferreira"
+  ],
+  [
+   "Jump",
+   "Go to Gustavo Ferreira"
+  ],
+  [
+   "Sprint",
+   "Ping Fatima Al-Sayed"
+  ],
+  [
+   "Sprint",
+   "Ping Gustavo Ferreira"
+  ],
+  [
+   "Poke",
+   "Ping Esperanza Villanueva Montoya"
+  ],
+  [
+   "Poke",
+   "Go to Esperanza Villanueva Montoya"
+  ],
+  [
+   "Poke",
+   "Ping Fatima Al-Sayed"
+  ],
+  [
+   "Poke",
+   "Go to Fatima Al-Sayed"
+  ]
+ ],
+ "outside": [
+  "Jump",
+  "Set a status",
+  "Raise your hand",
+  "Emotes",
+  "Pings",
+  "Build B",
+  "Settings",
+  "Ping Gustavo Ferreira",
+  "Go to Gustavo Ferreira",
+  "Ping Gustavo Ferreira",
+  "Go to Gustavo Ferreira",
+  "Ping Hana Kobayashi",
+  "Go to Hana Kobayashi",
+  "Ping Ines Moreau",
+  "Go to Ines Moreau",
+  "Ping Jamal Washington",
+  "Go to Jamal Washington",
+  "Ping Kiri Te Rangi",
+  "Go to Kiri Te Rangi",
+  "Ping Lars Lindqvist",
+  "Go to Lars Lindqvist",
+  "Ping Mei Chen",
+  "Go to Mei Chen",
+  "Mute microphone",
+  "In call, 2",
+  "Chat · Enter"
+ ],
+ "smallTargets": [
+  "Avery Preview (you) 114x16"
+ ],
+ "boxes": [
+  {
+   "name": "Jump",
+   "x": 1102,
+   "y": 742,
+   "w": 80,
+   "h": 80
+  },
+  {
+   "name": "Sprint",
+   "x": 1024,
+   "y": 752,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Poke",
+   "x": 1112,
+   "y": 664,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Emote",
+   "x": 959.953125,
+   "y": 690.578125,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Hand",
+   "x": 1011.046875,
+   "y": 622.78125,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Build",
+   "x": 999.328125,
+   "y": 540.09375,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Set a status",
+   "x": 834.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Raise your hand",
+   "x": 886.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Emotes",
+   "x": 938.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Pings",
+   "x": 990.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Build B",
+   "x": 1042.96875,
+   "y": 12,
+   "w": 87.03125,
+   "h": 44
+  },
+  {
+   "name": "Settings",
+   "x": 1138,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Show map",
+   "x": 1092,
+   "y": 64,
+   "w": 90,
+   "h": 90
+  },
+  {
+   "name": "Collapse people list",
+   "x": 1129,
+   "y": 169,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Avery Preview (you)",
+   "x": 985,
+   "y": 227,
+   "w": 113.71875,
+   "h": 16
+  },
+  {
+   "name": "Ping Bao Tran",
+   "x": 1075,
+   "y": 256,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Bao Tran",
+   "x": 1127,
+   "y": 256,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Bao Tran",
+   "x": 1075,
+   "y": 310,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Bao Tran",
+   "x": 1127,
+   "y": 310,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Chiamaka Okonkwo-Adeyemi",
+   "x": 1075,
+   "y": 364,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Chiamaka Okonkwo-Adeyemi",
+   "x": 1127,
+   "y": 364,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Chiamaka Okonkwo-Adeyemi",
+   "x": 1075,
+   "y": 417,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Chiamaka Okonkwo-Adeyemi",
+   "x": 1127,
+   "y": 417,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Dmitri Volkov",
+   "x": 1075,
+   "y": 469,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Dmitri Volkov",
+   "x": 1127,
+   "y": 469,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Dmitri Volkov",
+   "x": 1075,
+   "y": 521,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Dmitri Volkov",
+   "x": 1127,
+   "y": 521,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Esperanza Villanueva Montoya",
+   "x": 1075,
+   "y": 574,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Esperanza Villanueva Montoya",
+   "x": 1127,
+   "y": 574,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Esperanza Villanueva Montoya",
+   "x": 1075,
+   "y": 628,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Esperanza Villanueva Montoya",
+   "x": 1127,
+   "y": 628,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Fatima Al-Sayed",
+   "x": 1075,
+   "y": 682,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Fatima Al-Sayed",
+   "x": 1127,
+   "y": 682,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Fatima Al-Sayed",
+   "x": 1075,
+   "y": 735,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Fatima Al-Sayed",
+   "x": 1127,
+   "y": 735,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Gustavo Ferreira",
+   "x": 1075,
+   "y": 787,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Gustavo Ferreira",
+   "x": 1127,
+   "y": 787,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Gustavo Ferreira",
+   "x": 1075,
+   "y": 839,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Gustavo Ferreira",
+   "x": 1127,
+   "y": 839,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Hana Kobayashi",
+   "x": 1075,
+   "y": 892,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Hana Kobayashi",
+   "x": 1127,
+   "y": 892,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Ines Moreau",
+   "x": 1075,
+   "y": 945,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Ines Moreau",
+   "x": 1127,
+   "y": 945,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Jamal Washington",
+   "x": 1075,
+   "y": 997,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Jamal Washington",
+   "x": 1127,
+   "y": 997,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Kiri Te Rangi",
+   "x": 1075,
+   "y": 1050,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Kiri Te Rangi",
+   "x": 1127,
+   "y": 1050,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Lars Lindqvist",
+   "x": 1075,
+   "y": 1103,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Lars Lindqvist",
+   "x": 1127,
+   "y": 1103,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Mei Chen",
+   "x": 1075,
+   "y": 1155,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Mei Chen",
+   "x": 1127,
+   "y": 1155,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Mute microphone",
+   "x": 801.671875,
+   "y": 771,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "In call, 2",
+   "x": 853.671875,
+   "y": 771,
+   "w": 65.328125,
+   "h": 44
+  },
+  {
+   "name": "Chat · Enter",
+   "x": 132,
+   "y": 778,
+   "w": 44,
+   "h": 44
+  }
+ ]
+}

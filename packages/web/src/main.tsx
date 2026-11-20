@@ -1,5 +1,5 @@
 import './assetBase';
-import { StrictMode } from 'react';
+import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
@@ -11,8 +11,20 @@ capturePreviewToken();
 // Before the first paint, so a dark-mode user never sees a light flash.
 appearanceController();
 
+// Dev servers only: a production build drops this branch, and the preview module with it.
+const HudPreview =
+  import.meta.env.DEV && window.location.pathname === '/hud-preview'
+    ? lazy(() => import('./hud-preview/HudPreview').then((m) => ({ default: m.HudPreview })))
+    : null;
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {HudPreview ? (
+      <Suspense fallback={null}>
+        <HudPreview />
+      </Suspense>
+    ) : (
+      <App />
+    )}
   </StrictMode>,
 );

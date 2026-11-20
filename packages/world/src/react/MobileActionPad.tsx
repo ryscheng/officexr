@@ -11,11 +11,10 @@ import {
 } from './mobile-actions.ts';
 import { useModalOpen } from './useModalOpen.ts';
 
-const INSET = 12;
 const HAPTIC_MS = 10;
 
 const insetCalc = (offset: number, edge: 'right' | 'bottom') =>
-  `calc(${offset}px + max(${INSET}px, env(safe-area-inset-${edge}, 0px)))`;
+  `calc(${offset}px + var(--hud-inset-${edge}, max(12px, env(safe-area-inset-${edge}, 0px))))`;
 
 function haptic(): void {
   try {

@@ -49,7 +49,7 @@ import { KeybindsTab } from './KeybindsTab';
 import { NotificationsPane } from './PingSettings';
 import { SettingsProvider, useSettings, type SettingsAction, type SettingsTab } from './Settings';
 import { SettingRow, SettingsButton } from './SettingsModal';
-import { useJoinCheck } from './useJoinCheck';
+import { useJoinCheck, type JoinCheckControl } from './useJoinCheck';
 import { useLocalActivity } from './useLocalActivity';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
@@ -68,7 +68,7 @@ const storages = {
   layouts: new FilesystemLayoutStorage({ basePath: apiUrl(paths.layouts) }),
 };
 
-export function OfficeWorld(props: { office: Office; me: Identity }) {
+export function OfficeWorld(props: { office: Office; me: Identity; hermetic?: HermeticWorld }) {
   const api = useMemo(() => createDefaultApi({ apiPath: apiUrl(paths.worldObjectKinds) }), []);
   const sfx = useMemo(createBrowserSfx, []);
   useEffect(() => () => sfx.dispose(), [sfx]);
@@ -76,7 +76,11 @@ export function OfficeWorld(props: { office: Office; me: Identity }) {
     <ApplicationProvider api={api}>
       <SfxProvider value={sfx}>
         <SettingsProvider>
-          <World {...props} />
+          {props.hermetic ? (
+            <World office={props.office} me={props.me} session={props.hermetic.session} join={HERMETIC_JOIN} />
+          ) : (
+            <LiveWorld office={props.office} me={props.me} />
+          )}
         </SettingsProvider>
       </SfxProvider>
     </ApplicationProvider>
@@ -84,6 +88,19 @@ export function OfficeWorld(props: { office: Office; me: Identity }) {
 }
 
 type ReadySession = Extract<OfficeSession, { type: 'ready' }>;
+
+/** A session built without the backend: the web office then skips the join check and the realtime join. */
+export type HermeticWorld = { session: ReadySession };
+
+const HERMETIC_JOIN = { state: 'go' as const, join: () => undefined, cancel: () => undefined };
+
+function LiveWorld(props: { office: Office; me: Identity }) {
+  const { office, me } = props;
+  const selfId = useMemo(() => playerIdFor(office, me), [office, me]);
+  const join = useJoinCheck(office.id, me.login);
+  const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
+  return <World office={office} me={me} session={session} join={join} />;
+}
 
 const isReplaced = (s: OfficeState) => s.realtime.status === 'replaced';
 
@@ -115,12 +132,9 @@ function PingInboxFeed({ bus, store, inbox }: { bus: Bus; store: Store; inbox: P
   return null;
 }
 
-function World({ office: initialOffice, me }: { office: Office; me: Identity }) {
+function World({ office: initialOffice, me, session, join }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl }) {
   const [office, setOffice] = useState(initialOffice);
-  const selfId = useMemo(() => playerIdFor(initialOffice, me), [initialOffice, me]);
   const viewMode = useMemo(() => initialViewMode(), []);
-  const join = useJoinCheck(office.id, me.login);
-  const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
   const local = session.type === 'ready' ? session.local : null;
   const pingInbox = useMemo(() => new PingInbox(), [local]);
   const placeMode = useMemo(createPlaceMode, []);

@@ -5,10 +5,12 @@ import { fetchRealtimeToken } from './realtimeToken';
 
 export type JoinCheck = 'checking' | 'prompt' | 'go' | 'cancelled';
 
+export type JoinCheckControl = { state: JoinCheck; join: () => void; cancel: () => void };
+
 // ponytail: a very fast reload may briefly see its own old session as connected and prompt.
 // ponytail: a tab that was reconnecting when another window joined replaces that window on reconnect, without prompting.
 /** Asks whether `login` is already in the office and, if joining would replace that session, waits for a decision. */
-export function useJoinCheck(officeId: string, login: string, fetchFn: typeof apiFetch = apiFetch) {
+export function useJoinCheck(officeId: string, login: string, fetchFn: typeof apiFetch = apiFetch): JoinCheckControl {
   const [state, setState] = useState<JoinCheck>('checking');
   const navigate = useNavigate();
   useEffect(() => {

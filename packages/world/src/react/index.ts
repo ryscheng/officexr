@@ -49,4 +49,7 @@ export { useMobileActions } from './mobileActionsContext.tsx';
 export { WORLD_MOBILE_ACTIONS } from './worldMobileActions.tsx';
 export { ACTION_KEYS, ActionInput, type ActionId } from '../input/action-input.ts';
 export { WandIcon } from './mobileIcons.tsx';
-export { interactKind, type ActionContext, type InteractKind } from '../input/action-context.ts';
+export { ActionContextStore, interactKind, type ActionContext, type InteractKind } from '../input/action-context.ts';
+export { MobileActionPad } from './MobileActionPad.tsx';
+export { VirtualJoystick } from './VirtualJoystick.tsx';
+export { NO_MOVE, type MoveInput } from '../renderer/moveIntent.ts';

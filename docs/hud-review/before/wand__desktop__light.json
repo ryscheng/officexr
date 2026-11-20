@@ -1,0 +1,214 @@
+{
+ "viewport": {
+  "width": 1440,
+  "height": 900
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "Set a status",
+   "x": 1140.96875,
+   "y": 12,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "Raise your hand",
+   "x": 1180.96875,
+   "y": 12,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "Emotes",
+   "x": 1220.96875,
+   "y": 12,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "Pings",
+   "x": 1260.96875,
+   "y": 12,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "Build B",
+   "x": 1300.96875,
+   "y": 12,
+   "w": 87.03125,
+   "h": 32.65625
+  },
+  {
+   "name": "Settings",
+   "x": 1396,
+   "y": 12,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "Hide map",
+   "x": 1399,
+   "y": 61.65625,
+   "w": 16,
+   "h": 16
+  },
+  {
+   "name": "Collapse people list",
+   "x": 1393,
+   "y": 327.65625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Avery Preview (you)",
+   "x": 1231,
+   "y": 367.65625,
+   "w": 113.71875,
+   "h": 16
+  },
+  {
+   "name": "Ping Bao Tran",
+   "x": 1357,
+   "y": 405.65625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Bao Tran",
+   "x": 1391,
+   "y": 405.65625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Chiamaka Okonkwo-Adeyemi",
+   "x": 1357,
+   "y": 459.65625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Chiamaka Okonkwo-Adeyemi",
+   "x": 1391,
+   "y": 459.65625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Dmitri Volkov",
+   "x": 1357,
+   "y": 506.15625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Dmitri Volkov",
+   "x": 1391,
+   "y": 506.15625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Esperanza Villanueva Montoya",
+   "x": 1357,
+   "y": 552.65625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Esperanza Villanueva Montoya",
+   "x": 1391,
+   "y": 552.65625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Fatima Al-Sayed",
+   "x": 1357,
+   "y": 606.65625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Fatima Al-Sayed",
+   "x": 1391,
+   "y": 606.65625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Gustavo Ferreira",
+   "x": 1357,
+   "y": 653.15625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Gustavo Ferreira",
+   "x": 1391,
+   "y": 653.15625,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "1Fireball",
+   "x": 526.5,
+   "y": 797.34375,
+   "w": 88.578125,
+   "h": 26.65625
+  },
+  {
+   "name": "2Levitate",
+   "x": 619.078125,
+   "y": 797.34375,
+   "w": 92.25,
+   "h": 26.65625
+  },
+  {
+   "name": "3Shrink",
+   "x": 715.328125,
+   "y": 797.34375,
+   "w": 83.359375,
+   "h": 26.65625
+  },
+  {
+   "name": "4Color burst",
+   "x": 802.6875,
+   "y": 797.34375,
+   "w": 110.8125,
+   "h": 26.65625
+  },
+  {
+   "name": "Mute microphone",
+   "x": 577.125,
+   "y": 847.5,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "Screen sharing unavailable",
+   "x": 696.125,
+   "y": 847.5,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "In call, 2",
+   "x": 736.125,
+   "y": 847.5,
+   "w": 126.75,
+   "h": 32
+  },
+  {
+   "name": "Chat · Enter",
+   "x": 12,
+   "y": 854,
+   "w": 124.875,
+   "h": 34
+  }
+ ]
+}

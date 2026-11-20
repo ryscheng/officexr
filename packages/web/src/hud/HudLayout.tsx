@@ -12,7 +12,7 @@ type Slots = {
 /** Places the in-office HUD in fixed zones around the edges; the top centre stacks toasts and banners. */
 export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentre, bottomLeft }: Slots) {
   return (
-    <div className="pointer-events-none absolute inset-3 z-20">
+    <div className="pointer-events-none absolute z-20" style={{ top: 'var(--hud-inset-top)', right: 'var(--hud-inset-right)', bottom: 'var(--hud-inset-bottom)', left: 'var(--hud-inset-left)' }}>
       <div data-hud-zone="topLeft" className="absolute top-0 left-0 flex flex-col items-start gap-2">
         {topLeft}
       </div>

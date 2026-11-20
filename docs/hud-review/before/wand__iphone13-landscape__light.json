@@ -1,0 +1,219 @@
+{
+ "viewport": {
+  "width": 750,
+  "height": 342
+ },
+ "overlaps": [
+  [
+   "Jump",
+   "Put wand back"
+  ],
+  [
+   "Poke",
+   "Show people in Preview Office (7)"
+  ],
+  [
+   "Emote",
+   "Spell: Fireball"
+  ],
+  [
+   "Cast Fireball",
+   "Show map"
+  ],
+  [
+   "Build",
+   "Pings"
+  ],
+  [
+   "Build",
+   "Build B"
+  ]
+ ],
+ "outside": [
+  "Jump",
+  "Poke",
+  "Cast Fireball",
+  "Settings",
+  "Show map",
+  "Show people in Preview Office (7)",
+  "Mute microphone",
+  "In call, 2",
+  "Chat · Enter"
+ ],
+ "smallTargets": [
+  "1Fireball 89x27",
+  "2Levitate 92x27",
+  "3Shrink 83x27",
+  "4Color burst 111x27"
+ ],
+ "boxes": [
+  {
+   "name": "Jump",
+   "x": 658,
+   "y": 250,
+   "w": 80,
+   "h": 80
+  },
+  {
+   "name": "Sprint",
+   "x": 580,
+   "y": 260,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Put wand back",
+   "x": 605.78125,
+   "y": 197.78125,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Poke",
+   "x": 668,
+   "y": 172,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Emote",
+   "x": 515.953125,
+   "y": 198.578125,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Hand",
+   "x": 567.046875,
+   "y": 130.78125,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Cast Fireball",
+   "x": 645.1875,
+   "y": 97.609375,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Spell: Fireball",
+   "x": 460.15625,
+   "y": 140,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Build",
+   "x": 555.328125,
+   "y": 48.09375,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Set a status",
+   "x": 390.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Raise your hand",
+   "x": 442.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Emotes",
+   "x": 494.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Pings",
+   "x": 546.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Build B",
+   "x": 598.96875,
+   "y": 12,
+   "w": 87.03125,
+   "h": 44
+  },
+  {
+   "name": "Settings",
+   "x": 694,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Show map",
+   "x": 648,
+   "y": 64,
+   "w": 90,
+   "h": 90
+  },
+  {
+   "name": "Show people in Preview Office (7)",
+   "x": 694,
+   "y": 162,
+   "w": 44,
+   "h": 64
+  },
+  {
+   "name": "1Fireball",
+   "x": 88,
+   "y": 230.34375,
+   "w": 88.578125,
+   "h": 26.65625
+  },
+  {
+   "name": "2Levitate",
+   "x": 180.578125,
+   "y": 230.34375,
+   "w": 92.25,
+   "h": 26.65625
+  },
+  {
+   "name": "3Shrink",
+   "x": 276.828125,
+   "y": 230.34375,
+   "w": 83.359375,
+   "h": 26.65625
+  },
+  {
+   "name": "4Color burst",
+   "x": 364.1875,
+   "y": 230.34375,
+   "w": 110.8125,
+   "h": 26.65625
+  },
+  {
+   "name": "Mute microphone",
+   "x": 222.828125,
+   "y": 279,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "In call, 2",
+   "x": 274.828125,
+   "y": 279,
+   "w": 65.328125,
+   "h": 44
+  },
+  {
+   "name": "Chat · Enter",
+   "x": 132,
+   "y": 286,
+   "w": 44,
+   "h": 44
+  }
+ ]
+}

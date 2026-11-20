@@ -1,0 +1,152 @@
+{
+ "viewport": {
+  "width": 750,
+  "height": 342
+ },
+ "overlaps": [
+  [
+   "Poke",
+   "Show people in Preview Office (19)"
+  ],
+  [
+   "Build",
+   "Pings"
+  ],
+  [
+   "Build",
+   "Build B"
+  ]
+ ],
+ "outside": [
+  "Jump",
+  "Poke",
+  "Settings",
+  "Show map",
+  "Show people in Preview Office (19)",
+  "Mute microphone",
+  "In call, 2",
+  "Chat · Enter"
+ ],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "Jump",
+   "x": 658,
+   "y": 250,
+   "w": 80,
+   "h": 80
+  },
+  {
+   "name": "Sprint",
+   "x": 580,
+   "y": 260,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Poke",
+   "x": 668,
+   "y": 172,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Emote",
+   "x": 515.953125,
+   "y": 198.578125,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Hand",
+   "x": 567.046875,
+   "y": 130.78125,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Build",
+   "x": 555.328125,
+   "y": 48.09375,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Set a status",
+   "x": 390.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Raise your hand",
+   "x": 442.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Emotes",
+   "x": 494.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Pings",
+   "x": 546.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Build B",
+   "x": 598.96875,
+   "y": 12,
+   "w": 87.03125,
+   "h": 44
+  },
+  {
+   "name": "Settings",
+   "x": 694,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Show map",
+   "x": 648,
+   "y": 64,
+   "w": 90,
+   "h": 90
+  },
+  {
+   "name": "Show people in Preview Office (19)",
+   "x": 694,
+   "y": 162,
+   "w": 44,
+   "h": 64
+  },
+  {
+   "name": "Mute microphone",
+   "x": 357.671875,
+   "y": 279,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "In call, 2",
+   "x": 409.671875,
+   "y": 279,
+   "w": 65.328125,
+   "h": 44
+  },
+  {
+   "name": "Chat · Enter",
+   "x": 132,
+   "y": 286,
+   "w": 44,
+   "h": 44
+  }
+ ]
+}
