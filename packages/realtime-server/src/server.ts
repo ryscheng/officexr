@@ -214,12 +214,11 @@ export class Room {
     return this.store.getState().placedProps.some((p) => p.id === stand && p.kindId === WAND_STAND_KIND);
   }
 
-  /** Tells a client its wand is gone, so it drops the wand and tells everyone else. */
   denyHeld(userId: PlayerId): void {
     this.sendCustom(HELD_DENIED_KIND, {}, userId);
   }
 
-  /** Whether `sender` may announce this `presence:held`: its own, with a real stand no one else holds (first claim wins). */
+  /** First claim on a stand wins; the loser is told to drop the wand. */
   acceptHeld(sender: PlayerId, event: Extract<NetEvent, { kind: 'presence:held' }>): boolean {
     if (event.actorId !== sender) return false;
     if (event.held === null) return true;
@@ -232,7 +231,7 @@ export class Room {
     return true;
   }
 
-  /** The cast to relay for `sender`, or null: its own, wand from a real stand, not riding or swimming, within the cooldown; a target who is not here becomes a miss. */
+  /** A target who is not in the room becomes a miss. */
   vetCast(sender: PlayerId, event: Extract<NetEvent, { kind: 'spell:cast' }>, now: number): NetEvent | null {
     const me = this.store.getState().players[sender];
     const eligible = event.actorId === sender && me?.held === 'wand' && this.standExists(me.heldStand ?? null) && !me.pose;
@@ -733,7 +732,6 @@ export class RealtimeServer {
     return load;
   }
 
-  /** Shows `props` to a live room of `officeId`; an office nobody is in loads them from the backend at its next join. */
   pushOfficeProps(officeId: string, props: PlacedProp[]): void {
     this.rooms.get(officeId)?.pushPlacedProps(props);
   }
