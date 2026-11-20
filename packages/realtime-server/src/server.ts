@@ -93,18 +93,15 @@ export interface RealtimeServerOptions {
   bootRetryMs?: number;
   /** How often rooms with players re-read desk claims so calendar and Slack status stay fresh. Default 0: never. */
   claimsRefreshMs?: number;
-  /** Deployment facts for `/health`, `/ready` and `/version`. */
   deployment?: DeploymentProvider;
 }
 
 export type Readiness = { ok: true } | { ok: false; reason: string };
 
 export interface DeploymentProvider {
-  /** Deployed commit; added to `/health` and `/version`. */
   commit?: string;
   /** Consulted by `/ready`; a rejection counts as not ready. Unset means ready. */
   readiness?: () => Promise<Readiness>;
-  /** Extra fields merged into `/version`; a rejection leaves them out. */
   version?: () => Promise<Record<string, unknown>>;
 }
 
