@@ -25,6 +25,7 @@ import { PREVIEW_TOKEN_TTL_SECONDS, PreviewTokens } from './previewToken';
 import { PREVIEW_TOKEN_PARAM } from './previewTokenBrowser';
 import { createGoogleStrategy, createSessionReader, emailDomain, parseCookieDomain, safeReturnTarget, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import type { Identity, Office } from './shared';
+import { createMemoryMissions } from './missionsStore';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const OTHER = '33333333-3333-4333-8333-333333333333';
@@ -198,6 +199,7 @@ async function start(
     characters,
     deskClaims,
     placedProps,
+    missions: createMemoryMissions(),
     createOffice,
     updateOffice,
     isLoginAllowed,

@@ -2,18 +2,31 @@ import { z } from 'zod';
 
 export const MISSIONS_CHANGED_KIND = 'missions:changed';
 
+const noNul = (value: string) => !value.includes('\u0000');
+const hasVisible = (value: string) => /[^\p{Cf}\s]/u.test(value);
+const text = (max: number) => z.string().trim().min(1).max(max).refine(noNul, 'no NUL').refine(hasVisible, 'must have visible text');
+const plain = (max: number) => z.string().min(1).max(max).refine(noNul, 'no NUL');
+const instant = z
+  .string()
+  .datetime()
+  .refine((value) => {
+    const year = new Date(value).getUTCFullYear();
+    return year >= 1970 && year <= 9999;
+  }, 'year out of range');
+const MAX_LOGIN = 200;
+
 export const MISSION_SOURCES = ['mine', 'artio', 'linear', 'github', 'calendar', 'slack'] as const;
 export const ZMissionSource = z.enum(MISSION_SOURCES);
 export type MissionSource = z.infer<typeof ZMissionSource>;
 
-export const ZMissionStep = z.object({ text: z.string().min(1).max(140), done: z.boolean() });
+export const ZMissionStep = z.object({ text: text(140), done: z.boolean() });
 export type MissionStep = z.infer<typeof ZMissionStep>;
 
 /** Where "Go" leads: a room or desk id from the office map, with a label for display. */
 export const ZMissionPlace = z.object({
   kind: z.enum(['room', 'desk']),
-  id: z.string().min(1).max(100),
-  label: z.string().min(1).max(80),
+  id: plain(100),
+  label: plain(80),
 });
 export type MissionPlace = z.infer<typeof ZMissionPlace>;
 
@@ -27,7 +40,7 @@ export const ZMission = z.object({
   place: ZMissionPlace.nullable(),
   /** ISO instant, so each viewer formats it in their own zone. */
   dueAt: z.string().min(1).nullable(),
-  personLogin: z.string().min(1).nullable(),
+  personLogin: plain(MAX_LOGIN).nullable(),
   shared: z.boolean(),
   done: z.boolean(),
   createdAt: z.string().min(1),
@@ -36,22 +49,22 @@ export const ZMission = z.object({
 export type Mission = z.infer<typeof ZMission>;
 
 export const ZNewMission = z.object({
-  title: z.string().trim().min(1).max(140),
+  title: text(140),
   steps: z.array(ZMissionStep).max(20).default([]),
   place: ZMissionPlace.nullable().default(null),
-  dueAt: z.string().datetime().nullable().default(null),
-  personLogin: z.string().min(1).nullable().default(null),
+  dueAt: instant.nullable().default(null),
+  personLogin: plain(MAX_LOGIN).nullable().default(null),
   shared: z.boolean().default(false),
 });
 export type NewMission = z.input<typeof ZNewMission>;
 
 export const ZMissionPatch = z
   .object({
-    title: z.string().trim().min(1).max(140),
+    title: text(140),
     steps: z.array(ZMissionStep).max(20),
     place: ZMissionPlace.nullable(),
-    dueAt: z.string().datetime().nullable(),
-    personLogin: z.string().min(1).nullable(),
+    dueAt: instant.nullable(),
+    personLogin: plain(MAX_LOGIN).nullable(),
     shared: z.boolean(),
     done: z.boolean(),
   })

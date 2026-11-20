@@ -760,6 +760,13 @@ export class RealtimeServer {
     return sessions.length > 0;
   }
 
+  notifyOffice(officeId: string, kind: string, payload: unknown): boolean {
+    const room = this.rooms.get(officeId);
+    if (!room || room.clients.size === 0) return false;
+    room.sendCustom(kind, payload);
+    return true;
+  }
+
   private startClaimsRefresh(): void {
     if (!this.deskClaims || this.claimsRefreshMs <= 0 || this.claimsRefresh) {
       return;

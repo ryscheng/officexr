@@ -3,6 +3,7 @@ import { MAX_PLACED_PROPS, type PlacedProp, type PlaceableKindId } from '@office
 import type { CreateOffice, OfficeCharacters, OfficeDeskClaims, OfficePlacedProps, QueryOffices, UpdateOffice } from './api';
 import type { CalendarLinks } from './calendarService';
 import { pgAllowlist, pgSessionStore, type IsLoginAllowed } from './auth';
+import { pgMissions } from './missionsDb';
 import type { Office, OfficeUpdate } from './shared';
 
 const UNIQUE_VIOLATION = '23505';
@@ -188,6 +189,7 @@ export function createDb(connectionString: string | undefined) {
     characters,
     deskClaims,
     placedProps,
+    missions: pgMissions(getPool),
     calendarLinks,
     isLoginAllowed,
     sessionStore: () => pgSessionStore(getPool()),
