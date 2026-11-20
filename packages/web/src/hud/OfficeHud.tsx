@@ -1,11 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Map as MapIcon, Menu, MessageSquare, Settings, Users } from 'lucide-react';
 import type { Actions, OfficeState, PlayerId, Store } from '@officexr/sdk';
-import { useCoarsePointer, useStoreSelector } from '@officexr/world/top-down';
+import { useCoarsePointer, useMediaQuery, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import type { PingSender } from '../ping/usePingSender';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
+import type { PlaceModeStore } from '@officexr/world/motion';
+import { BuildIndicator } from './BuildIndicator';
 import { CallCard } from './CallCard';
+import { useCallRows } from './CallList';
+import { useFold } from './foldPrefs';
 import { ChatPanel } from './ChatPanel';
 import { FullMap } from './FullMap';
 import { HudLayout } from './HudLayout';
@@ -54,6 +58,7 @@ export function OfficeHud({
   pinger,
   pingInbox,
   missions,
+  placeMode,
   toasts,
   onWave,
   onOpenSettings,
@@ -67,17 +72,21 @@ export function OfficeHud({
   pinger: PingSender;
   pingInbox: PingInbox;
   missions: MissionsApi;
+  placeMode: PlaceModeStore;
   toasts: ReactNode;
   onWave: () => void;
   onOpenSettings: () => void;
 }) {
   const coarse = useCoarsePointer();
+  const narrow = useMediaQuery('(orientation: portrait)') && coarse;
   const chat = useStoreSelector(store, selectChat);
   const chatVisibility = useChatVisibility(chat.length);
   const [read, setRead] = useState(chat.length);
   const [menuOpen, setMenuOpen] = useState(false);
   const [people, setPeople] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const missionsFold = useFold('missions', coarse);
+  const inCall = useCallRows(store, selfId).state !== 'none';
   const spots = useOfficeSpots(store);
   const plan = useMapPlan(store);
 
@@ -87,6 +96,23 @@ export function OfficeHud({
     }
   }, [chatVisibility.mode, chat.length]);
   useHotkey('m', () => setMapOpen(true), !mapOpen);
+
+  const { setFolded: foldMissions } = missionsFold;
+  const missionsOpen = !missionsFold.folded;
+  const chatMode = chatVisibility.mode;
+  const { hide: hideChat } = chatVisibility;
+  useEffect(() => {
+    if (narrow && (menuOpen || people || chatMode === 'compose')) {
+      foldMissions(true);
+    }
+  }, [narrow, menuOpen, people, chatMode, foldMissions]);
+  useEffect(() => {
+    if (narrow && missionsOpen) {
+      setMenuOpen(false);
+      setPeople(false);
+      hideChat();
+    }
+  }, [narrow, missionsOpen, hideChat]);
 
   const unread = chatVisibility.mode === 'hidden' ? Math.max(0, chat.length - read) : 0;
   const toggleChat = () => (chatVisibility.mode === 'compose' ? chatVisibility.hide() : chatVisibility.compose());
@@ -153,9 +179,10 @@ export function OfficeHud({
           )
         }
         topCentre={
-          <div className="flex flex-col items-center gap-2 pointer-coarse:mt-16">
+          <div className={`flex flex-col items-center gap-2 ${narrow && inCall ? 'mt-[7.25rem]' : 'pointer-coarse:mt-16'}`}>
             <ArrivalBubble store={store} selfId={selfId} toast />
             {toasts}
+            <BuildIndicator mode={placeMode} />
           </div>
         }
         topRight={
@@ -169,13 +196,13 @@ export function OfficeHud({
                   <RoundButton tone="glass" aria-label="Office menu" aria-expanded={menuOpen} onClick={openMenu}>
                     <Menu aria-hidden className="size-5" />
                   </RoundButton>
-                  {call}
+                  {!narrow && call}
                 </>
               )}
               <PingInboxHud inbox={pingInbox} store={store} />
               {mapButton}
             </div>
-            {!coarse && call}
+            {(!coarse || narrow) && call}
           </>
         }
         rightEdge={

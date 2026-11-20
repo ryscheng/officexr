@@ -1,0 +1,83 @@
+{
+ "viewport": {
+  "width": 390,
+  "height": 664
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "New mission",
+   "interactive": false,
+   "x": 25,
+   "y": 421,
+   "w": 340,
+   "h": 208
+  },
+  {
+   "name": "Cancel",
+   "interactive": true,
+   "x": 293.96875,
+   "y": 421,
+   "w": 71.03125,
+   "h": 44
+  },
+  {
+   "name": "Mission title",
+   "interactive": true,
+   "x": 25,
+   "y": 475,
+   "w": 236,
+   "h": 48
+  },
+  {
+   "name": "Add",
+   "interactive": true,
+   "x": 269,
+   "y": 475,
+   "w": 96,
+   "h": 48
+  },
+  {
+   "name": "Steps",
+   "interactive": true,
+   "x": 25,
+   "y": 533,
+   "w": 79.109375,
+   "h": 44
+  },
+  {
+   "name": "Place",
+   "interactive": true,
+   "x": 112.109375,
+   "y": 533,
+   "w": 77.859375,
+   "h": 44
+  },
+  {
+   "name": "Due",
+   "interactive": true,
+   "x": 25,
+   "y": 585,
+   "w": 69.109375,
+   "h": 44
+  },
+  {
+   "name": "Person",
+   "interactive": true,
+   "x": 102.109375,
+   "y": 585,
+   "w": 86.765625,
+   "h": 44
+  },
+  {
+   "name": "Share with team",
+   "interactive": true,
+   "x": 251.359375,
+   "y": 559,
+   "w": 72,
+   "h": 44
+  }
+ ]
+}

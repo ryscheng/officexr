@@ -32,6 +32,9 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
     setOpen(false);
     focusWorld();
   });
+  if (entries.length === 0 && !open) {
+    return null;
+  }
   const go = (id: PlayerId) => {
     goTo(id);
     focusWorld();

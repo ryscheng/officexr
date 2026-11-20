@@ -13,18 +13,15 @@ test.skip(!dir, 'set HUD_CAPTURE_DIR to capture');
 test.describe.configure({ timeout: 180_000, mode: 'parallel' });
 
 const THEMES: Theme[] = ['light', 'dark'];
-/** Dark mode only recolours the glass, so it is captured for these scenarios; the rest run light. */
-const DARK_SCENARIOS = new Set(['crowd', 'build']);
 
 const only = (name: string) => process.env[name]?.split(',').filter(Boolean);
 const deviceFilter = only('HUD_CAPTURE_DEVICES');
 const scenarioFilter = only('HUD_CAPTURE_SCENARIOS');
 
 for (const device of HUD_DEVICES.filter((d) => !deviceFilter || deviceFilter.includes(d.id))) {
-  const scenarios = (device.portraitPhone ? ['crowd'] : [...HUD_SCENARIOS]).filter((s) => !scenarioFilter || scenarioFilter.includes(s));
+  const scenarios = [...HUD_SCENARIOS].filter((s) => !scenarioFilter || scenarioFilter.includes(s));
   for (const scenario of scenarios) {
     for (const theme of THEMES) {
-      if (theme === 'dark' && !DARK_SCENARIOS.has(scenario)) continue;
       test(`${scenario} ${device.id} ${theme}`, async ({ browser }) => {
         const out = path.resolve(dir!);
         mkdirSync(out, { recursive: true });
@@ -32,10 +29,8 @@ for (const device of HUD_DEVICES.filter((d) => !deviceFilter || deviceFilter.inc
         test.skip(existsSync(path.join(out, `${base}.json`)) && !process.env.HUD_CAPTURE_FORCE, 'already captured');
         const { page, close } = await openHudPreview(browser, device, scenario, theme);
         try {
-          if (!device.portraitPhone) {
-            await runScenarioSteps(page, scenario);
-            await applySafeArea(page, device.safe);
-          }
+          await runScenarioSteps(page, scenario);
+          await applySafeArea(page, device.safe);
           await page.screenshot({ path: path.join(out, `${base}.png`), timeout: 60_000 });
           const boxes = await collectHudBoxes(page);
           const viewport = page.viewportSize()!;

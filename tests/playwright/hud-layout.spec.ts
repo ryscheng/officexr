@@ -18,7 +18,7 @@ import {
 test.describe.configure({ timeout: 180_000, mode: 'parallel' });
 
 const MIN_TARGET_PX = 44;
-const LAYOUT_DEVICES = HUD_DEVICES.filter((d) => ['iphone13-landscape', 'pixel5-landscape', 'ipad-landscape', 'desktop'].includes(d.id));
+const LAYOUT_DEVICES = HUD_DEVICES.filter((d) => ['iphone13-landscape', 'pixel5-landscape', 'ipad-landscape', 'desktop', 'iphone13-portrait', 'iphone-se-portrait', 'pixel5-portrait'].includes(d.id));
 
 for (const device of LAYOUT_DEVICES) {
   for (const scenario of HUD_SCENARIOS) {
@@ -28,8 +28,19 @@ for (const device of LAYOUT_DEVICES) {
         await runScenarioSteps(page, scenario);
         await applySafeArea(page, device.safe);
         const boxes = await collectHudBoxes(page);
-        expect(boxes.length, 'the HUD rendered controls').toBeGreaterThan(5);
+        expect(boxes.length, 'the HUD rendered controls').toBeGreaterThan(3);
         const viewport = page.viewportSize()!;
+
+        const page_ = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          innerWidth: window.innerWidth,
+          canvas: (() => {
+            const r = document.querySelector('canvas')?.getBoundingClientRect();
+            return r ? { w: Math.round(r.width), h: Math.round(r.height) } : null;
+          })(),
+        }));
+        expect(page_.scrollWidth, 'horizontal scroll').toBeLessThanOrEqual(page_.innerWidth);
+        expect(page_.canvas, 'the 3D canvas fills the viewport').toEqual({ w: viewport.width, h: viewport.height });
 
         expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`), 'overlapping controls').toEqual([]);
         expect(findOutside(boxes, viewport, device.safe).map((b) => b.name), 'controls outside the safe area').toEqual([]);
@@ -43,3 +54,31 @@ for (const device of LAYOUT_DEVICES) {
     });
   }
 }
+
+test('portrait phone keeps one panel open at a time and the joystick reachable', async ({ browser }) => {
+  const device = HUD_DEVICES.find((d) => d.id === 'iphone13-portrait')!;
+  const { page, close } = await openHudPreview(browser, device, 'crowd', 'light');
+  try {
+    const missions = page.getByRole('button', { name: /^(Collapse|Expand) missions$/ });
+    const menu = page.getByRole('menu', { name: 'Office menu' });
+    await expect(missions).toHaveAttribute('aria-expanded', 'false');
+
+    await page.getByRole('button', { name: 'Expand missions' }).click();
+    await page.getByRole('button', { name: 'Office menu' }).click();
+    await expect(menu).toBeVisible();
+    await expect(missions).toHaveAttribute('aria-expanded', 'false');
+
+    await page.getByRole('button', { name: 'Expand missions' }).click();
+    await expect(missions).toHaveAttribute('aria-expanded', 'true');
+    await expect(menu).toHaveCount(0);
+
+    const joystickHit = await page.evaluate(() => {
+      const el = document.querySelector('[data-hud-item="Joystick"]')!;
+      const r = el.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('[data-hud-item="Joystick"]') !== null;
+    });
+    expect(joystickHit, 'the joystick is not covered').toBe(true);
+  } finally {
+    await close();
+  }
+});

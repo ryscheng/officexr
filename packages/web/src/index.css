@@ -102,6 +102,17 @@
   backdrop-filter: blur(40px) saturate(180%);
 }
 
+:root {
+  --hud-safe-top: env(safe-area-inset-top, 0px);
+  --hud-safe-right: env(safe-area-inset-right, 0px);
+  --hud-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --hud-safe-left: env(safe-area-inset-left, 0px);
+  --hud-inset-top: max(12px, var(--hud-safe-top));
+  --hud-inset-right: max(12px, var(--hud-safe-right));
+  --hud-inset-bottom: max(12px, var(--hud-safe-bottom));
+  --hud-inset-left: max(12px, var(--hud-safe-left));
+}
+
 /* The page wallpaper behind pages and the loading screen; the glass refracts it. */
 :root {
   --hud-wallpaper: radial-gradient(at 15% 8%, #c7dbff 0, transparent 45%), radial-gradient(at 88% 4%, #f1d6ff 0, transparent 42%),

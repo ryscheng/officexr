@@ -22,7 +22,6 @@ import { OfficeHud } from '../hud/OfficeHud';
 import { createHttpMissionsClient } from '../hud/missions/missionsApi';
 import { useMissionMarker } from '../hud/missions/useMissionMarker';
 import { useMissions } from '../hud/missions/useMissions';
-import { RotatePrompt } from '../hud/RotatePrompt';
 import { SettingRow } from './SettingsModal';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
@@ -235,6 +234,7 @@ function World({ office: initialOffice, me, session, join, missionsClient }: { o
         pinger={pinger}
         pingInbox={pingInbox}
         missions={missions}
+        placeMode={placeMode}
         onWave={() => ready.office.sync.sendEmote('wave')}
         onOpenSettings={() => openSettings()}
         toasts={
@@ -275,7 +275,6 @@ function World({ office: initialOffice, me, session, join, missionsClient }: { o
         </>
       )}
       <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onCancel={join.cancel} />
-      <RotatePrompt />
       {session.type === 'replaced' && <HudLayout topCentre={<HudBanner message={REPLACED_MESSAGE} />} />}
     </div>
   );

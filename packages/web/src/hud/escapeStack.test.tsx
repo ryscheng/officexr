@@ -28,6 +28,7 @@ function setup(children?: React.ReactNode) {
   const store = createStore({ selfId: 'me#t0', officeId: 'o' });
   const actions = createActions(store, createBus());
   const inbox = new PingInbox();
+  inbox.add('ada#t1', 'Ada');
   render(
     <PlayControlsProvider controls={fakePlayControls().controls}>
       <SettingsHarness panes={[{ id: 'pane', label: 'Pane', content: <p>pane body</p> }]}>
@@ -46,9 +47,9 @@ describe('Escape stack', () => {
   it('closes the open ping inbox without opening Settings', () => {
     setup();
     fireEvent.click(screen.getByRole('button', { name: /^Pings/ }));
-    expect(screen.getByText('No pings yet')).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'Received pings' })).toBeTruthy();
     esc();
-    expect(screen.queryByText('No pings yet')).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Received pings' })).toBeNull();
     expect(settingsDialog()).toBeNull();
   });
 
@@ -58,9 +59,9 @@ describe('Escape stack', () => {
     openSettings();
     esc(settingsDialog()!);
     expect(settingsDialog()).toBeNull();
-    expect(screen.getByText('No pings yet')).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'Received pings' })).toBeTruthy();
     esc();
-    expect(screen.queryByText('No pings yet')).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Received pings' })).toBeNull();
   });
 
   it('keeps Settings closed while Esc is held', () => {

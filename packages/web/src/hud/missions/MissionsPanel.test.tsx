@@ -8,7 +8,10 @@ import { MissionsPanel } from './MissionsPanel';
 import { placeAreas } from './missionRows';
 import { useMissions } from './useMissions';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 const NOW = new Date(2026, 10, 20, 9, 0);
 const at = (h: number, m: number) => new Date(2026, 10, 20, h, m).toISOString();
@@ -43,7 +46,10 @@ function Harness({ client, compact = false }: { client: MissionsClient; compact?
 const setup = async (seed = SEED, compact = false) => {
   const client = createInMemoryMissionsClient('me', seed);
   render(<Harness client={client} compact={compact} />);
-  await screen.findByText(seed[0]!.title);
+  await screen.findByRole('button', { name: /^(Collapse|Expand) missions$/ });
+  if (!compact) {
+    await screen.findByText(seed[0]!.title);
+  }
   return client;
 };
 
@@ -191,18 +197,44 @@ describe('MissionsPanel', () => {
     expect(screen.queryByText(/Could not reach/)).toBeNull();
   });
 
+  describe('fold', () => {
+    it('is open on desktop, folds to a header with the open count, and remembers the choice', async () => {
+      await setup();
+      const toggle = screen.getByRole('button', { name: 'Collapse missions' });
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      fireEvent.click(toggle);
+      expect(screen.queryByText('Join the stand-up')).toBeNull();
+      expect(screen.getByText('2 open')).toBeTruthy();
+      expect(localStorage.getItem('officexr:fold:missions')).toBe('folded');
+      cleanup();
+      render(<Harness client={createInMemoryMissionsClient('me', SEED)} />);
+      expect(await screen.findByRole('button', { name: 'Expand missions' })).toBeTruthy();
+      expect(screen.queryByText('Join the stand-up')).toBeNull();
+    });
+
+    it('opens the folded panel with the add form on T', async () => {
+      await setup();
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse missions' }));
+      fireEvent.keyDown(window, { key: 't' });
+      expect(await screen.findByRole('button', { name: 'Collapse missions' })).toBeTruthy();
+      expect(screen.getByText('Join the stand-up')).toBeTruthy();
+    });
+  });
+
   describe('compact (phone)', () => {
-    it('shows three rows and how many more, then expands', async () => {
+    it('starts folded to its header and lists every mission once expanded', async () => {
       const many: Mission[] = Array.from({ length: 5 }, (_, i) => ({ ...base, id: `x${i}`, title: `Mission ${i}`, steps: [], place: null, dueAt: null }));
       await setup(many, true);
-      expect(screen.getAllByRole('checkbox')).toHaveLength(3);
-      fireEvent.click(screen.getByRole('button', { name: 'Show all missions' }));
+      expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+      expect(screen.getByText('0/5')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Expand missions' }).getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(screen.getByRole('button', { name: 'Expand missions' }));
       expect(screen.getAllByRole('checkbox')).toHaveLength(5);
     });
 
     it('opens the new mission form as a bottom sheet', async () => {
       await setup(SEED, true);
-      fireEvent.click(screen.getByRole('button', { name: 'Show all missions' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Expand missions' }));
       fireEvent.click(screen.getByRole('button', { name: /New mission/ }));
       expect(screen.getByRole('dialog', { name: 'New mission' })).toBeTruthy();
     });
