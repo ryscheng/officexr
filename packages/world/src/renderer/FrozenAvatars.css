@@ -1,0 +1,69 @@
+.frozen-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+  cursor: pointer;
+  text-align: center;
+  font: 12px/1.4 sans-serif;
+  white-space: nowrap;
+}
+.frozen-tag-zzz {
+  margin-bottom: 2px;
+  color: #bfdbfe;
+  font-size: 13px;
+  font-style: italic;
+  letter-spacing: 2px;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  animation: frozen-zzz-float 2.4s ease-in-out infinite;
+}
+.frozen-tag-name,
+.frozen-tag-status {
+  padding: 1px 8px;
+  background: #3a4350;
+  color: #d1d7e0;
+}
+.frozen-tag-name {
+  border-radius: 10px 10px 0 0;
+}
+.frozen-tag-status {
+  border-radius: 0 0 10px 10px;
+  color: #9aa5b5;
+  font-size: 11px;
+}
+.frozen-card {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  translate: -50% 0;
+  min-width: 140px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #1f2630;
+  color: #e5e9f0;
+  font: 12px/1.4 sans-serif;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.4);
+  white-space: nowrap;
+}
+.frozen-card-name { font-weight: 600; }
+.frozen-card-status { margin-bottom: 6px; color: #9aa5b5; }
+.frozen-card-actions { display: flex; gap: 6px; }
+.frozen-card-actions button {
+  flex: 1;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: #3a4350;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.frozen-card-actions button:first-child { background: #3b82f6; color: #fff; }
+@keyframes frozen-zzz-float {
+  0%, 100% { transform: translateY(0); opacity: 0.6; }
+  50% { transform: translateY(-4px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .frozen-tag-zzz { animation: none; }
+}

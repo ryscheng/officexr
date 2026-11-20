@@ -20,6 +20,7 @@ import type {
 } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import { Players } from './Players.tsx';
+import { FrozenAvatars } from './FrozenAvatars.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { XRAvatarOrigin } from './XRAvatarOrigin.tsx';
 import type { MotionLookState } from './motionLook.ts';
@@ -368,6 +369,7 @@ export function Scene(props: SceneProps) {
           selfReady={props.selfReady}
           onPingPlayer={props.onPingPlayer}
         />
+        {!props.paused && <FrozenAvatars store={store} onPing={props.onPingPlayer} />}
         {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} charRadius={charRadius} />}
 
         {/* Mounted after Players: same-priority useFrames run in
