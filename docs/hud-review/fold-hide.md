@@ -21,7 +21,7 @@ its header; the choice is kept per control in `localStorage` under `officexr:fol
 | Replaced and error banners | `hud/HudBanner.tsx` | No | Only while active; error banners can be dismissed | Must stay visible until the user acts. |
 | Arrival bubble | `hud/PresenceList.tsx` | No | 4 s after someone joins | Transient. |
 | Desk banner and buttons | `desk/DeskHud.tsx` | No | Only next to a claimable or owned desk, or when a seat is near (Sit, touch) | Context buttons. |
-| Click-to-play prompt | `hud/ClickToPlayPrompt.tsx` | No | Only while the world has no keyboard focus | Disappears on the first click. |
+| Click-to-play prompt | `hud/ClickToPlayPrompt.tsx` | No | Only while the world has no keyboard focus, and never on a touch screen | Disappears on the first click; a touch screen has no keyboard focus to lose, and in portrait the prompt covered the middle of the view. |
 | Settings, shortcuts, new-mission form | `room/`, `hud/missions/` | No | Only when opened | Modals and sheets. |
 
 Not changed: the in-world name tags and bubbles, and the touch joystick, which is the movement control.
@@ -60,3 +60,7 @@ The default view in portrait has no panel over the middle of the screen: top bar
 and Wave and Speak when someone is near. `tests/playwright/hud-layout.spec.ts` covers the portrait phones: no
 overlapping HUD boxes, nothing outside the safe area, 44 px touch targets, no horizontal scroll and a canvas that
 fills the viewport, for every `/hud-preview` scenario.
+
+Portrait captures, all eight `/hud-preview` scenarios, light and dark, iPhone 13 (390x664 browser viewport) and
+iPhone SE (320x568 browser viewport), are in `docs/hud-review/fold-hide/portrait/` with a `.json` box dump
+beside each. `crowd-missions-open` and `crowd-menu-open` show the one-panel-at-a-time rule.

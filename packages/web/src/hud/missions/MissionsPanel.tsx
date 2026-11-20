@@ -190,7 +190,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
       {adding &&
         compact &&
         createPortal(
-          <Panel material="thick" data-hud-modal className="pointer-events-auto fixed inset-x-3 bottom-0 z-40 rounded-b-none p-3">
+          <Panel material="thick" data-hud-modal className="pointer-events-auto fixed right-(--hud-inset-right) bottom-0 left-(--hud-inset-left) z-40 max-h-[85dvh] overflow-y-auto rounded-b-none p-3 pb-[max(0.75rem,var(--hud-safe-bottom))]">
             <NewMissionForm sheet areas={areas} people={people} onAdd={(i) => void add(i)} onCancel={() => setAdding(false)} />
           </Panel>,
           document.body,

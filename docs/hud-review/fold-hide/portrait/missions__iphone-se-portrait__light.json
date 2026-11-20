@@ -1,0 +1,83 @@
+{
+ "viewport": {
+  "width": 320,
+  "height": 568
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "Joystick",
+   "interactive": false,
+   "x": 12,
+   "y": 446,
+   "w": 110,
+   "h": 110
+  },
+  {
+   "name": "Chat",
+   "interactive": true,
+   "x": 160,
+   "y": 20,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Office menu",
+   "interactive": true,
+   "x": 212,
+   "y": 20,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Open map",
+   "interactive": true,
+   "x": 264,
+   "y": 20,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Mute microphone",
+   "interactive": true,
+   "x": 203,
+   "y": 79,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Leave call",
+   "interactive": true,
+   "x": 255,
+   "y": 79,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Wave",
+   "interactive": true,
+   "x": 152,
+   "y": 492,
+   "w": 64,
+   "h": 64
+  },
+  {
+   "name": "Speak",
+   "interactive": true,
+   "x": 228,
+   "y": 476,
+   "w": 80,
+   "h": 80
+  },
+  {
+   "name": "Expand missions",
+   "interactive": true,
+   "x": 255,
+   "y": 381,
+   "w": 44,
+   "h": 44
+  }
+ ]
+}
