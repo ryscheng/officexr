@@ -6,7 +6,10 @@ import { createPlaceMode, type PlacementHost } from '@officexr/world/motion';
 import { ApplicationProvider, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
-import { apiUrl, paths } from '../apiOrigin';
+import { API_ORIGIN, apiUrl, paths } from '../apiOrigin';
+import { slackPing } from '../integrations/integrationsApi';
+import { IntegrationsPane } from '../integrations/IntegrationsPane';
+import { useIntegrations } from '../integrations/useIntegrations';
 import { DeskAutoSit } from '../desk/DeskAutoSit';
 import { DeskHud } from '../desk/DeskHud';
 import { usePlaceHotkey } from '../place/usePlaceHotkey';
@@ -123,6 +126,8 @@ function PingInboxFeed({ bus, store, inbox }: { bus: Bus; store: Store; inbox: P
   return null;
 }
 
+const calendarReturnTo = () => (API_ORIGIN ? window.location.href : `${window.location.pathname}${window.location.search}`);
+
 function World({ office: initialOffice, me, session, join }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl }) {
   const [office, setOffice] = useState(initialOffice);
   const viewMode = useMemo(() => initialViewMode(), []);
@@ -167,6 +172,8 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
     }
   }, [session]);
   const pinger = usePingSender(sendPing);
+  const integrations = useIntegrations();
+  const pingFrozen = useCallback((login: string) => void slackPing(initialOffice.id, login), [initialOffice.id]);
 
   const readyViewProps = (ready: ReadySession) => ({
     store: ready.local.store,
@@ -180,6 +187,7 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
     title: office.name,
     storages,
     onPingPlayer: pinger.ping,
+    onPingFrozen: integrations.status.slack.enabled ? pingFrozen : undefined,
     placement,
   });
   const sharedTabs: SettingsTab[] = [
@@ -203,6 +211,7 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
     },
     { id: 'keybinds', label: 'Keybinds', content: <KeybindsTab /> },
     { id: 'notifications', label: 'Notifications', content: <NotificationsPane /> },
+    ...(integrations.status.calendar.enabled ? [{ id: 'integrations', label: 'Integrations', content: <IntegrationsPane integrations={integrations} returnTo={calendarReturnTo()} /> }] : []),
     ...officeSettingsTabs(office, me, setOffice),
   ];
   const sharedActions: SettingsAction[] = popOutActions(pip);

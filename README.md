@@ -115,6 +115,39 @@ Turning it on signs existing users out once; the server clears the old host-only
 
 For local development the `OFFICEXR_DEV_USER_*` variables skip Google entirely.
 
+### Calendar and Slack (optional)
+
+Both integrations are off until their server-only env is set. Neither needs a new app for players: people sign in with
+Google as before, and a workspace admin installs one Slack app.
+
+```env
+# Google Calendar status: the Google sign-in settings above, plus
+CALENDAR_ENCRYPTION_SECRET=a-long-random-string   # at least 16 characters; encrypts stored refresh tokens
+# Slack pings and statuses:
+SLACK_BOT_TOKEN=xoxb-...                          # the installed app's bot token
+SLACK_SIGNING_SECRET=...                          # the app's signing secret
+```
+
+Both also need `PUBLIC_URL` and `SESSION_SECRET` (Google sign-in must be configured).
+
+**Calendar.** A signed-in user opts in under Settings, Integrations, Connect. The server asks Google for the read-only
+free/busy scope `https://www.googleapis.com/auth/calendar.freebusy` with offline access. It never reads event titles or
+attendees. The refresh token is stored AES-256-GCM encrypted (key derived from `CALENDAR_ENCRYPTION_SECRET`, bound to the
+login) in `calendar_links` (migration `025_calendar_links.sql`). Disconnect deletes the row and revokes the token. The
+server computes "busy until" or "free until" over the next 8 hours, caches it per login for 3 minutes and adds it to the
+desk-claims payload as `calendar: { busy, until }`. A frozen avatar then shows "In a meeting until 15:00" or "Free until
+16:00" in the viewer's own time zone, else "Away".
+
+Owner setup in Google Cloud Console (the project that holds the sign-in client):
+1. Under Google Auth Platform, Data Access, add the scope `.../auth/calendar.freebusy`. Enable the Google Calendar API.
+2. Add `${PUBLIC_URL}/auth/google/calendar/callback` to the OAuth client's authorized redirect URIs.
+3. The consent screen needs the scope listed; an Internal app (one Workspace) needs no verification.
+
+**Slack.** See [`docs/slack/README.md`](docs/slack/README.md). A frozen person's card gets a Ping button; the server sends
+them a Slack DM with "Open office" and "I'll be there in 5" buttons. The reply reaches the pinger in the office chat (or by
+Slack DM if they left). Pings are limited to one per sender and target per 2 minutes. With the `users.profile:read` scope,
+a frozen tag shows the person's Slack status when they have no calendar status.
+
 ### Database
 
 The web server reads Postgres directly; the browser makes no database calls.

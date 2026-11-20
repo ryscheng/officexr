@@ -1,3 +1,4 @@
+import type { ClaimantCalendar, ClaimantSlack } from '../realtime/desk-claim.ts';
 import { loginOf } from '../realtime/player-id.ts';
 import type { OfficeState, PlayerId } from './types.ts';
 
@@ -8,6 +9,8 @@ export interface FrozenClaimant {
   name: string;
   characterId?: string;
   claimedAt?: string;
+  calendar?: ClaimantCalendar;
+  slack?: ClaimantSlack;
 }
 
 /** Claimants of a desk with no live session in the room, by desk id. The self login is never frozen. */

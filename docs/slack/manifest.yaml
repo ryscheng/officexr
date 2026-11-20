@@ -1,0 +1,23 @@
+# Replace YOUR-PUBLIC-URL with the web backend's PUBLIC_URL host, then create the app from this file.
+display_information:
+  name: officexr
+  description: Pings you when someone is looking for you in the office.
+features:
+  bot_user:
+    display_name: officexr
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - im:write
+      - users:read
+      - users:read.email
+      - users.profile:read
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://YOUR-PUBLIC-URL/api/slack/interactions
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

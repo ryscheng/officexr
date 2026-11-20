@@ -28,4 +28,10 @@ describe('listDeskClaims claimants', () => {
       error: 'unavailable',
     });
   });
+
+  it('passes a calendar and a Slack status through, and rejects a malformed one', async () => {
+    const claimants = { 'a@x.io': { calendar: { busy: true, until: '2026-11-20T15:00:00.000Z' }, slack: { text: 'Out', emoji: ':palm_tree:' } } };
+    expect(await apiReplying({ claims: { d1: 'a@x.io' }, claimants }).listDeskClaims('o', 'a@x.io')).toEqual({ ok: true, claims: { d1: 'a@x.io' }, claimants });
+    expect(await apiReplying({ claims: {}, claimants: { a: { calendar: { busy: 'yes', until: 'x' } } } }).listDeskClaims('o', 'a')).toEqual({ ok: false, error: 'unavailable' });
+  });
 });

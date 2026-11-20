@@ -171,6 +171,8 @@ interface SceneProps {
   onModelsReady?: () => void;
   /** Shows a ping bell when hovering another player's avatar; omitting it renders nothing extra. */
   onPingPlayer?: (id: PlayerId) => void;
+  /** Shows Ping on a frozen avatar's card; absent where an offline person cannot be reached. */
+  onPingFrozen?: (login: string) => void;
   /** Called once each baked layout's colliders have mounted, with its room instance id. */
   onCollidersReady?: (roomInstanceId: string) => void;
   onCollidersError?: (error: Error) => void;
@@ -369,7 +371,7 @@ export function Scene(props: SceneProps) {
           selfReady={props.selfReady}
           onPingPlayer={props.onPingPlayer}
         />
-        {!props.paused && <FrozenAvatars store={store} />}
+        {!props.paused && <FrozenAvatars store={store} onPing={props.onPingFrozen} />}
         {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} charRadius={charRadius} />}
 
         {/* Mounted after Players: same-priority useFrames run in

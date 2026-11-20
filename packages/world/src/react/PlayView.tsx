@@ -69,6 +69,8 @@ export interface PlayViewProps {
   xrStore?: XRStore;
   /** Shows a ping bell when hovering another player's avatar in the fixed camera. */
   onPingPlayer?: (id: PlayerId) => void;
+  /** Shows Ping on a frozen avatar's card; absent where an offline person cannot be reached. */
+  onPingFrozen?: (login: string) => void;
   /** Lets the player place props; absent where nobody builds. */
   placement?: PlacementHost;
   /** Overlays rendered above the scene and HUD. */
@@ -152,6 +154,7 @@ export function PlayView(props: PlayViewProps) {
           xrStore={props.xrStore}
           selfReady={ready}
           onPingPlayer={props.onPingPlayer}
+          onPingFrozen={props.onPingFrozen}
           placement={props.placement}
           onModelsReady={() => dispatch({ type: 'modelsReady' })}
           onCollidersReady={(roomInstanceId) => dispatch({ type: 'collidersReady', roomInstanceId })}

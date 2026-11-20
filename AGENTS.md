@@ -26,7 +26,7 @@ officexr/
 │   ├── server/           # @officexr/server — web backend
 │   │   ├── src/          # main.ts (entrypoint), backend.ts (createBackend: db + realtime + app, shared with `pnpm dev`), app.ts (createApp), api.ts (/api/*), auth.ts (Google login, logout), db.ts (pg),
 │   │   │                 # jaasToken.ts (server-side JaaS JWT signing), runtimeConfig.ts (/config.js), staticDir.ts (/models), listen.ts, shared.ts (browser-safe types/limits); vitest specs
-│   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_APP_ID, OFFICEXR_JAAS_* (server-only), OFFICEXR_ASSET_BASE_URL
+│   │   └── .env.example  # SUPABASE_DB_URL, GOOGLE_*, SESSION_SECRET, PUBLIC_URL, PORT, ADMIN_PORT, OFFICEXR_DEV_USER_*, VITE_JAAS_APP_ID, OFFICEXR_JAAS_* (server-only), OFFICEXR_ASSET_BASE_URL, CALENDAR_ENCRYPTION_SECRET, SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET
 │   ├── world/            # @officexr/world — renderer, physics, bots, maps/rooms/cube kinds; top-down/ is the three-free
 │   │                     # entry the web HUD imports hooks from
 │   ├── studio/           # @officexr/studio — map/room/object/character/debug editors
@@ -136,7 +136,7 @@ https the session cookie is Secure, so the TLS terminator must send
 allowlists SPAs on other origins for credentialed CORS and as `?next=` return targets (the first is the
 default landing and the `login_error` target); they must be same-site with `PUBLIC_URL` because the cookie
 is `SameSite=Lax`. `COOKIE_DOMAIN` (e.g. `karibalabs.co`, must contain `PUBLIC_URL`'s host) shares the
-session cookie across subdomains; enabling it signs existing users out once, and the server clears the old host-only cookie on the next sign-in/out. `createCors` and
+session cookie across subdomains; enabling it signs existing users out once, and the server clears the old host-only cookie on the next sign-in/out. Optional integrations, each off until its env is set and both mounted only with Google sign-in configured: `CALENDAR_ENCRYPTION_SECRET` (min 16 characters; AES-256-GCM key for the Google Calendar refresh tokens in `calendar_links`; adds `GET /auth/google/calendar[/callback]`, `GET /api/integrations`, `DELETE /api/calendar`, and `calendar` on each desk claimant; the Google client needs the redirect URI `${PUBLIC_URL}/auth/google/calendar/callback` and the `calendar.freebusy` scope) and `SLACK_BOT_TOKEN` plus `SLACK_SIGNING_SECRET` (both server-only; adds `POST /api/offices/:id/slack-ping` and the signed `POST /api/slack/interactions`; see `docs/slack/`). Code: `integrations.ts`, `calendarService.ts`, `googleCalendar.ts`, `slack.ts`. `createCors` and
 `createSessionReader` are exported for the studio backend, which gates its public port with them. Who may sign in is managed with SQL in `login_allowlist`
 (values lowercase, no admin UI; example inserts in the README "Sign-in" section). The server reads offices from Postgres via
 `SUPABASE_DB_URL`. Run `pnpm db:migrate` (applies `supabase/migrations` to

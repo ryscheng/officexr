@@ -48,6 +48,8 @@ export const sameFrozenAvatars = (a: FrozenAvatar[], b: FrozenAvatar[]): boolean
       f.deskId === b[i].deskId &&
       f.name === b[i].name &&
       f.claimedAt === b[i].claimedAt &&
+      JSON.stringify(f.calendar) === JSON.stringify(b[i].calendar) &&
+      JSON.stringify(f.slack) === JSON.stringify(b[i].slack) &&
       f.model.url === b[i].model.url &&
       f.pos.x === b[i].pos.x &&
       f.pos.y === b[i].pos.y &&

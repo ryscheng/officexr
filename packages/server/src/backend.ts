@@ -5,7 +5,10 @@ import { createApp, type AppOptions } from './app';
 import { authConfigFromEnv, parseCookieDomain } from './auth';
 import { parseFrontendOrigins } from './cors';
 import { createDb } from './db';
+import { integrationsFromEnv } from './integrationsConfig';
 import { jaasConfigFromEnv } from './jaasToken';
+
+const CLAIMS_REFRESH_MS = 3 * 60_000;
 
 export interface BackendOptions {
   dev?: AppOptions['dev'];
@@ -29,6 +32,13 @@ export async function createBackend(env: Record<string, string | undefined>, { d
   const frontendOrigins = parseFrontendOrigins(env.FRONTEND_ORIGINS);
   const cookieDomain = parseCookieDomain(env.COOKIE_DOMAIN, URL.parse(auth.publicUrl ?? '')?.hostname ?? '');
   const db = createDb(env.SUPABASE_DB_URL);
+  const integrations = integrationsFromEnv({
+    env,
+    publicUrl: auth.publicUrl,
+    googleClientId: auth.googleClientId,
+    googleClientSecret: auth.googleClientSecret,
+    calendarLinks: db.calendarLinks,
+  });
   const officeApi = createOfficeApi({ baseUrl: apiUrl, tokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET });
   const realtime = new RealtimeServer({
     tokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
@@ -37,6 +47,7 @@ export async function createBackend(env: Record<string, string | undefined>, { d
     sessionPolicy: officeApi.allowsMultiSession,
     deskClaims: officeApi,
     placedProps: officeApi,
+    claimsRefreshMs: integrations.calendar || integrations.slack ? CLAIMS_REFRESH_MS : 0,
   });
   const app = await createApp({
     ...db,
@@ -46,6 +57,7 @@ export async function createBackend(env: Record<string, string | undefined>, { d
     realtime,
     realtimeTokenSecret: env.OFFICEXR_REALTIME_TOKEN_SECRET,
     jaas: jaasConfigFromEnv(env),
+    ...integrations,
     studioDataDir: env.OFFICEXR_STUDIO_DATA_DIR,
     dev,
   });
