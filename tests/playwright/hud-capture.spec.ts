@@ -43,7 +43,7 @@ for (const device of HUD_DEVICES.filter((d) => !deviceFilter || deviceFilter.inc
             viewport,
             overlaps: findOverlaps(boxes).map(([a, b]) => [a.name, b.name]),
             outside: findOutside(boxes, viewport, device.safe).map((b) => b.name),
-            smallTargets: device.options?.hasTouch ? boxes.filter((b) => (b.w < 44 || b.h < 44) && !/input/i.test(b.name)).map((b) => `${b.name} ${Math.round(b.w)}x${Math.round(b.h)}`) : [],
+            smallTargets: device.options?.hasTouch ? boxes.filter((b) => b.interactive && (b.w < 44 || b.h < 44) && !/input/i.test(b.name)).map((b) => `${b.name} ${Math.round(b.w)}x${Math.round(b.h)}`) : [],
             boxes,
           };
           writeFileSync(path.join(out, `${base}.json`), JSON.stringify(report, null, 1));

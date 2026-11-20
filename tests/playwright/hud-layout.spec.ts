@@ -34,7 +34,7 @@ for (const device of LAYOUT_DEVICES) {
         expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`), 'overlapping controls').toEqual([]);
         expect(findOutside(boxes, viewport, device.safe).map((b) => b.name), 'controls outside the safe area').toEqual([]);
         if (device.options?.hasTouch) {
-          const small = boxes.filter((b) => (b.w < MIN_TARGET_PX - 0.5 || b.h < MIN_TARGET_PX - 0.5) && b.name !== 'input');
+          const small = boxes.filter((b) => b.interactive && (b.w < MIN_TARGET_PX - 0.5 || b.h < MIN_TARGET_PX - 0.5) && b.name !== 'input');
           expect(small.map((b) => `${b.name} ${Math.round(b.w)}x${Math.round(b.h)}`), 'touch targets under 44 px').toEqual([]);
         }
       } finally {

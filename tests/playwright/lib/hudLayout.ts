@@ -56,6 +56,8 @@ export async function openHudPreview(browser: Browser, device: HudDevice, scenar
 
 export interface HudBox {
   name: string;
+  /** A button, link or field a finger has to hit, as opposed to a panel or status region. */
+  interactive: boolean;
   x: number;
   y: number;
   w: number;
@@ -65,7 +67,7 @@ export interface HudBox {
 /** Every visible control or panel of the HUD: buttons, inputs and status regions that have a size on screen. */
 export async function collectHudBoxes(page: Page): Promise<HudBox[]> {
   return page.evaluate(() => {
-    const seen: { el: Element; name: string; x: number; y: number; w: number; h: number }[] = [];
+    const seen: { el: Element; name: string; interactive: boolean; x: number; y: number; w: number; h: number }[] = [];
     const selector = 'button, input, textarea, [role="status"], [role="dialog"], [data-hud-item]';
     for (const el of document.querySelectorAll(selector)) {
       if (el.closest('[data-hud-ignore]')) continue;
@@ -75,7 +77,7 @@ export async function collectHudBoxes(page: Page): Promise<HudBox[]> {
       const r = el.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       const name = el.getAttribute('aria-label') || el.getAttribute('data-hud-item') || (el.textContent ?? '').trim().slice(0, 30) || el.tagName.toLowerCase();
-      seen.push({ el, name, x: r.x, y: r.y, w: r.width, h: r.height });
+      seen.push({ el, name, interactive: el.matches('button, input, textarea, a[href]'), x: r.x, y: r.y, w: r.width, h: r.height });
     }
     return seen.map(({ el: _el, ...box }) => box);
   });
@@ -120,15 +122,18 @@ export async function applySafeArea(page: Page, safe: HudDevice['safe']): Promis
 }
 
 const SCENARIO_STEPS: Record<string, (string | RegExp)[]> = {
-  build: ['Build'],
+  build: ['More actions', /^Build$/],
   focus: [/^(Show people in|People and map)/],
   full: [/^(Show people in|People and map)/],
 };
 
-/** Opens the panel a scenario is about, by clicking the named buttons in order. */
+/** Opens the panel a scenario is about, by clicking the named buttons in order; a button this layout lacks is skipped. */
 export async function runScenarioSteps(page: Page, scenario: string): Promise<void> {
   for (const name of SCENARIO_STEPS[scenario] ?? []) {
-    await page.getByRole('button', { name }).first().click();
-    await page.waitForTimeout(600);
+    const button = page.getByRole('button', { name }).first();
+    if ((await button.count()) > 0) {
+      await button.click();
+      await page.waitForTimeout(600);
+    }
   }
 }
