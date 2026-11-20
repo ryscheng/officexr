@@ -50,7 +50,11 @@ export class SfxEngine {
 
   play(cue: SoundCue): void {
     const settings = this.deps.settings();
-    if (!settings.enabled || settings.volume <= 0 || !this.unlocked) return;
+    if (!settings.enabled || settings.volume <= 0) {
+      this.stopLoops();
+      return;
+    }
+    if (!this.unlocked) return;
     const ctx = this.ensureContext();
     if (ctx.state !== 'running') return;
     if (cue.type === 'shot') {
@@ -60,12 +64,23 @@ export class SfxEngine {
     }
   }
 
+  /** Silences every loop at once when sound is turned off, even if no further cue arrives. */
+  tick(): void {
+    const settings = this.deps.settings();
+    if (!settings.enabled || settings.volume <= 0) this.stopLoops();
+  }
+
   dispose(): void {
     GESTURES.forEach((type) => this.deps.gestureTarget.removeEventListener(type, this.unlock));
     for (const voice of this.loops.values()) voice.source.stop();
     this.loops.clear();
     void this.ctx?.close();
     this.ctx = null;
+  }
+
+  private stopLoops(): void {
+    for (const voice of this.loops.values()) voice.source.stop();
+    this.loops.clear();
   }
 
   private ensureContext(): AudioContext {

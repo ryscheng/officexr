@@ -22,10 +22,11 @@ import { isBakedRoom } from './src/scenes/commands.ts';
 import { catalogCharacters, type CatalogCharacters } from './src/characters/registry.ts';
 import { writeFileAtomic } from './atomic-write.ts';
 import { mergeBundledDefaults } from './bundled-defaults.ts';
-import { validateWorldObjectKindCatalog } from './src/scenes/world-object-kinds-schema.ts';
+import { catalogKindLookup, validateWorldObjectKindCatalog } from './src/scenes/world-object-kinds-schema.ts';
+import { createInstanceGeometry } from './src/app/geometry-service.ts';
 import { deserializeLayout } from './src/scenes/layout-document.ts';
 import type { MapDocumentV2, SerializedMap } from './src/scenes/map-document.ts';
-import { parseWorldConstants, type WorldConstants } from '@officexr/sdk';
+import { DEFAULT_WORLD_OBJECTS, parseWorldConstants, type WorldConstants } from '@officexr/sdk';
 import type { WorldConstantsPushFailure } from './src/scenes/world-constants-storage.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -94,6 +95,21 @@ export function studioCatalogCharacters(dataDir?: string): () => Promise<Catalog
     } catch {
       return new Map();
     }
+  };
+}
+
+/** Footprints of catalog kinds in metres, for validating placements; unknown kinds have none. Reads the catalog on each call. */
+export function studioPlacementFootprint(dataDir?: string): () => Promise<(kindId: string, position: [number, number, number], yawDeg: number) => { min: readonly number[]; max: readonly number[] } | null> {
+  const file = (dataDir ? dataDirOptions(dataDir).catalog?.file : undefined) ?? DEFAULT_CATALOG_FILE;
+  return async () => {
+    let lookup: ReturnType<typeof catalogKindLookup>;
+    try {
+      lookup = catalogKindLookup(validateWorldObjectKindCatalog(JSON.parse(await fs.readFile(file, 'utf8'))));
+    } catch {
+      return () => null;
+    }
+    const geometry = createInstanceGeometry({ catalog: { getKind: lookup }, voxelSize: DEFAULT_WORLD_OBJECTS.cubeSize });
+    return (kindId, position, yawDeg) => (lookup(kindId) ? geometry.worldAABB(position, kindId, yawDeg) : null);
   };
 }
 

@@ -6,6 +6,7 @@ import {
   type OfficeSync,
   type PersistentLocalState,
 } from '@officexr/core-refactor';
+import { HELD_DENIED_KIND } from '@officexr/sdk';
 import type { Identity } from '@officexr/server/shared';
 import { createPropOpRequester, type PropOpRequester, type RequestPropOp } from '../place/requestPropOp';
 import { createDeskClaimRequester, type DeskClaimRequester, type RequestDeskClaim } from '../desk/requestDeskClaim';
@@ -84,6 +85,7 @@ export function useOfficeSession(
       let office: OfficeSync | undefined;
       let deskClaims: DeskClaimRequester | undefined;
       let propOps: PropOpRequester | undefined;
+      let offHeldDenied: (() => void) | undefined;
       const character = loadCharacter(officeId, me.login);
       start({ local, channel, voice: voiceAdapter, holdSelf: true }).then(
         async (started) => {
@@ -101,6 +103,7 @@ export function useOfficeSession(
           local.actions.upsertPlayer({ id: selfId, name: me.name, avatar: { model } });
           deskClaims = createDeskClaimRequester(channel);
           propOps = createPropOpRequester(channel);
+          offHeldDenied = channel.onCustom(HELD_DENIED_KIND, () => local.actions.setSelfHeld(null));
           setSession({ type: 'ready', local, office: started, voice, requestDeskClaim: deskClaims.request, requestPropOp: propOps.request });
         },
         (err: Error) => {
@@ -119,6 +122,7 @@ export function useOfficeSession(
         office?.stop();
         deskClaims?.dispose();
         propOps?.dispose();
+        offHeldDenied?.();
         voiceAdapter.dispose();
         channel.close();
       };

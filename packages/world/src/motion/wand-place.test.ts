@@ -84,6 +84,12 @@ describe('self items', () => {
     expect(stepSelfItems(state, { ...base, holding: true, castPressed: true, now: 10_000 + SPELL_COOLDOWN_MS }).action?.kind).toBe('cast');
   });
 
+  it('does not cast while riding or swimming', () => {
+    const out = stepSelfItems(newItemsState(), { ...base, holding: true, posed: true, castPressed: true });
+    expect(out.action).toBeNull();
+    expect(out.suppressPoke).toBe(true);
+  });
+
   it('digits choose the spell only while holding, and the next cast uses it', () => {
     const state = newItemsState();
     stepSelfItems(state, { ...base, digitSpell: 'shrink' });
@@ -151,7 +157,7 @@ describe('place mode', () => {
   it('puts the ghost on the grid in front of the player, at floor height', () => {
     const spot = ghostSpot(geometry, 2, { x: 0, y: 4.04, z: 0 }, Math.PI, 'prop_pool', 0);
     expect(spot[0]).toBeCloseTo(-0.5);
-    expect(spot[1]).toBeCloseTo(2.02);
+    expect(spot[1]).toBe(2);
     expect(spot[2]).toBeCloseTo(0.5);
     for (const v of [spot[0], spot[2]]) expect(Number.isInteger(v * 2)).toBe(true);
   });

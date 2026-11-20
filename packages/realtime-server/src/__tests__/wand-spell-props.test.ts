@@ -94,6 +94,18 @@ describe('placed props, wand and spells through the realtime server', () => {
     expect(late.store.getState().placedProps).toEqual(bob.store.getState().placedProps);
   });
 
+  it('echoes the request id in the reply, and shows props the web backend pushes to a live room', async () => {
+    const { peer, server } = await setup();
+    const ann = await peer('ann');
+    const bob = await peer('bob');
+    ann.op({ ...pool, reqId: 'r7' });
+    await vi.waitFor(() => expect(ann.results).toEqual([{ ok: true, reqId: 'r7' }]));
+    const pushed: PlacedProp[] = [{ id: 'placed:9', kindId: 'prop_pool', position: [1, 4, 1], yawDeg: 0 }];
+    server.pushOfficeProps('o1', pushed);
+    await vi.waitFor(() => expect(bob.store.getState().placedProps).toEqual(pushed));
+    server.pushOfficeProps('nobody-here', pushed);
+  });
+
   it('answers a refused op to the sender only and drops a malformed frame', async () => {
     const api = fakePropsApi();
     const { peer } = await setup(api);
@@ -128,7 +140,7 @@ describe('placed props, wand and spells through the realtime server', () => {
     const { peer } = await setup();
     const ann = await peer('ann');
     const bob = await peer('bob');
-    ann.actions.setSelfHeld('wand', 'placed:1');
+    ann.actions.setSelfHeld('wand', 'stand-1');
     await vi.waitFor(() => expect(bob.store.getState().players['ann']?.held).toBe('wand'));
 
     ann.sync.sendCast(cast);
@@ -136,7 +148,7 @@ describe('placed props, wand and spells through the realtime server', () => {
 
     const late = await peer('cat');
     await vi.waitFor(() => expect(late.store.getState().spellEffects['bob']?.spell).toBe('fireball'));
-    expect(late.store.getState().players['ann']).toMatchObject({ held: 'wand', heldStand: 'placed:1' });
+    expect(late.store.getState().players['ann']).toMatchObject({ held: 'wand', heldStand: 'stand-1' });
     const effect = late.store.getState().spellEffects['bob']!;
     expect(effect.endsAt - Date.now()).toBeGreaterThan(1500);
   });
@@ -165,7 +177,7 @@ describe('placed props, wand and spells through the realtime server', () => {
     const { peer } = await setup();
     const ann = await peer('ann');
     const watcher = await peer('watcher');
-    ann.actions.setSelfHeld('wand', 'placed:1');
+    ann.actions.setSelfHeld('wand', 'stand-1');
     await vi.waitFor(() => expect(watcher.store.getState().players['ann']?.held).toBe('wand'));
     ann.close();
     await vi.waitFor(() => expect(watcher.store.getState().players['ann']).toBeUndefined());
@@ -177,20 +189,18 @@ describe('placed props, wand and spells through the realtime server', () => {
 });
 
 describe('SpellCastGuard', () => {
-  it('lets a holder cast once per cooldown and refuses a spoofed actor or an empty hand', () => {
+  it('lets an eligible caster cast once per cooldown and refuses an ineligible one', () => {
     const guard = new SpellCastGuard();
-    expect(guard.allow('a', 'a', 'wand', 0)).toBe(true);
-    expect(guard.allow('a', 'a', 'wand', SPELL_COOLDOWN_MS * 0.5)).toBe(false);
-    expect(guard.allow('a', 'a', 'wand', SPELL_COOLDOWN_MS)).toBe(true);
-    expect(guard.allow('a', 'b', 'wand', 5000)).toBe(false);
-    expect(guard.allow('a', 'a', null, 5000)).toBe(false);
-    expect(guard.allow('b', 'b', 'wand', 5)).toBe(true);
+    expect(guard.allow('a', true, 0)).toBe(true);
+    expect(guard.allow('a', true, SPELL_COOLDOWN_MS * 0.5)).toBe(false);
+    expect(guard.allow('a', true, SPELL_COOLDOWN_MS)).toBe(true);
+    expect(guard.allow('a', false, 5000)).toBe(false);
+    expect(guard.allow('b', true, 5)).toBe(true);
   });
 
-  it('forgets a player who left', () => {
+  it('does not spend the cooldown on a refused cast', () => {
     const guard = new SpellCastGuard();
-    guard.allow('a', 'a', 'wand', 0);
-    guard.forget('a');
-    expect(guard.allow('a', 'a', 'wand', 10)).toBe(true);
+    expect(guard.allow('a', false, 0)).toBe(false);
+    expect(guard.allow('a', true, 10)).toBe(true);
   });
 });

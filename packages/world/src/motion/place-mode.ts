@@ -93,7 +93,7 @@ export function ghostSpot(
   kindId: PlaceableKindId,
   yawDeg: number,
 ): [number, number, number] {
-  const y = Math.round((feet.y / voxelSize) * 50) / 50;
+  const y = Math.round((feet.y / voxelSize) * 2) / 2;
   const { min, max } = geometry.worldAABB([0, y, 0], kindId, yawDeg);
   const aheadX = feet.x - Math.sin(yaw) * PLACE_AHEAD_M;
   const aheadZ = feet.z - Math.cos(yaw) * PLACE_AHEAD_M;

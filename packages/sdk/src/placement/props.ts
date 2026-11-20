@@ -9,9 +9,10 @@ export const PLACEABLE_KINDS = [
 
 export type PlaceableKindId = (typeof PLACEABLE_KINDS)[number]['kindId'];
 
+export const WAND_STAND_KIND: PlaceableKindId = 'prop_wand_stand';
 export const MAX_PLACED_PROPS = 50;
 export const PLACED_ID_PREFIX = 'placed:';
-/** Grid step for x and z, in voxels. */
+/** Grid step for x, y and z, in voxels. */
 export const PLACE_STEP_VOXELS = 0.5;
 const COORD_LIMIT = 500;
 
@@ -30,7 +31,7 @@ const onGrid = (v: number) => Number.isFinite(v) && Math.abs(v) <= COORD_LIMIT &
 export const ZPropPlacement = z.object({
   kindId: z.string().refine(isPlaceableKind, 'Unknown prop'),
   position: z.tuple([z.number(), z.number(), z.number()]).refine(
-    ([x, y, z]) => onGrid(x) && Number.isFinite(y) && Math.abs(y) <= COORD_LIMIT && onGrid(z),
+    ([x, y, z]) => onGrid(x) && onGrid(y) && onGrid(z),
     'Position is off the grid',
   ),
   yawDeg: z.number().refine((v) => [0, 90, 180, 270].includes(v), 'yawDeg must be 0, 90, 180 or 270'),

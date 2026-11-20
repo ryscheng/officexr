@@ -134,13 +134,51 @@ async function parseNewOffice(body: unknown, mapExists: MapExists): Promise<Omit
   return { name: update.name, description: update.description ?? null, mapName: update.mapName };
 }
 
-async function applyPropOp(props: OfficePlacedProps, officeId: string, login: string, op: PropOp): Promise<'ok' | 'limit' | 'not-found'> {
+/** The footprint of a prop in metres, or null for a kind the catalog does not know. */
+export type PlacementFootprint = (kindId: string, position: [number, number, number], yawDeg: number) => { min: readonly number[]; max: readonly number[] } | null;
+
+const boxesOverlap = (a: { min: readonly number[]; max: readonly number[] }, b: { min: readonly number[]; max: readonly number[] }) =>
+  [0, 1, 2].every((i) => a.min[i] < b.max[i] && a.max[i] > b.min[i]);
+
+type PropOutcome = 'ok' | 'limit' | 'not-found' | 'invalid';
+
+/** Props of one office change one at a time here, so a check and the write after it cannot interleave. */
+const officeQueues = new Map<string, Promise<unknown>>();
+function serialized<T>(officeId: string, run: () => Promise<T>): Promise<T> {
+  const next = (officeQueues.get(officeId) ?? Promise.resolve()).then(run, run);
+  officeQueues.set(officeId, next.catch(() => undefined));
+  return next;
+}
+
+async function applyPropOp(
+  props: OfficePlacedProps,
+  footprintOf: PlacementFootprint,
+  officeId: string,
+  login: string,
+  op: PropOp,
+): Promise<PropOutcome> {
   if (op.op === 'remove') {
     return props.remove(officeId, op.id);
   }
   const placement = { kindId: op.kindId, position: op.position, yawDeg: op.yawDeg };
-  if (op.op === 'update') {
-    return props.update(officeId, { id: op.id, ...placement });
+  const box = footprintOf(op.kindId, op.position, op.yawDeg);
+  if (!box) {
+    return 'invalid';
+  }
+  const others = await props.list(officeId);
+  const updating = op.op === 'update' ? others.find((p) => p.id === op.id) : undefined;
+  if (op.op === 'update' && !updating) {
+    return 'not-found';
+  }
+  if (updating && updating.kindId !== op.kindId) {
+    return 'invalid';
+  }
+  const clash = others.some((p) => p.id !== (updating?.id ?? '') && boxesOverlap(box, footprintOf(p.kindId, p.position, p.yawDeg) ?? { min: [0, 0, 0], max: [0, 0, 0] }));
+  if (clash) {
+    return 'invalid';
+  }
+  if (updating) {
+    return props.update(officeId, { id: updating.id, ...placement });
   }
   return props.add(officeId, { id: `${PLACED_ID_PREFIX}${randomUUID()}`, ...placement }, login);
 }
@@ -150,6 +188,10 @@ export interface ApiOptions {
   characters: OfficeCharacters;
   deskClaims: OfficeDeskClaims;
   placedProps: OfficePlacedProps;
+  /** Resolves the footprints used to keep placed props clear of each other. */
+  placementFootprint: () => Promise<PlacementFootprint>;
+  /** Called with the new list after every accepted write, so a live room shows it. */
+  onPropsChanged?: (officeId: string, props: PlacedProp[]) => void;
   createOffice: CreateOffice;
   updateOffice: UpdateOffice;
   mapExists: MapExists;
@@ -167,6 +209,8 @@ export function apiMiddleware({
   characters,
   deskClaims,
   placedProps,
+  placementFootprint,
+  onPropsChanged,
   createOffice,
   updateOffice,
   mapExists,
@@ -303,11 +347,16 @@ export function apiMiddleware({
           if (!parsed.success) {
             return send(400, { error: 'invalid' });
           }
-          const outcome = await applyPropOp(placedProps, office.id, me.login, parsed.data);
+          const footprintOf = await placementFootprint();
+          const { outcome, list } = await serialized(office.id, async () => {
+            const result = await applyPropOp(placedProps, footprintOf, office.id, me.login, parsed.data);
+            return { outcome: result, list: result === 'ok' ? await placedProps.list(office.id) : [] };
+          });
           if (outcome !== 'ok') {
-            return send(outcome === 'limit' ? 409 : 404, { error: outcome });
+            return send(outcome === 'limit' ? 409 : outcome === 'invalid' ? 400 : 404, { error: outcome });
           }
-          return send(200, { props: await placedProps.list(office.id) });
+          onPropsChanged?.(office.id, list);
+          return send(200, { props: list });
         });
       }
       const id = path.match(/^\/api\/offices\/([^/]+)$/)?.[1];

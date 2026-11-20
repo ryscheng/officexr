@@ -20,7 +20,8 @@ export function createPlacedPropsHandler(api: PlacedPropsApi | undefined): Custo
     const login = loginOf(client.userId);
     const run = async (): Promise<void> => {
       const outcome = api ? await api.propOp(room.officeId, login, parsed.data) : UNAVAILABLE;
-      const result: PropOpResult = outcome.ok ? { ok: true } : { ok: false, error: outcome.error };
+      const { reqId } = parsed.data;
+      const result: PropOpResult = outcome.ok ? { ok: true, reqId } : { ok: false, error: outcome.error, reqId };
       room.sendCustom(PROP_OP_RESULT_KIND, result, client.userId);
       if (outcome.ok) {
         room.pushPlacedProps(outcome.props);

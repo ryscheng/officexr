@@ -19,6 +19,7 @@ export function SoundDriver({ store, bus }: { store: Store; bus: Bus }) {
 
   useFrame(() => {
     if (!sfx) return;
+    sfx.tick();
     const state = store.getState();
     const self = state.players[state.selfId];
     if (self) sfx.setListener(self.pos);

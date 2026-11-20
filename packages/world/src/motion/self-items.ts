@@ -39,7 +39,7 @@ export function stepSelfItems(state: ItemsState, input: ItemsInput): ItemsOutcom
   if (input.fPressed && !input.holding && !input.posed && !input.seated && input.standNear) {
     return { action: { kind: 'pickup', standId: input.standNear }, suppressMount: true, suppressPoke };
   }
-  const canCast = input.holding && !input.seated && input.now - state.lastCastAt >= SPELL_COOLDOWN_MS;
+  const canCast = input.holding && !input.seated && !input.posed && input.now - state.lastCastAt >= SPELL_COOLDOWN_MS;
   if (input.castPressed && canCast) {
     state.lastCastAt = input.now;
     return { action: { kind: 'cast', spell: state.spell }, suppressMount: input.holding, suppressPoke };

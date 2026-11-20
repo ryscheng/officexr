@@ -18,6 +18,8 @@ import {
   DEFAULT_WORLD_CONSTANTS,
   InMemoryChannel,
   createSeqCounter,
+  HELD_DENIED_KIND,
+  isPlacedId,
   loginOf,
   parseWorldConstants,
   PROTOCOL,
@@ -30,6 +32,7 @@ import {
   type PresenceData,
   type Store,
   type WorldConstants,
+  WAND_STAND_KIND,
 } from '@officexr/sdk';
 import { EmoteRateLimit } from './emote-rate-limit.ts';
 import {
@@ -157,7 +160,6 @@ export class Room {
     this.actions.applyRemotePose(userId, null, Date.now());
     this.actions.applyRemoteSeat(userId, null, Date.now());
     this.actions.applyRemoteHeld(userId, null, Date.now());
-    this.spellGuard.forget(userId);
     this.actions.applyRemoteHand(userId, false, Date.now());
     this.actions.upsertPlayer({ id: userId, statusText: null, statusEmoji: null, focus: false });
   }
@@ -197,6 +199,46 @@ export class Room {
     this.propsLoaded = true;
     this.actions.setPlacedProps(props);
     void this.mirror.send(this.officePropsEvent(this.takeServerSeq()));
+    for (const [id, p] of Object.entries(this.store.getState().players)) {
+      if (p.heldStand && !this.standExists(p.heldStand)) {
+        this.actions.applyRemoteHeld(id, null, Date.now());
+        this.denyHeld(id);
+      }
+    }
+  }
+
+  /** A placed stand must be in the office's props; a map stand's id is the browser's own, which the server cannot check. */
+  standExists(stand: string | null): boolean {
+    if (!stand) return false;
+    if (!isPlacedId(stand)) return true;
+    return this.store.getState().placedProps.some((p) => p.id === stand && p.kindId === WAND_STAND_KIND);
+  }
+
+  /** Tells a client its wand is gone, so it drops the wand and tells everyone else. */
+  denyHeld(userId: PlayerId): void {
+    this.sendCustom(HELD_DENIED_KIND, {}, userId);
+  }
+
+  /** Whether `sender` may announce this `presence:held`: its own, with a real stand no one else holds (first claim wins). */
+  acceptHeld(sender: PlayerId, event: Extract<NetEvent, { kind: 'presence:held' }>): boolean {
+    if (event.actorId !== sender) return false;
+    if (event.held === null) return true;
+    const stand = event.stand ?? null;
+    const taken = Object.values(this.store.getState().players).some((p) => p.id !== sender && p.heldStand === stand);
+    if (!this.standExists(stand) || taken) {
+      this.denyHeld(sender);
+      return false;
+    }
+    return true;
+  }
+
+  /** The cast to relay for `sender`, or null: its own, wand from a real stand, not riding or swimming, within the cooldown; a target who is not here becomes a miss. */
+  vetCast(sender: PlayerId, event: Extract<NetEvent, { kind: 'spell:cast' }>, now: number): NetEvent | null {
+    const me = this.store.getState().players[sender];
+    const eligible = event.actorId === sender && me?.held === 'wand' && this.standExists(me.heldStand ?? null) && !me.pose;
+    if (!this.spellGuard.allow(sender, eligible, now)) return null;
+    const present = event.targetId !== null && (this.clients.has(event.targetId) || this.hub.present().includes(event.targetId));
+    return event.targetId !== null && !present ? { ...event, targetId: null } : event;
   }
 
   private officePropsEvent(seq: number): NetEvent {
@@ -691,6 +733,11 @@ export class RealtimeServer {
     return load;
   }
 
+  /** Shows `props` to a live room of `officeId`; an office nobody is in loads them from the backend at its next join. */
+  pushOfficeProps(officeId: string, props: PlacedProp[]): void {
+    this.rooms.get(officeId)?.pushPlacedProps(props);
+  }
+
   private dropIfEmpty(room: Room): void {
     // A joiner waiting on the claims load will be accepted into this room; the load reschedules the drop when it settles.
     if (room.clients.size === 0 && !this.claimLoads.has(room) && room !== this.defaultRoom && this.rooms.get(room.officeId) === room) {
@@ -814,10 +861,16 @@ export class RealtimeServer {
         // later server push. The retired `world:settings` kind already
         // fails validation.
         if (!v.ok || PROTOCOL[v.event.kind].authority === 'server' || v.event.actorId === SERVER_SELF_ID) return;
-        if (v.event.kind === 'spell:cast' && !room.spellGuard.allow(client.userId, v.event.actorId, room.store.getState().players[client.userId]?.held ?? null, Date.now())) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
         if (v.event.kind === 'emote:send' && !room.allowEmote(client.userId, Date.now())) return;
+        if (v.event.kind === 'presence:held' && !room.acceptHeld(client.userId, v.event)) return;
+        if (v.event.kind === 'spell:cast') {
+          const vetted = room.vetCast(client.userId, v.event, Date.now());
+          if (!vetted) return;
+          room.hub.broadcast(client.userId, vetted);
+          return;
+        }
         room.hub.broadcast(client.userId, v.event);
         return;
       }

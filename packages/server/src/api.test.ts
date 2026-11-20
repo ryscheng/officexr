@@ -63,7 +63,7 @@ const NECROMANCER = 'kaykit-skeletons/characters/gltf/Necromancer';
 const catalogKind = (id: string, category: string) => ({ id, label: id, gltfPath: `/models/${id}.glb`, swatch: '#64748b', category });
 writeFileSync(
   path.join(studioDataDir, 'world-object-kinds.json'),
-  JSON.stringify({ schemaVersion: 1, updatedAt: 1, kinds: [catalogKind(NECROMANCER, 'character'), catalogKind('kaykit-skeletons/assets/gltf/Skeleton_Axe', 'prop')] }),
+  JSON.stringify({ schemaVersion: 1, updatedAt: 1, kinds: [catalogKind(NECROMANCER, 'character'), catalogKind('kaykit-skeletons/assets/gltf/Skeleton_Axe', 'prop'), ...['prop_pool', 'prop_wand_stand'].map((id) => ({ ...catalogKind(id, 'prop'), dimensions: { width: 1.5, height: 1, depth: 1.5 }, localAABB: { min: { x: 0, y: 0, z: 0 }, max: { x: 1.5, y: 1, z: 1.5 } } }))] }),
 );
 const claimsByOffice = new Map<string, Map<string, string>>();
 const deskClaims: OfficeDeskClaims = {
@@ -91,6 +91,11 @@ const deskClaims: OfficeDeskClaims = {
     }
   },
 };
+const pushed: { officeId: string; props: PlacedProp[] }[] = [];
+const placementFootprint = async () => (kindId: string, position: [number, number, number], yawDeg: number) =>
+  kindId === 'prop_pool' || kindId === 'prop_wand_stand'
+    ? { min: [position[0] * 2, position[1] * 2, position[2] * 2], max: [position[0] * 2 + 1.5, position[1] * 2 + 1, position[2] * 2 + 1.5 + yawDeg * 0] }
+    : null;
 const propsByOffice = new Map<string, Map<string, PlacedProp>>();
 const placedProps: OfficePlacedProps = {
   list: async (officeId) => [...(propsByOffice.get(officeId)?.values() ?? [])],
@@ -243,6 +248,8 @@ const apiDeps = {
   characters,
   deskClaims,
   placedProps,
+  placementFootprint,
+  onPropsChanged: (officeId: string, props: PlacedProp[]) => void pushed.push({ officeId, props }),
   createOffice,
   updateOffice,
   mapExists: async () => true,
@@ -1331,6 +1338,36 @@ describe('/api/offices/:id/props', () => {
     expect((await post({ op: 'remove', id: 'placed:none' })).status).toBe(404);
     expect((await post({ ...pool, op: 'update', id: 'placed:none' })).status).toBe(404);
     expect((await post(pool, me, '99999999-9999-4999-8999-999999999999')).status).toBe(404);
+  });
+
+  it('is 400 for a spot that overlaps another prop, but allows a prop beside it and a prop on a free spot after a move', async () => {
+    const first = (await (await post(pool)).json()).props[0];
+    expect((await post(pool)).status).toBe(400);
+    expect((await post({ ...pool, position: [4, 4, 6.5] })).status).toBe(400);
+    expect((await post({ ...pool, position: [6, 4, 6] })).status).toBe(200);
+    expect((await post({ ...pool, op: 'update', id: first.id, position: [20, 4, 6] })).status).toBe(200);
+    expect((await post(pool)).status).toBe(200);
+  });
+
+  it('is 400 for a prop that is not on the height grid', async () => {
+    expect((await post({ ...pool, position: [4, 4.25, 6] })).status).toBe(400);
+    expect((await post({ ...pool, position: [4, 4.5, 6] })).status).toBe(200);
+  });
+
+  it('is 400 when an update changes the kind, and leaves the prop alone', async () => {
+    const { id } = (await (await post(pool)).json()).props[0];
+    const res = await post({ op: 'update', id, kindId: 'prop_wand_stand', position: [8, 4, 8], yawDeg: 0 });
+    expect(res.status).toBe(400);
+    expect((await list())[0]).toMatchObject({ kindId: 'prop_pool', position: [4, 4, 6] });
+  });
+
+  it('tells the live room the new list after each accepted write and only then', async () => {
+    const spy = vi.spyOn(RealtimeServer.prototype, 'pushOfficeProps');
+    const { id } = (await (await post(pool)).json()).props[0];
+    await post(pool);
+    await post({ op: 'remove', id });
+    expect(spy.mock.calls.map(([officeId, props]) => [officeId, props.length])).toEqual([[ID, 1], [ID, 0]]);
+    spy.mockRestore();
   });
 
   it('is 413 for an oversized body and 405 for other methods', async () => {

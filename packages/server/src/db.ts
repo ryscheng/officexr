@@ -101,14 +101,25 @@ export function createDb(connectionString: string | undefined) {
       return rows.map((r): PlacedProp => ({ id: r.id, kindId: r.kind_id as PlaceableKindId, position: [r.x, r.y, r.z], yawDeg: r.yaw_deg }));
     },
     add: async (officeId, prop, placedBy) => {
-      // One statement, so two racing placements cannot both pass the count.
-      const { rowCount } = await getPool().query(
-        `insert into office_props (office_id, id, kind_id, x, y, z, yaw_deg, placed_by)
-         select $1, $2, $3, $4, $5, $6, $7, $8
-         where (select count(*) from office_props where office_id = $1) < $9`,
-        [officeId, prop.id, prop.kindId, ...prop.position, prop.yawDeg, placedBy, MAX_PLACED_PROPS],
-      );
-      return rowCount ? 'ok' : 'limit';
+      const client = await getPool().connect();
+      try {
+        await client.query('begin');
+        // The office row lock makes concurrent adds count one after another; under read committed the count alone would let them all pass.
+        await client.query('select 1 from offices where id = $1 for update', [officeId]);
+        const { rowCount } = await client.query(
+          `insert into office_props (office_id, id, kind_id, x, y, z, yaw_deg, placed_by)
+           select $1, $2, $3, $4, $5, $6, $7, $8
+           where (select count(*) from office_props where office_id = $1) < $9`,
+          [officeId, prop.id, prop.kindId, ...prop.position, prop.yawDeg, placedBy, MAX_PLACED_PROPS],
+        );
+        await client.query('commit');
+        return rowCount ? 'ok' : 'limit';
+      } catch (err) {
+        await client.query('rollback').catch(() => undefined);
+        throw err;
+      } finally {
+        client.release();
+      }
     },
     update: async (officeId, prop) => {
       const { rowCount } = await getPool().query(
