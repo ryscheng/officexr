@@ -9,8 +9,6 @@ export interface HudDevice {
   id: string;
   /** Playwright context options. */
   options: Parameters<Browser['newContext']>[0];
-  /** Phones in portrait show the rotate prompt instead of the HUD. */
-  portraitPhone?: boolean;
   /** Safe-area insets of the real device, which Chromium emulation reports as zero. */
   safe: { top: number; right: number; bottom: number; left: number };
 }
@@ -19,9 +17,10 @@ export interface HudDevice {
 const without = ({ defaultBrowserType: _ignored, ...rest }: (typeof devices)[string]) => ({ ...rest, deviceScaleFactor: 1 });
 
 export const HUD_DEVICES: HudDevice[] = [
-  { id: 'iphone13-portrait', options: without(devices['iPhone 13']), portraitPhone: true, safe: { top: 47, right: 0, bottom: 34, left: 0 } },
+  { id: 'iphone13-portrait', options: without(devices['iPhone 13']), safe: { top: 47, right: 0, bottom: 34, left: 0 } },
   { id: 'iphone13-landscape', options: without(devices['iPhone 13 landscape']), safe: { top: 0, right: 47, bottom: 21, left: 47 } },
-  { id: 'pixel5-portrait', options: without(devices['Pixel 5']), portraitPhone: true, safe: { top: 24, right: 0, bottom: 0, left: 0 } },
+  { id: 'iphone-se-portrait', options: without(devices['iPhone SE']), safe: { top: 20, right: 0, bottom: 0, left: 0 } },
+  { id: 'pixel5-portrait', options: without(devices['Pixel 5']), safe: { top: 24, right: 0, bottom: 0, left: 0 } },
   { id: 'pixel5-landscape', options: without(devices['Pixel 5 landscape']), safe: { top: 0, right: 0, bottom: 0, left: 0 } },
   { id: 'ipad-landscape', options: without(devices['iPad Pro 11 landscape']), safe: { top: 24, right: 0, bottom: 20, left: 0 } },
   { id: 'desktop', options: { viewport: { width: 1440, height: 900 } }, safe: { top: 0, right: 0, bottom: 0, left: 0 } },
@@ -42,12 +41,8 @@ export async function openHudPreview(browser: Browser, device: HudDevice, scenar
   const page = await context.newPage();
   page.setDefaultTimeout(60_000);
   await page.goto(`/hud-preview?scenario=${scenario}`);
-  if (!device.portraitPhone) {
-    await page.getByRole('button', { name: 'Office menu' }).first().waitFor({ timeout: 60_000 });
-    await page.waitForTimeout(2500);
-  } else {
-    await page.getByText('Turn your phone').waitFor({ timeout: 30_000 });
-  }
+  await page.getByRole('button', { name: 'Office menu' }).first().waitFor({ timeout: 60_000 });
+  await page.waitForTimeout(2500);
   return { page, close: () => context.close() };
 }
 
@@ -135,16 +130,21 @@ export async function applySafeArea(page: Page, safe: HudDevice['safe']): Promis
 }
 
 const SCENARIO_STEPS: Record<string, (string | RegExp)[]> = {
-  build: ['More actions', /^Build$/],
-  'new-mission': ['Show all missions', 'New mission'],
-  focus: [/^(Show people in|People and map)/],
-  full: [/^(Show people in|People and map)/],
+  build: ['key:b'],
+  'new-mission': [/^Expand missions$/, 'New mission'],
+  focus: ['Office menu', 'People here'],
+  full: ['Office menu', 'People here'],
 };
 
-/** Opens the panel a scenario is about, by clicking the named buttons in order; a button this layout lacks is skipped. */
+/** Opens the panel a scenario is about, by clicking the named buttons in order (`key:x` presses a key); a button this layout lacks is skipped. */
 export async function runScenarioSteps(page: Page, scenario: string): Promise<void> {
   for (const name of SCENARIO_STEPS[scenario] ?? []) {
-    const button = page.getByRole('button', { name }).first();
+    if (typeof name === 'string' && name.startsWith('key:')) {
+      await page.keyboard.press(name.slice(4));
+      await page.waitForTimeout(600);
+      continue;
+    }
+    const button = page.getByRole('button', { name }).or(page.getByRole('menuitem', { name })).first();
     if ((await button.count()) > 0) {
       await button.click();
       await page.waitForTimeout(600);

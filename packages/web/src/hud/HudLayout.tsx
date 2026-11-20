@@ -13,7 +13,7 @@ type Slots = {
 /** Places the in-office HUD in fixed zones around the edges; the top centre stacks toasts and banners. */
 export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentre, bottomLeft, bottomRight }: Slots) {
   return (
-    <div className="pointer-events-none absolute inset-3 z-20">
+    <div className="pointer-events-none absolute top-(--hud-inset-top) right-(--hud-inset-right) bottom-(--hud-inset-bottom) left-(--hud-inset-left) z-20">
       <div data-hud-zone="topLeft" className="absolute top-0 left-0 flex flex-col items-start gap-2">
         {topLeft}
       </div>
@@ -41,8 +41,8 @@ export function HudLayout({ topLeft, topCentre, topRight, rightEdge, bottomCentr
       <div data-hud-zone="bottomRight" className="absolute right-0 bottom-0 flex flex-col items-end gap-2">
         {bottomRight}
       </div>
-      {/* On touch the virtual joystick owns the bottom-left corner, so the zone sits beside it. */}
-      <div data-hud-zone="bottomLeft" className="absolute bottom-0 left-0 pointer-coarse:left-30">
+      {/* On touch the virtual joystick owns the bottom-left corner, so the zone sits beside it, or above it in portrait. */}
+      <div data-hud-zone="bottomLeft" className="absolute bottom-0 left-0 pointer-coarse:left-[122px] pointer-coarse:portrait:bottom-[122px] pointer-coarse:portrait:left-0">
         {bottomLeft}
       </div>
     </div>

@@ -108,7 +108,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
       label="missions"
       titleClassName="text-base"
       headerExtra={header}
-      className={`pointer-events-auto flex max-w-[calc(100vw-24px)] flex-col gap-2 p-3 text-sm pointer-coarse:w-72 pointer-coarse:max-h-[calc(100dvh-104px)] pointer-coarse:gap-1 pointer-coarse:p-2 ${folded && !compact ? 'w-60' : 'w-93'}`}
+      className={`pointer-events-auto flex max-w-[calc(100vw-24px)] flex-col gap-2 p-3 text-sm pointer-coarse:w-72 pointer-coarse:max-h-[calc(100dvh-104px)] pointer-coarse:portrait:max-h-[calc(100dvh-300px)] pointer-coarse:portrait:w-[calc(100vw-24px)] pointer-coarse:gap-1 pointer-coarse:p-2 ${folded && !compact ? 'w-60' : 'w-93'}`}
     >
       {unsupported && (
         <p role="status" className="rounded-hud-control border border-dashed border-hud-edge bg-hud-inset px-3 py-2 text-xs text-hud-text-2">

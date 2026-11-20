@@ -22,7 +22,6 @@ its header; the choice is kept per control in `localStorage` under `officexr:fol
 | Arrival bubble | `hud/PresenceList.tsx` | No | 4 s after someone joins | Transient. |
 | Desk banner and buttons | `desk/DeskHud.tsx` | No | Only next to a claimable or owned desk, or when a seat is near (Sit, touch) | Context buttons. |
 | Click-to-play prompt | `hud/ClickToPlayPrompt.tsx` | No | Only while the world has no keyboard focus | Disappears on the first click. |
-| Rotate prompt | `hud/RotatePrompt.tsx` | No | Only on a phone in portrait | Disappears on rotation. |
 | Settings, shortcuts, new-mission form | `room/`, `hud/missions/` | No | Only when opened | Modals and sheets. |
 
 Not changed: the in-world name tags and bubbles, and the touch joystick, which is the movement control.
@@ -30,3 +29,34 @@ Not changed: the in-world name tags and bubbles, and the touch joystick, which i
 Captures are in `docs/hud-review/fold-hide/before` (main) and `after` (this branch), rendered from `/hud-preview`
 at 1x: desktop 1440x900 and iPhone 13 landscape. `crowd-folded` has the missions panel and call card folded;
 `crowd-unfolded` has the touch missions panel opened; `build-open` has build mode open.
+
+## Phone portrait
+
+The "Turn your phone" prompt is gone: the office plays upright. Portrait is a touch device with a narrow,
+tall screen (`pointer: coarse` and `orientation: portrait`; Tailwind `pointer-coarse:portrait:`). Checked at
+iPhone 13 (390x844, notch 47 px, home indicator 34 px), iPhone SE (375x667) and Pixel 5 (393x851).
+
+Layout, from the top down:
+
+- Safe area. `HudLayout` and the joystick sit inside `--hud-inset-*` (12 px, or the device's safe area if larger;
+  `viewport-fit=cover` makes `env(safe-area-inset-*)` real). Nothing is drawn under the notch or the home bar.
+- Top bar (right-aligned, one row, thumb-reachable with a stretch only for the map): chat, menu, ping bell (only
+  once a ping arrived) and map, each 44 px. The identity card does not render on touch.
+- Call pill, only in a call: under the top bar on its own row, with title, mute and leave. In landscape it stays
+  in the top row. Chat, menu and people panels open below the pill in the same column, so they never cover it.
+- Toasts and banners: top centre under the bar; when a call pill is shown they start below it.
+- Bottom left: the virtual joystick (110 px), in the thumb zone, fixed to the safe-area corner.
+- Bottom right: Wave and Speak, only while someone is near; the other thumb.
+- Missions: a full-width bar folded above the joystick (title, progress, count), so the middle of the 3D view and
+  the thumb zones stay clear. Unfolded it is a sheet above the joystick, at most `100dvh - 300px` tall.
+- Build mode needs the B key, so there is no touch build UI; the indicator, if a keyboard is attached, sits in the
+  toasts column.
+
+One panel at a time in portrait: opening the chat input, the menu or the people list folds the missions panel,
+and unfolding the missions panel closes the chat, menu and people list. Fold state defaults to folded on touch;
+a user's choice is kept.
+
+The default view in portrait has no panel over the middle of the screen: top bar, joystick, folded missions bar,
+and Wave and Speak when someone is near. `tests/playwright/hud-layout.spec.ts` covers the portrait phones: no
+overlapping HUD boxes, nothing outside the safe area, 44 px touch targets, no horizontal scroll and a canvas that
+fills the viewport, for every `/hud-preview` scenario.
