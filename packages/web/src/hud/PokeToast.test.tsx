@@ -37,6 +37,15 @@ describe('PokeToast', () => {
     expect(screen.getByText('Poked by Alice')).toBeTruthy();
   });
 
+  it('stays quiet in focus mode', () => {
+    const store = createStore({ selfId: 'me@example.com', officeId: 'office' });
+    const bus = createBus();
+    createActions(store, bus).upsertPlayer({ id: 'me@example.com', focus: true });
+    render(<PokeToast bus={bus} store={store} selfId="me@example.com" />);
+    act(() => bus.emit({ kind: 'poke:received', fromId: 'alice@example.com', targetId: 'me@example.com', at: 1 }));
+    expect(screen.queryByText(/Poked by/)).toBeNull();
+  });
+
   it('stays quiet for other targets, for pokes at nobody and for your own poke', () => {
     const bus = setup();
     act(() => bus.emit({ kind: 'poke:received', fromId: 'alice@example.com', targetId: 'bob@example.com', at: 1 }));

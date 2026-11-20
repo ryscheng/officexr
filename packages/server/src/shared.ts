@@ -17,7 +17,7 @@ export interface NewOffice {
   createdByLogin: string;
 }
 
-/** The settings a creator may change; only the keys present are written. */
+/** The settings a signed-in user may change; only the keys present are written. */
 export type OfficeUpdate = Partial<Pick<NewOffice, 'name' | 'description' | 'mapName'>> & { debugEnabled?: boolean };
 
 export interface Identity {
@@ -25,8 +25,10 @@ export interface Identity {
   name: string;
 }
 
-/** Only an office's creator may change its settings; offices without a recorded creator have none. */
 export const isOfficeCreator = (me: Identity, office: Office) => me.login === office.created_by_login;
+
+/** Every signed-in user may change any office's settings. */
+export const canEditOffice = (me: Identity | null): me is Identity => me !== null;
 
 /**
  * The env keys `/config.js` serves to every browser: public values only. The JaaS API key id and private key are

@@ -27,6 +27,7 @@ import type { RideVehicle } from '../scenes/world-object-kinds-schema.ts';
 import { assertNever } from './assertNever.ts';
 import type { CameraMode } from './config.ts';
 import { PlayerNameTag } from './PlayerNameTag.tsx';
+import { PlayerBubbles } from './PlayerBubbles.tsx';
 import { PlayerPingBell, shouldShowPingBell } from './PlayerPingBell.tsx';
 import { pickCharacterForPlayer, resolvePlayerModel, type CatalogCharacters, type PlayerModel } from '../characters/registry.ts';
 import { useCatalogCharacters } from '../react/application-context.tsx';
@@ -723,6 +724,7 @@ export function Players({
                 isSelf={isSelf}
                 paused={paused ?? false}
               />
+              <PlayerBubbles store={store} bus={bus} playerId={p.id} paused={paused ?? false} />
               {onPingPlayer && shouldShowPingBell(onPingPlayer, isSelf, cameraMode, paused ?? false) && (
                 <PlayerPingBell store={store} playerId={p.id} radius={charRadius} onPing={onPingPlayer} />
               )}

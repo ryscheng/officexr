@@ -34,6 +34,7 @@ export function applyNetEventToStore(
         clock.now(),
         { room: event.jitsiRoom ?? null, participantId: event.jitsiParticipantId ?? null },
         event.idleMs,
+        { statusText: event.statusText, statusEmoji: event.statusEmoji, focus: event.focus },
       );
       return;
     case 'presence:seat':
@@ -64,6 +65,12 @@ export function applyNetEventToStore(
     }
     case 'office:props':
       actions.setPlacedProps(event.props);
+      return;
+    case 'presence:hand':
+      actions.applyRemoteHand(event.actorId, event.raised, clock.now());
+      return;
+    case 'emote:send':
+      actions.receiveEmote(event.actorId, event.emote, clock.now());
       return;
     case 'poke:send':
       actions.receivePoke(event.actorId, event.targetId, clock.now());

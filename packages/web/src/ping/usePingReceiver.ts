@@ -22,13 +22,17 @@ const browserDeps: PingReceiverDeps = {
   notify: maybeNotify,
 };
 
-/** Plays the chosen sound, and maybe notifies, when another player pings the local one. */
 export function usePingReceiver(bus: Bus, store: Store, deps: PingReceiverDeps = browserDeps): void {
   const catalog = useSoundCatalog();
   useEffect(() => deps.prepare(), [deps]);
   useEffect(
     () =>
       bus.on('ping:received', ({ fromId }) => {
+        // The ping inbox still records it; only the sound and notification stay quiet.
+        const { players, selfId } = store.getState();
+        if (players[selfId]?.focus) {
+          return;
+        }
         const prefs = deps.readPrefs();
         deps.play(prefs.sound, catalog);
         deps.notify(prefs, senderName(store, fromId));

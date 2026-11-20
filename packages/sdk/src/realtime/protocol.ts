@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type {
   AvatarData,
   CharacterConfigs,
+  EmoteId,
   MicState,
   PlayerId,
   PlayerPose,
@@ -14,9 +15,9 @@ import type {
   ZombieState,
 } from '../game-state/types.ts';
 import { ZWorldConstants, type WorldConstants } from '../game-state/world-constants.ts';
-import { HELD_ITEMS, PLAYER_POSES } from '../game-state/types.ts';
 import { ZPlacedProp, type PlacedProp } from '../placement/props.ts';
 import { SPELL_IDS, SPELL_RANGE_M, type SpellId } from '../spells/index.ts';
+import { EMOTE_IDS, HELD_ITEMS, PLAYER_POSES, STATUS_EMOJI_MAX, STATUS_TEXT_MAX, isStatusEmoji } from '../game-state/types.ts';
 import type { SerializedOfficeState } from '../game-state/snapshot.ts';
 
 // --- Envelope ---
@@ -85,6 +86,10 @@ const ZPlayerState = z.object({
   poseRack: z.string().nullable().optional(),
   held: z.enum(HELD_ITEMS).nullable().optional(),
   heldStand: z.string().nullable().optional(),
+  statusText: z.string().nullable().optional(),
+  statusEmoji: z.string().nullable().optional(),
+  focus: z.boolean().optional(),
+  handRaised: z.boolean().optional(),
 });
 
 const ZChatMessageObj = z.object({
@@ -206,6 +211,9 @@ const ZPresenceStatusPayload = z.object({
   jitsiRoom: z.string().nullable().optional(),
   jitsiParticipantId: z.string().nullable().optional(),
   idleMs: z.number().nonnegative().optional(),
+  statusText: z.string().max(STATUS_TEXT_MAX).nullable().optional(),
+  statusEmoji: z.string().max(STATUS_EMOJI_MAX).refine(isStatusEmoji).nullable().optional(),
+  focus: z.boolean().optional(),
 });
 const ZPresenceSeat = z.object({ instanceId: z.string().nullable() });
 const ZPresencePose = z.object({ pose: z.enum(PLAYER_POSES).nullable(), rack: z.string().nullable().optional() });
@@ -225,6 +233,8 @@ const ZSpellEffectPayload = z.object({
   elapsedMs: z.number(),
 });
 const ZOfficePropsPayload = z.object({ props: z.array(ZPlacedProp) });
+const ZPresenceHand = z.object({ raised: z.boolean() });
+const ZEmoteSend = z.object({ emote: z.enum(EMOTE_IDS) });
 const ZPokeSend = z.object({ targetId: z.string().min(1).nullable() });
 const ZDeskClaimsPayload = z.object({ claims: z.record(z.string(), z.string()) });
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) });
@@ -264,6 +274,9 @@ export type NetEvent =
       jitsiRoom?: string | null;
       jitsiParticipantId?: string | null;
       idleMs?: number;
+      statusText?: string | null;
+      statusEmoji?: string | null;
+      focus?: boolean;
     }
   >
   | WithEnvelope<'presence:seat', 1, { instanceId: string | null }>
@@ -272,6 +285,8 @@ export type NetEvent =
   | WithEnvelope<'spell:cast', 1, SpellCastPayload>
   | WithEnvelope<'spell:effect', 1, { targetId: PlayerId; spell: SpellId; casterId: PlayerId; remainingMs: number; elapsedMs: number }>
   | WithEnvelope<'office:props', 1, { props: PlacedProp[] }>
+  | WithEnvelope<'presence:hand', 1, { raised: boolean }>
+  | WithEnvelope<'emote:send', 1, { emote: EmoteId }>
   | WithEnvelope<'poke:send', 1, { targetId: PlayerId | null }>
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData; name: string }>
   | WithEnvelope<'chat:message', 1, { text: string }>
@@ -314,6 +329,8 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'spell:cast': { v: 1, schema: ZSpellCast, authority: 'local', route: 'room' },
   'spell:effect': { v: 1, schema: ZSpellEffectPayload, authority: 'server', route: 'room' },
   'office:props': { v: 1, schema: ZOfficePropsPayload, authority: 'server', route: 'room' },
+  'presence:hand': { v: 1, schema: ZPresenceHand, authority: 'local', route: 'room' },
+  'emote:send': { v: 1, schema: ZEmoteSend, authority: 'local', route: 'room' },
   'poke:send': { v: 1, schema: ZPokeSend, authority: 'local', route: 'room' },
   'avatar:update': { v: 1, schema: ZAvatarUpdate, authority: 'local', route: 'room' },
   'chat:message': { v: 1, schema: ZChatMessage, authority: 'local', route: 'room' },

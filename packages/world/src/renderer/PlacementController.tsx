@@ -1,20 +1,12 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import {
-  isPlaceableKind,
-  MAX_PLACED_PROPS,
-  PLACEABLE_KINDS,
-  propToInstance,
-  rotateYaw,
-  type PlacedProp,
-  type Store,
-} from '@officexr/sdk';
+import { MAX_PLACED_PROPS, propToInstance, type PlacedProp, type Store } from '@officexr/sdk';
 import { ObjectInstances, type MaterialOverride } from './ObjectInstances.tsx';
-import { fitsClear, ghostSpot, PLACE_AHEAD_M, PLACE_ERROR_TEXT, pickPlaced, type PlacementHost } from '../motion/place-mode.ts';
+import { fitsClear, ghostSpot, PLACE_AHEAD_M, pickPlaced, type PlacementHost } from '../motion/place-mode.ts';
+import { createPlaceKeyHandler } from './placeKeys.ts';
 import { feetPosition } from '../physics/rules.ts';
 import { useApplication } from '../react/application-context.tsx';
-import { isTypingTarget } from '../react/useWorldFocus.ts';
 
 const GHOST_ID = '__ghost__';
 
@@ -61,42 +53,7 @@ export function PlacementController({ store, host }: { store: Store; host: Place
 
   useEffect(() => {
     if (!mode.open) return;
-    const run = async (op: Parameters<PlacementHost['send']>[0]) => {
-      const result = await host.send(op);
-      host.mode.setNotice(result.ok ? null : PLACE_ERROR_TEXT[result.error]);
-    };
-    const place = () => {
-      const m = host.mode.get();
-      if (m.ghost?.valid) void run({ op: 'place', kindId: m.kindId, position: m.ghost.position, yawDeg: m.yawDeg });
-    };
-    const target = () => {
-      const id = host.mode.get().ghost?.targetId;
-      return id ? placedRef.current.find((p) => p.id === id) : undefined;
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
-      const key = e.key.toLowerCase();
-      const handled = ['enter', 'r', 't', 'g', 'delete', 'backspace', 'tab'];
-      if (!handled.includes(key)) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (e.repeat) return;
-      const t = target();
-      if (key === 'enter') place();
-      else if (key === 'r') host.mode.rotate();
-      else if (key === 'tab') {
-        const kinds = PLACEABLE_KINDS.map((k) => k.kindId);
-        host.mode.selectKind(kinds[(kinds.indexOf(host.mode.get().kindId) + 1) % kinds.length]);
-      } else if (!t) return;
-      else if (key === 't') void run({ op: 'update', id: t.id, kindId: t.kindId, position: t.position, yawDeg: rotateYaw(t.yawDeg) });
-      else if (key === 'g') {
-        void run({ op: 'remove', id: t.id });
-        if (isPlaceableKind(t.kindId)) {
-          host.mode.selectKind(t.kindId);
-          host.mode.setYaw(t.yawDeg);
-        }
-      } else void run({ op: 'remove', id: t.id });
-    };
+    const { onKeyDown, place } = createPlaceKeyHandler(host, () => placedRef.current);
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 0 && document.pointerLockElement) place();
     };

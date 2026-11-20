@@ -26,6 +26,25 @@ export type PlayerPose = (typeof PLAYER_POSES)[number];
 
 export const HELD_ITEMS = ['wand'] as const;
 export type HeldItem = (typeof HELD_ITEMS)[number];
+export const EMOTE_IDS = ['wave', 'thumbs-up', 'heart', 'laugh', 'clap', 'party', 'question'] as const;
+export type EmoteId = (typeof EMOTE_IDS)[number];
+
+export const EMOTE_INFO: Record<EmoteId, { glyph: string; label: string }> = {
+  wave: { glyph: '👋', label: 'Wave' },
+  'thumbs-up': { glyph: '👍', label: 'Thumbs up' },
+  heart: { glyph: '❤️', label: 'Heart' },
+  laugh: { glyph: '😂', label: 'Laugh' },
+  clap: { glyph: '👏', label: 'Clap' },
+  party: { glyph: '🎉', label: 'Party' },
+  question: { glyph: '❓', label: 'Question' },
+};
+
+export const EMOTE_BUBBLE_MS = 3000;
+
+export const STATUS_TEXT_MAX = 60;
+export const STATUS_EMOJI_MAX = 16;
+
+export const isStatusEmoji = (s: string): boolean => !/[\p{L}\p{N}\p{P}]/u.test(s);
 
 export type PlayerState = {
   id: PlayerId;
@@ -49,6 +68,10 @@ export type PlayerState = {
   poseRack?: string | null;
   held?: HeldItem | null;
   heldStand?: string | null;
+  statusText?: string | null;
+  statusEmoji?: string | null;
+  focus?: boolean;
+  handRaised?: boolean;
   tRecv?: number;
   /** Local-only: receive time of this player's last `presence:status`. */
   lastStatusAt?: number;
@@ -461,6 +484,7 @@ export type GameEvent =
   | { kind: 'ping:received'; fromId: PlayerId; at: number }
   | { kind: 'spell:cast'; casterId: PlayerId; cast: SpellCast; at: number }
   | { kind: 'poke:received'; fromId: PlayerId; targetId: PlayerId | null; at: number }
+  | { kind: 'emote:received'; fromId: PlayerId; emote: EmoteId; at: number }
   | { kind: 'inventory:added'; item: InventoryItem }
   | { kind: 'inventory:removed'; itemId: string }
   | { kind: 'voice:room-changed'; roomId: string | null }

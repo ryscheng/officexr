@@ -326,9 +326,6 @@ export function apiMiddleware({
         if (req.method === 'GET') {
           return send(200, office);
         }
-        if (office.created_by_login !== me?.login) {
-          return send(403, { error: 'Only the office creator can change its settings' });
-        }
         const body = await readJson(req);
         if (body === TOO_LARGE) {
           return send(413, { error: 'Body too large' });
