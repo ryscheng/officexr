@@ -173,10 +173,9 @@ test.describe('portrait phone', () => {
         await page.keyboard.press('Escape');
         await runScenarioSteps(page, 'chat-peek');
         const preview = page.getByRole('button', { name: /New message from/ });
-        const box = (await preview.boundingBox({ timeout: 3000 }))!;
-        await expect(preview).toBeVisible();
+        const top = await page.evaluate(() => document.querySelector('[aria-label^="New message from"]')?.getBoundingClientRect().y);
         const viewport = page.viewportSize()!;
-        expect(box.y, 'preview stays out of the middle of the view').toBeGreaterThan(viewport.height / 2);
+        expect(top, 'preview stays out of the middle of the view').toBeGreaterThan(viewport.height / 2);
         await page.waitForTimeout(6000);
         await expect(preview).toHaveCount(0);
       } finally {

@@ -11,7 +11,7 @@ export const Tabs = RadixTabs.Root;
 type Variant = 'segment' | 'sidebar';
 
 const LIST: Record<Variant, string> = {
-  segment: `flex gap-1 ${SEGMENT_GROUP}`,
+  segment: `flex gap-1 pointer-coarse:gap-2 ${SEGMENT_GROUP}`,
   sidebar: 'flex flex-col gap-0.5',
 };
 

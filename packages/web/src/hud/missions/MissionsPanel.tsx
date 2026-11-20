@@ -117,7 +117,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
       )}
 
       {!unsupported && (
-        <div className="flex shrink-0 gap-1.5 overflow-x-auto" role="group" aria-label="Source">
+        <div className="flex shrink-0 gap-1.5 overflow-x-auto pointer-coarse:gap-2" role="group" aria-label="Source">
           {chips.map((c) => (
             <button key={c} type="button" aria-pressed={c === activeSource} className={chipClass(c === activeSource)} onClick={() => setSource(c)}>
               {c === 'all' ? 'All' : SOURCE_LABEL[c]}
