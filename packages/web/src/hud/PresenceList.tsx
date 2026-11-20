@@ -26,17 +26,7 @@ export function presenceRows(players: PresencePlayer[], departed: DepartedEntry[
   const present = players.map((p): PresenceRow => {
     const label = `${labels.get(p.id)}${p.id === selfId ? ' (you)' : ''}`;
     return p.id === selfId
-      ? {
-          type: 'self',
-          id: p.id,
-          name: p.name,
-          label,
-          status: p.status,
-          statusText: p.statusText,
-          statusEmoji: p.statusEmoji,
-          focus: p.focus,
-          handRaised: p.handRaised,
-        }
+      ? { type: 'self', id: p.id, name: p.name, label, status: p.status }
       : { type: 'peer', ...p, label };
   });
   const gone = goneEntries.map((d): PresenceRow => ({ type: 'departed', ...d, label: labels.get(d.id)! }));
@@ -92,7 +82,6 @@ export function PresenceList({
   clock,
   pinger,
   storage,
-  onEditSelf,
 }: {
   store: Store;
   selfId: PlayerId;
@@ -101,7 +90,6 @@ export function PresenceList({
   pinger?: PingSender;
   /** Where the folded state is remembered; defaults to `localStorage`. */
   storage?: RosterStorage;
-  onEditSelf?: () => void;
 }) {
   const { players, departed } = useStoreSelector(store, selectPresence, samePresence);
   const [collapsed, setCollapsed] = useRosterCollapsed(useCoarsePointer(), storage);
@@ -143,7 +131,6 @@ export function PresenceList({
           pinger={pinger}
           clock={clock}
           announceNoRoute
-          onEditSelf={onEditSelf}
         />
       </div>
     </Panel>

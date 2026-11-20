@@ -5,14 +5,12 @@ import { quantise } from './quantise';
 
 export const DEG = 180 / Math.PI;
 
-export type RichPresence = Pick<PlayerState, 'statusText' | 'statusEmoji' | 'focus' | 'handRaised'>;
-
-export type PresencePlayer = Pick<PlayerState, 'id' | 'name' | 'status' | 'lastStatusAt' | 'firstSeenAt' | 'lastActiveAt'> & RichPresence & {
-    /** Null until your own position is known. */
-    distanceM: number | null;
-    /** Bearing for a view yaw of 0, in degrees rounded to 5°. */
-    bearingDeg: number;
-  };
+export type PresencePlayer = Pick<PlayerState, 'id' | 'name' | 'status' | 'lastStatusAt' | 'firstSeenAt' | 'lastActiveAt'> & {
+  /** Null until your own position is known. */
+  distanceM: number | null;
+  /** Bearing for a view yaw of 0, in degrees rounded to 5°. */
+  bearingDeg: number;
+};
 export type DepartedEntry = DepartedPlayer & { id: PlayerId };
 
 export const toPresencePlayer = (id: PlayerId, p: OfficeState['players'][PlayerId], selfPos?: PlayerState['pos']) => ({
@@ -22,10 +20,6 @@ export const toPresencePlayer = (id: PlayerId, p: OfficeState['players'][PlayerI
   lastStatusAt: p.lastStatusAt,
   firstSeenAt: p.firstSeenAt,
   lastActiveAt: p.lastActiveAt,
-  statusText: p.statusText,
-  statusEmoji: p.statusEmoji,
-  focus: p.focus,
-  handRaised: p.handRaised,
   distanceM: selfPos ? Math.floor(planarDistance(selfPos, p.pos)) : null,
   bearingDeg: selfPos ? quantise(relativeBearing(selfPos, 0, p.pos) * DEG, 5) : 0,
 });

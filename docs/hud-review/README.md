@@ -56,3 +56,11 @@ screen without a notch). The layout is otherwise unchanged by request; the rest 
 `hud-layout.spec.ts` fails on the faults above until the layout is redesigned, so it is not in `test:e2e:ci`.
 A draft of a phone drawer, call pill and pad with a "more" menu is on the local branch `hud-layout-draft`
 for reference; it is not part of this branch.
+
+## Update: HUD reverted
+
+The touch action pad, status chip and editor, emote picker, hand button, focus and poke toasts, status rows in the
+people list, build panel, spell bar, sound settings and the `--hud-inset-*` safe-area tokens were removed again, so
+the on-screen HUD matches the one before those changes. The faults above that name those parts no longer apply.
+The keyboard paths, in-world visuals, the preview and the specs stay. Captures of the reverted HUD are in
+`after-revert/`.

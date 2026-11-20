@@ -9,11 +9,8 @@ import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
 import { DeskAutoSit } from '../desk/DeskAutoSit';
 import { DeskHud } from '../desk/DeskHud';
-import { PlaceButton, PlacePalette, usePlaceHotkey } from '../place/PlaceHud';
+import { usePlaceHotkey } from '../place/usePlaceHotkey';
 import { createBrowserSfx } from '../sfx/browserSfx';
-import { SfxSettingsRows } from '../sfx/SfxSettingsRows';
-import { SpellChip } from '../spell/SpellChip';
-import { WandMobileActions } from '../spell/mobileWandActions';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PingInboxHud } from '../hud/PingInboxHud';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
@@ -23,17 +20,11 @@ import { HudBanner } from '../hud/HudBanner';
 import { HudLayout } from '../hud/HudLayout';
 import { RotatePrompt } from '../hud/RotatePrompt';
 import { OfficeNamePlate } from '../hud/OfficeNamePlate';
+import { PresenceList } from '../hud/PresenceList';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
-import { PokeToast } from '../hud/PokeToast';
 import { usePingSender } from '../ping/usePingSender';
-import { EmoteMenu } from '../status/EmoteMenu';
-import { StatusMobileActions } from '../status/mobileStatusActions';
-import { focusedTargetName } from '../status/focusNotice';
-import { FocusPingToast, type FocusNotice } from '../status/FocusPingToast';
-import { PresenceListWithStatus } from '../status/PresenceListWithStatus';
-import { SelfStatusProvider } from '../status/SelfStatusProvider';
-import { StatusMenu } from '../status/StatusMenu';
+import { StatusHotkeys } from '../status/StatusHotkeys';
 import { PipContents } from '../pip/PipContents';
 import { popOutActions } from '../pip/popOutActions';
 import { usePictureInPicture } from '../pip/usePictureInPicture';
@@ -170,15 +161,9 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
     }
   }, [session.type, closeSettings]);
 
-  const [focusNotice, setFocusNotice] = useState<FocusNotice | null>(null);
-  const clearFocusNotice = useCallback(() => setFocusNotice(null), []);
   const sendPing = useCallback((id: PlayerId) => {
     if (session.type === 'ready') {
       session.office.sync.sendPing(id);
-      const focused = focusedTargetName(session.local.store, id);
-      if (focused !== null) {
-        setFocusNotice((prev) => ({ name: focused, n: (prev?.n ?? 0) + 1 }));
-      }
     }
   }, [session]);
   const pinger = usePingSender(sendPing);
@@ -202,12 +187,9 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
       id: 'controls',
       label: 'Controls',
       content: (
-        <>
-          <SettingRow label="View">
-            <ViewModeControl mode={viewMode} />
-          </SettingRow>
-          <SfxSettingsRows />
-        </>
+        <SettingRow label="View">
+          <ViewModeControl mode={viewMode} />
+        </SettingRow>
       ),
     },
     {
@@ -225,14 +207,8 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
   ];
   const sharedActions: SettingsAction[] = popOutActions(pip);
   const readyHud = (ready: ReadySession) => (
-    <SelfStatusProvider
-      store={ready.local.store}
-      actions={ready.local.actions}
-      sync={ready.office.sync}
-      selfId={ready.local.selfId}
-    >
-      <StatusMobileActions />
-      <WandMobileActions store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} placeMode={placeMode} />
+    <>
+      <StatusHotkeys store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
       {ready.voice && <JaasMeeting voice={ready.voice} />}
       {ready.voice && <MuteHotkey voice={ready.voice} />}
       {!settings.isOpen && <ClickToPlayPrompt />}
@@ -243,27 +219,21 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
             <ReplacedBanner store={ready.local.store} />
             {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
             <ConnectionToast store={ready.local.store} />
-            <PokeToast bus={ready.local.bus} store={ready.local.store} selfId={ready.local.selfId} />
-            <FocusPingToast notice={focusNotice} onDone={clearFocusNotice} />
             <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
-            <PlacePalette mode={placeMode} store={ready.local.store} />
           </>
         }
         topLeft={<OfficeNamePlate store={ready.local.store} name={office.name} />}
         topRight={
           <>
             <div className="flex items-start gap-2">
-              <StatusMenu />
-              <EmoteMenu />
               <PingInboxHud inbox={pingInbox} store={ready.local.store} />
-              <PlaceButton mode={placeMode} />
               <SettingsButton />
             </div>
             <OfficeMinimap store={ready.local.store} />
           </>
         }
         rightEdge={
-          <PresenceListWithStatus
+          <PresenceList
             store={ready.local.store}
             selfId={ready.local.selfId}
             officeName={office.name}
@@ -271,17 +241,14 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
           />
         }
         bottomCentre={
-          <div className="flex flex-col items-center gap-2">
-            <SpellChip store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
-            {ready.voice && (
-              <CallBar store={ready.local.store} selfId={ready.local.selfId} voice={ready.voice} pinger={pinger} />
-            )}
-          </div>
+          ready.voice && (
+            <CallBar store={ready.local.store} selfId={ready.local.selfId} voice={ready.voice} pinger={pinger} />
+          )
         }
         bottomLeft={<ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />}
       />
       {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={ready.local.store} voice={ready.voice} />}
-    </SelfStatusProvider>
+    </>
   );
 
   return (
