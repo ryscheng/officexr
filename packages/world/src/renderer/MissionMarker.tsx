@@ -13,7 +13,6 @@ const COLOUR = '#0a84ff';
 export const markerText = (label: string, metres: number | null) =>
   metres === null ? label : `${label} · ${metres < 1 ? '<1' : Math.floor(metres)} m`;
 
-/** A flag on a light beam over a mission's place, labelled with the distance from the self player. */
 export function MissionMarker({ store, selfId, target }: { store: Store; selfId: PlayerId; target: MissionMarkerTarget }) {
   const text = useRef<HTMLSpanElement>(null);
   const shown = useRef('');

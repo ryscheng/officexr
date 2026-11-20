@@ -27,7 +27,6 @@ export interface Scenario {
   desks?: { id: string; at: [number, number]; login: string; claimant?: DeskClaimant }[];
   /** Rooms for the mission places and the map; the seed replaces the map's own zones. */
   zones?: VoiceZone[];
-  /** Starts without a missions API, as on a server that predates it. */
   missions?: 'seeded' | 'empty' | 'unsupported';
 }
 

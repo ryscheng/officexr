@@ -32,7 +32,6 @@ const selectNearest = (s: OfficeState): (Near & { lastStatusAt?: number; firstSe
 };
 const sameNear = (a: ReturnType<typeof selectNearest>, b: ReturnType<typeof selectNearest>) => (a && b ? sameFields(a, b) : a === b);
 
-/** The closest person within reach, with the two things you do first: walk over to talk, or wave. */
 export function NearYouCard({ store, onWave }: { store: Store; onWave: () => void }) {
   const near = useStoreSelector(store, selectNearest, sameNear);
   const now = useNow(1000);
@@ -68,7 +67,6 @@ export function NearYouCard({ store, onWave }: { store: Store; onWave: () => voi
   );
 }
 
-/** The phone's version: two round buttons above the joystick's side of the screen, named for the nearest person. */
 export function NearYouButtons({ store, onWave }: { store: Store; onWave: () => void }) {
   const near = useStoreSelector(store, selectNearest, sameNear);
   const { goTo } = usePlayControls();

@@ -82,7 +82,6 @@ export function previewMissions(me: string): Mission[] {
   ];
 }
 
-/** A client that answers like a server without the missions API, so the panel shows its update hint. */
 export const unsupportedMissionsClient: MissionsClient = {
   list: () => Promise.reject(new MissionsUnsupportedError()),
   create: () => Promise.reject(new MissionsUnsupportedError()),

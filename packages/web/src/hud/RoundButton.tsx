@@ -1,6 +1,5 @@
 import type { ComponentProps } from 'react';
 
-/** A 44 px round button for the identity, call and map cards. Its mousedown keeps focus on the world. */
 export function RoundButton({ className = '', tone = 'inset', ...props }: ComponentProps<'button'> & { tone?: 'inset' | 'danger' | 'glass' }) {
   const TONE = {
     inset: 'bg-hud-inset text-hud-text hover:bg-hud-hover',

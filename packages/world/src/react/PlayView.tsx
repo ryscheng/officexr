@@ -74,7 +74,6 @@ export interface PlayViewProps {
   onPingFrozen?: (login: string) => void;
   /** Lets the player place props; absent where nobody builds. */
   placement?: PlacementHost;
-  /** Marks the place of the player's current mission in the scene. */
   missionMarker?: MissionMarkerTarget | null;
   /** Overlays rendered above the scene and HUD. */
   children?: React.ReactNode;

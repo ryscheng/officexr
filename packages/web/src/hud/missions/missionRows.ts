@@ -22,7 +22,6 @@ export function tabMissions(missions: readonly Mission[], me: string, tab: Missi
   return missions.filter((m) => (tab === 'mine' ? isMine(m, me) : m.shared && !isMine(m, me)));
 }
 
-/** "All" and "Mine" always; another source only once it has a mission. */
 export function sourceChips(missions: readonly Mission[]): SourceFilter[] {
   const present = new Set(missions.map((m) => m.source));
   return ['all', 'mine', ...MISSION_SOURCES.filter((s) => s !== 'mine' && present.has(s))];
@@ -34,7 +33,6 @@ export function filterBySource(missions: readonly Mission[], source: SourceFilte
 
 const dueTime = (m: Mission) => (m.dueAt ? Date.parse(m.dueAt) : Number.POSITIVE_INFINITY);
 
-/** Open missions first, the current one on top, then by due time; done ones last. */
 export function orderMissions(missions: readonly Mission[], currentId: string | null): Mission[] {
   const rank = (m: Mission) => (m.done ? 2 : m.id === currentId ? 0 : 1);
   return [...missions].sort(
@@ -44,7 +42,6 @@ export function orderMissions(missions: readonly Mission[], currentId: string | 
 
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
 
-/** Done today out of everything due today, undated, overdue or done today. */
 export function todayProgress(missions: readonly Mission[], now: Date): { done: number; total: number } {
   let done = 0;
   let total = 0;
@@ -65,7 +62,6 @@ const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(
 
 const time = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
-/** "11:30" for today, "Fri 15:00" for another day. */
 export function formatDue(dueAt: string, now: Date): string {
   const d = new Date(dueAt);
   return sameDay(d, now) ? time(d) : `${d.toLocaleDateString([], { weekday: 'short' })} ${time(d)}`;
@@ -77,12 +73,12 @@ export function stepsLabel(m: Mission): string | null {
   return m.steps.length ? `${m.steps.filter((s) => s.done).length} of ${m.steps.length} steps` : null;
 }
 
-/** The place, the due time and the step count, in one line. */
-export function metaLine(m: Mission, now: Date): string {
+export function metaLine(m: Mission, now: Date, withSteps = false): string {
   if (m.done) {
     return `Complete · ${formatDoneAt(m.updatedAt)}`;
   }
-  return [m.place?.label, m.dueAt ? `Due ${formatDue(m.dueAt, now)}` : null].filter(Boolean).join(' · ');
+  const steps = withSteps && m.steps.length ? `${m.steps.filter((s) => s.done).length} of ${m.steps.length}` : null;
+  return [m.place?.label, m.dueAt ? `Due ${formatDue(m.dueAt, now)}` : null, steps].filter(Boolean).join(' · ');
 }
 
 export function resolvePlace(place: MissionPlace, areas: PlaceAreas): Spot | null {

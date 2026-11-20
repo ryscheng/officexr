@@ -29,7 +29,6 @@ type ChatPanelProps = {
   selfId: string;
   /** Shared with a parent that has its own chat button; the panel keeps its own when absent. */
   visibility?: ReturnType<typeof useChatVisibility>;
-  /** Handles `/mission <title>`; the panel then shows a system line instead of sending the text. */
   onMissionCommand?: (title: string) => Promise<boolean>;
 };
 

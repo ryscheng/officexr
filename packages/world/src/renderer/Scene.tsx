@@ -174,7 +174,6 @@ interface SceneProps {
   onPingPlayer?: (id: PlayerId) => void;
   /** Shows Ping on a frozen avatar's card; absent where an offline person cannot be reached. */
   onPingFrozen?: (login: string) => void;
-  /** Marks the place of the player's current mission. */
   missionMarker?: MissionMarkerTarget | null;
   /** Called once each baked layout's colliders have mounted, with its room instance id. */
   onCollidersReady?: (roomInstanceId: string) => void;

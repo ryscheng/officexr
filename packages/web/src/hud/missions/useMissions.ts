@@ -14,7 +14,6 @@ export interface MissionsApi {
   remove(id: string): Promise<void>;
 }
 
-/** The office's missions for this viewer; reloads when `subscribeChanged` calls back for this office. */
 export function useMissions(
   client: MissionsClient,
   officeId: string,

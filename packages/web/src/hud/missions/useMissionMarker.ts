@@ -3,7 +3,6 @@ import type { Mission, Store } from '@officexr/sdk';
 import type { MissionMarkerTarget } from '@officexr/world/renderer';
 import { placeAreas, resolvePlace } from './missionRows';
 
-/** Where the world marker goes for the current mission; null without a placed mission. */
 export function useMissionMarker(store: Store | null, current: Mission | null): MissionMarkerTarget | null {
   const [, bump] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {

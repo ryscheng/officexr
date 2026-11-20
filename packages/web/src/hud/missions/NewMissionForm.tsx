@@ -35,7 +35,6 @@ export function NewMissionForm({
   people: readonly OfficePerson[];
   onAdd: (input: NewMission) => void;
   onCancel: () => void;
-  /** The phone's bottom sheet: the title field and Add share a row, and the chips sit below. */
   sheet?: boolean;
 }) {
   const [title, setTitle] = useState('');

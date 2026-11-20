@@ -4,7 +4,6 @@ export interface InMemoryMissions extends MissionsClient {
   onChanged(listener: () => void): () => void;
 }
 
-/** A client that keeps missions in memory, for the HUD preview, stories and tests. */
 export function createInMemoryMissionsClient(me: string, seed: Mission[] = [], now: () => Date = () => new Date()): InMemoryMissions {
   let missions = [...seed];
   let counter = 0;

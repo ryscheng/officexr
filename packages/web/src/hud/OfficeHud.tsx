@@ -67,7 +67,6 @@ export function OfficeHud({
   pinger: PingSender;
   pingInbox: PingInbox;
   missions: MissionsApi;
-  /** Banners and toasts for the top centre. */
   toasts: ReactNode;
   onWave: () => void;
   onOpenSettings: () => void;

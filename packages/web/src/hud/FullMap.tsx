@@ -46,9 +46,11 @@ function bounds(areas: PlaceAreas, plan: readonly PlanRect[], positions: Positio
     xs.push(a.min.x, a.max.x);
     zs.push(a.min.z, a.max.z);
   }
-  for (const r of plan) {
-    xs.push(r.x, r.x + r.w);
-    zs.push(r.z, r.z + r.d);
+  if (areas.rooms.length === 0) {
+    for (const r of plan) {
+      xs.push(r.x, r.x + r.w);
+      zs.push(r.z, r.z + r.d);
+    }
   }
   for (const p of [...positions.peers, ...(positions.self ? [positions.self] : [])]) {
     xs.push(p.x);
@@ -64,7 +66,6 @@ function bounds(areas: PlaceAreas, plan: readonly PlanRect[], positions: Positio
 
 export type FullMapRoute = { to: Spot; label: string; areaId: string | null };
 
-/** The whole office from above: rooms, people, and a route line to the current mission. */
 export function FullMap({
   store,
   officeName,
@@ -114,12 +115,13 @@ export function FullMap({
           aria-label="Map of the office"
           viewBox={`${box.x} ${box.z} ${box.w} ${box.h}`}
           preserveAspectRatio="xMidYMid meet"
-          className="min-h-0 w-full flex-1 rounded-2xl bg-map-bg"
+          className="min-h-0 w-full flex-1 rounded-2xl bg-hud-inset"
           style={{ aspectRatio: `${box.w} / ${box.h}`, maxHeight: '60dvh' }}
         >
-          {plan.map((r, i) => (
-            <rect key={i} x={r.x} y={r.z} width={r.w} height={r.d} className={PLAN_FILL[r.tone]} />
-          ))}
+          {areas.rooms.length === 0 &&
+            plan.map((r, i) => (
+              <rect key={i} x={r.x} y={r.z} width={r.w} height={r.d} className={PLAN_FILL[r.tone]} />
+            ))}
           {areas.rooms.map((a) => (
             <RoomBox key={a.id} area={a} u={u} active={route?.areaId === a.id} />
           ))}
@@ -139,8 +141,8 @@ export function FullMap({
                 strokeLinecap="round"
               />
               <g transform={`translate(${route.to.x} ${route.to.z})`}>
-                <rect x={-u * 1.5} y={-u * 5.4} width={u * 20} height={u * 3.6} rx={u * 1.8} className="fill-hud-accent" />
-                <text x={u * 8.5} y={-u * 2.9} textAnchor="middle" fontSize={u * 2} fontWeight={600} className="fill-hud-on-accent">
+                <rect x={-u * 15} y={u * 2.2} width={u * 30} height={u * 3.6} rx={u * 1.8} className="fill-hud-accent" />
+                <text x={0} y={u * 4.7} textAnchor="middle" fontSize={u * 2} fontWeight={600} className="fill-hud-on-accent">
                   {route.label}
                   {metres === null ? '' : ` · ${formatDistance(metres)}`}
                 </text>

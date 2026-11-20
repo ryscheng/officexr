@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { isHotkeyBlocked } from '../room/isHotkeyBlocked';
 
-/** Runs `onPress` for an unmodified press of `key` while `enabled`, unless a text field or dialog has the keyboard. */
 export function useHotkey(key: string, onPress: () => void, enabled = true) {
   const latest = useRef(onPress);
   latest.current = onPress;

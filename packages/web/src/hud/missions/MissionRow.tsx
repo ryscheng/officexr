@@ -6,6 +6,7 @@ import { initialOf, metaLine, SOURCE_LABEL, stepsLabel } from './missionRows';
 
 export type MissionRowProps = {
   mission: Mission;
+  compact: boolean;
   current: boolean;
   now: Date;
   canEdit: boolean;
@@ -16,12 +17,12 @@ export type MissionRowProps = {
   onGo: () => void;
 };
 
-export function MissionRow({ mission, current, now, canEdit, distanceM, personName, onToggleDone, onToggleStep, onGo }: MissionRowProps) {
+export function MissionRow({ mission, compact, current, now, canEdit, distanceM, personName, onToggleDone, onToggleStep, onGo }: MissionRowProps) {
   const [open, setOpen] = useState(false);
-  const steps = stepsLabel(mission);
-  const meta = metaLine(mission, now);
+  const steps = compact ? null : stepsLabel(mission);
   const goable = mission.place !== null && !mission.done;
   const distance = distanceM === null ? null : formatDistance(distanceM);
+  const meta = [metaLine(mission, now, compact), compact && goable ? distance : null].filter(Boolean).join(' · ');
   return (
     <li
       data-current={current || undefined}
@@ -60,7 +61,7 @@ export function MissionRow({ mission, current, now, canEdit, distanceM, personNa
         <div className="flex shrink-0 flex-col items-end gap-1 text-xs text-hud-text-2">
           {goable ? (
             <>
-              {distance && <span className="tabular-nums">{distance}</span>}
+              {distance && !compact && <span className="tabular-nums">{distance}</span>}
               <button
                 type="button"
                 aria-pressed={current}

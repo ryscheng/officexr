@@ -21,7 +21,6 @@ const selectPeople = (s: OfficeState): OfficePerson[] =>
     .filter((p) => p.id !== s.selfId && p.name.trim())
     .map((p) => ({ id: p.id, login: loginOf(p.id), name: p.name, x: quantise(p.pos.x, 0.5), z: quantise(p.pos.z, 0.5) }));
 
-/** Where you stand, the office's rooms and desks, and who else is here. */
 export function useOfficeSpots(store: Store): { self: Spot | null; areas: PlaceAreas; people: OfficePerson[] } {
   const self = useStoreSelector(store, selectSelf, sameSpot);
   const zones = useStoreSelector(store, selectZones);

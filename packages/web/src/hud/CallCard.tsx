@@ -18,7 +18,6 @@ const selectZoneLabel = (s: OfficeState) => {
   return room ? (s.voiceZones.find((z) => room === deriveZoneRoom(s.officeId, z.id))?.label ?? null) : null;
 };
 
-/** Who you are talking with, with mute, share and leave; hidden when you are not in a call. */
 export function CallCard({
   store,
   selfId,
@@ -57,11 +56,8 @@ export function CallCard({
   if (compact) {
     return (
       <Panel className="pointer-events-auto flex items-center gap-2 p-1.5 pr-2">
-        <span aria-hidden className="flex size-9 items-center justify-center rounded-full bg-hud-avatar text-xs font-semibold">
-          {initial}
-        </span>
-        <span className="flex min-w-0 flex-col pr-1">
-          <span className="max-w-28 truncate text-xs font-semibold">{title}</span>
+        <span className="flex min-w-0 flex-col pr-1 pl-2">
+          <span className="max-w-20 truncate text-xs font-semibold">{title}</span>
         </span>
         <RoundButton aria-label={muted ? 'Unmute microphone' : 'Mute microphone'} aria-pressed={muted} tone={muted ? 'danger' : 'inset'} onClick={() => voice.setMuted(!muted)}>
           <MuteIcon aria-hidden className="size-5" />

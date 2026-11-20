@@ -39,7 +39,6 @@ export type MissionsPanelProps = {
   areas: PlaceAreas;
   people: readonly OfficePerson[];
   self: Spot | null;
-  /** The phone card: three rows until expanded, and the new mission form as a bottom sheet. */
   compact?: boolean;
   now?: () => Date;
 };
@@ -81,7 +80,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
   const percent = progress.total ? (progress.done / progress.total) * 100 : 0;
 
   return (
-    <Panel className="pointer-events-auto flex w-93 max-w-[calc(100vw-24px)] flex-col gap-2 p-3 text-sm pointer-coarse:w-80">
+    <Panel className="pointer-events-auto flex w-93 max-w-[calc(100vw-24px)] flex-col gap-2 p-3 text-sm pointer-coarse:w-72 pointer-coarse:gap-1 pointer-coarse:p-2">
       <div className="flex items-center gap-2">
         <PanelTitle className="text-base">Missions</PanelTitle>
         {compact && !unsupported && (
@@ -108,8 +107,9 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
             aria-label={expanded ? (compact ? 'Show fewer missions' : 'Collapse missions') : compact ? 'Show all missions' : 'Expand missions'}
             aria-expanded={expanded}
             onClick={() => setExpanded((e) => !e)}
-            className="rounded-lg p-1 text-hud-text-2 hover:bg-hud-hover hover:text-hud-text pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+            className="flex items-center rounded-lg p-1 text-hud-text-2 hover:bg-hud-hover hover:text-hud-text pointer-coarse:min-h-11 pointer-coarse:min-w-11"
           >
+            {compact && !expanded && rows.length > COMPACT_ROWS && <span className="text-xs tabular-nums">+{rows.length - COMPACT_ROWS}</span>}
             {expanded ? <ChevronDown aria-hidden className="mx-auto size-4" /> : <ChevronUp aria-hidden className="mx-auto size-4" />}
           </button>
         </span>
@@ -149,13 +149,14 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
       )}
 
       {showRows && (
-        <ul aria-label={tab === 'mine' ? 'My missions' : 'Team missions'} className="flex max-h-[40dvh] flex-col gap-0.5 overflow-y-auto overscroll-contain">
+        <ul aria-label={tab === 'mine' ? 'My missions' : 'Team missions'} className="flex max-h-[40dvh] flex-col gap-0.5 pointer-coarse:max-h-none overflow-y-auto overscroll-contain">
           {shown.map((m) => {
             const spot = m.place ? resolvePlace(m.place, areas) : null;
             return (
               <MissionRow
                 key={m.id}
                 mission={m}
+                compact={compact}
                 current={api.current?.id === m.id}
                 now={clock}
                 canEdit={isMine(m, me)}
@@ -173,12 +174,6 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
             </li>
           )}
         </ul>
-      )}
-
-      {!unsupported && compact && !expanded && rows.length > COMPACT_ROWS && (
-        <button type="button" onClick={() => setExpanded(true)} className="min-h-11 text-left text-xs text-hud-text-2">
-          +{rows.length - COMPACT_ROWS} more
-        </button>
       )}
 
       {!unsupported && full && tab === 'mine' && !(adding && !compact) && (
