@@ -15,28 +15,19 @@ function Status({ actions }: { actions: Parameters<typeof useStatusHotkeys>[0] }
 function setup() {
   const mode = createPlaceMode();
   const host: PlacementHost = { mode, send: vi.fn(async () => ({ ok: true as const })) };
-  const actions = { toggleHand: vi.fn(), toggleEmotePicker: vi.fn(), toggleFocus: vi.fn() };
+  const actions = { toggleHand: vi.fn(), toggleFocus: vi.fn() };
   const keys = createPlaceKeyHandler(host, () => []);
   window.addEventListener('keydown', keys.onKeyDown, true);
   render(<Status actions={actions} />);
   return { mode, actions, stop: () => window.removeEventListener('keydown', keys.onKeyDown, true) };
 }
 
-describe('R in build mode and outside it', () => {
-  it('turns the ghost and does not open the emote picker while build mode is open', () => {
-    const { mode, actions, stop } = setup();
+describe('build mode and status hotkeys', () => {
+  it('R turns the ghost while build mode is open', () => {
+    const { mode, stop } = setup();
     mode.setOpen(true);
     fireEvent.keyDown(window, { key: 'r' });
     expect(mode.get().yawDeg).toBe(90);
-    expect(actions.toggleEmotePicker).not.toHaveBeenCalled();
-    stop();
-  });
-
-  it('opens the emote picker as before when build mode is closed', () => {
-    const { mode, actions, stop } = setup();
-    fireEvent.keyDown(window, { key: 'r' });
-    expect(mode.get().yawDeg).toBe(0);
-    expect(actions.toggleEmotePicker).toHaveBeenCalledTimes(1);
     stop();
   });
 
@@ -57,6 +48,13 @@ describe('R in build mode and outside it', () => {
     mode.setOpen(true);
     fireEvent.keyDown(window, { key: 'h' });
     expect(actions.toggleHand).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('Alt+N toggles focus mode', () => {
+    const { actions, stop } = setup();
+    fireEvent.keyDown(window, { key: 'n', code: 'KeyN', altKey: true });
+    expect(actions.toggleFocus).toHaveBeenCalledTimes(1);
     stop();
   });
 });

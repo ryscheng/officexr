@@ -369,7 +369,7 @@ export function Scene(props: SceneProps) {
           selfReady={props.selfReady}
           onPingPlayer={props.onPingPlayer}
         />
-        {!props.paused && <FrozenAvatars store={store} onPing={props.onPingPlayer} />}
+        {!props.paused && <FrozenAvatars store={store} />}
         {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} charRadius={charRadius} />}
 
         {/* Mounted after Players: same-priority useFrames run in
