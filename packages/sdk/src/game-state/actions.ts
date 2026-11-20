@@ -25,6 +25,7 @@ import type {
   ZombieState,
 } from './types.ts';
 import type { PlacedProp } from '../placement/props.ts';
+import type { DeskClaimant } from '../realtime/desk-claim.ts';
 import { effectFromCast, type SpellCast, type SpellEffect, type SpellId } from '../spells/index.ts';
 import { STATUS_EMOJI_MAX, STATUS_TEXT_MAX, isStatusEmoji } from './types.ts';
 import { DEPARTED_LINGER_MS } from './presence.ts';
@@ -92,7 +93,7 @@ export interface Actions {
   setPlacedProps(props: PlacedProp[]): void;
   setSpellEffect(targetId: PlayerId, effect: SpellEffect): void;
   /** Replace all desk claims. Never broadcast: only the realtime server distributes them. */
-  setDeskClaims(claims: Record<string, string>): void;
+  setDeskClaims(claims: Record<string, string>, claimants?: Record<string, DeskClaimant>): void;
 
   // remote applications (called by sync engine)
   applyRemotePosition(
@@ -336,8 +337,8 @@ export function createActions(store: Store, bus?: Bus): Actions {
       store.setState((s) => ({ spellEffects: { ...s.spellEffects, [targetId]: effect } }));
     },
 
-    setDeskClaims(claims) {
-      store.setState(() => ({ deskClaims: { ...claims } }));
+    setDeskClaims(claims, claimants = {}) {
+      store.setState(() => ({ deskClaims: { ...claims }, deskClaimants: { ...claimants } }));
     },
 
     setWorldObjects(objects) {

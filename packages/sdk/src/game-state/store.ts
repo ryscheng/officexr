@@ -62,6 +62,7 @@ export function createInitialOfficeState(opts: {
     voiceZones: [],
     deskAreas: [],
     deskClaims: {},
+    deskClaimants: {},
     placedProps: [],
     selectedSpell: DEFAULT_SPELL,
     spellEffects: {},

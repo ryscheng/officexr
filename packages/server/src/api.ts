@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { NextHandleFunction } from 'connect';
-import { MAX_PLACED_PROPS, PLACED_ID_PREFIX, ZPropOp, type PlacedProp, type PropOp } from '@officexr/sdk';
+import { MAX_PLACED_PROPS, PLACED_ID_PREFIX, ZPropOp, type DeskClaimant, type PlacedProp, type PropOp } from '@officexr/sdk';
 import { signJoinToken } from '@officexr/realtime-server/join-token';
 import { isKnownCharacter, type CatalogCharacters } from '@officexr/world/characters';
 import { DEFAULT_MAP, type SerializedMap } from '@officexr/world/scenes';
@@ -33,6 +33,8 @@ export type LoadMap = (name: string) => Promise<Pick<SerializedMap, 'deskAreas'>
 export interface OfficeDeskClaims {
   /** Login by desk id. */
   list: (officeId: string) => Promise<Record<string, string>>;
+  /** Each claimant's character in the office and claim time, by login. */
+  claimants: (officeId: string) => Promise<Record<string, DeskClaimant>>;
   /** Moves the login's existing claim to `deskId`; 'taken' when another login holds it. */
   claim: (officeId: string, login: string, deskId: string) => Promise<'ok' | 'taken'>;
   release: (officeId: string, login: string) => Promise<void>;
@@ -301,12 +303,16 @@ export function apiMiddleware({
         }
         return withOffice(voiceOffice, async (me, office) => send(200, await signVoiceToken(me, office)));
       }
+      const claimsBody = async (officeId: string) => {
+        const [claims, claimants] = await Promise.all([deskClaims.list(officeId), deskClaims.claimants(officeId)]);
+        return { claims, claimants };
+      };
       const deskClaimsRoute = path.match(/^\/api\/offices\/([^/]+)\/desk-claims(\/me)?$/);
       if (deskClaimsRoute) {
         const isMe = deskClaimsRoute[2] !== undefined;
         return withOffice(deskClaimsRoute[1], async (me, office) => {
           if (req.method === 'GET' && !isMe) {
-            return send(200, { claims: await deskClaims.list(office.id) });
+            return send(200, await claimsBody(office.id));
           }
           if (req.method === 'PUT' && isMe) {
             const body = await readJson(req);
@@ -321,11 +327,11 @@ export function apiMiddleware({
             if ((await deskClaims.claim(office.id, me.login, deskId)) === 'taken') {
               return send(409, { error: 'Desk taken' });
             }
-            return send(200, { claims: await deskClaims.list(office.id) });
+            return send(200, await claimsBody(office.id));
           }
           if (req.method === 'DELETE' && isMe) {
             await deskClaims.release(office.id, me.login);
-            return send(200, { claims: await deskClaims.list(office.id) });
+            return send(200, await claimsBody(office.id));
           }
           return send(405, { error: 'Method not allowed' });
         });

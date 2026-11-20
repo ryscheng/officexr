@@ -114,7 +114,7 @@ export function applyNetEventToStore(
       actions.applyRemoteWorldObjects(event.objects);
       return;
     case 'desk:claims':
-      actions.setDeskClaims(event.claims);
+      actions.setDeskClaims(event.claims, event.claimants);
       return;
     case 'snapshot:request':
     case 'snapshot:offer':

@@ -15,6 +15,7 @@ export type SerializedOfficeState = Omit<
   | 'voiceZones'
   | 'callRoster'
   | 'deskClaims'
+  | 'deskClaimants'
   | 'deskAreas'
   | 'placedProps'
   | 'spellEffects'

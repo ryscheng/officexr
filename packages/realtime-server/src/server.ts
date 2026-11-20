@@ -24,6 +24,7 @@ import {
   parseWorldConstants,
   PROTOCOL,
   validateNetEvent,
+  type DeskClaimant,
   type Actions,
   type Bus,
   type NetEvent,
@@ -189,9 +190,9 @@ export class Room {
   }
 
   /** Adopt the backend's `claims` and fan them out to every hub peer. */
-  pushDeskClaims(claims: Record<string, string>): void {
+  pushDeskClaims(claims: Record<string, string>, claimants?: Record<string, DeskClaimant>): void {
     this.claimsLoaded = true;
-    this.actions.setDeskClaims(claims);
+    this.actions.setDeskClaims(claims, claimants);
     void this.mirror.send(this.deskClaimsEvent(this.takeServerSeq()));
   }
 
@@ -272,6 +273,7 @@ export class Room {
       seq,
       t: Date.now(),
       claims: this.store.getState().deskClaims,
+      claimants: this.store.getState().deskClaimants,
     };
   }
 

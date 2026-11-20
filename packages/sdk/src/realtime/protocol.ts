@@ -14,6 +14,7 @@ import type {
   WorldObjects,
   ZombieState,
 } from '../game-state/types.ts';
+import { ZDeskClaimant, type DeskClaimant } from './desk-claim.ts';
 import { ZWorldConstants, type WorldConstants } from '../game-state/world-constants.ts';
 import { ZPlacedProp, type PlacedProp } from '../placement/props.ts';
 import { SPELL_IDS, SPELL_RANGE_M, type SpellId } from '../spells/index.ts';
@@ -236,7 +237,10 @@ const ZOfficePropsPayload = z.object({ props: z.array(ZPlacedProp) });
 const ZPresenceHand = z.object({ raised: z.boolean() });
 const ZEmoteSend = z.object({ emote: z.enum(EMOTE_IDS) });
 const ZPokeSend = z.object({ targetId: z.string().min(1).nullable() });
-const ZDeskClaimsPayload = z.object({ claims: z.record(z.string(), z.string()) });
+const ZDeskClaimsPayload = z.object({
+  claims: z.record(z.string(), z.string()),
+  claimants: z.record(z.string(), ZDeskClaimant).optional(),
+});
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) });
 const ZChatMessage = z.object({ text: z.string() });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
@@ -304,7 +308,7 @@ export type NetEvent =
   | WithEnvelope<'world:map', 1, { map: WorldMap }>
   | WithEnvelope<'world:characters', 1, { configs: CharacterConfigs }>
   | WithEnvelope<'world:objects', 1, { objects: WorldObjects }>
-  | WithEnvelope<'desk:claims', 1, { claims: Record<string, string> }>;
+  | WithEnvelope<'desk:claims', 1, { claims: Record<string, string>; claimants?: Record<string, DeskClaimant> }>;
 
 export type NetEventKind = NetEvent['kind'];
 
