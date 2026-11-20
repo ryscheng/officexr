@@ -35,7 +35,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
           aria-checked={mission.done}
           aria-label={`${mission.title}, done`}
           onClick={onToggleDone}
-          className="flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-hud-accent pointer-fine:size-8"
+          className="flex size-12 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-hud-accent pointer-fine:size-8"
         >
           <span
             className={`flex size-6 items-center justify-center rounded-full border-2 ${mission.done ? 'border-hud-sage-text bg-hud-sage-text text-white' : 'border-hud-text-2/60'}`}
@@ -47,7 +47,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
           type="button"
           aria-expanded={mission.steps.length ? open : undefined}
           onClick={() => mission.steps.length && setOpen((o) => !o)}
-          className="flex min-h-11 min-w-0 flex-1 flex-col items-start justify-center gap-0.5 text-left pointer-fine:min-h-0"
+          className="flex min-h-12 min-w-0 flex-1 flex-col items-start justify-center gap-0.5 text-left pointer-fine:min-h-0"
         >
           {current && <span className="text-[10px] font-bold tracking-wider text-hud-accent uppercase">Current</span>}
           <span className={`w-full text-sm font-semibold ${compact ? 'line-clamp-2 break-words' : 'truncate'} ${mission.done ? 'text-hud-text-2 line-through' : 'text-hud-text'}`}>{mission.title}</span>
@@ -67,7 +67,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
                 aria-pressed={current}
                 aria-label={`Go to ${mission.place?.label}`}
                 onClick={onGo}
-                className={`inline-flex min-h-8 items-center gap-1 rounded-full px-3.5 text-sm font-semibold pointer-coarse:min-h-11 ${
+                className={`inline-flex min-h-8 items-center gap-1 rounded-full px-3.5 text-sm font-semibold pointer-coarse:min-h-12 ${
                   current ? 'bg-hud-accent text-hud-on-accent' : 'bg-hud-inset text-hud-text hover:bg-hud-hover'
                 }`}
               >
@@ -88,7 +88,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
         <ul aria-label="Steps" className="mb-1 ml-14 flex flex-col pr-3">
           {mission.steps.map((s, i) => (
             <li key={i}>
-              <label className="flex min-h-8 items-center gap-2 text-xs text-hud-text pointer-coarse:min-h-11">
+              <label className="flex min-h-8 items-center gap-2 text-xs text-hud-text pointer-coarse:min-h-12">
                 <input type="checkbox" checked={s.done} disabled={!canEdit} onChange={() => onToggleStep(i)} className="size-4 accent-hud-accent" />
                 <span className={s.done ? 'text-hud-text-2 line-through' : ''}>{s.text}</span>
               </label>

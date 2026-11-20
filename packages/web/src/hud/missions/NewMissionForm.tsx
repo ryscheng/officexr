@@ -13,10 +13,10 @@ import type { OfficePerson } from './useOfficeSpots';
 type Picker = 'steps' | 'place' | 'due' | 'person' | null;
 
 const CHIP_BASE =
-  'inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold whitespace-nowrap pointer-coarse:min-h-11';
+  'inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold whitespace-nowrap pointer-coarse:min-h-12';
 const CHIP_ADD = `${CHIP_BASE} border border-dashed border-hud-text-2/50 text-hud-text-2 hover:bg-hud-hover`;
 const CHIP_SET = `${CHIP_BASE} bg-hud-accent/15 text-hud-accent`;
-const LIST_ITEM = 'w-full rounded-lg px-3 py-1.5 text-left text-sm text-hud-text hover:bg-hud-hover pointer-coarse:min-h-11';
+const LIST_ITEM = 'w-full rounded-lg px-3 py-1.5 text-left text-sm text-hud-text hover:bg-hud-hover pointer-coarse:min-h-12';
 
 const toLocalInput = (iso: string) => {
   const d = new Date(iso);
@@ -141,7 +141,7 @@ export function NewMissionForm({
                 <button
                   type="button"
                   aria-label={`Remove step ${s.text}`}
-                  className="rounded-md p-1 text-hud-text-2 hover:bg-hud-hover pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                  className="rounded-md p-1 text-hud-text-2 hover:bg-hud-hover pointer-coarse:min-h-12 pointer-coarse:min-w-12"
                   onClick={() => setSteps((all) => all.filter((_, j) => j !== i))}
                 >
                   <X aria-hidden className="size-3.5" />
@@ -237,7 +237,7 @@ export function NewMissionForm({
             New mission
             <span className="rounded-full bg-hud-accent/15 px-2 py-0.5 text-[11px] text-hud-accent">Mine</span>
           </h3>
-          <button type="button" onClick={onCancel} className="min-h-11 px-3 text-sm font-semibold text-hud-accent">
+          <button type="button" onClick={onCancel} className="min-h-12 px-3 text-sm font-semibold text-hud-accent">
             Cancel
           </button>
         </div>

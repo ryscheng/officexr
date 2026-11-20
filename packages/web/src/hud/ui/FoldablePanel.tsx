@@ -26,7 +26,7 @@ export function FoldablePanel({ fold, title, label, headerExtra, titleClassName,
             aria-controls={fold.folded ? undefined : bodyId}
             onMouseDown={(e) => e.preventDefault()}
             onClick={fold.toggle}
-            className="flex items-center rounded-lg p-1 text-hud-text-2 hover:bg-hud-hover hover:text-hud-text focus-visible:outline-2 focus-visible:outline-hud-accent pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center"
+            className="flex items-center rounded-lg p-1 text-hud-text-2 hover:bg-hud-hover hover:text-hud-text focus-visible:outline-2 focus-visible:outline-hud-accent pointer-coarse:min-h-12 pointer-coarse:min-w-12 pointer-coarse:justify-center"
           >
             {fold.folded ? <ChevronUp aria-hidden className="size-4" /> : <ChevronDown aria-hidden className="size-4" />}
           </button>

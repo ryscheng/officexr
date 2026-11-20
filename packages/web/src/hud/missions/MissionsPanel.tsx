@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, Target } from 'lucide-react';
+import { Maximize2, Minimize2, Plus, Target } from 'lucide-react';
 import type { NewMission } from '@officexr/sdk';
 import { useFold } from '../foldPrefs';
 import { Keycap } from '../ui/Keycap';
@@ -29,7 +29,7 @@ import type { MissionsApi } from './useMissions';
 import type { OfficePerson } from './useOfficeSpots';
 
 const chipClass = (active: boolean) =>
-  `rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap pointer-coarse:min-h-11 ${
+  `rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap pointer-coarse:min-h-12 ${
     active ? 'bg-hud-text text-hud-panel-solid' : 'bg-hud-inset text-hud-text hover:bg-hud-hover'
   }`;
 
@@ -42,14 +42,17 @@ export type MissionsPanelProps = {
   compact?: boolean;
   /** Phone portrait: a one-line chip under the top bar that opens a bottom sheet. */
   portrait?: boolean;
+  /** Portrait chip only: shows the icon and the count, while the avatar moves. */
+  collapsed?: boolean;
   now?: () => Date;
 };
 
-export function MissionsPanel({ missions: api, me, areas, people, self, compact = false, portrait = false, now = () => new Date() }: MissionsPanelProps) {
+export function MissionsPanel({ missions: api, me, areas, people, self, compact = false, portrait = false, collapsed = false, now = () => new Date() }: MissionsPanelProps) {
   const [tab, setTab] = useState<MissionTab>('mine');
   const [source, setSource] = useState<SourceFilter>('all');
   const fold = useFold('missions', compact);
   const [adding, setAdding] = useState(false);
+  const [tall, setTall] = useState(false);
   const clock = now();
   const unsupported = api.status === 'unsupported';
 
@@ -170,7 +173,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
         <button
           type="button"
           onClick={open}
-          className="flex min-h-10 shrink-0 items-center gap-3 border-t border-hud-separator px-3 pt-2 text-sm text-hud-text-2 hover:text-hud-text pointer-coarse:min-h-11"
+          className="flex min-h-10 shrink-0 items-center gap-3 border-t border-hud-separator px-3 pt-2 text-sm text-hud-text-2 hover:text-hud-text pointer-coarse:min-h-12"
         >
           <Plus aria-hidden className="size-4" />
           <span>New mission</span>
@@ -216,15 +219,17 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
           aria-expanded={false}
           onMouseDown={(e) => e.preventDefault()}
           onClick={fold.toggle}
-          className={`pointer-events-auto flex min-h-11 max-w-[min(15rem,calc(100vw-24px))] items-center gap-2 px-3 text-sm font-semibold ${CHIP} rounded-full`}
+          className="pointer-events-auto flex min-h-12 max-w-[60vw] items-center"
         >
-          <Target aria-hidden className="size-4 shrink-0" />
-          <span className="min-w-0 truncate">{api.current?.title ?? 'Missions'}</span>
-          {!unsupported && (
-            <span className="shrink-0 text-xs font-normal text-hud-text-2 tabular-nums">
-              {progress.done}/{progress.total}
-            </span>
-          )}
+          <span className={`flex h-10 max-w-full items-center gap-2 px-3 text-sm font-semibold ${CHIP} rounded-full`}>
+            <Target aria-hidden className="size-4 shrink-0" />
+            {!collapsed && <span className="min-w-0 truncate">{api.current?.title ?? 'Missions'}</span>}
+            {!unsupported && (
+              <span className="shrink-0 text-xs font-normal text-hud-text-2 tabular-nums">
+                {progress.done}/{progress.total}
+              </span>
+            )}
+          </span>
         </button>
       );
     }
@@ -232,7 +237,24 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
       return <>{bodyNodes}</>;
     }
     return (
-      <PortraitSheet title="Missions" label="Missions" closeLabel="Collapse missions" onClose={fold.toggle}>
+      <PortraitSheet
+        title="Missions"
+        label="Missions"
+        closeLabel="Collapse missions"
+        onClose={fold.toggle}
+        heightPct={tall ? 90 : 55}
+        headerExtra={
+          <button
+            type="button"
+            aria-label={tall ? 'Shrink missions' : 'Enlarge missions'}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setTall((t) => !t)}
+            className="flex min-h-12 min-w-12 items-center justify-center rounded-lg text-hud-text-2 hover:bg-hud-hover hover:text-hud-text focus-visible:outline-2 focus-visible:outline-hud-accent"
+          >
+            {tall ? <Minimize2 aria-hidden className="size-4" /> : <Maximize2 aria-hidden className="size-4" />}
+          </button>
+        }
+      >
         {tabs && <div className="flex shrink-0 justify-start pl-2">{tabs}</div>}
         {bodyNodes}
       </PortraitSheet>

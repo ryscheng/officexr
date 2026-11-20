@@ -10,7 +10,7 @@ export function RoundButton({ className = '', tone = 'inset', ...props }: Compon
     <button
       type="button"
       onMouseDown={(e) => e.preventDefault()}
-      className={`pointer-events-auto relative flex size-11 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-hud-accent ${TONE} ${className}`}
+      className={`pointer-events-auto relative flex size-11 pointer-coarse:size-12 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-hud-accent ${TONE} ${className}`}
       {...props}
     />
   );

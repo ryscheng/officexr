@@ -20,8 +20,12 @@ vi.mock('@jitsi/react-sdk', () => ({
   ),
 }));
 
-const stubPointer = (coarse: boolean) =>
-  vi.stubGlobal('matchMedia', () => ({ matches: coarse, addEventListener: () => {}, removeEventListener: () => {} }));
+const stubPointer = (coarse: boolean, portrait = false) =>
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('orientation') ? portrait : coarse,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
 
 beforeEach(() => stubPointer(false));
 
@@ -189,6 +193,14 @@ describe('JaasMeeting focus toggle', () => {
     await showShare();
     expect(wrapper().style.width).toBe('288px');
     expect(wrapper().style.height).toBe('162px');
+  });
+
+  it('shrinks it further on a phone held upright, below the call and mission rows', async () => {
+    stubPointer(true, true);
+    await showShare();
+    expect(wrapper().style.width).toBe('192px');
+    expect(wrapper().style.height).toBe('108px');
+    expect(wrapper().style.top).toBe('var(--hud-share-top, 80px)');
   });
 
   it('has no toggle until a share is shown', async () => {

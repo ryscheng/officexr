@@ -7,8 +7,8 @@ const TONE = {
 } as const;
 
 const SIZE = {
-  sm: 'px-3 py-1.5 text-xs pointer-coarse:min-h-11',
-  md: 'px-4 py-2 text-sm pointer-coarse:min-h-11',
+  sm: 'px-3 py-1.5 text-xs pointer-coarse:min-h-12',
+  md: 'px-4 py-2 text-sm pointer-coarse:min-h-12',
   lg: 'px-5 py-2.5 text-base',
 } as const;
 

@@ -78,11 +78,11 @@ export function NearYouButtons({ store, onWave }: { store: Store; onWave: () => 
       <span className="hud-glass rounded-full px-2.5 py-0.5 text-xs text-hud-text">
         {near.name} · {formatDistance(near.distanceM)}
       </span>
-      <div className="flex items-end gap-3">
+      <div className="flex items-end gap-2">
         <button
           type="button"
           onClick={onWave}
-          className="hud-glass flex size-16 flex-col items-center justify-center gap-0.5 rounded-full border border-hud-edge text-xs font-semibold text-hud-text shadow-hud-panel"
+          className="hud-glass mb-10 flex size-16 flex-col items-center justify-center gap-0.5 rounded-full border border-hud-edge text-xs font-semibold text-hud-text shadow-hud-panel"
         >
           <Hand aria-hidden className="size-5" />
           Wave
@@ -90,7 +90,7 @@ export function NearYouButtons({ store, onWave }: { store: Store; onWave: () => 
         <button
           type="button"
           onClick={() => goTo(near.id)}
-          className="flex size-20 flex-col items-center justify-center gap-0.5 rounded-full bg-hud-accent text-sm font-semibold text-hud-on-accent shadow-[0_4px_16px_var(--color-hud-accent-shadow)]"
+          className="flex size-18 flex-col items-center justify-center gap-0.5 rounded-full bg-hud-accent text-sm font-semibold text-hud-on-accent shadow-[0_4px_16px_var(--color-hud-accent-shadow)]"
         >
           <MessageCircle aria-hidden className="size-6" />
           Speak

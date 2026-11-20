@@ -113,7 +113,7 @@ export function Minimap({
             aria-controls={mapId}
             onMouseDown={(e) => e.preventDefault()}
             onClick={toggle}
-            className="rounded-md p-0.5 text-hud-text-2 hover:bg-hud-hover hover:text-hud-text pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+            className="rounded-md p-0.5 text-hud-text-2 hover:bg-hud-hover hover:text-hud-text pointer-coarse:min-h-12 pointer-coarse:min-w-12"
           >
             {open ? <ChevronDown aria-hidden className="h-3 w-3" /> : <ChevronUp aria-hidden className="h-3 w-3" />}
           </button>

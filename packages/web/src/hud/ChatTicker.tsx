@@ -9,19 +9,22 @@ const sameLatest = (a: ReturnType<typeof selectLatest>, b: ReturnType<typeof sel
 
 export const TICKER_MS = 5000;
 
-/** One line with the newest message, above the thumb zone of a phone in portrait; the parent decides how long it shows. */
-export function ChatTicker({ store }: { store: Store }) {
+/** The newest message in up to two lines, above the bottom controls of a phone in portrait; a tap opens the chat. */
+export function ChatTicker({ store, onOpen }: { store: Store; onOpen: () => void }) {
   const latest = useStoreSelector(store, selectLatest, sameLatest);
   if (!latest) {
     return null;
   }
   return (
-    <div
-      role="status"
-      className="hud-glass pointer-events-none mx-auto max-w-full truncate rounded-full border border-hud-edge px-3 py-1.5 font-hud-body text-sm text-hud-text shadow-hud-control motion-safe:animate-hud-fade"
+    <button
+      type="button"
+      aria-label={`New message from ${latest.author}, open chat`}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onOpen}
+      className="hud-glass pointer-events-auto line-clamp-2 min-h-12 max-w-[min(18rem,calc(100vw-2rem))] rounded-hud-panel border border-hud-edge px-3 py-2 text-left font-hud-body text-sm text-hud-text shadow-hud-control motion-safe:animate-hud-fade"
     >
       <span className="font-bold text-hud-accent">{latest.author}: </span>
       {latest.text}
-    </div>
+    </button>
   );
 }

@@ -21,6 +21,7 @@ import {
 import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
 import { useCameraMode } from './useCameraMode.ts';
 import { useCoarsePointer } from './useCoarsePointer.ts';
+import { useMediaQuery } from './useMediaQuery.ts';
 import { NO_MOVE, type MoveInput } from '../renderer/moveIntent.ts';
 import { VirtualJoystick } from './VirtualJoystick.tsx';
 import { createViewYaw, ViewYawProvider } from './viewYaw.tsx';
@@ -75,6 +76,8 @@ export interface PlayViewProps {
   /** Lets the player place props; absent where nobody builds. */
   placement?: PlacementHost;
   missionMarker?: MissionMarkerTarget | null;
+  /** Phone portrait only: `floating` (default) starts the stick under the thumb; `fixed` keeps it in the corner. */
+  joystick?: 'floating' | 'fixed';
   /** Overlays rendered above the scene and HUD. */
   children?: React.ReactNode;
 }
@@ -91,6 +94,7 @@ export function PlayView(props: PlayViewProps) {
   const worldFocused = useWorldFocus();
   const moveInputRef = useRef<MoveInput>(NO_MOVE);
   const coarsePointer = useCoarsePointer();
+  const portrait = useMediaQuery('(orientation: portrait)');
   const [viewYaw] = useState(createViewYaw);
   const worldConstants = useWorldConstants(props.store);
   const { fixedCamera } = props;
@@ -174,7 +178,7 @@ export function PlayView(props: PlayViewProps) {
       )}
       <TeleportFlash seating={seating} />
       <SeatRefusalToast seating={seating} />
-      {coarsePointer && <VirtualJoystick inputRef={moveInputRef} />}
+      {coarsePointer && <VirtualJoystick inputRef={moveInputRef} floating={portrait && props.joystick !== 'fixed'} />}
       {props.error ? (
         <ErrorBanner message={props.error} onDismiss={() => props.onDismissError?.()} />
       ) : (

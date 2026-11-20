@@ -126,7 +126,7 @@ export function PresenceList({
           aria-expanded={false}
           onClick={() => setCollapsed(false)}
           onMouseDown={(e) => e.preventDefault()}
-          className={`flex flex-col items-center gap-1.5 px-1.5 py-2.5 font-semibold pointer-coarse:min-h-11 pointer-coarse:min-w-11 ${CHIP}`}
+          className={`flex flex-col items-center gap-1.5 px-1.5 py-2.5 font-semibold pointer-coarse:min-h-12 pointer-coarse:min-w-12 ${CHIP}`}
         >
           <Users aria-hidden className="h-4 w-4" />
           <span className="text-sm">{players.length}</span>

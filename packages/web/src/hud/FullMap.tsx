@@ -101,7 +101,7 @@ export function FullMap({
           <button
             type="button"
             onClick={onClose}
-            className="flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-hud-inset px-4 text-sm font-semibold hover:bg-hud-hover"
+            className="flex min-h-12 shrink-0 items-center gap-2 rounded-full bg-hud-inset px-4 text-sm font-semibold hover:bg-hud-hover"
           >
             Close
             <span className="pointer-coarse:hidden">

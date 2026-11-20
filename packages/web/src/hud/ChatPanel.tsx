@@ -140,8 +140,10 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
     }
     if (e.key === 'Enter') {
       if (!draft.trim()) {
-        // Enter is the shortcut's toggle: on an empty draft it closes the panel.
-        handBack(hide);
+        // Enter is the shortcut's toggle: on an empty draft it closes the panel, but a phone keeps its keyboard.
+        if (!portrait) {
+          handBack(hide);
+        }
         return;
       }
       send();
@@ -165,7 +167,9 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
       t: Date.now(),
     });
     setDraft('');
-    handBack(peek);
+    if (!portrait) {
+      handBack(peek);
+    }
   };
 
   const sendMissionCommand = async (raw: string) => {
@@ -179,7 +183,9 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
     });
     if (added) {
       setDraft('');
-      handBack(peek);
+      if (!portrait) {
+        handBack(peek);
+      }
     }
   };
 
@@ -213,7 +219,7 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
         onKeyDown={onKeyDown}
         placeholder={coarse ? 'Message' : 'Press Enter to chat'}
         enterKeyHint="send"
-        className="min-w-0 flex-1 rounded-hud-control bg-hud-inset px-3 py-1.5 text-hud-text outline-none placeholder:text-hud-text-2 pointer-coarse:min-h-11 pointer-coarse:text-base"
+        className="min-w-0 flex-1 rounded-hud-control bg-hud-inset px-3 py-1.5 text-hud-text outline-none placeholder:text-hud-text-2 pointer-coarse:min-h-12 pointer-coarse:text-base"
       />
       <IconButton icon={SendHorizontal} label="Send" tone="accent" disabled={!draft.trim()} onClick={send} />
     </div>

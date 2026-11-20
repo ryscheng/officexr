@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NO_MOVE } from '../renderer/moveIntent.ts';
-import { JOYSTICK_DEAD_ZONE, joystickVector } from './joystick.ts';
+import { floatingOrigin, JOYSTICK_DEAD_ZONE, joystickVector } from './joystick.ts';
 
 const R = 40;
 
@@ -33,5 +33,18 @@ describe('joystickVector', () => {
   it('keeps analog magnitude inside the circle', () => {
     const v = joystickVector(0.3 * R, 0, R, 0);
     expect(Math.hypot(v.x, v.z)).toBeCloseTo(0.3);
+  });
+});
+
+describe('floatingOrigin', () => {
+  const zone = { width: 200, height: 300 };
+
+  it('centres the stick under the finger', () => {
+    expect(floatingOrigin({ x: 100, y: 150 }, zone, 55)).toEqual({ x: 100, y: 150 });
+  });
+
+  it('keeps the whole stick inside the zone near an edge or corner', () => {
+    expect(floatingOrigin({ x: 5, y: 295 }, zone, 55)).toEqual({ x: 55, y: 245 });
+    expect(floatingOrigin({ x: 199, y: 2 }, zone, 55)).toEqual({ x: 145, y: 55 });
   });
 });
