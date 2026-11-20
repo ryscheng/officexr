@@ -41,7 +41,7 @@ export function PortraitSheet({ title, label, closeLabel, onClose, fill = false,
         bottom: keyboard,
         maxHeight: limit,
         height: fill ? limit : undefined,
-        paddingBottom: keyboard > 0 ? undefined : 'max(0.5rem, var(--hud-safe-bottom))',
+        paddingBottom: keyboard > 0 ? '0.5rem' : 'max(1rem, calc(var(--hud-safe-bottom) + 0.5rem))',
       }}
       className="pointer-events-auto fixed right-(--hud-inset-right) left-(--hud-inset-left) z-40 mx-auto flex max-w-(--hud-sheet-max-width) flex-col gap-2 rounded-b-none p-2"
     >

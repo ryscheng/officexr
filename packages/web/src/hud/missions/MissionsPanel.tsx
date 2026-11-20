@@ -28,8 +28,10 @@ import { NewMissionForm } from './NewMissionForm';
 import type { MissionsApi } from './useMissions';
 import type { OfficePerson } from './useOfficeSpots';
 
+const SHORT_SCREEN_PX = 700;
+
 const chipClass = (active: boolean) =>
-  `rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap pointer-coarse:min-h-12 ${
+  `rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap pointer-coarse:min-h-12 pointer-coarse:min-w-12 ${
     active ? 'bg-hud-text text-hud-panel-solid' : 'bg-hud-inset text-hud-text hover:bg-hud-hover'
   }`;
 
@@ -52,7 +54,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
   const [source, setSource] = useState<SourceFilter>('all');
   const fold = useFold('missions', compact);
   const [adding, setAdding] = useState(false);
-  const [tall, setTall] = useState(false);
+  const [tall, setTall] = useState(() => window.innerHeight < SHORT_SCREEN_PX);
   const clock = now();
   const unsupported = api.status === 'unsupported';
 
@@ -193,7 +195,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
         </PortraitSheet>
       )}
 
-      {!unsupported && (
+      {!unsupported && !portrait && (
         <p className="shrink-0 text-[11px] text-hud-text-2">
           {openCount} open · {mine.length - openCount} done
         </p>

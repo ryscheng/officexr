@@ -35,6 +35,17 @@ export function HudPreview() {
       built?.dispose();
     };
   }, [scenario]);
+  useEffect(() => {
+    if (!world) {
+      return;
+    }
+    const { actions } = world.session.local;
+    const hook = { say: (from: string, text: string) => actions.applyRemoteChat({ id: `say-${Date.now()}`, authorId: from, text, t: Date.now() }) };
+    (window as unknown as { __hudPreview?: typeof hook }).__hudPreview = hook;
+    return () => {
+      delete (window as unknown as { __hudPreview?: typeof hook }).__hudPreview;
+    };
+  }, [world]);
   return (
     <MemoryRouter>
       <div className="fixed inset-0 touch-manipulation overflow-hidden">

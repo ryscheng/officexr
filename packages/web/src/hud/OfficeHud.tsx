@@ -142,8 +142,24 @@ export function OfficeHud({
   }, [narrow, missionsOpen, hideChat]);
 
   const unread = chatShowsLog ? 0 : unreadCount(chat, lastReadId, selfId);
-  const toggleChat = () => (chatVisibility.mode === 'compose' ? chatVisibility.hide() : chatVisibility.compose());
-  const openMenu = () => setMenuOpen((o) => !o);
+  const toggleChat = () => {
+    if (chatVisibility.mode === 'compose') {
+      chatVisibility.hide();
+      return;
+    }
+    if (narrow) {
+      setMenuOpen(false);
+      setPeople(false);
+    }
+    chatVisibility.compose();
+  };
+  const openMenu = () => {
+    if (narrow && !menuOpen) {
+      setPeople(false);
+      hideChat();
+    }
+    setMenuOpen((o) => !o);
+  };
 
   const current = missions.current;
   const to = current?.place ? resolvePlace(current.place, spots.areas) : null;
@@ -194,6 +210,9 @@ export function OfficeHud({
       onPeople={() => {
         setPeople((p) => !p);
         setMenuOpen(false);
+        if (narrow) {
+          hideChat();
+        }
       }}
       onSettings={() => {
         setMenuOpen(false);
