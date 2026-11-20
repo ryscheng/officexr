@@ -48,7 +48,7 @@ export default function PlayView3d({
 }: {
   viewProps: Pick<
     PlayViewProps,
-    'store' | 'actions' | 'rules' | 'bus' | 'sync' | 'handshake' | 'selfId' | 'mapName' | 'title' | 'storages' | 'onPingPlayer' | 'placement'
+    'store' | 'actions' | 'rules' | 'bus' | 'sync' | 'handshake' | 'selfId' | 'mapName' | 'title' | 'storages' | 'onPingPlayer' | 'onPingFrozen' | 'placement'
   >;
   /** The 2D view: lock the camera overhead instead of offering camera modes. */
   overhead: boolean;

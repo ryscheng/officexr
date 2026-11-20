@@ -169,6 +169,7 @@ describe('POST /api/offices/:id/slack-ping', () => {
     const buttons = message.blocks[1].elements!;
     expect(buttons[0].url).toBe(`https://office.test/room/${ID}`);
     expect(JSON.parse(buttons[1].value!)).toEqual({ officeId: ID, senderLogin: 'a@example.com', senderName: 'Alice', targetName: 'bob' });
+    expect(h.presence.notifyLogin).toHaveBeenCalledExactlyOnceWith(ID, 'a@example.com', INTEGRATION_NOTICE_KIND, { from: 'Slack', text: 'Pinged bob on Slack.' });
   });
 
   it('is 401 when not signed in, 404 for an unknown office, 400 for a bad body or a self ping', async () => {
@@ -189,6 +190,7 @@ describe('POST /api/offices/:id/slack-ping', () => {
     expect(res.status).toBe(403);
     expect(h.slackClient.lookupUserByEmail).not.toHaveBeenCalled();
     expect(h.slackClient.postMessage).not.toHaveBeenCalled();
+    expect(h.presence.notifyLogin).not.toHaveBeenCalled();
   });
 
   it('is 409 when the target is online, since a normal ping reaches them', async () => {
@@ -214,6 +216,7 @@ describe('POST /api/offices/:id/slack-ping', () => {
     expect(limited.headers.get('retry-after')).toBe('90');
     expect(await limited.json()).toMatchObject({ retryAfterSeconds: 90 });
     expect(h.slackClient.postMessage).toHaveBeenCalledTimes(1);
+    expect(h.presence.notifyLogin).toHaveBeenLastCalledWith(ID, 'a@example.com', INTEGRATION_NOTICE_KIND, { from: 'Slack', text: 'You pinged bob a moment ago. Try again in 90 seconds.' });
     h.now.value += SLACK_PING_COOLDOWN_MS - 30_000;
     expect((await ping(h, 'bob@example.com')).status).toBe(200);
     expect(h.slackClient.postMessage).toHaveBeenCalledTimes(2);

@@ -14,6 +14,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_PLACED_PROPS, type PlacedProp } from '@officexr/sdk';
 import { apiMiddleware, type CreateOffice, type OfficeCharacters, type OfficeDeskClaims, type OfficePlacedProps, type QueryOffices, type ResolveIdentity, type UpdateOffice } from './api';
 import { createApp } from './app';
+import { createCalendarService } from './calendarService';
+import { createGoogleCalendarClient } from './googleCalendar';
+import type { CalendarIntegration, SlackIntegration } from './integrations';
+import { integrationsFromEnv } from './integrationsConfig';
+import { createSecretBox } from './secretBox';
 import { isAllowedOrigin, parseFrontendOrigins } from './cors';
 import { JAAS_TOKEN_TTL_SECONDS, jaasConfigFromEnv, jaasUserId, type JaasConfig } from './jaasToken';
 import { PREVIEW_TOKEN_TTL_SECONDS, PreviewTokens } from './previewToken';
@@ -180,11 +185,13 @@ interface StartOptions {
   cookieDomain?: string;
   studioDataDir?: string;
   jaas?: JaasConfig;
+  calendar?: CalendarIntegration;
+  slack?: SlackIntegration;
 }
 
 async function start(
   mode: Mode,
-  { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret, frontendOrigins, cookieDomain, studioDataDir, jaas }: StartOptions = {},
+  { devUser, auth = AUTH, sessionStore = new session.MemoryStore(), realtimeTokenSecret, frontendOrigins, cookieDomain, studioDataDir, jaas, calendar, slack }: StartOptions = {},
 ): Promise<string> {
   const app = await createApp({
     queryOffices,
@@ -200,6 +207,8 @@ async function start(
     realtime: new RealtimeServer(),
     realtimeTokenSecret,
     jaas,
+    calendar,
+    slack,
     frontendOrigins,
     cookieDomain,
     modelsDir,
@@ -1389,5 +1398,81 @@ describe('/api/offices/:id/props', () => {
   it('is 413 for an oversized body and 405 for other methods', async () => {
     expect((await post({ ...pool, pad: 'x'.repeat(5000) })).status).toBe(413);
     expect((await fetch(url(), { method: 'DELETE', headers: me })).status).toBe(405);
+  });
+});
+
+
+describe('calendar and slack integrations in the app', () => {
+  const claimUrl = (suffix = '') => `/api/offices/${ID}/desk-claims${suffix}`;
+  const fakeGoogleFetch = (busy: unknown[]) =>
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return new Response(JSON.stringify(String(init?.body).includes('authorization_code') ? { refresh_token: 'rt', scope: 'https://www.googleapis.com/auth/calendar.freebusy' } : { access_token: 'at' }));
+      }
+      if (url === 'https://www.googleapis.com/calendar/v3/freeBusy') {
+        return new Response(JSON.stringify({ calendars: { primary: { busy } } }));
+      }
+      throw new Error(`unexpected request to ${url}`);
+    });
+
+  it('stays off without its env: no routes and no extra claimant fields', async () => {
+    const services = integrationsFromEnv({ env: {}, publicUrl: AUTH.publicUrl, googleClientId: 'id', googleClientSecret: 'secret', calendarLinks: { getMany: async () => ({}), set: async () => undefined, remove: async () => null } });
+    expect(services).toEqual({});
+    const base = await start('prod', { studioDataDir });
+    const me = await signIn(base, 'a@example.com');
+    expect((await fetch(`${base}/api/integrations`, { headers: me })).status).toBe(404);
+    claimsByOffice.clear();
+    await fetch(`${base}${claimUrl('/me')}`, { method: 'PUT', headers: me, body: JSON.stringify({ deskId: 'd1' }) });
+    expect((await (await fetch(`${base}${claimUrl()}`, { headers: me })).json()).claimants).toEqual({ 'a@example.com': {} });
+  });
+
+  it('turns calendar on with only the encryption secret, and rejects one that is too short', () => {
+    const links = { getMany: async () => ({}), set: async () => undefined, remove: async () => null };
+    const on = integrationsFromEnv({ env: { CALENDAR_ENCRYPTION_SECRET: 'a-long-test-secret-value' }, publicUrl: AUTH.publicUrl, googleClientId: 'id', googleClientSecret: 'secret', calendarLinks: links });
+    expect(on.calendar?.config.redirectUri).toBe('http://officexr.test/auth/google/calendar/callback');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect(integrationsFromEnv({ env: { CALENDAR_ENCRYPTION_SECRET: 'short' }, publicUrl: AUTH.publicUrl, googleClientId: 'id', googleClientSecret: 'secret', calendarLinks: links }).calendar).toBeUndefined();
+    expect(integrationsFromEnv({ env: { SLACK_BOT_TOKEN: 'x' }, publicUrl: AUTH.publicUrl, googleClientId: 'id', googleClientSecret: 'secret', calendarLinks: links }).slack).toBeUndefined();
+    expect(integrationsFromEnv({ env: { SLACK_BOT_TOKEN: 'x', SLACK_SIGNING_SECRET: 'y' }, publicUrl: AUTH.publicUrl, googleClientId: 'id', googleClientSecret: 'secret', calendarLinks: links }).slack).toBeDefined();
+  });
+
+  it('connects, adds the calendar status to the claimants payload and disconnects', async () => {
+    const stored = new Map<string, string>();
+    const google = fakeGoogleFetch([{ start: new Date(Date.now() - 600_000).toISOString(), end: new Date(Date.now() + 3_600_000).toISOString() }]);
+    const config = { clientId: 'id', clientSecret: 'secret', redirectUri: 'http://officexr.test/auth/google/calendar/callback' };
+    const service = createCalendarService({
+      client: createGoogleCalendarClient(config, google as unknown as typeof fetch),
+      links: {
+        getMany: async (logins) => Object.fromEntries(logins.filter((l) => stored.has(l)).map((l) => [l, stored.get(l)!])),
+        set: async (login, sealed) => void stored.set(login, sealed),
+        remove: async (login) => {
+          const sealed = stored.get(login) ?? null;
+          stored.delete(login);
+          return sealed;
+        },
+      },
+      box: createSecretBox('a-long-test-secret-value'),
+    });
+    const base = await start('prod', { studioDataDir, calendar: { service, config } });
+    const me = await signIn(base, 'a@example.com');
+    claimsByOffice.clear();
+    expect((await fetch(`${base}/api/integrations`, { headers: me })).status).toBe(200);
+
+    const consent = await fetch(`${base}/auth/google/calendar?next=${encodeURIComponent('/room/x')}`, { headers: me, redirect: 'manual' });
+    const state = new URL(consent.headers.get('location')!).searchParams.get('state')!;
+    const callback = await fetch(`${base}/auth/google/calendar/callback?code=c&state=${encodeURIComponent(state)}`, { headers: me, redirect: 'manual' });
+    expect(callback.headers.get('location')).toBe('/room/x?calendar=connected');
+    expect(stored.get('a@example.com')).toMatch(/^v1\./);
+    expect(stored.get('a@example.com')).not.toContain('rt');
+
+    await fetch(`${base}${claimUrl('/me')}`, { method: 'PUT', headers: me, body: JSON.stringify({ deskId: 'd1' }) });
+    const { claimants } = await (await fetch(`${base}${claimUrl()}`, { headers: me })).json();
+    expect(claimants['a@example.com'].calendar).toMatchObject({ busy: true });
+    expect(Date.parse(claimants['a@example.com'].calendar.until)).toBeGreaterThan(Date.now());
+
+    expect((await fetch(`${base}/api/calendar`, { method: 'DELETE', headers: me })).status).toBe(204);
+    expect(stored.size).toBe(0);
+    expect((await (await fetch(`${base}${claimUrl()}`, { headers: me })).json()).claimants['a@example.com'].calendar).toBeUndefined();
   });
 });

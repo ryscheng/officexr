@@ -60,7 +60,7 @@ export function claimantDecorator({ calendar, slack }: Pick<IntegrationsOptions,
       const needSlack = logins.filter((login) => !calendars[login]);
       const slackStatuses = needSlack.length ? ((await slack?.directory.statuses(needSlack)) ?? {}) : {};
       return Object.fromEntries(
-        logins.map((login) => [login, { ...claimants[login], ...(calendars[login] && { calendar: calendars[login] }), ...(slackStatuses[login] && { slack: slackStatuses[login] }) }]),
+        logins.map((login) => [login, { ...claimants[login], ...(calendars[login] && { calendar: calendars[login] }), ...(!calendars[login] && slackStatuses[login] ? { slack: slackStatuses[login] } : {}) }]),
       );
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -100,7 +100,11 @@ const header = (req: IncomingMessage, name: string) => {
   return Array.isArray(value) ? value[0] : value;
 };
 
-/** Calendar connect and disconnect, Slack pings and the Slack interaction endpoint. Each part answers 404 until it is configured. */
+/**
+ * Calendar connect and disconnect, Slack pings and the Slack interaction endpoint. Each part answers 404 until it is configured.
+ * SRP violation: one middleware owns both integrations' routes because they share the request plumbing (identity, JSON and
+ * raw body reads, redirects). Splitting it means a shared route-helper module; do that when a third integration lands.
+ */
 export function integrationsMiddleware(options: IntegrationsOptions): NextHandleFunction {
   const { identity, queryOffices, deskClaims, presence, publicUrl, sessionSecret, frontendOrigins, calendar, slack, fetch: fetchFn = fetch, now = Date.now } = options;
   const pingCooldown = createCooldown(SLACK_PING_COOLDOWN_MS, now);
@@ -234,8 +238,11 @@ export function integrationsMiddleware(options: IntegrationsOptions): NextHandle
         return send(409, { error: 'online' });
       }
       const key = `${me.login}>${targetLogin}`;
+      const targetName = targetLogin.split('@')[0] || targetLogin;
+      const tell = (text: string) => void presence.notifyLogin(office.id, me.login, INTEGRATION_NOTICE_KIND, { from: 'Slack', text });
       const waitMs = pingCooldown.take(key);
       if (waitMs > 0) {
+        tell(`You pinged ${targetName} a moment ago. Try again in ${Math.ceil(waitMs / 1000)} seconds.`);
         response.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)));
         return send(429, { error: 'Pinged too recently', retryAfterSeconds: Math.ceil(waitMs / 1000) });
       }
@@ -243,6 +250,7 @@ export function integrationsMiddleware(options: IntegrationsOptions): NextHandle
         const userId = await slack.directory.userIdForEmail(targetLogin);
         if (!userId) {
           pingCooldown.release(key);
+          tell(`${targetName} is not in Slack, so they cannot be reached.`);
           return send(404, { error: 'Not in Slack' });
         }
         const channel = await slack.client.openDm(userId);
@@ -250,14 +258,16 @@ export function integrationsMiddleware(options: IntegrationsOptions): NextHandle
           senderName: me.name,
           officeName: office.name,
           officeUrl: officeUrl(office.id),
-          reply: { officeId: office.id, senderLogin: me.login, senderName: me.name, targetName: targetLogin.split('@')[0] || targetLogin },
+          reply: { officeId: office.id, senderLogin: me.login, senderName: me.name, targetName },
         });
         await slack.client.postMessage({ channel, ...message });
       } catch (err) {
         pingCooldown.release(key);
+        tell(`Could not reach ${targetName} on Slack.`);
         console.error(`[slack] ping failed: ${err instanceof Error ? err.message : 'unknown error'}`);
         return send(502, { error: 'Slack is unavailable' });
       }
+      tell(`Pinged ${targetName} on Slack.`);
       return send(200, { sent: true });
     }
 

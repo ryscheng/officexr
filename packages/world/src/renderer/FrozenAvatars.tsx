@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { Html } from '@react-three/drei';
 import type { PlayerId, Store } from '@officexr/sdk';
 import { frozenAvatars, sameFrozenAvatars, type FrozenAvatar } from '../app/frozen-avatars.ts';
+import { frozenStatusLabel } from '../app/frozen-status.ts';
 import { useApplication, useCatalogCharacters } from '../react/application-context.tsx';
 import { ANIMATION_URLS, Adventurer } from './Adventurer.tsx';
 import { ModelWithFallback } from './ModelWithFallback.tsx';
@@ -12,8 +13,6 @@ import type { PlayerModel } from '../characters/registry.ts';
 import './FrozenAvatars.css';
 
 const CARD_OFFSET_PX = -34;
-
-export const frozenStatusText = (_frozen: Pick<FrozenAvatar, 'login'>): string => 'Away';
 
 /**
  * An absent claimant's avatar left sitting at their desk. It has no physics body, so nothing
@@ -67,7 +66,7 @@ function FrozenAvatarView(props: {
 }) {
   const { avatar, charRadius, open, onToggle, onPing } = props;
   const feet = feetPosition(avatar.pos, charRadius);
-  const status = frozenStatusText(avatar);
+  const status = frozenStatusLabel(avatar);
   return (
     <group position={[feet.x, feet.y, feet.z]} rotation={[0, avatar.yaw + AVATAR_YAW_OFFSET, 0]}>
       <Suspense fallback={null}>

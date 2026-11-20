@@ -519,6 +519,7 @@ export class RealtimeServer {
     });
 
     this.startBootLoad();
+    this.startClaimsRefresh();
   }
 
   /** Serve this server's websocket on `server`'s `upgrade` event, which
@@ -769,26 +770,11 @@ export class RealtimeServer {
       for (const room of this.rooms.values()) {
         const [client] = room.clients.values();
         if (client && room.claimsLoaded) {
-          void this.refreshClaims(room, loginOf(client.userId));
+          this.reloadClaims(room, loginOf(client.userId));
         }
       }
     }, this.claimsRefreshMs);
     this.claimsRefresh.unref();
-  }
-
-  private async refreshClaims(room: Room, login: string): Promise<void> {
-    try {
-      const loaded = await this.deskClaims!.listDeskClaims(room.officeId, login);
-      if (!loaded.ok) {
-        return;
-      }
-      const state = room.store.getState();
-      if (JSON.stringify([loaded.claims, loaded.claimants ?? {}]) !== JSON.stringify([state.deskClaims, state.deskClaimants])) {
-        room.pushDeskClaims(loaded.claims, loaded.claimants);
-      }
-    } catch (err) {
-      console.error('[realtime-server] claims refresh failed:', err);
-    }
   }
 
   private dropIfEmpty(room: Room): void {
