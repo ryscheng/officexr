@@ -109,23 +109,6 @@
 }
 
 /*
- * HUD edge tokens: the gap to the screen edge and the safe-area insets, so HUD parts keep off a notch or a
- * home bar. The `--hud-safe-*` values come from the device; the layout specs override them because Chromium
- * emulation reports zero for `env()`.
- */
-:root {
-  --hud-safe-top: env(safe-area-inset-top, 0px);
-  --hud-safe-right: env(safe-area-inset-right, 0px);
-  --hud-safe-bottom: env(safe-area-inset-bottom, 0px);
-  --hud-safe-left: env(safe-area-inset-left, 0px);
-  --hud-edge: 12px;
-  --hud-inset-top: max(var(--hud-edge), var(--hud-safe-top));
-  --hud-inset-right: max(var(--hud-edge), var(--hud-safe-right));
-  --hud-inset-bottom: max(var(--hud-edge), var(--hud-safe-bottom));
-  --hud-inset-left: max(var(--hud-edge), var(--hud-safe-left));
-}
-
-/*
  * Dark appearance, after macOS's: graphite glass, light hairlines, the brighter dark-mode system
  * colours. `appearance.ts` sets data-theme on <html> from Settings → Appearance (or the system on Auto).
  */

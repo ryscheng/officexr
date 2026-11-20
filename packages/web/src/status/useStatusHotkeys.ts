@@ -3,7 +3,6 @@ import { isHotkeyBlocked } from '../room/isHotkeyBlocked';
 
 export interface StatusHotkeyActions {
   toggleHand(): void;
-  toggleEmotePicker(): void;
   toggleFocus(): void;
 }
 
@@ -21,9 +20,7 @@ export function useStatusHotkeys(actions: StatusHotkeyActions, enabled = true) {
           ? actions.toggleFocus
           : !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'h'
             ? actions.toggleHand
-            : !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'r'
-              ? actions.toggleEmotePicker
-              : null;
+            : null;
       if (run) {
         e.preventDefault();
         run();

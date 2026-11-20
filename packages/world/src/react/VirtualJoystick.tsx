@@ -53,8 +53,8 @@ export function VirtualJoystick({ inputRef }: { inputRef: React.MutableRefObject
       onLostPointerCapture={release}
       style={{
         position: 'absolute',
-        left: 'var(--hud-inset-left, max(12px, env(safe-area-inset-left, 0px)))',
-        bottom: 'var(--hud-inset-bottom, max(12px, env(safe-area-inset-bottom, 0px)))',
+        left: 12,
+        bottom: 12,
         width: BASE_SIZE,
         height: BASE_SIZE,
         borderRadius: '50%',

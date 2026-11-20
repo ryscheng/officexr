@@ -22,12 +22,6 @@ import { useCameraMode } from './useCameraMode.ts';
 import { useCoarsePointer } from './useCoarsePointer.ts';
 import { NO_MOVE, type MoveInput } from '../renderer/moveIntent.ts';
 import { VirtualJoystick } from './VirtualJoystick.tsx';
-import { MobileActionPad } from './MobileActionPad.tsx';
-import { MobileActionRegistry } from './mobile-actions.ts';
-import { MobileActionsProvider } from './mobileActionsContext.tsx';
-import { WORLD_MOBILE_ACTIONS } from './worldMobileActions.tsx';
-import { ActionInput } from '../input/action-input.ts';
-import { ActionContextStore } from '../input/action-context.ts';
 import { createViewYaw, ViewYawProvider } from './viewYaw.tsx';
 import { usePlaySession, type PlayStorages } from './usePlaySession.ts';
 import { useWorldConstants } from './useWorldConstants.ts';
@@ -94,13 +88,6 @@ export function PlayView(props: PlayViewProps) {
   const moveInputRef = useRef<MoveInput>(NO_MOVE);
   const coarsePointer = useCoarsePointer();
   const [viewYaw] = useState(createViewYaw);
-  const [actionInput] = useState(() => new ActionInput());
-  const [actionContext] = useState(() => new ActionContextStore());
-  const [mobileActions] = useState(() => {
-    const registry = new MobileActionRegistry();
-    registry.register(WORLD_MOBILE_ACTIONS);
-    return registry;
-  });
   const worldConstants = useWorldConstants(props.store);
   const { fixedCamera } = props;
   const view = useMemo(
@@ -158,8 +145,6 @@ export function PlayView(props: PlayViewProps) {
           moveInputRef={moveInputRef}
           autoWalk={autoWalk}
           seating={seating}
-          actionInput={actionInput}
-          actionContext={actionContext}
           spawnPoints={session.spawnPoints}
           bakedLayouts={session.bakedLayouts}
           onFrameStats={props.onFrameStats}
@@ -184,7 +169,6 @@ export function PlayView(props: PlayViewProps) {
       <TeleportFlash seating={seating} />
       <SeatRefusalToast seating={seating} />
       {coarsePointer && <VirtualJoystick inputRef={moveInputRef} />}
-      {coarsePointer && ready && <MobileActionPad registry={mobileActions} input={actionInput} context={actionContext} />}
       {props.error ? (
         <ErrorBanner message={props.error} onDismiss={() => props.onDismissError?.()} />
       ) : (
@@ -192,9 +176,7 @@ export function PlayView(props: PlayViewProps) {
       )}
       <NavGridProvider value={navGrid}>
         <ViewYawProvider viewYaw={viewYaw}>
-          <PlayControlsProvider controls={playControls}>
-            <MobileActionsProvider registry={mobileActions}>{props.children}</MobileActionsProvider>
-          </PlayControlsProvider>
+          <PlayControlsProvider controls={playControls}>{props.children}</PlayControlsProvider>
         </ViewYawProvider>
       </NavGridProvider>
       {!ready && (
