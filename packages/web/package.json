@@ -7,6 +7,7 @@
     "dev": "vite --configLoader runner",
     "build": "tsc -b && vite build --configLoader runner",
     "preview": "vite preview --configLoader runner",
+    "dev:hud-preview": "pnpm --filter @officexr/world exec tsx scripts/bake-layout.ts --map default && vite --config vite.hud-preview.config.ts --configLoader runner",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --configLoader runner",
