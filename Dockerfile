@@ -79,4 +79,9 @@ RUN test "$(node -p "require('/app/packages/studio-mcp/node_modules/playwright-c
 ENV COREPACK_HOME=/home/node/.corepack
 RUN corepack install
 ENV COREPACK_ENABLE_NETWORK=0
+# Last, so a new commit invalidates only these layers.
+ARG GIT_SHA=dev
+ARG BUILT_AT=
+ENV OFFICEXR_COMMIT=$GIT_SHA
+ENV OFFICEXR_BUILT_AT=$BUILT_AT
 CMD ["pnpm", "--filter", "@officexr/server", "start"]

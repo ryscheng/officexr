@@ -177,6 +177,7 @@ export function createDb(connectionString: string | undefined) {
     },
   };
   const isLoginAllowed: IsLoginAllowed = (email) => pgAllowlist(getPool(), 'login_allowlist')(email);
+  const query = (text: string) => getPool().query<{ version: string }>(text);
   const close = async () => {
     const closing = pool;
     pool = undefined;
@@ -193,6 +194,7 @@ export function createDb(connectionString: string | undefined) {
     calendarLinks,
     isLoginAllowed,
     sessionStore: () => pgSessionStore(getPool()),
+    query,
     close,
   };
 }

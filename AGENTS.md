@@ -58,13 +58,13 @@ officexr/
   The server never trusts client-supplied identity headers.
 - **Backend.** `@officexr/server` is one Node process (`pnpm --filter @officexr/server start`).
   `PORT` (default 4173) serves the API, Google auth, read-only studio data, `/models`,
-  `/config.js`, and an attached `RealtimeServer` (`/ws`, `/health`, `/rooms/:id/sessions`);
+  `/config.js`, and an attached `RealtimeServer` (`/ws`, `/health`, `/ready`, `/version`, `/rooms/:id/sessions`);
   it serves no SPA, so `GET /` is a 404. `ADMIN_PORT` (default 8787) serves only
   `PUT /admin/world-constants`. `pnpm dev` mounts the same `createBackend` in Vite's dev server.
   The SPA imports only `@officexr/server/shared`, which must stay free of Node and server deps.
 - **Studio backend.** `@officexr/studio-server` is one Node process
   (`pnpm --filter @officexr/studio-server start`; run `pnpm --filter @officexr/studio build` first).
-  Both ports proxy `/health` and `/ws` to `REALTIME_SERVER_TARGET` (default `http://127.0.0.1:8787`).
+  Both ports proxy `/health`, `/version` and `/ws` to `REALTIME_SERVER_TARGET` (default `http://127.0.0.1:8787`).
   `PORT` (default 5174) also serves the built studio SPA at `/studio/` (`/` redirects there), read/write `/api/*`, `/models` and `/mcp`,
   unauthenticated, for in-cluster callers (the bots sidecar, private-ops-center).
   `PUBLIC_PORT` (default 5175) also serves `/api/*` and `/models`, and (when the OAuth server is on) `/mcp`; everything else is a 404 for a signed-in user and a 401 from the gate otherwise. The public
@@ -345,4 +345,24 @@ SQL migrations live in `supabase/migrations/`. Apply them to `SUPABASE_DB_URL` w
 pnpm db:migrate           # supabase db push against SUPABASE_DB_URL
 ```
 
-The web container runs `pnpm db:migrate` before starting the server.
+The container does not run migrations: its command only starts the server. Run `pnpm db:migrate`
+as a pre-deploy job, before the rollout.
+
+### Health, readiness and version
+
+The image gets `OFFICEXR_COMMIT` (the build's `GIT_SHA`) and `OFFICEXR_BUILT_AT` from
+`.github/workflows/image.yml`; without them the server uses `git rev-parse HEAD`, else `dev`.
+`RealtimeServer` takes these through its `deployment` option; the web backend supplies the
+database check (`packages/server/src/deployment.ts`), so `@officexr/realtime-server` knows no `pg`.
+
+- `GET /health` (liveness): `{ok, commit, offices}`. Never touches the database.
+- `GET /ready` (readiness): 200 `{status:"pass"}`, or 503 `{status:"fail", reason}` with `reason`
+  `db-unreachable` or `schema-behind`. The check is cached for 60 s and times out after 1 s.
+- `GET /version`: `{commit, builtAt, db:{expected, applied, ok}}`. `expected` is the highest
+  `supabase/migrations/NNN_*.sql` in the image; `applied` is the highest `version` in
+  `supabase_migrations.schema_migrations` (`null` when unreachable or empty).
+- studio-server proxies `/health` and `/version` to the realtime process, which reports the commit only.
+
+Point the cluster's liveness probe at `/health` and its readiness probe at `/ready`.
+To check a deploy, `curl <host>/version` and compare `commit` with the merged SHA and
+`db.applied` with `db.expected`.

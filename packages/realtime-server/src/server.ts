@@ -93,6 +93,19 @@ export interface RealtimeServerOptions {
   bootRetryMs?: number;
   /** How often rooms with players re-read desk claims so calendar and Slack status stay fresh. Default 0: never. */
   claimsRefreshMs?: number;
+  /** Deployment facts for `/health`, `/ready` and `/version`. */
+  deployment?: DeploymentProvider;
+}
+
+export type Readiness = { ok: true } | { ok: false; reason: string };
+
+export interface DeploymentProvider {
+  /** Deployed commit; added to `/health` and `/version`. */
+  commit?: string;
+  /** Consulted by `/ready`; a rejection counts as not ready. Unset means ready. */
+  readiness?: () => Promise<Readiness>;
+  /** Extra fields merged into `/version`; a rejection leaves them out. */
+  version?: () => Promise<Record<string, unknown>>;
 }
 
 /**
@@ -439,6 +452,7 @@ export class RealtimeServer {
   private customHandlers: CustomFrameHandler[] = [];
   private readonly worldConstantsUrl: string | undefined;
   private readonly adminToken: string | undefined;
+  private readonly deployment: DeploymentProvider;
   private readonly sessionPolicy: RealtimeServerOptions['sessionPolicy'];
   private readonly deskClaims: DeskClaimsApi | undefined;
   private readonly placedProps: PlacedPropsApi | undefined;
@@ -459,6 +473,7 @@ export class RealtimeServer {
     this.path = opts.path ?? DEFAULT_PATH;
     this.worldConstantsUrl = opts.worldConstantsUrl;
     this.adminToken = opts.adminToken;
+    this.deployment = opts.deployment ?? {};
     this.sessionPolicy = opts.sessionPolicy;
     this.deskClaims = opts.deskClaims;
     this.placedProps = opts.placedProps;
@@ -540,9 +555,16 @@ export class RealtimeServer {
 
   /** Connect-style: serves `GET /health` and `GET /rooms/:id/sessions`, else calls `next()`. */
   readonly requestHandler = (req: IncomingMessage, res: ServerResponse, next: () => void): void => {
-    if (req.url === '/health' && req.method === 'GET') {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, offices: [...this.rooms.keys()] }));
+    if (req.method === 'GET' && req.url === '/health') {
+      sendJson(res, 200, { ok: true, commit: this.deployment.commit, offices: [...this.rooms.keys()] });
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/ready') {
+      this.serveReady(res).catch(() => res.destroy());
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/version') {
+      this.serveVersion(res).catch(() => res.destroy());
       return;
     }
     const sessionsRoute = req.method === 'GET' && req.url?.match(SESSIONS_ROUTE);
@@ -552,6 +574,24 @@ export class RealtimeServer {
     }
     next();
   };
+
+  private async serveReady(res: ServerResponse): Promise<void> {
+    const readiness = await Promise.resolve()
+      .then(() => this.deployment.readiness?.() ?? { ok: true as const })
+      .catch((): Readiness => ({ ok: false, reason: 'check-failed' }));
+    if (readiness.ok) {
+      sendJson(res, 200, { status: 'pass' });
+    } else {
+      sendJson(res, 503, { status: 'fail', reason: readiness.reason });
+    }
+  }
+
+  private async serveVersion(res: ServerResponse): Promise<void> {
+    const extra = await Promise.resolve()
+      .then(() => this.deployment.version?.())
+      .catch(() => undefined);
+    sendJson(res, 200, { commit: this.deployment.commit, ...extra });
+  }
 
   /** Connect-style: calls `next()` for everything when no admin token is set. */
   readonly adminHandler = (req: IncomingMessage, res: ServerResponse, next: () => void): void => {
@@ -1016,7 +1056,12 @@ async function fetchWorldConstants(
 
 type UpgradeListener = (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
 
-const SESSIONS_ROUTE = /^\/rooms\/([^/?]+)\/sessions(?:\?(.*))?$/;
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
+const SESSIONS_ROUTE =/^\/rooms\/([^/?]+)\/sessions(?:\?(.*))?$/;
 
 function decodeOrNull(component: string): string | null {
   try {

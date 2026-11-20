@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+import { resolveCommit } from '@officexr/realtime-server/commit';
 import { createOfficeApi } from '@officexr/realtime-server/office-api';
 import { RealtimeServer } from '@officexr/realtime-server/server';
 import type connect from 'connect';
@@ -5,9 +7,11 @@ import { createApp, type AppOptions } from './app';
 import { authConfigFromEnv, parseCookieDomain } from './auth';
 import { parseFrontendOrigins } from './cors';
 import { createDb } from './db';
+import { createDeployment, highestMigration, pgAppliedVersion } from './deployment';
 import { integrationsFromEnv } from './integrationsConfig';
 import { jaasConfigFromEnv } from './jaasToken';
 
+const MIGRATIONS_DIR = fileURLToPath(new URL('../../../supabase/migrations', import.meta.url));
 const CLAIMS_REFRESH_MS = 3 * 60_000;
 
 export interface BackendOptions {
@@ -47,6 +51,12 @@ export async function createBackend(env: Record<string, string | undefined>, { d
     sessionPolicy: officeApi.allowsMultiSession,
     deskClaims: officeApi,
     placedProps: officeApi,
+    deployment: createDeployment({
+      commit: resolveCommit(env),
+      builtAt: env.OFFICEXR_BUILT_AT,
+      expected: highestMigration(MIGRATIONS_DIR),
+      applied: () => pgAppliedVersion(db.query),
+    }),
     claimsRefreshMs: integrations.calendar || integrations.slack ? CLAIMS_REFRESH_MS : 0,
   });
   const app = await createApp({

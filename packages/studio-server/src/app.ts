@@ -45,7 +45,7 @@ function proxyRealtime(
     }
   });
   app.use((req, res, next) => {
-    if (pathname(req) === '/health') {
+    if (pathname(req) === '/health' || pathname(req) === '/version') {
       proxy.web(req, res);
     } else {
       next();
