@@ -36,9 +36,6 @@ it('first joiner of a room receives the claimants the backend GET returned', asy
   await channel.subscribe();
   await new Promise((r) => setTimeout(r, 200));
   const claimsEvents = events.filter((e): e is Extract<NetEvent, { kind: 'desk:claims' }> => e.kind === 'desk:claims');
-    'desk:claims events seen by joiner:',
-    JSON.stringify(claimsEvents.map((e) => ({ claims: e.claims, claimants: e.claimants }))),
-  );
   expect(claimsEvents.at(-1)?.claims).toEqual({ d1: 'bob@x.io' });
   expect(claimsEvents.at(-1)?.claimants).toEqual({ 'bob@x.io': { characterId: 'Mage' } });
 });
