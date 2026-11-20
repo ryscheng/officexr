@@ -11,6 +11,7 @@ export type StatusHud = SelfStatus & {
   setStatusMenuOpen: (open: boolean) => void;
   emoteMenuOpen: boolean;
   setEmoteMenuOpen: (open: boolean) => void;
+  toggleEmotePicker: () => void;
   sendEmote: (emote: EmoteId) => void;
 };
 
@@ -54,13 +55,14 @@ export function SelfStatusProvider({
     [actions, sync, selfId, clock],
   );
 
+  const toggleEmotePicker = useCallback(() => setEmoteMenuOpen((open) => !open), []);
   const { toggleHand, toggleFocus } = status;
   const hotkeys = useMemo(
-    () => ({ toggleHand, toggleFocus, toggleEmotePicker: () => setEmoteMenuOpen((open) => !open) }),
-    [toggleHand, toggleFocus],
+    () => ({ toggleHand, toggleFocus, toggleEmotePicker }),
+    [toggleHand, toggleFocus, toggleEmotePicker],
   );
   useStatusHotkeys(hotkeys);
 
-  const value = { ...status, statusMenuOpen, setStatusMenuOpen, emoteMenuOpen, setEmoteMenuOpen, sendEmote };
+  const value = { ...status, statusMenuOpen, setStatusMenuOpen, emoteMenuOpen, setEmoteMenuOpen, toggleEmotePicker, sendEmote };
   return <StatusHudContext.Provider value={value}>{children}</StatusHudContext.Provider>;
 }

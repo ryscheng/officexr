@@ -1,4 +1,4 @@
-import type { PlayerId } from '@officexr/sdk';
+import type { Actions, OfficeState, PlayerId, SyncEngine } from '@officexr/sdk';
 
 export const POKE_REACH_M = 1.7;
 export const POKE_HALF_ANGLE_RAD = (70 * Math.PI) / 180;
@@ -39,4 +39,24 @@ export function pickPokeTarget(
 
 export function yawToward(from: { x: number; z: number }, to: { x: number; z: number }): number {
   return Math.atan2(-(to.x - from.x), -(to.z - from.z));
+}
+
+/** Pokes whoever `selfId` faces, or no one; the Q key and the Poke button both call this. */
+export function pokeFacing(
+  state: OfficeState,
+  selfId: PlayerId,
+  actions: Pick<Actions, 'receivePoke'>,
+  sync: Pick<SyncEngine, 'sendPoke'>,
+  now: number,
+): void {
+  const self = state.players[selfId];
+  if (!self) {
+    return;
+  }
+  const others = Object.values(state.players)
+    .filter((p) => p.id !== selfId && !p.isDead)
+    .map((p) => ({ id: p.id, x: p.pos.x, z: p.pos.z }));
+  const targetId = pickPokeTarget({ x: self.pos.x, z: self.pos.z, yaw: self.yaw }, others);
+  actions.receivePoke(selfId, targetId, now);
+  sync.sendPoke(targetId);
 }
