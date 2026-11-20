@@ -240,7 +240,7 @@ function seedDesks(desks: NonNullable<Scenario['desks']>, { store, actions }: { 
       id: `chair-${d.id}`,
       sourceCommandId: `chair-${d.id}`,
       kindId: DESK_CHAIR_KIND,
-      position: [Math.round((SPAWN.x + d.at[0]) / cubeSize), 0, Math.round((SPAWN.z + d.at[1]) / cubeSize)] as [number, number, number],
+      position: [Math.round((SPAWN.x + d.at[0]) / cubeSize), Math.round(1 / cubeSize), Math.round((SPAWN.z + d.at[1]) / cubeSize)] as [number, number, number],
       yawDeg: 180,
     }));
     actions.setWorldObjects({ cubeSize, instances: [...instances.filter((i) => !i.id.startsWith('chair-desk-')), ...chairs] });
