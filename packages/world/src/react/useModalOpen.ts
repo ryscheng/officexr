@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { isTypingTarget } from './useWorldFocus.ts';
 
-const modalOpen = () => document.querySelector('[role="dialog"]') !== null || isTypingTarget(document.activeElement);
+const NON_TEXT_INPUTS = new Set(['checkbox', 'radio', 'range', 'button', 'submit', 'reset', 'color', 'file', 'image']);
+
+const isTextEntry = (el: Element | null) =>
+  isTypingTarget(el) && !(el instanceof HTMLInputElement && NON_TEXT_INPUTS.has(el.type));
+
+const modalOpen = () => document.querySelector('[role="dialog"]') !== null || isTextEntry(document.activeElement);
 
 /** Whether a dialog is open or a text field has focus, so on-screen game buttons should stand down. */
 export function useModalOpen(): boolean {

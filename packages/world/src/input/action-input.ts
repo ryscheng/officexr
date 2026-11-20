@@ -17,13 +17,15 @@ export const ACTION_KEYS: Readonly<Record<ActionId, string>> = {
 export class ActionInput {
   private readonly held = new Set<ActionId>();
   private readonly tapped = new Set<ActionId>();
+  private readonly unread = new Set<ActionId>();
 
   press(id: ActionId): void {
     this.held.add(id);
+    this.unread.add(id);
   }
 
   release(id: ActionId): void {
-    if (this.held.delete(id)) {
+    if (this.held.delete(id) && this.unread.delete(id)) {
       this.tapped.add(id);
     }
   }
@@ -35,6 +37,7 @@ export class ActionInput {
   releaseAll(): void {
     this.held.clear();
     this.tapped.clear();
+    this.unread.clear();
   }
 
   /** Returns `keys` plus the keys of held and just-tapped actions; call once per frame. */
@@ -50,6 +53,7 @@ export class ActionInput {
       }
     }
     this.tapped.clear();
+    this.unread.clear();
     return merged;
   }
 }

@@ -142,6 +142,19 @@ export function MobileActionPad(props: {
     return () => input.releaseAll();
   }, [blocked, input]);
 
+  useEffect(() => {
+    const releaseAll = () => input.releaseAll();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') releaseAll();
+    };
+    window.addEventListener('blur', releaseAll);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('blur', releaseAll);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [input]);
+
   if (blocked) {
     return null;
   }
