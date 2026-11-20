@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { ChevronDown, LogOut, Mic, MicOff, MonitorOff, MonitorUp } from 'lucide-react';
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown, LogOut, Mic, MicOff, MonitorOff, MonitorUp } from 'lucide-react';
 import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { deriveZoneRoom } from '@officexr/core-refactor';
 import { useStoreSelector } from '@officexr/world/top-down';
@@ -8,6 +8,7 @@ import { useShareState } from '../voice/JaasMeeting';
 import { useMicMuted } from '../voice/useMicMuted';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { CallList, useCallRows } from './CallList';
+import { useFold } from './foldPrefs';
 import { formatDistance } from './formatDistance';
 import { RoundButton } from './RoundButton';
 import { Panel } from './ui/Panel';
@@ -37,6 +38,7 @@ export function CallCard({
   const { canShare, sharing } = useShareState(voice);
   const [open, setOpen] = useState(false);
   const trayId = useId();
+  const fold = useFold('call', false);
   useEscapeLayer(open, () => setOpen(false));
   if (state === 'none') {
     return null;
@@ -53,7 +55,7 @@ export function CallCard({
   const MuteIcon = muted ? MicOff : Mic;
   const ShareIcon = sharing ? MonitorOff : MonitorUp;
 
-  if (compact) {
+  if (compact || fold.folded) {
     return (
       <Panel className="pointer-events-auto flex items-center gap-2 p-1.5 pr-2">
         <span className="flex min-w-0 flex-col pr-1 pl-2">
@@ -65,6 +67,11 @@ export function CallCard({
         <RoundButton aria-label="Leave call" tone="danger" onClick={() => void voice.leaveRoom()}>
           <LogOut aria-hidden className="size-5" />
         </RoundButton>
+        {!compact && (
+          <RoundButton aria-label="Expand call card" aria-expanded={false} onClick={fold.toggle}>
+            <ChevronsUpDown aria-hidden className="size-4" />
+          </RoundButton>
+        )}
       </Panel>
     );
   }
@@ -80,6 +87,9 @@ export function CallCard({
             <div className="truncate text-sm font-semibold">{title}</div>
             <div className="truncate text-xs text-hud-text-2">{sub}</div>
           </div>
+          <RoundButton aria-label="Collapse call card" aria-expanded onClick={fold.toggle}>
+            <ChevronsDownUp aria-hidden className="size-4" />
+          </RoundButton>
           <RoundButton aria-label={`In call, ${rows.length}`} aria-expanded={open} aria-controls={trayId} onClick={() => setOpen((o) => !o)}>
             <ChevronDown aria-hidden className={`size-4 ${open ? 'rotate-180' : ''}`} />
           </RoundButton>

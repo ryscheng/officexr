@@ -34,7 +34,6 @@ const openPanel = () => fireEvent.click(screen.getByRole('button', { name: /^Pin
 describe('PingInboxHud', () => {
   it('shows the unread count, capped at 9+, and clears it on open', () => {
     const { ping } = setup();
-    expect(screen.getByRole('button', { name: 'Pings' })).toBeTruthy();
     ping('ada#t1', 'Ada');
     expect(screen.getByRole('button', { name: 'Pings, 1 unread' })).toBeTruthy();
     for (let i = 0; i < 9; i++) {
@@ -46,11 +45,17 @@ describe('PingInboxHud', () => {
     expect(screen.getByRole('button', { name: 'Pings' })).toBeTruthy();
   });
 
-  it('lists name and relative time, and shows an empty state', () => {
+  it('is absent until a ping arrives', () => {
     const { ping } = setup();
-    openPanel();
-    expect(screen.getByText('No pings yet')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Pings/ })).toBeNull();
     ping('ada#t1', 'Ada');
+    expect(screen.getByRole('button', { name: /^Pings/ })).toBeTruthy();
+  });
+
+  it('lists name and relative time', () => {
+    const { ping } = setup();
+    ping('ada#t1', 'Ada');
+    openPanel();
     expect(screen.getByText('Ada')).toBeTruthy();
     expect(screen.getByText('just now')).toBeTruthy();
   });

@@ -5,6 +5,8 @@ import { useCoarsePointer, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import type { PingSender } from '../ping/usePingSender';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
+import type { PlaceModeStore } from '@officexr/world/motion';
+import { BuildIndicator } from './BuildIndicator';
 import { CallCard } from './CallCard';
 import { ChatPanel } from './ChatPanel';
 import { FullMap } from './FullMap';
@@ -54,6 +56,7 @@ export function OfficeHud({
   pinger,
   pingInbox,
   missions,
+  placeMode,
   toasts,
   onWave,
   onOpenSettings,
@@ -67,6 +70,7 @@ export function OfficeHud({
   pinger: PingSender;
   pingInbox: PingInbox;
   missions: MissionsApi;
+  placeMode: PlaceModeStore;
   toasts: ReactNode;
   onWave: () => void;
   onOpenSettings: () => void;
@@ -187,6 +191,7 @@ export function OfficeHud({
             </>
           )
         }
+        bottomCentre={<BuildIndicator mode={placeMode} />}
         bottomLeft={missionsPanel}
         bottomRight={coarse ? <NearYouButtons store={store} onWave={onWave} /> : <NearYouCard store={store} onWave={onWave} />}
       />

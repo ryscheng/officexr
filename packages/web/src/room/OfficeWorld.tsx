@@ -235,6 +235,7 @@ function World({ office: initialOffice, me, session, join, missionsClient }: { o
         pinger={pinger}
         pingInbox={pingInbox}
         missions={missions}
+        placeMode={placeMode}
         onWave={() => ready.office.sync.sendEmote('wave')}
         onOpenSettings={() => openSettings()}
         toasts={

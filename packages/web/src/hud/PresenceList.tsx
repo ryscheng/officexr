@@ -3,10 +3,10 @@ import { PanelLeftClose, Users } from 'lucide-react';
 import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { useCoarsePointer, useStoreSelector } from '@officexr/world/top-down';
 import type { PingSender } from '../ping/usePingSender';
+import { useFold, type FoldStorage } from './foldPrefs';
 import { IconButton } from './IconButton';
 import { PersonList, type PersonRow } from './PersonList';
 import { labelsInJoinOrder, toPresencePlayer, type DepartedEntry, type PresencePlayer } from './personRows';
-import { useRosterCollapsed, type RosterStorage } from './rosterPrefs';
 import { sameList } from './sameFields';
 import { CHIP, Panel, PanelTitle } from './ui/Panel';
 
@@ -98,10 +98,10 @@ export function PresenceList({
   clock?: () => number;
   pinger?: PingSender;
   /** Where the folded state is remembered; defaults to `localStorage`. */
-  storage?: RosterStorage;
+  storage?: FoldStorage;
 }) {
   const { players, departed } = useStoreSelector(store, selectPresence, samePresence);
-  const [collapsed, setCollapsed] = useRosterCollapsed(useCoarsePointer(), storage);
+  const { folded: collapsed, setFolded: setCollapsed } = useFold('roster', useCoarsePointer(), storage);
   if (collapsed) {
     return (
       <div className="pointer-events-auto flex items-center gap-2">

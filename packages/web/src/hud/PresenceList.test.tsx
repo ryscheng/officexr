@@ -377,7 +377,7 @@ describe('PresenceList collapse', () => {
     view();
     expect(screen.queryByText('In room')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /^Show people in HQ/ }));
-    expect(storage.getItem('officexr:roster')).toBe('open');
+    expect(storage.getItem('officexr:fold:roster')).toBe('open');
     expect(screen.getByText('In room')).toBeTruthy();
   });
 
@@ -390,7 +390,7 @@ describe('PresenceList collapse', () => {
     first.unmount();
     view();
     expect(screen.getByText('In room')).toBeTruthy();
-    expect(storage.getItem('officexr:roster')).toBe('open');
+    expect(storage.getItem('officexr:fold:roster')).toBe('open');
   });
 
   it('announces a join with +1 while folded for about 4s, and not while open', () => {
