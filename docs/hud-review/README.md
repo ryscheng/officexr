@@ -64,3 +64,7 @@ people list, build panel, spell bar, sound settings and the `--hud-inset-*` safe
 the on-screen HUD matches the one before those changes. The faults above that name those parts no longer apply.
 The keyboard paths, in-world visuals, the preview and the specs stay. Captures of the reverted HUD are in
 `after-revert/`.
+
+## B4 mission list
+
+The approved layout is built; `b4/` holds captures of `/hud-preview?scenario=missions` (desktop 1440x900 and iPhone landscape, light and dark): `missions` (one mission current), `new-mission` (the form, or the bottom sheet on touch) and `map` (the full map opened with M).
