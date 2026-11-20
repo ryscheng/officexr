@@ -91,6 +91,8 @@ export interface RealtimeServerOptions {
   fetch?: typeof fetch;
   /** First boot-load retry delay; doubles per attempt up to 30 s. Default 2000. */
   bootRetryMs?: number;
+  /** How often rooms with players re-read desk claims, so externally sourced claimant status (calendar, Slack) stays fresh. Default 0: never. */
+  claimsRefreshMs?: number;
 }
 
 /**
@@ -445,6 +447,8 @@ export class RealtimeServer {
   private readonly now: () => number;
   private readonly fetch: typeof fetch;
   private readonly bootRetryMs: number;
+  private readonly claimsRefreshMs: number;
+  private claimsRefresh: ReturnType<typeof setInterval> | null = null;
   private worldConstants: WorldConstants = DEFAULT_WORLD_CONSTANTS;
   private bootLoad: AbortController | null = null;
   private readonly takeServerSeq = createSeqCounter().next;
@@ -462,6 +466,7 @@ export class RealtimeServer {
     this.now = opts.now ?? Date.now;
     this.fetch = opts.fetch ?? globalThis.fetch;
     this.bootRetryMs = opts.bootRetryMs ?? DEFAULT_BOOT_RETRY_MS;
+    this.claimsRefreshMs = opts.claimsRefreshMs ?? 0;
     this.defaultRoom = new Room(
       opts.officeId ?? DEFAULT_OFFICE_ID,
       this.takeServerSeq,
@@ -529,6 +534,7 @@ export class RealtimeServer {
     server.on('upgrade', onUpgrade);
     this.attached = { server, onUpgrade };
     this.startBootLoad();
+    this.startClaimsRefresh();
   }
 
   /** Connect-style: serves `GET /health` and `GET /rooms/:id/sessions`, else calls `next()`. */
@@ -600,6 +606,10 @@ export class RealtimeServer {
 
   async stop(): Promise<void> {
     this.bootLoad?.abort();
+    if (this.claimsRefresh) {
+      clearInterval(this.claimsRefresh);
+      this.claimsRefresh = null;
+    }
     if (this.attached) {
       this.attached.server.off('upgrade', this.attached.onUpgrade);
       this.attached = null;
@@ -711,7 +721,7 @@ export class RealtimeServer {
         ? this.deskClaims!.listDeskClaims(room.officeId, login).then((loaded) => {
             // A claim that landed while this was in flight already set the newer list.
             if (loaded.ok && !room.claimsLoaded) {
-              room.pushDeskClaims(loaded.claims);
+              room.pushDeskClaims(loaded.claims, loaded.claimants);
             }
           })
         : Promise.resolve();
@@ -736,6 +746,49 @@ export class RealtimeServer {
 
   pushOfficeProps(officeId: string, props: PlacedProp[]): void {
     this.rooms.get(officeId)?.pushPlacedProps(props);
+  }
+
+  /** Whether `login` has a live session in `officeId`. */
+  hasLiveSession(officeId: string, login: string): boolean {
+    return (this.rooms.get(officeId)?.sessionsOf(login).length ?? 0) > 0;
+  }
+
+  /** Sends a custom frame to each live session of `login` in `officeId`; false when there is none. */
+  notifyLogin(officeId: string, login: string, kind: string, payload: unknown): boolean {
+    const sessions = this.rooms.get(officeId)?.sessionsOf(login) ?? [];
+    const raw = encodeFrame({ t: 'custom', kind, payload });
+    for (const session of sessions) session.sendRaw(raw);
+    return sessions.length > 0;
+  }
+
+  private startClaimsRefresh(): void {
+    if (!this.deskClaims || this.claimsRefreshMs <= 0 || this.claimsRefresh) {
+      return;
+    }
+    this.claimsRefresh = setInterval(() => {
+      for (const room of this.rooms.values()) {
+        const [client] = room.clients.values();
+        if (client && room.claimsLoaded) {
+          void this.refreshClaims(room, loginOf(client.userId));
+        }
+      }
+    }, this.claimsRefreshMs);
+    this.claimsRefresh.unref();
+  }
+
+  private async refreshClaims(room: Room, login: string): Promise<void> {
+    try {
+      const loaded = await this.deskClaims!.listDeskClaims(room.officeId, login);
+      if (!loaded.ok) {
+        return;
+      }
+      const state = room.store.getState();
+      if (JSON.stringify([loaded.claims, loaded.claimants ?? {}]) !== JSON.stringify([state.deskClaims, state.deskClaimants])) {
+        room.pushDeskClaims(loaded.claims, loaded.claimants);
+      }
+    } catch (err) {
+      console.error('[realtime-server] claims refresh failed:', err);
+    }
   }
 
   private dropIfEmpty(room: Room): void {

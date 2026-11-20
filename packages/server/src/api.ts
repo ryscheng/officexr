@@ -201,6 +201,8 @@ export interface ApiOptions {
   /** The catalog's characters, which players may pick besides the built-ins. */
   loadCatalogCharacters: () => Promise<CatalogCharacters>;
   identity: ResolveIdentity;
+  /** Adds optional per-claimant status (calendar, Slack) to the claimants payload; unset leaves it as stored. */
+  decorateClaimants?: (claimants: Record<string, DeskClaimant>) => Promise<Record<string, DeskClaimant>>;
   realtimeTokenSecret?: string;
   /** Unset when JaaS isn't configured, which makes `/api/offices/:id/voice-token` a 404. */
   signVoiceToken?: SignVoiceToken;
@@ -219,6 +221,7 @@ export function apiMiddleware({
   loadMap,
   loadCatalogCharacters,
   identity,
+  decorateClaimants,
   realtimeTokenSecret,
   signVoiceToken,
 }: ApiOptions): NextHandleFunction {
@@ -305,7 +308,7 @@ export function apiMiddleware({
       }
       const claimsBody = async (officeId: string) => {
         const [claims, claimants] = await Promise.all([deskClaims.list(officeId), deskClaims.claimants(officeId)]);
-        return { claims, claimants };
+        return { claims, claimants: decorateClaimants ? await decorateClaimants(claimants) : claimants };
       };
       const deskClaimsRoute = path.match(/^\/api\/offices\/([^/]+)\/desk-claims(\/me)?$/);
       if (deskClaimsRoute) {

@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { MAX_PLACED_PROPS, type PlacedProp, type PlaceableKindId } from '@officexr/sdk';
 import type { CreateOffice, OfficeCharacters, OfficeDeskClaims, OfficePlacedProps, QueryOffices, UpdateOffice } from './api';
+import type { CalendarLinks } from './calendarService';
 import { pgAllowlist, pgSessionStore, type IsLoginAllowed } from './auth';
 import type { Office, OfficeUpdate } from './shared';
 
@@ -151,6 +152,26 @@ export function createDb(connectionString: string | undefined) {
       return rowCount ? 'ok' : 'not-found';
     },
   };
+  const calendarLinks: CalendarLinks = {
+    getMany: async (logins) => {
+      const { rows } = await getPool().query<{ login: string; refresh_token_enc: string }>(
+        'select login, refresh_token_enc from calendar_links where login = any($1)',
+        [logins],
+      );
+      return Object.fromEntries(rows.map((row) => [row.login, row.refresh_token_enc]));
+    },
+    set: async (login, sealed) => {
+      await getPool().query(
+        `insert into calendar_links (login, refresh_token_enc) values ($1, $2)
+         on conflict (login) do update set refresh_token_enc = excluded.refresh_token_enc, updated_at = now()`,
+        [login, sealed],
+      );
+    },
+    remove: async (login) => {
+      const { rows } = await getPool().query<{ refresh_token_enc: string }>('delete from calendar_links where login = $1 returning refresh_token_enc', [login]);
+      return rows[0]?.refresh_token_enc ?? null;
+    },
+  };
   const isLoginAllowed: IsLoginAllowed = (email) => pgAllowlist(getPool(), 'login_allowlist')(email);
   const close = async () => {
     const closing = pool;
@@ -164,6 +185,7 @@ export function createDb(connectionString: string | undefined) {
     characters,
     deskClaims,
     placedProps,
+    calendarLinks,
     isLoginAllowed,
     sessionStore: () => pgSessionStore(getPool()),
     close,

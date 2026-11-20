@@ -7,10 +7,20 @@ export const DESK_CLAIM_RESULT_KIND = 'desk:claim-result';
 export const ZDeskClaim = z.object({ deskId: z.string().nullable() });
 export type DeskClaim = z.infer<typeof ZDeskClaim>;
 
+/** Free/busy from a connected calendar; `until` is an ISO instant, so each viewer formats it in their own zone. */
+export const ZClaimantCalendar = z.object({ busy: z.boolean(), until: z.string().min(1) });
+export type ClaimantCalendar = z.infer<typeof ZClaimantCalendar>;
+
+/** A Slack status, shown for a claimant with no calendar status. `emoji` is a `:shortcode:`. */
+export const ZClaimantSlack = z.object({ text: z.string().max(200), emoji: z.string().max(100).optional() });
+export type ClaimantSlack = z.infer<typeof ZClaimantSlack>;
+
 /** What the server knows about a claimant, so an offline login can still be drawn at its desk. */
 export const ZDeskClaimant = z.object({
   characterId: z.string().min(1).optional(),
   claimedAt: z.string().min(1).optional(),
+  calendar: ZClaimantCalendar.optional(),
+  slack: ZClaimantSlack.optional(),
 });
 export type DeskClaimant = z.infer<typeof ZDeskClaimant>;
 
