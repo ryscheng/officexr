@@ -711,7 +711,7 @@ export class RealtimeServer {
         ? this.deskClaims!.listDeskClaims(room.officeId, login).then((loaded) => {
             // A claim that landed while this was in flight already set the newer list.
             if (loaded.ok && !room.claimsLoaded) {
-              room.pushDeskClaims(loaded.claims);
+              room.pushDeskClaims(loaded.claims, loaded.claimants);
             }
           })
         : Promise.resolve();
@@ -772,7 +772,9 @@ export class RealtimeServer {
           .then(async (allowMulti) => {
             if (ws.readyState !== ws.OPEN || !this.wss) return;
             const joined = this.roomFor(officeId);
+            const hadClaims = joined.claimsLoaded;
             await this.ensureClaimsLoaded(joined, login);
+            if (hadClaims) this.reloadClaims(joined, login);
             if (ws.readyState !== ws.OPEN || !this.wss) return;
             room = joined;
             client = this.acceptClient(room, ws, { userId: frame.userId, login, helloSeq }, allowMulti);
@@ -850,6 +852,28 @@ export class RealtimeServer {
     room.clients.delete(client.userId);
     room.clearBodyState(client.userId);
     this.dropIfEmpty(room);
+    this.refreshClaimants(room, client.userId);
+  }
+
+  /** A claimant who leaves turns frozen, so peers must see their current character, not the one from the last claim. */
+  private refreshClaimants(room: Room, userId: PlayerId): void {
+    if (room.clients.size === 0) return;
+    const login = loginOf(userId);
+    if (!Object.values(room.store.getState().deskClaims).includes(login)) return;
+    this.reloadClaims(room, login);
+  }
+
+  /** Characters change outside the room (PUT /character), so a join or leave re-reads claimants. */
+  private reloadClaims(room: Room, login: string): void {
+    if (!this.deskClaims) return;
+    void this.deskClaims.listDeskClaims(room.officeId, login).then((loaded) => {
+      if (!loaded.ok || room.clients.size === 0) return;
+      const state = room.store.getState();
+      const same =
+        JSON.stringify(state.deskClaims) === JSON.stringify(loaded.claims) &&
+        JSON.stringify(state.deskClaimants ?? {}) === JSON.stringify(loaded.claimants ?? {});
+      if (!same) room.pushDeskClaims(loaded.claims, loaded.claimants);
+    });
   }
 
   private handleFrame(room: Room, client: WsClient, frame: Frame): void {
