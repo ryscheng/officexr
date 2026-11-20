@@ -76,6 +76,20 @@
     }
   }
 
+  --animate-hud-fade: hud-fade 5s ease-out forwards;
+  @keyframes hud-fade {
+    0% {
+      opacity: 0;
+    }
+    6%,
+    75% {
+      opacity: 0.92;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
   --animate-hud-bob: hud-bob 1.6s ease-in-out infinite;
   @keyframes hud-bob {
     0%,
@@ -111,6 +125,23 @@
   --hud-inset-right: max(12px, var(--hud-safe-right));
   --hud-inset-bottom: max(12px, var(--hud-safe-bottom));
   --hud-inset-left: max(12px, var(--hud-safe-left));
+  --hud-sheet-top: calc(var(--hud-inset-top) + 56px);
+  --hud-sheet-max-width: 30rem;
+  --hud-seat-toast-bottom: 96px;
+  --hud-error-top: 12px;
+  --hud-share-top: 80px;
+}
+
+/* Phone portrait placement, in one place. Rows under the top bar: bar 52 px, then the call pill (64 px) when in a call, then the mission chip (52 px), then toasts. */
+@media (pointer: coarse) and (orientation: portrait) {
+  :root {
+    --hud-portrait-call-row: 4rem;
+    --hud-portrait-chip-row: 3.25rem;
+    --hud-portrait-controls: 122px;
+    --hud-seat-toast-bottom: calc(var(--hud-inset-bottom) + 170px);
+    --hud-error-top: calc(var(--hud-inset-top) + 7rem);
+    --hud-share-top: calc(var(--hud-inset-top) + 11.5rem);
+  }
 }
 
 /* The page wallpaper behind pages and the loading screen; the glass refracts it. */

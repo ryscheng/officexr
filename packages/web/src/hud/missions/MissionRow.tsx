@@ -50,7 +50,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
           className="flex min-h-11 min-w-0 flex-1 flex-col items-start justify-center gap-0.5 text-left pointer-fine:min-h-0"
         >
           {current && <span className="text-[10px] font-bold tracking-wider text-hud-accent uppercase">Current</span>}
-          <span className={`w-full truncate text-sm font-semibold ${mission.done ? 'text-hud-text-2 line-through' : 'text-hud-text'}`}>{mission.title}</span>
+          <span className={`w-full text-sm font-semibold ${compact ? 'line-clamp-2 break-words' : 'truncate'} ${mission.done ? 'text-hud-text-2 line-through' : 'text-hud-text'}`}>{mission.title}</span>
           <span className="flex w-full items-center gap-1.5 text-xs text-hud-text-2">
             <span className="shrink-0 rounded-md border border-hud-hairline bg-hud-inset px-1.5 text-[10px] font-semibold text-hud-text">
               {SOURCE_LABEL[mission.source]}

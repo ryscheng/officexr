@@ -11,9 +11,15 @@ const PLACEHOLDER = 'Press Enter to chat';
 const input = () => screen.queryByPlaceholderText(PLACEHOLDER) as HTMLInputElement | null;
 const pressEnter = () => act(() => void fireEvent.keyDown(window, { key: 'Enter' }));
 
+beforeEach(() => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+});
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
 describe('chat between clients', () => {
