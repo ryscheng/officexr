@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
+    "./commit": "./src/commit.ts",
     "./join-token": "./src/join-token.ts",
     "./office-api": "./src/office-api.ts"
   },

@@ -1,3 +1,4 @@
+import { resolveCommit } from './commit.ts';
 import { createOfficeApi } from './office-api.ts';
 import { RealtimeServer } from './server.ts';
 
@@ -13,6 +14,7 @@ const server = new RealtimeServer({
   deskClaims: officeApi,
   placedProps: officeApi,
   tokenSecret,
+  deployment: { commit: resolveCommit(process.env) },
 });
 await server.start();
 console.log(`[realtime-server] listening on :${port}`);

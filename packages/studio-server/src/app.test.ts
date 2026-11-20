@@ -663,6 +663,11 @@ describe.each(['internal', 'pub'] as const)('realtime proxy on the %s port', (po
     expect(await (await fetch(`${origins[port]}/health`, { headers })).text()).toBe('up /health');
   });
 
+  it('proxies /version', async () => {
+    const origins = await boot(await realtimeStub());
+    expect(await (await fetch(`${origins[port]}/version`, { headers: { cookie: await cookie() } })).text()).toBe('up /version');
+  });
+
   it('proxies /ws upgrades to the realtime server', async () => {
     const ws = await openWs((await boot(await realtimeStub()))[port], await cookie());
     ws.send('hi');
