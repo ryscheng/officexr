@@ -67,12 +67,14 @@ export interface HudBox {
   h: number;
   /** Scrolled or clipped by an ancestor, so the size is the visible part and not the control's own. */
   clipped: boolean;
+  /** The sheet itself, which is anchored to the bottom edge by design; its controls are separate boxes. */
+  sheet: boolean;
 }
 
 /** Every visible control or panel of the HUD: buttons, inputs and status regions that have a size on screen. */
 export async function collectHudBoxes(page: Page): Promise<HudBox[]> {
   return page.evaluate(() => {
-    const seen: { el: Element; name: string; interactive: boolean; x: number; y: number; w: number; h: number; clipped: boolean }[] = [];
+    const seen: { el: Element; name: string; interactive: boolean; x: number; y: number; w: number; h: number; clipped: boolean; sheet: boolean }[] = [];
     const selector = 'button, input, textarea, [role="status"], [role="dialog"], [data-hud-item]';
     const modal = document.querySelector('[data-hud-modal]');
     for (const el of document.querySelectorAll(selector)) {
@@ -99,7 +101,7 @@ export async function collectHudBoxes(page: Page): Promise<HudBox[]> {
       const r = { x: left, y: top, width: right - left, height: bottom - top };
       if (r.width < 2 || r.height < 2) continue;
       const name = el.getAttribute('aria-label') || el.getAttribute('data-hud-item') || (el.textContent ?? '').trim().slice(0, 30) || el.tagName.toLowerCase();
-      seen.push({ el, name, interactive: el.matches('button, input, textarea, a[href]'), x: r.x, y: r.y, w: r.width, h: r.height, clipped: r.width < own.width - 1 || r.height < own.height - 1 });
+      seen.push({ el, name, interactive: el.matches('button, input, textarea, a[href]'), x: r.x, y: r.y, w: r.width, h: r.height, clipped: r.width < own.width - 1 || r.height < own.height - 1, sheet: el.matches('[data-hud-modal]') });
     }
     return seen.map(({ el: _el, ...box }) => box);
   });
@@ -131,7 +133,7 @@ export function findOverlaps(boxes: HudBox[], tolerancePx = 2): [HudBox, HudBox]
 /** Boxes that leave the viewport shrunk by the device's safe area. */
 export function findOutside(boxes: HudBox[], viewport: { width: number; height: number }, safe: HudDevice['safe']): HudBox[] {
   return boxes.filter(
-    (b) => b.x < safe.left - 0.5 || b.y < safe.top - 0.5 || b.x + b.w > viewport.width - safe.right + 0.5 || b.y + b.h > viewport.height - safe.bottom + 0.5,
+    (b) => !b.sheet && (b.x < safe.left - 0.5 || b.y < safe.top - 0.5 || b.x + b.w > viewport.width - safe.right + 0.5 || b.y + b.h > viewport.height - safe.bottom + 0.5),
   );
 }
 
@@ -160,8 +162,16 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
     }
     if (name === 'keyboard') {
       const { width, height } = page.viewportSize()!;
-      await page.setViewportSize({ width, height: height - Math.round(height * 0.42) });
-      await page.waitForTimeout(600);
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: height - Math.round(height * 0.42),
+        deviceScaleFactor: 1,
+        mobile: true,
+        screenWidth: width,
+        screenHeight: height,
+      });
+      await page.waitForTimeout(800);
       continue;
     }
     if (typeof name === 'string' && name.startsWith('say:')) {

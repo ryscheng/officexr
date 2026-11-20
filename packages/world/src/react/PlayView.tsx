@@ -21,7 +21,7 @@ import {
 import { WorldLoadingScreen, type WorldLoadingScreenProps } from './LoadingScreen.tsx';
 import { useCameraMode } from './useCameraMode.ts';
 import { useCoarsePointer } from './useCoarsePointer.ts';
-import { useMediaQuery } from './useMediaQuery.ts';
+import { usePortrait } from './usePortrait.ts';
 import { NO_MOVE, type MoveInput } from '../renderer/moveIntent.ts';
 import { VirtualJoystick } from './VirtualJoystick.tsx';
 import { createViewYaw, ViewYawProvider } from './viewYaw.tsx';
@@ -94,7 +94,7 @@ export function PlayView(props: PlayViewProps) {
   const worldFocused = useWorldFocus();
   const moveInputRef = useRef<MoveInput>(NO_MOVE);
   const coarsePointer = useCoarsePointer();
-  const portrait = useMediaQuery('(orientation: portrait)');
+  const portrait = usePortrait();
   const [viewYaw] = useState(createViewYaw);
   const worldConstants = useWorldConstants(props.store);
   const { fixedCamera } = props;

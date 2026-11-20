@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { JaaSMeeting } from '@jitsi/react-sdk';
-import { useCoarsePointer, useMediaQuery } from '@officexr/world/top-down';
+import { useCoarsePointer, usePortrait } from '@officexr/world/top-down';
 import { Maximize2, Mic, MicOff, Minimize2, MonitorOff, MonitorUp } from 'lucide-react';
 import { IconButton } from '../hud/IconButton';
 import { useEscapeLayer } from '../hud/useEscapeLayer';
@@ -32,7 +32,7 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
   const { viewing } = useShareState(voice);
   const [expanded, setExpanded] = useState(false);
   const coarse = useCoarsePointer();
-  const portrait = useMediaQuery('(orientation: portrait)') && coarse;
+  const portrait = usePortrait() && coarse;
   const focused = expanded && viewing !== null;
   useEffect(() => {
     if (viewing === null) {

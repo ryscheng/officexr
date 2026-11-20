@@ -42,35 +42,70 @@ at 1x: desktop 1440x900 and iPhone 13 landscape. `crowd-folded` has the missions
 
 ## Phone portrait
 
-The "Turn your phone" prompt is gone: the office plays upright. Portrait is a touch device with a narrow,
-tall screen (`pointer: coarse` and `orientation: portrait`; Tailwind `pointer-coarse:portrait:`). Checked at
-iPhone 13 (390x844, notch 47 px, home indicator 34 px), iPhone SE (375x667) and Pixel 5 (393x851).
+The rules come from `docs/hud-review/android-hud-best-practice.md` (R1 to R18, with sources). Portrait is a touch
+device with a narrow, tall screen (`pointer: coarse` and `orientation: portrait`; Tailwind `pointer-coarse:portrait:`).
+Desktop and landscape keep the earlier layout. Every position and size lives in one place, the portrait block of
+`src/index.css` (`--hud-inset-*`, `--hud-portrait-*`, `--hud-sheet-*`), so it is easy to adjust.
 
 Layout, from the top down:
 
-- Safe area. `HudLayout` and the joystick sit inside `--hud-inset-*` (12 px, or the device's safe area if larger;
-  `viewport-fit=cover` makes `env(safe-area-inset-*)` real). Nothing is drawn under the notch or the home bar.
-- Top bar (right-aligned, one row, thumb-reachable with a stretch only for the map): chat, menu, ping bell (only
-  once a ping arrived) and map, each 44 px. The identity card does not render on touch.
-- Call pill, only in a call: under the top bar on its own row, with title, mute and leave. In landscape it stays
-  in the top row. Chat, menu and people panels open below the pill in the same column, so they never cover it.
-- Toasts and banners: top centre under the bar; when a call pill is shown they start below it.
-- Bottom left: the virtual joystick (110 px), in the thumb zone, fixed to the safe-area corner.
-- Bottom right: Wave and Speak, only while someone is near; the other thumb.
-- Missions: a full-width bar folded above the joystick (title, progress, count), so the middle of the 3D view and
-  the thumb zones stay clear. Unfolded it is a sheet above the joystick, at most `100dvh - 300px` tall.
-- Build mode needs the B key, so there is no touch build UI; the indicator, if a keyboard is attached, sits in the
-  toasts column.
+- Safe area and insets (R6): the safe area plus 8 px at the top and sides (at least 12 px top, 16 px sides) and plus
+  16 px at the bottom (at least 16 px), so nothing sits in the bottom gesture strip.
+- Top bar, right-aligned: menu, ping bell (only once a ping arrived) and map, each 48 px with 8 px gaps. They fade to
+  40% while the avatar moves. Chat is no longer here (R2: low-frequency items go top, frequent ones go to the thumb).
+- Call pill, only in a call: under the top bar, on its own row. Never faded.
+- Mission chip (R15), top left, under the top bar (and under the call pill): a one-line pill, 40 px visible and 48 px
+  hit area, at most 60% of the width. It shows the current mission (or "Missions") and `done/total`. After 1.5 s of
+  movement it shrinks to icon and count; 0.5 s after the avatar stops it comes back (R13, `useMovingFade`).
+- Toasts and banners: one column, top centre, under the chip row.
+- Bottom left: nothing fixed. The joystick floats (R3): it starts under the thumb where a touch lands on the world in
+  the lower 45% x left 60% of the screen, base 110 px, with a faint hint (40% opacity) in the corner at rest. A touch
+  that lands on a HUD control never starts it, and the world still receives the touch. Settings, Controls has
+  "Joystick: Floating or Fixed" (kept in `localStorage`, `hud/joystickMode.ts`).
+- Bottom right, from the top down: the chat preview (only for 5 s after a message, if the chat is not folded; two lines,
+  tappable), the chat button with the unread badge, then Wave (64 px, raised on an arc) and Speak (72 px) while someone is near
+  (R17).
+- Sheets (R8): chat, missions, menu, people and the new-mission form are bottom sheets under the top bar, with a
+  48 px close button and Escape. One at a time: opening one closes the others. The missions sheet is 55% of the
+  height (90% on screens under 700 px, or after Enlarge). The chat sheet is near full height, follows
+  `visualViewport` (so a keyboard on iOS does not cover the input; Android resizes the window), and keeps the
+  keyboard open after Send.
+- Build mode (R18): while it is open, the mission chip, Wave and Speak and the people sheet are hidden; mute (call pill)
+  and the chat button stay. Build mode still needs the B key, so there is no touch build UI.
+- Touch targets are at least 48 px with at least 8 px between targets (R5).
 
-One panel at a time in portrait: opening the chat input, the menu or the people list folds the missions panel,
-and unfolding the missions panel closes the chat, menu and people list. Fold state defaults to folded on touch;
-a user's choice is kept.
-
-The default view in portrait has no panel over the middle of the screen: top bar, joystick, folded missions bar,
+The default view in portrait has no panel over the middle of the screen: top bar, mission chip, the chat button,
 and Wave and Speak when someone is near. `tests/playwright/hud-layout.spec.ts` covers the portrait phones: no
-overlapping HUD boxes, nothing outside the safe area, 44 px touch targets, no horizontal scroll and a canvas that
-fills the viewport, for every `/hud-preview` scenario.
+overlapping HUD boxes, nothing outside the safe area, 48 px targets, 8 px gaps, nothing in the bottom 16 px,
+the mission chip at most 60% wide and in the top third, one sheet at a time, the chat sheet above a simulated keyboard,
+the chat preview and its fold, the chip collapsing while moving, and the floating and fixed joystick, for every
+`/hud-preview` scenario and state.
 
-Portrait captures, all eight `/hud-preview` scenarios, light and dark, iPhone 13 (390x664 browser viewport) and
-iPhone SE (320x568 browser viewport), are in `docs/hud-review/fold-hide/portrait/` with a `.json` box dump
-beside each. `crowd-missions-open` and `crowd-menu-open` show the one-panel-at-a-time rule.
+## What is not done (follow-up)
+
+- Tap-to-move on the floor (R4): there is no floor-tap walking in the world package today (only `goTo` a player and
+  seat `goToPoint`). It needs a raycast in the renderer and the mugshot and e2e suites, so it is not in this change.
+  The floating joystick leaves the canvas touch alone, so it can be added without changing the stick.
+- HUD settings (R10) other than joystick mode: scale, opacity, left-handed mirror, auto-fade toggle and reset.
+  Left-handed needs every zone mirrored, so it is a separate change.
+- Quick-reply chips in the chat sheet, a "nearby people" chip (R16), first-run hints (R11), haptics and press rings
+  (R7), a queue for toasts (R12, toasts are still stacked), and a Sit button in the right-thumb arc (it still shows
+  in the toast column).
+
+## References: portrait action RPG patterns
+
+Generic patterns of one-handed portrait action games, not any one game's look. Applied as follows.
+
+| Pattern | Applied | How |
+|---|---|---|
+| Zones: thin top strip, nothing persistent in the middle, thumb zone at the bottom | Yes | Top bar and chip at the top; no panel in the middle at rest; chat, Wave and Speak at the bottom right; the floating stick in the lower left. |
+| Floating joystick with an idle hint, not a fixed widget | Yes, with a Fixed option | `VirtualJoystick floating`; portrait only. |
+| One primary context action, large, in the right-thumb arc; secondary smaller on an arc | Yes | Speak 72 px, Wave 64 px raised. The Sit button is not moved (follow-up). |
+| Quest tracker: compact one-line chip top left, tap for a sheet | Yes | Mission chip and the 55% or 90% sheet. |
+| Chat: icon with badge, short ticker, near-full-height sheet with the input above the keyboard | Yes, the icon is bottom right (R2, R14) | Chat button, preview, sheet. |
+| Menus, people, map, settings as full-screen or bottom sheets, one at a time | Menu and people yes; map and settings stay centred modals | They are already one-at-a-time modals with a close button. |
+| Toasts: one slot under the top strip | Partly | One column under the chip row; not queued yet. |
+| 44 px+ targets and safe-area insets | Yes, 48 px | See the layout above. |
+
+Captures are in `docs/hud-review/fold-hide/portrait-v3/` (iPhone 13 and iPhone SE, light and dark) with a `.json` box
+dump beside each; the earlier #259 portrait captures stay in `docs/hud-review/fold-hide/portrait/` as the "before".

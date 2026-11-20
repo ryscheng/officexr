@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Map as MapIcon, Menu, MessageSquare, Settings, Users } from 'lucide-react';
 import type { Actions, OfficeState, PlayerId, Store } from '@officexr/sdk';
-import { useCoarsePointer, useMediaQuery, useStoreSelector } from '@officexr/world/top-down';
+import { useCoarsePointer, usePortrait, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import type { PingSender } from '../ping/usePingSender';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -95,7 +95,7 @@ export function OfficeHud({
   onOpenSettings: () => void;
 }) {
   const coarse = useCoarsePointer();
-  const narrow = useMediaQuery('(orientation: portrait)') && coarse;
+  const narrow = usePortrait() && coarse;
   const chat = useStoreSelector(store, selectChat);
   const moving = useStoreSelector(store, selectSelfMoving);
   const fadeSecondary = useMovingFade(moving, narrow);

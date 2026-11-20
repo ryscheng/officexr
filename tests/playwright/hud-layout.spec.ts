@@ -27,10 +27,11 @@ const GESTURE_STRIP_PX = 16;
 const MAX_CHIP_SHARE = 0.6;
 const LAYOUT_DEVICES = HUD_DEVICES.filter((d) => ['iphone13-landscape', 'pixel5-landscape', 'ipad-landscape', 'desktop', 'iphone13-portrait', 'iphone-se-portrait', 'pixel5-portrait'].includes(d.id));
 
+const PORTRAIT_ONLY = new Set(['missions-sheet', 'chat-sheet', 'chat-keyboard']);
 const isPortrait = (id: string) => id.endsWith('-portrait');
 
 for (const device of LAYOUT_DEVICES) {
-  for (const scenario of [...HUD_SCENARIOS, ...Object.keys(HUD_STATES)]) {
+  for (const scenario of [...HUD_SCENARIOS, ...Object.keys(HUD_STATES).filter((s) => isPortrait(device.id) || !PORTRAIT_ONLY.has(s))]) {
     test(`${scenario} on ${device.id}`, async ({ browser }) => {
       const { page, close } = await openHudPreview(browser, device, scenario, 'light');
       try {
@@ -38,7 +39,7 @@ for (const device of LAYOUT_DEVICES) {
         await applySafeArea(page, device.safe);
         const boxes = await collectHudBoxes(page);
         expect(boxes.length, 'the HUD rendered controls').toBeGreaterThan(3);
-        const viewport = page.viewportSize()!;
+        const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
 
         const page_ = await page.evaluate(() => ({
           scrollWidth: document.documentElement.scrollWidth,
@@ -144,7 +145,7 @@ test.describe('portrait phone', () => {
       const { page, close } = await openHudPreview(browser, device, 'chat-keyboard', 'light');
       try {
         await runScenarioSteps(page, 'chat-keyboard');
-        const viewport = page.viewportSize()!;
+        const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
         const sheet = (await page.getByRole('dialog', { name: 'Chat' }).boundingBox())!;
         const input = (await page.getByPlaceholder('Message').boundingBox())!;
         expect(sheet.y + sheet.height, 'sheet bottom').toBeLessThanOrEqual(viewport.height);
@@ -172,8 +173,8 @@ test.describe('portrait phone', () => {
         await page.keyboard.press('Escape');
         await runScenarioSteps(page, 'chat-peek');
         const preview = page.getByRole('button', { name: /New message from/ });
+        const box = (await preview.boundingBox({ timeout: 3000 }))!;
         await expect(preview).toBeVisible();
-        const box = (await preview.boundingBox())!;
         const viewport = page.viewportSize()!;
         expect(box.y, 'preview stays out of the middle of the view').toBeGreaterThan(viewport.height / 2);
         await page.waitForTimeout(6000);
