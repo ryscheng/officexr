@@ -1,0 +1,74 @@
+{
+ "viewport": {
+  "width": 750,
+  "height": 342
+ },
+ "overlaps": [],
+ "outside": [
+  "Settings",
+  "Show map",
+  "Show people in Preview Office (7)",
+  "Mute microphone",
+  "In call, 2",
+  "Chat · Enter"
+ ],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "Pings",
+   "interactive": true,
+   "x": 642,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Settings",
+   "interactive": true,
+   "x": 694,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Show map",
+   "interactive": true,
+   "x": 648,
+   "y": 64,
+   "w": 90,
+   "h": 90
+  },
+  {
+   "name": "Show people in Preview Office (7)",
+   "interactive": true,
+   "x": 694,
+   "y": 162,
+   "w": 44,
+   "h": 64
+  },
+  {
+   "name": "Mute microphone",
+   "interactive": true,
+   "x": 613.671875,
+   "y": 279,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "In call, 2",
+   "interactive": true,
+   "x": 665.671875,
+   "y": 279,
+   "w": 65.328125,
+   "h": 44
+  },
+  {
+   "name": "Chat · Enter",
+   "interactive": true,
+   "x": 132,
+   "y": 286,
+   "w": 44,
+   "h": 44
+  }
+ ]
+}

@@ -1,6 +1,6 @@
 import { devices, type Browser, type Page } from '@playwright/test';
 
-export const HUD_BASE_URL = 'http://localhost:5176';
+export const HUD_BASE_URL = process.env.HUD_BASE_URL ?? 'http://localhost:5176';
 
 export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full'] as const;
 export type HudScenario = (typeof HUD_SCENARIOS)[number];
@@ -29,7 +29,7 @@ export const HUD_DEVICES: HudDevice[] = [
 
 export type Theme = 'light' | 'dark';
 
-/** Opens `/hud-preview?scenario=` in a fresh context and waits until the HUD and the pad (on touch) are up. */
+/** Opens `/hud-preview?scenario=` in a fresh context and waits until the HUD is up. */
 export async function openHudPreview(browser: Browser, device: HudDevice, scenario: string, theme: Theme): Promise<{ page: Page; close: () => Promise<void> }> {
   const context = await browser.newContext({ ...device.options, baseURL: HUD_BASE_URL });
   await context.addInitScript((t) => {
@@ -44,9 +44,6 @@ export async function openHudPreview(browser: Browser, device: HudDevice, scenar
   await page.goto(`/hud-preview?scenario=${scenario}`);
   if (!device.portraitPhone) {
     await page.getByRole('button', { name: 'Settings' }).first().waitFor({ timeout: 60_000 });
-    if (device.options?.hasTouch) {
-      await page.locator('[data-mobile-action-pad]').waitFor({ timeout: 60_000 });
-    }
     await page.waitForTimeout(2500);
   } else {
     await page.getByText('Turn your phone').waitFor({ timeout: 30_000 });
