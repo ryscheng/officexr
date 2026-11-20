@@ -80,8 +80,8 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
   const percent = progress.total ? (progress.done / progress.total) * 100 : 0;
 
   return (
-    <Panel className="pointer-events-auto flex w-93 max-w-[calc(100vw-24px)] flex-col gap-2 p-3 text-sm pointer-coarse:w-72 pointer-coarse:gap-1 pointer-coarse:p-2">
-      <div className="flex items-center gap-2">
+    <Panel className="pointer-events-auto flex w-93 max-w-[calc(100vw-24px)] flex-col gap-2 p-3 text-sm pointer-coarse:w-72 pointer-coarse:max-h-[calc(100dvh-104px)] pointer-coarse:gap-1 pointer-coarse:p-2">
+      <div className="flex shrink-0 items-center gap-2">
         <PanelTitle className="text-base">Missions</PanelTitle>
         {compact && !unsupported && (
           <>
@@ -122,7 +122,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
       )}
 
       {!unsupported && full && (
-        <div className="flex gap-1.5 overflow-x-auto" role="group" aria-label="Source">
+        <div className="flex shrink-0 gap-1.5 overflow-x-auto" role="group" aria-label="Source">
           {chips.map((c) => (
             <button key={c} type="button" aria-pressed={c === activeSource} className={chipClass(c === activeSource)} onClick={() => setSource(c)}>
               {c === 'all' ? 'All' : SOURCE_LABEL[c]}
@@ -132,7 +132,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
       )}
 
       {!unsupported && !compact && expanded && (
-        <div className="flex items-center gap-3 text-xs text-hud-text-2">
+        <div className="flex shrink-0 items-center gap-3 text-xs text-hud-text-2">
           <span aria-hidden className="h-1.5 flex-1 overflow-hidden rounded-full bg-hud-track">
             <span className="block h-full rounded-full bg-hud-sage-text" style={{ width: `${percent}%` }} />
           </span>
@@ -142,14 +142,14 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
         </div>
       )}
 
-      {api.status === 'error' && (
+      {(api.error || api.status === 'error') && (
         <p role="status" className="text-xs text-hud-rose-text">
-          Could not reach missions. Showing what we have.
+          {api.error ?? 'Could not reach missions. Showing what we have.'}
         </p>
       )}
 
       {showRows && (
-        <ul aria-label={tab === 'mine' ? 'My missions' : 'Team missions'} className="flex max-h-[40dvh] flex-col gap-0.5 pointer-coarse:max-h-none overflow-y-auto overscroll-contain">
+        <ul aria-label={tab === 'mine' ? 'My missions' : 'Team missions'} className="flex max-h-[40dvh] min-h-0 flex-col gap-0.5 pointer-coarse:max-h-none overflow-y-auto overscroll-contain">
           {shown.map((m) => {
             const spot = m.place ? resolvePlace(m.place, areas) : null;
             return (
@@ -180,7 +180,7 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
         <button
           type="button"
           onClick={open}
-          className="flex min-h-10 items-center gap-3 border-t border-hud-separator px-3 pt-2 text-sm text-hud-text-2 hover:text-hud-text pointer-coarse:min-h-11"
+          className="flex min-h-10 shrink-0 items-center gap-3 border-t border-hud-separator px-3 pt-2 text-sm text-hud-text-2 hover:text-hud-text pointer-coarse:min-h-11"
         >
           <Plus aria-hidden className="size-4" />
           <span>New mission</span>
@@ -195,14 +195,14 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
       {adding &&
         compact &&
         createPortal(
-          <Panel material="thick" className="pointer-events-auto fixed inset-x-3 bottom-0 z-40 rounded-b-none p-3">
+          <Panel material="thick" data-hud-modal className="pointer-events-auto fixed inset-x-3 bottom-0 z-40 rounded-b-none p-3">
             <NewMissionForm sheet areas={areas} people={people} onAdd={(i) => void add(i)} onCancel={() => setAdding(false)} />
           </Panel>,
           document.body,
         )}
 
       {!unsupported && full && (
-        <p className="text-[11px] text-hud-text-2">
+        <p className="shrink-0 text-[11px] text-hud-text-2">
           {openCount} open · {mine.length - openCount} done
         </p>
       )}

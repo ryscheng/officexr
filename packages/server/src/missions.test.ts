@@ -48,7 +48,7 @@ async function start() {
   };
   const create = async (login: string, body: unknown, officeId = ID) => (await call(login, 'POST', `/api/offices/${officeId}/missions`, body)).body!.mission!;
   const list = async (login: string, officeId = ID) => (await call(login, 'GET', `/api/offices/${officeId}/missions`)).body!.missions!;
-  return { call, create, list, presence, store };
+  return { call, create, list, presence, store, base };
 }
 
 const path = (officeId: string, missionId = '') => `/api/offices/${officeId}/missions${missionId && `/${missionId}`}`;
@@ -67,6 +67,17 @@ describe('missions routes', () => {
     expect((await h.call('a', 'GET', path('not-a-uuid'))).status).toBe(404);
     expect((await h.call('a', 'GET', path('33333333-3333-4333-8333-333333333333'))).status).toBe(404);
     expect((await h.call('a', 'PUT', path(ID))).status).toBe(405);
+  });
+
+  it('answers 415 to a body that is not application/json, on POST and PATCH', async () => {
+    const h = await start();
+    const mission = await h.create('a', { title: 'x' });
+    const raw = (method: string, url: string, type: string) =>
+      fetch(`${h.base}${url}`, { method, headers: { 'x-test-login': 'a', 'content-type': type }, body: JSON.stringify({ title: 'y' }) });
+    expect((await raw('POST', path(ID), 'text/plain')).status).toBe(415);
+    expect((await raw('PATCH', path(ID, mission.id), 'application/x-www-form-urlencoded')).status).toBe(415);
+    expect((await raw('POST', path(ID), 'application/json; charset=utf-8')).status).toBe(201);
+    expect((await h.list('a')).map((m) => m.title)).toEqual(['y', 'x']);
   });
 
   it('creates with defaults and returns 201', async () => {

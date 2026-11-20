@@ -7,6 +7,7 @@ import { mayPatch, type MissionsStore } from './missionsStore';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BODY_BYTES = 32 * 1024;
 const TOO_LARGE = Symbol('too large');
+const NOT_JSON = Symbol('not json');
 
 export interface MissionsPresence {
   notifyLogin: (officeId: string, login: string, kind: string, payload: unknown) => boolean;
@@ -21,6 +22,9 @@ export interface MissionsOptions {
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
+  if (!/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '')) {
+    return NOT_JSON;
+  }
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -78,6 +82,9 @@ export function missionsMiddleware({ identity, queryOffices, missions, presence 
           return send(405, { error: 'Method not allowed' });
         }
         const body = await readJson(req);
+        if (body === NOT_JSON) {
+          return send(415, { error: 'Content-Type must be application/json' });
+        }
         if (body === TOO_LARGE) {
           return send(413, { error: 'Body too large' });
         }
@@ -109,6 +116,9 @@ export function missionsMiddleware({ identity, queryOffices, missions, presence 
         return send(204);
       }
       const body = await readJson(req);
+      if (body === NOT_JSON) {
+        return send(415, { error: 'Content-Type must be application/json' });
+      }
       if (body === TOO_LARGE) {
         return send(413, { error: 'Body too large' });
       }

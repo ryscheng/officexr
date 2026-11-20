@@ -41,6 +41,20 @@ describe('useHotkey', () => {
     dialog.remove();
   });
 
+  it('stands down while focus is inside a no-hotkeys area, such as the new mission form', () => {
+    const onPress = vi.fn();
+    render(
+      <>
+        <Probe onPress={onPress} />
+        <div data-no-hotkeys>
+          <button type="button">chip</button>
+        </div>
+      </>,
+    );
+    fireEvent.keyDown(document.querySelector('button')!, { key: 'm' });
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
   it('does nothing while disabled', () => {
     const onPress = vi.fn();
     render(<Probe onPress={onPress} enabled={false} />);

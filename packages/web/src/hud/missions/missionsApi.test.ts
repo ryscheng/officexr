@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHttpMissionsClient, MissionsUnsupportedError } from './missionsApi';
+import { createHttpMissionsClient, MissionsRequestError, MissionsUnsupportedError, newMissionError } from './missionsApi';
 
 const wire = {
   id: 'm1',
@@ -47,12 +47,30 @@ describe('createHttpMissionsClient', () => {
     expect((remove.mock.calls[0] as unknown as [string, RequestInit])[1].method).toBe('DELETE');
   });
 
-  it('reports a 404 as an unsupported server on every call', async () => {
+  it('reports a 404 on list as an unsupported server', async () => {
+    await expect(createHttpMissionsClient(reply(404)).list('o')).rejects.toBeInstanceOf(MissionsUnsupportedError);
+  });
+
+  it('reports a 404 on create, patch and delete as a missing mission, not an old server', async () => {
     const client = createHttpMissionsClient(reply(404));
-    await expect(client.list('o')).rejects.toBeInstanceOf(MissionsUnsupportedError);
-    await expect(client.create('o', { title: 'x' })).rejects.toBeInstanceOf(MissionsUnsupportedError);
-    await expect(client.update('o', 'm', {})).rejects.toBeInstanceOf(MissionsUnsupportedError);
-    await expect(client.remove('o', 'm')).rejects.toBeInstanceOf(MissionsUnsupportedError);
+    for (const call of [() => client.create('o', { title: 'x' }), () => client.update('o', 'm', {}), () => client.remove('o', 'm')]) {
+      const err = await call().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(MissionsRequestError);
+      expect((err as MissionsRequestError).status).toBe(404);
+    }
+  });
+
+  it('words the limit and permission refusals', async () => {
+    const limit = await createHttpMissionsClient(reply(409)).create('o', { title: 'x' }).catch((e: Error) => e);
+    expect((limit as Error).message).toBe('Too many open missions');
+    const owner = await createHttpMissionsClient(reply(403)).update('o', 'm', {}).catch((e: Error) => e);
+    expect((owner as Error).message).toBe('Only the owner can change this mission');
+  });
+
+  it('checks a title has visible text before sending', () => {
+    expect(newMissionError({ title: 'Prepare' })).toBeNull();
+    expect(newMissionError({ title: '​' })).toBe('Title needs visible text');
+    expect(newMissionError({ title: '   ' })).toBe('Title needs visible text');
   });
 
   it('fails with a plain error on another status', async () => {

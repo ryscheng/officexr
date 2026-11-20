@@ -141,7 +141,7 @@ export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand
     }
     const command = onMissionCommand && MISSION_COMMAND.exec(text);
     if (command) {
-      void sendMissionCommand(command[1].trim().slice(0, 140));
+      void sendMissionCommand(command[1].trim());
       return;
     }
     actions.appendChat({
@@ -154,8 +154,8 @@ export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand
     handBack(peek);
   };
 
-  const sendMissionCommand = async (title: string) => {
-    setDraft('');
+  const sendMissionCommand = async (raw: string) => {
+    const title = Array.from(raw).slice(0, 140).join('');
     const added = await onMissionCommand!(title);
     actions.applyRemoteChat({
       id: `mission:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -163,7 +163,10 @@ export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand
       text: added ? `Added mission "${title}"` : 'Could not add the mission',
       t: Date.now(),
     });
-    handBack(peek);
+    if (added) {
+      setDraft('');
+      handBack(peek);
+    }
   };
 
   return (

@@ -107,6 +107,17 @@ export const SCENARIOS: Record<string, Scenario> = {
     missions: 'seeded',
     steps: ['Go to Meeting room 1'],
   },
+  'new-mission': {
+    id: 'new-mission',
+    title: 'New mission form open',
+    self: {},
+    players: crowd.slice(0, 3),
+    chat: [],
+    call: [],
+    props: PROPS,
+    zones: PREVIEW_ZONES,
+    missions: 'seeded',
+  },
   'missions-old-server': {
     id: 'missions-old-server',
     title: 'Server without the missions API',

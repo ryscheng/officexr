@@ -231,7 +231,7 @@ export function NewMissionForm({
 
   if (sheet) {
     return (
-      <div ref={rootRef} role="dialog" aria-label="New mission" className="flex flex-col gap-2.5">
+      <div data-no-hotkeys ref={rootRef} role="dialog" aria-label="New mission" className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-hud-text">
             New mission
@@ -257,7 +257,7 @@ export function NewMissionForm({
   }
 
   return (
-    <div ref={rootRef} role="group" aria-label="New mission" className="flex flex-col gap-2.5 rounded-2xl border border-hud-hairline bg-hud-inset/60 p-3">
+    <div data-no-hotkeys ref={rootRef} role="group" aria-label="New mission" className="flex flex-col gap-2.5 rounded-2xl border border-hud-hairline bg-hud-inset/60 p-3">
       <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-hud-text-2 uppercase">
         New mission
         <span className="rounded-full bg-hud-accent/15 px-2 py-0.5 text-[11px] text-hud-accent normal-case">Mine</span>

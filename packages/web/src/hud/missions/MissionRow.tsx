@@ -47,7 +47,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
           type="button"
           aria-expanded={mission.steps.length ? open : undefined}
           onClick={() => mission.steps.length && setOpen((o) => !o)}
-          className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
+          className="flex min-h-11 min-w-0 flex-1 flex-col items-start justify-center gap-0.5 text-left pointer-fine:min-h-0"
         >
           {current && <span className="text-[10px] font-bold tracking-wider text-hud-accent uppercase">Current</span>}
           <span className={`w-full truncate text-sm font-semibold ${mission.done ? 'text-hud-text-2 line-through' : 'text-hud-text'}`}>{mission.title}</span>

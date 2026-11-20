@@ -99,6 +99,23 @@ describe('ChatPanel', () => {
       expect(store.getState().chat.map((m) => m.text)).toEqual(['Could not add the mission']);
     });
 
+    it('keeps the draft when the mission could not be added, and clears it when it was', async () => {
+      await run(async () => false, '/mission Prepare the demo');
+      expect(input()!.value).toBe('/mission Prepare the demo');
+      cleanup();
+      await run(async () => true, '/mission Prepare the demo');
+      expect(input()?.value ?? '').toBe('');
+    });
+
+    it('cuts the title at 140 code points without splitting a surrogate pair', async () => {
+      const create = vi.fn(async () => true);
+      await run(create, `/mission ${'a'.repeat(139)}😀😀`);
+      const title = (create.mock.calls[0] as unknown as [string])[0];
+      expect(Array.from(title)).toHaveLength(140);
+      expect(title.endsWith('😀')).toBe(true);
+      expect(title).not.toMatch(/[\ud800-\udbff]$/);
+    });
+
     it('sends other text, and a bare /mission, as a normal message', async () => {
       const create = vi.fn(async () => true);
       const store = await run(create, '/mission');

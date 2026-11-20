@@ -135,9 +135,7 @@ export function OfficeHud({
     <>
       <HudLayout
         topLeft={
-          coarse ? (
-            missionsPanel
-          ) : (
+          coarse ? undefined : (
             <>
               <IdentityCard
                 store={store}
@@ -189,7 +187,7 @@ export function OfficeHud({
             </>
           )
         }
-        bottomLeft={coarse ? undefined : missionsPanel}
+        bottomLeft={missionsPanel}
         bottomRight={coarse ? <NearYouButtons store={store} onWave={onWave} /> : <NearYouCard store={store} onWave={onWave} />}
       />
       {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} onClose={() => setMapOpen(false)} />}
