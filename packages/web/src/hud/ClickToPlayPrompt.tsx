@@ -1,10 +1,12 @@
 import { MousePointer2 } from 'lucide-react';
-import { useWorldFocus } from '@officexr/world/top-down';
+import { useCoarsePointer, useWorldFocus } from '@officexr/world/top-down';
 import { Panel, PanelTitle } from './ui/Panel';
 
 /** Tells the player the world has lost keyboard focus; clicks pass through to the canvas. */
 export function ClickToPlayPrompt() {
-  if (useWorldFocus()) {
+  const focused = useWorldFocus();
+  const coarse = useCoarsePointer();
+  if (focused || coarse) {
     return null;
   }
   return (

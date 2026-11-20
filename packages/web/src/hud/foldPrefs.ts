@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 export type FoldStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -64,5 +64,7 @@ export function useFold(name: string, defaultFolded: boolean, storage: FoldStora
   const key = `${PREFIX}${name}`;
   const raw = useSyncExternalStore(subscribe, () => read(storage, key));
   const folded = parse(raw) ?? defaultFolded;
-  return { folded, setFolded: (next) => write(storage, key, next), toggle: () => write(storage, key, !folded) };
+  const setFolded = useCallback((next: boolean) => write(storage, key, next), [storage, key]);
+  const toggle = useCallback(() => write(storage, key, !folded), [storage, key, folded]);
+  return { folded, setFolded, toggle };
 }

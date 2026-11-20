@@ -54,3 +54,31 @@ for (const device of LAYOUT_DEVICES) {
     });
   }
 }
+
+test('portrait phone keeps one panel open at a time and the joystick reachable', async ({ browser }) => {
+  const device = HUD_DEVICES.find((d) => d.id === 'iphone13-portrait')!;
+  const { page, close } = await openHudPreview(browser, device, 'crowd', 'light');
+  try {
+    const missions = page.getByRole('button', { name: /^(Collapse|Expand) missions$/ });
+    const menu = page.getByRole('menu', { name: 'Office menu' });
+    await expect(missions).toHaveAttribute('aria-expanded', 'false');
+
+    await page.getByRole('button', { name: 'Expand missions' }).click();
+    await page.getByRole('button', { name: 'Office menu' }).click();
+    await expect(menu).toBeVisible();
+    await expect(missions).toHaveAttribute('aria-expanded', 'false');
+
+    await page.getByRole('button', { name: 'Expand missions' }).click();
+    await expect(missions).toHaveAttribute('aria-expanded', 'true');
+    await expect(menu).toHaveCount(0);
+
+    const joystickHit = await page.evaluate(() => {
+      const el = document.querySelector('[data-hud-item="Joystick"]')!;
+      const r = el.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('[data-hud-item="Joystick"]') !== null;
+    });
+    expect(joystickHit, 'the joystick is not covered').toBe(true);
+  } finally {
+    await close();
+  }
+});

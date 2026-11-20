@@ -75,7 +75,7 @@ export function NearYouButtons({ store, onWave }: { store: Store; onWave: () => 
   }
   return (
     <div className="pointer-events-auto flex flex-col items-end gap-1">
-      <span className="text-xs text-hud-text-2">
+      <span className="hud-glass rounded-full px-2.5 py-0.5 text-xs text-hud-text">
         {near.name} · {formatDistance(near.distanceM)}
       </span>
       <div className="flex items-end gap-3">
