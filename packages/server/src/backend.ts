@@ -8,7 +8,6 @@ import { createDb } from './db';
 import { integrationsFromEnv } from './integrationsConfig';
 import { jaasConfigFromEnv } from './jaasToken';
 
-/** Calendar and Slack statuses change on their own, so a room with players re-reads them this often. */
 const CLAIMS_REFRESH_MS = 3 * 60_000;
 
 export interface BackendOptions {

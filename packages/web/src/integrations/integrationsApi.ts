@@ -7,7 +7,6 @@ export interface IntegrationsStatus {
 
 export const NO_INTEGRATIONS: IntegrationsStatus = { calendar: { enabled: false, connected: false }, slack: { enabled: false } };
 
-/** What this deployment has turned on. Any failure reads as everything off, so the office still opens. */
 export async function fetchIntegrations(fetchFn: typeof apiFetch = apiFetch): Promise<IntegrationsStatus> {
   try {
     const res = await fetchFn('/api/integrations');
@@ -25,7 +24,6 @@ export async function disconnectCalendar(fetchFn: typeof apiFetch = apiFetch): P
   }
 }
 
-/** Asks the server to DM an offline desk claimant on Slack. The server answers in the office chat, so the outcome is not returned. */
 export async function slackPing(officeId: string, targetLogin: string, fetchFn: typeof apiFetch = apiFetch): Promise<void> {
   await fetchFn(`/api/offices/${encodeURIComponent(officeId)}/slack-ping`, {
     method: 'POST',

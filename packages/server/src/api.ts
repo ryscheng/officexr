@@ -201,7 +201,6 @@ export interface ApiOptions {
   /** The catalog's characters, which players may pick besides the built-ins. */
   loadCatalogCharacters: () => Promise<CatalogCharacters>;
   identity: ResolveIdentity;
-  /** Adds optional per-claimant status (calendar, Slack) to the claimants payload; unset leaves it as stored. */
   decorateClaimants?: (claimants: Record<string, DeskClaimant>) => Promise<Record<string, DeskClaimant>>;
   realtimeTokenSecret?: string;
   /** Unset when JaaS isn't configured, which makes `/api/offices/:id/voice-token` a 404. */

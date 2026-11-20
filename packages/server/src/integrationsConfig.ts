@@ -11,7 +11,6 @@ export interface IntegrationServices {
 
 export interface IntegrationEnv {
   env: Record<string, string | undefined>;
-  /** The web backend's `PUBLIC_URL`, which the Google redirect URI is under. */
   publicUrl: string | undefined;
   googleClientId: string | undefined;
   googleClientSecret: string | undefined;
@@ -19,10 +18,6 @@ export interface IntegrationEnv {
   fetch?: typeof fetch;
 }
 
-/**
- * Each integration is on only when all of its settings are set; any other state leaves it off. A calendar key that
- * is too short logs an error and leaves the calendar off, as a bad JaaS key leaves voice off.
- */
 export function integrationsFromEnv({ env, publicUrl, googleClientId, googleClientSecret, calendarLinks, fetch: fetchFn }: IntegrationEnv): IntegrationServices {
   const services: IntegrationServices = {};
   const encryptionSecret = env.CALENDAR_ENCRYPTION_SECRET;

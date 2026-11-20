@@ -6,13 +6,11 @@ const TAG_BYTES = 16;
 const MIN_SECRET_LENGTH = 16;
 
 export interface SecretBox {
-  /** `v1.<iv>.<tag>.<ciphertext>`, base64url. `context` is authenticated but not stored. */
+  /** `context` is bound as AAD, so a value copied to another login does not decrypt. */
   encrypt: (plaintext: string, context: string) => string;
-  /** Throws when the value was tampered with, made with another key, or sealed for another `context`. */
   decrypt: (sealed: string, context: string) => string;
 }
 
-/** AES-256-GCM with a key derived from `secret`; throws when `secret` is too short to derive a key from. */
 export function createSecretBox(secret: string): SecretBox {
   if (secret.length < MIN_SECRET_LENGTH) {
     throw new Error(`The encryption secret must be at least ${MIN_SECRET_LENGTH} characters`);

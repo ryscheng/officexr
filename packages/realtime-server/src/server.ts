@@ -91,7 +91,7 @@ export interface RealtimeServerOptions {
   fetch?: typeof fetch;
   /** First boot-load retry delay; doubles per attempt up to 30 s. Default 2000. */
   bootRetryMs?: number;
-  /** How often rooms with players re-read desk claims, so externally sourced claimant status (calendar, Slack) stays fresh. Default 0: never. */
+  /** How often rooms with players re-read desk claims so calendar and Slack status stay fresh. Default 0: never. */
   claimsRefreshMs?: number;
 }
 
@@ -749,12 +749,10 @@ export class RealtimeServer {
     this.rooms.get(officeId)?.pushPlacedProps(props);
   }
 
-  /** Whether `login` has a live session in `officeId`. */
   hasLiveSession(officeId: string, login: string): boolean {
     return (this.rooms.get(officeId)?.sessionsOf(login).length ?? 0) > 0;
   }
 
-  /** Sends a custom frame to each live session of `login` in `officeId`; false when there is none. */
   notifyLogin(officeId: string, login: string, kind: string, payload: unknown): boolean {
     const sessions = this.rooms.get(officeId)?.sessionsOf(login) ?? [];
     const raw = encodeFrame({ t: 'custom', kind, payload });

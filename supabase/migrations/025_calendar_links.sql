@@ -1,5 +1,4 @@
--- A user's Google Calendar free/busy link: the refresh token, encrypted by the web server (AES-GCM).
--- Keyed by login, not by office, so one link serves every office the user is in.
+-- Keyed by login, not office: one link serves every office.
 -- Only the web server's direct database connection reads or writes this; no policies keeps it off the public API.
 create table if not exists public.calendar_links (
   login             text        primary key,

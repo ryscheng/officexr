@@ -13,7 +13,6 @@ interface Call {
   authorization: string | null;
 }
 
-/** A fake Google: `routes` answer by URL, and every request is recorded. No request leaves the process. */
 function fakeGoogle(routes: Record<string, (body: string) => Response>) {
   const calls: Call[] = [];
   const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

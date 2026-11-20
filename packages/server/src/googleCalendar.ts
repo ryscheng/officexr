@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { BusyInterval } from './calendarStatus';
 
-/** Free/busy only: it exposes when someone is busy, never event titles or attendees. */
+/** Free/busy only: never event titles or attendees. */
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.freebusy';
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -32,7 +32,6 @@ export interface ConsentUrlOptions {
   loginHint: string;
 }
 
-/** The Google consent URL that adds the free/busy scope to a sign-in the user already made. */
 export function consentUrl({ config, state, loginHint }: ConsentUrlOptions): string {
   const url = new URL(AUTH_URL);
   url.search = new URLSearchParams({
@@ -56,7 +55,6 @@ export interface OAuthState {
 
 const sign = (secret: string, payload: string) => createHmac('sha256', secret).update(payload).digest('base64url');
 
-/** A tamper-proof, short-lived `state` that names the login and where to go back to. */
 export function signOAuthState(secret: string, state: OAuthState, now = Date.now()): string {
   const payload = Buffer.from(JSON.stringify({ l: state.login, r: state.returnTo, e: now + STATE_TTL_MS })).toString('base64url');
   return `${payload}.${sign(secret, payload)}`;
@@ -81,11 +79,9 @@ export function verifyOAuthState(secret: string, value: string, now = Date.now()
 }
 
 export interface GoogleCalendarClient {
-  /** Trades the consent `code` for a refresh token; the access token is not kept. */
   exchangeCode: (code: string) => Promise<{ refreshToken: string }>;
   accessToken: (refreshToken: string) => Promise<string>;
   freeBusy: (accessToken: string, timeMin: Date, timeMax: Date) => Promise<BusyInterval[]>;
-  /** Best effort: a token that is already revoked is not an error. */
   revoke: (token: string) => Promise<void>;
 }
 

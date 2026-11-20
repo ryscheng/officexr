@@ -6,7 +6,6 @@ import type { Integrations } from './useIntegrations';
 const buttonClass =
   'rounded-lg bg-hud-inset px-3 py-1 text-xs font-semibold hover:bg-hud-hover focus-visible:outline-2 focus-visible:outline-hud-accent';
 
-/** Connected accounts. Calendar shares only when you are busy or free, never event titles. */
 export function IntegrationsPane({ integrations, returnTo }: { integrations: Integrations; returnTo: string }) {
   const { calendar } = integrations.status;
   if (!calendar.enabled) {

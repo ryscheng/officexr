@@ -34,9 +34,7 @@ export interface AppOptions {
   realtimeTokenSecret?: string;
   /** Server-only JaaS signing settings (`jaasConfigFromEnv`); unset disables `/api/offices/:id/voice-token`. */
   jaas?: JaasConfig;
-  /** Google Calendar status; unset leaves it off. Mounted only with Google sign-in configured, whose `PUBLIC_URL` and `SESSION_SECRET` it uses. */
   calendar?: CalendarIntegration;
-  /** Slack pings and statuses; unset leaves it off. Mounted only with Google sign-in configured, whose `PUBLIC_URL` it uses. */
   slack?: SlackIntegration;
   /** Studio data dir served read-only under `/api`; the storage defaults when unset. */
   studioDataDir?: string;

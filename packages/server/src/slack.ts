@@ -4,7 +4,7 @@ import { createTtlCache } from './ttlCache';
 const SLACK_API = 'https://slack.com/api/';
 const REQUEST_TIMEOUT_MS = 5_000;
 export const SIGNATURE_WINDOW_SECONDS = 5 * 60;
-/** The limits of `ZClaimantSlack`, so one long status cannot make the claimants payload fail validation. */
+/** The limits of `ZClaimantSlack`, so one long status cannot make listDeskClaims fail. */
 const MAX_STATUS_TEXT = 200;
 const MAX_STATUS_EMOJI = 100;
 
@@ -12,16 +12,13 @@ export type SignatureCheck = 'ok' | 'invalid' | 'stale';
 
 export interface SignatureInput {
   signingSecret: string;
-  /** The `x-slack-request-timestamp` header. */
   timestamp: string | undefined;
-  /** The `x-slack-signature` header. */
   signature: string | undefined;
-  /** The raw request body, byte for byte as Slack sent it. */
+  /** The raw body, byte for byte: the signature covers it. */
   body: string;
   now?: number;
 }
 
-/** Checks Slack's `v0` request signature. A timestamp more than 5 minutes off is `stale`, even with a valid signature. */
 export function verifySlackSignature({ signingSecret, timestamp, signature, body, now = Date.now() }: SignatureInput): SignatureCheck {
   const seconds = Number(timestamp);
   if (!timestamp || !signature || !Number.isInteger(seconds)) {
@@ -50,11 +47,9 @@ export interface SlackStatus {
 }
 
 export interface SlackClient {
-  /** The Slack user id for an email, or null when the workspace has no such user. */
   lookupUserByEmail: (email: string) => Promise<string | null>;
   openDm: (userId: string) => Promise<string>;
   postMessage: (message: { channel: string; text: string; blocks?: unknown[] }) => Promise<void>;
-  /** The user's status, or null when it is empty or the app lacks `users.profile:read`. */
   userStatus: (userId: string) => Promise<SlackStatus | null>;
 }
 
@@ -116,22 +111,17 @@ export function createSlackClient(botToken: string, fetchFn: typeof fetch = fetc
 export interface SlackDirectoryOptions {
   client: SlackClient;
   now?: () => number;
-  /** How long a found user id is reused. Default 1 hour. */
   userCacheMs?: number;
-  /** How long "no such user" and lookup failures are remembered. Default 10 minutes and 1 minute. */
   missCacheMs?: number;
   failureCacheMs?: number;
-  /** How long a status is reused. Default 2 minutes. */
   statusCacheMs?: number;
 }
 
 export interface SlackDirectory {
   userIdForEmail: (email: string) => Promise<string | null>;
-  /** Statuses by email, leaving out anyone with no Slack user, no status, or a failed lookup. */
   statuses: (emails: string[]) => Promise<Record<string, SlackStatus>>;
 }
 
-/** Maps officexr logins (emails) to Slack users and their statuses, caching both lookups. */
 export function createSlackDirectory({
   client,
   now = Date.now,
@@ -186,12 +176,10 @@ export const BE_THERE_ACTION = 'be_there_in_5';
 
 export interface PingReply {
   officeId: string;
-  /** The login of the person who pinged, who gets the reply. */
   senderLogin: string;
   senderName: string;
-  /** The login the DM went to, so a click can be checked against the Slack user who made it. */
+  /** Checked against the Slack user who clicks, so only the target can reply. */
   targetLogin: string;
-  /** Who is replying, as the pinger should see them. */
   targetName: string;
 }
 
@@ -202,7 +190,6 @@ export interface PingMessageInput {
   reply: PingReply;
 }
 
-/** The DM body: a plain-text fallback plus Block Kit with an "Open office" link and an "I'll be there in 5" button. */
 export function pingMessage({ senderName, officeName, officeUrl, reply }: PingMessageInput): { text: string; blocks: unknown[] } {
   const text = `${safeName(senderName)} is looking for you in ${safeName(officeName)} — Open office`;
   return {
@@ -223,7 +210,6 @@ export function pingMessage({ senderName, officeName, officeUrl, reply }: PingMe
   };
 }
 
-/** The pinger's reply from a button click, or null when `value` is not one this app wrote. */
 export function parsePingReply(value: unknown): PingReply | null {
   if (typeof value !== 'string') {
     return null;

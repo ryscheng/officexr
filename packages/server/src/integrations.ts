@@ -26,10 +26,8 @@ export interface SlackIntegration {
   directory: SlackDirectory;
 }
 
-/** What the integrations need from the realtime server. */
 export interface OfficePresence {
   hasLiveSession: (officeId: string, login: string) => boolean;
-  /** False when `login` has no live session in the office. */
   notifyLogin: (officeId: string, login: string, kind: string, payload: unknown) => boolean;
 }
 
@@ -38,7 +36,6 @@ export interface IntegrationsOptions {
   queryOffices: QueryOffices;
   deskClaims: Pick<OfficeDeskClaims, 'claimants'>;
   presence: OfficePresence;
-  /** External origin of this app; the base of every link sent to Slack. */
   publicUrl: string;
   sessionSecret: string;
   frontendOrigins: string[];
@@ -48,7 +45,6 @@ export interface IntegrationsOptions {
   now?: () => number;
 }
 
-/** Adds each claimant's calendar status, or their Slack status when they have no calendar. A slow or failing lookup adds nothing. */
 export function claimantDecorator({ calendar, slack }: Pick<IntegrationsOptions, 'calendar' | 'slack'>) {
   if (!calendar && !slack) {
     return undefined;
@@ -100,11 +96,8 @@ const header = (req: IncomingMessage, name: string) => {
   return Array.isArray(value) ? value[0] : value;
 };
 
-/**
- * Calendar connect and disconnect, Slack pings and the Slack interaction endpoint. Each part answers 404 until it is configured.
- * SRP violation: one middleware owns both integrations' routes because they share the request plumbing (identity, JSON and
- * raw body reads, redirects). Splitting it means a shared route-helper module; do that when a third integration lands.
- */
+ // SRP violation: one middleware owns both integrations' routes because they share the request plumbing (identity, body reads, redirects).
+ // Split into a shared route-helper module when a third integration lands.
 export function integrationsMiddleware(options: IntegrationsOptions): NextHandleFunction {
   const { identity, queryOffices, deskClaims, presence, publicUrl, sessionSecret, frontendOrigins, calendar, slack, fetch: fetchFn = fetch, now = Date.now } = options;
   const pingCooldown = createCooldown(SLACK_PING_COOLDOWN_MS, now);

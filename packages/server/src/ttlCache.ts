@@ -1,11 +1,9 @@
 export interface TtlCacheOptions<T> {
-  /** How long a loaded value stays fresh, by value; lets a failed load (`undefined`) expire sooner. */
   ttlMs: (value: T) => number;
   now?: () => number;
   maxEntries?: number;
 }
 
-/** A cache whose concurrent loads of one key share a single call to `load`. A load that throws is not cached. */
 export function createTtlCache<T>({ ttlMs, now = Date.now, maxEntries = 10_000 }: TtlCacheOptions<T>) {
   const entries = new Map<string, { value: T; expiresAt: number }>();
   const inFlight = new Map<string, Promise<T>>();

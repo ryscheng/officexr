@@ -20,7 +20,6 @@ const SLACK_EMOJI: Record<string, string> = {
 };
 
 export interface FrozenStatusSeam {
-  /** Formats an instant as a clock time for this viewer. */
   formatTime?: (at: Date) => string;
 }
 
@@ -31,7 +30,6 @@ export function formatSlackStatus({ text, emoji }: ClaimantSlack): string {
   return [glyph, text].filter(Boolean).join(' ') || AWAY;
 }
 
-/** The status under a frozen avatar's name: calendar first, then Slack, else "Away". `until` is shown in the viewer's own zone. */
 export function frozenStatusLabel(
   frozen: { calendar?: ClaimantCalendar; slack?: ClaimantSlack },
   { formatTime = localTime }: FrozenStatusSeam = {},

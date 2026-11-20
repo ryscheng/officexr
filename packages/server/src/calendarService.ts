@@ -3,11 +3,10 @@ import { GoogleCalendarError, type GoogleCalendarClient } from './googleCalendar
 import type { SecretBox } from './secretBox';
 import { createTtlCache } from './ttlCache';
 
-/** Encrypted refresh tokens by login; the plaintext token never reaches this store. */
 export interface CalendarLinks {
   getMany: (logins: string[]) => Promise<Record<string, string>>;
   set: (login: string, sealedRefreshToken: string) => Promise<void>;
-  /** The sealed token that was stored, if any. With `onlySealed`, removes the row only while it still holds that exact value. */
+  /** With `onlySealed`, removes the row only while it still holds that value, so a stale lookup cannot delete a newer link. */
   remove: (login: string, onlySealed?: string) => Promise<string | null>;
 }
 
@@ -16,9 +15,7 @@ export interface CalendarServiceOptions {
   links: CalendarLinks;
   box: SecretBox;
   now?: () => number;
-  /** How long one login's status is reused. Default 3 minutes. */
   cacheMs?: number;
-  /** How long a failed lookup is remembered, so an outage is not retried on every request. Default 1 minute. */
   failureCacheMs?: number;
 }
 
@@ -26,7 +23,6 @@ export interface CalendarService {
   connect: (login: string, code: string) => Promise<void>;
   disconnect: (login: string) => Promise<void>;
   isConnected: (login: string) => Promise<boolean>;
-  /** Statuses by login, leaving out anyone with no calendar linked or whose lookup failed. */
   statuses: (logins: string[]) => Promise<Record<string, CalendarStatus>>;
 }
 
