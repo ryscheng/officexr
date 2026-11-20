@@ -1,0 +1,280 @@
+{
+ "viewport": {
+  "width": 750,
+  "height": 342
+ },
+ "overlaps": [
+  [
+   "Jump",
+   "Ping Bao Tran"
+  ],
+  [
+   "Jump",
+   "Ping Chiamaka Okonkwo-Adeyemi"
+  ],
+  [
+   "Jump",
+   "Go to Chiamaka Okonkwo-Adeyemi"
+  ],
+  [
+   "Sprint",
+   "Ping Bao Tran"
+  ],
+  [
+   "Sprint",
+   "Ping Chiamaka Okonkwo-Adeyemi"
+  ],
+  [
+   "Poke",
+   "Collapse people list"
+  ],
+  [
+   "Emote",
+   "Avery Preview (you)"
+  ],
+  [
+   "Build",
+   "Pings"
+  ],
+  [
+   "Build",
+   "Build B"
+  ]
+ ],
+ "outside": [
+  "Jump",
+  "Poke",
+  "Settings",
+  "Show map",
+  "Collapse people list",
+  "Go to Bao Tran",
+  "Ping Chiamaka Okonkwo-Adeyemi",
+  "Go to Chiamaka Okonkwo-Adeyemi",
+  "Ping Dmitri Volkov",
+  "Go to Dmitri Volkov",
+  "Ping Esperanza Villanueva Montoya",
+  "Go to Esperanza Villanueva Montoya",
+  "Ping Fatima Al-Sayed",
+  "Go to Fatima Al-Sayed",
+  "Ping Gustavo Ferreira",
+  "Go to Gustavo Ferreira",
+  "Mute microphone",
+  "In call, 2",
+  "Chat · Enter"
+ ],
+ "smallTargets": [
+  "Avery Preview (you) 114x16"
+ ],
+ "boxes": [
+  {
+   "name": "Jump",
+   "x": 658,
+   "y": 250,
+   "w": 80,
+   "h": 80
+  },
+  {
+   "name": "Sprint",
+   "x": 580,
+   "y": 260,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Poke",
+   "x": 668,
+   "y": 172,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Emote",
+   "x": 515.953125,
+   "y": 198.578125,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Lower hand",
+   "x": 567.046875,
+   "y": 130.78125,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Build",
+   "x": 555.328125,
+   "y": 48.09375,
+   "w": 60,
+   "h": 60
+  },
+  {
+   "name": "Set a status",
+   "x": 390.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Lower your hand",
+   "x": 442.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Emotes",
+   "x": 494.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Pings",
+   "x": 546.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Build B",
+   "x": 598.96875,
+   "y": 12,
+   "w": 87.03125,
+   "h": 44
+  },
+  {
+   "name": "Settings",
+   "x": 694,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Show map",
+   "x": 648,
+   "y": 64,
+   "w": 90,
+   "h": 90
+  },
+  {
+   "name": "Collapse people list",
+   "x": 685,
+   "y": 169,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Avery Preview (you)",
+   "x": 541,
+   "y": 227,
+   "w": 113.71875,
+   "h": 16
+  },
+  {
+   "name": "Ping Bao Tran",
+   "x": 631,
+   "y": 256,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Bao Tran",
+   "x": 683,
+   "y": 256,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Chiamaka Okonkwo-Adeyemi",
+   "x": 631,
+   "y": 310,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Chiamaka Okonkwo-Adeyemi",
+   "x": 683,
+   "y": 310,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Dmitri Volkov",
+   "x": 631,
+   "y": 363,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Dmitri Volkov",
+   "x": 683,
+   "y": 363,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Esperanza Villanueva Montoya",
+   "x": 631,
+   "y": 416,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Esperanza Villanueva Montoya",
+   "x": 683,
+   "y": 416,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Fatima Al-Sayed",
+   "x": 631,
+   "y": 470,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Fatima Al-Sayed",
+   "x": 683,
+   "y": 470,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Ping Gustavo Ferreira",
+   "x": 631,
+   "y": 523,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Go to Gustavo Ferreira",
+   "x": 683,
+   "y": 523,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Mute microphone",
+   "x": 357.671875,
+   "y": 279,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "In call, 2",
+   "x": 409.671875,
+   "y": 279,
+   "w": 65.328125,
+   "h": 44
+  },
+  {
+   "name": "Chat · Enter",
+   "x": 132,
+   "y": 286,
+   "w": 44,
+   "h": 44
+  }
+ ]
+}

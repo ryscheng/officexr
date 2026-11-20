@@ -40,13 +40,24 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: { width: 1400, height: 900 } },
     },
   ],
-  webServer: {
-    command: 'pnpm --filter @officexr/studio dev',
-    url: 'http://localhost:5174',
-    reuseExistingServer: !process.env.CI,
-    env: { OFFICEXR_STUDIO_DATA_DIR: process.env.OFFICEXR_E2E_STUDIO_DATA_DIR },
-    timeout: 60_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
+  webServer: [
+    {
+      command: 'pnpm --filter @officexr/studio dev',
+      url: 'http://localhost:5174',
+      reuseExistingServer: !process.env.CI,
+      env: { OFFICEXR_STUDIO_DATA_DIR: process.env.OFFICEXR_E2E_STUDIO_DATA_DIR },
+      timeout: 60_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      // The web HUD with no backend, for the hud-* specs; it bakes the default map's layout first.
+      command: 'pnpm --filter @officexr/web dev:hud-preview',
+      url: 'http://localhost:5176/hud-preview',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  ],
 });

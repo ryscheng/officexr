@@ -107,6 +107,7 @@ officexr/
 pnpm dev          # Start web dev server (Vite, http://localhost:5173) with the backend in-process
 pnpm build        # Build the web SPA (outputs to packages/web/dist/)
 pnpm preview      # Preview the SPA build (static only: no API)
+pnpm --filter @officexr/web dev:hud-preview   # HUD preview with no backend: http://localhost:5176/hud-preview?scenario=crowd
 pnpm --filter @officexr/server start   # Production backend on :4173, admin on :8787
 pnpm --filter @officexr/studio-server start   # Studio backend: internal :5174, public :5175
 pnpm typecheck    # Typecheck every package
@@ -242,6 +243,29 @@ redefines the same tokens under `:root[data-theme="dark"]`; `theme/appearance.ts
 the system) and is initialised in `main.tsx` before the first paint. Use tokens, never raw
 `white`/hex, so both appearances stay correct; the world's loading screen reads the same CSS
 variables with light fallbacks.
+
+### Hermetic HUD preview (`/hud-preview`)
+
+Like the studio's `?test=1`, the web app has one startup branch for tests: `main.tsx` renders
+`src/hud-preview/HudPreview` instead of `App` when `import.meta.env.DEV` is true and the path is
+`/hud-preview`. A production build drops the branch and the module. The preview renders the real
+`OfficeWorld` (HUD over the real `Scene`) with a fake identity and office, joined to an
+in-memory channel (`createInMemoryChannelHub` through `createStack({ mode: 'local' })`) and a store
+seeded from `?scenario=<name>`: `crowd`, `alone`, `wand`, `build`, `focus`, `full`
+(`hud-preview/scenarios.ts`). `OfficeWorld` takes this through its optional `hermetic` prop, which
+skips the join check and the realtime join; nothing else differs from production.
+
+`pnpm --filter @officexr/web dev:hud-preview` serves it on :5176 with no database, sign-in or
+realtime server (`vite.hud-preview.config.ts`: the checked-in studio maps, rooms and models, the
+default map's layout baked first). Ladle stories (`pnpm --filter @officexr/web stories`) render each HUD
+component in its states. Specs: `tests/playwright/hud-layout.spec.ts` asserts no HUD overlaps, nothing
+outside the viewport and safe area, and touch targets of 44 px or more, for every scenario on phone,
+tablet and desktop viewports (in `test:e2e:ci`); `hud-capture.spec.ts` writes screenshots when
+`HUD_CAPTURE_DIR` is set (see `docs/hud-review/`).
+
+HUD geometry comes from the `--hud-*` layout tokens in `index.css` (edge gap, safe-area insets,
+touch target, drawer width); position HUD parts with them and no literal pixel gaps. The specs set
+`--hud-safe-*` to a real device's insets, since Chromium emulation reports zero for `env()`.
 
 ### Studio control kit
 

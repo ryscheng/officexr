@@ -1,0 +1,104 @@
+{
+ "viewport": {
+  "width": 393,
+  "height": 727
+ },
+ "overlaps": [],
+ "outside": [
+  "Set a status",
+  "Raise your hand",
+  "Emotes",
+  "Pings",
+  "Build B",
+  "Settings"
+ ],
+ "smallTargets": [
+  "Loading map… 99x17"
+ ],
+ "boxes": [
+  {
+   "name": "Set a status",
+   "x": 33.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Raise your hand",
+   "x": 85.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Emotes",
+   "x": 137.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Pings",
+   "x": 189.96875,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Build B",
+   "x": 241.96875,
+   "y": 12,
+   "w": 87.03125,
+   "h": 44
+  },
+  {
+   "name": "Settings",
+   "x": 337,
+   "y": 12,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Show map",
+   "x": 291,
+   "y": 64,
+   "w": 90,
+   "h": 90
+  },
+  {
+   "name": "Show people in Preview Office (7)",
+   "x": 337,
+   "y": 162,
+   "w": 44,
+   "h": 64
+  },
+  {
+   "name": "Mute microphone",
+   "x": 0.421875,
+   "y": 664,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "In call, 0",
+   "x": 52.421875,
+   "y": 664,
+   "w": 65.578125,
+   "h": 44
+  },
+  {
+   "name": "Chat · Enter",
+   "x": 132,
+   "y": 671,
+   "w": 44,
+   "h": 44
+  },
+  {
+   "name": "Loading map…",
+   "x": 146.859375,
+   "y": 389,
+   "w": 99.265625,
+   "h": 17
+  }
+ ]
+}
