@@ -101,6 +101,7 @@ const header = (req: IncomingMessage, name: string) => {
 export function integrationsMiddleware(options: IntegrationsOptions): NextHandleFunction {
   const { identity, queryOffices, deskClaims, presence, publicUrl, sessionSecret, frontendOrigins, calendar, slack, fetch: fetchFn = fetch, now = Date.now } = options;
   const pingCooldown = createCooldown(SLACK_PING_COOLDOWN_MS, now);
+  // A signed request stays valid for the signature window, so a replay must be dropped by its timestamp and signature.
   const seenInteractions = createCooldown((SIGNATURE_WINDOW_SECONDS + 60) * 1000, now);
   const officeUrl = (officeId: string) => new URL(`/room/${officeId}`, publicUrl).href;
 
