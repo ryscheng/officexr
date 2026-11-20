@@ -1,0 +1,171 @@
+{
+ "viewport": {
+  "width": 1440,
+  "height": 900
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "Pings",
+   "interactive": true,
+   "x": 1356,
+   "y": 12,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "Settings",
+   "interactive": true,
+   "x": 1396,
+   "y": 12,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "Hide map",
+   "interactive": true,
+   "x": 1399,
+   "y": 61,
+   "w": 16,
+   "h": 16
+  },
+  {
+   "name": "Collapse people list",
+   "interactive": true,
+   "x": 1393,
+   "y": 327,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Bao Tran",
+   "interactive": true,
+   "x": 1357,
+   "y": 397.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Bao Tran",
+   "interactive": true,
+   "x": 1391,
+   "y": 397.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Chiamaka Okonkwo-Adeyemi",
+   "interactive": true,
+   "x": 1357,
+   "y": 436.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Chiamaka Okonkwo-Adeyemi",
+   "interactive": true,
+   "x": 1391,
+   "y": 436.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Dmitri Volkov",
+   "interactive": true,
+   "x": 1357,
+   "y": 475.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Dmitri Volkov",
+   "interactive": true,
+   "x": 1391,
+   "y": 475.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Esperanza Villanueva Montoya",
+   "interactive": true,
+   "x": 1357,
+   "y": 514.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Esperanza Villanueva Montoya",
+   "interactive": true,
+   "x": 1391,
+   "y": 514.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Fatima Al-Sayed",
+   "interactive": true,
+   "x": 1357,
+   "y": 553.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Fatima Al-Sayed",
+   "interactive": true,
+   "x": 1391,
+   "y": 553.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Ping Gustavo Ferreira",
+   "interactive": true,
+   "x": 1357,
+   "y": 592.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Go to Gustavo Ferreira",
+   "interactive": true,
+   "x": 1391,
+   "y": 592.5,
+   "w": 26,
+   "h": 26
+  },
+  {
+   "name": "Mute microphone",
+   "interactive": true,
+   "x": 577.125,
+   "y": 847.5,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "Screen sharing unavailable",
+   "interactive": true,
+   "x": 696.125,
+   "y": 847.5,
+   "w": 32,
+   "h": 32
+  },
+  {
+   "name": "In call, 2",
+   "interactive": true,
+   "x": 736.125,
+   "y": 847.5,
+   "w": 126.75,
+   "h": 32
+  },
+  {
+   "name": "Chat · Enter",
+   "interactive": true,
+   "x": 12,
+   "y": 854,
+   "w": 124.875,
+   "h": 34
+  }
+ ]
+}

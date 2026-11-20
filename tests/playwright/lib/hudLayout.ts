@@ -1,6 +1,6 @@
 import { devices, type Browser, type Page } from '@playwright/test';
 
-export const HUD_BASE_URL = 'http://localhost:5176';
+export const HUD_BASE_URL = process.env.HUD_BASE_URL ?? 'http://localhost:5176';
 
 export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full'] as const;
 export type HudScenario = (typeof HUD_SCENARIOS)[number];
