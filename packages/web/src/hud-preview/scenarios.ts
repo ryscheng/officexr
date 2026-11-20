@@ -1,4 +1,4 @@
-import type { Actions, Bus, EmoteId, PlacedProp, PlayerId, PlayerState, Store } from '@officexr/sdk';
+import type { Actions, EmoteId, PlacedProp, PlayerId, PlayerState, Store } from '@officexr/sdk';
 
 export const SELF_ID = 'avery@example.test';
 export const SELF_NAME = 'Avery Preview';
@@ -161,8 +161,8 @@ export function getScenario(id: string | null): Scenario {
 const NOW = () => performance.now();
 
 /** Puts the scenario into the store; remote players are written directly, as a snapshot handshake would. */
-export function seedScenario(scenario: Scenario, deps: { store: Store; actions: Actions; bus: Bus }): () => void {
-  const { store, actions, bus } = deps;
+export function seedScenario(scenario: Scenario, deps: { store: Store; actions: Actions }): () => void {
+  const { store, actions } = deps;
   const now = NOW();
   actions.upsertPlayer({ id: SELF_ID, name: SELF_NAME, ...scenario.self });
   for (const { at, ...p } of scenario.players) {

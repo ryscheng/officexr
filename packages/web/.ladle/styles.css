@@ -1,0 +1,5 @@
+@import "../src/index.css";
+
+/* Ladle runs Vite from its own root, so tell Tailwind where the HUD classes live. */
+@source "../src";
+@source "../../world/src";

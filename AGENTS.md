@@ -257,15 +257,17 @@ skips the join check and the realtime join; nothing else differs from production
 
 `pnpm --filter @officexr/web dev:hud-preview` serves it on :5176 with no database, sign-in or
 realtime server (`vite.hud-preview.config.ts`: the checked-in studio maps, rooms and models, the
-default map's layout baked first). Ladle stories (`pnpm --filter @officexr/web stories`) render each HUD
-component in its states. Specs: `tests/playwright/hud-layout.spec.ts` asserts no HUD overlaps, nothing
-outside the viewport and safe area, and touch targets of 44 px or more, for every scenario on phone,
-tablet and desktop viewports (in `test:e2e:ci`); `hud-capture.spec.ts` writes screenshots when
-`HUD_CAPTURE_DIR` is set (see `docs/hud-review/`).
+default map's layout baked first). Ladle stories (`pnpm --filter @officexr/web stories`, `src/hud/hud.stories.tsx`)
+render each HUD component over the same seeded scenarios; Ladle's theme toggle switches light and dark.
+Specs: `tests/playwright/hud-layout.spec.ts` asserts no HUD overlaps, nothing outside the viewport and
+safe area, and touch targets of 44 px or more, for every scenario on phone, tablet and desktop
+viewports. It is not in `test:e2e:ci` yet: the current layout fails it (see `docs/hud-review/README.md`),
+so add it to the list once the layout is fixed. `hud-capture.spec.ts` writes screenshots when
+`HUD_CAPTURE_DIR` is set.
 
-HUD geometry comes from the `--hud-*` layout tokens in `index.css` (edge gap, safe-area insets,
-touch target, drawer width); position HUD parts with them and no literal pixel gaps. The specs set
-`--hud-safe-*` to a real device's insets, since Chromium emulation reports zero for `env()`.
+`HudLayout`, the touch pad and the joystick keep off the screen edge through the `--hud-inset-*` tokens in
+`index.css` (edge gap or safe area, whichever is larger). The specs set `--hud-safe-*` to a real device's
+insets, since Chromium emulation reports zero for `env()`.
 
 ### Studio control kit
 

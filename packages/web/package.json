@@ -7,6 +7,8 @@
     "dev": "vite --configLoader runner",
     "build": "tsc -b && vite build --configLoader runner",
     "preview": "vite preview --configLoader runner",
+    "stories": "ladle serve",
+    "stories:build": "ladle build",
     "dev:hud-preview": "pnpm --filter @officexr/world exec tsx scripts/bake-layout.ts --map default && vite --config vite.hud-preview.config.ts --configLoader runner",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -32,6 +34,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@ladle/react": "5.0.3",
     "@tailwindcss/vite": "^4",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^22.7.5",
