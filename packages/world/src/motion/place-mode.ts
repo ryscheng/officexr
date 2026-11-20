@@ -35,6 +35,9 @@ export interface PlaceModeStore {
   rotate(): void;
   setGhost(ghost: GhostState | null): void;
   setNotice(notice: string | null): void;
+  /** Places at the ghost, as Enter does; the scene registers what that means. */
+  place(): void;
+  onPlace(handler: () => void): () => void;
 }
 
 export interface PlacementHost {
@@ -48,6 +51,7 @@ const sameGhost = (a: GhostState | null, b: GhostState | null) =>
 export function createPlaceMode(): PlaceModeStore {
   let state: PlaceModeState = { open: false, kindId: PLACEABLE_KINDS[0].kindId, yawDeg: 0, ghost: null, notice: null };
   const listeners = new Set<() => void>();
+  let placeHandler: (() => void) | null = null;
   const set = (patch: Partial<PlaceModeState>) => {
     state = { ...state, ...patch };
     listeners.forEach((l) => l());
@@ -66,6 +70,13 @@ export function createPlaceMode(): PlaceModeStore {
       if (!sameGhost(state.ghost, ghost)) set({ ghost });
     },
     setNotice: (notice) => set({ notice }),
+    place: () => placeHandler?.(),
+    onPlace(handler) {
+      placeHandler = handler;
+      return () => {
+        if (placeHandler === handler) placeHandler = null;
+      };
+    },
   };
 }
 

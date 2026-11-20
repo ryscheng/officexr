@@ -13,6 +13,7 @@ import { PlaceButton, PlacePalette, usePlaceHotkey } from '../place/PlaceHud';
 import { createBrowserSfx } from '../sfx/browserSfx';
 import { SfxSettingsRows } from '../sfx/SfxSettingsRows';
 import { SpellChip } from '../spell/SpellChip';
+import { WandMobileActions } from '../spell/mobileWandActions';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PingInboxHud } from '../hud/PingInboxHud';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
@@ -27,6 +28,7 @@ import { usePingReceiver } from '../ping/usePingReceiver';
 import { PokeToast } from '../hud/PokeToast';
 import { usePingSender } from '../ping/usePingSender';
 import { EmoteMenu } from '../status/EmoteMenu';
+import { StatusMobileActions } from '../status/mobileStatusActions';
 import { focusedTargetName } from '../status/focusNotice';
 import { FocusPingToast, type FocusNotice } from '../status/FocusPingToast';
 import { PresenceListWithStatus } from '../status/PresenceListWithStatus';
@@ -215,6 +217,8 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       sync={ready.office.sync}
       selfId={ready.local.selfId}
     >
+      <StatusMobileActions />
+      <WandMobileActions store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} placeMode={placeMode} />
       {ready.voice && <JaasMeeting voice={ready.voice} />}
       {ready.voice && <MuteHotkey voice={ready.voice} />}
       {!settings.isOpen && <ClickToPlayPrompt />}

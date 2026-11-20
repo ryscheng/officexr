@@ -59,7 +59,9 @@ export function PlacementController({ store, host }: { store: Store; host: Place
     };
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('mousedown', onMouseDown);
+    const offPlace = host.mode.onPlace(place);
     return () => {
+      offPlace();
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('mousedown', onMouseDown);
     };
