@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
+import type { Bus, MissionsClient, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { SfxProvider } from '@officexr/world/audio';
 import { createPlaceMode, type PlacementHost } from '@officexr/world/motion';
@@ -14,16 +14,16 @@ import { DeskAutoSit } from '../desk/DeskAutoSit';
 import { DeskHud } from '../desk/DeskHud';
 import { usePlaceHotkey } from '../place/usePlaceHotkey';
 import { createBrowserSfx } from '../sfx/browserSfx';
-import { ChatPanel } from '../hud/ChatPanel';
-import { PingInboxHud } from '../hud/PingInboxHud';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
-import { OfficeMinimap } from '../hud/OfficeMinimap';
 import { ConnectionToast } from '../hud/ConnectionToast';
 import { HudBanner } from '../hud/HudBanner';
 import { HudLayout } from '../hud/HudLayout';
+import { OfficeHud } from '../hud/OfficeHud';
+import { createHttpMissionsClient } from '../hud/missions/missionsApi';
+import { useMissionMarker } from '../hud/missions/useMissionMarker';
+import { useMissions } from '../hud/missions/useMissions';
 import { RotatePrompt } from '../hud/RotatePrompt';
-import { OfficeNamePlate } from '../hud/OfficeNamePlate';
-import { PresenceList } from '../hud/PresenceList';
+import { SettingRow } from './SettingsModal';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
 import { usePingSender } from '../ping/usePingSender';
@@ -31,7 +31,6 @@ import { StatusHotkeys } from '../status/StatusHotkeys';
 import { PipContents } from '../pip/PipContents';
 import { popOutActions } from '../pip/popOutActions';
 import { usePictureInPicture } from '../pip/usePictureInPicture';
-import { CallBar } from '../voice/CallBar';
 import { JaasMeeting } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { useMuteHotkey } from '../voice/useMuteHotkey';
@@ -42,7 +41,6 @@ import { playerIdFor } from './playerId';
 import { KeybindsTab } from './KeybindsTab';
 import { NotificationsPane } from './PingSettings';
 import { SettingsProvider, useSettings, type SettingsAction, type SettingsTab } from './Settings';
-import { SettingRow, SettingsButton } from './SettingsModal';
 import { useJoinCheck, type JoinCheckControl } from './useJoinCheck';
 import { useLocalActivity } from './useLocalActivity';
 import { useLocalPresence } from './useLocalPresence';
@@ -62,6 +60,8 @@ const storages = {
   layouts: new FilesystemLayoutStorage({ basePath: apiUrl(paths.layouts) }),
 };
 
+const httpMissions = createHttpMissionsClient();
+
 export function OfficeWorld(props: { office: Office; me: Identity; hermetic?: HermeticWorld }) {
   const api = useMemo(() => createDefaultApi({ apiPath: apiUrl(paths.worldObjectKinds) }), []);
   const sfx = useMemo(createBrowserSfx, []);
@@ -71,7 +71,7 @@ export function OfficeWorld(props: { office: Office; me: Identity; hermetic?: He
       <SfxProvider value={sfx}>
         <SettingsProvider>
           {props.hermetic ? (
-            <World office={props.office} me={props.me} session={props.hermetic.session} join={HERMETIC_JOIN} />
+            <World office={props.office} me={props.me} session={props.hermetic.session} join={HERMETIC_JOIN} missionsClient={props.hermetic.missions ?? httpMissions} />
           ) : (
             <LiveWorld office={props.office} me={props.me} />
           )}
@@ -84,7 +84,7 @@ export function OfficeWorld(props: { office: Office; me: Identity; hermetic?: He
 type ReadySession = Extract<OfficeSession, { type: 'ready' }>;
 
 /** A session built without the backend: the web office then skips the join check and the realtime join. */
-export type HermeticWorld = { session: ReadySession };
+export type HermeticWorld = { session: ReadySession; missions?: MissionsClient };
 
 const HERMETIC_JOIN = { state: 'go' as const, join: () => undefined, cancel: () => undefined };
 
@@ -93,7 +93,7 @@ function LiveWorld(props: { office: Office; me: Identity }) {
   const selfId = useMemo(() => playerIdFor(office, me), [office, me]);
   const join = useJoinCheck(office.id, me.login);
   const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
-  return <World office={office} me={me} session={session} join={join} />;
+  return <World office={office} me={me} session={session} join={join} missionsClient={httpMissions} />;
 }
 
 const isReplaced = (s: OfficeState) => s.realtime.status === 'replaced';
@@ -128,7 +128,7 @@ function PingInboxFeed({ bus, store, inbox }: { bus: Bus; store: Store; inbox: P
 
 const calendarReturnTo = () => (API_ORIGIN ? window.location.href : `${window.location.pathname}${window.location.search}`);
 
-function World({ office: initialOffice, me, session, join }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl }) {
+function World({ office: initialOffice, me, session, join, missionsClient }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl; missionsClient: MissionsClient }) {
   const [office, setOffice] = useState(initialOffice);
   const viewMode = useMemo(() => initialViewMode(), []);
   const local = session.type === 'ready' ? session.local : null;
@@ -172,6 +172,8 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
     }
   }, [session]);
   const pinger = usePingSender(sendPing);
+  const missions = useMissions(missionsClient, initialOffice.id, session.type === 'ready' ? session.subscribeMissionsChanged : undefined);
+  const missionMarker = useMissionMarker(local?.store ?? null, missions.current);
   const integrations = useIntegrations();
   const pingFrozen = useCallback((login: string) => void slackPing(initialOffice.id, login), [initialOffice.id]);
 
@@ -189,6 +191,7 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
     onPingPlayer: pinger.ping,
     onPingFrozen: integrations.status.slack.enabled ? pingFrozen : undefined,
     placement,
+    missionMarker,
   });
   const sharedTabs: SettingsTab[] = [
     {
@@ -222,8 +225,19 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
       {ready.voice && <MuteHotkey voice={ready.voice} />}
       {!settings.isOpen && <ClickToPlayPrompt />}
       <DeskAutoSit store={ready.local.store} selfId={ready.local.selfId} />
-      <HudLayout
-        topCentre={
+      <OfficeHud
+        store={ready.local.store}
+        actions={ready.local.actions}
+        selfId={ready.local.selfId}
+        me={me.login}
+        officeName={office.name}
+        voice={ready.voice}
+        pinger={pinger}
+        pingInbox={pingInbox}
+        missions={missions}
+        onWave={() => ready.office.sync.sendEmote('wave')}
+        onOpenSettings={() => openSettings()}
+        toasts={
           <>
             <ReplacedBanner store={ready.local.store} />
             {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
@@ -231,30 +245,6 @@ function World({ office: initialOffice, me, session, join }: { office: Office; m
             <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
           </>
         }
-        topLeft={<OfficeNamePlate store={ready.local.store} name={office.name} />}
-        topRight={
-          <>
-            <div className="flex items-start gap-2">
-              <PingInboxHud inbox={pingInbox} store={ready.local.store} />
-              <SettingsButton />
-            </div>
-            <OfficeMinimap store={ready.local.store} />
-          </>
-        }
-        rightEdge={
-          <PresenceList
-            store={ready.local.store}
-            selfId={ready.local.selfId}
-            officeName={office.name}
-            pinger={pinger}
-          />
-        }
-        bottomCentre={
-          ready.voice && (
-            <CallBar store={ready.local.store} selfId={ready.local.selfId} voice={ready.voice} pinger={pinger} />
-          )
-        }
-        bottomLeft={<ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />}
       />
       {pip.pipWindow && <PipContents pipWindow={pip.pipWindow} store={ready.local.store} voice={ready.voice} />}
     </>

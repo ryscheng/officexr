@@ -47,7 +47,7 @@ const ARRIVAL_BUBBLE_MS = 4000;
 const firstName = (name: string) => name.trim().split(' ')[0];
 
 /** Announces a player who joins, or finishes naming themselves, while the roster is folded. */
-function ArrivalBubble({ store, selfId }: { store: Store; selfId: PlayerId }) {
+export function ArrivalBubble({ store, selfId, toast = false }: { store: Store; selfId: PlayerId; toast?: boolean }) {
   const [arrival, setArrival] = useState<{ name: string } | null>(null);
   useEffect(
     () =>
@@ -66,7 +66,16 @@ function ArrivalBubble({ store, selfId }: { store: Store; selfId: PlayerId }) {
     const timer = setTimeout(() => setArrival(null), ARRIVAL_BUBBLE_MS);
     return () => clearTimeout(timer);
   }, [arrival]);
+  if (arrival && toast) {
+    return (
+      <div role="status" className="hud-glass flex items-center gap-2 rounded-full border border-hud-edge px-4 py-2 font-hud-body text-sm font-semibold whitespace-nowrap text-hud-text shadow-hud-panel">
+        <span aria-hidden className="size-2 rounded-full bg-hud-accent" />
+        {arrival.name} came in
+      </div>
+    );
+  }
   return (
+    !toast &&
     arrival && (
       <span className="rounded-hud-control bg-hud-accent px-2 py-1 font-hud-body text-xs whitespace-nowrap text-hud-on-accent">
         +1 {arrival.name}

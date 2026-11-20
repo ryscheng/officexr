@@ -7,6 +7,7 @@ import type { BotPool } from '../bot/BotPool.ts';
 import type { FrameStatsSample } from '../renderer/FrameStatsProbe.tsx';
 import type { CameraMode } from '../renderer/config.ts';
 import type { MotionLookState } from '../renderer/motionLook.ts';
+import type { MissionMarkerTarget } from '../renderer/MissionMarker.tsx';
 import { Scene } from '../renderer/Scene.tsx';
 import {
   ErrorBanner,
@@ -73,6 +74,7 @@ export interface PlayViewProps {
   onPingFrozen?: (login: string) => void;
   /** Lets the player place props; absent where nobody builds. */
   placement?: PlacementHost;
+  missionMarker?: MissionMarkerTarget | null;
   /** Overlays rendered above the scene and HUD. */
   children?: React.ReactNode;
 }
@@ -156,6 +158,7 @@ export function PlayView(props: PlayViewProps) {
           onPingPlayer={props.onPingPlayer}
           onPingFrozen={props.onPingFrozen}
           placement={props.placement}
+          missionMarker={props.missionMarker}
           onModelsReady={() => dispatch({ type: 'modelsReady' })}
           onCollidersReady={(roomInstanceId) => dispatch({ type: 'collidersReady', roomInstanceId })}
           onCollidersError={(err) =>

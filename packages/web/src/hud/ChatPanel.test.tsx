@@ -76,6 +76,54 @@ describe('ChatPanel', () => {
     expect(store.getState().chat.map((m) => m.text)).toEqual(['hi']);
   });
 
+  describe('/mission', () => {
+    const run = async (onMissionCommand: (title: string) => Promise<boolean>, text: string) => {
+      const store = createStore({ selfId: 'me', officeId: 'o' });
+      const actions = createActions(store, createBus());
+      render(<ChatPanel store={store} actions={actions} selfId="me" onMissionCommand={onMissionCommand} />);
+      pressEnter();
+      fireEvent.change(input()!, { target: { value: text } });
+      await act(async () => void fireEvent.keyDown(input()!, { key: 'Enter' }));
+      return store;
+    };
+
+    it('creates a mission instead of sending the text, and shows a system line', async () => {
+      const create = vi.fn(async () => true);
+      const store = await run(create, '/mission Prepare the demo');
+      expect(create).toHaveBeenCalledWith('Prepare the demo');
+      expect(store.getState().chat.map((m) => [m.authorId, m.text])).toEqual([['Missions', 'Added mission "Prepare the demo"']]);
+    });
+
+    it('says so when the mission could not be added', async () => {
+      const store = await run(async () => false, '/mission Prepare the demo');
+      expect(store.getState().chat.map((m) => m.text)).toEqual(['Could not add the mission']);
+    });
+
+    it('keeps the draft when the mission could not be added, and clears it when it was', async () => {
+      await run(async () => false, '/mission Prepare the demo');
+      expect(input()!.value).toBe('/mission Prepare the demo');
+      cleanup();
+      await run(async () => true, '/mission Prepare the demo');
+      expect(input()?.value ?? '').toBe('');
+    });
+
+    it('cuts the title at 140 code points without splitting a surrogate pair', async () => {
+      const create = vi.fn(async () => true);
+      await run(create, `/mission ${'a'.repeat(139)}😀😀`);
+      const title = (create.mock.calls[0] as unknown as [string])[0];
+      expect(Array.from(title)).toHaveLength(140);
+      expect(title.endsWith('😀')).toBe(true);
+      expect(title).not.toMatch(/[\ud800-\udbff]$/);
+    });
+
+    it('sends other text, and a bare /mission, as a normal message', async () => {
+      const create = vi.fn(async () => true);
+      const store = await run(create, '/mission');
+      expect(create).not.toHaveBeenCalled();
+      expect(store.getState().chat.map((m) => m.text)).toEqual(['/mission']);
+    });
+  });
+
   it('Escape and Enter on an empty draft close the panel and return the keyboard', () => {
     const { focus } = setup();
     pressEnter();

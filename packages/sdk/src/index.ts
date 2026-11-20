@@ -5,3 +5,4 @@ export * from './spatial/index.ts';
 export * from './spells/index.ts';
 export * from './placement/props.ts';
 export * from './placement/frames.ts';
+export * from './missions/types.ts';

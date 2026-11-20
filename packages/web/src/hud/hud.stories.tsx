@@ -3,6 +3,7 @@ import type { Story } from '@ladle/react';
 import { Bell, Settings } from 'lucide-react';
 import { createPersistentLocalState, type PersistentLocalState } from '@officexr/core-refactor';
 import { createViewYaw, PlayControlsProvider, ViewYawProvider } from '@officexr/world/react';
+import { PREVIEW_OFFICE_ID, previewMissions } from '../hud-preview/previewMissions';
 import { getScenario, SELF_ID, seedScenario } from '../hud-preview/scenarios';
 import { CallBar } from '../voice/CallBar';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -14,6 +15,14 @@ import { IconButton } from './IconButton';
 import { Minimap } from './Minimap';
 import { OfficeNamePlate } from './OfficeNamePlate';
 import { PresenceList } from './PresenceList';
+import { CallCard } from './CallCard';
+import { FullMap } from './FullMap';
+import { IdentityCard } from './IdentityCard';
+import { createInMemoryMissionsClient } from './missions/inMemoryMissions';
+import { MissionsPanel } from './missions/MissionsPanel';
+import { useMissions } from './missions/useMissions';
+import { useOfficeSpots } from './missions/useOfficeSpots';
+import { NearYouButtons, NearYouCard } from './NearYouCard';
 
 export default { title: 'HUD' };
 
@@ -179,3 +188,84 @@ export const LayoutPhoneLandscape = layout('crowd', 844, 390);
 export const LayoutPhoneLandscapeAlone = layout('alone', 844, 390);
 export const LayoutDesktopCrowd = layout('crowd', 1280, 720);
 export const LayoutDesktopFull = layout('full', 1280, 720);
+
+export const Identity: Story = () => (
+  <Seeded scenario="crowd">
+    {(l) => <IdentityCard store={l.store} officeName="Preview Office" unread={2} chatOpen={false} menuOpen={false} onChat={() => {}} onMenu={() => {}} />}
+  </Seeded>
+);
+
+const missionsPanel =
+  (scenario: string, compact: boolean, open?: string): Story =>
+  () => {
+    const client = useMemo(() => createInMemoryMissionsClient(SELF_ID, previewMissions(SELF_ID)), []);
+    return (
+      <Seeded scenario={scenario}>
+        {(l) => <MissionsStory store={l.store} client={client} compact={compact} open={open} />}
+      </Seeded>
+    );
+  };
+
+function MissionsStory({ store, client, compact, open }: { store: PersistentLocalState['store']; client: ReturnType<typeof createInMemoryMissionsClient>; compact: boolean; open?: string }) {
+  const missions = useMissions(client, PREVIEW_OFFICE_ID);
+  const spots = useOfficeSpots(store);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open && missions.status === 'ready') {
+      [...(ref.current?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.includes(open))?.click();
+    }
+  }, [open, missions.status]);
+  return (
+    <div ref={ref}>
+      <MissionsPanel missions={missions} me={SELF_ID} areas={spots.areas} people={spots.people} self={spots.self} compact={compact} />
+    </div>
+  );
+}
+export const MissionsDesktop = missionsPanel('crowd', false);
+export const MissionsNewMission = missionsPanel('crowd', false, 'New mission');
+export const MissionsPhone = missionsPanel('crowd', true);
+
+export const NearYou: Story = () => (
+  <Seeded scenario="crowd">
+    {(l) => (
+      <Providers>
+        <div className="flex items-end gap-6">
+          <NearYouCard store={l.store} onWave={() => {}} />
+          <NearYouButtons store={l.store} onWave={() => {}} />
+        </div>
+      </Providers>
+    )}
+  </Seeded>
+);
+
+export const CallCardInCall: Story = () => {
+  const adapter = useMemo(voice, []);
+  return (
+    <Seeded scenario="crowd">
+      {(l) => (
+        <Providers>
+          <CallCard store={l.store} selfId={l.selfId} voice={adapter} />
+        </Providers>
+      )}
+    </Seeded>
+  );
+};
+
+function FullMapStory() {
+  const client = useMemo(() => createInMemoryMissionsClient(SELF_ID, previewMissions(SELF_ID)), []);
+  const missions = useMissions(client, PREVIEW_OFFICE_ID);
+  return (
+    <Seeded scenario="crowd">
+      {(l) => <FullMapWithRoute store={l.store} current={missions.missions.find((m) => m.id === 'm1')} />}
+    </Seeded>
+  );
+}
+function FullMapWithRoute({ store, current }: { store: PersistentLocalState['store']; current?: { title: string; place: { id: string } | null } }) {
+  const { areas } = useOfficeSpots(store);
+  const room = areas.rooms.find((r) => r.id === current?.place?.id);
+  const to = room && { x: (room.min.x + room.max.x) / 2, z: (room.min.z + room.max.z) / 2 };
+  return (
+    <FullMap store={store} officeName="Preview Office" areas={areas} route={to && current ? { to, label: current.title, areaId: room.id } : null} onClose={() => {}} />
+  );
+}
+export const FullMapWithMissionRoute: Story = () => <FullMapStory />;

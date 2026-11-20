@@ -8,6 +8,8 @@ import { createCors } from './cors';
 import { PreviewTokens } from './previewToken';
 import { signJaasToken, type JaasConfig } from './jaasToken';
 import { claimantDecorator, integrationsMiddleware, type CalendarIntegration, type SlackIntegration } from './integrations';
+import { missionsMiddleware } from './missions';
+import type { MissionsStore } from './missionsStore';
 import { configJsMiddleware } from './runtimeConfig';
 import type { Identity } from './shared';
 import { DEFAULT_MODELS_DIR, staticDirMiddleware } from './staticDir';
@@ -17,6 +19,7 @@ export interface AppOptions {
   characters: OfficeCharacters;
   deskClaims: OfficeDeskClaims;
   placedProps: OfficePlacedProps;
+  missions: MissionsStore;
   createOffice: CreateOffice;
   updateOffice: UpdateOffice;
   isLoginAllowed: IsLoginAllowed;
@@ -29,7 +32,7 @@ export interface AppOptions {
   frontendOrigins?: string[];
   /** Parsed `COOKIE_DOMAIN`, applied to the session cookie. */
   cookieDomain?: string;
-  realtime: Pick<RealtimeServer, 'requestHandler' | 'pushOfficeProps' | 'hasLiveSession' | 'notifyLogin'>;
+  realtime: Pick<RealtimeServer, 'requestHandler' | 'pushOfficeProps' | 'hasLiveSession' | 'notifyLogin' | 'notifyOffice'>;
   /** Must equal the realtime server's `OFFICEXR_REALTIME_TOKEN_SECRET`; unset disables `/api/realtime-token`. */
   realtimeTokenSecret?: string;
   /** Server-only JaaS signing settings (`jaasConfigFromEnv`); unset disables `/api/offices/:id/voice-token`. */
@@ -49,6 +52,7 @@ export async function createApp({
   characters,
   deskClaims,
   placedProps,
+  missions,
   createOffice,
   updateOffice,
   isLoginAllowed,
@@ -117,6 +121,7 @@ export async function createApp({
       }),
     );
   }
+  app.use(missionsMiddleware({ identity, queryOffices, missions, presence: realtime }));
   app.use(
     apiMiddleware({
       queryOffices,

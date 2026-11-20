@@ -37,6 +37,7 @@ export function VirtualJoystick({ inputRef }: { inputRef: React.MutableRefObject
 
   return (
     <div
+      data-hud-item="Joystick"
       onPointerDown={(e) => {
         if (activePointer.current !== null) {
           return;

@@ -21,6 +21,7 @@ import type {
 import type { BotPool } from '../bot/BotPool.ts';
 import { Players } from './Players.tsx';
 import { FrozenAvatars } from './FrozenAvatars.tsx';
+import { MissionMarker, type MissionMarkerTarget } from './MissionMarker.tsx';
 import { CameraRig } from './CameraRig.tsx';
 import { XRAvatarOrigin } from './XRAvatarOrigin.tsx';
 import type { MotionLookState } from './motionLook.ts';
@@ -173,6 +174,7 @@ interface SceneProps {
   onPingPlayer?: (id: PlayerId) => void;
   /** Shows Ping on a frozen avatar's card; absent where an offline person cannot be reached. */
   onPingFrozen?: (login: string) => void;
+  missionMarker?: MissionMarkerTarget | null;
   /** Called once each baked layout's colliders have mounted, with its room instance id. */
   onCollidersReady?: (roomInstanceId: string) => void;
   onCollidersError?: (error: Error) => void;
@@ -372,6 +374,7 @@ export function Scene(props: SceneProps) {
           onPingPlayer={props.onPingPlayer}
         />
         {!props.paused && <FrozenAvatars store={store} onPing={props.onPingFrozen} />}
+        {props.missionMarker && <MissionMarker store={store} selfId={selfId} target={props.missionMarker} />}
         {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} charRadius={charRadius} />}
 
         {/* Mounted after Players: same-priority useFrames run in

@@ -7,7 +7,7 @@ import { useEscapeLayer } from '../hud/useEscapeLayer';
 import type { JaasVoiceAdapter } from './JaasVoiceAdapter';
 import { useMicMuted } from './useMicMuted';
 
-const useShareState = (voice: JaasVoiceAdapter) => useSyncExternalStore(voice.onShareChange, voice.getShareState);
+export const useShareState = (voice: JaasVoiceAdapter) => useSyncExternalStore(voice.onShareChange, voice.getShareState);
 
 // Kept in-viewport but invisible: fully off-screen, Chrome throttles the iframe's timers and the XMPP connection never completes.
 const HIDDEN: CSSProperties = { bottom: 0, right: 0, opacity: 0, zIndex: -1 };

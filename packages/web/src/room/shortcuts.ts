@@ -1,4 +1,4 @@
-export type ShortcutGroup = 'Movement' | 'Camera' | 'Voice' | 'Chat' | 'Menu';
+export type ShortcutGroup = 'Movement' | 'Camera' | 'Voice' | 'Chat' | 'Missions' | 'Menu';
 
 export interface Shortcut {
   group: ShortcutGroup;
@@ -18,6 +18,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { group: 'Voice', keys: 'Alt/⌥ + M', description: 'Mute or unmute your microphone (zone calls start muted)' },
   { group: 'Chat', keys: 'Enter', description: 'Open chat, send a message, or close an empty chat' },
   { group: 'Chat', keys: 'Esc', description: 'Close chat' },
+  { group: 'Missions', keys: 'T', description: 'Add a mission' },
+  { group: 'Missions', keys: 'M', description: 'Open the full map (Esc closes it)' },
   { group: 'Menu', keys: 'Esc', description: 'Open settings (when the mouse is free)' },
   { group: 'Menu', keys: 'Esc', description: 'Back, then close settings' },
   { group: 'Menu', keys: '?', description: 'Open keybinds' },

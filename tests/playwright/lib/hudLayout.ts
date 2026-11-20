@@ -2,7 +2,7 @@ import { devices, type Browser, type Page } from '@playwright/test';
 
 export const HUD_BASE_URL = process.env.HUD_BASE_URL ?? 'http://localhost:5176';
 
-export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full'] as const;
+export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full', 'missions', 'new-mission'] as const;
 export type HudScenario = (typeof HUD_SCENARIOS)[number];
 
 export interface HudDevice {
@@ -43,7 +43,7 @@ export async function openHudPreview(browser: Browser, device: HudDevice, scenar
   page.setDefaultTimeout(60_000);
   await page.goto(`/hud-preview?scenario=${scenario}`);
   if (!device.portraitPhone) {
-    await page.getByRole('button', { name: 'Settings' }).first().waitFor({ timeout: 60_000 });
+    await page.getByRole('button', { name: 'Office menu' }).first().waitFor({ timeout: 60_000 });
     await page.waitForTimeout(2500);
   } else {
     await page.getByText('Turn your phone').waitFor({ timeout: 30_000 });
@@ -66,12 +66,28 @@ export async function collectHudBoxes(page: Page): Promise<HudBox[]> {
   return page.evaluate(() => {
     const seen: { el: Element; name: string; interactive: boolean; x: number; y: number; w: number; h: number }[] = [];
     const selector = 'button, input, textarea, [role="status"], [role="dialog"], [data-hud-item]';
+    const modal = document.querySelector('[data-hud-modal]');
     for (const el of document.querySelectorAll(selector)) {
       if (el.closest('[data-hud-ignore]')) continue;
+      if (modal && !modal.contains(el)) continue;
       const style = getComputedStyle(el);
       if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) continue;
       if (el.closest('[inert],[aria-hidden="true"]')) continue;
-      const r = el.getBoundingClientRect();
+      let left = el.getBoundingClientRect().left;
+      let top = el.getBoundingClientRect().top;
+      let right = el.getBoundingClientRect().right;
+      let bottom = el.getBoundingClientRect().bottom;
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const overflow = getComputedStyle(a);
+        if (/auto|scroll|hidden/.test(`${overflow.overflowX} ${overflow.overflowY}`)) {
+          const c = a.getBoundingClientRect();
+          left = Math.max(left, c.left);
+          top = Math.max(top, c.top);
+          right = Math.min(right, c.right);
+          bottom = Math.min(bottom, c.bottom);
+        }
+      }
+      const r = { x: left, y: top, width: right - left, height: bottom - top };
       if (r.width < 2 || r.height < 2) continue;
       const name = el.getAttribute('aria-label') || el.getAttribute('data-hud-item') || (el.textContent ?? '').trim().slice(0, 30) || el.tagName.toLowerCase();
       seen.push({ el, name, interactive: el.matches('button, input, textarea, a[href]'), x: r.x, y: r.y, w: r.width, h: r.height });
@@ -120,6 +136,7 @@ export async function applySafeArea(page: Page, safe: HudDevice['safe']): Promis
 
 const SCENARIO_STEPS: Record<string, (string | RegExp)[]> = {
   build: ['More actions', /^Build$/],
+  'new-mission': ['Show all missions', 'New mission'],
   focus: [/^(Show people in|People and map)/],
   full: [/^(Show people in|People and map)/],
 };

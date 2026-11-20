@@ -98,6 +98,18 @@ officexr/
   the session, never the request) with the server-only `OFFICEXR_JAAS_PRIVATE_KEY` /
   `OFFICEXR_JAAS_API_KEY_ID`; `/config.js` serves only the public `VITE_JAAS_APP_ID`. Never add
   a JaaS secret to `RUNTIME_CONFIG_KEYS`.
+- **Missions.** A mission is a typed to-do in one office, stored in `office_missions`
+  (migration `026_office_missions.sql`; RLS on with no policies, so only the server's
+  database connection reads it). The contract is `packages/sdk/src/missions/types.ts`. Routes
+  live in `packages/server/src/missions.ts` (`GET`/`POST /api/offices/:id/missions`,
+  `PATCH`/`DELETE .../missions/:missionId`), storage behind `MissionsStore`
+  (`missionsStore.ts` in memory, `missionsDb.ts` Postgres). The list is the caller's own plus
+  shared missions, open first and newest first. Only the owner edits or deletes; anyone in the
+  office may set `done` on a shared mission (else 403). Limits: title 140 characters, 20 steps,
+  200 open missions per owner per office (409). After each write the server sends the custom
+  frame `missions:changed` `{ officeId }` through `RealtimeServer.notifyOffice` (shared
+  missions) or `notifyLogin` (private ones); clients re-read the list over HTTP and old
+  clients ignore the frame. The opt-in Postgres spec is `missionsDb.test.ts` (`DB_URL`).
 
 ---
 

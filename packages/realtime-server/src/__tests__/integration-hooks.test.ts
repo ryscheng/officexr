@@ -56,6 +56,25 @@ describe('integration hooks on the realtime server', () => {
     expect(server.notifyLogin('no-office', 'ann', INTEGRATION_NOTICE_KIND, notice)).toBe(false);
   });
 
+  it('sends a custom frame to everyone in one office, and says whether anyone got it', async () => {
+    const { server, join } = await setup();
+    const received: unknown[][] = [[], [], []];
+    const listen = async (userId: string, officeId: string, into: unknown[]) => {
+      const channel = new WsChannel({ url: `ws://127.0.0.1:${server.boundPort}/ws`, userId, officeId });
+      cleanups.push(() => channel.close());
+      channel.onCustom('missions:changed', (p) => into.push(p));
+      await channel.subscribe();
+    };
+    await listen('ann#1', 'o1', received[0]);
+    await listen('bob#1', 'o1', received[1]);
+    await listen('cat#1', 'o2', received[2]);
+    await join('dan#1');
+    expect(server.notifyOffice('o1', 'missions:changed', { officeId: 'o1' })).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(received).toEqual([[{ officeId: 'o1' }], [{ officeId: 'o1' }], []]);
+    expect(server.notifyOffice('no-office', 'missions:changed', { officeId: 'x' })).toBe(false);
+  });
+
   it('knows who has a live session in an office', async () => {
     const { server, join } = await setup();
     await join('ann#1');
