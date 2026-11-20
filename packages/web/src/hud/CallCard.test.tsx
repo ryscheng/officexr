@@ -7,7 +7,10 @@ import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { CallCard } from './CallCard';
 import { fakePlayControls } from './fakePlayControls';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 const setup = (inCall: boolean) => {
   const store = createStore({ selfId: 'me', officeId: 'o' });
@@ -50,5 +53,17 @@ describe('CallCard', () => {
     expect(screen.getByRole('button', { name: 'Unmute' })).toBeTruthy();
     act(() => void fireEvent.click(screen.getByRole('button', { name: 'Leave call' })));
     expect(leave).toHaveBeenCalled();
+  });
+
+  it('folds to the title, mute and leave, and unfolds again', () => {
+    setup(true);
+    expect(screen.getByRole('button', { name: 'Collapse call card' }).getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse call card' }));
+    expect(screen.queryByText('Voice on · 3 m away')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Mute microphone' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Leave call' })).toBeTruthy();
+    expect(localStorage.getItem('officexr:fold:call')).toBe('folded');
+    fireEvent.click(screen.getByRole('button', { name: 'Expand call card' }));
+    expect(screen.getByText('Voice on · 3 m away')).toBeTruthy();
   });
 });

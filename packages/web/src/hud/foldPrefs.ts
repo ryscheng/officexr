@@ -21,6 +21,7 @@ function browserStorage(): FoldStorage {
 const parse = (raw: string | null) => (raw === 'folded' ? true : raw === 'open' ? false : null);
 
 const listeners = new Set<() => void>();
+// A choice the storage refused stays for the rest of the session.
 const unsaved = new WeakMap<FoldStorage, Map<string, string>>();
 
 function read(storage: FoldStorage, key: string): string | null {
@@ -59,10 +60,6 @@ function subscribe(onChange: () => void): () => void {
 
 export type Fold = { folded: boolean; setFolded: (folded: boolean) => void; toggle: () => void };
 
-/**
- * Whether a panel is folded; `defaultFolded` applies until the user chooses. The choice is kept in storage
- * under `name` and survives a storage that throws for the rest of the session.
- */
 export function useFold(name: string, defaultFolded: boolean, storage: FoldStorage = browserStorage()): Fold {
   const key = `${PREFIX}${name}`;
   const raw = useSyncExternalStore(subscribe, () => read(storage, key));

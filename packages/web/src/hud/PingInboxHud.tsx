@@ -16,7 +16,7 @@ const selectPresentIds = (s: OfficeState) => Object.keys(s.players).map((id) => 
 const samePresent = (a: { id: string }[], b: { id: string }[]) => sameList(a, b);
 const unreadLabel = (n: number) => (n === 0 ? 'Pings' : `Pings, ${n} unread`);
 
-/** Bell with an unread badge that toggles a list of the pings received this session; absent until one arrives. */
+/** Bell with an unread badge that toggles a list of the pings received this session. */
 export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store }) {
   const [open, setOpen] = useState(false);
   const { entries, unread } = useSyncExternalStore(inbox.subscribe, inbox.getSnapshot);

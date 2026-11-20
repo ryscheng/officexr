@@ -59,7 +59,7 @@ export function CallCard({
     return (
       <Panel className="pointer-events-auto flex items-center gap-2 p-1.5 pr-2">
         <span className="flex min-w-0 flex-col pr-1 pl-2">
-          <span className="max-w-20 truncate text-xs font-semibold">{title}</span>
+          <span className={`truncate text-xs font-semibold ${compact ? 'max-w-20' : 'max-w-44'}`}>{title}</span>
         </span>
         <RoundButton aria-label={muted ? 'Unmute microphone' : 'Mute microphone'} aria-pressed={muted} tone={muted ? 'danger' : 'inset'} onClick={() => voice.setMuted(!muted)}>
           <MuteIcon aria-hidden className="size-5" />

@@ -160,6 +160,7 @@ export function OfficeHud({
           <div className="flex flex-col items-center gap-2 pointer-coarse:mt-16">
             <ArrivalBubble store={store} selfId={selfId} toast />
             {toasts}
+            <BuildIndicator mode={placeMode} />
           </div>
         }
         topRight={
@@ -191,7 +192,6 @@ export function OfficeHud({
             </>
           )
         }
-        bottomCentre={<BuildIndicator mode={placeMode} />}
         bottomLeft={missionsPanel}
         bottomRight={coarse ? <NearYouButtons store={store} onWave={onWave} /> : <NearYouCard store={store} onWave={onWave} />}
       />

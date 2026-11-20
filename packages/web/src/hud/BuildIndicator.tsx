@@ -12,7 +12,6 @@ const HINTS = [
   ['B', 'close'],
 ] as const;
 
-/** Shown only while build mode is open: the selected prop and the keys that drive it. */
 export function BuildIndicator({ mode }: { mode: PlaceModeStore }) {
   const { open, kindId, notice } = useSyncExternalStore(mode.subscribe, mode.get);
   if (!open) {

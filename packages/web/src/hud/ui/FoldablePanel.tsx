@@ -6,14 +6,11 @@ import { Panel, PanelTitle } from './Panel';
 type FoldablePanelProps = Omit<ComponentProps<typeof Panel>, 'title'> & {
   fold: Fold;
   title: ReactNode;
-  /** Names the panel in the toggle's label: "Collapse <label>" and "Expand <label>". */
   label: string;
-  /** Shown in the header between the title and the toggle, folded or not. */
   headerExtra?: ReactNode;
   titleClassName?: string;
 };
 
-/** A HUD panel whose header stays when the body folds away; the toggle reports its state with `aria-expanded`. */
 export function FoldablePanel({ fold, title, label, headerExtra, titleClassName, children, ...panel }: FoldablePanelProps) {
   const bodyId = useId();
   return (
