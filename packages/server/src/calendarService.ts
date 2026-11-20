@@ -7,8 +7,8 @@ import { createTtlCache } from './ttlCache';
 export interface CalendarLinks {
   getMany: (logins: string[]) => Promise<Record<string, string>>;
   set: (login: string, sealedRefreshToken: string) => Promise<void>;
-  /** The sealed token that was stored, if any. */
-  remove: (login: string) => Promise<string | null>;
+  /** The sealed token that was stored, if any. With `onlySealed`, removes the row only while it still holds that exact value. */
+  remove: (login: string, onlySealed?: string) => Promise<string | null>;
 }
 
 export interface CalendarServiceOptions {
@@ -42,7 +42,7 @@ export function createCalendarService({ client, links, box, now = Date.now, cach
       return calendarStatus(await client.freeBusy(accessToken, at, new Date(at.getTime() + STATUS_WINDOW_MS)), at);
     } catch (err) {
       if (err instanceof GoogleCalendarError && err.code === 'invalid_grant') {
-        await links.remove(login);
+        await links.remove(login, sealed);
       } else {
         console.error(`[calendar] free/busy lookup failed: ${err instanceof Error ? err.message : 'unknown error'}`);
       }
@@ -63,17 +63,17 @@ export function createCalendarService({ client, links, box, now = Date.now, cach
       }
     },
     async isConnected(login) {
-      return login in (await links.getMany([login]));
+      return Object.hasOwn(await links.getMany([login]), login);
     },
     async statuses(logins) {
       const stale = logins.filter((login) => !cache.peek(login));
       const sealed = stale.length ? await links.getMany(stale) : {};
       for (const login of stale) {
-        if (!(login in sealed)) {
+        if (!Object.hasOwn(sealed, login)) {
           cache.set(login, undefined);
         }
       }
-      const entries = await Promise.all(logins.map(async (login) => [login, await cache.getOrLoad(login, () => lookup(login, sealed[login]))] as const));
+      const entries = await Promise.all(logins.map(async (login) => [login, await cache.getOrLoad(login, () => lookup(login, Object.hasOwn(sealed, login) ? sealed[login] : undefined))] as const));
       return Object.fromEntries(entries.filter((entry): entry is [string, CalendarStatus] => entry[1] !== undefined));
     },
   };

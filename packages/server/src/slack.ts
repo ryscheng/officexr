@@ -4,6 +4,9 @@ import { createTtlCache } from './ttlCache';
 const SLACK_API = 'https://slack.com/api/';
 const REQUEST_TIMEOUT_MS = 5_000;
 export const SIGNATURE_WINDOW_SECONDS = 5 * 60;
+/** The limits of `ZClaimantSlack`, so one long status cannot make the claimants payload fail validation. */
+const MAX_STATUS_TEXT = 200;
+const MAX_STATUS_EMOJI = 100;
 
 export type SignatureCheck = 'ok' | 'invalid' | 'stale';
 
@@ -99,7 +102,7 @@ export function createSlackClient(botToken: string, fetchFn: typeof fetch = fetc
         const body = (await call('users.profile.get', { user: userId }, 'form')) as { profile?: { status_text?: string; status_emoji?: string } };
         const text = body.profile?.status_text?.trim() ?? '';
         const emoji = body.profile?.status_emoji?.trim() ?? '';
-        return text || emoji ? { text, ...(emoji && { emoji }) } : null;
+        return text || emoji ? { text: text.slice(0, MAX_STATUS_TEXT), ...(emoji && { emoji: emoji.slice(0, MAX_STATUS_EMOJI) }) } : null;
       } catch (err) {
         if (err instanceof SlackApiError && (err.slackError === 'missing_scope' || err.slackError === 'user_not_found')) {
           return null;
@@ -175,7 +178,8 @@ export function createSlackDirectory({
   };
 }
 
-const escapeMrkdwn = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** Escapes Slack markup and breaks `scheme://` so a name cannot become a link. */
+const safeName = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/:\/\//g, ':\u200b//');
 
 export const OPEN_OFFICE_ACTION = 'open_office';
 export const BE_THERE_ACTION = 'be_there_in_5';
@@ -185,6 +189,8 @@ export interface PingReply {
   /** The login of the person who pinged, who gets the reply. */
   senderLogin: string;
   senderName: string;
+  /** The login the DM went to, so a click can be checked against the Slack user who made it. */
+  targetLogin: string;
   /** Who is replying, as the pinger should see them. */
   targetName: string;
 }
@@ -198,13 +204,13 @@ export interface PingMessageInput {
 
 /** The DM body: a plain-text fallback plus Block Kit with an "Open office" link and an "I'll be there in 5" button. */
 export function pingMessage({ senderName, officeName, officeUrl, reply }: PingMessageInput): { text: string; blocks: unknown[] } {
-  const text = `${senderName} is looking for you in ${officeName} — Open office`;
+  const text = `${safeName(senderName)} is looking for you in ${safeName(officeName)} — Open office`;
   return {
     text,
     blocks: [
       {
         type: 'section',
-        text: { type: 'mrkdwn', text: `*${escapeMrkdwn(senderName)}* is looking for you in *${escapeMrkdwn(officeName)}* — <${officeUrl}|Open office>` },
+        text: { type: 'mrkdwn', text: `*${safeName(senderName)}* is looking for you in *${safeName(officeName)}* — <${officeUrl}|Open office>` },
       },
       {
         type: 'actions',
@@ -223,9 +229,9 @@ export function parsePingReply(value: unknown): PingReply | null {
     return null;
   }
   try {
-    const { officeId, senderLogin, senderName, targetName } = JSON.parse(value) as Partial<PingReply>;
-    return typeof officeId === 'string' && typeof senderLogin === 'string' && typeof senderName === 'string' && typeof targetName === 'string'
-      ? { officeId, senderLogin, senderName, targetName }
+    const { officeId, senderLogin, senderName, targetLogin, targetName } = JSON.parse(value) as Partial<PingReply>;
+    return typeof officeId === 'string' && typeof senderLogin === 'string' && typeof senderName === 'string' && typeof targetLogin === 'string' && typeof targetName === 'string'
+      ? { officeId, senderLogin, senderName, targetLogin, targetName }
       : null;
   } catch {
     return null;

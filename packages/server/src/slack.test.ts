@@ -44,7 +44,7 @@ describe('verifySlackSignature', () => {
 });
 
 describe('pingMessage', () => {
-  const reply = { officeId: '11111111-1111-4111-8111-111111111111', senderLogin: 'a@example.com', senderName: 'Alice', targetName: 'bob' };
+  const reply = { officeId: '11111111-1111-4111-8111-111111111111', senderLogin: 'a@example.com', senderName: 'Alice', targetLogin: 'bob@example.com', targetName: 'bob' };
   const message = pingMessage({ senderName: 'Alice', officeName: 'HQ', officeUrl: `https://office.test/room/${reply.officeId}`, reply });
 
   it('has the plain-text fallback the owner asked for', () => {
@@ -67,6 +67,16 @@ describe('pingMessage', () => {
     const text = (blocks[0] as { text: { text: string } }).text.text;
     expect(text).toContain('&lt;!channel&gt; &amp; co');
     expect(text).toContain('&lt;@U1&gt;');
+  });
+
+  it('does not carry a Slack link from a sender name, in the fallback text or the section', () => {
+    const evil = pingMessage({ senderName: '<https://evil.example/login|IT Security>', officeName: 'see https://evil.example now', officeUrl: 'https://office.test/room/x', reply });
+    expect(evil.text).not.toContain('<https://evil.example');
+    expect(evil.text).not.toContain('https://evil.example');
+    const section = (evil.blocks[0] as { text: { text: string } }).text.text;
+    expect(section).not.toContain('<https://evil.example');
+    expect(section).not.toContain('https://evil.example');
+    expect(section).toContain('<https://office.test/room/x|Open office>');
   });
 
   it('reads the reply back from the button value, and nothing else', () => {
@@ -113,6 +123,12 @@ describe('createSlackClient', () => {
       ['chat.postMessage', { channel: 'D1', text: 'hi', blocks: [{ type: 'section' }] }],
     ]);
     expect(calls[1].contentType).toContain('application/json');
+  });
+
+  it('cuts a long status to the limits the claimants payload allows', async () => {
+    const status = await fake(() => ({ ok: true, profile: { status_text: 'x'.repeat(500), status_emoji: `:${'e'.repeat(300)}:` } })).client.userStatus('U1');
+    expect(status?.text).toHaveLength(200);
+    expect(status?.emoji).toHaveLength(100);
   });
 
   it('reads a status, and treats an empty status or a missing scope as none', async () => {

@@ -1446,8 +1446,11 @@ describe('calendar and slack integrations in the app', () => {
       links: {
         getMany: async (logins) => Object.fromEntries(logins.filter((l) => stored.has(l)).map((l) => [l, stored.get(l)!])),
         set: async (login, sealed) => void stored.set(login, sealed),
-        remove: async (login) => {
+        remove: async (login, onlySealed) => {
           const sealed = stored.get(login) ?? null;
+          if (onlySealed !== undefined && sealed !== onlySealed) {
+            return null;
+          }
           stored.delete(login);
           return sealed;
         },

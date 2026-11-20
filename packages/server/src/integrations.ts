@@ -5,7 +5,7 @@ import type { OfficeDeskClaims, QueryOffices, ResolveIdentity } from './api';
 import type { CalendarService } from './calendarService';
 import { createCooldown } from './cooldown';
 import { consentUrl, signOAuthState, verifyOAuthState, type GoogleCalendarConfig } from './googleCalendar';
-import { BE_THERE_ACTION, parsePingReply, pingMessage, verifySlackSignature, type SlackClient, type SlackDirectory } from './slack';
+import { BE_THERE_ACTION, parsePingReply, pingMessage, SIGNATURE_WINDOW_SECONDS, verifySlackSignature, type SlackClient, type SlackDirectory } from './slack';
 import { safeReturnTarget } from './auth';
 import type { Identity, Office } from './shared';
 
@@ -57,10 +57,10 @@ export function claimantDecorator({ calendar, slack }: Pick<IntegrationsOptions,
     const logins = Object.keys(claimants);
     const decorate = async () => {
       const calendars = (await calendar?.service.statuses(logins)) ?? {};
-      const needSlack = logins.filter((login) => !calendars[login]);
+      const needSlack = logins.filter((login) => !Object.hasOwn(calendars, login));
       const slackStatuses = needSlack.length ? ((await slack?.directory.statuses(needSlack)) ?? {}) : {};
       return Object.fromEntries(
-        logins.map((login) => [login, { ...claimants[login], ...(calendars[login] && { calendar: calendars[login] }), ...(!calendars[login] && slackStatuses[login] ? { slack: slackStatuses[login] } : {}) }]),
+        logins.map((login) => [login, { ...claimants[login], ...(Object.hasOwn(calendars, login) ? { calendar: calendars[login] } : {}), ...(!Object.hasOwn(calendars, login) && Object.hasOwn(slackStatuses, login) ? { slack: slackStatuses[login] } : {}) }]),
       );
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -108,6 +108,7 @@ const header = (req: IncomingMessage, name: string) => {
 export function integrationsMiddleware(options: IntegrationsOptions): NextHandleFunction {
   const { identity, queryOffices, deskClaims, presence, publicUrl, sessionSecret, frontendOrigins, calendar, slack, fetch: fetchFn = fetch, now = Date.now } = options;
   const pingCooldown = createCooldown(SLACK_PING_COOLDOWN_MS, now);
+  const seenInteractions = createCooldown((SIGNATURE_WINDOW_SECONDS + 60) * 1000, now);
   const officeUrl = (officeId: string) => new URL(`/room/${officeId}`, publicUrl).href;
 
   return async (req, res, next) => {
@@ -231,7 +232,7 @@ export function integrationsMiddleware(options: IntegrationsOptions): NextHandle
         return send(400, { error: 'You cannot ping yourself' });
       }
       const claimants = await deskClaims.claimants(office.id);
-      if (!(targetLogin in claimants)) {
+      if (!Object.hasOwn(claimants, targetLogin)) {
         return send(403, { error: 'Not a desk claimant of this office' });
       }
       if (presence.hasLiveSession(office.id, targetLogin)) {
@@ -258,7 +259,7 @@ export function integrationsMiddleware(options: IntegrationsOptions): NextHandle
           senderName: me.name,
           officeName: office.name,
           officeUrl: officeUrl(office.id),
-          reply: { officeId: office.id, senderLogin: me.login, senderName: me.name, targetName },
+          reply: { officeId: office.id, senderLogin: me.login, senderName: me.name, targetLogin, targetName },
         });
         await slack.client.postMessage({ channel, ...message });
       } catch (err) {
@@ -294,10 +295,13 @@ export function integrationsMiddleware(options: IntegrationsOptions): NextHandle
       if (check !== 'ok') {
         return send(401, { error: check === 'stale' ? 'Stale request' : 'Invalid signature' });
       }
+      if (seenInteractions.take(`${header(request, 'x-slack-request-timestamp')}:${header(request, 'x-slack-signature')}`) > 0) {
+        return send(200);
+      }
       const payload = parseInteraction(body);
       const action = payload?.actions?.find((a) => a.action_id === BE_THERE_ACTION);
       const reply = action ? parsePingReply(action.value) : null;
-      if (!reply) {
+      if (!reply || !payload?.user?.id || payload.user.id !== (await slack.directory.userIdForEmail(reply.targetLogin))) {
         return send(200);
       }
       const text = 'will be there in 5 minutes';
@@ -320,6 +324,7 @@ export function integrationsMiddleware(options: IntegrationsOptions): NextHandle
 }
 
 interface InteractionPayload {
+  user?: { id?: string };
   actions?: { action_id?: string; value?: string }[];
   response_url?: string;
 }

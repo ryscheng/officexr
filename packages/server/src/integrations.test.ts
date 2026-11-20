@@ -168,7 +168,7 @@ describe('POST /api/offices/:id/slack-ping', () => {
     expect(message.text).toBe('Alice is looking for you in HQ — Open office');
     const buttons = message.blocks[1].elements!;
     expect(buttons[0].url).toBe(`https://office.test/room/${ID}`);
-    expect(JSON.parse(buttons[1].value!)).toEqual({ officeId: ID, senderLogin: 'a@example.com', senderName: 'Alice', targetName: 'bob' });
+    expect(JSON.parse(buttons[1].value!)).toEqual({ officeId: ID, senderLogin: 'a@example.com', senderName: 'Alice', targetLogin: 'bob@example.com', targetName: 'bob' });
     expect(h.presence.notifyLogin).toHaveBeenCalledExactlyOnceWith(ID, 'a@example.com', INTEGRATION_NOTICE_KIND, { from: 'Slack', text: 'Pinged bob on Slack.' });
   });
 
@@ -191,6 +191,14 @@ describe('POST /api/offices/:id/slack-ping', () => {
     expect(h.slackClient.lookupUserByEmail).not.toHaveBeenCalled();
     expect(h.slackClient.postMessage).not.toHaveBeenCalled();
     expect(h.presence.notifyLogin).not.toHaveBeenCalled();
+  });
+
+  it('is 403 for a prototype key as the target, sending nothing', async () => {
+    const h = await start();
+    for (const key of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      expect([key, (await ping(h, key)).status]).toEqual([key, 403]);
+    }
+    expect(h.slackClient.lookupUserByEmail).not.toHaveBeenCalled();
   });
 
   it('is 409 when the target is online, since a normal ping reaches them', async () => {
@@ -239,11 +247,12 @@ describe('POST /api/offices/:id/slack-ping', () => {
 });
 
 describe('POST /api/slack/interactions', () => {
-  const reply = { officeId: ID, senderLogin: 'a@example.com', senderName: 'Alice', targetName: 'bob' };
+  const reply = { officeId: ID, senderLogin: 'a@example.com', senderName: 'Alice', targetLogin: 'bob@example.com', targetName: 'bob' };
   const interaction = (overrides: Record<string, unknown> = {}) =>
     new URLSearchParams({
       payload: JSON.stringify({
         type: 'block_actions',
+        user: { id: 'U_BOB' },
         response_url: 'https://hooks.slack.com/actions/T1/B1/xyz',
         actions: [{ action_id: 'be_there_in_5', value: JSON.stringify(reply) }],
         ...overrides,
@@ -296,6 +305,29 @@ describe('POST /api/slack/interactions', () => {
     expect((await post(h, interaction({ actions: [{ action_id: 'be_there_in_5', value: 'tampered' }] }))).status).toBe(200);
     expect((await post(h, 'payload=not-json')).status).toBe(200);
     expect(h.presence.notifyLogin).not.toHaveBeenCalled();
+  });
+
+  it('acts once on a replayed signed request', async () => {
+    const h = await start();
+    const body = interaction();
+    const timestamp = String(h.now.value / 1000);
+    const signature = sign(timestamp, body);
+    for (let i = 0; i < 3; i++) {
+      expect((await post(h, body, { timestamp, signature })).status).toBe(200);
+    }
+    expect(h.presence.notifyLogin).toHaveBeenCalledTimes(1);
+    h.now.value += 60_000;
+    const later = String(h.now.value / 1000);
+    await post(h, body, { timestamp: later, signature: sign(later, body) });
+    expect(h.presence.notifyLogin).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores a click from a Slack user who is not the ping target', async () => {
+    const h = await start();
+    expect((await post(h, interaction({ user: { id: 'U_SOMEONE_ELSE' } }))).status).toBe(200);
+    expect((await post(h, interaction({ user: undefined }))).status).toBe(200);
+    expect(h.presence.notifyLogin).not.toHaveBeenCalled();
+    expect(h.fetchCalls).toEqual([]);
   });
 
   it('never calls a response_url that is not on hooks.slack.com', async () => {

@@ -167,8 +167,11 @@ export function createDb(connectionString: string | undefined) {
         [login, sealed],
       );
     },
-    remove: async (login) => {
-      const { rows } = await getPool().query<{ refresh_token_enc: string }>('delete from calendar_links where login = $1 returning refresh_token_enc', [login]);
+    remove: async (login, onlySealed) => {
+      const { rows } = await getPool().query<{ refresh_token_enc: string }>(
+        'delete from calendar_links where login = $1 and ($2::text is null or refresh_token_enc = $2) returning refresh_token_enc',
+        [login, onlySealed ?? null],
+      );
       return rows[0]?.refresh_token_enc ?? null;
     },
   };

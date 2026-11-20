@@ -116,8 +116,11 @@ describe('createCalendarService', () => {
     const links: CalendarLinks = {
       getMany: vi.fn(async (logins: string[]) => Object.fromEntries(logins.filter((l) => stored.has(l)).map((l) => [l, stored.get(l)!]))),
       set: async (login, sealed) => void stored.set(login, sealed),
-      remove: async (login) => {
+      remove: async (login, onlySealed) => {
         const sealed = stored.get(login) ?? null;
+        if (onlySealed !== undefined && sealed !== onlySealed) {
+          return null;
+        }
         stored.delete(login);
         return sealed;
       },
@@ -215,5 +218,45 @@ describe('createCalendarService', () => {
     await service.connect('a@example.com', 'code');
     await service.disconnect('a@example.com');
     expect(stored.size).toBe(0);
+  });
+
+  it('keeps a newly connected link when a stale lookup of the old one gets invalid_grant', async () => {
+    const { service, stored } = setup(happyRoutes());
+    await service.connect('a@example.com', 'code');
+    const oldSealed = stored.get('a@example.com')!;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slow = createCalendarService({
+      client: {
+        exchangeCode: async () => ({ refreshToken: 'NEW' }),
+        accessToken: async (token) => {
+          if (token === 'rt-1') {
+            await gate;
+            throw new GoogleCalendarError('invalid_grant', 'revoked');
+          }
+          return 'at';
+        },
+        freeBusy: async () => [],
+        revoke: async () => undefined,
+      },
+      links: { getMany: async () => ({ 'a@example.com': stored.get('a@example.com')! }), set: async (l, s) => void stored.set(l, s), remove: async (l, only) => {
+        const sealed = stored.get(l) ?? null;
+        if (only !== undefined && sealed !== only) {
+          return null;
+        }
+        stored.delete(l);
+        return sealed;
+      } },
+      box,
+      now: () => NOW,
+    });
+    const pending = slow.statuses(['a@example.com']);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await slow.disconnect('a@example.com');
+    await slow.connect('a@example.com', 'code');
+    expect(stored.get('a@example.com')).not.toBe(oldSealed);
+    release();
+    await pending;
+    expect(stored.has('a@example.com')).toBe(true);
   });
 });
