@@ -234,11 +234,7 @@ export function OfficeHud({
     <>
       <HudLayout
         topLeft={
-          coarse ? (
-            narrow && !building && (
-              <div className={inCall ? 'mt-[calc(var(--hud-portrait-bar-row)+var(--hud-portrait-call-row))]' : 'mt-(--hud-portrait-bar-row)'}>{missionsPanel}</div>
-            )
-          ) : (
+          coarse ? undefined : (
             <>
               <IdentityCard
                 store={store}
@@ -256,11 +252,21 @@ export function OfficeHud({
           )
         }
         topCentre={
-          <div className={`flex flex-col items-center gap-2 ${narrow ? (inCall ? 'mt-[calc(var(--hud-portrait-bar-row)+var(--hud-portrait-chip-row)+var(--hud-portrait-call-row))]' : 'mt-[calc(var(--hud-portrait-bar-row)+var(--hud-portrait-chip-row))]') : 'pointer-coarse:mt-16'}`}>
-            <ArrivalBubble store={store} selfId={selfId} toast />
-            {toasts}
-            <BuildIndicator mode={placeMode} />
-          </div>
+          narrow ? (
+            <div className="mt-(--hud-portrait-bar-row) flex flex-col items-center gap-2">
+              <div className="min-h-12">{!building && missionsPanel}</div>
+              {inCall && <div aria-hidden className="h-[calc(var(--hud-portrait-call-row)-0.5rem)]" />}
+              <ArrivalBubble store={store} selfId={selfId} toast />
+              {toasts}
+              <BuildIndicator mode={placeMode} />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 pointer-coarse:mt-16">
+              <ArrivalBubble store={store} selfId={selfId} toast />
+              {toasts}
+              <BuildIndicator mode={placeMode} />
+            </div>
+          )
         }
         topRight={
           <>
@@ -274,7 +280,7 @@ export function OfficeHud({
                 {mapButton}
               </div>
             </div>
-            {(!coarse || narrow) && call}
+            {narrow ? inCall && <div className="mt-(--hud-portrait-chip-row)">{call}</div> : !coarse && call}
           </>
         }
         rightEdge={

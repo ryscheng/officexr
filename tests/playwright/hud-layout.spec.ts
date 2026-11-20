@@ -11,6 +11,8 @@ import {
   findOverlaps,
   dragStick,
   findInGestureStrip,
+  findInMiddleThird,
+  hudCoverage,
   findTightGaps,
   HUD_DEVICES,
   HUD_SCENARIOS,
@@ -68,6 +70,7 @@ for (const device of LAYOUT_DEVICES) {
           if (chip) {
             expect(chip.w, 'missions chip width').toBeLessThanOrEqual(viewport.width * MAX_CHIP_SHARE + 0.5);
             expect(chip.y, 'missions chip sits in the top third').toBeLessThan(viewport.height / 3);
+            expect(Math.abs(chip.x + chip.w / 2 - viewport.width / 2), 'missions chip is centred').toBeLessThanOrEqual(8);
           }
           const sheets = await page.locator('[role="dialog"][data-hud-modal]').count();
           expect(sheets, 'sheets open at once').toBeLessThanOrEqual(1);
@@ -222,6 +225,34 @@ test.describe('portrait phone', () => {
         } finally {
           await close();
         }
+      }
+    });
+  }
+});
+
+const MAX_COVERAGE = 0.2;
+
+test.describe('HUD coverage at rest', () => {
+  const cases = [
+    { name: 'portrait 390x844', device: 'iphone13-portrait', viewport: { width: 390, height: 844 }, middleClear: true },
+    { name: 'landscape 844x390', device: 'iphone13-landscape', viewport: { width: 844, height: 390 }, middleClear: false },
+  ];
+  for (const c of cases) {
+    test(`covers at most ${MAX_COVERAGE * 100}% of the screen on ${c.name}`, async ({ browser }) => {
+      const base = HUD_DEVICES.find((d) => d.id === c.device)!;
+      const device = { ...base, options: { ...base.options, viewport: c.viewport } };
+      const { page, close } = await openHudPreview(browser, device, 'rest', 'light');
+      try {
+        await applySafeArea(page, device.safe);
+        const boxes = await collectHudBoxes(page);
+        const coverage = hudCoverage(boxes, c.viewport);
+        console.log(`HUD coverage at rest, ${c.name}: ${(coverage * 100).toFixed(1)}%`);
+        expect(coverage, 'share of the screen covered by HUD boxes').toBeLessThanOrEqual(MAX_COVERAGE);
+        if (c.middleClear) {
+          expect(findInMiddleThird(boxes, c.viewport).map((b) => b.name), 'HUD in the middle third at rest').toEqual([]);
+        }
+      } finally {
+        await close();
       }
     });
   }

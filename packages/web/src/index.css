@@ -139,7 +139,7 @@
 
 /*
  * Phone portrait placement, in one place (the rules are in docs/hud-review/android-hud-best-practice.md).
- * Rows under the top bar: bar 56 px, then the call pill (68 px) when in a call, then the mission chip (56 px), then toasts.
+ * Rows under the top inset: the top bar (56 px), the mission chip centred (56 px), the call pill when in a call (68 px), then toasts.
  * Insets are the safe area plus 8 px at the top and sides, and plus 16 px at the bottom, away from the gesture strip.
  */
 @media (pointer: coarse) and (orientation: portrait) {
@@ -151,7 +151,7 @@
     --hud-portrait-bar-row: 3.5rem;
     --hud-portrait-call-row: 4.25rem;
     --hud-portrait-chip-row: 3.5rem;
-    --hud-sheet-top-in-call: calc(var(--hud-inset-top) + 64px + var(--hud-portrait-call-row));
+    --hud-sheet-top-in-call: calc(var(--hud-inset-top) + var(--hud-portrait-bar-row) + var(--hud-portrait-chip-row) + var(--hud-portrait-call-row));
     --hud-seat-toast-bottom: calc(var(--hud-inset-bottom) + 14rem);
     --hud-error-top: calc(var(--hud-inset-top) + 7.5rem);
     --hud-share-top: calc(var(--hud-inset-top) + 12.5rem);

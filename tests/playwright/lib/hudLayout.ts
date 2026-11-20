@@ -219,3 +219,25 @@ export function findTightGaps(boxes: HudBox[], minGapPx = 8, tolerancePx = 0.5):
 export function findInGestureStrip(boxes: HudBox[], viewport: { height: number }, stripPx = 16): HudBox[] {
   return boxes.filter((b) => b.interactive && b.y + b.h > viewport.height - stripPx + 0.5);
 }
+
+/** Share of the viewport the HUD boxes cover together (overlapping and nested boxes count once). */
+export function hudCoverage(boxes: HudBox[], viewport: { width: number; height: number }): number {
+  const cells = new Uint8Array(viewport.width * viewport.height);
+  for (const b of boxes) {
+    const x0 = Math.max(0, Math.floor(b.x));
+    const x1 = Math.min(viewport.width, Math.ceil(b.x + b.w));
+    const y0 = Math.max(0, Math.floor(b.y));
+    const y1 = Math.min(viewport.height, Math.ceil(b.y + b.h));
+    for (let y = y0; y < y1; y++) cells.fill(1, y * viewport.width + x0, y * viewport.width + x1);
+  }
+  let covered = 0;
+  for (const c of cells) covered += c;
+  return covered / cells.length;
+}
+
+/** Boxes that reach into the middle third of the viewport's height. */
+export function findInMiddleThird(boxes: HudBox[], viewport: { height: number }): HudBox[] {
+  const top = viewport.height / 3;
+  const bottom = (viewport.height * 2) / 3;
+  return boxes.filter((b) => b.y < bottom - 0.5 && b.y + b.h > top + 0.5);
+}
