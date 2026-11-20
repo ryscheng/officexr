@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { NextHandleFunction } from 'connect';
 import { MISSIONS_CHANGED_KIND, ZMissionPatch, ZNewMission, type MissionsChanged } from '@officexr/sdk';
 import type { QueryOffices, ResolveIdentity } from './api';
-import { PATCH_KEYS, type MissionsStore } from './missionsStore';
+import { mayPatch, type MissionsStore } from './missionsStore';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BODY_BYTES = 32 * 1024;
@@ -52,7 +52,8 @@ export function missionsMiddleware({ identity, queryOffices, missions, presence 
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify(body));
     };
-    const changed = (owner: string, shared: boolean) => {
+    const changed = (office: { id: string }, owner: string, shared: boolean) => {
+      const officeId = office.id;
       const payload: MissionsChanged = { officeId };
       if (shared) {
         presence.notifyOffice(officeId, MISSIONS_CHANGED_KIND, payload);
@@ -88,14 +89,14 @@ export function missionsMiddleware({ identity, queryOffices, missions, presence 
         if (created === 'limit') {
           return send(409, { error: 'limit' });
         }
-        changed(me.login, created.shared);
+        changed(office, me.login, created.shared);
         return send(201, { mission: created });
       }
       if (req.method !== 'PATCH' && req.method !== 'DELETE') {
         return send(405, { error: 'Method not allowed' });
       }
       const current = UUID.test(missionId) ? await missions.get(office.id, missionId) : undefined;
-      if (!current) {
+      if (!current || (current.ownerLogin !== me.login && !current.shared)) {
         return send(404, { error: 'Mission not found' });
       }
       const isOwner = current.ownerLogin === me.login;
@@ -104,7 +105,7 @@ export function missionsMiddleware({ identity, queryOffices, missions, presence 
           return send(403, { error: 'Only the owner can delete a mission' });
         }
         await missions.remove(office.id, current.id);
-        changed(current.ownerLogin, current.shared);
+        changed(office, current.ownerLogin, current.shared);
         return send(204);
       }
       const body = await readJson(req);
@@ -116,20 +117,17 @@ export function missionsMiddleware({ identity, queryOffices, missions, presence 
         return send(400, { error: 'invalid' });
       }
       const patch = parsed.data;
-      if (!isOwner) {
-        const fields = PATCH_KEYS.filter((field) => Object.hasOwn(patch, field));
-        if (!current.shared || fields.length !== 1 || fields[0] !== 'done') {
-          return send(403, { error: 'Only the owner can edit a mission' });
-        }
+      if (!mayPatch(current, me.login, patch)) {
+        return send(403, { error: 'Only the owner can edit a mission' });
       }
-      const updated = await missions.update(office.id, current.id, patch);
+      const updated = await missions.update(office.id, current.id, me.login, patch);
       if (updated === undefined) {
         return send(404, { error: 'Mission not found' });
       }
       if (updated === 'limit') {
         return send(409, { error: 'limit' });
       }
-      changed(updated.ownerLogin, updated.shared || current.shared);
+      changed(office, updated.ownerLogin, updated.shared || current.shared);
       return send(200, { mission: updated });
     } catch (err) {
       console.error(err);

@@ -25,19 +25,37 @@ describe.skipIf(!url)('office_missions in Postgres', () => {
     await db.close();
   });
 
-  it('round-trips a mission, lists own and shared open-first, and stamps done_at', async () => {
+  it('round-trips a mission, lists own and shared open-first, and round-trips done', async () => {
     const office = await newOffice();
     const a = await db.missions.create(office, 'a', { ...input('one'), place: { kind: 'room', id: 'r', label: 'R' }, dueAt: '2026-12-01T09:00:00.000Z' });
     if (a === 'limit') throw new Error('unexpected');
     expect(a).toMatchObject({ ownerLogin: 'a', source: 'mine', dueAt: '2026-12-01T09:00:00.000Z', place: { kind: 'room', id: 'r', label: 'R' }, steps: [{ text: 's', done: false }] });
     await db.missions.create(office, 'b', input('shared', true));
     await db.missions.create(office, 'b', input('private'));
-    await db.missions.update(office, a.id, { done: true });
+    await db.missions.update(office, a.id, 'a', { done: true });
     expect((await db.missions.list(office, 'a')).map((m) => m.title)).toEqual(['shared', 'one']);
-    expect((await admin.query('select done_at from office_missions where id = $1', [a.id])).rows[0].done_at).not.toBeNull();
-    await db.missions.update(office, a.id, { done: false, place: null, steps: [] });
+    await db.missions.update(office, a.id, 'a', { done: false, place: null, steps: [] });
     expect(await db.missions.get(office, a.id)).toMatchObject({ done: false, place: null, steps: [] });
-    expect((await admin.query('select done_at from office_missions where id = $1', [a.id])).rows[0].done_at).toBeNull();
+  });
+
+  it('refuses a non-owner update once the mission is private, under the row lock', async () => {
+    const office = await newOffice();
+    const m = await db.missions.create(office, 'a', input('s', true));
+    if (m === 'limit') throw new Error('unexpected');
+    expect(await db.missions.update(office, m.id, 'b', { done: true })).toMatchObject({ done: true });
+    await db.missions.update(office, m.id, 'a', { shared: false });
+    expect(await db.missions.update(office, m.id, 'b', { done: false })).toBeUndefined();
+    expect(await db.missions.update(office, m.id, 'a', { done: false })).toMatchObject({ done: false });
+  });
+
+  it('has check constraints for title, source and person length', async () => {
+    const office = await newOffice();
+    const insert = (cols: string, vals: unknown[]) =>
+      admin.query(`insert into office_missions (office_id, owner_login, ${cols}) values ($1, 'a', ${vals.map((_, i) => `$${i + 2}`).join(', ')})`, [office, ...vals]);
+    await expect(insert('title', [''])).rejects.toThrow();
+    await expect(insert('title', ['x'.repeat(141)])).rejects.toThrow();
+    await expect(insert('title, source', ['t', 'fax'])).rejects.toThrow();
+    await expect(insert('title, person_login', ['t', 'x'.repeat(201)])).rejects.toThrow();
   });
 
   it('keeps an owner at the open limit when many creates race', async () => {
@@ -53,6 +71,6 @@ describe.skipIf(!url)('office_missions in Postgres', () => {
     if (m === 'limit') throw new Error('unexpected');
     expect(await db.missions.remove(office, m.id)).toBe(true);
     expect(await db.missions.remove(office, m.id)).toBe(false);
-    expect(await db.missions.update(office, m.id, { done: true })).toBeUndefined();
+    expect(await db.missions.update(office, m.id, 'a', { done: true })).toBeUndefined();
   });
 });

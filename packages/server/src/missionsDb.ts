@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import type { Mission, MissionPlace, MissionSource, MissionStep } from '@officexr/sdk';
-import { MAX_OPEN_MISSIONS, PATCH_KEYS, type MissionsStore } from './missionsStore';
+import { MAX_OPEN_MISSIONS, mayPatch, patchedFields, type MissionsStore } from './missionsStore';
 
 interface MissionRow {
   id: string;
@@ -36,7 +36,7 @@ const toMission = (row: MissionRow): Mission => ({
   updatedAt: row.updated_at.toISOString(),
 });
 
-const PATCH_COLUMNS: Record<(typeof PATCH_KEYS)[number], string> = {
+const PATCH_COLUMNS: Record<ReturnType<typeof patchedFields>[number], string> = {
   title: 'title',
   steps: 'steps',
   place: 'place',
@@ -97,25 +97,22 @@ export function pgMissions(getPool: () => pg.Pool): MissionsStore {
         );
         return toMission(rows[0]);
       }),
-    update: async (officeId, id, patch) => {
+    update: async (officeId, id, login, patch) => {
       const { rows: owners } = await getPool().query<{ owner_login: string }>('select owner_login from office_missions where office_id = $1 and id = $2', [officeId, id]);
       if (!owners[0]) {
         return undefined;
       }
       return withOwnerLock(officeId, owners[0].owner_login, async (client) => {
         const { rows: current } = await client.query<MissionRow>(`select ${COLUMNS} from office_missions where office_id = $1 and id = $2 for update`, [officeId, id]);
-        if (!current[0]) {
+        if (!current[0] || !mayPatch({ ownerLogin: current[0].owner_login, shared: current[0].shared }, login, patch)) {
           return undefined;
         }
         if (patch.done === false && current[0].done && (await openCount(client, officeId, current[0].owner_login)) >= MAX_OPEN_MISSIONS) {
           return 'limit';
         }
-        const present = PATCH_KEYS.filter((field) => Object.hasOwn(patch, field));
+        const present = patchedFields(patch);
         const sets = present.map((field, i) => `${PATCH_COLUMNS[field]} = $${i + 3}`);
         const values = present.map((field) => (JSON_FIELDS.has(field) && patch[field] !== null ? JSON.stringify(patch[field]) : patch[field]));
-        if (Object.hasOwn(patch, 'done')) {
-          sets.push(`done_at = ${patch.done ? 'now()' : 'null'}`);
-        }
         const { rows } = await client.query<MissionRow>(
           `update office_missions set ${[...sets, 'updated_at = now()'].join(', ')} where office_id = $1 and id = $2 returning ${COLUMNS}`,
           [officeId, id, ...values],

@@ -11,12 +11,22 @@ export interface MissionsStore {
   get: (officeId: string, id: string) => Promise<Mission | undefined>;
   /** 'limit' when the owner already has `MAX_OPEN_MISSIONS` open missions in the office. */
   create: (officeId: string, ownerLogin: string, input: NewMissionData) => Promise<Mission | 'limit'>;
-  /** Reopening a done mission counts against the same limit. */
-  update: (officeId: string, id: string, patch: MissionPatch) => Promise<Mission | 'limit' | undefined>;
+  /** Undefined when missing or when `login` may not apply `patch` to the mission as it is now. Reopening a done mission counts against the open limit. */
+  update: (officeId: string, id: string, login: string, patch: MissionPatch) => Promise<Mission | 'limit' | undefined>;
   remove: (officeId: string, id: string) => Promise<boolean>;
 }
 
 export const PATCH_KEYS = ['title', 'steps', 'place', 'dueAt', 'personLogin', 'shared', 'done'] as const;
+
+export const patchedFields = (patch: MissionPatch) => PATCH_KEYS.filter((field) => Object.hasOwn(patch, field));
+
+export const mayPatch = (mission: Pick<Mission, 'ownerLogin' | 'shared'>, login: string, patch: MissionPatch) => {
+  if (mission.ownerLogin === login) {
+    return true;
+  }
+  const fields = patchedFields(patch);
+  return mission.shared && fields.length === 1 && fields[0] === 'done';
+};
 
 export function compareMissions(a: Mission, b: Mission): number {
   if (a.done !== b.done) {
@@ -43,9 +53,9 @@ export function createMemoryMissions(now: () => number = Date.now): MissionsStor
       rows.set(key(officeId, mission.id), mission);
       return mission;
     },
-    update: async (officeId, id, patch) => {
+    update: async (officeId, id, login, patch) => {
       const current = rows.get(key(officeId, id));
-      if (!current) {
+      if (!current || !mayPatch(current, login, patch)) {
         return undefined;
       }
       if (patch.done === false && current.done && openCount(officeId, current.ownerLogin) >= MAX_OPEN_MISSIONS) {

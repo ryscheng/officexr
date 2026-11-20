@@ -25,7 +25,7 @@ async function start() {
         const login = req.headers['x-test-login'];
         return typeof login === 'string' ? { login, name: login } : null;
       },
-      queryOffices: async (id) => (id === ID || id === OTHER_ID ? [office(id)] : []),
+      queryOffices: async (id) => (id && [ID, OTHER_ID].includes(id.toLowerCase()) ? [office(id.toLowerCase())] : []),
       missions: store,
       presence,
     }),
@@ -136,7 +136,8 @@ describe('missions routes', () => {
     expect((await h.call('b', 'PATCH', path(ID, shared.id), { title: 'mine now' })).status).toBe(403);
     expect((await h.call('b', 'PATCH', path(ID, shared.id), {})).status).toBe(403);
     expect((await h.call('b', 'PATCH', path(ID, shared.id), { shared: false })).status).toBe(403);
-    expect((await h.call('b', 'PATCH', path(ID, priv.id), { done: true })).status).toBe(403);
+    expect((await h.call('b', 'PATCH', path(ID, priv.id), { done: true })).status).toBe(404);
+    expect((await h.call('b', 'DELETE', path(ID, priv.id))).status).toBe(404);
     expect((await h.call('b', 'DELETE', path(ID, shared.id))).status).toBe(403);
     expect((await h.list('a')).find((m) => m.id === shared.id)!.title).toBe('shared');
   });
@@ -162,6 +163,47 @@ describe('missions routes', () => {
     await h.call('a', 'PATCH', path(ID, one.id), { done: true });
     expect((await h.call('a', 'POST', path(ID), { title: 'fits now' })).status).toBe(201);
     expect((await h.call('a', 'PATCH', path(ID, one.id), { done: false })).status).toBe(409);
+  });
+});
+
+describe('missions hardening', () => {
+  it('refuses a done toggle that raced an unshare, inside the store', async () => {
+    const h = await start();
+    const m = await h.create('a', { title: 'was shared', shared: true });
+    await h.call('a', 'PATCH', path(ID, m.id), { shared: false, title: 'secret now' });
+    expect(await h.store.update(ID, m.id, 'b', { done: true })).toBeUndefined();
+    expect((await h.store.get(ID, m.id))!.done).toBe(false);
+  });
+
+  it('refuses a stale non-owner edit of other fields inside the store', async () => {
+    const h = await start();
+    const m = await h.create('a', { title: 'shared', shared: true });
+    expect(await h.store.update(ID, m.id, 'b', { done: true, title: 'x' })).toBeUndefined();
+  });
+
+  it('rejects blank, invisible, NUL and out-of-range text', async () => {
+    const h = await start();
+    const bad = [
+      { title: '​' },
+      { title: ' ​⁠ ' },
+      { title: 'a\u0000b' },
+      { title: 't', steps: [{ text: '   ', done: false }] },
+      { title: 't', steps: [{ text: 'a\u0000', done: false }] },
+      { title: 't', personLogin: 'x'.repeat(201) },
+      { title: 't', dueAt: '0000-01-01T00:00:00Z' },
+      { title: 't', dueAt: '1969-12-31T23:59:59Z' },
+    ];
+    for (const body of bad) {
+      expect((await h.call('a', 'POST', path(ID), body)).status).toBe(400);
+    }
+    const ok = await h.call('a', 'POST', path(ID), { title: 't', steps: [{ text: '  step  ', done: false }], personLogin: 'x'.repeat(200) });
+    expect(ok.body!.mission!.steps[0].text).toBe('step');
+  });
+
+  it('notifies with the canonical office id, not the url text', async () => {
+    const h = await start();
+    await h.call('a', 'POST', path(ID.toUpperCase()), { title: 't', shared: true });
+    expect(h.presence.notifyOffice).toHaveBeenCalledWith(ID, MISSIONS_CHANGED_KIND, { officeId: ID });
   });
 });
 
@@ -212,14 +254,14 @@ describe('in-memory missions store', () => {
     const created = await store.create(ID, 'a', { title: 't', ...plain });
     if (created === 'limit') throw new Error('unexpected');
     const patch = JSON.parse('{"title":"new","__proto__":{"ownerLogin":"evil"},"ownerLogin":"evil","id":"x"}');
-    const updated = await store.update(ID, created.id, patch);
+    const updated = await store.update(ID, created.id, 'a', patch);
     expect(updated).toMatchObject({ id: created.id, ownerLogin: 'a', title: 'new' });
   });
 
   it('returns undefined for a missing mission and false when removing one', async () => {
     const store = createMemoryMissions();
     expect(await store.get(ID, 'x')).toBeUndefined();
-    expect(await store.update(ID, 'x', { done: true })).toBeUndefined();
+    expect(await store.update(ID, 'x', 'a', { done: true })).toBeUndefined();
     expect(await store.remove(ID, 'x')).toBe(false);
   });
 });
