@@ -20,10 +20,8 @@ export type SoundCue =
   | { type: 'shot'; sound: SoundId; at: Vec3 | null; gain: number }
   | { type: 'loop'; key: string; sound: SoundId; at: Vec3 | null; level: number };
 
-/** Beyond this the sound is silent. */
 export const SOUND_MAX_DISTANCE_M = 26;
 
-/** 1 up close, falling smoothly to 0 at `SOUND_MAX_DISTANCE_M`; a sound with no position is always at full gain. */
 export function distanceGain(listener: Vec3, source: Vec3 | null): number {
   if (!source) return 1;
   const d = Math.hypot(source.x - listener.x, source.y - listener.y, source.z - listener.z);
@@ -68,7 +66,6 @@ interface Memory {
   riding: boolean;
 }
 
-/** Turns changes in players' state into sound cues: who picked up the wand, mounted, splashed, rides, swims. */
 export class SoundDirector {
   private readonly memory = new Map<string, Memory>();
 

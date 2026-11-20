@@ -5,7 +5,6 @@ import type { InstanceGeometryService } from '../app/types.ts';
 export const WAND_REACH_M = 1.3;
 const NO_STANDS: ReadonlySet<string> = new Set();
 
-/** The wand stand within `reach` of the player's feet, nearest first; stands in `taken` are skipped. */
 export function nearestWandStand(
   instances: readonly ObjectInstance[],
   catalog: Pick<KindResolver, 'getKind'>,

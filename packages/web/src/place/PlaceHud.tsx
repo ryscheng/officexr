@@ -16,7 +16,6 @@ const HINTS: readonly { keys: string; text: string }[] = [
   { keys: 'Delete', text: 'Remove it' },
 ];
 
-/** B opens and closes place mode, unless a text field or a dialog has the keyboard. */
 export function usePlaceHotkey(mode: PlaceModeStore, enabled: boolean) {
   useEffect(() => {
     if (!enabled) {
@@ -52,7 +51,6 @@ export function PlaceButton({ mode }: { mode: PlaceModeStore }) {
   );
 }
 
-/** The kind palette, key hints and notices of place mode; renders nothing while it is closed. */
 export function PlacePalette({ mode, store }: { mode: PlaceModeStore; store: Store }) {
   const state = useSyncExternalStore(mode.subscribe, mode.get);
   const count = useStoreSelector(store, (s) => s.placedProps.length);

@@ -525,7 +525,7 @@ export function Players({
           poseGroup.rotation.set(0, 0, 0);
         }
       }
-      const spellVisual = currentVisual(state.spellEffects, id, Date.now());
+      const spellVisual = currentVisual(state.spellEffects, id, now);
       if (poseGroup) {
         poseGroup.position.y += spellVisual?.lift ?? 0;
         poseGroup.scale.setScalar(spellVisual?.scale ?? 1);

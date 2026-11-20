@@ -6,7 +6,6 @@ export type PlacedPropsApi = Pick<OfficeApi, 'listProps' | 'propOp'>;
 
 const UNAVAILABLE: PropsOutcome = { ok: false, error: 'unavailable' };
 
-/** Handles `prop:op` frames by persisting through `api`, replying to the sender and broadcasting the new props. Without an API every op is `unavailable`. */
 export function createPlacedPropsHandler(api: PlacedPropsApi | undefined): CustomFrameHandler {
   /** Per-room tail of pending ops: replies come back in call order, so the last broadcast is never a stale list. */
   const queues = new WeakMap<Room, Promise<unknown>>();

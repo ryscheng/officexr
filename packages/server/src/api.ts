@@ -38,12 +38,9 @@ export interface OfficeDeskClaims {
   release: (officeId: string, login: string) => Promise<void>;
 }
 
-/** Props players placed in an office. Every op returns the full list, as the database leaves it. */
 export interface OfficePlacedProps {
   list: (officeId: string) => Promise<PlacedProp[]>;
-  /** Adds a prop, or 'limit' when the office already holds `MAX_PLACED_PROPS`. */
   add: (officeId: string, prop: Omit<PlacedProp, 'id'> & { id: string }, placedBy: string) => Promise<'ok' | 'limit'>;
-  /** Moves or turns a prop; 'not-found' when it is gone. */
   update: (officeId: string, prop: PlacedProp) => Promise<'ok' | 'not-found'>;
   remove: (officeId: string, id: string) => Promise<'ok' | 'not-found'>;
 }

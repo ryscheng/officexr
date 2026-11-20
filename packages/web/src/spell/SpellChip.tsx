@@ -3,7 +3,6 @@ import { focusWorld, useStoreSelector } from '@officexr/world/top-down';
 import { Keycap } from '../hud/ui/Keycap';
 import { Panel } from '../hud/ui/Panel';
 
-/** While the self player holds the wand: the spell it casts next, with a button and number key for each spell. */
 export function SpellChip({ store, actions, selfId }: { store: Store; actions: Actions; selfId: string }) {
   const holding = useStoreSelector(store, (s) => s.players[selfId]?.held === 'wand');
   const selected = useStoreSelector(store, (s) => s.selectedSpell);

@@ -10,10 +10,6 @@ export interface CastCaster {
   yaw: number;
 }
 
-/**
- * The bolt a cast fires from the wand tip along the caster's facing: it ends at the first player it
- * passes through, else at the first wall or object `distanceToWall` reports, else at the spell's range.
- */
 export function buildCast(
   spell: SpellId,
   caster: CastCaster,

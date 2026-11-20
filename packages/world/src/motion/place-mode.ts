@@ -15,7 +15,6 @@ export interface GhostState {
   /** Footprint corner in voxels, like a map instance. */
   position: [number, number, number];
   valid: boolean;
-  /** The placed prop the player is pointing at, if any. */
   targetId: string | null;
 }
 
@@ -24,7 +23,6 @@ export interface PlaceModeState {
   kindId: PlaceableKindId;
   yawDeg: number;
   ghost: GhostState | null;
-  /** The newest refusal or confirmation to show the player. */
   notice: string | null;
 }
 
@@ -39,7 +37,6 @@ export interface PlaceModeStore {
   setNotice(notice: string | null): void;
 }
 
-/** What the scene needs from the host to let players build: the mode and a way to send an op. */
 export interface PlacementHost {
   mode: PlaceModeStore;
   send(op: PropOp): Promise<PropOpResult>;
@@ -77,7 +74,6 @@ export const TARGET_REACH_M = 1.6;
 
 type Geometry = Pick<InstanceGeometryService, 'worldAABB' | 'worldAABBOfInstance'>;
 
-/** Where the ghost's footprint corner goes: the grid cell `PLACE_AHEAD_M` in front of the player, at their floor height. */
 export function ghostSpot(
   geometry: Geometry,
   voxelSize: number,
@@ -98,7 +94,6 @@ export function ghostSpot(
 const overlaps = (a: { min: readonly number[]; max: readonly number[] }, b: { min: readonly number[]; max: readonly number[] }) =>
   a.min[0] < b.max[0] && a.max[0] > b.min[0] && a.min[2] < b.max[2] && a.max[2] > b.min[2] && a.min[1] < b.max[1] && a.max[1] > b.min[1];
 
-/** Whether a prop of `kindId` fits at `position` clear of the placed props in `placed` (except `ignoreId`). */
 export function fitsClear(
   geometry: Geometry,
   placed: readonly PlacedProp[],
@@ -111,7 +106,6 @@ export function fitsClear(
   return !placed.some((p) => p.id !== ignoreId && overlaps(box, geometry.worldAABBOfInstance({ id: p.id, sourceCommandId: p.id, kindId: p.kindId, position: p.position, yawDeg: p.yawDeg })));
 }
 
-/** The placed prop the player points at: the one whose footprint holds `point`, else the nearest within `TARGET_REACH_M`. */
 export function pickPlaced(geometry: Geometry, placed: readonly PlacedProp[], point: { x: number; z: number }): string | null {
   let best: string | null = null;
   let bestDistance = TARGET_REACH_M;

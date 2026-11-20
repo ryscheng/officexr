@@ -9,6 +9,6 @@ export const colorBurst: SpellStrategy = {
   impact: 'sparkle',
   visual(ageMs) {
     const hue = Math.round((ageMs / 6) % 360);
-    return { ...NO_VISUAL, tint: `hsl(${hue} 90% 60%)`, tintStrength: 0.6 * fadeOut(ageMs, DURATION_MS, 500), sparkles: true };
+    return { ...NO_VISUAL, tint: `hsl(${hue}, 90%, 60%)`, tintStrength: 0.6 * fadeOut(ageMs, DURATION_MS, 500), sparkles: true };
   },
 };

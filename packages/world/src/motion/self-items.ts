@@ -8,7 +8,6 @@ export interface ItemsState {
 export const newItemsState = (): ItemsState => ({ spell: DEFAULT_SPELL, lastCastAt: -Infinity });
 
 export interface ItemsInput {
-  /** Milliseconds, the same clock as `lastCastAt`. */
   now: number;
   fPressed: boolean;
   castPressed: boolean;
@@ -16,7 +15,6 @@ export interface ItemsInput {
   holding: boolean;
   posed: boolean;
   seated: boolean;
-  /** The free wand stand within reach, if any. */
   standNear: string | null;
 }
 
@@ -30,7 +28,6 @@ export interface ItemsOutcome {
   suppressPoke: boolean;
 }
 
-/** One frame of wand handling: F picks the wand up or puts it back, digits pick the spell, the cast key casts. */
 export function stepSelfItems(state: ItemsState, input: ItemsInput): ItemsOutcome {
   if (input.holding && input.digitSpell) {
     state.spell = input.digitSpell;

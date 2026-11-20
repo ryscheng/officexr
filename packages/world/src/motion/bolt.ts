@@ -2,7 +2,6 @@ import { SPELLS, travelMs, type SpellCast, type Vec3 } from '@officexr/sdk';
 
 export interface BoltState {
   position: Vec3;
-  /** 0 at the wand, 1 where the bolt lands. */
   progress: number;
   landed: boolean;
 }

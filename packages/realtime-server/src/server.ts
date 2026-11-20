@@ -182,7 +182,6 @@ export class Room {
     void this.mirror.send(this.deskClaimsEvent(this.takeServerSeq()));
   }
 
-  /** Adopt the backend's placed `props` and fan them out to every hub peer. */
   pushPlacedProps(props: PlacedProp[]): void {
     this.propsLoaded = true;
     this.actions.setPlacedProps(props);
@@ -193,7 +192,6 @@ export class Room {
     return { kind: 'office:props', v: 1, actorId: SERVER_SELF_ID, seq, t: Date.now(), props: this.store.getState().placedProps };
   }
 
-  /** A joiner sees each spell effect still running, as time left and time gone. */
   private spellEffectEvents(): NetEvent[] {
     const now = Date.now();
     return Object.entries(this.store.getState().spellEffects).flatMap(([targetId, e]) =>

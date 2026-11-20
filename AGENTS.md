@@ -205,6 +205,25 @@ and unit-tested; the renderer only plays it):
 - `prop_*` kinds and models come from `packages/world/scripts/generate-prop-models.ts`; the `pool_party` map shows all three.
   The default catalog fallback stays at the original 12 blocks, so these kinds exist only in `world-object-kinds.json`.
 
+### Build mode, the wand and sound effects
+
+- **Build** (B, or the Build button): any signed-in user places `prop_pool`, `prop_scooter_rack`, `prop_tricycle_rack` and
+  `prop_wand_stand` (`PLACEABLE_KINDS` in `@officexr/sdk`). The ghost is 3 m ahead of the player on a 0.5-voxel grid;
+  Enter or click places, R turns the ghost, Tab picks the next prop, T turns and G picks up the prop you point at, Delete
+  removes it. Ops travel as `prop:op` custom frames to the realtime server, which calls `POST /api/offices/:id/props`
+  (`packages/server`, table `office_props`, migration 024, at most 50 per office), then broadcasts the full list as the
+  server-authority `office:props` event; late joiners get it in the snapshot. Placed props are merged into
+  `useStoreWorldObjects`, so water, rides and colliders treat them like map instances.
+- **Wand** (`prop_wand_stand`, `holdable` on the kind): F next to a stand picks the wand up (`presence:held`, the stand draws
+  as its `emptyKindId`), F again puts it back. Q or a click casts, 1-4 pick the spell. `spell:cast` carries origin, direction,
+  flight distance and the hit target; the caster resolves the hit, the realtime server only checks the schema, the sender,
+  the held wand and the 1 s cooldown (`SpellCastGuard`) and replays running effects to joiners as `spell:effect`.
+- **Spells** are a strategy table in `packages/sdk/src/spells/` (one file per spell plus one registry line); the hotkey order is
+  the registry order and the first spell is the default.
+- **Sound effects** are synthesised with Web Audio (`packages/world/src/audio/`): `cues.ts` decides which event plays which
+  sound and its distance gain (tested), `synth.ts` and `engine.ts` make the sound. Silent until the first click or key;
+  Settings > Controls holds the on/off switch and volume. The studio provides no engine, so it stays silent.
+
 ### 2D view
 
 The web client's 2D view is the 3D view (`PlayView3d`) with the fixed follow camera locked

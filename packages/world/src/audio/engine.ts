@@ -4,13 +4,11 @@ import { createCrackle, createNoise, LOOP_SYNTH, ONE_SHOTS } from './synth.ts';
 
 export interface SfxSettings {
   enabled: boolean;
-  /** 0 to 1. */
   volume: number;
 }
 
 export interface SfxEngineDeps {
   createContext(): AudioContext;
-  /** Where the first user gesture is heard; no sound plays before it. */
   gestureTarget: EventTarget;
   settings(): SfxSettings;
 }
@@ -25,11 +23,7 @@ interface LoopVoice {
   idleSince: number | null;
 }
 
-/**
- * Plays `SoundCue`s with Web Audio: procedural sounds, volume by distance to the listener, the
- * player's own sound settings, and silence until the first user gesture. The audio output cannot
- * be tested headlessly; the cue selection that feeds it (`cues.ts`) is.
- */
+// The audio output cannot be tested headlessly; the cue selection that feeds it (`cues.ts`) is.
 export class SfxEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;

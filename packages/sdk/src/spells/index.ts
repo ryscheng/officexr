@@ -29,6 +29,7 @@ export interface SpellCast {
   targetId: string | null;
 }
 
+/** Times are on the session clock (`performance.now()` in the web client), the same one every reader of them must use. */
 export interface SpellEffect {
   spell: SpellId;
   casterId: string;
@@ -51,7 +52,6 @@ export function spellForDigit(key: string): SpellId | null {
   return Number.isInteger(index) ? (SPELL_IDS[index] ?? null) : null;
 }
 
-/** The player the bolt hits first within `maxDistance`, if any; bodies are spheres around the given point. */
 export function pickSpellTarget(
   origin: { x: number; y: number; z: number },
   dir: { x: number; y: number; z: number },
@@ -71,13 +71,11 @@ export function pickSpellTarget(
   return best;
 }
 
-/** The effect on a player right now, or null when none is running or it has expired. */
 export function activeEffect(effects: Record<string, SpellEffect>, playerId: string, now: number): SpellEffect | null {
   const effect = effects[playerId];
   return effect && now < effect.endsAt ? effect : null;
 }
 
-/** How the spell looks on `playerId` now; null before the bolt lands or once the effect is over. */
 export function currentVisual(effects: Record<string, SpellEffect>, playerId: string, now: number): SpellVisual | null {
   const effect = activeEffect(effects, playerId, now);
   return effect && now >= effect.startsAt ? SPELLS[effect.spell].visual(now - effect.startsAt) : null;

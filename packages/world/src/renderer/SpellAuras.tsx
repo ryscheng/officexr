@@ -41,7 +41,7 @@ export function SpellAuras({ store }: { store: Store }) {
 
   useFrame((_, dt) => {
     const state = store.getState();
-    const now = Date.now();
+    const now = performance.now();
     for (const [id, player] of Object.entries(state.players)) {
       const visual = currentVisual(state.spellEffects, id, now);
       if (!visual || (!visual.smoke && !visual.sparkles)) {

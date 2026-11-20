@@ -2,7 +2,6 @@ import { Switch } from '../hud/ui/Switch';
 import { SettingRow } from '../room/SettingsModal';
 import { useSfxPrefs, writeSfxPrefs } from './sfxPrefs';
 
-/** Settings rows for the office's sound effects: on or off, and how loud. */
 export function SfxSettingsRows() {
   const prefs = useSfxPrefs();
   return (

@@ -47,7 +47,6 @@ export type PlayerState = {
   seat?: string | null;
   pose?: PlayerPose | null;
   poseRack?: string | null;
-  /** The item in the player's hand, taken from the stand `heldStand`. */
   held?: HeldItem | null;
   heldStand?: string | null;
   tRecv?: number;

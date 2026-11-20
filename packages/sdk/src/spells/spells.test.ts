@@ -50,7 +50,7 @@ describe('spell registry', () => {
     expect(SPELLS.levitate.visual(2500).moveSpeedScale).toBe(0);
     expect(SPELLS.shrink.visual(2500).scale).toBe(0.5);
     expect(SPELLS['color-burst'].visual(1000)).toMatchObject({ sparkles: true });
-    expect(SPELLS['color-burst'].visual(1000).tint).toMatch(/^hsl/);
+    expect(SPELLS['color-burst'].visual(1000).tint).toMatch(/^hsl\(\d+, \d+%, \d+%\)$/);
   });
 
   it('picks spells by digit and cycles around', () => {

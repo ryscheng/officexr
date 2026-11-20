@@ -77,7 +77,6 @@ export interface Actions {
   setSelectedSpell(spell: SpellId): void;
   /** Replace the office's placed props. Never broadcast: only the realtime server distributes them. */
   setPlacedProps(props: PlacedProp[]): void;
-  /** Replace the effect on `targetId`, as a late joiner learns of it. */
   setSpellEffect(targetId: PlayerId, effect: SpellEffect): void;
   /** Replace all desk claims. Never broadcast: only the realtime server distributes them. */
   setDeskClaims(claims: Record<string, string>): void;
@@ -103,7 +102,6 @@ export interface Actions {
   applyRemoteSeat(playerId: PlayerId, instanceId: string | null, now: number): void;
   applyRemotePose(playerId: PlayerId, pose: PlayerPose | null, now: number, rack?: string | null): void;
   applyRemoteHeld(playerId: PlayerId, held: HeldItem | null, now: number, stand?: string | null): void;
-  /** Records a cast (the target's effect, once the bolt lands) and tells the bus. */
   receiveSpellCast(casterId: PlayerId, cast: SpellCast, now: number): void;
   receivePoke(fromId: PlayerId, targetId: PlayerId | null, at: number): void;
   applyRemoteChat(msg: ChatMessage): void;

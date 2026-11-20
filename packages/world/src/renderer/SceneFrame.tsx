@@ -371,13 +371,13 @@ export function SceneFrame({
     digitsDownRef.current = new Set(digitDown);
     const castClicked = castClickRef.current;
     castClickRef.current = false;
-    const selfSpell = currentVisual(stateSnapshot.spellEffects, selfId, Date.now());
+    const selfSpell = currentVisual(stateSnapshot.spellEffects, selfId, now);
     const spellMoveScale = selfSpell?.moveSpeedScale ?? 1;
     const holdingWand = self?.held === 'wand';
     const feetNow = self ? feetPosition(self.pos, stateSnapshot.worldSettings.charRadius) : null;
     itemsRef.current.spell = stateSnapshot.selectedSpell;
     const items = stepSelfItems(itemsRef.current, {
-      now: Date.now(),
+      now: now,
       fPressed: mountPressedThisFrame,
       castPressed: pokePressedThisFrame || castClicked,
       digitSpell: newDigit ? spellForDigit(newDigit) : null,
@@ -401,7 +401,7 @@ export function SceneFrame({
         const hit = world.castRay(new RAPIER.Ray(origin, dir), max, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, WALL_QUERY_GROUPS);
         return hit ? hit.timeOfImpact : max;
       });
-      actions.receiveSpellCast(selfId, cast, Date.now());
+      actions.receiveSpellCast(selfId, cast, now);
       sync.sendCast(cast);
     }
     if (pokePressedThisFrame && !items.suppressPoke && self && now - lastPokeAtRef.current > POKE_COOLDOWN_S * 1000) {

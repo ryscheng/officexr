@@ -97,7 +97,6 @@ export function createOfficeApi({ baseUrl, tokenSecret, fetch: fetchFn = fetch, 
     claimDesk: (officeId: string, login: string, deskId: string): Promise<DeskClaimOutcome> =>
       claimsOutcome(() => request('PUT', `${deskClaimsPath(officeId)}/me`, login, { deskId })),
 
-    /** The office's placed props; any failure is `unavailable`. */
     listProps: (officeId: string, login: string): Promise<PropsOutcome> =>
       propsOutcome(() => request('GET', propsPath(officeId), login)),
 

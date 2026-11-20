@@ -25,12 +25,10 @@ export interface SpellStrategy {
   durationMs: number;
   projectile: { speedMps: number; color: string; trail: 'flame' | 'sparkle' };
   impact: 'fire' | 'sparkle';
-  /** Look of the target `ageMs` after the bolt landed. */
   visual(ageMs: number): SpellVisual;
 }
 
 export const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
-/** 1 while `ageMs` is inside the effect, easing out over the last `fadeMs`. */
 export const fadeOut = (ageMs: number, durationMs: number, fadeMs: number) =>
   clamp01((durationMs - ageMs) / fadeMs);

@@ -9,15 +9,10 @@ const UNAVAILABLE: PropOpResult = { ok: false, error: 'unavailable' };
 
 export interface PropOpRequester {
   request: RequestPropOp;
-  /** Resolves requests still waiting as unavailable and stops listening. */
   dispose(): void;
 }
 
-/**
- * Sends a place, turn or remove request and resolves with the server's verdict. The server replies to the sender in
- * order, so replies are matched to requests first-in-first-out. A request fails as unavailable at once while the
- * channel isn't live, when it drops, or after `timeoutMs` without a reply.
- */
+// Replies come back in send order, so they are matched to requests first-in-first-out.
 export function createPropOpRequester(channel: CustomFrames, timeoutMs = PROP_OP_TIMEOUT_MS): PropOpRequester {
   const pending: ((result: PropOpResult) => void)[] = [];
   let live = false;

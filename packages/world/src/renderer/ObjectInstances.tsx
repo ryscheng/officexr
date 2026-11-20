@@ -58,6 +58,11 @@ for (const kind of validateWorldObjectKindCatalog(defaultCatalogJson).kinds) {
   useGLTF.preload(modelUrl(kind.gltfPath));
 }
 
+// Props players can place in the office: a first placement must not suspend the whole scene on its download.
+for (const path of ['pool', 'scooter', 'tricycle', 'wand_stand', 'wand_stand_empty']) {
+  useGLTF.preload(modelUrl(`/models/props/${path}.gltf`));
+}
+
 /**
  * Apply a transformation to a kind's resolved material — e.g. an
  * editor can dim, tint, or make transparent the cubes it renders.

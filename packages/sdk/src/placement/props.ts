@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-/** Props any signed-in user may place; the server rejects every other kind. */
 export const PLACEABLE_KINDS = [
   { kindId: 'prop_pool', label: 'Pool' },
   { kindId: 'prop_scooter_rack', label: 'Scooter rack' },
@@ -19,7 +18,6 @@ const COORD_LIMIT = 500;
 export const isPlaceableKind = (kindId: unknown): kindId is PlaceableKindId =>
   PLACEABLE_KINDS.some((k) => k.kindId === kindId);
 
-/** A prop in voxel space, like an `ObjectInstance` position. */
 export interface PlacedProp {
   id: string;
   kindId: PlaceableKindId;
@@ -46,7 +44,6 @@ export const snapToGrid = (v: number) => Math.round(v / PLACE_STEP_VOXELS) * PLA
 export const rotateYaw = (yawDeg: number) => (yawDeg + 90) % 360;
 export const isPlacedId = (id: string) => id.startsWith(PLACED_ID_PREFIX);
 
-/** The `ObjectInstance` shape the renderer and motion code read. */
 export function propToInstance(p: PlacedProp): {
   id: string;
   sourceCommandId: string;

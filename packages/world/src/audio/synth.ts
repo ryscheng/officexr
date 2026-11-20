@@ -43,7 +43,6 @@ function noiseBurst(
   src.stop(t + length + 0.02);
 }
 
-/** Every one-shot sound; a loop sound has none and plays through `LOOP_SYNTH`. */
 export const ONE_SHOTS: Partial<Record<SoundId, OneShotSynth>> = {
   'wand-pickup': (ctx, out, t) => {
     tone(ctx, out, t, 'sine', 660, 1320, 0.28, 0.18);
@@ -79,7 +78,6 @@ export const ONE_SHOTS: Partial<Record<SoundId, OneShotSynth>> = {
 
 export type LoopSynth = (ctx: AudioContext, noise: AudioBuffer) => AudioNode;
 
-/** Loop sounds: the node a looping source feeds, after its own filtering. */
 export const LOOP_SYNTH: Partial<Record<SoundId, { filter: BiquadFilterType; hz: number; q: number; crackle: boolean }>> = {
   'fire-crackle': { filter: 'highpass', hz: 1800, q: 0.7, crackle: true },
   wheel: { filter: 'bandpass', hz: 420, q: 0.8, crackle: false },
@@ -92,7 +90,6 @@ export function createNoise(ctx: AudioContext, seconds = 1.5): AudioBuffer {
   return buffer;
 }
 
-/** Noise with sparse random pops, so a loop reads as crackling flame. */
 export function createCrackle(ctx: AudioContext, seconds = 1.2): AudioBuffer {
   const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate);
   const data = buffer.getChannelData(0);
