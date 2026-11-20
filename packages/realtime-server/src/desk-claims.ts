@@ -35,7 +35,7 @@ export function createDeskClaimHandler(api: DeskClaimsApi | undefined): CustomFr
       const result: DeskClaimResult = outcome.ok ? { ok: true } : { ok: false, error: outcome.error };
       room.sendCustom(DESK_CLAIM_RESULT_KIND, result, client.userId);
       if (outcome.ok) {
-        room.pushDeskClaims(outcome.claims);
+        room.pushDeskClaims(outcome.claims, outcome.claimants);
       }
     };
     const queued = (queues.get(room) ?? Promise.resolve()).then(run).catch((err: unknown) => {

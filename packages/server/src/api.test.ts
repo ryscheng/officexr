@@ -68,6 +68,13 @@ writeFileSync(
 const claimsByOffice = new Map<string, Map<string, string>>();
 const deskClaims: OfficeDeskClaims = {
   list: async (officeId) => Object.fromEntries(claimsByOffice.get(officeId) ?? []),
+  claimants: async (officeId) =>
+    Object.fromEntries(
+      [...(claimsByOffice.get(officeId)?.values() ?? [])].map((login) => {
+        const characterId = storedCharacters.get(`${officeId}/${login}`);
+        return [login, characterId ? { characterId } : {}];
+      }),
+    ),
   claim: async (officeId, login, deskId) => {
     const claims = claimsByOffice.get(officeId) ?? new Map<string, string>();
     claimsByOffice.set(officeId, claims);
@@ -1105,12 +1112,21 @@ describe('/api/offices/:id/desk-claims', () => {
     bob = await signIn(base, 'b@example.com');
   });
 
+  it('lists each claimant with the character chosen in this office', async () => {
+    storedCharacters.set(`${ID}/a@example.com`, 'Mage');
+    await claim('d1');
+    await claim('d2', bob);
+    const body = await (await fetch(url(), { headers: me })).json();
+    expect(body.claimants).toEqual({ 'a@example.com': { characterId: 'Mage' }, 'b@example.com': {} });
+    storedCharacters.clear();
+  });
+
   it('claims, lists and moves a claim between desks', async () => {
     expect(await list()).toEqual({});
     const res = await claim('d1');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ claims: { d1: 'a@example.com' } });
-    expect(await (await claim('d2')).json()).toEqual({ claims: { d2: 'a@example.com' } });
+    expect(await res.json()).toEqual({ claims: { d1: 'a@example.com' }, claimants: { 'a@example.com': {} } });
+    expect(await (await claim('d2')).json()).toEqual({ claims: { d2: 'a@example.com' }, claimants: { 'a@example.com': {} } });
     expect(await list(bob)).toEqual({ d2: 'a@example.com' });
   });
 
@@ -1152,7 +1168,7 @@ describe('/api/offices/:id/desk-claims', () => {
     for (let i = 0; i < 2; i++) {
       const res = await fetch(url(ID, '/me'), { method: 'DELETE', headers: me });
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ claims: {} });
+      expect(await res.json()).toEqual({ claims: {}, claimants: {} });
     }
   });
 
@@ -1174,7 +1190,7 @@ describe('/api/offices/:id/desk-claims', () => {
     expect(await list(headers)).toEqual({ d1: 'rt@example.com' });
     const released = await fetch(url(ID, '/me'), { method: 'DELETE', headers });
     expect(released.status).toBe(200);
-    expect(await released.json()).toEqual({ claims: {} });
+    expect(await released.json()).toEqual({ claims: {}, claimants: {} });
   });
 });
 

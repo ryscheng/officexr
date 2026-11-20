@@ -73,6 +73,24 @@ export function createDb(connectionString: string | undefined) {
       );
       return Object.fromEntries(rows.map((row) => [row.desk_id, row.user_login]));
     },
+    claimants: async (officeId) => {
+      const { rows } = await getPool().query<{ user_login: string; character_id: string | null; claimed_at: Date | null }>(
+        `select c.user_login, ch.character_id, c.claimed_at
+         from office_desk_claims c
+         left join office_characters ch on ch.office_id = c.office_id and ch.user_login = c.user_login
+         where c.office_id = $1`,
+        [officeId],
+      );
+      return Object.fromEntries(
+        rows.map((row) => [
+          row.user_login,
+          {
+            ...(row.character_id ? { characterId: row.character_id } : {}),
+            ...(row.claimed_at ? { claimedAt: row.claimed_at.toISOString() } : {}),
+          },
+        ]),
+      );
+    },
     claim: async (officeId, login, deskId) => {
       try {
         await getPool().query(

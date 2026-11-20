@@ -1,4 +1,4 @@
-import type { Actions, EmoteId, PlacedProp, PlayerId, PlayerState, Store } from '@officexr/sdk';
+import type { Actions, DeskClaimant, EmoteId, PlacedProp, PlayerId, PlayerState, Store } from '@officexr/sdk';
 
 export const SELF_ID = 'avery@example.test';
 export const SELF_NAME = 'Avery Preview';
@@ -22,6 +22,8 @@ export interface Scenario {
   poke?: PlayerId;
   /** Accessible names clicked in order once the HUD is up, so a scenario can open a panel. */
   steps?: string[];
+  /** Desks in metres east and south of the spawn point, each with a chair and its claimant. */
+  desks?: { id: string; at: [number, number]; login: string; claimant?: DeskClaimant }[];
 }
 
 const prop = (n: number, kindId: PlacedProp['kindId'], x: number, z: number, yawDeg = 0): PlacedProp => ({
@@ -86,6 +88,20 @@ export const SCENARIOS: Record<string, Scenario> = {
     props: PROPS,
     emotes: [{ from: 'fatima@example.test', emote: 'party' }],
     poke: 'bao@example.test',
+  },
+  frozen: {
+    id: 'frozen',
+    title: 'Three desks, one claimant present',
+    self: {},
+    players: crowd.slice(0, 1),
+    chat: [],
+    call: [],
+    props: [],
+    desks: [
+      { id: 'desk-a', at: [-3, 1], login: 'bao@example.test', claimant: { characterId: 'Knight' } },
+      { id: 'desk-b', at: [-1, 1], login: 'ines.moreau@example.test', claimant: { characterId: 'Mage' } },
+      { id: 'desk-c', at: [1, 1], login: 'lars@example.test' },
+    ],
   },
   alone: {
     id: 'alone',
@@ -177,6 +193,7 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
     });
   }
   actions.setPlacedProps(scenario.props);
+  const unseedDesks = scenario.desks ? seedDesks(scenario.desks, deps) : () => {};
   scenario.chat.forEach((m, i) =>
     actions.applyRemoteChat({ id: `m${i}`, authorId: m.from, text: m.text, t: Date.now() - (scenario.chat.length - i) * 60_000 }),
   );
@@ -200,5 +217,52 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
   };
   replay();
   timers.push(setInterval(replay, 2000));
-  return () => timers.forEach(clearInterval);
+  return () => {
+    timers.forEach(clearInterval);
+    unseedDesks();
+  };
+}
+
+const DESK_CHAIR_KIND = 'furniture_chair_a';
+
+/** Seeds chairs, desk areas and claims, and re-seeds them whenever the map load replaces them. */
+function seedDesks(desks: NonNullable<Scenario['desks']>, { store, actions }: { store: Store; actions: Actions }): () => void {
+  const ready = () => {
+    const s = store.getState();
+    return desks.every((d) => s.deskAreas.some((a) => a.id === d.id) && s.worldObjects.instances.some((i) => i.id === `chair-${d.id}`));
+  };
+  let applying = false;
+  const apply = () => {
+    if (applying || ready()) return;
+    applying = true;
+    const { cubeSize, instances } = store.getState().worldObjects;
+    const chairs = desks.map((d) => ({
+      id: `chair-${d.id}`,
+      sourceCommandId: `chair-${d.id}`,
+      kindId: DESK_CHAIR_KIND,
+      position: [Math.round((SPAWN.x + d.at[0]) / cubeSize), Math.round(1 / cubeSize), Math.round((SPAWN.z + d.at[1]) / cubeSize)] as [number, number, number],
+      yawDeg: 180,
+    }));
+    actions.setWorldObjects({ cubeSize, instances: [...instances.filter((i) => !i.id.startsWith('chair-desk-')), ...chairs] });
+    actions.setDeskAreas(
+      desks.map((d) => ({
+        id: d.id,
+        label: d.id,
+        min: { x: SPAWN.x + d.at[0] - 1, z: SPAWN.z + d.at[1] - 1 },
+        max: { x: SPAWN.x + d.at[0] + 1, z: SPAWN.z + d.at[1] + 1 },
+        seatInstanceId: `chair-${d.id}`,
+      })),
+    );
+    actions.setDeskClaims(
+      Object.fromEntries(desks.map((d) => [d.id, d.login])),
+      Object.fromEntries(desks.flatMap((d) => (d.claimant ? [[d.login, d.claimant]] : []))),
+    );
+    applying = false;
+  };
+  apply();
+  const unsubscribe = [
+    store.subscribe((s) => s.deskAreas, apply),
+    store.subscribe((s) => s.worldObjects, apply),
+  ];
+  return () => unsubscribe.forEach((u) => u());
 }

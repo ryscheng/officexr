@@ -9,6 +9,7 @@ import { createSitPoseClip, SIT_CLIP_NAME } from './sitPoseClip.ts';
 import { createPokeClip, POKE_CLIP_NAME } from './pokeClip.ts';
 import { CAST_CLIP_NAME, createCastClip } from './castClip.ts';
 import { useFrame } from '@react-three/fiber';
+import { applyFrozenLook } from './frozenLook.ts';
 
 const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
 const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
@@ -135,6 +136,8 @@ interface AdventurerProps {
   url: string;
   /** Translucent, shadowless rendering for 2D-mode players. */
   ghost?: boolean;
+  /** Grey, translucent and rimmed: an absent person's avatar left at their desk. */
+  frozen?: boolean;
   /** Which clip the GAMEPLAY layer should loop. Derived in `Players.tsx` from
    * the player's seat, airborne state and speed. */
   motion: MotionState;
@@ -178,6 +181,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     {
       url,
       ghost = false,
+      frozen = false,
       motion,
       previewState,
       clipOverride,
@@ -220,8 +224,11 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
           m.material = Array.isArray(m.material) ? m.material.map((x) => cloneOwn(x, own)) : cloneOwn(m.material, own);
         }
       });
+      if (frozen) {
+        applyFrozenLook(own);
+      }
       return { scene: s, ghostMaterials: own };
-    }, [character_gltf.scene, ghost]);
+    }, [character_gltf.scene, ghost, frozen]);
     const tintable = useMemo(
       () =>
         ghostMaterials

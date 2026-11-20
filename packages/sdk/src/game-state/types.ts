@@ -5,6 +5,7 @@ import {
 } from './world-constants.ts';
 
 import type { PlacedProp } from '../placement/props.ts';
+import type { DeskClaimant } from '../realtime/desk-claim.ts';
 import type { SpellCast, SpellEffect, SpellId } from '../spells/index.ts';
 
 export type PlayerId = string;
@@ -457,6 +458,8 @@ export type OfficeState = {
   worldObjects: WorldObjects;
   /** Desk area id -> login. Only the realtime server distributes it. */
   deskClaims: Record<string, string>;
+  /** Login -> what the server knows about each claimant. Only the realtime server distributes it. */
+  deskClaimants: Record<string, DeskClaimant>;
   /** Props players placed in this office. Only the realtime server distributes them. */
   placedProps: PlacedProp[];
   /** Running spell effect per target. Never snapshotted: the realtime server replays them as `spell:effect`. */

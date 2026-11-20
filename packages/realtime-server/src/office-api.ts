@@ -1,4 +1,4 @@
-import { PROTOCOL, type DeskClaimResult, type PlacedProp, type PropOp, type PropOpResult } from '@officexr/sdk';
+import { PROTOCOL, type DeskClaimant, type DeskClaimResult, type PlacedProp, type PropOp, type PropOpResult } from '@officexr/sdk';
 import { signJoinToken } from './join-token.ts';
 import { officeAllowsMultiSession } from './office-policy.ts';
 
@@ -15,7 +15,7 @@ export interface OfficeApiOptions {
 }
 
 export type DeskClaimOutcome =
-  | { ok: true; claims: Record<string, string> }
+  | { ok: true; claims: Record<string, string>; claimants?: Record<string, DeskClaimant> }
   | { ok: false; error: Extract<DeskClaimResult, { ok: false }>['error'] };
 
 export type PropsOutcome =
@@ -65,7 +65,7 @@ export function createOfficeApi({ baseUrl, tokenSecret, fetch: fetchFn = fetch, 
       const res = await send();
       if (res.status === 200) {
         const parsed = PROTOCOL['desk:claims'].schema.safeParse(await res.json());
-        return parsed.success ? { ok: true, claims: parsed.data.claims } : { ok: false, error: 'unavailable' };
+        return parsed.success ? { ok: true, claims: parsed.data.claims, claimants: parsed.data.claimants } : { ok: false, error: 'unavailable' };
       }
       await res.body?.cancel();
       return { ok: false, error: res.status === 400 ? 'unknown-desk' : res.status === 409 ? 'taken' : 'unavailable' };
