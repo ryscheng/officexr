@@ -45,6 +45,8 @@ export const PAD_SLOTS: readonly PadSlot[] = [
   { size: SECONDARY_SIZE, radius: 164, angleDeg: 22 },
   { size: SECONDARY_SIZE, radius: 164, angleDeg: 52 },
   { size: SECONDARY_SIZE, radius: 164, angleDeg: 82 },
+  { size: SECONDARY_SIZE, radius: 240, angleDeg: 30 },
+  { size: SECONDARY_SIZE, radius: 240, angleDeg: 62 },
 ];
 
 export const resolve = <T>(value: PerContext<T>, ctx: MobileActionContext): T =>

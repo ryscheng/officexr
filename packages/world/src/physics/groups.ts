@@ -37,6 +37,9 @@ export const BODY_GROUPS = pack(BODY, BODY | WALL | INNER | OUTER);
 /** Static wall / obstacle: lives in WALL, interacts only with BODY. */
 export const WALL_GROUPS = pack(WALL, BODY);
 
+/** Query filter for rays that should hit only static walls and obstacles, never characters. */
+export const WALL_QUERY_GROUPS = pack(BODY, WALL);
+
 /** Inner proximity sensor: lives in INNER, intersects only with foreign BODY. */
 export const INNER_SENSOR_GROUPS = pack(INNER, BODY);
 

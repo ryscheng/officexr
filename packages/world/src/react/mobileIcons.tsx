@@ -56,6 +56,13 @@ export const DismountIcon = () => (
   </Glyph>
 );
 
+export const WandIcon = () => (
+  <Glyph>
+    <path d="m4 20 12-12" />
+    <path d="m15 5 1-2 1 2 2 1-2 1-1 2-1-2-2-1z" />
+  </Glyph>
+);
+
 export const SitIcon = () => (
   <Glyph>
     <path d="M7 4v10" />

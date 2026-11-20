@@ -1,8 +1,8 @@
 import connect from 'connect';
 import type { RealtimeServer } from '@officexr/realtime-server/server';
-import { createStudioStorage, studioCatalogCharacters, studioMapExists, studioMapLoader } from '@officexr/world/vite-plugin-storage';
+import { createStudioStorage, studioCatalogCharacters, studioMapExists, studioMapLoader, studioPlacementFootprint } from '@officexr/world/vite-plugin-storage';
 import type { Store } from 'express-session';
-import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeCharacters, type OfficeDeskClaims, type QueryOffices, type UpdateOffice } from './api';
+import { apiMiddleware, type CreateOffice, type ResolveIdentity, type OfficeCharacters, type OfficeDeskClaims, OfficePlacedProps, type QueryOffices, type UpdateOffice } from './api';
 import { bearerIdentity, createAuth, parseAuthConfig, sessionIdentity, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import { createCors } from './cors';
 import { PreviewTokens } from './previewToken';
@@ -15,6 +15,7 @@ export interface AppOptions {
   queryOffices: QueryOffices;
   characters: OfficeCharacters;
   deskClaims: OfficeDeskClaims;
+  placedProps: OfficePlacedProps;
   createOffice: CreateOffice;
   updateOffice: UpdateOffice;
   isLoginAllowed: IsLoginAllowed;
@@ -27,7 +28,7 @@ export interface AppOptions {
   frontendOrigins?: string[];
   /** Parsed `COOKIE_DOMAIN`, applied to the session cookie. */
   cookieDomain?: string;
-  realtime: Pick<RealtimeServer, 'requestHandler'>;
+  realtime: Pick<RealtimeServer, 'requestHandler' | 'pushOfficeProps'>;
   /** Must equal the realtime server's `OFFICEXR_REALTIME_TOKEN_SECRET`; unset disables `/api/realtime-token`. */
   realtimeTokenSecret?: string;
   /** Server-only JaaS signing settings (`jaasConfigFromEnv`); unset disables `/api/offices/:id/voice-token`. */
@@ -44,6 +45,7 @@ export async function createApp({
   queryOffices,
   characters,
   deskClaims,
+  placedProps,
   createOffice,
   updateOffice,
   isLoginAllowed,
@@ -100,6 +102,9 @@ export async function createApp({
       queryOffices,
       characters,
       deskClaims,
+      placedProps,
+      placementFootprint: studioPlacementFootprint(studioDataDir),
+      onPropsChanged: (officeId, props) => realtime.pushOfficeProps(officeId, props),
       createOffice,
       updateOffice,
       mapExists: studioMapExists(studioDataDir),

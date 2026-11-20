@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
+import { heldStands, swapHeldStands } from '../motion/wand.ts';
 import { useStoreWorldObjects, type ExcludeInstance } from './useStoreWorldObjects.ts';
 import { logModelError } from './ModelWithFallback.tsx';
 import { ResetKeyErrorBoundary } from './ResetKeyErrorBoundary.tsx';
@@ -55,6 +56,11 @@ const PRIMITIVE_FALLBACK_COLOR = '#ff00ff';
 // via `useGLTF`, which caches by URL.
 for (const kind of validateWorldObjectKindCatalog(defaultCatalogJson).kinds) {
   useGLTF.preload(modelUrl(kind.gltfPath));
+}
+
+// Props players can place in the office: a first placement must not suspend the whole scene on its download.
+for (const path of ['pool', 'scooter', 'tricycle', 'wand_stand', 'wand_stand_empty']) {
+  useGLTF.preload(modelUrl(`/models/props/${path}.gltf`));
 }
 
 /**
@@ -136,7 +142,15 @@ interface FromStoreProps {
 }
 
 function ObjectInstancesFromStore({ store, exclude, materialOverride }: FromStoreProps) {
-  const snapshot = useStoreWorldObjects(store, exclude);
+  const placedSnapshot = useStoreWorldObjects(store, exclude);
+  const { catalog } = useApplication();
+  const kinds = useCatalog();
+  const subscribeHeld = useCallback((onChange: () => void) => store.subscribe((s) => heldStands(s.players), onChange), [store]);
+  const held = useSyncExternalStore(subscribeHeld, () => heldStands(store.getState().players));
+  const snapshot = useMemo(
+    () => swapHeldStands(placedSnapshot, catalog, new Set(held ? held.split('|') : [])),
+    [placedSnapshot, catalog, kinds, held],
+  );
 
   // Publish a render-marker on the window for regression tests.
   // If <ObjectInstances> is ever again forgotten in Scene.tsx (as

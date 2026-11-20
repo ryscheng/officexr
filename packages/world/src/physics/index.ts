@@ -18,6 +18,7 @@ export { horizontalProgress } from './blocking.ts';
 export {
   BODY_GROUPS,
   WALL_GROUPS,
+  WALL_QUERY_GROUPS,
   INNER_SENSOR_GROUPS,
   OUTER_SENSOR_GROUPS,
   colliderTag,

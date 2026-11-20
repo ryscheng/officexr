@@ -11,6 +11,7 @@ import type {
   MicState,
   PlayerId,
   PlayerPose,
+  HeldItem,
   PlayerState,
   PresenceStatus,
   RealtimeStatus,
@@ -23,6 +24,8 @@ import type {
   WorldObjects,
   ZombieState,
 } from './types.ts';
+import type { PlacedProp } from '../placement/props.ts';
+import { effectFromCast, type SpellCast, type SpellEffect, type SpellId } from '../spells/index.ts';
 import { STATUS_EMOJI_MAX, STATUS_TEXT_MAX, isStatusEmoji } from './types.ts';
 import { DEPARTED_LINGER_MS } from './presence.ts';
 import { worldSettingsFromConstants, type WorldConstants } from './world-constants.ts';
@@ -83,6 +86,11 @@ export interface Actions {
   /** Sit on the placed object instance `instanceId`, or stand up with null. */
   setSelfSeat(instanceId: string | null): void;
   setSelfPose(pose: PlayerPose | null, rack?: string | null): void;
+  setSelfHeld(held: HeldItem | null, stand?: string | null): void;
+  setSelectedSpell(spell: SpellId): void;
+  /** Replace the office's placed props. Never broadcast: only the realtime server distributes them. */
+  setPlacedProps(props: PlacedProp[]): void;
+  setSpellEffect(targetId: PlayerId, effect: SpellEffect): void;
   /** Replace all desk claims. Never broadcast: only the realtime server distributes them. */
   setDeskClaims(claims: Record<string, string>): void;
 
@@ -109,6 +117,8 @@ export interface Actions {
   applyRemoteAvatar(playerId: PlayerId, avatar: AvatarData, name: string, now: number): void;
   applyRemoteSeat(playerId: PlayerId, instanceId: string | null, now: number): void;
   applyRemotePose(playerId: PlayerId, pose: PlayerPose | null, now: number, rack?: string | null): void;
+  applyRemoteHeld(playerId: PlayerId, held: HeldItem | null, now: number, stand?: string | null): void;
+  receiveSpellCast(casterId: PlayerId, cast: SpellCast, now: number): void;
   receivePoke(fromId: PlayerId, targetId: PlayerId | null, at: number): void;
   applyRemoteChat(msg: ChatMessage): void;
   applyRemoteStroke(stroke: Stroke): void;
@@ -310,6 +320,22 @@ export function createActions(store: Store, bus?: Bus): Actions {
       patchSelf({ pose, poseRack: pose === null ? null : rack });
     },
 
+    setSelfHeld(held, stand = null) {
+      patchSelf({ held, heldStand: held === null ? null : stand });
+    },
+
+    setSelectedSpell(spell) {
+      store.setState(() => ({ selectedSpell: spell }));
+    },
+
+    setPlacedProps(props) {
+      store.setState(() => ({ placedProps: [...props] }));
+    },
+
+    setSpellEffect(targetId, effect) {
+      store.setState((s) => ({ spellEffects: { ...s.spellEffects, [targetId]: effect } }));
+    },
+
     setDeskClaims(claims) {
       store.setState(() => ({ deskClaims: { ...claims } }));
     },
@@ -414,6 +440,21 @@ export function createActions(store: Store, bus?: Bus): Actions {
 
     applyRemotePose(playerId, pose, now, rack = null) {
       upsertRemote(playerId, { pose, poseRack: pose === null ? null : rack }, now);
+    },
+
+    applyRemoteHeld(playerId, held, now, stand = null) {
+      upsertRemote(playerId, { held, heldStand: held === null ? null : stand }, now);
+    },
+
+    receiveSpellCast(casterId, cast, now) {
+      if (cast.targetId) {
+        const effect = effectFromCast(casterId, cast, now);
+        store.setState((s) => {
+          const live = Object.entries(s.spellEffects).filter(([, e]) => e.endsAt > now);
+          return { spellEffects: { ...Object.fromEntries(live), [cast.targetId as string]: effect } };
+        });
+      }
+      bus?.emit({ kind: 'spell:cast', casterId, cast, at: now });
     },
 
     receivePoke(fromId, targetId, at) {

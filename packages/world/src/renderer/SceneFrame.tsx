@@ -16,7 +16,7 @@ import type {
   Bus,
   Vec3,
 } from '@officexr/sdk';
-import { tickSession } from '@officexr/sdk';
+import { currentVisual, SPELL_IDS, spellForDigit, tickSession } from '@officexr/sdk';
 import type { BotPool } from '../bot/BotPool.ts';
 import { hasCommandModifier, isTypingTarget } from '../react/useWorldFocus.ts';
 import type { CameraMode } from './config.ts';
@@ -38,6 +38,9 @@ import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts
 import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
 import { newSelfMotion, stepSelfMotion } from '../motion/self-motion.ts';
 import { pokeFacing, POKE_COOLDOWN_S } from '../motion/poke.ts';
+import { buildCast } from '../motion/cast.ts';
+import { newItemsState, stepSelfItems } from '../motion/self-items.ts';
+import { WALL_QUERY_GROUPS } from '../physics/groups.ts';
 import type { ActionInput } from '../input/action-input.ts';
 import { interactKind, type ActionContextStore } from '../input/action-context.ts';
 import { useMotionWorld } from './useMotionWorld.ts';
@@ -226,6 +229,9 @@ export function SceneFrame({
   const eWasDownRef = useRef(false);
   const mountWasDownRef = useRef(false);
   const pokeWasDownRef = useRef(false);
+  const itemsRef = useRef(newItemsState());
+  const digitsDownRef = useRef<Set<string>>(new Set());
+  const castClickRef = useRef(false);
   const lastContextAtRef = useRef(0);
   const lastPokeAtRef = useRef(-Infinity);
   const selfMotionRef = useRef(newSelfMotion());
@@ -295,11 +301,17 @@ export function SceneFrame({
     const onKeyUp = (e: KeyboardEvent) =>
       keysDown.current.delete(e.key.toLowerCase());
 
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 0 && document.pointerLockElement && focusedRef.current) castClickRef.current = true;
+    };
+
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('mousedown', onMouseDown);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('mousedown', onMouseDown);
     };
   }, []);
 
@@ -365,7 +377,45 @@ export function SceneFrame({
     const pokeDown = keys.has('q');
     const pokePressedThisFrame = pokeDown && !pokeWasDownRef.current;
     pokeWasDownRef.current = pokeDown;
-    if (pokePressedThisFrame && self && now - lastPokeAtRef.current > POKE_COOLDOWN_S * 1000) {
+    const digitDown = SPELL_IDS.map((_, i) => String(i + 1)).filter((d) => keys.has(d));
+    const newDigit = digitDown.find((d) => !digitsDownRef.current.has(d));
+    digitsDownRef.current = new Set(digitDown);
+    const castClicked = castClickRef.current;
+    castClickRef.current = false;
+    const selfSpell = currentVisual(stateSnapshot.spellEffects, selfId, now);
+    const spellMoveScale = selfSpell?.moveSpeedScale ?? 1;
+    const holdingWand = self?.held === 'wand';
+    const feetNow = self ? feetPosition(self.pos, stateSnapshot.worldSettings.charRadius) : null;
+    itemsRef.current.spell = stateSnapshot.selectedSpell;
+    const items = stepSelfItems(itemsRef.current, {
+      now: now,
+      fPressed: mountPressedThisFrame,
+      castPressed: pokePressedThisFrame || castClicked,
+      digitSpell: newDigit ? spellForDigit(newDigit) : null,
+      holding: holdingWand,
+      posed: (self?.pose ?? null) !== null,
+      seated: self?.seat != null,
+      standNear: mountPressedThisFrame && !holdingWand && feetNow ? motionWorldRef.current.wandStandNear(feetNow) : null,
+    });
+    if (itemsRef.current.spell !== stateSnapshot.selectedSpell) {
+      actions.setSelectedSpell(itemsRef.current.spell);
+    }
+    if (items.action?.kind === 'pickup') {
+      actions.setSelfHeld('wand', items.action.standId);
+    } else if (items.action?.kind === 'putback') {
+      actions.setSelfHeld(null);
+    } else if (items.action?.kind === 'cast' && self && feetNow) {
+      const others = Object.values(stateSnapshot.players)
+        .filter((p) => p.id !== selfId && !p.isDead)
+        .map((p) => ({ id: p.id, feet: feetPosition(p.pos, stateSnapshot.worldSettings.charRadius) }));
+      const cast = buildCast(items.action.spell, { feet: feetNow, yaw: self.yaw }, others, (origin, dir, max) => {
+        const hit = world.castRay(new RAPIER.Ray(origin, dir), max, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, WALL_QUERY_GROUPS);
+        return hit ? hit.timeOfImpact : max;
+      });
+      actions.receiveSpellCast(selfId, cast, now);
+      sync.sendCast(cast);
+    }
+    if (pokePressedThisFrame && !items.suppressPoke && self && now - lastPokeAtRef.current > POKE_COOLDOWN_S * 1000) {
       lastPokeAtRef.current = now;
       pokeFacing(stateSnapshot, selfId, actions, sync, now);
     }
@@ -379,6 +429,7 @@ export function SceneFrame({
             seated: self.seat != null,
             nearbySeat: (seating?.getState?.().nearbySeatId ?? null) !== null,
             feet: feetPosition(self.pos, stateSnapshot.worldSettings.charRadius),
+            holdingWand: self.held === 'wand',
           },
           motionWorldRef.current,
         ),
@@ -491,7 +542,7 @@ export function SceneFrame({
           feet: feetPosition(self.pos, stateSnapshot.worldSettings.charRadius),
           dir: len > 0 ? { x: dx / len, z: dz / len } : null,
           sprint: isRunning,
-          mount: mountPressedThisFrame,
+          mount: mountPressedThisFrame && !items.suppressMount,
           heading: Math.atan2(-Math.sin(self.yaw), -Math.cos(self.yaw)),
           dt: dt / 1000,
         },
@@ -506,6 +557,7 @@ export function SceneFrame({
         len = Math.hypot(dx, dz);
         playerSpeed = motionOut.speed;
       }
+      playerSpeed *= spellMoveScale;
       if (len > 0) {
         dx /= len;
         dz /= len;
@@ -615,6 +667,7 @@ export function SceneFrame({
         if (
           spacePressedThisFrame &&
           motionOut.canJump &&
+          spellMoveScale > 0 &&
           jumpsRemainingRef.current > 0 &&
           !warped &&
           gravityEnabledRef.current

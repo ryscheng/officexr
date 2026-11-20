@@ -28,6 +28,11 @@ import type { ActionContextStore } from '../input/action-context.ts';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
 import { WaterVolumes } from './WaterVolumes.tsx';
+import { SpellBolts } from './SpellBolts.tsx';
+import { SpellAuras } from './SpellAuras.tsx';
+import { SoundDriver } from './SoundDriver.tsx';
+import { PlacementController } from './PlacementController.tsx';
+import type { PlacementHost } from '../motion/place-mode.ts';
 import { excludeRacks, occupiedRacks } from './occupiedRacks.ts';
 import { BakedLayout } from './BakedLayout.tsx';
 import { BakedLayoutColliders } from './BakedLayoutColliders.tsx';
@@ -168,6 +173,8 @@ interface SceneProps {
   /** Called once each baked layout's colliders have mounted, with its room instance id. */
   onCollidersReady?: (roomInstanceId: string) => void;
   onCollidersError?: (error: Error) => void;
+  /** Lets the player place props; absent where nobody builds. */
+  placement?: PlacementHost;
   /** Enables immersive XR sessions from the self avatar's eyes. Without it the scene has no `<XR>` wrapper. */
   xrStore?: XRStore;
 }
@@ -343,6 +350,10 @@ export function Scene(props: SceneProps) {
 
         <ObjectInstances store={store} exclude={excludeRidden} />
         <WaterVolumes store={store} />
+        <SpellBolts bus={props.bus} store={store} />
+        <SpellAuras store={store} />
+        <SoundDriver store={store} bus={props.bus} />
+        {props.placement && <PlacementController store={store} host={props.placement} />}
 
         <Players
           store={store}

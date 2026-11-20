@@ -13,7 +13,7 @@ export function useStatusHotkeys(actions: StatusHotkeyActions, enabled = true) {
       return;
     }
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.repeat || e.ctrlKey || e.metaKey || e.isComposing || isHotkeyBlocked(e)) {
+      if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.isComposing || isHotkeyBlocked(e)) {
         return;
       }
       const run =

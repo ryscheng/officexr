@@ -3,6 +3,7 @@ import { ActionInput } from '../input/action-input.ts';
 import {
   MobileActionRegistry,
   PAD_SLOTS,
+  resolve,
   visibleActions,
   type MobileAction,
   type MobileActionContext,
@@ -90,5 +91,22 @@ describe('MobileActionRegistry', () => {
     off();
     expect(registry.list()).toEqual([]);
     expect(listener).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('wand interactions on the pad', () => {
+  const interact = WORLD_MOBILE_ACTIONS.find((a) => a.id === 'interact')!;
+
+  it('presses F (mount) for taking the wand and putting it back', () => {
+    for (const kind of ['wand-take', 'wand-return'] as const) {
+      const ctx = ctxOf(kind);
+      interact.onPress(ctx);
+      expect(ctx.input.isDown('mount')).toBe(true);
+      expect(resolve(interact.label, ctx)).toMatch(/wand/i);
+    }
+  });
+
+  it('has a slot for every wand and build button', () => {
+    expect(PAD_SLOTS.length).toBeGreaterThanOrEqual(9);
   });
 });

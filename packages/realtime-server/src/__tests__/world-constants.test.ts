@@ -184,6 +184,7 @@ describe('RealtimeServer world constants', () => {
     expect(atB.map((e) => [e.kind, e.actorId])).toEqual([
       ['world:constants', 'server'],
       ['desk:claims', 'server'],
+      ['office:props', 'server'],
       ['presence:position', 'A'],
     ]);
     expect(atB.find((e) => e.kind === 'desk:claims')).toMatchObject({ claims: {} });

@@ -1,12 +1,19 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
+import { SfxProvider } from '@officexr/world/audio';
+import { createPlaceMode, type PlacementHost } from '@officexr/world/motion';
 import { ApplicationProvider, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import type { Identity, Office } from '@officexr/server/shared';
 import { apiUrl, paths } from '../apiOrigin';
 import { DeskAutoSit } from '../desk/DeskAutoSit';
 import { DeskHud } from '../desk/DeskHud';
+import { PlaceButton, PlacePalette, usePlaceHotkey } from '../place/PlaceHud';
+import { createBrowserSfx } from '../sfx/browserSfx';
+import { SfxSettingsRows } from '../sfx/SfxSettingsRows';
+import { SpellChip } from '../spell/SpellChip';
+import { WandMobileActions } from '../spell/mobileWandActions';
 import { ChatPanel } from '../hud/ChatPanel';
 import { PingInboxHud } from '../hud/PingInboxHud';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
@@ -63,11 +70,15 @@ const storages = {
 
 export function OfficeWorld(props: { office: Office; me: Identity }) {
   const api = useMemo(() => createDefaultApi({ apiPath: apiUrl(paths.worldObjectKinds) }), []);
+  const sfx = useMemo(createBrowserSfx, []);
+  useEffect(() => () => sfx.dispose(), [sfx]);
   return (
     <ApplicationProvider api={api}>
-      <SettingsProvider>
-        <World {...props} />
-      </SettingsProvider>
+      <SfxProvider value={sfx}>
+        <SettingsProvider>
+          <World {...props} />
+        </SettingsProvider>
+      </SfxProvider>
     </ApplicationProvider>
   );
 }
@@ -112,6 +123,18 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
   const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
   const local = session.type === 'ready' ? session.local : null;
   const pingInbox = useMemo(() => new PingInbox(), [local]);
+  const placeMode = useMemo(createPlaceMode, []);
+  const requestPropOp = session.type === 'ready' ? session.requestPropOp : null;
+  const placement = useMemo<PlacementHost | undefined>(
+    () => (requestPropOp ? { mode: placeMode, send: requestPropOp } : undefined),
+    [placeMode, requestPropOp],
+  );
+  usePlaceHotkey(placeMode, session.type === 'ready');
+  useEffect(() => {
+    if (session.type !== 'ready') {
+      placeMode.setOpen(false);
+    }
+  }, [session.type, placeMode]);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const settings = useSettings();
   const { open: openSettings, close: closeSettings } = settings;
@@ -158,15 +181,19 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
     title: office.name,
     storages,
     onPingPlayer: pinger.ping,
+    placement,
   });
   const sharedTabs: SettingsTab[] = [
     {
       id: 'controls',
       label: 'Controls',
       content: (
-        <SettingRow label="View">
-          <ViewModeControl mode={viewMode} />
-        </SettingRow>
+        <>
+          <SettingRow label="View">
+            <ViewModeControl mode={viewMode} />
+          </SettingRow>
+          <SfxSettingsRows />
+        </>
       ),
     },
     {
@@ -191,6 +218,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
       selfId={ready.local.selfId}
     >
       <StatusMobileActions />
+      <WandMobileActions store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} placeMode={placeMode} />
       {ready.voice && <JaasMeeting voice={ready.voice} />}
       {ready.voice && <MuteHotkey voice={ready.voice} />}
       {!settings.isOpen && <ClickToPlayPrompt />}
@@ -204,6 +232,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
             <PokeToast bus={ready.local.bus} store={ready.local.store} selfId={ready.local.selfId} />
             <FocusPingToast notice={focusNotice} onDone={clearFocusNotice} />
             <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
+            <PlacePalette mode={placeMode} store={ready.local.store} />
           </>
         }
         topLeft={<OfficeNamePlate store={ready.local.store} name={office.name} />}
@@ -213,6 +242,7 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
               <StatusMenu />
               <EmoteMenu />
               <PingInboxHud inbox={pingInbox} store={ready.local.store} />
+              <PlaceButton mode={placeMode} />
               <SettingsButton />
             </div>
             <OfficeMinimap store={ready.local.store} />
@@ -227,9 +257,12 @@ function World({ office: initialOffice, me }: { office: Office; me: Identity }) 
           />
         }
         bottomCentre={
-          ready.voice && (
-            <CallBar store={ready.local.store} selfId={ready.local.selfId} voice={ready.voice} pinger={pinger} />
-          )
+          <div className="flex flex-col items-center gap-2">
+            <SpellChip store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
+            {ready.voice && (
+              <CallBar store={ready.local.store} selfId={ready.local.selfId} voice={ready.voice} pinger={pinger} />
+            )}
+          </div>
         }
         bottomLeft={<ChatPanel store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />}
       />

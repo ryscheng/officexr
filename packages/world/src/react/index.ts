@@ -48,4 +48,5 @@ export {
 export { useMobileActions } from './mobileActionsContext.tsx';
 export { WORLD_MOBILE_ACTIONS } from './worldMobileActions.tsx';
 export { ACTION_KEYS, ActionInput, type ActionId } from '../input/action-input.ts';
+export { WandIcon } from './mobileIcons.tsx';
 export { interactKind, type ActionContext, type InteractKind } from '../input/action-context.ts';

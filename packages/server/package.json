@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@officexr/realtime-server": "workspace:*",
+    "@officexr/sdk": "workspace:*",
     "@officexr/world": "workspace:*",
     "@types/connect": "^3.4.38",
     "@types/connect-pg-simple": "^7.0.3",

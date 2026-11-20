@@ -2,3 +2,6 @@ export * from './game-state/index.ts';
 export * from './realtime/index.ts';
 export * from './data/index.ts';
 export * from './spatial/index.ts';
+export * from './spells/index.ts';
+export * from './placement/props.ts';
+export * from './placement/frames.ts';

@@ -16,6 +16,9 @@ export type SerializedOfficeState = Omit<
   | 'callRoster'
   | 'deskClaims'
   | 'deskAreas'
+  | 'placedProps'
+  | 'spellEffects'
+  | 'selectedSpell'
 > & {
   players: Record<
     string,

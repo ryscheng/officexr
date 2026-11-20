@@ -36,7 +36,7 @@ describe('ActionInput', () => {
 
   it('ignores actions without a key', () => {
     const input = new ActionInput();
-    input.press('cast');
+    input.press('unmapped');
     expect(input.mergeInto(new Set()).size).toBe(0);
   });
 });

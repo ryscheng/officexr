@@ -11,8 +11,8 @@ import {
   type IntersectionExitPayload,
 } from '@react-three/rapier';
 import { ActiveCollisionTypes } from '@dimforge/rapier3d-compat';
-import type { Bus, OfficeState, PlayerId, Store } from '@officexr/sdk';
-import { Adventurer, ANIMATION_URLS, type MotionState } from './Adventurer.tsx';
+import { currentVisual, type Bus, type OfficeState, type PlayerId, type Store } from '@officexr/sdk';
+import { Adventurer, ANIMATION_URLS, newAvatarFx, type AvatarFx, type MotionState } from './Adventurer.tsx';
 import { POKE_REACH_M, POKE_TURN_S, yawToward } from '../motion/poke.ts';
 import { POSE_VISUALS } from '../motion/poseVisual.ts';
 import { leanOf, RIDE_STRATEGIES } from '../motion/ride.ts';
@@ -255,6 +255,25 @@ export function Players({
   const [sparks, setSparks] = useState<{ id: number; position: [number, number, number] }[]>([]);
   const sparkId = useRef(0);
   const [pokeCounters, setPokeCounters] = useState<Record<string, number>>({});
+  const [castCounters, setCastCounters] = useState<Record<string, number>>({});
+  useEffect(
+    () => bus.on('spell:cast', ({ casterId }) => setCastCounters((prev) => ({ ...prev, [casterId]: (prev[casterId] ?? 0) + 1 }))),
+    [bus],
+  );
+  const [holders, setHolders] = useState(() => wandHolders(store.getState()));
+  useEffect(() => {
+    setHolders(wandHolders(store.getState()));
+    return store.subscribe(wandHolders, setHolders);
+  }, [store]);
+  const fxRefs = useRef<Map<string, React.MutableRefObject<AvatarFx>>>(new Map());
+  const fxRefFor = (id: string) => {
+    let ref = fxRefs.current.get(id);
+    if (!ref) {
+      ref = { current: newAvatarFx() };
+      fxRefs.current.set(id, ref);
+    }
+    return ref;
+  };
   const waterVolumes = useWaterVolumes(store);
   const waterVolumesRef = useRef(waterVolumes);
   waterVolumesRef.current = waterVolumes;
@@ -507,6 +526,15 @@ export function Players({
           poseGroup.rotation.set(0, 0, 0);
         }
       }
+      const spellVisual = currentVisual(state.spellEffects, id, now);
+      if (poseGroup) {
+        poseGroup.position.y += spellVisual?.lift ?? 0;
+        poseGroup.scale.setScalar(spellVisual?.scale ?? 1);
+      }
+      const fx = fxRefFor(id).current;
+      fx.tint = spellVisual?.tint ?? null;
+      fx.strength = spellVisual?.tintStrength ?? 0;
+      fx.glow = spellVisual?.sparkles ?? false;
       const poseKey = visual ? `${visual.clip}|${visual.vehicle}|${Math.round(visual.timeScale * 10)}` : '';
       if (poseKeys.current.get(id) !== poseKey) {
         poseKeys.current.set(id, poseKey);
@@ -677,6 +705,9 @@ export function Players({
                     animScale={animScaleByPlayer[p.id] ?? 1}
                     bumpCounter={bumpCounters[p.id] ?? 0}
                     pokeCounter={pokeCounters[p.id] ?? 0}
+                    castCounter={castCounters[p.id] ?? 0}
+                    held={holders.split('|').includes(p.id)}
+                    fxRef={fxRefFor(p.id)}
                     pose={poseByPlayer[p.id] ?? null}
                     store={store}
                     fallbackIdleSpeed={idleAnimSpeed}
@@ -705,6 +736,13 @@ export function Players({
   );
 }
 
+const wandHolders = (s: OfficeState): string =>
+  Object.values(s.players)
+    .filter((p) => p.held === 'wand')
+    .map((p) => p.id)
+    .sort()
+    .join('|');
+
 const modelKey = (m: PlayerModel) => `${m.url}|${m.ghost}`;
 const modelUrls = (m: PlayerModel) => [m.url, ...ANIMATION_URLS];
 
@@ -726,6 +764,9 @@ function PerPlayerAdventurer(props: {
   animScale: number;
   bumpCounter: number;
   pokeCounter: number;
+  castCounter: number;
+  held: boolean;
+  fxRef: React.MutableRefObject<AvatarFx>;
   pose: PoseView | null;
   store: Store;
   fallbackIdleSpeed: number;
@@ -741,6 +782,9 @@ function PerPlayerAdventurer(props: {
     animScale,
     bumpCounter,
     pokeCounter,
+    castCounter,
+    held,
+    fxRef,
     pose,
     store,
     paused,
@@ -776,6 +820,9 @@ function PerPlayerAdventurer(props: {
       runSpeed={tunedSpeeds.run * animScale}
       bumpCounter={bumpCounter}
       pokeCounter={pokeCounter}
+      castCounter={castCounter}
+      held={held}
+      fxRef={fxRef}
       clipOverride={pose ? { name: pose.clip, timeScale: pose.timeScale } : undefined}
       paused={paused}
     />

@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { NextHandleFunction } from 'connect';
+import { MAX_PLACED_PROPS, PLACED_ID_PREFIX, ZPropOp, type PlacedProp, type PropOp } from '@officexr/sdk';
 import { signJoinToken } from '@officexr/realtime-server/join-token';
 import { isKnownCharacter, type CatalogCharacters } from '@officexr/world/characters';
 import { DEFAULT_MAP, type SerializedMap } from '@officexr/world/scenes';
@@ -34,6 +36,13 @@ export interface OfficeDeskClaims {
   /** Moves the login's existing claim to `deskId`; 'taken' when another login holds it. */
   claim: (officeId: string, login: string, deskId: string) => Promise<'ok' | 'taken'>;
   release: (officeId: string, login: string) => Promise<void>;
+}
+
+export interface OfficePlacedProps {
+  list: (officeId: string) => Promise<PlacedProp[]>;
+  add: (officeId: string, prop: Omit<PlacedProp, 'id'> & { id: string }, placedBy: string) => Promise<'ok' | 'limit'>;
+  update: (officeId: string, prop: PlacedProp) => Promise<'ok' | 'not-found'>;
+  remove: (officeId: string, id: string) => Promise<'ok' | 'not-found'>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -125,10 +134,64 @@ async function parseNewOffice(body: unknown, mapExists: MapExists): Promise<Omit
   return { name: update.name, description: update.description ?? null, mapName: update.mapName };
 }
 
+/** The footprint of a prop in metres, or null for a kind the catalog does not know. */
+export type PlacementFootprint = (kindId: string, position: [number, number, number], yawDeg: number) => { min: readonly number[]; max: readonly number[] } | null;
+
+const boxesOverlap = (a: { min: readonly number[]; max: readonly number[] }, b: { min: readonly number[]; max: readonly number[] }) =>
+  [0, 1, 2].every((i) => a.min[i] < b.max[i] && a.max[i] > b.min[i]);
+
+type PropOutcome = 'ok' | 'limit' | 'not-found' | 'invalid';
+
+/** Props of one office change one at a time here, so a check and the write after it cannot interleave. */
+const officeQueues = new Map<string, Promise<unknown>>();
+function serialized<T>(officeId: string, run: () => Promise<T>): Promise<T> {
+  const next = (officeQueues.get(officeId) ?? Promise.resolve()).then(run, run);
+  officeQueues.set(officeId, next.catch(() => undefined));
+  return next;
+}
+
+async function applyPropOp(
+  props: OfficePlacedProps,
+  footprintOf: PlacementFootprint,
+  officeId: string,
+  login: string,
+  op: PropOp,
+): Promise<PropOutcome> {
+  if (op.op === 'remove') {
+    return props.remove(officeId, op.id);
+  }
+  const placement = { kindId: op.kindId, position: op.position, yawDeg: op.yawDeg };
+  const box = footprintOf(op.kindId, op.position, op.yawDeg);
+  if (!box) {
+    return 'invalid';
+  }
+  const others = await props.list(officeId);
+  const updating = op.op === 'update' ? others.find((p) => p.id === op.id) : undefined;
+  if (op.op === 'update' && !updating) {
+    return 'not-found';
+  }
+  if (updating && updating.kindId !== op.kindId) {
+    return 'invalid';
+  }
+  const clash = others.some((p) => p.id !== (updating?.id ?? '') && boxesOverlap(box, footprintOf(p.kindId, p.position, p.yawDeg) ?? { min: [0, 0, 0], max: [0, 0, 0] }));
+  if (clash) {
+    return 'invalid';
+  }
+  if (updating) {
+    return props.update(officeId, { id: updating.id, ...placement });
+  }
+  return props.add(officeId, { id: `${PLACED_ID_PREFIX}${randomUUID()}`, ...placement }, login);
+}
+
 export interface ApiOptions {
   queryOffices: QueryOffices;
   characters: OfficeCharacters;
   deskClaims: OfficeDeskClaims;
+  placedProps: OfficePlacedProps;
+  /** Resolves the footprints used to keep placed props clear of each other. */
+  placementFootprint: () => Promise<PlacementFootprint>;
+  /** Called with the new list after every accepted write, so a live room shows it. */
+  onPropsChanged?: (officeId: string, props: PlacedProp[]) => void;
   createOffice: CreateOffice;
   updateOffice: UpdateOffice;
   mapExists: MapExists;
@@ -145,6 +208,9 @@ export function apiMiddleware({
   queryOffices,
   characters,
   deskClaims,
+  placedProps,
+  placementFootprint,
+  onPropsChanged,
   createOffice,
   updateOffice,
   mapExists,
@@ -262,6 +328,35 @@ export function apiMiddleware({
             return send(200, { claims: await deskClaims.list(office.id) });
           }
           return send(405, { error: 'Method not allowed' });
+        });
+      }
+      const propsRoute = path.match(/^\/api\/offices\/([^/]+)\/props$/)?.[1];
+      if (propsRoute) {
+        return withOffice(propsRoute, async (me, office) => {
+          if (req.method === 'GET') {
+            return send(200, { props: await placedProps.list(office.id) });
+          }
+          if (req.method !== 'POST') {
+            return send(405, { error: 'Method not allowed' });
+          }
+          const body = await readJson(req);
+          if (body === TOO_LARGE) {
+            return send(413, { error: 'Body too large' });
+          }
+          const parsed = ZPropOp.safeParse(body);
+          if (!parsed.success) {
+            return send(400, { error: 'invalid' });
+          }
+          const footprintOf = await placementFootprint();
+          const { outcome, list } = await serialized(office.id, async () => {
+            const result = await applyPropOp(placedProps, footprintOf, office.id, me.login, parsed.data);
+            return { outcome: result, list: result === 'ok' ? await placedProps.list(office.id) : [] };
+          });
+          if (outcome !== 'ok') {
+            return send(outcome === 'limit' ? 409 : outcome === 'invalid' ? 400 : 404, { error: outcome });
+          }
+          onPropsChanged?.(office.id, list);
+          return send(200, { props: list });
         });
       }
       const id = path.match(/^\/api\/offices\/([^/]+)$/)?.[1];

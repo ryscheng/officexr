@@ -7,6 +7,8 @@ import { CHARACTERS } from './config.ts';
 import { characterUrl } from '../characters/registry.ts';
 import { createSitPoseClip, SIT_CLIP_NAME } from './sitPoseClip.ts';
 import { createPokeClip, POKE_CLIP_NAME } from './pokeClip.ts';
+import { CAST_CLIP_NAME, createCastClip } from './castClip.ts';
+import { useFrame } from '@react-three/fiber';
 
 const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
 const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
@@ -42,8 +44,24 @@ export function applyGhostMaterials(scene: THREE.Object3D): THREE.Material[] {
   return clones;
 }
 
+function cloneOwn(material: THREE.Material, own: THREE.Material[]): THREE.Material {
+  const c = material.clone();
+  own.push(c);
+  return c;
+}
+
 const sitPoseClip = createSitPoseClip();
 const pokeClip = createPokeClip();
+const castClip = createCastClip();
+
+/** What a spell does to a character's colours, set each frame by `Players` and read by its `Adventurer`. */
+export interface AvatarFx {
+  tint: string | null;
+  strength: number;
+  glow: boolean;
+}
+
+export const newAvatarFx = (): AvatarFx => ({ tint: null, strength: 0, glow: false });
 
 for (const url of ANIMATION_URLS) {
   useGLTF.preload(url);
@@ -130,6 +148,11 @@ interface AdventurerProps {
   invisible?: boolean;
   clipOverride?: { name: string; timeScale: number };
   pokeCounter?: number;
+  /** Holding the wand: it shows in the right hand. */
+  held?: boolean;
+  /** Monotonic counter: every increment waves the wand once. */
+  castCounter?: number;
+  fxRef?: React.MutableRefObject<AvatarFx>;
   /** Time-scale multiplier for the idle clip (1 = authored speed). */
   idleSpeed?: number;
   /** Time-scale multiplier for the walking clip. */
@@ -159,6 +182,9 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       previewState,
       clipOverride,
       pokeCounter = 0,
+      held = false,
+      castCounter = 0,
+      fxRef,
       invisible,
       idleSpeed = 1,
       walkSpeed = 1,
@@ -184,15 +210,48 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       if (ghost) {
         return { scene: s, ghostMaterials: applyGhostMaterials(s) };
       }
+      const own: THREE.Material[] = [];
       s.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.isMesh) {
           m.castShadow = true;
           m.receiveShadow = true;
+          // Spells recolour this character only, so it must not share the cached glTF materials.
+          m.material = Array.isArray(m.material) ? m.material.map((x) => cloneOwn(x, own)) : cloneOwn(m.material, own);
         }
       });
-      return { scene: s, ghostMaterials: [] };
+      return { scene: s, ghostMaterials: own };
     }, [character_gltf.scene, ghost]);
+    const tintable = useMemo(
+      () =>
+        ghostMaterials
+          .filter((m): m is THREE.MeshStandardMaterial => (m as THREE.MeshStandardMaterial).isMeshStandardMaterial)
+          .map((m) => ({ material: m, base: m.color.clone() })),
+      [ghostMaterials],
+    );
+    const tintColor = useMemo(() => new THREE.Color(), []);
+    const appliedTint = useRef('');
+    useFrame(() => {
+      const fx = fxRef?.current;
+      const key = fx && fx.tint ? `${fx.tint}|${fx.strength.toFixed(2)}|${fx.glow}` : '';
+      if (key === appliedTint.current) return;
+      appliedTint.current = key;
+      if (fx?.tint) tintColor.set(fx.tint);
+      for (const { material, base } of tintable) {
+        if (fx?.tint) {
+          material.color.copy(base).lerp(tintColor, fx.strength);
+          if (fx.glow) {
+            material.emissive.copy(tintColor);
+            material.emissiveIntensity = fx.strength * 0.7;
+          } else {
+            material.emissiveIntensity = 0;
+          }
+        } else {
+          material.color.copy(base);
+          material.emissiveIntensity = 0;
+        }
+      }
+    });
     useEffect(
       () => () => {
         for (const m of ghostMaterials) {
@@ -215,6 +274,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         ...combatRanged.animations,
         sitPoseClip,
         pokeClip,
+        castClip,
       ]) {
         if (seen.has(c.name)) continue;
         seen.add(c.name);
@@ -459,6 +519,34 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         hand?.remove(finger);
       };
     }, [scene, finger]);
+    const wand = useMemo(() => createHeldWand(), []);
+    useEffect(() => {
+      const hand = scene.getObjectByName('handr');
+      hand?.add(wand);
+      return () => {
+        hand?.remove(wand);
+      };
+    }, [scene, wand]);
+    useEffect(() => {
+      wand.visible = held;
+    }, [wand, held]);
+    const lastCastRef = useRef(0);
+    useEffect(() => {
+      if (paused || castCounter === 0 || castCounter === lastCastRef.current) return;
+      lastCastRef.current = castCounter;
+      const cast = actions[CAST_CLIP_NAME];
+      if (!cast) return;
+      cast.reset();
+      cast.setEffectiveWeight(POKE_ARM_WEIGHT);
+      cast.setLoop(THREE.LoopOnce, 1);
+      cast.clampWhenFinished = false;
+      cast.fadeIn(0.05).play();
+      const fadeId = setTimeout(() => cast.fadeOut(0.15), Math.max(0, cast.getClip().duration * 1000 - 160));
+      return () => {
+        clearTimeout(fadeId);
+        cast.stop();
+      };
+    }, [castCounter, actions, paused]);
     const lastPokeRef = useRef(0);
     useEffect(() => {
       if (paused || pokeCounter === 0 || pokeCounter === lastPokeRef.current) return;
@@ -502,4 +590,26 @@ export function isAnimationStateAvailable(
   loadedClipNames: ReadonlySet<string>,
 ): boolean {
   return loadedClipNames.has(STATE_CLIPS[state]);
+}
+
+export const WAND_TIP_COLOR = '#ffe27a';
+
+/** A wand lying along the right hand bone's +X, grip at the bone origin; hidden until held. */
+export function createHeldWand(): THREE.Group {
+  const group = new THREE.Group();
+  const shaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.014, 0.02, 0.42, 8),
+    new THREE.MeshStandardMaterial({ color: '#6b3f1d', roughness: 0.7 }),
+  );
+  shaft.rotation.z = -Math.PI / 2;
+  shaft.position.x = 0.2;
+  shaft.castShadow = true;
+  const tip = new THREE.Mesh(
+    new THREE.SphereGeometry(0.03, 10, 8),
+    new THREE.MeshBasicMaterial({ color: WAND_TIP_COLOR }),
+  );
+  tip.position.x = 0.43;
+  group.add(shaft, tip);
+  group.visible = false;
+  return group;
 }

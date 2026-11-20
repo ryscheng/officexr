@@ -1,12 +1,14 @@
 import React from 'react';
 import type { InteractKind } from '../input/action-context.ts';
 import type { MobileAction } from './mobile-actions.ts';
-import { DismountIcon, JumpIcon, PokeIcon, RideIcon, SitIcon, SprintIcon } from './mobileIcons.tsx';
+import { DismountIcon, JumpIcon, PokeIcon, RideIcon, SitIcon, SprintIcon, WandIcon } from './mobileIcons.tsx';
 
 const INTERACT: Record<InteractKind, { label: string; icon: React.ReactNode; action: string }> = {
   ride: { label: 'Ride', icon: <RideIcon />, action: 'mount' },
   dismount: { label: 'Get off', icon: <DismountIcon />, action: 'mount' },
   sit: { label: 'Sit', icon: <SitIcon />, action: 'sit' },
+  'wand-take': { label: 'Take wand', icon: <WandIcon />, action: 'mount' },
+  'wand-return': { label: 'Put wand back', icon: <WandIcon />, action: 'mount' },
 };
 
 /** The movement actions the world itself handles; each presses the action its keyboard key stands for. */

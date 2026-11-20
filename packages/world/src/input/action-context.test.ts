@@ -44,3 +44,24 @@ describe('ActionContextStore', () => {
     expect(store.get().interact).toBe('ride');
   });
 });
+
+describe('interactKind with the wand', () => {
+  const nearStand = { ...noRack, wandStandNear: () => 's1' };
+
+  it('offers Take wand next to a free stand, ahead of a rack, and not while riding or seated', () => {
+    expect(interactKind(base, nearStand)).toBe('wand-take');
+    expect(interactKind(base, { ...nearRack, wandStandNear: () => 's1' })).toBe('wand-take');
+    expect(interactKind({ ...base, pose: 'scooter' }, nearStand)).toBe('dismount');
+    expect(interactKind({ ...base, pose: 'swim' }, nearStand)).toBeNull();
+    expect(interactKind({ ...base, seated: true }, nearStand)).toBeNull();
+  });
+
+  it('offers Put wand back anywhere while holding it, ahead of ride and sit', () => {
+    expect(interactKind({ ...base, holdingWand: true }, noRack)).toBe('wand-return');
+    expect(interactKind({ ...base, holdingWand: true, nearbySeat: true }, nearRack)).toBe('wand-return');
+  });
+
+  it('rides as before when no stand is near', () => {
+    expect(interactKind(base, { ...nearRack, wandStandNear: () => null })).toBe('ride');
+  });
+});

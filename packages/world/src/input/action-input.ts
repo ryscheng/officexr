@@ -5,6 +5,7 @@ export const ACTION_KEYS: Readonly<Record<ActionId, string>> = {
   jump: ' ',
   sprint: 'shift',
   poke: 'q',
+  cast: 'q',
   mount: 'f',
   sit: 'e',
 };

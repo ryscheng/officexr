@@ -126,6 +126,10 @@ export class StateDiffBroadcaster {
       this.announcePose(next);
     }
 
+    if (selfLive && ((me?.held ?? null) !== (prevMe?.held ?? null) || (me?.heldStand ?? null) !== (prevMe?.heldStand ?? null))) {
+      this.announceHeld(next);
+    }
+
     if (selfLive && (me?.handRaised ?? false) !== (prevMe?.handRaised ?? false)) {
       this.announceHand(next);
     }
@@ -270,6 +274,18 @@ export class StateDiffBroadcaster {
       t: this.clock.now(),
       pose: state.players[state.selfId]?.pose ?? null,
       rack: state.players[state.selfId]?.poseRack ?? null,
+    });
+  }
+
+  announceHeld(state: OfficeState = this.store.getState()): void {
+    this.broadcast({
+      kind: 'presence:held',
+      v: 1,
+      actorId: state.selfId,
+      seq: this.takeSeq(),
+      t: this.clock.now(),
+      held: state.players[state.selfId]?.held ?? null,
+      stand: state.players[state.selfId]?.heldStand ?? null,
     });
   }
 
