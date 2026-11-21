@@ -4,7 +4,6 @@ export type MapBox = { x: number; z: number; w: number; h: number };
 
 type Rect = { left: number; top: number; width: number; height: number };
 
-/** Maps a pointer position on an `xMidYMid meet` svg to the world XZ under it; letterbox margins map outside `box`. */
 export function clientToMap(rect: Rect, box: MapBox, clientX: number, clientY: number): Spot {
   const scale = Math.min(rect.width / box.w, rect.height / box.h);
   const marginX = (rect.width - box.w * scale) / 2;

@@ -90,3 +90,15 @@ it('refocuses on a click outside a panel', () => {
   fireEvent.mouseDown(document.body);
   expect(hook.result.current).toBe(true);
 });
+
+it('refocuses over the open map, so a movement key cancels a map walk', () => {
+  const { hook, release, view } = setup();
+  const map = document.createElement('div');
+  map.setAttribute('role', 'dialog');
+  map.setAttribute('data-map-dialog', '');
+  document.body.append(map);
+  release();
+  fireEvent.keyDown(view.getByText('in panel'), { key: 'd' });
+  expect(hook.result.current).toBe(true);
+  map.remove();
+});

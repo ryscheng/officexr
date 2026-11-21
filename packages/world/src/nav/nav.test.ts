@@ -3,7 +3,7 @@ import { BODY_Y, feetPosition, type ColliderDescriptor } from '../physics/rules.
 import { STEP_UP_MAX_HEIGHT } from '../physics/step-up.ts';
 import { CHAR_HEIGHT_M } from '../renderer/config.ts';
 import { buildNavGrid, type NavGrid } from './grid.ts';
-import { findPath } from './path.ts';
+import { findPath, nearestWalkable } from './path.ts';
 
 const CHAR_RADIUS = 0.4;
 const CELL = 0.25;
@@ -200,5 +200,24 @@ describe('buildNavGrid', () => {
     expect(g).toBeNull();
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
+  });
+});
+
+describe('nearestWalkable', () => {
+  it('keeps a standable point on its own cell', () => {
+    const g = grid();
+    const spot = nearestWalkable(g, onFloor(2.1, 3.1))!;
+    expect(Math.hypot(spot.x - 2.1, spot.z - 3.1)).toBeLessThan(CELL);
+  });
+
+  it('moves a point inside a wall out to open floor', () => {
+    const g = grid(wall(-1, 1, -1, 1));
+    const spot = nearestWalkable(g, onFloor(0, 0))!;
+    expect(walkableAt(g, spot.x, spot.z)).toBe(true);
+    expect(Math.hypot(spot.x, spot.z)).toBeGreaterThan(1);
+  });
+
+  it('is null off the floor', () => {
+    expect(nearestWalkable(grid(), onFloor(40, 0))).toBeNull();
   });
 });

@@ -192,7 +192,7 @@ export function FullMap({
         <p role="status" className={`text-center text-xs ${refused ? 'font-semibold text-hud-text' : 'text-hud-text-2'}`}>
           {refused ? "Can't go there" : 'Tap the map to walk there'}
         </p>
-        <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-hud-text-2" aria-label="Legend">
+        <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-hud-text-2 [@media(max-height:500px)]:hidden" aria-label="Legend">
           <li><span aria-hidden className="mr-1.5 inline-block size-2.5 rounded-full border-2 border-green-500" />Available</li>
           <li><span aria-hidden className="mr-1.5 inline-block size-2.5 rounded-full border-2 border-yellow-400" />Away</li>
           <li><span aria-hidden className="mr-1.5 inline-block size-2.5 rounded-full border-2 border-red-500" />Unresponsive</li>

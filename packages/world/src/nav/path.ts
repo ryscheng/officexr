@@ -34,7 +34,6 @@ export function findPath(
   return smooth(grid, cells).map((c) => cellCentre(grid, c % grid.width, Math.floor(c / grid.width)));
 }
 
-/** The nearest standable spot within reach of `p` at its height, or null when the point is out of bounds or walled in. */
 export function nearestWalkable(
   grid: NavGrid,
   p: { x: number; y: number; z: number },

@@ -13,10 +13,7 @@ export interface SeatingState {
 export interface PlayControlsSource {
   /** Walks to `targetId` and keeps following them; the current target again stops. */
   goTo(targetId: PlayerId): void;
-  /**
-   * Walks to the standable spot nearest `(x, z)` at the player's floor, replacing any walk, and returns that spot;
-   * null, with no walk started, when no spot is in reach or no route leads there.
-   */
+  /** Returns the spot it walks to, or null, with no walk started, when none is in reach or no route leads there. */
   goToGround(x: number, z: number): { x: number; z: number } | null;
   cancel(): void;
   getState(): AutoWalkState;
