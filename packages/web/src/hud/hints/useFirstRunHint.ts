@@ -21,13 +21,14 @@ export type HintSignals = {
 };
 
 export function hintConditions(s: HintSignals): Record<HintName, boolean> {
-  const quiet = !s.menuOpen && !s.otherSheetOpen && !s.inCall && !s.toastShowing && !s.building;
+  const free = !s.menuOpen && !s.otherSheetOpen && !s.toastShowing && !s.building;
+  const quiet = free && !s.inCall;
   return {
-    wave: quiet && s.nearName !== null,
-    people: quiet && s.headcount > 1,
+    wave: free && s.nearName !== null,
+    people: quiet && s.headcount > 1 && s.nearName === null,
     move: quiet,
     alone: quiet && s.headcount === 1 && s.nearName === null,
-    build: !s.coarse && s.canBuild && s.menuOpen && !s.otherSheetOpen && !s.inCall && !s.building,
+    build: !s.coarse && s.canBuild && s.menuOpen && !s.otherSheetOpen && !s.building,
   };
 }
 

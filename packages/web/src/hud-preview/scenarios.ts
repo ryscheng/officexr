@@ -166,6 +166,18 @@ export const SCENARIOS: Record<string, Scenario> = {
     props: PROPS,
     textOnly: true,
   },
+  spread: {
+    id: 'spread',
+    title: 'Two people far from the camera',
+    self: {},
+    players: [
+      { id: 'bao@example.test', name: 'Bao Tran', at: [11, 9] },
+      { id: 'ines@example.test', name: 'Ines Moreau', at: [-10, -11] },
+    ],
+    chat: [],
+    call: [],
+    props: [],
+  },
   alone: {
     id: 'alone',
     title: 'Empty office',

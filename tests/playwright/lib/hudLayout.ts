@@ -4,7 +4,9 @@ export const HUD_BASE_URL = process.env.HUD_BASE_URL ?? 'http://localhost:5176';
 
 export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full', 'missions', 'new-mission', 'chat'] as const;
 
-export const HUD_STATES: Record<string, { scenario: string; steps: (string | RegExp)[]; stallMs?: number }> = {
+const HINT_NAMES = ['move', 'people', 'wave', 'alone', 'build'];
+
+export const HUD_STATES: Record<string, { scenario: string; steps: (string | RegExp)[]; stallMs?: number; hint?: string; only?: string[] }> = {
   rest: { scenario: 'crowd', steps: [] },
   moving: { scenario: 'crowd', steps: ['move'] },
   'missions-sheet': { scenario: 'missions', steps: [/^Expand missions$/] },
@@ -27,6 +29,11 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'conn-offline': { scenario: 'crowd', steps: ['net:offline'] },
   'conn-recovered': { scenario: 'crowd', steps: ['net:reconnecting', 'net:live'] },
   'text-only': { scenario: 'text-only', steps: [] },
+  'hint-move': { scenario: 'alone', steps: ['wait:10800'], hint: 'move' },
+  'hint-people': { scenario: 'spread', steps: ['wait:6800'], hint: 'people' },
+  'hint-wave': { scenario: 'chat', steps: ['wait:1800'], hint: 'wave' },
+  'hint-alone': { scenario: 'alone', steps: ['wait:60800'], hint: 'alone', only: ['desktop', 'iphone13-portrait', 'iphone13-landscape'] },
+  'hint-build': { scenario: 'chat', steps: ['Office menu'], hint: 'build', only: ['desktop'] },
 };
 export type HudScenario = (typeof HUD_SCENARIOS)[number];
 
@@ -56,13 +63,20 @@ export type Theme = 'light' | 'dark';
 /** Opens `/hud-preview?scenario=` in a fresh context and waits until the HUD is up. */
 export async function openHudPreview(browser: Browser, device: HudDevice, scenario: string, theme: Theme): Promise<{ page: Page; close: () => Promise<void> }> {
   const context = await browser.newContext({ ...device.options, baseURL: HUD_BASE_URL });
-  await context.addInitScript((t) => {
-    try {
-      localStorage.setItem('officexr:appearance', t);
-    } catch {
-      // storage can be blocked
-    }
-  }, theme);
+  const seen = HINT_NAMES.filter((name) => name !== HUD_STATES[scenario]?.hint);
+  await context.addInitScript(
+    ([t, names]) => {
+      try {
+        localStorage.setItem('officexr:appearance', t!);
+        for (const name of names!.split(',')) {
+          localStorage.setItem(`officexr:hint:${name}`, 'done');
+        }
+      } catch {
+        // storage can be blocked
+      }
+    },
+    [theme, seen.join(',')] as const,
+  );
   const page = await context.newPage();
   page.setDefaultTimeout(60_000);
   const stallMs = HUD_STATES[scenario]?.stallMs;
@@ -173,6 +187,10 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
   for (const name of SCENARIO_STEPS[scenario] ?? []) {
     if (name === 'move') {
       await dragStick(page);
+      continue;
+    }
+    if (typeof name === 'string' && name.startsWith('wait:')) {
+      await page.waitForTimeout(Number(name.slice(5)));
       continue;
     }
     if (name === 'keyboard') {

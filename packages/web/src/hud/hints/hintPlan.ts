@@ -22,7 +22,6 @@ export type PlanInput = {
   isAvailable: (name: HintName) => boolean;
 };
 
-/** The hint to show now: the running one until it ends, else the first waiting one in priority order. */
 export function planHint({ now, active, lastEndedAt, conditions, since, isAvailable }: PlanInput): ActiveHint | null {
   if (active) {
     return conditions[active.name] && now - active.at < HINT_SHOW_MS ? active : null;

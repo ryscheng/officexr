@@ -33,7 +33,7 @@ const PORTRAIT_ONLY = new Set(['missions-sheet', 'chat-sheet', 'chat-keyboard', 
 const isPortrait = (id: string) => id.endsWith('-portrait');
 
 for (const device of LAYOUT_DEVICES) {
-  for (const scenario of [...HUD_SCENARIOS, ...Object.keys(HUD_STATES).filter((s) => isPortrait(device.id) || !PORTRAIT_ONLY.has(s))]) {
+  for (const scenario of [...HUD_SCENARIOS, ...Object.keys(HUD_STATES).filter((s) => (isPortrait(device.id) || !PORTRAIT_ONLY.has(s)) && (HUD_STATES[s]?.only?.includes(device.id) ?? true))]) {
     test(`${scenario} on ${device.id}`, async ({ browser }) => {
       const { page, close } = await openHudPreview(browser, device, scenario, 'light');
       try {
@@ -56,6 +56,17 @@ for (const device of LAYOUT_DEVICES) {
 
         expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`), 'overlapping controls').toEqual([]);
         expect(findOutside(boxes, viewport, device.safe).map((b) => b.name), 'controls outside the safe area').toEqual([]);
+        const hint = HUD_STATES[scenario]?.hint;
+        if (hint) {
+          const plate = await page.locator(`[data-hint="${hint}"]`).boundingBox();
+          expect(plate, `the ${hint} hint shows`).not.toBeNull();
+          const inX = plate!.x < (viewport.width * 2) / 3 && plate!.x + plate!.width > viewport.width / 3;
+          const inY = plate!.y < (viewport.height * 2) / 3 && plate!.y + plate!.height > viewport.height / 3;
+          const inSheet = hint === 'build';
+          expect(inX && inY && !inSheet, 'the hint sits in the middle third').toBe(false);
+          expect(plate!.width, 'hint width').toBeLessThanOrEqual(240.5);
+          expect(await page.locator('[data-hint]').count(), 'hints at once').toBe(1);
+        }
         if (device.options?.hasTouch) {
           const small = boxes.filter((b) => b.interactive && !b.clipped && (b.w < MIN_TARGET_PX - 0.5 || b.h < MIN_TARGET_PX - 0.5) && b.name !== 'input');
           expect(small.map((b) => `${b.name} ${Math.round(b.w)}x${Math.round(b.h)}`), `touch targets under ${MIN_TARGET_PX} px`).toEqual([]);

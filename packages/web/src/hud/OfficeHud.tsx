@@ -389,11 +389,11 @@ export function OfficeHud({
           (coarse && (menuOpen || people || invite)) || (!coarse && (people || menuOpen)) ? undefined : narrow ? (
             <>
               {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} hiddenLogins={mutedLogins} onOpen={chatVisibility.compose} />}
+              {!building && <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />}
               <div className="flex items-center gap-2">
                 {peopleButton}
                 {chatButton}
               </div>
-              {!building && <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />}
             </>
           ) : coarse ? (
             <>

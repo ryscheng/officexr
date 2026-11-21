@@ -58,7 +58,7 @@ export function IdentityCard({
           {self.statusText || presence.label} · {officeName}
         </div>
       </div>
-      <RoundButton aria-label={`People here, ${headcount}`} aria-expanded={peopleOpen} onClick={onPeople}>
+      <RoundButton data-people-toggle aria-label={`People here, ${headcount}`} aria-expanded={peopleOpen} onClick={onPeople}>
         <Users aria-hidden className="size-5" />
         <span aria-hidden className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-hud-accent-fill px-1 text-xs font-bold text-hud-on-accent">
           {headcount}
