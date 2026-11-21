@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Store, WorldObjects } from '@officexr/sdk';
@@ -16,7 +16,7 @@ import { MonitorOccluder } from './occlusion/MonitorOccluder.ts';
 import { useOccluderRegistry } from './occlusion/OccluderContext.tsx';
 
 export interface DeskScreenMarker {
-  screens: Array<{ deskAreaId: string; seatInstanceId: string; on: boolean }>;
+  screens: Array<{ deskAreaId: string; seatInstanceId: string; on: boolean; glow: number }>;
 }
 
 type MarkerWindow = { __OFFICE_DESK_SCREENS__?: DeskScreenMarker };
@@ -38,6 +38,7 @@ export function DeskMonitors({ store, worldObjects }: DeskMonitorsProps) {
     [deskAreas, worldObjects.instances, catalog, geometry],
   );
   const lit = useRef(new Map<string, boolean>());
+  const materials = useRef(new Map<string, THREE.MeshStandardMaterial>());
   const publish = useRef(() => {});
 
   useEffect(() => {
@@ -48,6 +49,9 @@ export function DeskMonitors({ store, worldObjects }: DeskMonitorsProps) {
           deskAreaId: p.deskAreaId,
           seatInstanceId: p.seatInstanceId,
           on: lit.current.get(p.deskAreaId) ?? false,
+          get glow() {
+            return materials.current.get(p.deskAreaId)?.emissiveIntensity ?? 0;
+          },
         })),
       };
     };
@@ -57,6 +61,11 @@ export function DeskMonitors({ store, worldObjects }: DeskMonitorsProps) {
       delete win.__OFFICE_DESK_SCREENS__;
     };
   }, [placements]);
+
+  const trackMaterial = useCallback((areaId: string, material: THREE.MeshStandardMaterial | null) => {
+    if (material) materials.current.set(areaId, material);
+    else materials.current.delete(areaId);
+  }, []);
 
   const reportLit = (deskAreaId: string, on: boolean) => {
     lit.current.set(deskAreaId, on);
@@ -69,7 +78,14 @@ export function DeskMonitors({ store, worldObjects }: DeskMonitorsProps) {
   return (
     <>
       {placements.map((p) => (
-        <DeskMonitor key={p.deskAreaId} placement={p} store={store} desktop={desktop} onLit={reportLit} />
+        <DeskMonitor
+          key={p.deskAreaId}
+          placement={p}
+          store={store}
+          desktop={desktop}
+          onLit={reportLit}
+          onMaterial={trackMaterial}
+        />
       ))}
     </>
   );
@@ -89,9 +105,10 @@ interface DeskMonitorProps {
   store: Store;
   desktop: THREE.Texture;
   onLit: (deskAreaId: string, on: boolean) => void;
+  onMaterial: (deskAreaId: string, material: THREE.MeshStandardMaterial | null) => void;
 }
 
-function DeskMonitor({ placement, store, desktop, onLit }: DeskMonitorProps) {
+function DeskMonitor({ placement, store, desktop, onLit, onMaterial }: DeskMonitorProps) {
   const registry = useOccluderRegistry();
   const bodyGeometry = useMemo(createMonitorBodyGeometry, []);
   const screenGeometry = useMemo(createMonitorScreenGeometry, []);
@@ -106,6 +123,11 @@ function DeskMonitor({ placement, store, desktop, onLit }: DeskMonitorProps) {
     },
     [bodyGeometry, screenGeometry, bodyMaterial, screenMaterial],
   );
+
+  useEffect(() => {
+    onMaterial(placement.deskAreaId, screenMaterial);
+    return () => onMaterial(placement.deskAreaId, null);
+  }, [onMaterial, placement.deskAreaId, screenMaterial]);
 
   const rootRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>>(null);

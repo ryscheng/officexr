@@ -4,11 +4,12 @@ import { expect, test, type Page } from '@playwright/test';
 import { goToDebugWithMap } from './motion-helpers.ts';
 
 const SHOT_DIR = process.env.DESK_SHOT_DIR;
+const SHOT_SETTLE_MS = Number(process.env.DESK_SHOT_SETTLE_MS ?? 4000);
 const DESK_KIND = 'furniture_table_medium';
 const CHAIR_KIND = 'furniture_chair_a';
 
 interface Marker {
-  screens: Array<{ deskAreaId: string; seatInstanceId: string; on: boolean }>;
+  screens: Array<{ deskAreaId: string; seatInstanceId: string; on: boolean; glow: number }>;
 }
 
 const readScreens = (page: Page) =>
@@ -16,7 +17,8 @@ const readScreens = (page: Page) =>
 
 async function shot(page: Page, name: string): Promise<void> {
   if (!SHOT_DIR) return;
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(SHOT_SETTLE_MS);
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
   mkdirSync(SHOT_DIR, { recursive: true });
   const vp = page.viewportSize();
   await page.screenshot({ path: path.join(SHOT_DIR, `${name}-${vp?.width}x${vp?.height}.png`) });
@@ -96,7 +98,7 @@ for (const viewport of [
 
     for (const look of ['Angled', 'Free look']) {
       test(`${look}: the desk monitor lights while its chair is occupied`, async ({ page }) => {
-        test.setTimeout(90_000);
+        test.setTimeout(240_000);
         await openDefaultMap(page);
         if (look === 'Free look') {
           await page.keyboard.press('Alt+KeyP');
@@ -115,8 +117,10 @@ for (const viewport of [
         await page.waitForTimeout(2000);
         await shot(page, `${tag}-seated`);
 
+        await expect.poll(async () => (await readScreens(page))[0]?.glow).toBe(1);
         await setSeat(page, null);
         await expect.poll(async () => (await readScreens(page))[0]?.on, { timeout: 5_000 }).toBe(false);
+        expect((await readScreens(page))[0].glow).toBe(0);
         await page.waitForTimeout(2000);
         await shot(page, `${tag}-stood`);
       });
