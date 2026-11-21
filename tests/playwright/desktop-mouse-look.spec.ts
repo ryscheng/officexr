@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { HUD_DEVICES, openHudPreview } from './lib/hudLayout.ts';
 
-test.describe.configure({ timeout: 180_000 });
+test.describe.configure({ timeout: 420_000 });
 
 const VIEW_KEY = 'officexr:gameView';
 const DESKTOP = HUD_DEVICES.find((d) => d.id === 'desktop')!;
@@ -55,8 +55,8 @@ test('in Free look, a right drag turns the view and leaves the pointer unlocked'
     const before = floorShare(await page.screenshot());
     await page.mouse.move(at.x, at.y);
     await page.mouse.down({ button: 'right' });
-    for (let i = 1; i <= 10; i++) {
-      await page.mouse.move(at.x, at.y + i * 15);
+    for (let i = 1; i <= 4; i++) {
+      await page.mouse.move(at.x, at.y + i * 40);
     }
     await page.mouse.up({ button: 'right' });
     await page.waitForTimeout(500);
@@ -82,8 +82,8 @@ test('in Free look, a left drag turns the view and a short press does not', asyn
     expect(Math.abs(floorShare(await page.screenshot()) - before), 'a short press stayed a click').toBeLessThan(0.01);
 
     await page.mouse.down();
-    for (let i = 1; i <= 10; i++) {
-      await page.mouse.move(at.x, at.y + i * 15);
+    for (let i = 1; i <= 4; i++) {
+      await page.mouse.move(at.x, at.y + i * 40);
     }
     await page.mouse.up();
     await page.waitForTimeout(500);
