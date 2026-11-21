@@ -41,7 +41,6 @@ const PROP_ROUND_MAX_M = 1.2;
 const PROP_ROUND_SKEW_M = 0.25;
 const CORNER_MAX_M = 0.25;
 
-/** Plants and stools read as circles, desks and sofas as softly rounded boxes, walls stay square. */
 export function planShape(r: PlanRect): PlanShape {
   if (r.tone === 'wall' || r.tone === 'floor') {
     return { round: false, radius: 0 };
@@ -75,10 +74,6 @@ const fit = (label: string, roomWidthPx: number, fontPx: number) => {
   return label.length <= max ? label : `${label.slice(0, max - 1)}…`;
 };
 
-/**
- * Puts each room's name at the first spot in the room that no person or earlier label covers,
- * trying the top edge, the bottom edge, then the middle. Falls back to the top edge.
- */
 export function placeRoomLabels(rooms: readonly Area[], people: readonly Point[], metresPerPx: number, fontPx: number): RoomLabel[] {
   const placed: Rect[] = [];
   return rooms.map((room) => {
@@ -111,7 +106,6 @@ export function placeRoomLabels(rooms: readonly Area[], people: readonly Point[]
 const NAME_CLEAR_X_PX = 72;
 const NAME_CLEAR_Z_PX = 32;
 
-/** Ids of the people whose name stays on the map: a name is dropped when an earlier one would overlap it. */
 export function namedPeople(people: readonly (Point & { id: string })[], metresPerPx: number): Set<string> {
   const shown: (Point & { id: string })[] = [];
   for (const p of people) {
@@ -146,5 +140,4 @@ export function readPlan(plan: readonly PlanRect[]): readonly PlanRect[] {
 const FULL_SIZE_PX_PER_M = 10;
 const MIN_MARKER_SIZE = 0.62;
 
-/** Markers shrink on a small map so a crowd stays readable; 1 at 10 px per metre and above. */
 export const markerSize = (pxPerM: number) => Math.min(1, Math.max(MIN_MARKER_SIZE, pxPerM / FULL_SIZE_PX_PER_M));
