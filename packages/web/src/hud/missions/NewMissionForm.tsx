@@ -247,9 +247,9 @@ export function NewMissionForm({
   );
 
   const shareRow = (
-    <label className="flex items-center gap-2 text-xs text-hud-text">
+    <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-hud-text">
       <Switch aria-label="Share with team" checked={shared} onCheckedChange={setShared} />
-      <span className="font-semibold">Share with team</span>
+      <span className="font-semibold whitespace-nowrap">Share with team</span>
       <span className="text-hud-text-2">{shared ? 'on: the office sees it' : 'off: only you see it'}</span>
     </label>
   );
@@ -282,27 +282,29 @@ export function NewMissionForm({
       ref={rootRef}
       role={sheet ? 'dialog' : 'group'}
       aria-label="New mission"
-      className={`flex flex-col gap-2.5 ${sheet ? '' : 'rounded-2xl border border-hud-hairline bg-hud-inset/60 p-3'}`}
+      className={`flex min-h-0 flex-col gap-2.5 ${sheet ? '' : 'rounded-2xl border border-hud-hairline bg-hud-inset/60 p-3'}`}
     >
-      <div className="flex items-center gap-2 text-sm font-semibold text-hud-text">
-        New mission
-        <span className="rounded-full bg-hud-accent/15 px-2 py-0.5 text-xs text-hud-accent">Mine</span>
+      <div className="flex min-h-0 flex-col gap-2.5 overflow-y-auto overscroll-contain">
+        <div className="flex items-center gap-2 text-sm font-semibold text-hud-text">
+          New mission
+          <span className="rounded-full bg-hud-accent/15 px-2 py-0.5 text-xs text-hud-accent">Mine</span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor={titleId} className="text-xs font-semibold text-hud-text-2">
+            Title
+          </label>
+          {titleField}
+        </div>
+        {fold}
       </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor={titleId} className="text-xs font-semibold text-hud-text-2">
-          Title
-        </label>
-        {titleField}
-      </div>
-      {fold}
       {failed && (
-        <p role="alert" className="text-xs font-semibold text-hud-rose-text">
+        <p role="alert" className="shrink-0 text-xs font-semibold text-hud-rose-text">
           We could not save this mission. Try again.
         </p>
       )}
-      <div className="flex items-center justify-between gap-2 border-t border-hud-separator pt-2.5">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-hud-separator pt-2.5">
         <span className="flex items-center gap-1 text-xs text-hud-text-2 pointer-coarse:hidden">
-          <Keycap>Enter</Keycap> save · <Keycap>Esc</Keycap> cancel
+          <Keycap>Esc</Keycap> cancel
         </span>
         <span className="ml-auto flex items-center gap-2">
           <Button size="sm" disabled={saving} onClick={cancel}>

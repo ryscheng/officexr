@@ -12,7 +12,7 @@ export function MissionCueToast({
   return (
     <div
       role="status"
-      className={`flex w-max max-w-full shrink-0 items-center gap-2 rounded-hud-control hud-glass border border-hud-edge py-1 pr-1 pl-3 font-hud-body font-semibold text-hud-sage-text shadow-hud-control transition-opacity ease-out starting:opacity-0 ${
+      className={`pointer-events-auto flex w-max max-w-full shrink-0 items-center gap-2 rounded-hud-control hud-glass border border-hud-edge py-1 pr-1 pl-3 font-hud-body font-semibold text-hud-sage-text shadow-hud-control transition-opacity ease-out starting:opacity-0 ${
         cue.all ? "text-base duration-500" : "text-sm duration-200"
       }`}
     >

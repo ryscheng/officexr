@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Maximize2, Minimize2, Plus, Target } from 'lucide-react';
 import type { NewMission } from '@officexr/sdk';
 import { useFold } from '../foldPrefs';
@@ -49,6 +50,7 @@ export type MissionsPanelProps = {
   collapsed?: boolean;
   now?: () => Date;
   tick?: () => void;
+  cueSlot?: HTMLElement | null;
 };
 
 export function MissionsPanel({
@@ -62,6 +64,7 @@ export function MissionsPanel({
   collapsed = false,
   now = () => new Date(),
   tick = playMissionTick,
+  cueSlot = null,
 }: MissionsPanelProps) {
   const [tab, setTab] = useState<MissionTab>('mine');
   const [source, setSource] = useState<SourceFilter>('all');
@@ -114,6 +117,7 @@ export function MissionsPanel({
   };
   const { cue, toggle, undo } = useMissionCue(api, mine, tick, next);
   const cueNode = cue && !adding && <MissionCueToast cue={cue} onUndo={() => void undo()} />;
+  const cueInSlot = cueSlot !== null && cueNode && (portrait ? fold.folded : !compact);
 
   const openCount = mine.filter((m) => !m.done).length;
   const percent = progress.total ? (progress.done / progress.total) * 100 : 0;
@@ -147,9 +151,7 @@ export function MissionsPanel({
     adding && !unsupported ? (
       compact ? (
         <PortraitSheet label="New mission" closeLabel="Close new mission" onClose={() => setAdding(false)}>
-          <div className="overflow-y-auto overscroll-contain">
-            <NewMissionForm sheet areas={areas} people={people} onSave={save} onCancel={() => setAdding(false)} />
-          </div>
+          <NewMissionForm sheet areas={areas} people={people} onSave={save} onCancel={() => setAdding(false)} />
         </PortraitSheet>
       ) : (
         <NewMissionForm areas={areas} people={people} onSave={save} onCancel={() => setAdding(false)} />
@@ -236,17 +238,16 @@ export function MissionsPanel({
         </ul>
       )}
 
-      {cueNode}
-
-      {!unsupported && tab === 'mine' && (
+      {!unsupported && tab === 'mine' && (!cueNode || cueInSlot) && (
         <Button tone="primary" size="md" aria-keyshortcuts="T" onClick={open} className="min-h-12 shrink-0">
           <Plus aria-hidden className="size-4" />
           Add mission
         </Button>
       )}
+      {!cueInSlot && cueNode}
       {formNode}
 
-      {!unsupported && !portrait && (
+      {!unsupported && !compact && (
         <p className="shrink-0 text-[11px] text-hud-text-2">
           {openCount} open · {mine.length - openCount} done
         </p>
@@ -285,7 +286,7 @@ export function MissionsPanel({
               )}
             </span>
           </button>
-          {cueNode}
+          {cueInSlot ? createPortal(cueNode, cueSlot) : cueNode}
         </>
       );
     }
@@ -318,15 +319,18 @@ export function MissionsPanel({
   }
 
   return (
-    <FoldablePanel
-      fold={fold}
-      title="Missions"
-      label="missions"
-      titleClassName="text-base"
-      headerExtra={header}
-      className={`pointer-events-auto flex max-w-[calc(100vw-24px)] flex-col gap-2 p-3 text-sm pointer-coarse:w-72 pointer-coarse:max-h-[calc(100dvh-104px)] pointer-coarse:gap-1 pointer-coarse:p-2 ${folded && compact ? 'w-fit' : folded ? 'w-60' : 'w-93'}`}
-    >
-      {bodyNodes}
-    </FoldablePanel>
+    <>
+      <FoldablePanel
+        fold={fold}
+        title="Missions"
+        label="missions"
+        titleClassName="text-base"
+        headerExtra={header}
+        className={`pointer-events-auto flex max-w-[calc(100vw-24px)] flex-col gap-2 p-3 text-sm pointer-coarse:w-72 pointer-coarse:max-h-[calc(100dvh-104px)] pointer-coarse:gap-1 pointer-coarse:p-2 ${folded && compact ? 'w-fit' : folded ? 'w-60' : 'w-93'}`}
+      >
+        {bodyNodes}
+      </FoldablePanel>
+      {cueInSlot && createPortal(cueNode, cueSlot)}
+    </>
   );
 }

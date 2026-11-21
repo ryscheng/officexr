@@ -39,9 +39,9 @@ const SEED: Mission[] = [
 const AREAS = placeAreas([{ id: 'r1', label: 'Meeting room 1', min: { x: 10, z: 0 }, max: { x: 20, z: 10 } }], []);
 const PEOPLE = [{ id: 'bao@x', login: 'bao@x', name: 'Bao Tran', x: 0, z: 0 }];
 
-function Harness({ client, compact = false, portrait = false, collapsed = false, tick }: { client: MissionsClient; compact?: boolean; portrait?: boolean; collapsed?: boolean; tick?: () => void }) {
+function Harness({ client, compact = false, portrait = false, collapsed = false, tick, cueSlot }: { client: MissionsClient; compact?: boolean; portrait?: boolean; collapsed?: boolean; tick?: () => void; cueSlot?: HTMLElement | null }) {
   const missions = useMissions(client, 'o');
-  return <MissionsPanel missions={missions} me="me" areas={AREAS} people={PEOPLE} self={{ x: 0, z: 5 }} compact={compact} portrait={portrait} collapsed={collapsed} now={() => NOW} tick={tick ?? (() => {})} />;
+  return <MissionsPanel missions={missions} me="me" areas={AREAS} people={PEOPLE} self={{ x: 0, z: 5 }} compact={compact} portrait={portrait} collapsed={collapsed} now={() => NOW} tick={tick ?? (() => {})} cueSlot={cueSlot} />;
 }
 
 const setup = async (seed = SEED, compact = false) => {
@@ -184,6 +184,32 @@ describe('MissionsPanel', () => {
       check('Join the stand-up');
       await screen.findByText('Done: Join the stand-up');
       expect(screen.getByRole('button', { name: 'Go to Kitchen' }).getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('shows in the toast slot when the panel is folded', async () => {
+      const slot = document.createElement('div');
+      document.body.append(slot);
+      const client = createInMemoryMissionsClient('me', SEED);
+      render(<Harness client={client} compact portrait tick={() => {}} cueSlot={slot} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Expand missions' }));
+      check('Fix the redirect');
+      await screen.findByText('Done: Fix the redirect');
+      expect(slot.textContent).toBe('');
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse missions' }));
+      expect(slot.textContent).toContain('Done: Fix the redirect');
+      slot.remove();
+    });
+
+    it('goes to the toast slot instead of the panel on desktop and landscape', async () => {
+      const slot = document.createElement('div');
+      document.body.append(slot);
+      const client = createInMemoryMissionsClient('me', SEED);
+      render(<Harness client={client} tick={() => {}} cueSlot={slot} />);
+      await screen.findByText('Join the stand-up');
+      check('Fix the redirect');
+      await waitFor(() => expect(slot.textContent).toContain('Done: Fix the redirect'));
+      expect(screen.getAllByText('Done: Fix the redirect')).toHaveLength(1);
+      slot.remove();
     });
 
     it('shows under the chip in portrait while the sheet is folded', async () => {
