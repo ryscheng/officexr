@@ -48,9 +48,7 @@ export interface PlayViewProps {
   mapName: string;
   /** Heads the loading screen, e.g. the office name. */
   title?: string;
-  /** Replaces the loading screen's title, step, progress and extras. */
   loading?: Pick<WorldLoadingScreenProps, 'title' | 'step' | 'progress' | 'brand' | 'hint' | 'back'>;
-  /** Renders a failed world load in place of the loading screen's error. */
   renderLoadError?: (message: string) => React.ReactNode;
   /** Changing this re-loads and re-applies `mapName` without remounting the canvas. */
   reloadKey?: number;
