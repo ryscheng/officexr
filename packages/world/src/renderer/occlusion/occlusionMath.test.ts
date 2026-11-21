@@ -2,19 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   FADED_OPACITY,
   FADE_SECONDS,
-  PULL_IN_MARGIN,
-  PULL_IN_MIN_DISTANCE,
-  easedDistance,
   isFloorLike,
-  pulledInDistance,
   segmentBoxEntry,
   stepFade,
 } from './occlusionMath.ts';
 
 const wall = [-1, 0, -0.2, 1, 3, 0.2] as const;
 
-function entry(a: [number, number, number], b: [number, number, number], endInside = false) {
-  return segmentBoxEntry(...a, ...b, ...wall, endInside);
+function entry(a: [number, number, number], b: [number, number, number]) {
+  return segmentBoxEntry(...a, ...b, ...wall);
 }
 
 describe('segmentBoxEntry', () => {
@@ -30,20 +26,16 @@ describe('segmentBoxEntry', () => {
     expect(entry([0, 1.5, 5], [0, 1.5, 1])).toBe(-1);
   });
 
-  it('ignores a box the viewer starts inside', () => {
-    expect(entry([0, 1, 0], [0, 1.5, 5])).toBe(-1);
+  it('blocks at once when the viewer is inside the box', () => {
+    expect(entry([0, 1, 0], [0, 1.5, 5])).toBe(0);
   });
 
-  it('ignores a box the player stands inside when the end must be outside', () => {
+  it('ignores a box the player stands inside', () => {
     expect(entry([0, 1.5, 5], [0, 1, 0])).toBe(-1);
   });
 
-  it('counts a box containing the end point when asked', () => {
-    expect(entry([0, 1.5, 5], [0, 1, 0], true)).toBeGreaterThan(0);
-  });
-
   it('misses a low prop under a high line of sight', () => {
-    expect(segmentBoxEntry(0, 3, 5, 0, 1.5, -5, -1, 0, -0.2, 1, 0.5, 0.2, false)).toBe(-1);
+    expect(segmentBoxEntry(0, 3, 5, 0, 1.5, -5, -1, 0, -0.2, 1, 0.5, 0.2)).toBe(-1);
   });
 });
 
@@ -64,37 +56,5 @@ describe('stepFade', () => {
 
   it('returns to exactly 1 when clear', () => {
     expect(stepFade(FADED_OPACITY, false, 1)).toBe(1);
-  });
-});
-
-describe('pulledInDistance', () => {
-  it('keeps the desired distance with no hit', () => {
-    expect(pulledInDistance(6, -1)).toBe(6);
-  });
-
-  it('stops a margin short of the first hit', () => {
-    expect(pulledInDistance(6, 0.5)).toBeCloseTo(3 - PULL_IN_MARGIN);
-  });
-
-  it('never pulls through the player', () => {
-    expect(pulledInDistance(6, 0.05)).toBe(PULL_IN_MIN_DISTANCE);
-  });
-
-  it('never exceeds the desired distance', () => {
-    expect(pulledInDistance(0.5, 0.9)).toBeLessThanOrEqual(0.5);
-  });
-});
-
-describe('easedDistance', () => {
-  it('moves in faster than out', () => {
-    const inward = 6 - easedDistance(6, 2, 0.05);
-    const outward = easedDistance(2, 6, 0.05) - 2;
-    expect(inward).toBeGreaterThan(outward * 2);
-  });
-
-  it('settles on the target', () => {
-    let d = 6;
-    for (let i = 0; i < 200; i++) d = easedDistance(d, 2, 0.016);
-    expect(d).toBe(2);
   });
 });

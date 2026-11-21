@@ -48,15 +48,6 @@ export class OccluderRegistry {
     return total;
   }
 
-  firstHit(a: THREE.Vector3, b: THREE.Vector3): number {
-    let best = -1;
-    for (const o of this.occluders) {
-      const t = o.firstHit(a.x, a.y, a.z, b.x, b.y, b.z);
-      if (t >= 0 && (best < 0 || t < best)) best = t;
-    }
-    return best;
-  }
-
   restoreAll(): void {
     for (const o of this.occluders) o.restore();
   }

@@ -12,8 +12,6 @@ const WALL_LAYERS = [4, 8, 12, 16];
 
 interface Marker {
   fading: number;
-  cameraPulledIn: boolean;
-  cameraDistance: number | null;
 }
 
 const readMarker = (page: Page): Promise<Marker | undefined> =>
@@ -114,33 +112,31 @@ for (const viewport of [
       );
     });
 
-    test('Free look: the camera pulls in when a wall is behind the player', async ({ page }) => {
+    test('Free look: a wall behind the player fades', async ({ page }) => {
       test.setTimeout(90_000);
       await openDefaultMap(page);
       await page.keyboard.press('Alt+KeyP');
       await page.keyboard.press('Alt+KeyP');
       await page.waitForFunction(
-        () => (window as unknown as { __OFFICE_OCCLUSION__?: Marker }).__OFFICE_OCCLUSION__?.cameraDistance != null,
+        () => (window as unknown as { __OFFICE_OCCLUSION__?: Marker }).__OFFICE_OCCLUSION__ !== undefined,
         null,
         { timeout: 15_000 },
       );
       await page.waitForTimeout(800);
       await shot(page, 'freelook-open');
-      const open = await readMarker(page);
-      expect(open?.cameraPulledIn).toBe(false);
+      expect((await readMarker(page))?.fading ?? 0).toBe(0);
       await buildWallRing(page);
       await page.waitForFunction(
-        () => (window as unknown as { __OFFICE_OCCLUSION__?: Marker }).__OFFICE_OCCLUSION__?.cameraPulledIn === true,
+        () => ((window as unknown as { __OFFICE_OCCLUSION__?: Marker }).__OFFICE_OCCLUSION__?.fading ?? 0) > 0,
         null,
         { timeout: 15_000 },
       );
-      await page.waitForTimeout(2500);
-      await shot(page, 'freelook-wall-pulled-in');
-      const pulled = await readMarker(page);
-      expect(pulled?.cameraDistance ?? 99).toBeLessThan((open?.cameraDistance ?? 0) - 1);
+      await page.waitForTimeout(1500);
+      await shot(page, 'freelook-wall-faded');
+      expect((await readMarker(page))?.fading ?? 0).toBeGreaterThan(0);
       await removeWallRing(page);
       await page.waitForFunction(
-        () => (window as unknown as { __OFFICE_OCCLUSION__?: Marker }).__OFFICE_OCCLUSION__?.cameraPulledIn === false,
+        () => ((window as unknown as { __OFFICE_OCCLUSION__?: Marker }).__OFFICE_OCCLUSION__?.fading ?? 1) === 0,
         null,
         { timeout: 15_000 },
       );

@@ -59,7 +59,7 @@ export class InstancedOccluder implements Occluder {
     }
   }
 
-  private entry(i: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number, endInside: boolean): number {
+  private entry(i: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
     if (!this.solid[i]) return -1;
     const r = this.radius[i];
     const cx = this.centre[i * 3];
@@ -77,23 +77,13 @@ export class InstancedOccluder implements Occluder {
     return segmentBoxEntry(
       lax, lay, laz, lbx, lby, lbz,
       this.min.x, this.min.y, this.min.z, this.max.x, this.max.y, this.max.z,
-      endInside,
     );
   }
 
   markCrossings(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
     for (let i = 0; i < this.count; i++) {
-      if (this.entry(i, ax, ay, az, bx, by, bz, false) >= 0) this.wanted.add(i);
+      if (this.entry(i, ax, ay, az, bx, by, bz) >= 0) this.wanted.add(i);
     }
-  }
-
-  firstHit(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
-    let best = -1;
-    for (let i = 0; i < this.count; i++) {
-      const t = this.entry(i, ax, ay, az, bx, by, bz, true);
-      if (t >= 0 && (best < 0 || t < best)) best = t;
-    }
-    return best;
   }
 
   fadedCount(): number {
