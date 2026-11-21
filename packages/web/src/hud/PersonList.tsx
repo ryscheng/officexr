@@ -12,7 +12,7 @@ import { useNow } from './useNow';
 
 /** `mic` is absent where the list doesn't show it. */
 export type PersonRow = { id: PlayerId; label: string } & (
-  | { type: 'self'; status: PresenceStatus; mic?: MicState }
+  | { type: 'self'; status: PresenceStatus; statusText?: string | null; mic?: MicState }
   | ({ type: 'peer'; mic?: MicState } & Omit<PresencePlayer, 'id' | 'name'>)
   | ({ type: 'departed' } & Omit<DepartedPlayer, 'name'>)
   | { type: 'guest' }

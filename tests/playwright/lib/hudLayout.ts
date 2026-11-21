@@ -13,6 +13,8 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'chat-sheet': { scenario: 'chat', steps: [/^Chat/] },
   'menu-open': { scenario: 'crowd', steps: ['Office menu'] },
   'invite-open': { scenario: 'crowd', steps: ['Office menu', 'Invite people'] },
+  'people-open': { scenario: 'crowd', steps: [/^People here, \d+$/] },
+  'person-card': { scenario: 'crowd', steps: [/^People here, \d+$/, /Show options$/] },
   'chat-keyboard': { scenario: 'chat', steps: [/^Chat/, 'keyboard'] },
 };
 export type HudScenario = (typeof HUD_SCENARIOS)[number];

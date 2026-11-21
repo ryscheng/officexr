@@ -14,7 +14,8 @@ import { HudLayout } from './HudLayout';
 import { IconButton } from './IconButton';
 import { Minimap } from './Minimap';
 import { OfficeNamePlate } from './OfficeNamePlate';
-import { PresenceList } from './PresenceList';
+import { createLocalMutes } from './localMutes';
+import { PeopleSheet } from './PeopleSheet';
 import { CallCard } from './CallCard';
 import { FullMap } from './FullMap';
 import { IdentityCard } from './IdentityCard';
@@ -59,8 +60,6 @@ function Screen({ w, h, children }: { w: number; h: number; children: ReactNode 
   );
 }
 
-const openStorage = { getItem: () => 'open', setItem: () => {} };
-
 export const OfficePlate: Story = () => (
   <div className="flex flex-col gap-4">
     {[
@@ -80,7 +79,7 @@ const roster =
     <Seeded scenario={scenario}>
       {(l) => (
         <Providers>
-          <PresenceList store={l.store} selfId={l.selfId} officeName="Preview Office" storage={openStorage} />
+          <PeopleSheet store={l.store} selfId={l.selfId} officeName="Preview Office" mutes={createLocalMutes(null)} portrait={false} onWave={() => {}} onInvite={() => {}} onClose={() => {}} />
         </Providers>
       )}
     </Seeded>
@@ -88,16 +87,6 @@ const roster =
 export const PeopleEmpty = roster('alone');
 export const PeopleCrowd = roster('crowd');
 export const PeopleFullLongNames = roster('full');
-
-export const PeopleFolded: Story = () => (
-  <Seeded scenario="crowd">
-    {(l) => (
-      <Providers>
-        <PresenceList store={l.store} selfId={l.selfId} officeName="Preview Office" storage={{ getItem: () => 'collapsed', setItem: () => {} }} />
-      </Providers>
-    )}
-  </Seeded>
-);
 
 export const MapCard: Story = () => (
   <Seeded scenario="crowd">
@@ -172,7 +161,7 @@ const layout =
                     <IconButton icon={Settings} label="Settings" tone="accent" onClick={() => {}} />
                   </div>
                 }
-                rightEdge={<PresenceList store={l.store} selfId={l.selfId} officeName="Preview Office" storage={openStorage} />}
+                rightEdge={<PeopleSheet store={l.store} selfId={l.selfId} officeName="Preview Office" mutes={createLocalMutes(null)} portrait={false} onWave={() => {}} onInvite={() => {}} onClose={() => {}} />}
                 bottomCentre={
                   <CallBar store={l.store} selfId={l.selfId} voice={adapter} />
                 }
@@ -191,7 +180,7 @@ export const LayoutDesktopFull = layout('full', 1280, 720);
 
 export const Identity: Story = () => (
   <Seeded scenario="crowd">
-    {(l) => <IdentityCard store={l.store} officeName="Preview Office" unread={2} chatOpen={false} menuOpen={false} onChat={() => {}} onMenu={() => {}} />}
+    {(l) => <IdentityCard store={l.store} officeName="Preview Office" unread={2} chatOpen={false} menuOpen={false} headcount={5} peopleOpen={false} onPeople={() => {}} onChat={() => {}} onMenu={() => {}} />}
   </Seeded>
 );
 

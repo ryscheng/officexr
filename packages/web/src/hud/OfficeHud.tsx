@@ -1,6 +1,6 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ArrowLeftRight, Map as MapIcon, Menu, MessageSquare, Settings, UserPlus, Users, LogOut } from 'lucide-react';
-import type { Actions, OfficeState, PlayerId, Store } from '@officexr/sdk';
+import { loginOf, type Actions, type OfficeState, type PlayerId, type Store } from '@officexr/sdk';
 import { useCoarsePointer, usePortrait, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import type { PingSender } from '../ping/usePingSender';
@@ -23,7 +23,10 @@ import { useOfficeSpots } from './missions/useOfficeSpots';
 import type { MissionsApi } from './missions/useMissions';
 import { NearYouButtons, NearYouCard } from './NearYouCard';
 import { PingInboxHud } from './PingInboxHud';
-import { ArrivalBubble, PresenceList } from './PresenceList';
+import { ArrivalBubble } from './ArrivalBubble';
+import { PeopleSheet } from './PeopleSheet';
+import { createLocalMutes, useLocalMutes } from './localMutes';
+import { useMutedVoice } from './useMutedVoice';
 import { RoundButton } from './RoundButton';
 import { Keycap } from './ui/Keycap';
 import { InlineAlert } from './ui/InlineAlert';
@@ -35,6 +38,7 @@ import { useEscapeLayer } from './useEscapeLayer';
 import { useHotkey } from './useHotkey';
 
 const selectChat = (s: OfficeState) => s.chat;
+const selectHeadcount = (s: OfficeState) => Object.keys(s.players).length;
 
 type MenuActions = { onInvite: () => void; onPeople: () => void; onSettings: () => void; onSwitchOffice: () => void; onSignOut: () => Promise<void> };
 
@@ -132,7 +136,12 @@ export function OfficeHud({
 }) {
   const coarse = useCoarsePointer();
   const narrow = usePortrait() && coarse;
-  const chat = useStoreSelector(store, selectChat);
+  const allChat = useStoreSelector(store, selectChat);
+  const [mutes] = useState(createLocalMutes);
+  const mutedLogins = useLocalMutes(mutes);
+  useMutedVoice(store, voice, mutedLogins);
+  const chat = useMemo(() => (mutedLogins.size ? allChat.filter((m) => !mutedLogins.has(loginOf(m.authorId))) : allChat), [allChat, mutedLogins]);
+  const headcount = useStoreSelector(store, selectHeadcount);
   const moving = useStoreSelector(store, selectSelfMoving);
   const fadeSecondary = useMovingFade(moving, narrow);
   const building = useSyncExternalStore(placeMode.subscribe, () => placeMode.get().open);
@@ -201,10 +210,20 @@ export function OfficeHud({
     }
     if (narrow) {
       setMenuOpen(false);
-      setPeople(false);
       setInvite(null);
     }
+    if (coarse) {
+      setPeople(false);
+    }
     chatVisibility.compose();
+  };
+  const togglePeople = () => {
+    setPeople((p) => !p);
+    setMenuOpen(false);
+    setInvite(null);
+    if (coarse) {
+      hideChat();
+    }
   };
   const openMenu = () => {
     if (!menuOpen) {
@@ -232,6 +251,7 @@ export function OfficeHud({
       visibility={chatVisibility}
       portrait={narrow}
       unread={unread}
+      hiddenLogins={mutedLogins}
       onMissionCommand={async (title) => (await missions.create({ title })) !== null}
     />
   );
@@ -253,6 +273,14 @@ export function OfficeHud({
       )}
     </RoundButton>
   );
+  const peopleButton = (
+    <RoundButton tone="glass" aria-label={`People here, ${headcount}`} aria-expanded={people} data-people-toggle onClick={togglePeople}>
+      <Users aria-hidden className="size-5" />
+      <span aria-hidden className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-hud-accent-fill px-1 text-xs font-bold text-hud-on-accent">
+        {headcount}
+      </span>
+    </RoundButton>
+  );
   const menuButton = (
     <RoundButton tone="glass" aria-label="Office menu" aria-expanded={menuOpen} onClick={openMenu}>
       <Menu aria-hidden className="size-5" />
@@ -265,26 +293,35 @@ export function OfficeHud({
       onClose={() => setMenuOpen(false)}
       onInvite={() => {
         setMenuOpen(false);
+        setPeople(false);
         setInvite('invite');
         if (narrow) {
-          setPeople(false);
           hideChat();
         }
       }}
-      onPeople={() => {
-        setPeople((p) => !p);
-        setMenuOpen(false);
-        setInvite(null);
-        if (narrow) {
-          hideChat();
-        }
-      }}
+      onPeople={togglePeople}
       onSettings={() => {
         setMenuOpen(false);
         onOpenSettings();
       }}
       onSwitchOffice={onSwitchOffice}
       onSignOut={onSignOut}
+    />
+  );
+  const peopleSheet = people && (
+    <PeopleSheet
+      store={store}
+      selfId={selfId}
+      officeName={officeName}
+      pinger={pinger}
+      mutes={mutes}
+      portrait={narrow}
+      onWave={onWave}
+      onInvite={() => {
+        setPeople(false);
+        setInvite('invite');
+      }}
+      onClose={() => setPeople(false)}
     />
   );
   const inviteSheet = invite && (
@@ -303,12 +340,14 @@ export function OfficeHud({
                 unread={unread}
                 chatOpen={chatVisibility.mode !== 'hidden'}
                 menuOpen={menuOpen}
+                headcount={headcount}
+                peopleOpen={people}
+                onPeople={togglePeople}
                 onChat={toggleChat}
                 onMenu={openMenu}
               />
               {menu}
               {chatPanel}
-              {people && <PresenceList store={store} selfId={selfId} officeName={officeName} pinger={pinger} />}
             </>
           )
         }
@@ -350,22 +389,28 @@ export function OfficeHud({
               <>
                 {menu}
                 {chatPanel}
-                {people && <PresenceList store={store} selfId={selfId} officeName={officeName} pinger={pinger} onClose={narrow ? () => setPeople(false) : undefined} />}
               </>
             )}
+            {peopleSheet}
             {inviteSheet}
           </>
         }
-        bottomLeft={narrow || (coarse && invite) ? undefined : missionsPanel}
+        bottomLeft={narrow || (coarse && (invite || people)) ? undefined : missionsPanel}
         bottomRight={
-          coarse && (menuOpen || people || invite) ? undefined : narrow ? (
+          (coarse && (menuOpen || people || invite)) || (!coarse && people) ? undefined : narrow ? (
             <>
-              {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} onOpen={chatVisibility.compose} />}
-              {chatButton}
+              {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} hiddenLogins={mutedLogins} onOpen={chatVisibility.compose} />}
+              <div className="flex items-center gap-2">
+                {peopleButton}
+                {chatButton}
+              </div>
               {!building && <NearYouButtons store={store} onWave={onWave} />}
             </>
           ) : coarse ? (
-            <NearYouButtons store={store} onWave={onWave} />
+            <>
+              <NearYouButtons store={store} onWave={onWave} />
+              {!building && peopleButton}
+            </>
           ) : (
             <NearYouCard store={store} onWave={onWave} />
           )
