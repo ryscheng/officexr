@@ -254,7 +254,7 @@ function FullMapWithRoute({ store, current }: { store: PersistentLocalState['sto
   const room = areas.rooms.find((r) => r.id === current?.place?.id);
   const to = room && { x: (room.min.x + room.max.x) / 2, z: (room.min.z + room.max.z) / 2 };
   return (
-    <FullMap store={store} officeName="Preview Office" areas={areas} route={to && current ? { to, label: current.title, areaId: room.id } : null} onClose={() => {}} />
+    <FullMap store={store} officeName="Preview Office" areas={areas} route={to && current ? { to, label: current.title, areaId: room.id } : null} onGoTo={() => true} onClose={() => {}} />
   );
 }
 export const FullMapWithMissionRoute: Story = () => <FullMapStory />;

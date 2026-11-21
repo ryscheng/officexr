@@ -1,14 +1,15 @@
-import { Map as MapIcon, X } from 'lucide-react';
+import { useEffect, useState, type MouseEvent } from 'react';
+import { Map as MapIcon } from 'lucide-react';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { presenceIndicator } from '@officexr/sdk';
 import { useStoreSelector } from '@officexr/world/top-down';
 import { formatDistance } from './formatDistance';
+import { clientToMap } from './mapPoint';
 import { distanceBetween, type Area, type PlaceAreas, type Spot } from './missions/missionRows';
 import type { PlanRect, PlanTone } from './minimapPlan';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { quantise } from './quantise';
 import { sameFields, sameList } from './sameFields';
-import { Keycap } from './ui/Keycap';
 import { Panel } from './ui/Panel';
 import { useEscapeLayer } from './useEscapeLayer';
 import { useNow } from './useNow';
@@ -65,6 +66,9 @@ function bounds(areas: PlaceAreas, plan: readonly PlanRect[], positions: Positio
 }
 
 export type FullMapRoute = { to: Spot; label: string; areaId: string | null };
+export type FullMapWalk = { target: Spot; route: readonly Spot[] };
+
+const NOTICE_MS = 3000;
 
 export function FullMap({
   store,
@@ -72,6 +76,8 @@ export function FullMap({
   areas,
   plan = [],
   route,
+  walk = null,
+  onGoTo,
   onClose,
 }: {
   store: Store;
@@ -79,18 +85,32 @@ export function FullMap({
   areas: PlaceAreas;
   plan?: readonly PlanRect[];
   route: FullMapRoute | null;
+  walk?: FullMapWalk | null;
+  onGoTo: (to: Spot) => boolean;
   onClose: () => void;
 }) {
   useEscapeLayer(true, onClose);
+  const [refused, setRefused] = useState(false);
+  useEffect(() => {
+    if (!refused) {
+      return;
+    }
+    const timer = setTimeout(() => setRefused(false), NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [refused]);
   const positions = useStoreSelector(store, selectPositions, samePositions);
   const now = useNow(1000);
   const box = bounds(areas, plan, positions);
   const u = Math.max(box.w, box.h) / 100;
   const people = positions.peers.length + (positions.self ? 1 : 0);
   const metres = route && positions.self ? distanceBetween(positions.self, route.to) : null;
+  const goTo = (e: MouseEvent<SVGSVGElement>) => {
+    setRefused(!onGoTo(clientToMap(e.currentTarget.getBoundingClientRect(), box, e.clientX, e.clientY)));
+  };
   return (
-    <div className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-8">
-      <Panel material="thick" role="dialog" aria-label="Office map" className="flex max-h-full w-full max-w-225 flex-col gap-3 p-4 pointer-coarse:p-3">
+    <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center px-3 pt-[calc(var(--hud-inset-top)+3.5rem)] pb-3 sm:px-8 sm:pb-8">
+      <div aria-hidden className="pointer-events-auto absolute inset-x-0 top-[calc(var(--hud-inset-top)+3.5rem)] bottom-0" />
+      <Panel material="thick" role="dialog" data-map-dialog aria-label="Office map" className="pointer-events-auto relative flex max-h-full w-full max-w-225 flex-col gap-3 p-4 pointer-coarse:p-3">
         <div className="flex items-center gap-3">
           <MapIcon aria-hidden className="size-5 shrink-0" />
           <h2 className="truncate text-lg font-semibold">{officeName}</h2>
@@ -98,24 +118,14 @@ export function FullMap({
           <span className="ml-auto hidden truncate text-xs text-hud-text-2 sm:block">
             {route ? `Route to current mission${metres === null ? '' : ` · ${formatDistance(metres)}`}` : 'No current mission'}
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex min-h-12 shrink-0 items-center gap-2 rounded-full bg-hud-inset px-4 text-sm font-semibold hover:bg-hud-hover"
-          >
-            Close
-            <span className="pointer-coarse:hidden">
-              <Keycap>Esc</Keycap>
-            </span>
-            <X aria-hidden className="hidden size-4 pointer-coarse:block" />
-          </button>
         </div>
         <svg
           role="img"
           aria-label="Map of the office"
           viewBox={`${box.x} ${box.z} ${box.w} ${box.h}`}
           preserveAspectRatio="xMidYMid meet"
-          className="min-h-0 w-full flex-1 rounded-2xl bg-hud-inset"
+          onClick={goTo}
+          className="min-h-0 w-full flex-1 cursor-crosshair rounded-2xl bg-hud-inset"
           style={{ aspectRatio: `${box.w} / ${box.h}`, maxHeight: '60dvh' }}
         >
           {areas.rooms.length === 0 &&
@@ -150,6 +160,25 @@ export function FullMap({
               </g>
             </>
           )}
+          {walk && (
+            <>
+              {positions.self && (
+                <polyline
+                  points={[positions.self, ...(walk.route.length > 0 ? walk.route : [walk.target])].map((p) => `${p.x},${p.z}`).join(' ')}
+                  fill="none"
+                  className="stroke-hud-accent"
+                  strokeWidth={u * 0.8}
+                  strokeDasharray={`${u * 0.1} ${u * 1.6}`}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              <g role="img" aria-label="Walking here" transform={`translate(${walk.target.x} ${walk.target.z})`}>
+                <circle r={u * 2.2} className="fill-hud-accent/20 stroke-hud-accent" strokeWidth={u * 0.4} />
+                <circle r={u * 0.9} className="fill-hud-accent stroke-hud-contrast" strokeWidth={u * 0.3} />
+              </g>
+            </>
+          )}
           {positions.peers.map((p) => (
             <Dot key={p.id} x={p.x} z={p.z} u={u} name={p.name} presence={PRESENCE_INDICATOR[presenceIndicator(p, now)].fill} />
           ))}
@@ -160,6 +189,9 @@ export function FullMap({
             </g>
           )}
         </svg>
+        <p role="status" className={`text-center text-xs ${refused ? 'font-semibold text-hud-text' : 'text-hud-text-2'}`}>
+          {refused ? "Can't go there" : 'Tap the map to walk there'}
+        </p>
         <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-hud-text-2" aria-label="Legend">
           <li><span aria-hidden className="mr-1.5 inline-block size-2.5 rounded-full border-2 border-green-500" />Available</li>
           <li><span aria-hidden className="mr-1.5 inline-block size-2.5 rounded-full border-2 border-yellow-400" />Away</li>

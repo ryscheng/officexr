@@ -13,6 +13,11 @@ export interface SeatingState {
 export interface PlayControlsSource {
   /** Walks to `targetId` and keeps following them; the current target again stops. */
   goTo(targetId: PlayerId): void;
+  /**
+   * Walks to the standable spot nearest `(x, z)` at the player's floor, replacing any walk, and returns that spot;
+   * null, with no walk started, when no spot is in reach or no route leads there.
+   */
+  goToGround(x: number, z: number): { x: number; z: number } | null;
   cancel(): void;
   getState(): AutoWalkState;
   /** Notifies changes to both `getState` and `getSeating`. */
@@ -27,6 +32,7 @@ export interface PlayControlsSource {
 
 export interface PlayControls extends SeatingState {
   goTo(targetId: PlayerId): void;
+  goToGround(x: number, z: number): { x: number; z: number } | null;
   cancel(): void;
   sit(seatId?: string): void;
   stand(): void;
@@ -51,6 +57,7 @@ export function usePlayControls(): PlayControls {
   return useMemo(
     () => ({
       goTo: controls.goTo,
+      goToGround: controls.goToGround,
       cancel: controls.cancel,
       sit: controls.sit,
       stand: controls.stand,

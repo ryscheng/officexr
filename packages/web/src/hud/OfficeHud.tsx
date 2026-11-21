@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Map as MapIcon, Menu, MessageSquare, Users } from 'lucide-react';
 import { loginOf, PLACEABLE_KINDS, type Actions, type OfficeState, type PlayerId, type Store } from '@officexr/sdk';
-import { useCoarsePointer, usePortrait, useStoreSelector } from '@officexr/world/top-down';
+import { isGroundTargetId, useCoarsePointer, usePlayControls, usePortrait, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import type { PingSender } from '../ping/usePingSender';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -25,7 +25,7 @@ import { IdentityCard } from './IdentityCard';
 import { InviteSheet } from './InviteSheet';
 import { useMapPlan } from './OfficeMinimap';
 import { MissionsPanel } from './missions/MissionsPanel';
-import { resolvePlace } from './missions/missionRows';
+import { resolvePlace, type Spot } from './missions/missionRows';
 import { useOfficeSpots } from './missions/useOfficeSpots';
 import type { MissionsApi } from './missions/useMissions';
 import { NearYouButtons, NearYouCard, sameNear, selectNearest } from './NearYouCard';
@@ -114,6 +114,8 @@ export function OfficeHud({
   const [people, setPeople] = useState(false);
   const [invite, setInvite] = useState<'created' | 'invite' | null>(welcome ? 'created' : null);
   const [mapOpen, setMapOpen] = useState(false);
+  const [goal, setGoal] = useState<Spot | null>(null);
+  const { goToGround, state: walkState } = usePlayControls();
   useEffect(() => {
     if (welcome) {
       onWelcomeShown?.();
@@ -161,7 +163,7 @@ export function OfficeHud({
       setLastReadId(latestId);
     }
   }, [chatShowsLog, latestId]);
-  useHotkey('m', () => setMapOpen(true), !mapOpen);
+  useHotkey('m', () => setMapOpen((open) => !open), true, '[data-map-dialog]');
 
   const { setFolded: foldMissions } = missionsFold;
   const missionsOpen = !missionsFold.folded;
@@ -227,6 +229,19 @@ export function OfficeHud({
     }
   };
 
+  const mapWalk = goal && walkState.type === 'walking' && isGroundTargetId(walkState.targetId) ? { target: goal, route: walkState.route } : null;
+  const goToOnMap = (spot: Spot) => {
+    const reached = goToGround(spot.x, spot.z);
+    if (!reached) {
+      return false;
+    }
+    setGoal(reached);
+    if (coarse || narrow) {
+      setMapOpen(false);
+    }
+    return true;
+  };
+
   const current = missions.current;
   const to = current?.place ? resolvePlace(current.place, spots.areas) : null;
   const route = current && to ? { to, label: current.title, areaId: current.place?.kind === 'room' ? current.place.id : null } : null;
@@ -247,7 +262,14 @@ export function OfficeHud({
     />
   );
   const mapButton = (
-    <RoundButton tone="glass" aria-label="Open map" aria-haspopup="dialog" data-map-toggle onClick={() => setMapOpen(true)} className="shadow-hud-panel">
+    <RoundButton
+      tone="glass"
+      aria-label="Map"
+      aria-pressed={mapOpen}
+      data-map-toggle
+      onClick={() => setMapOpen((open) => !open)}
+      className={`shadow-hud-panel ${mapOpen ? 'bg-hud-accent-fill! text-hud-on-accent hover:bg-hud-accent-fill-hover!' : ''}`}
+    >
       <MapIcon aria-hidden className="size-5" />
       <span aria-hidden className="absolute -right-1 -bottom-1 pointer-coarse:hidden">
         <Keycap>M</Keycap>
@@ -424,7 +446,7 @@ export function OfficeHud({
         }
       />
       <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} nearName={nearName} joystickFloats={joystickFloats} />
-      {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} onClose={() => setMapOpen(false)} />}
+      {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} walk={mapWalk} onGoTo={goToOnMap} onClose={() => setMapOpen(false)} />}
     </PlayerPortraits>
   );
 }

@@ -20,5 +20,6 @@ export { usePortrait } from '../react/usePortrait.ts';
 export { planarDistance, relativeBearing } from '../react/relativeGeometry.ts';
 export type { NavGrid } from '../nav/grid.ts';
 export type { AutoWalkState } from '../nav/autoWalk.ts';
+export { isGroundTargetId } from '../react/useAutoWalk.ts';
 export { createPlaceKeyHandler } from '../renderer/placeKeys.ts';
 export { useCharacterPortrait } from '../react/useCharacterPortrait.ts';

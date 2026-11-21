@@ -65,17 +65,17 @@ describe('OfficeHud build mode', () => {
   it('swaps the HUD for the palette on entry and back on Done', () => {
     const { mode } = setup();
     expect(screen.queryByRole('radiogroup', { name: 'Props' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Open map' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Map' })).toBeTruthy();
     act(() => mode.setOpen(true));
     expect(screen.getByRole('radiogroup', { name: 'Props' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Rotate' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Place' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Open map' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Map' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Office menu' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(mode.get().open).toBe(false);
     expect(screen.queryByRole('radiogroup', { name: 'Props' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Open map' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Map' })).toBeTruthy();
   });
 
   it('Escape leaves build mode instead of opening the menu', () => {
