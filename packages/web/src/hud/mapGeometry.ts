@@ -58,7 +58,7 @@ export type RoomLabel = { id: string; text: string; x: number; z: number };
 const CHAR_EM = 0.6;
 const LABEL_PAD_PX = 6;
 const OBSTACLE_PX = 22;
-const OVERHANG = 1.6;
+const OVERHANG = 2.4;
 
 type Rect = { x0: number; x1: number; z0: number; z1: number };
 
@@ -142,3 +142,9 @@ export function readPlan(plan: readonly PlanRect[]): readonly PlanRect[] {
   }
   return plan.map((r) => (r.tone === 'wall' ? { ...r, tone: 'floor' as const } : r));
 }
+
+const FULL_SIZE_PX_PER_M = 10;
+const MIN_MARKER_SIZE = 0.62;
+
+/** Markers shrink on a small map so a crowd stays readable; 1 at 10 px per metre and above. */
+export const markerSize = (pxPerM: number) => Math.min(1, Math.max(MIN_MARKER_SIZE, pxPerM / FULL_SIZE_PX_PER_M));

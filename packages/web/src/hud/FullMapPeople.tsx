@@ -47,12 +47,12 @@ const firstName = (name: string) => {
 
 export type PeerMarkerData = { id: PlayerId; name: string; x: number; z: number; yaw: number; presence: keyof typeof PRESENCE_INDICATOR };
 
-export function PeerMarker({ peer, scale, named }: { peer: PeerMarkerData; scale: number; named: boolean }) {
+export function PeerMarker({ peer, scale, size, named }: { peer: PeerMarkerData; scale: number; size: number; named: boolean }) {
   const portrait = usePlayerPortrait(peer.id);
   const colour = PRESENCE_INDICATOR[peer.presence];
   const label = peer.name || 'Joining';
   return (
-    <g role="img" aria-label={label} transform={`translate(${peer.x} ${peer.z}) scale(${scale})`}>
+    <g role="img" aria-label={label} transform={`translate(${peer.x} ${peer.z}) scale(${scale * size})`}>
       <title>{label}</title>
       <g transform={`rotate(${headingDegrees(peer.yaw)})`}>
         <path d="M0 -23L5.5 -16.5L-5.5 -16.5Z" strokeWidth={1.5} strokeLinejoin="round" className={`${colour.fill} stroke-hud-contrast`} />
@@ -60,7 +60,7 @@ export function PeerMarker({ peer, scale, named }: { peer: PeerMarkerData; scale
       <circle r={PEER_R + 1.5} strokeWidth={3} className={`fill-hud-contrast ${colour.stroke}`} />
       <Portrait src={portrait} initial={label.charAt(0).toUpperCase()} radius={PEER_R - 1} />
       {named && peer.name && (
-        <text y={PEER_R + 14} textAnchor="middle" fontSize={12} fontWeight={600} strokeWidth={3.5} strokeLinejoin="round" paintOrder="stroke" className="fill-hud-text stroke-map-floor">
+        <text y={PEER_R + 14} textAnchor="middle" fontSize={12 / size} fontWeight={600} strokeWidth={3.5} strokeLinejoin="round" paintOrder="stroke" className="fill-hud-text stroke-map-floor">
           {firstName(peer.name)}
         </text>
       )}
@@ -71,7 +71,7 @@ export function PeerMarker({ peer, scale, named }: { peer: PeerMarkerData; scale
 const SELF_R = 16;
 const WEDGE = 'M0 0L-17 -42Q0 -50 17 -42Z';
 
-export function SelfMarker({ store, scale }: { store: Store; scale: number }) {
+export function SelfMarker({ store, scale, size }: { store: Store; scale: number; size: number }) {
   const portrait = useSelfPortrait();
   const placeRef = useRef<SVGGElement>(null);
   const turnRef = useRef<SVGGElement>(null);
@@ -79,11 +79,11 @@ export function SelfMarker({ store, scale }: { store: Store; scale: number }) {
     (me: PlayerState | undefined) => {
       placeRef.current?.setAttribute('visibility', me ? 'visible' : 'hidden');
       if (me) {
-        placeRef.current?.setAttribute('transform', `translate(${fixed(me.pos.x)} ${fixed(me.pos.z)}) scale(${scale})`);
+        placeRef.current?.setAttribute('transform', `translate(${fixed(me.pos.x)} ${fixed(me.pos.z)}) scale(${scale * size})`);
         turnRef.current?.setAttribute('transform', `rotate(${fixed(headingDegrees(me.yaw))})`);
       }
     },
-    [scale],
+    [scale, size],
   );
   useSelfPose(store, apply);
   return (

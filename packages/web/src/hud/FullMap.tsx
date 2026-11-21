@@ -6,7 +6,7 @@ import { useStoreSelector } from '@officexr/world/top-down';
 import { MapFloor, RoomLabels } from './FullMapFloor';
 import { PeerMarker, SelfMarker, SelfTrail } from './FullMapPeople';
 import { formatDistance } from './formatDistance';
-import { mapBounds, namedPeople, placeRoomLabels, readPlan } from './mapGeometry';
+import { mapBounds, markerSize, namedPeople, placeRoomLabels, readPlan } from './mapGeometry';
 import { clientToMap, type MapBox } from './mapPoint';
 import { distanceBetween, type PlaceAreas, type Spot } from './missions/missionRows';
 import type { PlanRect } from './minimapPlan';
@@ -98,6 +98,7 @@ export function FullMap({
   const read = useMemo(() => readPlan(plan), [plan]);
   const view = useMemo(() => mapBounds([...areas.rooms, ...areas.desks], read, [...positions.peers, ...(positions.self ? [positions.self] : [])]), [areas, read, positions]);
   const { ref, scale } = useMetresPerPixel(view);
+  const size = markerSize(1 / scale);
   const people = positions.peers.length + (positions.self ? 1 : 0);
   const metres = route && positions.self ? distanceBetween(positions.self, route.to) : null;
   const labels = useMemo(() => placeRoomLabels(areas.rooms, positions.peers, scale, 12), [areas.rooms, positions.peers, scale]);
@@ -153,9 +154,9 @@ export function FullMap({
             </g>
           )}
           {positions.peers.map((p) => (
-            <PeerMarker key={p.id} scale={scale} named={named.has(p.id)} peer={{ id: p.id, name: p.name, x: p.x, z: p.z, yaw: p.yaw, presence: presenceIndicator(p, now) }} />
+            <PeerMarker key={p.id} scale={scale} size={size} named={named.has(p.id)} peer={{ id: p.id, name: p.name, x: p.x, z: p.z, yaw: p.yaw, presence: presenceIndicator(p, now) }} />
           ))}
-          {positions.self && <SelfMarker store={store} scale={scale} />}
+          {positions.self && <SelfMarker store={store} scale={scale} size={size} />}
         </svg>
         <p role="status" className={`text-center text-xs ${refused ? 'font-semibold text-hud-text' : 'text-hud-text-2'}`}>
           {refused ? "Can't go there" : 'Tap the map to walk there'}
