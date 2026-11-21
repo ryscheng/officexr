@@ -10,6 +10,7 @@ import { createPokeClip, POKE_CLIP_NAME } from './pokeClip.ts';
 import { CAST_CLIP_NAME, createCastClip } from './castClip.ts';
 import { useFrame } from '@react-three/fiber';
 import { applyFrozenLook } from './frozenLook.ts';
+import { recordCharacterHeight } from './characterHeight.ts';
 
 const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
 const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
@@ -344,7 +345,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     //   pose min y; `maxY` is the bind-pose max y; `offset` is what
     //   we pass to innerRef. Tests assert these are sane.
     // -----------------------------------------------------------------
-    const meshOffsetY = useMemo(() => {
+    const { offsetY: meshOffsetY, heightM } = useMemo(() => {
       scene.updateMatrixWorld(true);
 
       const acc = new THREE.Box3();
@@ -379,7 +380,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         console.warn(
           '[Adventurer] could not measure mesh bbox; character may render with feet buried in the floor',
         );
-        return 0;
+        return { offsetY: 0, heightM: 0 };
       }
       const offset = -acc.min.y;
       (
@@ -395,10 +396,14 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         maxY: acc.max.y,
         offset,
       };
-      return offset;
+      return { offsetY: offset, heightM: acc.max.y - acc.min.y };
       // Recomputes once per cloned scene — bind pose is invariant
       // to whether playback is paused, so `paused` is not in deps.
     }, [scene]);
+
+    useEffect(() => {
+      recordCharacterHeight(url, heightM);
+    }, [url, heightM]);
 
     const innerRef = useRef<THREE.Group>(null!);
     const { actions } = useAnimations(clips, innerRef);

@@ -31,7 +31,6 @@
   gap: 6px;
   pointer-events: none;
   user-select: none;
-  transform: translateY(-50px);
 }
 .player-bubble {
   display: flex;
@@ -54,3 +53,16 @@
 @media (prefers-reduced-motion: reduce) {
   .player-bubble-emote { animation: none; }
 }
+
+.player-overhead {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 4px;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+.player-overhead > .player-name-tag,
+.player-overhead > .player-ping-bell { pointer-events: auto; }

@@ -26,9 +26,7 @@ import { useGLTF } from '@react-three/drei';
 import type { RideVehicle } from '../scenes/world-object-kinds-schema.ts';
 import { assertNever } from './assertNever.ts';
 import type { CameraMode } from './config.ts';
-import { PlayerNameTag } from './PlayerNameTag.tsx';
-import { PlayerBubbles } from './PlayerBubbles.tsx';
-import { PlayerPingBell, shouldShowPingBell } from './PlayerPingBell.tsx';
+import { PlayerOverhead } from './PlayerOverhead.tsx';
 import { pickCharacterForPlayer, resolvePlayerModel, type CatalogCharacters, type PlayerModel } from '../characters/registry.ts';
 import { useCatalogCharacters } from '../react/application-context.tsx';
 import { ModelWithFallback } from './ModelWithFallback.tsx';
@@ -718,16 +716,17 @@ export function Players({
                 )}
               />
               </group>
-              <PlayerNameTag
+              <PlayerOverhead
                 store={store}
+                bus={bus}
                 playerId={p.id}
+                modelUrl={p.model.url}
                 isSelf={isSelf}
                 paused={paused ?? false}
+                cameraMode={cameraMode}
+                charRadius={charRadius}
+                onPing={onPingPlayer}
               />
-              <PlayerBubbles store={store} bus={bus} playerId={p.id} paused={paused ?? false} />
-              {onPingPlayer && shouldShowPingBell(onPingPlayer, isSelf, cameraMode, paused ?? false) && (
-                <PlayerPingBell store={store} playerId={p.id} radius={charRadius} onPing={onPingPlayer} />
-              )}
             </group>
           </RigidBody>
         );

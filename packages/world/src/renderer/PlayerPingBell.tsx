@@ -1,13 +1,9 @@
 import { useState } from 'react';
-import { Html } from '@react-three/drei';
-import type { PlayerId, Store } from '@officexr/sdk';
+import type { PlayerId } from '@officexr/sdk';
 import { PingBellButton } from '../react/PingBellButton.tsx';
 import type { CameraMode } from './config.ts';
 import { isYawPitchMode } from './lookControls.ts';
-import { TAG_HEIGHT_M, usePlayerName } from './PlayerNameTag.tsx';
-
-// Reaches past the name tag so the pointer can move from the avatar up to the bell without unhovering.
-const HOVER_HEIGHT_M = TAG_HEIGHT_M + 0.15;
+import { OVERHEAD_GAP_M } from './characterHeight.ts';
 
 export const shouldShowPingBell = (
   onPing: ((id: PlayerId) => void) | undefined,
@@ -16,49 +12,58 @@ export const shouldShowPingBell = (
   paused: boolean,
 ): boolean => onPing !== undefined && !isSelf && !paused && !isYawPitchMode(cameraMode);
 
+export interface PingBellHover {
+  visible: boolean;
+  onAvatarOver: () => void;
+  onAvatarOut: () => void;
+  onStackEnter: () => void;
+  onStackLeave: () => void;
+}
+
 /**
- * Invisible hover target around a player's body that shows a ping bell above
- * the name tag. Must be a child of the per-player group so it follows the character.
+ * The bell shows while the pointer is over the avatar or over the overhead stack. The stack sits
+ * outside the avatar's hover capsule, so moving onto it fires the capsule's pointerout.
  */
-export function PlayerPingBell(props: {
-  store: Store;
-  playerId: PlayerId;
-  radius: number;
-  onPing: (id: PlayerId) => void;
-}) {
-  const { store, playerId, radius, onPing } = props;
-  const name = usePlayerName(store, playerId);
-  // ponytail: hover-only, so touch users can't reach it; they ping from the participant list.
+export function usePingBellHover(): PingBellHover {
   const [overAvatar, setOverAvatar] = useState(false);
-  // The bell sits outside the capsule, so moving onto it fires the capsule's pointerout.
-  const [overBell, setOverBell] = useState(false);
+  const [overStack, setOverStack] = useState(false);
+  return {
+    visible: overAvatar || overStack,
+    onAvatarOver: () => setOverAvatar(true),
+    onAvatarOut: () => setOverAvatar(false),
+    onStackEnter: () => setOverStack(true),
+    onStackLeave: () => setOverStack(false),
+  };
+}
+
+/**
+ * Invisible hover target around a player's body, up to the overhead stack. Must be a child of the
+ * per-player group so it follows the character.
+ */
+export function PingHoverTarget(props: { radius: number; heightM: number; hover: PingBellHover }) {
+  const { radius, heightM, hover } = props;
+  const reach = heightM + OVERHEAD_GAP_M;
   return (
-    <>
-      <mesh
-        position={[0, HOVER_HEIGHT_M / 2, 0]}
-        onPointerOver={(e) => {
-          // Only the nearest of overlapping avatars shows its bell.
-          e.stopPropagation();
-          setOverAvatar(true);
-        }}
-        onPointerOut={() => setOverAvatar(false)}
-      >
-        <capsuleGeometry args={[radius, HOVER_HEIGHT_M - 2 * radius]} />
-        {/* Invisible material: skipped by the renderer but still raycast. */}
-        <meshBasicMaterial visible={false} />
-      </mesh>
-      {(overAvatar || overBell) && (
-        <Html center position={[0, TAG_HEIGHT_M, 0]} zIndexRange={[1, 0]}>
-          {/* A pixel offset, not a world one, keeps the bell just clear of the tag at any zoom. */}
-          <div
-            style={{ transform: 'translateY(-24px)' }}
-            onPointerEnter={() => setOverBell(true)}
-            onPointerLeave={() => setOverBell(false)}
-          >
-            <PingBellButton name={name} onPing={() => onPing(playerId)} />
-          </div>
-        </Html>
-      )}
-    </>
+    <mesh
+      position={[0, reach / 2, 0]}
+      onPointerOver={(e) => {
+        // Only the nearest of overlapping avatars shows its bell.
+        e.stopPropagation();
+        hover.onAvatarOver();
+      }}
+      onPointerOut={hover.onAvatarOut}
+    >
+      <capsuleGeometry args={[radius, reach - 2 * radius]} />
+      {/* Invisible material: skipped by the renderer but still raycast. */}
+      <meshBasicMaterial visible={false} />
+    </mesh>
+  );
+}
+
+export function PlayerPingBell(props: { name: string; onPing: () => void }) {
+  return (
+    <div className="player-ping-bell">
+      <PingBellButton name={props.name} onPing={props.onPing} />
+    </div>
   );
 }
