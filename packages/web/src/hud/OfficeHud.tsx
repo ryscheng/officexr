@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Map as MapIcon, Menu, MessageSquare, Settings, Users } from 'lucide-react';
+import { ArrowLeftRight, Map as MapIcon, Menu, MessageSquare, Settings, UserPlus, Users, LogOut } from 'lucide-react';
 import type { Actions, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { useCoarsePointer, usePortrait, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
@@ -15,6 +15,7 @@ import { ChatTicker, TICKER_MS } from './ChatTicker';
 import { FullMap } from './FullMap';
 import { HudLayout } from './HudLayout';
 import { IdentityCard } from './IdentityCard';
+import { InviteSheet } from './InviteSheet';
 import { useMapPlan } from './OfficeMinimap';
 import { MissionsPanel } from './missions/MissionsPanel';
 import { resolvePlace } from './missions/missionRows';
@@ -25,6 +26,7 @@ import { PingInboxHud } from './PingInboxHud';
 import { ArrivalBubble, PresenceList } from './PresenceList';
 import { RoundButton } from './RoundButton';
 import { Keycap } from './ui/Keycap';
+import { InlineAlert } from './ui/InlineAlert';
 import { Panel } from './ui/Panel';
 import { PortraitSheet } from './ui/PortraitSheet';
 import { AUTO_HIDE_MS, unreadCount, useChatVisibility } from './useChatVisibility';
@@ -34,11 +36,18 @@ import { useHotkey } from './useHotkey';
 
 const selectChat = (s: OfficeState) => s.chat;
 
-function MenuPopover({ portrait, onPeople, onSettings, onClose }: { portrait: boolean; onPeople: () => void; onSettings: () => void; onClose: () => void }) {
+type MenuActions = { onInvite: () => void; onPeople: () => void; onSettings: () => void; onSwitchOffice: () => void; onSignOut: () => Promise<void> };
+
+export function MenuPopover({ portrait, onClose, onInvite, onPeople, onSettings, onSwitchOffice, onSignOut }: MenuActions & { portrait: boolean; onClose: () => void }) {
   useEscapeLayer(true, onClose);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const item = 'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-semibold hover:bg-hud-hover pointer-coarse:min-h-12';
   const items = (
     <>
+      <button type="button" role="menuitem" className={item} onClick={onInvite}>
+        <UserPlus aria-hidden className="size-4" />
+        Invite people
+      </button>
       <button type="button" role="menuitem" className={item} onClick={onPeople}>
         <Users aria-hidden className="size-4" />
         People here
@@ -47,6 +56,23 @@ function MenuPopover({ portrait, onPeople, onSettings, onClose }: { portrait: bo
         <Settings aria-hidden className="size-4" />
         Settings
       </button>
+      <button type="button" role="menuitem" className={item} onClick={onSwitchOffice}>
+        <ArrowLeftRight aria-hidden className="size-4" />
+        Switch office
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={`${item} text-hud-rose-text`}
+        onClick={() => {
+          setSignOutError(null);
+          onSignOut().catch((err: Error) => setSignOutError(err.message));
+        }}
+      >
+        <LogOut aria-hidden className="size-4" />
+        Sign out
+      </button>
+      {signOutError && <InlineAlert className="mx-1 text-xs">{signOutError}</InlineAlert>}
     </>
   );
   if (portrait) {
@@ -77,8 +103,13 @@ export function OfficeHud({
   missions,
   placeMode,
   toasts,
+  inviteUrl,
+  welcome = false,
+  onWelcomeShown,
   onWave,
   onOpenSettings,
+  onSwitchOffice,
+  onSignOut,
 }: {
   store: Store;
   actions: Actions;
@@ -91,8 +122,13 @@ export function OfficeHud({
   missions: MissionsApi;
   placeMode: PlaceModeStore;
   toasts: ReactNode;
+  inviteUrl: string;
+  welcome?: boolean;
+  onWelcomeShown?: () => void;
   onWave: () => void;
   onOpenSettings: () => void;
+  onSwitchOffice: () => void;
+  onSignOut: () => Promise<void>;
 }) {
   const coarse = useCoarsePointer();
   const narrow = usePortrait() && coarse;
@@ -104,7 +140,13 @@ export function OfficeHud({
   const [lastReadId, setLastReadId] = useState<string | null>(chat.at(-1)?.id ?? null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [people, setPeople] = useState(false);
+  const [invite, setInvite] = useState<'created' | 'invite' | null>(welcome ? 'created' : null);
   const [mapOpen, setMapOpen] = useState(false);
+  useEffect(() => {
+    if (welcome) {
+      onWelcomeShown?.();
+    }
+  }, [welcome, onWelcomeShown]);
   const missionsFold = useFold('missions', coarse);
   const inCall = useCallRows(store, selfId).state !== 'none';
   const spots = useOfficeSpots(store);
@@ -133,10 +175,10 @@ export function OfficeHud({
   const chatMode = chatVisibility.mode;
   const { hide: hideChat } = chatVisibility;
   useEffect(() => {
-    if (narrow && (menuOpen || people || chatMode === 'compose')) {
+    if (narrow && (menuOpen || people || invite || chatMode === 'compose')) {
       foldMissions(true);
     }
-  }, [narrow, menuOpen, people, chatMode, foldMissions]);
+  }, [narrow, menuOpen, people, invite, chatMode, foldMissions]);
   useEffect(() => {
     if (narrow && building) {
       setPeople(false);
@@ -146,6 +188,7 @@ export function OfficeHud({
     if (narrow && missionsOpen) {
       setMenuOpen(false);
       setPeople(false);
+      setInvite(null);
       hideChat();
     }
   }, [narrow, missionsOpen, hideChat]);
@@ -159,10 +202,14 @@ export function OfficeHud({
     if (narrow) {
       setMenuOpen(false);
       setPeople(false);
+      setInvite(null);
     }
     chatVisibility.compose();
   };
   const openMenu = () => {
+    if (!menuOpen) {
+      setInvite(null);
+    }
     if (narrow && !menuOpen) {
       setPeople(false);
       hideChat();
@@ -216,9 +263,18 @@ export function OfficeHud({
     <MenuPopover
       portrait={narrow}
       onClose={() => setMenuOpen(false)}
+      onInvite={() => {
+        setMenuOpen(false);
+        setInvite('invite');
+        if (narrow) {
+          setPeople(false);
+          hideChat();
+        }
+      }}
       onPeople={() => {
         setPeople((p) => !p);
         setMenuOpen(false);
+        setInvite(null);
         if (narrow) {
           hideChat();
         }
@@ -227,7 +283,12 @@ export function OfficeHud({
         setMenuOpen(false);
         onOpenSettings();
       }}
+      onSwitchOffice={onSwitchOffice}
+      onSignOut={onSignOut}
     />
+  );
+  const inviteSheet = invite && (
+    <InviteSheet url={inviteUrl} officeName={officeName} created={invite === 'created'} portrait={narrow} coarse={coarse} onClose={() => setInvite(null)} />
   );
 
   return (
@@ -284,17 +345,20 @@ export function OfficeHud({
           </>
         }
         rightEdge={
-          coarse && (
-            <>
-              {menu}
-              {chatPanel}
-              {people && <PresenceList store={store} selfId={selfId} officeName={officeName} pinger={pinger} onClose={narrow ? () => setPeople(false) : undefined} />}
-            </>
-          )
+          <>
+            {coarse && (
+              <>
+                {menu}
+                {chatPanel}
+                {people && <PresenceList store={store} selfId={selfId} officeName={officeName} pinger={pinger} onClose={narrow ? () => setPeople(false) : undefined} />}
+              </>
+            )}
+            {inviteSheet}
+          </>
         }
         bottomLeft={narrow ? undefined : missionsPanel}
         bottomRight={
-          coarse && (menuOpen || people) ? undefined : narrow ? (
+          coarse && (menuOpen || people || invite) ? undefined : narrow ? (
             <>
               {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} onOpen={chatVisibility.compose} />}
               {chatButton}
