@@ -1,10 +1,9 @@
-import { useRef, useState } from 'react';
-import { Calendar, MapPin, Plus, X } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
+import { Calendar, ChevronDown, MapPin, Plus, X } from 'lucide-react';
 import type { MissionPlace, MissionStep, NewMission } from '@officexr/sdk';
 import { isComposing } from '../isComposing';
 import { Button } from '../ui/Button';
 import { FIELD } from '../ui/fieldStyles';
-import { Keycap } from '../ui/Keycap';
 import { Switch } from '../ui/Switch';
 import { useEscapeLayer } from '../useEscapeLayer';
 import { formatDue, initialOf, type PlaceAreas } from './missionRows';
@@ -27,13 +26,13 @@ const toLocalInput = (iso: string) => {
 export function NewMissionForm({
   areas,
   people,
-  onAdd,
+  onSave,
   onCancel,
   sheet = false,
 }: {
   areas: PlaceAreas;
   people: readonly OfficePerson[];
-  onAdd: (input: NewMission) => void;
+  onSave: (input: NewMission) => Promise<boolean>;
   onCancel: () => void;
   sheet?: boolean;
 }) {
@@ -45,21 +44,44 @@ export function NewMissionForm({
   const [person, setPerson] = useState<OfficePerson | null>(null);
   const [shared, setShared] = useState(false);
   const [picker, setPicker] = useState<Picker>(null);
+  const [more, setMore] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  useEscapeLayer(true, onCancel, () => rootRef.current);
+  const titleId = useId();
+  const moreId = useId();
+  const cancel = () => {
+    if (!saving) {
+      onCancel();
+    }
+  };
+  useEscapeLayer(true, cancel, () => rootRef.current);
 
   const toggle = (p: Exclude<Picker, null>) => setPicker((cur) => (cur === p ? null : p));
-  const canAdd = title.trim().length > 0;
-  const add = () => {
-    if (!canAdd) {
+  const canSave = title.trim().length > 0 && !saving;
+  const save = async () => {
+    if (!canSave) {
       return;
     }
-    onAdd({ title: title.trim(), steps, place, dueAt, personLogin: person?.login ?? null, shared });
+    setSaving(true);
+    setFailed(false);
+    const saved = await onSave({
+      title: title.trim(),
+      steps,
+      place,
+      dueAt,
+      personLogin: person?.login ?? null,
+      shared,
+    });
+    if (!saved) {
+      setSaving(false);
+      setFailed(true);
+    }
   };
   const onTitleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !isComposing(e.nativeEvent)) {
       e.preventDefault();
-      add();
+      void save();
     }
   };
   const addStep = () => {
@@ -72,14 +94,16 @@ export function NewMissionForm({
 
   const titleField = (
     <input
+      id={titleId}
       autoFocus
-      aria-label="Mission title"
+      required
+      aria-required
       value={title}
       maxLength={140}
       onChange={(e) => setTitle(e.target.value)}
       onKeyDown={onTitleKey}
-      placeholder="What needs doing?"
-      className={`${FIELD} min-w-0 flex-1 border-hud-accent/60 text-sm font-semibold ${sheet ? 'h-12 text-base' : ''}`}
+      placeholder="What do you want to do?"
+      className={`${FIELD} min-w-0 border-hud-accent/60 text-sm font-semibold pointer-coarse:h-12 pointer-coarse:text-base`}
     />
   );
 
@@ -222,63 +246,69 @@ export function NewMissionForm({
   );
 
   const shareRow = (
-    <label className="flex items-center gap-2 text-xs text-hud-text">
+    <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-hud-text">
       <Switch aria-label="Share with team" checked={shared} onCheckedChange={setShared} />
-      <span className="font-semibold">Share{sheet ? '' : ' with team'}</span>
-      {!sheet && <span className="text-hud-text-2">{shared ? 'on: the office sees it' : 'off: only you see it'}</span>}
+      <span className="font-semibold whitespace-nowrap">Share with team</span>
+      <span className="text-hud-text-2">{shared ? 'on: the office sees it' : 'off: only you see it'}</span>
     </label>
   );
 
-  if (sheet) {
-    return (
-      <div data-no-hotkeys ref={rootRef} role="dialog" aria-label="New mission" className="flex flex-col gap-2.5">
-        <div className="flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-hud-text">
-            New mission
-            <span className="rounded-full bg-hud-accent/15 px-2 py-0.5 text-[11px] text-hud-accent">Mine</span>
-          </h3>
-          <button type="button" onClick={onCancel} className="min-h-12 px-3 text-sm font-semibold text-hud-accent">
-            Cancel
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          {titleField}
-          <Button tone="primary" size="lg" className="h-12 min-w-24" disabled={!canAdd} onClick={add}>
-            Add
-          </Button>
-        </div>
-        <div className="flex items-center justify-between gap-2">
+  const fold = (
+    <div className="flex flex-col gap-2.5">
+      <button
+        type="button"
+        aria-expanded={more}
+        aria-controls={moreId}
+        onClick={() => setMore((m) => !m)}
+        className="flex min-h-12 items-center gap-2 self-start rounded-lg px-1 text-sm font-semibold text-hud-text-2 hover:text-hud-text focus-visible:outline-2 focus-visible:outline-hud-accent pointer-fine:min-h-8"
+      >
+        <ChevronDown aria-hidden className={`size-4 transition-transform motion-reduce:transition-none ${more ? 'rotate-180' : ''}`} />
+        More: place, time, person, steps
+      </button>
+      {more && (
+        <div id={moreId} className="flex flex-col gap-2.5">
           {chips}
+          {pickers}
           {shareRow}
         </div>
-        {pickers}
-      </div>
-    );
-  }
+      )}
+    </div>
+  );
 
   return (
-    <div data-no-hotkeys ref={rootRef} role="group" aria-label="New mission" className="flex flex-col gap-2.5 rounded-2xl border border-hud-hairline bg-hud-inset/60 p-3">
-      <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-hud-text-2 uppercase">
-        New mission
-        <span className="rounded-full bg-hud-accent/15 px-2 py-0.5 text-[11px] text-hud-accent normal-case">Mine</span>
+    <div
+      data-no-hotkeys
+      ref={rootRef}
+      role={sheet ? 'dialog' : 'group'}
+      aria-label="New mission"
+      className={`flex min-h-0 flex-col gap-2 ${sheet ? '' : 'rounded-2xl border border-hud-hairline bg-hud-inset/60 p-3'}`}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-hud-text">
+          New mission
+          <span className="rounded-full bg-hud-accent/15 px-2 py-0.5 text-xs text-hud-accent">Mine</span>
+        </div>
+        <Button size="sm" disabled={saving} onClick={cancel}>
+          Cancel
+        </Button>
       </div>
-      {titleField}
-      {chips}
-      {pickers}
-      {shareRow}
-      <div className="flex items-center justify-between gap-2 border-t border-hud-separator pt-2.5">
-        <span className="flex items-center gap-1 text-[11px] text-hud-text-2">
-          <Keycap>Enter</Keycap> add · <Keycap>Esc</Keycap> cancel
-        </span>
-        <span className="flex items-center gap-2">
-          <Button size="sm" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button tone="primary" size="sm" disabled={!canAdd} onClick={add}>
-            Add
-          </Button>
-        </span>
+      <div className="flex shrink-0 items-end gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <label htmlFor={titleId} className="text-xs font-semibold text-hud-text-2">
+            Title
+          </label>
+          {titleField}
+        </div>
+        <Button tone="primary" size="sm" className="shrink-0 pointer-coarse:h-12" disabled={!canSave} onClick={() => void save()}>
+          {saving ? 'Saving…' : 'Save mission'}
+        </Button>
       </div>
+      {failed && (
+        <p role="alert" className="shrink-0 text-xs font-semibold text-hud-rose-text">
+          We could not save this mission. Try again.
+        </p>
+      )}
+      <div className="min-h-0 overflow-y-auto overscroll-contain">{fold}</div>
     </div>
   );
 }

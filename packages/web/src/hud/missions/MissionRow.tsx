@@ -25,6 +25,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
   const meta = [metaLine(mission, now, compact), compact && goable ? distance : null].filter(Boolean).join(' · ');
   return (
     <li
+      data-mission-id={mission.id}
       data-current={current || undefined}
       className={`flex flex-col rounded-xl ${current ? 'bg-hud-accent/15 shadow-[inset_3px_0_0_var(--color-hud-accent)]' : ''}`}
     >
@@ -38,9 +39,13 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
           className="flex size-12 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-hud-accent pointer-fine:size-8"
         >
           <span
-            className={`flex size-6 items-center justify-center rounded-full border-2 ${mission.done ? 'border-hud-sage-text bg-hud-sage-text text-white' : 'border-hud-text-2/60'}`}
+            className={`flex size-6 items-center justify-center rounded-full border-2 transition-colors duration-200 ease-out ${mission.done ? 'border-hud-sage-text bg-hud-sage-text text-white' : 'border-hud-text-2/60'}`}
           >
-            {mission.done && <Check aria-hidden className="size-3.5" strokeWidth={3} />}
+            <Check
+              aria-hidden
+              className={`size-3.5 transition-[opacity,scale] duration-200 ease-out motion-reduce:transition-opacity ${mission.done ? 'opacity-100' : 'scale-50 opacity-0'}`}
+              strokeWidth={3}
+            />
           </span>
         </button>
         <button

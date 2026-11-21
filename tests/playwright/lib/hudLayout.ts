@@ -17,6 +17,10 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'invite-open': { scenario: 'crowd', steps: ['Office menu', 'Invite people'] },
   'people-open': { scenario: 'crowd', steps: [/^People here, \d+$/] },
   'person-card': { scenario: 'crowd', steps: [/^People here, \d+$/, /Show options$/] },
+  'mission-form': { scenario: 'missions', steps: [/^Expand missions$/, 'Add mission'] },
+  'mission-form-more': { scenario: 'missions', steps: [/^Expand missions$/, 'Add mission', /^More: place/] },
+  'mission-done': { scenario: 'missions', steps: [/^Expand missions$/, 'check:Fix the login redirect'] },
+  'mission-keyboard': { scenario: 'missions', steps: [/^Expand missions$/, 'Add mission', 'keyboard'] },
   'chat-keyboard': { scenario: 'chat', steps: [/^Chat/, 'keyboard'] },
   'conn-reconnecting': { scenario: 'crowd', steps: ['net:reconnecting'] },
   'conn-cannot': { scenario: 'crowd', steps: ['net:cannot'], stallMs: 400 },
@@ -159,7 +163,7 @@ export async function applySafeArea(page: Page, safe: HudDevice['safe']): Promis
 const SCENARIO_STEPS: Record<string, (string | RegExp)[]> = {
   ...Object.fromEntries(Object.entries(HUD_STATES).map(([id, state]) => [id, state.steps])),
   build: ['key:b'],
-  'new-mission': [/^Expand missions$/, 'New mission'],
+  'new-mission': [/^Expand missions$/, 'Add mission'],
   focus: [/^People here, \d+$/],
   full: [/^People here, \d+$/],
 };
@@ -193,6 +197,11 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
       if (net === 'cannot') {
         await page.getByRole('alert').waitFor();
       }
+      await page.waitForTimeout(600);
+      continue;
+    }
+    if (typeof name === 'string' && name.startsWith('check:')) {
+      await page.getByRole('checkbox', { name: `${name.slice(6)}, done` }).dispatchEvent('click');
       await page.waitForTimeout(600);
       continue;
     }

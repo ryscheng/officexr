@@ -104,6 +104,7 @@ export function OfficeHud({
     }
   }, [welcome, onWelcomeShown]);
   const missionsFold = useFold('missions', coarse);
+  const [cueSlot, setCueSlot] = useState<HTMLElement | null>(null);
   const inCall = useCallRows(store, selfId).state !== 'none';
   const voiceFailed = useVoiceFailed(voice);
   const spots = useOfficeSpots(store);
@@ -193,7 +194,7 @@ export function OfficeHud({
   const route = current && to ? { to, label: current.title, areaId: current.place?.kind === 'room' ? current.place.id : null } : null;
 
   const missionsPanel = (
-    <MissionsPanel missions={missions} me={me} areas={spots.areas} people={spots.people} self={spots.self} compact={coarse} portrait={narrow} collapsed={fadeSecondary} />
+    <MissionsPanel missions={missions} me={me} areas={spots.areas} people={spots.people} self={spots.self} compact={coarse} portrait={narrow} collapsed={fadeSecondary} cueSlot={cueSlot} />
   );
   const chatPanel = (
     <ChatPanel
@@ -319,12 +320,14 @@ export function OfficeHud({
               {inCall && <div aria-hidden className="h-[calc(var(--hud-portrait-call-row)-0.5rem)]" />}
               <ArrivalBubble store={store} selfId={selfId} toast />
               {toasts}
+              <div ref={setCueSlot} />
               <BuildIndicator mode={placeMode} />
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 pointer-coarse:mt-16">
               <ArrivalBubble store={store} selfId={selfId} toast />
               {toasts}
+              <div ref={setCueSlot} />
               <BuildIndicator mode={placeMode} />
             </div>
           )

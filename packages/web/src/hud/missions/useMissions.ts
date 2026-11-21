@@ -12,7 +12,7 @@ export interface MissionsApi {
   current: Mission | null;
   setCurrent(id: string | null): void;
   create(input: NewMission): Promise<Mission | null>;
-  update(id: string, patch: MissionPatch): Promise<void>;
+  update(id: string, patch: MissionPatch): Promise<boolean>;
   remove(id: string): Promise<void>;
 }
 
@@ -130,8 +130,10 @@ export function useMissions(
       try {
         replace(await client.update(officeId, id, patch));
         setError(null);
+        return true;
       } catch (err) {
         fail(err, id);
+        return false;
       }
     },
     [client, officeId, replace, fail],
