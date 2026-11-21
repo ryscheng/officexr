@@ -55,7 +55,6 @@ import { useEscapeFallback } from '../hud/useEscapeLayer';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { AppearancePicker } from '../theme/AppearancePicker';
 import { initialViewMode } from './viewMode';
-import { ViewModeControl } from './ViewModeControl';
 import { withDefaultMap } from './withDefaultMap';
 
 const PlayView3d = lazy(() => import('./PlayView3d'));
@@ -221,9 +220,6 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
     ),
     controls: (
       <>
-        <SettingRow label="View">
-          <ViewModeControl mode={viewMode} />
-        </SettingRow>
         {extras.controls}
         <SettingRow label="Appearance">
           <AppearancePicker />

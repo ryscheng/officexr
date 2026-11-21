@@ -275,9 +275,12 @@ export async function awaitHint(page: Page, hint: string): Promise<HintBox> {
 
 export async function dragStick(page: Page, holdMs = 2300): Promise<() => Promise<void>> {
   const { width, height } = page.viewportSize()!;
+  const stick = page.locator('[data-hud-item="Joystick"]');
+  const fixed = (await stick.count()) > 0 && (await stick.getAttribute('data-joystick-floating')) === null;
+  const box = fixed ? await stick.boundingBox() : null;
   const cdp = await page.context().newCDPSession(page);
-  const y = Math.round(height * 0.78);
-  const x = Math.round(width * 0.25);
+  const y = box ? Math.round(box.y + box.height / 2) : Math.round(height * 0.78);
+  const x = box ? Math.round(box.x + box.width / 2) : Math.round(width * 0.25);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + 45, y }] });
   await page.waitForTimeout(holdMs);
