@@ -40,6 +40,7 @@ export function CallCard({
   const { canShare, sharing } = useShareState(voice);
   const [open, setOpen] = useState(false);
   const trayId = useId();
+  const portrait = usePlayerPortrait(rows.find((r) => r.type !== 'self')?.id ?? '');
   const fold = useFold('call', false);
   useEscapeLayer(open, () => setOpen(false));
   if (state === 'none') {
@@ -54,7 +55,6 @@ export function CallCard({
       ? `Voice ${muted ? 'muted' : 'on'} · ${formatDistance(first.distanceM)} away`
       : `Voice ${muted ? 'muted' : 'on'}`;
   const initial = first?.label.charAt(0).toUpperCase() ?? '·';
-  const portrait = usePlayerPortrait(first?.id ?? '');
   const MuteIcon = muted ? MicOff : Mic;
   const ShareIcon = sharing ? MonitorOff : MonitorUp;
 
