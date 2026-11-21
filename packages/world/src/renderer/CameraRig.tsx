@@ -130,13 +130,8 @@ export function CameraRig({
   useTouchCameraGestures(mode, lookRefs, lookSign, paused, lookLocked);
   // The headset owns the camera while presenting; motion look re-baselines after.
   useMotionLook(xrPresenting ? undefined : motionLook, mode, lookRefs);
-  const onMouseLook = useEffectEvent((e: MouseEvent) =>
-    applyLookDelta(
-      mode,
-      lookSign * e.movementX * MOUSE_SENSITIVITY,
-      lookSign * e.movementY * MOUSE_SENSITIVITY,
-      lookRefs,
-    ),
+  const onMouseLook = useEffectEvent((movementX: number, movementY: number) =>
+    applyLookDelta(mode, lookSign * movementX * MOUSE_SENSITIVITY, lookSign * movementY * MOUSE_SENSITIVITY, lookRefs),
   );
 
   // Mouse look (right button or left drag) — only active in first/third person modes.

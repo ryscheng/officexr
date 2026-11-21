@@ -1,28 +1,28 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { attachDesktopLook, LOOK_DRAG_THRESHOLD_PX } from './desktopLook.ts';
 
 let canvas: HTMLCanvasElement;
 let locked: Element | null;
-let requestLock: ReturnType<typeof vi.fn>;
-let exitLock: ReturnType<typeof vi.fn>;
-let onLook: ReturnType<typeof vi.fn>;
+let requestLock: Mock<() => unknown>;
+let exitLock: Mock<() => void>;
+let onLook: Mock<(movementX: number, movementY: number) => void>;
 let detach: () => void;
 
 beforeEach(() => {
   canvas = document.createElement('canvas');
   document.body.append(canvas);
   locked = null;
-  requestLock = vi.fn(() => {
+  requestLock = vi.fn<() => unknown>(() => {
     locked = canvas;
   });
-  exitLock = vi.fn(() => {
+  exitLock = vi.fn<() => void>(() => {
     locked = null;
   });
   canvas.requestPointerLock = requestLock as unknown as HTMLCanvasElement['requestPointerLock'];
   document.exitPointerLock = exitLock as unknown as Document['exitPointerLock'];
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => locked });
-  onLook = vi.fn();
+  onLook = vi.fn<(movementX: number, movementY: number) => void>();
   detach = attachDesktopLook({ canvas, onLook });
 });
 
