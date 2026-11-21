@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
 export const FALLBACK_CHARACTER_HEIGHT_M = 2.3;
 
 /** World-space gap between the top of the head and the bottom of the overhead stack. */
-export const OVERHEAD_GAP_M = 0.1;
+export const OVERHEAD_GAP_M = 0.05;
 
 const heights = new Map<string, number>();
 const listeners = new Set<() => void>();
