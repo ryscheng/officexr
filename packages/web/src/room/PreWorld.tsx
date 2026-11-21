@@ -1,5 +1,5 @@
-import { WorldLoadingScreen } from '@officexr/world/top-down';
 import { Blocked } from '../page/Blocked';
+import { EnteringOffice } from './EnteringOffice';
 import type { JoinCheck } from './useJoinCheck';
 import { JoinPrompt } from './JoinPrompt';
 import type { OfficeSession } from './useOfficeSession';
@@ -14,7 +14,7 @@ export function PreWorld(props: {
   const { title, join, session, onJoin, onRetry } = props;
   return (
     <>
-      {session.type === 'connecting' && <WorldLoadingScreen title={title} step={join === 'checking' ? 'Checking your session…' : 'Connecting…'} />}
+      {session.type === 'connecting' && <EnteringOffice stage={3} name={title} />}
       {session.type === 'error' && (
         <Blocked
           surface="cover"

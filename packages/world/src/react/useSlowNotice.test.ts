@@ -39,3 +39,15 @@ describe('useSlowNotice', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe('useSlowNotice reset', () => {
+  it('starts the wait again when the reset key changes', () => {
+    const { result, rerender } = renderHook(({ key }) => useSlowNotice(true, key), { initialProps: { key: 1 } });
+    act(() => vi.advanceTimersByTime(SLOW_LOAD_MS));
+    expect(result.current).toBe(true);
+    rerender({ key: 2 });
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(SLOW_LOAD_MS));
+    expect(result.current).toBe(true);
+  });
+});

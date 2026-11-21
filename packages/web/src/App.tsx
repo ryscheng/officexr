@@ -1,19 +1,17 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import type { Identity, Office } from '@officexr/server/shared';
-import { WorldLoadingScreen } from '@officexr/world/top-down';
 import { paths } from './apiOrigin';
 import { Async } from './Async';
 import { Home } from './home/Home';
 import { Blocked } from './page/Blocked';
 import { fetchFailureDetails, fetchFailureVariant } from './page/fetchFailure';
 import { PageShell, Spinner } from './page/PageShell';
+import { EnteringOffice } from './room/EnteringOffice';
 import { OfficeWorld } from './room/OfficeWorld';
 import { SignIn } from './SignIn';
 import { clearSignInNext } from './signInNext';
 import { useApi } from './useApi';
-
-const roomLoading = <WorldLoadingScreen step="Loading office…" />;
 
 function Room({ me }: { me: Identity }) {
   // The `/room/:id` route guarantees the id.
@@ -40,7 +38,7 @@ function Room({ me }: { me: Identity }) {
     <div className="fixed inset-0 touch-manipulation overflow-hidden">
       <Async
         state={useApi<Office>(paths.office(id), attempt)}
-        loading={roomLoading}
+        loading={<EnteringOffice stage={2} />}
         error={(message, status) => (
           <Blocked
             surface="cover"
@@ -70,7 +68,9 @@ export default function App() {
     }
   }, [me.type]);
   if (me.type === 'loading') {
-    return (
+    return window.location.pathname.startsWith('/room/') ? (
+      <EnteringOffice stage={1} />
+    ) : (
       <PageShell centred>
         <Spinner label="Loading…" />
       </PageShell>
@@ -92,14 +92,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home me={me} />} />
-        <Route
-          path="/room/:id"
-          element={
-            <Async state={me} loading={roomLoading}>
-              {(identity) => <Room me={identity} />}
-            </Async>
-          }
-        />
+        <Route path="/room/:id" element={<Room me={me.data} />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </BrowserRouter>

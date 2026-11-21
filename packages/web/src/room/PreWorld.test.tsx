@@ -11,15 +11,11 @@ const show = (join: JoinCheck, session: OfficeSession) =>
   render(<PreWorld title="HQ" join={join} session={session} onJoin={vi.fn()} onRetry={vi.fn()} />);
 
 describe('PreWorld', () => {
-  it('shows the session check step', () => {
-    show('checking', { type: 'connecting' });
-    expect(screen.getByRole('status').textContent).toBe('Checking your session…');
-    expect(screen.getByText('HQ')).toBeTruthy();
-  });
-
-  it('shows the connecting step once joining', () => {
-    show('go', { type: 'connecting' });
-    expect(screen.getByRole('status').textContent).toBe('Connecting…');
+  it.each<JoinCheck>(['checking', 'go'])('shows step 3 of 4 with the office name while the join is %s', (join) => {
+    show(join, { type: 'connecting' });
+    expect(screen.getByRole('status').textContent).toBe('Step 3 of 4: joining the room');
+    expect(screen.getByText('Opening HQ')).toBeTruthy();
+    expect(screen.getByText('Then: loading the 3D view')).toBeTruthy();
   });
 
   it('shows a connect error as a plain cause with Try again and the raw text under Details', () => {

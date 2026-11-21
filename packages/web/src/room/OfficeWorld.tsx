@@ -3,7 +3,7 @@ import type { Bus, MissionsClient, OfficeState, PlayerId, Store } from '@officex
 import { createDefaultApi } from '@officexr/world/app';
 import { SfxProvider } from '@officexr/world/audio';
 import { createPlaceMode, type PlacementHost } from '@officexr/world/motion';
-import { ApplicationProvider, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
+import { ApplicationProvider, useStoreSelector } from '@officexr/world/top-down';
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { Identity, Office } from '@officexr/server/shared';
@@ -38,6 +38,7 @@ import { useMuteHotkey } from '../voice/useMuteHotkey';
 import { officeSettingsTabs } from './OfficeSettings';
 import { Blocked } from '../page/Blocked';
 import { PlayView3dBoundary } from './PlayView3dBoundary';
+import { EnteringOffice, enteringScreen } from './EnteringOffice';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
 import { KeybindsTab } from './KeybindsTab';
@@ -195,6 +196,8 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
     selfId: ready.local.selfId,
     mapName: office.map_name ?? DEFAULT_MAP,
     title: office.name,
+    loading: enteringScreen(4, office.name),
+    renderLoadError: (message: string) => <Blocked surface="cover" variant="crashed" details={message} onPrimary={reloadPage} />,
     storages,
     onPingPlayer: pinger.ping,
     onPingFrozen: integrations.status.slack.enabled ? pingFrozen : undefined,
@@ -267,7 +270,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
     <div className="relative h-full w-full overflow-hidden">
       {session.type === 'ready' && (
         <PlayView3dBoundary>
-          <Suspense fallback={<WorldLoadingScreen title={office.name} step="Loading the office" />}>
+          <Suspense fallback={<EnteringOffice stage={4} name={office.name} />}>
             <PlayView3d
               viewProps={readyViewProps(session)}
               overhead={viewMode === '2d'}
