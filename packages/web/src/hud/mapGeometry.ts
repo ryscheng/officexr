@@ -7,14 +7,16 @@ type Point = { x: number; z: number };
 const PAD_M = 3;
 const EMPTY_BOX: MapBox = { x: 0, z: 0, w: 40, h: 40 };
 
+/** The plan frames the map only when no room does, so a big ground slab never shrinks the rooms. */
 export function mapBounds(areas: readonly Area[], plan: readonly PlanRect[], points: readonly Point[]): MapBox {
+  const framing = areas.length > 0 ? [] : plan;
   const xs: number[] = [];
   const zs: number[] = [];
   for (const a of areas) {
     xs.push(a.min.x, a.max.x);
     zs.push(a.min.z, a.max.z);
   }
-  for (const r of plan) {
+  for (const r of framing) {
     xs.push(r.x, r.x + r.w);
     zs.push(r.z, r.z + r.d);
   }
@@ -119,4 +121,24 @@ export function namedPeople(people: readonly (Point & { id: string })[], metresP
     }
   }
   return new Set(shown.map((p) => p.id));
+}
+
+const GROUND_COVERAGE = 0.5;
+const GROUND_MIN_BLOCKS = 16;
+
+/** A layout of wall-height blocks that tiles most of its area is the ground, not walls: draw it as floor. */
+export function readPlan(plan: readonly PlanRect[]): readonly PlanRect[] {
+  const walls = plan.filter((r) => r.tone === 'wall');
+  if (walls.length < GROUND_MIN_BLOCKS) {
+    return plan;
+  }
+  const x0 = Math.min(...walls.map((r) => r.x));
+  const x1 = Math.max(...walls.map((r) => r.x + r.w));
+  const z0 = Math.min(...walls.map((r) => r.z));
+  const z1 = Math.max(...walls.map((r) => r.z + r.d));
+  const covered = walls.reduce((sum, r) => sum + r.w * r.d, 0);
+  if (covered / ((x1 - x0) * (z1 - z0)) < GROUND_COVERAGE) {
+    return plan;
+  }
+  return plan.map((r) => (r.tone === 'wall' ? { ...r, tone: 'floor' as const } : r));
 }

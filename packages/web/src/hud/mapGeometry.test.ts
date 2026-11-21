@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { headingDegrees, mapBounds, namedPeople, placeRoomLabels, planShape } from './mapGeometry';
+import { headingDegrees, mapBounds, namedPeople, placeRoomLabels, planShape, readPlan } from './mapGeometry';
 
 const room = (id: string, x0: number, z0: number, x1: number, z1: number, label = id) => ({ id, label, min: { x: x0, z: z0 }, max: { x: x1, z: z1 } });
 
@@ -13,9 +13,13 @@ describe('headingDegrees', () => {
 });
 
 describe('mapBounds', () => {
-  it('pads the rooms, the plan and the people', () => {
-    const box = mapBounds([room('a', 0, 0, 10, 10)], [{ x: 8, z: 8, w: 6, d: 2, tone: 'wall' }], [{ x: -5, z: 4 }]);
-    expect(box).toEqual({ x: -8, z: -3, w: 25, h: 16 });
+  it('pads the rooms and the people, and ignores a plan wider than the rooms', () => {
+    const box = mapBounds([room('a', 0, 0, 10, 10)], [{ x: 8, z: 8, w: 60, d: 2, tone: 'wall' }], [{ x: -5, z: 4 }]);
+    expect(box).toEqual({ x: -8, z: -3, w: 21, h: 16 });
+  });
+
+  it('frames the plan when there are no rooms', () => {
+    expect(mapBounds([], [{ x: 0, z: 0, w: 10, d: 4, tone: 'wall' }], [])).toEqual({ x: -3, z: -3, w: 16, h: 10 });
   });
 
   it('has a default box for an empty office', () => {
@@ -69,5 +73,19 @@ describe('namedPeople', () => {
       0.1,
     );
     expect([...shown]).toEqual(['a', 'c']);
+  });
+});
+
+describe('readPlan', () => {
+  const block = (x: number, z: number) => ({ x, z, w: 2, d: 2, tone: 'wall' as const });
+
+  it('turns a tiled ground of blocks into floor', () => {
+    const grid = Array.from({ length: 16 }, (_, i) => block((i % 4) * 2, Math.floor(i / 4) * 2));
+    expect(readPlan(grid).every((r) => r.tone === 'floor')).toBe(true);
+  });
+
+  it('keeps thin walls around an open room as walls', () => {
+    const walls = [{ x: 0, z: 0, w: 20, d: 0.2, tone: 'wall' as const }, { x: 0, z: 10, w: 20, d: 0.2, tone: 'wall' as const }];
+    expect(readPlan(walls)).toBe(walls);
   });
 });

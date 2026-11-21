@@ -18,6 +18,7 @@ const ROOM_TINTS = [
 ];
 
 const CORNER_M = 0.4;
+const SEAM_M = 0.03;
 
 function Footprint({ rect }: { rect: PlanRect }) {
   const { round, radius } = planShape(rect);
@@ -64,7 +65,7 @@ export const MapFloor = memo(function MapFloor({
       </g>
       <g strokeWidth={0}>
         {floors.map((r, i) => (
-          <rect key={i} x={r.x} y={r.z} width={r.w} height={r.d} className="fill-map-floor" />
+          <rect key={i} x={r.x - SEAM_M} y={r.z - SEAM_M} width={r.w + 2 * SEAM_M} height={r.d + 2 * SEAM_M} className="fill-map-floor" />
         ))}
       </g>
       {areas.rooms.map((a, i) => (

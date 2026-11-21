@@ -6,7 +6,7 @@ import { useStoreSelector } from '@officexr/world/top-down';
 import { MapFloor, RoomLabels } from './FullMapFloor';
 import { PeerMarker, SelfMarker, SelfTrail } from './FullMapPeople';
 import { formatDistance } from './formatDistance';
-import { mapBounds, namedPeople, placeRoomLabels } from './mapGeometry';
+import { mapBounds, namedPeople, placeRoomLabels, readPlan } from './mapGeometry';
 import { clientToMap, type MapBox } from './mapPoint';
 import { distanceBetween, type PlaceAreas, type Spot } from './missions/missionRows';
 import type { PlanRect } from './minimapPlan';
@@ -95,7 +95,8 @@ export function FullMap({
   }, [refused]);
   const positions = useStoreSelector(store, selectPositions, samePositions);
   const now = useNow(1000);
-  const view = useMemo(() => mapBounds([...areas.rooms, ...areas.desks], plan, [...positions.peers, ...(positions.self ? [positions.self] : [])]), [areas, plan, positions]);
+  const read = useMemo(() => readPlan(plan), [plan]);
+  const view = useMemo(() => mapBounds([...areas.rooms, ...areas.desks], read, [...positions.peers, ...(positions.self ? [positions.self] : [])]), [areas, read, positions]);
   const { ref, scale } = useMetresPerPixel(view);
   const people = positions.peers.length + (positions.self ? 1 : 0);
   const metres = route && positions.self ? distanceBetween(positions.self, route.to) : null;
@@ -130,7 +131,7 @@ export function FullMap({
           className="min-h-0 w-full flex-1 cursor-crosshair rounded-2xl bg-map-bg shadow-[inset_0_0_0_1px_var(--color-hud-hairline)] [&_*]:[vector-effect:non-scaling-stroke]"
           style={{ aspectRatio: `${view.w} / ${view.h}`, maxHeight: '60dvh' }}
         >
-          <MapFloor plan={plan} areas={areas} activeAreaId={route?.areaId ?? null} />
+          <MapFloor plan={read} areas={areas} activeAreaId={route?.areaId ?? null} />
           <RoomLabels labels={labels} scale={scale} activeAreaId={route?.areaId ?? null} />
           {missionTail && positions.self && <SelfTrail store={store} tail={missionTail} />}
           {walkTail && positions.self && <SelfTrail store={store} tail={walkTail} />}
