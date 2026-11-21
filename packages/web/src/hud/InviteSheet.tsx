@@ -38,7 +38,7 @@ function InviteBody({ url, officeName, created, coarse, portrait, onClose }: { u
   };
 
   return (
-    <div className="flex min-h-0 flex-col gap-3 px-2 pb-1">
+    <div className="flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain px-2 pb-1">
       <p className={coarse && !portrait ? 'text-sm text-hud-text-2' : 'text-base text-hud-text-2'}>
         {created ? 'Share this link so your team can walk in.' : 'Anyone you invite signs in with Google. Their address must be on the allowed list.'}
       </p>

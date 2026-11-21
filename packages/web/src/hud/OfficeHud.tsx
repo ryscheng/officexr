@@ -78,7 +78,7 @@ export function MenuPopover({ portrait, onClose, onInvite, onPeople, onSettings,
   if (portrait) {
     return (
       <PortraitSheet title="Menu" label="Menu" closeLabel="Close menu" onClose={onClose}>
-        <div role="menu" aria-label="Office menu" className="flex flex-col gap-2">
+        <div role="menu" aria-label="Office menu" className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain">
           {items}
         </div>
       </PortraitSheet>
@@ -356,7 +356,7 @@ export function OfficeHud({
             {inviteSheet}
           </>
         }
-        bottomLeft={narrow ? undefined : missionsPanel}
+        bottomLeft={narrow || (coarse && invite) ? undefined : missionsPanel}
         bottomRight={
           coarse && (menuOpen || people || invite) ? undefined : narrow ? (
             <>
