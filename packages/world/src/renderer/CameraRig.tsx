@@ -25,6 +25,7 @@ import {
 } from './lookControls.ts';
 import type { MotionLookState } from './motionLook.ts';
 import { useMotionLook } from './useMotionLook.ts';
+import { attachDesktopLook } from './desktopLook.ts';
 import { useTouchCameraGestures } from './useTouchCameraGestures.ts';
 
 const THIRD_PERSON_RADIUS = 6;
@@ -98,8 +99,8 @@ interface CameraRigProps {
 
 /**
  * Owns the active camera each frame. Three modes:
- *  - first-person: at player eye height, mouse-look (pointer lock)
- *  - third-person: orbits behind player, mouse-look (pointer lock)
+ *  - first-person: at player eye height, mouse-look (right button or left drag)
+ *  - third-person: orbits behind player, mouse-look (right button or left drag)
  *  - fixed: parked at a configurable azimuth/elevation/distance, looks at player
  */
 export function CameraRig({
@@ -129,40 +130,13 @@ export function CameraRig({
   useTouchCameraGestures(mode, lookRefs, lookSign, paused, lookLocked);
   // The headset owns the camera while presenting; motion look re-baselines after.
   useMotionLook(xrPresenting ? undefined : motionLook, mode, lookRefs);
-  const onMouseLook = useEffectEvent((e: MouseEvent) =>
-    applyLookDelta(
-      mode,
-      lookSign * e.movementX * MOUSE_SENSITIVITY,
-      lookSign * e.movementY * MOUSE_SENSITIVITY,
-      lookRefs,
-    ),
+  const onMouseLook = useEffectEvent((movementX: number, movementY: number) =>
+    applyLookDelta(mode, lookSign * movementX * MOUSE_SENSITIVITY, lookSign * movementY * MOUSE_SENSITIVITY, lookRefs),
   );
 
-  // Pointer-lock + mouse-look — only active in first/third person modes.
   useEffect(() => {
-    const wantsLook = isYawPitchMode(mode);
-    const canvas = gl.domElement;
-
-    if (!wantsLook) {
-      if (document.pointerLockElement === canvas) document.exitPointerLock?.();
-      return;
-    }
-
-    const onMouseDown = () => {
-      if (document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
-    };
-    const onMouseMove = (e: MouseEvent) => {
-      if (document.pointerLockElement !== canvas) return;
-      onMouseLook(e);
-    };
-
-    canvas.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('mousemove', onMouseMove);
-    return () => {
-      canvas.removeEventListener('mousedown', onMouseDown);
-      document.removeEventListener('mousemove', onMouseMove);
-      if (document.pointerLockElement === canvas) document.exitPointerLock?.();
-    };
+    if (!isYawPitchMode(mode)) return;
+    return attachDesktopLook({ canvas: gl.domElement, onLook: onMouseLook });
   }, [mode, gl]);
 
   // Keep fixed/top-down/free-fly camera fov in sync. Each mode sets its

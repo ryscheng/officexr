@@ -33,7 +33,7 @@ import {
 import { stepAirVelocity } from '../physics/air-control.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
 import { tryStepUp } from '../physics/step-up.ts';
-import { fixedMovementYaw, yawFromDirection, type ViewOffsets } from './lookControls.ts';
+import { fixedMovementYaw, isYawPitchMode, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
 import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
 import { newSelfMotion, stepSelfMotion } from '../motion/self-motion.ts';
@@ -165,6 +165,10 @@ export function SceneFrame({
   // keydown listener (registered once in useEffect below) always
   // reads the live value without re-binding when focus changes.
   const focusedRef = React.useRef(worldFocused);
+  const isYawPitchModeRef = React.useRef(isYawPitchMode(cameraMode));
+  useEffect(() => {
+    isYawPitchModeRef.current = isYawPitchMode(cameraMode);
+  }, [cameraMode]);
   useEffect(() => {
     focusedRef.current = worldFocused;
     // Drop any held keys when focus is released so a key still
@@ -301,17 +305,19 @@ export function SceneFrame({
     const onKeyUp = (e: KeyboardEvent) =>
       keysDown.current.delete(e.key.toLowerCase());
 
-    const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0 && document.pointerLockElement && focusedRef.current) castClickRef.current = true;
+    const onClick = (e: MouseEvent) => {
+      if (e.button === 0 && focusedRef.current && isYawPitchModeRef.current && e.target instanceof HTMLCanvasElement) {
+        castClickRef.current = true;
+      }
     };
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('click', onClick);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('click', onClick);
     };
   }, []);
 
