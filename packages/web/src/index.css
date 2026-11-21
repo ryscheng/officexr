@@ -100,17 +100,6 @@
       opacity: 0;
     }
   }
-
-  --animate-hud-bob: hud-bob 1.6s ease-in-out infinite;
-  @keyframes hud-bob {
-    0%,
-    100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-6px);
-    }
-  }
 }
 
 /* The frosted material every floating surface uses; backdrop blur is what makes it glass. */

@@ -3,7 +3,9 @@ import { loginOf, type Actions, type OfficeState, type Store } from '@officexr/s
 import { MessageSquare, SendHorizontal } from 'lucide-react';
 import { focusWorld, useCoarsePointer, useStoreSelector } from '@officexr/world/top-down';
 import { IconButton } from './IconButton';
+import { createChatHistory } from './chatHistory';
 import { isComposing } from './isComposing';
+import { isHotkeyBlocked } from '../room/isHotkeyBlocked';
 import { Keycap } from './ui/Keycap';
 import { FoldablePanel } from './ui/FoldablePanel';
 import { PortraitSheet } from './ui/PortraitSheet';
@@ -50,15 +52,20 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const history = useRef(createChatHistory()).current;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const interactive = e.target instanceof Element && e.target.closest(INTERACTIVE);
       const modified = e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
-      if (e.key !== 'Enter' || interactive || modified || e.repeat || e.defaultPrevented || e.isComposing) {
+      const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !isHotkeyBlocked(e);
+      if ((e.key !== 'Enter' && !slash) || interactive || modified || e.repeat || e.defaultPrevented || e.isComposing) {
         return;
       }
       e.preventDefault();
+      if (slash) {
+        setDraft((d) => `${d}/`);
+      }
       inputRef.current?.focus();
       compose();
     };
@@ -80,6 +87,7 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
     const onMouseDown = (e: MouseEvent) => {
       const target = e.target as Element;
       if (!containerRef.current?.contains(target) && !target.closest('[data-chat-toggle]')) {
+        inputRef.current?.blur();
         peek();
       }
     };
@@ -101,10 +109,7 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
 
   useEscapeLayer(
     mode === 'compose',
-    () => {
-      setDraft('');
-      handBack(hide);
-    },
+    () => handBack(portrait ? hide : peek),
     () => containerRef.current,
   );
 
@@ -148,6 +153,12 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
         return;
       }
       send();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const recalled = e.key === 'ArrowUp' ? history.older(draft) : history.newer();
+      if (recalled !== null) {
+        e.preventDefault();
+        setDraft(recalled);
+      }
     }
   };
 
@@ -161,6 +172,7 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
       void sendMissionCommand(command[1].trim());
       return;
     }
+    history.push(text);
     actions.appendChat({
       id: `${selfId}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
       authorId: selfId,
@@ -183,6 +195,7 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
       t: Date.now(),
     });
     if (added) {
+      history.push(`/mission ${raw}`);
       setDraft('');
       if (!portrait) {
         handBack(peek);
@@ -215,7 +228,10 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
         ref={inputRef}
         value={draft}
         maxLength={MAX_LENGTH}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          history.stopBrowsing();
+          setDraft(e.target.value);
+        }}
         onFocus={compose}
         onKeyDown={onKeyDown}
         placeholder={coarse ? 'Message' : 'Press Enter to chat'}
