@@ -23,9 +23,10 @@ export function useTouchCameraGestures(
   refs: LookRefs,
   lookSign = -1,
   paused = false,
+  lookLocked = false,
 ): void {
   const canvas = useThree((s) => s.gl.domElement);
-  useCanvasGestures(canvas, mode, refs, lookSign, paused);
+  useCanvasGestures(canvas, mode, refs, lookSign, paused, lookLocked);
 }
 
 /**
@@ -35,7 +36,8 @@ export function useTouchCameraGestures(
  * focus tracking. The mouse wheel zooms and is `preventDefault`ed so the page
  * doesn't scroll. Does nothing in modes without look input, and a paused scene
  * ignores all of these touch and wheel gestures. `lookSign` flips the drag
- * look direction only, never the zoom.
+ * look direction only, never the zoom. `lookLocked` stops the one-finger drag turning
+ * the view and leaves pinch and wheel zoom alone.
  */
 export function useCanvasGestures(
   canvas: HTMLElement,
@@ -43,10 +45,13 @@ export function useCanvasGestures(
   refs: LookRefs,
   lookSign: number,
   paused: boolean,
+  lookLocked = false,
 ): void {
-  const onDragLook = useEffectEvent((dx: number, dy: number) =>
-    applyLookDelta(mode, lookSign * dx * TOUCH_SENSITIVITY, lookSign * dy * TOUCH_SENSITIVITY, refs),
-  );
+  const onDragLook = useEffectEvent((dx: number, dy: number) => {
+    if (!lookLocked) {
+      applyLookDelta(mode, lookSign * dx * TOUCH_SENSITIVITY, lookSign * dy * TOUCH_SENSITIVITY, refs);
+    }
+  });
 
   useEffect(() => {
     if (!isLookMode(mode) || paused) {

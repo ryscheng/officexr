@@ -43,6 +43,7 @@ interface CameraRigProps {
   /** Absent means device motion doesn't steer the view. */
   motionLook?: MotionLookState;
   invertLook?: boolean;
+  lookLocked?: boolean;
   /** Set by `ProximityGlow` each frame to the local player's
    * MeetingArea centroid when in a conversation, or `null` otherwise.
    * When non-null, the rig blends in a "conversation view": elevated
@@ -110,6 +111,7 @@ export function CameraRig({
   viewOffsetsRef,
   motionLook,
   invertLook = false,
+  lookLocked = false,
   conversationFocusRef,
   conversationDistance,
   conversationHeight,
@@ -124,7 +126,7 @@ export function CameraRig({
     [yawRef, pitchRef, viewOffsetsRef],
   );
   const lookSign = invertLook ? 1 : -1;
-  useTouchCameraGestures(mode, lookRefs, lookSign, paused);
+  useTouchCameraGestures(mode, lookRefs, lookSign, paused, lookLocked);
   // The headset owns the camera while presenting; motion look re-baselines after.
   useMotionLook(xrPresenting ? undefined : motionLook, mode, lookRefs);
   const onMouseLook = useEffectEvent((e: MouseEvent) =>

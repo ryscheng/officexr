@@ -25,7 +25,7 @@ import { OfficeHud } from '../hud/OfficeHud';
 import { createHttpMissionsClient } from '../hud/missions/missionsApi';
 import { useMissionMarker } from '../hud/missions/useMissionMarker';
 import { useMissions } from '../hud/missions/useMissions';
-import { SettingRow, SettingsActionButton } from '../hud/settings/parts';
+import { SectionLabel, SettingRow, SettingsActionButton } from '../hud/settings/parts';
 import { HelpPage } from '../hud/settings/HelpPage';
 import { OfficePage } from '../hud/settings/OfficePage';
 import { StatusSection } from '../hud/settings/StatusSection';
@@ -231,7 +231,12 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         {!coarse && (
           <SettingsActionButton onClick={openHelp}>Keyboard shortcuts</SettingsActionButton>
         )}
-        {[...extras.actions, ...popOut].map((action) => (
+        {popOut.map((action) => (
+          <Fragment key={action.id}>{action.render(closeSettings)}</Fragment>
+        ))}
+        <SectionLabel>VR and motion look</SectionLabel>
+        {extras.motion}
+        {extras.actions.map((action) => (
           <Fragment key={action.id}>{action.render(closeSettings)}</Fragment>
         ))}
       </>

@@ -3,8 +3,7 @@ import type { PersistentLocalState } from '@officexr/core-refactor';
 import { PlayView, type PlayViewProps } from '@officexr/world/react';
 import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XRStore } from '@officexr/world/renderer';
 import { useCoarsePointer } from '@officexr/world/top-down';
-import { useJoystickMode, type JoystickMode } from '../hud/joystickMode';
-import { SegmentedControl } from '../hud/ui/SegmentedControl';
+import { cameraAngleLocked, forgetLegacyJoystickChoice, useLockCameraAngle } from '../hud/lockCameraAngle';
 import { Switch } from '../hud/ui/Switch';
 import { CameraModeControl } from './CameraModeControl';
 import { CharacterLook } from './CharacterLook';
@@ -12,11 +11,6 @@ import { MotionLookControl } from './MotionLookControl';
 import { SettingRow } from '../hud/settings/parts';
 import type { SettingsAction } from './Settings';
 import { vrActions } from './VrAction';
-
-const JOYSTICK_OPTIONS = [
-  { value: 'floating', label: 'Floating' },
-  { value: 'fixed', label: 'Fixed' },
-] as const;
 
 /** Created in an effect so StrictMode's remount destroys the first store, which appends a DOM overlay. */
 function useWorldXRStore(): XRStore | undefined {
@@ -47,6 +41,7 @@ const OVERHEAD_CAMERA = {
 
 export interface PlayViewSettings {
   controls: ReactNode;
+  motion: ReactNode;
   look: ReactNode;
   actions: SettingsAction[];
 }
@@ -73,10 +68,13 @@ export default function PlayView3d({
   const [motionLook, setMotionLook] = useState({ enabled: false, recenterKey: 0 });
   const [motionUnsupported, setMotionUnsupported] = useState(false);
   const [invertLook, setInvertLook] = useState(false);
-  const [joystick, setJoystick] = useJoystickMode();
+  const [userLock, setUserLock] = useLockCameraAngle();
+  useEffect(forgetLegacyJoystickChoice, []);
   const coarse = useCoarsePointer();
   const xrStore = useWorldXRStore();
   const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
+  const lockedByView = overhead || motionLook.enabled;
+  const lookLocked = cameraAngleLocked({ overhead, motionLook: motionLook.enabled, userLock });
 
   const controls = (
     <>
@@ -85,23 +83,9 @@ export default function PlayView3d({
           <CameraModeControl value={cameraMode} onChange={setCameraMode} />
         </SettingRow>
       )}
-      <SettingRow label="Motion look">
-        <MotionLookControl
-          enabled={motionLook.enabled}
-          onEnabledChange={(enabled) => setMotionLook((m) => ({ ...m, enabled }))}
-          onRecenter={() => setMotionLook((m) => ({ ...m, recenterKey: m.recenterKey + 1 }))}
-          unsupported={motionUnsupported}
-          onUnsupported={() => setMotionUnsupported(true)}
-        />
-      </SettingRow>
       {coarse && (
-        <SettingRow label="Joystick">
-          <SegmentedControl<JoystickMode>
-            aria-label="Joystick"
-            value={joystick}
-            options={JOYSTICK_OPTIONS}
-            onValueChange={setJoystick}
-          />
+        <SettingRow label="Lock camera angle" hint={lockedByView ? 'Locked by the 2D view or Motion look' : 'Dragging then moves you, from anywhere'}>
+          <Switch aria-label="Lock camera angle" checked={lookLocked} disabled={lockedByView} onCheckedChange={setUserLock} />
         </SettingRow>
       )}
       <SettingRow label="Invert look">
@@ -109,8 +93,20 @@ export default function PlayView3d({
       </SettingRow>
     </>
   );
+  const motion = (
+    <SettingRow label="Motion look">
+      <MotionLookControl
+        enabled={motionLook.enabled}
+        onEnabledChange={(enabled) => setMotionLook((m) => ({ ...m, enabled }))}
+        onRecenter={() => setMotionLook((m) => ({ ...m, recenterKey: m.recenterKey + 1 }))}
+        unsupported={motionUnsupported}
+        onUnsupported={() => setMotionUnsupported(true)}
+      />
+    </SettingRow>
+  );
   const settings: PlayViewSettings = {
     controls,
+    motion,
     look: <CharacterLook local={local} onSaveResult={onError} />,
     actions: vrActions(xrStore, vrSupported, onError),
   };
@@ -124,7 +120,7 @@ export default function PlayView3d({
       fixedCamera={overhead ? OVERHEAD_CAMERA : undefined}
       motionLook={motionLook}
       invertLook={invertLook}
-      joystick={joystick}
+      lookLocked={lookLocked}
       hud="player"
       xrStore={xrStore}
     >
