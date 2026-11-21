@@ -12,6 +12,8 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'chat-peek': { scenario: 'chat', steps: ['say:bao@example.test:Lunch at 12? I booked the big room by the window.'] },
   'chat-sheet': { scenario: 'chat', steps: [/^Chat/] },
   'menu-open': { scenario: 'crowd', steps: ['Office menu'] },
+  'settings-open': { scenario: 'crowd', steps: ['Office menu', /^Office\s*Name, map/] },
+  'settings-controls': { scenario: 'crowd', steps: ['Office menu', /^Controls\s*View/] },
   'invite-open': { scenario: 'crowd', steps: ['Office menu', 'Invite people'] },
   'people-open': { scenario: 'crowd', steps: [/^People here, \d+$/] },
   'person-card': { scenario: 'crowd', steps: [/^People here, \d+$/, /Show options$/] },
@@ -158,8 +160,8 @@ const SCENARIO_STEPS: Record<string, (string | RegExp)[]> = {
   ...Object.fromEntries(Object.entries(HUD_STATES).map(([id, state]) => [id, state.steps])),
   build: ['key:b'],
   'new-mission': [/^Expand missions$/, 'New mission'],
-  focus: ['Office menu', 'People here'],
-  full: ['Office menu', 'People here'],
+  focus: [/^People here, \d+$/],
+  full: [/^People here, \d+$/],
 };
 
 /** Opens the panel a scenario is about, by clicking the named buttons in order (`key:x` presses a key); a button this layout lacks is skipped. */

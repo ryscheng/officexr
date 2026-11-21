@@ -7,10 +7,10 @@ import { useJoystickMode, type JoystickMode } from '../hud/joystickMode';
 import { SegmentedControl } from '../hud/ui/SegmentedControl';
 import { Switch } from '../hud/ui/Switch';
 import { CameraModeControl } from './CameraModeControl';
-import { CharacterAction, CharacterPane } from './CharacterPane';
+import { CharacterLook } from './CharacterLook';
 import { MotionLookControl } from './MotionLookControl';
-import type { SettingsAction, SettingsTab } from './Settings';
-import { SettingRow, SettingsModal } from './SettingsModal';
+import { SettingRow } from '../hud/settings/parts';
+import type { SettingsAction } from './Settings';
 import { vrActions } from './VrAction';
 
 const JOYSTICK_OPTIONS = [
@@ -45,12 +45,17 @@ const OVERHEAD_CAMERA = {
   distanceM: (OVERHEAD_HEIGHT_M - 0.9) / Math.tan((-OVERHEAD_PITCH_DEG * Math.PI) / 180),
 } as const;
 
+export interface PlayViewSettings {
+  controls: ReactNode;
+  look: ReactNode;
+  actions: SettingsAction[];
+}
+
 /** Everything that reaches three/R3F, lazily loaded by `OfficeWorld`. */
 export default function PlayView3d({
   viewProps,
   overhead,
   local,
-  settings,
   onError,
   children,
 }: {
@@ -61,10 +66,8 @@ export default function PlayView3d({
   /** The 2D view: lock the camera overhead instead of offering camera modes. */
   overhead: boolean;
   local: PersistentLocalState;
-  /** Settings tabs and actions from the office (view, keybinds, notifications, office). */
-  settings: { tabs: SettingsTab[]; actions: SettingsAction[] };
   onError: (message: string | null) => void;
-  children: ReactNode;
+  children: (settings: PlayViewSettings) => ReactNode;
 }) {
   const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
   const [motionLook, setMotionLook] = useState({ enabled: false, recenterKey: 0 });
@@ -106,10 +109,11 @@ export default function PlayView3d({
       </SettingRow>
     </>
   );
-  const actions: SettingsAction[] = [
-    { id: 'character', render: () => <CharacterAction /> },
-    ...vrActions(xrStore, vrSupported, onError),
-  ];
+  const settings: PlayViewSettings = {
+    controls,
+    look: <CharacterLook local={local} onSaveResult={onError} />,
+    actions: vrActions(xrStore, vrSupported, onError),
+  };
 
   return (
     <PlayView
@@ -124,15 +128,7 @@ export default function PlayView3d({
       hud="player"
       xrStore={xrStore}
     >
-      <SettingsModal
-        title={viewProps.title}
-        tabs={[...settings.tabs, { id: 'controls', label: 'Controls', content: controls }]}
-        panes={[
-          { id: 'character', label: 'Character', content: <CharacterPane local={local} onSaveResult={onError} /> },
-        ]}
-        actions={[...settings.actions, ...actions]}
-      />
-      {children}
+      {children(settings)}
     </PlayView>
   );
 }

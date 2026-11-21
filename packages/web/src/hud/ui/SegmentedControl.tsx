@@ -7,11 +7,13 @@ export function SegmentedControl<T extends string>({
   options,
   onValueChange,
   'aria-label': ariaLabel,
+  fill = false,
 }: {
   value: T;
   options: readonly { value: T; label: string }[];
   onValueChange: (value: T) => void;
   'aria-label': string;
+  fill?: boolean;
 }) {
   return (
     <ToggleGroup.Root
@@ -23,13 +25,13 @@ export function SegmentedControl<T extends string>({
         }
       }}
       aria-label={ariaLabel}
-      className={`inline-flex gap-1 ${SEGMENT_GROUP}`}
+      className={`${fill ? 'flex w-full' : 'inline-flex'} gap-1 pointer-coarse:gap-2 ${SEGMENT_GROUP}`}
     >
       {options.map((option) => (
         <ToggleGroup.Item
           key={option.value}
           value={option.value}
-          className={SEGMENT_ITEM}
+          className={fill ? `${SEGMENT_ITEM} min-h-12 flex-1 text-base` : SEGMENT_ITEM}
         >
           {option.label}
         </ToggleGroup.Item>

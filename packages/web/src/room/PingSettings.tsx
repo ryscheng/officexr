@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { Check } from 'lucide-react';
 import type { SoundCatalog } from '@officexr/world/app';
 import { Switch } from '../hud/ui/Switch';
 import { assertNever } from '../ping/assertNever';
@@ -6,7 +7,7 @@ import { browserNotification, type NotificationSeam } from '../ping/pingNotifier
 import { previewPingSound } from '../ping/pingSound';
 import { readPingPrefs, usePingPrefs, writePingPrefs, type PingSound } from '../ping/pingPrefs';
 import { useSoundCatalog } from '../ping/useSoundCatalog';
-import { SettingRow } from './SettingsModal';
+import { SettingRow } from '../hud/settings/parts';
 
 const sameSound = (a: PingSound, b: PingSound): boolean =>
   a.type === 'builtin'
@@ -90,31 +91,32 @@ export function NotificationsPane({
   return (
     <div className="space-y-5">
       <fieldset>
-        <legend className="mb-2 text-xs font-semibold text-hud-text-2">Sound</legend>
+        <legend className="mb-2 px-1 text-sm font-semibold text-hud-text-2">Ping sound</legend>
         <div className="space-y-2">
           {options.map(({ label, sound }) => {
             const active = sameSound(selected, sound);
             return (
               <div
                 key={soundKey(sound)}
-                className={`flex items-center gap-2 rounded-xl bg-hud-surface shadow-[0_0_0_0.5px_var(--color-hud-hairline)] ${
+                className={`flex items-center gap-2 rounded-xl bg-hud-surface shadow-[0_0_0_0.5px_var(--color-hud-hairline)] focus-within:outline-2 focus-within:outline-hud-accent ${
                   active ? 'ring-2 ring-hud-accent' : ''
                 }`}
               >
-                <label className="flex flex-1 cursor-pointer items-center gap-2 px-4 py-2.5 font-medium">
+                <label className="flex min-h-14 flex-1 cursor-pointer items-center gap-2 px-4 text-base font-medium">
                   <input
                     type="radio"
                     name="ping-sound"
-                    className="accent-hud-accent"
+                    className="sr-only"
                     checked={active}
                     onChange={() => writePingPrefs(localStorage, { ...prefs, sound })}
                   />
+                  <Check aria-hidden className={`size-4 shrink-0 text-hud-accent-edge ${active ? '' : 'invisible'}`} />
                   {label}
                 </label>
                 {isAudible(sound) && (
                   <button
                     type="button"
-                    className="mr-3 rounded-lg bg-hud-inset px-3 py-1 text-xs font-semibold hover:bg-hud-hover"
+                    className="mr-2 min-h-12 rounded-lg bg-hud-inset px-4 text-sm font-semibold hover:bg-hud-hover focus-visible:outline-2 focus-visible:outline-hud-accent"
                     onClick={() => preview(sound, catalog)}
                   >
                     Preview<span className="sr-only"> {label}</span>
@@ -125,15 +127,15 @@ export function NotificationsPane({
           })}
         </div>
         {stale && (
-          <p role="status" className="mt-2 text-xs text-hud-text-2">
+          <p role="status" className="mt-2 px-1 text-sm text-hud-text-2">
             Your chosen sound is no longer available, so the built-in chime plays.
           </p>
         )}
       </fieldset>
       <section>
-        <SettingRow label="System notifications">
+        <SettingRow label="Desktop notifications">
           <Switch
-            aria-label="System notifications"
+            aria-label="Desktop notifications"
             checked={prefs.notify}
             disabled={!notification || pending}
             aria-describedby={hint ? hintId : undefined}
@@ -141,7 +143,7 @@ export function NotificationsPane({
           />
         </SettingRow>
         {hint && (
-          <p id={hintId} role="status" className="text-xs text-hud-text-2">
+          <p id={hintId} role="status" className="mt-1 px-1 text-sm text-hud-text-2">
             {hint}
           </p>
         )}

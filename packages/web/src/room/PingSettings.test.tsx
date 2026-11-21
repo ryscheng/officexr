@@ -19,7 +19,7 @@ function setup(notification: NotificationSeam | null = null, catalog: SoundCatal
   render(<NotificationsPane notification={notification} preview={preview} catalog={catalog} />);
   return preview;
 }
-const notifySwitch = () => screen.getByRole('switch', { name: 'System notifications' }) as HTMLButtonElement;
+const notifySwitch = () => screen.getByRole('switch', { name: 'Desktop notifications' }) as HTMLButtonElement;
 
 describe('NotificationsPane sound', () => {
   it('saves the chosen sound', () => {

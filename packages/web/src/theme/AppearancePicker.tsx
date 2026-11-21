@@ -17,7 +17,7 @@ function Preview({ value }: { value: Appearance }) {
     </span>
   );
   return (
-    <span aria-hidden className="flex h-14 w-24 overflow-hidden rounded-lg shadow-[0_0_0_0.5px_rgb(0_0_0/0.15),0_1px_3px_rgb(0_0_0/0.12)]">
+    <span aria-hidden className="flex h-14 w-[84px] overflow-hidden rounded-lg shadow-[0_0_0_0.5px_rgb(0_0_0/0.15),0_1px_3px_rgb(0_0_0/0.12)]">
       {value === 'auto' ? (
         <>
           {window(false)}
@@ -34,7 +34,7 @@ function Preview({ value }: { value: Appearance }) {
 export function AppearancePicker({ controller = appearanceController() }: { controller?: AppearanceController }) {
   const value = useSyncExternalStore(controller.subscribe, controller.get);
   return (
-    <div role="radiogroup" aria-label="Appearance" className="flex gap-4">
+    <div role="radiogroup" aria-label="Appearance" className="flex flex-wrap gap-2">
       {OPTIONS.map((option) => {
         const checked = option.value === value;
         return (
