@@ -5,9 +5,11 @@ import { useCoarsePointer, usePortrait, useStoreSelector } from '@officexr/world
 import type { PingInbox } from '../ping/pingInbox';
 import type { PingSender } from '../ping/usePingSender';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
+import { useVoiceFailed } from '../voice/useVoiceFailed';
 import type { PlaceModeStore } from '@officexr/world/motion';
 import { BuildIndicator } from './BuildIndicator';
 import { CallCard } from './CallCard';
+import { TextOnlyCall } from './TextOnlyCall';
 import { useCallRows } from './CallList';
 import { useFold } from './foldPrefs';
 import { ChatPanel } from './ChatPanel';
@@ -158,6 +160,7 @@ export function OfficeHud({
   }, [welcome, onWelcomeShown]);
   const missionsFold = useFold('missions', coarse);
   const inCall = useCallRows(store, selfId).state !== 'none';
+  const voiceFailed = useVoiceFailed(voice);
   const spots = useOfficeSpots(store);
   useEffect(() => {
     if (!(narrow && inCall)) {
@@ -286,7 +289,12 @@ export function OfficeHud({
       <Menu aria-hidden className="size-5" />
     </RoundButton>
   );
-  const call = voice && <CallCard store={store} selfId={selfId} voice={voice} pinger={pinger} compact={coarse} />;
+  const call =
+    inCall && (!voice || voiceFailed) ? (
+      <TextOnlyCall voice={voice} />
+    ) : (
+      voice && <CallCard store={store} selfId={selfId} voice={voice} pinger={pinger} compact={coarse} />
+    );
   const menu = menuOpen && (
     <MenuPopover
       portrait={narrow}

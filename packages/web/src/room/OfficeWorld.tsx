@@ -18,7 +18,7 @@ import { DeskHud } from '../desk/DeskHud';
 import { usePlaceHotkey } from '../place/usePlaceHotkey';
 import { createBrowserSfx } from '../sfx/browserSfx';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
-import { ConnectionToast } from '../hud/ConnectionToast';
+import { ConnectionBanner } from '../hud/ConnectionBanner';
 import { HudBanner } from '../hud/HudBanner';
 import { OfficeHud } from '../hud/OfficeHud';
 import { createHttpMissionsClient } from '../hud/missions/missionsApi';
@@ -74,7 +74,7 @@ export function OfficeWorld(props: { office: Office; me: Identity; hermetic?: He
       <SfxProvider value={sfx}>
         <SettingsProvider>
           {props.hermetic ? (
-            <World office={props.office} me={props.me} session={props.hermetic.session} join={HERMETIC_JOIN} missionsClient={props.hermetic.missions ?? httpMissions} />
+            <World office={props.office} me={props.me} session={props.hermetic.session} join={HERMETIC_JOIN} missionsClient={props.hermetic.missions ?? httpMissions} stallMs={props.hermetic.stallMs} />
           ) : (
             <LiveWorld office={props.office} me={props.me} />
           )}
@@ -87,7 +87,7 @@ export function OfficeWorld(props: { office: Office; me: Identity; hermetic?: He
 type ReadySession = Extract<OfficeSession, { type: 'ready' }>;
 
 /** A session built without the backend: the web office then skips the join check and the realtime join. */
-export type HermeticWorld = { session: ReadySession; missions?: MissionsClient };
+export type HermeticWorld = { session: ReadySession; missions?: MissionsClient; stallMs?: number };
 
 const HERMETIC_JOIN = { state: 'go' as const, join: () => undefined };
 
@@ -133,10 +133,11 @@ function PingInboxFeed({ bus, store, inbox }: { bus: Bus; store: Store; inbox: P
 
 const calendarReturnTo = () => (API_ORIGIN ? window.location.href : `${window.location.pathname}${window.location.search}`);
 
-function World({ office: initialOffice, me, session, join, missionsClient, onRejoin = reloadPage }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl; missionsClient: MissionsClient; onRejoin?: () => void }) {
+function World({ office: initialOffice, me, session, join, missionsClient, onRejoin = reloadPage, stallMs }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl; missionsClient: MissionsClient; onRejoin?: () => void; stallMs?: number }) {
   const [office, setOffice] = useState(initialOffice);
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
+  const leaveOffice = useCallback(() => navigate('/'), [navigate]);
   const welcome = hasInviteFlag(search);
   const welcomeShown = useCallback(() => navigate({ pathname, search: withoutInviteFlag(search) }, { replace: true }), [navigate, pathname, search]);
   const viewMode = useMemo(() => initialViewMode(), []);
@@ -252,12 +253,12 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         welcome={welcome}
         onWelcomeShown={welcomeShown}
         onOpenSettings={() => openSettings()}
-        onSwitchOffice={() => navigate('/')}
+        onSwitchOffice={leaveOffice}
         onSignOut={signOut}
         toasts={
           <>
             {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
-            <ConnectionToast store={ready.local.store} />
+            <ConnectionBanner store={ready.local.store} onRetry={onRejoin} onLeave={leaveOffice} stallMs={stallMs} />
             <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
           </>
         }

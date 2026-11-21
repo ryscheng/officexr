@@ -4,7 +4,7 @@ export const HUD_BASE_URL = process.env.HUD_BASE_URL ?? 'http://localhost:5176';
 
 export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full', 'missions', 'new-mission', 'chat'] as const;
 
-export const HUD_STATES: Record<string, { scenario: string; steps: (string | RegExp)[] }> = {
+export const HUD_STATES: Record<string, { scenario: string; steps: (string | RegExp)[]; stallMs?: number }> = {
   rest: { scenario: 'crowd', steps: [] },
   moving: { scenario: 'crowd', steps: ['move'] },
   'missions-sheet': { scenario: 'missions', steps: [/^Expand missions$/] },
@@ -16,6 +16,11 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'people-open': { scenario: 'crowd', steps: [/^People here, \d+$/] },
   'person-card': { scenario: 'crowd', steps: [/^People here, \d+$/, /Show options$/] },
   'chat-keyboard': { scenario: 'chat', steps: [/^Chat/, 'keyboard'] },
+  'conn-reconnecting': { scenario: 'crowd', steps: ['net:reconnecting'] },
+  'conn-cannot': { scenario: 'crowd', steps: ['net:cannot'], stallMs: 400 },
+  'conn-offline': { scenario: 'crowd', steps: ['net:offline'] },
+  'conn-recovered': { scenario: 'crowd', steps: ['net:reconnecting', 'net:live'] },
+  'text-only': { scenario: 'text-only', steps: [] },
 };
 export type HudScenario = (typeof HUD_SCENARIOS)[number];
 
@@ -54,7 +59,8 @@ export async function openHudPreview(browser: Browser, device: HudDevice, scenar
   }, theme);
   const page = await context.newPage();
   page.setDefaultTimeout(60_000);
-  await page.goto(`/hud-preview?scenario=${HUD_STATES[scenario]?.scenario ?? scenario}`);
+  const stallMs = HUD_STATES[scenario]?.stallMs;
+  await page.goto(`/hud-preview?scenario=${HUD_STATES[scenario]?.scenario ?? scenario}${stallMs ? `&stallMs=${stallMs}` : ''}`);
   await page.getByRole('button', { name: 'Office menu' }).first().waitFor({ timeout: 60_000 });
   await page.waitForTimeout(2500);
   return { page, close: () => context.close() };
@@ -172,6 +178,20 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
       });
       await page.setViewportSize({ width, height: height - Math.round(height * 0.42) });
       await page.waitForTimeout(800);
+      continue;
+    }
+    if (typeof name === 'string' && name.startsWith('net:')) {
+      const net = name.slice(4);
+      if (net === 'offline') {
+        await page.context().setOffline(true);
+      } else {
+        const status = net === 'cannot' ? 'reconnecting' : net;
+        await page.evaluate((st) => (window as unknown as { __hudPreview: { setStatus: (s: string) => void } }).__hudPreview.setStatus(st), status);
+      }
+      if (net === 'cannot') {
+        await page.getByRole('alert').waitFor();
+      }
+      await page.waitForTimeout(600);
       continue;
     }
     if (typeof name === 'string' && name.startsWith('say:')) {

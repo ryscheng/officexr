@@ -28,6 +28,7 @@ export interface Scenario {
   /** Rooms for the mission places and the map; the seed replaces the map's own zones. */
   zones?: VoiceZone[];
   missions?: 'seeded' | 'empty' | 'unsupported';
+  textOnly?: boolean;
 }
 
 const prop = (n: number, kindId: PlacedProp['kindId'], x: number, z: number, yawDeg = 0): PlacedProp => ({
@@ -153,6 +154,18 @@ export const SCENARIOS: Record<string, Scenario> = {
       { id: 'desk-c', at: [1, 1], login: 'lars@example.test' },
     ],
   },
+  'text-only': {
+    id: 'text-only',
+    zones: PREVIEW_ZONES,
+    missions: 'seeded',
+    title: 'In a call with voice unavailable',
+    self: {},
+    players: crowd.slice(0, 3),
+    chat: chat.slice(0, 1),
+    call: [],
+    props: PROPS,
+    textOnly: true,
+  },
   alone: {
     id: 'alone',
     title: 'Empty office',
@@ -251,6 +264,7 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
     });
   }
   actions.setPlacedProps(scenario.props);
+  if (scenario.textOnly) actions.setMyJitsiRoom('hud-preview-room');
   const unseedZones = scenario.zones ? seedZones(scenario.zones, deps) : () => {};
   const unseedDesks = scenario.desks ? seedDesks(scenario.desks, deps) : () => {};
   scenario.chat.forEach((m, i) =>
