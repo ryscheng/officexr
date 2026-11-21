@@ -5,6 +5,7 @@ import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
 import { heldStands, swapHeldStands } from '../motion/wand.ts';
 import { useStoreWorldObjects, type ExcludeInstance } from './useStoreWorldObjects.ts';
 import { logModelError } from './ModelWithFallback.tsx';
+import { DeskMonitors } from './DeskMonitors.tsx';
 import { ResetKeyErrorBoundary } from './ResetKeyErrorBoundary.tsx';
 import { useInstancedOccluder } from './occlusion/OccluderContext.tsx';
 import { modelUrl } from '../app/asset-url.ts';
@@ -166,11 +167,14 @@ function ObjectInstancesFromStore({ store, exclude, materialOverride }: FromStor
   //   - The gameplay regression tests already only run against
   //     Debug/Mugshot, which take this branch.
   return (
-    <ObjectInstancesView
-      worldObjects={snapshot}
-      materialOverride={materialOverride}
-      publishWindowMarker
-    />
+    <>
+      <ObjectInstancesView
+        worldObjects={snapshot}
+        materialOverride={materialOverride}
+        publishWindowMarker
+      />
+      <DeskMonitors store={store} worldObjects={snapshot} />
+    </>
   );
 }
 
