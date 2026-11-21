@@ -14,6 +14,7 @@ describe('HelpPage', () => {
     render(<HelpPage coarse />);
     expect(screen.getByRole('heading', { name: 'How to move' })).toBeTruthy();
     expect(screen.queryByText('W A S D / Arrow keys')).toBeNull();
+    expect(screen.queryByText('Hold right mouse button or drag to look around.')).toBeNull();
   });
 
   it('shows the keyboard shortcuts on desktop', () => {
@@ -21,6 +22,7 @@ describe('HelpPage', () => {
     expect(screen.getByRole('heading', { name: 'Keyboard shortcuts' })).toBeTruthy();
     expect(screen.getByText('W A S D / Arrow keys')).toBeTruthy();
     expect(screen.getByText('Open help and shortcuts')).toBeTruthy();
+    expect(screen.getByText('Hold right mouse button or drag to look around.')).toBeTruthy();
   });
 
   it('clears only the hint flags with Show hints again', () => {

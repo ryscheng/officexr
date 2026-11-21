@@ -28,6 +28,7 @@ export function HelpPage({ coarse }: { coarse: boolean }) {
     <>
       <h3 className="px-1 text-sm font-semibold text-hud-text-2">{coarse ? 'How to move' : 'Keyboard shortcuts'}</h3>
       {coarse ? <HowToMove /> : <KeybindsTab />}
+      {!coarse && <p className="px-1 text-sm text-hud-text-2">Hold right mouse button or drag to look around.</p>}
       <Button
         className="min-h-12 w-full"
         onClick={() => {
