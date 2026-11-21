@@ -22,7 +22,7 @@ vi.mock('@jitsi/react-sdk', () => ({
 
 const stubPointer = (coarse: boolean, portrait = false) =>
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query.includes('orientation') || query.includes('aspect') ? portrait : coarse,
+    matches: query.includes('orientation') ? portrait : coarse,
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
