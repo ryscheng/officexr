@@ -62,6 +62,10 @@
   --color-map-seat: #a9bfe0;
   --color-map-furniture: #cdd2db;
   --color-map-wall: #7c8496;
+  --color-map-room-1: #4f86f7;
+  --color-map-room-2: #2fae85;
+  --color-map-room-3: #d99a2b;
+  --color-map-room-4: #a766d4;
 
   --radius-hud-panel: 22px;
   --radius-hud-control: 12px;
@@ -208,6 +212,10 @@
   --color-map-seat: #4d6d9e;
   --color-map-furniture: #58585e;
   --color-map-wall: #c7c7cc;
+  --color-map-room-1: #7aa5ff;
+  --color-map-room-2: #4fd1a5;
+  --color-map-room-3: #f0b75a;
+  --color-map-room-4: #cf93ee;
   --shadow-hud-panel: 0 0 0 0.5px rgb(0 0 0 / 0.5), 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.3),
     inset 0 1px 0 rgb(255 255 255 / 0.08);
   --shadow-hud-control: 0 0 0 0.5px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.08);
