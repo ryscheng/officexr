@@ -122,16 +122,10 @@ describe('return to desk', () => {
     expect(screen.getByText('Unclaim desk')).toBeTruthy();
   });
 
-  it('hides the button without a desk, and offers Sit only next to a seat', () => {
-    const none = withSeating({ nearbySeatId: null, hasDesk: false });
+  it('hides the button without a desk, and has no Sit button of its own', () => {
+    const none = withSeating({ nearbySeatId: 'chair', hasDesk: false });
     renderHud(deskWorld(), undefined, none.controls);
     expect(screen.queryByText('Return to desk')).toBeNull();
     expect(screen.queryByText('Sit')).toBeNull();
-    cleanup();
-
-    const near = withSeating({ nearbySeatId: 'chair', hasDesk: false });
-    renderHud(deskWorld(), undefined, near.controls);
-    fireEvent.click(screen.getByText('Sit'));
-    expect(near.sit).toHaveBeenCalledWith();
   });
 });

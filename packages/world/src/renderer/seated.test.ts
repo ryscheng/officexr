@@ -68,3 +68,12 @@ describe('isStandingSpotFree', () => {
     expect(isStandingSpotFree(world, null, R, { x: 0, y: 0, z: 0 })).toBe(false);
   });
 });
+
+describe('sitOnPress when seated', () => {
+  it('stands instead of sitting on the frame E goes down', () => {
+    const seating = fakeSeating();
+    expect(sitOnPress(new Set(['e']), false, seating, true)).toBe(true);
+    expect(seating.stand).toHaveBeenCalledTimes(1);
+    expect(seating.sit).not.toHaveBeenCalled();
+  });
+});
