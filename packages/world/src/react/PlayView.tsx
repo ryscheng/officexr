@@ -30,6 +30,9 @@ import { useSlowNotice } from './useSlowNotice.ts';
 import { useWorldFocus } from './useWorldFocus.ts';
 import { NavGridProvider, useBuildNavGrid } from './useNavGrid.ts';
 import { PlayControlsProvider } from './playControls.tsx';
+import { ActionInput } from '../input/action-input.ts';
+import { InteractionStore } from '../input/interaction.ts';
+import { createInteractionSource, InteractionProvider } from './interactionPrompt.tsx';
 import { useAutoWalk } from './useAutoWalk.ts';
 import { playControlsOf, useSeating } from './useSeating.ts';
 import type { PlacementHost } from '../motion/place-mode.ts';
@@ -106,6 +109,9 @@ export function PlayView(props: PlayViewProps) {
   const autoWalk = useAutoWalk(props.store, props.selfId, navGrid);
   const seating = useSeating(props.store, props.actions, props.selfId, autoWalk);
   const playControls = useMemo(() => playControlsOf(autoWalk, seating), [autoWalk, seating]);
+  const [actionInput] = useState(() => new ActionInput());
+  const [interactions] = useState(() => new InteractionStore());
+  const interactionSource = useMemo(() => createInteractionSource(interactions, actionInput), [interactions, actionInput]);
   const session = usePlaySession({
     actions: props.actions,
     mapName: props.mapName,
@@ -154,6 +160,8 @@ export function PlayView(props: PlayViewProps) {
           moveInputRef={moveInputRef}
           autoWalk={autoWalk}
           seating={seating}
+          actionInput={actionInput}
+          interactions={interactions}
           spawnPoints={session.spawnPoints}
           bakedLayouts={session.bakedLayouts}
           onFrameStats={props.onFrameStats}
@@ -187,7 +195,9 @@ export function PlayView(props: PlayViewProps) {
       )}
       <NavGridProvider value={navGrid}>
         <ViewYawProvider viewYaw={viewYaw}>
-          <PlayControlsProvider controls={playControls}>{props.children}</PlayControlsProvider>
+          <PlayControlsProvider controls={playControls}>
+            <InteractionProvider source={interactionSource}>{props.children}</InteractionProvider>
+          </PlayControlsProvider>
         </ViewYawProvider>
       </NavGridProvider>
       {readiness.type === 'failed' && props.renderLoadError

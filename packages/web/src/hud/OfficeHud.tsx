@@ -21,6 +21,7 @@ import { ChatPanel } from './ChatPanel';
 import { ChatTicker, TICKER_MS } from './ChatTicker';
 import { FullMap } from './FullMap';
 import { HudLayout } from './HudLayout';
+import { InteractionPrompt, SuppressInteractionPrompt } from './InteractionPrompt';
 import { IdentityCard } from './IdentityCard';
 import { InviteSheet } from './InviteSheet';
 import { useMapPlan } from './OfficeMinimap';
@@ -354,6 +355,7 @@ export function OfficeHud({
 
   return (
     <PlayerPortraits store={store}>
+      <SuppressInteractionPrompt covered={building || menuOpen || people || invite !== null || mapOpen} />
       <HudLayout
         topLeft={
           coarse || building ? undefined : (
@@ -428,6 +430,7 @@ export function OfficeHud({
           ) : (
             (coarse && (menuOpen || people || invite)) || (!coarse && (people || menuOpen)) ? undefined : narrow ? (
             <>
+              <InteractionPrompt />
               {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} hiddenLogins={mutedLogins} onOpen={chatVisibility.compose} />}
               {!building && <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />}
               <div className="flex items-center gap-2">
@@ -437,11 +440,15 @@ export function OfficeHud({
             </>
           ) : coarse ? (
             <>
+              <InteractionPrompt />
               <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />
               {!building && peopleButton}
             </>
           ) : (
-            <NearYouCard store={store} onWave={onWave} onAct={() => hintDone('wave')} />
+            <>
+              <InteractionPrompt />
+              <NearYouCard store={store} onWave={onWave} onAct={() => hintDone('wave')} />
+            </>
           ))
         }
       />

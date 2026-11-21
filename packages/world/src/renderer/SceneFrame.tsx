@@ -43,6 +43,7 @@ import { newItemsState, stepSelfItems } from '../motion/self-items.ts';
 import { WALL_QUERY_GROUPS } from '../physics/groups.ts';
 import type { ActionInput } from '../input/action-input.ts';
 import { interactKind, type ActionContextStore } from '../input/action-context.ts';
+import { interactionPrompt, NO_PROMPT, type InteractionStore } from '../input/interaction.ts';
 import { useMotionWorld } from './useMotionWorld.ts';
 
 interface SceneFrameProps {
@@ -69,6 +70,8 @@ interface SceneFrameProps {
   actionInput?: ActionInput;
   /** Receives what the Interact button would do; refreshed a few times a second. */
   actionContext?: ActionContextStore;
+  /** Receives the options offered next to the object in reach; refreshed a few times a second. */
+  interactions?: InteractionStore;
   selfId: string;
   /** Set by `Players` when the self avatar's RigidBody mounts. */
   selfBodyRef: React.MutableRefObject<RapierRigidBody | null>;
@@ -146,6 +149,7 @@ export function SceneFrame({
   seating,
   actionInput,
   actionContext,
+  interactions,
   selfId,
   selfBodyRef,
   worldFocused,
@@ -337,7 +341,7 @@ export function SceneFrame({
     const now = performance.now();
     const keys = actionInput ? actionInput.mergeInto(keysDown.current) : keysDown.current;
 
-    eWasDownRef.current = sitOnPress(keys, eWasDownRef.current, seating);
+    eWasDownRef.current = sitOnPress(keys, eWasDownRef.current, seating, store.getState().players[selfId]?.seat != null);
     const { fwd, strafe, isRunning, speedScale } = moveIntent(keys, moveInputRef?.current);
     const hasMoveInput = fwd !== 0 || strafe !== 0;
     if (hasMoveInput) {
@@ -426,20 +430,36 @@ export function SceneFrame({
       pokeFacing(stateSnapshot, selfId, actions, sync, now);
     }
 
-    if (actionContext && self && now - lastContextAtRef.current > ACTION_CONTEXT_INTERVAL_MS) {
+    if ((actionContext || interactions) && self && now - lastContextAtRef.current > ACTION_CONTEXT_INTERVAL_MS) {
       lastContextAtRef.current = now;
-      actionContext.set({
+      const feet = feetPosition(self.pos, stateSnapshot.worldSettings.charRadius);
+      const nearbySeatId = seating?.getState?.().nearbySeatId ?? null;
+      actionContext?.set({
         interact: interactKind(
           {
             pose: selfMotionRef.current.pose,
             seated: self.seat != null,
-            nearbySeat: (seating?.getState?.().nearbySeatId ?? null) !== null,
-            feet: feetPosition(self.pos, stateSnapshot.worldSettings.charRadius),
+            nearbySeat: nearbySeatId !== null,
+            feet,
             holdingWand: self.held === 'wand',
           },
           motionWorldRef.current,
         ),
       });
+      interactions?.offer(
+        autoWalkDir
+          ? NO_PROMPT
+          : interactionPrompt(
+              {
+                pose: selfMotionRef.current.pose,
+                seatedOn: self.seat ?? null,
+                nearbySeatId,
+                feet,
+                holdingWand: self.held === 'wand',
+              },
+              motionWorldRef.current,
+            ),
+      );
     }
 
     if (self?.seat != null && body) {

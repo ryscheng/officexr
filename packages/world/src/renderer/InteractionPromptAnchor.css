@@ -1,0 +1,35 @@
+.interaction-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(17 17 17 / 0.82);
+  color: #fff;
+  font: 600 13px/1.4 sans-serif;
+  white-space: nowrap;
+  user-select: none;
+  transform: translateY(calc(-50% - 16px));
+  animation: interaction-pill-in 150ms ease-out both;
+}
+.interaction-pill-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.interaction-pill-key {
+  min-width: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: #fff;
+  color: #111;
+  font: 700 12px/18px sans-serif;
+  text-align: center;
+}
+@keyframes interaction-pill-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .interaction-pill { animation: none; }
+}

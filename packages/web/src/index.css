@@ -87,6 +87,16 @@
     }
   }
 
+  --animate-hud-in: hud-in 150ms ease-out both;
+  @keyframes hud-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   --animate-hud-fade: hud-fade 5s ease-out forwards;
   @keyframes hud-fade {
     0% {

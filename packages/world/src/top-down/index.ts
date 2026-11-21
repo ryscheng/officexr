@@ -23,3 +23,5 @@ export type { AutoWalkState } from '../nav/autoWalk.ts';
 export { isGroundTargetId } from '../react/useAutoWalk.ts';
 export { createPlaceKeyHandler } from '../renderer/placeKeys.ts';
 export { useCharacterPortrait } from '../react/useCharacterPortrait.ts';
+export { useInteractionPrompt, useSuppressInteractionPrompt, type InteractionPromptView } from '../react/interactionPrompt.tsx';
+export type { InteractionKind, InteractionOption } from '../input/interaction.ts';

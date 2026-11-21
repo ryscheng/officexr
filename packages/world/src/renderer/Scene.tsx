@@ -30,6 +30,8 @@ import { XRAvatarOrigin } from './XRAvatarOrigin.tsx';
 import type { MotionLookState } from './motionLook.ts';
 import type { ActionInput } from '../input/action-input.ts';
 import type { ActionContextStore } from '../input/action-context.ts';
+import type { InteractionStore } from '../input/interaction.ts';
+import { InteractionPromptAnchor } from './InteractionPromptAnchor.tsx';
 import { SceneFrame } from './SceneFrame.tsx';
 import { ObjectInstances } from './ObjectInstances.tsx';
 import { WaterVolumes } from './WaterVolumes.tsx';
@@ -137,6 +139,8 @@ interface SceneProps {
   actionInput?: ActionInput;
   /** Receives what the Interact button would do; absent where there is no button. */
   actionContext?: ActionContextStore;
+  /** Receives the options for the object in reach and floats them above it; absent where there is no prompt. */
+  interactions?: InteractionStore;
   /** World-space steering used while there is no key or stick input; absent where nothing auto-walks. */
   autoWalk?: AutoWalkSource;
   /** Sitting and standing for the self player; absent where nobody sits. */
@@ -380,6 +384,7 @@ export function Scene(props: SceneProps) {
           onPingPlayer={props.onPingPlayer}
         />
         {!props.paused && <FrozenAvatars store={store} onPing={props.onPingFrozen} />}
+        {props.interactions && <InteractionPromptAnchor interactions={props.interactions} />}
         {props.missionMarker && <MissionMarker store={store} selfId={selfId} target={props.missionMarker} />}
         {xrStore && <XRAvatarOrigin selfPosRef={selfPosRef} charRadius={charRadius} />}
 
@@ -460,6 +465,7 @@ export function Scene(props: SceneProps) {
           seating={props.seating}
           actionInput={props.actionInput}
           actionContext={props.actionContext}
+          interactions={props.interactions}
           selfBodyRef={selfBodyRef}
           worldFocused={worldFocused}
           spawnPoints={props.spawnPoints}

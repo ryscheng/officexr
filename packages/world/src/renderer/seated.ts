@@ -61,11 +61,20 @@ function groundHeight(world: RAPIER.World, self: RapierRigidBody | null, feet: V
   return hit === null ? null : from.y - hit.timeOfImpact;
 }
 
-/** Sits on the frame E goes down; returns whether E is held, for the next frame's call. */
-export function sitOnPress(keys: ReadonlySet<string>, wasDown: boolean, seating: SeatingSource | undefined): boolean {
+/** Sits, or stands when `seated`, on the frame E goes down; returns whether E is held, for the next frame's call. */
+export function sitOnPress(
+  keys: ReadonlySet<string>,
+  wasDown: boolean,
+  seating: SeatingSource | undefined,
+  seated = false,
+): boolean {
   const down = keys.has('e');
   if (down && !wasDown) {
-    seating?.sit();
+    if (seated) {
+      seating?.stand();
+    } else {
+      seating?.sit();
+    }
   }
   return down;
 }
