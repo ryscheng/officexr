@@ -76,7 +76,6 @@ export interface PlayViewProps {
   /** Lets the player place props; absent where nobody builds. */
   placement?: PlacementHost;
   missionMarker?: MissionMarkerTarget | null;
-  /** Phone portrait only: `floating` (default) starts the stick under the thumb; `fixed` keeps it in the corner. */
   joystick?: 'floating' | 'fixed';
   /** Overlays rendered above the scene and HUD. */
   children?: React.ReactNode;

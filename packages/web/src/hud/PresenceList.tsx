@@ -98,7 +98,6 @@ export function PresenceList({
   store: Store;
   selfId: PlayerId;
   officeName: string;
-  /** Phone portrait: shows the list as a bottom sheet with a close button instead of a folding panel. */
   onClose?: () => void;
   clock?: () => number;
   pinger?: PingSender;

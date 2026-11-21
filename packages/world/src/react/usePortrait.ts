@@ -9,10 +9,7 @@ function subscribe(onChange: () => void): () => void {
 
 const screenIsUpright = () => window.screen.orientation?.type.startsWith('portrait') ?? false;
 
-/**
- * Whether the device is held upright. A phone with its keyboard open can have a viewport wider than tall while
- * still held upright, so the screen's own orientation counts as well as the viewport's.
- */
+// An open keyboard can make the viewport wider than tall while the phone is still upright.
 export function usePortrait(): boolean {
   const viewportPortrait = useMediaQuery('(orientation: portrait)');
   const screenPortrait = useSyncExternalStore(subscribe, screenIsUpright, () => false);

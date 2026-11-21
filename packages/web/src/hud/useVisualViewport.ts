@@ -4,7 +4,6 @@ export type ViewportBox = { height: number; keyboard: number };
 
 type ViewportLike = Pick<VisualViewport, 'height' | 'offsetTop'>;
 
-/** The strip an on-screen keyboard covers at the bottom of the layout viewport. */
 export function viewportBox(innerHeight: number, visual: ViewportLike | null): ViewportBox {
   if (!visual) {
     return { height: innerHeight, keyboard: 0 };

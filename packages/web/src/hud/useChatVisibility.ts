@@ -62,7 +62,6 @@ export type ChatVisibility = ReturnType<typeof useChatVisibility>;
 
 type Seen = { id: string; authorId: string };
 
-/** Messages from others after the last one the user saw; an unknown last id counts every message. */
 export function unreadCount(chat: readonly Seen[], lastReadId: string | null, selfId: string): number {
   const from = lastReadId === null ? -1 : chat.findIndex((m) => m.id === lastReadId);
   return chat.slice(from + 1).filter((m) => m.authorId !== selfId).length;

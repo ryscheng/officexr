@@ -6,15 +6,17 @@ const BASE_SIZE = 110;
 const KNOB_SIZE = 46;
 const TRAVEL = (BASE_SIZE - KNOB_SIZE) / 2;
 
-/** Lower-left share of the screen where a floating stick starts. */
+function safeBottomInset(): number {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;padding-bottom:var(--hud-safe-bottom, 0px)';
+  document.body.appendChild(probe);
+  const px = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+  probe.remove();
+  return px;
+}
+
 export const FLOATING_ZONE = { width: 0.6, height: 0.45 };
 
-/**
- * Bottom-left on-screen stick; writes its vector to `inputRef` for the scene to read each frame.
- * `floating` starts the stick where a thumb lands on the world inside `FLOATING_ZONE`, with a faint hint at
- * rest. The world still gets the touch, so a tap on it works as before; only a touch that lands on a HUD
- * control never starts the stick.
- */
 export function VirtualJoystick({ inputRef, floating = false }: { inputRef: React.MutableRefObject<MoveInput>; floating?: boolean }) {
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
@@ -70,7 +72,8 @@ export function VirtualJoystick({ inputRef, floating = false }: { inputRef: Reac
         return;
       }
       activePointer.current = e.pointerId;
-      originRef.current = floatingOrigin({ x: e.clientX, y: e.clientY }, { width: window.innerWidth, height: window.innerHeight }, BASE_SIZE / 2);
+      const safeBottom = safeBottomInset();
+      originRef.current = floatingOrigin({ x: e.clientX, y: e.clientY }, { width: window.innerWidth, height: window.innerHeight - safeBottom }, BASE_SIZE / 2);
       setOrigin(originRef.current);
       moveTo(e.clientX, e.clientY);
     };

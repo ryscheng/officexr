@@ -4,7 +4,6 @@ export const HUD_BASE_URL = process.env.HUD_BASE_URL ?? 'http://localhost:5176';
 
 export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full', 'missions', 'new-mission', 'chat'] as const;
 
-/** States a capture or check opens on top of a `/hud-preview` scenario: the scenario to load and the steps to run. */
 export const HUD_STATES: Record<string, { scenario: string; steps: (string | RegExp)[] }> = {
   rest: { scenario: 'crowd', steps: [] },
   moving: { scenario: 'crowd', steps: ['move'] },
@@ -190,7 +189,6 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
   }
 }
 
-/** Puts a thumb down in the lower-left zone, drags right and holds, so the avatar walks for longer than the fade delay. Returns a function that lifts the thumb. */
 export async function dragStick(page: Page, holdMs = 2300): Promise<() => Promise<void>> {
   const { width, height } = page.viewportSize()!;
   const cdp = await page.context().newCDPSession(page);
@@ -202,7 +200,6 @@ export async function dragStick(page: Page, holdMs = 2300): Promise<() => Promis
   return async () => void (await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }));
 }
 
-/** Boxes of interactive controls whose gap to another is under `minGapPx`, where neither holds the other. */
 export function findTightGaps(boxes: HudBox[], minGapPx = 8, tolerancePx = 0.5): [HudBox, HudBox][] {
   const targets = boxes.filter((b) => b.interactive && !b.clipped);
   const out: [HudBox, HudBox][] = [];
@@ -219,12 +216,10 @@ export function findTightGaps(boxes: HudBox[], minGapPx = 8, tolerancePx = 0.5):
   return out;
 }
 
-/** Boxes that reach into the bottom `stripPx` of the viewport (the system gesture strip), above the device's own inset. */
 export function findInGestureStrip(boxes: HudBox[], viewport: { height: number }, stripPx = 16): HudBox[] {
   return boxes.filter((b) => b.interactive && b.y + b.h > viewport.height - stripPx + 0.5);
 }
 
-/** Share of the viewport the HUD boxes cover together (overlapping and nested boxes count once). */
 export function hudCoverage(boxes: HudBox[], viewport: { width: number; height: number }): number {
   const cells = new Uint8Array(viewport.width * viewport.height);
   for (const b of boxes) {
@@ -239,7 +234,6 @@ export function hudCoverage(boxes: HudBox[], viewport: { width: number; height: 
   return covered / cells.length;
 }
 
-/** Boxes that reach into the middle third of the viewport's height. */
 export function findInMiddleThird(boxes: HudBox[], viewport: { height: number }): HudBox[] {
   const top = viewport.height / 3;
   const bottom = (viewport.height * 2) / 3;

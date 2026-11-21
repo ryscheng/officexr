@@ -37,8 +37,8 @@ for (const device of LAYOUT_DEVICES) {
     test(`${scenario} on ${device.id}`, async ({ browser }) => {
       const { page, close } = await openHudPreview(browser, device, scenario, 'light');
       try {
-        await runScenarioSteps(page, scenario);
         await applySafeArea(page, device.safe);
+        await runScenarioSteps(page, scenario);
         const boxes = await collectHudBoxes(page);
         expect(boxes.length, 'the HUD rendered controls').toBeGreaterThan(3);
         const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));

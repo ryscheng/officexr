@@ -11,7 +11,6 @@ export const selectSelfMoving = (s: OfficeState): boolean => {
   return vel !== undefined && Math.hypot(vel.x, vel.z) > MOVING_SPEED;
 };
 
-/** True once the avatar has moved for `FADE_AFTER_MS`, and false again `FADE_BACK_MS` after it stops. */
 export function useMovingFade(moving: boolean, enabled = true): boolean {
   const [faded, setFaded] = useState(false);
   useEffect(() => {

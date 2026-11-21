@@ -42,9 +42,7 @@ export type MissionsPanelProps = {
   people: readonly OfficePerson[];
   self: Spot | null;
   compact?: boolean;
-  /** Phone portrait: a one-line chip under the top bar that opens a bottom sheet. */
   portrait?: boolean;
-  /** Portrait chip only: shows the icon and the count, while the avatar moves. */
   collapsed?: boolean;
   now?: () => Date;
 };

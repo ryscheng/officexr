@@ -9,7 +9,6 @@ const sameLatest = (a: ReturnType<typeof selectLatest>, b: ReturnType<typeof sel
 
 export const TICKER_MS = 5000;
 
-/** The newest message in up to two lines, above the bottom controls of a phone in portrait; a tap opens the chat. */
 export function ChatTicker({ store, onOpen }: { store: Store; onOpen: () => void }) {
   const latest = useStoreSelector(store, selectLatest, sameLatest);
   if (!latest) {

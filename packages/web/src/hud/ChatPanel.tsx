@@ -31,7 +31,6 @@ type ChatPanelProps = {
   selfId: string;
   /** Shared with a parent that has its own chat button; the panel keeps its own when absent. */
   visibility?: ChatVisibility;
-  /** Phone portrait: the open chat is a bottom sheet and a peek shows nothing here (see `ChatTicker`). */
   portrait?: boolean;
   unread?: number;
   onMissionCommand?: (title: string) => Promise<boolean>;

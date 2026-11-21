@@ -16,7 +16,6 @@ export function joystickVector(dx: number, dy: number, radius: number, deadZone:
   return { x: (dx / radius) * scale, z: (-dy / radius) * scale };
 }
 
-/** Where a floating stick centres for a touch at `point`: under the finger, kept `half` px inside the zone. */
 export function floatingOrigin(point: { x: number; y: number }, zone: { width: number; height: number }, half: number) {
   const clamp = (v: number, max: number) => Math.min(Math.max(v, half), Math.max(half, max - half));
   return { x: clamp(point.x, zone.width), y: clamp(point.y, zone.height) };
