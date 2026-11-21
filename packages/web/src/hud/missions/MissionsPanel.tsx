@@ -143,7 +143,22 @@ export function MissionsPanel({
     </>
   );
 
-  const bodyNodes = (
+  const formNode =
+    adding && !unsupported ? (
+      compact ? (
+        <PortraitSheet label="New mission" closeLabel="Close new mission" onClose={() => setAdding(false)}>
+          <div className="overflow-y-auto overscroll-contain">
+            <NewMissionForm sheet areas={areas} people={people} onSave={save} onCancel={() => setAdding(false)} />
+          </div>
+        </PortraitSheet>
+      ) : (
+        <NewMissionForm areas={areas} people={people} onSave={save} onCancel={() => setAdding(false)} />
+      )
+    ) : null;
+
+  const bodyNodes = formNode && !compact ? (
+    formNode
+  ) : (
     <>
       {unsupported && (
         <p role="status" className="rounded-hud-control border border-dashed border-hud-edge bg-hud-inset px-3 py-2 text-xs text-hud-text-2">
@@ -223,20 +238,13 @@ export function MissionsPanel({
 
       {cueNode}
 
-      {!unsupported && tab === 'mine' && !(adding && !compact) && (
+      {!unsupported && tab === 'mine' && (
         <Button tone="primary" size="md" aria-keyshortcuts="T" onClick={open} className="min-h-12 shrink-0">
           <Plus aria-hidden className="size-4" />
           Add mission
         </Button>
       )}
-      {adding && !compact && !unsupported && <NewMissionForm areas={areas} people={people} onSave={save} onCancel={() => setAdding(false)} />}
-      {adding && compact && (
-        <PortraitSheet label="New mission" closeLabel="Close new mission" onClose={() => setAdding(false)}>
-          <div className="overflow-y-auto overscroll-contain">
-            <NewMissionForm sheet areas={areas} people={people} onSave={save} onCancel={() => setAdding(false)} />
-          </div>
-        </PortraitSheet>
-      )}
+      {formNode}
 
       {!unsupported && !portrait && (
         <p className="shrink-0 text-[11px] text-hud-text-2">
@@ -281,8 +289,8 @@ export function MissionsPanel({
         </>
       );
     }
-    if (adding) {
-      return <>{bodyNodes}</>;
+    if (formNode) {
+      return formNode;
     }
     return (
       <PortraitSheet

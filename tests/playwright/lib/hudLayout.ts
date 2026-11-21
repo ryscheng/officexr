@@ -20,6 +20,7 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'mission-form': { scenario: 'missions', steps: [/^Expand missions$/, 'Add mission'] },
   'mission-form-more': { scenario: 'missions', steps: [/^Expand missions$/, 'Add mission', /^More: place/] },
   'mission-done': { scenario: 'missions', steps: [/^Expand missions$/, 'check:Fix the login redirect'] },
+  'mission-keyboard': { scenario: 'missions', steps: [/^Expand missions$/, 'Add mission', 'keyboard'] },
   'chat-keyboard': { scenario: 'chat', steps: [/^Chat/, 'keyboard'] },
   'conn-reconnecting': { scenario: 'crowd', steps: ['net:reconnecting'] },
   'conn-cannot': { scenario: 'crowd', steps: ['net:cannot'], stallMs: 400 },

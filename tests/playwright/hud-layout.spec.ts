@@ -29,7 +29,7 @@ const GESTURE_STRIP_PX = 16;
 const MAX_CHIP_SHARE = 0.6;
 const LAYOUT_DEVICES = HUD_DEVICES.filter((d) => ['iphone13-landscape', 'pixel5-landscape', 'ipad-landscape', 'desktop', 'iphone13-portrait', 'iphone-se-portrait', 'pixel5-portrait'].includes(d.id));
 
-const PORTRAIT_ONLY = new Set(['missions-sheet', 'chat-sheet', 'chat-keyboard']);
+const PORTRAIT_ONLY = new Set(['missions-sheet', 'chat-sheet', 'chat-keyboard', 'mission-keyboard']);
 const isPortrait = (id: string) => id.endsWith('-portrait');
 
 for (const device of LAYOUT_DEVICES) {
@@ -63,7 +63,7 @@ for (const device of LAYOUT_DEVICES) {
         if (isPortrait(device.id)) {
           const label = ([a, b]: [{ name: string }, { name: string }]) => `${a.name} / ${b.name}`;
           expect(findTightGaps(boxes, MIN_GAP_PX).map(label), `targets less than ${MIN_GAP_PX} px apart`).toEqual([]);
-          if (scenario !== 'chat-keyboard') {
+          if (scenario !== 'chat-keyboard' && scenario !== 'mission-keyboard') {
             expect(findInGestureStrip(boxes, viewport, GESTURE_STRIP_PX).map((b) => b.name), 'controls in the bottom gesture strip').toEqual([]);
           }
           const chip = boxes.find((b) => b.name === 'Expand missions');

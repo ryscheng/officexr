@@ -266,6 +266,12 @@ describe('MissionsPanel', () => {
       await waitFor(() => expect(document.activeElement).toBe(check));
     });
 
+    it('replaces the list while the form is open', async () => {
+      await open();
+      expect(screen.queryByText('Join the stand-up')).toBeNull();
+      expect(screen.queryByRole('button', { name: /Add mission/ })).toBeNull();
+    });
+
     it('Cancel closes the form and adds nothing', async () => {
       const client = await open();
       fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Never mind' } });
@@ -364,6 +370,8 @@ describe('MissionsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Collapse missions' }));
       fireEvent.keyDown(window, { key: 't' });
       expect(await screen.findByRole('button', { name: 'Collapse missions' })).toBeTruthy();
+      expect(screen.getByLabelText('Title')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
       expect(screen.getByText('Join the stand-up')).toBeTruthy();
     });
   });
@@ -384,6 +392,17 @@ describe('MissionsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Expand missions' }));
       fireEvent.click(screen.getByRole('button', { name: /Add mission/ }));
       expect(screen.getByRole('dialog', { name: 'New mission' })).toBeTruthy();
+    });
+
+    it('shows only the form sheet in portrait while adding, not the list behind it', async () => {
+      const client = createInMemoryMissionsClient('me', SEED);
+      render(<Harness client={client} compact portrait />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Expand missions' }));
+      fireEvent.click(screen.getByRole('button', { name: /Add mission/ }));
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+      expect(screen.getByRole('dialog', { name: 'New mission' })).toBeTruthy();
+      expect(screen.queryByRole('checkbox')).toBeNull();
+      expect(screen.queryByRole('group', { name: 'Source' })).toBeNull();
     });
   });
 
