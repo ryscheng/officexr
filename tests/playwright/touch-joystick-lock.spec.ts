@@ -1,7 +1,3 @@
-/**
- * Touch movement on a phone: in Free look the joystick stays in its bottom-left corner and a drag elsewhere turns
- * the view; in Angled the joystick starts under the thumb anywhere and a drag leaves the view where it was.
- */
 import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { HUD_DEVICES, openHudPreview } from './lib/hudLayout.ts';
@@ -12,7 +8,7 @@ const VIEW_KEY = 'officexr:gameView';
 const DEVICES = HUD_DEVICES.filter((d) => ['iphone13-portrait', 'iphone13-landscape'].includes(d.id));
 
 async function open(browser: Parameters<typeof openHudPreview>[0], device: (typeof DEVICES)[number], view: string) {
-  const opened = await openHudPreview(browser, device, 'rest', 'light');
+  const opened = await openHudPreview(browser, device, 'alone', 'light');
   await opened.page.evaluate(([key, v]) => localStorage.setItem(key, v), [VIEW_KEY, view] as const);
   await opened.page.reload();
   await opened.page.getByRole('button', { name: 'Office menu' }).first().waitFor();
@@ -33,23 +29,18 @@ async function touchDrag(page: Page, from: { x: number; y: number }, by: { dx: n
   return async () => void (await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }));
 }
 
-async function changedShare(page: Page, before: Buffer): Promise<number> {
-  const a = PNG.sync.read(before);
-  const b = PNG.sync.read(await page.screenshot());
-  let changed = 0;
-  for (let i = 0; i < a.data.length; i += 4) {
-    if (Math.abs(a.data[i]! - b.data[i]!) + Math.abs(a.data[i + 1]! - b.data[i + 1]!) + Math.abs(a.data[i + 2]! - b.data[i + 2]!) > 60) {
-      changed++;
+function floorShare(png: Buffer): number {
+  const { data, width, height } = PNG.sync.read(png);
+  let floor = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 2]! > 60 && data[i + 2]! > data[i]! + 30) {
+      floor++;
     }
   }
-  return changed / (a.width * a.height);
+  return floor / (width * height);
 }
 
-async function idleShare(page: Page): Promise<number> {
-  const before = await page.screenshot();
-  await page.waitForTimeout(400);
-  return changedShare(page, before);
-}
+const floorShift = async (page: Page, before: Buffer) => Math.abs(floorShare(await page.screenshot()) - floorShare(before));
 
 const SHOT_DIR = process.env.P11_SHOT_DIR;
 const shot = async (page: Page, name: string) => {
@@ -70,7 +61,6 @@ for (const device of DEVICES) {
       try {
         const stick = page.locator('[data-hud-item="Joystick"]');
         const rest = (await stick.boundingBox())!;
-        const idle = await idleShare(page);
         const before = await page.screenshot();
         const lift = await touchDrag(page, rightSide(page), { dx: 0, dy: 150 }, 0);
         const held = (await stick.boundingBox())!;
@@ -78,9 +68,9 @@ for (const device of DEVICES) {
         await page.waitForTimeout(300);
         expect(await stick.getAttribute('data-joystick-floating')).toBeNull();
         expect(held).toEqual(rest);
-        const share = await changedShare(page, before);
-        console.log(`${device.id} Free look, drag on the right: ${(share * 100).toFixed(1)}% of pixels changed, idle ${(idle * 100).toFixed(1)}%`);
-        expect(share, 'the view turned').toBeGreaterThan(idle + 0.1);
+        const shift = await floorShift(page, before);
+        console.log(`${device.id} Free look, drag on the right: floor share moved by ${(shift * 100).toFixed(1)} points`);
+        expect(shift, 'the view tilted').toBeGreaterThan(0.1);
       } finally {
         await close();
       }
@@ -111,15 +101,14 @@ for (const device of DEVICES) {
         const chip = page.getByRole('button', { name: 'Expand missions' });
         const resting = (await chip.boundingBox())!;
 
-        const idle = await idleShare(page);
         const before = await page.screenshot();
         await shot(page, `${device.id}-locked-before`);
         await (await touchDrag(page, from, { dx: 0, dy: 150 }, 0))();
         await page.waitForTimeout(300);
         await shot(page, `${device.id}-locked-after`);
-        const share = await changedShare(page, before);
-        console.log(`${device.id} Angled, quick drag on the right: ${(share * 100).toFixed(1)}% of pixels changed, idle ${(idle * 100).toFixed(1)}%`);
-        expect(share, 'the view stayed').toBeLessThan(idle + 0.05);
+        const shift = await floorShift(page, before);
+        console.log(`${device.id} Angled, drag on the right: floor share moved by ${(shift * 100).toFixed(1)} points`);
+        expect(shift, 'the view stayed').toBeLessThan(0.03);
 
         const lift = await touchDrag(page, from, { dx: 40, dy: 0 }, 2300);
         const held = (await stick.boundingBox())!;

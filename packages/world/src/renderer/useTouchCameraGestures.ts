@@ -36,8 +36,7 @@ export function useTouchCameraGestures(
  * focus tracking. The mouse wheel zooms and is `preventDefault`ed so the page
  * doesn't scroll. Does nothing in modes without look input, and a paused scene
  * ignores all of these touch and wheel gestures. `lookSign` flips the drag
- * look direction only, never the zoom. `lookLocked` stops the one-finger drag turning
- * the view and leaves pinch and wheel zoom alone.
+ * look direction only, never the zoom.
  */
 export function useCanvasGestures(
   canvas: HTMLElement,
