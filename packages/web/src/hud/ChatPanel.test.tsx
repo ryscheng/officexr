@@ -5,7 +5,15 @@ import { createMultiClientHarness } from '@officexr/sdk/test-harness';
 import { useWorldFocus } from '@officexr/world/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatPanel } from './ChatPanel';
+import { useRefocusOnMovementKey } from '../room/useRefocusOnMovementKey';
+import { escapeStack } from './escapeStack';
+import { useHotkey } from './useHotkey';
 import { AUTO_HIDE_MS } from './useChatVisibility';
+
+function RefocusProbe() {
+  useRefocusOnMovementKey();
+  return <aside data-studio-panel="true">chat title</aside>;
+}
 
 const PLACEHOLDER = 'Press Enter to chat';
 const input = () => screen.queryByPlaceholderText(PLACEHOLDER) as HTMLInputElement | null;
@@ -130,15 +138,123 @@ describe('ChatPanel', () => {
     });
   });
 
-  it('Escape and Enter on an empty draft close the panel and return the keyboard', () => {
+  it('Enter on an empty draft closes the panel and returns the keyboard', () => {
     const { focus } = setup();
-    pressEnter();
-    fireEvent.keyDown(input()!, { key: 'Escape' });
-    expect(input()).toBeNull();
-    expect(focus.result.current).toBe(true);
     pressEnter();
     fireEvent.keyDown(input()!, { key: 'Enter' });
     expect(input()).toBeNull();
+    expect(focus.result.current).toBe(true);
+  });
+
+  it('Escape returns the keyboard to the world and keeps the draft', () => {
+    const { focus, store } = setup();
+    pressEnter();
+    fireEvent.change(input()!, { target: { value: 'not yet' } });
+    fireEvent.keyDown(input()!, { key: 'Escape' });
+    expect(document.activeElement).not.toBe(input());
+    expect(focus.result.current).toBe(true);
+    expect(input()!.value).toBe('not yet');
+    expect(store.getState().chat).toEqual([]);
+  });
+
+  it('a second Escape, with the world focused, is left to the Esc stack', () => {
+    const fallback = vi.fn();
+    const off = escapeStack.setFallback(fallback);
+    setup();
+    pressEnter();
+    fireEvent.keyDown(input()!, { key: 'Escape' });
+    expect(fallback).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(fallback).toHaveBeenCalledTimes(1);
+    off();
+  });
+
+  it('/ opens the input with a slash typed, and keeps an earlier draft in front of it', () => {
+    setup();
+    act(() => void fireEvent.keyDown(window, { key: '/' }));
+    expect(document.activeElement).toBe(input());
+    expect(input()!.value).toBe('/');
+  });
+
+  it('/ typed inside the input is plain text, and Enter or / do nothing while a dialog is open', () => {
+    setup();
+    pressEnter();
+    const e = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+    input()!.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    expect(input()!.value).toBe('');
+    fireEvent.keyDown(input()!, { key: 'Escape' });
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    document.body.append(dialog);
+    act(() => void fireEvent.keyDown(window, { key: '/' }));
+    expect(document.activeElement).not.toBe(input());
+    dialog.remove();
+  });
+
+  it('keys typed in the input reach the text: movement keys and hotkeys stand down', () => {
+    const fired = vi.fn();
+    function Probe() {
+      useHotkey('m', fired);
+      useHotkey('t', fired);
+      useRefocusOnMovementKey();
+      return null;
+    }
+    setup();
+    render(<Probe />);
+    pressEnter();
+    for (const key of ['m', 't', 'w', 'a', 's', 'd', ' ', 'ArrowLeft']) {
+      const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      input()!.dispatchEvent(e);
+      expect(e.defaultPrevented, key).toBe(false);
+    }
+    expect(fired).not.toHaveBeenCalled();
+  });
+
+  it('leaves the held movement keys released while the input has focus', () => {
+    const { focus } = setup();
+    expect(focus.result.current).toBe(true);
+    pressEnter();
+    expect(focus.result.current).toBe(false);
+  });
+
+  it('Up and Down recall sent messages from an empty input, and are plain keys otherwise', () => {
+    setup();
+    pressEnter();
+    for (const text of ['first', 'second']) {
+      fireEvent.change(input()!, { target: { value: text } });
+      fireEvent.keyDown(input()!, { key: 'Enter' });
+      pressEnter();
+    }
+    fireEvent.keyDown(input()!, { key: 'ArrowUp' });
+    expect(input()!.value).toBe('second');
+    fireEvent.keyDown(input()!, { key: 'ArrowUp' });
+    expect(input()!.value).toBe('first');
+    fireEvent.keyDown(input()!, { key: 'ArrowDown' });
+    expect(input()!.value).toBe('second');
+    fireEvent.keyDown(input()!, { key: 'ArrowDown' });
+    expect(input()!.value).toBe('');
+    fireEvent.change(input()!, { target: { value: 'typing' } });
+    const e = new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true });
+    input()!.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    expect(input()!.value).toBe('typing');
+  });
+
+  it('clicking the world leaves the input, keeps the draft, and the next movement key refocuses the world', () => {
+    const { focus } = setup();
+    render(<RefocusProbe />);
+    pressEnter();
+    fireEvent.change(input()!, { target: { value: 'draft' } });
+    input()!.focus();
+    act(() => void fireEvent.mouseDown(document.body));
+    expect(document.activeElement).not.toBe(input());
+    expect(input()!.value).toBe('draft');
+    expect(focus.result.current).toBe(true);
+    act(() => void fireEvent.mouseDown(screen.getByText('chat title')));
+    expect(focus.result.current).toBe(false);
+    fireEvent.keyDown(document.body, { key: 'w' });
+    expect(focus.result.current).toBe(true);
   });
 
   it('ignores Enter while an IME composition is in progress', () => {

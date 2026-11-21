@@ -18,7 +18,6 @@ import { DeskHud } from '../desk/DeskHud';
 import { createBuildSession } from '../place/buildSession';
 import { usePlaceHotkey } from '../place/usePlaceHotkey';
 import { createBrowserSfx } from '../sfx/browserSfx';
-import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
 import { ConnectionBanner } from '../hud/ConnectionBanner';
 import { HudBanner } from '../hud/HudBanner';
 import { OfficeHud } from '../hud/OfficeHud';
@@ -55,6 +54,7 @@ import { useEscapeFallback } from '../hud/useEscapeLayer';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { AppearancePicker } from '../theme/AppearancePicker';
 import { initialViewMode } from './viewMode';
+import { RefocusOnMovementKey } from './useRefocusOnMovementKey';
 import { withDefaultMap } from './withDefaultMap';
 
 const PlayView3d = lazy(() => import('./PlayView3d'));
@@ -251,7 +251,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
       <StatusHotkeys store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
       {ready.voice && <JaasMeeting voice={ready.voice} />}
       {ready.voice && <MuteHotkey voice={ready.voice} />}
-      {!settings.isOpen && <ClickToPlayPrompt />}
+      <RefocusOnMovementKey />
       <DeskAutoSit store={ready.local.store} selfId={ready.local.selfId} />
       <OfficeHud
         store={ready.local.store}
