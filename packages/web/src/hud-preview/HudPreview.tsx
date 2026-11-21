@@ -46,6 +46,8 @@ export function HudPreview() {
       say: (from: string, text: string) => actions.applyRemoteChat({ id: `say-${Date.now()}`, authorId: from, text, t: Date.now() }),
       setStatus: (status: RealtimeStatus) => actions.setRealtimeStatus(status),
       selfPos: () => world.session.local.store.getState().players[SELF_ID]?.pos ?? null,
+      placeSelf: (x: number, z: number) => actions.setSelfPosition({ x, y: 2, z }, { x: 0, y: 0, z: 0 }, 0, false),
+      cubeSize: () => world.session.local.store.getState().worldObjects.cubeSize,
       placedProps: () => world.session.local.store.getState().placedProps,
     };
     (window as unknown as { __hudPreview?: typeof hook }).__hudPreview = hook;

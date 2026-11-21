@@ -25,6 +25,8 @@ export interface Scenario {
   steps?: string[];
   /** Desks in metres east and south of the spawn point, each with a chair and its claimant. */
   desks?: { id: string; at: [number, number]; login: string; claimant?: DeskClaimant }[];
+  /** Seats that are map objects, in metres east and south of the spawn point (their lowest corner). */
+  furniture?: { id: string; kindId: string; at: [number, number] }[];
   /** Rooms for the mission places and the map; the seed replaces the map's own zones. */
   zones?: VoiceZone[];
   missions?: 'seeded' | 'empty' | 'unsupported';
@@ -44,6 +46,17 @@ const PROPS: PlacedProp[] = [
   prop(3, 'prop_tricycle_rack', 8, 10),
   prop(4, 'prop_wand_stand', 13, 15),
 ];
+
+const VOXEL_M = 0.5;
+const FLOOR_VOXEL_Y = 2;
+
+/** A prop standing `dx` and `dz` metres east and south of the spawn point. */
+const propNear = (n: number, kindId: PlacedProp['kindId'], dx: number, dz: number, yawDeg = 0): PlacedProp => ({
+  id: `placed:${n}`,
+  kindId,
+  position: [(SPAWN.x + dx) / VOXEL_M, FLOOR_VOXEL_Y, (SPAWN.z + dz) / VOXEL_M],
+  yawDeg,
+});
 
 const NAMES = [
   'Bao Tran',
@@ -187,6 +200,44 @@ export const SCENARIOS: Record<string, Scenario> = {
     call: [],
     props: [],
   },
+  'interact-seat': {
+    id: 'interact-seat',
+    title: 'A free desk chair',
+    self: {},
+    players: [],
+    chat: [],
+    call: [],
+    props: [],
+    desks: [{ id: 'desk-a', at: [3, 0], login: '' }],
+  },
+  'interact-couch': {
+    id: 'interact-couch',
+    title: 'A couch',
+    self: {},
+    players: [],
+    chat: [],
+    call: [],
+    props: [],
+    furniture: [{ id: 'couch-a', kindId: 'furniture_couch', at: [3, 0] }],
+  },
+  'interact-rack': {
+    id: 'interact-rack',
+    title: 'A scooter rack',
+    self: {},
+    players: [],
+    chat: [],
+    call: [],
+    props: [propNear(2, 'prop_scooter_rack', 3, 0)],
+  },
+  'interact-wand': {
+    id: 'interact-wand',
+    title: 'The wand stand',
+    self: {},
+    players: [],
+    chat: [],
+    call: [],
+    props: [propNear(4, 'prop_wand_stand', 3, 0)],
+  },
   alone: {
     id: 'alone',
     title: 'Empty office',
@@ -287,6 +338,7 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
   actions.setPlacedProps(scenario.props);
   if (scenario.textOnly) actions.setMyJitsiRoom('hud-preview-room');
   const unseedZones = scenario.zones ? seedZones(scenario.zones, deps) : () => {};
+  const unseedFurniture = scenario.furniture ? seedFurniture(scenario.furniture, deps) : () => {};
   const unseedDesks = scenario.desks ? seedDesks(scenario.desks, deps) : () => {};
   scenario.chat.forEach((m, i) =>
     actions.applyRemoteChat({ id: `m${i}`, authorId: m.from, text: m.text, t: Date.now() - (scenario.chat.length - i) * 60_000 }),
@@ -314,6 +366,7 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
   return () => {
     timers.forEach(clearInterval);
     unseedDesks();
+    unseedFurniture();
     unseedZones();
   };
 }
@@ -325,6 +378,24 @@ function seedZones(zones: VoiceZone[], { store, actions }: { store: Store; actio
   };
   apply();
   return store.subscribe((s) => s.voiceZones, apply);
+}
+
+/** Seeds map objects and re-seeds them whenever the map load replaces the objects. */
+function seedFurniture(furniture: NonNullable<Scenario['furniture']>, { store, actions }: { store: Store; actions: Actions }): () => void {
+  const apply = () => {
+    const { cubeSize, instances } = store.getState().worldObjects;
+    if (furniture.every((f) => instances.some((i) => i.id === f.id))) return;
+    const placed = furniture.map((f) => ({
+      id: f.id,
+      sourceCommandId: f.id,
+      kindId: f.kindId,
+      position: [(SPAWN.x + f.at[0]) / cubeSize, FLOOR_VOXEL_Y, (SPAWN.z + f.at[1]) / cubeSize] as [number, number, number],
+      yawDeg: 0,
+    }));
+    actions.setWorldObjects({ cubeSize, instances: [...instances, ...placed] });
+  };
+  apply();
+  return store.subscribe((s) => s.worldObjects, apply);
 }
 
 const DESK_CHAIR_KIND = 'furniture_chair_a';
@@ -358,7 +429,7 @@ function seedDesks(desks: NonNullable<Scenario['desks']>, { store, actions }: { 
       })),
     );
     actions.setDeskClaims(
-      Object.fromEntries(desks.map((d) => [d.id, d.login])),
+      Object.fromEntries(desks.filter((d) => d.login !== '').map((d) => [d.id, d.login])),
       Object.fromEntries(desks.flatMap((d) => (d.claimant ? [[d.login, d.claimant]] : []))),
     );
     applying = false;
