@@ -23,9 +23,10 @@ export function useTouchCameraGestures(
   refs: LookRefs,
   lookSign = -1,
   paused = false,
+  lookLocked = false,
 ): void {
   const canvas = useThree((s) => s.gl.domElement);
-  useCanvasGestures(canvas, mode, refs, lookSign, paused);
+  useCanvasGestures(canvas, mode, refs, lookSign, paused, lookLocked);
 }
 
 /**
@@ -43,10 +44,13 @@ export function useCanvasGestures(
   refs: LookRefs,
   lookSign: number,
   paused: boolean,
+  lookLocked = false,
 ): void {
-  const onDragLook = useEffectEvent((dx: number, dy: number) =>
-    applyLookDelta(mode, lookSign * dx * TOUCH_SENSITIVITY, lookSign * dy * TOUCH_SENSITIVITY, refs),
-  );
+  const onDragLook = useEffectEvent((dx: number, dy: number) => {
+    if (!lookLocked) {
+      applyLookDelta(mode, lookSign * dx * TOUCH_SENSITIVITY, lookSign * dy * TOUCH_SENSITIVITY, refs);
+    }
+  });
 
   useEffect(() => {
     if (!isLookMode(mode) || paused) {

@@ -15,8 +15,6 @@ function safeBottomInset(): number {
   return px;
 }
 
-export const FLOATING_ZONE = { width: 0.6, height: 0.45 };
-
 export function VirtualJoystick({ inputRef, floating = false }: { inputRef: React.MutableRefObject<MoveInput>; floating?: boolean }) {
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
@@ -66,9 +64,8 @@ export function VirtualJoystick({ inputRef, floating = false }: { inputRef: Reac
     if (!floating) {
       return;
     }
-    const inZone = (e: PointerEvent) => e.clientX <= window.innerWidth * FLOATING_ZONE.width && e.clientY >= window.innerHeight * (1 - FLOATING_ZONE.height);
     const onDown = (e: PointerEvent) => {
-      if (e.pointerType !== 'touch' || activePointer.current !== null || !(e.target instanceof HTMLCanvasElement) || !inZone(e)) {
+      if (e.pointerType !== 'touch' || activePointer.current !== null || !(e.target instanceof HTMLCanvasElement)) {
         return;
       }
       activePointer.current = e.pointerId;

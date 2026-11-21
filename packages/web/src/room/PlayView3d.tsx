@@ -2,21 +2,14 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { PersistentLocalState } from '@officexr/core-refactor';
 import { PlayView, type PlayViewProps } from '@officexr/world/react';
 import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XRStore } from '@officexr/world/renderer';
-import { useCoarsePointer } from '@officexr/world/top-down';
-import { useJoystickMode, type JoystickMode } from '../hud/joystickMode';
-import { SegmentedControl } from '../hud/ui/SegmentedControl';
 import { Switch } from '../hud/ui/Switch';
-import { CameraModeControl } from './CameraModeControl';
 import { CharacterLook } from './CharacterLook';
 import { MotionLookControl } from './MotionLookControl';
 import { SettingRow } from '../hud/settings/parts';
+import { angleHeld, cameraModeOf, forgetLegacyJoystickChoice, storedOpenView, viewOfCameraMode, type GameView, type OpenView } from './gameView';
 import type { SettingsAction } from './Settings';
+import { ViewPicker } from './ViewPicker';
 import { vrActions } from './VrAction';
-
-const JOYSTICK_OPTIONS = [
-  { value: 'floating', label: 'Floating' },
-  { value: 'fixed', label: 'Fixed' },
-] as const;
 
 /** Created in an effect so StrictMode's remount destroys the first store, which appends a DOM overlay. */
 function useWorldXRStore(): XRStore | undefined {
@@ -45,10 +38,20 @@ const OVERHEAD_CAMERA = {
   distanceM: (OVERHEAD_HEIGHT_M - 0.9) / Math.tan((-OVERHEAD_PITCH_DEG * Math.PI) / 180),
 } as const;
 
+const BIRDS_EYE_CAMERA = {
+  ...OVERHEAD_CAMERA,
+  pitchDeg: -89.9,
+  distanceM: (OVERHEAD_HEIGHT_M - 0.9) / Math.tan((89.9 * Math.PI) / 180),
+} as const;
+
+const fixedCameraOf = (view: GameView) => (view === 'map' ? OVERHEAD_CAMERA : view === 'birds-eye' ? BIRDS_EYE_CAMERA : undefined);
+
 export interface PlayViewSettings {
   controls: ReactNode;
+  motion: ReactNode;
   look: ReactNode;
   actions: SettingsAction[];
+  joystickFloats: boolean;
 }
 
 /** Everything that reaches three/R3F, lazily loaded by `OfficeWorld`. */
@@ -69,62 +72,55 @@ export default function PlayView3d({
   onError: (message: string | null) => void;
   children: (settings: PlayViewSettings) => ReactNode;
 }) {
-  const [cameraMode, setCameraMode] = useState<CameraMode>('fixed');
+  const [openView, setOpenView] = useState<OpenView>(storedOpenView);
+  const view: GameView = overhead ? 'map' : openView;
+  const cameraMode = cameraModeOf(view);
+  const setCameraMode = (mode: CameraMode) => setOpenView((current) => viewOfCameraMode(mode, current));
   const [motionLook, setMotionLook] = useState({ enabled: false, recenterKey: 0 });
   const [motionUnsupported, setMotionUnsupported] = useState(false);
   const [invertLook, setInvertLook] = useState(false);
-  const [joystick, setJoystick] = useJoystickMode();
-  const coarse = useCoarsePointer();
+  useEffect(forgetLegacyJoystickChoice, []);
   const xrStore = useWorldXRStore();
   const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
+  const lookLocked = angleHeld(view, motionLook.enabled);
 
   const controls = (
     <>
-      {!overhead && (
-        <SettingRow label="Camera">
-          <CameraModeControl value={cameraMode} onChange={setCameraMode} />
-        </SettingRow>
-      )}
-      <SettingRow label="Motion look">
-        <MotionLookControl
-          enabled={motionLook.enabled}
-          onEnabledChange={(enabled) => setMotionLook((m) => ({ ...m, enabled }))}
-          onRecenter={() => setMotionLook((m) => ({ ...m, recenterKey: m.recenterKey + 1 }))}
-          unsupported={motionUnsupported}
-          onUnsupported={() => setMotionUnsupported(true)}
-        />
-      </SettingRow>
-      {coarse && (
-        <SettingRow label="Joystick">
-          <SegmentedControl<JoystickMode>
-            aria-label="Joystick"
-            value={joystick}
-            options={JOYSTICK_OPTIONS}
-            onValueChange={setJoystick}
-          />
-        </SettingRow>
-      )}
+      <ViewPicker value={view} onOpenView={setOpenView} />
       <SettingRow label="Invert look">
         <Switch aria-label="Invert look" checked={invertLook} onCheckedChange={setInvertLook} />
       </SettingRow>
     </>
   );
+  const motion = (
+    <SettingRow label="Motion look">
+      <MotionLookControl
+        enabled={motionLook.enabled}
+        onEnabledChange={(enabled) => setMotionLook((m) => ({ ...m, enabled }))}
+        onRecenter={() => setMotionLook((m) => ({ ...m, recenterKey: m.recenterKey + 1 }))}
+        unsupported={motionUnsupported}
+        onUnsupported={() => setMotionUnsupported(true)}
+      />
+    </SettingRow>
+  );
   const settings: PlayViewSettings = {
     controls,
+    motion,
     look: <CharacterLook local={local} onSaveResult={onError} />,
     actions: vrActions(xrStore, vrSupported, onError),
+    joystickFloats: lookLocked,
   };
 
   return (
     <PlayView
       {...viewProps}
       realtime="ws"
-      cameraMode={overhead ? 'fixed' : cameraMode}
+      cameraMode={cameraMode}
       onCameraModeChange={overhead ? undefined : setCameraMode}
-      fixedCamera={overhead ? OVERHEAD_CAMERA : undefined}
+      fixedCamera={fixedCameraOf(view)}
       motionLook={motionLook}
       invertLook={invertLook}
-      joystick={joystick}
+      lookLocked={lookLocked}
       hud="player"
       xrStore={xrStore}
     >

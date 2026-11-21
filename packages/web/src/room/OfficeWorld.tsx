@@ -25,7 +25,7 @@ import { OfficeHud } from '../hud/OfficeHud';
 import { createHttpMissionsClient } from '../hud/missions/missionsApi';
 import { useMissionMarker } from '../hud/missions/useMissionMarker';
 import { useMissions } from '../hud/missions/useMissions';
-import { SettingRow, SettingsActionButton } from '../hud/settings/parts';
+import { SectionLabel, SettingRow, SettingsActionButton } from '../hud/settings/parts';
 import { HelpPage } from '../hud/settings/HelpPage';
 import { OfficePage } from '../hud/settings/OfficePage';
 import { StatusSection } from '../hud/settings/StatusSection';
@@ -55,7 +55,6 @@ import { useEscapeFallback } from '../hud/useEscapeLayer';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { AppearancePicker } from '../theme/AppearancePicker';
 import { initialViewMode } from './viewMode';
-import { ViewModeControl } from './ViewModeControl';
 import { withDefaultMap } from './withDefaultMap';
 
 const PlayView3d = lazy(() => import('./PlayView3d'));
@@ -221,9 +220,6 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
     ),
     controls: (
       <>
-        <SettingRow label="View">
-          <ViewModeControl mode={viewMode} />
-        </SettingRow>
         {extras.controls}
         <SettingRow label="Appearance">
           <AppearancePicker />
@@ -231,7 +227,12 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         {!coarse && (
           <SettingsActionButton onClick={openHelp}>Keyboard shortcuts</SettingsActionButton>
         )}
-        {[...extras.actions, ...popOut].map((action) => (
+        {popOut.map((action) => (
+          <Fragment key={action.id}>{action.render(closeSettings)}</Fragment>
+        ))}
+        <SectionLabel>VR and motion look</SectionLabel>
+        {extras.motion}
+        {extras.actions.map((action) => (
           <Fragment key={action.id}>{action.render(closeSettings)}</Fragment>
         ))}
       </>
@@ -271,6 +272,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         settingsPages={settingsPages(ready, extras)}
         onSwitchOffice={leaveOffice}
         onSignOut={signOut}
+        joystickFloats={extras.joystickFloats}
         toasts={
           <>
             {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}

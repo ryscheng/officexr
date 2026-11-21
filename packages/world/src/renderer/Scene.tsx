@@ -118,6 +118,7 @@ interface SceneProps {
   /** Device-motion look; absent leaves the view to mouse and touch. */
   motionLook?: MotionLookState;
   invertLook?: boolean;
+  lookLocked?: boolean;
   /** Fully resolved lighting, background, camera and proximity values. */
   view: ViewConfig;
   /** When false, keyboard input is released from the in-world
@@ -418,6 +419,7 @@ export function Scene(props: SceneProps) {
           viewOffsetsRef={viewOffsetsRef}
           motionLook={props.motionLook}
           invertLook={props.invertLook}
+          lookLocked={props.lookLocked}
           conversationFocusRef={conversationFocusRef}
           conversationDistance={proximity.conversationDistance}
           conversationHeight={proximity.conversationHeight}

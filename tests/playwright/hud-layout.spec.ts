@@ -209,11 +209,11 @@ test.describe('portrait phone', () => {
       }
     });
 
-    test(`the joystick floats under the thumb, and stays put when set to fixed on ${device.id}`, async ({ browser }) => {
-      for (const mode of ['floating', 'fixed'] as const) {
+    test(`the joystick is fixed in Free look, and floats under the thumb in Angled on ${device.id}`, async ({ browser }) => {
+      for (const view of ['free-look', 'angled']) {
         const { page, close } = await openHudPreview(browser, device, 'crowd', 'light');
         try {
-          await page.evaluate((m) => localStorage.setItem('officexr:hud:joystick', m), mode);
+          await page.evaluate((v) => localStorage.setItem('officexr:gameView', v), view);
           await page.reload();
           await page.getByRole('button', { name: 'Office menu' }).first().waitFor();
           await page.waitForTimeout(1500);
@@ -222,7 +222,7 @@ test.describe('portrait phone', () => {
           await dragStick(page, 300);
           const held = (await stick.boundingBox())!;
           const { width, height } = page.viewportSize()!;
-          if (mode === 'floating') {
+          if (view === 'angled') {
             expect(held.x + held.width / 2, 'stick centred under the thumb').toBeCloseTo(Math.round(width * 0.25), -1);
             expect(held.y + held.height / 2).toBeCloseTo(Math.round(height * 0.78), -1);
           } else {
