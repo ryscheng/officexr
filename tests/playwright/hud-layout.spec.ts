@@ -41,8 +41,12 @@ for (const device of LAYOUT_DEVICES) {
         await applySafeArea(page, device.safe);
         await runScenarioSteps(page, scenario);
         const hint = HUD_STATES[scenario]?.hint;
+        let plate: { width: number } | null = null;
+        let hintCount = 0;
         if (hint) {
           await awaitHint(page, hint);
+          plate = await page.locator(`[data-hint="${hint}"]`).boundingBox();
+          hintCount = await page.locator('[data-hint]').count();
         }
         const boxes = await collectHudBoxes(page);
         expect(boxes.length, 'the HUD rendered controls').toBeGreaterThan(3);
@@ -62,10 +66,9 @@ for (const device of LAYOUT_DEVICES) {
         expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`), 'overlapping controls').toEqual([]);
         expect(findOutside(boxes, viewport, device.safe).map((b) => b.name), 'controls outside the safe area').toEqual([]);
         if (hint) {
-          const plate = await page.locator(`[data-hint="${hint}"]`).boundingBox();
           expect(plate, `the ${hint} hint shows`).not.toBeNull();
           expect(plate!.width, 'hint width').toBeLessThanOrEqual(240.5);
-          expect(await page.locator('[data-hint]').count(), 'hints at once').toBe(1);
+          expect(hintCount, 'hints at once').toBe(1);
         }
         if (device.options?.hasTouch) {
           const small = boxes.filter((b) => b.interactive && !b.clipped && (b.w < MIN_TARGET_PX - 0.5 || b.h < MIN_TARGET_PX - 0.5) && b.name !== 'input');
@@ -287,8 +290,8 @@ test.describe('first-run hints', () => {
           await runScenarioSteps(page, state);
           const hint = HUD_STATES[state]!.hint!;
           await awaitHint(page, hint);
-          const boxes = await collectHudBoxes(page);
           const plate = await page.locator(`[data-hint="${hint}"]`).boundingBox();
+          const boxes = await collectHudBoxes(page);
           expect(plate, `the ${hint} hint shows`).not.toBeNull();
           const inX = plate!.x < (c.viewport.width * 2) / 3 && plate!.x + plate!.width > c.viewport.width / 3;
           const inY = plate!.y < (c.viewport.height * 2) / 3 && plate!.y + plate!.height > c.viewport.height / 3;
