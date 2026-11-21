@@ -37,6 +37,7 @@ function setup() {
             store={store}
             actions={actions}
             selfId="me"
+            joystickFloats={false}
             me="me"
             officeName="Office"
             voice={null}
