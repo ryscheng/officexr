@@ -36,7 +36,7 @@ test('M does not open the map while focus is in the new mission form', async ({ 
   try {
     await page.getByRole('button', { name: /Add mission/ }).click();
     await page.getByRole('button', { name: /^More: place/ }).click();
-    await page.getByRole('button', { name: 'Place' }).focus();
+    await page.getByRole('button', { name: 'Place', exact: true }).focus();
     await page.keyboard.press('m');
     await expect(page.getByRole('dialog', { name: 'Office map' })).toHaveCount(0);
     await page.getByLabel('Title').type('time to meet');
