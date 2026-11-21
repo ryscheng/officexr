@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
-@custom-variant phone (@media (orientation: portrait) and (max-width: 700px), (orientation: landscape) and (max-height: 500px));
+@custom-variant phone {
+  @media (orientation: portrait) and (max-width: 700px) {
+    @slot;
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    @slot;
+  }
+}
 
 @theme {
   /*

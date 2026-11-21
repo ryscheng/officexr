@@ -133,6 +133,7 @@ function NewOfficeForm({ identified, maps, mapsError, onClose }: { identified: b
             {mapsError && <InlineAlert>{mapsError}</InlineAlert>}
           </div>
         </div>
+        {failure !== null && <ErrorNotice title="We could not create the office." text="Check your connection and try again." details={failure} />}
         <div className="flex flex-col gap-2">
           <button type="submit" className={pageButton('primary', 'w-full')}>
             {busy ? 'Creating…' : 'Create office'}
@@ -142,7 +143,6 @@ function NewOfficeForm({ identified, maps, mapsError, onClose }: { identified: b
           </button>
         </div>
       </fieldset>
-      {failure !== null && <ErrorNotice title="We could not create the office." text="Check your connection and try again." details={failure} />}
     </form>
   );
 }
