@@ -41,7 +41,7 @@ describe('SettingsSheet top level', () => {
       'Switch office',
       'ProfileLook and status',
       'ControlsView, motion, appearance',
-      'AlertsPings, calendar, Slack',
+      'AlertsPing sound and notifications',
       'OfficeName, map, studio',
       'HelpHow to move, hints',
       'Sign out',

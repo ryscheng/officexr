@@ -17,7 +17,7 @@ type Icon = ComponentType<LucideProps>;
 const PAGES: Record<SettingsPageId, { title: string; hint: string; icon: Icon }> = {
   profile: { title: 'Profile', hint: 'Look and status', icon: User },
   controls: { title: 'Controls', hint: 'View, motion, appearance', icon: SlidersHorizontal },
-  alerts: { title: 'Alerts', hint: 'Pings, calendar, Slack', icon: Bell },
+  alerts: { title: 'Alerts', hint: 'Ping sound and notifications', icon: Bell },
   office: { title: 'Office', hint: 'Name, map, studio', icon: Building2 },
   help: { title: 'Help', hint: 'How to move, hints', icon: CircleHelp },
 };
