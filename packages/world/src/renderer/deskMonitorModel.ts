@@ -49,8 +49,8 @@ export function createDesktopTexture(): THREE.DataTexture {
     for (let x = 0; x < w; x++) {
       const glow = 1 - Math.hypot(x / (w - 1) - 0.5, t - 0.4);
       const i = (y * w + x) * 4;
-      data[i] = Math.round(150 + 90 * glow);
-      data[i + 1] = Math.round(190 + 55 * glow);
+      data[i] = Math.round(70 + 90 * glow);
+      data[i + 1] = Math.round(130 + 80 * glow);
       data[i + 2] = 255;
       data[i + 3] = 255;
     }
