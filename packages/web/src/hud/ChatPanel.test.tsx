@@ -11,9 +11,15 @@ const PLACEHOLDER = 'Press Enter to chat';
 const input = () => screen.queryByPlaceholderText(PLACEHOLDER) as HTMLInputElement | null;
 const pressEnter = () => act(() => void fireEvent.keyDown(window, { key: 'Enter' }));
 
+beforeEach(() => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+});
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
 describe('chat between clients', () => {
@@ -198,5 +204,104 @@ describe('ChatPanel', () => {
     expect(screen.queryByText(/msg-9$/)).toBeNull();
     expect(screen.getByText(/msg-10$/)).toBeTruthy();
     expect(screen.getByText(/msg-59$/)).toBeTruthy();
+  });
+
+  describe('fold', () => {
+    it('Collapse chat folds it to the chip, and a later message no longer peeks', () => {
+      const { remote } = setup();
+      remote('a');
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse chat' }));
+      expect(input()).toBeNull();
+      remote('b');
+      expect(input()).toBeNull();
+      expect(localStorage.getItem('officexr:fold:chat')).toBe('folded');
+    });
+
+    it('the chip opens the chat again, which unfolds it for the next message', () => {
+      const { remote } = setup();
+      pressEnter();
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse chat' }));
+      fireEvent.click(screen.getByRole('button', { name: /chat/i }));
+      expect(localStorage.getItem('officexr:fold:chat')).toBe('open');
+      fireEvent.keyDown(input()!, { key: 'Escape' });
+      remote('later');
+      expect(input()).not.toBeNull();
+    });
+
+    it('never shows an empty log: with no messages it says so in one line', () => {
+      setup();
+      pressEnter();
+      expect(screen.getByText('No messages yet.')).toBeTruthy();
+      expect(document.querySelector('.overflow-y-auto')).toBeNull();
+    });
+
+    it('the chip shows the newest message only while something is unread', () => {
+      const store = createStore({ selfId: 'me', officeId: 'o' });
+      const actions = createActions(store, createBus());
+      act(() => actions.applyRemoteChat({ id: '1', authorId: 'peer', text: 'hello there', t: 1 }));
+      localStorage.setItem('officexr:fold:chat', 'folded');
+      const view = render(<ChatPanel store={store} actions={actions} selfId="me" unread={0} />);
+      expect(view.getByRole('button', { name: 'Chat' }).textContent).not.toContain('hello there');
+      view.rerender(<ChatPanel store={store} actions={actions} selfId="me" unread={2} />);
+      const chip = view.getByRole('button', { name: 'Chat, 2 new' });
+      expect(chip.textContent).toContain('hello there');
+      expect(chip.textContent).toContain('2');
+    });
+  });
+
+  describe('portrait', () => {
+    const setupPortrait = () => {
+      const store = createStore({ selfId: 'me', officeId: 'o' });
+      const actions = createActions(store, createBus());
+      render(<ChatPanel store={store} actions={actions} selfId="me" portrait />);
+      return { store, actions };
+    };
+
+    it('shows nothing for a peek or while hidden: the preview is the ticker, outside this panel', () => {
+      const { actions } = setupPortrait();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      act(() => actions.applyRemoteChat({ id: '1', authorId: 'peer', text: 'hi', t: 1 }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(input()).toBeNull();
+    });
+
+    it('opens as a sheet on Enter, with the input focused', () => {
+      setupPortrait();
+      pressEnter();
+      expect(screen.getByRole('dialog', { name: 'Chat' })).toBeTruthy();
+      expect(document.activeElement).toBe(input());
+    });
+
+    it('keeps the keyboard open after sending, and on an empty Enter', () => {
+      const { store } = setupPortrait();
+      pressEnter();
+      fireEvent.change(input()!, { target: { value: 'one' } });
+      fireEvent.keyDown(input()!, { key: 'Enter' });
+      expect(store.getState().chat.map((m) => m.text)).toEqual(['one']);
+      expect(input()!.value).toBe('');
+      expect(screen.getByRole('dialog', { name: 'Chat' })).toBeTruthy();
+      fireEvent.keyDown(input()!, { key: 'Enter' });
+      expect(screen.getByRole('dialog', { name: 'Chat' })).toBeTruthy();
+    });
+
+    it('closes with Collapse chat and Escape', () => {
+      setupPortrait();
+      pressEnter();
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse chat' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      pressEnter();
+      fireEvent.keyDown(input()!, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('sizes the sheet to the visible viewport so the keyboard cannot cover the input', () => {
+      vi.stubGlobal('visualViewport', Object.assign(new EventTarget(), { height: 320, offsetTop: 0 }));
+      Object.defineProperty(window, 'innerHeight', { value: 640, configurable: true });
+      setupPortrait();
+      pressEnter();
+      const sheet = screen.getByRole('dialog', { name: 'Chat' });
+      expect(sheet.style.bottom).toBe('320px');
+      expect(sheet.style.height).toContain('320px');
+    });
   });
 });

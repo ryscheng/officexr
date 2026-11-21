@@ -1,0 +1,291 @@
+{
+ "viewport": {
+  "width": 1440,
+  "height": 900
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "Chat",
+   "interactive": true,
+   "x": 247,
+   "y": 21,
+   "w": 44,
+   "h": 44,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Office menu",
+   "interactive": true,
+   "x": 303,
+   "y": 21,
+   "w": 44,
+   "h": 44,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Chat",
+   "interactive": true,
+   "x": 12,
+   "y": 82,
+   "w": 344,
+   "h": 38,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Build mode",
+   "interactive": false,
+   "x": 537.328125,
+   "y": 28,
+   "w": 365.34375,
+   "h": 66.65625,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Open map",
+   "interactive": true,
+   "x": 1384,
+   "y": 12,
+   "w": 44,
+   "h": 44,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Collapse call card",
+   "interactive": true,
+   "x": 1315,
+   "y": 77,
+   "w": 44,
+   "h": 44,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "In call, 2",
+   "interactive": true,
+   "x": 1371,
+   "y": 77,
+   "w": 44,
+   "h": 44,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Mute",
+   "interactive": true,
+   "x": 1097,
+   "y": 133,
+   "w": 214,
+   "h": 44,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Screen sharing unavailable",
+   "interactive": true,
+   "x": 1319,
+   "y": 133,
+   "w": 44,
+   "h": 44,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Leave call",
+   "interactive": true,
+   "x": 1371,
+   "y": 133,
+   "w": 44,
+   "h": 44,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Speak",
+   "interactive": true,
+   "x": 1097,
+   "y": 837,
+   "w": 155,
+   "h": 38,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Wave",
+   "interactive": true,
+   "x": 1260,
+   "y": 837,
+   "w": 155,
+   "h": 38,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Mine",
+   "interactive": true,
+   "x": 220.21875,
+   "y": 457.40625,
+   "w": 54.609375,
+   "h": 26.5625,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Team",
+   "interactive": true,
+   "x": 278.828125,
+   "y": 457.40625,
+   "w": 58.171875,
+   "h": 26.5625,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Collapse missions",
+   "interactive": true,
+   "x": 347,
+   "y": 458.6875,
+   "w": 24,
+   "h": 24,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "All",
+   "interactive": true,
+   "x": 25,
+   "y": 493.96875,
+   "w": 39.015625,
+   "h": 24,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Mine",
+   "interactive": true,
+   "x": 70.015625,
+   "y": 493.96875,
+   "w": 52.65625,
+   "h": 24,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Join the stand-up, done",
+   "interactive": true,
+   "x": 33,
+   "y": 565.96875,
+   "w": 32,
+   "h": 32,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Join the stand-upMineMeeting r",
+   "interactive": true,
+   "x": 75,
+   "y": 562.96875,
+   "w": 212.984375,
+   "h": 38,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Meeting room 1",
+   "interactive": true,
+   "x": 297.984375,
+   "y": 575.96875,
+   "w": 65.015625,
+   "h": 32,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Book a table for the team lunch, done",
+   "interactive": true,
+   "x": 33,
+   "y": 641.96875,
+   "w": 32,
+   "h": 32,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Book a table for the team lunc",
+   "interactive": true,
+   "x": 75,
+   "y": 638.96875,
+   "w": 210.3125,
+   "h": 38,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Kitchen",
+   "interactive": true,
+   "x": 297.984375,
+   "y": 641.96875,
+   "w": 65.015625,
+   "h": 32,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Fix the login redirect, done",
+   "interactive": true,
+   "x": 33,
+   "y": 710.625,
+   "w": 32,
+   "h": 32,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Fix the login redirectMine",
+   "interactive": true,
+   "x": 75,
+   "y": 707.96875,
+   "w": 210.3125,
+   "h": 37.328125,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Ask Bao about the demo, done",
+   "interactive": true,
+   "x": 33,
+   "y": 762.296875,
+   "w": 32,
+   "h": 32,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Ask Bao about the demoMineComp",
+   "interactive": true,
+   "x": 75,
+   "y": 759.296875,
+   "w": 250,
+   "h": 38,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "New missionT",
+   "interactive": true,
+   "x": 25,
+   "y": 811.296875,
+   "w": 346,
+   "h": 40,
+   "clipped": false,
+   "sheet": false
+  }
+ ]
+}

@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from '@playwright/test';
-import { applySafeArea, collectHudBoxes, findOutside, findOverlaps, HUD_DEVICES, HUD_SCENARIOS, openHudPreview, runScenarioSteps, type Theme } from './lib/hudLayout.ts';
+import { applySafeArea, collectHudBoxes, findOutside, findOverlaps, HUD_DEVICES, HUD_SCENARIOS, HUD_STATES, openHudPreview, runScenarioSteps, type Theme } from './lib/hudLayout.ts';
 
 const dir = process.env.HUD_CAPTURE_DIR;
 test.skip(!dir, 'set HUD_CAPTURE_DIR to capture');
@@ -19,7 +19,7 @@ const deviceFilter = only('HUD_CAPTURE_DEVICES');
 const scenarioFilter = only('HUD_CAPTURE_SCENARIOS');
 
 for (const device of HUD_DEVICES.filter((d) => !deviceFilter || deviceFilter.includes(d.id))) {
-  const scenarios = [...HUD_SCENARIOS].filter((s) => !scenarioFilter || scenarioFilter.includes(s));
+  const scenarios = [...HUD_SCENARIOS, ...Object.keys(HUD_STATES)].filter((s) => !scenarioFilter || scenarioFilter.includes(s));
   for (const scenario of scenarios) {
     for (const theme of THEMES) {
       test(`${scenario} ${device.id} ${theme}`, async ({ browser }) => {
@@ -29,11 +29,18 @@ for (const device of HUD_DEVICES.filter((d) => !deviceFilter || deviceFilter.inc
         test.skip(existsSync(path.join(out, `${base}.json`)) && !process.env.HUD_CAPTURE_FORCE, 'already captured');
         const { page, close } = await openHudPreview(browser, device, scenario, theme);
         try {
-          await runScenarioSteps(page, scenario);
           await applySafeArea(page, device.safe);
-          await page.screenshot({ path: path.join(out, `${base}.png`), timeout: 60_000 });
+          await runScenarioSteps(page, scenario);
+          if (scenario === 'chat-peek') {
+            // The preview lasts 5 s and a software-GL screenshot can take longer, so grab the frame straight from the browser.
+            const cdp = await page.context().newCDPSession(page);
+            const { data } = await cdp.send('Page.captureScreenshot');
+            writeFileSync(path.join(out, `${base}.png`), Buffer.from(data, 'base64'));
+          } else {
+            await page.screenshot({ path: path.join(out, `${base}.png`), timeout: 60_000 });
+          }
           const boxes = await collectHudBoxes(page);
-          const viewport = page.viewportSize()!;
+          const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
           const report = {
             viewport,
             overlaps: findOverlaps(boxes).map(([a, b]) => [a.name, b.name]),

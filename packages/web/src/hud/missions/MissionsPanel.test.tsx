@@ -38,9 +38,9 @@ const SEED: Mission[] = [
 const AREAS = placeAreas([{ id: 'r1', label: 'Meeting room 1', min: { x: 10, z: 0 }, max: { x: 20, z: 10 } }], []);
 const PEOPLE = [{ id: 'bao@x', login: 'bao@x', name: 'Bao Tran', x: 0, z: 0 }];
 
-function Harness({ client, compact = false }: { client: MissionsClient; compact?: boolean }) {
+function Harness({ client, compact = false, portrait = false, collapsed = false }: { client: MissionsClient; compact?: boolean; portrait?: boolean; collapsed?: boolean }) {
   const missions = useMissions(client, 'o');
-  return <MissionsPanel missions={missions} me="me" areas={AREAS} people={PEOPLE} self={{ x: 0, z: 5 }} compact={compact} now={() => NOW} />;
+  return <MissionsPanel missions={missions} me="me" areas={AREAS} people={PEOPLE} self={{ x: 0, z: 5 }} compact={compact} portrait={portrait} collapsed={collapsed} now={() => NOW} />;
 }
 
 const setup = async (seed = SEED, compact = false) => {
@@ -237,6 +237,64 @@ describe('MissionsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Expand missions' }));
       fireEvent.click(screen.getByRole('button', { name: /New mission/ }));
       expect(screen.getByRole('dialog', { name: 'New mission' })).toBeTruthy();
+    });
+  });
+
+  describe('portrait (phone held upright)', () => {
+    const portrait = async (props: { collapsed?: boolean } = {}) => {
+      const client = createInMemoryMissionsClient('me', SEED);
+      render(<Harness client={client} compact portrait {...props} />);
+      await screen.findByRole('button', { name: 'Expand missions' });
+    };
+
+    it('is a one-line chip with the count and no panel', async () => {
+      await portrait();
+      const chip = screen.getByRole('button', { name: 'Expand missions' });
+      expect(chip.textContent).toBe('Missions1/3');
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    });
+
+    it('shows the current mission title in the chip, and only the icon and count while collapsed', async () => {
+      const client = createInMemoryMissionsClient('me', SEED);
+      const view = render(<Harness client={client} compact portrait />);
+      await screen.findByRole('button', { name: 'Expand missions' });
+      fireEvent.click(screen.getByRole('button', { name: 'Expand missions' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Meeting room 1' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse missions' }));
+      expect(screen.getByRole('button', { name: 'Expand missions' }).textContent).toContain('Join the stand-up');
+      view.rerender(<Harness client={client} compact portrait collapsed />);
+      expect(screen.getByRole('button', { name: 'Expand missions' }).textContent).toBe('1/3');
+    });
+
+    it('opens a sheet with tabs and rows, and closes back to the chip', async () => {
+      await portrait();
+      fireEvent.click(screen.getByRole('button', { name: 'Expand missions' }));
+      const sheet = screen.getByRole('dialog', { name: 'Missions' });
+      expect(within(sheet).getByRole('tab', { name: 'Team' })).toBeTruthy();
+      expect(within(sheet).getAllByRole('checkbox').length).toBeGreaterThan(0);
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Collapse missions' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Expand missions' })).toBeTruthy();
+    });
+
+    it('snaps the sheet between 55% and 90% of the height', async () => {
+      await portrait();
+      fireEvent.click(screen.getByRole('button', { name: 'Expand missions' }));
+      const sheet = screen.getByRole('dialog', { name: 'Missions' });
+      expect(sheet.style.maxHeight).toContain('* 0.55');
+      fireEvent.click(screen.getByRole('button', { name: 'Enlarge missions' }));
+      expect(sheet.style.maxHeight).toContain('* 0.9');
+    });
+
+    it('clamps a long title to two lines and keeps the Go button from shrinking', async () => {
+      const long: Mission[] = [{ ...SEED[0]!, title: 'Prepare the quarterly planning review with every team lead before Friday' }];
+      const client = createInMemoryMissionsClient('me', long);
+      render(<Harness client={client} compact portrait />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Expand missions' }));
+      const title = screen.getByText(/Prepare the quarterly/);
+      expect(title.className).toContain('line-clamp-2');
+      expect(screen.getByRole('button', { name: 'Go to Meeting room 1' }).parentElement!.className).toContain('shrink-0');
     });
   });
 });

@@ -1,0 +1,51 @@
+{
+ "viewport": {
+  "width": 750,
+  "height": 342
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "Chat11:44 PMBao Tran: Standup ",
+   "interactive": false,
+   "x": 135,
+   "y": 76,
+   "w": 480,
+   "h": 266,
+   "clipped": false,
+   "sheet": true
+  },
+  {
+   "name": "Collapse chat",
+   "interactive": true,
+   "x": 558,
+   "y": 85,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "input",
+   "interactive": true,
+   "x": 144,
+   "y": 264,
+   "w": 406,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Send",
+   "interactive": true,
+   "x": 558,
+   "y": 264,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  }
+ ]
+}

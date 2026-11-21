@@ -2,6 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { PersistentLocalState } from '@officexr/core-refactor';
 import { PlayView, type PlayViewProps } from '@officexr/world/react';
 import { createWorldXRStore, useXRSessionModeSupported, type CameraMode, type XRStore } from '@officexr/world/renderer';
+import { useCoarsePointer } from '@officexr/world/top-down';
+import { useJoystickMode, type JoystickMode } from '../hud/joystickMode';
+import { SegmentedControl } from '../hud/ui/SegmentedControl';
 import { Switch } from '../hud/ui/Switch';
 import { CameraModeControl } from './CameraModeControl';
 import { CharacterAction, CharacterPane } from './CharacterPane';
@@ -9,6 +12,11 @@ import { MotionLookControl } from './MotionLookControl';
 import type { SettingsAction, SettingsTab } from './Settings';
 import { SettingRow, SettingsModal } from './SettingsModal';
 import { vrActions } from './VrAction';
+
+const JOYSTICK_OPTIONS = [
+  { value: 'floating', label: 'Floating' },
+  { value: 'fixed', label: 'Fixed' },
+] as const;
 
 /** Created in an effect so StrictMode's remount destroys the first store, which appends a DOM overlay. */
 function useWorldXRStore(): XRStore | undefined {
@@ -62,6 +70,8 @@ export default function PlayView3d({
   const [motionLook, setMotionLook] = useState({ enabled: false, recenterKey: 0 });
   const [motionUnsupported, setMotionUnsupported] = useState(false);
   const [invertLook, setInvertLook] = useState(false);
+  const [joystick, setJoystick] = useJoystickMode();
+  const coarse = useCoarsePointer();
   const xrStore = useWorldXRStore();
   const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
 
@@ -81,6 +91,16 @@ export default function PlayView3d({
           onUnsupported={() => setMotionUnsupported(true)}
         />
       </SettingRow>
+      {coarse && (
+        <SettingRow label="Joystick">
+          <SegmentedControl<JoystickMode>
+            aria-label="Joystick"
+            value={joystick}
+            options={JOYSTICK_OPTIONS}
+            onValueChange={setJoystick}
+          />
+        </SettingRow>
+      )}
       <SettingRow label="Invert look">
         <Switch aria-label="Invert look" checked={invertLook} onCheckedChange={setInvertLook} />
       </SettingRow>
@@ -100,6 +120,7 @@ export default function PlayView3d({
       fixedCamera={overhead ? OVERHEAD_CAMERA : undefined}
       motionLook={motionLook}
       invertLook={invertLook}
+      joystick={joystick}
       hud="player"
       xrStore={xrStore}
     >

@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Map as MapIcon, Menu, MessageSquare, Settings, Users } from 'lucide-react';
 import type { Actions, OfficeState, PlayerId, Store } from '@officexr/sdk';
-import { useCoarsePointer, useMediaQuery, useStoreSelector } from '@officexr/world/top-down';
+import { useCoarsePointer, usePortrait, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import type { PingSender } from '../ping/usePingSender';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -11,6 +11,7 @@ import { CallCard } from './CallCard';
 import { useCallRows } from './CallList';
 import { useFold } from './foldPrefs';
 import { ChatPanel } from './ChatPanel';
+import { ChatTicker, TICKER_MS } from './ChatTicker';
 import { FullMap } from './FullMap';
 import { HudLayout } from './HudLayout';
 import { IdentityCard } from './IdentityCard';
@@ -25,17 +26,19 @@ import { ArrivalBubble, PresenceList } from './PresenceList';
 import { RoundButton } from './RoundButton';
 import { Keycap } from './ui/Keycap';
 import { Panel } from './ui/Panel';
-import { useChatVisibility } from './useChatVisibility';
+import { PortraitSheet } from './ui/PortraitSheet';
+import { AUTO_HIDE_MS, unreadCount, useChatVisibility } from './useChatVisibility';
+import { selectSelfMoving, useMovingFade } from './useMovingFade';
 import { useEscapeLayer } from './useEscapeLayer';
 import { useHotkey } from './useHotkey';
 
 const selectChat = (s: OfficeState) => s.chat;
 
-function MenuPopover({ onPeople, onSettings, onClose }: { onPeople: () => void; onSettings: () => void; onClose: () => void }) {
+function MenuPopover({ portrait, onPeople, onSettings, onClose }: { portrait: boolean; onPeople: () => void; onSettings: () => void; onClose: () => void }) {
   useEscapeLayer(true, onClose);
-  const item = 'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-semibold hover:bg-hud-hover pointer-coarse:min-h-11';
-  return (
-    <Panel role="menu" aria-label="Office menu" className="pointer-events-auto flex w-60 flex-col p-1.5">
+  const item = 'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-semibold hover:bg-hud-hover pointer-coarse:min-h-12';
+  const items = (
+    <>
       <button type="button" role="menuitem" className={item} onClick={onPeople}>
         <Users aria-hidden className="size-4" />
         People here
@@ -44,6 +47,20 @@ function MenuPopover({ onPeople, onSettings, onClose }: { onPeople: () => void; 
         <Settings aria-hidden className="size-4" />
         Settings
       </button>
+    </>
+  );
+  if (portrait) {
+    return (
+      <PortraitSheet title="Menu" label="Menu" closeLabel="Close menu" onClose={onClose}>
+        <div role="menu" aria-label="Office menu" className="flex flex-col gap-2">
+          {items}
+        </div>
+      </PortraitSheet>
+    );
+  }
+  return (
+    <Panel role="menu" aria-label="Office menu" className="pointer-events-auto flex w-60 flex-col p-1.5">
+      {items}
     </Panel>
   );
 }
@@ -78,23 +95,37 @@ export function OfficeHud({
   onOpenSettings: () => void;
 }) {
   const coarse = useCoarsePointer();
-  const narrow = useMediaQuery('(orientation: portrait)') && coarse;
+  const narrow = usePortrait() && coarse;
   const chat = useStoreSelector(store, selectChat);
-  const chatVisibility = useChatVisibility(chat.length);
-  const [read, setRead] = useState(chat.length);
+  const moving = useStoreSelector(store, selectSelfMoving);
+  const fadeSecondary = useMovingFade(moving, narrow);
+  const building = useSyncExternalStore(placeMode.subscribe, () => placeMode.get().open);
+  const chatVisibility = useChatVisibility(chat.length, { peekMs: narrow ? TICKER_MS : AUTO_HIDE_MS });
+  const [lastReadId, setLastReadId] = useState<string | null>(chat.at(-1)?.id ?? null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [people, setPeople] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const missionsFold = useFold('missions', coarse);
   const inCall = useCallRows(store, selfId).state !== 'none';
   const spots = useOfficeSpots(store);
+  useEffect(() => {
+    if (!(narrow && inCall)) {
+      return;
+    }
+    document.documentElement.dataset.hudCall = '';
+    return () => {
+      delete document.documentElement.dataset.hudCall;
+    };
+  }, [narrow, inCall]);
   const plan = useMapPlan(store);
 
+  const chatShowsLog = chatVisibility.mode === 'compose' || (chatVisibility.mode === 'peek' && !narrow);
+  const latestId = chat.at(-1)?.id ?? null;
   useEffect(() => {
-    if (chatVisibility.mode !== 'hidden') {
-      setRead(chat.length);
+    if (chatShowsLog) {
+      setLastReadId(latestId);
     }
-  }, [chatVisibility.mode, chat.length]);
+  }, [chatShowsLog, latestId]);
   useHotkey('m', () => setMapOpen(true), !mapOpen);
 
   const { setFolded: foldMissions } = missionsFold;
@@ -107,6 +138,11 @@ export function OfficeHud({
     }
   }, [narrow, menuOpen, people, chatMode, foldMissions]);
   useEffect(() => {
+    if (narrow && building) {
+      setPeople(false);
+    }
+  }, [narrow, building]);
+  useEffect(() => {
     if (narrow && missionsOpen) {
       setMenuOpen(false);
       setPeople(false);
@@ -114,16 +150,32 @@ export function OfficeHud({
     }
   }, [narrow, missionsOpen, hideChat]);
 
-  const unread = chatVisibility.mode === 'hidden' ? Math.max(0, chat.length - read) : 0;
-  const toggleChat = () => (chatVisibility.mode === 'compose' ? chatVisibility.hide() : chatVisibility.compose());
-  const openMenu = () => setMenuOpen((o) => !o);
+  const unread = chatShowsLog ? 0 : unreadCount(chat, lastReadId, selfId);
+  const toggleChat = () => {
+    if (chatVisibility.mode === 'compose') {
+      chatVisibility.hide();
+      return;
+    }
+    if (narrow) {
+      setMenuOpen(false);
+      setPeople(false);
+    }
+    chatVisibility.compose();
+  };
+  const openMenu = () => {
+    if (narrow && !menuOpen) {
+      setPeople(false);
+      hideChat();
+    }
+    setMenuOpen((o) => !o);
+  };
 
   const current = missions.current;
   const to = current?.place ? resolvePlace(current.place, spots.areas) : null;
   const route = current && to ? { to, label: current.title, areaId: current.place?.kind === 'room' ? current.place.id : null } : null;
 
   const missionsPanel = (
-    <MissionsPanel missions={missions} me={me} areas={spots.areas} people={spots.people} self={spots.self} compact={coarse} />
+    <MissionsPanel missions={missions} me={me} areas={spots.areas} people={spots.people} self={spots.self} compact={coarse} portrait={narrow} collapsed={fadeSecondary} />
   );
   const chatPanel = (
     <ChatPanel
@@ -131,6 +183,8 @@ export function OfficeHud({
       actions={actions}
       selfId={selfId}
       visibility={chatVisibility}
+      portrait={narrow}
+      unread={unread}
       onMissionCommand={async (title) => (await missions.create({ title })) !== null}
     />
   );
@@ -142,13 +196,32 @@ export function OfficeHud({
       </span>
     </RoundButton>
   );
+  const chatButton = (
+    <RoundButton tone="glass" aria-label={unread ? `Chat, ${unread} new` : 'Chat'} data-chat-toggle onClick={toggleChat}>
+      <MessageSquare aria-hidden className="size-5" />
+      {unread > 0 && (
+        <span aria-hidden className="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-red-500 text-[11px] font-bold text-white">
+          {unread > 9 ? '9+' : unread}
+        </span>
+      )}
+    </RoundButton>
+  );
+  const menuButton = (
+    <RoundButton tone="glass" aria-label="Office menu" aria-expanded={menuOpen} onClick={openMenu}>
+      <Menu aria-hidden className="size-5" />
+    </RoundButton>
+  );
   const call = voice && <CallCard store={store} selfId={selfId} voice={voice} pinger={pinger} compact={coarse} />;
   const menu = menuOpen && (
     <MenuPopover
+      portrait={narrow}
       onClose={() => setMenuOpen(false)}
       onPeople={() => {
         setPeople((p) => !p);
         setMenuOpen(false);
+        if (narrow) {
+          hideChat();
+        }
       }}
       onSettings={() => {
         setMenuOpen(false);
@@ -179,30 +252,35 @@ export function OfficeHud({
           )
         }
         topCentre={
-          <div className={`flex flex-col items-center gap-2 ${narrow && inCall ? 'mt-[7.25rem]' : 'pointer-coarse:mt-16'}`}>
-            <ArrivalBubble store={store} selfId={selfId} toast />
-            {toasts}
-            <BuildIndicator mode={placeMode} />
-          </div>
+          narrow ? (
+            <div className="mt-(--hud-portrait-bar-row) flex flex-col items-center gap-2">
+              <div className="min-h-12">{!building && missionsPanel}</div>
+              {inCall && <div aria-hidden className="h-[calc(var(--hud-portrait-call-row)-0.5rem)]" />}
+              <ArrivalBubble store={store} selfId={selfId} toast />
+              {toasts}
+              <BuildIndicator mode={placeMode} />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 pointer-coarse:mt-16">
+              <ArrivalBubble store={store} selfId={selfId} toast />
+              {toasts}
+              <BuildIndicator mode={placeMode} />
+            </div>
+          )
         }
         topRight={
           <>
             <div className="flex items-start gap-2">
-              {coarse && (
-                <>
-                  <RoundButton tone="glass" aria-label={unread ? `Chat, ${unread} new` : 'Chat'} onClick={toggleChat}>
-                    <MessageSquare aria-hidden className="size-5" />
-                  </RoundButton>
-                  <RoundButton tone="glass" aria-label="Office menu" aria-expanded={menuOpen} onClick={openMenu}>
-                    <Menu aria-hidden className="size-5" />
-                  </RoundButton>
-                  {!narrow && call}
-                </>
-              )}
-              <PingInboxHud inbox={pingInbox} store={store} />
-              {mapButton}
+              {coarse && !narrow && chatButton}
+              {coarse && !narrow && menuButton}
+              {!narrow && coarse && call}
+              <div className={`flex items-start gap-2 transition-opacity ${fadeSecondary ? 'opacity-40' : ''}`}>
+                {narrow && menuButton}
+                <PingInboxHud inbox={pingInbox} store={store} />
+                {mapButton}
+              </div>
             </div>
-            {(!coarse || narrow) && call}
+            {narrow ? inCall && <div className="mt-(--hud-portrait-chip-row)">{call}</div> : !coarse && call}
           </>
         }
         rightEdge={
@@ -210,12 +288,24 @@ export function OfficeHud({
             <>
               {menu}
               {chatPanel}
-              {people && <PresenceList store={store} selfId={selfId} officeName={officeName} pinger={pinger} />}
+              {people && <PresenceList store={store} selfId={selfId} officeName={officeName} pinger={pinger} onClose={narrow ? () => setPeople(false) : undefined} />}
             </>
           )
         }
-        bottomLeft={missionsPanel}
-        bottomRight={coarse ? <NearYouButtons store={store} onWave={onWave} /> : <NearYouCard store={store} onWave={onWave} />}
+        bottomLeft={narrow ? undefined : missionsPanel}
+        bottomRight={
+          coarse && (menuOpen || people) ? undefined : narrow ? (
+            <>
+              {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} onOpen={chatVisibility.compose} />}
+              {chatButton}
+              {!building && <NearYouButtons store={store} onWave={onWave} />}
+            </>
+          ) : coarse ? (
+            <NearYouButtons store={store} onWave={onWave} />
+          ) : (
+            <NearYouCard store={store} onWave={onWave} />
+          )
+        }
       />
       {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} onClose={() => setMapOpen(false)} />}
     </>

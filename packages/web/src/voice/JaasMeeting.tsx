@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { JaaSMeeting } from '@jitsi/react-sdk';
-import { useCoarsePointer } from '@officexr/world/top-down';
+import { useCoarsePointer, usePortrait } from '@officexr/world/top-down';
 import { Maximize2, Mic, MicOff, Minimize2, MonitorOff, MonitorUp } from 'lucide-react';
 import { IconButton } from '../hud/IconButton';
 import { useEscapeLayer } from '../hud/useEscapeLayer';
@@ -12,8 +12,9 @@ export const useShareState = (voice: JaasVoiceAdapter) => useSyncExternalStore(v
 // Kept in-viewport but invisible: fully off-screen, Chrome throttles the iframe's timers and the XMPP connection never completes.
 const HIDDEN: CSSProperties = { bottom: 0, right: 0, opacity: 0, zIndex: -1 };
 // Under the office name plate: the right-hand HUD column would cover it.
-const SHOWING_SHARE: CSSProperties = { top: 80, left: 12, zIndex: 10 };
+const SHOWING_SHARE: CSSProperties = { top: 'var(--hud-share-top, 80px)', left: 'var(--hud-inset-left, 12px)', zIndex: 10 };
 const COARSE_SHARE_SIZE = { width: 288, height: 162 };
+const PORTRAIT_SHARE_SIZE = { width: 192, height: 108 };
 const FOCUSED_SHARE: CSSProperties = { inset: 16, zIndex: 40, pointerEvents: 'auto' };
 
 // The SDK's iframe is height: 100% of a div it creates without a height, so it would collapse to 150px.
@@ -31,6 +32,7 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
   const { viewing } = useShareState(voice);
   const [expanded, setExpanded] = useState(false);
   const coarse = useCoarsePointer();
+  const portrait = usePortrait() && coarse;
   const focused = expanded && viewing !== null;
   useEffect(() => {
     if (viewing === null) {
@@ -45,7 +47,7 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
   const wrapperStyle: CSSProperties = focused
     ? FOCUSED_SHARE
     : {
-        ...(coarse ? COARSE_SHARE_SIZE : { width: 480, height: 270 }),
+        ...(portrait ? PORTRAIT_SHARE_SIZE : coarse ? COARSE_SHARE_SIZE : { width: 480, height: 270 }),
         pointerEvents: 'none',
         ...(viewing ? SHOWING_SHARE : HIDDEN),
       };
@@ -89,7 +91,7 @@ export function JaasMeeting({ voice }: { voice: JaasVoiceAdapter }) {
           key="toggle"
           data-studio-panel
           className="fixed"
-          style={focused ? { top: 24, right: 24, zIndex: 41 } : { top: 84, left: 16, zIndex: 11 }}
+          style={focused ? { top: 24, right: 24, zIndex: 41 } : { top: 'calc(var(--hud-share-top, 80px) + 4px)', left: 'calc(var(--hud-inset-left, 12px) + 4px)', zIndex: 11 }}
         >
           <IconButton
             icon={focused ? Minimize2 : Maximize2}

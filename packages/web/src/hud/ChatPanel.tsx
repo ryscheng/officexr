@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Actions, OfficeState, Store } from '@officexr/sdk';
 import { MessageSquare, SendHorizontal } from 'lucide-react';
-import { focusWorld, useStoreSelector } from '@officexr/world/top-down';
+import { focusWorld, useCoarsePointer, useStoreSelector } from '@officexr/world/top-down';
 import { IconButton } from './IconButton';
 import { isComposing } from './isComposing';
 import { Keycap } from './ui/Keycap';
-import { CHIP, Panel, PanelTitle, TITLE_TEXT } from './ui/Panel';
+import { FoldablePanel } from './ui/FoldablePanel';
+import { PortraitSheet } from './ui/PortraitSheet';
+import { CHIP, TITLE_TEXT } from './ui/Panel';
 import { useEscapeLayer } from './useEscapeLayer';
-import { useChatVisibility } from './useChatVisibility';
+import { useChatVisibility, type ChatVisibility } from './useChatVisibility';
 
 const MAX_MESSAGES = 50;
 const MAX_LENGTH = 500;
@@ -28,17 +30,20 @@ type ChatPanelProps = {
   actions: Actions;
   selfId: string;
   /** Shared with a parent that has its own chat button; the panel keeps its own when absent. */
-  visibility?: ReturnType<typeof useChatVisibility>;
+  visibility?: ChatVisibility;
+  portrait?: boolean;
+  unread?: number;
   onMissionCommand?: (title: string) => Promise<boolean>;
 };
 
 const MISSION_COMMAND = /^\/mission\s+(\S.*)$/i;
 
-export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand }: ChatPanelProps) {
+export function ChatPanel({ store, actions, selfId, visibility, portrait = false, unread = 0, onMissionCommand }: ChatPanelProps) {
   const chat = useStoreSelector(store, selectChat);
   const names = useStoreSelector(store, selectNames, sameNames);
+  const coarse = useCoarsePointer();
   const own = useChatVisibility(chat.length);
-  const { mode, compose, peek, hide } = visibility ?? own;
+  const { mode, compose, peek, hide, collapse } = visibility ?? own;
   const [draft, setDraft] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,7 +76,8 @@ export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand
       return;
     }
     const onMouseDown = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
+      const target = e.target as Element;
+      if (!containerRef.current?.contains(target) && !target.closest('[data-chat-toggle]')) {
         peek();
       }
     };
@@ -100,22 +106,29 @@ export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand
     () => containerRef.current,
   );
 
-  if (mode === 'hidden') {
+  if (portrait ? mode !== 'compose' : mode === 'hidden') {
+    if (portrait || coarse) {
+      return null;
+    }
     const last = chat.at(-1);
     return (
       <button
         type="button"
         data-studio-panel
+        aria-label={unread ? `Chat, ${unread} new` : 'Chat'}
         onClick={compose}
-        className={`pointer-events-auto flex w-86 max-w-[calc(100vw-24px)] items-center gap-2 px-3 py-2 text-left text-sm pointer-coarse:hidden ${CHIP} rounded-hud-panel ${TITLE_TEXT}`}
+        className={`pointer-events-auto flex w-86 max-w-[calc(100vw-24px)] items-center gap-2 px-3 py-2 text-left text-sm ${CHIP} rounded-hud-panel ${TITLE_TEXT}`}
       >
         <MessageSquare aria-hidden className="size-4 shrink-0" />
         <span className="min-w-0 flex-1 truncate font-normal">
-          {last ? `${names[last.authorId] || last.authorId}: ${last.text}` : 'Chat'}
+          {unread && last ? `${names[last.authorId] || last.authorId}: ${last.text}` : 'Chat'}
         </span>
-        <span className="pointer-coarse:hidden">
-          <Keycap>Enter</Keycap>
-        </span>
+        {unread > 0 && (
+          <span aria-hidden className="rounded-full bg-hud-accent px-1.5 text-[11px] font-bold text-hud-on-accent">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+        <Keycap>Enter</Keycap>
       </button>
     );
   }
@@ -126,8 +139,10 @@ export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand
     }
     if (e.key === 'Enter') {
       if (!draft.trim()) {
-        // Enter is the shortcut's toggle: on an empty draft it closes the panel.
-        handBack(hide);
+        // Enter is the shortcut's toggle: on an empty draft it closes the panel, but a phone keeps its keyboard.
+        if (!portrait) {
+          handBack(hide);
+        }
         return;
       }
       send();
@@ -151,7 +166,9 @@ export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand
       t: Date.now(),
     });
     setDraft('');
-    handBack(peek);
+    if (!portrait) {
+      handBack(peek);
+    }
   };
 
   const sendMissionCommand = async (raw: string) => {
@@ -165,17 +182,20 @@ export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand
     });
     if (added) {
       setDraft('');
-      handBack(peek);
+      if (!portrait) {
+        handBack(peek);
+      }
     }
   };
 
-  return (
-    <Panel
-      ref={containerRef}
-      className="pointer-events-auto flex w-86 max-w-[calc(100vw-24px)] flex-col gap-1.5 p-2 text-sm"
-    >
-      <PanelTitle className="px-1 text-xs">Chat</PanelTitle>
-      <div ref={listRef} className="max-h-48 overflow-y-auto overscroll-contain px-1">
+  const log =
+    chat.length === 0 ? (
+      <p className="px-1 text-xs text-hud-text-2">No messages yet.</p>
+    ) : (
+      <div
+        ref={listRef}
+        className={`overflow-y-auto overscroll-contain px-1 ${portrait ? 'min-h-0 flex-1 text-base' : 'max-h-48'}`}
+      >
         {chat.slice(-MAX_MESSAGES).map((m) => (
           <div key={m.id} className="mb-1 break-words">
             <span className="mr-1.5 text-xs text-hud-text-2">
@@ -186,19 +206,44 @@ export function ChatPanel({ store, actions, selfId, visibility, onMissionCommand
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-1.5">
-        <input
-          ref={inputRef}
-          value={draft}
-          maxLength={MAX_LENGTH}
-          onChange={(e) => setDraft(e.target.value)}
-          onFocus={compose}
-          onKeyDown={onKeyDown}
-          placeholder="Press Enter to chat"
-          className="min-w-0 flex-1 rounded-hud-control bg-hud-inset px-3 py-1.5 text-hud-text outline-none placeholder:text-hud-text-2"
-        />
-        <IconButton icon={SendHorizontal} label="Send" tone="accent" disabled={!draft.trim()} onClick={send} />
-      </div>
-    </Panel>
+    );
+  const composer = (
+    <div className="flex shrink-0 items-center gap-2">
+      <input
+        ref={inputRef}
+        value={draft}
+        maxLength={MAX_LENGTH}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={compose}
+        onKeyDown={onKeyDown}
+        placeholder={coarse ? 'Message' : 'Press Enter to chat'}
+        enterKeyHint="send"
+        className="min-w-0 flex-1 rounded-hud-control bg-hud-inset px-3 py-1.5 text-hud-text outline-none placeholder:text-hud-text-2 pointer-coarse:min-h-12 pointer-coarse:text-base"
+      />
+      <IconButton icon={SendHorizontal} label="Send" tone="accent" disabled={!draft.trim()} onClick={send} />
+    </div>
+  );
+
+  if (portrait) {
+    return (
+      <PortraitSheet ref={containerRef} title="Chat" label="Chat" closeLabel="Collapse chat" fill onClose={() => handBack(collapse)}>
+        {log}
+        {composer}
+      </PortraitSheet>
+    );
+  }
+
+  return (
+    <FoldablePanel
+      ref={containerRef}
+      fold={{ folded: false, setFolded: () => undefined, toggle: () => handBack(collapse) }}
+      title="Chat"
+      label="chat"
+      titleClassName="px-1 text-xs"
+      className="pointer-events-auto flex w-86 max-w-[calc(100vw-24px)] flex-col gap-1.5 p-2 text-sm"
+    >
+      {log}
+      {composer}
+    </FoldablePanel>
   );
 }

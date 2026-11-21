@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createActions, createBus, createStore } from '@officexr/sdk';
 import { PlayControlsProvider } from '@officexr/world/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PingInbox } from '../ping/pingInbox';
 import { SettingsHarness, openSettings } from '../room/settingsHarness';
 import { useSettings } from '../room/Settings';
@@ -11,8 +11,14 @@ import { useEscapeFallback } from './useEscapeLayer';
 import { fakePlayControls } from './fakePlayControls';
 import { PingInboxHud } from './PingInboxHud';
 
+beforeEach(() => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+});
+
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  localStorage.clear();
   Object.defineProperty(document, 'pointerLockElement', { value: null, configurable: true });
 });
 

@@ -1,0 +1,61 @@
+{
+ "viewport": {
+  "width": 390,
+  "height": 664
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "Joystick",
+   "interactive": false,
+   "x": 43,
+   "y": 463,
+   "w": 110,
+   "h": 110,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Expand missions",
+   "interactive": true,
+   "x": 160.046875,
+   "y": 111,
+   "w": 69.890625,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Office menu",
+   "interactive": true,
+   "x": 270,
+   "y": 55,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Open map",
+   "interactive": true,
+   "x": 326,
+   "y": 55,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Chat",
+   "interactive": true,
+   "x": 326,
+   "y": 566,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  }
+ ]
+}

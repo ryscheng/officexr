@@ -2,7 +2,18 @@ import { devices, type Browser, type Page } from '@playwright/test';
 
 export const HUD_BASE_URL = process.env.HUD_BASE_URL ?? 'http://localhost:5176';
 
-export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full', 'missions', 'new-mission'] as const;
+export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full', 'missions', 'new-mission', 'chat'] as const;
+
+export const HUD_STATES: Record<string, { scenario: string; steps: (string | RegExp)[] }> = {
+  rest: { scenario: 'crowd', steps: [] },
+  moving: { scenario: 'crowd', steps: ['move'] },
+  'missions-sheet': { scenario: 'missions', steps: [/^Expand missions$/] },
+  'chat-rest': { scenario: 'chat', steps: [] },
+  'chat-peek': { scenario: 'chat', steps: ['say:bao@example.test:Lunch at 12? I booked the big room by the window.'] },
+  'chat-sheet': { scenario: 'chat', steps: [/^Chat/] },
+  'menu-open': { scenario: 'crowd', steps: ['Office menu'] },
+  'chat-keyboard': { scenario: 'chat', steps: [/^Chat/, 'keyboard'] },
+};
 export type HudScenario = (typeof HUD_SCENARIOS)[number];
 
 export interface HudDevice {
@@ -40,7 +51,7 @@ export async function openHudPreview(browser: Browser, device: HudDevice, scenar
   }, theme);
   const page = await context.newPage();
   page.setDefaultTimeout(60_000);
-  await page.goto(`/hud-preview?scenario=${scenario}`);
+  await page.goto(`/hud-preview?scenario=${HUD_STATES[scenario]?.scenario ?? scenario}`);
   await page.getByRole('button', { name: 'Office menu' }).first().waitFor({ timeout: 60_000 });
   await page.waitForTimeout(2500);
   return { page, close: () => context.close() };
@@ -54,12 +65,16 @@ export interface HudBox {
   y: number;
   w: number;
   h: number;
+  /** Scrolled or clipped by an ancestor, so the size is the visible part and not the control's own. */
+  clipped: boolean;
+  /** The sheet itself, which is anchored to the bottom edge by design; its controls are separate boxes. */
+  sheet: boolean;
 }
 
 /** Every visible control or panel of the HUD: buttons, inputs and status regions that have a size on screen. */
 export async function collectHudBoxes(page: Page): Promise<HudBox[]> {
   return page.evaluate(() => {
-    const seen: { el: Element; name: string; interactive: boolean; x: number; y: number; w: number; h: number }[] = [];
+    const seen: { el: Element; name: string; interactive: boolean; x: number; y: number; w: number; h: number; clipped: boolean; sheet: boolean }[] = [];
     const selector = 'button, input, textarea, [role="status"], [role="dialog"], [data-hud-item]';
     const modal = document.querySelector('[data-hud-modal]');
     for (const el of document.querySelectorAll(selector)) {
@@ -68,6 +83,7 @@ export async function collectHudBoxes(page: Page): Promise<HudBox[]> {
       const style = getComputedStyle(el);
       if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) continue;
       if (el.closest('[inert],[aria-hidden="true"]')) continue;
+      const own = el.getBoundingClientRect();
       let left = el.getBoundingClientRect().left;
       let top = el.getBoundingClientRect().top;
       let right = el.getBoundingClientRect().right;
@@ -85,7 +101,7 @@ export async function collectHudBoxes(page: Page): Promise<HudBox[]> {
       const r = { x: left, y: top, width: right - left, height: bottom - top };
       if (r.width < 2 || r.height < 2) continue;
       const name = el.getAttribute('aria-label') || el.getAttribute('data-hud-item') || (el.textContent ?? '').trim().slice(0, 30) || el.tagName.toLowerCase();
-      seen.push({ el, name, interactive: el.matches('button, input, textarea, a[href]'), x: r.x, y: r.y, w: r.width, h: r.height });
+      seen.push({ el, name, interactive: el.matches('button, input, textarea, a[href]'), x: r.x, y: r.y, w: r.width, h: r.height, clipped: r.width < own.width - 1 || r.height < own.height - 1, sheet: el.matches('[data-hud-modal]') });
     }
     return seen.map(({ el: _el, ...box }) => box);
   });
@@ -117,7 +133,7 @@ export function findOverlaps(boxes: HudBox[], tolerancePx = 2): [HudBox, HudBox]
 /** Boxes that leave the viewport shrunk by the device's safe area. */
 export function findOutside(boxes: HudBox[], viewport: { width: number; height: number }, safe: HudDevice['safe']): HudBox[] {
   return boxes.filter(
-    (b) => b.x < safe.left - 0.5 || b.y < safe.top - 0.5 || b.x + b.w > viewport.width - safe.right + 0.5 || b.y + b.h > viewport.height - safe.bottom + 0.5,
+    (b) => !b.sheet && (b.x < safe.left - 0.5 || b.y < safe.top - 0.5 || b.x + b.w > viewport.width - safe.right + 0.5 || b.y + b.h > viewport.height - safe.bottom + 0.5),
   );
 }
 
@@ -130,6 +146,7 @@ export async function applySafeArea(page: Page, safe: HudDevice['safe']): Promis
 }
 
 const SCENARIO_STEPS: Record<string, (string | RegExp)[]> = {
+  ...Object.fromEntries(Object.entries(HUD_STATES).map(([id, state]) => [id, state.steps])),
   build: ['key:b'],
   'new-mission': [/^Expand missions$/, 'New mission'],
   focus: ['Office menu', 'People here'],
@@ -139,6 +156,27 @@ const SCENARIO_STEPS: Record<string, (string | RegExp)[]> = {
 /** Opens the panel a scenario is about, by clicking the named buttons in order (`key:x` presses a key); a button this layout lacks is skipped. */
 export async function runScenarioSteps(page: Page, scenario: string): Promise<void> {
   for (const name of SCENARIO_STEPS[scenario] ?? []) {
+    if (name === 'move') {
+      await dragStick(page);
+      continue;
+    }
+    if (name === 'keyboard') {
+      const { width, height } = page.viewportSize()!;
+      await page.evaluate(() => {
+        const upright = Object.assign(new EventTarget(), { type: 'portrait-primary' });
+        Object.defineProperty(window.screen, 'orientation', { value: upright, configurable: true });
+        upright.dispatchEvent(new Event('change'));
+      });
+      await page.setViewportSize({ width, height: height - Math.round(height * 0.42) });
+      await page.waitForTimeout(800);
+      continue;
+    }
+    if (typeof name === 'string' && name.startsWith('say:')) {
+      const [, from, ...text] = name.split(':');
+      await page.evaluate(([f, t]) => (window as unknown as { __hudPreview: { say: (a: string, b: string) => void } }).__hudPreview.say(f!, t!), [from, text.join(':')]);
+      await page.waitForTimeout(700);
+      continue;
+    }
     if (typeof name === 'string' && name.startsWith('key:')) {
       await page.keyboard.press(name.slice(4));
       await page.waitForTimeout(600);
@@ -150,4 +188,55 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
       await page.waitForTimeout(600);
     }
   }
+}
+
+export async function dragStick(page: Page, holdMs = 2300): Promise<() => Promise<void>> {
+  const { width, height } = page.viewportSize()!;
+  const cdp = await page.context().newCDPSession(page);
+  const y = Math.round(height * 0.78);
+  const x = Math.round(width * 0.25);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + 45, y }] });
+  await page.waitForTimeout(holdMs);
+  return async () => void (await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }));
+}
+
+export function findTightGaps(boxes: HudBox[], minGapPx = 8, tolerancePx = 0.5): [HudBox, HudBox][] {
+  const targets = boxes.filter((b) => b.interactive && !b.clipped);
+  const out: [HudBox, HudBox][] = [];
+  for (let i = 0; i < targets.length; i++) {
+    for (let j = i + 1; j < targets.length; j++) {
+      const a = targets[i]!;
+      const b = targets[j]!;
+      if (contains(a, b) || contains(b, a)) continue;
+      const dx = Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0);
+      const dy = Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0);
+      if (Math.hypot(dx, dy) < minGapPx - tolerancePx) out.push([a, b]);
+    }
+  }
+  return out;
+}
+
+export function findInGestureStrip(boxes: HudBox[], viewport: { height: number }, stripPx = 16): HudBox[] {
+  return boxes.filter((b) => b.interactive && b.y + b.h > viewport.height - stripPx + 0.5);
+}
+
+export function hudCoverage(boxes: HudBox[], viewport: { width: number; height: number }): number {
+  const cells = new Uint8Array(viewport.width * viewport.height);
+  for (const b of boxes) {
+    const x0 = Math.max(0, Math.floor(b.x));
+    const x1 = Math.min(viewport.width, Math.ceil(b.x + b.w));
+    const y0 = Math.max(0, Math.floor(b.y));
+    const y1 = Math.min(viewport.height, Math.ceil(b.y + b.h));
+    for (let y = y0; y < y1; y++) cells.fill(1, y * viewport.width + x0, y * viewport.width + x1);
+  }
+  let covered = 0;
+  for (const c of cells) covered += c;
+  return covered / cells.length;
+}
+
+export function findInMiddleThird(boxes: HudBox[], viewport: { height: number }): HudBox[] {
+  const top = viewport.height / 3;
+  const bottom = (viewport.height * 2) / 3;
+  return boxes.filter((b) => b.y < bottom - 0.5 && b.y + b.h > top + 0.5);
 }

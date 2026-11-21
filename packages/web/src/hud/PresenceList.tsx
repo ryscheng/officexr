@@ -8,7 +8,9 @@ import { IconButton } from './IconButton';
 import { PersonList, type PersonRow } from './PersonList';
 import { labelsInJoinOrder, toPresencePlayer, type DepartedEntry, type PresencePlayer } from './personRows';
 import { sameList } from './sameFields';
+import { PortraitSheet } from './ui/PortraitSheet';
 import { CHIP, Panel, PanelTitle } from './ui/Panel';
+import { useEscapeLayer } from './useEscapeLayer';
 
 type PresenceRow = Exclude<PersonRow, { type: 'guest' }> & { name: string };
 type Presence = { players: PresencePlayer[]; departed: DepartedEntry[] };
@@ -91,10 +93,12 @@ export function PresenceList({
   clock,
   pinger,
   storage,
+  onClose,
 }: {
   store: Store;
   selfId: PlayerId;
   officeName: string;
+  onClose?: () => void;
   clock?: () => number;
   pinger?: PingSender;
   /** Where the folded state is remembered; defaults to `localStorage`. */
@@ -102,6 +106,16 @@ export function PresenceList({
 }) {
   const { players, departed } = useStoreSelector(store, selectPresence, samePresence);
   const { folded: collapsed, setFolded: setCollapsed } = useFold('roster', useCoarsePointer(), storage);
+  useEscapeLayer(onClose !== undefined, () => onClose?.());
+  if (onClose) {
+    return (
+      <PortraitSheet title={`In room · ${players.length}`} label="People here" closeLabel="Close people list" onClose={onClose}>
+        <div className="min-h-0 overflow-y-auto overscroll-contain">
+          <PersonList label={`People in ${officeName}`} rows={presenceRows(players, departed, selfId)} pinger={pinger} clock={clock} announceNoRoute />
+        </div>
+      </PortraitSheet>
+    );
+  }
   if (collapsed) {
     return (
       <div className="pointer-events-auto flex items-center gap-2">
@@ -111,7 +125,7 @@ export function PresenceList({
           aria-expanded={false}
           onClick={() => setCollapsed(false)}
           onMouseDown={(e) => e.preventDefault()}
-          className={`flex flex-col items-center gap-1.5 px-1.5 py-2.5 font-semibold pointer-coarse:min-h-11 pointer-coarse:min-w-11 ${CHIP}`}
+          className={`flex flex-col items-center gap-1.5 px-1.5 py-2.5 font-semibold pointer-coarse:min-h-12 pointer-coarse:min-w-12 ${CHIP}`}
         >
           <Users aria-hidden className="h-4 w-4" />
           <span className="text-sm">{players.length}</span>

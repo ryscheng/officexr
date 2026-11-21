@@ -32,7 +32,7 @@ export function SettingsActionButton({
     <button
       type={type}
       onClick={onClick}
-      className={`w-full rounded-lg px-3 py-1.5 text-left font-hud-body text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-hud-accent pointer-coarse:min-h-11 ${
+      className={`w-full rounded-lg px-3 py-1.5 text-left font-hud-body text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-hud-accent pointer-coarse:min-h-12 ${
         primary
           ? 'bg-hud-accent font-semibold text-hud-on-accent shadow-[0_1px_3px_var(--color-hud-accent-shadow)] hover:bg-hud-accent-edge'
           : 'font-medium text-hud-text hover:bg-hud-hover'

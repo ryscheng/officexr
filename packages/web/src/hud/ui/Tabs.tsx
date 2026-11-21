@@ -11,7 +11,7 @@ export const Tabs = RadixTabs.Root;
 type Variant = 'segment' | 'sidebar';
 
 const LIST: Record<Variant, string> = {
-  segment: `flex gap-1 ${SEGMENT_GROUP}`,
+  segment: `flex gap-1 pointer-coarse:gap-2 ${SEGMENT_GROUP}`,
   sidebar: 'flex flex-col gap-0.5',
 };
 
@@ -19,7 +19,7 @@ const ITEM: Record<Variant, string> = {
   segment: SEGMENT_ITEM,
   sidebar:
     'w-full rounded-lg px-3 py-1.5 text-left font-hud-body text-[13px] font-medium text-hud-text transition-colors hover:bg-hud-hover ' +
-    'data-[state=active]:bg-hud-accent data-[state=active]:text-hud-on-accent focus-visible:outline-2 focus-visible:outline-hud-accent pointer-coarse:min-h-11',
+    'data-[state=active]:bg-hud-accent data-[state=active]:text-hud-on-accent focus-visible:outline-2 focus-visible:outline-hud-accent pointer-coarse:min-h-12',
 };
 
 export function TabList({ className = '', variant = 'segment', ...props }: ComponentProps<typeof RadixTabs.List> & { variant?: Variant }) {

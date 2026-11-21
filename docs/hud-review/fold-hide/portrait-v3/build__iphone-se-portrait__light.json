@@ -1,0 +1,81 @@
+{
+ "viewport": {
+  "width": 320,
+  "height": 568
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [],
+ "boxes": [
+  {
+   "name": "Joystick",
+   "interactive": false,
+   "x": 16,
+   "y": 442,
+   "w": 110,
+   "h": 110,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Build mode",
+   "interactive": false,
+   "x": 78.515625,
+   "y": 224,
+   "w": 162.96875,
+   "h": 42,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Office menu",
+   "interactive": true,
+   "x": 200,
+   "y": 28,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Open map",
+   "interactive": true,
+   "x": 256,
+   "y": 28,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Mute microphone",
+   "interactive": true,
+   "x": 191,
+   "y": 147,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Leave call",
+   "interactive": true,
+   "x": 247,
+   "y": 147,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Chat",
+   "interactive": true,
+   "x": 256,
+   "y": 504,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  }
+ ]
+}

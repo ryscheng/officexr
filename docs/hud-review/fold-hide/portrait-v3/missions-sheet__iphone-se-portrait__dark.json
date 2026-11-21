@@ -1,0 +1,155 @@
+{
+ "viewport": {
+  "width": 320,
+  "height": 568
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [
+  "Book a table for the team lunch, done 48x33",
+  "Book a table for the team lunc 121x38",
+  "Go to Kitchen 65x33"
+ ],
+ "boxes": [
+  {
+   "name": "MissionsMineTeamAllMineJoin th",
+   "interactive": false,
+   "x": 16,
+   "y": 208,
+   "w": 288,
+   "h": 360,
+   "clipped": false,
+   "sheet": true
+  },
+  {
+   "name": "Shrink missions",
+   "interactive": true,
+   "x": 191,
+   "y": 217,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Collapse missions",
+   "interactive": true,
+   "x": 247,
+   "y": 217,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Mine",
+   "interactive": true,
+   "x": 35,
+   "y": 275,
+   "w": 54.609375,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Team",
+   "interactive": true,
+   "x": 97.609375,
+   "y": 275,
+   "w": 58.171875,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "All",
+   "interactive": true,
+   "x": 25,
+   "y": 333,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Mine",
+   "interactive": true,
+   "x": 81,
+   "y": 333,
+   "w": 52.65625,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Join the stand-up, done",
+   "interactive": true,
+   "x": 33,
+   "y": 395,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Join the stand-upMineMeeting r",
+   "interactive": true,
+   "x": 91,
+   "y": 395,
+   "w": 120.984375,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Meeting room 1",
+   "interactive": true,
+   "x": 221.984375,
+   "y": 395,
+   "w": 65.015625,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Book a table for the team lunch, done",
+   "interactive": true,
+   "x": 33,
+   "y": 462,
+   "w": 48,
+   "h": 33,
+   "clipped": true,
+   "sheet": false
+  },
+  {
+   "name": "Book a table for the team lunc",
+   "interactive": true,
+   "x": 91,
+   "y": 457,
+   "w": 120.984375,
+   "h": 38,
+   "clipped": true,
+   "sheet": false
+  },
+  {
+   "name": "Go to Kitchen",
+   "interactive": true,
+   "x": 221.984375,
+   "y": 462,
+   "w": 65.015625,
+   "h": 33,
+   "clipped": true,
+   "sheet": false
+  },
+  {
+   "name": "New missionT",
+   "interactive": true,
+   "x": 25,
+   "y": 503,
+   "w": 270,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  }
+ ]
+}

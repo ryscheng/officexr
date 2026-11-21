@@ -1,0 +1,154 @@
+{
+ "viewport": {
+  "width": 390,
+  "height": 664
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [
+  "Ping Gustavo Ferreira 48x5",
+  "Go to Gustavo Ferreira 48x5"
+ ],
+ "boxes": [
+  {
+   "name": "In room · 7AAvery Preview (you",
+   "interactive": false,
+   "x": 16,
+   "y": 235,
+   "w": 358,
+   "h": 429,
+   "clipped": false,
+   "sheet": true
+  },
+  {
+   "name": "Close people list",
+   "interactive": true,
+   "x": 317,
+   "y": 244,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Ping Bao Tran",
+   "interactive": true,
+   "x": 255,
+   "y": 336,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Bao Tran",
+   "interactive": true,
+   "x": 311,
+   "y": 336,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Ping Chiamaka Okonkwo-Adeyemi",
+   "interactive": true,
+   "x": 255,
+   "y": 392,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Chiamaka Okonkwo-Adeyemi",
+   "interactive": true,
+   "x": 311,
+   "y": 392,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Ping Dmitri Volkov",
+   "interactive": true,
+   "x": 255,
+   "y": 448,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Dmitri Volkov",
+   "interactive": true,
+   "x": 311,
+   "y": 448,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Ping Esperanza Villanueva Montoya",
+   "interactive": true,
+   "x": 255,
+   "y": 504,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Esperanza Villanueva Montoya",
+   "interactive": true,
+   "x": 311,
+   "y": 504,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Ping Fatima Al-Sayed",
+   "interactive": true,
+   "x": 255,
+   "y": 560,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Fatima Al-Sayed",
+   "interactive": true,
+   "x": 311,
+   "y": 560,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Ping Gustavo Ferreira",
+   "interactive": true,
+   "x": 255,
+   "y": 616,
+   "w": 48,
+   "h": 5,
+   "clipped": true,
+   "sheet": false
+  },
+  {
+   "name": "Go to Gustavo Ferreira",
+   "interactive": true,
+   "x": 311,
+   "y": 616,
+   "w": 48,
+   "h": 5,
+   "clipped": true,
+   "sheet": false
+  }
+ ]
+}

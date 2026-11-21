@@ -1,0 +1,174 @@
+{
+ "viewport": {
+  "width": 390,
+  "height": 664
+ },
+ "overlaps": [],
+ "outside": [],
+ "smallTargets": [
+  "Fix the login redirect, done 48x9",
+  "Fix the login redirectMine1 of 256x9"
+ ],
+ "boxes": [
+  {
+   "name": "MissionsMineTeamAllMineJoin th",
+   "interactive": false,
+   "x": 16,
+   "y": 235,
+   "w": 358,
+   "h": 429,
+   "clipped": false,
+   "sheet": true
+  },
+  {
+   "name": "Shrink missions",
+   "interactive": true,
+   "x": 261,
+   "y": 244,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Collapse missions",
+   "interactive": true,
+   "x": 317,
+   "y": 244,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Mine",
+   "interactive": true,
+   "x": 35,
+   "y": 302,
+   "w": 54.609375,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Team",
+   "interactive": true,
+   "x": 97.609375,
+   "y": 302,
+   "w": 58.171875,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "All",
+   "interactive": true,
+   "x": 25,
+   "y": 360,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Mine",
+   "interactive": true,
+   "x": 81,
+   "y": 360,
+   "w": 52.65625,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Join the stand-up, done",
+   "interactive": true,
+   "x": 33,
+   "y": 422,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Join the stand-upMineMeeting r",
+   "interactive": true,
+   "x": 91,
+   "y": 422,
+   "w": 190.984375,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Meeting room 1",
+   "interactive": true,
+   "x": 291.984375,
+   "y": 422,
+   "w": 65.015625,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Book a table for the team lunch, done",
+   "interactive": true,
+   "x": 33,
+   "y": 489,
+   "w": 48,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Book a table for the team lunc",
+   "interactive": true,
+   "x": 91,
+   "y": 484,
+   "w": 190.984375,
+   "h": 58,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Go to Kitchen",
+   "interactive": true,
+   "x": 291.984375,
+   "y": 489,
+   "w": 65.015625,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Fix the login redirect, done",
+   "interactive": true,
+   "x": 33,
+   "y": 556,
+   "w": 48,
+   "h": 9,
+   "clipped": true,
+   "sheet": false
+  },
+  {
+   "name": "Fix the login redirectMine1 of",
+   "interactive": true,
+   "x": 91,
+   "y": 556,
+   "w": 256,
+   "h": 9,
+   "clipped": true,
+   "sheet": false
+  },
+  {
+   "name": "New missionT",
+   "interactive": true,
+   "x": 25,
+   "y": 573,
+   "w": 340,
+   "h": 48,
+   "clipped": false,
+   "sheet": false
+  }
+ ]
+}
