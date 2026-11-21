@@ -23,7 +23,7 @@ import { MissionsPanel } from './missions/MissionsPanel';
 import { resolvePlace } from './missions/missionRows';
 import { useOfficeSpots } from './missions/useOfficeSpots';
 import type { MissionsApi } from './missions/useMissions';
-import { NearYouButtons, NearYouCard } from './NearYouCard';
+import { NearYouButtons, NearYouCard, sameNear, selectNearest } from './NearYouCard';
 import { PingInboxHud } from './PingInboxHud';
 import { ArrivalBubble } from './ArrivalBubble';
 import { PeopleSheet } from './PeopleSheet';
@@ -36,6 +36,11 @@ import { Keycap } from './ui/Keycap';
 import { AUTO_HIDE_MS, unreadCount, useChatVisibility } from './useChatVisibility';
 import { selectSelfMoving, useMovingFade } from './useMovingFade';
 import { useHotkey } from './useHotkey';
+import { HintLayer } from './hints/HintLayer';
+import { HintPlate } from './hints/HintPlate';
+import { hintCopy } from './hints/hintCopy';
+import { useFirstRunHint } from './hints/useFirstRunHint';
+import { useHasText } from './hints/useHasText';
 
 const selectChat = (s: OfficeState) => s.chat;
 const selectHeadcount = (s: OfficeState) => Object.keys(s.players).length;
@@ -118,6 +123,25 @@ export function OfficeHud({
     };
   }, [narrow, inCall]);
   const plan = useMapPlan(store);
+  const [toastsEl, setToastsEl] = useState<HTMLDivElement | null>(null);
+  const toastShowing = useHasText(toastsEl);
+  const near = useStoreSelector(store, selectNearest, sameNear);
+  const nearName = near ? near.name.trim().split(' ')[0] : null;
+  const canBuild = PLACEABLE_KINDS.length > 0;
+  const { hint, done: hintDone } = useFirstRunHint({
+    coarse,
+    canBuild,
+    moving,
+    headcount,
+    nearName,
+    menuOpen,
+    otherSheetOpen: people || mapOpen || !!invite || (narrow && chatVisibility.mode === 'compose'),
+    peopleOpen: people,
+    mapOpen,
+    building,
+    inCall,
+    toastShowing,
+  });
 
   const chatShowsLog = chatVisibility.mode === 'compose' || (chatVisibility.mode === 'peek' && !narrow);
   const latestId = chat.at(-1)?.id ?? null;
@@ -209,7 +233,7 @@ export function OfficeHud({
     />
   );
   const mapButton = (
-    <RoundButton tone="glass" aria-label="Open map" aria-haspopup="dialog" onClick={() => setMapOpen(true)} className="shadow-hud-panel">
+    <RoundButton tone="glass" aria-label="Open map" aria-haspopup="dialog" data-map-toggle onClick={() => setMapOpen(true)} className="shadow-hud-panel">
       <MapIcon aria-hidden className="size-5" />
       <span aria-hidden className="absolute -right-1 -bottom-1 pointer-coarse:hidden">
         <Keycap>M</Keycap>
@@ -251,7 +275,8 @@ export function OfficeHud({
       portrait={narrow}
       page={settings.page}
       pages={settingsPages}
-      canBuild={PLACEABLE_KINDS.length > 0}
+      canBuild={canBuild}
+      buildHint={hint === 'build' && <HintPlate name="build" text={hintCopy('build', coarse, null)} arrow={{ side: 'up', offset: 28 }} visible className="relative ml-4 self-start" />}
       onPage={settings.openPage}
       onBack={settings.back}
       onClose={closeMenu}
@@ -318,17 +343,21 @@ export function OfficeHud({
             <div className="mt-(--hud-portrait-bar-row) flex flex-col items-center gap-2">
               <div className="min-h-12">{!building && missionsPanel}</div>
               {inCall && <div aria-hidden className="h-[calc(var(--hud-portrait-call-row)-0.5rem)]" />}
-              <ArrivalBubble store={store} selfId={selfId} toast />
-              {toasts}
-              <div ref={setCueSlot} />
-              <BuildIndicator mode={placeMode} />
+              <div ref={setToastsEl} className="contents">
+                <ArrivalBubble store={store} selfId={selfId} toast />
+                {toasts}
+                <div ref={setCueSlot} />
+                <BuildIndicator mode={placeMode} />
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 pointer-coarse:mt-16">
-              <ArrivalBubble store={store} selfId={selfId} toast />
-              {toasts}
-              <div ref={setCueSlot} />
-              <BuildIndicator mode={placeMode} />
+              <div ref={setToastsEl} className="contents">
+                <ArrivalBubble store={store} selfId={selfId} toast />
+                {toasts}
+                <div ref={setCueSlot} />
+                <BuildIndicator mode={placeMode} />
+              </div>
             </div>
           )
         }
@@ -364,18 +393,19 @@ export function OfficeHud({
                 {peopleButton}
                 {chatButton}
               </div>
-              {!building && <NearYouButtons store={store} onWave={onWave} />}
+              {!building && <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />}
             </>
           ) : coarse ? (
             <>
-              <NearYouButtons store={store} onWave={onWave} />
+              <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />
               {!building && peopleButton}
             </>
           ) : (
-            <NearYouCard store={store} onWave={onWave} />
+            <NearYouCard store={store} onWave={onWave} onAct={() => hintDone('wave')} />
           )
         }
       />
+      <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} nearName={nearName} />
       {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} onClose={() => setMapOpen(false)} />}
     </>
   );
