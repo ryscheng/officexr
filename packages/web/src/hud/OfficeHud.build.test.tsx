@@ -17,7 +17,7 @@ beforeAll(() => {
 });
 afterEach(cleanup);
 
-const missions: MissionsApi = { status: 'ready', error: null, missions: [], current: null, setCurrent() {}, create: async () => null, update: async () => {}, remove: async () => {} };
+const missions: MissionsApi = { status: 'ready', error: null, missions: [], current: null, setCurrent() {}, create: async () => null, update: async () => true, remove: async () => {} };
 
 function setup() {
   const store = createStore({ selfId: 'me', officeId: 'o' });
