@@ -55,10 +55,13 @@ try {
   fs.mkdirSync(outDir, { recursive: true });
   const manifest: Record<string, string> = {};
   for (const name of CHARACTERS) {
-    const dataUrl = await page.evaluate(async (id) => {
-      const { bakeCharacterPortrait } = await import('/src/renderer/characterPortrait.ts');
-      return bakeCharacterPortrait(`/models/characters/${id}.glb`, 'image/webp');
-    }, name);
+    const dataUrl = await page.evaluate(
+      async ({ id, entry }) => {
+        const { bakeCharacterPortrait } = (await import(entry)) as typeof import('../src/renderer/characterPortrait.ts');
+        return bakeCharacterPortrait(`/models/characters/${id}.glb`, 'image/webp');
+      },
+      { id: name, entry: '/src/renderer/characterPortrait.ts' },
+    );
     const bytes = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
     fs.writeFileSync(path.join(outDir, `${name}.webp`), bytes);
     manifest[name] = sha256(path.join(modelsDir, `${name}.glb`));

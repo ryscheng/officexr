@@ -5,6 +5,7 @@
 export { Scene } from './Scene.tsx';
 export {
   Adventurer,
+  preloadCharacterModels,
   STATE_CLIPS,
   isAnimationStateAvailable,
   type AnimationState,

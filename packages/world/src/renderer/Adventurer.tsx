@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { useGLTF, useAnimations } from '@react-three/drei';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { modelUrl } from '../app/asset-url.ts';
-import { CHARACTERS } from './config.ts';
 import { characterUrl } from '../characters/registry.ts';
 import { createSitPoseClip, SIT_CLIP_NAME } from './sitPoseClip.ts';
 import { createPokeClip, POKE_CLIP_NAME } from './pokeClip.ts';
@@ -67,8 +66,12 @@ export const newAvatarFx = (): AvatarFx => ({ tint: null, strength: 0, glow: fal
 for (const url of ANIMATION_URLS) {
   useGLTF.preload(url);
 }
-for (const c of CHARACTERS) {
-  useGLTF.preload(characterUrl(c));
+
+/** Starts downloading character models that are about to be shown, so a model is not first requested when its avatar mounts. */
+export function preloadCharacterModels(urls: Iterable<string>): void {
+  for (const url of new Set(urls)) {
+    useGLTF.preload(url);
+  }
 }
 
 /**
