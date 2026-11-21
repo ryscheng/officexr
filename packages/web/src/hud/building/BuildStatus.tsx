@@ -36,15 +36,17 @@ export function BuildStatus({ mode, build, store }: { mode: PlaceModeStore; buil
           </Button>
         </Panel>
       )}
-      <span role="status" className="hud-glass rounded-full border border-hud-edge px-3 py-1.5 text-sm font-semibold text-hud-text shadow-hud-control">
-        {count} of {MAX_PLACED_PROPS} props
-      </span>
-      {ghost && !ghost.valid && !full && (
-        <span role="status" className="flex items-center gap-1.5 rounded-full bg-hud-rose px-3 py-1 text-sm font-semibold text-hud-rose-text">
-          <Ban aria-hidden className="size-4" />
-          Blocked
+      <div className="flex items-center gap-2">
+        <span role="status" className="hud-glass rounded-full border border-hud-edge px-3 py-1.5 text-sm font-semibold text-hud-text shadow-hud-control">
+          {count} of {MAX_PLACED_PROPS} props
         </span>
-      )}
+        {ghost && !ghost.valid && !full && (
+          <span role="status" className="flex items-center gap-1.5 rounded-full bg-hud-rose px-3 py-1.5 text-sm font-semibold text-hud-rose-text">
+            <Ban aria-hidden className="size-4" />
+            Blocked
+          </span>
+        )}
+      </div>
       {message && (
         <p role="status" className="max-w-72 text-center text-xs text-hud-rose-text">
           {message}

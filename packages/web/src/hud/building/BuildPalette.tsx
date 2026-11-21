@@ -13,7 +13,7 @@ const POSITION = {
 export function BuildPalette({ mode, layout }: { mode: PlaceModeStore; layout: keyof typeof POSITION }) {
   const { kindId } = useSyncExternalStore(mode.subscribe, mode.get);
   return (
-    <Panel role="radiogroup" aria-label="Props" className={`pointer-events-auto absolute flex h-24 items-center gap-1 overflow-hidden px-2.5 py-2 ${POSITION[layout]}`}>
+    <Panel role="radiogroup" aria-label="Props" className={`pointer-events-auto absolute flex h-24 items-center gap-2 overflow-hidden px-2.5 py-2 ${POSITION[layout]}`}>
       {PLACEABLE_KINDS.map((kind) => {
         const selected = kind.kindId === kindId;
         return (
