@@ -4,7 +4,6 @@ import type { MissionPlace, MissionStep, NewMission } from '@officexr/sdk';
 import { isComposing } from '../isComposing';
 import { Button } from '../ui/Button';
 import { FIELD } from '../ui/fieldStyles';
-import { Keycap } from '../ui/Keycap';
 import { Switch } from '../ui/Switch';
 import { useEscapeLayer } from '../useEscapeLayer';
 import { formatDue, initialOf, type PlaceAreas } from './missionRows';
@@ -282,39 +281,34 @@ export function NewMissionForm({
       ref={rootRef}
       role={sheet ? 'dialog' : 'group'}
       aria-label="New mission"
-      className={`flex min-h-0 flex-col gap-2.5 ${sheet ? '' : 'rounded-2xl border border-hud-hairline bg-hud-inset/60 p-3'}`}
+      className={`flex min-h-0 flex-col gap-2 ${sheet ? '' : 'rounded-2xl border border-hud-hairline bg-hud-inset/60 p-3'}`}
     >
-      <div className="flex min-h-0 flex-col gap-2.5 overflow-y-auto overscroll-contain">
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-semibold text-hud-text">
           New mission
           <span className="rounded-full bg-hud-accent/15 px-2 py-0.5 text-xs text-hud-accent">Mine</span>
         </div>
-        <div className="flex flex-col gap-1">
+        <Button size="sm" disabled={saving} onClick={cancel}>
+          Cancel
+        </Button>
+      </div>
+      <div className="flex shrink-0 items-end gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
           <label htmlFor={titleId} className="text-xs font-semibold text-hud-text-2">
             Title
           </label>
           {titleField}
         </div>
-        {fold}
+        <Button tone="primary" size="sm" className="shrink-0 pointer-coarse:h-12" disabled={!canSave} onClick={() => void save()}>
+          {saving ? 'Saving…' : 'Save mission'}
+        </Button>
       </div>
       {failed && (
         <p role="alert" className="shrink-0 text-xs font-semibold text-hud-rose-text">
           We could not save this mission. Try again.
         </p>
       )}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-hud-separator pt-2.5">
-        <span className="flex items-center gap-1 text-xs text-hud-text-2 pointer-coarse:hidden">
-          <Keycap>Esc</Keycap> cancel
-        </span>
-        <span className="ml-auto flex items-center gap-2">
-          <Button size="sm" disabled={saving} onClick={cancel}>
-            Cancel
-          </Button>
-          <Button tone="primary" size="sm" disabled={!canSave} onClick={() => void save()}>
-            {saving ? 'Saving…' : 'Save mission'}
-          </Button>
-        </span>
-      </div>
+      <div className="min-h-0 overflow-y-auto overscroll-contain">{fold}</div>
     </div>
   );
 }
