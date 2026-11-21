@@ -1,7 +1,4 @@
-/**
- * The full map is a toggle (Map button, M, Escape; no close button) and a tap on it walks the avatar there.
- * Runs against `/hud-preview`, which joins the real scene to an in-memory office.
- */
+/** Map toggle (button, M, Escape) and tap-to-go on `/hud-preview`, which joins the real scene to an in-memory office. */
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
