@@ -5,11 +5,10 @@ import { MAX_DESCRIPTION, MAX_NAME, canEditOffice, type Identity, type Office } 
 import { apiFetch, paths } from '../apiOrigin';
 import { Async } from '../Async';
 import { clearPreviewToken } from '@officexr/server/preview-token';
-import { SignInLink } from '../SignIn';
 import { DEFAULT_MAP } from '@officexr/world/scenes';
 import { errorMessage, useApi, type ApiState } from '../useApi';
 import { useMapNames } from '../useMapNames';
-import { Button, buttonClass } from '../hud/ui/Button';
+import { Button } from '../hud/ui/Button';
 import { FIELD } from '../hud/ui/fieldStyles';
 import { InlineAlert } from '../hud/ui/InlineAlert';
 import { Panel, PanelTitle } from '../hud/ui/Panel';
@@ -294,14 +293,6 @@ export function Home({ me }: { me: ApiState<Identity> }) {
         <header className="mb-10 flex items-center justify-between gap-4">
           <BrandLink />
           {me.type === 'ready' && <UserChip me={me.data} />}
-          {me.type === 'error' && (
-            <span className="flex min-w-0 items-center gap-3 text-sm">
-              <span role="alert" className="truncate text-hud-rose-text">
-                {me.message}
-              </span>
-              <SignInLink className={buttonClass('primary', 'sm')} />
-            </span>
-          )}
         </header>
       }
     >

@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { apiFetch } from '../apiOrigin';
 import { JoinPrompt } from './JoinPrompt';
@@ -9,31 +8,22 @@ import { useJoinCheck } from './useJoinCheck';
 afterEach(cleanup);
 
 function Probe({ fetchFn }: { fetchFn: typeof apiFetch }) {
-  const { state, join, cancel } = useJoinCheck('my office', 'a@example.com', fetchFn);
+  const { state, join } = useJoinCheck('my office', 'a@example.com', fetchFn);
   return (
     <>
       <p>state:{state}</p>
-      {state === 'prompt' && <JoinPrompt onJoin={join} onCancel={cancel} />}
+      {state === 'prompt' && <JoinPrompt onJoin={join} />}
     </>
   );
 }
 
-function setup(fetchFn: typeof apiFetch) {
-  render(
-    <MemoryRouter initialEntries={['/room/o1']}>
-      <Routes>
-        <Route path="/" element={<p>Home</p>} />
-        <Route path="/room/:id" element={<Probe fetchFn={fetchFn} />} />
-      </Routes>
-    </MemoryRouter>,
-  );
-}
+const setup = (fetchFn: typeof apiFetch) => render(<Probe fetchFn={fetchFn} />);
 
 const reply = (status: number, body: unknown) => ({ ok: status < 300, status, json: async () => body }) as Response;
 /** Answers the sessions check with `body`, and the token request with `tokenStatus` (404 means no token). */
 const answer = (body: unknown, tokenStatus = 404) =>
   vi.fn(async (url: string) => (url === '/api/realtime-token' ? reply(tokenStatus, { token: 'a.b' }) : reply(200, body))) as unknown as typeof apiFetch;
-const PROMPT = /Joining here will disconnect it/;
+const PROMPT = 'You are in this office in another window';
 
 describe('useJoinCheck', () => {
   it.each([
@@ -60,24 +50,17 @@ describe('useJoinCheck', () => {
     expect(screen.queryByText(PROMPT)).toBeNull();
   });
 
-  it('prompts when already connected, and Join anyway proceeds', async () => {
+  it('prompts when already connected, and Use this window proceeds', async () => {
     setup(answer({ connected: true, allowMulti: false }));
     expect(await screen.findByText(PROMPT)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Join anyway' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use this window' }));
     await screen.findByText('state:go');
   });
 
-  it('navigates home on Cancel', async () => {
+  it('links back to the offices from the prompt', async () => {
     setup(answer({ connected: true, allowMulti: false }));
     await screen.findByText(PROMPT);
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(screen.getByText('Home')).toBeTruthy());
-  });
-
-  it('navigates home on Escape', async () => {
-    setup(answer({ connected: true, allowMulti: false }));
-    fireEvent.keyDown(await screen.findByRole('dialog'), { key: 'Escape' });
-    await waitFor(() => expect(screen.getByText('Home')).toBeTruthy());
+    expect(screen.getByRole('link', { name: 'Back to offices' }).getAttribute('href')).toBe('/');
   });
 
   it('joins without a prompt when the check fails', async () => {
