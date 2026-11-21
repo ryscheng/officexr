@@ -58,9 +58,9 @@ export const MapFloor = memo(function MapFloor({
   const walls = plan.filter((r) => r.tone === 'wall');
   return (
     <g>
-      <g className="stroke-map-wall/35" strokeWidth={5} strokeLinejoin="miter">
+      <g className="stroke-map-wall opacity-35" strokeWidth={5} strokeLinejoin="miter">
         {floors.map((r, i) => (
-          <rect key={i} x={r.x} y={r.z} width={r.w} height={r.d} className="fill-map-floor" />
+          <rect key={i} x={r.x} y={r.z} width={r.w} height={r.d} className="fill-none" />
         ))}
       </g>
       <g strokeWidth={0}>
