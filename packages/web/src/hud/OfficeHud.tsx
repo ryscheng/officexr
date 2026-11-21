@@ -7,7 +7,12 @@ import type { PingSender } from '../ping/usePingSender';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { useVoiceFailed } from '../voice/useVoiceFailed';
 import type { PlaceModeStore } from '@officexr/world/motion';
-import { BuildIndicator } from './BuildIndicator';
+import { BuildActions } from './building/BuildActions';
+import { BuildDone } from './building/BuildDone';
+import { BuildKeyHints } from './building/BuildKeyHints';
+import { BuildPalette } from './building/BuildPalette';
+import { BuildStatus } from './building/BuildStatus';
+import type { BuildSession } from '../place/buildSession';
 import { CallCard } from './CallCard';
 import { TextOnlyCall } from './TextOnlyCall';
 import { useCallRows } from './CallList';
@@ -41,6 +46,7 @@ import { HintPlate } from './hints/HintPlate';
 import { hintCopy } from './hints/hintCopy';
 import { useFirstRunHint } from './hints/useFirstRunHint';
 import { useHasText } from './hints/useHasText';
+import { useEscapeLayer } from './useEscapeLayer';
 
 const selectChat = (s: OfficeState) => s.chat;
 const selectHeadcount = (s: OfficeState) => Object.keys(s.players).length;
@@ -56,6 +62,7 @@ export function OfficeHud({
   pingInbox,
   missions,
   placeMode,
+  build,
   toasts,
   inviteUrl,
   welcome = false,
@@ -75,6 +82,7 @@ export function OfficeHud({
   pingInbox: PingInbox;
   missions: MissionsApi;
   placeMode: PlaceModeStore;
+  build: BuildSession | null;
   toasts: ReactNode;
   inviteUrl: string;
   welcome?: boolean;
@@ -157,15 +165,18 @@ export function OfficeHud({
   const chatMode = chatVisibility.mode;
   const { hide: hideChat } = chatVisibility;
   useEffect(() => {
-    if (narrow && (menuOpen || people || invite || chatMode === 'compose')) {
+    if (narrow && (building || menuOpen || people || invite || chatMode === 'compose')) {
       foldMissions(true);
     }
-  }, [narrow, menuOpen, people, invite, chatMode, foldMissions]);
+  }, [narrow, building, menuOpen, people, invite, chatMode, foldMissions]);
   useEffect(() => {
-    if (narrow && building) {
+    if (building) {
       setPeople(false);
+      setInvite(null);
+      hideChat();
     }
-  }, [narrow, building]);
+  }, [building, hideChat]);
+  useEscapeLayer(building, () => placeMode.setOpen(false));
   useEffect(() => {
     if (narrow && missionsOpen) {
       closeMenu();
@@ -320,7 +331,7 @@ export function OfficeHud({
     <>
       <HudLayout
         topLeft={
-          coarse ? undefined : (
+          coarse || building ? undefined : (
             <>
               <IdentityCard
                 store={store}
@@ -347,7 +358,7 @@ export function OfficeHud({
                 <ArrivalBubble store={store} selfId={selfId} toast />
                 {toasts}
                 <div ref={setCueSlot} />
-                <BuildIndicator mode={placeMode} />
+                {building && build && <BuildStatus mode={placeMode} build={build} store={store} />}
               </div>
             </div>
           ) : (
@@ -356,7 +367,7 @@ export function OfficeHud({
                 <ArrivalBubble store={store} selfId={selfId} toast />
                 {toasts}
                 <div ref={setCueSlot} />
-                <BuildIndicator mode={placeMode} />
+                {building && build && <BuildStatus mode={placeMode} build={build} store={store} />}
               </div>
             </div>
           )
@@ -364,13 +375,13 @@ export function OfficeHud({
         topRight={
           <>
             <div className="flex items-start gap-2">
-              {coarse && !narrow && chatButton}
-              {coarse && !narrow && menuButton}
+              {coarse && !narrow && !building && chatButton}
+              {coarse && !narrow && !building && menuButton}
               {!narrow && coarse && call}
-              <div className={`flex items-start gap-2 transition-opacity ${fadeSecondary ? 'opacity-40' : ''}`}>
-                {narrow && menuButton}
+              <div className={`flex items-start gap-2 transition-opacity ${fadeSecondary && !building ? 'opacity-40' : ''}`}>
+                {narrow && !building && menuButton}
                 <PingInboxHud inbox={pingInbox} store={store} />
-                {mapButton}
+                {building ? <BuildDone mode={placeMode} /> : mapButton}
               </div>
             </div>
             {narrow ? inCall && <div className="mt-(--hud-portrait-chip-row)">{call}</div> : !coarse && call}
@@ -378,15 +389,19 @@ export function OfficeHud({
         }
         rightEdge={
           <>
-            {coarse && chatPanel}
+            {coarse && !building && chatPanel}
             {menu}
             {peopleSheet}
             {inviteSheet}
           </>
         }
-        bottomLeft={narrow || (coarse && (invite || people || menuOpen)) ? undefined : missionsPanel}
+        bottomCentre={building && <BuildPalette mode={placeMode} layout={narrow ? 'portrait' : coarse ? 'landscape' : 'desktop'} />}
+        bottomLeft={building ? !coarse && <BuildKeyHints /> : narrow || (coarse && (invite || people || menuOpen)) ? undefined : missionsPanel}
         bottomRight={
-          (coarse && (menuOpen || people || invite)) || (!coarse && (people || menuOpen)) ? undefined : narrow ? (
+          building ? (
+            <BuildActions mode={placeMode} store={store} />
+          ) : (
+            (coarse && (menuOpen || people || invite)) || (!coarse && (people || menuOpen)) ? undefined : narrow ? (
             <>
               {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} hiddenLogins={mutedLogins} onOpen={chatVisibility.compose} />}
               {!building && <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />}
@@ -402,7 +417,7 @@ export function OfficeHud({
             </>
           ) : (
             <NearYouCard store={store} onWave={onWave} onAct={() => hintDone('wave')} />
-          )
+          ))
         }
       />
       <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} nearName={nearName} />

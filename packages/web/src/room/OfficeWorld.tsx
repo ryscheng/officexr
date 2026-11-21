@@ -2,7 +2,7 @@ import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useState, ty
 import type { Bus, MissionsClient, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { SfxProvider } from '@officexr/world/audio';
-import { createPlaceMode, type PlacementHost } from '@officexr/world/motion';
+import { createPlaceMode } from '@officexr/world/motion';
 import { ApplicationProvider, useCoarsePointer, useStoreSelector } from '@officexr/world/top-down';
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -15,6 +15,7 @@ import { IntegrationsPane } from '../integrations/IntegrationsPane';
 import { useIntegrations } from '../integrations/useIntegrations';
 import { DeskAutoSit } from '../desk/DeskAutoSit';
 import { DeskHud } from '../desk/DeskHud';
+import { createBuildSession } from '../place/buildSession';
 import { usePlaceHotkey } from '../place/usePlaceHotkey';
 import { createBrowserSfx } from '../sfx/browserSfx';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
@@ -147,10 +148,12 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
   const pingInbox = useMemo(() => new PingInbox(), [local]);
   const placeMode = useMemo(createPlaceMode, []);
   const requestPropOp = session.type === 'ready' ? session.requestPropOp : null;
-  const placement = useMemo<PlacementHost | undefined>(
-    () => (requestPropOp ? { mode: placeMode, send: requestPropOp } : undefined),
-    [placeMode, requestPropOp],
+  const localStore = local?.store ?? null;
+  const build = useMemo(
+    () => (requestPropOp && localStore ? createBuildSession(placeMode, requestPropOp, () => localStore.getState().placedProps) : null),
+    [placeMode, requestPropOp, localStore],
   );
+  const placement = build?.host;
   usePlaceHotkey(placeMode, session.type === 'ready');
   useEffect(() => {
     if (session.type !== 'ready') {
@@ -260,6 +263,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         pingInbox={pingInbox}
         missions={missions}
         placeMode={placeMode}
+        build={build}
         onWave={() => ready.office.sync.sendEmote('wave')}
         inviteUrl={`${window.location.origin}${roomPath(office.id)}`}
         welcome={welcome}
