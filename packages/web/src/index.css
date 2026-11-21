@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+@custom-variant phone {
+  @media (orientation: portrait) and (max-width: 700px) {
+    @slot;
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    @slot;
+  }
+}
+
 @theme {
   /*
    * Liquid glass, light: translucent white surfaces over the world, a hairline light rim, soft
