@@ -21,3 +21,4 @@ export { planarDistance, relativeBearing } from '../react/relativeGeometry.ts';
 export type { NavGrid } from '../nav/grid.ts';
 export type { AutoWalkState } from '../nav/autoWalk.ts';
 export { createPlaceKeyHandler } from '../renderer/placeKeys.ts';
+export { useCharacterPortrait } from '../react/useCharacterPortrait.ts';

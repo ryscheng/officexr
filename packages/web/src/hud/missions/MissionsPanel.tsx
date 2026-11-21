@@ -212,6 +212,7 @@ export function MissionsPanel({
                 now={clock}
                 canEdit={isMine(m, me)}
                 distanceM={spot && self ? distanceBetween(self, spot) : null}
+                personLogin={m.personLogin}
                 personName={m.personLogin ? (names.get(m.personLogin) ?? m.personLogin) : null}
                 onToggleDone={() => void toggle(m)}
                 onToggleStep={(i) =>

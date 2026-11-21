@@ -10,6 +10,8 @@ import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { CallList, useCallRows } from './CallList';
 import { useFold } from './foldPrefs';
 import { formatDistance } from './formatDistance';
+import { PortraitFace } from './PortraitFace';
+import { usePlayerPortrait } from './playerPortrait';
 import { RoundButton } from './RoundButton';
 import { Panel } from './ui/Panel';
 import { useEscapeLayer } from './useEscapeLayer';
@@ -52,6 +54,7 @@ export function CallCard({
       ? `Voice ${muted ? 'muted' : 'on'} · ${formatDistance(first.distanceM)} away`
       : `Voice ${muted ? 'muted' : 'on'}`;
   const initial = first?.label.charAt(0).toUpperCase() ?? '·';
+  const portrait = usePlayerPortrait(first?.id ?? '');
   const MuteIcon = muted ? MicOff : Mic;
   const ShareIcon = sharing ? MonitorOff : MonitorUp;
 
@@ -80,8 +83,8 @@ export function CallCard({
     <div className="pointer-events-none flex flex-col items-end gap-2">
       <Panel className="pointer-events-auto flex w-86 max-w-[calc(100vw-24px)] flex-col gap-3 p-3">
         <div className="flex items-center gap-3">
-          <span aria-hidden className="flex size-11 shrink-0 items-center justify-center rounded-full bg-hud-avatar text-sm font-semibold">
-            {initial}
+          <span aria-hidden className="relative flex size-11 shrink-0 rounded-full bg-hud-avatar text-sm font-semibold">
+            <PortraitFace src={portrait} initial={initial} />
           </span>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold">{title}</div>
