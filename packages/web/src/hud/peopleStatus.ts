@@ -16,7 +16,6 @@ export function personStatus(row: PresenceRow, now: number): PersonStatus {
   return { word: PRESENCE_INDICATOR[indicator].label, dot: PRESENCE_INDICATOR[indicator].dot, indicator };
 }
 
-/** One short line: status word, how long a peer has been idle, distance, and whether you muted them. */
 export function statusLine(row: PresenceRow, now: number, muted: boolean): string {
   const parts = [personStatus(row, now).word];
   if (row.type === 'peer') {

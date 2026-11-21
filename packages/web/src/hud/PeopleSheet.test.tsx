@@ -176,6 +176,17 @@ describe('PeopleSheet person card', () => {
     expect(within(card()).getByText('Working on the launch plan')).toBeTruthy();
   });
 
+  it('lays the actions out in three columns on a touch landscape panel and two elsewhere', () => {
+    seed();
+    openCard('Cat');
+    expect(within(card()).getByRole('button', { name: 'Wave' }).parentElement?.className).toContain('grid-cols-2');
+    cleanup();
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    seed();
+    openCard('Cat');
+    expect(within(card()).getByRole('button', { name: 'Wave' }).parentElement?.className).toContain('grid-cols-3');
+  });
+
   it('goes back to the list with the back button', () => {
     seed();
     openCard('Bob');

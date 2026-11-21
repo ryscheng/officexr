@@ -10,16 +10,18 @@ export type PersonCardProps = {
   offline: boolean;
   muted: boolean;
   pingCoolingDown: boolean;
+  compact: boolean;
   onGo: () => void;
   onWave: () => void;
   onToggleMute: () => void;
   onPing: () => void;
 };
 
-export function PersonCard({ row, now, offline, muted, pingCoolingDown, onGo, onWave, onToggleMute, onPing }: PersonCardProps) {
+export function PersonCard({ row, now, offline, muted, pingCoolingDown, compact, onGo, onWave, onToggleMute, onPing }: PersonCardProps) {
   const status = personStatus(row, now);
   const statusText = row.type === 'peer' ? row.statusText : null;
   const first = firstName(row.name || row.label);
+  const icon = compact ? 'hidden' : 'size-4';
   return (
     <div className="flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain px-2 pb-1">
       <div className="flex items-start gap-3">
@@ -38,17 +40,17 @@ export function PersonCard({ row, now, offline, muted, pingCoolingDown, onGo, on
       <Button tone="primary" className="min-h-12 w-full" disabled={offline} onClick={onGo}>
         Go to {first}
       </Button>
-      <div className="grid grid-cols-2 gap-2">
-        <Button className="min-h-12" onClick={onWave}>
-          <Hand aria-hidden className="size-4" />
+      <div className={`grid gap-2 ${compact ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        <Button className="min-h-12 px-2!" onClick={onWave}>
+          <Hand aria-hidden className={icon} />
           Wave
         </Button>
-        <Button className="min-h-12" aria-pressed={muted} onClick={onToggleMute}>
-          {muted ? <Mic aria-hidden className="size-4" /> : <MicOff aria-hidden className="size-4" />}
+        <Button className="min-h-12 px-2!" aria-pressed={muted} onClick={onToggleMute}>
+          {muted ? <Mic aria-hidden className={icon} /> : <MicOff aria-hidden className={icon} />}
           {muted ? 'Unmute' : 'Mute for me'}
         </Button>
-        <Button className="min-h-12" disabled={offline || pingCoolingDown} onClick={onPing}>
-          <Bell aria-hidden className="size-4" />
+        <Button className="min-h-12 px-2!" disabled={offline || pingCoolingDown} onClick={onPing}>
+          <Bell aria-hidden className={icon} />
           {pingCoolingDown ? 'Pinged' : 'Ping'}
         </Button>
       </div>

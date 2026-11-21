@@ -6,7 +6,7 @@ import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 
 const SEPARATOR = '|';
 
-/** Keeps the voice call silent for the people this device muted, following their call ids as they change. */
+/** Call ids change as people rejoin, so the muted set is re-sent whenever one does. */
 export function useMutedVoice(store: Store, voice: Pick<JaasVoiceAdapter, 'setMutedParticipants'> | null, muted: ReadonlySet<string>): void {
   const select = useCallback(
     (s: OfficeState) =>

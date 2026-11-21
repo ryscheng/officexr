@@ -397,7 +397,7 @@ export function OfficeHud({
         }
         bottomLeft={narrow || (coarse && invite) ? undefined : missionsPanel}
         bottomRight={
-          coarse && (menuOpen || people || invite) ? undefined : narrow ? (
+          (coarse && (menuOpen || people || invite)) || (!coarse && people) ? undefined : narrow ? (
             <>
               {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} hiddenLogins={mutedLogins} onOpen={chatVisibility.compose} />}
               <div className="flex items-center gap-2">

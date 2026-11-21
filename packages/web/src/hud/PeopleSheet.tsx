@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { loginOf } from '@officexr/sdk';
-import { focusWorld, usePlayControls, useStoreSelector } from '@officexr/world/top-down';
+import { focusWorld, useCoarsePointer, usePlayControls, useStoreSelector } from '@officexr/world/top-down';
 import type { PingSender } from '../ping/usePingSender';
 import { Button } from './ui/Button';
 import { Panel, PanelTitle } from './ui/Panel';
@@ -72,6 +72,7 @@ export function PeopleSheet({ store, selfId, officeName, pinger, mutes, portrait
   const offline = useStoreSelector(store, selectOffline);
   const muted = useLocalMutes(mutes);
   const now = useNow(1000, clock);
+  const coarse = useCoarsePointer();
   const { goTo } = usePlayControls();
   const [openId, setOpenId] = useState<PlayerId | null>(null);
   useEscapeLayer(true, onClose);
@@ -94,6 +95,7 @@ export function PeopleSheet({ store, selfId, officeName, pinger, mutes, portrait
       offline={offline}
       muted={isMuted(open)}
       pingCoolingDown={pinger?.isCoolingDown(open.id) ?? false}
+      compact={coarse && !portrait}
       onGo={() => go(open)}
       onWave={onWave}
       onToggleMute={() => mutes.toggle(loginOf(open.id))}
@@ -143,7 +145,7 @@ export function PeopleSheet({ store, selfId, officeName, pinger, mutes, portrait
           <X aria-hidden className="size-5" />
         </button>
       </div>
-      <div className="flex max-h-[min(60dvh,26rem)] min-h-0 flex-col">{content}</div>
+      <div className="flex max-h-[min(26rem,calc(100dvh-var(--hud-inset-top)-var(--hud-inset-bottom)-10rem))] min-h-0 flex-col">{content}</div>
     </Panel>
   );
 }

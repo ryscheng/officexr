@@ -33,7 +33,6 @@ type ChatPanelProps = {
   visibility?: ChatVisibility;
   portrait?: boolean;
   unread?: number;
-  /** Logins whose messages this device does not show. */
   hiddenLogins?: ReadonlySet<string>;
   onMissionCommand?: (title: string) => Promise<boolean>;
 };
