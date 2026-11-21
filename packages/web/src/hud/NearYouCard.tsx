@@ -3,6 +3,8 @@ import type { OfficeState, PlayerId, PresenceStatus, Store } from '@officexr/sdk
 import { presenceIndicator } from '@officexr/sdk';
 import { planarDistance, usePlayControls, useStoreSelector } from '@officexr/world/top-down';
 import { formatDistance } from './formatDistance';
+import { PortraitFace } from './PortraitFace';
+import { usePlayerPortrait } from './playerPortrait';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { sameFields } from './sameFields';
 import { Button } from './ui/Button';
@@ -34,6 +36,7 @@ export const sameNear = (a: ReturnType<typeof selectNearest>, b: ReturnType<type
 
 export function NearYouCard({ store, onWave, onAct }: { store: Store; onWave: () => void; onAct?: () => void }) {
   const near = useStoreSelector(store, selectNearest, sameNear);
+  const portrait = usePlayerPortrait(near?.id ?? '');
   const now = useNow(1000);
   const { goTo } = usePlayControls();
   if (!near) {
@@ -45,7 +48,7 @@ export function NearYouCard({ store, onWave, onAct }: { store: Store; onWave: ()
       <h2 className="text-[11px] font-semibold tracking-widest text-hud-text-2 uppercase">Near you</h2>
       <div className="flex items-center gap-2.5">
         <span aria-hidden className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-hud-avatar text-sm font-semibold">
-          {near.name.charAt(0).toUpperCase()}
+          <PortraitFace src={portrait} initial={near.name.charAt(0).toUpperCase()} />
           <span className={`absolute right-0 bottom-0 size-3 rounded-full border-2 border-hud-panel-solid ${presence.dot}`} />
         </span>
         <span className="min-w-0 flex-1 truncate text-sm font-semibold">{near.name}</span>

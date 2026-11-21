@@ -2,6 +2,8 @@ import { useId, useState } from 'react';
 import { ChevronUp, Users } from 'lucide-react';
 import type { PlayerId, Store } from '@officexr/sdk';
 import { CallList, useCallRows } from '../hud/CallList';
+import { PortraitFace } from '../hud/PortraitFace';
+import { usePlayerPortrait } from '../hud/playerPortrait';
 import { useEscapeLayer } from '../hud/useEscapeLayer';
 import { Panel } from '../hud/ui/Panel';
 import type { PingSender } from '../ping/usePingSender';
@@ -10,6 +12,15 @@ import type { JaasVoiceAdapter } from './JaasVoiceAdapter';
 import { ZoneCallLabel } from './ZoneCallLabel';
 
 const PREVIEW_AVATARS = 3;
+
+function PreviewAvatar({ id, label }: { id: PlayerId; label: string }) {
+  const portrait = usePlayerPortrait(id);
+  return (
+    <span className="relative flex h-5 w-5 rounded-full border border-hud-contrast bg-hud-avatar text-[9px] font-bold uppercase">
+      <PortraitFace src={portrait} initial={label.charAt(0)} />
+    </span>
+  );
+}
 
 export function CallBar({
   store,
@@ -48,12 +59,7 @@ export function CallBar({
           <Users aria-hidden className="hidden h-4 w-4 pointer-coarse:block" />
           <span className="flex -space-x-1.5 pointer-coarse:hidden" aria-hidden>
             {rows.slice(0, PREVIEW_AVATARS).map((row) => (
-              <span
-                key={row.id}
-                className="flex h-5 w-5 items-center justify-center rounded-full border border-hud-contrast bg-hud-avatar text-[9px] font-bold uppercase"
-              >
-                {row.label.charAt(0)}
-              </span>
+              <PreviewAvatar key={row.id} id={row.id} label={row.label} />
             ))}
           </span>
           <span className="pointer-coarse:hidden">In call · {rows.length}</span>

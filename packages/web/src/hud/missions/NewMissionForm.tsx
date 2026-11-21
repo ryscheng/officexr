@@ -6,6 +6,8 @@ import { Button } from '../ui/Button';
 import { FIELD } from '../ui/fieldStyles';
 import { Switch } from '../ui/Switch';
 import { useEscapeLayer } from '../useEscapeLayer';
+import { PortraitFace } from '../PortraitFace';
+import { usePlayerPortrait } from '../playerPortrait';
 import { formatDue, initialOf, type PlaceAreas } from './missionRows';
 import type { OfficePerson } from './useOfficeSpots';
 
@@ -42,6 +44,7 @@ export function NewMissionForm({
   const [place, setPlace] = useState<MissionPlace | null>(null);
   const [dueAt, setDueAt] = useState<string | null>(null);
   const [person, setPerson] = useState<OfficePerson | null>(null);
+  const personPortrait = usePlayerPortrait(person?.id ?? '');
   const [shared, setShared] = useState(false);
   const [picker, setPicker] = useState<Picker>(null);
   const [more, setMore] = useState(false);
@@ -139,8 +142,8 @@ export function NewMissionForm({
       )}
       {person ? (
         <button type="button" className={CHIP_SET} aria-label={`Remove person ${person.name}`} onClick={() => setPerson(null)}>
-          <span aria-hidden className="flex size-5 items-center justify-center rounded-full bg-hud-accent text-[10px] text-hud-on-accent">
-            {initialOf(person.name)}
+          <span aria-hidden className="relative flex size-5 rounded-full bg-hud-accent text-[10px] text-hud-on-accent">
+            <PortraitFace src={personPortrait} initial={initialOf(person.name)} />
           </span>
           {person.name}
           <X aria-hidden className="size-3" />

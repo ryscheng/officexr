@@ -7,6 +7,8 @@ import { IconButton } from './IconButton';
 import type { PingSender } from '../ping/usePingSender';
 import { DEG, type PresencePlayer } from './personRows';
 import { relativeTime } from './relativeTime';
+import { PortraitFace } from './PortraitFace';
+import { usePlayerPortrait } from './playerPortrait';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { useNow } from './useNow';
 
@@ -103,6 +105,7 @@ function PersonRowItem({
   onGo: () => void;
   onPing?: { disabled: boolean; send: () => void };
 }) {
+  const portrait = usePlayerPortrait(row.id);
   const kind = row.type === 'guest' ? null : row.type === 'self' ? row.status : presenceIndicator(row, now);
   const indicator = kind && PRESENCE_INDICATOR[kind];
   const mic = (row.type === 'self' || row.type === 'peer') && row.mic ? MIC[row.mic] : null;
@@ -112,7 +115,7 @@ function PersonRowItem({
   return (
     <li className={`flex items-center gap-2 rounded-lg px-1.5 py-1 ${row.type === 'self' ? 'bg-hud-inset' : ''}`}>
       <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hud-avatar text-[10px] font-bold text-hud-text uppercase">
-        <span aria-hidden>{row.label.charAt(0)}</span>
+        <PortraitFace src={portrait} initial={row.label.charAt(0)} />
         {indicator && (
           <span
             role="img"
