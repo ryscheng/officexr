@@ -1,14 +1,23 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Identity, Office } from '@officexr/server/shared';
 import type { ApiState } from '../useApi';
 import { Home } from './Home';
+import { lastVisitedLabel, recordVisit } from './visits';
+
+vi.mock('@officexr/world/top-down', () => ({ usePortrait: () => false }));
+
+beforeEach(() => {
+  sessionStorage.setItem('officexr:landed', '1');
+});
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  localStorage.clear();
+  sessionStorage.clear();
 });
 
 const json = (status: number, body: unknown) =>
@@ -22,18 +31,20 @@ function Where() {
 const ready: ApiState<Identity> = { type: 'ready', data: { login: 'a@example.com', name: 'Alice' } };
 const unidentified: ApiState<Identity> = { type: 'error', message: 'Not signed in' };
 
-function setup(
-  me: ApiState<Identity>,
-  offices: Office[] | number,
-  post?: (init: RequestInit) => Promise<Response>,
-  patch?: (url: string, init: RequestInit) => Promise<Response>,
-) {
+const office = (id: string, name: string, description: string | null = null): Office => ({
+  id,
+  name,
+  description,
+  map_name: 'default',
+  created_by_login: null,
+  debug_enabled: false,
+});
+
+function setup(me: ApiState<Identity>, offices: Office[] | number, post?: (init: RequestInit) => Promise<Response>) {
   const fetchMock = vi.fn((url: string, init?: RequestInit) =>
     url === '/api/offices' && init?.method === 'POST'
       ? post!(init)
-      : init?.method === 'PATCH'
-        ? patch!(url, init)
-        : url === '/api/offices'
+      : url === '/api/offices'
         ? typeof offices === 'number'
           ? json(offices, { error: 'Boom' })
           : json(200, offices)
@@ -50,83 +61,108 @@ function setup(
   );
 }
 
-describe('Home', () => {
-  it('points at the create form when there are no offices', async () => {
+const newOffice = () => fireEvent.click(screen.getAllByRole('button', { name: 'New office' })[0]);
+
+describe('office list', () => {
+  it('says so and offers New office when there are no offices', async () => {
     setup(ready, []);
-    expect(await screen.findByText(/No offices yet/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Create office' })).toBeTruthy();
+    expect(await screen.findByText('No offices yet. Create the first one to get your team in.')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'New office' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('searchbox')).toBeNull();
   });
 
-  it('renders office cards with name, description and map linking to the office', async () => {
-    setup(ready, [
-      { id: 'o1', name: 'HQ', description: 'Main', map_name: 'hq', created_by_login: null, debug_enabled: false },
-      { id: 'o2', name: 'Annex', description: null, map_name: null, created_by_login: null, debug_enabled: false },
-    ]);
+  it('shows each office as one link with name and description, without a map picker', async () => {
+    setup(ready, [office('o1', 'HQ', 'Main'), office('o2', 'Annex')]);
     const hq = (await screen.findByText('HQ')).closest('a');
     expect(hq?.getAttribute('href')).toBe('/room/o1');
+    expect(hq?.getAttribute('title')).toBe('HQ\nMain');
     expect(hq?.textContent).toContain('Main');
-    expect((await screen.findByLabelText('Map for HQ') as HTMLSelectElement).value).toBe('hq');
-    expect((screen.getByLabelText('Map for Annex') as HTMLSelectElement).value).toBe('default');
-  });
-
-  const mine: Office = {
-    id: 'o1',
-    name: 'HQ',
-    description: null,
-    map_name: 'default',
-    created_by_login: 'a@example.com',
-    debug_enabled: false,
-  };
-
-  it("lets any signed-in user change an office's map from the list", async () => {
-    const patch = vi.fn((_url: string, init: RequestInit) =>
-      json(200, { ...mine, map_name: JSON.parse(init.body as string).mapName }),
-    );
-    setup(ready, [mine, { ...mine, id: 'o2', name: 'Annex', created_by_login: 'b@example.com' }], undefined, patch);
-    await screen.findAllByRole('option', { name: 'hq' });
-    expect(screen.getByLabelText('Map for Annex')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Map for HQ'), { target: { value: 'hq' } });
-    await waitFor(() => expect((screen.getByLabelText('Map for HQ') as HTMLSelectElement).value).toBe('hq'));
-    expect(patch).toHaveBeenCalledTimes(1);
-    const [url, init] = patch.mock.calls[0];
-    expect(url).toBe('/api/offices/o1');
-    expect(JSON.parse(init.body as string)).toEqual({ mapName: 'hq' });
-  });
-
-  it('keeps the old map and shows the error when changing it fails', async () => {
-    setup(ready, [mine], undefined, () => json(400, { error: 'Unknown map' }));
-    await screen.findAllByRole('option', { name: 'hq' });
-    fireEvent.change(screen.getByLabelText('Map for HQ'), { target: { value: 'hq' } });
-    expect((await screen.findByRole('alert')).textContent).toBe('Unknown map');
-    expect((screen.getByLabelText('Map for HQ') as HTMLSelectElement).value).toBe('default');
-  });
-
-  it('offers no map picker when signed out', async () => {
-    setup(unidentified, [mine]);
-    expect(await screen.findByText('HQ')).toBeTruthy();
     expect(screen.queryByLabelText('Map for HQ')).toBeNull();
   });
 
-  it('shows an error in place of the list when offices fail to load', async () => {
+  it('lists the last visited office first, then the rest by name, with a pill', async () => {
+    recordVisit('o3', new Date());
+    setup(ready, [office('o1', 'Beta'), office('o2', 'Alpha'), office('o3', 'Zed')]);
+    await screen.findByText('Zed');
+    expect(screen.getAllByRole('link', { name: /./ }).filter((a) => a.getAttribute('href') !== '/').map((a) => a.getAttribute('href'))).toEqual(['/room/o3', '/room/o2', '/room/o1']);
+    expect(screen.getByText('Last visited today')).toBeTruthy();
+  });
+
+  it('shows search only from four offices and filters by name and description', async () => {
+    setup(ready, [office('1', 'Alpha'), office('2', 'Beta'), office('3', 'Gamma', 'quiet floor'), office('4', 'Delta')]);
+    const search = await screen.findByRole('searchbox', { name: 'Search offices' });
+    fireEvent.change(search, { target: { value: 'quiet' } });
+    expect(screen.getAllByRole('link', { name: /./ }).filter((a) => a.getAttribute('href') !== '/').map((a) => a.getAttribute('href'))).toEqual(['/room/3']);
+    fireEvent.change(search, { target: { value: 'nothing' } });
+    expect(screen.getByText('No offices match.')).toBeTruthy();
+  });
+
+  it('has no search with three offices', async () => {
+    setup(ready, [office('1', 'A'), office('2', 'B'), office('3', 'C')]);
+    await screen.findByText('A');
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('shows a plain error with Try again, and the raw text only under Details', async () => {
     setup(ready, 500);
-    expect((await screen.findByRole('alert')).textContent).toBe('Boom');
-  });
-
-  it('still lists offices and disables the form when /api/me fails', async () => {
-    setup(unidentified, [{ id: 'o1', name: 'HQ', description: null, map_name: 'hq', created_by_login: null, debug_enabled: false }]);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('We could not load the offices.');
+    expect(alert.textContent).toContain('Check your connection and try again.');
+    expect(within(alert).getByText('Boom').closest('details')).toBeTruthy();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation((url) => json(200, url === '/api/offices' ? [office('o1', 'HQ')] : { maps: [] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('HQ')).toBeTruthy();
-    expect(screen.queryByText('Not signed in')).toBeNull();
-    expect(screen.getByText(/requires signing in/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Create office' })).matches(':disabled')).toBe(true);
   });
 
-  it('offers no sign-in link when signed in', async () => {
-    setup(ready, []);
-    await screen.findByText(/No offices yet/);
-    expect(screen.queryByRole('link', { name: 'Continue with Google' })).toBeNull();
+  it('skips the list to the last visited office on the first landing only', async () => {
+    sessionStorage.clear();
+    recordVisit('o2', new Date());
+    setup(ready, [office('o1', 'A'), office('o2', 'B')]);
+    expect(await screen.findByText('In office /room/o2')).toBeTruthy();
+    cleanup();
+    setup(ready, [office('o1', 'A'), office('o2', 'B')]);
+    expect(await screen.findByText('B')).toBeTruthy();
   });
 
-  it('signs out by POSTing /auth/logout then returning to /', async () => {
+  it('keeps the list when the last visited office no longer exists', async () => {
+    sessionStorage.clear();
+    recordVisit('gone', new Date());
+    setup(ready, [office('o1', 'A')]);
+    expect(await screen.findByText('A')).toBeTruthy();
+  });
+
+  it('still lists offices when /api/me fails', async () => {
+    setup(unidentified, [office('o1', 'HQ')]);
+    expect(await screen.findByText('HQ')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+  });
+});
+
+describe('last visited label', () => {
+  const now = new Date(2026, 10, 21, 12);
+  it('names today, yesterday, then the date', () => {
+    expect(lastVisitedLabel(new Date(2026, 10, 21, 1).toISOString(), now)).toBe('Last visited today');
+    expect(lastVisitedLabel(new Date(2026, 10, 20, 23).toISOString(), now)).toBe('Last visited yesterday');
+    expect(lastVisitedLabel(new Date(2026, 10, 3).toISOString(), now)).toMatch(/^Last visited .*3/);
+    expect(lastVisitedLabel(undefined, now)).toBeNull();
+    expect(lastVisitedLabel('nonsense', now)).toBeNull();
+  });
+  it('survives storage that throws', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+    });
+    expect(() => recordVisit('o1')).not.toThrow();
+  });
+});
+
+describe('sign out', () => {
+  it('POSTs /auth/logout then returns to /', async () => {
     const assign = vi.fn();
     setup(ready, []);
     vi.stubGlobal('location', { assign });
@@ -135,37 +171,126 @@ describe('Home', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/auth/logout', { credentials: 'include', method: 'POST' });
   });
 
-  it('keeps the user signed in and shows the error when sign-out fails', async () => {
+  it('keeps the user signed in and shows the error when it fails', async () => {
     const assign = vi.fn();
     setup(ready, []);
     vi.stubGlobal('location', { assign });
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockImplementationOnce(() => json(500, { error: 'Logout broke' }));
+    vi.mocked(fetch).mockImplementationOnce(() => json(500, { error: 'Logout broke' }));
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     expect((await screen.findByRole('alert')).textContent).toBe('Logout broke');
     expect(assign).not.toHaveBeenCalled();
     expect((screen.getByRole('button', { name: 'Sign out' })).matches(':disabled')).toBe(false);
   });
+});
 
-  it('creates an office and navigates into it', async () => {
-    const post = vi.fn(() => json(201, { id: 'new', name: 'Lab', description: null, map_name: 'hq', created_by_login: null, debug_enabled: false }));
+describe('new office', () => {
+  const open = async (offices: Office[] = []) => {
+    setup(ready, offices, undefined);
+    await screen.findByRole('searchbox').catch(() => screen.findByText(/No offices yet/));
+    newOffice();
+    return screen.findByRole('dialog', { name: 'New office' });
+  };
+
+  it('opens with the name focused and the extra fields folded', async () => {
+    const dialog = await open();
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Name'));
+    const more = within(dialog).getByRole('button', { name: 'More options' });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(within(dialog).getByLabelText('Description (optional)').closest('[hidden]')).toBeTruthy();
+    fireEvent.click(more);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(within(dialog).getByLabelText('Description (optional)').closest('[hidden]')).toBeNull();
+  });
+
+  it('asks for a name instead of sending an empty one', async () => {
+    const dialog = await open();
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: '   ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create office' }));
+    expect(within(dialog).getByText('Give the office a name.')).toBeTruthy();
+    expect(within(dialog).getByLabelText('Name').getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Name'));
+    expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+  });
+
+  it('counts characters from 80 and stops at 100', async () => {
+    const dialog = await open();
+    const name = within(dialog).getByLabelText('Name') as HTMLInputElement;
+    expect(within(dialog).getByText('Up to 100 characters.')).toBeTruthy();
+    fireEvent.change(name, { target: { value: 'x'.repeat(80) } });
+    expect(within(dialog).getByText('80 / 100')).toBeTruthy();
+    expect(name.maxLength).toBe(100);
+  });
+
+  it('closes with Cancel and Close', async () => {
+    const dialog = await open();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    newOffice();
+    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('creates with a name only and goes into the office with the invite flag', async () => {
+    const post = vi.fn(() => json(201, office('new', 'Lab')));
     setup(ready, [], post);
-    await screen.findByRole('option', { name: 'hq' });
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lab' } });
-    fireEvent.change(screen.getByLabelText('Map'), { target: { value: 'hq' } });
+    await screen.findByText(/No offices yet/);
+    newOffice();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Lab' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create office' }));
     expect(await screen.findByText('In office /room/new?invite=1')).toBeTruthy();
     expect(JSON.parse((post.mock.calls[0] as unknown as [RequestInit])[0].body as string)).toMatchObject({
       name: 'Lab',
+      mapName: 'default',
+    });
+  });
+
+  it('sends the description and map from More options', async () => {
+    const post = vi.fn(() => json(201, office('new', 'Lab')));
+    setup(ready, [], post);
+    await screen.findByText(/No offices yet/);
+    newOffice();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Lab' } });
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    fireEvent.change(screen.getByLabelText('Description (optional)'), { target: { value: 'Hangout' } });
+    await screen.findByRole('option', { name: 'hq' });
+    fireEvent.change(screen.getByLabelText('Map'), { target: { value: 'hq' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create office' }));
+    await screen.findByText('In office /room/new?invite=1');
+    expect(JSON.parse((post.mock.calls[0] as unknown as [RequestInit])[0].body as string)).toEqual({
+      name: 'Lab',
+      description: 'Hangout',
       mapName: 'hq',
     });
   });
 
-  it("shows the server's error when creating fails", async () => {
-    setup(ready, [], () => json(400, { error: 'Unknown map' }));
-    await screen.findByRole('option', { name: 'hq' });
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lab' } });
+  it('shows Creating and locks the fields while it waits', async () => {
+    setup(ready, [], () => new Promise(() => undefined));
+    await screen.findByText(/No offices yet/);
+    newOffice();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Lab' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create office' }));
-    await waitFor(() => expect(screen.getByText('Unknown map')).toBeTruthy());
+    expect((await screen.findByRole('button', { name: 'Creating…' })).matches(':disabled')).toBe(true);
+    expect(screen.getByLabelText('Name').matches(':disabled')).toBe(true);
+  });
+
+  it('keeps the text and shows a plain error with the server text under Details when creating fails', async () => {
+    setup(ready, [], () => json(400, { error: 'Unknown map' }));
+    await screen.findByText(/No offices yet/);
+    newOffice();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Lab' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create office' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('We could not create the office.');
+    expect(within(alert).getByText('Unknown map').closest('details')).toBeTruthy();
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Lab');
+    expect((screen.getByRole('button', { name: 'Create office' })).matches(':disabled')).toBe(false);
+  });
+
+  it('cannot create when signed out', async () => {
+    setup(unidentified, []);
+    await screen.findByText(/No offices yet/);
+    newOffice();
+    expect(await screen.findByText(/requires signing in/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Create office' })).matches(':disabled')).toBe(true);
   });
 });

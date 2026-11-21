@@ -4,6 +4,7 @@ import type { Identity, Office } from '@officexr/server/shared';
 import { paths } from './apiOrigin';
 import { Async } from './Async';
 import { Home } from './home/Home';
+import { recordVisit } from './home/visits';
 import { Blocked } from './page/Blocked';
 import { fetchFailureDetails, fetchFailureVariant } from './page/fetchFailure';
 import { PageShell, Spinner } from './page/PageShell';
@@ -17,6 +18,12 @@ function Room({ me }: { me: Identity }) {
   // The `/room/:id` route guarantees the id.
   const { id } = useParams() as { id: string };
   const [attempt, setAttempt] = useState(0);
+  const office = useApi<Office>(paths.office(id), attempt);
+  useEffect(() => {
+    if (office.type === 'ready') {
+      recordVisit(office.data.id);
+    }
+  }, [office]);
   // Safari reports pinches as gesture events and zooms the page unless they
   // are cancelled; touch-action alone doesn't stop it over the overlays.
   // overscroll-behavior stops iOS rubber-banding the fixed room.
@@ -37,7 +44,7 @@ function Room({ me }: { me: Identity }) {
   return (
     <div className="fixed inset-0 touch-manipulation overflow-hidden">
       <Async
-        state={useApi<Office>(paths.office(id), attempt)}
+        state={office}
         loading={<EnteringOffice stage={2} />}
         error={(message, status) => (
           <Blocked
