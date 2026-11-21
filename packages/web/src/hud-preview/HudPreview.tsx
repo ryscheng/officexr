@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
+import type { RealtimeStatus } from '@officexr/sdk';
 import type { Identity, Office } from '@officexr/server/shared';
 import { OfficeWorld, type HermeticWorld } from '../room/OfficeWorld';
 import { buildHermeticSession } from './buildHermeticSession';
@@ -18,11 +19,12 @@ const OFFICE: Office = {
 /** The real office HUD over the real scene, joined to an in-memory office seeded from `?scenario=`. */
 export function HudPreview() {
   const scenario = useMemo(() => new URLSearchParams(window.location.search).get('scenario'), []);
+  const stallMs = useMemo(() => Number(new URLSearchParams(window.location.search).get('stallMs')) || undefined, []);
   const [world, setWorld] = useState<(HermeticWorld & { dispose: () => void }) | null>(null);
   useEffect(() => {
     let cancelled = false;
     let built: { dispose: () => void } | undefined;
-    void buildHermeticSession(scenario).then((w) => {
+    void buildHermeticSession(scenario, stallMs).then((w) => {
       if (cancelled) {
         w.dispose();
         return;
@@ -34,13 +36,16 @@ export function HudPreview() {
       cancelled = true;
       built?.dispose();
     };
-  }, [scenario]);
+  }, [scenario, stallMs]);
   useEffect(() => {
     if (!world) {
       return;
     }
     const { actions } = world.session.local;
-    const hook = { say: (from: string, text: string) => actions.applyRemoteChat({ id: `say-${Date.now()}`, authorId: from, text, t: Date.now() }) };
+    const hook = {
+      say: (from: string, text: string) => actions.applyRemoteChat({ id: `say-${Date.now()}`, authorId: from, text, t: Date.now() }),
+      setStatus: (status: RealtimeStatus) => actions.setRealtimeStatus(status),
+    };
     (window as unknown as { __hudPreview?: typeof hook }).__hudPreview = hook;
     return () => {
       delete (window as unknown as { __hudPreview?: typeof hook }).__hudPreview;

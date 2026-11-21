@@ -9,7 +9,7 @@ import { getScenario, SELF_ID, SELF_NAME, seedScenario } from './scenarios';
 const UNAVAILABLE = { ok: false, error: 'unavailable' } as const;
 
 /** Joins an in-memory office as the fake self and seeds `scenarioId` into the local store. */
-export async function buildHermeticSession(scenarioId: string | null): Promise<HermeticWorld & { dispose: () => void }> {
+export async function buildHermeticSession(scenarioId: string | null, stallMs?: number): Promise<HermeticWorld & { dispose: () => void }> {
   const scenario = getScenario(scenarioId);
   const local = createPersistentLocalState({ selfId: SELF_ID, officeId: PREVIEW_OFFICE_ID });
   const { channel, voiceAdapter } = createStack({ mode: 'local', hub: createInMemoryChannelHub(), selfId: SELF_ID });
@@ -27,11 +27,12 @@ export async function buildHermeticSession(scenarioId: string | null): Promise<H
       type: 'ready',
       local,
       office,
-      voice,
+      voice: scenario.textOnly ? null : voice,
       requestDeskClaim: () => Promise.resolve(UNAVAILABLE),
       requestPropOp: () => Promise.resolve(UNAVAILABLE),
     },
     missions,
+    stallMs,
     dispose: () => {
       stopSeeding();
       office.stop();
