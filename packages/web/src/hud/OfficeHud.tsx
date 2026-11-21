@@ -140,7 +140,7 @@ export function OfficeHud({
     mapOpen,
     building,
     inCall,
-    toastShowing,
+    toastShowing: toastShowing || (narrow && chatVisibility.mode === 'peek'),
   });
 
   const chatShowsLog = chatVisibility.mode === 'compose' || (chatVisibility.mode === 'peek' && !narrow);

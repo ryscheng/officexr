@@ -29,9 +29,9 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'conn-offline': { scenario: 'crowd', steps: ['net:offline'] },
   'conn-recovered': { scenario: 'crowd', steps: ['net:reconnecting', 'net:live'] },
   'text-only': { scenario: 'text-only', steps: [] },
-  'hint-move': { scenario: 'alone', steps: ['wait:10800'], hint: 'move' },
-  'hint-people': { scenario: 'spread', steps: ['wait:6800'], hint: 'people' },
-  'hint-wave': { scenario: 'chat', steps: ['wait:1800'], hint: 'wave' },
+  'hint-move': { scenario: 'alone', steps: ['wait:11000'], hint: 'move' },
+  'hint-people': { scenario: 'spread', steps: ['wait:8000'], hint: 'people' },
+  'hint-wave': { scenario: 'chat', steps: ['wait:2500'], hint: 'wave' },
   'hint-alone': { scenario: 'alone', steps: ['wait:60800'], hint: 'alone', only: ['desktop', 'iphone13-portrait', 'iphone13-landscape'] },
   'hint-build': { scenario: 'chat', steps: ['Office menu'], hint: 'build', only: ['desktop'] },
 };
