@@ -5,7 +5,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { cachedCharacterPortrait, storeCharacterPortrait } from '../characters/portraitCache.ts';
 
 const PORTRAIT_PX = 160;
-const HEAD_AND_SHOULDERS = 0.36;
+const HEAD_AND_SHOULDERS = 0.58;
 
 interface Studio {
   renderer: THREE.WebGLRenderer;
@@ -37,7 +37,7 @@ function frameHead(camera: THREE.PerspectiveCamera, model: THREE.Object3D): void
   const box = new THREE.Box3().setFromObject(model);
   const height = box.max.y - box.min.y;
   const window = height * HEAD_AND_SHOULDERS;
-  const centre = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y - window / 2 - height * 0.02, (box.min.z + box.max.z) / 2);
+  const centre = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y - window / 2, (box.min.z + box.max.z) / 2);
   const distance = window / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   camera.position.set(centre.x, centre.y + window * 0.12, centre.z + distance);
   camera.lookAt(centre);
