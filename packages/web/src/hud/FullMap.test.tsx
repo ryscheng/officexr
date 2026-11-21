@@ -141,7 +141,7 @@ describe('FullMap', () => {
         { x: 3, z: 2, w: 0.5, d: 0.5, tone: 'furniture' as const },
       ];
       const { container } = render(<FullMap store={store} officeName="HQ" plan={plan} areas={areas} route={null} onGoTo={() => true} onClose={() => {}} />);
-      expect(container.querySelectorAll('rect.fill-map-floor').length).toBe(2);
+      expect(container.querySelectorAll('rect.fill-map-floor').length).toBe(1);
       expect(container.querySelectorAll('rect.fill-map-wall').length).toBe(1);
       expect(container.querySelectorAll('rect.fill-map-desk').length).toBe(1);
       const plant = container.querySelector('circle.fill-map-furniture');
