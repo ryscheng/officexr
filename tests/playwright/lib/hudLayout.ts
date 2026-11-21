@@ -34,6 +34,8 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'hint-wave': { scenario: 'near', steps: [], hint: 'wave' },
   'hint-alone': { scenario: 'alone', steps: [], hint: 'alone', only: ['desktop', 'iphone13-portrait', 'iphone13-landscape'] },
   'hint-build': { scenario: 'chat', steps: ['Office menu'], hint: 'build', only: ['desktop'] },
+  'build-palette': { scenario: 'build', steps: ['Office menu', 'Build'] },
+  'build-placed': { scenario: 'build', steps: ['Office menu', 'Build', 'Place'] },
 };
 export type HudScenario = (typeof HUD_SCENARIOS)[number];
 
@@ -77,6 +79,13 @@ export async function openHudPreview(browser: Browser, device: HudDevice, scenar
     },
     [theme, seen.join(',')] as const,
   );
+  const viewport = device.options?.viewport;
+  if (viewport && viewport.width > viewport.height) {
+    await context.addInitScript(() => {
+      const sideways = Object.assign(new EventTarget(), { type: 'landscape-primary' });
+      Object.defineProperty(window.screen, 'orientation', { value: sideways, configurable: true });
+    });
+  }
   const page = await context.newPage();
   page.setDefaultTimeout(60_000);
   const stallMs = HUD_STATES[scenario]?.stallMs;

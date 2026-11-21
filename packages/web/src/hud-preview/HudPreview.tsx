@@ -45,6 +45,7 @@ export function HudPreview() {
     const hook = {
       say: (from: string, text: string) => actions.applyRemoteChat({ id: `say-${Date.now()}`, authorId: from, text, t: Date.now() }),
       setStatus: (status: RealtimeStatus) => actions.setRealtimeStatus(status),
+      placedProps: () => world.session.local.store.getState().placedProps,
     };
     (window as unknown as { __hudPreview?: typeof hook }).__hudPreview = hook;
     return () => {

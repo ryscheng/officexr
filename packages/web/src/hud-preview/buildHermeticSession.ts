@@ -1,5 +1,6 @@
 import { createInMemoryChannelHub } from '@officexr/sdk';
 import { createPersistentLocalState, createStack, startOfficeSync } from '@officexr/core-refactor';
+import { createPreviewPropOps } from '../place/previewPropOps';
 import { createInMemoryMissionsClient } from '../hud/missions/inMemoryMissions';
 import type { HermeticWorld } from '../room/OfficeWorld';
 import { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
@@ -29,7 +30,7 @@ export async function buildHermeticSession(scenarioId: string | null, stallMs?: 
       office,
       voice: scenario.textOnly ? null : voice,
       requestDeskClaim: () => Promise.resolve(UNAVAILABLE),
-      requestPropOp: () => Promise.resolve(UNAVAILABLE),
+      requestPropOp: createPreviewPropOps(local.store, local.actions),
     },
     missions,
     stallMs,
