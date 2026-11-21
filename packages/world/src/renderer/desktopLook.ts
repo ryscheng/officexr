@@ -9,11 +9,7 @@ export interface DesktopLookOptions {
   thresholdPx?: number;
 }
 
-/**
- * Mouse look that leaves the cursor free: the right button turns the view at once, the left button
- * after a drag past the threshold. Pointer lock is requested only while turning; a refused lock
- * falls back to the unlocked movement deltas, which the browser still reports with a button down.
- */
+// Pointer lock only while turning; a refused lock still turns the view from the unlocked deltas.
 export function attachDesktopLook({ canvas, onLook, thresholdPx = LOOK_DRAG_THRESHOLD_PX }: DesktopLookOptions): () => void {
   const doc = canvas.ownerDocument;
   const win = doc.defaultView ?? window;
@@ -22,14 +18,18 @@ export function attachDesktopLook({ canvas, onLook, thresholdPx = LOOK_DRAG_THRE
   let turning = false;
   let suppressClick = false;
 
+  const requestLock = async () => {
+    try {
+      await canvas.requestPointerLock?.();
+    } catch {
+      return;
+    }
+  };
+
   const beginTurn = () => {
     turning = true;
     if (doc.pointerLockElement === canvas) return;
-    try {
-      void Promise.resolve(canvas.requestPointerLock?.()).catch(() => undefined);
-    } catch {
-      // lock refused: the unlocked deltas keep turning the view
-    }
+    void requestLock();
   };
 
   const endTurn = () => {

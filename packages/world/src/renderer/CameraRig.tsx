@@ -134,7 +134,6 @@ export function CameraRig({
     applyLookDelta(mode, lookSign * movementX * MOUSE_SENSITIVITY, lookSign * movementY * MOUSE_SENSITIVITY, lookRefs),
   );
 
-  // Mouse look (right button or left drag) — only active in first/third person modes.
   useEffect(() => {
     if (!isYawPitchMode(mode)) return;
     return attachDesktopLook({ canvas: gl.domElement, onLook: onMouseLook });
