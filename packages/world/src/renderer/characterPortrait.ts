@@ -60,7 +60,7 @@ function disposeModel(model: THREE.Object3D): void {
   });
 }
 
-async function render(url: string): Promise<string> {
+async function render(url: string, mime = 'image/png'): Promise<string> {
   studio ??= createStudio();
   const { renderer, scene, camera, loader } = studio;
   const gltf = await loader.loadAsync(url);
@@ -69,7 +69,7 @@ async function render(url: string): Promise<string> {
     gltf.scene.updateMatrixWorld(true);
     frameHead(camera, gltf.scene);
     renderer.render(scene, camera);
-    return renderer.domElement.toDataURL('image/png');
+    return renderer.domElement.toDataURL(mime);
   } finally {
     scene.remove(gltf.scene);
     disposeModel(gltf.scene);
@@ -97,5 +97,12 @@ export function renderCharacterPortrait(url: string): Promise<string> {
     pending.set(url, job);
     queue = job.catch(() => undefined);
   }
+  return job;
+}
+
+/** Renders `url` as a data URL of type `mime`, bypassing every cache. For the build script that bakes the built-in portraits. */
+export function bakeCharacterPortrait(url: string, mime: string): Promise<string> {
+  const job = queue.then(() => render(url, mime));
+  queue = job.catch(() => undefined);
   return job;
 }

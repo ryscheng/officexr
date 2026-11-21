@@ -5,6 +5,7 @@
 export { Scene } from './Scene.tsx';
 export {
   Adventurer,
+  preloadCharacterModels,
   STATE_CLIPS,
   isAnimationStateAvailable,
   type AnimationState,
@@ -14,7 +15,7 @@ export { PlayerNameTag } from './PlayerNameTag.tsx';
 export { MissionMarker, type MissionMarkerTarget } from './MissionMarker.tsx';
 export { PlayerBubbles } from './PlayerBubbles.tsx';
 export { CharacterPreviewCanvas } from './CharacterPreviewCanvas.tsx';
-export { renderCharacterPortrait } from './characterPortrait.ts';
+export { bakeCharacterPortrait, renderCharacterPortrait } from './characterPortrait.ts';
 export { MapColliders } from './MapColliders.tsx';
 export { BakedLayout, BakedLayoutErrorBoundary, type BakedLayoutProps } from './BakedLayout.tsx';
 export { BakedLayoutColliders, type BakedLayoutCollidersProps } from './BakedLayoutColliders.tsx';

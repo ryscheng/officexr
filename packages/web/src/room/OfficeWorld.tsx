@@ -50,6 +50,7 @@ import { useJoinCheck, type JoinCheckControl } from './useJoinCheck';
 import { useLocalActivity } from './useLocalActivity';
 import { useLocalPresence } from './useLocalPresence';
 import { useOfficeSession, type OfficeSession } from './useOfficeSession';
+import { usePreloadAvatars } from './usePreloadAvatars';
 import { useEscapeFallback } from '../hud/useEscapeLayer';
 import { useShortcutsHotkey } from './useShortcutsHotkey';
 import { AppearancePicker } from '../theme/AppearancePicker';
@@ -57,7 +58,8 @@ import { initialViewMode } from './viewMode';
 import { RefocusOnMovementKey } from './useRefocusOnMovementKey';
 import { withDefaultMap } from './withDefaultMap';
 
-const PlayView3d = lazy(() => import('./PlayView3d'));
+const loadPlayView3d = () => import('./PlayView3d');
+const PlayView3d = lazy(loadPlayView3d);
 
 const storages = {
   maps: withDefaultMap(new FilesystemMapStorage({ basePath: apiUrl(paths.maps) })),
@@ -144,6 +146,10 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
   const welcomeShown = useCallback(() => navigate({ pathname, search: withoutInviteFlag(search) }, { replace: true }), [navigate, pathname, search]);
   const viewMode = useMemo(() => initialViewMode(), []);
   const local = session.type === 'ready' ? session.local : null;
+  useEffect(() => {
+    loadPlayView3d().catch(() => undefined);
+  }, []);
+  usePreloadAvatars(local?.store ?? null, local?.selfId ?? null);
   const pingInbox = useMemo(() => new PingInbox(), [local]);
   const placeMode = useMemo(createPlaceMode, []);
   const requestPropOp = session.type === 'ready' ? session.requestPropOp : null;
