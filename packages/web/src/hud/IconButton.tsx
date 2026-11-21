@@ -5,7 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 const TONE = {
   // The glass material, so a button floating over the world keeps its contrast in both appearances.
   neutral: 'hud-glass text-hud-text shadow-hud-control hover:bg-hud-panel-thick',
-  accent: 'bg-hud-accent text-hud-on-accent shadow-[0_1px_3px_var(--color-hud-accent-shadow)] hover:bg-hud-accent-edge',
+  accent: 'bg-hud-accent-fill text-hud-on-accent shadow-[0_1px_3px_var(--color-hud-accent-shadow)] hover:bg-hud-accent-fill-hover',
   danger: 'bg-hud-rose text-hud-rose-text hover:bg-[rgb(255_59_48/0.2)]',
   success: 'bg-hud-sage text-hud-sage-text hover:bg-[rgb(52_199_89/0.24)]',
 };
