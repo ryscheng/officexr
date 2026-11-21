@@ -96,7 +96,7 @@ export interface ScreenPower {
 export const SCREEN_OFF: ScreenPower = { on: false, litSec: 0, emptySec: 0 };
 
 export function isScreenSettled(p: ScreenPower, occupied: boolean): boolean {
-  return occupied ? p.on && p.litSec >= SCREEN_POWER_UP_SEC : !p.on;
+  return occupied ? p.on && p.emptySec === 0 && p.litSec >= SCREEN_POWER_UP_SEC : !p.on;
 }
 
 /** The next power state after `dtSec`; returns `p` itself once settled. */
