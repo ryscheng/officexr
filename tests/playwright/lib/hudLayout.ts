@@ -11,6 +11,7 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'chat-rest': { scenario: 'chat', steps: [] },
   'chat-peek': { scenario: 'chat', steps: ['say:bao@example.test:Lunch at 12? I booked the big room by the window.'] },
   'chat-sheet': { scenario: 'chat', steps: [/^Chat/] },
+  'menu-open': { scenario: 'crowd', steps: ['Office menu'] },
   'chat-keyboard': { scenario: 'chat', steps: [/^Chat/, 'keyboard'] },
 };
 export type HudScenario = (typeof HUD_SCENARIOS)[number];

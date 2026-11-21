@@ -52,7 +52,7 @@ function MenuPopover({ portrait, onPeople, onSettings, onClose }: { portrait: bo
   if (portrait) {
     return (
       <PortraitSheet title="Menu" label="Menu" closeLabel="Close menu" onClose={onClose}>
-        <div role="menu" aria-label="Office menu" className="flex flex-col">
+        <div role="menu" aria-label="Office menu" className="flex flex-col gap-2">
           {items}
         </div>
       </PortraitSheet>
@@ -294,7 +294,7 @@ export function OfficeHud({
         }
         bottomLeft={narrow ? undefined : missionsPanel}
         bottomRight={
-          narrow ? (
+          coarse && (menuOpen || people) ? undefined : narrow ? (
             <>
               {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} onOpen={chatVisibility.compose} />}
               {chatButton}
