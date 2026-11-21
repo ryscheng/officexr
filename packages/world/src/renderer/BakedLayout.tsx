@@ -28,6 +28,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { getVersion, subscribe } from '../app/bake-registry.ts';
 import { ResetKeyErrorBoundary } from './ResetKeyErrorBoundary.tsx';
+import { useOccluderRegistry } from './occlusion/OccluderContext.tsx';
 
 export { ResetKeyErrorBoundary as BakedLayoutErrorBoundary };
 
@@ -105,6 +106,19 @@ function BakedLayoutScene({
       }
     });
   }, [scene]);
+
+  const occluders = useOccluderRegistry();
+  useEffect(() => {
+    if (!occluders) return;
+    const removers: Array<() => void> = [];
+    scene.updateWorldMatrix(true, true);
+    scene.traverse((child) => {
+      if (!(child as THREE.Mesh).isMesh) return;
+      const remove = occluders.addMesh(child as THREE.Mesh);
+      if (remove) removers.push(remove);
+    });
+    return () => removers.forEach((remove) => remove());
+  }, [scene, occluders]);
 
   // If a material override is provided, apply it to every mesh in the scene.
   useEffect(() => {

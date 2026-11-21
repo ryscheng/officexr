@@ -23,6 +23,9 @@ import { Players } from './Players.tsx';
 import { FrozenAvatars } from './FrozenAvatars.tsx';
 import { MissionMarker, type MissionMarkerTarget } from './MissionMarker.tsx';
 import { CameraRig } from './CameraRig.tsx';
+import { OcclusionController } from './occlusion/OcclusionController.tsx';
+import { OccluderRegistry } from './occlusion/OccluderRegistry.ts';
+import { OccluderRegistryContext } from './occlusion/OccluderContext.tsx';
 import { XRAvatarOrigin } from './XRAvatarOrigin.tsx';
 import type { MotionLookState } from './motionLook.ts';
 import type { ActionInput } from '../input/action-input.ts';
@@ -252,6 +255,7 @@ export function Scene(props: SceneProps) {
     { x: number; y: number; z: number } | null
   >(null);
 
+  const occluders = useMemo(() => new OccluderRegistry(), []);
   const fixedCam = useMemo(
     () => ({
       azimuthDeg: fixedCamera.azimuthDeg,
@@ -305,6 +309,7 @@ export function Scene(props: SceneProps) {
           the same rate the player does. `timeStep="vary"` lets
           Rapier sub-step at the real frame delta.
         */}
+        <OccluderRegistryContext.Provider value={occluders}>
         <Physics gravity={[0, -20, 0]} timeStep="vary">
         <MapColliders store={store} exclude={excludeRidden} />
         {bakedLayouts?.map((p) => {
@@ -427,6 +432,12 @@ export function Scene(props: SceneProps) {
           xrPresenting={xrPresenting}
           paused={props.paused}
         />
+        <OcclusionController
+          mode={cameraMode}
+          playerPosRef={selfPosRef}
+          charRadius={charRadius}
+          enabled={!fixedCam.lookAt}
+        />
         {/* After CameraRig, so the probe reads this frame's pose, not last frame's. */}
         {props.viewYaw && <ViewYawProbe viewYaw={props.viewYaw} />}
 
@@ -459,6 +470,7 @@ export function Scene(props: SceneProps) {
           <ModelsReady store={store} selfId={selfId} onReady={props.onModelsReady} />
         )}
         </Physics>
+        </OccluderRegistryContext.Provider>
       </Suspense>
       </OptionalXR>
     </Canvas>

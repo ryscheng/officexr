@@ -6,6 +6,7 @@ import { heldStands, swapHeldStands } from '../motion/wand.ts';
 import { useStoreWorldObjects, type ExcludeInstance } from './useStoreWorldObjects.ts';
 import { logModelError } from './ModelWithFallback.tsx';
 import { ResetKeyErrorBoundary } from './ResetKeyErrorBoundary.tsx';
+import { useInstancedOccluder } from './occlusion/OccluderContext.tsx';
 import { modelUrl } from '../app/asset-url.ts';
 import type { InstanceGeometryService } from '../app/types.ts';
 import { useApplication, useCatalog } from '../react/application-context.tsx';
@@ -366,6 +367,8 @@ function KindInstanceGroup({
     // live tint/opacity edit from the Object editor doesn't scramble
     // object positions.
   }, [instances, kind.scale, mat, geometry]);
+
+  useInstancedOccluder(meshRef, instances.length, instances, mat);
 
   // userData lets the editor's R3F overlay raycast and identify which
   // kind / instance was hit. The caller can read `intersection.object.userData.kindId`
