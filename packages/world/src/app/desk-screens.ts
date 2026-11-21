@@ -1,80 +1,80 @@
-import { seatOccupant, type OfficeState } from '@officexr/sdk';
+import { parseSeatId, type OfficeState } from '@officexr/sdk';
 import { deskAreaMembers } from './desk-areas.ts';
-import { seatOf } from './seating.ts';
 import type { KindResolver } from './geometry-service.ts';
 import type { Instances } from './room-bounds.ts';
-import type { InstanceGeometryService, Vec3, WorldAABB } from './types.ts';
+import type { InstanceGeometryService, WorldAABB } from './types.ts';
 
 export const SCREEN_POWER_UP_SEC = 0.3;
 export const SCREEN_OFF_DELAY_SEC = 1;
-export const MONITOR_INSET_M = 0.3;
+export const SCREEN_TOP_TOLERANCE_M = 0.1;
 
-export interface DeskScreenPlacement {
+const SCREEN_WORDS = new Set(['monitor', 'monitors', 'screen', 'display', 'computer', 'laptop', 'pc', 'tv', 'television']);
+
+function words(text: string): string[] {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/);
+}
+
+// Matched on the kind's id, label and model file name, so a kind needs no flag to be picked up.
+export function isScreenKind(kind: { id: string; label?: string; gltfPath?: string } | undefined): boolean {
+  if (!kind) return false;
+  const file = kind.gltfPath?.split('?')[0].split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
+  return [kind.id, kind.label ?? '', file].some((text) => words(text).some((w) => SCREEN_WORDS.has(w)));
+}
+
+export interface GroundPoint {
+  x: number;
+  z: number;
+}
+
+export interface DeskScreenLink {
   deskAreaId: string;
-  seatInstanceId: string;
-  deskInstanceId: string;
-  position: Vec3;
-  yawRad: number;
+  seatId: string;
+  monitorInstanceId: string;
+  monitor: GroundPoint;
+  chair: GroundPoint;
 }
 
-type Geometry = Pick<InstanceGeometryService, 'worldAABB' | 'worldAABBOfInstance'>;
+type Geometry = Pick<InstanceGeometryService, 'worldAABBOfInstance'>;
 
-function rayThroughBox(
-  ox: number,
-  oz: number,
-  dx: number,
-  dz: number,
-  box: WorldAABB,
-): [number, number] | null {
-  let near = 0;
-  let far = Infinity;
-  for (const [o, d, lo, hi] of [
-    [ox, dx, box.min[0], box.max[0]],
-    [oz, dz, box.min[2], box.max[2]],
-  ] as const) {
-    if (Math.abs(d) < 1e-9) {
-      if (o < lo || o > hi) return null;
-      continue;
-    }
-    const a = (lo - o) / d;
-    const b = (hi - o) / d;
-    near = Math.max(near, Math.min(a, b));
-    far = Math.min(far, Math.max(a, b));
-  }
-  return near <= far ? [near, far] : null;
+function centre(box: WorldAABB): GroundPoint {
+  return { x: (box.min[0] + box.max[0]) / 2, z: (box.min[2] + box.max[2]) / 2 };
 }
 
-// One monitor per desk area with a chair and exactly one desk (the one whose footprint centre is in the area).
-// It stands on the desk top where the sitter's line of sight crosses the desk, MONITOR_INSET_M past the
-// near edge, and faces the chair; a line that misses the desk puts it at the desk centre.
-export function deskScreenPlacements(
+function within(box: WorldAABB, x: number, z: number): boolean {
+  return x >= box.min[0] && x <= box.max[0] && z >= box.min[2] && z <= box.max[2];
+}
+
+// A screen belongs to a desk area when it stands on the area's single desk: its centre is inside the desk
+// footprint and its underside is at desk-top height. An area without a chair, or without exactly one desk, has none.
+export function deskScreenLinks(
   areas: OfficeState['deskAreas'],
   instances: Instances,
   catalog: KindResolver,
   geometry: Geometry,
-): DeskScreenPlacement[] {
-  const out: DeskScreenPlacement[] = [];
+): DeskScreenLink[] {
+  const screens = instances.filter((i) => isScreenKind(catalog.getKind(i.kindId)));
+  if (screens.length === 0) return [];
+  const out: DeskScreenLink[] = [];
   for (const area of areas) {
     if (area.seatInstanceId === null) continue;
     const { desks } = deskAreaMembers(area, instances, catalog, geometry);
     const deskInstance = desks.length === 1 ? instances.find((i) => i.id === desks[0].id) : undefined;
-    const seat = seatOf({ worldObjects: { cubeSize: 0, instances } }, catalog, geometry, area.seatInstanceId);
-    if (!deskInstance || !seat) continue;
-    const box = geometry.worldAABBOfInstance(deskInstance);
-    const fx = Math.sin(seat.pose.yawRad);
-    const fz = Math.cos(seat.pose.yawRad);
-    const hit = rayThroughBox(seat.pose.position[0], seat.pose.position[2], fx, fz, box);
-    const centre = [(box.min[0] + box.max[0]) / 2, (box.min[2] + box.max[2]) / 2] as const;
-    const reach = hit ? Math.min(hit[0] + MONITOR_INSET_M, (hit[0] + hit[1]) / 2) : null;
-    const x = reach === null ? centre[0] : seat.pose.position[0] + fx * reach;
-    const z = reach === null ? centre[1] : seat.pose.position[2] + fz * reach;
-    out.push({
-      deskAreaId: area.id,
-      seatInstanceId: seat.instance.id,
-      deskInstanceId: deskInstance.id,
-      position: [x, box.max[1], z],
-      yawRad: seat.pose.yawRad + Math.PI,
-    });
+    const chairInstance = instances.find((i) => i.id === parseSeatId(area.seatInstanceId as string).instanceId);
+    if (!deskInstance || !chairInstance) continue;
+    const desk = geometry.worldAABBOfInstance(deskInstance);
+    const chair = centre(geometry.worldAABBOfInstance(chairInstance));
+    for (const screen of screens) {
+      if (screen.id === deskInstance.id) continue;
+      const box = geometry.worldAABBOfInstance(screen);
+      const at = centre(box);
+      const inArea = at.x >= area.min.x && at.x <= area.max.x && at.z >= area.min.z && at.z <= area.max.z;
+      if (inArea && within(desk, at.x, at.z) && Math.abs(box.min[1] - desk.max[1]) <= SCREEN_TOP_TOLERANCE_M) {
+        out.push({ deskAreaId: area.id, seatId: area.seatInstanceId, monitorInstanceId: screen.id, monitor: at, chair });
+      }
+    }
   }
   return out;
 }
@@ -109,6 +109,8 @@ export function screenGlow(p: ScreenPower): number {
   return Math.floor(p.litSec * FLICKER_HZ) % 3 === 1 ? ramp * 0.3 : ramp;
 }
 
-export function isSeatOccupied(state: Pick<OfficeState, 'players'>, seatInstanceId: string): boolean {
-  return seatOccupant(state, seatInstanceId) !== null;
+// Any seat of the chair's instance counts, since a player on seat n of a multi-seat chair holds `instanceId#n`.
+export function isChairOccupied(state: Pick<OfficeState, 'players'>, seatId: string): boolean {
+  const { instanceId } = parseSeatId(seatId);
+  return Object.values(state.players).some((p) => p.seat != null && parseSeatId(p.seat).instanceId === instanceId);
 }

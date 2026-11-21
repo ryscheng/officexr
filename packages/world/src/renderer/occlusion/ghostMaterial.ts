@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hasScreenGlow, patchScreenGlowShader } from '../screenGlowShader.ts';
 
 const FADE_VARYING = 'vOcclusionFade';
 
@@ -7,6 +8,17 @@ export function createInstancedGhostMaterial(base: THREE.Material): THREE.Materi
   const ghost = base.clone();
   ghost.transparent = true;
   ghost.depthWrite = false;
+  if (hasScreenGlow(base)) {
+    ghost.onBeforeCompile = (shader) => {
+      patchScreenGlowShader(shader, true);
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>\ndiffuseColor.a *= ${FADE_VARYING};`,
+      );
+    };
+    ghost.customProgramCacheKey = () => 'occlusion-instanced-ghost-screen';
+    return ghost;
+  }
   ghost.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\nvarying float ${FADE_VARYING};`)

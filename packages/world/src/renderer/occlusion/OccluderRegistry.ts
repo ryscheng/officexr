@@ -15,10 +15,6 @@ export class OccluderRegistry {
     return this.add(new MeshOccluder(mesh));
   }
 
-  addOccluder(occluder: Occluder): () => void {
-    return this.add(occluder);
-  }
-
   private add(occluder: Occluder): () => void {
     this.occluders.add(occluder);
     return () => {
