@@ -1,5 +1,5 @@
 import type { SettingsAction } from '../room/Settings';
-import { closingAction } from '../room/SettingsModal';
+import { closingAction } from '../hud/settings/parts';
 import type { PictureInPicture } from './usePictureInPicture';
 
 export const popOutActions = (pip: Pick<PictureInPicture, 'supported' | 'pipWindow' | 'open'>): SettingsAction[] =>

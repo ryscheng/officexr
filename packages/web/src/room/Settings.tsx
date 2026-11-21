@@ -1,14 +1,8 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { closeToWorld } from './closeToWorld';
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { focusWorld } from '@officexr/world/top-down';
 
-export interface SettingsTab {
-  id: string;
-  label: string;
-  content: ReactNode;
-}
-
-/** A full-height view opened with `openPane`, shown in place of the tabs. */
-export type SettingsPane = SettingsTab;
+export const SETTINGS_PAGES = ['profile', 'controls', 'alerts', 'office', 'help'] as const;
+export type SettingsPageId = (typeof SETTINGS_PAGES)[number];
 
 export interface SettingsAction {
   id: string;
@@ -17,32 +11,42 @@ export interface SettingsAction {
 
 interface SettingsState {
   isOpen: boolean;
-  /** `null` shows the first tab. */
-  tab: string | null;
-  pane: string | null;
+  /** `null` shows the top-level list. */
+  page: SettingsPageId | null;
 }
 
 export interface Settings extends SettingsState {
-  open: (tab?: string) => void;
-  openPane: (id: string) => void;
-  /** Leaves the open pane, or closes Settings when none is open. */
+  open: (page?: SettingsPageId) => void;
+  openPage: (page: SettingsPageId) => void;
+  /** Leaves the open page, or closes Settings when none is open. */
   back: () => void;
   close: () => void;
 }
 
-const CLOSED: SettingsState = { isOpen: false, tab: null, pane: null };
+const CLOSED: SettingsState = { isOpen: false, page: null };
 
 const SettingsContext = createContext<Settings | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState(CLOSED);
-  const close = useMemo(() => closeToWorld(() => setState(CLOSED)), []);
+  const isOpen = useRef(false);
+  const close = useCallback(() => {
+    if (!isOpen.current) {
+      return;
+    }
+    isOpen.current = false;
+    setState(CLOSED);
+    focusWorld();
+  }, []);
   const settings = useMemo<Settings>(
     () => ({
       ...state,
-      open: (tab) => setState({ isOpen: true, tab: tab ?? null, pane: null }),
-      openPane: (pane) => setState((s) => ({ ...s, pane })),
-      back: () => (state.pane ? setState((s) => ({ ...s, pane: null })) : close()),
+      open: (page) => {
+        isOpen.current = true;
+        setState({ isOpen: true, page: page ?? null });
+      },
+      openPage: (page) => setState((s) => ({ ...s, page })),
+      back: () => (state.page ? setState((s) => ({ ...s, page: null })) : close()),
       close,
     }),
     [state, close],

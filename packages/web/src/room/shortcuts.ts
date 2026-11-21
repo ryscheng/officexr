@@ -20,9 +20,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { group: 'Chat', keys: 'Esc', description: 'Close chat' },
   { group: 'Missions', keys: 'T', description: 'Add a mission' },
   { group: 'Missions', keys: 'M', description: 'Open the full map (Esc closes it)' },
-  { group: 'Menu', keys: 'Esc', description: 'Open settings (when the mouse is free)' },
-  { group: 'Menu', keys: 'Esc', description: 'Back, then close settings' },
-  { group: 'Menu', keys: '?', description: 'Open keybinds' },
+  { group: 'Menu', keys: 'Esc', description: 'Open the menu (when the mouse is free)' },
+  { group: 'Menu', keys: 'Esc', description: 'Back, then close the menu' },
+  { group: 'Menu', keys: '?', description: 'Open help and shortcuts' },
 ];
 
 export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [...new Set(SHORTCUTS.map((s) => s.group))];

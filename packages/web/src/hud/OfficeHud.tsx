@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { ArrowLeftRight, Map as MapIcon, Menu, MessageSquare, Settings, UserPlus, Users, LogOut } from 'lucide-react';
-import { loginOf, type Actions, type OfficeState, type PlayerId, type Store } from '@officexr/sdk';
+import { Map as MapIcon, Menu, MessageSquare, Users } from 'lucide-react';
+import { loginOf, PLACEABLE_KINDS, type Actions, type OfficeState, type PlayerId, type Store } from '@officexr/sdk';
 import { useCoarsePointer, usePortrait, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
 import type { PingSender } from '../ping/usePingSender';
@@ -27,75 +27,18 @@ import { NearYouButtons, NearYouCard } from './NearYouCard';
 import { PingInboxHud } from './PingInboxHud';
 import { ArrivalBubble } from './ArrivalBubble';
 import { PeopleSheet } from './PeopleSheet';
+import { SettingsSheet } from './settings/SettingsSheet';
+import { useSettings, type SettingsPageId } from '../room/Settings';
 import { createLocalMutes, useLocalMutes } from './localMutes';
 import { useMutedVoice } from './useMutedVoice';
 import { RoundButton } from './RoundButton';
 import { Keycap } from './ui/Keycap';
-import { InlineAlert } from './ui/InlineAlert';
-import { Panel } from './ui/Panel';
-import { PortraitSheet } from './ui/PortraitSheet';
 import { AUTO_HIDE_MS, unreadCount, useChatVisibility } from './useChatVisibility';
 import { selectSelfMoving, useMovingFade } from './useMovingFade';
-import { useEscapeLayer } from './useEscapeLayer';
 import { useHotkey } from './useHotkey';
 
 const selectChat = (s: OfficeState) => s.chat;
 const selectHeadcount = (s: OfficeState) => Object.keys(s.players).length;
-
-type MenuActions = { onInvite: () => void; onPeople: () => void; onSettings: () => void; onSwitchOffice: () => void; onSignOut: () => Promise<void> };
-
-export function MenuPopover({ portrait, onClose, onInvite, onPeople, onSettings, onSwitchOffice, onSignOut }: MenuActions & { portrait: boolean; onClose: () => void }) {
-  useEscapeLayer(true, onClose);
-  const [signOutError, setSignOutError] = useState<string | null>(null);
-  const item = 'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-semibold hover:bg-hud-hover pointer-coarse:min-h-12';
-  const items = (
-    <>
-      <button type="button" role="menuitem" className={item} onClick={onInvite}>
-        <UserPlus aria-hidden className="size-4" />
-        Invite people
-      </button>
-      <button type="button" role="menuitem" className={item} onClick={onPeople}>
-        <Users aria-hidden className="size-4" />
-        People here
-      </button>
-      <button type="button" role="menuitem" className={item} onClick={onSettings}>
-        <Settings aria-hidden className="size-4" />
-        Settings
-      </button>
-      <button type="button" role="menuitem" className={item} onClick={onSwitchOffice}>
-        <ArrowLeftRight aria-hidden className="size-4" />
-        Switch office
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className={`${item} text-hud-rose-text`}
-        onClick={() => {
-          setSignOutError(null);
-          onSignOut().catch((err: Error) => setSignOutError(err.message));
-        }}
-      >
-        <LogOut aria-hidden className="size-4" />
-        Sign out
-      </button>
-      {signOutError && <InlineAlert className="mx-1 text-xs">{signOutError}</InlineAlert>}
-    </>
-  );
-  if (portrait) {
-    return (
-      <PortraitSheet title="Menu" label="Menu" closeLabel="Close menu" onClose={onClose}>
-        <div role="menu" aria-label="Office menu" className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain">
-          {items}
-        </div>
-      </PortraitSheet>
-    );
-  }
-  return (
-    <Panel role="menu" aria-label="Office menu" className="pointer-events-auto flex w-60 flex-col p-1.5">
-      {items}
-    </Panel>
-  );
-}
 
 export function OfficeHud({
   store,
@@ -113,7 +56,7 @@ export function OfficeHud({
   welcome = false,
   onWelcomeShown,
   onWave,
-  onOpenSettings,
+  settingsPages,
   onSwitchOffice,
   onSignOut,
 }: {
@@ -132,7 +75,7 @@ export function OfficeHud({
   welcome?: boolean;
   onWelcomeShown?: () => void;
   onWave: () => void;
-  onOpenSettings: () => void;
+  settingsPages: Record<SettingsPageId, ReactNode>;
   onSwitchOffice: () => void;
   onSignOut: () => Promise<void>;
 }) {
@@ -149,7 +92,9 @@ export function OfficeHud({
   const building = useSyncExternalStore(placeMode.subscribe, () => placeMode.get().open);
   const chatVisibility = useChatVisibility(chat.length, { peekMs: narrow ? TICKER_MS : AUTO_HIDE_MS });
   const [lastReadId, setLastReadId] = useState<string | null>(chat.at(-1)?.id ?? null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const settings = useSettings();
+  const menuOpen = settings.isOpen;
+  const { close: closeMenu } = settings;
   const [people, setPeople] = useState(false);
   const [invite, setInvite] = useState<'created' | 'invite' | null>(welcome ? 'created' : null);
   const [mapOpen, setMapOpen] = useState(false);
@@ -198,12 +143,12 @@ export function OfficeHud({
   }, [narrow, building]);
   useEffect(() => {
     if (narrow && missionsOpen) {
-      setMenuOpen(false);
+      closeMenu();
       setPeople(false);
       setInvite(null);
       hideChat();
     }
-  }, [narrow, missionsOpen, hideChat]);
+  }, [narrow, missionsOpen, hideChat, closeMenu]);
 
   const unread = chatShowsLog ? 0 : unreadCount(chat, lastReadId, selfId);
   const toggleChat = () => {
@@ -212,7 +157,7 @@ export function OfficeHud({
       return;
     }
     if (narrow) {
-      setMenuOpen(false);
+      closeMenu();
       setInvite(null);
     }
     if (coarse) {
@@ -222,7 +167,7 @@ export function OfficeHud({
   };
   const togglePeople = () => {
     setPeople((p) => !p);
-    setMenuOpen(false);
+    closeMenu();
     setInvite(null);
     if (coarse) {
       hideChat();
@@ -236,7 +181,11 @@ export function OfficeHud({
       setPeople(false);
       hideChat();
     }
-    setMenuOpen((o) => !o);
+    if (menuOpen) {
+      closeMenu();
+    } else {
+      settings.open();
+    }
   };
 
   const current = missions.current;
@@ -296,21 +245,26 @@ export function OfficeHud({
       voice && <CallCard store={store} selfId={selfId} voice={voice} pinger={pinger} compact={coarse} />
     );
   const menu = menuOpen && (
-    <MenuPopover
+    <SettingsSheet
+      store={store}
       portrait={narrow}
-      onClose={() => setMenuOpen(false)}
+      page={settings.page}
+      pages={settingsPages}
+      canBuild={PLACEABLE_KINDS.length > 0}
+      onPage={settings.openPage}
+      onBack={settings.back}
+      onClose={closeMenu}
       onInvite={() => {
-        setMenuOpen(false);
+        closeMenu();
         setPeople(false);
         setInvite('invite');
         if (narrow) {
           hideChat();
         }
       }}
-      onPeople={togglePeople}
-      onSettings={() => {
-        setMenuOpen(false);
-        onOpenSettings();
+      onBuild={() => {
+        closeMenu();
+        placeMode.setOpen(true);
       }}
       onSwitchOffice={onSwitchOffice}
       onSignOut={onSignOut}
@@ -354,7 +308,6 @@ export function OfficeHud({
                 onChat={toggleChat}
                 onMenu={openMenu}
               />
-              {menu}
               {chatPanel}
             </>
           )
@@ -393,19 +346,15 @@ export function OfficeHud({
         }
         rightEdge={
           <>
-            {coarse && (
-              <>
-                {menu}
-                {chatPanel}
-              </>
-            )}
+            {coarse && chatPanel}
+            {menu}
             {peopleSheet}
             {inviteSheet}
           </>
         }
         bottomLeft={narrow || (coarse && (invite || people)) ? undefined : missionsPanel}
         bottomRight={
-          (coarse && (menuOpen || people || invite)) || (!coarse && people) ? undefined : narrow ? (
+          (coarse && (menuOpen || people || invite)) || (!coarse && (people || menuOpen)) ? undefined : narrow ? (
             <>
               {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} hiddenLogins={mutedLogins} onOpen={chatVisibility.compose} />}
               <div className="flex items-center gap-2">

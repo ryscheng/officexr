@@ -1,9 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Bus, MissionsClient, OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { createDefaultApi } from '@officexr/world/app';
 import { SfxProvider } from '@officexr/world/audio';
 import { createPlaceMode, type PlacementHost } from '@officexr/world/motion';
-import { ApplicationProvider, useStoreSelector } from '@officexr/world/top-down';
+import { ApplicationProvider, useCoarsePointer, useStoreSelector } from '@officexr/world/top-down';
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { Identity, Office } from '@officexr/server/shared';
@@ -24,7 +24,10 @@ import { OfficeHud } from '../hud/OfficeHud';
 import { createHttpMissionsClient } from '../hud/missions/missionsApi';
 import { useMissionMarker } from '../hud/missions/useMissionMarker';
 import { useMissions } from '../hud/missions/useMissions';
-import { SettingRow } from './SettingsModal';
+import { SettingRow, SettingsActionButton } from '../hud/settings/parts';
+import { HelpPage } from '../hud/settings/HelpPage';
+import { OfficePage } from '../hud/settings/OfficePage';
+import { StatusSection } from '../hud/settings/StatusSection';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
 import { usePingReceiver } from '../ping/usePingReceiver';
 import { usePingSender } from '../ping/usePingSender';
@@ -35,15 +38,14 @@ import { usePictureInPicture } from '../pip/usePictureInPicture';
 import { JaasMeeting } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { useMuteHotkey } from '../voice/useMuteHotkey';
-import { officeSettingsTabs } from './OfficeSettings';
 import { Blocked } from '../page/Blocked';
 import { PlayView3dBoundary } from './PlayView3dBoundary';
 import { EnteringOffice, enteringScreen } from './EnteringOffice';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
-import { KeybindsTab } from './KeybindsTab';
 import { NotificationsPane } from './PingSettings';
-import { SettingsProvider, useSettings, type SettingsAction, type SettingsTab } from './Settings';
+import { SettingsProvider, useSettings, type SettingsAction, type SettingsPageId } from './Settings';
+import type { PlayViewSettings } from './PlayView3d';
 import { useJoinCheck, type JoinCheckControl } from './useJoinCheck';
 import { useLocalActivity } from './useLocalActivity';
 import { useLocalPresence } from './useLocalPresence';
@@ -158,8 +160,9 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
   const [bannerError, setBannerError] = useState<string | null>(null);
   const settings = useSettings();
   const { open: openSettings, close: closeSettings } = settings;
-  const openKeybinds = useCallback(() => openSettings('keybinds'), [openSettings]);
-  useShortcutsHotkey(openKeybinds, session.type === 'ready');
+  const coarse = useCoarsePointer();
+  const openHelp = useCallback(() => openSettings('help'), [openSettings]);
+  useShortcutsHotkey(openHelp, session.type === 'ready');
   useEscapeFallback(openSettings, session.type === 'ready');
   const pip = usePictureInPicture();
   const closePip = pip.close;
@@ -205,32 +208,41 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
     placement,
     missionMarker,
   });
-  const sharedTabs: SettingsTab[] = [
-    {
-      id: 'controls',
-      label: 'Controls',
-      content: (
+  const popOut: SettingsAction[] = popOutActions(pip);
+  const settingsPages = (ready: ReadySession, extras: PlayViewSettings): Record<SettingsPageId, ReactNode> => ({
+    profile: (
+      <>
+        {extras.look}
+        <StatusSection store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
+      </>
+    ),
+    controls: (
+      <>
         <SettingRow label="View">
           <ViewModeControl mode={viewMode} />
         </SettingRow>
-      ),
-    },
-    {
-      id: 'appearance',
-      label: 'Appearance',
-      content: (
+        {extras.controls}
         <SettingRow label="Appearance">
           <AppearancePicker />
         </SettingRow>
-      ),
-    },
-    { id: 'keybinds', label: 'Keybinds', content: <KeybindsTab /> },
-    { id: 'notifications', label: 'Notifications', content: <NotificationsPane /> },
-    ...(integrations.status.calendar.enabled ? [{ id: 'integrations', label: 'Integrations', content: <IntegrationsPane integrations={integrations} returnTo={calendarReturnTo()} /> }] : []),
-    ...officeSettingsTabs(office, me, setOffice),
-  ];
-  const sharedActions: SettingsAction[] = popOutActions(pip);
-  const readyHud = (ready: ReadySession) => (
+        {!coarse && (
+          <SettingsActionButton onClick={openHelp}>Keyboard shortcuts</SettingsActionButton>
+        )}
+        {[...extras.actions, ...popOut].map((action) => (
+          <Fragment key={action.id}>{action.render(closeSettings)}</Fragment>
+        ))}
+      </>
+    ),
+    alerts: (
+      <>
+        <NotificationsPane />
+        {integrations.status.calendar.enabled && <IntegrationsPane integrations={integrations} returnTo={calendarReturnTo()} />}
+      </>
+    ),
+    office: <OfficePage office={office} coarse={coarse} onSaved={setOffice} />,
+    help: <HelpPage coarse={coarse} />,
+  });
+  const readyHud = (ready: ReadySession, extras: PlayViewSettings) => (
     <>
       <StatusHotkeys store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
       {ready.voice && <JaasMeeting voice={ready.voice} />}
@@ -252,7 +264,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         inviteUrl={`${window.location.origin}${roomPath(office.id)}`}
         welcome={welcome}
         onWelcomeShown={welcomeShown}
-        onOpenSettings={() => openSettings()}
+        settingsPages={settingsPages(ready, extras)}
         onSwitchOffice={leaveOffice}
         onSignOut={signOut}
         toasts={
@@ -276,10 +288,9 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
               viewProps={readyViewProps(session)}
               overhead={viewMode === '2d'}
               local={session.local}
-              settings={{ tabs: sharedTabs, actions: sharedActions }}
               onError={setBannerError}
             >
-              {readyHud(session)}
+              {(extras) => readyHud(session, extras)}
             </PlayView3d>
           </Suspense>
         </PlayView3dBoundary>

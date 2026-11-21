@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { SettingsAction } from './Settings';
-import { SettingsActionButton } from './SettingsModal';
+import { SettingsActionButton } from '../hud/settings/parts';
 
 /** The part of the world's `XRStore` this action uses. */
 export interface VrSessionStore {

@@ -13,22 +13,16 @@ function Harness({ result, onRecenter = () => {} }: { result: MotionPermission; 
   const [unsupported, setUnsupported] = useState(false);
   return (
     <SettingsHarness
-      tabs={[
-        {
-          id: 'controls',
-          label: 'Controls',
-          content: (
-            <MotionLookControl
-              enabled={enabled}
-              onEnabledChange={setEnabled}
-              onRecenter={onRecenter}
-              unsupported={unsupported}
-              onUnsupported={() => setUnsupported(true)}
-              requestPermission={() => Promise.resolve(result)}
-            />
-          ),
-        },
-      ]}
+      controls={
+        <MotionLookControl
+          enabled={enabled}
+          onEnabledChange={setEnabled}
+          onRecenter={onRecenter}
+          unsupported={unsupported}
+          onUnsupported={() => setUnsupported(true)}
+          requestPermission={() => Promise.resolve(result)}
+        />
+      }
     />
   );
 }

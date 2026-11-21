@@ -5,8 +5,7 @@ import { createDefaultApi } from '@officexr/world/app';
 import { characterUrl, CHARACTERS, pickCharacterForPlayer } from '@officexr/world/characters';
 import { ApplicationProvider } from '@officexr/world/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CharacterAction, CharacterPane } from './CharacterPane';
-import { openSettings, SettingsHarness } from './settingsHarness';
+import { CharacterLook } from './CharacterLook';
 
 afterEach(cleanup);
 
@@ -38,52 +37,28 @@ function setup(status = 200) {
   const onSaveResult = vi.fn();
   render(
     <ApplicationProvider api={catalogApi()}>
-    <SettingsHarness
-      tabs={[{ id: 'controls', label: 'Controls', content: <p>Controls tab</p> }]}
-      panes={[
-        {
-          id: 'character',
-          label: 'Character',
-          content: <CharacterPane local={local} onSaveResult={onSaveResult} Preview={FakePreview} fetchFn={fetchFn} />,
-        },
-      ]}
-      actions={[{ id: 'character', render: () => <CharacterAction /> }]}
-    />
+      <CharacterLook local={local} onSaveResult={onSaveResult} Preview={FakePreview} fetchFn={fetchFn} />
     </ApplicationProvider>,
   );
-  openSettings();
-  fireEvent.click(screen.getByRole('button', { name: 'Character' }));
   return { local, fetchFn, onSaveResult };
 }
 
-describe('CharacterPane', () => {
-  it('opens inside Settings, previewing the current character', () => {
-    setup();
-    expect(screen.queryByText('Controls tab')).toBeNull();
-    expect(screen.getAllByRole('dialog')).toHaveLength(1);
-    const select = screen.getByRole('combobox', { name: 'Character' }) as HTMLSelectElement;
-    expect(screen.getByTestId('preview').textContent).toBe(characterUrl(select.value as (typeof CHARACTERS)[number]));
-  });
+const pick = (name: string) => fireEvent.click(screen.getByRole('radio', { name }));
 
-  it('Back returns to the tabs', () => {
+describe('CharacterLook', () => {
+  it('previews the current character and marks it selected', () => {
     setup();
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(screen.getByText('Controls tab')).toBeTruthy();
-    expect(screen.queryByTestId('preview')).toBeNull();
-  });
-
-  it('Escape after Back closes Settings', () => {
-    setup();
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    const selected = screen.getAllByRole('radio').find((r) => r.getAttribute('aria-checked') === 'true')!;
+    expect(screen.getAllByRole('radio').filter((r) => r.getAttribute('aria-checked') === 'true')).toHaveLength(1);
+    expect(screen.getByTestId('preview').textContent).toBe(characterUrl(selected.getAttribute('aria-label') as (typeof CHARACTERS)[number]));
   });
 
   it('shows and saves the chosen character', async () => {
     const { local, fetchFn, onSaveResult } = setup();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Character' }), { target: { value: OTHER } });
+    pick(OTHER);
     expect(local.store.getState().players[SELF]?.avatar.model).toBe(OTHER);
     expect(screen.getByTestId('preview').textContent).toBe(characterUrl(OTHER));
+    expect(screen.getByRole('radio', { name: OTHER }).getAttribute('aria-checked')).toBe('true');
     await waitFor(() => expect(onSaveResult).toHaveBeenCalledWith(null));
     expect(fetchFn).toHaveBeenCalledWith(
       `/api/offices/${OFFICE}/character`,
@@ -93,9 +68,9 @@ describe('CharacterPane', () => {
 
   it('offers the catalog characters but not its other kinds, and saves one by id', async () => {
     const { local, fetchFn } = setup();
-    const option = await screen.findByRole('option', { name: 'Necromancer' });
-    expect(screen.queryByRole('option', { name: 'Skeleton Axe' })).toBeNull();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Character' }), { target: { value: (option as HTMLOptionElement).value } });
+    await screen.findByRole('radio', { name: 'Necromancer' });
+    expect(screen.queryByRole('radio', { name: 'Skeleton Axe' })).toBeNull();
+    pick('Necromancer');
     expect(local.store.getState().players[SELF]?.avatar.model).toBe(UPLOADED.id);
     expect(screen.getByTestId('preview').textContent).toBe(UPLOADED.gltfPath);
     await waitFor(() =>
@@ -108,7 +83,7 @@ describe('CharacterPane', () => {
 
   it('reports a failed save', async () => {
     const { onSaveResult } = setup(500);
-    fireEvent.change(screen.getByRole('combobox', { name: 'Character' }), { target: { value: OTHER } });
+    pick(OTHER);
     await waitFor(() => expect(onSaveResult).toHaveBeenCalledWith('Could not save the character: HTTP 500'));
   });
 });

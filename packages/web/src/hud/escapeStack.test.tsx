@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createActions, createBus, createStore } from '@officexr/sdk';
 import { PlayControlsProvider } from '@officexr/world/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PingInbox } from '../ping/pingInbox';
-import { SettingsHarness, openSettings } from '../room/settingsHarness';
+import { SettingsHarness, openMenu, openPage } from '../room/settingsHarness';
 import { useSettings } from '../room/Settings';
 import { ChatPanel } from './ChatPanel';
 import { useEscapeFallback } from './useEscapeLayer';
@@ -25,9 +25,9 @@ afterEach(() => {
 const settingsDialog = () => screen.queryByRole('dialog');
 
 function OpenSettingsOnEsc() {
-  const { open, openPane } = useSettings();
+  const { open } = useSettings();
   useEscapeFallback(() => open());
-  return <button onClick={() => openPane('pane')}>pane</button>;
+  return null;
 }
 
 function setup(children?: React.ReactNode) {
@@ -37,7 +37,7 @@ function setup(children?: React.ReactNode) {
   inbox.add('ada#t1', 'Ada');
   render(
     <PlayControlsProvider controls={fakePlayControls().controls}>
-      <SettingsHarness panes={[{ id: 'pane', label: 'Pane', content: <p>pane body</p> }]}>
+      <SettingsHarness pages={{ help: <p>pane body</p> }}>
         <OpenSettingsOnEsc />
         <PingInboxHud inbox={inbox} store={store} />
         <ChatPanel store={store} actions={actions} selfId="me#t0" />
@@ -62,7 +62,7 @@ describe('Escape stack', () => {
   it('closes Settings before the inbox beneath it', () => {
     setup();
     fireEvent.click(screen.getByRole('button', { name: /^Pings/ }));
-    openSettings();
+    openMenu();
     esc(settingsDialog()!);
     expect(settingsDialog()).toBeNull();
     expect(screen.getByRole('list', { name: 'Received pings' })).toBeTruthy();
@@ -91,8 +91,8 @@ describe('Escape stack', () => {
 
   it('goes back from a Settings pane, then closes', () => {
     setup();
-    openSettings();
-    act(() => void screen.getByText('pane').click());
+    openMenu();
+    openPage('Help');
     expect(screen.getByText('pane body')).toBeTruthy();
     esc(settingsDialog()!);
     expect(screen.queryByText('pane body')).toBeNull();

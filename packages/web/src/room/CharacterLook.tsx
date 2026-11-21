@@ -5,10 +5,7 @@ import { baseCharacterOptions, catalogCharacterOptions, resolveCharacter, type C
 import { useCatalogCharacters } from '@officexr/world/react';
 import { CharacterPreviewCanvas } from '@officexr/world/renderer';
 import type { apiFetch } from '../apiOrigin';
-import { FIELD } from '../hud/ui/fieldStyles';
 import { chooseCharacter } from './character';
-import { useSettings } from './Settings';
-import { SettingsActionButton } from './SettingsModal';
 
 const selfModel = (s: OfficeState, selfId: string) => s.players[selfId]?.avatar.model;
 
@@ -18,15 +15,12 @@ function useSelfCharacter({ store, selfId }: PersistentLocalState, catalog: Cata
   return resolveCharacter(selfId, model, catalog);
 }
 
-export function CharacterAction() {
-  const { openPane } = useSettings();
-  return <SettingsActionButton onClick={() => openPane('character')}>Character</SettingsActionButton>;
-}
+const hue = (id: string) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 
 /** Reports each save's error, or `null` once a save succeeds. */
 type SaveResult = (error: string | null) => void;
 
-export function CharacterPane({
+export function CharacterLook({
   local,
   onSaveResult,
   Preview = CharacterPreviewCanvas,
@@ -39,38 +33,37 @@ export function CharacterPane({
 }) {
   const catalog = useCatalogCharacters();
   const character = useSelfCharacter(local, catalog);
-  const uploaded = catalogCharacterOptions(catalog);
+  const options = [...baseCharacterOptions(), ...catalogCharacterOptions(catalog)];
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="min-h-40 flex-1 overflow-hidden rounded-hud-control bg-hud-inset">
+    <>
+      <div className="h-[140px] shrink-0 overflow-hidden rounded-hud-control bg-hud-inset">
         <Preview url={character.url} />
       </div>
-      <select
-        aria-label="Character"
-        className={`${FIELD} font-bold`}
-        value={character.id}
-        onChange={(e) =>
-          chooseCharacter(local, e.target.value, fetchFn).then(
-            () => onSaveResult(null),
-            (err: Error) => onSaveResult(err.message),
-          )
-        }
-      >
-        <CharacterOptions options={baseCharacterOptions()} />
-        {uploaded.length > 0 && (
-          <optgroup label="More characters">
-            <CharacterOptions options={uploaded} />
-          </optgroup>
-        )}
-      </select>
-    </div>
+      <div role="radiogroup" aria-label="Look" className="flex flex-wrap gap-2">
+        {options.map((option) => {
+          const selected = option.id === character.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-label={option.label}
+              title={option.label}
+              style={{ backgroundColor: `hsl(${hue(option.id)} 38% 46%)` }}
+              onClick={() =>
+                chooseCharacter(local, option.id, fetchFn).then(
+                  () => onSaveResult(null),
+                  (err: Error) => onSaveResult(err.message),
+                )
+              }
+              className={`flex size-14 items-center justify-center rounded-full text-lg font-semibold text-white outline-offset-2 focus-visible:outline-2 focus-visible:outline-hud-accent ${selected ? 'outline-[3px] outline-hud-accent' : ''}`}
+            >
+              <span aria-hidden>{option.label.charAt(0)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
-}
-
-function CharacterOptions({ options }: { options: readonly CharacterOption[] }) {
-  return options.map((c) => (
-    <option key={c.id} value={c.id}>
-      {c.label}
-    </option>
-  ));
 }
