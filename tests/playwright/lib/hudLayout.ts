@@ -162,6 +162,11 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
     }
     if (name === 'keyboard') {
       const { width, height } = page.viewportSize()!;
+      await page.evaluate(() => {
+        const upright = Object.assign(new EventTarget(), { type: 'portrait-primary' });
+        Object.defineProperty(window.screen, 'orientation', { value: upright, configurable: true });
+        upright.dispatchEvent(new Event('change'));
+      });
       await page.setViewportSize({ width, height: height - Math.round(height * 0.42) });
       await page.waitForTimeout(800);
       continue;
