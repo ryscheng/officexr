@@ -4,7 +4,7 @@ import { focusWorld, usePlayControls, useStoreSelector } from '@officexr/world/t
 import { Button } from '../hud/ui/Button';
 import { Panel } from '../hud/ui/Panel';
 import { assertNever } from '../ping/assertNever';
-import { sameDeskBanner, selectDeskBanner, selectOwnsDesk, type DeskBanner } from './deskBanner';
+import { sameDeskBanner, selectDeskBanner, type DeskBanner } from './deskBanner';
 import type { RequestDeskClaim } from './requestDeskClaim';
 import { useReturnToDeskHotkey } from './useReturnToDeskHotkey';
 
@@ -48,10 +48,9 @@ function HudButton({ onClick, disabled, children }: { onClick: () => void; disab
   );
 }
 
-/** Desk banner with claim, unclaim and return-to-desk controls, plus a Sit button on touch screens. Lives in the HUD's top-centre zone. */
+/** Desk banner: claim at a free desk, unclaim only at your own, return-to-desk away from it, and Sit on touch screens. Lives in the HUD's top-centre zone. */
 export function DeskHud({ store, requestDeskClaim }: { store: Store; requestDeskClaim: RequestDeskClaim }) {
   const banner = useStoreSelector(store, selectDeskBanner, sameDeskBanner);
-  const ownsDesk = useStoreSelector(store, selectOwnsDesk);
   const { hasDesk, nearbySeatId, sit, returnToDesk } = usePlayControls();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<ClaimError | null>(null);
@@ -85,12 +84,12 @@ export function DeskHud({ store, requestDeskClaim }: { store: Store; requestDesk
             {banner.ownsOther ? 'Move desk here' : 'Claim desk'}
           </HudButton>
         )}
-        {ownsDesk && (
+        {banner?.type === 'mine' && (
           <HudButton disabled={pending} onClick={() => request(null)}>
             Unclaim desk
           </HudButton>
         )}
-        {hasDesk && <HudButton onClick={returnToDesk}>Return to desk</HudButton>}
+        {hasDesk && banner?.type !== 'mine' && <HudButton onClick={returnToDesk}>Return to desk</HudButton>}
         {nearbySeatId !== null && (
           // Touch only: a keyboard sits with E. The wrapper owns visibility so it can't fight the button's display.
           <span className="hidden pointer-coarse:inline-flex">
