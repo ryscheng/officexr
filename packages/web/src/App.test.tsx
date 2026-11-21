@@ -155,3 +155,16 @@ describe('App signed in', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 });
+
+describe('App entering a room', () => {
+  it('shows step 1 of 4 while the sign-in check is pending, and a plain spinner elsewhere', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
+    window.history.pushState({}, '', '/room/abc');
+    render(<App />);
+    expect(screen.getByRole('status').textContent).toBe('Step 1 of 4: checking your sign-in');
+    cleanup();
+    window.history.pushState({}, '', '/');
+    render(<App />);
+    expect(screen.getByRole('status').textContent).toBe('Loading…');
+  });
+});

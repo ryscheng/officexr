@@ -68,7 +68,9 @@ export default function App() {
     }
   }, [me.type]);
   if (me.type === 'loading') {
-    return (
+    return window.location.pathname.startsWith('/room/') ? (
+      <EnteringOffice stage={1} />
+    ) : (
       <PageShell centred>
         <Spinner label="Loading…" />
       </PageShell>
@@ -90,14 +92,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home me={me} />} />
-        <Route
-          path="/room/:id"
-          element={
-            <Async state={me} loading={<EnteringOffice stage={1} />}>
-              {(identity) => <Room me={identity} />}
-            </Async>
-          }
-        />
+        <Route path="/room/:id" element={<Room me={me.data} />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </BrowserRouter>
