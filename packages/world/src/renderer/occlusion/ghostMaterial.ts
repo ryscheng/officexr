@@ -2,11 +2,7 @@ import * as THREE from 'three';
 
 const FADE_VARYING = 'vOcclusionFade';
 
-/**
- * A clone of `base` for drawing faded instances: transparent, no depth write
- * (so the player behind it stays visible), and per-instance opacity read from
- * `instanceColor.x`. The original material is never touched.
- */
+// No depth write, so the player behind a faded instance stays visible; opacity per instance comes from instanceColor.x.
 export function createInstancedGhostMaterial(base: THREE.Material): THREE.Material {
   const ghost = base.clone();
   ghost.transparent = true;

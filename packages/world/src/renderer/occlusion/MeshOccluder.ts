@@ -15,7 +15,6 @@ function triangleCount(geometry: THREE.BufferGeometry): number {
   return (geometry.index ? geometry.index.count : geometry.getAttribute('position').count) / 3;
 }
 
-/** Whether a plain mesh can occlude: not floor-like and light enough to raycast each frame. */
 export function isOccluderMesh(mesh: THREE.Mesh): boolean {
   mesh.updateWorldMatrix(true, false);
   const geometry = mesh.geometry;
@@ -25,11 +24,6 @@ export function isOccluderMesh(mesh: THREE.Mesh): boolean {
   return !isFloorLike(box.max.y - box.min.y);
 }
 
-/**
- * Occlusion for one plain mesh, such as a piece of a baked layout. Faded, it
- * is hidden and a sibling ghost with a one-off cloned material is drawn in its
- * place; the source material is never edited.
- */
 export class MeshOccluder implements Occluder {
   private fade = 1;
   private wanted = false;
@@ -78,6 +72,10 @@ export class MeshOccluder implements Occluder {
     return this.hitFraction(ax, ay, az, bx, by, bz, true);
   }
 
+  fadedCount(): number {
+    return this.fade < 1 ? 1 : 0;
+  }
+
   clearMarks(): void {
     this.wanted = false;
   }
@@ -100,7 +98,7 @@ export class MeshOccluder implements Occluder {
       ghost.position.copy(this.mesh.position);
       ghost.quaternion.copy(this.mesh.quaternion);
       ghost.scale.copy(this.mesh.scale);
-      ghost.castShadow = this.mesh.castShadow;
+      ghost.castShadow = false;
       ghost.receiveShadow = this.mesh.receiveShadow;
       ghost.raycast = () => undefined;
       this.mesh.parent?.add(ghost);

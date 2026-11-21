@@ -7,11 +7,7 @@ const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 const scratchMatrix = new THREE.Matrix4();
 const scratchInverse = new THREE.Matrix4();
 
-/**
- * Occlusion for one InstancedMesh. Faded instances move into a ghost
- * InstancedMesh with its own transparent material, so the source mesh and its
- * material are never edited beyond hiding and restoring instance matrices.
- */
+// Faded instances move to a ghost mesh so the source material is never edited; it casts no shadow, so the player is not darkened.
 export class InstancedOccluder implements Occluder {
   private readonly count: number;
   private readonly source: Float32Array;
@@ -100,6 +96,10 @@ export class InstancedOccluder implements Occluder {
     return best;
   }
 
+  fadedCount(): number {
+    return this.ghostOf.length;
+  }
+
   clearMarks(): void {
     this.wanted.clear();
   }
@@ -134,7 +134,7 @@ export class InstancedOccluder implements Occluder {
     this.ghostMaterial = createInstancedGhostMaterial(base);
     const ghost = new THREE.InstancedMesh(this.mesh.geometry, this.ghostMaterial, this.count);
     ghost.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.count * 3).fill(1), 3);
-    ghost.castShadow = this.mesh.castShadow;
+    ghost.castShadow = false;
     ghost.receiveShadow = this.mesh.receiveShadow;
     ghost.raycast = () => undefined;
     ghost.frustumCulled = false;

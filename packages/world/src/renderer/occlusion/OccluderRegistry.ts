@@ -3,11 +3,6 @@ import type { Occluder } from './Occluder.ts';
 import { InstancedOccluder } from './InstancedOccluder.ts';
 import { isOccluderMesh, MeshOccluder } from './MeshOccluder.ts';
 
-/**
- * The static world geometry that can hide the player. Renderers add what
- * they draw; the occlusion controller queries it. Never holds floors, other
- * players or the self player.
- */
 export class OccluderRegistry {
   private readonly occluders = new Set<Occluder>();
 
@@ -32,8 +27,7 @@ export class OccluderRegistry {
     return this.occluders.size;
   }
 
-  /** Marks everything crossing any of the segments from the camera, then steps all fades. */
-  updateFades(
+    updateFades(
     camera: THREE.Vector3,
     targets: readonly THREE.Vector3[],
     dtSec: number,
@@ -48,7 +42,12 @@ export class OccluderRegistry {
     }
   }
 
-  /** Fraction along a->b of the nearest entry into any occluder, or -1. */
+    fadedCount(): number {
+    let total = 0;
+    for (const o of this.occluders) total += o.fadedCount();
+    return total;
+  }
+
   firstHit(a: THREE.Vector3, b: THREE.Vector3): number {
     let best = -1;
     for (const o of this.occluders) {

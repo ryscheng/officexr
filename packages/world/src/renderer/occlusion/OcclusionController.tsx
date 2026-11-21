@@ -10,6 +10,12 @@ const HEAD_HEIGHT = 1.55;
 const CHEST_HEIGHT = 1.0;
 const FRAMES_PER_QUERY = 2;
 
+interface OcclusionMarker {
+  fading: number;
+  cameraPulledIn: boolean;
+  cameraDistance: number | null;
+}
+
 interface OcclusionControllerProps {
   mode: CameraMode;
   playerPosRef: React.RefObject<THREE.Vector3>;
@@ -17,12 +23,7 @@ interface OcclusionControllerProps {
   enabled: boolean;
 }
 
-/**
- * Keeps the self player visible. Fixed and third-person views fade whatever
- * stands between the camera and the player's head and chest; third-person
- * also pulls the camera in front of the first thing in the way. Runs after
- * `CameraRig`, which sets the camera pose it adjusts.
- */
+// Must run after CameraRig, which sets the camera pose adjusted here.
 export function OcclusionController({ mode, playerPosRef, charRadius, enabled }: OcclusionControllerProps) {
   const registry = useOccluderRegistry();
   const { camera, gl } = useThree();
@@ -33,6 +34,7 @@ export function OcclusionController({ mode, playerPosRef, charRadius, enabled }:
   const frame = useRef(0);
   const distance = useRef<number | null>(null);
   const targetDistance = useRef(0);
+  const desiredDistance = useRef(0);
   const fades = enabled && (mode === 'fixed' || mode === 'third-person');
   const pullsIn = enabled && mode === 'third-person';
 
@@ -56,6 +58,7 @@ export function OcclusionController({ mode, playerPosRef, charRadius, enabled }:
     if (pullsIn) {
       toCamera.current.copy(camera.position).sub(head.current);
       const desired = toCamera.current.length();
+      desiredDistance.current = desired;
       if (desired > 1e-3) {
         if (query || distance.current === null) {
           const hit = registry.firstHit(head.current, camera.position);
@@ -69,6 +72,13 @@ export function OcclusionController({ mode, playerPosRef, charRadius, enabled }:
     }
 
     registry.updateFades(camera.position, targets.current, dtSec, query);
+    if (query) {
+      (globalThis as unknown as { __OFFICE_OCCLUSION__?: OcclusionMarker }).__OFFICE_OCCLUSION__ = {
+        fading: registry.fadedCount(),
+        cameraPulledIn: pullsIn && distance.current !== null ? targetDistance.current < desiredDistance.current - 0.05 : false,
+        cameraDistance: pullsIn ? camera.position.distanceTo(head.current) : null,
+      };
+    }
   });
 
   return null;
