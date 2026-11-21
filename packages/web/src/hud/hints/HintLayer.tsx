@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { HintName } from '../hintFlags';
 import { hintCopy } from './hintCopy';
 import { HintPlate } from './HintPlate';
-import { HINT_MAX_WIDTH, middleThird, placeHint, type HintPlacement, type HintSide, type Rect, type Size } from './placeHint';
+import { HINT_GAP, HINT_MAX_WIDTH, middleThird, placeHint, type HintPlacement, type HintSide, type Rect, type Size } from './placeHint';
 
 const FADE_MS = 200;
 const REMEASURE_MS = 250;
@@ -27,7 +27,7 @@ const TARGETS: Record<Layout, Partial<Record<HintName, Target>>> = {
     alone: { anchor: '[data-map-toggle]', side: 'below', align: 'end', clearBelow: '[data-hud-zone="topCentre"]' },
   },
   desktop: {
-    people: { anchor: '[data-people-toggle]', side: 'below' },
+    people: { anchor: '[data-people-toggle]', side: 'below', clearBelow: '[data-hud-zone="topLeft"]' },
     wave: { anchor: '[data-hint-anchor="near"]', side: 'above', align: 'end', pointAt: '[data-hint-anchor="speak"]' },
     alone: { anchor: '[data-map-toggle]', side: 'below', align: 'end' },
   },
@@ -52,13 +52,14 @@ function measure(name: HintName, layout: Layout, size: Size): HintPlacement | nu
   const bounds = hud
     ? { left: hud.left, top: hud.top, width: hud.width, height: hud.height }
     : { left: FALLBACK_MARGIN, top: FALLBACK_MARGIN, width: viewport.width - 2 * FALLBACK_MARGIN, height: viewport.height - 2 * FALLBACK_MARGIN };
+  const joystick = rectOf('[data-hud-item="Joystick"]');
   const point = target.pointAt ? rectOf(target.pointAt) : null;
   const clear = target.clearBelow ? rectOf(target.clearBelow) : null;
   return placeHint({
     anchor,
     size,
     bounds,
-    keepClear: middleThird(viewport),
+    keepClear: [middleThird(viewport), ...(joystick ? [{ ...joystick, width: joystick.width + HINT_GAP }] : [])],
     side: target.side,
     align: target.align,
     pointAt: point ? point.left + point.width / 2 : undefined,

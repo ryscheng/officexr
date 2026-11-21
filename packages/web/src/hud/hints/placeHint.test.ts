@@ -3,7 +3,7 @@ import { HINT_GAP, middleThird, placeHint } from './placeHint';
 
 const viewport = { width: 390, height: 844 };
 const bounds = { left: 16, top: 55, width: 358, height: 739 };
-const keepClear = middleThird(viewport);
+const keepClear = [middleThird(viewport)];
 const size = { width: 200, height: 42 };
 const base = { size, bounds, keepClear };
 
@@ -45,10 +45,19 @@ describe('placeHint', () => {
     const landscape = { width: 844, height: 390 };
     const hud = { left: 55, top: 12, width: 734, height: 341 };
     const anchor = { left: 741, top: 12, width: 48, height: 48 };
-    const placed = placeHint({ size: { width: 240, height: 64 }, bounds: hud, keepClear: middleThird(landscape), anchor, side: 'below', align: 'end' });
+    const placed = placeHint({ size: { width: 240, height: 64 }, bounds: hud, keepClear: [middleThird(landscape)], anchor, side: 'below', align: 'end' });
     expect(placed.maxWidth).toBeCloseTo(789 - (844 * 2) / 3);
     expect(placed.left + Math.min(240, placed.maxWidth)).toBeCloseTo(789);
     expect(placed.left).toBeGreaterThanOrEqual(middleThird(landscape).left + middleThird(landscape).width);
+  });
+
+  it('narrows a flush-right plate that would cover the joystick', () => {
+    const small = { left: 16, top: 20, width: 288, height: 528 };
+    const joystick = { left: 17, top: 442, width: 118, height: 110 };
+    const anchor = { left: 200, top: 500, width: 48, height: 48 };
+    const placed = placeHint({ size: { width: 240, height: 64 }, bounds: small, keepClear: [joystick], anchor, side: 'above', align: 'end' });
+    expect(placed.left).toBeGreaterThanOrEqual(135);
+    expect(placed.left + Math.min(240, placed.maxWidth)).toBe(304);
   });
 
   it('puts the plate left of the control and narrows it to the room there', () => {
