@@ -20,6 +20,8 @@
   --color-hud-on-accent: #ffffff;
   --color-hud-accent-edge: #0066d6;
   --color-hud-accent-shadow: rgb(0 122 255 / 0.32);
+  --color-hud-accent-fill: #0066d6;
+  --color-hud-accent-fill-hover: #0058b8;
   --color-hud-sage: rgb(52 199 89 / 0.16);
   --color-hud-sage-text: #1d8a3c;
   --color-hud-rose: rgb(255 59 48 / 0.12);

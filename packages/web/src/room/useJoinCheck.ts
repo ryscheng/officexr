@@ -1,18 +1,16 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { apiFetch, paths } from '../apiOrigin';
 import { fetchRealtimeToken } from './realtimeToken';
 
-export type JoinCheck = 'checking' | 'prompt' | 'go' | 'cancelled';
+export type JoinCheck = 'checking' | 'prompt' | 'go';
 
-export type JoinCheckControl = { state: JoinCheck; join: () => void; cancel: () => void };
+export type JoinCheckControl = { state: JoinCheck; join: () => void };
 
 // ponytail: a very fast reload may briefly see its own old session as connected and prompt.
 // ponytail: a tab that was reconnecting when another window joined replaces that window on reconnect, without prompting.
 /** Asks whether `login` is already in the office and, if joining would replace that session, waits for a decision. */
 export function useJoinCheck(officeId: string, login: string, fetchFn: typeof apiFetch = apiFetch): JoinCheckControl {
   const [state, setState] = useState<JoinCheck>('checking');
-  const navigate = useNavigate();
   useEffect(() => {
     let cancelled = false;
     setState('checking');
@@ -33,9 +31,5 @@ export function useJoinCheck(officeId: string, login: string, fetchFn: typeof ap
   return {
     state,
     join: () => setState('go'),
-    cancel: () => {
-      setState('cancelled');
-      navigate('/');
-    },
   };
 }

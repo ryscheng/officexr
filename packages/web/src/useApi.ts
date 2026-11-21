@@ -8,7 +8,7 @@ export function errorMessage(res: Response, body: unknown): string {
   return (body as { error?: string } | null)?.error ?? `HTTP ${res.status}`;
 }
 
-export function useApi<T>(url: string): ApiState<T> {
+export function useApi<T>(url: string, attempt = 0): ApiState<T> {
   const [state, setState] = useState<ApiState<T>>({ type: 'loading' });
   useEffect(() => {
     setState({ type: 'loading' });
@@ -29,6 +29,6 @@ export function useApi<T>(url: string): ApiState<T> {
     return () => {
       cancelled = true;
     };
-  }, [url]);
+  }, [url, attempt]);
   return state;
 }

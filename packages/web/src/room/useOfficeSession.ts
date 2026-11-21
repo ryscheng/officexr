@@ -47,7 +47,7 @@ async function createJaasVoice(officeId: string, displayName: string): Promise<J
 /**
  * Joins `officeId` on the realtime server (proxied at `/ws`) as player `selfId` of `me`, once `enabled`, with JaaS
  * voice when `/config.js` has an app id and the server mints a voice token. The self player stays unannounced until
- * `office.sync.releaseSelf()`.
+ * `office.sync.releaseSelf()`. Raising `attempt` joins again.
  */
 export function useOfficeSession(
   officeId: string,
@@ -55,6 +55,7 @@ export function useOfficeSession(
   selfId: string,
   enabled: boolean,
   start: typeof startOfficeSync = startOfficeSync,
+  attempt = 0,
 ): OfficeSession {
   const [session, setSession] = useState<OfficeSession>({ type: 'connecting' });
   useEffect(() => {
@@ -150,6 +151,6 @@ export function useOfficeSession(
       cancelled = true;
       teardown?.();
     };
-  }, [officeId, me.login, me.name, selfId, enabled, start]);
+  }, [officeId, me.login, me.name, selfId, enabled, start, attempt]);
   return session;
 }

@@ -12,13 +12,13 @@ export function Async<T>({
   state: ApiState<T>;
   loading?: ReactNode;
   /** Renders the failure; defaults to an inline alert. */
-  error?: (message: string) => ReactNode;
+  error?: (message: string, status?: number) => ReactNode;
   children: (data: T) => ReactNode;
 }) {
   return state.type === 'loading' ? (
     loading
   ) : state.type === 'error' ? (
-    error(state.message)
+    error(state.message, state.status)
   ) : (
     children(state.data)
   );
