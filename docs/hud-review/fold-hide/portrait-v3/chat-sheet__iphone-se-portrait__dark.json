@@ -8,12 +8,12 @@
  "smallTargets": [],
  "boxes": [
   {
-   "name": "Chat11:42 PMBao Tran: Standup ",
+   "name": "Chat11:55 PMBao Tran: Standup ",
    "interactive": false,
    "x": 16,
-   "y": 160,
+   "y": 208,
    "w": 288,
-   "h": 408,
+   "h": 360,
    "clipped": false,
    "sheet": true
   },
@@ -21,7 +21,7 @@
    "name": "Collapse chat",
    "interactive": true,
    "x": 247,
-   "y": 169,
+   "y": 217,
    "w": 48,
    "h": 48,
    "clipped": false,

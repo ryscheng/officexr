@@ -20,8 +20,8 @@
   {
    "name": "Expand missions",
    "interactive": true,
-   "x": 16,
-   "y": 152,
+   "x": 90.84375,
+   "y": 84,
    "w": 138.296875,
    "h": 48,
    "clipped": false,
@@ -51,7 +51,7 @@
    "name": "Mute microphone",
    "interactive": true,
    "x": 191,
-   "y": 91,
+   "y": 147,
    "w": 48,
    "h": 48,
    "clipped": false,
@@ -61,7 +61,7 @@
    "name": "Leave call",
    "interactive": true,
    "x": 247,
-   "y": 91,
+   "y": 147,
    "w": 48,
    "h": 48,
    "clipped": false,
@@ -94,6 +94,16 @@
    "y": 480,
    "w": 72,
    "h": 72,
+   "clipped": false,
+   "sheet": false
+  },
+  {
+   "name": "Loading world…",
+   "interactive": false,
+   "x": 106.0625,
+   "y": 309.5,
+   "w": 107.859375,
+   "h": 17,
    "clipped": false,
    "sheet": false
   }

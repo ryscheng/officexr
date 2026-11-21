@@ -100,7 +100,7 @@ export function OfficeHud({
   const moving = useStoreSelector(store, selectSelfMoving);
   const fadeSecondary = useMovingFade(moving, narrow);
   const building = useSyncExternalStore(placeMode.subscribe, () => placeMode.get().open);
-  const chatVisibility = useChatVisibility(chat.length, { defaultFolded: coarse, peekMs: narrow ? TICKER_MS : AUTO_HIDE_MS });
+  const chatVisibility = useChatVisibility(chat.length, { peekMs: narrow ? TICKER_MS : AUTO_HIDE_MS });
   const [lastReadId, setLastReadId] = useState<string | null>(chat.at(-1)?.id ?? null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [people, setPeople] = useState(false);
