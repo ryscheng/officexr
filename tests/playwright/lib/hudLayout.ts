@@ -29,10 +29,10 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'conn-offline': { scenario: 'crowd', steps: ['net:offline'] },
   'conn-recovered': { scenario: 'crowd', steps: ['net:reconnecting', 'net:live'] },
   'text-only': { scenario: 'text-only', steps: [] },
-  'hint-move': { scenario: 'alone', steps: ['wait:11000'], hint: 'move' },
-  'hint-people': { scenario: 'spread', steps: ['wait:8000'], hint: 'people' },
-  'hint-wave': { scenario: 'chat', steps: ['wait:2500'], hint: 'wave' },
-  'hint-alone': { scenario: 'alone', steps: ['wait:60800'], hint: 'alone', only: ['desktop', 'iphone13-portrait', 'iphone13-landscape'] },
+  'hint-move': { scenario: 'alone', steps: [], hint: 'move' },
+  'hint-people': { scenario: 'spread', steps: [], hint: 'people' },
+  'hint-wave': { scenario: 'near', steps: [], hint: 'wave' },
+  'hint-alone': { scenario: 'alone', steps: [], hint: 'alone', only: ['desktop', 'iphone13-portrait', 'iphone13-landscape'] },
   'hint-build': { scenario: 'chat', steps: ['Office menu'], hint: 'build', only: ['desktop'] },
 };
 export type HudScenario = (typeof HUD_SCENARIOS)[number];
@@ -189,10 +189,6 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
       await dragStick(page);
       continue;
     }
-    if (typeof name === 'string' && name.startsWith('wait:')) {
-      await page.waitForTimeout(Number(name.slice(5)));
-      continue;
-    }
     if (name === 'keyboard') {
       const { width, height } = page.viewportSize()!;
       await page.evaluate(() => {
@@ -240,6 +236,12 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
       await page.waitForTimeout(600);
     }
   }
+}
+
+/** Waits for the named hint to show and finish fading in; the people and alone hints need up to a minute. */
+export async function awaitHint(page: Page, hint: string): Promise<void> {
+  await page.locator(`[data-hint="${hint}"]`).waitFor({ state: 'visible', timeout: 100_000 });
+  await page.waitForTimeout(500);
 }
 
 export async function dragStick(page: Page, holdMs = 2300): Promise<() => Promise<void>> {

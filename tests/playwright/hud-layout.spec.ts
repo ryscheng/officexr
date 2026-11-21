@@ -6,6 +6,7 @@
 import { expect, test } from '@playwright/test';
 import {
   applySafeArea,
+  awaitHint,
   collectHudBoxes,
   findOutside,
   findOverlaps,
@@ -39,6 +40,10 @@ for (const device of LAYOUT_DEVICES) {
       try {
         await applySafeArea(page, device.safe);
         await runScenarioSteps(page, scenario);
+        const hint = HUD_STATES[scenario]?.hint;
+        if (hint) {
+          await awaitHint(page, hint);
+        }
         const boxes = await collectHudBoxes(page);
         expect(boxes.length, 'the HUD rendered controls').toBeGreaterThan(3);
         const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -56,7 +61,6 @@ for (const device of LAYOUT_DEVICES) {
 
         expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`), 'overlapping controls').toEqual([]);
         expect(findOutside(boxes, viewport, device.safe).map((b) => b.name), 'controls outside the safe area').toEqual([]);
-        const hint = HUD_STATES[scenario]?.hint;
         if (hint) {
           const plate = await page.locator(`[data-hint="${hint}"]`).boundingBox();
           expect(plate, `the ${hint} hint shows`).not.toBeNull();
@@ -281,9 +285,9 @@ test.describe('first-run hints', () => {
         try {
           await applySafeArea(page, device.safe);
           await runScenarioSteps(page, state);
-          await page.waitForTimeout(600);
-          const boxes = await collectHudBoxes(page);
           const hint = HUD_STATES[state]!.hint!;
+          await awaitHint(page, hint);
+          const boxes = await collectHudBoxes(page);
           const plate = await page.locator(`[data-hint="${hint}"]`).boundingBox();
           expect(plate, `the ${hint} hint shows`).not.toBeNull();
           const inX = plate!.x < (c.viewport.width * 2) / 3 && plate!.x + plate!.width > c.viewport.width / 3;
@@ -303,6 +307,7 @@ test.describe('first-run hints', () => {
     const { page, close } = await openHudPreview(browser, device, 'hint-build', 'light');
     try {
       await runScenarioSteps(page, 'hint-build');
+      await awaitHint(page, 'build');
       const plate = await page.locator('[data-hint="build"]').boundingBox();
       const row = await page.getByRole('button', { name: /^Build/ }).boundingBox();
       const sheet = await page.getByRole('dialog', { name: 'Menu' }).boundingBox();
@@ -320,7 +325,7 @@ test.describe('first-run hints', () => {
     const { page, close } = await openHudPreview(browser, device, 'hint-people', 'light');
     try {
       await runScenarioSteps(page, 'hint-people');
-      await expect(page.locator('[data-hint="people"]')).toBeVisible();
+      await awaitHint(page, 'people');
       await page.getByRole('button', { name: /^People here/ }).click();
       await expect(page.locator('[data-hint]')).toHaveCount(0);
       expect(await page.evaluate(() => localStorage.getItem('officexr:hint:people'))).toBe('done');
