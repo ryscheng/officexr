@@ -31,6 +31,7 @@ import type { MissionsApi } from './missions/useMissions';
 import { NearYouButtons, NearYouCard, sameNear, selectNearest } from './NearYouCard';
 import { PingInboxHud } from './PingInboxHud';
 import { ArrivalBubble } from './ArrivalBubble';
+import { PlayerPortraits } from './playerPortrait';
 import { PeopleSheet } from './PeopleSheet';
 import { SettingsSheet } from './settings/SettingsSheet';
 import { useSettings, type SettingsPageId } from '../room/Settings';
@@ -330,7 +331,7 @@ export function OfficeHud({
   );
 
   return (
-    <>
+    <PlayerPortraits store={store}>
       <HudLayout
         topLeft={
           coarse || building ? undefined : (
@@ -424,6 +425,6 @@ export function OfficeHud({
       />
       <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} nearName={nearName} joystickFloats={joystickFloats} />
       {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} onClose={() => setMapOpen(false)} />}
-    </>
+    </PlayerPortraits>
   );
 }

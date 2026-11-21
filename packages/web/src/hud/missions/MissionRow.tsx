@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import type { Mission } from '@officexr/sdk';
 import { formatDistance } from '../formatDistance';
+import { PortraitFace } from '../PortraitFace';
+import { useLoginPortrait } from '../playerPortrait';
 import { initialOf, metaLine, SOURCE_LABEL, stepsLabel } from './missionRows';
 
 export type MissionRowProps = {
@@ -12,13 +14,15 @@ export type MissionRowProps = {
   canEdit: boolean;
   distanceM: number | null;
   personName: string | null;
+  personLogin?: string | null;
   onToggleDone: () => void;
   onToggleStep: (index: number) => void;
   onGo: () => void;
 };
 
-export function MissionRow({ mission, compact, current, now, canEdit, distanceM, personName, onToggleDone, onToggleStep, onGo }: MissionRowProps) {
+export function MissionRow({ mission, compact, current, now, canEdit, distanceM, personName, personLogin = null, onToggleDone, onToggleStep, onGo }: MissionRowProps) {
   const [open, setOpen] = useState(false);
+  const portrait = useLoginPortrait(personLogin);
   const steps = compact ? null : stepsLabel(mission);
   const goable = mission.place !== null && !mission.done;
   const distance = distanceM === null ? null : formatDistance(distanceM);
@@ -81,8 +85,8 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
             </>
           ) : (
             personName && (
-              <span aria-label={personName} role="img" className="flex size-7 items-center justify-center rounded-full bg-hud-avatar text-[11px] font-bold text-hud-text">
-                {initialOf(personName)}
+              <span aria-label={personName} role="img" className="relative flex size-7 rounded-full bg-hud-avatar text-[11px] font-bold text-hud-text">
+                <PortraitFace src={portrait} initial={initialOf(personName)} />
               </span>
             )
           )}

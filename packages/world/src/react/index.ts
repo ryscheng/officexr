@@ -9,6 +9,7 @@ export {
 } from './application-context.tsx';
 export type { ApplicationProviderProps } from './application-context.tsx';
 export { focusWorld, isTypingTarget, useWorldFocus } from './useWorldFocus.ts';
+export { useCharacterPortrait } from './useCharacterPortrait.ts';
 export { useStoreSelector } from './useStoreSelector.ts';
 export { useWorldConstants } from './useWorldConstants.ts';
 export { GAMEPLAY_CAMERA_MODES, useCameraMode, type GameplayCameraMode } from './useCameraMode.ts';

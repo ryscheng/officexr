@@ -23,7 +23,7 @@ function PeopleRow({ row, now, muted, offline, onOpen, onGo }: { row: PresenceRo
   const status = personStatus(row, now);
   const body = (
     <>
-      <PersonAvatar label={row.label} status={status} dim={row.type === 'departed'} />
+      <PersonAvatar id={row.id} label={row.label} status={status} dim={row.type === 'departed'} />
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-base leading-[22px] font-semibold ${row.type === 'departed' ? 'text-hud-text-2' : 'text-hud-text'}`}>{row.label}</span>
         <span className="block truncate text-sm leading-5 text-hud-text-2">{statusLine(row, now, muted)}</span>

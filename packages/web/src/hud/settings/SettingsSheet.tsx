@@ -9,6 +9,8 @@ import { Panel, PanelTitle } from '../ui/Panel';
 import { PortraitSheet } from '../ui/PortraitSheet';
 import { sameFields } from '../sameFields';
 import { useEscapeLayer } from '../useEscapeLayer';
+import { PortraitFace } from '../PortraitFace';
+import { useSelfPortrait } from '../playerPortrait';
 import { PRESENCE_INDICATOR } from '../presenceColours';
 import { SectionLabel } from './parts';
 
@@ -69,6 +71,7 @@ export type SettingsSheetProps = {
 
 function TopLevel({ store, canBuild, onPage, onInvite, onBuild, buildHint, onSwitchOffice, onSignOut }: Pick<SettingsSheetProps, 'store' | 'canBuild' | 'onPage' | 'onInvite' | 'onBuild' | 'buildHint' | 'onSwitchOffice' | 'onSignOut'>) {
   const self = useStoreSelector(store, selectSelf, sameFields);
+  const portrait = useSelfPortrait();
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const move = (e: KeyboardEvent<HTMLElement>) => {
     const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
@@ -85,9 +88,9 @@ function TopLevel({ store, canBuild, onPage, onInvite, onBuild, buildHint, onSwi
       <div className="flex items-center gap-3 px-2 py-1">
         <span
           aria-hidden
-          className={`flex size-11 shrink-0 items-center justify-center rounded-full bg-hud-avatar text-base font-semibold text-hud-text ring-2 ${self.focus ? 'ring-hud-accent' : self.status === 'away' ? 'ring-yellow-400' : 'ring-green-500'}`}
+          className={`relative flex size-11 shrink-0 rounded-full bg-hud-avatar text-base font-semibold text-hud-text ring-2 ${self.focus ? 'ring-hud-accent' : self.status === 'away' ? 'ring-yellow-400' : 'ring-green-500'}`}
         >
-          {self.name.trim().charAt(0).toUpperCase() || 'Y'}
+          <PortraitFace src={portrait} initial={self.name.trim().charAt(0).toUpperCase() || 'Y'} />
         </span>
         <div className="min-w-0">
           <div className="text-base font-semibold">You</div>

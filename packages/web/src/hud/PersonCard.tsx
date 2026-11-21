@@ -25,7 +25,7 @@ export function PersonCard({ row, now, offline, muted, pingCoolingDown, compact,
   return (
     <div className="flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain px-2 pb-1">
       <div className="flex items-start gap-3">
-        <PersonAvatar label={row.label} status={status} />
+        <PersonAvatar id={row.id} label={row.label} status={status} />
         <div className="min-w-0 flex-1">
           <p className="text-lg leading-6 font-semibold break-words text-hud-text">{row.label}</p>
           <p className="text-sm leading-5 text-hud-text-2">{statusLine(row, now, muted)}</p>

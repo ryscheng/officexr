@@ -2,6 +2,8 @@ import { Menu, MessageSquare, Users } from 'lucide-react';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { presenceIndicator } from '@officexr/sdk';
 import { useStoreSelector } from '@officexr/world/top-down';
+import { PortraitFace } from './PortraitFace';
+import { useSelfPortrait } from './playerPortrait';
 import { PRESENCE_INDICATOR } from './presenceColours';
 import { RoundButton } from './RoundButton';
 import { sameFields } from './sameFields';
@@ -41,16 +43,14 @@ export function IdentityCard({
   onMenu: () => void;
 }) {
   const self = useStoreSelector(store, selectSelf, sameFields);
+  const portrait = useSelfPortrait();
   const now = useNow(1000);
   const presence = PRESENCE_INDICATOR[presenceIndicator(self, now)];
   const indicator = presenceIndicator(self, now);
   return (
     <Panel className="pointer-events-auto flex w-86 max-w-[calc(100vw-24px)] items-center gap-3 p-2">
-      <span
-        aria-hidden
-        className={`flex size-11 shrink-0 items-center justify-center rounded-full bg-hud-avatar text-sm font-semibold text-hud-text ring-2 ${RING[indicator]}`}
-      >
-        {self.name.trim().charAt(0).toUpperCase() || '?'}
+      <span aria-hidden className={`relative flex size-11 shrink-0 rounded-full bg-hud-avatar text-sm font-semibold text-hud-text ring-2 ${RING[indicator]}`}>
+        <PortraitFace src={portrait} initial={self.name.trim().charAt(0).toUpperCase() || '?'} />
       </span>
       <div className="min-w-0 flex-1">
         <div className={`${TITLE_TEXT} truncate text-sm`}>{self.name || 'You'}</div>
