@@ -1,10 +1,13 @@
 import type { HintName } from '../hintFlags';
 
-export function hintCopy(name: HintName, coarse: boolean, nearName: string | null): string {
+export function hintCopy(name: HintName, coarse: boolean, nearName: string | null, joystickFloats = false): string {
   const tap = coarse ? 'Tap' : 'Click';
   switch (name) {
     case 'move':
-      return coarse ? 'Drag here to walk' : 'Use W A S D to walk';
+      if (!coarse) {
+        return 'Use W A S D to walk';
+      }
+      return joystickFloats ? 'Drag anywhere to walk' : 'Drag here to walk';
     case 'people':
       return `${tap} People to find someone`;
     case 'wave':

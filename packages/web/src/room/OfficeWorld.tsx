@@ -272,6 +272,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         settingsPages={settingsPages(ready, extras)}
         onSwitchOffice={leaveOffice}
         onSignOut={signOut}
+        joystickFloats={extras.joystickFloats}
         toasts={
           <>
             {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}

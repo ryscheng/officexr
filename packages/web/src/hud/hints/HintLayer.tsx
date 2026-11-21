@@ -67,7 +67,7 @@ function measure(name: HintName, layout: Layout, size: Size): HintPlacement | nu
   });
 }
 
-export function HintLayer({ hint, coarse, portrait, nearName }: { hint: HintName | null; coarse: boolean; portrait: boolean; nearName: string | null }) {
+export function HintLayer({ hint, coarse, portrait, nearName, joystickFloats }: { hint: HintName | null; coarse: boolean; portrait: boolean; nearName: string | null; joystickFloats: boolean }) {
   const [shown, setShown] = useState<{ name: HintName; text: string } | null>(null);
   const [visible, setVisible] = useState(false);
   const [placement, setPlacement] = useState<HintPlacement | null>(null);
@@ -76,14 +76,14 @@ export function HintLayer({ hint, coarse, portrait, nearName }: { hint: HintName
 
   useEffect(() => {
     if (hint) {
-      setShown({ name: hint, text: hintCopy(hint, coarse, nearName) });
+      setShown({ name: hint, text: hintCopy(hint, coarse, nearName, joystickFloats) });
       setVisible(true);
       return;
     }
     setVisible(false);
     const timer = setTimeout(() => setShown(null), FADE_MS);
     return () => clearTimeout(timer);
-  }, [hint, coarse, nearName]);
+  }, [hint, coarse, nearName, joystickFloats]);
 
   const name = shown?.name;
   useLayoutEffect(() => {

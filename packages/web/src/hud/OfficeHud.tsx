@@ -71,6 +71,7 @@ export function OfficeHud({
   settingsPages,
   onSwitchOffice,
   onSignOut,
+  joystickFloats,
 }: {
   store: Store;
   actions: Actions;
@@ -91,6 +92,7 @@ export function OfficeHud({
   settingsPages: Record<SettingsPageId, ReactNode>;
   onSwitchOffice: () => void;
   onSignOut: () => Promise<void>;
+  joystickFloats: boolean;
 }) {
   const coarse = useCoarsePointer();
   const narrow = usePortrait() && coarse;
@@ -420,7 +422,7 @@ export function OfficeHud({
           ))
         }
       />
-      <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} nearName={nearName} />
+      <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} nearName={nearName} joystickFloats={joystickFloats} />
       {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} onClose={() => setMapOpen(false)} />}
     </>
   );

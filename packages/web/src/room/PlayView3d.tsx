@@ -51,6 +51,7 @@ export interface PlayViewSettings {
   motion: ReactNode;
   look: ReactNode;
   actions: SettingsAction[];
+  joystickFloats: boolean;
 }
 
 /** Everything that reaches three/R3F, lazily loaded by `OfficeWorld`. */
@@ -107,6 +108,7 @@ export default function PlayView3d({
     motion,
     look: <CharacterLook local={local} onSaveResult={onError} />,
     actions: vrActions(xrStore, vrSupported, onError),
+    joystickFloats: lookLocked,
   };
 
   return (
