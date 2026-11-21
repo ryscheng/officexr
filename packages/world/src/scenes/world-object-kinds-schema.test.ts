@@ -210,10 +210,10 @@ describe('normalizeKind — seat and isDesk', () => {
       updatedAt: 0,
       kinds: [minimalRaw('furniture', { seat, isDesk: true }), minimalRaw('block', { id: 'plain' })],
     });
-    expect(catalog.kinds[0].seat).toEqual(seat);
+    expect(catalog.kinds[0].seats).toEqual([seat]);
     expect(catalog.kinds[0].isDesk).toBe(true);
     const plain = JSON.parse(JSON.stringify(catalog.kinds[1]));
-    expect(plain).not.toHaveProperty('seat');
+    expect(plain).not.toHaveProperty('seats');
     expect(plain).not.toHaveProperty('isDesk');
   });
 
@@ -226,6 +226,21 @@ describe('normalizeKind — seat and isDesk', () => {
     { offset: { x: 0, y: 0, z: 0 }, yawDeg: '0' },
   ])('rejects malformed seat %j', (bad) => {
     expect(() => normalizeKind(minimalRaw('block', { seat: bad }), 4)).toThrow(/kinds\[4\]\.seat/);
+  });
+
+  it('keeps several seats in order', () => {
+    const second = { offset: { x: 1.5, y: 0.55, z: 0.4 }, yawDeg: 180 };
+    const kind = normalizeKind(minimalRaw('furniture', { seats: [seat, second] }), 0);
+    expect(kind.seats).toEqual([seat, second]);
+    expect(kind).not.toHaveProperty('seat');
+  });
+
+  it.each([[[]], ['x'], [[seat, null]]])('rejects malformed seats %j', (bad) => {
+    expect(() => normalizeKind(minimalRaw('block', { seats: bad }), 4)).toThrow(/kinds\[4\]\.seats/);
+  });
+
+  it('rejects seat and seats together', () => {
+    expect(() => normalizeKind(minimalRaw('block', { seat, seats: [seat] }), 4)).toThrow(/both seat and seats/);
   });
 
   it('rejects a non-boolean isDesk', () => {

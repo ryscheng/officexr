@@ -8,7 +8,7 @@ describe('planTone', () => {
     expect(planTone({ isLayoutObject: true }, 0.1)).toBe('floor');
     expect(planTone({ isLayoutObject: true }, 3)).toBe('wall');
     expect(planTone({ isLayoutObject: false, isDesk: true }, 0.75)).toBe('desk');
-    expect(planTone({ isLayoutObject: false, seat: {} }, 1.2)).toBe('seat');
+    expect(planTone({ isLayoutObject: false, seats: [] }, 1.2)).toBe('seat');
     expect(planTone({ isLayoutObject: false }, 0.05)).toBe('rug');
     expect(planTone(undefined, 1)).toBe('furniture');
   });

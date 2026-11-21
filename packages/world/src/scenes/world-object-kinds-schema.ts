@@ -141,12 +141,10 @@ export interface WorldObjectKind {
   /** Allowed yaw increment in degrees: a positive integer dividing 360.
    * Absent means 90. */
   rotationStepDeg?: number;
-  /** Where an avatar sits on this kind. `offset` is in metres from the
-   * `localAABB` min corner in the unrotated frame (the avatar's root rests
-   * on the seat surface: y is the cushion top);
-   * `yawDeg` is the facing relative to the kind's forward. Absent means
-   * not sittable. */
-  seat?: SeatSpec;
+  /** Where avatars sit on this kind, one entry per seat; the entry's index
+   * is the seat's number. Absent means not sittable. The catalog file may
+   * give a single `seat` instead, which normalisation turns into one entry. */
+  seats?: SeatSpec[];
   /** Counts as a desk. Absent means false. */
   isDesk?: boolean;
   water?: WaterSpec;
@@ -172,6 +170,9 @@ export interface RideSpec {
   vehicle: RideVehicle;
 }
 
+/** `offset` is in metres from the `localAABB` min corner in the unrotated
+ * frame (the avatar's root rests on the seat surface: y is the cushion top);
+ * `yawDeg` is the facing relative to the kind's forward. */
 export interface SeatSpec {
   offset: { x: number; y: number; z: number };
   yawDeg: number;
@@ -446,7 +447,7 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     colliderShape: normalizeColliderShape(k.colliderShape),
     colliderComplexity: normalizeColliderComplexity(k.colliderComplexity, idx),
     rotationStepDeg: normalizeRotationStep(k.rotationStepDeg, idx),
-    seat: normalizeSeat(k.seat, idx),
+    seats: normalizeSeats(k, idx),
     isDesk: normalizeIsDesk(k.isDesk, idx),
     water: normalizeWater(k.water, k.rotationStepDeg, idx),
     ride: normalizeRide(k.ride, idx),
@@ -473,16 +474,26 @@ function normalizeRotationStep(raw: unknown, idx: number): number | undefined {
   return raw;
 }
 
-function normalizeSeat(raw: unknown, idx: number): SeatSpec | undefined {
-  if (raw === undefined) {
-    return undefined;
+function normalizeSeats(k: { seat?: unknown; seats?: unknown }, idx: number): SeatSpec[] | undefined {
+  if (k.seats === undefined) {
+    return k.seat === undefined ? undefined : [normalizeSeat(k.seat, `kinds[${idx}].seat`)];
   }
+  if (k.seat !== undefined) {
+    throw new Error(`world-object-kind-catalog: kinds[${idx}] has both seat and seats`);
+  }
+  if (!Array.isArray(k.seats) || k.seats.length === 0) {
+    throw new Error(`world-object-kind-catalog: kinds[${idx}].seats must be a non-empty array`);
+  }
+  return k.seats.map((seat, i) => normalizeSeat(seat, `kinds[${idx}].seats[${i}]`));
+}
+
+function normalizeSeat(raw: unknown, path: string): SeatSpec {
   const seat = raw as { offset?: Record<string, unknown>; yawDeg?: unknown } | null;
   const offset = seat?.offset;
   const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
   if (!offset || !finite(offset.x) || !finite(offset.y) || !finite(offset.z) || !finite(seat?.yawDeg)) {
     throw new Error(
-      `world-object-kind-catalog: kinds[${idx}].seat must be { offset: { x, y, z }, yawDeg } of finite numbers, got ${JSON.stringify(raw)}`,
+      `world-object-kind-catalog: ${path} must be { offset: { x, y, z }, yawDeg } of finite numbers, got ${JSON.stringify(raw)}`,
     );
   }
   return { offset: { x: offset.x, y: offset.y, z: offset.z }, yawDeg: seat.yawDeg };

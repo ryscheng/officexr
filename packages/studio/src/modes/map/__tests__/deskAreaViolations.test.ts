@@ -4,7 +4,7 @@ import { emptyMapDocument, type WorldObjectKind } from '@officexr/world/scenes';
 import { findDeskAreaViolations } from '../deskAreaViolations.ts';
 
 const kinds: Record<string, Partial<WorldObjectKind>> = {
-  chair: { seat: { offset: { x: 0, y: 0.5, z: 0 }, yawDeg: 0 } },
+  chair: { seats: [{ offset: { x: 0, y: 0.5, z: 0 }, yawDeg: 0 }] },
   desk: { isDesk: true },
 };
 const catalog = { getKind: (id: string) => kinds[id] as WorldObjectKind | undefined };

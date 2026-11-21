@@ -195,6 +195,17 @@ describe('studio MCP tools', () => {
       expect(after.kinds[1]).toEqual(before.kinds[1]);
     });
 
+    it('lets a patched seat or seats replace the other form', async () => {
+      const spec = (x: number) => ({ offset: { x, y: 0.5, z: 0.5 }, yawDeg: 0 });
+      const catalog = seeded();
+      const { call } = await connect({ catalog });
+      await call('patch_world_object_kinds', { kinds: [{ id: 'crate', seats: [spec(0.5), spec(1.5)] }] });
+      expect((await catalog.load())!.kinds[0].seats).toEqual([spec(0.5), spec(1.5)]);
+      const r = await call('patch_world_object_kinds', { kinds: [{ id: 'crate', seat: spec(2) }] });
+      expect(r.isError).toBe(false);
+      expect((await catalog.load())!.kinds[0].seats).toEqual([spec(2)]);
+    });
+
     it.each([
       ['an unknown id', [{ id: 'ghost', label: 'x' }], /no such kind: ghost/],
       ['a repeated id', [{ id: 'crate', label: 'a' }, { id: 'crate', label: 'b' }], /only once/],

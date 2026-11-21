@@ -311,7 +311,7 @@ describe('seatPoseOf', () => {
       min: { x: -0.5, y: 0, z: -1 },
       max: { x: 0.5, y: 1, z: 1 },
     }),
-    seat: { offset: { x: 0.2, y: 0.45, z: 1.5 }, yawDeg: 30 },
+    seats: [{ offset: { x: 0.2, y: 0.45, z: 1.5 }, yawDeg: 30 }],
   };
   const geom = createInstanceGeometry({ catalog: makeCatalog([chair]), voxelSize: VS });
   const instance = (yawDeg: number) => ({
@@ -328,7 +328,7 @@ describe('seatPoseOf', () => {
 
   it.each([0, 90, 180, 270])('lands where the mesh carries the local seat point at yaw %d', (yaw) => {
     const mesh = geom.meshTransform([2, 0, 4], 'chair', yaw);
-    const { offset } = chair.seat;
+    const { offset } = chair.seats[0];
     const [x, y, z] = [offset.x - 0.5, offset.y, offset.z - 1];
     const cos = Math.cos(mesh.rotationY);
     const sin = Math.sin(mesh.rotationY);
@@ -340,6 +340,12 @@ describe('seatPoseOf', () => {
     const pose = seatPoseOf(chair, instance(yaw), geom)!;
     pose.position.forEach((v, i) => expect(v).toBeCloseTo(expected[i], 9));
     expect(pose.yawRad).toBeCloseTo((((yaw + 30) % 360) * Math.PI) / 180, 9);
+  });
+
+  it('places each seat of a kind by its own offset and is null past the last one', () => {
+    const sofa = { seats: [chair.seats[0], { offset: { x: 0.4, y: 0.45, z: 1.5 }, yawDeg: 30 }] };
+    expect(seatPoseOf(sofa, instance(0), geom, 1)!.position).toEqual([1.4, 0.45, 3.5]);
+    expect(seatPoseOf(sofa, instance(0), geom, 2)).toBeNull();
   });
 
   it('is null for a kind without a seat', () => {

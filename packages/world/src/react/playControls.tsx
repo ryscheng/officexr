@@ -17,8 +17,8 @@ export interface PlayControlsSource {
   getState(): AutoWalkState;
   /** Notifies changes to both `getState` and `getSeating`. */
   subscribe(cb: () => void): () => void;
-  /** Sits on `instanceId`, or on the touched seat; the player must touch it, and a refusal shows a toast. */
-  sit(instanceId?: string): void;
+  /** Sits on the seat `seatId`, or on the nearest free touched seat; the player must touch it, and a refusal shows a toast. */
+  sit(seatId?: string): void;
   stand(): void;
   /** Walks to the self player's desk chair and sits on arrival; a no-op without one. */
   returnToDesk(): void;
@@ -28,7 +28,7 @@ export interface PlayControlsSource {
 export interface PlayControls extends SeatingState {
   goTo(targetId: PlayerId): void;
   cancel(): void;
-  sit(instanceId?: string): void;
+  sit(seatId?: string): void;
   stand(): void;
   returnToDesk(): void;
   state: AutoWalkState;

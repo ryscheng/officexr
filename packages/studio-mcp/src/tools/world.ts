@@ -22,7 +22,17 @@ export function patchKinds(catalog: WorldObjectKindCatalogV1, patches: KindPatch
   if (missing.length > 0) {
     throw new Error(`no such kind: ${missing.join(', ')}`);
   }
-  return { ...catalog, kinds: catalog.kinds.map((k) => ({ ...k, ...byId.get(k.id) })) };
+  return { ...catalog, kinds: catalog.kinds.map((k) => mergeKind(k, byId.get(k.id))) };
+}
+
+/** A patched `seat` replaces the kind's `seats` and the other way round, so the two never meet. */
+function mergeKind(kind: object, patch: KindPatch | undefined): object {
+  if (!patch) {
+    return kind;
+  }
+  const { seat, seats, ...rest } = kind as Record<string, unknown>;
+  const kept = 'seat' in patch || 'seats' in patch ? {} : { seat, seats };
+  return { ...rest, ...kept, ...patch };
 }
 
 export function registerWorldTools(
@@ -34,7 +44,7 @@ export function registerWorldTools(
     {
       description:
         'Read the catalog of world-object kinds (id, label, model path, swatch, walkable, scale, material ' +
-        'overrides, rotationStepDeg, seat, isDesk). Rooms and layouts reference kinds by id. `scale` is a unitless uniform multiplier (1 = model ' +
+        'overrides, rotationStepDeg, seats, isDesk). Rooms and layouts reference kinds by id. `scale` is a unitless uniform multiplier (1 = model ' +
         'size unchanged); dimensions are in metres. ' +
         YAW_CONTRACT,
     },
@@ -51,7 +61,7 @@ export function registerWorldTools(
         'Replace the whole world-object-kind catalog; it is validated and nothing is written if invalid. ' +
         'Call get_world_object_kinds first and edit that document; `scale` is a unitless multiplier (1 = unchanged). ' +
         '`rotationStepDeg` must be a positive integer dividing 360, else the catalog is rejected. ' +
-        '`seat` ({offset: {x, y, z}, yawDeg}) marks a kind sittable: offset is in metres from the model\'s localAABB min corner in the unrotated frame (the seated avatar\'s root rests on the seat surface, so y is the cushion top), yawDeg is the facing relative to the kind\'s forward; ' +
+        '`seats` (an array of {offset: {x, y, z}, yawDeg}, one entry per seat; a single `seat` object is accepted for one seat) marks a kind sittable: offset is in metres from the model\'s localAABB min corner in the unrotated frame (the seated avatar\'s root rests on the seat surface, so y is the cushion top), yawDeg is the facing relative to the kind\'s forward; ' +
         '`isDesk` (boolean) marks a desk. Both are optional and must be well-formed, else the catalog is rejected. ' +
         YAW_CONTRACT,
       inputSchema: { catalog: documentSchema },
@@ -69,7 +79,7 @@ export function registerWorldTools(
         'Update some kinds in the world-object-kind catalog without resending the rest. Each entry is ' +
         '{id, ...fields}: the given top-level fields replace that kind\'s fields, and fields not given stay ' +
         'as they are. Every id must already exist. The patched catalog is validated as a whole, and nothing ' +
-        'is written if any entry fails. Returns the patched ids. A field cannot be cleared here (so `seat` and `isDesk` cannot be removed); use put_world_object_kinds. ' +
+        'is written if any entry fails. Returns the patched ids. A field cannot be cleared here (so `seats` and `isDesk` cannot be removed); use put_world_object_kinds. ' +
         YAW_CONTRACT,
       inputSchema: { kinds: z.array(z.object({ id: z.string() }).passthrough()).min(1) },
     },

@@ -13,7 +13,7 @@ export interface PlanRect {
 }
 
 /** The catalog facts the plan needs; absent when the catalog doesn't know the kind (yet). */
-export type PlanKind = { isLayoutObject: boolean; isDesk?: boolean; seat?: unknown } | undefined;
+export type PlanKind = { isLayoutObject: boolean; isDesk?: boolean; seats?: unknown } | undefined;
 
 type AABB = { min: readonly number[]; max: readonly number[] };
 
@@ -28,7 +28,7 @@ export function planTone(kind: PlanKind, heightM: number): PlanTone {
   if (kind?.isDesk) {
     return 'desk';
   }
-  if (kind?.seat) {
+  if (kind?.seats) {
     return 'seat';
   }
   return heightM < FLAT_M ? 'rug' : 'furniture';

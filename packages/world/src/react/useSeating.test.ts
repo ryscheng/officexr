@@ -10,7 +10,12 @@ import { createAutoWalk } from './useAutoWalk.ts';
 import { createSeating } from './useSeating.ts';
 
 const kinds: Record<string, Partial<WorldObjectKind>> = {
-  chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seat: { offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 } },
+  sofa: {
+    id: 'sofa',
+    dimensions: { width: 3, height: 1, depth: 1 },
+    seats: [0.5, 1.5, 2.5].map((x) => ({ offset: { x, y: 0.5, z: 0.5 }, yawDeg: 0 })),
+  },
+  chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seats: [{ offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 }] },
 };
 const catalog = { getKind: (id: string) => kinds[id] as WorldObjectKind | undefined };
 const geometry = createInstanceGeometry({ catalog, voxelSize: 1 });
@@ -222,5 +227,52 @@ describe('createSeating', () => {
     seating.returnToDesk();
     expect(self(a).seat).toBeUndefined();
     expect(seating.getState()).toMatchObject({ refusal: 'occupied', teleports: 0 });
+  });
+});
+
+describe('createSeating on a multi-seat sofa', () => {
+  const sofa: ObjectInstance = { id: 'sofa', sourceCommandId: 'sofa', kindId: 'sofa', position: [0, 0, 0] };
+
+  async function join(h: ReturnType<typeof createMultiClientHarness>, name: string, x: number) {
+    const client = await h.add(name);
+    client.actions.setWorldObjects({ cubeSize: 1, instances: [sofa] });
+    client.actions.setSelfPosition({ x, y: -0.5, z: -0.4 }, ZERO, 0, false);
+    const autoWalk = createAutoWalk(client.store, name, { now: () => 0 });
+    const seating = createSeating({ store: client.store, actions: client.actions, selfId: name, catalog, geometry, autoWalk });
+    seating.start();
+    return { client, seating };
+  }
+
+  it('seats each player on the nearest free seat, and refuses the fourth', async () => {
+    vi.useFakeTimers();
+    const h = createMultiClientHarness();
+    const a = await join(h, 'alice', 0.5);
+    const b = await join(h, 'bob', 0.6);
+    const c = await join(h, 'carol', 1.5);
+    const d = await join(h, 'dave', 2.5);
+
+    a.seating.sit();
+    b.seating.sit();
+    c.seating.sit();
+    expect([a, b, c].map((p) => self(p.client).seat)).toEqual(['sofa', 'sofa#1', 'sofa#2']);
+    expect(self(a.client).pos.x).toBeCloseTo(0.5);
+    expect(self(b.client).pos.x).toBeCloseTo(1.5);
+    expect(self(c.client).pos.x).toBeCloseTo(2.5);
+    expect(d.client.store.getState().players.bob?.seat).toBe('sofa#1');
+
+    d.seating.sit();
+    expect(self(d.client).seat).toBeUndefined();
+    expect(d.seating.getState().refusal).toBe('occupied');
+  });
+
+  it('stands each player up beside their own seat', async () => {
+    const h = createMultiClientHarness();
+    const a = await join(h, 'alice', 2.5);
+    a.seating.sit();
+    expect(self(a.client).seat).toBe('sofa#2');
+    a.seating.stand();
+    expect(self(a.client).seat).toBeNull();
+    expect(self(a.client).pos.x).toBeCloseTo(2.5);
+    expect(self(a.client).pos.z).toBeLessThan(-0.4);
   });
 });

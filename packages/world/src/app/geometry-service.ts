@@ -250,22 +250,24 @@ export function createInstanceGeometry(deps: {
 
 /**
  * World-space pose (root position in metres, facing yaw in radians) of a
- * seat on a placed instance, or null when the kind is not sittable. In the
+ * seat `index` on a placed instance, or null when the kind has no such seat. In the
  * same frame as `worldAABB`: room-local within a room, so callers apply the
  * room's placement transform. The seat point is spun about the unrotated
- * footprint's centre, like the mesh. `kind` supplies only the `seat`; the
+ * footprint's centre, like the mesh. `kind` supplies only the `seats`; the
  * box comes from `instance.kindId`.
  */
 export function seatPoseOf(
-  kind: Pick<WorldObjectKind, 'seat'>,
+  kind: Pick<WorldObjectKind, 'seats'>,
   instance: ObjectInstance,
   geometry: Pick<InstanceGeometryService, 'worldAABB'>,
+  index = 0,
 ): { position: Vec3; yawRad: number } | null {
-  if (!kind.seat) {
+  const seat = kind.seats?.[index];
+  if (!seat) {
     return null;
   }
   const { min, max } = geometry.worldAABB(instance.position, instance.kindId);
-  const { offset, yawDeg } = kind.seat;
+  const { offset, yawDeg } = seat;
   const centre: Vec3 = [(min[0] + max[0]) / 2, min[1], (min[2] + max[2]) / 2];
   const instanceYaw = instance.yawDeg ?? 0;
   return {
