@@ -41,17 +41,7 @@ for (const device of LAYOUT_DEVICES) {
         await applySafeArea(page, device.safe);
         await runScenarioSteps(page, scenario);
         const hint = HUD_STATES[scenario]?.hint;
-        let plate: { width: number } | null = null;
-        let hintCount = 0;
-        if (hint) {
-          await awaitHint(page, hint);
-          const seen = await page.evaluate((name) => {
-            const r = document.querySelector(`[data-hint="${name}"]`)?.getBoundingClientRect();
-            return { width: r?.width ?? null, count: document.querySelectorAll('[data-hint]').length };
-          }, hint);
-          plate = seen.width === null ? null : { width: seen.width };
-          hintCount = seen.count;
-        }
+        const plate = hint ? await awaitHint(page, hint) : null;
         const boxes = await collectHudBoxes(page);
         expect(boxes.length, 'the HUD rendered controls').toBeGreaterThan(3);
         const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -69,10 +59,9 @@ for (const device of LAYOUT_DEVICES) {
 
         expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`), 'overlapping controls').toEqual([]);
         expect(findOutside(boxes, viewport, device.safe).map((b) => b.name), 'controls outside the safe area').toEqual([]);
-        if (hint) {
-          expect(plate, `the ${hint} hint shows`).not.toBeNull();
-          expect(plate!.width, 'hint width').toBeLessThanOrEqual(240.5);
-          expect(hintCount, 'hints at once').toBe(1);
+        if (plate) {
+          expect(plate.width, 'hint width').toBeLessThanOrEqual(240.5);
+          expect(plate.count, 'hints at once').toBe(1);
         }
         if (device.options?.hasTouch) {
           const small = boxes.filter((b) => b.interactive && !b.clipped && (b.w < MIN_TARGET_PX - 0.5 || b.h < MIN_TARGET_PX - 0.5) && b.name !== 'input');
@@ -293,12 +282,10 @@ test.describe('first-run hints', () => {
           await applySafeArea(page, device.safe);
           await runScenarioSteps(page, state);
           const hint = HUD_STATES[state]!.hint!;
-          await awaitHint(page, hint);
-          const plate = await page.locator(`[data-hint="${hint}"]`).boundingBox();
+          const plate = await awaitHint(page, hint);
           const boxes = await collectHudBoxes(page);
-          expect(plate, `the ${hint} hint shows`).not.toBeNull();
-          const inX = plate!.x < (c.viewport.width * 2) / 3 && plate!.x + plate!.width > c.viewport.width / 3;
-          const inY = plate!.y < (c.viewport.height * 2) / 3 && plate!.y + plate!.height > c.viewport.height / 3;
+          const inX = plate.x < (c.viewport.width * 2) / 3 && plate.x + plate.width > c.viewport.width / 3;
+          const inY = plate.y < (c.viewport.height * 2) / 3 && plate.y + plate.height > c.viewport.height / 3;
           expect(inX && inY, 'the hint sits in the middle third').toBe(false);
           expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`), 'overlapping controls').toEqual([]);
           expect(findOutside(boxes, c.viewport, device.safe).map((b) => b.name), 'controls outside the safe area').toEqual([]);
@@ -314,14 +301,12 @@ test.describe('first-run hints', () => {
     const { page, close } = await openHudPreview(browser, device, 'hint-build', 'light');
     try {
       await runScenarioSteps(page, 'hint-build');
-      await awaitHint(page, 'build');
-      const plate = await page.locator('[data-hint="build"]').boundingBox();
+      const plate = await awaitHint(page, 'build');
       const row = await page.getByRole('button', { name: /^Build/ }).boundingBox();
       const sheet = await page.getByRole('dialog', { name: 'Menu' }).boundingBox();
-      expect(plate, 'the build hint shows').not.toBeNull();
-      expect(plate!.x, 'inside the sheet').toBeGreaterThanOrEqual(sheet!.x);
-      expect(plate!.y, 'under the Build row').toBeGreaterThanOrEqual(row!.y + row!.height);
-      expect(plate!.y - (row!.y + row!.height), 'close to the Build row').toBeLessThanOrEqual(16);
+      expect(plate.x, 'inside the sheet').toBeGreaterThanOrEqual(sheet!.x);
+      expect(plate.y, 'under the Build row').toBeGreaterThanOrEqual(row!.y + row!.height);
+      expect(plate.y - (row!.y + row!.height), 'close to the Build row').toBeLessThanOrEqual(16);
     } finally {
       await close();
     }

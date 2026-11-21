@@ -238,15 +238,27 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
   }
 }
 
-/** Waits for the named hint to show and stay for a moment; a toast can cut one short, and the hint comes back. */
-export async function awaitHint(page: Page, hint: string): Promise<void> {
+export interface HintBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  count: number;
+}
+
+/** Waits for the named hint to show and stay a moment, then reads its box and the number of hints in the same step. A toast can cut a hint short; it comes back. */
+export async function awaitHint(page: Page, hint: string): Promise<HintBox> {
   const plate = page.locator(`[data-hint="${hint}"]`);
   const deadline = Date.now() + 100_000;
   while (Date.now() < deadline) {
     await plate.waitFor({ state: 'visible', timeout: Math.max(1_000, deadline - Date.now()) });
     await page.waitForTimeout(1_500);
-    if (await plate.isVisible()) {
-      return;
+    const seen = await page.evaluate((name) => {
+      const r = document.querySelector(`[data-hint="${name}"]`)?.getBoundingClientRect();
+      return r ? { x: r.x, y: r.y, width: r.width, height: r.height, count: document.querySelectorAll('[data-hint]').length } : null;
+    }, hint);
+    if (seen) {
+      return seen;
     }
   }
   throw new Error(`the ${hint} hint did not stay on screen`);
