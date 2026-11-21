@@ -10,7 +10,7 @@ const TOASTS: Partial<Record<ConnectionView, { text: string; icon: LucideIcon; t
   recovered: { text: 'Back online', icon: CheckCircle2, tone: 'sage' },
 };
 
-const TONE = { amber: 'bg-hud-amber text-hud-amber-text', sage: 'bg-hud-sage text-hud-sage-text' } as const;
+const TONE = { amber: 'text-hud-amber-text', sage: 'text-hud-sage-text' } as const;
 
 const BANNERS: Partial<Record<ConnectionView, { title: string; text: string }>> = {
   cannot: { title: 'Cannot reconnect', text: 'Others can not see you.' },
@@ -35,7 +35,7 @@ export function ConnectionBanner({ store, onRetry, onLeave, stallMs }: { store: 
     <>
       <div role="status">
         {toast && (
-          <div className={`flex items-center gap-2 rounded-hud-control px-4 py-2 font-hud-body text-sm font-semibold shadow-hud-control ${TONE[toast.tone]}`}>
+          <div className={`flex items-center gap-2 rounded-hud-control hud-glass border border-hud-edge px-4 py-2 font-hud-body text-sm font-semibold shadow-hud-control ${TONE[toast.tone]}`}>
             <toast.icon aria-hidden className={`size-4 shrink-0 ${toast.spin ? 'motion-safe:animate-spin' : ''}`} />
             {toast.text}
           </div>

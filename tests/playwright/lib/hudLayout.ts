@@ -188,7 +188,10 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
         const status = net === 'cannot' ? 'reconnecting' : net;
         await page.evaluate((st) => (window as unknown as { __hudPreview: { setStatus: (s: string) => void } }).__hudPreview.setStatus(st), status);
       }
-      await page.waitForTimeout(net === 'cannot' ? 1500 : 600);
+      if (net === 'cannot') {
+        await page.getByRole('alert').waitFor();
+      }
+      await page.waitForTimeout(600);
       continue;
     }
     if (typeof name === 'string' && name.startsWith('say:')) {
