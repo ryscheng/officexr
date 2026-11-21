@@ -30,7 +30,7 @@ describe('DeskHud banner', () => {
 
     act(() => world.actions.setDeskAreas([...world.store.getState().deskAreas, { id: 'd2', label: 'B', min: { x: 20, z: 20 }, max: { x: 24, z: 24 }, seatInstanceId: null }]));
     act(() => world.actions.setDeskClaims({ d2: ME }));
-    expect(screen.getByText('Unclaim desk')).toBeTruthy();
+    expect(screen.queryByText('Unclaim desk')).toBeNull();
     fireEvent.click(screen.getByText('Move desk here'));
     expect(request).toHaveBeenCalledWith('d1');
   });
@@ -67,8 +67,14 @@ describe('DeskHud requests', () => {
     expect((screen.getByText('Claim desk') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('unclaims with a null desk', () => {
-    const world = deskWorld({ x: 50, y: 0, z: 50 });
+  it('offers Unclaim only at your own desk, and unclaims with a null desk', () => {
+    const away = deskWorld({ x: 50, y: 0, z: 50 });
+    away.actions.setDeskClaims({ d1: ME });
+    renderHud(away);
+    expect(screen.queryByText('Unclaim desk')).toBeNull();
+    cleanup();
+
+    const world = deskWorld();
     world.actions.setDeskClaims({ d1: ME });
     const request = vi.fn<RequestDeskClaim>(() => Promise.resolve({ ok: true }));
     renderHud(world, request);
@@ -105,6 +111,15 @@ describe('return to desk', () => {
     fireEvent.keyDown(window, { code: 'KeyD', altKey: true });
     expect(returnToDesk).toHaveBeenCalledTimes(2);
     dialog.remove();
+  });
+
+  it('hides the button at your own desk', () => {
+    const { controls } = withSeating({ nearbySeatId: null, hasDesk: true });
+    const world = deskWorld();
+    world.actions.setDeskClaims({ d1: ME });
+    renderHud(world, undefined, controls);
+    expect(screen.queryByText('Return to desk')).toBeNull();
+    expect(screen.getByText('Unclaim desk')).toBeTruthy();
   });
 
   it('hides the button without a desk, and offers Sit only next to a seat', () => {

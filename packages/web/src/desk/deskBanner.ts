@@ -26,4 +26,3 @@ export function selectDeskBanner(s: OfficeState): DeskBanner | null {
 
 export const sameDeskBanner = (a: DeskBanner | null, b: DeskBanner | null) => JSON.stringify(a) === JSON.stringify(b);
 
-export const selectOwnsDesk = (s: OfficeState) => deskOwnedBy(s, loginOf(s.selfId)) !== null;
