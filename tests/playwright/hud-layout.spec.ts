@@ -6,6 +6,7 @@
 import { expect, test } from '@playwright/test';
 import {
   applySafeArea,
+  awaitHint,
   collectHudBoxes,
   findOutside,
   findOverlaps,
@@ -33,12 +34,14 @@ const PORTRAIT_ONLY = new Set(['missions-sheet', 'chat-sheet', 'chat-keyboard', 
 const isPortrait = (id: string) => id.endsWith('-portrait');
 
 for (const device of LAYOUT_DEVICES) {
-  for (const scenario of [...HUD_SCENARIOS, ...Object.keys(HUD_STATES).filter((s) => isPortrait(device.id) || !PORTRAIT_ONLY.has(s))]) {
+  for (const scenario of [...HUD_SCENARIOS, ...Object.keys(HUD_STATES).filter((s) => (isPortrait(device.id) || !PORTRAIT_ONLY.has(s)) && (HUD_STATES[s]?.only?.includes(device.id) ?? true))]) {
     test(`${scenario} on ${device.id}`, async ({ browser }) => {
       const { page, close } = await openHudPreview(browser, device, scenario, 'light');
       try {
         await applySafeArea(page, device.safe);
         await runScenarioSteps(page, scenario);
+        const hint = HUD_STATES[scenario]?.hint;
+        const plate = hint ? await awaitHint(page, hint) : null;
         const boxes = await collectHudBoxes(page);
         expect(boxes.length, 'the HUD rendered controls').toBeGreaterThan(3);
         const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -56,6 +59,10 @@ for (const device of LAYOUT_DEVICES) {
 
         expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`), 'overlapping controls').toEqual([]);
         expect(findOutside(boxes, viewport, device.safe).map((b) => b.name), 'controls outside the safe area').toEqual([]);
+        if (plate) {
+          expect(plate.width, 'hint width').toBeLessThanOrEqual(240.5);
+          expect(plate.count, 'hints at once').toBe(1);
+        }
         if (device.options?.hasTouch) {
           const small = boxes.filter((b) => b.interactive && !b.clipped && (b.w < MIN_TARGET_PX - 0.5 || b.h < MIN_TARGET_PX - 0.5) && b.name !== 'input');
           expect(small.map((b) => `${b.name} ${Math.round(b.w)}x${Math.round(b.h)}`), `touch targets under ${MIN_TARGET_PX} px`).toEqual([]);
@@ -256,4 +263,66 @@ test.describe('HUD coverage at rest', () => {
       }
     });
   }
+});
+
+test.describe('first-run hints', () => {
+  const cases = [
+    { name: 'portrait 390x844', device: 'iphone13-portrait', viewport: { width: 390, height: 844 }, hints: ['hint-move', 'hint-people', 'hint-wave'] },
+    { name: 'landscape 844x390', device: 'iphone13-landscape', viewport: { width: 844, height: 390 }, screen: { width: 844, height: 390 }, hints: ['hint-move', 'hint-people', 'hint-wave'] },
+    { name: 'desktop 1280x800', device: 'desktop', viewport: { width: 1280, height: 800 }, hints: ['hint-move', 'hint-people', 'hint-wave'] },
+    { name: 'small phone 320x568', device: 'iphone-se-portrait', viewport: { width: 320, height: 568 }, hints: ['hint-move', 'hint-people'] },
+  ];
+  for (const c of cases) {
+    for (const state of c.hints) {
+      test(`${state} stays out of the middle third and off the controls on ${c.name}`, async ({ browser }) => {
+        const base = HUD_DEVICES.find((d) => d.id === c.device)!;
+        const device = { ...base, options: { ...base.options, viewport: c.viewport, ...(c.screen ? { screen: c.screen } : {}) } };
+        const { page, close } = await openHudPreview(browser, device, state, 'light');
+        try {
+          await applySafeArea(page, device.safe);
+          await runScenarioSteps(page, state);
+          const hint = HUD_STATES[state]!.hint!;
+          const plate = await awaitHint(page, hint);
+          const boxes = await collectHudBoxes(page);
+          const inX = plate.x < (c.viewport.width * 2) / 3 && plate.x + plate.width > c.viewport.width / 3;
+          const inY = plate.y < (c.viewport.height * 2) / 3 && plate.y + plate.height > c.viewport.height / 3;
+          expect(inX && inY, 'the hint sits in the middle third').toBe(false);
+          expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`), 'overlapping controls').toEqual([]);
+          expect(findOutside(boxes, c.viewport, device.safe).map((b) => b.name), 'controls outside the safe area').toEqual([]);
+        } finally {
+          await close();
+        }
+      });
+    }
+  }
+
+  test('the build hint sits inside the menu sheet next to the Build row on desktop', async ({ browser }) => {
+    const device = HUD_DEVICES.find((d) => d.id === 'desktop')!;
+    const { page, close } = await openHudPreview(browser, device, 'hint-build', 'light');
+    try {
+      await runScenarioSteps(page, 'hint-build');
+      const plate = await awaitHint(page, 'build');
+      const row = await page.getByRole('button', { name: /^Build/ }).boundingBox();
+      const sheet = await page.getByRole('dialog', { name: 'Menu' }).boundingBox();
+      expect(plate.x, 'inside the sheet').toBeGreaterThanOrEqual(sheet!.x);
+      expect(plate.y, 'under the Build row').toBeGreaterThanOrEqual(row!.y + row!.height);
+      expect(plate.y - (row!.y + row!.height), 'close to the Build row').toBeLessThanOrEqual(16);
+    } finally {
+      await close();
+    }
+  });
+
+  test('a hint disappears when the person does the action and stays gone after a reload', async ({ browser }) => {
+    const device = HUD_DEVICES.find((d) => d.id === 'desktop')!;
+    const { page, close } = await openHudPreview(browser, device, 'hint-people', 'light');
+    try {
+      await runScenarioSteps(page, 'hint-people');
+      await awaitHint(page, 'people');
+      await page.getByRole('button', { name: /^People here/ }).click();
+      await expect(page.locator('[data-hint]')).toHaveCount(0);
+      expect(await page.evaluate(() => localStorage.getItem('officexr:hint:people'))).toBe('done');
+    } finally {
+      await close();
+    }
+  });
 });

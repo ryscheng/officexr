@@ -62,11 +62,12 @@ export type SettingsSheetProps = {
   onClose: () => void;
   onInvite: () => void;
   onBuild: () => void;
+  buildHint?: ReactNode;
   onSwitchOffice: () => void;
   onSignOut: () => Promise<void>;
 };
 
-function TopLevel({ store, canBuild, onPage, onInvite, onBuild, onSwitchOffice, onSignOut }: Pick<SettingsSheetProps, 'store' | 'canBuild' | 'onPage' | 'onInvite' | 'onBuild' | 'onSwitchOffice' | 'onSignOut'>) {
+function TopLevel({ store, canBuild, onPage, onInvite, onBuild, buildHint, onSwitchOffice, onSignOut }: Pick<SettingsSheetProps, 'store' | 'canBuild' | 'onPage' | 'onInvite' | 'onBuild' | 'buildHint' | 'onSwitchOffice' | 'onSignOut'>) {
   const self = useStoreSelector(store, selectSelf, sameFields);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const move = (e: KeyboardEvent<HTMLElement>) => {
@@ -97,6 +98,7 @@ function TopLevel({ store, canBuild, onPage, onInvite, onBuild, onSwitchOffice, 
       <Group>
         <Row icon={Link2} label="Invite people" hint="Copy or share the link" onClick={onInvite} />
         {canBuild && <Row icon={Box} label="Build" hint="Place props" onClick={onBuild} />}
+        {canBuild && buildHint}
         <Row icon={ArrowLeftRight} label="Switch office" onClick={onSwitchOffice} />
       </Group>
       <SectionLabel>Settings</SectionLabel>
