@@ -160,8 +160,8 @@ const SCENARIO_STEPS: Record<string, (string | RegExp)[]> = {
   ...Object.fromEntries(Object.entries(HUD_STATES).map(([id, state]) => [id, state.steps])),
   build: ['key:b'],
   'new-mission': [/^Expand missions$/, 'New mission'],
-  focus: ['Office menu', 'People here'],
-  full: ['Office menu', 'People here'],
+  focus: [/^People here, \d+$/],
+  full: [/^People here, \d+$/],
 };
 
 /** Opens the panel a scenario is about, by clicking the named buttons in order (`key:x` presses a key); a button this layout lacks is skipped. */

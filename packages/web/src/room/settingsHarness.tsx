@@ -55,7 +55,6 @@ export const openMenu = () => fireEvent.click(screen.getByRole('button', { name:
 
 export const openPage = (name: string) => fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }));
 
-/** Opens the sheet on its Controls page. */
 export const openSettings = () => {
   openMenu();
   openPage('Controls');

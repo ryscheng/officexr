@@ -13,7 +13,6 @@ export function SegmentedControl<T extends string>({
   options: readonly { value: T; label: string }[];
   onValueChange: (value: T) => void;
   'aria-label': string;
-  /** Spans the row with equal 48 px segments. */
   fill?: boolean;
 }) {
   return (
@@ -26,7 +25,7 @@ export function SegmentedControl<T extends string>({
         }
       }}
       aria-label={ariaLabel}
-      className={`${fill ? 'flex w-full' : 'inline-flex'} gap-1 ${SEGMENT_GROUP}`}
+      className={`${fill ? 'flex w-full' : 'inline-flex'} gap-1 pointer-coarse:gap-2 ${SEGMENT_GROUP}`}
     >
       {options.map((option) => (
         <ToggleGroup.Item

@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import type { SettingsAction } from '../../room/Settings';
 
-/** One setting as a grouped-list row: label (and optional helper line) on the left, control on the right. */
 export function SettingRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl bg-hud-surface px-4 py-2 shadow-[0_0_0_0.5px_var(--color-hud-hairline)]">
@@ -14,7 +13,6 @@ export function SettingRow({ label, hint, children }: { label: string; hint?: st
   );
 }
 
-/** A full-width 56 px action row. */
 export function SettingsActionButton({ onClick, children }: { onClick?: () => void; children: ReactNode }) {
   return (
     <button
@@ -27,7 +25,6 @@ export function SettingsActionButton({ onClick, children }: { onClick?: () => vo
   );
 }
 
-/** An action that closes Settings before running `onSelect`. */
 export const closingAction = (id: string, label: string, onSelect: () => void): SettingsAction => ({
   id,
   render: (close) => (

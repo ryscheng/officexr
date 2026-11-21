@@ -45,7 +45,6 @@ const OVERHEAD_CAMERA = {
   distanceM: (OVERHEAD_HEIGHT_M - 0.9) / Math.tan((-OVERHEAD_PITCH_DEG * Math.PI) / 180),
 } as const;
 
-/** The settings content that needs this view's camera, look and VR state. */
 export interface PlayViewSettings {
   controls: ReactNode;
   look: ReactNode;

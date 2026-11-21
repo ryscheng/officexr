@@ -9,7 +9,6 @@ type PortraitSheetProps = {
   label: string;
   closeLabel: string;
   onClose: () => void;
-  /** Adds a back arrow before the title, for a page pushed inside the sheet. */
   onBack?: () => void;
   /** Takes the whole height the viewport allows, for a sheet whose content scrolls or grows (chat). */
   fill?: boolean;

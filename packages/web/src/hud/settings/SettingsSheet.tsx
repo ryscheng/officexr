@@ -37,7 +37,7 @@ function Row({ icon: Icon, label, hint, tone, onClick }: { icon: Icon; label: st
       type="button"
       data-settings-row
       onClick={onClick}
-      className={`flex min-h-14 w-full items-center gap-3 px-4 py-1.5 text-left hover:bg-hud-surface-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-hud-accent ${tone === 'danger' ? 'text-hud-rose-text' : ''}`}
+      className={`flex min-h-14 w-full items-center gap-3 rounded-xl bg-hud-surface px-4 py-1.5 text-left shadow-[0_0_0_0.5px_var(--color-hud-hairline)] hover:bg-hud-surface-hover focus-visible:outline-2 focus-visible:outline-hud-accent ${tone === 'danger' ? 'text-hud-rose-text' : ''}`}
     >
       <Icon aria-hidden className="size-[22px] shrink-0" />
       <span className="min-w-0 flex-1">
@@ -49,9 +49,7 @@ function Row({ icon: Icon, label, hint, tone, onClick }: { icon: Icon; label: st
   );
 }
 
-const Group = ({ children }: { children: ReactNode }) => (
-  <div className="divide-y divide-hud-separator overflow-hidden rounded-xl bg-hud-surface shadow-[0_0_0_0.5px_var(--color-hud-hairline)]">{children}</div>
-);
+const Group = ({ children }: { children: ReactNode }) => <div className="flex flex-col gap-2">{children}</div>;
 
 export type SettingsSheetProps = {
   store: Store;
