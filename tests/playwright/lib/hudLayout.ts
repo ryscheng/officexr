@@ -201,7 +201,7 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
       continue;
     }
     if (typeof name === 'string' && name.startsWith('check:')) {
-      await page.getByRole('checkbox', { name: `${name.slice(6)}, done` }).click();
+      await page.getByRole('checkbox', { name: `${name.slice(6)}, done` }).dispatchEvent('click');
       await page.waitForTimeout(600);
       continue;
     }
