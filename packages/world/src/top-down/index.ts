@@ -6,6 +6,7 @@ export {
   type ApplicationProviderProps,
 } from '../react/application-context.tsx';
 export type { HudRealtime } from '../react/hud.tsx';
+export { useSlowNotice } from '../react/useSlowNotice.ts';
 export { WorldLoadingScreen, type WorldLoadingScreenProps } from '../react/LoadingScreen.tsx';
 export { useStoreSelector } from '../react/useStoreSelector.ts';
 export { focusWorld, isTypingTarget, useWorldFocus } from '../react/useWorldFocus.ts';

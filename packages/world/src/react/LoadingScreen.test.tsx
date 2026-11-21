@@ -32,4 +32,23 @@ describe('WorldLoadingScreen', () => {
     expect(screen.getByText('This is taking longer than usual.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy();
   });
+
+  it('shows brand and hint, and a bar instead of the spinner', () => {
+    render(<WorldLoadingScreen title="HQ" step="Step 2 of 4" progress={50} hint="Then: next" brand={<span>Brand</span>} />);
+    expect(screen.getByText('Brand')).toBeTruthy();
+    expect(screen.getByText('Then: next')).toBeTruthy();
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50');
+  });
+
+  it('offers a way back instead of Reload when slow and a back link is given', () => {
+    render(<WorldLoadingScreen step="Loading" slow back={{ label: 'Back to offices', href: '/' }} />);
+    expect(screen.getByRole('alert').textContent).toBe('This is taking longer than usual. You can keep waiting or go back.');
+    expect(screen.getByRole('link', { name: 'Back to offices' }).getAttribute('href')).toBe('/');
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('keeps the back link hidden until slow', () => {
+    render(<WorldLoadingScreen step="Loading" back={{ label: 'Back to offices', href: '/' }} />);
+    expect(screen.queryByRole('link')).toBeNull();
+  });
 });

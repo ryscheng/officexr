@@ -48,6 +48,10 @@ export interface PlayViewProps {
   mapName: string;
   /** Heads the loading screen, e.g. the office name. */
   title?: string;
+  /** Replaces the loading screen's title, step, progress and extras. */
+  loading?: Pick<WorldLoadingScreenProps, 'title' | 'step' | 'progress' | 'brand' | 'hint' | 'back'>;
+  /** Renders a failed world load in place of the loading screen's error. */
+  renderLoadError?: (message: string) => React.ReactNode;
   /** Changing this re-loads and re-applies `mapName` without remounting the canvas. */
   reloadKey?: number;
   storages: PlayStorages;
@@ -188,14 +192,17 @@ export function PlayView(props: PlayViewProps) {
           <PlayControlsProvider controls={playControls}>{props.children}</PlayControlsProvider>
         </ViewYawProvider>
       </NavGridProvider>
-      {!ready && (
-        <LoadingScreenWithProgress
-          title={props.title}
-          step={session.loaded ? 'Loading world…' : 'Loading map…'}
-          error={readiness.type === 'failed' ? readiness.message : undefined}
-          slow={slow}
-        />
-      )}
+      {readiness.type === 'failed' && props.renderLoadError
+        ? props.renderLoadError(readiness.message)
+        : !ready && (
+            <LoadingScreenWithProgress
+              title={props.title}
+              step={session.loaded ? 'Loading world…' : 'Loading map…'}
+              error={readiness.type === 'failed' ? readiness.message : undefined}
+              slow={slow}
+              {...props.loading}
+            />
+          )}
     </>
   );
 }
@@ -203,5 +210,5 @@ export function PlayView(props: PlayViewProps) {
 /** Subscribes to drei's load progress only while mounted, so the world doesn't re-render on later loads. */
 function LoadingScreenWithProgress(props: WorldLoadingScreenProps) {
   const { progress } = useProgress();
-  return <WorldLoadingScreen {...props} progress={props.error ? undefined : progress} />;
+  return <WorldLoadingScreen {...props} progress={props.error ? undefined : (props.progress ?? progress)} />;
 }
