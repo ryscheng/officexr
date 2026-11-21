@@ -8,11 +8,20 @@ export function fakePlayControls(initial: AutoWalkState = { type: 'idle' }) {
   let state = initial;
   const listeners = new Set<() => void>();
   const goTos: PlayerId[] = [];
+  const groundGoTos: { x: number; z: number }[] = [];
+  let groundResult: ((x: number, z: number) => { x: number; z: number } | null) | null = null;
+  let cancels = 0;
   const controls: PlayControlsSource = {
     goTo: (targetId) => {
       goTos.push(targetId);
     },
-    cancel: () => {},
+    goToGround: (x, z) => {
+      groundGoTos.push({ x, z });
+      return groundResult ? groundResult(x, z) : { x, z };
+    },
+    cancel: () => {
+      cancels++;
+    },
     sit: () => {},
     stand: () => {},
     returnToDesk: () => {},
@@ -28,6 +37,11 @@ export function fakePlayControls(initial: AutoWalkState = { type: 'idle' }) {
   return {
     controls,
     goTos,
+    groundGoTos,
+    cancels: () => cancels,
+    refuseGround: () => {
+      groundResult = () => null;
+    },
     set: (next: AutoWalkState) => {
       state = next;
       listeners.forEach((cb) => cb());

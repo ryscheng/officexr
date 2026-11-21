@@ -34,6 +34,14 @@ export function findPath(
   return smooth(grid, cells).map((c) => cellCentre(grid, c % grid.width, Math.floor(c / grid.width)));
 }
 
+export function nearestWalkable(
+  grid: NavGrid,
+  p: { x: number; y: number; z: number },
+): { x: number; z: number } | null {
+  const cell = snap(grid, p);
+  return cell < 0 ? null : cellCentre(grid, cell % grid.width, Math.floor(cell / grid.width));
+}
+
 function canStep(grid: NavGrid, from: number, to: number): boolean {
   return grid.walkable[to] === 1 && Math.abs(grid.surface[from] - grid.surface[to]) <= grid.maxStep;
 }

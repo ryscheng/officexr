@@ -10,12 +10,18 @@ import {
   type TrackedAutoWalkState,
 } from '../nav/autoWalk.ts';
 import type { NavGrid } from '../nav/grid.ts';
-import { findPath } from '../nav/path.ts';
+import { findPath, nearestWalkable } from '../nav/path.ts';
+import { planarDistance } from '../nav/planar.ts';
 import { feetPosition } from '../physics/rules.ts';
 import type { AutoWalkSource } from '../renderer/moveIntent.ts';
 import type { PlayControlsSource } from './playControls.tsx';
 
-export interface AutoWalkController extends AutoWalkSource, Pick<PlayControlsSource, 'goTo' | 'cancel'> {
+const GROUND_ID_PREFIX = 'ground-';
+const GROUND_ARRIVE_M = 0.35;
+
+export const isGroundTargetId = (id: string) => id.startsWith(GROUND_ID_PREFIX);
+
+export interface AutoWalkController extends AutoWalkSource, Pick<PlayControlsSource, 'goTo' | 'goToGround' | 'cancel'> {
   setGrid(grid: NavGrid | null): void;
   /**
    * Walks toward the fixed `feet` position, known as `id`, until `isThere` holds, then calls `onArrive` instead of
@@ -83,6 +89,15 @@ export function createAutoWalk(
     onUnreachable();
     return true;
   };
+  let groundWalks = 0;
+  const goToPoint: AutoWalkController['goToPoint'] = (id, feet, isThere, onArrive, onUnreachable) => {
+    const self = store.getState().players[selfId];
+    if (self) {
+      point = { id, feet, isThere, onArrive, onUnreachable };
+      publish(autoWalkGoTo(state, id, input(id, self.pos), grid, plan));
+      giveUpIfUnreachable();
+    }
+  };
   return {
     getState: () => published,
     subscribe(cb) {
@@ -99,13 +114,33 @@ export function createAutoWalk(
         publish(autoWalkGoTo(state, targetId, input(targetId, self.pos), grid, plan));
       }
     },
-    goToPoint(id, feet, isThere, onArrive, onUnreachable) {
+    goToPoint,
+    goToGround(x, z) {
       const self = store.getState().players[selfId];
-      if (self) {
-        point = { id, feet, isThere, onArrive, onUnreachable };
-        publish(autoWalkGoTo(state, id, input(id, self.pos), grid, plan));
-        giveUpIfUnreachable();
+      if (!self) {
+        return null;
       }
+      const { charRadius } = store.getState().worldSettings;
+      const y = feetPosition(self.pos, charRadius).y;
+      const spot = grid ? nearestWalkable(grid, { x, y, z }) : { x, z };
+      if (!spot) {
+        return null;
+      }
+      const feet = { x: spot.x, y, z: spot.z };
+      let unreachable = false;
+      goToPoint(
+        `${GROUND_ID_PREFIX}${++groundWalks}`,
+        feet,
+        () => {
+          const now = store.getState().players[selfId];
+          return !now || planarDistance(feetPosition(now.pos, charRadius), feet) <= GROUND_ARRIVE_M;
+        },
+        () => {},
+        () => {
+          unreachable = true;
+        },
+      );
+      return unreachable ? null : spot;
     },
     cancel: () => publish(AUTO_WALK_IDLE),
     intent(selfPos) {

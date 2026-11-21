@@ -8,7 +8,7 @@ const isMovementPress = (e: KeyboardEvent) =>
   MOVEMENT_KEYS.has(e.key.toLowerCase()) &&
   !(e.altKey || e.ctrlKey || e.metaKey) &&
   !(e.target instanceof HTMLSelectElement) &&
-  !isHotkeyBlocked(e);
+  !isHotkeyBlocked(e, '[data-map-dialog]');
 
 /**
  * Hands the keyboard back to the world when a movement key is pressed while it is released, and replays

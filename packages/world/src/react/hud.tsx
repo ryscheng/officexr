@@ -100,7 +100,7 @@ export function WorldHud({
       }}
     >
       {`Camera: ${cameraMode} (Alt+P to cycle) · Realtime: ${realtime} · ${layoutLine}`}
-      {'\nWASD to move · Click to look · Esc to release mouse'}
+      {'\nWASD to move · Hold right mouse button or drag to look'}
     </div>
   );
 }

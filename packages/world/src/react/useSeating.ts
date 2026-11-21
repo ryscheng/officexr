@@ -227,11 +227,12 @@ function samePosition(a: Vec3, b: Vec3): boolean {
 
 /** The overlay-facing controls: auto-walk plus seating, notifying on either's change. */
 export function playControlsOf(
-  autoWalk: Pick<AutoWalkController, 'goTo' | 'cancel' | 'getState' | 'subscribe'>,
+  autoWalk: Pick<AutoWalkController, 'goTo' | 'goToGround' | 'cancel' | 'getState' | 'subscribe'>,
   seating: SeatingController,
 ): PlayControlsSource {
   return {
     goTo: autoWalk.goTo,
+    goToGround: autoWalk.goToGround,
     cancel: autoWalk.cancel,
     getState: autoWalk.getState,
     subscribe(cb) {
