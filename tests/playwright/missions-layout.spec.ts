@@ -16,12 +16,12 @@ for (const device of [landscape, sized(844, 390), sized(667, 375)]) {
       const { page, close } = await openHudPreview(browser, device, 'missions', 'light');
       try {
         if (expand) {
-          await page.getByRole('button', { name: 'Show all missions' }).click();
+          await page.getByRole('button', { name: 'Expand missions' }).click();
           await page.waitForTimeout(400);
         }
         const boxes = await collectHudBoxes(page);
         expect(findOverlaps(boxes).map(([a, b]) => `${a.name} / ${b.name}`)).toEqual([]);
-        const card = boxes.find((b) => b.name === 'Missions' || /Mine|Show (all|fewer)/.test(b.name));
+        const card = boxes.find((b) => /missions/i.test(b.name) || b.name === 'Mine');
         expect(card).toBeTruthy();
       } finally {
         await close();
