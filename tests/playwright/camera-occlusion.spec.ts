@@ -43,6 +43,8 @@ async function openDefaultMap(page: Page): Promise<void> {
     null,
     { timeout: 40_000 },
   );
+  const narrow = (page.viewportSize()?.width ?? 1280) < 600;
+  if (narrow) await page.addStyleTag({ content: 'aside { display: none !important; }' });
   await page.waitForTimeout(2500);
 }
 
