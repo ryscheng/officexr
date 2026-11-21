@@ -63,7 +63,7 @@ export type PlayerState = {
   jitsiParticipantId: string | null;
   status: PresenceStatus;
   mic: MicState;
-  /** Id of the placed object instance the player sits on. */
+  /** Seat id (`seatId`) the player sits on: the instance id for its first seat. */
   seat?: string | null;
   pose?: PlayerPose | null;
   poseRack?: string | null;
@@ -410,7 +410,7 @@ export type VoiceZone = {
   max: { x: number; z: number };
 };
 
-/** A resolved desk area: a voice-zone rectangle whose single chair, if any, is `seatInstanceId`. */
+/** A resolved desk area: a voice-zone rectangle whose single chair, if any, is `seatInstanceId` (the chair's first seat). */
 export type DeskAreaState = {
   id: string;
   label: string;

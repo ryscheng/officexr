@@ -34,11 +34,22 @@ export function deskOwnedBy(state: Pick<OfficeState, 'deskClaims'>, login: strin
   return Object.entries(state.deskClaims).find(([, owner]) => owner === login)?.[0] ?? null;
 }
 
-/** Who sits on `instanceId`, leaving out `except`. */
-export function seatOccupant(
-  state: Pick<OfficeState, 'players'>,
-  instanceId: string,
-  except?: PlayerId,
-): PlayerId | null {
-  return Object.values(state.players).find((p) => p.seat === instanceId && p.id !== except)?.id ?? null;
+const SEAT_INDEX_SEPARATOR = '#';
+
+/** Id of seat `index` on `instanceId`. Seat 0 is the bare instance id, which is what clients that know one seat per instance send. */
+export function seatId(instanceId: string, index: number): string {
+  return index === 0 ? instanceId : `${instanceId}${SEAT_INDEX_SEPARATOR}${index}`;
+}
+
+export function parseSeatId(id: string): { instanceId: string; index: number } {
+  const cut = id.lastIndexOf(SEAT_INDEX_SEPARATOR);
+  const suffix = cut < 0 ? '' : id.slice(cut + 1);
+  return /^[1-9]\d*$/.test(suffix)
+    ? { instanceId: id.slice(0, cut), index: Number(suffix) }
+    : { instanceId: id, index: 0 };
+}
+
+/** Who sits on the seat `id`, leaving out `except`. */
+export function seatOccupant(state: Pick<OfficeState, 'players'>, id: string, except?: PlayerId): PlayerId | null {
+  return Object.values(state.players).find((p) => p.seat === id && p.id !== except)?.id ?? null;
 }

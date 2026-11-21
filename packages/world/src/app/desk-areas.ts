@@ -19,7 +19,7 @@ export function deskAreaLabel(area: Pick<DeskArea, 'label'>): string {
 function placedFurniture(instances: Instances, catalog: KindResolver, geometry: Geometry): Placed[] {
   return instances.flatMap((inst) => {
     const kind = catalog.getKind(inst.kindId);
-    const seat = kind?.seat !== undefined;
+    const seat = kind?.seats !== undefined;
     const desk = kind?.isDesk === true;
     if (!seat && !desk) {
       return [];

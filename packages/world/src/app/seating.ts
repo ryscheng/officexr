@@ -1,4 +1,4 @@
-import { seatOccupant, type ObjectInstance, type OfficeState, type Vec3 } from '@officexr/sdk';
+import { parseSeatId, seatId, seatOccupant, type ObjectInstance, type OfficeState, type Vec3 } from '@officexr/sdk';
 import { AVATAR_YAW_OFFSET, bodyPosition, SIT_POSE_HIP_HEIGHT } from '../physics/rules.ts';
 import { deskAreaMembers } from './desk-areas.ts';
 import { seatPoseOf, type KindResolver } from './geometry-service.ts';
@@ -11,11 +11,16 @@ export const SEAT_APPROACH_OVERREACH_M = 0.1;
 /** Gap between a chair's footprint and the centre of a player who stands up from it. */
 export const STEP_OUT_CLEARANCE_M = 0.6;
 
+/** Added to the distance of a taken seat so any free seat in reach ranks first. */
+const TAKEN_PENALTY_M = 1e6;
+
 export type SitRefusal = 'occupied' | 'not-yours' | 'blocked';
 export type SitVerdict = { ok: true } | { ok: false; reason: SitRefusal };
 
 export type SeatPose = NonNullable<ReturnType<typeof seatPoseOf>>;
 export interface Seat {
+  /** `seatId` of this seat: what a player's `seat` holds while sitting on it. */
+  id: string;
   instance: ObjectInstance;
   pose: SeatPose;
 }
@@ -26,34 +31,36 @@ export function canSit(
   state: SitState,
   catalog: KindResolver,
   geometry: Pick<InstanceGeometryService, 'worldAABBOfInstance'>,
-  instance: ObjectInstance,
+  seat: Seat,
   selfLogin: string,
 ): SitVerdict {
-  if (seatOccupant(state, instance.id, state.selfId) !== null) {
+  const { instance } = seat;
+  if (seatOccupant(state, seat.id, state.selfId) !== null) {
     return { ok: false, reason: 'occupied' };
   }
-  const desk = state.deskAreas.find((a) => a.seatInstanceId === instance.id);
+  const desk = state.deskAreas.find((a) => a.seatInstanceId === seat.id);
   const owner = desk ? state.deskClaims[desk.id] : undefined;
   if (owner !== undefined && owner !== selfLogin) {
     return { ok: false, reason: 'not-yours' };
   }
   const blocked = state.deskAreas.some(
-    (a) => a.seatInstanceId !== instance.id && deskAreaMembers(a, [instance], catalog, geometry).seats.length > 0,
+    (a) => a.seatInstanceId !== seat.id && deskAreaMembers(a, [instance], catalog, geometry).seats.length > 0,
   );
   return blocked ? { ok: false, reason: 'blocked' } : { ok: true };
 }
 
-/** The seat on the instance `id`, or null when there is no such instance or it is not sittable. */
+/** The seat with `id` (see `seatId`), or null when there is no such instance or seat. */
 export function seatOf(
   state: Pick<OfficeState, 'worldObjects'>,
   catalog: KindResolver,
   geometry: Pick<InstanceGeometryService, 'worldAABB'>,
   id: string,
 ): Seat | null {
-  const instance = state.worldObjects.instances.find((i) => i.id === id);
+  const { instanceId, index } = parseSeatId(id);
+  const instance = state.worldObjects.instances.find((i) => i.id === instanceId);
   const kind = instance && catalog.getKind(instance.kindId);
-  const pose = kind ? seatPoseOf(kind, instance, geometry) : null;
-  return pose && instance ? { instance, pose } : null;
+  const pose = kind ? seatPoseOf(kind, instance, geometry, index) : null;
+  return pose && instance ? { id, instance, pose } : null;
 }
 
 /**
@@ -73,30 +80,38 @@ export function isTouchingSeat(
   return overlapsVertically && Math.hypot(dx, dz) <= bodyRadius + SEAT_TOUCH_EPSILON_M;
 }
 
-/** Of the seats the body at `feet` touches, the one whose seat pose is closest, whether or not it may be sat on. */
+/**
+ * Of the seats the body at `feet` touches, the one whose seat pose is closest
+ * among those `isTaken` rejects, else the closest of all, whether or not it
+ * may be sat on.
+ */
 export function nearestSeat(
   state: Pick<OfficeState, 'worldObjects'>,
   catalog: KindResolver,
   geometry: Pick<InstanceGeometryService, 'worldAABB' | 'worldAABBOfInstance'>,
   feet: Vec3,
   bodyRadius: number,
+  isTaken: (seat: Seat) => boolean = () => false,
 ): Seat | null {
   let best: Seat | null = null;
-  let bestDistance = Infinity;
+  let bestScore = Infinity;
   for (const instance of state.worldObjects.instances) {
-    const kind = catalog.getKind(instance.kindId);
-    if (!kind?.seat || !isTouchingSeat(feet, bodyRadius, instance, geometry)) {
+    const seats = catalog.getKind(instance.kindId)?.seats;
+    if (!seats || !isTouchingSeat(feet, bodyRadius, instance, geometry)) {
       continue;
     }
-    const pose = seatPoseOf(kind, instance, geometry);
-    if (!pose) {
-      continue;
-    }
-    const [x, y, z] = pose.position;
-    const distance = Math.hypot(x - feet.x, y - feet.y, z - feet.z);
-    if (distance < bestDistance) {
-      best = { instance, pose };
-      bestDistance = distance;
+    for (const [index, spec] of seats.entries()) {
+      const pose = seatPoseOf({ seats: [spec] }, instance, geometry);
+      if (!pose) {
+        continue;
+      }
+      const [x, y, z] = pose.position;
+      const seat = { id: seatId(instance.id, index), instance, pose };
+      const score = Math.hypot(x - feet.x, y - feet.y, z - feet.z) + (isTaken(seat) ? TAKEN_PENALTY_M : 0);
+      if (score < bestScore) {
+        best = seat;
+        bestScore = score;
+      }
     }
   }
   return best;

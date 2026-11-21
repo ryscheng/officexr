@@ -209,13 +209,11 @@ export function ObjectKindEditorPanel({ kind, applyPatch }: ObjectKindEditorPane
       <Section title="Seating">
         <Toggle
           label="sittable"
-          value={kind.seat !== undefined}
-          onChange={(sittable) => applyPatch({ seat: sittable ? defaultSeat(kind) : undefined })}
+          value={kind.seats !== undefined}
+          onChange={(sittable) => applyPatch({ seats: sittable ? [defaultSeat(kind)] : undefined })}
           hint="Offset is in metres from the model's min corner, unrotated: the seated avatar's root rests on the seat surface, so y is the cushion top."
         />
-        {kind.seat && (
-          <SeatFields seat={kind.seat} onChange={(seat) => applyPatch({ seat })} />
-        )}
+        {kind.seats && <SeatList seats={kind.seats} kind={kind} onChange={(seats) => applyPatch({ seats })} />}
         <Toggle
           label="is desk"
           value={kind.isDesk ?? false}
@@ -280,21 +278,52 @@ function WaterFields({ water, onChange }: { water: WaterSpec; onChange: (water: 
   );
 }
 
-function SeatFields({ seat, onChange }: { seat: SeatSpec; onChange: (seat: SeatSpec) => void }) {
+interface SeatListProps {
+  seats: SeatSpec[];
+  kind: WorldObjectKind;
+  onChange: (seats: SeatSpec[] | undefined) => void;
+}
+
+function SeatList({ seats, kind, onChange }: SeatListProps) {
+  const many = seats.length > 1;
+  return (
+    <>
+      {seats.map((seat, i) => (
+        <React.Fragment key={i}>
+          <SeatFields
+            seat={seat}
+            label={many ? `seat ${i + 1} ` : ''}
+            onChange={(next) => onChange(seats.map((s, j) => (j === i ? next : s)))}
+          />
+          {many && (
+            <Button variant="secondary" size="sm" onClick={() => onChange(seats.filter((_, j) => j !== i))}>
+              Remove seat {i + 1}
+            </Button>
+          )}
+        </React.Fragment>
+      ))}
+      <Button variant="secondary" size="sm" onClick={() => onChange([...seats, defaultSeat(kind)])}>
+        Add seat
+      </Button>
+    </>
+  );
+}
+
+function SeatFields({ seat, label, onChange }: { seat: SeatSpec; label: string; onChange: (seat: SeatSpec) => void }) {
   const axes = ['x', 'y', 'z'] as const;
   return (
     <>
       {axes.map((axis) => (
         <NumberInput
           key={axis}
-          label={`offset ${axis}`}
+          label={`${label}offset ${axis}`}
           value={seat.offset[axis]}
           step={0.05}
           onChange={(v) => onChange({ ...seat, offset: { ...seat.offset, [axis]: v } })}
         />
       ))}
       <NumberInput
-        label="yaw"
+        label={`${label}yaw`}
         value={seat.yawDeg}
         step={15}
         onChange={(yawDeg) => onChange({ ...seat, yawDeg })}

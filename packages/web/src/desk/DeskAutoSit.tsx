@@ -16,7 +16,7 @@ export function DeskAutoSit({ store, selfId }: { store: Store; selfId: PlayerId 
         returnToDesk,
         canSitAt: (state, seatId) => {
           const seat = seatOf(state, catalog, geometry, seatId);
-          return seat !== null && canSit(state, catalog, geometry, seat.instance, loginOf(selfId)).ok;
+          return seat !== null && canSit(state, catalog, geometry, seat, loginOf(selfId)).ok;
         },
       }),
     [store, selfId, returnToDesk, catalog, geometry],

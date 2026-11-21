@@ -33,7 +33,7 @@ export interface SeatingControllerState extends SeatingState {
 }
 
 export interface SeatingController extends SeatingSource {
-  sit(instanceId?: string): void;
+  sit(seatId?: string): void;
   returnToDesk(): void;
   getState(): SeatingControllerState;
   subscribe(cb: () => void): () => void;
@@ -78,6 +78,7 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
     const { charRadius } = s.worldSettings;
     return self !== undefined && isTouchingSeat(feetPosition(self.pos, charRadius), charRadius, seat.instance, geometry);
   };
+  const isTaken = (s: OfficeState) => (seat: Seat) => !canSit(s, catalog, geometry, seat, login).ok;
   const ownDeskSeatId = (s: OfficeState) => {
     const deskId = deskOwnedBy(s, login);
     return s.deskAreas.find((a) => a.id === deskId)?.seatInstanceId ?? null;
@@ -90,7 +91,7 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
     refusalTimer = setTimeout(() => publish({ refusal: null }), REFUSAL_TOAST_MS);
   };
 
-  const sit = (instanceId?: string) => {
+  const sit = (seatId?: string) => {
     const s = store.getState();
     const self = s.players[selfId];
     if (!self) {
@@ -98,16 +99,16 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
     }
     const { charRadius } = s.worldSettings;
     const feet = feetPosition(self.pos, charRadius);
-    const named = instanceId === undefined ? undefined : seatById(s, instanceId);
+    const named = seatId === undefined ? undefined : seatById(s, seatId);
     if (named === null) {
       return;
     }
-    const seat = named ?? nearestSeat(s, catalog, geometry, feet, charRadius);
+    const seat = named ?? nearestSeat(s, catalog, geometry, feet, charRadius, isTaken(s));
     if (!seat || !touches(s, seat)) {
       refuse('not-touching');
       return;
     }
-    if (self.seat === seat.instance.id) {
+    if (self.seat === seat.id) {
       return;
     }
     seatOn(s, seat);
@@ -115,7 +116,7 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
 
   /** Puts the self player on `seat` wherever they stand; false when `canSit` refuses. */
   const seatOn = (s: OfficeState, seat: Seat): boolean => {
-    const verdict = canSit(s, catalog, geometry, seat.instance, login);
+    const verdict = canSit(s, catalog, geometry, seat, login);
     if (!verdict.ok) {
       refuse(verdict.reason);
       return false;
@@ -124,7 +125,7 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
     const { pos, yaw } = seatedPlayerPose(seat.pose, s.worldSettings.charRadius);
     seatedAt = pos;
     actions.setSelfPosition(pos, ZERO, yaw, false);
-    actions.setSelfSeat(seat.instance.id);
+    actions.setSelfSeat(seat.id);
     return true;
   };
 
@@ -157,10 +158,12 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
       return;
     }
     const { charRadius } = s.worldSettings;
-    const seat = self ? nearestSeat(s, catalog, geometry, feetPosition(self.pos, charRadius), charRadius) : null;
-    const sittable = seat && seat.instance.id !== self?.seat && canSit(s, catalog, geometry, seat.instance, login).ok;
+    const seat = self
+      ? nearestSeat(s, catalog, geometry, feetPosition(self.pos, charRadius), charRadius, isTaken(s))
+      : null;
+    const sittable = seat && seat.id !== self?.seat && canSit(s, catalog, geometry, seat, login).ok;
     publish({
-      nearbySeatId: sittable ? seat.instance.id : null,
+      nearbySeatId: sittable ? seat.id : null,
       hasDesk: ownDeskSeatId(s) !== null,
     });
   };
@@ -176,7 +179,7 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
         return;
       }
       if (touches(s, seat)) {
-        sit(seat.instance.id);
+        sit(seat.id);
         return;
       }
       const target = approachSpot(seat.pose, geometry.worldAABBOfInstance(seat.instance), s.worldSettings.charRadius, isFree);
@@ -185,10 +188,10 @@ export function createSeating({ store, actions, selfId, catalog, geometry, autoW
         return;
       }
       autoWalk.goToPoint(
-        seat.instance.id,
+        seat.id,
         target,
         () => touches(store.getState(), seat),
-        () => sit(seat.instance.id),
+        () => sit(seat.id),
         () => teleportTo(seat),
       );
     },

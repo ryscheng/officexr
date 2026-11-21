@@ -10,7 +10,7 @@ import { createAutoWalk } from './useAutoWalk.ts';
 import { createSeating } from './useSeating.ts';
 
 const kinds: Record<string, Partial<WorldObjectKind>> = {
-  chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seat: { offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 } },
+  chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seats: [{ offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 }] },
 };
 const catalog = { getKind: (id: string) => kinds[id] as WorldObjectKind | undefined };
 const geometry = createInstanceGeometry({ catalog, voxelSize: 1 });

@@ -1,24 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialOfficeState, type DeskAreaState, type ObjectInstance, type OfficeState, type Vec3 } from '@officexr/sdk';
+import { createInitialOfficeState, seatId, type DeskAreaState, type ObjectInstance, type OfficeState, type Vec3 } from '@officexr/sdk';
 import type { WorldObjectKind } from '../../scenes/index.ts';
 import { createInstanceGeometry } from '../geometry-service.ts';
 import {
   approachSpot,
-  canSit,
+  canSit as canSitOn,
   isTouchingSeat,
   nearestSeat,
   SEAT_TOUCH_EPSILON_M,
   seatedPlayerPose,
   stepOutSpot,
   STEP_OUT_CLEARANCE_M,
+  seatOf,
   type SeatPose,
 } from '../seating.ts';
 import { AVATAR_YAW_OFFSET, BODY_Y, SIT_POSE_HIP_HEIGHT } from '../../physics/rules.ts';
 
 // One-metre kinds on a one-metre grid, so voxel positions are metres.
 const kinds: Record<string, Partial<WorldObjectKind>> = {
-  chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seat: { offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 } },
-  bench: { id: 'bench', dimensions: { width: 2, height: 1, depth: 1 }, seat: { offset: { x: 1, y: 0.5, z: 0.5 }, yawDeg: 0 } },
+  chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seats: [{ offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 }] },
+  bench: { id: 'bench', dimensions: { width: 2, height: 1, depth: 1 }, seats: [{ offset: { x: 1, y: 0.5, z: 0.5 }, yawDeg: 0 }] },
+  sofa: {
+    id: 'sofa',
+    dimensions: { width: 3, height: 1, depth: 1 },
+    seats: [0.5, 1.5, 2.5].map((x) => ({ offset: { x, y: 0.5, z: 0.5 }, yawDeg: 0 })),
+  },
   desk: { id: 'desk', dimensions: { width: 1, height: 1, depth: 1 }, isDesk: true },
 };
 const catalog = { getKind: (id: string) => kinds[id] as WorldObjectKind | undefined };
@@ -45,9 +51,16 @@ function state(patch: Partial<OfficeState> = {}): OfficeState {
 const seatedPlayer = (id: string, seat: string) =>
   ({ id, seat }) as unknown as OfficeState['players'][string];
 
+const seatFor = (s: OfficeState, instance: ObjectInstance, index = 0) => {
+  const withInstance = { ...s, worldObjects: { cubeSize: 1, instances: [instance] } };
+  return seatOf(withInstance, catalog, geometry, seatId(instance.id, index))!;
+};
+
 describe('canSit', () => {
   const inside = chair('c', 1, 1);
   const outside = chair('far', 10, 10);
+  const canSit = (s: OfficeState, cat: typeof catalog, geo: typeof geometry, instance: ObjectInstance, login: string) =>
+    canSitOn(s, cat, geo, seatFor(s, instance), login);
 
   it('allows a chair outside every desk area, and an unclaimed desk chair', () => {
     expect(canSit(state(), catalog, geometry, outside, 'me')).toEqual({ ok: true });
@@ -80,6 +93,46 @@ describe('canSit', () => {
       ok: false,
       reason: 'blocked',
     });
+  });
+});
+
+describe('seats of a multi-seat kind', () => {
+  const sofa: ObjectInstance = { ...chair('s', 0, 0), kindId: 'sofa' };
+  const at = (players: OfficeState['players'] = {}) =>
+    state({ players, worldObjects: { cubeSize: 1, instances: [sofa] } });
+
+  it('names seat 0 by the bare instance id and the others by index', () => {
+    const s = at();
+    expect([0, 1, 2].map((i) => seatOf(s, catalog, geometry, seatId('s', i))?.id)).toEqual(['s', 's#1', 's#2']);
+    expect(seatOf(s, catalog, geometry, 's#3')).toBeNull();
+    expect(seatOf(s, catalog, geometry, 's')?.pose.position).toEqual([0.5, 0.5, 0.5]);
+    expect(seatOf(s, catalog, geometry, 's#2')?.pose.position).toEqual([2.5, 0.5, 0.5]);
+  });
+
+  it('refuses only the seat that is taken', () => {
+    const s = at({ 'bob#1': seatedPlayer('bob#1', 's#1') });
+    const verdict = (i: number) => canSitOn(s, catalog, geometry, seatOf(s, catalog, geometry, seatId('s', i))!, 'me');
+    expect(verdict(0)).toEqual({ ok: true });
+    expect(verdict(1)).toEqual({ ok: false, reason: 'occupied' });
+    expect(verdict(2)).toEqual({ ok: true });
+  });
+
+  it('picks the nearest free seat, and the nearest one when all are taken', () => {
+    const feet = { x: 1.4, y: 0, z: -0.4 };
+    const taken = (ids: string[]) => (seat: { id: string }) => ids.includes(seat.id);
+    const pick = (ids: string[]) => nearestSeat(at(), catalog, geometry, feet, 0.4, taken(ids))?.id;
+    expect(pick([])).toBe('s#1');
+    expect(pick(['s#1'])).toBe('s');
+    expect(pick(['s#1', 's'])).toBe('s#2');
+    expect(pick(['s', 's#1', 's#2'])).toBe('s#1');
+  });
+
+  it('steps out from each seat on its own spot', () => {
+    const s = at();
+    const footprint = geometry.worldAABBOfInstance(sofa);
+    const spots = [0, 1, 2].map((i) => stepOutSpot(seatOf(s, catalog, geometry, seatId('s', i))!.pose, footprint, () => true));
+    expect(spots.map((p) => p.x)).toEqual([0.5, 1.5, 2.5]);
+    expect(new Set(spots.map((p) => p.z)).size).toBe(1);
   });
 });
 
