@@ -68,7 +68,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
                 aria-label={`Go to ${mission.place?.label}`}
                 onClick={onGo}
                 className={`inline-flex min-h-8 items-center gap-1 rounded-full px-3.5 text-sm font-semibold pointer-coarse:min-h-12 ${
-                  current ? 'bg-hud-accent text-hud-on-accent' : 'bg-hud-inset text-hud-text hover:bg-hud-hover'
+                  current ? 'bg-hud-accent-fill text-hud-on-accent' : 'bg-hud-inset text-hud-text hover:bg-hud-hover'
                 }`}
               >
                 Go <ArrowRight aria-hidden className="size-3.5" />

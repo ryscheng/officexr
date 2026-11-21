@@ -37,6 +37,6 @@ it('Switch reflects checked', () => {
 it('IconButton lg and accent render their classes', () => {
   render(<IconButton icon={Bell} label="Ring" onClick={() => {}} tone="accent" size="lg" />);
   const button = screen.getByRole('button', { name: 'Ring' });
-  expect(button.className).toContain('bg-hud-accent');
+  expect(button.className).toContain('bg-hud-accent-fill');
   expect(button.className).toContain('h-11');
 });

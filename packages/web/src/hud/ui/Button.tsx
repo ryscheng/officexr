@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 
 const TONE = {
-  primary: 'border-transparent bg-hud-accent text-hud-on-accent shadow-[0_1px_3px_var(--color-hud-accent-shadow)] hover:bg-hud-accent-edge',
+  primary: 'border-transparent bg-hud-accent-fill text-hud-on-accent shadow-[0_1px_3px_var(--color-hud-accent-shadow)] hover:bg-hud-accent-fill-hover',
   neutral: 'border-hud-edge hud-glass text-hud-text shadow-hud-control hover:bg-hud-panel-thick',
   ghost: 'border-transparent bg-transparent text-hud-text-2 hover:bg-hud-hover hover:text-hud-text',
 } as const;
