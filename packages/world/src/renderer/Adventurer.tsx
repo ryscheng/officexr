@@ -4,6 +4,7 @@ import { useGLTF, useAnimations } from '@react-three/drei';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { modelUrl } from '../app/asset-url.ts';
 import { characterUrl } from '../characters/registry.ts';
+import { retargetClipCached } from './retargetClip.ts';
 import { createSitPoseClip, SIT_CLIP_NAME } from './sitPoseClip.ts';
 import { createPokeClip, POKE_CLIP_NAME } from './pokeClip.ts';
 import { CAST_CLIP_NAME, createCastClip } from './castClip.ts';
@@ -278,11 +279,11 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
     const clips = useMemo(() => {
       const seen = new Set<string>();
       const out: THREE.AnimationClip[] = [];
+      const rigClips = [general, movement, movementAdv, combatRanged].flatMap((rig) =>
+        rig.animations.map((c) => retargetClipCached(c, rig.scene, character_gltf.scene)),
+      );
       for (const c of [
-        ...general.animations,
-        ...movement.animations,
-        ...movementAdv.animations,
-        ...combatRanged.animations,
+        ...rigClips,
         sitPoseClip,
         pokeClip,
         castClip,
@@ -292,12 +293,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
         out.push(c);
       }
       return out;
-    }, [
-      general.animations,
-      movement.animations,
-      movementAdv.animations,
-      combatRanged.animations,
-    ]);
+    }, [general, movement, movementAdv, combatRanged, character_gltf.scene]);
 
     // -----------------------------------------------------------------
     // Per-character mesh anchor: place the model's bind-pose LOWEST
