@@ -3,6 +3,7 @@ import type { HintName } from '../hintFlags';
 export const HINT_ORDER: readonly HintName[] = ['wave', 'people', 'move', 'alone', 'build'];
 export const HINT_SHOW_MS = 12_000;
 export const HINT_GAP_MS = 3_000;
+export const HINT_MIN_SEEN_MS = 2_000;
 export const HINT_DELAY_MS: Record<HintName, number> = {
   wave: 1_000,
   people: 6_000,

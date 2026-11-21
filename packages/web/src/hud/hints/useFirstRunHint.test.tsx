@@ -2,7 +2,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hintShowCount, resetHintSession } from '../hintFlags';
-import { HINT_DELAY_MS, HINT_GAP_MS, HINT_SHOW_MS } from './hintPlan';
+import { HINT_DELAY_MS, HINT_GAP_MS, HINT_MIN_SEEN_MS, HINT_SHOW_MS } from './hintPlan';
 import { hintConditions, useFirstRunHint, type HintSignals } from './useFirstRunHint';
 
 const quiet: HintSignals = {
@@ -117,22 +117,46 @@ describe('useFirstRunHint', () => {
     expect(result.current.hint).toBeNull();
   });
 
-  it('counts the showing, and stops after two visits', () => {
-    const first = mount({ nearName: 'Ana' });
-    advance(HINT_DELAY_MS.wave + 500);
-    expect(first.result.current.hint).toBe('wave');
+  it('counts a showing when it ends, and stops after two visits', () => {
+    const visit = () => {
+      const view = mount({ nearName: 'Ana' });
+      advance(HINT_DELAY_MS.wave + 500);
+      const shown = view.result.current.hint;
+      advance(HINT_SHOW_MS + 500);
+      view.unmount();
+      resetHintSession();
+      return shown;
+    };
+    expect(visit()).toBe('wave');
     expect(hintShowCount('wave')).toBe(1);
-    first.unmount();
-    resetHintSession();
-    const second = mount({ nearName: 'Ana' });
-    advance(HINT_DELAY_MS.wave + 500);
-    expect(second.result.current.hint).toBe('wave');
+    expect(visit()).toBe('wave');
     expect(hintShowCount('wave')).toBe(2);
-    second.unmount();
-    resetHintSession();
-    const third = mount({ nearName: 'Ana' });
+    expect(visit()).toBeNull();
+  });
+
+  it('does not count a hint that a toast cut short, and shows it again afterwards', () => {
+    const { result, rerender } = mount({ nearName: 'Ana' });
     advance(HINT_DELAY_MS.wave + 500);
-    expect(third.result.current.hint).toBeNull();
+    expect(result.current.hint).toBe('wave');
+    advance(500);
+    rerender({ nearName: 'Ana', toastShowing: true });
+    expect(result.current.hint).toBeNull();
+    expect(hintShowCount('wave')).toBe(0);
+    rerender({ nearName: 'Ana', toastShowing: false });
+    advance(HINT_GAP_MS + HINT_DELAY_MS.wave + 1000);
+    expect(result.current.hint).toBe('wave');
+  });
+
+  it('counts a hint that was seen for a while before a toast cut it', () => {
+    const { result, rerender } = mount({ nearName: 'Ana' });
+    advance(HINT_DELAY_MS.wave + 500);
+    advance(HINT_MIN_SEEN_MS + 500);
+    rerender({ nearName: 'Ana', toastShowing: true });
+    expect(result.current.hint).toBeNull();
+    expect(hintShowCount('wave')).toBe(1);
+    rerender({ nearName: 'Ana', toastShowing: false });
+    advance(HINT_GAP_MS + HINT_DELAY_MS.wave + 1000);
+    expect(result.current.hint).toBeNull();
   });
 
   it('does not repeat a hint that timed out in the same visit', () => {

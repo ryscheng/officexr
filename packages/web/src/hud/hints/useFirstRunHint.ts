@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isHintAvailable, markHintDone, recordHintShown, type HintName } from '../hintFlags';
 import { useNow } from '../useNow';
-import { HINT_ORDER, planHint, type ActiveHint } from './hintPlan';
+import { HINT_MIN_SEEN_MS, HINT_ORDER, planHint, type ActiveHint } from './hintPlan';
 
 const TICK_MS = 500;
 
@@ -44,16 +44,16 @@ export function useFirstRunHint(signals: HintSignals): { hint: HintName | null; 
     [coarse, canBuild, moving, headcount, nearName, menuOpen, otherSheetOpen, peopleOpen, mapOpen, building, inCall, toastShowing],
   );
 
-  const settle = useCallback((next: ActiveHint | null, at: number) => {
+  const settle = useCallback((next: ActiveHint | null, at: number, counts = true) => {
     const current = activeRef.current;
     if (current?.name === next?.name) {
       return;
     }
     if (current) {
       lastEndedAt.current = at;
-    }
-    if (next) {
-      recordHintShown(next.name);
+      if (counts && at - current.at >= HINT_MIN_SEEN_MS) {
+        recordHintShown(current.name);
+      }
     }
     activeRef.current = next;
     setActive(next);
@@ -74,7 +74,7 @@ export function useFirstRunHint(signals: HintSignals): { hint: HintName | null; 
     (name: HintName) => {
       markHintDone(name);
       if (activeRef.current?.name === name) {
-        settle(null, performance.now());
+        settle(null, performance.now(), false);
       }
     },
     [settle],

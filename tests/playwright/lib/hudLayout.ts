@@ -238,10 +238,18 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
   }
 }
 
-/** Waits for the named hint to show and finish fading in; the people and alone hints need up to a minute. */
+/** Waits for the named hint to show and stay for a moment; a toast can cut one short, and the hint comes back. */
 export async function awaitHint(page: Page, hint: string): Promise<void> {
-  await page.locator(`[data-hint="${hint}"]`).waitFor({ state: 'visible', timeout: 100_000 });
-  await page.waitForTimeout(500);
+  const plate = page.locator(`[data-hint="${hint}"]`);
+  const deadline = Date.now() + 100_000;
+  while (Date.now() < deadline) {
+    await plate.waitFor({ state: 'visible', timeout: Math.max(1_000, deadline - Date.now()) });
+    await page.waitForTimeout(1_500);
+    if (await plate.isVisible()) {
+      return;
+    }
+  }
+  throw new Error(`the ${hint} hint did not stay on screen`);
 }
 
 export async function dragStick(page: Page, holdMs = 2300): Promise<() => Promise<void>> {
