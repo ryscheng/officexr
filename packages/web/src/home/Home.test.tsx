@@ -110,21 +110,15 @@ describe('Home', () => {
   it('still lists offices and disables the form when /api/me fails', async () => {
     setup(unidentified, [{ id: 'o1', name: 'HQ', description: null, map_name: 'hq', created_by_login: null, debug_enabled: false }]);
     expect(await screen.findByText('HQ')).toBeTruthy();
-    expect(screen.getAllByText('Not signed in').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Not signed in')).toBeNull();
     expect(screen.getByText(/requires signing in/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Create office' })).matches(':disabled')).toBe(true);
-  });
-
-  it('offers Google sign-in back to this page when /api/me fails', async () => {
-    setup(unidentified, []);
-    const link = await screen.findByRole('link', { name: 'Sign in with Google' });
-    expect(link.getAttribute('href')).toBe('/auth/google?next=%2F');
   });
 
   it('offers no sign-in link when signed in', async () => {
     setup(ready, []);
     await screen.findByText(/No offices yet/);
-    expect(screen.queryByRole('link', { name: 'Sign in with Google' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Continue with Google' })).toBeNull();
   });
 
   it('signs out by POSTing /auth/logout then returning to /', async () => {

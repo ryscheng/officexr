@@ -17,7 +17,6 @@ import { createBrowserSfx } from '../sfx/browserSfx';
 import { ClickToPlayPrompt } from '../hud/ClickToPlayPrompt';
 import { ConnectionToast } from '../hud/ConnectionToast';
 import { HudBanner } from '../hud/HudBanner';
-import { HudLayout } from '../hud/HudLayout';
 import { OfficeHud } from '../hud/OfficeHud';
 import { createHttpMissionsClient } from '../hud/missions/missionsApi';
 import { useMissionMarker } from '../hud/missions/useMissionMarker';
@@ -34,6 +33,7 @@ import { JaasMeeting } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { useMuteHotkey } from '../voice/useMuteHotkey';
 import { officeSettingsTabs } from './OfficeSettings';
+import { Blocked } from '../page/Blocked';
 import { PlayView3dBoundary } from './PlayView3dBoundary';
 import { PreWorld } from './PreWorld';
 import { playerIdFor } from './playerId';
@@ -85,24 +85,26 @@ type ReadySession = Extract<OfficeSession, { type: 'ready' }>;
 /** A session built without the backend: the web office then skips the join check and the realtime join. */
 export type HermeticWorld = { session: ReadySession; missions?: MissionsClient };
 
-const HERMETIC_JOIN = { state: 'go' as const, join: () => undefined, cancel: () => undefined };
+const HERMETIC_JOIN = { state: 'go' as const, join: () => undefined };
 
 function LiveWorld(props: { office: Office; me: Identity }) {
   const { office, me } = props;
   const selfId = useMemo(() => playerIdFor(office, me), [office, me]);
   const join = useJoinCheck(office.id, me.login);
-  const session = useOfficeSession(office.id, me, selfId, join.state === 'go');
-  return <World office={office} me={me} session={session} join={join} missionsClient={httpMissions} />;
+  const [attempt, setAttempt] = useState(0);
+  const session = useOfficeSession(office.id, me, selfId, join.state === 'go', undefined, attempt);
+  const rejoin = useCallback(() => setAttempt((n) => n + 1), []);
+  return <World office={office} me={me} session={session} join={join} missionsClient={httpMissions} onRejoin={rejoin} />;
 }
 
 const isReplaced = (s: OfficeState) => s.realtime.status === 'replaced';
 
-const REPLACED_MESSAGE = 'This office was opened in another window. Reload to rejoin here.';
-
-function ReplacedBanner({ store }: { store: Store }) {
+function ReplacedCover({ store, onRejoin }: { store: Store; onRejoin: () => void }) {
   const replaced = useStoreSelector(store, isReplaced);
-  return replaced ? <HudBanner message={REPLACED_MESSAGE} /> : null;
+  return replaced ? <Blocked surface="dim" variant="otherWindow" details="Session replaced" onPrimary={onRejoin} /> : null;
 }
+
+const reloadPage = () => window.location.reload();
 
 function LocalPresence({ local, voice }: { local: ReadySession['local']; voice: JaasVoiceAdapter | null }) {
   const markActive = useLocalActivity(local.store, local.actions, local.selfId);
@@ -127,7 +129,7 @@ function PingInboxFeed({ bus, store, inbox }: { bus: Bus; store: Store; inbox: P
 
 const calendarReturnTo = () => (API_ORIGIN ? window.location.href : `${window.location.pathname}${window.location.search}`);
 
-function World({ office: initialOffice, me, session, join, missionsClient }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl; missionsClient: MissionsClient }) {
+function World({ office: initialOffice, me, session, join, missionsClient, onRejoin = reloadPage }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl; missionsClient: MissionsClient; onRejoin?: () => void }) {
   const [office, setOffice] = useState(initialOffice);
   const viewMode = useMemo(() => initialViewMode(), []);
   const local = session.type === 'ready' ? session.local : null;
@@ -239,7 +241,6 @@ function World({ office: initialOffice, me, session, join, missionsClient }: { o
         onOpenSettings={() => openSettings()}
         toasts={
           <>
-            <ReplacedBanner store={ready.local.store} />
             {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
             <ConnectionToast store={ready.local.store} />
             <DeskHud store={ready.local.store} requestDeskClaim={ready.requestDeskClaim} />
@@ -274,8 +275,8 @@ function World({ office: initialOffice, me, session, join, missionsClient }: { o
           <LocalPresence local={session.local} voice={session.voice} />
         </>
       )}
-      <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onCancel={join.cancel} />
-      {session.type === 'replaced' && <HudLayout topCentre={<HudBanner message={REPLACED_MESSAGE} />} />}
+      <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onRetry={onRejoin} />
+      {session.type === 'ready' && <ReplacedCover store={session.local.store} onRejoin={onRejoin} />}
     </div>
   );
 }
