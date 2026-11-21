@@ -1,4 +1,4 @@
-import { Menu, MessageSquare } from 'lucide-react';
+import { Menu, MessageSquare, Users } from 'lucide-react';
 import type { OfficeState, Store } from '@officexr/sdk';
 import { presenceIndicator } from '@officexr/sdk';
 import { useStoreSelector } from '@officexr/world/top-down';
@@ -23,6 +23,9 @@ export function IdentityCard({
   unread,
   chatOpen,
   menuOpen,
+  headcount,
+  peopleOpen,
+  onPeople,
   onChat,
   onMenu,
 }: {
@@ -31,6 +34,9 @@ export function IdentityCard({
   unread: number;
   chatOpen: boolean;
   menuOpen: boolean;
+  headcount: number;
+  peopleOpen: boolean;
+  onPeople: () => void;
   onChat: () => void;
   onMenu: () => void;
 }) {
@@ -52,6 +58,12 @@ export function IdentityCard({
           {self.statusText || presence.label} · {officeName}
         </div>
       </div>
+      <RoundButton aria-label={`People here, ${headcount}`} aria-expanded={peopleOpen} onClick={onPeople}>
+        <Users aria-hidden className="size-5" />
+        <span aria-hidden className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-hud-accent-fill px-1 text-xs font-bold text-hud-on-accent">
+          {headcount}
+        </span>
+      </RoundButton>
       <RoundButton aria-label={unread ? `Chat, ${unread} new` : 'Chat'} aria-pressed={chatOpen} onClick={onChat}>
         <MessageSquare aria-hidden className="size-5" />
         {unread > 0 && (

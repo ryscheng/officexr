@@ -7,12 +7,14 @@ class FakeJitsiApi extends EventEmitter {
   toggles = 0;
   audioMuted = false;
   commands: string[] = [];
+  calls: unknown[][] = [];
   largeVideo: string | null = null;
   disposed = false;
   /** `audioMuteStatusChanged` reports not yet delivered. */
   private reports: boolean[] = [];
   executeCommand(name: string, ...args: unknown[]) {
     this.commands.push(name);
+    this.calls.push([name, ...args]);
     if (name === 'setLargeVideoParticipant') {
       this.largeVideo = args.join(':');
     }
@@ -299,5 +301,41 @@ describe('JaasVoiceAdapter', () => {
     api.emit('contentSharingParticipantsChanged', { data: ['bob'] });
     await voice.leaveRoom();
     expect(voice.getShareState().viewing).toBeNull();
+  });
+});
+
+describe('setMutedParticipants', () => {
+  const volumes = (api: FakeJitsiApi) => api.calls.filter(([name]) => name === 'setParticipantVolume');
+
+  it('silences listed participants and restores the ones dropped from the list', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    voice.setMutedParticipants(['p1', 'p2']);
+    expect(volumes(api)).toEqual([
+      ['setParticipantVolume', 'p1', 0],
+      ['setParticipantVolume', 'p2', 0],
+    ]);
+    api.calls = [];
+    voice.setMutedParticipants(['p2']);
+    expect(volumes(api)).toEqual([
+      ['setParticipantVolume', 'p1', 1],
+      ['setParticipantVolume', 'p2', 0],
+    ]);
+  });
+
+  it('silences a muted participant again when it joins the call', async () => {
+    const { voice } = setup();
+    const api = await joinedMeeting(voice);
+    voice.setMutedParticipants(['p1']);
+    api.calls = [];
+    api.emit('participantJoined', { id: 'p1', displayName: 'Pat' });
+    expect(volumes(api)).toEqual([['setParticipantVolume', 'p1', 0]]);
+    api.emit('participantJoined', { id: 'p2', displayName: 'Sam' });
+    expect(volumes(api)).toHaveLength(1);
+  });
+
+  it('does nothing before a call is joined', () => {
+    const { voice } = setup();
+    expect(() => voice.setMutedParticipants(['p1'])).not.toThrow();
   });
 });

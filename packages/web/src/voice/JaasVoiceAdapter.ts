@@ -69,6 +69,7 @@ export class JaasVoiceAdapter implements VoiceAdapter {
   private share = NO_SHARE;
   private shareListeners = new Set<() => void>();
   private muteListeners = new Set<() => void>();
+  private mutedParticipants = new Set<string>();
   private lastMicMuted = false;
 
   constructor(readonly options: JaasVoiceOptions) {}
@@ -113,6 +114,20 @@ export class JaasVoiceAdapter implements VoiceAdapter {
 
   isMuted(): boolean {
     return this.muted;
+  }
+
+  /** Silences these remote participants for this listener only; anyone dropped from the list is restored. */
+  setMutedParticipants(ids: readonly string[]): void {
+    const previous = this.mutedParticipants;
+    this.mutedParticipants = new Set(ids);
+    for (const id of previous) {
+      if (!this.mutedParticipants.has(id)) {
+        this.api?.executeCommand('setParticipantVolume', id, 1);
+      }
+    }
+    for (const id of this.mutedParticipants) {
+      this.api?.executeCommand('setParticipantVolume', id, 0);
+    }
   }
 
   getCurrentRoom(): string | null {
@@ -252,6 +267,9 @@ export class JaasVoiceAdapter implements VoiceAdapter {
       ifCurrent(({ id, displayName }: { id: string; displayName?: string }) => {
         // The IFrame API can echo the local participant here; it isn't remote.
         if (id !== this.localId) {
+          if (this.mutedParticipants.has(id)) {
+            api.executeCommand('setParticipantVolume', id, 0);
+          }
           this.events.emit('remote-participant-joined', { roomId, participantId: id, displayName: displayName ?? '' });
         }
       }),

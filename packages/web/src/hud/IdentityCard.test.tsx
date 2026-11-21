@@ -11,8 +11,9 @@ const setup = (props: Partial<Parameters<typeof IdentityCard>[0]> = {}) => {
   createActions(store, createBus()).upsertPlayer({ id: 'me', name: 'Avery Preview', statusText: 'Heads down' });
   const onChat = vi.fn();
   const onMenu = vi.fn();
-  render(<IdentityCard store={store} officeName="HQ" unread={0} chatOpen={false} menuOpen={false} onChat={onChat} onMenu={onMenu} {...props} />);
-  return { onChat, onMenu };
+  const onPeople = vi.fn();
+  render(<IdentityCard store={store} officeName="HQ" unread={0} chatOpen={false} menuOpen={false} headcount={1} peopleOpen={false} onPeople={onPeople} onChat={onChat} onMenu={onMenu} {...props} />);
+  return { onChat, onMenu, onPeople };
 };
 
 describe('IdentityCard', () => {
@@ -25,7 +26,7 @@ describe('IdentityCard', () => {
   it('falls back to the presence label without a status text', () => {
     const store = createStore({ selfId: 'me', officeId: 'o' });
     createActions(store, createBus()).upsertPlayer({ id: 'me', name: 'Avery' });
-    render(<IdentityCard store={store} officeName="HQ" unread={0} chatOpen={false} menuOpen={false} onChat={() => {}} onMenu={() => {}} />);
+    render(<IdentityCard store={store} officeName="HQ" unread={0} chatOpen={false} menuOpen={false} headcount={1} peopleOpen={false} onPeople={() => {}} onChat={() => {}} onMenu={() => {}} />);
     expect(screen.getByText('Available · HQ')).toBeTruthy();
   });
 
@@ -35,5 +36,16 @@ describe('IdentityCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Office menu' }));
     expect(onChat).toHaveBeenCalledTimes(1);
     expect(onMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('the people button shows the headcount and opens the people sheet', () => {
+    const { onPeople } = setup({ headcount: 5 });
+    fireEvent.click(screen.getByRole('button', { name: 'People here, 5' }));
+    expect(onPeople).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the people button expanded while the sheet is open', () => {
+    setup({ peopleOpen: true });
+    expect(screen.getByRole('button', { name: 'People here, 1' }).getAttribute('aria-expanded')).toBe('true');
   });
 });

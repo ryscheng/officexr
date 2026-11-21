@@ -1,15 +1,23 @@
-import type { OfficeState, Store } from '@officexr/sdk';
+import { useCallback } from 'react';
+import { loginOf, type OfficeState, type Store } from '@officexr/sdk';
 import { useStoreSelector } from '@officexr/world/top-down';
 
-const selectLatest = (s: OfficeState) => {
-  const last = s.chat.at(-1);
-  return last ? { id: last.id, text: last.text, author: s.players[last.authorId]?.name || last.authorId } : null;
-};
-const sameLatest = (a: ReturnType<typeof selectLatest>, b: ReturnType<typeof selectLatest>) => a?.id === b?.id;
+type Latest = { id: string; text: string; author: string } | null;
+const sameLatest = (a: Latest, b: Latest) => a?.id === b?.id;
 
 export const TICKER_MS = 5000;
 
-export function ChatTicker({ store, onOpen }: { store: Store; onOpen: () => void }) {
+export function ChatTicker({ store, hiddenLogins, onOpen }: { store: Store; hiddenLogins?: ReadonlySet<string>; onOpen: () => void }) {
+  const selectLatest = useCallback(
+    (s: OfficeState): Latest => {
+      const last = s.chat.at(-1);
+      if (!last || hiddenLogins?.has(loginOf(last.authorId))) {
+        return null;
+      }
+      return { id: last.id, text: last.text, author: s.players[last.authorId]?.name || last.authorId };
+    },
+    [hiddenLogins],
+  );
   const latest = useStoreSelector(store, selectLatest, sameLatest);
   if (!latest) {
     return null;

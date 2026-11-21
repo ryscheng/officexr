@@ -5,7 +5,8 @@ import { createViewYaw, PlayControlsProvider, ViewYawProvider } from '@officexr/
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CallList, callRows } from './CallList';
 import { fakePlayControls } from './fakePlayControls';
-import { PresenceList } from './PresenceList';
+import { createLocalMutes } from './localMutes';
+import { PeopleSheet } from './PeopleSheet';
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
@@ -102,7 +103,7 @@ describe('CallList', () => {
     render(
       <PlayControlsProvider controls={fakePlayControls().controls}>
         <ViewYawProvider viewYaw={createViewYaw()}>
-          <PresenceList store={store} selfId="me" officeName="HQ" clock={clock} />
+          <PeopleSheet store={store} selfId="me" officeName="HQ" mutes={createLocalMutes(null)} portrait={false} onWave={() => {}} onInvite={() => {}} onClose={() => {}} clock={clock} />
           <CallList store={store} selfId="me" clock={clock} />
         </ViewYawProvider>
       </PlayControlsProvider>,

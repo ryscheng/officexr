@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { Actions, OfficeState, Store } from '@officexr/sdk';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { loginOf, type Actions, type OfficeState, type Store } from '@officexr/sdk';
 import { MessageSquare, SendHorizontal } from 'lucide-react';
 import { focusWorld, useCoarsePointer, useStoreSelector } from '@officexr/world/top-down';
 import { IconButton } from './IconButton';
@@ -33,13 +33,16 @@ type ChatPanelProps = {
   visibility?: ChatVisibility;
   portrait?: boolean;
   unread?: number;
+  /** Logins whose messages this device does not show. */
+  hiddenLogins?: ReadonlySet<string>;
   onMissionCommand?: (title: string) => Promise<boolean>;
 };
 
 const MISSION_COMMAND = /^\/mission\s+(\S.*)$/i;
 
-export function ChatPanel({ store, actions, selfId, visibility, portrait = false, unread = 0, onMissionCommand }: ChatPanelProps) {
-  const chat = useStoreSelector(store, selectChat);
+export function ChatPanel({ store, actions, selfId, visibility, portrait = false, unread = 0, hiddenLogins, onMissionCommand }: ChatPanelProps) {
+  const allChat = useStoreSelector(store, selectChat);
+  const chat = useMemo(() => (hiddenLogins?.size ? allChat.filter((m) => !hiddenLogins.has(loginOf(m.authorId))) : allChat), [allChat, hiddenLogins]);
   const names = useStoreSelector(store, selectNames, sameNames);
   const coarse = useCoarsePointer();
   const own = useChatVisibility(chat.length);

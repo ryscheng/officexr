@@ -305,3 +305,29 @@ describe('ChatPanel', () => {
     });
   });
 });
+
+describe('ChatPanel muted senders', () => {
+  const setup = (hidden: string[]) => {
+    const store = createStore({ selfId: 'me', officeId: 'o' });
+    const actions = createActions(store, createBus());
+    const visibility = { mode: 'compose' as const, folded: false, compose: () => {}, peek: () => {}, hide: () => {}, collapse: () => {} };
+    render(<ChatPanel store={store} actions={actions} selfId="me" visibility={visibility} hiddenLogins={new Set(hidden)} />);
+    return actions;
+  };
+
+  it('hides messages from muted logins in every window of theirs, and shows the rest', () => {
+    const actions = setup(['ann@example.test']);
+    act(() => {
+      actions.applyRemoteChat({ id: 'm1', authorId: 'ann@example.test#a', text: 'from the muted one', t: 1 });
+      actions.applyRemoteChat({ id: 'm2', authorId: 'bob@example.test#a', text: 'from bob', t: 2 });
+    });
+    expect(screen.queryByText(/from the muted one/)).toBeNull();
+    expect(screen.getByText(/from bob/)).toBeTruthy();
+  });
+
+  it('shows everything when nobody is muted', () => {
+    const actions = setup([]);
+    act(() => actions.applyRemoteChat({ id: 'm1', authorId: 'ann@example.test#a', text: 'hi there', t: 1 }));
+    expect(screen.getByText(/hi there/)).toBeTruthy();
+  });
+});
