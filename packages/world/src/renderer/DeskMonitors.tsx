@@ -26,10 +26,6 @@ interface DeskMonitorsProps {
   worldObjects: WorldObjects;
 }
 
-/**
- * A monitor on the desk of every desk area that has a chair. It is lit while a player, local or
- * remote, sits in that chair: the occupancy is read from the shared `players[*].seat`.
- */
 export function DeskMonitors({ store, worldObjects }: DeskMonitorsProps) {
   const { catalog, geometry } = useApplication();
   const deskAreas = useStoreDeskAreas(store);

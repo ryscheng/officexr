@@ -15,7 +15,6 @@ function box(w: number, h: number, d: number, x: number, y: number, z: number): 
   return new THREE.BoxGeometry(w, h, d).translate(x, y, z);
 }
 
-/** Foot, neck and bezel in one geometry, facing +Z, standing on y = 0. */
 export function createMonitorBodyGeometry(): THREE.BufferGeometry {
   const merged = mergeGeometries([
     box(0.22, 0.015, 0.14, 0, 0.0075, 0),
@@ -39,7 +38,7 @@ export const MONITOR_LOCAL_BOUNDS = new THREE.Box3(
   new THREE.Vector3(MONITOR_WIDTH_M / 2, NECK_HEIGHT_M + MONITOR_HEIGHT_M, 0.07),
 );
 
-/** A soft blue-to-white desktop, as emissive colour; generated without a canvas so it also builds headless. */
+// Built from a DataTexture, not a canvas, so it also builds headless.
 export function createDesktopTexture(): THREE.DataTexture {
   const w = 32;
   const h = 20;

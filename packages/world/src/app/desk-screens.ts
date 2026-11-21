@@ -7,22 +7,18 @@ import type { InstanceGeometryService, Vec3, WorldAABB } from './types.ts';
 
 export const SCREEN_POWER_UP_SEC = 0.3;
 export const SCREEN_OFF_DELAY_SEC = 1;
-/** How far past the desk's near edge, along the sitter's line of sight, the monitor stands. */
 export const MONITOR_INSET_M = 0.3;
 
 export interface DeskScreenPlacement {
   deskAreaId: string;
   seatInstanceId: string;
   deskInstanceId: string;
-  /** Centre of the monitor's foot, on the desk top. */
   position: Vec3;
-  /** Rotation about Y that turns a +Z-facing monitor towards the chair. */
   yawRad: number;
 }
 
 type Geometry = Pick<InstanceGeometryService, 'worldAABB' | 'worldAABBOfInstance'>;
 
-/** Distance along the unit XZ ray from (ox, oz) to where it enters and leaves the box, or null when it misses. */
 function rayThroughBox(
   ox: number,
   oz: number,
@@ -48,12 +44,9 @@ function rayThroughBox(
   return near <= far ? [near, far] : null;
 }
 
-/**
- * One monitor per desk area that has a chair and exactly one desk. The desk is the one whose
- * footprint centre lies in the area. The monitor stands on the desk top where the sitter's line
- * of sight crosses the desk, a little past the near edge, and faces the chair; a line that misses
- * the desk puts it at the desk's centre.
- */
+// One monitor per desk area with a chair and exactly one desk (the one whose footprint centre is in the area).
+// It stands on the desk top where the sitter's line of sight crosses the desk, MONITOR_INSET_M past the
+// near edge, and faces the chair; a line that misses the desk puts it at the desk centre.
 export function deskScreenPlacements(
   areas: OfficeState['deskAreas'],
   instances: Instances,
@@ -87,7 +80,6 @@ export function deskScreenPlacements(
 }
 
 export interface ScreenPower {
-  /** Lit: from the moment someone sits until `SCREEN_OFF_DELAY_SEC` after the chair empties. */
   on: boolean;
   litSec: number;
   emptySec: number;
@@ -99,7 +91,6 @@ export function isScreenSettled(p: ScreenPower, occupied: boolean): boolean {
   return occupied ? p.on && p.emptySec === 0 && p.litSec >= SCREEN_POWER_UP_SEC : !p.on;
 }
 
-/** The next power state after `dtSec`; returns `p` itself once settled. */
 export function stepScreenPower(p: ScreenPower, occupied: boolean, dtSec: number): ScreenPower {
   if (isScreenSettled(p, occupied)) return p;
   if (occupied) {
@@ -111,7 +102,6 @@ export function stepScreenPower(p: ScreenPower, occupied: boolean, dtSec: number
 
 const FLICKER_HZ = 40;
 
-/** Emissive strength 0..1: dark when off, a stuttering ramp while powering up, steady once up. */
 export function screenGlow(p: ScreenPower): number {
   if (!p.on) return 0;
   if (p.litSec >= SCREEN_POWER_UP_SEC) return 1;
