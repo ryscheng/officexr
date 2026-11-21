@@ -39,6 +39,7 @@ export function CharacterLook({
       <div className="h-[140px] shrink-0 overflow-hidden rounded-hud-control bg-hud-inset">
         <Preview url={character.url} />
       </div>
+      <h3 className="px-1 text-sm font-semibold text-hud-text-2">Look</h3>
       <div role="radiogroup" aria-label="Look" className="flex flex-wrap gap-2">
         {options.map((option) => {
           const selected = option.id === character.id;

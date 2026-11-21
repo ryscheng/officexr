@@ -34,7 +34,7 @@ function Preview({ value }: { value: Appearance }) {
 export function AppearancePicker({ controller = appearanceController() }: { controller?: AppearanceController }) {
   const value = useSyncExternalStore(controller.subscribe, controller.get);
   return (
-    <div role="radiogroup" aria-label="Appearance" className="flex gap-4">
+    <div role="radiogroup" aria-label="Appearance" className="flex flex-wrap gap-2">
       {OPTIONS.map((option) => {
         const checked = option.value === value;
         return (

@@ -352,7 +352,7 @@ export function OfficeHud({
             {inviteSheet}
           </>
         }
-        bottomLeft={narrow || (coarse && (invite || people)) ? undefined : missionsPanel}
+        bottomLeft={narrow || (coarse && (invite || people || menuOpen)) ? undefined : missionsPanel}
         bottomRight={
           (coarse && (menuOpen || people || invite)) || (!coarse && (people || menuOpen)) ? undefined : narrow ? (
             <>

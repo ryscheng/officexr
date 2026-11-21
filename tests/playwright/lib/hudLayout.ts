@@ -12,6 +12,8 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'chat-peek': { scenario: 'chat', steps: ['say:bao@example.test:Lunch at 12? I booked the big room by the window.'] },
   'chat-sheet': { scenario: 'chat', steps: [/^Chat/] },
   'menu-open': { scenario: 'crowd', steps: ['Office menu'] },
+  'settings-open': { scenario: 'crowd', steps: ['Office menu', /^Office\s*Name, map/] },
+  'settings-controls': { scenario: 'crowd', steps: ['Office menu', /^Controls\s*View/] },
   'invite-open': { scenario: 'crowd', steps: ['Office menu', 'Invite people'] },
   'people-open': { scenario: 'crowd', steps: [/^People here, \d+$/] },
   'person-card': { scenario: 'crowd', steps: [/^People here, \d+$/, /Show options$/] },
