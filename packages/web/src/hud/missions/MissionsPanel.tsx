@@ -1,14 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Maximize2, Minimize2, Plus, Target } from 'lucide-react';
 import type { NewMission } from '@officexr/sdk';
 import { useFold } from '../foldPrefs';
-import { Keycap } from '../ui/Keycap';
 import { FoldablePanel } from '../ui/FoldablePanel';
 import { PortraitSheet } from '../ui/PortraitSheet';
+import { Button } from '../ui/Button';
 import { CHIP } from '../ui/Panel';
 import { Tab, TabList, Tabs } from '../ui/Tabs';
 import { useHotkey } from '../useHotkey';
+import { MissionCueToast } from './MissionCueToast';
 import { MissionRow } from './MissionRow';
+import { playMissionTick } from './missionTick';
+import { useMissionCue } from './useMissionCue';
 import {
   distanceBetween,
   filterBySource,
@@ -45,9 +48,21 @@ export type MissionsPanelProps = {
   portrait?: boolean;
   collapsed?: boolean;
   now?: () => Date;
+  tick?: () => void;
 };
 
-export function MissionsPanel({ missions: api, me, areas, people, self, compact = false, portrait = false, collapsed = false, now = () => new Date() }: MissionsPanelProps) {
+export function MissionsPanel({
+  missions: api,
+  me,
+  areas,
+  people,
+  self,
+  compact = false,
+  portrait = false,
+  collapsed = false,
+  now = () => new Date(),
+  tick = playMissionTick,
+}: MissionsPanelProps) {
   const [tab, setTab] = useState<MissionTab>('mine');
   const [source, setSource] = useState<SourceFilter>('all');
   const fold = useFold('missions', compact);
@@ -73,10 +88,32 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
   };
   useHotkey('t', open, !unsupported);
 
-  const add = async (input: NewMission) => {
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (focusId && !adding) {
+      listRef.current?.querySelector<HTMLElement>(`[data-mission-id="${focusId}"] button`)?.focus();
+      setFocusId(null);
+    }
+  }, [focusId, adding, rows]);
+
+  const save = async (input: NewMission) => {
+    const created = await api.create(input);
+    if (!created) {
+      return false;
+    }
+    setFocusId(created.id);
     setAdding(false);
-    await api.create(input);
+    return true;
   };
+
+  const next = (doneId: string) => {
+    if (api.current?.id === doneId) {
+      api.setCurrent(rows.find((m) => m.id !== doneId && !m.done && m.place !== null)?.id ?? null);
+    }
+  };
+  const { cue, toggle, undo } = useMissionCue(api, mine, tick, next);
+  const cueNode = cue && !adding && <MissionCueToast cue={cue} onUndo={() => void undo()} />;
 
   const openCount = mine.filter((m) => !m.done).length;
   const percent = progress.total ? (progress.done / progress.total) * 100 : 0;
@@ -135,14 +172,18 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
         </div>
       )}
 
-      {(api.error || api.status === 'error') && (
+      {!adding && (api.error || api.status === 'error') && (
         <p role="status" className="text-xs text-hud-rose-text">
           {api.error ?? 'Could not reach missions. Showing what we have.'}
         </p>
       )}
 
       {!unsupported && (
-        <ul aria-label={tab === 'mine' ? 'My missions' : 'Team missions'} className="flex max-h-[40dvh] min-h-0 flex-col gap-0.5 pointer-coarse:max-h-none overflow-y-auto overscroll-contain">
+        <ul
+          ref={listRef}
+          aria-label={tab === 'mine' ? 'My missions' : 'Team missions'}
+          className="flex max-h-[40dvh] min-h-0 flex-col gap-0.5 pointer-coarse:max-h-none overflow-y-auto overscroll-contain"
+        >
           {rows.map((m) => {
             const spot = m.place ? resolvePlace(m.place, areas) : null;
             return (
@@ -155,40 +196,44 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
                 canEdit={isMine(m, me)}
                 distanceM={spot && self ? distanceBetween(self, spot) : null}
                 personName={m.personLogin ? (names.get(m.personLogin) ?? m.personLogin) : null}
-                onToggleDone={() => void api.update(m.id, { done: !m.done })}
-                onToggleStep={(i) => void api.update(m.id, { steps: m.steps.map((s, j) => (j === i ? { ...s, done: !s.done } : s)) })}
+                onToggleDone={() => void toggle(m)}
+                onToggleStep={(i) =>
+                  void api.update(m.id, {
+                    steps: m.steps.map((s, j) => (j === i ? { ...s, done: !s.done } : s)),
+                  })
+                }
                 onGo={() => api.setCurrent(api.current?.id === m.id ? null : m.id)}
               />
             );
           })}
           {rows.length === 0 && (
-            <li className="px-2 py-3 text-xs text-hud-text-2">
-              {tab === 'mine' ? 'No missions yet. Press T to add one.' : 'Nobody has shared a mission yet.'}
+            <li className="flex flex-col gap-1 px-2 py-3 text-xs text-hud-text-2">
+              {tab === 'mine' ? (
+                <>
+                  <span>No missions yet. Add one and it shows up here.</span>
+                  <span>You can also type /mission in chat.</span>
+                </>
+              ) : (
+                'Nobody has shared a mission yet.'
+              )}
             </li>
           )}
         </ul>
       )}
 
+      {cueNode}
+
       {!unsupported && tab === 'mine' && !(adding && !compact) && (
-        <button
-          type="button"
-          onClick={open}
-          className="flex min-h-10 shrink-0 items-center gap-3 border-t border-hud-separator px-3 pt-2 text-sm text-hud-text-2 hover:text-hud-text pointer-coarse:min-h-12"
-        >
+        <Button tone="primary" size="md" aria-keyshortcuts="T" onClick={open} className="min-h-12 shrink-0">
           <Plus aria-hidden className="size-4" />
-          <span>New mission</span>
-          <span className="ml-auto">
-            <Keycap>T</Keycap>
-          </span>
-        </button>
+          Add mission
+        </Button>
       )}
-      {adding && !compact && !unsupported && (
-        <NewMissionForm areas={areas} people={people} onAdd={(i) => void add(i)} onCancel={() => setAdding(false)} />
-      )}
+      {adding && !compact && !unsupported && <NewMissionForm areas={areas} people={people} onSave={save} onCancel={() => setAdding(false)} />}
       {adding && compact && (
         <PortraitSheet label="New mission" closeLabel="Close new mission" onClose={() => setAdding(false)}>
           <div className="overflow-y-auto overscroll-contain">
-            <NewMissionForm sheet areas={areas} people={people} onAdd={(i) => void add(i)} onCancel={() => setAdding(false)} />
+            <NewMissionForm sheet areas={areas} people={people} onSave={save} onCancel={() => setAdding(false)} />
           </div>
         </PortraitSheet>
       )}
@@ -213,24 +258,27 @@ export function MissionsPanel({ missions: api, me, areas, people, self, compact 
   if (portrait) {
     if (folded) {
       return (
-        <button
-          type="button"
-          aria-label="Expand missions"
-          aria-expanded={false}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={fold.toggle}
-          className="pointer-events-auto flex min-h-12 max-w-[60vw] items-center"
-        >
-          <span className={`flex h-10 max-w-full items-center gap-2 px-3 text-sm font-semibold ${CHIP} rounded-full`}>
-            <Target aria-hidden className="size-4 shrink-0" />
-            {!collapsed && <span className="min-w-0 truncate">{api.current?.title ?? 'Missions'}</span>}
-            {!unsupported && (
-              <span className="shrink-0 text-xs font-normal text-hud-text-2 tabular-nums">
-                {progress.done}/{progress.total}
-              </span>
-            )}
-          </span>
-        </button>
+        <>
+          <button
+            type="button"
+            aria-label="Expand missions"
+            aria-expanded={false}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={fold.toggle}
+            className="pointer-events-auto flex min-h-12 max-w-[60vw] items-center"
+          >
+            <span className={`flex h-10 max-w-full items-center gap-2 px-3 text-sm font-semibold ${CHIP} rounded-full`}>
+              <Target aria-hidden className="size-4 shrink-0" />
+              {!collapsed && <span className="min-w-0 truncate">{api.current?.title ?? 'Missions'}</span>}
+              {!unsupported && (
+                <span className="shrink-0 text-xs font-normal text-hud-text-2 tabular-nums">
+                  {progress.done}/{progress.total}
+                </span>
+              )}
+            </span>
+          </button>
+          {cueNode}
+        </>
       );
     }
     if (adding) {

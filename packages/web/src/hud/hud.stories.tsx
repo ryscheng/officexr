@@ -211,7 +211,7 @@ function MissionsStory({ store, client, compact, open }: { store: PersistentLoca
   );
 }
 export const MissionsDesktop = missionsPanel('crowd', false);
-export const MissionsNewMission = missionsPanel('crowd', false, 'New mission');
+export const MissionsNewMission = missionsPanel('crowd', false, 'Add mission');
 export const MissionsPhone = missionsPanel('crowd', true);
 
 export const NearYou: Story = () => (

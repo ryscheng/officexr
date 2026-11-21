@@ -4,6 +4,7 @@ import type { Mission, MissionsClient } from '@officexr/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInMemoryMissionsClient } from './inMemoryMissions';
 import { MissionsUnsupportedError } from './missionsApi';
+import { CUE_MS } from './useMissionCue';
 import { MissionsPanel } from './MissionsPanel';
 import { placeAreas } from './missionRows';
 import { useMissions } from './useMissions';
@@ -38,9 +39,9 @@ const SEED: Mission[] = [
 const AREAS = placeAreas([{ id: 'r1', label: 'Meeting room 1', min: { x: 10, z: 0 }, max: { x: 20, z: 10 } }], []);
 const PEOPLE = [{ id: 'bao@x', login: 'bao@x', name: 'Bao Tran', x: 0, z: 0 }];
 
-function Harness({ client, compact = false, portrait = false, collapsed = false }: { client: MissionsClient; compact?: boolean; portrait?: boolean; collapsed?: boolean }) {
+function Harness({ client, compact = false, portrait = false, collapsed = false, tick }: { client: MissionsClient; compact?: boolean; portrait?: boolean; collapsed?: boolean; tick?: () => void }) {
   const missions = useMissions(client, 'o');
-  return <MissionsPanel missions={missions} me="me" areas={AREAS} people={PEOPLE} self={{ x: 0, z: 5 }} compact={compact} portrait={portrait} collapsed={collapsed} now={() => NOW} />;
+  return <MissionsPanel missions={missions} me="me" areas={AREAS} people={PEOPLE} self={{ x: 0, z: 5 }} compact={compact} portrait={portrait} collapsed={collapsed} now={() => NOW} tick={tick ?? (() => {})} />;
 }
 
 const setup = async (seed = SEED, compact = false) => {
@@ -106,6 +107,97 @@ describe('MissionsPanel', () => {
     await waitFor(async () => expect((await client.list('o')).find((m) => m.id === 'b')?.done).toBe(true));
   });
 
+  it('says what to do in the empty state', async () => {
+    render(<Harness client={createInMemoryMissionsClient('me', [])} />);
+    await screen.findByText('No missions yet. Add one and it shows up here.');
+    expect(screen.getByText('No missions yet. Add one and it shows up here.')).toBeTruthy();
+    expect(screen.getByText('You can also type /mission in chat.')).toBeTruthy();
+  });
+
+  describe('completion cue', () => {
+    const check = (name: string) => fireEvent.click(screen.getByRole('checkbox', { name: `${name}, done` }));
+
+    it('shows Done: title with Undo, plays the tick once and hides after 5 s', async () => {
+      const tick = vi.fn();
+      const client = createInMemoryMissionsClient('me', SEED);
+      render(<Harness client={client} tick={tick} />);
+      await screen.findByText('Join the stand-up');
+      const timers = vi.spyOn(globalThis, 'setTimeout');
+      check('Fix the redirect');
+      const toast = await screen.findByText('Done: Fix the redirect');
+      expect(toast.closest('[role="status"]')?.querySelector('button')?.textContent).toBe('Undo');
+      expect(tick).toHaveBeenCalledTimes(1);
+      const expire = timers.mock.calls.find(([, ms]) => ms === CUE_MS)?.[0] as () => void;
+      timers.mockRestore();
+      await act(async () => expire());
+      expect(screen.queryByText('Done: Fix the redirect')).toBeNull();
+    });
+
+    it('Undo reopens the mission and hides the toast', async () => {
+      const client = createInMemoryMissionsClient('me', SEED);
+      render(<Harness client={client} tick={() => {}} />);
+      await screen.findByText('Join the stand-up');
+      check('Fix the redirect');
+      fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+      await waitFor(async () => expect((await client.list('o')).find((m) => m.id === 'b')?.done).toBe(false));
+      expect(screen.queryByText('Done: Fix the redirect')).toBeNull();
+      expect(screen.getByRole('checkbox', { name: 'Fix the redirect, done' }).getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('says All missions done when the last open mission is checked', async () => {
+      const only: Mission[] = [SEED[0]!, SEED[2]!];
+      const client = createInMemoryMissionsClient('me', only);
+      render(<Harness client={client} tick={() => {}} />);
+      await screen.findByText('Join the stand-up');
+      check('Join the stand-up');
+      expect(await screen.findByText('All missions done')).toBeTruthy();
+      expect(screen.queryByText(/^Done:/)).toBeNull();
+    });
+
+    it('shows nothing and plays no tick when the update fails', async () => {
+      const tick = vi.fn();
+      const inner = createInMemoryMissionsClient('me', SEED);
+      render(<Harness client={{ ...inner, update: () => Promise.reject(new Error('down')) }} tick={tick} />);
+      await screen.findByText('Join the stand-up');
+      check('Fix the redirect');
+      await screen.findByText('Could not reach missions');
+      expect(screen.queryByText(/^Done:/)).toBeNull();
+      expect(tick).not.toHaveBeenCalled();
+    });
+
+    it('unchecking a done mission shows no toast and no tick', async () => {
+      const tick = vi.fn();
+      const client = createInMemoryMissionsClient('me', SEED);
+      render(<Harness client={client} tick={tick} />);
+      await screen.findByText('Join the stand-up');
+      check('Ask about the demo');
+      await waitFor(async () => expect((await client.list('o')).find((m) => m.id === 'c')?.done).toBe(false));
+      expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+      expect(tick).not.toHaveBeenCalled();
+    });
+
+    it('moves the current mission to the next open one with a place', async () => {
+      const seed: Mission[] = [SEED[0]!, { ...SEED[0]!, id: 'a2', title: 'Visit the kitchen', place: { kind: 'room', id: 'r1', label: 'Kitchen' } }];
+      const client = createInMemoryMissionsClient('me', seed);
+      render(<Harness client={client} tick={() => {}} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Go to Meeting room 1' }));
+      check('Join the stand-up');
+      await screen.findByText('Done: Join the stand-up');
+      expect(screen.getByRole('button', { name: 'Go to Kitchen' }).getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('shows under the chip in portrait while the sheet is folded', async () => {
+      const client = createInMemoryMissionsClient('me', SEED);
+      render(<Harness client={client} compact portrait tick={() => {}} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Expand missions' }));
+      check('Fix the redirect');
+      await screen.findByText('Done: Fix the redirect');
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse missions' }));
+      expect(screen.getByRole('button', { name: 'Expand missions' })).toBeTruthy();
+      expect(screen.getByText('Done: Fix the redirect')).toBeTruthy();
+    });
+  });
+
   it('opening a mission with steps lets the owner tick a step', async () => {
     const client = await setup();
     fireEvent.click(screen.getByRole('button', { name: /Fix the redirect/ }));
@@ -124,29 +216,84 @@ describe('MissionsPanel', () => {
   describe('new mission', () => {
     const open = async () => {
       const client = await setup();
-      fireEvent.click(screen.getByRole('button', { name: /New mission/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Add mission/ }));
       return client;
     };
 
     it('Enter adds a mission owned by me and not shared', async () => {
       const client = await open();
-      const title = screen.getByLabelText('Mission title');
+      const title = screen.getByLabelText('Title');
       fireEvent.change(title, { target: { value: 'Prepare the demo' } });
       fireEvent.keyDown(title, { key: 'Enter' });
       await waitFor(async () => expect((await client.list('o')).map((m) => m.title)).toContain('Prepare the demo'));
       const added = (await client.list('o')).find((m) => m.title === 'Prepare the demo')!;
       expect([added.ownerLogin, added.source, added.shared]).toEqual(['me', 'mine', false]);
-      expect(screen.queryByLabelText('Mission title')).toBeNull();
+      expect(screen.queryByLabelText('Title')).toBeNull();
     });
 
     it('does not add an empty title', async () => {
       await open();
-      expect((screen.getAllByRole('button', { name: 'Add' }).at(-1) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole('button', { name: 'Save mission' }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(screen.getByLabelText('Title'), { target: { value: '   ' } });
+      expect((screen.getByRole('button', { name: 'Save mission' }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.keyDown(screen.getByLabelText('Title'), { key: 'Enter' });
+      expect(screen.getByLabelText('Title')).toBeTruthy();
+    });
+
+    it('shows the title and Save mission first, with the other fields behind a closed fold', async () => {
+      await open();
+      const more = screen.getByRole('button', { name: 'More: place, time, person, steps' });
+      expect(more.getAttribute('aria-expanded')).toBe('false');
+      expect(screen.getByPlaceholderText('What do you want to do?')).toBeTruthy();
+      for (const name of ['Steps', 'Place', 'Due', 'Person']) {
+        expect(screen.queryByRole('button', { name })).toBeNull();
+      }
+      expect(screen.queryByRole('switch', { name: 'Share with team' })).toBeNull();
+      fireEvent.click(more);
+      expect(more.getAttribute('aria-expanded')).toBe('true');
+      for (const name of ['Steps', 'Place', 'Due', 'Person']) {
+        expect(screen.getByRole('button', { name })).toBeTruthy();
+      }
+      expect(screen.getByRole('switch', { name: 'Share with team' })).toBeTruthy();
+    });
+
+    it('Save mission returns to the list with the new row focused', async () => {
+      await open();
+      fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Prepare the demo' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save mission' }));
+      const check = await screen.findByRole('checkbox', { name: 'Prepare the demo, done' });
+      expect(screen.queryByLabelText('Title')).toBeNull();
+      await waitFor(() => expect(document.activeElement).toBe(check));
+    });
+
+    it('Cancel closes the form and adds nothing', async () => {
+      const client = await open();
+      fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Never mind' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByLabelText('Title')).toBeNull();
+      expect((await client.list('o')).map((m) => m.title)).not.toContain('Never mind');
+    });
+
+    it('shows Saving… while the request runs and keeps the form open with the error when it fails', async () => {
+      const inner = createInMemoryMissionsClient('me', SEED);
+      let fail!: (e: Error) => void;
+      const client: MissionsClient = { ...inner, create: () => new Promise((_, reject) => (fail = reject)) };
+      render(<Harness client={client} />);
+      fireEvent.click(await screen.findByRole('button', { name: /Add mission/ }));
+      fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Prepare the demo' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save mission' }));
+      const saving = await screen.findByRole('button', { name: 'Saving…' });
+      expect((saving as HTMLButtonElement).disabled).toBe(true);
+      await act(async () => fail(new Error('down')));
+      expect((await screen.findByRole('alert')).textContent).toBe('We could not save this mission. Try again.');
+      expect((screen.getByRole('button', { name: 'Save mission' }) as HTMLButtonElement).disabled).toBe(false);
+      expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Prepare the demo');
     });
 
     it('takes steps, a place, a person and the share switch', async () => {
       const client = await open();
-      fireEvent.change(screen.getByLabelText('Mission title'), { target: { value: 'Plan the offsite' } });
+      fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan the offsite' } });
+      fireEvent.click(screen.getByRole('button', { name: 'More: place, time, person, steps' }));
       fireEvent.click(screen.getByRole('button', { name: 'Steps' }));
       const step = screen.getByLabelText('New step');
       fireEvent.change(step, { target: { value: 'Pick a date' } });
@@ -156,7 +303,7 @@ describe('MissionsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Person' }));
       fireEvent.click(within(screen.getByRole('list', { name: 'People' })).getByRole('button', { name: 'Bao Tran' }));
       fireEvent.click(screen.getByRole('switch', { name: 'Share with team' }));
-      fireEvent.click(screen.getAllByRole('button', { name: 'Add' }).at(-1)!);
+      fireEvent.click(screen.getByRole('button', { name: 'Save mission' }));
       await waitFor(async () => expect((await client.list('o')).some((m) => m.title === 'Plan the offsite')).toBe(true));
       const added = (await client.list('o')).find((m) => m.title === 'Plan the offsite')!;
       expect(added.steps).toEqual([{ text: 'Pick a date', done: false }]);
@@ -167,20 +314,20 @@ describe('MissionsPanel', () => {
 
     it('Esc cancels through the escape stack and adds nothing', async () => {
       const client = await open();
-      const title = screen.getByLabelText('Mission title');
+      const title = screen.getByLabelText('Title');
       fireEvent.change(title, { target: { value: 'Never mind' } });
       fireEvent.keyDown(title, { key: 'Escape' });
       await act(async () => {
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       });
-      expect(screen.queryByLabelText('Mission title')).toBeNull();
+      expect(screen.queryByLabelText('Title')).toBeNull();
       expect((await client.list('o')).map((m) => m.title)).not.toContain('Never mind');
     });
 
     it('T opens the form', async () => {
       await setup();
       fireEvent.keyDown(window, { key: 't' });
-      expect(await screen.findByLabelText('Mission title')).toBeTruthy();
+      expect(await screen.findByLabelText('Title')).toBeTruthy();
     });
   });
 
@@ -193,7 +340,7 @@ describe('MissionsPanel', () => {
     };
     render(<Harness client={client} />);
     expect(await screen.findByText('Missions need a server update.')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /New mission/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Add mission/ })).toBeNull();
     expect(screen.queryByText(/Could not reach/)).toBeNull();
   });
 
@@ -235,7 +382,7 @@ describe('MissionsPanel', () => {
     it('opens the new mission form as a bottom sheet', async () => {
       await setup(SEED, true);
       fireEvent.click(screen.getByRole('button', { name: 'Expand missions' }));
-      fireEvent.click(screen.getByRole('button', { name: /New mission/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Add mission/ }));
       expect(screen.getByRole('dialog', { name: 'New mission' })).toBeTruthy();
     });
   });
