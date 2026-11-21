@@ -14,7 +14,7 @@ import {
 import { createInstanceGeometry } from '../geometry-service.ts';
 
 const kinds: Record<string, Partial<WorldObjectKind>> = {
-  chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seat: { offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 } },
+  chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seats: [{ offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 }] },
   desk: { id: 'desk', dimensions: { width: 3, height: 1, depth: 2 }, isDesk: true },
 };
 const catalog = { getKind: (id: string) => kinds[id] as WorldObjectKind | undefined };
