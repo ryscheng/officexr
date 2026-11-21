@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { cachedCharacterPortrait } from '../characters/portraitCache.ts';
+import { cachedCharacterPortrait, knownCharacterPortrait } from '../characters/portraitCache.ts';
 
 export function useCharacterPortrait(url: string | undefined): string | null {
   const [rendered, setRendered] = useState<{ url: string; image: string } | null>(null);
@@ -8,8 +8,8 @@ export function useCharacterPortrait(url: string | undefined): string | null {
       return;
     }
     let live = true;
-    import('../renderer/characterPortrait.ts')
-      .then((m) => m.renderCharacterPortrait(url))
+    knownCharacterPortrait(url)
+      .then((known) => known ?? import('../renderer/characterPortrait.ts').then((m) => m.renderCharacterPortrait(url)))
       .then(
         (image) => live && setRendered({ url, image }),
         () => undefined,
