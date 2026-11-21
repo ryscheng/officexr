@@ -4,7 +4,8 @@ import { ArrowRight, Map as MapIcon, Plus } from 'lucide-react';
 import { MAX_DESCRIPTION, MAX_NAME, canEditOffice, type Identity, type Office } from '@officexr/server/shared';
 import { apiFetch, paths } from '../apiOrigin';
 import { Async } from '../Async';
-import { clearPreviewToken } from '@officexr/server/preview-token';
+import { roomPath } from '../inviteFlag';
+import { signOut } from '../signOut';
 import { DEFAULT_MAP } from '@officexr/world/scenes';
 import { errorMessage, useApi, type ApiState } from '../useApi';
 import { useMapNames } from '../useMapNames';
@@ -176,7 +177,7 @@ function CreateOfficeForm({
       if (!res.ok) {
         throw new Error(errorMessage(res, body));
       }
-      navigate(`/room/${(body as Office).id}`);
+      navigate(roomPath((body as Office).id, { welcome: true }));
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -241,16 +242,11 @@ function SignOutButton() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const signOut = async () => {
+  const submit = async () => {
     setBusy(true);
     setError(null);
     try {
-      const res = await apiFetch(paths.signOut, { method: 'POST' });
-      if (!res.ok) {
-        throw new Error(errorMessage(res, await res.json().catch(() => null)));
-      }
-      clearPreviewToken();
-      window.location.assign('/');
+      await signOut();
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -264,7 +260,7 @@ function SignOutButton() {
           {error}
         </span>
       )}
-      <Button tone="ghost" size="sm" onClick={signOut} disabled={busy}>
+      <Button tone="ghost" size="sm" onClick={submit} disabled={busy}>
         Sign out
       </Button>
     </>

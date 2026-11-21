@@ -5,8 +5,11 @@ import { SfxProvider } from '@officexr/world/audio';
 import { createPlaceMode, type PlacementHost } from '@officexr/world/motion';
 import { ApplicationProvider, useStoreSelector, WorldLoadingScreen } from '@officexr/world/top-down';
 import { DEFAULT_MAP, FilesystemLayoutStorage, FilesystemMapStorage, FilesystemRoomStorage } from '@officexr/world/scenes';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { Identity, Office } from '@officexr/server/shared';
 import { API_ORIGIN, apiUrl, paths } from '../apiOrigin';
+import { hasInviteFlag, roomPath, withoutInviteFlag } from '../inviteFlag';
+import { signOut } from '../signOut';
 import { slackPing } from '../integrations/integrationsApi';
 import { IntegrationsPane } from '../integrations/IntegrationsPane';
 import { useIntegrations } from '../integrations/useIntegrations';
@@ -131,6 +134,10 @@ const calendarReturnTo = () => (API_ORIGIN ? window.location.href : `${window.lo
 
 function World({ office: initialOffice, me, session, join, missionsClient, onRejoin = reloadPage }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl; missionsClient: MissionsClient; onRejoin?: () => void }) {
   const [office, setOffice] = useState(initialOffice);
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
+  const welcome = hasInviteFlag(search);
+  const welcomeShown = useCallback(() => navigate({ pathname, search: withoutInviteFlag(search) }, { replace: true }), [navigate, pathname, search]);
   const viewMode = useMemo(() => initialViewMode(), []);
   const local = session.type === 'ready' ? session.local : null;
   const pingInbox = useMemo(() => new PingInbox(), [local]);
@@ -238,7 +245,12 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         missions={missions}
         placeMode={placeMode}
         onWave={() => ready.office.sync.sendEmote('wave')}
+        inviteUrl={`${window.location.origin}${roomPath(office.id)}`}
+        welcome={welcome}
+        onWelcomeShown={welcomeShown}
         onOpenSettings={() => openSettings()}
+        onSwitchOffice={() => navigate('/')}
+        onSignOut={signOut}
         toasts={
           <>
             {bannerError && <HudBanner message={bannerError} onDismiss={() => setBannerError(null)} />}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Identity, Office } from '@officexr/server/shared';
 import type { ApiState } from '../useApi';
@@ -13,6 +13,11 @@ afterEach(() => {
 
 const json = (status: number, body: unknown) =>
   Promise.resolve({ ok: status < 400, status, json: async () => body } as Response);
+
+function Where() {
+  const { pathname, search } = useLocation();
+  return <p data-testid="where">{`In office ${pathname}${search}`}</p>;
+}
 
 const ready: ApiState<Identity> = { type: 'ready', data: { login: 'a@example.com', name: 'Alice' } };
 const unidentified: ApiState<Identity> = { type: 'error', message: 'Not signed in' };
@@ -39,7 +44,7 @@ function setup(
     <MemoryRouter>
       <Routes>
         <Route path="/" element={<Home me={me} />} />
-        <Route path="/room/:id" element={<p>In office</p>} />
+        <Route path="/room/:id" element={<Where />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -149,7 +154,7 @@ describe('Home', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lab' } });
     fireEvent.change(screen.getByLabelText('Map'), { target: { value: 'hq' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create office' }));
-    expect(await screen.findByText('In office')).toBeTruthy();
+    expect(await screen.findByText('In office /room/new?invite=1')).toBeTruthy();
     expect(JSON.parse((post.mock.calls[0] as unknown as [RequestInit])[0].body as string)).toMatchObject({
       name: 'Lab',
       mapName: 'hq',
