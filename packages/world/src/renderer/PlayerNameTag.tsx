@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Html } from '@react-three/drei';
 import type { PlayerId, PlayerState, Store } from '@officexr/sdk';
 import './PlayerNameTag.css';
-
-export const TAG_HEIGHT_M = 2;
 
 export const shouldShowNameTag = (
   name: string,
@@ -62,10 +59,7 @@ export function FocusIcon({ size = 12 }: { size?: number }) {
   );
 }
 
-/**
- * Floating name label above a player's feet. Must be a child of the
- * per-player group so it follows the character.
- */
+/** The name and status label; `PlayerOverhead` places it above the head. */
 export function PlayerNameTag(props: {
   store: Store;
   playerId: string;
@@ -77,17 +71,13 @@ export function PlayerNameTag(props: {
   const { statusText, statusEmoji, focus } = usePlayerStatusTag(store, playerId);
   if (!shouldShowNameTag(name, isSelf, paused)) return null;
   return (
-    // ponytail: tags show through walls and keep a constant size regardless of distance.
-    // Small zIndexRange keeps tags beneath HUD panels.
-    <Html center position={[0, TAG_HEIGHT_M, 0]} zIndexRange={[1, 0]}>
-      <div className="player-name-tag" data-focus={focus || undefined}>
-        <div className="player-name-tag-name">
-          {focus && <FocusIcon />}
-          {statusEmoji && <span aria-hidden>{statusEmoji}</span>}
-          <span>{name}</span>
-        </div>
-        {statusText && <div className="player-name-tag-status">{statusText}</div>}
+    <div className="player-name-tag" data-focus={focus || undefined}>
+      <div className="player-name-tag-name">
+        {focus && <FocusIcon />}
+        {statusEmoji && <span aria-hidden>{statusEmoji}</span>}
+        <span>{name}</span>
       </div>
-    </Html>
+      {statusText && <div className="player-name-tag-status">{statusText}</div>}
+    </div>
   );
 }

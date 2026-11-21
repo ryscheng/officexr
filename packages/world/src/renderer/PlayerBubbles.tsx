@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Html } from '@react-three/drei';
 import { EMOTE_BUBBLE_MS, EMOTE_INFO, type Bus, type EmoteId, type PlayerId, type Store } from '@officexr/sdk';
-import { TAG_HEIGHT_M } from './PlayerNameTag.tsx';
 import './PlayerNameTag.css';
 
 export const RAISED_HAND_GLYPH = '✋';
@@ -43,25 +41,23 @@ export function PlayerBubbles(props: { store: Store; bus: Bus; playerId: PlayerI
   const handRaised = usePlayerHandRaised(store, playerId);
   if (!shouldShowBubbles(paused, handRaised, emote)) return null;
   return (
-    <Html center position={[0, TAG_HEIGHT_M, 0]} zIndexRange={[1, 0]}>
-      <div className="player-bubbles">
-        {handRaised && (
-          <span role="img" aria-label="Hand raised" className="player-bubble player-bubble-hand">
-            {RAISED_HAND_GLYPH}
-          </span>
-        )}
-        {emote && (
-          <span
-            // A new key restarts the pop animation when the same emote repeats.
-            key={emote.n}
-            role="img"
-            aria-label={EMOTE_INFO[emote.emote].label}
-            className="player-bubble player-bubble-emote"
-          >
-            {EMOTE_INFO[emote.emote].glyph}
-          </span>
-        )}
-      </div>
-    </Html>
+    <div className="player-bubbles">
+      {handRaised && (
+        <span role="img" aria-label="Hand raised" className="player-bubble player-bubble-hand">
+          {RAISED_HAND_GLYPH}
+        </span>
+      )}
+      {emote && (
+        <span
+          // A new key restarts the pop animation when the same emote repeats.
+          key={emote.n}
+          role="img"
+          aria-label={EMOTE_INFO[emote.emote].label}
+          className="player-bubble player-bubble-emote"
+        >
+          {EMOTE_INFO[emote.emote].glyph}
+        </span>
+      )}
+    </div>
   );
 }

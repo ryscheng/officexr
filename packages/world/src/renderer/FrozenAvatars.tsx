@@ -7,12 +7,10 @@ import { useApplication, useCatalogCharacters } from '../react/application-conte
 import { ANIMATION_URLS, Adventurer } from './Adventurer.tsx';
 import { ModelWithFallback } from './ModelWithFallback.tsx';
 import { SwapWhenLoaded } from './SwapWhenLoaded.tsx';
-import { TAG_HEIGHT_M } from './PlayerNameTag.tsx';
+import { overheadAnchorY, useCharacterHeight } from './characterHeight.ts';
 import { AVATAR_YAW_OFFSET, feetPosition } from '../physics/rules.ts';
 import type { PlayerModel } from '../characters/registry.ts';
 import './FrozenAvatars.css';
-
-const CARD_OFFSET_PX = -34;
 
 /**
  * An absent claimant's avatar left sitting at their desk. It has no physics body, so nothing
@@ -66,6 +64,7 @@ function FrozenAvatarView(props: {
 }) {
   const { avatar, charRadius, open, onToggle, onPing } = props;
   const feet = feetPosition(avatar.pos, charRadius);
+  const heightM = useCharacterHeight(avatar.model.url);
   const status = frozenStatusLabel(avatar);
   return (
     <group position={[feet.x, feet.y, feet.z]} rotation={[0, avatar.yaw + AVATAR_YAW_OFFSET, 0]}>
@@ -85,39 +84,41 @@ function FrozenAvatarView(props: {
         />
       </Suspense>
       <mesh
-        position={[0, TAG_HEIGHT_M / 2, 0]}
+        position={[0, heightM / 2, 0]}
         onClick={(e) => {
           e.stopPropagation();
           onToggle();
         }}
       >
-        <capsuleGeometry args={[charRadius, TAG_HEIGHT_M - 2 * charRadius]} />
+        <capsuleGeometry args={[charRadius, heightM - 2 * charRadius]} />
         <meshBasicMaterial visible={false} />
       </mesh>
-      <Html center position={[0, TAG_HEIGHT_M, 0]} zIndexRange={[1, 0]}>
-        <div className="frozen-tag" onClick={onToggle}>
-          <div className="frozen-tag-zzz" aria-hidden>
-            z z
-          </div>
-          <div className="frozen-tag-name">{avatar.name}</div>
-          <div className="frozen-tag-status">{status}</div>
-        </div>
-        {open && (
-          <div className="frozen-card" role="dialog" aria-label={`${avatar.name} is away`} style={{ transform: `translateY(${CARD_OFFSET_PX}px)` }}>
-            <div className="frozen-card-name">{avatar.name}</div>
-            <div className="frozen-card-status">{status}</div>
-            <div className="frozen-card-actions">
-              {onPing && (
-                <button type="button" onClick={() => onPing(avatar.login)}>
-                  Ping
-                </button>
-              )}
-              <button type="button" onClick={onToggle} aria-label="Close">
-                Close
-              </button>
+      <Html position={[0, overheadAnchorY(heightM), 0]} zIndexRange={[1, 0]}>
+        <div className="frozen-overhead">
+          <div className="frozen-tag" onClick={onToggle}>
+            <div className="frozen-tag-zzz" aria-hidden>
+              z z
             </div>
+            <div className="frozen-tag-name">{avatar.name}</div>
+            <div className="frozen-tag-status">{status}</div>
           </div>
-        )}
+          {open && (
+            <div className="frozen-card" role="dialog" aria-label={`${avatar.name} is away`}>
+              <div className="frozen-card-name">{avatar.name}</div>
+              <div className="frozen-card-status">{status}</div>
+              <div className="frozen-card-actions">
+                {onPing && (
+                  <button type="button" onClick={() => onPing(avatar.login)}>
+                    Ping
+                  </button>
+                )}
+                <button type="button" onClick={onToggle} aria-label="Close">
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </Html>
     </group>
   );

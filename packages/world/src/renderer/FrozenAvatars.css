@@ -1,3 +1,8 @@
+.frozen-overhead {
+  position: relative;
+  padding-bottom: 4px;
+  transform: translate(-50%, -100%);
+}
 .frozen-tag {
   display: flex;
   flex-direction: column;
@@ -34,7 +39,7 @@
 .frozen-card {
   position: absolute;
   left: 50%;
-  bottom: 100%;
+  bottom: calc(100% + 4px);
   translate: -50% 0;
   min-width: 140px;
   padding: 8px 10px;

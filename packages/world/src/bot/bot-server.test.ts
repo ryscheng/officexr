@@ -20,9 +20,9 @@ describe('BotServer world constants', () => {
   });
 
   it('running bots follow a PUT and later bots start with it', async () => {
-    const port = 50000 + Math.floor(Math.random() * 10000);
-    server = new BotServer({ port, adminToken: TOKEN });
+    server = new BotServer({ port: 0, adminToken: TOKEN });
     await server.start();
+    const port = server.boundPort;
     await server.pool.setCount(1);
     const speedOf = (i: number) => server!.pool.list()[i].getWorldConstants()?.animation.playerSpeed;
     expect(speedOf(0)).toBe(DEFAULT_WORLD_CONSTANTS.animation.playerSpeed);
