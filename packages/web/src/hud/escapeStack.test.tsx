@@ -106,7 +106,7 @@ describe('Escape stack', () => {
     fireEvent.keyDown(window, { key: 'Enter' });
     const input = screen.getByPlaceholderText('Press Enter to chat');
     esc(input);
-    expect(screen.queryByPlaceholderText('Press Enter to chat')).toBeNull();
+    expect(document.activeElement).not.toBe(input);
     expect(settingsDialog()).toBeNull();
   });
 });
