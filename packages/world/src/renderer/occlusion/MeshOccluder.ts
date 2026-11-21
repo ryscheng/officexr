@@ -15,6 +15,20 @@ function triangleCount(geometry: THREE.BufferGeometry): number {
   return (geometry.index ? geometry.index.count : geometry.getAttribute('position').count) / 3;
 }
 
+function castHits(mesh: THREE.Mesh, ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
+  rayOrigin.set(ax, ay, az);
+  rayDirection.set(bx - ax, by - ay, bz - az);
+  const length = rayDirection.length();
+  if (length < 1e-6) return false;
+  rayDirection.divideScalar(length);
+  raycaster.set(rayOrigin, rayDirection);
+  raycaster.near = 0;
+  raycaster.far = length;
+  hits.length = 0;
+  mesh.raycast(raycaster, hits);
+  return hits.length > 0;
+}
+
 export function isOccluderMesh(mesh: THREE.Mesh): boolean {
   mesh.updateWorldMatrix(true, false);
   const geometry = mesh.geometry;
@@ -35,7 +49,7 @@ export class MeshOccluder implements Occluder {
     mesh.updateWorldMatrix(true, false);
   }
 
-  private hitFraction(ax: number, ay: number, az: number, bx: number, by: number, bz: number, endInside: boolean): number {
+  private blocks(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
     const geometry = this.mesh.geometry;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
     const box = geometry.boundingBox as THREE.Box3;
@@ -45,31 +59,15 @@ export class MeshOccluder implements Occluder {
     const entry = segmentBoxEntry(
       rayOrigin.x, rayOrigin.y, rayOrigin.z, rayDirection.x, rayDirection.y, rayDirection.z,
       box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z,
-      endInside,
     );
-    if (entry < 0) return -1;
-    rayOrigin.set(ax, ay, az);
-    rayDirection.set(bx - ax, by - ay, bz - az);
-    const length = rayDirection.length();
-    if (length < 1e-6) return -1;
-    rayDirection.divideScalar(length);
-    raycaster.set(rayOrigin, rayDirection);
-    raycaster.near = 0;
-    raycaster.far = length;
-    hits.length = 0;
-    this.mesh.raycast(raycaster, hits);
-    if (hits.length === 0) return -1;
-    let nearest = Infinity;
-    for (const h of hits) nearest = Math.min(nearest, h.distance);
-    return nearest / length;
+    if (entry < 0) return false;
+    if (castHits(this.mesh, ax, ay, az, bx, by, bz)) return true;
+    // From inside the mesh the front faces point away, so look back from the target.
+    return entry === 0 && castHits(this.mesh, bx, by, bz, ax, ay, az);
   }
 
   markCrossings(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
-    if (this.hitFraction(ax, ay, az, bx, by, bz, false) >= 0) this.wanted = true;
-  }
-
-  firstHit(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
-    return this.hitFraction(ax, ay, az, bx, by, bz, true);
+    if (this.blocks(ax, ay, az, bx, by, bz)) this.wanted = true;
   }
 
   fadedCount(): number {

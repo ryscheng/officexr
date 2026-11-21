@@ -26,6 +26,14 @@ function ghostOf(root: THREE.Group, mesh: THREE.InstancedMesh) {
 }
 
 describe('instanced occluders', () => {
+  it('fades an instance that contains the camera', () => {
+    const { root, mesh } = wallsMesh([[0, 2, 3]], [2, 4, 1]);
+    const registry = new OccluderRegistry();
+    registry.addInstanced(mesh, 1);
+    run(registry, 0.5, new THREE.Vector3(0, 1.5, 3.2));
+    expect(ghostOf(root, mesh)?.count).toBe(1);
+  });
+
   it('fades only the instance between camera and player', () => {
     const { root, mesh } = wallsMesh([[0, 2, 3], [6, 2, 3], [0, 2, -3]], [2, 4, 0.4]);
     const registry = new OccluderRegistry();
@@ -77,14 +85,6 @@ describe('instanced occluders', () => {
     expect(Array.from(mesh.instanceMatrix.array)).toEqual(before);
     expect(root.children).toEqual([mesh]);
   });
-
-  it('reports the first hit along a segment for camera pull-in', () => {
-    const { mesh } = wallsMesh([[0, 2, 3], [0, 2, 6]], [2, 4, 0.4]);
-    const registry = new OccluderRegistry();
-    registry.addInstanced(mesh, 2);
-    const hit = registry.firstHit(new THREE.Vector3(0, 1.5, 0), new THREE.Vector3(0, 1.5, 9));
-    expect(hit * 9).toBeCloseTo(2.8, 1);
-  });
 });
 
 describe('mesh occluders', () => {
@@ -106,6 +106,20 @@ describe('mesh occluders', () => {
     expect(wall.visible).toBe(true);
     expect(ghost.visible).toBe(false);
     expect(material.transparent).toBe(false);
+  });
+
+  it('fades a wall that contains the camera', () => {
+    const root = new THREE.Group();
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 1), new THREE.MeshStandardMaterial());
+    wall.position.set(0, 1.5, 3);
+    root.add(wall);
+    root.updateMatrixWorld(true);
+    const registry = new OccluderRegistry();
+    registry.addMesh(wall);
+    run(registry, 0.5, new THREE.Vector3(0, 1.5, 3.2));
+    expect(wall.visible).toBe(false);
+    run(registry, 0.5, new THREE.Vector3(30, 4, 8));
+    expect(wall.visible).toBe(true);
   });
 
   it('does not register floor-like meshes', () => {
