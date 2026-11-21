@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
@@ -94,7 +94,7 @@ describe('App signed out', () => {
     signedOutAt('/?login_error=failed');
     const link = await screen.findByRole('link', { name: 'Continue with Google' });
     expect(link.getAttribute('href')).toBe(`/auth/google?next=${encodeURIComponent('/room/abc?x=1')}`);
-    expect(window.location.pathname + window.location.search).toBe('/room/abc?x=1');
+    await waitFor(() => expect(window.location.pathname + window.location.search).toBe('/room/abc?x=1'));
     expect(screen.getByRole('link', { name: 'Back to your office link' }).getAttribute('href')).toBe('/room/abc?x=1');
     expect(screen.getByText('You opened an office link')).toBeTruthy();
   });
