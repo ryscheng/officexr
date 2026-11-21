@@ -4,7 +4,6 @@ import { MAX_PLACED_PROPS, PLACEABLE_KINDS, type OfficeState, type Store } from 
 import type { PlaceModeStore } from '@officexr/world/motion';
 import { useStoreSelector } from '@officexr/world/top-down';
 import type { BuildSession } from '../../place/buildSession';
-import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 
 export const PLACED_TOAST_MS = 5000;
@@ -31,9 +30,14 @@ export function BuildStatus({ mode, build, store }: { mode: PlaceModeStore; buil
       {note && (
         <Panel role="status" className="pointer-events-auto flex items-center gap-1 py-1 pr-1 pl-4 text-sm font-semibold">
           <span>Placed {PLACEABLE_KINDS.find((k) => k.kindId === note.kindId)?.label}</span>
-          <Button tone="ghost" className="text-hud-accent-edge" onClick={() => void build.undo()}>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void build.undo()}
+            className="min-h-12 rounded-hud-control px-4 text-sm font-semibold text-hud-accent-edge hover:bg-hud-hover focus-visible:outline-2 focus-visible:outline-hud-accent"
+          >
             Undo
-          </Button>
+          </button>
         </Panel>
       )}
       <div className="flex items-center gap-2">
