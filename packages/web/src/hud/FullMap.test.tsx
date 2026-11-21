@@ -89,4 +89,69 @@ describe('FullMap', () => {
       expect(container.querySelector('polyline')?.getAttribute('points')).toBe('0,0 4,3 10,2');
     });
   });
+
+  describe('your arrow', () => {
+    const heading = (c: HTMLElement) => c.querySelector('[data-heading]')?.getAttribute('transform');
+    const place = () => screen.getByRole('img', { name: 'You' }).getAttribute('transform') ?? '';
+
+    it('turns to the way you face, as the avatar walks', () => {
+      const { store, areas } = setup();
+      const actions = createActions(store, createBus());
+      const { container } = render(<FullMap store={store} officeName="HQ" areas={areas} route={null} onGoTo={() => true} onClose={() => {}} />);
+      expect(heading(container)).toBe('rotate(0)');
+      act(() => actions.setSelfPosition({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, Math.PI / 2, false));
+      expect(heading(container)).toBe('rotate(-90)');
+      act(() => actions.setSelfPosition({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, Math.PI, false));
+      expect(heading(container)).toBe('rotate(-180)');
+    });
+
+    it('moves in steps finer than the old 0.25 m and drags the route start along', () => {
+      const { store, areas } = setup();
+      const actions = createActions(store, createBus());
+      const { container } = render(
+        <FullMap store={store} officeName="HQ" areas={areas} route={{ to: { x: 14, z: 0 }, label: 'Stand-up', areaId: 'meet' }} onGoTo={() => true} onClose={() => {}} />,
+      );
+      const seen = new Set<string>();
+      for (const x of [0.02, 0.07, 0.11, 0.16]) {
+        act(() => actions.setSelfPosition({ x, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 0, false));
+        seen.add(place());
+        expect(place()).toContain(`translate(${x} 0)`);
+        expect(container.querySelector('polyline')?.getAttribute('points')).toBe(`${x},0 14,0`);
+      }
+      expect(seen.size).toBe(4);
+    });
+
+    it('does not rerender the floor while you walk', () => {
+      const { store, areas } = setup();
+      const actions = createActions(store, createBus());
+      const { container } = render(<FullMap store={store} officeName="HQ" areas={areas} route={null} onGoTo={() => true} onClose={() => {}} />);
+      const room = container.querySelector('rect[rx="0.4"]');
+      act(() => actions.setSelfPosition({ x: 0.1, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 0, false));
+      expect(container.querySelector('rect[rx="0.4"]')).toBe(room);
+    });
+  });
+
+  describe('floor plan', () => {
+    it('draws the floor, walls, desks and plants from the world objects', () => {
+      const { store, areas } = setup();
+      const plan = [
+        { x: -4, z: -4, w: 22, d: 8, tone: 'floor' as const },
+        { x: -4, z: -4, w: 22, d: 0.2, tone: 'wall' as const },
+        { x: 1, z: 1, w: 1.6, d: 0.8, tone: 'desk' as const },
+        { x: 3, z: 2, w: 0.5, d: 0.5, tone: 'furniture' as const },
+      ];
+      const { container } = render(<FullMap store={store} officeName="HQ" plan={plan} areas={areas} route={null} onGoTo={() => true} onClose={() => {}} />);
+      expect(container.querySelectorAll('rect.fill-map-floor').length).toBe(2);
+      expect(container.querySelectorAll('rect.fill-map-wall').length).toBe(1);
+      expect(container.querySelectorAll('rect.fill-map-desk').length).toBe(1);
+      const plant = container.querySelector('circle.fill-map-furniture');
+      expect(plant?.getAttribute('r')).toBe('0.25');
+    });
+
+    it('draws the plan even when rooms are defined', () => {
+      const { store, areas } = setup();
+      const { container } = render(<FullMap store={store} officeName="HQ" plan={[{ x: 0, z: 0, w: 2, d: 2, tone: 'wall' }]} areas={areas} route={null} onGoTo={() => true} onClose={() => {}} />);
+      expect(container.querySelectorAll('rect.fill-map-wall').length).toBe(1);
+    });
+  });
 });

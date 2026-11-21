@@ -4,7 +4,7 @@ import type { PlanRect } from './minimapPlan';
 
 type Point = { x: number; z: number };
 
-const PAD_M = 2.5;
+const PAD_M = 3;
 const EMPTY_BOX: MapBox = { x: 0, z: 0, w: 40, h: 40 };
 
 export function mapBounds(areas: readonly Area[], plan: readonly PlanRect[], points: readonly Point[]): MapBox {
@@ -56,6 +56,7 @@ export type RoomLabel = { id: string; text: string; x: number; z: number };
 const CHAR_EM = 0.6;
 const LABEL_PAD_PX = 6;
 const OBSTACLE_PX = 22;
+const OVERHANG = 1.6;
 
 type Rect = { x0: number; x1: number; z0: number; z1: number };
 
@@ -68,7 +69,7 @@ const touchesPoint = (r: Rect, p: Point, radius: number) => {
 };
 
 const fit = (label: string, roomWidthPx: number, fontPx: number) => {
-  const max = Math.max(3, Math.floor((roomWidthPx - 2 * LABEL_PAD_PX) / (fontPx * CHAR_EM)));
+  const max = Math.max(3, Math.floor((roomWidthPx * OVERHANG) / (fontPx * CHAR_EM)));
   return label.length <= max ? label : `${label.slice(0, max - 1)}…`;
 };
 
