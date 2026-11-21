@@ -45,8 +45,12 @@ for (const device of LAYOUT_DEVICES) {
         let hintCount = 0;
         if (hint) {
           await awaitHint(page, hint);
-          plate = await page.locator(`[data-hint="${hint}"]`).boundingBox();
-          hintCount = await page.locator('[data-hint]').count();
+          const seen = await page.evaluate((name) => {
+            const r = document.querySelector(`[data-hint="${name}"]`)?.getBoundingClientRect();
+            return { width: r?.width ?? null, count: document.querySelectorAll('[data-hint]').length };
+          }, hint);
+          plate = seen.width === null ? null : { width: seen.width };
+          hintCount = seen.count;
         }
         const boxes = await collectHudBoxes(page);
         expect(boxes.length, 'the HUD rendered controls').toBeGreaterThan(3);
