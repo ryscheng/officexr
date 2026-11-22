@@ -18,6 +18,7 @@ export class InstancedOccluder implements Occluder {
   private readonly centre: Float32Array;
   private readonly radius: Float32Array;
   private readonly solid: Uint8Array;
+  private readonly ignored: Uint8Array;
   private readonly bottom: Float32Array;
   private readonly named: boolean;
   private readonly fade: Float32Array;
@@ -31,7 +32,11 @@ export class InstancedOccluder implements Occluder {
   private ghost: THREE.InstancedMesh | null = null;
   private ghostMaterial: THREE.Material | null = null;
 
-  constructor(private readonly mesh: THREE.InstancedMesh, count = mesh.count) {
+  constructor(
+    private readonly mesh: THREE.InstancedMesh,
+    count = mesh.count,
+    private readonly ids: readonly string[] = [],
+  ) {
     this.count = count;
     mesh.updateWorldMatrix(true, false);
     const geometry = mesh.geometry;
@@ -46,6 +51,7 @@ export class InstancedOccluder implements Occluder {
     this.centre = new Float32Array(count * 3);
     this.radius = new Float32Array(count);
     this.solid = new Uint8Array(count);
+    this.ignored = new Uint8Array(count);
     this.bottom = new Float32Array(count);
     this.named = isRoofName(mesh.userData?.kindId) || isRoofName(mesh.name);
     this.fade = new Float32Array(count).fill(1);
@@ -102,8 +108,21 @@ export class InstancedOccluder implements Occluder {
     return this.localSegment(i, ax, ay, az, bx, by, bz);
   }
 
+  setIgnored(ids: ReadonlySet<string>): void {
+    for (let i = 0; i < this.count; i++) this.ignored[i] = ids.has(this.ids[i]) ? 1 : 0;
+  }
+
+  blocksSegment(ax: number, ay: number, az: number, bx: number, by: number, bz: number, ignore: ReadonlySet<string>): boolean {
+    for (let i = 0; i < this.count; i++) {
+      if (ignore.has(this.ids[i])) continue;
+      if (this.entry(i, ax, ay, az, bx, by, bz) >= 0) return true;
+    }
+    return false;
+  }
+
   markCrossings(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
     for (let i = 0; i < this.count; i++) {
+      if (this.ignored[i]) continue;
       if (this.entry(i, ax, ay, az, bx, by, bz) >= 0) this.wanted.add(i);
     }
   }
@@ -113,7 +132,7 @@ export class InstancedOccluder implements Occluder {
     const headY = feetY + 1;
     for (let i = 0; i < this.count; i++) {
       const bottom = this.bottom[i];
-      if (bottom >= lowest || !isOverheadCover(bottom, feetY, this.named)) continue;
+      if (this.ignored[i] || bottom >= lowest || !isOverheadCover(bottom, feetY, this.named)) continue;
       const r = this.radius[i];
       if (Math.abs(px - this.centre[i * 3]) > r || Math.abs(pz - this.centre[i * 3 + 2]) > r) continue;
       if (this.localSegment(i, px, headY, pz, px, headY + ROOF_REACH, pz) >= 0) lowest = bottom;
@@ -123,7 +142,7 @@ export class InstancedOccluder implements Occluder {
 
   markCutaway(cutY: number, px: number, pz: number): void {
     for (let i = 0; i < this.count; i++) {
-      if (!isAboveCutPlane(this.bottom[i], cutY)) continue;
+      if (this.ignored[i] || !isAboveCutPlane(this.bottom[i], cutY)) continue;
       if (withinCutawayRadius(this.centre[i * 3] - px, this.centre[i * 3 + 2] - pz, this.radius[i])) this.cut.add(i);
     }
   }

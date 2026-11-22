@@ -87,6 +87,12 @@ export class MeshOccluder implements Occluder {
     return entry === 0 && castHits(this.mesh, bx, by, bz, ax, ay, az);
   }
 
+  setIgnored(): void {}
+
+  blocksSegment(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
+    return this.fadeable && this.blocks(ax, ay, az, bx, by, bz);
+  }
+
   markCrossings(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
     if (this.fadeable && this.blocks(ax, ay, az, bx, by, bz)) this.wanted = true;
   }

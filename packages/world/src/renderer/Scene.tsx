@@ -438,6 +438,8 @@ export function Scene(props: SceneProps) {
         />
         <OcclusionController
           mode={cameraMode}
+          store={store}
+          selfId={selfId}
           playerPosRef={selfPosRef}
           charRadius={charRadius}
           enabled={!fixedCam.lookAt}

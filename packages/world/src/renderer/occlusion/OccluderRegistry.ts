@@ -14,9 +14,12 @@ export interface CoverProbe {
 export class OccluderRegistry {
   private readonly occluders = new Set<Occluder>();
   private readonly lastCover = { x: 0, feetY: 0, z: 0, valid: false };
+  private readonly occupied = new Set<string>();
+  private readonly probeIgnore = new Set<string>();
+  private readonly suppressed = new Set<string>();
 
-  addInstanced(mesh: THREE.InstancedMesh, count: number): () => void {
-    return this.add(new InstancedOccluder(mesh, count));
+  addInstanced(mesh: THREE.InstancedMesh, count: number, ids?: readonly string[]): () => void {
+    return this.add(new InstancedOccluder(mesh, count, ids));
   }
 
   addMesh(mesh: THREE.Mesh): (() => void) | null {
@@ -25,6 +28,7 @@ export class OccluderRegistry {
   }
 
   private add(occluder: Occluder): () => void {
+    occluder.setIgnored(this.occupied);
     this.occluders.add(occluder);
     this.lastCover.valid = false;
     return () => {
@@ -36,6 +40,53 @@ export class OccluderRegistry {
 
   get size(): number {
     return this.occluders.size;
+  }
+
+  setOccupied(ids: ReadonlySet<string>): void {
+    let same = ids.size === this.occupied.size;
+    if (same) {
+      for (const id of ids) {
+        if (!this.occupied.has(id)) {
+          same = false;
+          break;
+        }
+      }
+    }
+    if (same) return;
+    this.occupied.clear();
+    for (const id of ids) this.occupied.add(id);
+    for (const o of this.occluders) o.setIgnored(this.occupied);
+    this.lastCover.valid = false;
+  }
+
+  updateOccupantSilhouette(playerId: string, camera: THREE.Vector3, targets: readonly THREE.Vector3[], own: ReadonlySet<string>): void {
+    const ignore = this.probeIgnore;
+    ignore.clear();
+    for (const id of own) ignore.add(id);
+    for (const id of this.occupied) ignore.add(id);
+    let hidden = false;
+    for (const o of this.occluders) {
+      for (const t of targets) {
+        if (o.blocksSegment(camera.x, camera.y, camera.z, t.x, t.y, t.z, ignore)) {
+          hidden = true;
+          break;
+        }
+      }
+      if (hidden) break;
+    }
+    if (hidden) {
+      this.suppressed.delete(playerId);
+    } else {
+      this.suppressed.add(playerId);
+    }
+  }
+
+  clearOccupantSilhouette(playerId: string): void {
+    this.suppressed.delete(playerId);
+  }
+
+  silhouetteSuppressed(playerId: string): boolean {
+    return this.suppressed.has(playerId);
   }
 
   updateFades(
@@ -96,6 +147,7 @@ export class OccluderRegistry {
 
   restoreAll(): void {
     this.lastCover.valid = false;
+    this.suppressed.clear();
     for (const o of this.occluders) o.restore();
   }
 }
