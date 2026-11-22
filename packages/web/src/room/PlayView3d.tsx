@@ -6,6 +6,9 @@ import { Switch } from '../hud/ui/Switch';
 import { CharacterLook } from './CharacterLook';
 import { MotionLookControl } from './MotionLookControl';
 import { SettingRow } from '../hud/settings/parts';
+import { PerfReadout } from '../perf/PerfReadout';
+import { publishFrameStats } from '../perf/perfStats';
+import { useShowPerformance } from '../perf/perfSetting';
 import { angleHeld, cameraModeOf, forgetLegacyJoystickChoice, storedOpenView, viewOfCameraMode, type GameView, type OpenView } from './gameView';
 import type { SettingsAction } from './Settings';
 import { ViewPicker } from './ViewPicker';
@@ -80,6 +83,7 @@ export default function PlayView3d({
   const [motionUnsupported, setMotionUnsupported] = useState(false);
   const [invertLook, setInvertLook] = useState(false);
   useEffect(forgetLegacyJoystickChoice, []);
+  const showPerformance = useShowPerformance();
   const xrStore = useWorldXRStore();
   const vrSupported = useXRSessionModeSupported('immersive-vr') === true;
   const lookLocked = angleHeld(view, motionLook.enabled);
@@ -112,6 +116,7 @@ export default function PlayView3d({
   };
 
   return (
+    <>
     <PlayView
       {...viewProps}
       realtime="ws"
@@ -123,8 +128,11 @@ export default function PlayView3d({
       lookLocked={lookLocked}
       hud="player"
       xrStore={xrStore}
+      onFrameStats={showPerformance ? publishFrameStats : undefined}
     >
       {children(settings)}
     </PlayView>
+    {showPerformance && <PerfReadout mode={cameraMode} />}
+    </>
   );
 }

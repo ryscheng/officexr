@@ -126,6 +126,19 @@ describe('OfficePage', () => {
   });
 });
 
+describe('Show performance', () => {
+  it('sits next to Debug mode in Advanced and turns the readout on and off', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    const toggle = screen.getByRole('switch', { name: 'Show performance' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(toggle);
+    expect(screen.getByRole('switch', { name: 'Show performance' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('switch', { name: 'Show performance' }));
+    expect(screen.getByRole('switch', { name: 'Show performance' }).getAttribute('aria-checked')).toBe('false');
+  });
+});
+
 describe('Open studio', () => {
   it('links to the studio in a new tab for every user', () => {
     setup();
