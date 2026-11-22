@@ -60,6 +60,7 @@ supabase/.branches/
 packages/studio/public/models/furniture/
 packages/studio/public/models/prototype/
 packages/studio/public/models/restaurant/
+packages/studio/public/models/holiday/
 test-results/
 playwright-report/
 

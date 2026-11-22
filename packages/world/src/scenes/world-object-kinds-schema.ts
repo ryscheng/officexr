@@ -34,6 +34,7 @@ export const CUBE_KIND_CATEGORIES = [
   'city',
   'space',
   'decoration',
+  'holiday',
   'games',
   'weapon',
   'tools',

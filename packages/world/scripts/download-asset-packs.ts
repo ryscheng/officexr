@@ -35,6 +35,16 @@ import type {
   WorldObjectKind,
 } from '../src/scenes/world-object-kinds-schema.ts';
 
+import {
+  HOLIDAY_PACK_ID,
+  HOLIDAY_SWATCH,
+  assertCc0,
+  downloadKenneyKit,
+  holidayBounds,
+  holidayLabel,
+  writeHolidayPack,
+} from './holiday-pack.ts';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WORLD_ROOT = join(__dirname, '..');
 const STUDIO_PUBLIC = join(WORLD_ROOT, '..', 'studio', 'public');
@@ -48,6 +58,20 @@ interface PackSpec {
   url: string;
   /** CSS hex used as the palette swatch for this pack's entries. */
   swatch: string;
+  /** Used when `url` is unreachable: builds the pack into the target dir. */
+  fallback?: (targetDir: string) => Promise<void>;
+}
+
+async function buildHolidayFromKenney(targetDir: string): Promise<void> {
+  const work = join(tmpdir(), `officexr-holiday-${Date.now()}`);
+  await mkdir(work, { recursive: true });
+  const zip = join(work, 'kit.zip');
+  const kit = join(work, 'kit');
+  await downloadKenneyKit(zip);
+  execSync(`unzip -o -q "${zip}" -d "${kit}"`, { stdio: 'inherit' });
+  await assertCc0(kit);
+  await writeHolidayPack(kit, targetDir);
+  await rm(work, { recursive: true, force: true });
 }
 
 const PACKS: PackSpec[] = [
@@ -65,6 +89,12 @@ const PACKS: PackSpec[] = [
     id: 'restaurant',
     url: 'https://pub-5c607701fd464418972bca5504147874.r2.dev/KayKit_Restaurant_Bits_1.0_FREE.zip',
     swatch: '#dc2626',
+  },
+  {
+    id: HOLIDAY_PACK_ID,
+    url: 'https://pub-5c607701fd464418972bca5504147874.r2.dev/Kenney_Holiday_Kit_2.0_gltf.zip',
+    swatch: HOLIDAY_SWATCH,
+    fallback: buildHolidayFromKenney,
   },
 ];
 
@@ -94,7 +124,14 @@ async function installPack(pack: PackSpec): Promise<void> {
   await mkdir(targetDir, { recursive: true });
   const tmpZip = join(tmpdir(), `officexr-${pack.id}-${Date.now()}.zip`);
   console.log(`[asset-packs] ${pack.id}: downloading ${pack.url}`);
-  await downloadFile(pack.url, tmpZip);
+  try {
+    await downloadFile(pack.url, tmpZip);
+  } catch (err) {
+    if (!pack.fallback) throw err;
+    console.warn(`[asset-packs] ${pack.id}: mirror unavailable (${String(err)}), building from the source`);
+    await pack.fallback(targetDir);
+    return;
+  }
   console.log(`[asset-packs] ${pack.id}: unzipping to ${targetDir}`);
   // -o overwrite, -q quiet, -d dest
   execSync(`unzip -o -q "${tmpZip}" -d "${targetDir}"`, { stdio: 'inherit' });
@@ -125,20 +162,27 @@ function slugify(name: string): string {
     .toLowerCase();
 }
 
-function entryForGltf(
+async function entryForGltf(
   packId: CubeKindCategory,
   gltfAbsPath: string,
   swatch: string,
-): WorldObjectKind {
+): Promise<WorldObjectKind> {
   const rel = relative(STUDIO_PUBLIC, gltfAbsPath).replace(/\\/g, '/');
   const basename = gltfAbsPath.split(/[\\/]/).pop() ?? '';
-  return newWorldObjectKind({
+  const entry = newWorldObjectKind({
     id: `${packId}_${slugify(basename)}`,
-    label: kindLabelFromFileName(basename),
+    label: holidayLabel(gltfAbsPath) ?? kindLabelFromFileName(basename),
     gltfPath: '/' + rel,
     swatch,
     category: packId,
   });
+  if (packId !== HOLIDAY_PACK_ID) return entry;
+  const { min, max } = await holidayBounds(gltfAbsPath);
+  return {
+    ...entry,
+    dimensions: { width: max.x - min.x, height: max.y - min.y, depth: max.z - min.z },
+    localAABB: { min, max },
+  };
 }
 
 async function loadCatalog(): Promise<WorldObjectKindCatalogV1> {
@@ -147,7 +191,7 @@ async function loadCatalog(): Promise<WorldObjectKindCatalogV1> {
 }
 
 async function writeCatalog(catalog: WorldObjectKindCatalogV1): Promise<void> {
-  await writeFile(CATALOG_FILE, JSON.stringify(catalog, null, 2) + '\n', 'utf8');
+  await writeFile(CATALOG_FILE, JSON.stringify(catalog), 'utf8');
 }
 
 async function main(): Promise<void> {
@@ -165,7 +209,7 @@ async function main(): Promise<void> {
     const dir = join(MODELS_DIR, pack.id);
     const gltfs = await findGltfs(dir);
     for (const gltf of gltfs) {
-      const entry = entryForGltf(pack.id, gltf, pack.swatch);
+      const entry = await entryForGltf(pack.id, gltf, pack.swatch);
       if (existingIds.has(entry.id)) continue;
       catalog.kinds.push(entry);
       existingIds.add(entry.id);
