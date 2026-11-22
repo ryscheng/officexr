@@ -69,3 +69,24 @@ export function stepToward(current: number, target: number, dtSec: number): numb
 export function stepFade(current: number, faded: boolean, dtSec: number): number {
   return stepToward(current, fadeTarget(faded, false), dtSec);
 }
+
+export const ANCHOR_MARGIN = 0.15;
+export const ANCHOR_MAX_RADIUS = 5;
+
+export interface Anchor {
+  active: boolean;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export function createAnchor(): Anchor {
+  return { active: false, x: 0, y: 0, z: 0 };
+}
+
+export function setAnchorAt(anchor: Anchor, x: number, y: number, z: number): void {
+  anchor.active = true;
+  anchor.x = x;
+  anchor.y = y;
+  anchor.z = z;
+}

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Occluder } from './Occluder.ts';
 import { createMeshGhostMaterial, disposeMaterial, setGhostOpacity } from './ghostMaterial.ts';
 import { isAboveCutPlane, isOverheadCover, isRoofName, ROOF_REACH, withinCutawayRadius } from './cutawayMath.ts';
-import { fadeTarget, isFloorLike, segmentBoxEntry, stepToward } from './occlusionMath.ts';
+import { ANCHOR_MARGIN, ANCHOR_MAX_RADIUS, fadeTarget, isFloorLike, segmentBoxEntry, stepToward, type Anchor } from './occlusionMath.ts';
 
 export const MAX_RAYCAST_TRIANGLES = 6000;
 const MIN_OVERHEAD_BOTTOM = 1.5;
@@ -52,6 +52,7 @@ export class MeshOccluder implements Occluder {
   private fade = 1;
   private wanted = false;
   private cut = false;
+  private anchored = false;
   private readonly named: boolean;
   private readonly bounds = new THREE.Box3();
   private readonly boundsCentre = new THREE.Vector3();
@@ -87,11 +88,34 @@ export class MeshOccluder implements Occluder {
     return entry === 0 && castHits(this.mesh, bx, by, bz, ax, ay, az);
   }
 
+  setIgnored(): void {}
+
+  private containsAnchor(a: Anchor): boolean {
+    if (this.boundsRadius > ANCHOR_MAX_RADIUS) return false;
+    const b = this.bounds;
+    const m = ANCHOR_MARGIN;
+    return (
+      a.x >= b.min.x - m && a.x <= b.max.x + m &&
+      a.y >= b.min.y - m && a.y <= b.max.y + m &&
+      a.z >= b.min.z - m && a.z <= b.max.z + m
+    );
+  }
+
+  setAnchor(anchor: Anchor): void {
+    this.anchored = anchor.active && this.containsAnchor(anchor);
+  }
+
+  blocksSegment(ax: number, ay: number, az: number, bx: number, by: number, bz: number, _ignore: ReadonlySet<string>, anchor: Anchor): boolean {
+    if (!this.fadeable || (anchor.active && this.containsAnchor(anchor))) return false;
+    return this.blocks(ax, ay, az, bx, by, bz);
+  }
+
   markCrossings(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
-    if (this.fadeable && this.blocks(ax, ay, az, bx, by, bz)) this.wanted = true;
+    if (this.fadeable && !this.anchored && this.blocks(ax, ay, az, bx, by, bz)) this.wanted = true;
   }
 
   lowestCoverBottom(px: number, feetY: number, pz: number): number {
+    if (this.anchored) return Infinity;
     const bottom = this.bounds.min.y;
     if (!isOverheadCover(bottom, feetY, this.named)) return Infinity;
     if (px < this.bounds.min.x || px > this.bounds.max.x || pz < this.bounds.min.z || pz > this.bounds.max.z) return Infinity;
@@ -109,7 +133,7 @@ export class MeshOccluder implements Occluder {
   }
 
   markCutaway(cutY: number, px: number, pz: number): void {
-    if (!isAboveCutPlane(this.bounds.min.y, cutY)) return;
+    if (this.anchored || !isAboveCutPlane(this.bounds.min.y, cutY)) return;
     if (withinCutawayRadius(this.boundsCentre.x - px, this.boundsCentre.z - pz, this.boundsRadius)) this.cut = true;
   }
 
@@ -167,6 +191,7 @@ export class MeshOccluder implements Occluder {
     this.fade = 1;
     this.wanted = false;
     this.cut = false;
+    this.anchored = false;
     this.hideGhost();
   }
 

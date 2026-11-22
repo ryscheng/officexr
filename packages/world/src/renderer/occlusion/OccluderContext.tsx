@@ -12,13 +12,17 @@ export function useOccluderRegistry(): OccluderRegistry | null {
 export function useInstancedOccluder(
   meshRef: RefObject<THREE.InstancedMesh | null>,
   count: number,
-  instances: unknown,
+  instances: readonly { id: string }[],
   material: unknown,
 ): void {
   const registry = useOccluderRegistry();
   useEffect(() => {
     const mesh = meshRef.current;
     if (!registry || !mesh || count === 0) return;
-    return registry.addInstanced(mesh, count);
+    return registry.addInstanced(
+      mesh,
+      count,
+      instances.map((i) => i.id),
+    );
   }, [registry, meshRef, count, instances, material]);
 }

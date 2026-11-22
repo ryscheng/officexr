@@ -582,8 +582,8 @@ export function Players({
   const silhouetteOn = (cameraMode === 'fixed' || cameraMode === 'third-person') && !xrPresenting && !paused;
   const silhouetteOf = (id: string): SilhouetteSpec =>
     id === selfId
-      ? { color: playerAccent(id), enabled: silhouetteOn }
-      : { color: playerAccent(id), enabled: silhouetteOn, viewerRef: selfPosRef, range: proximityOuterRadius };
+      ? { playerId: id, color: playerAccent(id), enabled: silhouetteOn }
+      : { playerId: id, color: playerAccent(id), enabled: silhouetteOn, viewerRef: selfPosRef, range: proximityOuterRadius };
 
   return (
     <>
