@@ -7,7 +7,7 @@ export interface CharacterSilhouette {
   dispose(): void;
 }
 
-// Draws only where nearer geometry hid the character: the body marks its own pixels in the stencil, so limbs over the torso are not tinted and overlapping twins do not stack opacity.
+// The body marks its own pixels in the stencil, so limbs over the torso are not tinted and twins do not stack opacity.
 function createMaterial(color: string): THREE.MeshBasicMaterial {
   const material = new THREE.MeshBasicMaterial({
     color,

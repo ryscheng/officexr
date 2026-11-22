@@ -175,7 +175,6 @@ interface AdventurerProps {
    * no fade-in, no bump reactions. Used by the Mugshot mode to render
    * a deterministic, animation-free shot for snapshot testing. */
   paused?: boolean;
-  /** Flat outline drawn through nearer geometry, so the character stays findable behind objects. */
   silhouette?: SilhouetteSpec | null;
 }
 
