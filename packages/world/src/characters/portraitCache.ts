@@ -18,6 +18,15 @@ export const storeCharacterPortrait = (url: string, image: string): void => {
   void persistent().write(url, image);
 };
 
+/** Makes catalog-supplied portraits known by model URL, so nothing downloads or renders those models for a tile. */
+export const supplyCharacterPortraits = (options: Iterable<{ url: string; portrait?: string }>): void => {
+  for (const { url, portrait } of options) {
+    if (portrait) {
+      images.set(url, portrait);
+    }
+  }
+};
+
 /** A portrait already known in memory or stored from an earlier visit; the renderer is needed only when this is `null`. */
 export async function knownCharacterPortrait(url: string): Promise<string | null> {
   const known = cachedCharacterPortrait(url);

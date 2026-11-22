@@ -6,6 +6,7 @@ import {
 } from '@officexr/world';
 import { useApplication, useCatalog } from '@officexr/world/react';
 import { paths, studioApiOptions } from '../../apiOrigin.ts';
+import { useCharacterPortraitBackfill } from './useCharacterPortraitBackfill.ts';
 
 /**
  * Studio-side wrapper around the world's catalog store. Adds:
@@ -137,6 +138,15 @@ export function useObjectCatalog(): UseObjectCatalogResult {
     },
     [selectedKindId, scheduleSave, catalogService],
   );
+
+  const setPortrait = useCallback(
+    (kindId: string, portrait: string) => {
+      catalogService.patchKind(kindId, { portrait });
+      scheduleSave();
+    },
+    [catalogService, scheduleSave],
+  );
+  useCharacterPortraitBackfill(kinds, setPortrait);
 
   // ponytail: only kinds this tab finalizes are merged; kinds from other tabs or MCP appear after a reload.
   const upsertKind = useCallback(

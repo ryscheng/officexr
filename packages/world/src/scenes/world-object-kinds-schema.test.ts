@@ -9,6 +9,7 @@ import {
   isYawAllowed,
   nextAllowedYaw,
   normalizeKind,
+  MAX_PORTRAIT_CHARS,
   validateWorldObjectKindCatalog,
 } from './world-object-kinds-schema.ts';
 import defaultCatalogJson from '../../world-object-kinds.default.json';
@@ -487,5 +488,19 @@ describe('normalizeKind — colliderComplexity', () => {
     expect(() => normalizeKind(minimalRaw('block', { colliderComplexity: recipe }), 4)).toThrow(
       /kinds\[4\]\.colliderComplexity/,
     );
+  });
+});
+
+describe('normalizeKind portrait', () => {
+  const webp = 'data:image/webp;base64,AAAA';
+
+  it('keeps a WebP data URL', () => {
+    expect(normalizeKind(minimalRaw('character', { portrait: webp }), 0).portrait).toBe(webp);
+  });
+
+  it('drops anything else instead of failing the catalog', () => {
+    for (const portrait of ['https://example.com/a.webp', 'data:image/svg+xml;base64,AAAA', `${webp}${'A'.repeat(MAX_PORTRAIT_CHARS)}`, 7]) {
+      expect(normalizeKind(minimalRaw('character', { portrait }), 0).portrait).toBeUndefined();
+    }
   });
 });

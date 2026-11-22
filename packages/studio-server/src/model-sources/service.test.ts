@@ -198,6 +198,19 @@ describe('finalize', () => {
     expect(second.gltfPath).not.toBe(first.gltfPath);
     expect(catalog.doc?.kinds).toHaveLength(1);
   });
+
+  it('keeps a portrait on re-finalize of the same model and drops it when the model changes', async () => {
+    const portrait = 'data:image/webp;base64,AAAA';
+    const source = await gridGlb();
+    store.put('packs/kit/chair.glb', source);
+    const first = (await service.finalize('kit', 'chair.glb')).kind;
+    catalog.doc = { ...catalog.doc!, kinds: [{ ...first, portrait }] };
+
+    expect((await service.finalize('kit', 'chair.glb')).kind.portrait).toBe(portrait);
+
+    store.put('packs/kit/chair.glb', await new NodeIO().writeBinary(gridDoc(8)));
+    expect((await service.finalize('kit', 'chair.glb')).kind.portrait).toBeUndefined();
+  });
 });
 
 describe('list', () => {
