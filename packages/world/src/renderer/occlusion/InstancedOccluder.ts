@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import type { Occluder } from './Occluder.ts';
 import { createInstancedGhostMaterial, disposeMaterial } from './ghostMaterial.ts';
 import { hasScreenGlow } from '../screenGlowShader.ts';
-import { isFloorLike, segmentBoxEntry, stepFade } from './occlusionMath.ts';
+import { isOverheadCover, isAboveCutPlane, isRoofName, ROOF_REACH, withinCutawayRadius } from './cutawayMath.ts';
+import { fadeTarget, isFloorLike, segmentBoxEntry, stepToward } from './occlusionMath.ts';
 
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 const scratchMatrix = new THREE.Matrix4();
 const scratchInverse = new THREE.Matrix4();
+const corner = new THREE.Vector3();
 
 // Faded instances move to a ghost mesh so the source material is never edited; it casts no shadow, so the player is not darkened.
 export class InstancedOccluder implements Occluder {
@@ -16,7 +18,10 @@ export class InstancedOccluder implements Occluder {
   private readonly centre: Float32Array;
   private readonly radius: Float32Array;
   private readonly solid: Uint8Array;
+  private readonly bottom: Float32Array;
+  private readonly named: boolean;
   private readonly fade: Float32Array;
+  private readonly cut = new Set<number>();
   private readonly wanted = new Set<number>();
   private readonly active = new Set<number>();
   private readonly ghostOf: number[] = [];
@@ -41,6 +46,8 @@ export class InstancedOccluder implements Occluder {
     this.centre = new Float32Array(count * 3);
     this.radius = new Float32Array(count);
     this.solid = new Uint8Array(count);
+    this.bottom = new Float32Array(count);
+    this.named = isRoofName(mesh.userData?.kindId) || isRoofName(mesh.name);
     this.fade = new Float32Array(count).fill(1);
     const centre = new THREE.Vector3();
     for (let i = 0; i < count; i++) {
@@ -56,17 +63,21 @@ export class InstancedOccluder implements Occluder {
       const sy = Math.hypot(e[4], e[5], e[6]);
       const sz = Math.hypot(e[8], e[9], e[10]);
       this.radius[i] = localRadius * Math.max(sx, sy, sz);
+      this.bottom[i] = this.worldBottom(scratchMatrix);
       this.solid[i] = isFloorLike((box.max.y - box.min.y) * sy) ? 0 : 1;
     }
   }
 
-  private entry(i: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
-    if (!this.solid[i]) return -1;
-    const r = this.radius[i];
-    const cx = this.centre[i * 3];
-    const cz = this.centre[i * 3 + 2];
-    if (Math.max(ax, bx) < cx - r || Math.min(ax, bx) > cx + r) return -1;
-    if (Math.max(az, bz) < cz - r || Math.min(az, bz) > cz + r) return -1;
+  private worldBottom(matrix: THREE.Matrix4): number {
+    let bottom = Infinity;
+    for (let c = 0; c < 8; c++) {
+      corner.set(c & 1 ? this.max.x : this.min.x, c & 2 ? this.max.y : this.min.y, c & 4 ? this.max.z : this.min.z);
+      bottom = Math.min(bottom, corner.applyMatrix4(matrix).y);
+    }
+    return bottom;
+  }
+
+  private localSegment(i: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
     const e = this.inverse;
     const o = i * 16;
     const lax = e[o] * ax + e[o + 4] * ay + e[o + 8] * az + e[o + 12];
@@ -81,9 +92,39 @@ export class InstancedOccluder implements Occluder {
     );
   }
 
+  private entry(i: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
+    if (!this.solid[i]) return -1;
+    const r = this.radius[i];
+    const cx = this.centre[i * 3];
+    const cz = this.centre[i * 3 + 2];
+    if (Math.max(ax, bx) < cx - r || Math.min(ax, bx) > cx + r) return -1;
+    if (Math.max(az, bz) < cz - r || Math.min(az, bz) > cz + r) return -1;
+    return this.localSegment(i, ax, ay, az, bx, by, bz);
+  }
+
   markCrossings(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
     for (let i = 0; i < this.count; i++) {
       if (this.entry(i, ax, ay, az, bx, by, bz) >= 0) this.wanted.add(i);
+    }
+  }
+
+  lowestCoverBottom(px: number, feetY: number, pz: number): number {
+    let lowest = Infinity;
+    const headY = feetY + 1;
+    for (let i = 0; i < this.count; i++) {
+      const bottom = this.bottom[i];
+      if (bottom >= lowest || !isOverheadCover(bottom, feetY, this.named)) continue;
+      const r = this.radius[i];
+      if (Math.abs(px - this.centre[i * 3]) > r || Math.abs(pz - this.centre[i * 3 + 2]) > r) continue;
+      if (this.localSegment(i, px, headY, pz, px, headY + ROOF_REACH, pz) >= 0) lowest = bottom;
+    }
+    return lowest;
+  }
+
+  markCutaway(cutY: number, px: number, pz: number): void {
+    for (let i = 0; i < this.count; i++) {
+      if (!isAboveCutPlane(this.bottom[i], cutY)) continue;
+      if (withinCutawayRadius(this.centre[i * 3] - px, this.centre[i * 3 + 2] - pz, this.radius[i])) this.cut.add(i);
     }
   }
 
@@ -91,17 +132,23 @@ export class InstancedOccluder implements Occluder {
     return this.ghostOf.length;
   }
 
+  cutCount(): number {
+    return this.cut.size;
+  }
+
   clearMarks(): void {
     this.wanted.clear();
+    this.cut.clear();
   }
 
   stepFade(dtSec: number): void {
     for (const i of this.wanted) this.active.add(i);
+    for (const i of this.cut) this.active.add(i);
     if (this.active.size === 0) return;
     let colourDirty = false;
     for (const i of this.active) {
       if (this.fade[i] < 1) colourDirty = this.syncScreenGlow(i) || colourDirty;
-      const next = stepFade(this.fade[i], this.wanted.has(i), dtSec);
+      const next = stepToward(this.fade[i], fadeTarget(this.wanted.has(i), this.cut.has(i)), dtSec);
       if (next === this.fade[i]) {
         if (next === 1) this.active.delete(i);
         continue;
@@ -201,6 +248,7 @@ export class InstancedOccluder implements Occluder {
     this.fade.fill(1);
     this.active.clear();
     this.wanted.clear();
+    this.cut.clear();
   }
 
   dispose(): void {
