@@ -6,7 +6,6 @@ import { Panel } from './ui/Panel';
 
 const typingNow = () => isTypingTarget(document.activeElement);
 
-/** Whether a text field has focus, so the prompt gives way to the keyboard. */
 export function useTyping(): boolean {
   const [typing, setTyping] = useState(typingNow);
   useEffect(() => {
@@ -21,17 +20,13 @@ export function useTyping(): boolean {
   return typing;
 }
 
-/** Hides the world's prompt and this one while chat is being typed or a sheet, the map or build mode is open. */
 export function SuppressInteractionPrompt({ covered }: { covered: boolean }) {
   const typing = useTyping();
   useSuppressInteractionPrompt(covered || typing);
   return null;
 }
 
-/**
- * Touch: the options in reach as tap buttons in the bottom-right action area.
- * Desktop: the world floats the options above their object; only options with no object, such as Get off, show here.
- */
+// Desktop shows an option in the world above its object; only one with no object, such as Get off, shows here.
 export function InteractionPrompt() {
   const { options, anchor, run } = useInteractionPrompt();
   const coarse = useCoarsePointer();

@@ -139,7 +139,6 @@ interface SceneProps {
   actionInput?: ActionInput;
   /** Receives what the Interact button would do; absent where there is no button. */
   actionContext?: ActionContextStore;
-  /** Receives the options for the object in reach and floats them above it; absent where there is no prompt. */
   interactions?: InteractionStore;
   /** World-space steering used while there is no key or stick input; absent where nothing auto-walks. */
   autoWalk?: AutoWalkSource;

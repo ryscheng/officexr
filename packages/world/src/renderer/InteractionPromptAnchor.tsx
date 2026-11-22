@@ -6,7 +6,6 @@ import './InteractionPromptAnchor.css';
 
 const RAISE_M = 0.1;
 
-/** The options for the object in reach, floating above it. Touch gets buttons in the HUD instead. */
 export function InteractionPromptAnchor({ interactions }: { interactions: InteractionStore }) {
   const prompt = useSyncExternalStore(interactions.subscribe, interactions.get);
   const coarse = useCoarsePointer();

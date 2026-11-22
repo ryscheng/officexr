@@ -10,7 +10,6 @@ import {
 
 export interface InteractionSource {
   store: InteractionStore;
-  /** Runs the option as its key would. */
   run(kind: InteractionKind): void;
 }
 
@@ -39,14 +38,12 @@ export interface InteractionPromptView extends InteractionPrompt {
 
 const NO_RUN = () => {};
 
-/** The options in reach right now; empty outside a `PlayView`. */
 export function useInteractionPrompt(): InteractionPromptView {
   const source = useContext(InteractionContext);
   const prompt = useSyncExternalStore(source ? source.store.subscribe : noSubscribe, source ? source.store.get : () => NO_PROMPT);
   return { ...prompt, run: source?.run ?? NO_RUN };
 }
 
-/** Hides the prompt while `suppressed` is true. */
 export function useSuppressInteractionPrompt(suppressed: boolean): void {
   const source = useContext(InteractionContext);
   useEffect(() => {

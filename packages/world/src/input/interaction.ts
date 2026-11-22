@@ -7,9 +7,7 @@ export type InteractionKey = 'E' | 'F';
 
 export interface InteractionFacts {
   pose: PlayerPose | null;
-  /** Id of the seat the self player sits on. */
   seatedOn: string | null;
-  /** Id of the free seat the self player touches. */
   nearbySeatId: string | null;
   feet: Vec3;
   holdingWand: boolean;
@@ -17,21 +15,19 @@ export interface InteractionFacts {
 
 export interface InteractionWorld extends Pick<MotionWorld, 'rideNear'> {
   wandStandNear(feet: Vec3): string | null;
-  /** Where a prompt for the object floats: above its top. */
   anchorOf(instanceId: string): Vec3 | null;
 }
 
 export interface InteractionOption {
   kind: InteractionKind;
   label: string;
-  /** The keyboard key that runs it; touch taps run `action`, which stands in for the same key. */
+  /** `action` stands in for `key` when a touch button runs the option. */
   key: InteractionKey;
   action: ActionId;
 }
 
 export interface InteractionPrompt {
   options: readonly InteractionOption[];
-  /** Above the object the primary option acts on; null when that option has no object, such as Get off. */
   anchor: Vec3 | null;
 }
 
@@ -41,21 +37,18 @@ export const MAX_INTERACTION_OPTIONS = 3;
 
 interface Offer {
   label: string;
-  /** The object the action acts on. */
   instanceId: string | null;
 }
 
 interface Provider {
   key: InteractionKey;
   action: ActionId;
-  /** Lower comes first; the first option is the primary one. */
   priority: number;
   offer(facts: InteractionFacts, world: InteractionWorld): Offer | null;
 }
 
 const onFoot = (f: InteractionFacts) => f.pose === null && f.seatedOn === null;
 
-/** Add a kind here for a new world interaction; the compiler asks for its provider. */
 export const INTERACTION_PROVIDERS: Record<InteractionKind, Provider> = {
   'wand-return': {
     key: 'F',
@@ -108,7 +101,6 @@ const KINDS_BY_PRIORITY = (Object.keys(INTERACTION_PROVIDERS) as InteractionKind
   (a, b) => INTERACTION_PROVIDERS[a].priority - INTERACTION_PROVIDERS[b].priority,
 );
 
-/** What the player could do right now, primary first, and where to show it. */
 export function interactionPrompt(facts: InteractionFacts, world: InteractionWorld): InteractionPrompt {
   const offers: { option: InteractionOption; instanceId: string | null }[] = [];
   for (const kind of KINDS_BY_PRIORITY) {
@@ -136,7 +128,6 @@ const samePrompt = (a: InteractionPrompt, b: InteractionPrompt) =>
   a.anchor?.y === b.anchor?.y &&
   a.anchor?.z === b.anchor?.z;
 
-/** Holds the prompt the frame loop offers; the HUD reads it and a hidden prompt reads as empty. */
 export class InteractionStore {
   private offered: InteractionPrompt = NO_PROMPT;
   private suppressed = false;
@@ -152,7 +143,6 @@ export class InteractionStore {
     }
   }
 
-  /** Hides the prompt while typing, building or a sheet is open. */
   setSuppressed(suppressed: boolean): void {
     if (suppressed !== this.suppressed) {
       this.suppressed = suppressed;

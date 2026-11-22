@@ -70,7 +70,6 @@ interface SceneFrameProps {
   actionInput?: ActionInput;
   /** Receives what the Interact button would do; refreshed a few times a second. */
   actionContext?: ActionContextStore;
-  /** Receives the options offered next to the object in reach; refreshed a few times a second. */
   interactions?: InteractionStore;
   selfId: string;
   /** Set by `Players` when the self avatar's RigidBody mounts. */

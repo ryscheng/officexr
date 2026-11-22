@@ -25,7 +25,7 @@ export interface Scenario {
   steps?: string[];
   /** Desks in metres east and south of the spawn point, each with a chair and its claimant. */
   desks?: { id: string; at: [number, number]; login: string; claimant?: DeskClaimant }[];
-  /** Seats that are map objects, in metres east and south of the spawn point (their lowest corner). */
+  /** Map objects, in metres east and south of the spawn point; an object's position is its lowest corner. */
   furniture?: { id: string; kindId: string; at: [number, number] }[];
   /** Rooms for the mission places and the map; the seed replaces the map's own zones. */
   zones?: VoiceZone[];
@@ -50,7 +50,6 @@ const PROPS: PlacedProp[] = [
 const VOXEL_M = 0.5;
 const FLOOR_VOXEL_Y = 2;
 
-/** A prop standing `dx` and `dz` metres east and south of the spawn point. */
 const propNear = (n: number, kindId: PlacedProp['kindId'], dx: number, dz: number, yawDeg = 0): PlacedProp => ({
   id: `placed:${n}`,
   kindId,
@@ -380,7 +379,6 @@ function seedZones(zones: VoiceZone[], { store, actions }: { store: Store; actio
   return store.subscribe((s) => s.voiceZones, apply);
 }
 
-/** Seeds map objects and re-seeds them whenever the map load replaces the objects. */
 function seedFurniture(furniture: NonNullable<Scenario['furniture']>, { store, actions }: { store: Store; actions: Actions }): () => void {
   const apply = () => {
     const { cubeSize, instances } = store.getState().worldObjects;
