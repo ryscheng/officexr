@@ -1,31 +1,39 @@
+export interface PhaseSample {
+  frames: number;
+  wallMs: number;
+  scriptMs: number;
+  taskMs: number;
+  commits: number;
+  draws: number;
+  tris: number;
+}
+
 export interface ModeStats {
   frames: number;
-  p50: number;
-  p95: number;
-  low1Fps: number;
-  stalls: number;
+  fps: number;
+  scriptMsPerFrame: number;
+  taskMsPerFrame: number;
+  commitsPerSec: number;
   drawCalls: number;
   triangles: number;
+  phases: Record<string, PhaseSample>;
 }
 
-export const STALL_MS = (1000 / 60) * 2;
+const round = (n: number, digits = 1) => Math.round(n * 10 ** digits) / 10 ** digits;
 
-export function percentile(sorted: readonly number[], p: number): number {
-  if (sorted.length === 0) return 0;
-  return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]!;
-}
-
-export function summarizeFrames(deltasMs: readonly number[], drawCalls: number, triangles: number): ModeStats {
-  const sorted = [...deltasMs].sort((a, b) => a - b);
-  const p99 = percentile(sorted, 0.99);
-  const round = (n: number) => Math.round(n * 10) / 10;
+export function summarizeMode(phases: Record<string, PhaseSample>): ModeStats {
+  const all = Object.values(phases);
+  const sum = (pick: (p: PhaseSample) => number) => all.reduce((total, p) => total + pick(p), 0);
+  const frames = Math.max(1, sum((p) => p.frames));
+  const wallMs = Math.max(1, sum((p) => p.wallMs));
   return {
-    frames: sorted.length,
-    p50: round(percentile(sorted, 0.5)),
-    p95: round(percentile(sorted, 0.95)),
-    low1Fps: p99 > 0 ? round(1000 / p99) : 0,
-    stalls: sorted.filter((d) => d > STALL_MS).length,
-    drawCalls,
-    triangles,
+    frames,
+    fps: round((frames * 1000) / wallMs),
+    scriptMsPerFrame: round(sum((p) => p.scriptMs) / frames, 2),
+    taskMsPerFrame: round(sum((p) => p.taskMs) / frames, 2),
+    commitsPerSec: round((sum((p) => p.commits) * 1000) / wallMs),
+    drawCalls: Math.round(sum((p) => p.draws) / frames),
+    triangles: Math.round(sum((p) => p.tris) / frames),
+    phases,
   };
 }

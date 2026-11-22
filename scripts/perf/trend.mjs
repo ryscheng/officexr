@@ -11,10 +11,10 @@ import { pathToFileURL } from 'node:url';
 
 export function trendTable(runs) {
   const modes = [...new Set(runs.flatMap((r) => Object.keys(r.modes)))];
-  const header = ['Date', 'Commit', ...modes.flatMap((m) => [`${m} p95 ms`, `${m} stalls`])];
+  const header = ['Date', 'Commit', ...modes.flatMap((m) => [`${m} script ms/frame`, `${m} commits/s`])];
   const lines = [`| ${header.join(' | ')} |`, `|${header.map(() => '---').join('|')}|`];
   for (const r of runs) {
-    const cells = modes.flatMap((m) => [r.modes[m]?.p95 ?? '', r.modes[m]?.stalls ?? '']);
+    const cells = modes.flatMap((m) => [r.modes[m]?.scriptMsPerFrame ?? '', r.modes[m]?.commitsPerSec ?? '']);
     lines.push(`| ${[(r.date ?? '').slice(0, 10), (r.commit ?? '').slice(0, 7), ...cells].join(' | ')} |`);
   }
   return lines.join('\n');

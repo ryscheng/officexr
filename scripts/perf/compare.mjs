@@ -2,19 +2,20 @@
 /**
  * Compares perf-turn.json runs of a base and a head checkout taken on one machine.
  *   node scripts/perf/compare.mjs --base base-1.json base-2.json base-3.json --head head-1.json ...
- * Prints a markdown table (mode x metric, base vs head, % change) and, with --fail-p95 <pct>,
- * exits 1 when p95 frame time is worse by more than that in two or more modes.
+ * Prints a markdown table (mode x metric, base vs head, % change) and, with --fail <pct>,
+ * exits 1 when main-thread script ms per frame or React commits per second is worse by more than that
+ * in two or more modes. Wall-clock fps is shown for information and never fails the check.
  */
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const METRICS = [
-  ['p50', 'p50 ms', 'lower'],
-  ['p95', 'p95 ms', 'lower'],
-  ['low1Fps', '1% low fps', 'higher'],
-  ['stalls', 'stalls', 'lower'],
-  ['drawCalls', 'draw calls', 'lower'],
-  ['triangles', 'triangles', 'lower'],
+  ['scriptMsPerFrame', 'script ms/frame', 'lower', true],
+  ['taskMsPerFrame', 'task ms/frame', 'lower', false],
+  ['commitsPerSec', 'React commits/s', 'lower', true],
+  ['drawCalls', 'draw calls', 'lower', false],
+  ['triangles', 'triangles', 'lower', false],
+  ['fps', 'fps (info)', 'higher', false],
 ];
 
 export function median(values) {
@@ -46,19 +47,21 @@ export function compare(baseRuns, headRuns, failPct = 25) {
   const regressedModes = [];
   for (const mode of Object.keys(base)) {
     if (!head[mode]) continue;
-    for (const [key, label, better] of METRICS) {
+    let modeRegressed = false;
+    for (const [key, label, better, gates] of METRICS) {
       const change = pctChange(base[mode][key], head[mode][key]);
       const worse = better === 'lower' ? change : -change;
       rows.push({ mode, key, label, base: base[mode][key], head: head[mode][key], change, worse });
-      if (key === 'p95' && worse > failPct) regressedModes.push(mode);
+      if (gates && worse > failPct) modeRegressed = true;
     }
+    if (modeRegressed) regressedModes.push(mode);
   }
   return { rows, regressedModes, fail: regressedModes.length >= 2 };
 }
 
 export function toMarkdown(result, runsPerSide, failPct = 25) {
   const lines = [
-    `Median of ${runsPerSide} runs per side, one machine, software WebGL: read the % change, not the absolute values.`,
+    `Median of ${runsPerSide} runs per side, production build, one machine, software WebGL: read the % change, not the absolute values.`,
     '',
     '| Mode | Metric | Base | Head | Change |',
     '|---|---|---:|---:|---:|',
@@ -71,10 +74,10 @@ export function toMarkdown(result, runsPerSide, failPct = 25) {
   lines.push('');
   lines.push(
     result.fail
-      ? `**Fail:** p95 frame time is more than ${failPct}% worse in ${result.regressedModes.join(', ')}.`
+      ? `**Fail:** script ms/frame or React commits/s is more than ${failPct}% worse in ${result.regressedModes.join(', ')}.`
       : result.regressedModes.length
-        ? `Warning: p95 frame time is more than ${failPct}% worse in ${result.regressedModes.join(', ')}; the check fails at two modes.`
-        : 'No p95 regression beyond the threshold.',
+        ? `Warning: script ms/frame or React commits/s is more than ${failPct}% worse in ${result.regressedModes.join(', ')}; the check fails at two modes.`
+        : 'No CPU or React commit regression beyond the threshold.',
   );
   return lines.join('\n');
 }
@@ -87,7 +90,7 @@ function main(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--base') target = base;
     else if (argv[i] === '--head') target = head;
-    else if (argv[i] === '--fail-p95') failPct = Number(argv[++i]);
+    else if (argv[i] === '--fail') failPct = Number(argv[++i]);
     else target.push(JSON.parse(readFileSync(argv[i], 'utf8')));
   }
   const result = compare(base, head, failPct);

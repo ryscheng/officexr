@@ -1,10 +1,13 @@
 # Camera-path performance check for pull requests.
 #
-# Runs tests/playwright/perf-turn.spec.ts on the merge base and on the PR head, in this one job on one
-# runner, three times each in alternation, and compares the medians (scripts/perf/compare.mjs).
-# CI has no GPU: Chromium renders with software WebGL, so absolute frame times mean nothing and are noisy.
-# Read the % change between base and head only. The job fails when p95 frame time is more than 25% worse
-# in two or more modes; one mode over the line is only a warning in the job summary.
+# Builds the HUD preview (production build) of the merge base and of the PR head, runs
+# tests/playwright/perf-turn.spec.ts twice on each in alternation in this one job on one runner, and
+# compares the medians (scripts/perf/compare.mjs). The steps live in scripts/perf/ab.sh, so the same
+# command runs locally.
+# CI has no GPU: Chromium renders with software WebGL, so wall-clock frame times mean nothing. The check
+# reads CPU work instead: main-thread script ms per rendered frame and React commits per second. It fails
+# when either is more than 25% worse in two or more camera modes; one mode over the line is only a warning
+# in the job summary.
 # Skipped when the diff touches no packages/world, packages/web or packages/sdk file.
 name: Perf A/B
 
@@ -17,6 +20,7 @@ on:
       - 'packages/sdk/**'
       - 'tests/playwright/perf-turn.spec.ts'
       - 'tests/playwright/lib/perfStats.ts'
+      - 'tests/playwright/lib/componentProbe.ts'
       - 'playwright.perf.config.ts'
       - 'scripts/perf/**'
       - '.github/workflows/perf-ab.yml'
@@ -29,7 +33,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      RUNS: 3
+      RUNS: 2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,25 +65,12 @@ jobs:
           pnpm --filter @officexr/world bake:layout platform
           (cd ../base && pnpm --filter @officexr/world bake:layout platform)
 
-      - name: Run the scenario on base and head
-        run: |
-          mkdir -p perf-results
-          # The base checkout runs the head's scenario, which needs nothing from the app under test.
-          cp playwright.perf.config.ts ../base/
-          cp tests/playwright/perf-turn.spec.ts ../base/tests/playwright/
-          cp tests/playwright/lib/perfStats.ts ../base/tests/playwright/lib/
-          for i in $(seq 1 "$RUNS"); do
-            (cd ../base && PERF_OUT="$GITHUB_WORKSPACE/perf-results/base-$i.json" pnpm exec playwright test -c playwright.perf.config.ts)
-            PERF_OUT="$GITHUB_WORKSPACE/perf-results/head-$i.json" pnpm exec playwright test -c playwright.perf.config.ts
-          done
-
-      - name: Compare
+      - name: Build, run the scenario on base and head, and compare
         run: |
           set +e
-          node scripts/perf/compare.mjs --fail-p95 25 \
-            --base perf-results/base-*.json --head perf-results/head-*.json > perf-results/summary.md
+          scripts/perf/ab.sh ../base "$RUNS"
           status=$?
-          cat perf-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          [ -f perf-results/summary.md ] && cat perf-results/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
       - name: Upload the runs
