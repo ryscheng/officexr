@@ -21,6 +21,7 @@ import {
   HELD_DENIED_KIND,
   isPlacedId,
   loginOf,
+  nearbyChatRangeM,
   parseWorldConstants,
   PROTOCOL,
   validateNetEvent,
@@ -48,6 +49,7 @@ import {
 } from './protocol.ts';
 import { isLogin, verifyJoinToken } from './join-token.ts';
 import { createDeskClaimHandler, type DeskClaimsApi } from './desk-claims.ts';
+import { BlockIndex, type BlocksApi } from './blocks.ts';
 import { createPlacedPropsHandler, type PlacedPropsApi } from './placed-props.ts';
 import { SpellCastGuard } from './spell-guard.ts';
 
@@ -81,6 +83,7 @@ export interface RealtimeServerOptions {
   /** Persists placed props. Unset means every placement is refused as `unavailable`
    * and rooms start with none. */
   placedProps?: PlacedPropsApi;
+  blocks?: BlocksApi;
   /** HMAC secret for join tokens. When set, every `hello` and every
    * `/rooms/:id/sessions` request must carry a token signed with it, and
    * the login comes from the token. Unset or empty means no enforcement. */
@@ -144,6 +147,7 @@ export class Room {
     readonly officeId: string,
     private readonly takeServerSeq: () => number,
     worldConstants: WorldConstants,
+    readonly blocks: BlockIndex = new BlockIndex(),
   ) {
     this.store = createStore({ selfId: SERVER_SELF_ID, officeId });
     this.bus = createBus();
@@ -182,6 +186,50 @@ export class Room {
     let limit = this.emoteLimits.get(userId);
     if (!limit) this.emoteLimits.set(userId, (limit = new EmoteRateLimit()));
     return limit.allow(now);
+  }
+
+  route(sender: PlayerId, event: NetEvent): void {
+    const nearby = event.kind === 'chat:nearby';
+    this.hub.broadcast(sender, event, (recipient) => !this.blocks.hides(sender, recipient) && (!nearby || this.withinChatRange(sender, recipient)));
+  }
+
+  canSee(viewer: PlayerId, other: PlayerId): boolean {
+    return !this.blocks.hides(viewer, other);
+  }
+
+  private withinChatRange(a: PlayerId, b: PlayerId): boolean {
+    const { players, worldConstants } = this.store.getState();
+    const [pa, pb] = [players[a]?.pos, players[b]?.pos];
+    return !!pa && !!pb && Math.hypot(pa.x - pb.x, pa.z - pb.z) <= nearbyChatRangeM(worldConstants);
+  }
+
+  reconcileVisibility(login: string, before: ReadonlyMap<string, boolean>): void {
+    for (const mine of this.sessionsOf(login)) {
+      for (const other of this.clients.values()) {
+        if (other === mine || loginOf(other.userId) === login) continue;
+        const wasHidden = before.get(`${mine.userId}|${other.userId}`);
+        const hidden = this.blocks.hides(mine.userId, other.userId);
+        if (wasHidden === hidden || wasHidden === undefined) continue;
+        for (const [viewer, seen] of [[mine, other], [other, mine]] as const) {
+          if (hidden) {
+            viewer.sendRaw(encodeFrame({ t: 'presence', joined: [], left: [seen.userId] }));
+          } else if (this.hub.present().includes(seen.userId)) {
+            viewer.sendRaw(encodeFrame({ t: 'presence', joined: [seen.userId], left: [] }));
+            viewer.sendRaw(encodeFrame({ t: 'snapshot', events: this.playerEvents(seen.userId) }));
+          }
+        }
+      }
+    }
+  }
+
+  hiddenPairs(login: string): Map<string, boolean> {
+    const pairs = new Map<string, boolean>();
+    for (const mine of this.sessionsOf(login)) {
+      for (const other of this.clients.values()) {
+        pairs.set(`${mine.userId}|${other.userId}`, this.blocks.hides(mine.userId, other.userId));
+      }
+    }
+    return pairs;
   }
 
   sessionsOf(login: string): WsClient[] {
@@ -336,92 +384,99 @@ export class Room {
       ...this.spellEffectEvents(),
     ];
     const present = new Set([...this.hub.present(), ...this.clients.keys()]);
-    let seq = 1;
+    for (const id of Object.keys(state.players)) {
+      if (id === joinerId || !present.has(id) || !this.canSee(joinerId, id)) continue;
+      events.push(...this.playerEvents(id));
+    }
+    return events;
+  }
 
-    for (const [id, p] of Object.entries(state.players)) {
-      if (id === joinerId || !present.has(id)) continue;
+  playerEvents(id: PlayerId): NetEvent[] {
+    const p = this.store.getState().players[id];
+    const events: NetEvent[] = [];
+    if (!p) return events;
+    let seq = 1;
+    events.push({
+      kind: 'presence:position',
+      v: 1,
+      actorId: id as PlayerId,
+      seq: seq++,
+      t: Date.now(),
+      pos: p.pos,
+      vel: p.vel,
+      yaw: p.yaw,
+      isAirborne: p.isAirborne ?? false,
+    });
+    if (p.seat != null) {
       events.push({
-        kind: 'presence:position',
+        kind: 'presence:seat',
         v: 1,
         actorId: id as PlayerId,
         seq: seq++,
         t: Date.now(),
-        pos: p.pos,
-        vel: p.vel,
-        yaw: p.yaw,
-        isAirborne: p.isAirborne ?? false,
+        instanceId: p.seat,
       });
-      if (p.seat != null) {
-        events.push({
-          kind: 'presence:seat',
-          v: 1,
-          actorId: id as PlayerId,
-          seq: seq++,
-          t: Date.now(),
-          instanceId: p.seat,
-        });
-      }
-      if (p.pose != null) {
-        events.push({
-          kind: 'presence:pose',
-          v: 1,
-          actorId: id as PlayerId,
-          seq: seq++,
-          t: Date.now(),
-          pose: p.pose,
-          rack: p.poseRack ?? null,
-        });
-      }
-      if (p.handRaised) {
-        events.push({
-          kind: 'presence:hand',
-          v: 1,
-          actorId: id as PlayerId,
-          seq: seq++,
-          t: Date.now(),
-          raised: true,
-        });
-      }
-      if (p.statusText || p.statusEmoji || p.focus) {
-        events.push({
-          kind: 'presence:status',
-          v: 1,
-          actorId: id as PlayerId,
-          seq: seq++,
-          t: Date.now(),
-          status: p.status,
-          mic: p.mic,
-          jitsiRoom: p.jitsiRoom,
-          jitsiParticipantId: p.jitsiParticipantId,
-          ...(p.statusText && { statusText: p.statusText }),
-          ...(p.statusEmoji && { statusEmoji: p.statusEmoji }),
-          ...(p.focus && { focus: true }),
-        });
-      }
-      // The store's default name is '', so a name means the player sent
-      // an avatar:update.
-      if (p.held != null) {
-        events.push({
-          kind: 'presence:held',
-          v: 1,
-          actorId: id as PlayerId,
-          seq: seq++,
-          t: Date.now(),
-          held: p.held,
-          stand: p.heldStand ?? null,
-        });
-      }
-      if (p.name) {
-        events.push({
-          kind: 'avatar:update',
-          v: 1,
-          actorId: id as PlayerId,
-          seq: seq++,
-          t: Date.now(),
-          avatar: p.avatar,
-          name: p.name,
-        });
-      }
+    }
+    if (p.pose != null) {
+      events.push({
+        kind: 'presence:pose',
+        v: 1,
+        actorId: id as PlayerId,
+        seq: seq++,
+        t: Date.now(),
+        pose: p.pose,
+        rack: p.poseRack ?? null,
+      });
+    }
+    if (p.handRaised) {
+      events.push({
+        kind: 'presence:hand',
+        v: 1,
+        actorId: id as PlayerId,
+        seq: seq++,
+        t: Date.now(),
+        raised: true,
+      });
+    }
+    if (p.statusText || p.statusEmoji || p.focus) {
+      events.push({
+        kind: 'presence:status',
+        v: 1,
+        actorId: id as PlayerId,
+        seq: seq++,
+        t: Date.now(),
+        status: p.status,
+        mic: p.mic,
+        jitsiRoom: p.jitsiRoom,
+        jitsiParticipantId: p.jitsiParticipantId,
+        ...(p.statusText && { statusText: p.statusText }),
+        ...(p.statusEmoji && { statusEmoji: p.statusEmoji }),
+        ...(p.focus && { focus: true }),
+      });
+    }
+    // The store's default name is '', so a name means the player sent
+    // an avatar:update.
+    if (p.held != null) {
+      events.push({
+        kind: 'presence:held',
+        v: 1,
+        actorId: id as PlayerId,
+        seq: seq++,
+        t: Date.now(),
+        held: p.held,
+        stand: p.heldStand ?? null,
+      });
+    }
+    if (p.name) {
+      events.push({
+        kind: 'avatar:update',
+        v: 1,
+        actorId: id as PlayerId,
+        seq: seq++,
+        t: Date.now(),
+        avatar: p.avatar,
+        name: p.name,
+      });
     }
     return events;
   }
@@ -453,6 +508,8 @@ export class RealtimeServer {
   private readonly sessionPolicy: RealtimeServerOptions['sessionPolicy'];
   private readonly deskClaims: DeskClaimsApi | undefined;
   private readonly placedProps: PlacedPropsApi | undefined;
+  private readonly blocksApi: BlocksApi | undefined;
+  private readonly blockIndex = new BlockIndex();
   private readonly claimLoads = new Map<Room, Promise<void>>();
   private readonly tokenSecret: string | undefined;
   private readonly now: () => number;
@@ -474,6 +531,7 @@ export class RealtimeServer {
     this.sessionPolicy = opts.sessionPolicy;
     this.deskClaims = opts.deskClaims;
     this.placedProps = opts.placedProps;
+    this.blocksApi = opts.blocks;
     this.tokenSecret = opts.tokenSecret || undefined;
     this.now = opts.now ?? Date.now;
     this.fetch = opts.fetch ?? globalThis.fetch;
@@ -483,6 +541,7 @@ export class RealtimeServer {
       opts.officeId ?? DEFAULT_OFFICE_ID,
       this.takeServerSeq,
       this.worldConstants,
+      this.blockIndex,
     );
     this.rooms.set(this.defaultRoom.officeId, this.defaultRoom);
     this.onCustomFrame(createDeskClaimHandler(this.deskClaims));
@@ -739,7 +798,7 @@ export class RealtimeServer {
     // ponytail: office ids and room count are unbounded; fine on a tailnet-only server.
     let room = this.rooms.get(id);
     if (!room) {
-      room = new Room(id, this.takeServerSeq, this.worldConstants);
+      room = new Room(id, this.takeServerSeq, this.worldConstants, this.blockIndex);
       this.rooms.set(id, room);
     }
     return room;
@@ -780,6 +839,27 @@ export class RealtimeServer {
       this.claimLoads.set(room, load);
     }
     return load;
+  }
+
+  /** A failed read keeps the login's last known blocks, or none at its first join: a backend outage must not lock people out. */
+  private async loadBlocks(login: string): Promise<void> {
+    if (!this.blocksApi) return;
+    try {
+      this.blockIndex.set(login, await this.blocksApi.blockedBy(login));
+    } catch (err) {
+      console.error('[realtime-server] loading blocks failed:', err);
+    }
+  }
+
+  async refreshBlocks(login: string): Promise<void> {
+    if (!this.blocksApi) return;
+    const before = new Map([...this.rooms.values()].map((room) => [room, room.hiddenPairs(login)] as const));
+    await this.loadBlocks(login);
+    for (const [room, pairs] of before) room.reconcileVisibility(login, pairs);
+  }
+
+  private forgetBlocksIfGone(login: string): void {
+    if (![...this.rooms.values()].some((room) => room.sessionsOf(login).length > 0)) this.blockIndex.forget(login);
   }
 
   pushOfficeProps(officeId: string, props: PlacedProp[]): void {
@@ -856,6 +936,7 @@ export class RealtimeServer {
             const hadClaims = joined.claimsLoaded;
             await this.ensureClaimsLoaded(joined, login);
             if (hadClaims) this.reloadClaims(joined, login);
+            await this.loadBlocks(login);
             if (ws.readyState !== ws.OPEN || !this.wss) return;
             room = joined;
             client = this.acceptClient(room, ws, { userId: frame.userId, login, helloSeq }, allowMulti);
@@ -903,7 +984,7 @@ export class RealtimeServer {
     }
 
     const channel = new InMemoryChannel(room.hub, userId);
-    const client = new WsClient(userId, ws, channel, helloSeq);
+    const client = new WsClient(userId, ws, channel, helloSeq, (other) => room.canSee(userId, other));
     room.clients.set(userId, client);
 
     // Wire the channel into the hub. _deliver routes hub broadcasts
@@ -917,7 +998,7 @@ export class RealtimeServer {
     ws.send(
       encodeFrame({
         t: 'hello-ack',
-        present: room.hub.present().filter((id) => id !== userId),
+        present: room.hub.present().filter((id) => id !== userId && room.canSee(userId, id)),
       }),
     );
     ws.send(encodeFrame({ t: 'snapshot', events: room.buildSnapshotFor(userId) }));
@@ -932,6 +1013,7 @@ export class RealtimeServer {
     if (room.clients.get(client.userId) !== client) return;
     room.clients.delete(client.userId);
     room.clearBodyState(client.userId);
+    this.forgetBlocksIfGone(loginOf(client.userId));
     this.dropIfEmpty(room);
     this.refreshClaimants(room, client.userId);
   }
@@ -968,15 +1050,17 @@ export class RealtimeServer {
         if (!v.ok || PROTOCOL[v.event.kind].authority === 'server' || v.event.actorId === SERVER_SELF_ID) return;
         // Trust frame.from from the client; the server doesn't enforce
         // identity (debug infra). Routing happens via the hub.
+        if ((v.event.kind === 'chat:nearby' || v.event.kind === 'chat:direct') && v.event.actorId !== client.userId) return;
+        if (v.event.kind === 'chat:direct' && v.event.targetId === client.userId) return;
         if (v.event.kind === 'emote:send' && !room.allowEmote(client.userId, Date.now())) return;
         if (v.event.kind === 'presence:held' && !room.acceptHeld(client.userId, v.event)) return;
         if (v.event.kind === 'spell:cast') {
           const vetted = room.vetCast(client.userId, v.event, Date.now());
           if (!vetted) return;
-          room.hub.broadcast(client.userId, vetted);
+          room.route(client.userId, vetted);
           return;
         }
-        room.hub.broadcast(client.userId, v.event);
+        room.route(client.userId, v.event);
         return;
       }
       case 'track-presence': {
@@ -1145,6 +1229,7 @@ export class WsClient {
     ws: WebSocket,
     channel: InMemoryChannel,
     readonly helloSeq: number,
+    private readonly canSee: (other: PlayerId) => boolean = () => true,
   ) {
     this.userId = userId;
     this.ws = ws;
@@ -1156,7 +1241,11 @@ export class WsClient {
       this.sendRaw(encodeFrame({ t: 'broadcast', from: event.actorId, event }));
     });
     this.offPresence = this.channel.onPresenceChange((joined, left) => {
-      this.sendRaw(encodeFrame({ t: 'presence', joined, left }));
+      const visibleJoined = joined.filter(this.canSee);
+      const visibleLeft = left.filter(this.canSee);
+      if (visibleJoined.length > 0 || visibleLeft.length > 0) {
+        this.sendRaw(encodeFrame({ t: 'presence', joined: visibleJoined, left: visibleLeft }));
+      }
     });
   }
 

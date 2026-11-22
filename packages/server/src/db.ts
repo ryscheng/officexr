@@ -4,6 +4,7 @@ import type { CreateOffice, OfficeCharacters, OfficeDeskClaims, OfficePlacedProp
 import type { CalendarLinks } from './calendarService';
 import { pgAllowlist, pgSessionStore, type IsLoginAllowed } from './auth';
 import { pgMissions } from './missionsDb';
+import { pgBlocks, pgReports } from './safetyDb';
 import type { Office, OfficeUpdate } from './shared';
 
 const UNIQUE_VIOLATION = '23505';
@@ -191,6 +192,8 @@ export function createDb(connectionString: string | undefined) {
     deskClaims,
     placedProps,
     missions: pgMissions(getPool),
+    blocks: pgBlocks(getPool),
+    reports: pgReports(getPool),
     calendarLinks,
     isLoginAllowed,
     sessionStore: () => pgSessionStore(getPool()),

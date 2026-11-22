@@ -6,3 +6,4 @@ export * from './spells/index.ts';
 export * from './placement/props.ts';
 export * from './placement/frames.ts';
 export * from './missions/types.ts';
+export * from './social/index.ts';

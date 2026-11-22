@@ -85,6 +85,12 @@ export function applyNetEventToStore(
       actions.applyRemoteChat(msg);
       return;
     }
+    case 'chat:nearby':
+      actions.applyRemoteChat({ id: `${event.actorId}:${event.seq}`, authorId: event.actorId, text: event.text, t: event.t, scope: 'nearby' });
+      return;
+    case 'chat:direct':
+      actions.applyRemoteChat({ id: `${event.actorId}:${event.seq}`, authorId: event.actorId, text: event.text, t: event.t, scope: 'direct', to: event.targetId });
+      return;
     case 'whiteboard:stroke':
       actions.applyRemoteStroke(event.stroke);
       return;

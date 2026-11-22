@@ -9,6 +9,8 @@ import { PreviewTokens } from './previewToken';
 import { signJaasToken, type JaasConfig } from './jaasToken';
 import { claimantDecorator, integrationsMiddleware, type CalendarIntegration, type SlackIntegration } from './integrations';
 import { missionsMiddleware } from './missions';
+import { safetyMiddleware } from './safety';
+import type { BlocksStore, ReportsStore } from './safetyStore';
 import { officeLookupMiddleware } from './officeLookup';
 import type { MissionsStore } from './missionsStore';
 import { configJsMiddleware } from './runtimeConfig';
@@ -21,6 +23,8 @@ export interface AppOptions {
   deskClaims: OfficeDeskClaims;
   placedProps: OfficePlacedProps;
   missions: MissionsStore;
+  blocks: BlocksStore;
+  reports: ReportsStore;
   createOffice: CreateOffice;
   updateOffice: UpdateOffice;
   isLoginAllowed: IsLoginAllowed;
@@ -33,7 +37,7 @@ export interface AppOptions {
   frontendOrigins?: string[];
   /** Parsed `COOKIE_DOMAIN`, applied to the session cookie. */
   cookieDomain?: string;
-  realtime: Pick<RealtimeServer, 'requestHandler' | 'pushOfficeProps' | 'hasLiveSession' | 'notifyLogin' | 'notifyOffice'>;
+  realtime: Pick<RealtimeServer, 'requestHandler' | 'pushOfficeProps' | 'hasLiveSession' | 'notifyLogin' | 'notifyOffice' | 'refreshBlocks'>;
   /** Must equal the realtime server's `OFFICEXR_REALTIME_TOKEN_SECRET`; unset disables `/api/realtime-token`. */
   realtimeTokenSecret?: string;
   /** Server-only JaaS signing settings (`jaasConfigFromEnv`); unset disables `/api/offices/:id/voice-token`. */
@@ -54,6 +58,8 @@ export async function createApp({
   deskClaims,
   placedProps,
   missions,
+  blocks,
+  reports,
   createOffice,
   updateOffice,
   isLoginAllowed,
@@ -123,6 +129,7 @@ export async function createApp({
     );
   }
   app.use(officeLookupMiddleware({ queryOffices }));
+  app.use(safetyMiddleware({ identity, blocks, reports, realtime }));
   app.use(missionsMiddleware({ identity, queryOffices, missions, presence: realtime }));
   app.use(
     apiMiddleware({
