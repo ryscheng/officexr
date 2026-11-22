@@ -13,8 +13,15 @@ const OFFICE = '11111111-1111-4111-8111-111111111111';
 const SELF = 'a@example.com';
 const OTHER = CHARACTERS.find((c) => c !== pickCharacterForPlayer(SELF))!;
 
-function FakePreview({ url }: { url: string }) {
-  return <p data-testid="preview">{url}</p>;
+function FakePreview({ url, onShown }: { url: string; onShown?: (url: string) => void }) {
+  return (
+    <>
+      <p data-testid="preview">{url}</p>
+      <button type="button" onClick={() => onShown?.(url)}>
+        finish loading
+      </button>
+    </>
+  );
 }
 
 const UPLOADED = {
@@ -79,6 +86,18 @@ describe('CharacterLook', () => {
         expect.objectContaining({ body: JSON.stringify({ characterId: UPLOADED.id }) }),
       ),
     );
+  });
+
+  it('covers the preview with the portrait until the 3D model is shown, and again after a change', () => {
+    setup();
+    const portrait = () => screen.getByTestId('preview-portrait');
+    expect(portrait().className).toContain('opacity-100');
+    fireEvent.click(screen.getByRole('button', { name: 'finish loading' }));
+    expect(portrait().className).toContain('opacity-0');
+    pick(OTHER);
+    expect(portrait().className).toContain('opacity-100');
+    fireEvent.click(screen.getByRole('button', { name: 'finish loading' }));
+    expect(portrait().className).toContain('opacity-0');
   });
 
   it('reports a failed save', async () => {
