@@ -4,7 +4,7 @@ export const HUD_BASE_URL = process.env.HUD_BASE_URL ?? 'http://localhost:5176';
 
 export const HUD_SCENARIOS = ['crowd', 'alone', 'wand', 'build', 'focus', 'full', 'missions', 'new-mission', 'chat'] as const;
 
-const HINT_NAMES = ['move', 'people', 'wave', 'alone', 'build'];
+const HINT_NAMES = ['move', 'people', 'alone', 'build'];
 
 export const HUD_STATES: Record<string, { scenario: string; steps: (string | RegExp)[]; stallMs?: number; hint?: string; only?: string[] }> = {
   rest: { scenario: 'crowd', steps: [] },
@@ -28,10 +28,13 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'conn-cannot': { scenario: 'crowd', steps: ['net:cannot'], stallMs: 400 },
   'conn-offline': { scenario: 'crowd', steps: ['net:offline'] },
   'conn-recovered': { scenario: 'crowd', steps: ['net:reconnecting', 'net:live'] },
+  'near-person': { scenario: 'near', steps: [] },
+  'ping-toast': { scenario: 'ping', steps: [] },
+  'invite-toast': { scenario: 'invite', steps: [] },
+  'wave-toast': { scenario: 'wave', steps: [] },
   'text-only': { scenario: 'text-only', steps: [] },
   'hint-move': { scenario: 'alone', steps: [], hint: 'move' },
   'hint-people': { scenario: 'spread', steps: [], hint: 'people' },
-  'hint-wave': { scenario: 'near', steps: [], hint: 'wave' },
   'hint-alone': { scenario: 'alone', steps: [], hint: 'alone', only: ['desktop', 'iphone13-portrait', 'iphone13-landscape'] },
   'hint-build': { scenario: 'chat', steps: ['Office menu'], hint: 'build', only: ['desktop'] },
   'interact-seat': { scenario: 'interact-seat', steps: ['place:14:12'] },

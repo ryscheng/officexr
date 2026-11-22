@@ -6,6 +6,7 @@ import { createDefaultApi } from '@officexr/world/app';
 import { ApplicationProvider, createViewYaw, PlayControlsProvider, ViewYawProvider } from '@officexr/world/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PingInbox } from '../ping/pingInbox';
+import { SocialToastQueue } from '../ping/socialToasts';
 import { createBuildSession } from '../place/buildSession';
 import { SettingsProvider } from '../room/Settings';
 import { fakePlayControls } from './fakePlayControls';
@@ -42,6 +43,9 @@ function setup() {
             officeName="Office"
             voice={null}
             pinger={{ ping() {}, isCoolingDown: () => false }}
+            inviter={{ ping() {}, isCoolingDown: () => false }}
+            waver={{ ping() {}, isCoolingDown: () => false }}
+            socialToasts={new SocialToastQueue()}
             pingInbox={new PingInbox()}
             missions={missions}
             placeMode={mode}

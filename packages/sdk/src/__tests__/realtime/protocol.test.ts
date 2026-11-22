@@ -394,5 +394,7 @@ describe('ping:send', () => {
     expect(validateNetEvent({ ...ping, targetId: 'b' }).ok).toBe(true);
     expect(validateNetEvent(ping).ok).toBe(false);
     expect(validateNetEvent({ ...ping, targetId: '' }).ok).toBe(false);
+    expect(validateNetEvent({ ...ping, targetId: 'b', intent: 'invite' }).ok).toBe(true);
+    expect(validateNetEvent({ ...ping, targetId: 'b', intent: 'shout' }).ok).toBe(false);
   });
 });

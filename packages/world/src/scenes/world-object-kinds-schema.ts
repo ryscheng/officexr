@@ -150,6 +150,8 @@ export interface WorldObjectKind {
   water?: WaterSpec;
   ride?: RideSpec;
   holdable?: HoldableSpec;
+  /** Head-and-shoulders WebP data URL of a `character` kind, so a character tile never downloads the model. */
+  portrait?: string;
 }
 
 export interface WaterSpec {
@@ -452,7 +454,14 @@ export function normalizeKind(raw: unknown, idx: number): WorldObjectKind {
     water: normalizeWater(k.water, k.rotationStepDeg, idx),
     ride: normalizeRide(k.ride, idx),
     holdable: normalizeHoldable(k.holdable, idx),
+    portrait: normalizePortrait(k.portrait),
   };
+}
+
+export const MAX_PORTRAIT_CHARS = 40_000;
+
+function normalizePortrait(raw: unknown): string | undefined {
+  return typeof raw === 'string' && raw.length <= MAX_PORTRAIT_CHARS && raw.startsWith('data:image/webp;base64,') ? raw : undefined;
 }
 
 /** Resolves kinds of a catalog by id, normalised; the last entry wins on a duplicated id. Throws on an invalid kind. */

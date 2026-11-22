@@ -29,8 +29,10 @@ import { HelpPage } from '../hud/settings/HelpPage';
 import { OfficePage } from '../hud/settings/OfficePage';
 import { StatusSection } from '../hud/settings/StatusSection';
 import { connectPingInbox, PingInbox } from '../ping/pingInbox';
+import { connectSocialToasts, SocialToastQueue } from '../ping/socialToasts';
 import { usePingReceiver } from '../ping/usePingReceiver';
-import { usePingSender } from '../ping/usePingSender';
+import { INVITE_COOLDOWN_MS, usePingSender } from '../ping/usePingSender';
+import { performanceNow } from '../hud/useNow';
 import { StatusHotkeys } from '../status/StatusHotkeys';
 import { PipContents } from '../pip/PipContents';
 import { popOutActions } from '../pip/popOutActions';
@@ -137,6 +139,11 @@ function PingInboxFeed({ bus, store, inbox }: { bus: Bus; store: Store; inbox: P
   return null;
 }
 
+function SocialToastFeed({ bus, store, queue }: { bus: Bus; store: Store; queue: SocialToastQueue }) {
+  useEffect(() => connectSocialToasts(bus, store, queue), [bus, store, queue]);
+  return null;
+}
+
 const calendarReturnTo = () => (API_ORIGIN ? window.location.href : `${window.location.pathname}${window.location.search}`);
 
 function World({ office: initialOffice, me, session, join, missionsClient, onRejoin = reloadPage, stallMs }: { office: Office; me: Identity; session: OfficeSession; join: JoinCheckControl; missionsClient: MissionsClient; onRejoin?: () => void; stallMs?: number }) {
@@ -153,6 +160,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
   }, []);
   usePreloadAvatars(local?.store ?? null, local?.selfId ?? null);
   const pingInbox = useMemo(() => new PingInbox(), [local]);
+  const socialToasts = useMemo(() => new SocialToastQueue(), [local]);
   const placeMode = useMemo(createPlaceMode, []);
   const requestPropOp = session.type === 'ready' ? session.requestPropOp : null;
   const localStore = local?.store ?? null;
@@ -195,6 +203,18 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
     }
   }, [session]);
   const pinger = usePingSender(sendPing);
+  const sendInvite = useCallback((id: PlayerId) => {
+    if (session.type === 'ready') {
+      session.office.sync.sendPing(id, 'invite');
+    }
+  }, [session]);
+  const inviter = usePingSender(sendInvite, performanceNow, INVITE_COOLDOWN_MS);
+  const sendWave = useCallback((id: PlayerId) => {
+    if (session.type === 'ready') {
+      session.office.sync.sendPing(id, 'wave');
+    }
+  }, [session]);
+  const waver = usePingSender(sendWave);
   const missions = useMissions(missionsClient, initialOffice.id, session.type === 'ready' ? session.subscribeMissionsChanged : undefined);
   const missionMarker = useMissionMarker(local?.store ?? null, missions.current);
   const integrations = useIntegrations();
@@ -270,7 +290,10 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         officeName={office.name}
         voice={ready.voice}
         pinger={pinger}
+        inviter={inviter}
+        waver={waver}
         pingInbox={pingInbox}
+        socialToasts={socialToasts}
         missions={missions}
         placeMode={placeMode}
         build={build}
@@ -314,6 +337,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
         <>
           <PingReceiver bus={session.local.bus} store={session.local.store} />
           <PingInboxFeed bus={session.local.bus} store={session.local.store} inbox={pingInbox} />
+          <SocialToastFeed bus={session.local.bus} store={session.local.store} queue={socialToasts} />
           <LocalPresence local={session.local} voice={session.voice} />
         </>
       )}

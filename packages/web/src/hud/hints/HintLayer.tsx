@@ -17,18 +17,15 @@ const TARGETS: Record<Layout, Partial<Record<HintName, Target>>> = {
   portrait: {
     move: { anchor: '[data-hud-item="Joystick"]', side: 'above' },
     people: { anchor: '[data-people-toggle]', side: 'above', align: 'end' },
-    wave: { anchor: '[data-hint-anchor="near"]', side: 'left-top' },
     alone: { anchor: '[data-map-toggle]', side: 'below', align: 'end', clearBelow: '[data-hud-zone="topCentre"]' },
   },
   landscape: {
     move: { anchor: '[data-hud-item="Joystick"]', side: 'above' },
     people: { anchor: '[data-people-toggle]', side: 'left' },
-    wave: { anchor: '[data-hint-anchor="near"]', side: 'above', align: 'end', pointAt: '[data-hint-anchor="speak"]' },
     alone: { anchor: '[data-map-toggle]', side: 'below', align: 'end', clearBelow: '[data-hud-zone="topCentre"]' },
   },
   desktop: {
     people: { anchor: '[data-people-toggle]', side: 'below', clearBelow: '[data-hud-zone="topLeft"]' },
-    wave: { anchor: '[data-hint-anchor="near"]', side: 'above', align: 'end', pointAt: '[data-hint-anchor="speak"]' },
     alone: { anchor: '[data-map-toggle]', side: 'below', align: 'end' },
   },
 };
@@ -67,7 +64,7 @@ function measure(name: HintName, layout: Layout, size: Size): HintPlacement | nu
   });
 }
 
-export function HintLayer({ hint, coarse, portrait, nearName, joystickFloats }: { hint: HintName | null; coarse: boolean; portrait: boolean; nearName: string | null; joystickFloats: boolean }) {
+export function HintLayer({ hint, coarse, portrait, joystickFloats }: { hint: HintName | null; coarse: boolean; portrait: boolean; joystickFloats: boolean }) {
   const [shown, setShown] = useState<{ name: HintName; text: string } | null>(null);
   const [visible, setVisible] = useState(false);
   const [placement, setPlacement] = useState<HintPlacement | null>(null);
@@ -76,14 +73,14 @@ export function HintLayer({ hint, coarse, portrait, nearName, joystickFloats }: 
 
   useEffect(() => {
     if (hint) {
-      setShown({ name: hint, text: hintCopy(hint, coarse, nearName, joystickFloats) });
+      setShown({ name: hint, text: hintCopy(hint, coarse, joystickFloats) });
       setVisible(true);
       return;
     }
     setVisible(false);
     const timer = setTimeout(() => setShown(null), FADE_MS);
     return () => clearTimeout(timer);
-  }, [hint, coarse, nearName, joystickFloats]);
+  }, [hint, coarse, joystickFloats]);
 
   const name = shown?.name;
   useLayoutEffect(() => {

@@ -30,6 +30,8 @@ export interface CharacterOption {
   id: string;
   label: string;
   url: string;
+  /** A ready-made portrait, when the catalog has one. */
+  portrait?: string;
 }
 
 /** Catalog characters by id, as {@link catalogCharacters} builds them. */
@@ -57,12 +59,12 @@ export function baseCharacterOptions(): CharacterOption[] {
 
 /** The catalog's `character` kinds as pickable characters. A kind whose id is a built-in name is left out, so it can't shadow that built-in. */
 export function catalogCharacters(
-  kinds: Iterable<Pick<WorldObjectKind, 'id' | 'label' | 'gltfPath' | 'category'>>,
+  kinds: Iterable<Pick<WorldObjectKind, 'id' | 'label' | 'gltfPath' | 'category' | 'portrait'>>,
 ): CatalogCharacters {
   const out = new Map<string, CharacterOption>();
   for (const kind of kinds) {
     if (kind.category === 'character' && !isCharacterName(kind.id)) {
-      out.set(kind.id, { id: kind.id, label: kind.label, url: modelUrl(kind.gltfPath) });
+      out.set(kind.id, { id: kind.id, label: kind.label, url: modelUrl(kind.gltfPath), ...(kind.portrait ? { portrait: kind.portrait } : {}) });
     }
   }
   return out;

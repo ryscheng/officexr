@@ -1,4 +1,4 @@
-import React, { type ReactNode } from 'react';
+import React, { useEffect, type ReactNode } from 'react';
 import type * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import { Adventurer, ANIMATION_URLS } from './Adventurer.tsx';
@@ -21,13 +21,20 @@ type CharacterPreviewCanvasProps = Omit<React.ComponentProps<typeof Adventurer>,
   groupRef?: React.Ref<THREE.Group>;
   /** Extra scene content, e.g. camera or input controllers. */
   children?: ReactNode;
+  /** Called with a model's URL once that model is on screen. */
+  onShown?: (url: string) => void;
 };
 
 const sameUrl = (url: string) => url;
 const modelUrls = (url: string) => [url, ...ANIMATION_URLS];
 
+function ReportShown({ url, onShown }: { url: string; onShown?: (url: string) => void }) {
+  useEffect(() => onShown?.(url), [url, onShown]);
+  return null;
+}
+
 /** A canvas showing one character, facing the camera, on an endless grid. */
-export function CharacterPreviewCanvas({ url, groupRef, children, motion = 'idle', ...adventurer }: CharacterPreviewCanvasProps) {
+export function CharacterPreviewCanvas({ url, groupRef, children, onShown, motion = 'idle', ...adventurer }: CharacterPreviewCanvasProps) {
   return (
     <Canvas
       camera={{ position: [0, 3.2, 4.5], fov: 45, near: 0.1, far: 200 }}
@@ -50,6 +57,7 @@ export function CharacterPreviewCanvas({ url, groupRef, children, motion = 'idle
             <ResetKeyErrorBoundary resetKey={shown} onError={logModelError(shown)}>
               {/* Remount on a model change so the animation mixer binds to the new model's bones. */}
               <Adventurer key={shown} url={shown} motion={motion} {...adventurer} />
+              <ReportShown url={shown} onShown={onShown} />
             </ResetKeyErrorBoundary>
           )}
         />
