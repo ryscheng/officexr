@@ -47,7 +47,7 @@ describe('BuildPalette', () => {
     render(ui);
     const radios = screen.getAllByRole('radio');
     expect(radios.map((r) => r.textContent)).toEqual(PLACEABLE_KINDS.map((k) => k.label));
-    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false', 'false']);
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(PLACEABLE_KINDS.map((_, i) => String(i === 0)));
   });
 
   it('selects the tapped kind', () => {
