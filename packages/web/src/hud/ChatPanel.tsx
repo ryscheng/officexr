@@ -12,6 +12,9 @@ import { PortraitSheet } from './ui/PortraitSheet';
 import { CHIP, TITLE_TEXT } from './ui/Panel';
 import { useEscapeLayer } from './useEscapeLayer';
 import { useChatVisibility, type ChatVisibility } from './useChatVisibility';
+import { EVERYONE, placeholderFor, scopeOfTarget, scopeTag, type ChatTarget } from '../social/chatScope';
+import { ScopeLine } from '../social/ScopeLine';
+import { useSocial } from '../social/SocialProvider';
 
 const MAX_MESSAGES = 50;
 const MAX_LENGTH = 500;
@@ -53,6 +56,21 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const history = useRef(createChatHistory()).current;
+  const { caps, officeName, directRequest } = useSocial();
+  const scoped = caps.nearbyChat || caps.directChat;
+  const [target, setTarget] = useState<ChatTarget>(EVERYONE);
+  const nameOf = (id: string) => names[id] || 'someone';
+  const people = useMemo(() => Object.entries(names).filter(([id, name]) => id !== selfId && name).map(([id, name]) => ({ id, name })), [names, selfId]);
+  const effective = target.type === 'direct' && !names[target.id] ? EVERYONE : target.type === 'nearby' && !caps.nearbyChat ? EVERYONE : target;
+
+  const handledRequests = useRef(directRequest?.count ?? 0);
+  useEffect(() => {
+    if (directRequest && directRequest.count > handledRequests.current && caps.directChat) {
+      handledRequests.current = directRequest.count;
+      setTarget({ type: 'direct', id: directRequest.id });
+      compose();
+    }
+  }, [directRequest, caps.directChat, compose]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -178,6 +196,7 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
       authorId: selfId,
       text,
       t: Date.now(),
+      ...scopeOfTarget(effective),
     });
     setDraft('');
     if (!portrait) {
@@ -217,11 +236,13 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
               {new Date(m.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
             <span className="font-bold text-hud-accent">{names[m.authorId] || m.authorId}: </span>
+            {scopeTag(m, selfId, nameOf) && <span className="mr-1 text-xs text-hud-text-2">({scopeTag(m, selfId, nameOf)})</span>}
             {m.text}
           </div>
         ))}
       </div>
     );
+  const scopeLine = scoped && <ScopeLine target={effective} people={people} onChange={setTarget} />;
   const composer = (
     <div className="flex shrink-0 items-center gap-2">
       <input
@@ -234,7 +255,7 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
         }}
         onFocus={compose}
         onKeyDown={onKeyDown}
-        placeholder={coarse ? 'Message' : 'Press Enter to chat'}
+        placeholder={scoped ? placeholderFor(effective, officeName, nameOf) : coarse ? 'Message' : 'Press Enter to chat'}
         enterKeyHint="send"
         className="min-w-0 flex-1 rounded-hud-control bg-hud-inset px-3 py-1.5 text-hud-text outline-none placeholder:text-hud-text-2 pointer-coarse:min-h-12 pointer-coarse:text-base"
       />
@@ -246,6 +267,7 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
     return (
       <PortraitSheet ref={containerRef} title="Chat" label="Chat" closeLabel="Collapse chat" fill onClose={() => handBack(collapse)}>
         {log}
+        {scopeLine}
         {composer}
       </PortraitSheet>
     );
@@ -261,6 +283,7 @@ export function ChatPanel({ store, actions, selfId, visibility, portrait = false
       className="pointer-events-auto flex w-86 max-w-[calc(100vw-24px)] flex-col gap-1.5 p-2 text-sm"
     >
       {log}
+      {scopeLine}
       {composer}
     </FoldablePanel>
   );

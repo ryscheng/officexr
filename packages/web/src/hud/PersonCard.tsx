@@ -1,4 +1,4 @@
-import { Bell, Hand, Mic, MicOff } from 'lucide-react';
+import { Bell, Ellipsis, Hand, MessageSquare, Mic, MicOff } from 'lucide-react';
 import { Button } from './ui/Button';
 import { firstName, personStatus, statusLine } from './peopleStatus';
 import { PersonAvatar } from './PersonAvatar';
@@ -15,9 +15,11 @@ export type PersonCardProps = {
   onWave: () => void;
   onToggleMute: () => void;
   onPing: () => void;
+  onMessage?: () => void;
+  onMore?: () => void;
 };
 
-export function PersonCard({ row, now, offline, muted, pingCoolingDown, compact, onGo, onWave, onToggleMute, onPing }: PersonCardProps) {
+export function PersonCard({ row, now, offline, muted, pingCoolingDown, compact, onGo, onWave, onToggleMute, onPing, onMessage, onMore }: PersonCardProps) {
   const status = personStatus(row, now);
   const statusText = row.type === 'peer' ? row.statusText : null;
   const first = firstName(row.name || row.label);
@@ -53,6 +55,18 @@ export function PersonCard({ row, now, offline, muted, pingCoolingDown, compact,
           <Bell aria-hidden className={icon} />
           {pingCoolingDown ? 'Pinged' : 'Ping'}
         </Button>
+        {onMessage && (
+          <Button className="min-h-12 px-2!" onClick={onMessage}>
+            <MessageSquare aria-hidden className={icon} />
+            Message
+          </Button>
+        )}
+        {onMore && (
+          <Button className="min-h-12 px-2!" onClick={onMore}>
+            <Ellipsis aria-hidden className={icon} />
+            More…
+          </Button>
+        )}
       </div>
       <p role="status" className="sr-only">
         {pingCoolingDown ? `Pinged ${first}` : ''}
