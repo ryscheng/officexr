@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Occluder } from './Occluder.ts';
 import { createInstancedGhostMaterial, disposeMaterial } from './ghostMaterial.ts';
+import { hasScreenGlow } from '../screenGlowShader.ts';
 import { isFloorLike, segmentBoxEntry, stepFade } from './occlusionMath.ts';
 
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -99,6 +100,7 @@ export class InstancedOccluder implements Occluder {
     if (this.active.size === 0) return;
     let colourDirty = false;
     for (const i of this.active) {
+      if (this.fade[i] < 1) colourDirty = this.syncScreenGlow(i) || colourDirty;
       const next = stepFade(this.fade[i], this.wanted.has(i), dtSec);
       if (next === this.fade[i]) {
         if (next === 1) this.active.delete(i);
@@ -118,12 +120,30 @@ export class InstancedOccluder implements Occluder {
     if (colourDirty && this.ghost?.instanceColor) this.ghost.instanceColor.needsUpdate = true;
   }
 
+  // Glow lives in the source's instanceColor (y: level, z: lit face); a ghost slot mirrors it so a faded screen stays lit.
+  private syncScreenGlow(i: number): boolean {
+    const source = this.mesh.instanceColor;
+    const target = this.ghost?.instanceColor;
+    const slot = this.slotOf.get(i);
+    if (!source || !target || slot === undefined) return false;
+    const s = source.array;
+    const t = target.array;
+    const changed = t[slot * 3 + 1] !== s[i * 3 + 1] || t[slot * 3 + 2] !== s[i * 3 + 2];
+    t[slot * 3 + 1] = s[i * 3 + 1];
+    t[slot * 3 + 2] = s[i * 3 + 2];
+    return changed;
+  }
+
   private ensureGhost(): THREE.InstancedMesh {
     if (this.ghost) return this.ghost;
     const base = this.mesh.material as THREE.Material;
     this.ghostMaterial = createInstancedGhostMaterial(base);
     const ghost = new THREE.InstancedMesh(this.mesh.geometry, this.ghostMaterial, this.count);
     ghost.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.count * 3).fill(1), 3);
+    if (hasScreenGlow(base)) {
+      const colours = ghost.instanceColor.array;
+      for (let i = 0; i < this.count; i++) colours[i * 3 + 1] = colours[i * 3 + 2] = 0;
+    }
     ghost.castShadow = false;
     ghost.receiveShadow = this.mesh.receiveShadow;
     ghost.raycast = () => undefined;
@@ -146,6 +166,7 @@ export class InstancedOccluder implements Occluder {
     ghost.setMatrixAt(slot, scratchMatrix);
     ghost.count = this.ghostOf.length;
     ghost.instanceMatrix.needsUpdate = true;
+    if (this.syncScreenGlow(i) && ghost.instanceColor) ghost.instanceColor.needsUpdate = true;
     this.mesh.setMatrixAt(i, ZERO_MATRIX);
     this.mesh.instanceMatrix.needsUpdate = true;
   }
@@ -162,6 +183,8 @@ export class InstancedOccluder implements Occluder {
       ghost.setMatrixAt(slot, scratchMatrix);
       const colours = (ghost.instanceColor as THREE.InstancedBufferAttribute).array;
       colours[slot * 3] = colours[last * 3];
+      colours[slot * 3 + 1] = colours[last * 3 + 1];
+      colours[slot * 3 + 2] = colours[last * 3 + 2];
       ghost.instanceMatrix.needsUpdate = true;
       (ghost.instanceColor as THREE.InstancedBufferAttribute).needsUpdate = true;
     }

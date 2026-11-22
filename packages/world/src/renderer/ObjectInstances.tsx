@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
+import { deskScreenLinks, isScreenKind } from '../app/desk-screens.ts';
+import { findScreenFaces } from './screenFace.ts';
+import { createScreenGlowMaterial } from './screenGlowShader.ts';
+import { useDeskScreenGlow, type DeskScreenDrive } from './useDeskScreenGlow.ts';
 import type { ObjectInstance, Store, WorldObjects } from '@officexr/sdk';
 import { heldStands, swapHeldStands } from '../motion/wand.ts';
 import { useStoreWorldObjects, type ExcludeInstance } from './useStoreWorldObjects.ts';
 import { logModelError } from './ModelWithFallback.tsx';
-import { DeskMonitors } from './DeskMonitors.tsx';
 import { ResetKeyErrorBoundary } from './ResetKeyErrorBoundary.tsx';
 import { useInstancedOccluder } from './occlusion/OccluderContext.tsx';
 import { modelUrl } from '../app/asset-url.ts';
@@ -166,28 +169,46 @@ function ObjectInstancesFromStore({ store, exclude, materialOverride }: FromStor
   //     simultaneously-mounted gameplay scene.
   //   - The gameplay regression tests already only run against
   //     Debug/Mugshot, which take this branch.
-  return (
-    <>
-      <ObjectInstancesView
-        worldObjects={snapshot}
-        materialOverride={materialOverride}
-        publishWindowMarker
-      />
-      <DeskMonitors store={store} worldObjects={snapshot} />
-    </>
+  const deskAreas = useStoreDeskAreas(store);
+  const { geometry } = useApplication();
+  const deskScreens = useMemo<DeskScreenDrive>(
+    () => ({
+      store,
+      links: new Map(deskScreenLinks(deskAreas, snapshot.instances, catalog, geometry).map((l) => [l.monitorInstanceId, l])),
+    }),
+    [store, deskAreas, snapshot.instances, catalog, geometry],
   );
+  return (
+    <ObjectInstancesView
+      worldObjects={snapshot}
+      materialOverride={materialOverride}
+      publishWindowMarker
+      deskScreens={deskScreens}
+    />
+  );
+}
+
+function useStoreDeskAreas(store: Store) {
+  const [areas, setAreas] = React.useState(() => store.getState().deskAreas);
+  useEffect(() => {
+    setAreas(store.getState().deskAreas);
+    return store.subscribe((s) => s.deskAreas, setAreas);
+  }, [store]);
+  return areas;
 }
 
 interface ViewProps {
   worldObjects: WorldObjects;
   materialOverride?: MaterialOverride;
   publishWindowMarker?: boolean;
+  deskScreens?: DeskScreenDrive;
 }
 
 function ObjectInstancesView({
   worldObjects,
   materialOverride,
   publishWindowMarker,
+  deskScreens,
 }: ViewProps) {
   const kinds = useCatalog();
   const kindById = useMemo(() => {
@@ -274,6 +295,7 @@ function ObjectInstancesView({
             kind={kind}
             instances={instances}
             materialOverride={materialOverride}
+            deskScreens={deskScreens}
           />
         </ResetKeyErrorBoundary>
       ))}
@@ -306,6 +328,7 @@ interface KindInstanceGroupProps {
   kind: WorldObjectKind;
   instances: ObjectInstance[];
   materialOverride?: MaterialOverride;
+  deskScreens?: DeskScreenDrive;
 }
 
 // TODO(task-01): kind.optimization is read but not yet acted on.
@@ -317,6 +340,7 @@ function KindInstanceGroup({
   kind,
   instances,
   materialOverride,
+  deskScreens,
 }: KindInstanceGroupProps) {
   const { geometry } = useApplication();
   const gltf = useGLTF(modelUrl(kind.gltfPath));
@@ -340,6 +364,21 @@ function KindInstanceGroup({
     kind.emissiveIntensity,
     materialOverride,
   ]);
+
+  const screen = useMemo(() => {
+    if (!deskScreens || !isScreenKind(kind)) return null;
+    const found = findScreenFaces(geom);
+    return found && { ...found, material: createScreenGlowMaterial(mat) };
+  }, [deskScreens !== undefined, kind, geom, mat]);
+  useEffect(
+    () => () => {
+      screen?.geometry.dispose();
+      screen?.material.dispose();
+    },
+    [screen],
+  );
+  const drawGeometry = screen?.geometry ?? geom;
+  const drawMaterial = screen?.material ?? mat;
 
   const meshRef = useRef<THREE.InstancedMesh>(null);
   // Allocate at least 1 instance so InstancedMesh isn't constructed
@@ -370,9 +409,10 @@ function KindInstanceGroup({
     // uninitialized matrices. Re-running this effect refills them so a
     // live tint/opacity edit from the Object editor doesn't scramble
     // object positions.
-  }, [instances, kind.scale, mat, geometry]);
+  }, [instances, kind.scale, drawMaterial, drawGeometry, geometry]);
 
-  useInstancedOccluder(meshRef, instances.length, instances, mat);
+  useDeskScreenGlow(meshRef, kind.id, instances, screen?.faces ?? null, deskScreens, drawMaterial);
+  useInstancedOccluder(meshRef, instances.length, instances, drawMaterial);
 
   // userData lets the editor's R3F overlay raycast and identify which
   // kind / instance was hit. The caller can read `intersection.object.userData.kindId`
@@ -380,7 +420,7 @@ function KindInstanceGroup({
   return (
     <instancedMesh
       ref={meshRef}
-      args={[geom, mat, capacity]}
+      args={[drawGeometry, drawMaterial, capacity]}
       castShadow
       receiveShadow
       userData={{ kindId: kind.id, isObjectInstanceMesh: true }}

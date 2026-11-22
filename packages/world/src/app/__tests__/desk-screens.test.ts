@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { DeskAreaState, ObjectInstance } from '@officexr/sdk';
 import type { WorldObjectKind } from '../../scenes/index.ts';
 import {
-  deskScreenPlacements,
-  MONITOR_INSET_M,
+  deskScreenLinks,
+  isChairOccupied,
+  isScreenKind,
   SCREEN_OFF,
   SCREEN_OFF_DELAY_SEC,
   SCREEN_POWER_UP_SEC,
@@ -16,16 +17,17 @@ import { createInstanceGeometry } from '../geometry-service.ts';
 const kinds: Record<string, Partial<WorldObjectKind>> = {
   chair: { id: 'chair', dimensions: { width: 1, height: 1, depth: 1 }, seats: [{ offset: { x: 0.5, y: 0.5, z: 0.5 }, yawDeg: 0 }] },
   desk: { id: 'desk', dimensions: { width: 3, height: 1, depth: 2 }, isDesk: true },
+  monitor: { id: 'monitor', label: 'Monitor', dimensions: { width: 1, height: 1, depth: 0.5 } },
+  lamp: { id: 'lamp', label: 'Lamp', dimensions: { width: 1, height: 1, depth: 1 } },
 };
 const catalog = { getKind: (id: string) => kinds[id] as WorldObjectKind | undefined };
 const geometry = createInstanceGeometry({ catalog, voxelSize: 1 });
 
-const inst = (id: string, kindId: string, x: number, z: number, yawDeg?: number): ObjectInstance => ({
+const inst = (id: string, kindId: string, x: number, z: number, y = 0): ObjectInstance => ({
   id,
   sourceCommandId: id,
   kindId,
-  position: [x, 0, z],
-  yawDeg,
+  position: [x, y, z],
 });
 const area = (id: string, seat: string | null, minX = 0, maxX = 8): DeskAreaState => ({
   id,
@@ -35,55 +37,72 @@ const area = (id: string, seat: string | null, minX = 0, maxX = 8): DeskAreaStat
   seatInstanceId: seat,
 });
 
-describe('deskScreenPlacements', () => {
-  it('stands the monitor on the desk top where the sitter looks, facing the chair', () => {
-    const instances = [inst('desk', 'desk', 2, 3), inst('chair', 'chair', 3, 1)];
-    const [p] = deskScreenPlacements([area('a', 'chair')], instances, catalog, geometry);
-    expect(p).toMatchObject({ deskAreaId: 'a', seatInstanceId: 'chair', deskInstanceId: 'desk' });
-    expect(p.position[0]).toBeCloseTo(3.5);
-    expect(p.position[1]).toBeCloseTo(1);
-    expect(p.position[2]).toBeCloseTo(3 + MONITOR_INSET_M);
-    expect(p.yawRad).toBeCloseTo(Math.PI);
+describe('isScreenKind', () => {
+  it('matches words in the id, label or model file name', () => {
+    expect(isScreenKind({ id: 'office_monitor_a' })).toBe(true);
+    expect(isScreenKind({ id: 'x', label: 'Laptop open' })).toBe(true);
+    expect(isScreenKind({ id: 'x', gltfPath: '/models/office/DeskComputer.glb?v=2' })).toBe(true);
+    expect(isScreenKind({ id: 'furniture_table_medium', label: 'Table Medium' })).toBe(false);
+    expect(isScreenKind({ id: 'x', label: 'Monitoring station' })).toBe(false);
+    expect(isScreenKind(undefined)).toBe(false);
+  });
+});
+
+describe('deskScreenLinks', () => {
+  const base = [inst('desk', 'desk', 2, 3), inst('chair', 'chair', 3, 1)];
+
+  it('links a monitor standing on the desk top and adds no instance', () => {
+    const instances = [...base, inst('mon', 'monitor', 3, 3, 1)];
+    const links = deskScreenLinks([area('a', 'chair')], instances, catalog, geometry);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ deskAreaId: 'a', seatId: 'chair', monitorInstanceId: 'mon' });
+    expect(links[0].chair).toEqual({ x: 3.5, z: 1.5 });
+    expect(instances).toHaveLength(3);
   });
 
-  it('follows the chair yaw', () => {
-    const instances = [inst('desk', 'desk', 2, 3), inst('chair', 'chair', 3, 6, 180)];
-    const [p] = deskScreenPlacements([area('a', 'chair')], instances, catalog, geometry);
-    expect(p.position[2]).toBeCloseTo(5 - MONITOR_INSET_M);
-    expect(Math.cos(p.yawRad)).toBeCloseTo(1);
+  it('ignores a monitor off the desk footprint, on the floor, or of another kind', () => {
+    const instances = [
+      ...base,
+      inst('beside', 'monitor', 7, 3, 1),
+      inst('floor', 'monitor', 3, 3, 0),
+      inst('lamp', 'lamp', 3, 3, 1),
+    ];
+    expect(deskScreenLinks([area('a', 'chair')], instances, catalog, geometry)).toEqual([]);
   });
 
-  it('falls back to the desk centre when the sitter looks past the desk', () => {
-    const instances = [inst('desk', 'desk', 2, 3), inst('chair', 'chair', 7, 1)];
-    const [p] = deskScreenPlacements([area('a', 'chair')], instances, catalog, geometry);
-    expect(p.position[0]).toBeCloseTo(3.5);
-    expect(p.position[2]).toBeCloseTo(4);
+  it('does nothing for a desk without a monitor', () => {
+    expect(deskScreenLinks([area('a', 'chair')], base, catalog, geometry)).toEqual([]);
   });
 
-  it('uses the desk of the occupied chair own area, not a nearer desk of another area', () => {
+  it('keeps a monitor with the desk area it stands in', () => {
     const instances = [
       inst('deskA', 'desk', 0, 3),
       inst('chairA', 'chair', 1, 1),
       inst('deskB', 'desk', 5, 3),
       inst('chairB', 'chair', 6, 1),
+      inst('monB', 'monitor', 6, 3, 1),
     ];
-    const places = deskScreenPlacements([area('a', 'chairA', 0, 4), area('b', 'chairB', 5, 9)], instances, catalog, geometry);
-    expect(places.map((p) => [p.deskAreaId, p.deskInstanceId])).toEqual([
-      ['a', 'deskA'],
-      ['b', 'deskB'],
-    ]);
+    const links = deskScreenLinks([area('a', 'chairA', 0, 4), area('b', 'chairB', 5, 9)], instances, catalog, geometry);
+    expect(links.map((l) => [l.deskAreaId, l.monitorInstanceId])).toEqual([['b', 'monB']]);
   });
 
-  it('skips areas with no chair, no desk, or several desks', () => {
-    const noChair = deskScreenPlacements([area('a', null)], [inst('desk', 'desk', 2, 3)], catalog, geometry);
-    const noDesk = deskScreenPlacements([area('a', 'chair')], [inst('chair', 'chair', 3, 1)], catalog, geometry);
-    const two = deskScreenPlacements(
-      [area('a', 'chair')],
-      [inst('d1', 'desk', 0, 3), inst('d2', 'desk', 4, 3), inst('chair', 'chair', 3, 1)],
-      catalog,
-      geometry,
-    );
-    expect([noChair, noDesk, two]).toEqual([[], [], []]);
+  it('skips areas with no chair or several desks', () => {
+    const monitor = inst('mon', 'monitor', 3, 3, 1);
+    expect(deskScreenLinks([area('a', null)], [...base, monitor], catalog, geometry)).toEqual([]);
+    const two = [inst('d1', 'desk', 0, 3), inst('d2', 'desk', 4, 3), inst('chair', 'chair', 3, 1), monitor];
+    expect(deskScreenLinks([area('a', 'chair')], two, catalog, geometry)).toEqual([]);
+  });
+});
+
+describe('isChairOccupied', () => {
+  const players = (...seats: Array<string | undefined>) =>
+    ({ players: Object.fromEntries(seats.map((seat, i) => [`p${i}`, { id: `p${i}`, seat }])) }) as never;
+
+  it('is true for any player on any seat of the chair instance', () => {
+    expect(isChairOccupied(players('chair'), 'chair')).toBe(true);
+    expect(isChairOccupied(players('chair#2'), 'chair')).toBe(true);
+    expect(isChairOccupied(players(undefined, 'other'), 'chair')).toBe(false);
+    expect(isChairOccupied(players(), 'chair')).toBe(false);
   });
 });
 
