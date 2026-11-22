@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { HintName } from '../hintFlags';
 import { HINT_DELAY_MS, HINT_GAP_MS, HINT_SHOW_MS, planHint, type PlanInput } from './hintPlan';
 
-const none: Record<HintName, boolean> = { wave: false, people: false, move: false, alone: false, build: false };
+const none: Record<HintName, boolean> = { people: false, move: false, alone: false, build: false };
 const input = (over: Partial<PlanInput>): PlanInput => ({
   now: 100_000,
   active: null,
@@ -21,16 +21,16 @@ describe('planHint', () => {
   });
 
   it('shows one hint at a time, in priority order', () => {
-    const waited = { wave: 0, people: 0, move: 0, alone: 0 };
-    const all = { ...none, wave: true, people: true, move: true, alone: true };
-    expect(planHint(input({ conditions: all, since: waited }))?.name).toBe('wave');
-    expect(planHint(input({ conditions: { ...all, wave: false }, since: waited }))?.name).toBe('people');
-    expect(planHint(input({ conditions: { ...all, wave: false, people: false }, since: waited }))?.name).toBe('move');
+    const waited = { people: 0, move: 0, alone: 0 };
+    const all = { ...none, people: true, move: true, alone: true };
+    expect(planHint(input({ conditions: all, since: waited }))?.name).toBe('people');
+    expect(planHint(input({ conditions: { ...all, people: false }, since: waited }))?.name).toBe('move');
+    expect(planHint(input({ conditions: { ...all, people: false, move: false }, since: waited }))?.name).toBe('alone');
   });
 
   it('keeps the running hint when a higher one becomes ready', () => {
     const running = { name: 'move' as const, at: 95_000 };
-    const next = planHint(input({ active: running, conditions: { ...none, move: true, wave: true }, since: { move: 0, wave: 0 } }));
+    const next = planHint(input({ active: running, conditions: { ...none, move: true, people: true }, since: { move: 0, people: 0 } }));
     expect(next).toBe(running);
   });
 
@@ -41,7 +41,7 @@ describe('planHint', () => {
   });
 
   it('ends a hint when its condition stops holding', () => {
-    expect(planHint(input({ active: { name: 'wave', at: 99_000 }, conditions: none }))).toBeNull();
+    expect(planHint(input({ active: { name: 'people', at: 99_000 }, conditions: none }))).toBeNull();
   });
 
   it('waits a short gap between two hints', () => {
@@ -51,9 +51,9 @@ describe('planHint', () => {
   });
 
   it('skips a hint that is no longer available', () => {
-    const conditions = { ...none, wave: true, people: true };
-    const next = planHint(input({ conditions, since: { wave: 0, people: 0 }, isAvailable: (n) => n !== 'wave' }));
-    expect(next?.name).toBe('people');
+    const conditions = { ...none, people: true, move: true };
+    const next = planHint(input({ conditions, since: { people: 0, move: 0 }, isAvailable: (n) => n !== 'people' }));
+    expect(next?.name).toBe('move');
   });
 
   it('shows the build hint at once', () => {

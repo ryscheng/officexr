@@ -3,6 +3,7 @@ import { Map as MapIcon, Menu, MessageSquare, Users } from 'lucide-react';
 import { loginOf, PLACEABLE_KINDS, type Actions, type OfficeState, type PlayerId, type Store } from '@officexr/sdk';
 import { isGroundTargetId, useCoarsePointer, usePlayControls, usePortrait, useStoreSelector } from '@officexr/world/top-down';
 import type { PingInbox } from '../ping/pingInbox';
+import type { SocialToastQueue } from '../ping/socialToasts';
 import type { PingSender } from '../ping/usePingSender';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { useVoiceFailed } from '../voice/useVoiceFailed';
@@ -29,8 +30,9 @@ import { MissionsPanel } from './missions/MissionsPanel';
 import { resolvePlace, type Spot } from './missions/missionRows';
 import { useOfficeSpots } from './missions/useOfficeSpots';
 import type { MissionsApi } from './missions/useMissions';
-import { NearYouButtons, NearYouCard, sameNear, selectNearest } from './NearYouCard';
+import { selectSomeoneNear } from './hints/someoneNear';
 import { PingInboxHud } from './PingInboxHud';
+import { SocialToastView } from './SocialToast';
 import { ArrivalBubble } from './ArrivalBubble';
 import { PlayerPortraits } from './playerPortrait';
 import { PeopleSheet } from './PeopleSheet';
@@ -61,6 +63,9 @@ export function OfficeHud({
   officeName,
   voice,
   pinger,
+  inviter,
+  waver,
+  socialToasts,
   pingInbox,
   missions,
   placeMode,
@@ -82,6 +87,9 @@ export function OfficeHud({
   officeName: string;
   voice: JaasVoiceAdapter | null;
   pinger: PingSender;
+  inviter: PingSender;
+  waver: PingSender;
+  socialToasts: SocialToastQueue;
   pingInbox: PingInbox;
   missions: MissionsApi;
   placeMode: PlaceModeStore;
@@ -139,15 +147,14 @@ export function OfficeHud({
   const plan = useMapPlan(store);
   const [toastsEl, setToastsEl] = useState<HTMLDivElement | null>(null);
   const toastShowing = useHasText(toastsEl);
-  const near = useStoreSelector(store, selectNearest, sameNear);
-  const nearName = near ? near.name.trim().split(' ')[0] : null;
+  const someoneNear = useStoreSelector(store, selectSomeoneNear);
   const canBuild = PLACEABLE_KINDS.length > 0;
-  const { hint, done: hintDone } = useFirstRunHint({
+  const { hint } = useFirstRunHint({
     coarse,
     canBuild,
     moving,
     headcount,
-    nearName,
+    someoneNear,
     menuOpen,
     otherSheetOpen: people || mapOpen || !!invite || (narrow && chatVisibility.mode === 'compose'),
     peopleOpen: people,
@@ -300,6 +307,17 @@ export function OfficeHud({
       <Menu aria-hidden className="size-5" />
     </RoundButton>
   );
+  const socialToast = (
+    <SocialToastView
+      queue={socialToasts}
+      store={store}
+      paused={people || mapOpen || menuOpen || !!invite}
+      onWaveBack={(id) => {
+        onWave();
+        waver.ping(id);
+      }}
+    />
+  );
   const call =
     inCall && (!voice || voiceFailed) ? (
       <TextOnlyCall voice={voice} />
@@ -313,7 +331,7 @@ export function OfficeHud({
       page={settings.page}
       pages={settingsPages}
       canBuild={canBuild}
-      buildHint={hint === 'build' && <HintPlate name="build" text={hintCopy('build', coarse, null)} arrow={{ side: 'up', offset: 28 }} visible className="relative ml-4 self-start" />}
+      buildHint={hint === 'build' && <HintPlate name="build" text={hintCopy('build', coarse)} arrow={{ side: 'up', offset: 28 }} visible className="relative ml-4 self-start" />}
       onPage={settings.openPage}
       onBack={settings.back}
       onClose={closeMenu}
@@ -339,6 +357,8 @@ export function OfficeHud({
       selfId={selfId}
       officeName={officeName}
       pinger={pinger}
+      inviter={inviter}
+      waver={waver}
       mutes={mutes}
       portrait={narrow}
       onWave={onWave}
@@ -380,9 +400,10 @@ export function OfficeHud({
           narrow ? (
             <div className="mt-(--hud-portrait-bar-row) flex flex-col items-center gap-2">
               <div className="min-h-12">{!building && missionsPanel}</div>
-              {inCall && <div aria-hidden className="h-[calc(var(--hud-portrait-call-row)-0.5rem)]" />}
+              {inCall && <div className="flex h-[calc(var(--hud-portrait-call-row)-0.5rem)] w-full justify-center">{call}</div>}
               <div ref={setToastsEl} className="contents">
                 <ArrivalBubble store={store} selfId={selfId} toast />
+                {socialToast}
                 {toasts}
                 <div ref={setCueSlot} />
                 {building && build && <BuildStatus mode={placeMode} build={build} store={store} />}
@@ -390,8 +411,10 @@ export function OfficeHud({
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 pointer-coarse:mt-16">
+              {coarse && call}
               <div ref={setToastsEl} className="contents">
                 <ArrivalBubble store={store} selfId={selfId} toast />
+                {socialToast}
                 {toasts}
                 <div ref={setCueSlot} />
                 {building && build && <BuildStatus mode={placeMode} build={build} store={store} />}
@@ -404,14 +427,13 @@ export function OfficeHud({
             <div className="flex items-start gap-2">
               {coarse && !narrow && !building && chatButton}
               {coarse && !narrow && !building && menuButton}
-              {!narrow && coarse && call}
               <div className={`flex items-start gap-2 transition-opacity ${fadeSecondary && !building ? 'opacity-40' : ''}`}>
                 {narrow && !building && menuButton}
                 <PingInboxHud inbox={pingInbox} store={store} />
                 {building ? <BuildDone mode={placeMode} /> : mapButton}
               </div>
             </div>
-            {narrow ? inCall && <div className="mt-(--hud-portrait-chip-row)">{call}</div> : !coarse && call}
+            {!narrow && !coarse && call}
           </>
         }
         rightEdge={
@@ -432,7 +454,6 @@ export function OfficeHud({
             <>
               <InteractionPrompt />
               {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} hiddenLogins={mutedLogins} onOpen={chatVisibility.compose} />}
-              {!building && <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />}
               <div className="flex items-center gap-2">
                 {peopleButton}
                 {chatButton}
@@ -441,18 +462,16 @@ export function OfficeHud({
           ) : coarse ? (
             <>
               <InteractionPrompt />
-              <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />
               {!building && peopleButton}
             </>
           ) : (
             <>
               <InteractionPrompt />
-              <NearYouCard store={store} onWave={onWave} onAct={() => hintDone('wave')} />
             </>
           ))
         }
       />
-      <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} nearName={nearName} joystickFloats={joystickFloats} />
+      <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} joystickFloats={joystickFloats} />
       {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} walk={mapWalk} onGoTo={goToOnMap} onClose={() => setMapOpen(false)} />}
     </PlayerPortraits>
   );

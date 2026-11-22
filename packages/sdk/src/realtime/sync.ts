@@ -1,7 +1,7 @@
 import type { Actions } from '../game-state/actions.ts';
 import type { Bus } from '../game-state/bus.ts';
 import type { Store } from '../game-state/store.ts';
-import type { EmoteId, OfficeState, PlayerId } from '../game-state/types.ts';
+import type { EmoteId, OfficeState, PingIntent, PlayerId } from '../game-state/types.ts';
 import type { Channel, ChannelStatus } from './channel.ts';
 import type { NetEvent } from './protocol.ts';
 import type { SpellCast } from '../spells/index.ts';
@@ -207,7 +207,7 @@ export class SyncEngine {
     this.broadcast(event);
   }
 
-  sendPing(targetId: PlayerId): void {
+  sendPing(targetId: PlayerId, intent?: PingIntent): void {
     this.broadcast({
       kind: 'ping:send',
       v: 1,
@@ -215,6 +215,7 @@ export class SyncEngine {
       seq: this.takeSeq(),
       t: this.clock.now(),
       targetId,
+      ...(intent && { intent }),
     });
   }
 

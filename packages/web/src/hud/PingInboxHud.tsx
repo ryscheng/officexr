@@ -56,7 +56,7 @@ export function PingInboxHud({ inbox, store }: { inbox: PingInbox; store: Store 
       {unread > 0 && !open && (
         <span
           aria-hidden
-          className="pointer-events-none absolute -top-1.5 -right-1.5 min-w-4 rounded-full border border-hud-rose bg-hud-rose-text px-1 text-center text-[10px] leading-3 font-bold text-hud-rose"
+          className="pointer-events-none absolute -top-1.5 -right-1.5 min-w-4 rounded-full bg-red-500 px-1 text-center text-[11px] leading-4 font-bold text-white"
         >
           {unread > MAX_BADGE ? `${MAX_BADGE}+` : unread}
         </span>

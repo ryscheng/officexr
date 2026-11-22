@@ -10,7 +10,7 @@ export type HintSignals = {
   canBuild: boolean;
   moving: boolean;
   headcount: number;
-  nearName: string | null;
+  someoneNear: boolean;
   menuOpen: boolean;
   otherSheetOpen: boolean;
   peopleOpen: boolean;
@@ -24,10 +24,9 @@ export function hintConditions(s: HintSignals): Record<HintName, boolean> {
   const free = !s.menuOpen && !s.otherSheetOpen && !s.toastShowing && !s.building;
   const quiet = free && !s.inCall;
   return {
-    wave: free && s.nearName !== null,
-    people: quiet && s.headcount > 1 && s.nearName === null,
+    people: quiet && s.headcount > 1 && !s.someoneNear,
     move: quiet,
-    alone: quiet && s.headcount === 1 && s.nearName === null,
+    alone: quiet && s.headcount === 1 && !s.someoneNear,
     build: !s.coarse && s.canBuild && s.menuOpen && !s.otherSheetOpen && !s.building,
   };
 }
@@ -38,10 +37,10 @@ export function useFirstRunHint(signals: HintSignals): { hint: HintName | null; 
   const activeRef = useRef<ActiveHint | null>(null);
   const since = useRef<Partial<Record<HintName, number>>>({});
   const lastEndedAt = useRef<number | null>(null);
-  const { coarse, canBuild, moving, headcount, nearName, menuOpen, otherSheetOpen, peopleOpen, mapOpen, building, inCall, toastShowing } = signals;
+  const { coarse, canBuild, moving, headcount, someoneNear, menuOpen, otherSheetOpen, peopleOpen, mapOpen, building, inCall, toastShowing } = signals;
   const conditions = useMemo(
-    () => hintConditions({ coarse, canBuild, moving, headcount, nearName, menuOpen, otherSheetOpen, peopleOpen, mapOpen, building, inCall, toastShowing }),
-    [coarse, canBuild, moving, headcount, nearName, menuOpen, otherSheetOpen, peopleOpen, mapOpen, building, inCall, toastShowing],
+    () => hintConditions({ coarse, canBuild, moving, headcount, someoneNear, menuOpen, otherSheetOpen, peopleOpen, mapOpen, building, inCall, toastShowing }),
+    [coarse, canBuild, moving, headcount, someoneNear, menuOpen, otherSheetOpen, peopleOpen, mapOpen, building, inCall, toastShowing],
   );
 
   const settle = useCallback((next: ActiveHint | null, at: number, counts = true) => {

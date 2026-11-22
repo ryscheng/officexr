@@ -267,9 +267,9 @@ test.describe('HUD coverage at rest', () => {
 
 test.describe('first-run hints', () => {
   const cases = [
-    { name: 'portrait 390x844', device: 'iphone13-portrait', viewport: { width: 390, height: 844 }, hints: ['hint-move', 'hint-people', 'hint-wave'] },
-    { name: 'landscape 844x390', device: 'iphone13-landscape', viewport: { width: 844, height: 390 }, screen: { width: 844, height: 390 }, hints: ['hint-move', 'hint-people', 'hint-wave'] },
-    { name: 'desktop 1280x800', device: 'desktop', viewport: { width: 1280, height: 800 }, hints: ['hint-move', 'hint-people', 'hint-wave'] },
+    { name: 'portrait 390x844', device: 'iphone13-portrait', viewport: { width: 390, height: 844 }, hints: ['hint-move', 'hint-people'] },
+    { name: 'landscape 844x390', device: 'iphone13-landscape', viewport: { width: 844, height: 390 }, screen: { width: 844, height: 390 }, hints: ['hint-move', 'hint-people'] },
+    { name: 'desktop 1280x800', device: 'desktop', viewport: { width: 1280, height: 800 }, hints: ['hint-move', 'hint-people'] },
     { name: 'small phone 320x568', device: 'iphone-se-portrait', viewport: { width: 320, height: 568 }, hints: ['hint-move', 'hint-people'] },
   ];
   for (const c of cases) {

@@ -12,10 +12,12 @@ import { PersonAvatar } from './PersonAvatar';
 import { PersonCard } from './PersonCard';
 import { personStatus, statusLine } from './peopleStatus';
 import { isPresent, usePresenceRows, type PresenceRow } from './presenceRows';
+import { busyReason } from './talkAvailability';
 import { useEscapeLayer } from './useEscapeLayer';
 import { useNow } from './useNow';
 
 const selectOffline = (s: OfficeState) => s.realtime.status === 'reconnecting';
+const selectInCall = (s: OfficeState) => s.players[s.selfId]?.jitsiRoom ?? null;
 
 const BACK_OR_CLOSE = 'flex min-h-12 min-w-12 items-center justify-center rounded-lg text-hud-text-2 hover:bg-hud-hover hover:text-hud-text focus-visible:outline-2 focus-visible:outline-hud-accent';
 
@@ -58,6 +60,8 @@ type PeopleSheetProps = {
   selfId: PlayerId;
   officeName: string;
   pinger?: PingSender;
+  inviter?: PingSender;
+  waver?: PingSender;
   mutes: LocalMutes;
   portrait: boolean;
   onWave: () => void;
@@ -66,7 +70,7 @@ type PeopleSheetProps = {
   clock?: () => number;
 };
 
-export function PeopleSheet({ store, selfId, officeName, pinger, mutes, portrait, onWave, onInvite, onClose, clock }: PeopleSheetProps) {
+export function PeopleSheet({ store, selfId, officeName, pinger, inviter, waver, mutes, portrait, onWave, onInvite, onClose, clock }: PeopleSheetProps) {
   const headingId = useId();
   const rows = usePresenceRows(store, selfId);
   const offline = useStoreSelector(store, selectOffline);
@@ -79,6 +83,9 @@ export function PeopleSheet({ store, selfId, officeName, pinger, mutes, portrait
 
   const count = rows.filter(isPresent).length;
   const open = rows.find((row) => row.id === openId && row.type === 'peer');
+  const myRoom = useStoreSelector(store, selectInCall);
+  const openRoom = useStoreSelector(store, (s: OfficeState) => (open ? (s.players[open.id]?.jitsiRoom ?? null) : null));
+  const busy = useStoreSelector(store, (s: OfficeState) => (open ? busyReason(s.players[open.id]) : null));
   const isMuted = (row: PresenceRow) => muted.has(loginOf(row.id));
   const go = (row: PresenceRow) => {
     goTo(row.id);
@@ -97,7 +104,18 @@ export function PeopleSheet({ store, selfId, officeName, pinger, mutes, portrait
       pingCoolingDown={pinger?.isCoolingDown(open.id) ?? false}
       compact={coarse && !portrait}
       onGo={() => go(open)}
-      onWave={onWave}
+      busyReason={busy}
+      waveCoolingDown={waver?.isCoolingDown(open.id) ?? false}
+      canInvite={myRoom !== null && openRoom !== myRoom}
+      inviteCoolingDown={inviter?.isCoolingDown(open.id) ?? false}
+      onWave={() => {
+        onWave();
+        waver?.ping(open.id);
+      }}
+      onInviteToTalk={() => {
+        inviter?.ping(open.id);
+        focusWorld();
+      }}
       onToggleMute={() => mutes.toggle(loginOf(open.id))}
       onPing={() => {
         pinger?.ping(open.id);

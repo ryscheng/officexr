@@ -27,7 +27,7 @@ export function usePingReceiver(bus: Bus, store: Store, deps: PingReceiverDeps =
   useEffect(() => deps.prepare(), [deps]);
   useEffect(
     () =>
-      bus.on('ping:received', ({ fromId }) => {
+      bus.on('ping:received', ({ fromId, intent }) => {
         // The ping inbox still records it; only the sound and notification stay quiet.
         const { players, selfId } = store.getState();
         if (players[selfId]?.focus) {
@@ -35,7 +35,9 @@ export function usePingReceiver(bus: Bus, store: Store, deps: PingReceiverDeps =
         }
         const prefs = deps.readPrefs();
         deps.play(prefs.sound, catalog);
-        deps.notify(prefs, senderName(store, fromId));
+        if (!intent || intent === 'ping') {
+          deps.notify(prefs, senderName(store, fromId));
+        }
       }),
     [bus, store, catalog, deps],
   );
