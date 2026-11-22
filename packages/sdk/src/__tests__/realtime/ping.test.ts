@@ -24,6 +24,19 @@ describe('ping', () => {
     expect(atC).toEqual([]);
   });
 
+  it('carries an invite or wave intent to the target', async () => {
+    const h = createMultiClientHarness();
+    const a = await h.add('A');
+    const b = await h.add('B');
+    const bBus: GameEvent[] = [];
+    b.bus.on('ping:received', (e) => bBus.push(e));
+
+    a.sync.sendPing('B', 'invite');
+    a.sync.sendPing('B', 'wave');
+
+    expect(bBus.map((e) => e.kind === 'ping:received' && e.intent)).toEqual(['invite', 'wave']);
+  });
+
   it('delivers nowhere when the target is the sender or not attached', async () => {
     const h = createMultiClientHarness();
     const a = await h.add('A');

@@ -30,6 +30,9 @@ export type HeldItem = (typeof HELD_ITEMS)[number];
 export const EMOTE_IDS = ['wave', 'thumbs-up', 'heart', 'laugh', 'clap', 'party', 'question'] as const;
 export type EmoteId = (typeof EMOTE_IDS)[number];
 
+export const PING_INTENTS = ['ping', 'invite', 'wave'] as const;
+export type PingIntent = (typeof PING_INTENTS)[number];
+
 export const EMOTE_INFO: Record<EmoteId, { glyph: string; label: string }> = {
   wave: { glyph: '👋', label: 'Wave' },
   'thumbs-up': { glyph: '👍', label: 'Thumbs up' },
@@ -87,11 +90,15 @@ export type MicState = 'none' | 'muted' | 'silent' | 'speaking';
 
 export type DepartedPlayer = { name: string; leftAt: number };
 
+export type ChatScope = 'nearby' | 'direct';
+
 export type ChatMessage = {
   id: string;
   authorId: PlayerId;
   text: string;
   t: number;
+  scope?: ChatScope;
+  to?: PlayerId;
 };
 
 export type Stroke = {
@@ -484,7 +491,7 @@ export type GameEvent =
   | { kind: 'whiteboard:stroke'; stroke: Stroke }
   | { kind: 'combat:hit'; targetId: PlayerId; dmg: number; byId: PlayerId }
   | { kind: 'combat:killed'; targetId: PlayerId; byId: PlayerId }
-  | { kind: 'ping:received'; fromId: PlayerId; at: number }
+  | { kind: 'ping:received'; fromId: PlayerId; at: number; intent?: PingIntent }
   | { kind: 'spell:cast'; casterId: PlayerId; cast: SpellCast; at: number }
   | { kind: 'poke:received'; fromId: PlayerId; targetId: PlayerId | null; at: number }
   | { kind: 'emote:received'; fromId: PlayerId; emote: EmoteId; at: number }

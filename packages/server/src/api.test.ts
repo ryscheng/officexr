@@ -26,6 +26,7 @@ import { PREVIEW_TOKEN_PARAM } from './previewTokenBrowser';
 import { createGoogleStrategy, createSessionReader, emailDomain, parseCookieDomain, safeReturnTarget, verifyGoogleProfile, type AuthConfig, type GoogleStrategyFactory, type IsLoginAllowed } from './auth';
 import type { Identity, Office } from './shared';
 import { createMemoryMissions } from './missionsStore';
+import { createMemoryBlocks, createMemoryReports } from './safetyStore';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const OTHER = '33333333-3333-4333-8333-333333333333';
@@ -200,6 +201,8 @@ async function start(
     deskClaims,
     placedProps,
     missions: createMemoryMissions(),
+    blocks: createMemoryBlocks(),
+    reports: createMemoryReports(),
     createOffice,
     updateOffice,
     isLoginAllowed,

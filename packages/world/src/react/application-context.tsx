@@ -28,6 +28,7 @@ import type {
   WorldAABB,
 } from '../app/types.ts';
 import type { WorldObjectKind } from '../scenes/world-object-kinds-schema.ts';
+import { supplyCharacterPortraits } from '../characters/portraitCache.ts';
 import { catalogCharacters, type CatalogCharacters } from '../characters/registry.ts';
 
 const ApplicationContext = createContext<ApplicationApi | null>(null);
@@ -95,7 +96,11 @@ export function useCatalog(): readonly WorldObjectKind[] {
 /** The catalog's `character` kinds as pickable characters; re-renders on catalog changes. */
 export function useCatalogCharacters(): CatalogCharacters {
   const kinds = useCatalog();
-  return useMemo(() => catalogCharacters(kinds), [kinds]);
+  return useMemo(() => {
+    const characters = catalogCharacters(kinds);
+    supplyCharacterPortraits(characters.values());
+    return characters;
+  }, [kinds]);
 }
 
 /**

@@ -102,7 +102,7 @@ function withKind(
   let kind: WorldObjectKind;
   try {
     kind = normalizeKind(
-      { ...(existing ?? newWorldObjectKind({ id, label, gltfPath, swatch: '#64748b', category: 'furniture' })), gltfPath, sourceObject },
+      { ...(existing ?? newWorldObjectKind({ id, label, gltfPath, swatch: '#64748b', category: 'furniture' })), gltfPath, sourceObject, portrait: existing?.gltfPath === gltfPath ? existing.portrait : undefined },
       0,
     );
   } catch (err) {

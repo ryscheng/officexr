@@ -40,6 +40,29 @@ function LookOption({ option, selected, onSelect }: { option: CharacterOption; s
   );
 }
 
+type PreviewProps = { url: string; onShown?: (url: string) => void };
+
+function PreviewWithPortrait({ url, Preview }: { url: string; Preview: ComponentType<PreviewProps> }) {
+  const portrait = useCharacterPortrait(url);
+  const [shownUrl, setShownUrl] = useState<string | null>(null);
+  const covered = shownUrl !== url;
+  return (
+    <div className="relative h-[140px] shrink-0 overflow-hidden rounded-hud-control bg-hud-inset">
+      <Preview url={url} onShown={setShownUrl} />
+      {portrait && (
+        <img
+          src={portrait}
+          alt=""
+          aria-hidden
+          data-testid="preview-portrait"
+          draggable={false}
+          className={`pointer-events-none absolute inset-0 size-full bg-hud-inset object-contain transition-opacity duration-200 ${covered ? 'opacity-100' : 'opacity-0'}`}
+        />
+      )}
+    </div>
+  );
+}
+
 export function CharacterLook({
   local,
   onSaveResult,
@@ -48,7 +71,7 @@ export function CharacterLook({
 }: {
   local: PersistentLocalState;
   onSaveResult: SaveResult;
-  Preview?: ComponentType<{ url: string }>;
+  Preview?: ComponentType<PreviewProps>;
   fetchFn?: typeof apiFetch;
 }) {
   const catalog = useCatalogCharacters();
@@ -56,9 +79,7 @@ export function CharacterLook({
   const options = [...baseCharacterOptions(), ...catalogCharacterOptions(catalog)];
   return (
     <>
-      <div className="h-[140px] shrink-0 overflow-hidden rounded-hud-control bg-hud-inset">
-        <Preview url={character.url} />
-      </div>
+      <PreviewWithPortrait url={character.url} Preview={Preview} />
       <h3 className="px-1 text-sm font-semibold text-hud-text-2">Look</h3>
       <div role="radiogroup" aria-label="Look" className="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2">
         {options.map((option) => (

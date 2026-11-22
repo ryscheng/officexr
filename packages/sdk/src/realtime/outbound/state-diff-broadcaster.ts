@@ -1,6 +1,7 @@
 import type { Store } from '../../game-state/store.ts';
 import type {
   CharacterConfigs,
+  ChatMessage,
   OfficeState,
   WorldMap,
   WorldObjects,
@@ -63,6 +64,14 @@ export class StateDiffBroadcaster {
     this.takeSeq = opts.takeSeq;
   }
 
+  private chatEvent(msg: ChatMessage): NetEvent | null {
+    const head = { v: 1 as const, actorId: msg.authorId, seq: this.takeSeq(), t: this.clock.now(), text: msg.text };
+    if (msg.scope === 'direct') {
+      return msg.to ? { ...head, kind: 'chat:direct', targetId: msg.to } : null;
+    }
+    return { ...head, kind: msg.scope === 'nearby' ? 'chat:nearby' : 'chat:message' };
+  }
+
   /** Record current state as the baseline so the first real mutation
    * is treated as a delta against startup, not absorbed into it. */
   captureBaseline(): void {
@@ -79,15 +88,9 @@ export class StateDiffBroadcaster {
     if (next.chat.length > prev.chat.length) {
       const added = next.chat.slice(this.lastChatLen);
       for (const msg of added) {
-        if (msg.authorId === next.selfId) {
-          this.broadcast({
-            kind: 'chat:message',
-            v: 1,
-            actorId: next.selfId,
-            seq: this.takeSeq(),
-            t: this.clock.now(),
-            text: msg.text,
-          });
+        const event = msg.authorId === next.selfId ? this.chatEvent(msg) : null;
+        if (event) {
+          this.broadcast(event);
         }
       }
       this.lastChatLen = next.chat.length;

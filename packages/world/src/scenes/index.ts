@@ -111,6 +111,7 @@ export {
   isYawAllowed,
   nextAllowedYaw,
   DEFAULT_ROTATION_STEP_DEG,
+  MAX_PORTRAIT_CHARS,
 } from './world-object-kinds-schema.ts';
 // Module-globals for the kind catalog were removed in the three-layer
 // architecture refactor. Consume the catalog through the application

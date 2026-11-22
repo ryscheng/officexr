@@ -54,10 +54,18 @@ export function isFloorLike(heightM: number): boolean {
   return heightM < FLOOR_LIKE_HEIGHT;
 }
 
-export function stepFade(current: number, faded: boolean, dtSec: number): number {
+export function fadeTarget(faded: boolean, cut: boolean): number {
+  if (cut) return 0;
+  return faded ? FADED_OPACITY : 1;
+}
+
+export function stepToward(current: number, target: number, dtSec: number): number {
   const rate = (1 - FADED_OPACITY) / FADE_SECONDS;
-  const target = faded ? FADED_OPACITY : 1;
   const step = rate * dtSec;
   if (current < target) return Math.min(target, current + step);
   return Math.max(target, current - step);
+}
+
+export function stepFade(current: number, faded: boolean, dtSec: number): number {
+  return stepToward(current, fadeTarget(faded, false), dtSec);
 }

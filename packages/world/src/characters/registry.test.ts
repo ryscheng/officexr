@@ -27,6 +27,12 @@ describe('catalogCharacters', () => {
     expect(catalog.get(NECRO)).toEqual({ id: NECRO, label: 'Necromancer', url: `/models/packs/${NECRO}.glb` });
   });
 
+  it('carries a catalog portrait onto its character', () => {
+    const portrait = 'data:image/webp;base64,AAAA';
+    const withPortrait = catalogCharacters([{ id: 'p/Druid', label: 'Druid', gltfPath: '/models/p/Druid.glb', category: 'character', portrait }]);
+    expect(withPortrait.get('p/Druid')?.portrait).toBe(portrait);
+  });
+
   it('lists the built-ins first, then the catalog by label', () => {
     expect(characterOptions(catalog).map((c) => c.label)).toEqual([...CHARACTERS.map((c) => c.replace('_', ' ')), 'Druid', 'Necromancer']);
   });

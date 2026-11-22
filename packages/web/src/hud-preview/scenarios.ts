@@ -1,4 +1,4 @@
-import type { Actions, DeskClaimant, EmoteId, PlacedProp, PlayerId, PlayerState, Store, VoiceZone } from '@officexr/sdk';
+import type { Actions, DeskClaimant, EmoteId, PingIntent, PlacedProp, PlayerId, PlayerState, Store, VoiceZone } from '@officexr/sdk';
 import { PREVIEW_ZONES } from './previewMissions';
 
 export const SELF_ID = 'avery@example.test';
@@ -21,6 +21,7 @@ export interface Scenario {
   spellOn?: { target: PlayerId; caster: PlayerId };
   emotes?: { from: PlayerId; emote: EmoteId }[];
   poke?: PlayerId;
+  pings?: { from: PlayerId; intent?: PingIntent }[];
   /** Accessible names clicked in order once the HUD is up, so a scenario can open a panel. */
   steps?: string[];
   /** Desks in metres east and south of the spawn point, each with a chair and its claimant. */
@@ -177,6 +178,36 @@ export const SCENARIOS: Record<string, Scenario> = {
     call: [],
     props: PROPS,
     textOnly: true,
+  },
+  ping: {
+    id: 'ping',
+    title: 'A ping from a person who is not near',
+    self: {},
+    players: [{ id: 'bao@example.test', name: 'Bao Tran', at: [-9, -6] }, ...crowd.slice(2, 3)],
+    chat: [],
+    call: [],
+    props: [],
+    pings: [{ from: 'bao@example.test' }],
+  },
+  invite: {
+    id: 'invite',
+    title: 'An invitation to talk from a person who is not near',
+    self: {},
+    players: [{ id: 'bao@example.test', name: 'Bao Tran', at: [-9, -6] }],
+    chat: [],
+    call: [],
+    props: [],
+    pings: [{ from: 'bao@example.test', intent: 'invite' }],
+  },
+  wave: {
+    id: 'wave',
+    title: 'A wave from a person who is not near',
+    self: {},
+    players: [{ id: 'bao@example.test', name: 'Bao Tran', at: [-9, -6] }],
+    chat: [],
+    call: [],
+    props: [],
+    pings: [{ from: 'bao@example.test', intent: 'wave' }],
   },
   near: {
     id: 'near',
@@ -350,6 +381,7 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
     const t = NOW();
     for (const e of scenario.emotes ?? []) actions.receiveEmote(e.from, e.emote, t);
     if (scenario.poke) actions.receivePoke(scenario.poke, SELF_ID, t);
+    for (const p of scenario.pings ?? []) actions.receivePing(p.from, t, p.intent);
     if (scenario.spellOn) {
       actions.receiveSpellCast(scenario.spellOn.caster, {
         spell: 'levitate',

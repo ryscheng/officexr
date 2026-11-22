@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import type { Occluder } from './Occluder.ts';
 import { createMeshGhostMaterial, disposeMaterial, setGhostOpacity } from './ghostMaterial.ts';
-import { isFloorLike, segmentBoxEntry, stepFade } from './occlusionMath.ts';
+import { isAboveCutPlane, isOverheadCover, isRoofName, ROOF_REACH, withinCutawayRadius } from './cutawayMath.ts';
+import { fadeTarget, isFloorLike, segmentBoxEntry, stepToward } from './occlusionMath.ts';
 
 export const MAX_RAYCAST_TRIANGLES = 6000;
+const MIN_OVERHEAD_BOTTOM = 1.5;
 
 const raycaster = new THREE.Raycaster();
 const rayOrigin = new THREE.Vector3();
@@ -38,15 +40,34 @@ export function isOccluderMesh(mesh: THREE.Mesh): boolean {
   return !isFloorLike(box.max.y - box.min.y);
 }
 
+export function isOverheadMesh(mesh: THREE.Mesh): boolean {
+  mesh.updateWorldMatrix(true, false);
+  const geometry = mesh.geometry;
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
+  const box = new THREE.Box3().copy(geometry.boundingBox as THREE.Box3).applyMatrix4(mesh.matrixWorld);
+  return box.min.y > MIN_OVERHEAD_BOTTOM;
+}
+
 export class MeshOccluder implements Occluder {
   private fade = 1;
   private wanted = false;
+  private cut = false;
+  private readonly named: boolean;
+  private readonly bounds = new THREE.Box3();
+  private readonly boundsCentre = new THREE.Vector3();
+  private readonly boundsRadius: number;
   private ghost: THREE.Mesh | null = null;
   private readonly sourceVisible: boolean;
 
-  constructor(private readonly mesh: THREE.Mesh) {
+  constructor(private readonly mesh: THREE.Mesh, private readonly fadeable = true) {
     this.sourceVisible = mesh.visible;
     mesh.updateWorldMatrix(true, false);
+    this.named = isRoofName(mesh.name);
+    const geometry = mesh.geometry;
+    if (!geometry.boundingBox) geometry.computeBoundingBox();
+    this.bounds.copy(geometry.boundingBox as THREE.Box3).applyMatrix4(mesh.matrixWorld);
+    this.bounds.getCenter(this.boundsCentre);
+    this.boundsRadius = this.bounds.getSize(new THREE.Vector3()).length() / 2;
   }
 
   private blocks(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
@@ -67,19 +88,49 @@ export class MeshOccluder implements Occluder {
   }
 
   markCrossings(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
-    if (this.blocks(ax, ay, az, bx, by, bz)) this.wanted = true;
+    if (this.fadeable && this.blocks(ax, ay, az, bx, by, bz)) this.wanted = true;
+  }
+
+  lowestCoverBottom(px: number, feetY: number, pz: number): number {
+    const bottom = this.bounds.min.y;
+    if (!isOverheadCover(bottom, feetY, this.named)) return Infinity;
+    if (px < this.bounds.min.x || px > this.bounds.max.x || pz < this.bounds.min.z || pz > this.bounds.max.z) return Infinity;
+    const headY = feetY + 1;
+    inverse.copy(this.mesh.matrixWorld).invert();
+    rayOrigin.set(px, headY, pz).applyMatrix4(inverse);
+    rayDirection.set(px, headY + ROOF_REACH, pz).applyMatrix4(inverse);
+    const geometry = this.mesh.geometry;
+    const box = geometry.boundingBox as THREE.Box3;
+    const entry = segmentBoxEntry(
+      rayOrigin.x, rayOrigin.y, rayOrigin.z, rayDirection.x, rayDirection.y, rayDirection.z,
+      box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z,
+    );
+    return entry >= 0 ? bottom : Infinity;
+  }
+
+  markCutaway(cutY: number, px: number, pz: number): void {
+    if (!isAboveCutPlane(this.bounds.min.y, cutY)) return;
+    if (withinCutawayRadius(this.boundsCentre.x - px, this.boundsCentre.z - pz, this.boundsRadius)) this.cut = true;
   }
 
   fadedCount(): number {
     return this.fade < 1 ? 1 : 0;
   }
 
+  cutCount(): number {
+    return this.cut ? 1 : 0;
+  }
+
   clearMarks(): void {
     this.wanted = false;
   }
 
+  clearCutaway(): void {
+    this.cut = false;
+  }
+
   stepFade(dtSec: number): void {
-    const next = stepFade(this.fade, this.wanted, dtSec);
+    const next = stepToward(this.fade, fadeTarget(this.wanted, this.cut), dtSec);
     if (next === this.fade) return;
     if (this.fade === 1) this.showGhost();
     this.fade = next;
@@ -87,6 +138,7 @@ export class MeshOccluder implements Occluder {
       this.hideGhost();
     } else if (this.ghost) {
       setGhostOpacity(this.ghost.material, next);
+      this.ghost.visible = next > 0;
     }
   }
 
@@ -114,6 +166,7 @@ export class MeshOccluder implements Occluder {
   restore(): void {
     this.fade = 1;
     this.wanted = false;
+    this.cut = false;
     this.hideGhost();
   }
 

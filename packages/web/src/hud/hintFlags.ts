@@ -4,7 +4,7 @@ export type HintFlagStorage = HintStorage & Pick<Storage, 'getItem' | 'setItem'>
 export const HINT_FLAG_PREFIX = 'officexr:hint:';
 export const HINT_MAX_SHOWS = 2;
 
-export type HintName = 'move' | 'people' | 'wave' | 'alone' | 'build';
+export type HintName = 'move' | 'people' | 'alone' | 'build';
 
 const DONE = 'done';
 

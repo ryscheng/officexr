@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   CubeKindId,
   EmoteId,
+  PingIntent,
   InventoryItem,
   MicState,
   PlayerId,
@@ -56,7 +57,7 @@ export interface Actions {
   appendChat(msg: ChatMessage): void;
   appendStroke(stroke: Stroke): void;
   applyHit(targetId: PlayerId, dmg: number, byId: PlayerId): void;
-  receivePing(fromId: PlayerId, at: number): void;
+  receivePing(fromId: PlayerId, at: number, intent?: PingIntent): void;
   addInventoryItem(item: InventoryItem): void;
   removeInventoryItem(itemId: string): void;
   /** Replace the world constants (and so the derived `worldSettings`).
@@ -389,8 +390,8 @@ export function createActions(store: Store, bus?: Bus): Actions {
       if (killed) bus?.emit({ kind: 'combat:killed', targetId, byId });
     },
 
-    receivePing(fromId, at) {
-      bus?.emit({ kind: 'ping:received', fromId, at });
+    receivePing(fromId, at, intent) {
+      bus?.emit({ kind: 'ping:received', fromId, at, ...(intent && { intent }) });
     },
 
     addInventoryItem(item) {

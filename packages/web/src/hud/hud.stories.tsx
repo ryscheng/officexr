@@ -23,7 +23,6 @@ import { createInMemoryMissionsClient } from './missions/inMemoryMissions';
 import { MissionsPanel } from './missions/MissionsPanel';
 import { useMissions } from './missions/useMissions';
 import { useOfficeSpots } from './missions/useOfficeSpots';
-import { NearYouButtons, NearYouCard } from './NearYouCard';
 
 export default { title: 'HUD' };
 
@@ -213,19 +212,6 @@ function MissionsStory({ store, client, compact, open }: { store: PersistentLoca
 export const MissionsDesktop = missionsPanel('crowd', false);
 export const MissionsNewMission = missionsPanel('crowd', false, 'Add mission');
 export const MissionsPhone = missionsPanel('crowd', true);
-
-export const NearYou: Story = () => (
-  <Seeded scenario="crowd">
-    {(l) => (
-      <Providers>
-        <div className="flex items-end gap-6">
-          <NearYouCard store={l.store} onWave={() => {}} />
-          <NearYouButtons store={l.store} onWave={() => {}} />
-        </div>
-      </Providers>
-    )}
-  </Seeded>
-);
 
 export const CallCardInCall: Story = () => {
   const adapter = useMemo(voice, []);

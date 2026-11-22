@@ -51,6 +51,7 @@ export async function createBackend(env: Record<string, string | undefined>, { d
     sessionPolicy: officeApi.allowsMultiSession,
     deskClaims: officeApi,
     placedProps: officeApi,
+    blocks: { blockedBy: async (login) => (await db.blocks.list(login)).map((person) => person.login) },
     deployment: createDeployment({
       commit: resolveCommit(env),
       builtAt: env.OFFICEXR_BUILT_AT,

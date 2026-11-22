@@ -99,6 +99,47 @@ describe('App signed out', () => {
     expect(screen.getByText('You opened an office link')).toBeTruthy();
   });
 
+  describe('invite line', () => {
+    const withLookup = (path: string, lookup: () => Promise<Response>) => {
+      window.history.pushState({}, '', path);
+      const fetchMock = vi.fn((target: string) =>
+        target === '/api/me'
+          ? Promise.resolve({ ok: false, status: 401, json: async () => ({ error: 'Not signed in' }) } as Response)
+          : lookup(),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      render(<App />);
+      return fetchMock;
+    };
+    const named = (name: unknown) => () => Promise.resolve({ ok: true, status: 200, json: async () => ({ name }) } as Response);
+
+    it('names the office from the public lookup', async () => {
+      const fetchMock = withLookup('/room/11111111-1111-4111-8111-111111111111', named('Design studio'));
+      expect(await screen.findByText('Design studio')).toBeTruthy();
+      expect(screen.getByText(/You are invited to/).textContent).toBe('You are invited to Design studio');
+      expect(fetchMock).toHaveBeenCalledWith('/api/offices/11111111-1111-4111-8111-111111111111/name', expect.anything());
+    });
+
+    it.each([
+      ['a 404', () => Promise.resolve({ ok: false, status: 404, json: async () => ({ error: 'Office not found' }) } as Response)],
+      ['a network failure', () => Promise.reject(new Error('offline'))],
+      ['a body without a name', named(undefined)],
+      ['a blank name', named('  ')],
+    ])('keeps the current text after %s', async (_label, lookup) => {
+      const fetchMock = withLookup('/room/abc', lookup);
+      await screen.findByRole('link', { name: 'Continue with Google' });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      expect(screen.getByText('You opened an office link')).toBeTruthy();
+      expect(screen.queryByText(/You are invited to/)).toBeNull();
+    });
+
+    it('does not look anything up away from a room link', async () => {
+      const fetchMock = withLookup('/', named('x'));
+      await screen.findByRole('link', { name: 'Continue with Google' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('shows the plain error when the store throws on read', async () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');

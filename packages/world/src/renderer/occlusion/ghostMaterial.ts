@@ -13,7 +13,7 @@ export function createInstancedGhostMaterial(base: THREE.Material): THREE.Materi
       patchScreenGlowShader(shader, true);
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <color_fragment>',
-        `#include <color_fragment>\ndiffuseColor.a *= ${FADE_VARYING};`,
+        `#include <color_fragment>\ndiffuseColor.a *= ${FADE_VARYING};\nif (diffuseColor.a < 0.004) discard;`,
       );
     };
     ghost.customProgramCacheKey = () => 'occlusion-instanced-ghost-screen';
@@ -28,7 +28,7 @@ export function createInstancedGhostMaterial(base: THREE.Material): THREE.Materi
       );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\nvarying float ${FADE_VARYING};`)
-      .replace('#include <color_fragment>', `#include <color_fragment>\ndiffuseColor.a *= ${FADE_VARYING};`);
+      .replace('#include <color_fragment>', `#include <color_fragment>\ndiffuseColor.a *= ${FADE_VARYING};\nif (diffuseColor.a < 0.004) discard;`);
   };
   ghost.customProgramCacheKey = () => 'occlusion-instanced-ghost';
   return ghost;

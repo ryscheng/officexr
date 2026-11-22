@@ -54,3 +54,17 @@ describe('connectPingInbox', () => {
     expect(inbox.getSnapshot()).toMatchObject({ unread: 1 });
   });
 });
+
+describe('connectPingInbox intents', () => {
+  it('leaves invites and waves out of the bell', () => {
+    const bus = createBus();
+    const store = createStore({ selfId: 'me#t0', officeId: 'o' });
+    const inbox = new PingInbox();
+    connectPingInbox(bus, store, inbox);
+    bus.emit({ kind: 'ping:received', fromId: 'ada#t1', at: 1, intent: 'invite' });
+    bus.emit({ kind: 'ping:received', fromId: 'ada#t1', at: 2, intent: 'wave' });
+    expect(inbox.getSnapshot().entries).toHaveLength(0);
+    bus.emit({ kind: 'ping:received', fromId: 'ada#t1', at: 3, intent: 'ping' });
+    expect(inbox.getSnapshot().entries).toHaveLength(1);
+  });
+});
