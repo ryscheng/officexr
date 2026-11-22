@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   filterBySource,
   metaLine,
+  missionDistances,
   orderMissions,
   placeAreas,
   resolvePlace,
+  sameDistances,
   sourceChips,
   stepsLabel,
   tabMissions,
@@ -134,5 +136,25 @@ describe('resolvePlace', () => {
 
   it('does not list a desk zone as a room', () => {
     expect(placeAreas([room, { ...desk }], [desk]).rooms.map((r) => r.id)).toEqual(['r1']);
+  });
+});
+
+describe('mission distances', () => {
+  const areas = placeAreas([{ id: 'r1', label: 'Room', min: { x: 10, z: 0 }, max: { x: 20, z: 10 } }], []);
+  const at = (id: string, place: Mission['place']) => mission(id, { place });
+  const missions = [at('a', { kind: 'room', id: 'r1', label: 'Room' }), at('b', { kind: 'room', id: 'gone', label: 'Gone' }), at('c', null)];
+
+  it('floors to whole metres and skips missions without a known place', () => {
+    expect([...missionDistances(missions, areas, { x: 0, z: 5 })]).toEqual([['a', 15]]);
+    expect([...missionDistances(missions, areas, { x: 0.4, z: 5 })]).toEqual([['a', 14]]);
+  });
+
+  it('is empty until the position is known', () => {
+    expect(missionDistances(missions, areas, null).size).toBe(0);
+  });
+
+  it('compares by value', () => {
+    expect(sameDistances(new Map([['a', 15]]), new Map([['a', 15]]))).toBe(true);
+    expect(sameDistances(new Map([['a', 15]]), new Map([['a', 14]]))).toBe(false);
   });
 });

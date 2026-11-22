@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
-import { loginOf, type OfficeState, type Store } from '@officexr/sdk';
+import { loginOf, type Mission, type OfficeState, type Store } from '@officexr/sdk';
 import { useStoreSelector } from '@officexr/world/top-down';
 import { quantise } from '../quantise';
 import { sameList } from '../sameFields';
-import { placeAreas, type PlaceAreas, type Spot } from './missionRows';
+import { distancesFrom, missionSpots, placeAreas, sameDistances, type PlaceAreas, type Spot } from './missionRows';
 
-export type OfficePerson = { id: string; login: string; name: string; x: number; z: number };
+export type OfficePerson = { id: string; login: string; name: string };
 
 const selectSelf = (s: OfficeState): Spot | null => {
   const pos = s.players[s.selfId]?.pos;
@@ -19,12 +19,18 @@ const selectDesks = (s: OfficeState) => s.deskAreas;
 const selectPeople = (s: OfficeState): OfficePerson[] =>
   Object.values(s.players)
     .filter((p) => p.id !== s.selfId && p.name.trim())
-    .map((p) => ({ id: p.id, login: loginOf(p.id), name: p.name, x: quantise(p.pos.x, 0.5), z: quantise(p.pos.z, 0.5) }));
+    .map((p) => ({ id: p.id, login: loginOf(p.id), name: p.name }));
 
 export function useOfficeAreas(store: Store): PlaceAreas {
   const zones = useStoreSelector(store, selectZones);
   const deskAreas = useStoreSelector(store, selectDesks);
   return useMemo(() => placeAreas(zones, deskAreas), [zones, deskAreas]);
+}
+
+export function useMissionDistances(store: Store, missions: readonly Mission[], areas: PlaceAreas): ReadonlyMap<string, number> {
+  const spots = useMemo(() => missionSpots(missions, areas), [missions, areas]);
+  const select = useMemo(() => (s: OfficeState) => distancesFrom(spots, selectSelf(s)), [spots]);
+  return useStoreSelector(store, select, sameDistances);
 }
 
 export const useSelfSpot = (store: Store): Spot | null => useStoreSelector(store, selectSelf, sameSpot);

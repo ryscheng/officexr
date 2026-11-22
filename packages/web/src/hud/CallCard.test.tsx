@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Profiler } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createActions, createBus, createStore } from '@officexr/sdk';
 import { createViewYaw, PlayControlsProvider, ViewYawProvider } from '@officexr/world/react';
@@ -24,14 +25,17 @@ const setup = (inCall: boolean) => {
   const leave = vi.spyOn(voice, 'leaveRoom');
   const fake = fakePlayControls();
   const viewYaw = createViewYaw();
+  const renders = { count: 0 };
   render(
     <PlayControlsProvider controls={fake.controls}>
       <ViewYawProvider viewYaw={viewYaw}>
-        <CallCard store={store} selfId="me" voice={voice} />
+        <Profiler id="card" onRender={() => renders.count++}>
+          <CallCard store={store} selfId="me" voice={voice} />
+        </Profiler>
       </ViewYawProvider>
     </PlayControlsProvider>,
   );
-  return { voice, leave };
+  return { voice, leave, actions, renders };
 };
 
 describe('CallCard', () => {
@@ -44,6 +48,27 @@ describe('CallCard', () => {
     setup(true);
     expect(screen.getByText('Talking with Bao Tran')).toBeTruthy();
     expect(screen.getByText('Voice on · 3 m away')).toBeTruthy();
+  });
+
+  it('follows the other person by whole metres', () => {
+    const { actions, renders } = setup(true);
+    const before = renders.count;
+    act(() => actions.upsertPlayer({ id: 'bao', name: 'Bao Tran', pos: { x: 3.4, y: 0, z: 0 } }));
+    expect(renders.count).toBe(before);
+    act(() => actions.upsertPlayer({ id: 'bao', name: 'Bao Tran', pos: { x: 5.2, y: 0, z: 0 } }));
+    expect(screen.getByText('Voice on · 5 m away')).toBeTruthy();
+  });
+
+  it('ignores distances it does not show', () => {
+    const { actions, renders } = setup(true);
+    act(() => {
+      actions.upsertPlayer({ id: 'cy', name: 'Cy Lee', pos: { x: 6, y: 0, z: 0 }, jitsiParticipantId: 'p-cy' });
+      actions.callParticipantJoined('p-cy', 'Cy Lee');
+    });
+    expect(screen.getByText('In call · 3')).toBeTruthy();
+    const before = renders.count;
+    act(() => actions.upsertPlayer({ id: 'bao', name: 'Bao Tran', pos: { x: 5.2, y: 0, z: 0 } }));
+    expect(renders.count).toBe(before);
   });
 
   it('mutes and leaves', () => {

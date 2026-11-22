@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import type { Mission } from '@officexr/sdk';
 import { formatDistance } from '../formatDistance';
@@ -15,12 +15,12 @@ export type MissionRowProps = {
   distanceM: number | null;
   personName: string | null;
   personLogin?: string | null;
-  onToggleDone: () => void;
-  onToggleStep: (index: number) => void;
-  onGo: () => void;
+  onToggleDone: (mission: Mission) => void;
+  onToggleStep: (mission: Mission, index: number) => void;
+  onGo: (mission: Mission) => void;
 };
 
-export function MissionRow({ mission, compact, current, now, canEdit, distanceM, personName, personLogin = null, onToggleDone, onToggleStep, onGo }: MissionRowProps) {
+export const MissionRow = memo(function MissionRow({ mission, compact, current, now, canEdit, distanceM, personName, personLogin = null, onToggleDone, onToggleStep, onGo }: MissionRowProps) {
   const [open, setOpen] = useState(false);
   const portrait = useLoginPortrait(personLogin);
   const steps = compact ? null : stepsLabel(mission);
@@ -39,7 +39,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
           role="checkbox"
           aria-checked={mission.done}
           aria-label={`${mission.title}, done`}
-          onClick={onToggleDone}
+          onClick={() => onToggleDone(mission)}
           className="flex size-12 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-hud-accent pointer-fine:size-8"
         >
           <span
@@ -75,7 +75,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
                 type="button"
                 aria-pressed={current}
                 aria-label={`Go to ${mission.place?.label}`}
-                onClick={onGo}
+                onClick={() => onGo(mission)}
                 className={`inline-flex min-h-8 items-center gap-1 rounded-full px-3.5 text-sm font-semibold pointer-coarse:min-h-12 ${
                   current ? 'bg-hud-accent-fill text-hud-on-accent' : 'bg-hud-inset text-hud-text hover:bg-hud-hover'
                 }`}
@@ -98,7 +98,7 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
           {mission.steps.map((s, i) => (
             <li key={i}>
               <label className="flex min-h-8 items-center gap-2 text-xs text-hud-text pointer-coarse:min-h-12">
-                <input type="checkbox" checked={s.done} disabled={!canEdit} onChange={() => onToggleStep(i)} className="size-4 accent-hud-accent" />
+                <input type="checkbox" checked={s.done} disabled={!canEdit} onChange={() => onToggleStep(mission, i)} className="size-4 accent-hud-accent" />
                 <span className={s.done ? 'text-hud-text-2 line-through' : ''}>{s.text}</span>
               </label>
             </li>
@@ -107,4 +107,4 @@ export function MissionRow({ mission, compact, current, now, canEdit, distanceM,
       )}
     </li>
   );
-}
+});

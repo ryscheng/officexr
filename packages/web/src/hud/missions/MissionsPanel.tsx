@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Maximize2, Minimize2, Plus, Target } from 'lucide-react';
-import type { NewMission } from '@officexr/sdk';
+import type { Mission, NewMission } from '@officexr/sdk';
 import { useFold } from '../foldPrefs';
 import { FoldablePanel } from '../ui/FoldablePanel';
 import { PortraitSheet } from '../ui/PortraitSheet';
@@ -9,16 +9,16 @@ import { Button } from '../ui/Button';
 import { CHIP } from '../ui/Panel';
 import { Tab, TabList, Tabs } from '../ui/Tabs';
 import { useHotkey } from '../useHotkey';
+import { useStableCallback } from '../useStableCallback';
 import { MissionCueToast } from './MissionCueToast';
 import { MissionRow } from './MissionRow';
+import { useClock } from './useClock';
 import { playMissionTick } from './missionTick';
 import { useMissionCue } from './useMissionCue';
 import {
-  distanceBetween,
   filterBySource,
   isMine,
   orderMissions,
-  resolvePlace,
   SOURCE_LABEL,
   sourceChips,
   tabMissions,
@@ -26,7 +26,6 @@ import {
   type MissionTab,
   type PlaceAreas,
   type SourceFilter,
-  type Spot,
 } from './missionRows';
 import { NewMissionForm } from './NewMissionForm';
 import type { MissionsApi } from './useMissions';
@@ -44,7 +43,7 @@ export type MissionsPanelProps = {
   me: string;
   areas: PlaceAreas;
   people: readonly OfficePerson[];
-  self: Spot | null;
+  distances: ReadonlyMap<string, number>;
   compact?: boolean;
   portrait?: boolean;
   collapsed?: boolean;
@@ -58,7 +57,7 @@ export function MissionsPanel({
   me,
   areas,
   people,
-  self,
+  distances,
   compact = false,
   portrait = false,
   collapsed = false,
@@ -71,7 +70,7 @@ export function MissionsPanel({
   const fold = useFold('missions', compact);
   const [adding, setAdding] = useState(false);
   const [tall, setTall] = useState(() => window.innerHeight < SHORT_SCREEN_PX);
-  const clock = now();
+  const clock = useClock(now);
   const unsupported = api.status === 'unsupported';
 
   const mine = useMemo(() => tabMissions(api.missions, me, 'mine'), [api.missions, me]);
@@ -116,6 +115,11 @@ export function MissionsPanel({
     }
   };
   const { cue, toggle, undo } = useMissionCue(api, mine, tick, next);
+  const onToggleDone = useStableCallback((m: Mission) => void toggle(m));
+  const onToggleStep = useStableCallback(
+    (m: Mission, i: number) => void api.update(m.id, { steps: m.steps.map((s, j) => (j === i ? { ...s, done: !s.done } : s)) }),
+  );
+  const onGo = useStableCallback((m: Mission) => api.setCurrent(api.current?.id === m.id ? null : m.id));
   const cueNode = cue && !adding && <MissionCueToast cue={cue} onUndo={() => void undo()} />;
   const cueInSlot = cueSlot !== null && cueNode && (portrait ? fold.folded : !compact);
 
@@ -201,29 +205,22 @@ export function MissionsPanel({
           aria-label={tab === 'mine' ? 'My missions' : 'Team missions'}
           className="flex max-h-[40dvh] min-h-0 flex-col gap-0.5 pointer-coarse:max-h-none overflow-y-auto overscroll-contain"
         >
-          {rows.map((m) => {
-            const spot = m.place ? resolvePlace(m.place, areas) : null;
-            return (
-              <MissionRow
-                key={m.id}
-                mission={m}
-                compact={compact}
-                current={api.current?.id === m.id}
-                now={clock}
-                canEdit={isMine(m, me)}
-                distanceM={spot && self ? distanceBetween(self, spot) : null}
-                personLogin={m.personLogin}
-                personName={m.personLogin ? (names.get(m.personLogin) ?? m.personLogin) : null}
-                onToggleDone={() => void toggle(m)}
-                onToggleStep={(i) =>
-                  void api.update(m.id, {
-                    steps: m.steps.map((s, j) => (j === i ? { ...s, done: !s.done } : s)),
-                  })
-                }
-                onGo={() => api.setCurrent(api.current?.id === m.id ? null : m.id)}
-              />
-            );
-          })}
+          {rows.map((m) => (
+            <MissionRow
+              key={m.id}
+              mission={m}
+              compact={compact}
+              current={api.current?.id === m.id}
+              now={clock}
+              canEdit={isMine(m, me)}
+              distanceM={distances.get(m.id) ?? null}
+              personLogin={m.personLogin}
+              personName={m.personLogin ? (names.get(m.personLogin) ?? m.personLogin) : null}
+              onToggleDone={onToggleDone}
+              onToggleStep={onToggleStep}
+              onGo={onGo}
+            />
+          ))}
           {rows.length === 0 && (
             <li className="flex flex-col gap-1 px-2 py-3 text-xs text-hud-text-2">
               {tab === 'mine' ? (

@@ -6,7 +6,7 @@ import { createInMemoryMissionsClient } from './inMemoryMissions';
 import { MissionsUnsupportedError } from './missionsApi';
 import { CUE_MS } from './useMissionCue';
 import { MissionsPanel } from './MissionsPanel';
-import { placeAreas } from './missionRows';
+import { missionDistances, placeAreas } from './missionRows';
 import { useMissions } from './useMissions';
 
 afterEach(() => {
@@ -37,11 +37,11 @@ const SEED: Mission[] = [
 ];
 
 const AREAS = placeAreas([{ id: 'r1', label: 'Meeting room 1', min: { x: 10, z: 0 }, max: { x: 20, z: 10 } }], []);
-const PEOPLE = [{ id: 'bao@x', login: 'bao@x', name: 'Bao Tran', x: 0, z: 0 }];
+const PEOPLE = [{ id: 'bao@x', login: 'bao@x', name: 'Bao Tran' }];
 
 function Harness({ client, compact = false, portrait = false, collapsed = false, tick, cueSlot }: { client: MissionsClient; compact?: boolean; portrait?: boolean; collapsed?: boolean; tick?: () => void; cueSlot?: HTMLElement | null }) {
   const missions = useMissions(client, 'o');
-  return <MissionsPanel missions={missions} me="me" areas={AREAS} people={PEOPLE} self={{ x: 0, z: 5 }} compact={compact} portrait={portrait} collapsed={collapsed} now={() => NOW} tick={tick ?? (() => {})} cueSlot={cueSlot} />;
+  return <MissionsPanel missions={missions} me="me" areas={AREAS} people={PEOPLE} distances={missionDistances(missions.missions, AREAS, { x: 0, z: 5 })} compact={compact} portrait={portrait} collapsed={collapsed} now={() => NOW} tick={tick ?? (() => {})} cueSlot={cueSlot} />;
 }
 
 const setup = async (seed = SEED, compact = false) => {
