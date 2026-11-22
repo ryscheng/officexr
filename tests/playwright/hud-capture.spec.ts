@@ -31,7 +31,7 @@ for (const device of HUD_DEVICES.filter((d) => !deviceFilter || deviceFilter.inc
         try {
           await applySafeArea(page, device.safe);
           await runScenarioSteps(page, scenario);
-          if (scenario === 'chat-peek') {
+          if (scenario === 'chat-peek' || scenario.endsWith('-toast')) {
             // The preview lasts 5 s and a software-GL screenshot can take longer, so grab the frame straight from the browser.
             const cdp = await page.context().newCDPSession(page);
             const { data } = await cdp.send('Page.captureScreenshot');

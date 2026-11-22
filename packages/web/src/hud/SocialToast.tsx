@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import type { OfficeState, PlayerId, Store } from '@officexr/sdk';
 import { focusWorld, usePlayControls, useStoreSelector } from '@officexr/world/top-down';
 import type { SocialToast as Toast, SocialToastQueue } from '../ping/socialToasts';
+import { firstName } from './peopleStatus';
 import { Button } from './ui/Button';
 
 const SHOW_MS = 10_000;
@@ -40,10 +41,10 @@ export function SocialToastView({ queue, store, paused, onWaveBack }: { queue: S
     focusWorld();
   };
   return (
-    <div role="status" className="hud-glass pointer-events-auto flex w-[min(358px,calc(100vw-24px))] items-center gap-2 rounded-hud-panel border border-hud-edge py-1 pr-1 pl-4 font-hud-body shadow-hud-panel">
-      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-hud-text">{copy.text(toast.name)}</span>
+    <div role="status" className="hud-glass pointer-events-auto flex min-h-14 w-[min(358px,calc(100vw-24px))] items-center gap-2 rounded-hud-panel border border-hud-edge py-1 pr-1 pl-4 font-hud-body shadow-hud-panel">
+      <span className="line-clamp-2 min-w-0 flex-1 text-sm leading-5 font-semibold text-hud-text">{copy.text(toast.name)}</span>
       <Button tone="primary" size="sm" className="min-h-12 shrink-0" disabled={!present} onClick={act}>
-        {copy.action(toast.name)}
+        {copy.action(firstName(toast.name))}
       </Button>
       <Button tone="ghost" size="sm" className="min-h-12 shrink-0" onClick={() => queue.dismiss(toast.id)}>
         Dismiss

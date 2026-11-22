@@ -381,6 +381,7 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
     const t = NOW();
     for (const e of scenario.emotes ?? []) actions.receiveEmote(e.from, e.emote, t);
     if (scenario.poke) actions.receivePoke(scenario.poke, SELF_ID, t);
+    for (const p of scenario.pings ?? []) actions.receivePing(p.from, t, p.intent);
     if (scenario.spellOn) {
       actions.receiveSpellCast(scenario.spellOn.caster, {
         spell: 'levitate',
@@ -393,12 +394,8 @@ export function seedScenario(scenario: Scenario, deps: { store: Store; actions: 
   };
   replay();
   timers.push(setInterval(replay, 2000));
-  const pingTimer = setTimeout(() => {
-    for (const p of scenario.pings ?? []) actions.receivePing(p.from, NOW(), p.intent);
-  }, 1500);
   return () => {
     timers.forEach(clearInterval);
-    clearTimeout(pingTimer);
     unseedDesks();
     unseedFurniture();
     unseedZones();
