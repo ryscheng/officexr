@@ -59,6 +59,8 @@ export function compare(baseRuns, headRuns, failPct = 25) {
   return { rows, regressedModes, fail: regressedModes.length >= 2 };
 }
 
+const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+
 export function toMarkdown(result, runsPerSide, failPct = 25) {
   const lines = [
     `Median of ${runsPerSide} runs per side, production build, one machine, software WebGL: read the % change, not the absolute values.`,
@@ -69,7 +71,7 @@ export function toMarkdown(result, runsPerSide, failPct = 25) {
   for (const r of result.rows) {
     const mark = r.worse > failPct ? ' (worse)' : r.worse > 10 ? ' (warn)' : '';
     const change = Number.isFinite(r.change) ? `${r.change >= 0 ? '+' : ''}${r.change.toFixed(1)}%` : 'n/a';
-    lines.push(`| ${r.mode} | ${r.label} | ${r.base} | ${r.head} | ${change}${mark} |`);
+    lines.push(`| ${r.mode} | ${r.label} | ${fmt(r.base)} | ${fmt(r.head)} | ${change}${mark} |`);
   }
   lines.push('');
   lines.push(

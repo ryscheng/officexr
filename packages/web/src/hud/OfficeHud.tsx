@@ -15,7 +15,7 @@ import { BuildStatus } from './building/BuildStatus';
 import type { BuildSession } from '../place/buildSession';
 import { CallCard } from './CallCard';
 import { TextOnlyCall } from './TextOnlyCall';
-import { useCallRows } from './CallList';
+import { selectInCall } from './CallList';
 import { useFold } from './foldPrefs';
 import { ChatPanel } from './ChatPanel';
 import { ChatTicker, TICKER_MS } from './ChatTicker';
@@ -25,11 +25,11 @@ import { InteractionPrompt, SuppressInteractionPrompt } from './InteractionPromp
 import { IdentityCard } from './IdentityCard';
 import { InviteSheet } from './InviteSheet';
 import { useMapPlan } from './OfficeMinimap';
-import { MissionsPanel } from './missions/MissionsPanel';
+import { ConnectedMissionsPanel } from './missions/ConnectedMissionsPanel';
 import { resolvePlace, type Spot } from './missions/missionRows';
-import { useOfficeSpots } from './missions/useOfficeSpots';
+import { useOfficeAreas } from './missions/useOfficeSpots';
 import type { MissionsApi } from './missions/useMissions';
-import { NearYouButtons, NearYouCard, sameNear, selectNearest } from './NearYouCard';
+import { NearYouButtons, NearYouCard, selectNearName } from './NearYouCard';
 import { PingInboxHud } from './PingInboxHud';
 import { ArrivalBubble } from './ArrivalBubble';
 import { PlayerPortraits } from './playerPortrait';
@@ -124,9 +124,9 @@ export function OfficeHud({
   }, [welcome, onWelcomeShown]);
   const missionsFold = useFold('missions', coarse);
   const [cueSlot, setCueSlot] = useState<HTMLElement | null>(null);
-  const inCall = useCallRows(store, selfId).state !== 'none';
+  const inCall = useStoreSelector(store, selectInCall);
   const voiceFailed = useVoiceFailed(voice);
-  const spots = useOfficeSpots(store);
+  const areas = useOfficeAreas(store);
   useEffect(() => {
     if (!(narrow && inCall)) {
       return;
@@ -139,8 +139,7 @@ export function OfficeHud({
   const plan = useMapPlan(store);
   const [toastsEl, setToastsEl] = useState<HTMLDivElement | null>(null);
   const toastShowing = useHasText(toastsEl);
-  const near = useStoreSelector(store, selectNearest, sameNear);
-  const nearName = near ? near.name.trim().split(' ')[0] : null;
+  const nearName = useStoreSelector(store, selectNearName);
   const canBuild = PLACEABLE_KINDS.length > 0;
   const { hint, done: hintDone } = useFirstRunHint({
     coarse,
@@ -244,11 +243,11 @@ export function OfficeHud({
   };
 
   const current = missions.current;
-  const to = current?.place ? resolvePlace(current.place, spots.areas) : null;
+  const to = current?.place ? resolvePlace(current.place, areas) : null;
   const route = current && to ? { to, label: current.title, areaId: current.place?.kind === 'room' ? current.place.id : null } : null;
 
   const missionsPanel = (
-    <MissionsPanel missions={missions} me={me} areas={spots.areas} people={spots.people} self={spots.self} compact={coarse} portrait={narrow} collapsed={fadeSecondary} cueSlot={cueSlot} />
+    <ConnectedMissionsPanel store={store} missions={missions} me={me} areas={areas} compact={coarse} portrait={narrow} collapsed={fadeSecondary} cueSlot={cueSlot} />
   );
   const chatPanel = (
     <ChatPanel
@@ -453,7 +452,7 @@ export function OfficeHud({
         }
       />
       <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} nearName={nearName} joystickFloats={joystickFloats} />
-      {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} walk={mapWalk} onGoTo={goToOnMap} onClose={() => setMapOpen(false)} />}
+      {mapOpen && <FullMap store={store} officeName={officeName} areas={areas} plan={plan} route={route} walk={mapWalk} onGoTo={goToOnMap} onClose={() => setMapOpen(false)} />}
     </PlayerPortraits>
   );
 }

@@ -31,7 +31,7 @@ permissions:
 jobs:
   perf-ab:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       RUNS: 2
     steps:

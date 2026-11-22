@@ -49,6 +49,8 @@ const selectCall = (s: OfficeState): Call => {
 const sameCall = (a: Call, b: Call) =>
   a.state === b.state && sameList(a.players, b.players) && sameList(a.roster, b.roster);
 
+export const selectInCall = (s: OfficeState): boolean => !!s.players[s.selfId]?.jitsiRoom;
+
 /** The call's state and, once connected, its rows with You first; empty otherwise. */
 export function useCallRows(store: Store, selfId: PlayerId) {
   const { state, players, roster } = useStoreSelector(store, selectCall, sameCall);

@@ -21,11 +21,16 @@ const selectPeople = (s: OfficeState): OfficePerson[] =>
     .filter((p) => p.id !== s.selfId && p.name.trim())
     .map((p) => ({ id: p.id, login: loginOf(p.id), name: p.name, x: quantise(p.pos.x, 0.5), z: quantise(p.pos.z, 0.5) }));
 
-export function useOfficeSpots(store: Store): { self: Spot | null; areas: PlaceAreas; people: OfficePerson[] } {
-  const self = useStoreSelector(store, selectSelf, sameSpot);
+export function useOfficeAreas(store: Store): PlaceAreas {
   const zones = useStoreSelector(store, selectZones);
   const deskAreas = useStoreSelector(store, selectDesks);
-  const people = useStoreSelector(store, selectPeople, sameList);
-  const areas = useMemo(() => placeAreas(zones, deskAreas), [zones, deskAreas]);
-  return { self, areas, people };
+  return useMemo(() => placeAreas(zones, deskAreas), [zones, deskAreas]);
+}
+
+export const useSelfSpot = (store: Store): Spot | null => useStoreSelector(store, selectSelf, sameSpot);
+
+export const useOfficePeople = (store: Store): OfficePerson[] => useStoreSelector(store, selectPeople, sameList);
+
+export function useOfficeSpots(store: Store): { self: Spot | null; areas: PlaceAreas; people: OfficePerson[] } {
+  return { self: useSelfSpot(store), areas: useOfficeAreas(store), people: useOfficePeople(store) };
 }

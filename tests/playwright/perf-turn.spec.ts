@@ -211,6 +211,7 @@ for (const mode of MODES) {
       await cdp.send('Performance.enable');
       const phases: Record<string, PhaseSample> = {};
       for (const [name, run] of [
+        ...(COMPONENTS ? ([['idle', () => waitFrames(page, PHASE_FRAMES)]] as const) : []),
         ['walk', () => walkSquare(page)],
         ['turn', () => spinInPlace(page, mode)],
         ['orbit', () => orbit(page, mode)],

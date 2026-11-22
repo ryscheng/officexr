@@ -32,6 +32,7 @@ export const selectNearest = (s: OfficeState): (Near & { lastStatusAt?: number; 
   }
   return best && { ...best, distanceM: Math.floor(best.distanceM) };
 };
+export const selectNearName = (s: OfficeState): string | null => selectNearest(s)?.name.trim().split(' ')[0] ?? null;
 export const sameNear = (a: ReturnType<typeof selectNearest>, b: ReturnType<typeof selectNearest>) => (a && b ? sameFields(a, b) : a === b);
 
 export function NearYouCard({ store, onWave, onAct }: { store: Store; onWave: () => void; onAct?: () => void }) {
