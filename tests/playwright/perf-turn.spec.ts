@@ -16,7 +16,8 @@
  *  - wall-clock fps, for information only: CI has no GPU and renders with software WebGL.
  *
  * With PERF_COMPONENTS=1 against a build made with HUD_PROFILING=1 it also writes per component renders
- * and self ms per phase (see scripts/perf/components.mjs).
+ * and self ms per phase. Entries named `(starts X)` count the commits whose update began at X, and
+ * `(commit dom|r3f)` the commits per React root kind.
  *
  * This spec asserts nothing about speed. Compare two runs on one machine with scripts/perf/compare.mjs.
  */

@@ -27,9 +27,11 @@ export const COMPONENT_PROBE = `(() => {
     for (let c = fiber.child; c; c = c.sibling) sum += c.actualDuration || 0;
     return sum;
   };
+  const entryOf = (name) => (acc[name] ??= { renders: 0, selfMs: 0, ownTriggered: 0 });
+  let performed = 0;
   const count = (f) => {
-    const name = labelOf(f);
-    const entry = (acc[name] ??= { renders: 0, selfMs: 0, ownTriggered: 0 });
+    performed++;
+    const entry = entryOf(labelOf(f));
     entry.renders++;
     if (f.alternate && f.alternate.memoizedProps === f.memoizedProps) {
       entry.ownTriggered++;
@@ -44,16 +46,26 @@ export const COMPONENT_PROBE = `(() => {
     }
     entry.selfMs += Math.max(0, (f.actualDuration || 0) - childMs(f));
   };
-  const visit = (next, prev) => {
-    if (COMPONENT_TAGS.has(next.tag) && next.flags & PERFORMED_WORK) count(next);
+  const visit = (next, prev, parentRendered) => {
+    let rendered = parentRendered;
+    if (COMPONENT_TAGS.has(next.tag) && next.flags & PERFORMED_WORK) {
+      count(next);
+      if (!parentRendered) entryOf('(starts ' + labelOf(next) + ')').renders++;
+      rendered = true;
+    }
     if (next.child === (prev && prev.child)) return;
     const before = new Set();
     for (let c = prev && prev.child; c; c = c.sibling) before.add(c);
     for (let c = next.child; c; c = c.sibling) {
-      if (!before.has(c)) visit(c, c.alternate);
+      if (!before.has(c)) visit(c, c.alternate, rendered);
     }
   };
   window.__componentsReset = () => { acc = {}; };
   window.__componentsRead = () => acc;
-  return (root) => visit(root.current, root.current.alternate);
+  return (root) => {
+    const before = performed;
+    visit(root.current, root.current.alternate, false);
+    const ci = root.containerInfo;
+    entryOf('(commit ' + (ci && ci.nodeName ? 'dom' : 'r3f') + (performed === before ? ', no component' : '') + ')').renders++;
+  };
 })()`;
