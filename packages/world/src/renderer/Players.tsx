@@ -27,6 +27,8 @@ import type { RideVehicle } from '../scenes/world-object-kinds-schema.ts';
 import { assertNever } from './assertNever.ts';
 import type { CameraMode } from './config.ts';
 import { PlayerOverhead } from './PlayerOverhead.tsx';
+import { playerAccent } from './occlusion/silhouetteColor.ts';
+import type { SilhouetteSpec } from './occlusion/useCharacterSilhouette.ts';
 import { pickCharacterForPlayer, resolvePlayerModel, type CatalogCharacters, type PlayerModel } from '../characters/registry.ts';
 import { useCatalogCharacters } from '../react/application-context.tsx';
 import { ModelWithFallback } from './ModelWithFallback.tsx';
@@ -577,6 +579,12 @@ export function Players({
   // body↔body intersections actually fire.
   const ACTIVE_TYPES = ActiveCollisionTypes.ALL;
 
+  const silhouetteOn = (cameraMode === 'fixed' || cameraMode === 'third-person') && !xrPresenting && !paused;
+  const silhouetteOf = (id: string): SilhouetteSpec =>
+    id === selfId
+      ? { color: playerAccent(id), enabled: silhouetteOn }
+      : { color: playerAccent(id), enabled: silhouetteOn, viewerRef: selfPosRef, range: proximityOuterRadius };
+
   return (
     <>
       {sparks.map((s) => (
@@ -712,6 +720,7 @@ export function Players({
                     fallbackWalkSpeed={walkAnimSpeed}
                     fallbackRunSpeed={runAnimSpeed}
                     paused={paused}
+                    silhouette={silhouetteOf(p.id)}
                   />
                 )}
               />
@@ -772,6 +781,7 @@ function PerPlayerAdventurer(props: {
   fallbackWalkSpeed: number;
   fallbackRunSpeed: number;
   paused?: boolean;
+  silhouette: SilhouetteSpec | null;
 }) {
   const {
     playerId,
@@ -787,6 +797,7 @@ function PerPlayerAdventurer(props: {
     pose,
     store,
     paused,
+    silhouette,
   } = props;
   const [tunedSpeeds, setTunedSpeeds] = useState(() => readSpeeds(store, playerId));
   useEffect(() => {
@@ -824,6 +835,7 @@ function PerPlayerAdventurer(props: {
       fxRef={fxRef}
       clipOverride={pose ? { name: pose.clip, timeScale: pose.timeScale } : undefined}
       paused={paused}
+      silhouette={silhouette}
     />
   );
   return <ModelWithFallback url={model.url} fallbackUrl={model.fallbackUrl} render={adventurer} />;
