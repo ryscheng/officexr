@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Html } from '@react-three/drei';
 import type { Bus, PlayerId, Store } from '@officexr/sdk';
 import type { CameraMode } from './config.ts';
@@ -12,7 +13,7 @@ import './PlayerNameTag.css';
  * top of the model: bubbles, then the ping bell, then the name tag. Must be a child of the
  * per-player group so it follows the character.
  */
-export function PlayerOverhead(props: {
+export const PlayerOverhead = memo(function PlayerOverhead(props: {
   store: Store;
   bus: Bus;
   playerId: PlayerId;
@@ -42,4 +43,4 @@ export function PlayerOverhead(props: {
       </Html>
     </>
   );
-}
+});
