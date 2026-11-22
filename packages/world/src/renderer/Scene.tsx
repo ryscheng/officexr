@@ -296,7 +296,7 @@ export function Scene(props: SceneProps) {
       // The mugshot export depends on this being set; the small per-
       // frame perf cost is acceptable since the renderer's heaviest
       // consumers (Debug) don't use the export path.
-      gl={{ preserveDrawingBuffer: true }}
+      gl={{ preserveDrawingBuffer: true, stencil: true }}
     >
       <OptionalXR store={xrStore}>
       {props.onFrameStats && <FrameStatsProbe onSample={props.onFrameStats} />}

@@ -11,6 +11,7 @@ import { CAST_CLIP_NAME, createCastClip } from './castClip.ts';
 import { useFrame } from '@react-three/fiber';
 import { applyFrozenLook } from './frozenLook.ts';
 import { recordCharacterHeight } from './characterHeight.ts';
+import { useCharacterSilhouette, type SilhouetteSpec } from './occlusion/useCharacterSilhouette.ts';
 
 const ANIM_GENERAL = modelUrl('/models/animations/Rig_Medium_General.glb');
 const ANIM_MOVEMENT = modelUrl('/models/animations/Rig_Medium_MovementBasic.glb');
@@ -174,6 +175,8 @@ interface AdventurerProps {
    * no fade-in, no bump reactions. Used by the Mugshot mode to render
    * a deterministic, animation-free shot for snapshot testing. */
   paused?: boolean;
+  /** Flat outline drawn through nearer geometry, so the character stays findable behind objects. */
+  silhouette?: SilhouetteSpec | null;
 }
 
 /**
@@ -200,6 +203,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       runSpeed = 1,
       bumpCounter = 0,
       paused = false,
+      silhouette,
     },
     ref,
   ) {
@@ -234,6 +238,7 @@ export const Adventurer = React.forwardRef<THREE.Group, AdventurerProps>(
       }
       return { scene: s, ghostMaterials: own };
     }, [character_gltf.scene, ghost, frozen]);
+    useCharacterSilhouette(scene, ghost || frozen ? null : silhouette);
     const tintable = useMemo(
       () =>
         ghostMaterials
