@@ -1,0 +1,91 @@
+# Camera-path performance check for pull requests.
+#
+# Runs tests/playwright/perf-turn.spec.ts on the merge base and on the PR head, in this one job on one
+# runner, three times each in alternation, and compares the medians (scripts/perf/compare.mjs).
+# CI has no GPU: Chromium renders with software WebGL, so absolute frame times mean nothing and are noisy.
+# Read the % change between base and head only. The job fails when p95 frame time is more than 25% worse
+# in two or more modes; one mode over the line is only a warning in the job summary.
+# Skipped when the diff touches no packages/world, packages/web or packages/sdk file.
+name: Perf A/B
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/world/**'
+      - 'packages/web/**'
+      - 'packages/sdk/**'
+      - 'tests/playwright/perf-turn.spec.ts'
+      - 'tests/playwright/lib/perfStats.ts'
+      - 'playwright.perf.config.ts'
+      - 'scripts/perf/**'
+      - '.github/workflows/perf-ab.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  perf-ab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUNS: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Check out the merge base
+        run: |
+          base=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          echo "Merge base: $base"
+          git worktree add ../base "$base"
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          (cd ../base && pnpm install --frozen-lockfile)
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Bake the default layout
+        run: |
+          pnpm --filter @officexr/world bake:layout platform
+          (cd ../base && pnpm --filter @officexr/world bake:layout platform)
+
+      - name: Run the scenario on base and head
+        run: |
+          mkdir -p perf-results
+          # The base checkout runs the head's scenario, which needs nothing from the app under test.
+          cp playwright.perf.config.ts ../base/
+          cp tests/playwright/perf-turn.spec.ts ../base/tests/playwright/
+          cp tests/playwright/lib/perfStats.ts ../base/tests/playwright/lib/
+          for i in $(seq 1 "$RUNS"); do
+            (cd ../base && PERF_OUT="$GITHUB_WORKSPACE/perf-results/base-$i.json" pnpm exec playwright test -c playwright.perf.config.ts)
+            PERF_OUT="$GITHUB_WORKSPACE/perf-results/head-$i.json" pnpm exec playwright test -c playwright.perf.config.ts
+          done
+
+      - name: Compare
+        run: |
+          set +e
+          node scripts/perf/compare.mjs --fail-p95 25 \
+            --base perf-results/base-*.json --head perf-results/head-*.json > perf-results/summary.md
+          status=$?
+          cat perf-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Upload the runs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-ab-runs
+          path: perf-results/
+          retention-days: 14

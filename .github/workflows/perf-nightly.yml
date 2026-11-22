@@ -1,0 +1,45 @@
+# Nightly camera-path run on main, kept as an artifact so scripts/perf/trend.mjs can print a history.
+# Software WebGL: compare the numbers with each other, not with real hardware.
+name: Perf nightly
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  perf-nightly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm --filter @officexr/world bake:layout platform
+
+      - name: Run the scenario
+        run: PERF_OUT="$GITHUB_WORKSPACE/perf-nightly.json" pnpm exec playwright test -c playwright.perf.config.ts
+
+      - name: Add the commit to the result
+        run: node -e "const f='perf-nightly.json',j=JSON.parse(require('fs').readFileSync(f));j.commit=process.env.GITHUB_SHA;j.date=new Date().toISOString();require('fs').writeFileSync(f,JSON.stringify(j,null,2))"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: perf-nightly-${{ github.run_id }}
+          path: perf-nightly.json
+          retention-days: 90
