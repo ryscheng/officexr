@@ -30,6 +30,8 @@ export interface FrameStatsSample {
   fps: number;
   /** Mean frame-to-frame delta over the window, in milliseconds. */
   frameMs: number;
+  /** Longest single frame delta in the window, in milliseconds. */
+  worstMs: number;
   /** WebGL draw calls in the last rendered frame (`gl.info.render.calls`). */
   drawCalls: number;
   /** Triangles rasterised in the last rendered frame. */
@@ -60,18 +62,20 @@ export function FrameStatsProbe({
   const onSampleRef = useRef(onSample);
   onSampleRef.current = onSample;
 
-  const windowRef = useRef({ frames: 0, elapsed: 0 });
+  const windowRef = useRef({ frames: 0, elapsed: 0, worst: 0 });
 
   useFrame(({ gl }, delta) => {
     const w = windowRef.current;
     w.frames += 1;
     w.elapsed += delta;
+    w.worst = Math.max(w.worst, delta);
     if (w.elapsed * 1000 < intervalMs) return;
 
     const { render, memory } = gl.info;
     onSampleRef.current({
       fps: w.frames / w.elapsed,
       frameMs: (w.elapsed / w.frames) * 1000,
+      worstMs: w.worst * 1000,
       drawCalls: render.calls,
       triangles: render.triangles,
       geometries: memory.geometries,
@@ -79,6 +83,7 @@ export function FrameStatsProbe({
     });
     w.frames = 0;
     w.elapsed = 0;
+    w.worst = 0;
   });
 
   // Clear the consumer's readout when the canvas (or just the probe)

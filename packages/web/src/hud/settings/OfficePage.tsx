@@ -11,6 +11,7 @@ import { FIELD } from '../ui/fieldStyles';
 import { Modal } from '../ui/Modal';
 import { PanelTitle } from '../ui/Panel';
 import { Switch } from '../ui/Switch';
+import { setShowPerformance, useShowPerformance } from '../../perf/perfSetting';
 import { SettingRow } from './parts';
 
 export const STUDIO_URL = 'https://officexr.karibalabs.co/studio/';
@@ -116,6 +117,7 @@ export function OfficePage({ office, coarse, onSaved }: { office: Office; coarse
   const online = useOnline();
   const [mapName, setMapName] = useState(office.map_name ?? DEFAULT_MAP);
   const [advanced, setAdvanced] = useState(false);
+  const showPerformance = useShowPerformance();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -235,6 +237,9 @@ export function OfficePage({ office, coarse, onSaved }: { office: Office; coarse
           <div id="office-advanced" className="mt-2">
             <SettingRow label="Debug mode" hint="Lets you join from several windows.">
               <Switch aria-label="Debug mode" checked={office.debug_enabled} disabled={busy} onCheckedChange={(on) => void send({ debugEnabled: on })} />
+            </SettingRow>
+            <SettingRow label="Show performance" hint="Shows frame rate and draw calls in a corner of the screen.">
+              <Switch aria-label="Show performance" checked={showPerformance} onCheckedChange={setShowPerformance} />
             </SettingRow>
           </div>
         )}

@@ -1,0 +1,82 @@
+# Camera-path performance check for pull requests.
+#
+# Builds the HUD preview (production build) of the merge base and of the PR head, runs
+# tests/playwright/perf-turn.spec.ts twice on each in alternation in this one job on one runner, and
+# compares the medians (scripts/perf/compare.mjs). The steps live in scripts/perf/ab.sh, so the same
+# command runs locally.
+# CI has no GPU: Chromium renders with software WebGL, so wall-clock frame times mean nothing. The check
+# reads CPU work instead: main-thread script ms per rendered frame and React commits per second. It fails
+# when either is more than 25% worse in two or more camera modes; one mode over the line is only a warning
+# in the job summary.
+# Skipped when the diff touches no packages/world, packages/web or packages/sdk file.
+name: Perf A/B
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/world/**'
+      - 'packages/web/**'
+      - 'packages/sdk/**'
+      - 'tests/playwright/perf-turn.spec.ts'
+      - 'tests/playwright/lib/perfStats.ts'
+      - 'tests/playwright/lib/componentProbe.ts'
+      - 'playwright.perf.config.ts'
+      - 'scripts/perf/**'
+      - '.github/workflows/perf-ab.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  perf-ab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RUNS: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Check out the merge base
+        run: |
+          base=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          echo "Merge base: $base"
+          git worktree add ../base "$base"
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          (cd ../base && pnpm install --frozen-lockfile)
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Bake the default layout
+        run: |
+          pnpm --filter @officexr/world bake:layout platform
+          (cd ../base && pnpm --filter @officexr/world bake:layout platform)
+
+      - name: Build, run the scenario on base and head, and compare
+        run: |
+          set +e
+          scripts/perf/ab.sh ../base "$RUNS"
+          status=$?
+          [ -f perf-results/summary.md ] && cat perf-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Upload the runs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-ab-runs
+          path: perf-results/
+          retention-days: 14

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isHintAvailable, markHintDone, recordHintShown, type HintName } from '../hintFlags';
-import { useNow } from '../useNow';
+import { performanceNow } from '../useNow';
 import { HINT_MIN_SEEN_MS, HINT_ORDER, planHint, type ActiveHint } from './hintPlan';
 
 const TICK_MS = 500;
@@ -32,7 +32,7 @@ export function hintConditions(s: HintSignals): Record<HintName, boolean> {
 }
 
 export function useFirstRunHint(signals: HintSignals): { hint: HintName | null; done: (name: HintName) => void } {
-  const now = useNow(TICK_MS);
+  const [now, setNow] = useState(performanceNow);
   const [active, setActive] = useState<ActiveHint | null>(null);
   const activeRef = useRef<ActiveHint | null>(null);
   const since = useRef<Partial<Record<HintName, number>>>({});
@@ -42,6 +42,16 @@ export function useFirstRunHint(signals: HintSignals): { hint: HintName | null; 
     () => hintConditions({ coarse, canBuild, moving, headcount, someoneNear, menuOpen, otherSheetOpen, peopleOpen, mapOpen, building, inCall, toastShowing }),
     [coarse, canBuild, moving, headcount, someoneNear, menuOpen, otherSheetOpen, peopleOpen, mapOpen, building, inCall, toastShowing],
   );
+
+  const ticking = active !== null || HINT_ORDER.some((name) => conditions[name] && isHintAvailable(name));
+  useEffect(() => {
+    if (!ticking) {
+      return;
+    }
+    setNow(performanceNow());
+    const id = setInterval(() => setNow(performanceNow()), TICK_MS);
+    return () => clearInterval(id);
+  }, [ticking]);
 
   const settle = useCallback((next: ActiveHint | null, at: number, counts = true) => {
     const current = activeRef.current;
@@ -59,14 +69,15 @@ export function useFirstRunHint(signals: HintSignals): { hint: HintName | null; 
   }, []);
 
   useEffect(() => {
+    const at = performanceNow();
     for (const name of HINT_ORDER) {
       if (conditions[name]) {
-        since.current[name] ??= now;
+        since.current[name] ??= at;
       } else {
         delete since.current[name];
       }
     }
-    settle(planHint({ now, active: activeRef.current, lastEndedAt: lastEndedAt.current, conditions, since: since.current, isAvailable: isHintAvailable }), now);
+    settle(planHint({ now: at, active: activeRef.current, lastEndedAt: lastEndedAt.current, conditions, since: since.current, isAvailable: isHintAvailable }), at);
   }, [now, conditions, settle]);
 
   const done = useCallback(
