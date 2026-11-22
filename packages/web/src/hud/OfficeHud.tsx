@@ -29,7 +29,7 @@ import { MissionsPanel } from './missions/MissionsPanel';
 import { resolvePlace, type Spot } from './missions/missionRows';
 import { useOfficeSpots } from './missions/useOfficeSpots';
 import type { MissionsApi } from './missions/useMissions';
-import { NearYouButtons, NearYouCard, sameNear, selectNearest } from './NearYouCard';
+import { selectSomeoneNear } from './hints/someoneNear';
 import { PingInboxHud } from './PingInboxHud';
 import { ArrivalBubble } from './ArrivalBubble';
 import { PlayerPortraits } from './playerPortrait';
@@ -139,15 +139,14 @@ export function OfficeHud({
   const plan = useMapPlan(store);
   const [toastsEl, setToastsEl] = useState<HTMLDivElement | null>(null);
   const toastShowing = useHasText(toastsEl);
-  const near = useStoreSelector(store, selectNearest, sameNear);
-  const nearName = near ? near.name.trim().split(' ')[0] : null;
+  const someoneNear = useStoreSelector(store, selectSomeoneNear);
   const canBuild = PLACEABLE_KINDS.length > 0;
-  const { hint, done: hintDone } = useFirstRunHint({
+  const { hint } = useFirstRunHint({
     coarse,
     canBuild,
     moving,
     headcount,
-    nearName,
+    someoneNear,
     menuOpen,
     otherSheetOpen: people || mapOpen || !!invite || (narrow && chatVisibility.mode === 'compose'),
     peopleOpen: people,
@@ -313,7 +312,7 @@ export function OfficeHud({
       page={settings.page}
       pages={settingsPages}
       canBuild={canBuild}
-      buildHint={hint === 'build' && <HintPlate name="build" text={hintCopy('build', coarse, null)} arrow={{ side: 'up', offset: 28 }} visible className="relative ml-4 self-start" />}
+      buildHint={hint === 'build' && <HintPlate name="build" text={hintCopy('build', coarse)} arrow={{ side: 'up', offset: 28 }} visible className="relative ml-4 self-start" />}
       onPage={settings.openPage}
       onBack={settings.back}
       onClose={closeMenu}
@@ -432,7 +431,6 @@ export function OfficeHud({
             <>
               <InteractionPrompt />
               {chatVisibility.mode === 'peek' && <ChatTicker key={latestId} store={store} hiddenLogins={mutedLogins} onOpen={chatVisibility.compose} />}
-              {!building && <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />}
               <div className="flex items-center gap-2">
                 {peopleButton}
                 {chatButton}
@@ -441,18 +439,16 @@ export function OfficeHud({
           ) : coarse ? (
             <>
               <InteractionPrompt />
-              <NearYouButtons store={store} onWave={onWave} onAct={() => hintDone('wave')} />
               {!building && peopleButton}
             </>
           ) : (
             <>
               <InteractionPrompt />
-              <NearYouCard store={store} onWave={onWave} onAct={() => hintDone('wave')} />
             </>
           ))
         }
       />
-      <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} nearName={nearName} joystickFloats={joystickFloats} />
+      <HintLayer hint={hint === 'build' ? null : hint} coarse={coarse} portrait={narrow} joystickFloats={joystickFloats} />
       {mapOpen && <FullMap store={store} officeName={officeName} areas={spots.areas} plan={plan} route={route} walk={mapWalk} onGoTo={goToOnMap} onClose={() => setMapOpen(false)} />}
     </PlayerPortraits>
   );

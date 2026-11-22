@@ -55,8 +55,8 @@ describe('hint seen flags', () => {
 
   it('shows a hint at most once per visit', () => {
     const storage = memoryStorage();
-    recordHintShown('wave', storage);
-    expect(isHintAvailable('wave', storage)).toBe(false);
+    recordHintShown('alone', storage);
+    expect(isHintAvailable('alone', storage)).toBe(false);
   });
 
   it('stops a hint for good once the person did the action', () => {
@@ -86,10 +86,10 @@ describe('hint seen flags', () => {
     const storage = memoryStorage();
     storage.setItem('officexr:fold:missions', 'open');
     markHintDone('move', storage);
-    recordHintShown('wave', storage);
+    recordHintShown('alone', storage);
     clearHintFlags(storage);
     expect([...storage.data.keys()]).toEqual(['officexr:fold:missions']);
     expect(isHintAvailable('move', storage)).toBe(true);
-    expect(isHintAvailable('wave', storage)).toBe(true);
+    expect(isHintAvailable('alone', storage)).toBe(true);
   });
 });
