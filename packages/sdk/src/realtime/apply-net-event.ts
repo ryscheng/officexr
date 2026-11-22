@@ -96,7 +96,7 @@ export function applyNetEventToStore(
       return;
     case 'ping:send':
       // ponytail: actorId is client-supplied, so the sender can be spoofed until the server enforces identity.
-      actions.receivePing(event.actorId, clock.now());
+      actions.receivePing(event.actorId, clock.now(), event.intent);
       return;
     case 'zombie:state':
       actions.applyZombieState(event.state);

@@ -1,4 +1,4 @@
-import { Bell, Hand, Mic, MicOff } from 'lucide-react';
+import { Bell, Hand, Mic, MicOff, Phone } from 'lucide-react';
 import { Button } from './ui/Button';
 import { firstName, personStatus, statusLine } from './peopleStatus';
 import { PersonAvatar } from './PersonAvatar';
@@ -10,14 +10,19 @@ export type PersonCardProps = {
   offline: boolean;
   muted: boolean;
   pingCoolingDown: boolean;
+  busyReason?: string | null;
+  waveCoolingDown?: boolean;
+  canInvite?: boolean;
+  inviteCoolingDown?: boolean;
   compact: boolean;
   onGo: () => void;
   onWave: () => void;
   onToggleMute: () => void;
   onPing: () => void;
+  onInviteToTalk?: () => void;
 };
 
-export function PersonCard({ row, now, offline, muted, pingCoolingDown, compact, onGo, onWave, onToggleMute, onPing }: PersonCardProps) {
+export function PersonCard({ row, now, offline, muted, pingCoolingDown, busyReason = null, waveCoolingDown = false, canInvite = false, inviteCoolingDown = false, compact, onGo, onWave, onToggleMute, onPing, onInviteToTalk }: PersonCardProps) {
   const status = personStatus(row, now);
   const statusText = row.type === 'peer' ? row.statusText : null;
   const first = firstName(row.name || row.label);
@@ -41,9 +46,9 @@ export function PersonCard({ row, now, offline, muted, pingCoolingDown, compact,
         Go to {first}
       </Button>
       <div className={`grid gap-2 ${compact ? 'grid-cols-3' : 'grid-cols-2'}`}>
-        <Button className="min-h-12 px-2!" onClick={onWave}>
+        <Button className="min-h-12 px-2!" disabled={offline || busyReason !== null || waveCoolingDown} onClick={onWave}>
           <Hand aria-hidden className={icon} />
-          Wave
+          {waveCoolingDown ? 'Waved' : 'Wave'}
         </Button>
         <Button className="min-h-12 px-2!" aria-pressed={muted} onClick={onToggleMute}>
           {muted ? <Mic aria-hidden className={icon} /> : <MicOff aria-hidden className={icon} />}
@@ -54,6 +59,13 @@ export function PersonCard({ row, now, offline, muted, pingCoolingDown, compact,
           {pingCoolingDown ? 'Pinged' : 'Ping'}
         </Button>
       </div>
+      {canInvite && (
+        <Button className="min-h-12 w-full" disabled={offline || busyReason !== null || inviteCoolingDown} onClick={onInviteToTalk}>
+          <Phone aria-hidden className="size-4" />
+          {inviteCoolingDown ? 'Invited' : 'Invite to talk'}
+        </Button>
+      )}
+      {busyReason && <p className="text-sm leading-5 text-hud-text-2">{busyReason}</p>}
       <p role="status" className="sr-only">
         {pingCoolingDown ? `Pinged ${first}` : ''}
       </p>

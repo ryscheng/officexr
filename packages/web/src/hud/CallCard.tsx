@@ -60,14 +60,15 @@ export function CallCard({
 
   if (compact || fold.folded) {
     return (
-      <Panel className="pointer-events-auto flex items-center gap-2 p-1.5 pr-2">
-        <span className="flex min-w-0 flex-col pr-1 pl-2">
-          <span className={`truncate text-xs font-semibold ${compact ? 'max-w-20 portrait:max-w-44' : 'max-w-44'}`}>{title}</span>
+      <Panel className="pointer-events-auto flex h-14 w-[min(358px,calc(100vw-24px))] items-center gap-2 p-1 pl-4">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm/5 font-semibold">{title}</span>
+          {compact && <span className="truncate text-xs/4 text-hud-text-2">{sub}</span>}
         </span>
-        <RoundButton aria-label={muted ? 'Unmute microphone' : 'Mute microphone'} aria-pressed={muted} tone={muted ? 'danger' : 'inset'} onClick={() => voice.setMuted(!muted)}>
+        <RoundButton className="size-12" aria-label={muted ? 'Unmute microphone' : 'Mute microphone'} aria-pressed={muted} tone={muted ? 'danger' : 'inset'} onClick={() => voice.setMuted(!muted)}>
           <MuteIcon aria-hidden className="size-5" />
         </RoundButton>
-        <RoundButton aria-label="Leave call" tone="danger" onClick={() => void voice.leaveRoom()}>
+        <RoundButton className="size-12" aria-label="Leave call" tone="danger" onClick={() => void voice.leaveRoom()}>
           <LogOut aria-hidden className="size-5" />
         </RoundButton>
         {!compact && (

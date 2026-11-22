@@ -3,6 +3,7 @@ import type {
   AvatarData,
   CharacterConfigs,
   EmoteId,
+  PingIntent,
   MicState,
   PlayerId,
   PlayerPose,
@@ -18,7 +19,7 @@ import { ZDeskClaimant, type DeskClaimant } from './desk-claim.ts';
 import { ZWorldConstants, type WorldConstants } from '../game-state/world-constants.ts';
 import { ZPlacedProp, type PlacedProp } from '../placement/props.ts';
 import { SPELL_IDS, SPELL_RANGE_M, type SpellId } from '../spells/index.ts';
-import { EMOTE_IDS, HELD_ITEMS, PLAYER_POSES, STATUS_EMOJI_MAX, STATUS_TEXT_MAX, isStatusEmoji } from '../game-state/types.ts';
+import { EMOTE_IDS, HELD_ITEMS, PING_INTENTS, PLAYER_POSES, STATUS_EMOJI_MAX, STATUS_TEXT_MAX, isStatusEmoji } from '../game-state/types.ts';
 import type { SerializedOfficeState } from '../game-state/snapshot.ts';
 
 // --- Envelope ---
@@ -245,7 +246,7 @@ const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) })
 const ZChatMessage = z.object({ text: z.string() });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
 const ZShotHit = z.object({ targetId: z.string(), dmg: z.number() });
-const ZPingSend = z.object({ targetId: z.string().min(1) });
+const ZPingSend = z.object({ targetId: z.string().min(1), intent: z.enum(PING_INTENTS).optional() });
 const ZZombieStatePayload = z.object({ state: ZZombieState });
 const ZSnapshotRequest = z.object({});
 const ZWorldConstantsPayload = z.object({ constants: ZWorldConstants });
@@ -296,7 +297,7 @@ export type NetEvent =
   | WithEnvelope<'chat:message', 1, { text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>
   | WithEnvelope<'shot:hit', 1, { targetId: PlayerId; dmg: number }>
-  | WithEnvelope<'ping:send', 1, { targetId: PlayerId }>
+  | WithEnvelope<'ping:send', 1, { targetId: PlayerId; intent?: PingIntent }>
   | WithEnvelope<'zombie:state', 1, { state: ZombieState }>
   | WithEnvelope<'snapshot:request', 1>
   | WithEnvelope<

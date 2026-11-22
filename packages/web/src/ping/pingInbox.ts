@@ -66,7 +66,10 @@ export class PingInbox {
 
 /** Feeds `ping:received` into the inbox, naming the sender at receipt. Returns the unsubscribe. */
 export function connectPingInbox(bus: Bus, store: Store, inbox: PingInbox): () => void {
-  return bus.on('ping:received', ({ fromId }) => {
+  return bus.on('ping:received', ({ fromId, intent }) => {
+    if (intent && intent !== 'ping') {
+      return;
+    }
     inbox.add(fromId, senderName(store, fromId));
   });
 }
