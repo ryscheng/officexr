@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { OccluderRegistry } from './OccluderRegistry.ts';
 import { collectOccupiedInstanceIds } from './occupiedInstances.ts';
+import { collectOccupiedAnchor } from './occupiedAnchor.ts';
+import { createAnchor, setAnchorAt } from './occlusionMath.ts';
 import type { WaterVolume } from '../../motion/water.ts';
 
 function boxes(positions: Array<[number, number, number]>, size: [number, number, number]) {
@@ -15,6 +17,7 @@ function boxes(positions: Array<[number, number, number]>, size: [number, number
 const camera = new THREE.Vector3(0, 4, 8);
 const head = new THREE.Vector3(0, 1.55, 0);
 const chest = new THREE.Vector3(0, 1, 0);
+const NO_ANCHOR = createAnchor();
 const pool: WaterVolume = { id: 'pool-1', minX: -3, maxX: 3, minZ: -3, maxZ: 3, baseY: -1, surfaceY: 0 };
 
 function run(registry: OccluderRegistry, seconds = 0.5) {
@@ -94,15 +97,119 @@ describe('occupied instances', () => {
     const seat = boxes([[0, 2, 3]], [2, 4, 0.4]);
     const registry = new OccluderRegistry();
     registry.addInstanced(seat.mesh, 1, ['sofa']);
-    registry.updateOccupantSilhouette('p1', camera, [head, chest], new Set(['sofa']));
+    registry.updateOccupantSilhouette('p1', camera, [head, chest], new Set(['sofa']), NO_ANCHOR);
     expect(registry.silhouetteSuppressed('p1')).toBe(true);
 
     const wall = boxes([[0, 2, 5]], [2, 4, 0.4]);
     registry.addInstanced(wall.mesh, 1, ['wall']);
-    registry.updateOccupantSilhouette('p1', camera, [head, chest], new Set(['sofa']));
+    registry.updateOccupantSilhouette('p1', camera, [head, chest], new Set(['sofa']), NO_ANCHOR);
     expect(registry.silhouetteSuppressed('p1')).toBe(false);
 
-    registry.updateOccupantSilhouette('p2', camera, [head, chest], new Set());
+    registry.updateOccupantSilhouette('p2', camera, [head, chest], new Set(), NO_ANCHOR);
     expect(registry.silhouetteSuppressed('p2')).toBe(false);
+  });
+});
+
+function bakedBox(size: [number, number, number], at: [number, number, number]) {
+  const root = new THREE.Group();
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshStandardMaterial());
+  mesh.position.set(...at);
+  root.add(mesh);
+  root.updateMatrixWorld(true);
+  return mesh;
+}
+
+function runLow(registry: OccluderRegistry, cam: THREE.Vector3, seconds = 0.5) {
+  for (let t = 0; t < seconds; t += 0.02) registry.updateFades(cam, [head, chest], 0.02, true);
+}
+
+describe('occupied anchor', () => {
+  const low = new THREE.Vector3(0, 0.9, 8);
+
+  it('derives the anchor from seat, swim and ride state', () => {
+    const out = createAnchor();
+    const pos = { x: 1, y: 2, z: 3 };
+    expect(collectOccupiedAnchor(out, { pos }, 0.4).active).toBe(false);
+    expect(collectOccupiedAnchor(out, { seat: 's', pos }, 0.4)).toMatchObject({ active: true, y: 2 });
+    expect(collectOccupiedAnchor(out, { pose: 'swim', pos }, 0.4).y).toBeCloseTo(2.5);
+    expect(collectOccupiedAnchor(out, { pose: 'scooter', pos }, 0.4).y).toBeCloseTo(2.8);
+  });
+
+  it('seated: a baked seat mesh holding the seat point does not fade, a wall still does', () => {
+    const sofa = bakedBox([2, 1.2, 1], [0, 0.6, 0.6]);
+    const wall = bakedBox([4, 3, 0.2], [0, 1.5, 3]);
+    const registry = new OccluderRegistry();
+    registry.addMesh(sofa);
+    registry.addMesh(wall);
+    runLow(registry, low);
+    expect(sofa.visible).toBe(false);
+    registry.restoreAll();
+    const anchor = createAnchor();
+    setAnchorAt(anchor, 0, 0.6, 0.6);
+    registry.setOccupiedAnchor(anchor);
+    runLow(registry, low);
+    expect(sofa.visible).toBe(true);
+    expect(wall.visible).toBe(false);
+  });
+
+  it('in water: a baked water mesh holding the feet does not fade', () => {
+    const water = bakedBox([4, 0.9, 4], [0, 0.45, 0]);
+    const lowest = new THREE.Vector3(0, 0.1, 8);
+    const registry = new OccluderRegistry();
+    registry.addMesh(water);
+    const anchor = createAnchor();
+    setAnchorAt(anchor, 0, 0.3, 0);
+    registry.setOccupiedAnchor(anchor);
+    runLow(registry, lowest);
+    expect(water.visible).toBe(true);
+    registry.setOccupiedAnchor(NO_ANCHOR);
+    runLow(registry, lowest);
+    expect(water.visible).toBe(false);
+  });
+
+  it('applies to instances without ids and leaves distant instances alone', () => {
+    const { root, mesh } = boxes([[0, 0.6, 0.6], [0, 0.6, 3]], [2, 1.2, 1]);
+    const registry = new OccluderRegistry();
+    registry.addInstanced(mesh, 2);
+    const anchor = createAnchor();
+    setAnchorAt(anchor, 0, 0.6, 0.6);
+    registry.setOccupiedAnchor(anchor);
+    runLow(registry, low);
+    expect(fadedSlots(root, mesh)).toBe(1);
+  });
+
+  it('a seat mesh is not part of the roof cover', () => {
+    const canopy = bakedBox([4, 0.2, 4], [0, 3.1, 0]);
+    const registry = new OccluderRegistry();
+    registry.addMesh(canopy);
+    const anchor = createAnchor();
+    setAnchorAt(anchor, 0, 3.0, 0);
+    registry.setOccupiedAnchor(anchor);
+    for (let t = 0; t < 0.5; t += 0.02) registry.updateFades(new THREE.Vector3(0, 30, 6), [head], 0.02, true, { x: 0, feetY: 0, z: 0 });
+    expect(registry.cutCount()).toBe(0);
+  });
+
+  it('a room-sized mesh around the player is never treated as occupied', () => {
+    const room = bakedBox([20, 3, 0.4], [0, 1.5, 0.6]);
+    const registry = new OccluderRegistry();
+    registry.addMesh(room);
+    const anchor = createAnchor();
+    setAnchorAt(anchor, 0, 0.6, 0.6);
+    registry.setOccupiedAnchor(anchor);
+    runLow(registry, low);
+    expect(room.visible).toBe(false);
+  });
+
+  it('silhouette: not triggered by a baked seat holding the anchor, triggered by a wall', () => {
+    const sofa = bakedBox([2, 1.2, 1], [0, 0.6, 0.6]);
+    const registry = new OccluderRegistry();
+    registry.addMesh(sofa);
+    const anchor = createAnchor();
+    setAnchorAt(anchor, 0, 0.6, 0.6);
+    registry.updateOccupantSilhouette('p1', low, [head, chest], new Set(), anchor);
+    expect(registry.silhouetteSuppressed('p1')).toBe(true);
+    registry.addMesh(bakedBox([4, 3, 0.2], [0, 1.5, 3]));
+    registry.updateOccupantSilhouette('p1', low, [head, chest], new Set(), anchor);
+    expect(registry.silhouetteSuppressed('p1')).toBe(false);
   });
 });

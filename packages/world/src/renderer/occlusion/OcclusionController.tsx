@@ -7,6 +7,8 @@ import type { CameraMode } from '../config.ts';
 import { useOccluderRegistry } from './OccluderContext.tsx';
 import type { CoverProbe } from './OccluderRegistry.ts';
 import { collectOccupiedInstanceIds } from './occupiedInstances.ts';
+import { collectOccupiedAnchor } from './occupiedAnchor.ts';
+import { createAnchor } from './occlusionMath.ts';
 import { useWaterVolumes } from '../useWaterVolumes.ts';
 
 const HEAD_HEIGHT = 1.55;
@@ -39,6 +41,8 @@ export function OcclusionController({ mode, store, selfId, playerPosRef, charRad
   const water = useWaterVolumes(store);
   const selfOccupied = useRef(new Set<string>());
   const otherOccupied = useRef(new Set<string>());
+  const selfAnchor = useRef(createAnchor());
+  const otherAnchor = useRef(createAnchor());
   const fades = enabled && (mode === 'fixed' || mode === 'third-person');
   const cutsAway = fades && mode === 'fixed';
 
@@ -58,16 +62,18 @@ export function OcclusionController({ mode, store, selfId, playerPosRef, charRad
     const players = store.getState().players;
     if (query) {
       registry.setOccupied(collectOccupiedInstanceIds(selfOccupied.current, players[selfId], water));
+      registry.setOccupiedAnchor(collectOccupiedAnchor(selfAnchor.current, players[selfId], charRadius));
       for (const id in players) {
         const own = collectOccupiedInstanceIds(otherOccupied.current, players[id], water);
-        if (own.size === 0) {
+        const ownAnchor = collectOccupiedAnchor(otherAnchor.current, players[id], charRadius);
+        if (own.size === 0 && !ownAnchor.active) {
           registry.clearOccupantSilhouette(id);
           continue;
         }
         const at = id === selfId ? feet : feetPosition(players[id].pos, charRadius);
         head.current.set(at.x, at.y + HEAD_HEIGHT, at.z);
         chest.current.set(at.x, at.y + CHEST_HEIGHT, at.z);
-        registry.updateOccupantSilhouette(id, camera.position, targets.current, own);
+        registry.updateOccupantSilhouette(id, camera.position, targets.current, own, ownAnchor);
       }
       head.current.set(feet.x, feet.y + HEAD_HEIGHT, feet.z);
       chest.current.set(feet.x, feet.y + CHEST_HEIGHT, feet.z);
