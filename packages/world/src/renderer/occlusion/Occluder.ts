@@ -3,6 +3,7 @@ export interface Occluder {
   lowestCoverBottom(px: number, feetY: number, pz: number): number;
   markCutaway(cutY: number, px: number, pz: number): void;
   clearMarks(): void;
+  clearCutaway(): void;
   fadedCount(): number;
   cutCount(): number;
   stepFade(dtSec: number): void;

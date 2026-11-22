@@ -73,6 +73,18 @@ describe('roof cutaway', () => {
     expect(registry.cutCount()).toBe(0);
   });
 
+  it('skips the cover scan while the player stands still and redoes it after a move', () => {
+    const roof = slabs([[0, 3.1, 0]], [10, 0.2, 10]);
+    const registry = new OccluderRegistry();
+    registry.addInstanced(roof.mesh, 1);
+    run(registry, inside);
+    expect(registry.cutCount()).toBe(1);
+    run(registry, { x: 0.05, feetY: 0, z: 0 });
+    expect(registry.cutCount()).toBe(1);
+    run(registry, outside);
+    expect(registry.cutCount()).toBe(0);
+  });
+
   it('cuts nothing when no cover probe is given', () => {
     const roof = slabs([[0, 3.1, 0]], [10, 0.2, 10]);
     const registry = new OccluderRegistry();
@@ -112,8 +124,8 @@ describe('roof cutaway', () => {
   });
 
   it('treats a roof-named kind just above head height as cover', () => {
-    const named = slabs([[0, 1.9, 0]], [6, 0.2, 6], 'ceiling_tiles');
-    const plain = slabs([[0, 1.9, 0]], [6, 0.2, 6]);
+    const named = slabs([[0, 2.1, 0]], [6, 0.2, 6], 'ceiling_tiles');
+    const plain = slabs([[0, 2.1, 0]], [6, 0.2, 6]);
     const a = new OccluderRegistry();
     a.addInstanced(named.mesh, 1);
     const b = new OccluderRegistry();

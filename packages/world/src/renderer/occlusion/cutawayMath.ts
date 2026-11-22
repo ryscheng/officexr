@@ -1,5 +1,5 @@
-export const ROOF_CLEARANCE = 1.9;
-export const NAMED_ROOF_CLEARANCE = 1.6;
+export const ROOF_CLEARANCE = 2.2;
+export const NAMED_ROOF_CLEARANCE = 1.9;
 export const ROOF_REACH = 60;
 export const CUTAWAY_RADIUS = 14;
 export const CUT_PLANE_SLACK = 0.02;

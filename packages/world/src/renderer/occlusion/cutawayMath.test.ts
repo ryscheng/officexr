@@ -15,8 +15,8 @@ describe('cutaway selection math', () => {
   });
 
   it('lets a roof or ceiling name lower the clearance', () => {
-    expect(isOverheadCover(1.7, 0, false)).toBe(false);
-    expect(isOverheadCover(1.7, 0, true)).toBe(true);
+    expect(isOverheadCover(2.0, 0, false)).toBe(false);
+    expect(isOverheadCover(2.0, 0, true)).toBe(true);
     expect(isRoofName('Roof_Tile_A')).toBe(true);
     expect(isRoofName('wall_01')).toBe(false);
     expect(isRoofName(undefined)).toBe(false);

@@ -138,6 +138,9 @@ export class InstancedOccluder implements Occluder {
 
   clearMarks(): void {
     this.wanted.clear();
+  }
+
+  clearCutaway(): void {
     this.cut.clear();
   }
 

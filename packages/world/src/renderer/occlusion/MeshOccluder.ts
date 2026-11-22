@@ -123,6 +123,9 @@ export class MeshOccluder implements Occluder {
 
   clearMarks(): void {
     this.wanted = false;
+  }
+
+  clearCutaway(): void {
     this.cut = false;
   }
 
