@@ -34,6 +34,13 @@ describe('portrait cache', () => {
     expect(store.read).toHaveBeenCalledTimes(1);
   });
 
+  it('still reads a PNG data URL stored before portraits became WebP', async () => {
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    const url = '/models/characters/Legacy.glb';
+    setPortraitStore(memoryStore({ [url]: png }));
+    expect(await knownCharacterPortrait(url)).toBe(png);
+  });
+
   it('reports a portrait nobody has rendered as unknown', async () => {
     setPortraitStore(memoryStore());
     expect(await knownCharacterPortrait('/models/characters/Never.glb')).toBeNull();

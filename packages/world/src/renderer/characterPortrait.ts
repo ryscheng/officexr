@@ -3,6 +3,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { cachedCharacterPortrait, storeCharacterPortrait } from '../characters/portraitCache.ts';
+import { encodePortrait } from '../characters/portraitEncoding.ts';
 
 const PORTRAIT_PX = 160;
 const HEAD_AND_SHOULDERS = 0.58;
@@ -60,7 +61,7 @@ function disposeModel(model: THREE.Object3D): void {
   });
 }
 
-async function render(url: string, mime = 'image/png'): Promise<string> {
+async function render(url: string, mime?: string): Promise<string> {
   studio ??= createStudio();
   const { renderer, scene, camera, loader } = studio;
   const gltf = await loader.loadAsync(url);
@@ -69,7 +70,7 @@ async function render(url: string, mime = 'image/png'): Promise<string> {
     gltf.scene.updateMatrixWorld(true);
     frameHead(camera, gltf.scene);
     renderer.render(scene, camera);
-    return renderer.domElement.toDataURL(mime);
+    return mime ? renderer.domElement.toDataURL(mime) : encodePortrait(renderer.domElement);
   } finally {
     scene.remove(gltf.scene);
     disposeModel(gltf.scene);
