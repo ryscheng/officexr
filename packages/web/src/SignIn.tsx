@@ -4,6 +4,7 @@ import { API_ORIGIN, apiUrl, paths } from './apiOrigin';
 import { Panel } from './hud/ui/Panel';
 import { BrandMark, PageShell } from './page/PageShell';
 import { pageButton } from './page/pageButton';
+import { useOfficeName } from './useOfficeName';
 import { readSignInNext, saveSignInNext } from './signInNext';
 
 type SignInProblem = { tone: 'rose' | 'amber'; title: string; text: string };
@@ -94,7 +95,7 @@ function ContinueButton({ target }: { target: Pick<Location, 'pathname' | 'searc
   );
 }
 
-const isRoomPath = (path: string) => path.startsWith('/room/');
+const roomIdOf = (path: string) => path.match(/^\/room\/([^/]+)/)?.[1] ?? null;
 
 export function SignIn() {
   const [loginError] = useState(() => new URLSearchParams(window.location.search).get('login_error'));
@@ -110,7 +111,9 @@ export function SignIn() {
   const target = keptLink ? new URL(keptLink, window.location.origin) : window.location;
   const online = useOnline();
   const problem = !online ? OFFLINE : loginError !== null ? problemFor(loginError) : null;
-  const room = isRoomPath(target.pathname);
+  const roomId = roomIdOf(target.pathname);
+  const room = roomId !== null;
+  const officeName = useOfficeName(roomId);
   return (
     <PageShell centred>
       <main className="w-full max-w-100">
@@ -118,7 +121,13 @@ export function SignIn() {
           <BrandMark size="lg" />
           {room && (
             <p className="flex min-h-12 w-full items-center justify-center rounded-hud-control bg-hud-inset px-3 text-base text-hud-text [overflow-wrap:anywhere]">
-              You opened an office link
+              {officeName === null ? (
+                'You opened an office link'
+              ) : (
+                <span className="line-clamp-2">
+                  You are invited to <strong className="font-semibold">{officeName}</strong>
+                </span>
+              )}
             </p>
           )}
           <p className="text-base/6 text-hud-text-2">

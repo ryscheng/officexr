@@ -8,6 +8,10 @@ import { Button } from './ui/Button';
 import { Panel, PanelTitle } from './ui/Panel';
 import { PortraitSheet } from './ui/PortraitSheet';
 import { useLocalMutes, type LocalMutes } from './localMutes';
+import { BlockedPeople } from '../social/BlockedPeople';
+import { PersonMore } from '../social/PersonMore';
+import { ReportForm } from '../social/ReportForm';
+import { useSocial } from '../social/SocialProvider';
 import { PersonAvatar } from './PersonAvatar';
 import { PersonCard } from './PersonCard';
 import { personStatus, statusLine } from './peopleStatus';
@@ -79,7 +83,16 @@ export function PeopleSheet({ store, selfId, officeName, pinger, inviter, waver,
   const coarse = useCoarsePointer();
   const { goTo } = usePlayControls();
   const [openId, setOpenId] = useState<PlayerId | null>(null);
+  const [view, setView] = useState<'card' | 'more' | 'report'>('card');
+  const [blocking, setBlocking] = useState<'idle' | 'busy' | 'failed'>('idle');
+  const [notice, setNotice] = useState<{ login: string; name: string } | null>(null);
+  const { caps, block, unblock, messagePerson } = useSocial();
   useEscapeLayer(true, onClose);
+  const openPerson = (id: PlayerId | null) => {
+    setOpenId(id);
+    setView('card');
+    setBlocking('idle');
+  };
 
   const count = rows.filter(isPresent).length;
   const open = rows.find((row) => row.id === openId && row.type === 'peer');
@@ -93,9 +106,20 @@ export function PeopleSheet({ store, selfId, officeName, pinger, inviter, waver,
     onClose();
   };
 
-  const title = open ? 'Person' : `People here · ${count}`;
+  const doBlock = async (row: PresenceRow) => {
+    setBlocking('busy');
+    const login = loginOf(row.id);
+    if (await block(login, row.name || row.label)) {
+      setNotice({ login, name: row.name || row.label });
+      openPerson(null);
+    } else {
+      setBlocking('failed');
+    }
+  };
+
+  const title = open ? (view === 'more' ? 'More' : view === 'report' ? 'Report' : 'Person') : `People here · ${count}`;
   const alone = count === 1;
-  const content: ReactNode = open ? (
+  const card = open && (
     <PersonCard
       row={open}
       now={now}
@@ -121,14 +145,56 @@ export function PeopleSheet({ store, selfId, officeName, pinger, inviter, waver,
         pinger?.ping(open.id);
         focusWorld();
       }}
+      onMessage={
+        caps.directChat
+          ? () => {
+              messagePerson(open.id);
+              onClose();
+            }
+          : undefined
+      }
+      onMore={caps.block || caps.report ? () => setView('more') : undefined}
     />
+  );
+  const content: ReactNode = open ? (
+    view === 'more' ? (
+      <PersonMore
+        name={open.label}
+        canBlock={caps.block}
+        canReport={caps.report}
+        busy={blocking === 'busy'}
+        failed={blocking === 'failed'}
+        onBlock={() => void doBlock(open)}
+        onReport={() => setView('report')}
+      />
+    ) : view === 'report' ? (
+      <ReportForm login={loginOf(open.id)} name={open.label} onDone={() => setView('more')} />
+    ) : (
+      card
+    )
   ) : (
     <div className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-1">
+      {notice && (
+        <p role="status" className="flex min-h-12 items-center gap-2 rounded-hud-control bg-hud-inset px-3 text-base text-hud-text">
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">Blocked {notice.name}.</span>
+          <Button
+            className="min-h-12"
+            onClick={async () => {
+              if (await unblock(notice.login)) {
+                setNotice(null);
+              }
+            }}
+          >
+            Undo
+          </Button>
+        </p>
+      )}
       <ul aria-label={`People in ${officeName}`} className="divide-y divide-hud-separator">
         {rows.map((row) => (
-          <PeopleRow key={row.id} row={row} now={now} muted={isMuted(row)} offline={offline} onOpen={() => setOpenId(row.id)} onGo={() => go(row)} />
+          <PeopleRow key={row.id} row={row} now={now} muted={isMuted(row)} offline={offline} onOpen={() => openPerson(row.id)} onGo={() => go(row)} />
         ))}
       </ul>
+      <BlockedPeople />
       {alone && (
         <div className="flex flex-col gap-2 pb-1">
           <p className="text-base text-hud-text-2">Only you are here.</p>
@@ -140,7 +206,13 @@ export function PeopleSheet({ store, selfId, officeName, pinger, inviter, waver,
     </div>
   );
   const back = open && (
-    <button type="button" aria-label="Back to people" onMouseDown={(e) => e.preventDefault()} onClick={() => setOpenId(null)} className={BACK_OR_CLOSE}>
+    <button
+      type="button"
+      aria-label={view === 'card' ? 'Back to people' : 'Back'}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => (view === 'card' ? openPerson(null) : setView(view === 'report' ? 'more' : 'card'))}
+      className={BACK_OR_CLOSE}
+    >
       <ArrowLeft aria-hidden className="size-5" />
     </button>
   );

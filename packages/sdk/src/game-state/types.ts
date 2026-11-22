@@ -90,11 +90,15 @@ export type MicState = 'none' | 'muted' | 'silent' | 'speaking';
 
 export type DepartedPlayer = { name: string; leftAt: number };
 
+export type ChatScope = 'nearby' | 'direct';
+
 export type ChatMessage = {
   id: string;
   authorId: PlayerId;
   text: string;
   t: number;
+  scope?: ChatScope;
+  to?: PlayerId;
 };
 
 export type Stroke = {

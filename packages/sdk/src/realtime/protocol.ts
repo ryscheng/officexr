@@ -21,6 +21,7 @@ import { ZPlacedProp, type PlacedProp } from '../placement/props.ts';
 import { SPELL_IDS, SPELL_RANGE_M, type SpellId } from '../spells/index.ts';
 import { EMOTE_IDS, HELD_ITEMS, PING_INTENTS, PLAYER_POSES, STATUS_EMOJI_MAX, STATUS_TEXT_MAX, isStatusEmoji } from '../game-state/types.ts';
 import type { SerializedOfficeState } from '../game-state/snapshot.ts';
+import { CHAT_MAX_LENGTH } from '../social/chat.ts';
 
 // --- Envelope ---
 
@@ -244,6 +245,8 @@ const ZDeskClaimsPayload = z.object({
 });
 const ZAvatarUpdate = z.object({ avatar: ZAvatarData, name: z.string().min(1) });
 const ZChatMessage = z.object({ text: z.string() });
+const ZChatNearby = z.object({ text: z.string().min(1).max(CHAT_MAX_LENGTH) });
+const ZChatDirect = z.object({ targetId: z.string().min(1), text: z.string().min(1).max(CHAT_MAX_LENGTH) });
 const ZWhiteboardStroke = z.object({ stroke: ZStroke });
 const ZShotHit = z.object({ targetId: z.string(), dmg: z.number() });
 const ZPingSend = z.object({ targetId: z.string().min(1), intent: z.enum(PING_INTENTS).optional() });
@@ -295,6 +298,8 @@ export type NetEvent =
   | WithEnvelope<'poke:send', 1, { targetId: PlayerId | null }>
   | WithEnvelope<'avatar:update', 1, { avatar: AvatarData; name: string }>
   | WithEnvelope<'chat:message', 1, { text: string }>
+  | WithEnvelope<'chat:nearby', 1, { text: string }>
+  | WithEnvelope<'chat:direct', 1, { targetId: PlayerId; text: string }>
   | WithEnvelope<'whiteboard:stroke', 1, { stroke: Stroke }>
   | WithEnvelope<'shot:hit', 1, { targetId: PlayerId; dmg: number }>
   | WithEnvelope<'ping:send', 1, { targetId: PlayerId; intent?: PingIntent }>
@@ -339,6 +344,8 @@ export const PROTOCOL: Record<NetEventKind, ProtocolEntry> = {
   'poke:send': { v: 1, schema: ZPokeSend, authority: 'local', route: 'room' },
   'avatar:update': { v: 1, schema: ZAvatarUpdate, authority: 'local', route: 'room' },
   'chat:message': { v: 1, schema: ZChatMessage, authority: 'local', route: 'room' },
+  'chat:nearby': { v: 1, schema: ZChatNearby, authority: 'local', route: 'room' },
+  'chat:direct': { v: 1, schema: ZChatDirect, authority: 'local', route: 'target' },
   'whiteboard:stroke': { v: 1, schema: ZWhiteboardStroke, authority: 'local', route: 'room' },
   'shot:hit': { v: 1, schema: ZShotHit, authority: 'local', route: 'room' },
   'ping:send': { v: 1, schema: ZPingSend, authority: 'local', route: 'target' },

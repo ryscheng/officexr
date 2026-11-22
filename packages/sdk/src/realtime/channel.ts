@@ -56,7 +56,7 @@ export class ChannelStatusEmitter {
 interface Hub {
   attach(client: InMemoryChannel): void;
   detach(client: InMemoryChannel): void;
-  broadcast(senderId: PlayerId, event: NetEvent): void;
+  broadcast(senderId: PlayerId, event: NetEvent, accept?: (recipientId: PlayerId) => boolean): void;
   trackPresence(senderId: PlayerId, data: PresenceData): void;
   present(): PlayerId[];
 }
@@ -90,16 +90,16 @@ export function createInMemoryChannelHub(): Hub {
         }
       }
     },
-    broadcast(senderId, event) {
+    broadcast(senderId, event, accept) {
       const targetId = recipientOf(event);
       if (targetId !== null) {
-        if (targetId !== senderId) {
+        if (targetId !== senderId && (accept?.(targetId) ?? true)) {
           clients.get(targetId)?._deliver(event);
         }
         return;
       }
       for (const [id, c] of clients) {
-        if (id === senderId) continue;
+        if (id === senderId || accept?.(id) === false) continue;
         c._deliver(event);
       }
     },

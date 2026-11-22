@@ -1,4 +1,4 @@
-import { Bell, Hand, Mic, MicOff, Phone } from 'lucide-react';
+import { Bell, Ellipsis, Hand, MessageSquare, Mic, MicOff, Phone } from 'lucide-react';
 import { Button } from './ui/Button';
 import { firstName, personStatus, statusLine } from './peopleStatus';
 import { PersonAvatar } from './PersonAvatar';
@@ -20,9 +20,29 @@ export type PersonCardProps = {
   onToggleMute: () => void;
   onPing: () => void;
   onInviteToTalk?: () => void;
+  onMessage?: () => void;
+  onMore?: () => void;
 };
 
-export function PersonCard({ row, now, offline, muted, pingCoolingDown, busyReason = null, waveCoolingDown = false, canInvite = false, inviteCoolingDown = false, compact, onGo, onWave, onToggleMute, onPing, onInviteToTalk }: PersonCardProps) {
+export function PersonCard({
+  row,
+  now,
+  offline,
+  muted,
+  pingCoolingDown,
+  busyReason = null,
+  waveCoolingDown = false,
+  canInvite = false,
+  inviteCoolingDown = false,
+  compact,
+  onGo,
+  onWave,
+  onToggleMute,
+  onPing,
+  onInviteToTalk,
+  onMessage,
+  onMore,
+}: PersonCardProps) {
   const status = personStatus(row, now);
   const statusText = row.type === 'peer' ? row.statusText : null;
   const first = firstName(row.name || row.label);
@@ -58,6 +78,18 @@ export function PersonCard({ row, now, offline, muted, pingCoolingDown, busyReas
           <Bell aria-hidden className={icon} />
           {pingCoolingDown ? 'Pinged' : 'Ping'}
         </Button>
+        {onMessage && (
+          <Button className="min-h-12 px-2!" onClick={onMessage}>
+            <MessageSquare aria-hidden className={icon} />
+            Message
+          </Button>
+        )}
+        {onMore && (
+          <Button className="min-h-12 px-2!" onClick={onMore}>
+            <Ellipsis aria-hidden className={icon} />
+            More…
+          </Button>
+        )}
       </div>
       {canInvite && (
         <Button className="min-h-12 w-full" disabled={offline || busyReason !== null || inviteCoolingDown} onClick={onInviteToTalk}>

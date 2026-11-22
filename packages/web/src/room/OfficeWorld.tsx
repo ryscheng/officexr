@@ -59,6 +59,8 @@ import { AppearancePicker } from '../theme/AppearancePicker';
 import { initialViewMode } from './viewMode';
 import { RefocusOnMovementKey } from './useRefocusOnMovementKey';
 import { withDefaultMap } from './withDefaultMap';
+import { BlockedPeople } from '../social/BlockedPeople';
+import { SocialProvider } from '../social/SocialProvider';
 
 const loadPlayView3d = () => import('./PlayView3d');
 const PlayView3d = lazy(loadPlayView3d);
@@ -242,6 +244,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
       <>
         {extras.look}
         <StatusSection store={ready.local.store} actions={ready.local.actions} selfId={ready.local.selfId} />
+        <BlockedPeople />
       </>
     ),
     controls: (
@@ -314,7 +317,7 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
     </>
   );
 
-  return (
+  const world = (
     <div className="relative h-full w-full overflow-hidden">
       {session.type === 'ready' && (
         <PlayView3dBoundary>
@@ -341,5 +344,10 @@ function World({ office: initialOffice, me, session, join, missionsClient, onRej
       <PreWorld title={office.name} join={join.state} session={session} onJoin={join.join} onRetry={onRejoin} />
       {session.type === 'ready' && <ReplacedCover store={session.local.store} onRejoin={onRejoin} />}
     </div>
+  );
+  return (
+    <SocialProvider officeId={office.id} officeName={office.name}>
+      {world}
+    </SocialProvider>
   );
 }
