@@ -5,6 +5,12 @@ export const PLACEABLE_KINDS = [
   { kindId: 'prop_scooter_rack', label: 'Scooter rack' },
   { kindId: 'prop_tricycle_rack', label: 'Tricycle rack' },
   { kindId: 'prop_wand_stand', label: 'Wand stand' },
+  { kindId: 'holiday_tree_decorated', label: 'Tree' },
+  { kindId: 'holiday_present_a_cube', label: 'Gift' },
+  { kindId: 'holiday_snowman', label: 'Snowman' },
+  { kindId: 'holiday_candy_cane_red', label: 'Candy cane' },
+  { kindId: 'holiday_lights_colored', label: 'Lights' },
+  { kindId: 'holiday_wreath_decorated', label: 'Wreath' },
 ] as const;
 
 export type PlaceableKindId = (typeof PLACEABLE_KINDS)[number]['kindId'];

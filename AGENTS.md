@@ -337,6 +337,17 @@ If you skip the install step, the catalog still loads but
 scene references. The original 12 KayKit BlockBits ship in-repo so the
 default Scenes / Debug paths work without the install step.
 
+A fourth pack, `holiday` (27 Christmas objects), is a CC0 subset of Kenney's
+[Holiday Kit 2.0](https://kenney.nl/assets/holiday-kit) (License.txt: "Creative
+Commons Zero, CC0"). The installer pulls the converted zip
+`Kenney_Holiday_Kit_2.0_gltf.zip` from R2; Kenney's own download links are signed and
+short-lived, so the Dockerfile and the R2 copy pin the converted zip, not Kenney's.
+If the R2 copy is missing the installer builds the pack straight from kenney.nl.
+`pnpm --filter @officexr/world asset-packs:holiday-zip <out.zip>` rebuilds that zip
+(deterministic; it prints the sha256 the Dockerfile pins). The conversion turns each
+GLB into `.gltf` + `.bin` and bakes a 1.5x scale into a root node, because catalog
+`scale` must stay 1. The build-mode palette lists six of them (`PLACEABLE_KINDS`).
+
 ## Database Migrations
 
 SQL migrations live in `supabase/migrations/`. Apply them to `SUPABASE_DB_URL` with:

@@ -33,7 +33,9 @@ ADD --checksum=sha256:6dadbcd7dd13ba8582323cf3cfdec591340f83f74a959c212f8b83eb8d
   https://pub-5c607701fd464418972bca5504147874.r2.dev/KayKit_Prototype_Bits_1.1_FREE.zip /zips/prototype.zip
 ADD --checksum=sha256:75f75f0a1ae569f3f2348fa7a04ccd45d2f010d419045755c70ae43289b68e4b \
   https://pub-5c607701fd464418972bca5504147874.r2.dev/KayKit_Restaurant_Bits_1.0_FREE.zip /zips/restaurant.zip
-RUN for pack in furniture prototype restaurant; do \
+ADD --checksum=sha256:2a8e2d1f76746489ee2b682d7f10514cafd524d5064c88ce92122634fd32e0f7 \
+  https://pub-5c607701fd464418972bca5504147874.r2.dev/Kenney_Holiday_Kit_2.0_gltf.zip /zips/holiday.zip
+RUN for pack in furniture prototype restaurant holiday; do \
       mkdir -p "/models/$pack" && unzip -q "/zips/$pack.zip" -d "/models/$pack"; \
     done
 
