@@ -40,3 +40,13 @@ export { createViewYaw, useViewYaw, ViewYawProvider, type ViewYaw } from './view
 export { planarDistance, relativeBearing } from './relativeGeometry.ts';
 export { VirtualJoystick } from './VirtualJoystick.tsx';
 export { NO_MOVE, type MoveInput } from '../renderer/moveIntent.ts';
+export {
+  createInteractionSource,
+  InteractionProvider,
+  useInteractionPrompt,
+  useSuppressInteractionPrompt,
+  type InteractionPromptView,
+  type InteractionSource,
+} from './interactionPrompt.tsx';
+export { ActionInput } from '../input/action-input.ts';
+export { InteractionStore, NO_PROMPT, type InteractionKind, type InteractionOption, type InteractionPrompt } from '../input/interaction.ts';

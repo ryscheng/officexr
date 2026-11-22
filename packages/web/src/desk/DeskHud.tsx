@@ -48,10 +48,10 @@ function HudButton({ onClick, disabled, children }: { onClick: () => void; disab
   );
 }
 
-/** Desk banner: claim at a free desk, unclaim only at your own, return-to-desk away from it, and Sit on touch screens. Lives in the HUD's top-centre zone. */
+/** Desk banner: claim at a free desk, unclaim only at your own, and return-to-desk away from it. Lives in the HUD's top-centre zone. */
 export function DeskHud({ store, requestDeskClaim }: { store: Store; requestDeskClaim: RequestDeskClaim }) {
   const banner = useStoreSelector(store, selectDeskBanner, sameDeskBanner);
-  const { hasDesk, nearbySeatId, sit, returnToDesk } = usePlayControls();
+  const { hasDesk, returnToDesk } = usePlayControls();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<ClaimError | null>(null);
   useReturnToDeskHotkey(returnToDesk);
@@ -90,12 +90,6 @@ export function DeskHud({ store, requestDeskClaim }: { store: Store; requestDesk
           </HudButton>
         )}
         {hasDesk && banner?.type !== 'mine' && <HudButton onClick={returnToDesk}>Return to desk</HudButton>}
-        {nearbySeatId !== null && (
-          // Touch only: a keyboard sits with E. The wrapper owns visibility so it can't fight the button's display.
-          <span className="hidden pointer-coarse:inline-flex">
-            <HudButton onClick={() => sit()}>Sit</HudButton>
-          </span>
-        )}
       </div>
       {error !== null && (
         <div role="status" className="rounded-hud-control border border-hud-rose-text/30 bg-hud-rose px-3 py-1.5 font-hud-body text-xs font-bold text-hud-rose-text shadow-hud-control">

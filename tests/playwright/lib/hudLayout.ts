@@ -34,6 +34,8 @@ export const HUD_STATES: Record<string, { scenario: string; steps: (string | Reg
   'hint-wave': { scenario: 'near', steps: [], hint: 'wave' },
   'hint-alone': { scenario: 'alone', steps: [], hint: 'alone', only: ['desktop', 'iphone13-portrait', 'iphone13-landscape'] },
   'hint-build': { scenario: 'chat', steps: ['Office menu'], hint: 'build', only: ['desktop'] },
+  'interact-seat': { scenario: 'interact-seat', steps: ['place:14:12'] },
+  'interact-rack': { scenario: 'interact-rack', steps: ['place:14:12'] },
   'build-palette': { scenario: 'build', steps: ['Office menu', 'Build'] },
   'build-placed': { scenario: 'build', steps: ['Office menu', 'Build', 'Place'] },
 };
@@ -232,6 +234,12 @@ export async function runScenarioSteps(page: Page, scenario: string): Promise<vo
       const [, from, ...text] = name.split(':');
       await page.evaluate(([f, t]) => (window as unknown as { __hudPreview: { say: (a: string, b: string) => void } }).__hudPreview.say(f!, t!), [from, text.join(':')]);
       await page.waitForTimeout(700);
+      continue;
+    }
+    if (typeof name === 'string' && name.startsWith('place:')) {
+      const [, x, z] = name.split(':');
+      await page.evaluate(([px, pz]) => (window as unknown as { __hudPreview: { placeSelf: (a: number, b: number) => void } }).__hudPreview.placeSelf(Number(px), Number(pz)), [x, z]);
+      await page.waitForTimeout(2500);
       continue;
     }
     if (typeof name === 'string' && name.startsWith('key:')) {
