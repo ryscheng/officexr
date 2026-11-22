@@ -3,7 +3,7 @@ import { useStoreSelector } from '@officexr/world/top-down';
 import type { PingSender } from '../ping/usePingSender';
 import { PersonList, type PersonRow } from './PersonList';
 import { labelsInJoinOrder, toPresencePlayer, type PresencePlayer } from './personRows';
-import { sameList } from './sameFields';
+import { sameFields, sameList } from './sameFields';
 import { ShareScreenToggle } from '../voice/JaasMeeting';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
 import { Panel, PanelTitle } from './ui/Panel';
@@ -56,6 +56,32 @@ export function useCallRows(store: Store, selfId: PlayerId) {
   const { state, players, roster } = useStoreSelector(store, selectCall, sameCall);
   return { state, rows: state === 'connected' ? callRows(roster, players, selfId) : [] };
 }
+
+export type CallSummary = {
+  state: Call['state'];
+  count: number;
+  others: number;
+  firstId: string;
+  firstLabel: string | null;
+  soloDistanceM: number | null;
+};
+
+const selectCallSummary = (s: OfficeState): CallSummary => {
+  const { state, players, roster } = selectCall(s);
+  const rows = state === 'connected' ? callRows(roster, players, s.selfId) : [];
+  const others = rows.filter((r) => r.type !== 'self');
+  const first = others[0];
+  return {
+    state,
+    count: rows.length,
+    others: others.length,
+    firstId: first?.id ?? '',
+    firstLabel: first?.label ?? null,
+    soloDistanceM: first && first.type === 'peer' && others.length === 1 ? first.distanceM : null,
+  };
+};
+
+export const useCallSummary = (store: Store): CallSummary => useStoreSelector(store, selectCallSummary, sameFields);
 
 export function CallList({
   store,

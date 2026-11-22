@@ -94,4 +94,23 @@ export function placeAreas(zones: readonly Area[], desks: readonly Area[]): Plac
 
 export const distanceBetween = (a: Spot, b: Spot) => Math.hypot(a.x - b.x, a.z - b.z);
 
+export type MissionSpot = { id: string; spot: Spot };
+
+export function missionSpots(missions: readonly Mission[], areas: PlaceAreas): MissionSpot[] {
+  return missions.flatMap((m) => {
+    const spot = m.place ? resolvePlace(m.place, areas) : null;
+    return spot ? [{ id: m.id, spot }] : [];
+  });
+}
+
+export function distancesFrom(spots: readonly MissionSpot[], self: Spot | null): Map<string, number> {
+  return new Map(self ? spots.map(({ id, spot }) => [id, Math.floor(distanceBetween(self, spot))]) : []);
+}
+
+export const missionDistances = (missions: readonly Mission[], areas: PlaceAreas, self: Spot | null) =>
+  distancesFrom(missionSpots(missions, areas), self);
+
+export const sameDistances = (a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>) =>
+  a.size === b.size && [...a].every(([id, d]) => b.get(id) === d);
+
 export const initialOf = (name: string) => name.trim().charAt(0).toUpperCase() || '?';

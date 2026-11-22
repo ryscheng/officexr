@@ -7,7 +7,7 @@ import type { PingSender } from '../ping/usePingSender';
 import { useShareState } from '../voice/JaasMeeting';
 import { useMicMuted } from '../voice/useMicMuted';
 import type { JaasVoiceAdapter } from '../voice/JaasVoiceAdapter';
-import { CallList, useCallRows } from './CallList';
+import { CallList, useCallSummary } from './CallList';
 import { useFold } from './foldPrefs';
 import { formatDistance } from './formatDistance';
 import { PortraitFace } from './PortraitFace';
@@ -34,27 +34,25 @@ export function CallCard({
   pinger?: PingSender;
   compact?: boolean;
 }) {
-  const { state, rows } = useCallRows(store, selfId);
+  const { state, count, others, firstId, firstLabel, soloDistanceM } = useCallSummary(store);
   const zone = useStoreSelector(store, selectZoneLabel);
   const muted = useMicMuted(voice);
   const { canShare, sharing } = useShareState(voice);
   const [open, setOpen] = useState(false);
   const trayId = useId();
-  const portrait = usePlayerPortrait(rows.find((r) => r.type !== 'self')?.id ?? '');
+  const portrait = usePlayerPortrait(firstId);
   const fold = useFold('call', false);
   useEscapeLayer(open, () => setOpen(false));
   if (state === 'none') {
     return null;
   }
-  const others = rows.filter((r) => r.type !== 'self');
-  const first = others[0];
   const title =
-    state === 'joining' ? 'Joining call' : zone ? zone : others.length === 1 && first ? `Talking with ${first.label}` : `In call · ${rows.length}`;
+    state === 'joining' ? 'Joining call' : zone ? zone : others === 1 && firstLabel ? `Talking with ${firstLabel}` : `In call · ${count}`;
   const sub =
-    first && first.type === 'peer' && first.distanceM !== null && others.length === 1
-      ? `Voice ${muted ? 'muted' : 'on'} · ${formatDistance(first.distanceM)} away`
+    soloDistanceM !== null
+      ? `Voice ${muted ? 'muted' : 'on'} · ${formatDistance(soloDistanceM)} away`
       : `Voice ${muted ? 'muted' : 'on'}`;
-  const initial = first?.label.charAt(0).toUpperCase() ?? '·';
+  const initial = firstLabel?.charAt(0).toUpperCase() ?? '·';
   const MuteIcon = muted ? MicOff : Mic;
   const ShareIcon = sharing ? MonitorOff : MonitorUp;
 
@@ -94,7 +92,7 @@ export function CallCard({
           <RoundButton aria-label="Collapse call card" aria-expanded onClick={fold.toggle}>
             <ChevronsDownUp aria-hidden className="size-4" />
           </RoundButton>
-          <RoundButton aria-label={`In call, ${rows.length}`} aria-expanded={open} aria-controls={trayId} onClick={() => setOpen((o) => !o)}>
+          <RoundButton aria-label={`In call, ${count}`} aria-expanded={open} aria-controls={trayId} onClick={() => setOpen((o) => !o)}>
             <ChevronDown aria-hidden className={`size-4 ${open ? 'rotate-180' : ''}`} />
           </RoundButton>
         </div>

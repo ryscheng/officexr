@@ -27,34 +27,45 @@ export const COMPONENT_PROBE = `(() => {
     for (let c = fiber.child; c; c = c.sibling) sum += c.actualDuration || 0;
     return sum;
   };
-  const visit = (fiber) => {
-    for (let f = fiber; f; ) {
-      if (COMPONENT_TAGS.has(f.tag) && f.flags & PERFORMED_WORK) {
-        const name = labelOf(f);
-        const entry = (acc[name] ??= { renders: 0, selfMs: 0, ownTriggered: 0 });
-        entry.renders++;
-        if (f.alternate && f.alternate.memoizedProps === f.memoizedProps) {
-          entry.ownTriggered++;
-          const changed = ((entry.changedHooks ??= {}));
-          let a = f.memoizedState;
-          let b = f.alternate.memoizedState;
-          for (let i = 0; a && b; i++, a = a.next, b = b.next) {
-            const v = a.memoizedState;
-            if (v && typeof v === 'object' && 'create' in v) continue;
-            if (!Object.is(v, b.memoizedState)) { changed[i] = (changed[i] || 0) + 1; try { (entry.sample ??= {})[i] = JSON.stringify(v).slice(0, 100); } catch { /* cyclic */ } }
-          }
-        }
-        entry.selfMs += Math.max(0, (f.actualDuration || 0) - childMs(f));
+  const entryOf = (name) => (acc[name] ??= { renders: 0, selfMs: 0, ownTriggered: 0 });
+  let performed = 0;
+  const count = (f) => {
+    performed++;
+    const entry = entryOf(labelOf(f));
+    entry.renders++;
+    if (f.alternate && f.alternate.memoizedProps === f.memoizedProps) {
+      entry.ownTriggered++;
+      const changed = ((entry.changedHooks ??= {}));
+      let a = f.memoizedState;
+      let b = f.alternate.memoizedState;
+      for (let i = 0; a && b; i++, a = a.next, b = b.next) {
+        const v = a.memoizedState;
+        if (v && typeof v === 'object' && 'create' in v) continue;
+        if (!Object.is(v, b.memoizedState)) { changed[i] = (changed[i] || 0) + 1; try { (entry.sample ??= {})[i] = JSON.stringify(v).slice(0, 100); } catch { /* cyclic */ } }
       }
-      if (f.child) {
-        f = f.child;
-        continue;
-      }
-      while (f && !f.sibling) f = f.return;
-      if (f) f = f.sibling;
+    }
+    entry.selfMs += Math.max(0, (f.actualDuration || 0) - childMs(f));
+  };
+  const visit = (next, prev, parentRendered) => {
+    let rendered = parentRendered;
+    if (COMPONENT_TAGS.has(next.tag) && next.flags & PERFORMED_WORK) {
+      count(next);
+      if (!parentRendered) entryOf('(starts ' + labelOf(next) + ')').renders++;
+      rendered = true;
+    }
+    if (next.child === (prev && prev.child)) return;
+    const before = new Set();
+    for (let c = prev && prev.child; c; c = c.sibling) before.add(c);
+    for (let c = next.child; c; c = c.sibling) {
+      if (!before.has(c)) visit(c, c.alternate, rendered);
     }
   };
   window.__componentsReset = () => { acc = {}; };
   window.__componentsRead = () => acc;
-  return (root) => visit(root.current);
+  return (root) => {
+    const before = performed;
+    visit(root.current, root.current.alternate, false);
+    const ci = root.containerInfo;
+    entryOf('(commit ' + (ci && ci.nodeName ? 'dom' : 'r3f') + (performed === before ? ', no component' : '') + ')').renders++;
+  };
 })()`;

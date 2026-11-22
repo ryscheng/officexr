@@ -22,6 +22,7 @@ import { IdentityCard } from './IdentityCard';
 import { createInMemoryMissionsClient } from './missions/inMemoryMissions';
 import { MissionsPanel } from './missions/MissionsPanel';
 import { useMissions } from './missions/useMissions';
+import { missionDistances } from './missions/missionRows';
 import { useOfficeSpots } from './missions/useOfficeSpots';
 
 export default { title: 'HUD' };
@@ -205,7 +206,7 @@ function MissionsStory({ store, client, compact, open }: { store: PersistentLoca
   }, [open, missions.status]);
   return (
     <div ref={ref}>
-      <MissionsPanel missions={missions} me={SELF_ID} areas={spots.areas} people={spots.people} self={spots.self} compact={compact} />
+      <MissionsPanel missions={missions} me={SELF_ID} areas={spots.areas} people={spots.people} distances={missionDistances(missions.missions, spots.areas, spots.self)} compact={compact} />
     </div>
   );
 }
