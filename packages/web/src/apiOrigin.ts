@@ -17,6 +17,7 @@ export const paths = {
   me: '/api/me',
   offices: '/api/offices',
   office: (id: string) => `/api/offices/${encodeURIComponent(id)}`,
+  officeName: (id: string) => `/api/offices/${encodeURIComponent(id)}/name`,
   character: (id: string) => `/api/offices/${encodeURIComponent(id)}/character`,
   realtimeToken: '/api/realtime-token',
   voiceToken: (id: string) => `/api/offices/${encodeURIComponent(id)}/voice-token`,

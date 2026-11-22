@@ -9,6 +9,7 @@ import { PreviewTokens } from './previewToken';
 import { signJaasToken, type JaasConfig } from './jaasToken';
 import { claimantDecorator, integrationsMiddleware, type CalendarIntegration, type SlackIntegration } from './integrations';
 import { missionsMiddleware } from './missions';
+import { officeLookupMiddleware } from './officeLookup';
 import type { MissionsStore } from './missionsStore';
 import { configJsMiddleware } from './runtimeConfig';
 import type { Identity } from './shared';
@@ -121,6 +122,7 @@ export async function createApp({
       }),
     );
   }
+  app.use(officeLookupMiddleware({ queryOffices }));
   app.use(missionsMiddleware({ identity, queryOffices, missions, presence: realtime }));
   app.use(
     apiMiddleware({
