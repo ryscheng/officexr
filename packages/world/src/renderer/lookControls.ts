@@ -184,6 +184,28 @@ export function fixedLeash(basePitchRad: number, fixed: FixedLeashParams, offset
   };
 }
 
+/** Height of the character's chest above its store position (the body root). */
+export function chestRise(charRadius: number): number {
+  return feetPosition({ x: 0, y: 0, z: 0 }, charRadius).y + CHAR_HEIGHT_M / 2;
+}
+
+/**
+ * Pose of a fixed camera that keeps the character's chest on the look axis: the camera orbits the
+ * chest rigidly, `height` above the character's store position, at the XZ distance where the look
+ * ray at `pitchDeg` meets it. The returned `height` is relative to the chest, so a caller that
+ * treats the chest as the reference gets the same world height. Zoom and elevation offsets scale
+ * the pose about the chest (`fixedLeash`), so the character stays centred under them too.
+ */
+export function centredFixedPose(height: number, pitchDeg: number, charRadius: number) {
+  const rise = chestRise(charRadius);
+  const aboveChest = height - rise;
+  return {
+    rise,
+    height: aboveChest,
+    distanceM: aboveChest / Math.tan(Math.abs(pitchDeg) * DEG2RAD),
+  };
+}
+
 /**
  * Yaw of the fixed camera for camera-relative WASD. The camera sits at
  * `+sin(az), -cos(az)` from the reference, so turning the view right (a

@@ -28,26 +28,22 @@ function useWorldXRStore(): XRStore | undefined {
 /**
  * The 2D view: the same 3D scene through the fixed follow camera, swung due south and tilted
  * steeply down so the office reads like a floor plan (Gather-style). A long lens from high up
- * keeps walls from leaning, and the pinned distance puts you at the centre: the look ray at
- * `pitchDeg` passes through your chest, (height − 0.9 m) / tan(65°) away. Wheel and pinch zoom.
+ * keeps walls from leaning. Wheel and pinch zoom.
  */
-const OVERHEAD_HEIGHT_M = 60;
-const OVERHEAD_PITCH_DEG = -65;
 const OVERHEAD_CAMERA = {
   azimuthDeg: 180,
-  pitchDeg: OVERHEAD_PITCH_DEG,
-  height: OVERHEAD_HEIGHT_M,
+  pitchDeg: -65,
+  height: 60,
   fov: 20,
-  distanceM: (OVERHEAD_HEIGHT_M - 0.9) / Math.tan((-OVERHEAD_PITCH_DEG * Math.PI) / 180),
+  centred: true,
 } as const;
 
-const BIRDS_EYE_CAMERA = {
-  ...OVERHEAD_CAMERA,
-  pitchDeg: -89.9,
-  distanceM: (OVERHEAD_HEIGHT_M - 0.9) / Math.tan((89.9 * Math.PI) / 180),
-} as const;
+const BIRDS_EYE_CAMERA = { ...OVERHEAD_CAMERA, pitchDeg: -89.9 } as const;
 
-const fixedCameraOf = (view: GameView) => (view === 'map' ? OVERHEAD_CAMERA : view === 'birds-eye' ? BIRDS_EYE_CAMERA : undefined);
+const ANGLED_CAMERA = { centred: true } as const;
+
+const fixedCameraOf = (view: GameView) =>
+  view === 'map' ? OVERHEAD_CAMERA : view === 'birds-eye' ? BIRDS_EYE_CAMERA : view === 'angled' ? ANGLED_CAMERA : undefined;
 
 export interface PlayViewSettings {
   controls: ReactNode;

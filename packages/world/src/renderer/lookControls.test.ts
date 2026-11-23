@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   applyLookDelta,
   applyZoom,
+  centredFixedPose,
+  chestRise,
   fixedMovementYaw,
   fixedLeash,
   pinchFactor,
@@ -272,5 +274,64 @@ describe('wrapAngle', () => {
     ['just past π to just past -π', Math.PI + 0.1, -Math.PI + 0.1],
   ])('maps %s', (_name, input, expected) => {
     expect(wrapAngle(input)).toBeCloseTo(expected, 9);
+  });
+});
+
+describe('centred fixed camera', () => {
+  const charRadius = 0.4;
+  const player = { x: 7, y: 2, z: -3 };
+
+  function chestNdc(fovDeg: number, aspect: number, azimuthDeg: number, pitchDeg: number, height: number, view: ViewOffsets) {
+    const pose = centredFixedPose(height, pitchDeg, charRadius);
+    const leash = fixedLeash(deg(pitchDeg), { height: pose.height, maxOnScreenFrac: 0.25, minOnScreenFrac: 0.08, lateralFrac: 0.4, fov: fovDeg, distanceM: pose.distanceM }, view);
+    const az = deg(azimuthDeg) + view.fixedAzimuthOffsetRad;
+    const reference = { x: player.x, y: player.y + pose.rise, z: player.z };
+    const camera = {
+      x: reference.x + Math.sin(az) * leash.minDistance,
+      y: reference.y + leash.height,
+      z: reference.z - Math.cos(az) * leash.minDistance,
+    };
+    const lookYaw = az + Math.PI;
+    const forward = { x: Math.sin(lookYaw) * Math.cos(leash.pitchRad), y: Math.sin(leash.pitchRad), z: -Math.cos(lookYaw) * Math.cos(leash.pitchRad) };
+    const right = { x: Math.cos(lookYaw), y: 0, z: Math.sin(lookYaw) };
+    const up = {
+      x: right.y * forward.z - right.z * forward.y,
+      y: right.z * forward.x - right.x * forward.z,
+      z: right.x * forward.y - right.y * forward.x,
+    };
+    const toChest = { x: reference.x - camera.x, y: reference.y - camera.y, z: reference.z - camera.z };
+    const dot = (a: typeof up, b: typeof up) => a.x * b.x + a.y * b.y + a.z * b.z;
+    const tanHalf = Math.tan(deg(fovDeg) / 2);
+    return {
+      x: dot(toChest, right) / dot(toChest, forward) / (tanHalf * aspect),
+      y: dot(toChest, up) / dot(toChest, forward) / tanHalf,
+    };
+  }
+
+  it('puts the chest at the screen centre on a portrait phone, a landscape phone and a desktop', () => {
+    for (const aspect of [390 / 844, 844 / 390, 1440 / 900]) {
+      for (const [pitch, height, fov] of [[-35, 25, 50], [-65, 60, 20], [-89.9, 60, 20]] as const) {
+        const ndc = chestNdc(fov, aspect, 202.5, pitch, height, offsets());
+        expect(Math.abs(ndc.x)).toBeLessThan(1e-6);
+        expect(Math.abs(ndc.y)).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it('stays centred under zoom, an azimuth swing and an elevation change', () => {
+    for (const zoom of [ZOOM_MIN, 1, ZOOM_MAX]) {
+      for (const fixedPitchOffsetRad of [deg(-20), 0, deg(30)]) {
+        const ndc = chestNdc(50, 390 / 844, 202.5, -35, 25, offsets({ zoom, fixedPitchOffsetRad, fixedAzimuthOffsetRad: deg(40) }));
+        expect(Math.abs(ndc.x)).toBeLessThan(1e-6);
+        expect(Math.abs(ndc.y)).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it('orbits the chest at the height the world constants ask for above the character', () => {
+    const pose = centredFixedPose(25, -35, charRadius);
+    expect(pose.rise).toBe(chestRise(charRadius));
+    expect(pose.height + pose.rise).toBe(25);
+    expect(pose.distanceM * Math.tan(deg(35))).toBeCloseTo(pose.height);
   });
 });
