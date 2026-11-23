@@ -38,6 +38,8 @@ export type FixedCameraViewConfig = FixedCameraConstants & {
    * happens to stand — two characters at different y heights
    * frame identically. */
   lookAt?: readonly [number, number, number];
+  /** Keeps the local player's chest at the screen centre (see `CameraRig`). */
+  centred?: boolean;
 };
 
 export interface ViewConfig {

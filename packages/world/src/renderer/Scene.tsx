@@ -270,6 +270,7 @@ export function Scene(props: SceneProps) {
       fov: fixedCamera.fov,
       distanceM: fixedCamera.distanceM,
       lookAt: fixedCamera.lookAt,
+      centred: fixedCamera.centred,
     }),
     [
       fixedCamera.azimuthDeg,
@@ -281,6 +282,7 @@ export function Scene(props: SceneProps) {
       fixedCamera.fov,
       fixedCamera.distanceM,
       fixedCamera.lookAt,
+      fixedCamera.centred,
     ],
   );
 

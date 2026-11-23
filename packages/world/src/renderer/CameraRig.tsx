@@ -11,6 +11,7 @@ import {
 import { isTypingTarget } from '../react/useWorldFocus.ts';
 import {
   applyLookDelta,
+  centredFixedPose,
   eyePosition,
   fixedLeash,
   isYawPitchMode,
@@ -27,6 +28,7 @@ import type { MotionLookState } from './motionLook.ts';
 import { useMotionLook } from './useMotionLook.ts';
 import { attachDesktopLook } from './desktopLook.ts';
 import { useTouchCameraGestures } from './useTouchCameraGestures.ts';
+import { useCameraProbe } from './useCameraProbe.ts';
 
 const THIRD_PERSON_RADIUS = 6;
 
@@ -90,6 +92,9 @@ interface CameraRigProps {
      * doesn't shift when the character's body root settles at
      * different y values. */
     lookAt?: readonly [number, number, number];
+    /** Orbit the character's chest rigidly at the pitch-aligned distance, so it stays at the
+     * screen centre whatever the aspect ratio. Ignored when `lookAt` is set. */
+    centred?: boolean;
   };
   /** An immersive XR session owns the camera; the rig leaves it alone. */
   xrPresenting: boolean;
@@ -128,6 +133,7 @@ export function CameraRig({
   );
   const lookSign = invertLook ? 1 : -1;
   useTouchCameraGestures(mode, lookRefs, lookSign, paused, lookLocked);
+  useCameraProbe(playerPosRef, charRadius);
   // The headset owns the camera while presenting; motion look re-baselines after.
   useMotionLook(xrPresenting ? undefined : motionLook, mode, lookRefs);
   const onMouseLook = useEffectEvent((movementX: number, movementY: number) =>
@@ -344,7 +350,7 @@ export function CameraRig({
 
     // Damp the conversation-view blend value toward 1 when the local
     // player is in a MeetingArea, otherwise toward 0. τ ≈ 0.35 s.
-    const focus = conversationFocusRef.current;
+    const focus = fixed.centred && mode === 'fixed' ? null : conversationFocusRef.current;
     if (focus) lastFocus.current.set(focus.x, focus.y, focus.z);
     const targetMix = focus ? 1 : 0;
     convoMix.current = THREE.MathUtils.damp(
@@ -483,11 +489,18 @@ export function CameraRig({
       // overrides it to a fixed world point (e.g. origin) by
       // passing `fixed.lookAt`, so framing is character-independent
       // and identical across rigs / spawn heights.
+      const centred = fixed.centred && !fixed.lookAt ? centredFixedPose(fixed.height, fixed.pitchDeg, charRadius) : null;
       const reference = fixed.lookAt
         ? { x: fixed.lookAt[0], y: fixed.lookAt[1], z: fixed.lookAt[2] }
-        : pos;
+        : centred
+          ? { x: pos.x, y: pos.y + centred.rise, z: pos.z }
+          : pos;
       const view = viewOffsetsRef.current;
-      const leash = fixedLeash(THREE.MathUtils.degToRad(fixed.pitchDeg), fixed, view);
+      const leash = fixedLeash(
+        THREE.MathUtils.degToRad(fixed.pitchDeg),
+        centred ? { ...fixed, height: centred.height, distanceM: centred.distanceM } : fixed,
+        view,
+      );
       // Writing the clamped offset back stops a drag past the elevation
       // limit from winding up an offset the user must drag back out of.
       view.fixedPitchOffsetRad = leash.pitchOffsetRad;
