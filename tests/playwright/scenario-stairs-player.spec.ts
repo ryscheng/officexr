@@ -378,6 +378,9 @@ test('stairs: local player WALKS up the staircase under keyboard input', async (
   test.setTimeout(120_000);
 
   await bootStairsScenario(page);
+  // Half the default climb pace: a riser then needs a frame of ~240 ms
+  // to finish in one slice, so a slow CI frame can't fake a one-frame hop.
+  await setStepUpSpeedFactor(page, 0.35);
   // SceneFrame maps WASD through cameraYaw = π − azimuth + movementYawOffset;
   // with azimuth=90°, offset=0 holding W walks pure −X, straight up the stairs.
   await setFixedCamera(page, { azimuthDeg: 90, movementYawOffsetDeg: 0 });

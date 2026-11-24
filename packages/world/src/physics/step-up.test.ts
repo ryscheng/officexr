@@ -21,6 +21,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import {
   STEP_UP_MAX_HEIGHT,
   StepUpTraversal,
+  climbBroadcast,
   stepTraversal,
   tryStepUp,
   type StepUpProbe,
@@ -274,6 +275,16 @@ describe('StepUpTraversal', () => {
     expect(second.z / 0.1).toBeCloseTo(traversal.forwardDir.z, 9);
   });
 
+  it('velocity is the forward direction at climb speed', () => {
+    const v = new StepUpTraversal(path, 2).velocity;
+    expect(v.x).toBeCloseTo(-1.2, 9);
+    expect(v.z).toBeCloseTo(1.6, 9);
+    expect(new StepUpTraversal({ rise: 0.5, forward: { x: 0, z: 0 } }, 2).velocity).toEqual({
+      x: 0,
+      z: 0,
+    });
+  });
+
   it('a dt covering the whole path finishes in one call', () => {
     const { deltas, dones } = walk(new StepUpTraversal(path, 1), 10);
     expect(dones).toEqual([true]);
@@ -309,5 +320,17 @@ describe('stepTraversal', () => {
   it('ends on the call that finishes the path', () => {
     const traversal = new StepUpTraversal(path, 1);
     expect(stepTraversal(traversal, 10, (d) => d).ended).toBe(true);
+  });
+});
+
+describe('climbBroadcast', () => {
+  it('scales the climb velocity and faces along it', () => {
+    const { vel, yaw } = climbBroadcast({ x: -1, z: 0 }, 1.5, 0.3);
+    expect(vel).toEqual({ x: -1.5, y: 0, z: 0 });
+    expect(yaw).toBeCloseTo(Math.PI / 2, 9);
+  });
+
+  it('keeps the current yaw when the climb has no horizontal carry', () => {
+    expect(climbBroadcast({ x: 0, z: 0 }, 1, 0.3).yaw).toBe(0.3);
   });
 });

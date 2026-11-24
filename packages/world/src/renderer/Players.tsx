@@ -218,11 +218,14 @@ export function Players({
   const bodyInit = useRef(
     new Map<string, { position: [number, number, number]; userData: { playerId: string } }>(),
   );
-  for (const id of bodyInit.current.keys()) {
-    if (!players.some((p) => p.id === id)) {
-      bodyInit.current.delete(id);
+  useEffect(() => {
+    const live = new Set(players.map((p) => p.id));
+    for (const id of bodyInit.current.keys()) {
+      if (!live.has(id)) {
+        bodyInit.current.delete(id);
+      }
     }
-  }
+  }, [players]);
   // Map from Rapier collider handle → ColliderTag. Rapier's `Collider`
   // type doesn't have a `userData` slot we can set, so we keep the
   // body/sensor labels here and look them up by handle inside the

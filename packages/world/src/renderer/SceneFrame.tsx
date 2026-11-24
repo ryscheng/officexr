@@ -924,7 +924,9 @@ export function SceneFrame({
           }
         }
         // `traversal` stays set for the rest of the frame a climb ends
-        // on, so that frame still broadcasts as climbing.
+        // on, so that frame still broadcasts as climbing. Spells, mounts
+        // and swimming don't cut a climb short: it lasts a fraction of a
+        // second and always finishes; only seating and teleports clear it.
         if (traversal) {
           const { delta, ended } = stepTraversal(traversal, dtSec, sweep);
           moveDelta = delta;
