@@ -32,6 +32,7 @@ import {
 } from '../physics/rules.ts';
 import { stepAirVelocity } from '../physics/air-control.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
+import { faceAhead } from '../physics/step-up-trigger.ts';
 import { climbBroadcast, StepUpTraversal, stepTraversal, tryGaitStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, isYawPitchMode, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
@@ -797,17 +798,21 @@ export function SceneFrame({
           // controller's own collision list and convert any contact
           // with another player's RigidBody into a bump event.
           const touchedThisFrame = new Set<string>();
+          const worldNormals: Vec3[] = [];
           const n = controller.numComputedCollisions();
           for (let i = 0; i < n; i++) {
             const coll = controller.computedCollision(i);
             if (!coll || !coll.collider) continue;
             const otherRb = coll.collider.parent();
-            if (!otherRb) continue;
-            const otherUd = otherRb.userData as
+            const otherUd = otherRb?.userData as
               | { playerId?: string }
               | undefined;
             const otherId = otherUd?.playerId;
-            if (!otherId || otherId === selfId) continue;
+            if (!otherId) {
+              worldNormals.push(coll.normal1);
+              continue;
+            }
+            if (otherId === selfId) continue;
             touchedThisFrame.add(otherId);
             if (!bumpingPeersRef.current.has(otherId)) {
               // `normal1` points OUT of the obstacle in world space.
@@ -862,9 +867,10 @@ export function SceneFrame({
           moveDelta = corrected;
 
           // Step-up assist (shared with bots — physics/step-up.ts): a
-          // blocked, grounded, non-jumping character pushing into a
-          // climbable ledge (stair riser ≤ STEP_UP_MAX_HEIGHT) starts
-          // climbing onto it. Rapier's autostep cannot lift the ball
+          // grounded, non-jumping character that is blocked by, or
+          // pushes at up to 60° into (a diagonal approach slides along
+          // it instead of blocking), a climbable ledge (stair riser ≤
+          // STEP_UP_MAX_HEIGHT) starts climbing onto it. Rapier's autostep cannot lift the ball
           // collider over the honest scanned 0.5 m risers, so without
           // this the player wedges at the first step. The probe teleports
           // the body for its sweeps and restores it. Not while airborne:
@@ -874,8 +880,9 @@ export function SceneFrame({
           // load-bearing: a player blocked by another CHARACTER must
           // bump, not climb onto their head — see the bot-side guard in
           // BotPhysicsWorld.step() for the failure mode.
+          const face = intendsMove ? faceAhead(worldNormals, moveX, moveZ) : null;
           if (
-            horizBlocked &&
+            (horizBlocked || face !== null) &&
             touchedThisFrame.size === 0 &&
             !isAirborne &&
             controller.computedGrounded() &&
@@ -911,7 +918,7 @@ export function SceneFrame({
               },
               moveX,
               moveZ,
-              runningOnFoot,
+              { running: runningOnFoot, face },
             );
             // The probe sweeps clobbered the controller's computed
             // state; the grounded check at the top of the NEXT frame

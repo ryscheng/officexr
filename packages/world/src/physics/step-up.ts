@@ -14,8 +14,9 @@
  * 16×0.25 steps). With colliders now scanned honestly from the real
  * meshes (0.5 m risers), climbing needs an explicit mechanism.
  *
- * ALGORITHM (runs only on frames where horizontal movement is blocked
- * while grounded and not jumping):
+ * ALGORITHM (runs only on grounded, non-jumping frames where horizontal
+ * movement is blocked or pushes into a riser face — see
+ * `step-up-trigger.ts`):
  *   1. UP probe: sweep the character up by `maxHeight`. Anything less
  *      than the full lift means a ceiling — abort. (This is what keeps
  *      crawl spaces honest.)
@@ -44,6 +45,7 @@
  */
 
 import type { Vec3 } from '@officexr/sdk';
+import { MIN_FACE_ALIGNMENT, type FaceAhead } from './step-up-trigger.ts';
 
 /** Horizontal distance the assist carries the character past the
  * ledge edge — at least the ball radius (0.4) plus a margin so the
@@ -103,13 +105,16 @@ export interface StepUpPath {
 /**
  * Attempt a step-up in the direction of (dx, dz). Returns the path to
  * the ledge, or `null` when no climbable ledge is there. Pose is always
- * restored.
+ * restored. `face` is the riser being pushed into, when known: at an
+ * angle to it the forward probe runs further along the intent, so that
+ * it still reaches `STEP_UP_FORWARD_CLEARANCE` past the edge.
  */
 export function tryStepUp(
   probe: StepUpProbe,
   dx: number,
   dz: number,
   maxHeight: number = STEP_UP_MAX_HEIGHT,
+  face: FaceAhead | null = null,
 ): StepUpPath | null {
   const len = Math.hypot(dx, dz);
   if (len < 1e-9) return null;
@@ -125,7 +130,8 @@ export function tryStepUp(
   });
 
   // 2. FORWARD: carry the contact foot past the ledge edge.
-  const dist = Math.max(len, STEP_UP_FORWARD_CLEARANCE);
+  const alignment = Math.max(face?.alignment ?? 1, MIN_FACE_ALIGNMENT);
+  const dist = Math.max(len, STEP_UP_FORWARD_CLEARANCE / alignment);
   const fwd = probe.compute({
     x: (dx / len) * dist,
     y: 0,
@@ -183,14 +189,14 @@ export function tryGaitStepUp(
   probe: StepUpProbe,
   dx: number,
   dz: number,
-  running: boolean,
-  maxHeight: number = STEP_UP_MAX_HEIGHT,
+  opts: { running: boolean; face?: FaceAhead | null; maxHeight?: number },
 ): StepUpClimb | null {
-  const first = tryStepUp(probe, dx, dz, maxHeight);
+  const { running, face = null, maxHeight = STEP_UP_MAX_HEIGHT } = opts;
+  const first = tryStepUp(probe, dx, dz, maxHeight, face);
   if (!first) {
     return null;
   }
-  const leap = running ? chainSecondStep(probe, first, dx, dz, maxHeight) : null;
+  const leap = running ? chainSecondStep(probe, first, dx, dz, maxHeight, face) : null;
   return leap ? { kind: 'leap', path: leap } : { kind: 'step', path: first };
 }
 
@@ -201,6 +207,7 @@ function chainSecondStep(
   dx: number,
   dz: number,
   maxHeight: number,
+  face: FaceAhead | null,
 ): StepUpPath | null {
   const start = { ...probe.getTranslation() };
   probe.setTranslation({
@@ -208,7 +215,9 @@ function chainSecondStep(
     y: start.y + first.rise,
     z: start.z + first.forward.z,
   });
-  const second = tryStepUp(probe, dx, dz, maxHeight);
+  // A staircase's risers are parallel, so the first riser's face
+  // stands in for the second's.
+  const second = tryStepUp(probe, dx, dz, maxHeight, face);
   const combined = second && {
     rise: first.rise + second.rise,
     forward: {

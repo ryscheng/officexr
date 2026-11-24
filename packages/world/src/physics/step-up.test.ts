@@ -28,6 +28,7 @@ import {
   type StepUpProbe,
 } from './step-up.ts';
 import { CHARACTER_CONTROLLER_SKIN } from './rules.ts';
+import { faceAhead } from './step-up-trigger.ts';
 
 beforeAll(async () => {
   await RAPIER.init();
@@ -58,20 +59,24 @@ function makeStairsRig(opts?: {
    * from the platform but not for a step from the first tread. */
   ceilingOverTreads?: boolean;
   startX?: number;
+  /** Half-width (z) of the platform, steps, landing and wall: 2 is the
+   * scenario's 4 m, wider leaves room to cross them diagonally. */
+  halfWidth?: number;
 }): Rig {
+  const hw = opts?.halfWidth ?? 2;
   const world = new RAPIER.World({ x: 0, y: -50, z: 0 });
-  world.createCollider(RAPIER.ColliderDesc.cuboid(2, 1, 2).setTranslation(6, 1, 2));
-  world.createCollider(RAPIER.ColliderDesc.cuboid(2, 3, 2).setTranslation(-2, 3, 2));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(2, 1, hw).setTranslation(6, 1, 2));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(2, 3, hw).setTranslation(-2, 3, 2));
   for (let k = 0; k < 8; k++) {
     const x0 = 4 - (k + 1) * 0.5;
     const x1 = 4 - k * 0.5;
     const top = 2 + (k + 1) * 0.5;
     world.createCollider(
-      RAPIER.ColliderDesc.cuboid(0.25, top / 2, 2).setTranslation((x0 + x1) / 2, top / 2, 2),
+      RAPIER.ColliderDesc.cuboid(0.25, top / 2, hw).setTranslation((x0 + x1) / 2, top / 2, 2),
     );
   }
   if (opts?.wall) {
-    world.createCollider(RAPIER.ColliderDesc.cuboid(0.1, 2, 2).setTranslation(4.5, 4, 2));
+    world.createCollider(RAPIER.ColliderDesc.cuboid(0.1, 2, hw).setTranslation(4.5, 4, 2));
   }
   if (opts?.ceiling) {
     world.createCollider(RAPIER.ColliderDesc.cuboid(2, 0.1, 2).setTranslation(3, 3.0, 2));
@@ -252,7 +257,7 @@ describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
   it('a running step-up mid-staircase leaps two risers, ≈1.0 m of rise', () => {
     const rig = makeStairsRig();
     walkToFirstRiser(rig);
-    const climb = tryGaitStepUp(rig.probe, dx, 0, true);
+    const climb = tryGaitStepUp(rig.probe, dx, 0, { running: true });
     expect(climb?.kind).toBe('leap');
     expect(climb!.path.rise).toBeCloseTo(1.0, 1);
     expect(climb!.path.forward.x).toBeLessThan(-0.8);
@@ -261,7 +266,7 @@ describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
   it('a walking step-up takes a single riser', () => {
     const rig = makeStairsRig();
     walkToFirstRiser(rig);
-    const climb = tryGaitStepUp(rig.probe, dx, 0, false);
+    const climb = tryGaitStepUp(rig.probe, dx, 0, { running: false });
     expect(climb?.kind).toBe('step');
     expect(climb!.path.rise).toBeCloseTo(0.5, 1);
   });
@@ -272,7 +277,7 @@ describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
     rig.setPos({ x: 0.9, y: 5.0, z: 2 });
     rig.world.step();
     walkToFirstRiser(rig);
-    const climb = tryGaitStepUp(rig.probe, dx, 0, true);
+    const climb = tryGaitStepUp(rig.probe, dx, 0, { running: true });
     expect(climb?.kind).toBe('step');
     expect(climb!.path.rise).toBeCloseTo(0.5, 1);
   });
@@ -280,7 +285,7 @@ describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
   it('refuses the second leg under a low ceiling, stepping once instead', () => {
     const rig = makeStairsRig({ ceilingOverTreads: true });
     walkToFirstRiser(rig);
-    const climb = tryGaitStepUp(rig.probe, dx, 0, true);
+    const climb = tryGaitStepUp(rig.probe, dx, 0, { running: true });
     expect(climb?.kind).toBe('step');
     expect(climb!.path.rise).toBeCloseTo(0.5, 1);
   });
@@ -309,7 +314,7 @@ describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
         return false;
       },
     };
-    expect(tryGaitStepUp(guardedProbe, dx, 0, true)?.kind).toBe('step');
+    expect(tryGaitStepUp(guardedProbe, dx, 0, { running: true })?.kind).toBe('step');
   });
 
   it('leaves the probe pose unchanged, leap or not', () => {
@@ -317,7 +322,7 @@ describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
       const rig = makeStairsRig(opts);
       walkToFirstRiser(rig);
       const before = { ...rig.body.translation() };
-      expect(tryGaitStepUp(rig.probe, dx, 0, true)).not.toBeNull();
+      expect(tryGaitStepUp(rig.probe, dx, 0, { running: true })).not.toBeNull();
       const after = rig.body.translation();
       expect(after.x).toBeCloseTo(before.x, 9);
       expect(after.y).toBeCloseTo(before.y, 9);
@@ -327,50 +332,129 @@ describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
 
   it('a running climb walks the leap path to the top in ≈1.0 m rises, never dipping', () => {
     const rig = makeStairsRig();
-    const dt = 1 / 60;
-    let velY = 0;
-    let traversal: StepUpTraversal | null = null;
-    const rises: number[] = [];
-    let prevY = rig.body.translation().y;
-    for (let i = 0; i < 1500 && rig.body.translation().x > -0.5; i++) {
-      let move: { x: number; y: number; z: number };
-      if (traversal) {
-        const { delta, ended } = stepTraversal(traversal, dt, (d) => rig.compute(d));
-        move = delta;
-        if (ended) {
-          traversal = null;
-        }
-      } else {
-        velY += -50 * dt;
-        const desired = { x: dx * 2, y: velY * dt, z: 0 };
-        const c = rig.compute(desired);
-        move = c;
-        if (c.grounded || c.y >= 0) {
-          velY = 0;
-        }
-        if (c.grounded && Math.abs(c.x) < Math.abs(desired.x) * 0.1) {
-          const climb = tryGaitStepUp(rig.probe, desired.x, desired.z, true);
-          if (climb) {
-            rises.push(climb.path.rise);
-            traversal = new StepUpTraversal(climb.path, (Math.abs(desired.x) / dt) * 0.7, climb.kind);
-            move = { x: 0, y: 0, z: 0 };
-          }
-        }
-      }
-      const t = rig.body.translation();
-      rig.setPos({ x: t.x + move.x, y: t.y + move.y, z: t.z + move.z });
-      rig.world.step();
-      const y = rig.body.translation().y;
-      if (traversal) {
-        expect(y).toBeGreaterThanOrEqual(prevY - 0.02);
-      }
-      prevY = y;
-    }
-    expect(rig.body.translation().y).toBeGreaterThan(5.4);
+    const { rises, finalY } = pacedClimb(rig, { x: dx * 2, z: 0 }, true, 1500);
+    expect(finalY).toBeGreaterThan(5.4);
     expect(rises).toHaveLength(4);
     for (const rise of rises) {
       expect(rise).toBeCloseTo(1.0, 1);
     }
+  });
+});
+
+/** Intent per 60 fps frame at 3 m/s, `deg` off straight up the stairs
+ * (−X), veering toward +Z. */
+function intentAt(deg: number): { x: number; z: number } {
+  const rad = (deg * Math.PI) / 180;
+  return { x: (-3 / 60) * Math.cos(rad), z: (3 / 60) * Math.sin(rad) };
+}
+
+/**
+ * Production-shaped movement loop at 60 fps: gravity, the step-up
+ * trigger (blocked, or pushing into a riser face — `faceAhead` over
+ * the controller's contacts) and the paced traversal. Asserts Y never
+ * drops more than 2 cm mid-climb; returns each climb's rise, the max
+ * and final body Y.
+ */
+function pacedClimb(
+  rig: Rig,
+  move: { x: number; z: number },
+  running: boolean,
+  frames: number,
+): { rises: number[]; maxY: number; finalY: number } {
+  const dt = 1 / 60;
+  let velY = 0;
+  let traversal: StepUpTraversal | null = null;
+  const rises: number[] = [];
+  let maxY = -Infinity;
+  let prevY = rig.body.translation().y;
+  for (let i = 0; i < frames && rig.body.translation().x > -0.5; i++) {
+    let delta: { x: number; y: number; z: number };
+    if (traversal) {
+      const step = stepTraversal(traversal, dt, (d) => rig.compute(d));
+      delta = step.delta;
+      if (step.ended) {
+        traversal = null;
+      }
+    } else {
+      velY += -50 * dt;
+      const desired = { x: move.x, y: velY * dt, z: move.z };
+      const c = rig.compute(desired);
+      delta = c;
+      if (c.grounded || c.y >= 0) {
+        velY = 0;
+      }
+      const normals = [];
+      for (let k = 0; k < rig.controller.numComputedCollisions(); k++) {
+        normals.push(rig.controller.computedCollision(k)!.normal1);
+      }
+      const face = faceAhead(normals, move.x, move.z);
+      const progress = (c.x * move.x + c.z * move.z) / (move.x ** 2 + move.z ** 2);
+      if (c.grounded && velY <= 0 && (progress < 0.1 || face)) {
+        const climb = tryGaitStepUp(rig.probe, move.x, move.z, { running, face });
+        if (climb) {
+          rises.push(climb.path.rise);
+          traversal = new StepUpTraversal(climb.path, (Math.hypot(move.x, move.z) / dt) * 0.7, climb.kind);
+          delta = { x: 0, y: 0, z: 0 };
+        }
+      }
+    }
+    const t = rig.body.translation();
+    rig.setPos({ x: t.x + delta.x, y: t.y + delta.y, z: t.z + delta.z });
+    rig.world.step();
+    const y = rig.body.translation().y;
+    if (traversal) {
+      expect(y).toBeGreaterThanOrEqual(prevY - 0.02);
+    }
+    prevY = y;
+    maxY = Math.max(maxY, y);
+  }
+  return { rises, maxY, finalY: rig.body.translation().y };
+}
+
+describe('diagonal stair approaches (real Rapier)', () => {
+  it('walking at 45° to the stairs climbs every riser to the top', () => {
+    const rig = makeStairsRig({ halfWidth: 6 });
+    const { rises, finalY } = pacedClimb(rig, intentAt(45), false, 1500);
+    expect(finalY).toBeGreaterThan(5.4);
+    expect(rises).toHaveLength(8);
+  });
+
+  it('running at 45° leaps two risers at a time to the top', () => {
+    const rig = makeStairsRig({ halfWidth: 6 });
+    const { rises, finalY } = pacedClimb(
+      rig,
+      { x: intentAt(45).x * 2, z: intentAt(45).z * 2 },
+      true,
+      1500,
+    );
+    expect(finalY).toBeGreaterThan(5.4);
+    expect(rises).toHaveLength(4);
+  });
+
+  it('a shallow graze at 80° slides along the bottom riser without climbing', () => {
+    const rig = makeStairsRig({ halfWidth: 6, startX: 4.45 });
+    const before = rig.body.translation();
+    const { rises, maxY } = pacedClimb(rig, intentAt(80), false, 90);
+    expect(rises).toHaveLength(0);
+    expect(maxY).toBeLessThan(2.0);
+    expect(rig.body.translation().z - before.z).toBeGreaterThan(3);
+  });
+
+  it('does NOT climb a 2 m wall approached at 45°', () => {
+    const rig = makeStairsRig({ halfWidth: 6, wall: true, startX: 5.5 });
+    const { rises, maxY } = pacedClimb(rig, intentAt(45), false, 120);
+    expect(rises).toHaveLength(0);
+    expect(maxY).toBeLessThan(2.0);
+  });
+
+  it('faceAhead takes faces within 60° of the intent and ignores floors and grazes', () => {
+    const riser = { x: 1, y: 0, z: 0 };
+    expect(faceAhead([riser], -1, 0)?.alignment).toBeCloseTo(1, 9);
+    expect(faceAhead([riser], -1, 1)?.alignment).toBeCloseTo(Math.SQRT1_2, 9);
+    expect(faceAhead([riser], -Math.cos(1.1), Math.sin(1.1))).toBeNull();
+    expect(faceAhead([{ x: 0, y: 1, z: 0 }], -1, 0)).toBeNull();
+    expect(faceAhead([riser], 1, 0)).toBeNull();
+    expect(faceAhead([riser], 0, 0)).toBeNull();
   });
 });
 
