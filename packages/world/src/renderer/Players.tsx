@@ -210,6 +210,22 @@ export function Players({
   // Per-player rigid body refs — peers driven from store each frame; self is
   // wired through `selfBodyRef` and driven by the character controller.
   const bodyRefs = useRef<Map<string, RapierRigidBody>>(new Map());
+  // `<RigidBody>` re-applies its mesh's transform to the body whenever a
+  // mutable prop (`position`, `userData`, …) changes value, which cancels
+  // that frame's pending `setNextKinematicTranslation` — a lost frame of
+  // movement, and a lost slice of a step-up climb. Fixing both props per
+  // player at mount keeps re-renders off the bodies.
+  const bodyInit = useRef(
+    new Map<string, { position: [number, number, number]; userData: { playerId: string } }>(),
+  );
+  useEffect(() => {
+    const live = new Set(players.map((p) => p.id));
+    for (const id of bodyInit.current.keys()) {
+      if (!live.has(id)) {
+        bodyInit.current.delete(id);
+      }
+    }
+  }, [players]);
   // Map from Rapier collider handle → ColliderTag. Rapier's `Collider`
   // type doesn't have a `userData` slot we can set, so we keep the
   // body/sensor labels here and look them up by handle inside the
@@ -609,21 +625,25 @@ export function Players({
         // peer to `pairStates` with state="exiting" and the glow stays
         // on permanently. Spawning at the actual position avoids the
         // phantom frame-1 overlap entirely.
-        const currentPlayer = store.getState().players[p.id];
-        const spawn = currentPlayer?.pos ?? { x: 0, y: 0, z: 0 };
+        let init = bodyInit.current.get(p.id);
+        if (!init) {
+          const spawn = store.getState().players[p.id]?.pos ?? { x: 0, y: 0, z: 0 };
+          init = { position: [spawn.x, spawn.y, spawn.z], userData: { playerId: p.id } };
+          bodyInit.current.set(p.id, init);
+        }
         return (
           <RigidBody
             key={p.id}
             type="kinematicPosition"
             colliders={false}
-            position={[spawn.x, spawn.y, spawn.z]}
+            position={init.position}
             // playerId on userData lets `SceneFrame` recognise which
             // peer's body the character controller bumped into (the
             // controller resolves movement via the query pipeline so
             // the contact pipeline never fires collision events for
             // these slides — we have to look at the controller's own
             // collision list and map back to a peer ID).
-            userData={{ playerId: p.id }}
+            userData={init.userData}
             ref={(b: RapierRigidBody | null) => {
               if (b) {
                 bodyRefs.current.set(p.id, b);

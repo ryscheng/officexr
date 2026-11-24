@@ -563,10 +563,7 @@ export class BotPhysicsWorld {
       bumps: [],
       grounded: true,
       climbing: true,
-      climbVel: {
-        x: traversal.forwardDir.x * traversal.speed,
-        z: traversal.forwardDir.z * traversal.speed,
-      },
+      climbVel: traversal.velocity,
     };
   }
 

@@ -72,6 +72,15 @@ const DROPS = [
   expectedBodyY: stepTopAtX(d.x) - 0.5,
 }));
 
+/** Real step rise (geometry scan) and the body's tread level before
+ * riser k: the spawn platform is tread 0. */
+const STEP_RISE = 0.5;
+const treadBodyY = (k: number) => SPAWN_SETTLED_BODY_Y + k * STEP_RISE;
+
+/** Largest drop below the running max Y allowed while climbing: solver
+ * jitter only (observed < 3 mm). */
+const MAX_GIVE_BACK = 0.02;
+
 /** Window half-width around the expected flat settle. Corner rests sit
  * a bit high; nothing legitimate sits 0.45 m off. */
 const SETTLE_TOLERANCE = 0.45;
@@ -134,6 +143,81 @@ async function getSelf(
     return p ? { pos: p.pos, vel: p.vel } : null;
   }, SELF_ID);
 }
+
+interface FrameSample {
+  t: number;
+  x: number;
+  y: number;
+  speed: number;
+}
+
+/** Start recording the self player's pose and broadcast horizontal
+ * speed on every animation frame — the 250 ms poll below is far too
+ * coarse to see how a single riser is climbed. */
+async function startFrameTrace(page: Page): Promise<void> {
+  await page.evaluate((selfId: string) => {
+    const w = window as unknown as {
+      __OFFICE_STORE__: {
+        getState: () => {
+          players: Record<
+            string,
+            { pos: { x: number; y: number }; vel: { x: number; z: number } } | undefined
+          >;
+        };
+      };
+      __STAIR_TRACE__?: FrameSample[];
+      __STAIR_TRACE_STOP__?: boolean;
+    };
+    const trace: FrameSample[] = [];
+    w.__STAIR_TRACE__ = trace;
+    w.__STAIR_TRACE_STOP__ = false;
+    const tick = () => {
+      if (w.__STAIR_TRACE_STOP__) {
+        return;
+      }
+      const p = w.__OFFICE_STORE__.getState().players[selfId];
+      if (p) {
+        trace.push({ t: performance.now(), x: p.pos.x, y: p.pos.y, speed: Math.hypot(p.vel.x, p.vel.z) });
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, SELF_ID);
+}
+
+async function stopFrameTrace(page: Page): Promise<FrameSample[]> {
+  return page.evaluate(() => {
+    const w = window as unknown as { __STAIR_TRACE__: FrameSample[]; __STAIR_TRACE_STOP__: boolean };
+    w.__STAIR_TRACE_STOP__ = true;
+    return w.__STAIR_TRACE__;
+  });
+}
+
+/** Override the climb pace (`WorldSettings.stepUpSpeedFactor`) in the
+ * live store, keeping `worldConstants` in sync with the derived settings. */
+async function setStepUpSpeedFactor(page: Page, factor: number): Promise<void> {
+  await page.evaluate((f: number) => {
+    type State = {
+      worldConstants: { animation: object };
+      worldSettings: object;
+    };
+    const store = (
+      window as unknown as {
+        __OFFICE_STORE__: { setState: (u: (s: State) => Partial<State>) => void };
+      }
+    ).__OFFICE_STORE__;
+    store.setState((s) => ({
+      worldConstants: {
+        ...s.worldConstants,
+        animation: { ...s.worldConstants.animation, stepUpSpeedFactor: f },
+      },
+      worldSettings: { ...s.worldSettings, stepUpSpeedFactor: f },
+    }));
+  }, factor);
+}
+
+const fmtTrace = (trace: ReadonlyArray<{ x: number; y: number }>): string =>
+  JSON.stringify(trace.map((t) => ({ x: +t.x.toFixed(2), y: +t.y.toFixed(2) })));
 
 /** Wait until the self player is at rest (|vel.y| ≈ 0) near `expectedY`. */
 async function waitForSettle(
@@ -294,6 +378,9 @@ test('stairs: local player WALKS up the staircase under keyboard input', async (
   test.setTimeout(120_000);
 
   await bootStairsScenario(page);
+  // Half the default climb pace: a riser then needs a frame of ~240 ms
+  // to finish in one slice, so a slow CI frame can't fake a one-frame hop.
+  await setStepUpSpeedFactor(page, 0.35);
   // SceneFrame maps WASD through cameraYaw = π − azimuth + movementYawOffset;
   // with azimuth=90°, offset=0 holding W walks pure −X, straight up the stairs.
   await setFixedCamera(page, { azimuthDeg: 90, movementYawOffsetDeg: 0 });
@@ -308,6 +395,7 @@ test('stairs: local player WALKS up the staircase under keyboard input', async (
   await page.locator('canvas').first().click({ position: { x: 200, y: 200 } });
 
   // Hold W and sample the player pose until they reach the top.
+  await startFrameTrace(page);
   await page.keyboard.down('KeyW');
   const trace: Array<{ x: number; y: number }> = [];
   let maxY = -Infinity;
@@ -328,15 +416,15 @@ test('stairs: local player WALKS up the staircase under keyboard input', async (
       if (prev && cur.x > prev.x + 1.5) {
         throw new Error(
           `player reset mid-climb (x ${prev.x.toFixed(2)} → ${cur.x.toFixed(2)}). ` +
-            `trace: ${JSON.stringify(trace.map((t) => ({ x: +t.x.toFixed(2), y: +t.y.toFixed(2) })))}`,
+            `trace: ${fmtTrace(trace)}`,
         );
       }
-      // Monotonic ascent guard (same 0.15 m budget as the bot spec):
-      // a real climb never gives back more than solver jitter.
-      if (cur.y < maxY - 0.15) {
+      // Monotonic ascent guard: a real climb never gives back more
+      // than solver jitter.
+      if (cur.y < maxY - MAX_GIVE_BACK) {
         throw new Error(
           `player lost height mid-climb (maxY ${maxY.toFixed(2)} → ${cur.y.toFixed(2)}). ` +
-            `trace: ${JSON.stringify(trace.map((t) => ({ x: +t.x.toFixed(2), y: +t.y.toFixed(2) })))}`,
+            `trace: ${fmtTrace(trace)}`,
         );
       }
       maxY = Math.max(maxY, cur.y);
@@ -352,10 +440,117 @@ test('stairs: local player WALKS up the staircase under keyboard input', async (
   } finally {
     await page.keyboard.up('KeyW');
   }
+  const frames = await stopFrameTrace(page);
 
   expect(
     reachedTop,
     `player must climb to body y > 5.2 within 30 s of holding W. ` +
-      `maxY=${maxY.toFixed(2)}, trace: ${JSON.stringify(trace.map((t) => ({ x: +t.x.toFixed(2), y: +t.y.toFixed(2) })))}`,
+      `maxY=${maxY.toFixed(2)}, trace: ${fmtTrace(trace)}`,
   ).toBe(true);
+
+  // Per-frame checks cover the risers fully climbed before the loop
+  // stopped at y > 5.2: tread 0 (spawn) up to tread 7.
+  const CHECKED_RISERS = 7;
+
+  // Monotonic Y, frame by frame: a paced climb never dips.
+  let frameMaxY = -Infinity;
+  for (const f of frames) {
+    expect(
+      f.y,
+      `player lost height mid-climb at x=${f.x.toFixed(2)} (max ${frameMaxY.toFixed(3)})`,
+    ).toBeGreaterThanOrEqual(frameMaxY - MAX_GIVE_BACK);
+    frameMaxY = Math.max(frameMaxY, f.y);
+  }
+
+  // Multi-frame rise: every riser is climbed over several frames, none
+  // of which takes the whole riser (a one-frame hop rises the full
+  // 0.5 m in one sample).
+  for (let k = 0; k < CHECKED_RISERS; k++) {
+    const lo = treadBodyY(k) - 0.02;
+    const hi = treadBodyY(k + 1) + 0.02;
+    const rises: number[] = [];
+    for (let i = 1; i < frames.length; i++) {
+      const dy = frames[i].y - frames[i - 1].y;
+      if (dy > 0.001 && frames[i - 1].y >= lo && frames[i].y <= hi) {
+        rises.push(dy);
+      }
+    }
+    const detail = `riser ${k}: per-frame rises ${JSON.stringify(rises.map((d) => +d.toFixed(3)))}`;
+    expect(rises.length, detail).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...rises), detail).toBeLessThan(STEP_RISE - 0.05);
+  }
+
+  // Slower than flat: climbing takes longer than walking the same
+  // horizontal distance at the flat-ground speed seen on the approach.
+  const firstRise = frames.findIndex((f) => f.y > treadBodyY(0) + 0.02);
+  const lastTread = frames.findIndex((f) => f.y >= treadBodyY(CHECKED_RISERS) - 0.02);
+  expect(firstRise, 'trace must include the approach and the climb').toBeGreaterThan(0);
+  expect(lastTread).toBeGreaterThan(firstRise);
+  const flatSpeed = Math.max(...frames.slice(0, firstRise).map((f) => f.speed));
+  expect(flatSpeed, 'flat approach speed').toBeGreaterThan(0);
+  const climbMs = frames[lastTread].t - frames[firstRise].t;
+  const flatMs = (Math.abs(frames[lastTread].x - frames[firstRise].x) / flatSpeed) * 1000;
+  expect(
+    climbMs,
+    `climb took ${climbMs.toFixed(0)} ms; walking the same distance on flat ground takes ${flatMs.toFixed(0)} ms`,
+  ).toBeGreaterThan(flatMs);
+});
+
+test('stairs: jump and input release mid-climb — the climb finishes on the tread', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+
+  await bootStairsScenario(page);
+  await setFixedCamera(page, { azimuthDeg: 90, movementYawOffsetDeg: 0 });
+  // Slow the climb so one riser spans well over a second, leaving
+  // ample time to act mid-climb.
+  await setStepUpSpeedFactor(page, 0.1);
+
+  await teleportSelf(page, { x: 5, y: 2.5, z: 2 });
+  await waitForSettle(page, SPAWN_SETTLED_BODY_Y, 0.15, 'stair base');
+  await page.locator('canvas').first().click({ position: { x: 200, y: 200 } });
+
+  await page.keyboard.down('KeyW');
+  let mid: { x: number; y: number };
+  try {
+    // Mid-way up the first riser.
+    await page.waitForFunction(
+      ({ selfId, lo, hi }: { selfId: string; lo: number; hi: number }) => {
+        const w = window as unknown as {
+          __OFFICE_STORE__?: {
+            getState: () => { players: Record<string, { pos: { y: number } } | undefined> };
+          };
+        };
+        const y = w.__OFFICE_STORE__?.getState().players[selfId]?.pos.y;
+        return y !== undefined && y > lo && y < hi;
+      },
+      { selfId: SELF_ID, lo: treadBodyY(0) + 0.1, hi: treadBodyY(1) - 0.2 },
+      { timeout: 10_000, polling: 'raf' },
+    );
+    const self = await getSelf(page);
+    mid = { x: self!.pos.x, y: self!.pos.y };
+    await startFrameTrace(page);
+    await page.keyboard.press('Space');
+  } finally {
+    await page.keyboard.up('KeyW');
+  }
+
+  // The climb finishes on its own and the player comes to rest on the
+  // first tread.
+  const restY = await waitForSettle(page, treadBodyY(1), 0.1, 'first tread after release');
+  await page.waitForTimeout(500);
+  const frames = await stopFrameTrace(page);
+
+  const peakY = Math.max(...frames.map((f) => f.y));
+  expect(
+    peakY,
+    `a jump pressed mid-climb must not launch the player (peak y ${peakY.toFixed(2)}, trace ${fmtTrace(frames)})`,
+  ).toBeLessThan(treadBodyY(1) + 0.1);
+  for (const f of frames) {
+    expect(f.y, `no height lost after release: ${fmtTrace(frames)}`).toBeGreaterThanOrEqual(mid.y - 0.01);
+    // Walking −X: the climb only carries the player further up the stairs.
+    expect(f.x, `no backward slide after release: ${fmtTrace(frames)}`).toBeLessThanOrEqual(mid.x + 0.01);
+  }
+  expect(restY).toBeGreaterThan(mid.y);
 });
