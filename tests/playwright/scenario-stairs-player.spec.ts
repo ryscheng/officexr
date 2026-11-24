@@ -81,6 +81,15 @@ const treadBodyY = (k: number) => SPAWN_SETTLED_BODY_Y + k * STEP_RISE;
  * jitter only (observed < 3 mm). */
 const MAX_GIVE_BACK = 0.02;
 
+/** The diagonal approach: 35° off the stair axis, toward +Z. The
+ * staircase is 4 m wide (z∈[0,4]); the climb carries the player ≈2.9 m
+ * across, so it starts a ball radius in from the −Z edge, right at the
+ * bottom riser, and the whole trace keeps the ball on the stairs. */
+const DIAGONAL_OFFSET_DEG = 35;
+const DIAGONAL_START = { x: 4.45, y: 2.5, z: 0.45 };
+const BALL_RADIUS = 0.4;
+const STAIRS_Z = { min: 0, max: 4 };
+
 /** Window half-width around the expected flat settle. Corner rests sit
  * a bit high; nothing legitimate sits 0.45 m off. */
 const SETTLE_TOLERANCE = 0.45;
@@ -148,7 +157,9 @@ interface FrameSample {
   t: number;
   x: number;
   y: number;
+  z: number;
   speed: number;
+  airborne: boolean;
 }
 
 /** Start recording the self player's pose and broadcast horizontal
@@ -161,7 +172,12 @@ async function startFrameTrace(page: Page): Promise<void> {
         getState: () => {
           players: Record<
             string,
-            { pos: { x: number; y: number }; vel: { x: number; z: number } } | undefined
+            | {
+                pos: { x: number; y: number; z: number };
+                vel: { x: number; z: number };
+                isAirborne: boolean;
+              }
+            | undefined
           >;
         };
       };
@@ -177,7 +193,14 @@ async function startFrameTrace(page: Page): Promise<void> {
       }
       const p = w.__OFFICE_STORE__.getState().players[selfId];
       if (p) {
-        trace.push({ t: performance.now(), x: p.pos.x, y: p.pos.y, speed: Math.hypot(p.vel.x, p.vel.z) });
+        trace.push({
+          t: performance.now(),
+          x: p.pos.x,
+          y: p.pos.y,
+          z: p.pos.z,
+          speed: Math.hypot(p.vel.x, p.vel.z),
+          airborne: p.isAirborne,
+        });
       }
       requestAnimationFrame(tick);
     };
@@ -494,6 +517,159 @@ test('stairs: local player WALKS up the staircase under keyboard input', async (
     climbMs,
     `climb took ${climbMs.toFixed(0)} ms; walking the same distance on flat ground takes ${flatMs.toFixed(0)} ms`,
   ).toBeGreaterThan(flatMs);
+});
+
+test('stairs: local player RUNS up the staircase two risers per leap', async ({ page }) => {
+  test.setTimeout(120_000);
+
+  await bootStairsScenario(page);
+  // Same reduced pace as the walk test, so every leap spans many frames.
+  await setStepUpSpeedFactor(page, 0.35);
+  await setFixedCamera(page, { azimuthDeg: 90, movementYawOffsetDeg: 0 });
+
+  await teleportSelf(page, { x: 5, y: 2.5, z: 2 });
+  await waitForSettle(page, SPAWN_SETTLED_BODY_Y, 0.15, 'stair base');
+  await page.locator('canvas').first().click({ position: { x: 200, y: 200 } });
+
+  await startFrameTrace(page);
+  await page.keyboard.down('Shift');
+  await page.keyboard.down('KeyW');
+  let reachedTop = true;
+  try {
+    // Same top threshold as the walk test, then let the last leap land.
+    await page.waitForFunction(
+      (selfId: string) => {
+        const w = window as unknown as {
+          __OFFICE_STORE__?: {
+            getState: () => {
+              players: Record<string, { pos: { y: number }; isAirborne: boolean } | undefined>;
+            };
+          };
+        };
+        const p = w.__OFFICE_STORE__?.getState().players[selfId];
+        return p !== undefined && p.pos.y > 5.2 && !p.isAirborne;
+      },
+      SELF_ID,
+      { timeout: 30_000, polling: 'raf' },
+    );
+  } catch {
+    reachedTop = false;
+  } finally {
+    await page.keyboard.up('KeyW');
+    await page.keyboard.up('Shift');
+  }
+  // Let the trace see the player standing on the top landing.
+  await page.waitForTimeout(300);
+  const frames = await stopFrameTrace(page);
+  const trace = fmtTrace(frames);
+
+  expect(reachedTop, `player must run to body y > 5.2 within 30 s. trace: ${trace}`).toBe(true);
+
+  let frameMaxY = -Infinity;
+  for (const f of frames) {
+    expect(
+      f.y,
+      `player lost height mid-climb at x=${f.x.toFixed(2)} (max ${frameMaxY.toFixed(3)}). trace: ${trace}`,
+    ).toBeGreaterThanOrEqual(frameMaxY - MAX_GIVE_BACK);
+    frameMaxY = Math.max(frameMaxY, f.y);
+  }
+
+  // Rise-then-forward leaps hold Y level only on their landing tread,
+  // so the levels the player holds (3+ samples without rising) must be
+  // every other tread: the odd ones are leapt over, never stood on.
+  const levels: number[] = [];
+  for (let i = 2; i < frames.length; i++) {
+    const level = frames[i].y;
+    const held = [frames[i - 2].y, frames[i - 1].y].every((y) => Math.abs(y - level) < 0.005);
+    if (held && (levels.length === 0 || Math.abs(level - levels[levels.length - 1]) > 0.1)) {
+      levels.push(level);
+    }
+  }
+  const levelDetail = `held levels ${JSON.stringify(levels.map((y) => +y.toFixed(3)))}. trace: ${trace}`;
+  // Spawn platform, then 8 risers two per leap: treads 0, 2, 4, 6, 8.
+  expect(levels.length, levelDetail).toBe(5);
+  levels.forEach((y, j) => {
+    expect(Math.abs(y - treadBodyY(2 * j)), levelDetail).toBeLessThan(0.1);
+  });
+
+  // Peers see every leap as a jump: the self player is broadcast
+  // airborne on each sample that rises.
+  for (let i = 1; i < frames.length; i++) {
+    // 5 mm: solver jitter on a tread reaches ≈3 mm.
+    if (frames[i].y > frames[i - 1].y + 0.005) {
+      expect(
+        frames[i].airborne,
+        `rising sample at y=${frames[i].y.toFixed(3)} not broadcast airborne. trace: ${trace}`,
+      ).toBe(true);
+    }
+  }
+});
+
+test('stairs: local player WALKS up the staircase at an angle to it', async ({ page }) => {
+  // Approaching at an angle the controller slides along each riser and
+  // never reads as blocked; the climb must start from the riser contact.
+  test.setTimeout(120_000);
+
+  await bootStairsScenario(page);
+  await setStepUpSpeedFactor(page, 0.35);
+  // Straight up the stairs (−X) turned toward +Z.
+  await setFixedCamera(page, { azimuthDeg: 90, movementYawOffsetDeg: DIAGONAL_OFFSET_DEG });
+
+  await teleportSelf(page, DIAGONAL_START);
+  await waitForSettle(page, SPAWN_SETTLED_BODY_Y, 0.15, 'diagonal start');
+  await page.locator('canvas').first().click({ position: { x: 200, y: 200 } });
+
+  await startFrameTrace(page);
+  await page.keyboard.down('KeyW');
+  let reachedTop = true;
+  try {
+    await page.waitForFunction(
+      (selfId: string) => {
+        const w = window as unknown as {
+          __OFFICE_STORE__?: {
+            getState: () => { players: Record<string, { pos: { y: number } } | undefined> };
+          };
+        };
+        const y = w.__OFFICE_STORE__?.getState().players[selfId]?.pos.y;
+        return y !== undefined && y > 5.2;
+      },
+      SELF_ID,
+      { timeout: 30_000, polling: 'raf' },
+    );
+  } catch {
+    reachedTop = false;
+  } finally {
+    await page.keyboard.up('KeyW');
+  }
+  // Keep tracing past key-up: the player must stay on the stairs.
+  await page.waitForTimeout(300);
+  const frames = await stopFrameTrace(page);
+  const trace = JSON.stringify(
+    frames.map((f) => ({ x: +f.x.toFixed(2), y: +f.y.toFixed(2), z: +f.z.toFixed(2) })),
+  );
+
+  expect(reachedTop, `player must climb to body y > 5.2 within 30 s. trace: ${trace}`).toBe(true);
+  let frameMaxY = -Infinity;
+  for (const f of frames) {
+    expect(
+      f.y,
+      `player lost height mid-climb at x=${f.x.toFixed(2)} z=${f.z.toFixed(2)} (max ${frameMaxY.toFixed(3)}). trace: ${trace}`,
+    ).toBeGreaterThanOrEqual(frameMaxY - MAX_GIVE_BACK);
+    frameMaxY = Math.max(frameMaxY, f.y);
+  }
+  for (const f of frames) {
+    expect(f.z, `ball left the stairs' side at z=${f.z.toFixed(2)}. trace: ${trace}`).toBeGreaterThanOrEqual(
+      STAIRS_Z.min + BALL_RADIUS - 0.05,
+    );
+    expect(f.z, `ball left the stairs' side at z=${f.z.toFixed(2)}. trace: ${trace}`).toBeLessThanOrEqual(
+      STAIRS_Z.max - BALL_RADIUS,
+    );
+  }
+  // It really went diagonally: across the stairs by ≈tan 35° (0.70) per
+  // metre up them.
+  const across = frames[frames.length - 1].z - frames[0].z;
+  const up = frames[0].x - frames[frames.length - 1].x;
+  expect(across / up, `trace: ${trace}`).toBeGreaterThan(0.55);
 });
 
 test('stairs: jump and input release mid-climb — the climb finishes on the tread', async ({

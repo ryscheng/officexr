@@ -14,10 +14,11 @@ import {
   worldObjectsToColliders,
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
+import { stepUpTrigger } from '../physics/step-up-trigger.ts';
 import {
   StepUpTraversal,
   stepTraversal,
-  tryStepUp,
+  tryGaitStepUp,
   type StepUpProbe,
 } from '../physics/step-up.ts';
 
@@ -57,6 +58,8 @@ export interface StepResult {
   /** The climb's horizontal velocity (forward dir × traversal speed);
    * zero when not climbing. */
   climbVel: { x: number; z: number };
+  /** True while the climb is a running leap over two risers. */
+  leaping: boolean;
 }
 
 /** Result of one `drainSensorEvents()` — pairs of collider tags whose
@@ -454,7 +457,7 @@ export class BotPhysicsWorld {
    * the character controller uses).
    */
   step(
-    intent: { x: number; z: number; dtSec: number },
+    intent: { x: number; z: number; dtSec: number; running?: boolean },
     stepUpSpeedFactor: number,
   ): StepResult {
     if (this.traversal) {
@@ -485,12 +488,16 @@ export class BotPhysicsWorld {
 
     const next = new Set<PlayerId>();
     const bumps: Array<{ otherId: PlayerId; normal: { x: number; z: number } }> = [];
+    const worldNormals: Vec3[] = [];
     const n = this.controller.numComputedCollisions();
     for (let i = 0; i < n; i++) {
       const coll = this.controller.computedCollision(i);
       if (!coll || !coll.collider) continue;
       const otherId = this.peerByColliderHandle.get(coll.collider.handle);
-      if (!otherId) continue; // wall or unknown
+      if (!otherId) {
+        worldNormals.push(coll.normal1);
+        continue;
+      }
       next.add(otherId);
       if (this.bumpingPeers.has(otherId)) continue;
       const nrm = coll.normal1;
@@ -506,34 +513,39 @@ export class BotPhysicsWorld {
       { x: intent.x, z: intent.z },
     );
 
-    // Step-up assist (shared with the player — physics/step-up.ts):
-    // when horizontal movement is blocked while grounded and falling/
-    // level, probe for a climbable ledge ahead (a stair riser) and
-    // start climbing onto it. Rapier's autostep cannot lift a ball over
-    // the honest scanned 0.5 m risers, so this is THE climbing mechanism.
+    // Step-up assist (shared with the player — physics/step-up.ts and
+    // the trigger in physics/step-up-trigger.ts): probe for a climbable
+    // ledge ahead (a stair riser) and start climbing onto it. Rapier's
+    // autostep cannot lift a ball over the honest scanned 0.5 m risers,
+    // so this is THE climbing mechanism.
     //
-    // `next.size === 0` (no peer contact this frame) is load-bearing:
-    // without it a bot blocked by another CHARACTER treats the peer's
-    // ball as a ledge and climbs onto their head — breaking head-on
-    // blocking (scenario-collision) and spawn-area encounters. Steps
-    // are walls; characters are not stairs.
-    if (
-      progress < 0.1 &&
-      next.size === 0 &&
-      this.controller.computedGrounded() &&
-      this.verticalVel <= 0 &&
-      (intent.x !== 0 || intent.z !== 0)
-    ) {
-      const path = tryStepUp(this.stepUpProbe, intent.x, intent.z);
+    // `touchingCharacter` is load-bearing: without it a bot blocked by
+    // another CHARACTER treats the peer's ball as a ledge and climbs
+    // onto their head — breaking head-on blocking (scenario-collision)
+    // and spawn-area encounters.
+    const trigger = stepUpTrigger({
+      intent,
+      blocked: progress < 0.1,
+      worldContactNormals: worldNormals,
+      touchingCharacter: next.size > 0,
+      grounded: this.controller.computedGrounded(),
+      airborne: false,
+      verticalVel: this.verticalVel,
+    });
+    if (trigger) {
+      const climb = tryGaitStepUp(this.stepUpProbe, intent.x, intent.z, {
+        running: intent.running ?? false,
+        face: trigger.face,
+      });
       // The probe sweeps clobbered the controller's computed state
       // (grounded, collisions). Re-run the frame's real sweep so
       // anything reading controller state after this point — the
       // `grounded` field below, next frame's grounded check — sees
       // the actual frame, not the last probe.
       this.sweep({ x: intent.x, y: this.verticalVel * intent.dtSec, z: intent.z });
-      if (path) {
+      if (climb) {
         const speed = (Math.hypot(intent.x, intent.z) / intent.dtSec) * stepUpSpeedFactor;
-        this.traversal = new StepUpTraversal(path, speed);
+        this.traversal = new StepUpTraversal(climb.path, speed, climb.kind);
         return this.climb(intent.dtSec);
       }
     }
@@ -545,6 +557,7 @@ export class BotPhysicsWorld {
       grounded: this.controller.computedGrounded(),
       climbing: false,
       climbVel: { x: 0, z: 0 },
+      leaping: false,
     };
   }
 
@@ -564,6 +577,7 @@ export class BotPhysicsWorld {
       grounded: true,
       climbing: true,
       climbVel: traversal.velocity,
+      leaping: traversal.kind === 'leap',
     };
   }
 

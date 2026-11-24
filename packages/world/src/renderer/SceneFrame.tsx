@@ -32,7 +32,8 @@ import {
 } from '../physics/rules.ts';
 import { stepAirVelocity } from '../physics/air-control.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
-import { climbBroadcast, StepUpTraversal, stepTraversal, tryStepUp } from '../physics/step-up.ts';
+import { stepUpTrigger } from '../physics/step-up-trigger.ts';
+import { climbBroadcast, StepUpTraversal, stepTraversal, tryGaitStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, isYawPitchMode, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
 import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
@@ -797,17 +798,21 @@ export function SceneFrame({
           // controller's own collision list and convert any contact
           // with another player's RigidBody into a bump event.
           const touchedThisFrame = new Set<string>();
+          const worldNormals: Vec3[] = [];
           const n = controller.numComputedCollisions();
           for (let i = 0; i < n; i++) {
             const coll = controller.computedCollision(i);
             if (!coll || !coll.collider) continue;
             const otherRb = coll.collider.parent();
-            if (!otherRb) continue;
-            const otherUd = otherRb.userData as
+            const otherUd = otherRb?.userData as
               | { playerId?: string }
               | undefined;
             const otherId = otherUd?.playerId;
-            if (!otherId || otherId === selfId) continue;
+            if (!otherId) {
+              worldNormals.push(coll.normal1);
+              continue;
+            }
+            if (otherId === selfId) continue;
             touchedThisFrame.add(otherId);
             if (!bumpingPeersRef.current.has(otherId)) {
               // `normal1` points OUT of the obstacle in world space.
@@ -861,27 +866,26 @@ export function SceneFrame({
           horizBlocked = intendsMove && progress < minProgress;
           moveDelta = corrected;
 
-          // Step-up assist (shared with bots — physics/step-up.ts): a
-          // blocked, grounded, non-jumping character pushing into a
-          // climbable ledge (stair riser ≤ STEP_UP_MAX_HEIGHT) starts
-          // climbing onto it. Rapier's autostep cannot lift the ball
-          // collider over the honest scanned 0.5 m risers, so without
-          // this the player wedges at the first step. The probe teleports
-          // the body for its sweeps and restores it. Not while airborne:
-          // during the landing ease the move is the decaying air
-          // velocity, which would set a near-zero climb pace.
-          // `touchedThisFrame.size === 0` (no peer contact) is
-          // load-bearing: a player blocked by another CHARACTER must
-          // bump, not climb onto their head — see the bot-side guard in
-          // BotPhysicsWorld.step() for the failure mode.
-          if (
-            horizBlocked &&
-            touchedThisFrame.size === 0 &&
-            !isAirborne &&
-            controller.computedGrounded() &&
-            verticalVelRef.current <= 0
-          ) {
-            const path = tryStepUp(
+          // Step-up assist (shared with bots — physics/step-up.ts and
+          // physics/step-up-trigger.ts): a character blocked by, or
+          // pushing at an angle into, a climbable ledge (a stair riser
+          // ≤ STEP_UP_MAX_HEIGHT) climbs onto it. Rapier's autostep
+          // cannot lift the ball collider over the honest scanned 0.5 m
+          // risers, so without this the player wedges at the first
+          // step. The probe teleports the body for its sweeps and
+          // restores it.
+          const trigger = stepUpTrigger({
+            intent: { x: moveX, z: moveZ },
+            blocked: horizBlocked,
+            worldContactNormals: worldNormals,
+            touchingCharacter: touchedThisFrame.size > 0,
+            grounded: controller.computedGrounded(),
+            airborne: isAirborne,
+            verticalVel: verticalVelRef.current,
+          });
+          if (trigger) {
+            const runningOnFoot = isRunning && !autoWalkDir && motionOut.speed === null;
+            const stepUp = tryGaitStepUp(
               {
                 compute: (desired) => ({
                   ...sweep(desired),
@@ -910,16 +914,17 @@ export function SceneFrame({
               },
               moveX,
               moveZ,
+              { running: runningOnFoot, face: trigger.face },
             );
             // The probe sweeps clobbered the controller's computed
             // state; the grounded check at the top of the NEXT frame
             // reads it. Re-run the frame's real sweep so the controller
             // reflects the actual frame, not the last probe.
             sweep({ x: moveX, y: verticalVelRef.current * dtSec, z: moveZ });
-            if (path) {
+            if (stepUp) {
               const speed =
                 (Math.hypot(moveX, moveZ) / dtSec) * stateSnapshot.worldSettings.stepUpSpeedFactor;
-              traversal = stepUpRef.current = new StepUpTraversal(path, speed);
+              traversal = stepUpRef.current = new StepUpTraversal(stepUp.path, speed, stepUp.kind);
             }
           }
         }
@@ -996,7 +1001,11 @@ export function SceneFrame({
 
         // Broadcast velocity and isAirborne. While airborne, use the
         // carried air velocity so peers extrapolate the correct mid-air
-        // trajectory.
+        // trajectory. A leap shows as airborne (the jump clip, here and
+        // on peers) but stays out of `isAirborne`, which gates jumps,
+        // the landing ease and climb starts.
+        const shownAirborne = isAirborne || traversal?.kind === 'leap';
+        isAirborneRef.current = shownAirborne;
         const climb = traversal
           ? climbBroadcast(traversal.velocity, stateSnapshot.worldSettings.climbAnimFactor, self.yaw)
           : null;
@@ -1011,7 +1020,7 @@ export function SceneFrame({
         const broadcastYaw = climb ? climb.yaw : intendsMove ? movementYaw : self.yaw;
 
         if (isAirborne || climb || walking) {
-          actions.setSelfPosition(newPos, broadcastVel, broadcastYaw, isAirborne);
+          actions.setSelfPosition(newPos, broadcastVel, broadcastYaw, shownAirborne);
           isMoving = true;
         } else {
           actions.setSelfPosition(newPos, { x: 0, y: 0, z: 0 }, broadcastYaw, false);

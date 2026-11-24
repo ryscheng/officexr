@@ -36,14 +36,18 @@ export interface CharacterMoveResult {
   broadcastYaw: number;
   /** True if the character actually moved this tick (not fully blocked). */
   moved: boolean;
-  /** Animation state derived from the verb and whether the move succeeded. */
-  animState: 'idle' | 'walk' | 'run';
+  /** Animation state derived from the verb and whether the move succeeded;
+   * 'jump' while a running step-up leaps two risers. */
+  animState: 'idle' | 'walk' | 'run' | 'jump';
   /** Current integrated vertical velocity (m/s, negative = falling). */
   velY: number;
   /** True if the downward floor probe finds a surface within FLOOR_PROBE_RANGE. */
   hasFloorUnderneath: boolean;
   /** True if the Rapier controller reports the character is on solid ground. */
   isGrounded: boolean;
+  /** Airborne flag to broadcast to peers: true while leaping, so they
+   * play the jump clip. Not a gameplay state — the character is climbing. */
+  broadcastAirborne: boolean;
   /** Bump events from this step (edge-triggered, for bus emission). */
   bumps: Array<{ otherId: string; normal: { x: number; z: number } }>;
 }

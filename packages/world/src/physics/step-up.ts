@@ -14,8 +14,9 @@
  * 16×0.25 steps). With colliders now scanned honestly from the real
  * meshes (0.5 m risers), climbing needs an explicit mechanism.
  *
- * ALGORITHM (runs only on frames where horizontal movement is blocked
- * while grounded and not jumping):
+ * ALGORITHM (runs only on grounded, non-jumping frames where horizontal
+ * movement is blocked or pushes into a riser face — see
+ * `step-up-trigger.ts`):
  *   1. UP probe: sweep the character up by `maxHeight`. Anything less
  *      than the full lift means a ceiling — abort. (This is what keeps
  *      crawl spaces honest.)
@@ -44,6 +45,7 @@
  */
 
 import type { Vec3 } from '@officexr/sdk';
+import { MIN_FACE_ALIGNMENT, type FaceAhead } from './step-up-trigger.ts';
 
 /** Horizontal distance the assist carries the character past the
  * ledge edge — at least the ball radius (0.4) plus a margin so the
@@ -64,6 +66,10 @@ const MIN_LANDED_RISE = 0.05;
 /** Fraction of the forward probe that must survive collision
  * resolution for the path to count as clear. */
 const MIN_FORWARD_FRACTION = 0.5;
+
+/** Fraction of a leap's combined carry that must be clear: a partial
+ * carry would end the leap mid-air over the first tread. */
+const MIN_LEAP_CARRY_FRACTION = 0.95;
 
 /** One collide-and-slide query against the character controller. */
 export interface StepUpComputeResult {
@@ -103,14 +109,22 @@ export interface StepUpPath {
 /**
  * Attempt a step-up in the direction of (dx, dz). Returns the path to
  * the ledge, or `null` when no climbable ledge is there. Pose is always
- * restored.
+ * restored. `face` is the riser being pushed into, when known: at an
+ * angle to it the forward probe runs further along the intent, so that
+ * it still reaches `clearance` (default `STEP_UP_FORWARD_CLEARANCE`)
+ * into it.
  */
 export function tryStepUp(
   probe: StepUpProbe,
   dx: number,
   dz: number,
-  maxHeight: number = STEP_UP_MAX_HEIGHT,
+  opts: { maxHeight?: number; face?: FaceAhead | null; clearance?: number } = {},
 ): StepUpPath | null {
+  const {
+    maxHeight = STEP_UP_MAX_HEIGHT,
+    face = null,
+    clearance = STEP_UP_FORWARD_CLEARANCE,
+  } = opts;
   const len = Math.hypot(dx, dz);
   if (len < 1e-9) return null;
   const start = { ...probe.getTranslation() };
@@ -125,14 +139,19 @@ export function tryStepUp(
   });
 
   // 2. FORWARD: carry the contact foot past the ledge edge.
-  const dist = Math.max(len, STEP_UP_FORWARD_CLEARANCE);
+  const alignment = Math.max(face?.alignment ?? 1, MIN_FACE_ALIGNMENT);
+  const dist = Math.max(len, clearance / alignment);
   const fwd = probe.compute({
     x: (dx / len) * dist,
     y: 0,
     z: (dz / len) * dist,
   });
+  // Against a face, the carry must also reach into it: sliding along a
+  // tall wall carries the probe sideways, onto whatever is beside it.
+  const intoFace = face ? -(fwd.x * face.normal.x + fwd.z * face.normal.z) : Infinity;
   if (
     Math.hypot(fwd.x, fwd.z) < dist * MIN_FORWARD_FRACTION ||
+    intoFace < STEP_UP_FORWARD_CLEARANCE * MIN_FORWARD_FRACTION ||
     probe.lastContactIsCharacter()
   ) {
     probe.setTranslation(start);
@@ -162,6 +181,92 @@ export function tryStepUp(
   };
 }
 
+/** A walking climb takes one riser (`step`); a running one takes two
+ * at once (`leap`), played with the jump animation. */
+export type StepUpKind = 'step' | 'leap';
+
+export interface StepUpClimb {
+  kind: StepUpKind;
+  path: StepUpPath;
+}
+
+/**
+ * The step-up for the character's gait. Walking, it is `tryStepUp`.
+ * Running, a second `tryStepUp` is probed from the first step's landing
+ * in the same direction, and when both succeed the climb is one leap
+ * over both risers. When the second riser isn't there (top of the
+ * stairs, a wall, a low ceiling, another character) it falls back to
+ * the single step. Pose is always restored.
+ */
+export function tryGaitStepUp(
+  probe: StepUpProbe,
+  dx: number,
+  dz: number,
+  opts: { running: boolean; face?: FaceAhead | null; maxHeight?: number },
+): StepUpClimb | null {
+  const { running, face = null, maxHeight = STEP_UP_MAX_HEIGHT } = opts;
+  const first = tryStepUp(probe, dx, dz, { maxHeight, face });
+  if (!first) {
+    return null;
+  }
+  const leap = running ? chainSecondStep(probe, first, dx, dz, maxHeight, face) : null;
+  return leap ? { kind: 'leap', path: leap } : { kind: 'step', path: first };
+}
+
+/** `first` extended by the step-up found from its landing, or null. */
+function chainSecondStep(
+  probe: StepUpProbe,
+  first: StepUpPath,
+  dx: number,
+  dz: number,
+  maxHeight: number,
+  face: FaceAhead | null,
+): StepUpPath | null {
+  const start = { ...probe.getTranslation() };
+  probe.setTranslation({
+    x: start.x + first.forward.x,
+    y: start.y + first.rise,
+    z: start.z + first.forward.z,
+  });
+  // A staircase's risers are parallel, so the first riser's face
+  // stands in for the second's. The first leg lands short of the second
+  // riser rather than against it, so the second probes twice as far:
+  // otherwise it lands balanced on the riser's nose instead of its tread.
+  const second = tryStepUp(probe, dx, dz, {
+    maxHeight,
+    face,
+    clearance: 2 * STEP_UP_FORWARD_CLEARANCE,
+  });
+  const combined = second && {
+    rise: first.rise + second.rise,
+    forward: {
+      x: first.forward.x + second.forward.x,
+      z: first.forward.z + second.forward.z,
+    },
+  };
+  const clear = combined !== null && pathIsClear(probe, start, combined);
+  probe.setTranslation(start);
+  return clear ? combined : null;
+}
+
+/** Sweeps `path` from `start` the way the traversal walks it. Each leg
+ * was probed from its own floor, so the combined rise still needs its
+ * headroom checked from the bottom step, and the carry at full height. */
+function pathIsClear(probe: StepUpProbe, start: Vec3, path: StepUpPath): boolean {
+  probe.setTranslation(start);
+  const up = probe.compute({ x: 0, y: path.rise, z: 0 });
+  if (up.y < path.rise - 0.01 || probe.lastContactIsCharacter()) {
+    return false;
+  }
+  probe.setTranslation({ x: start.x + up.x, y: start.y + up.y, z: start.z + up.z });
+  const fwd = probe.compute({ x: path.forward.x, y: 0, z: path.forward.z });
+  const forwardLen = Math.hypot(path.forward.x, path.forward.z);
+  return (
+    Math.hypot(fwd.x, fwd.z) >= forwardLen * MIN_LEAP_CARRY_FRACTION &&
+    !probe.lastContactIsCharacter()
+  );
+}
+
 /** Walks a `StepUpPath` at a constant `speed` (m/s along the path). */
 export class StepUpTraversal {
   /** Unit XZ direction of the forward carry. */
@@ -172,6 +277,7 @@ export class StepUpTraversal {
   constructor(
     private readonly path: StepUpPath,
     readonly speed: number,
+    readonly kind: StepUpKind = 'step',
   ) {
     this.forwardLen = Math.hypot(path.forward.x, path.forward.z);
     this.forwardDir =
