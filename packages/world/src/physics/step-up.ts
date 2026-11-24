@@ -180,6 +180,11 @@ export class StepUpTraversal {
         : { x: 0, z: 0 };
   }
 
+  /** Horizontal climb velocity: `forwardDir × speed`. */
+  get velocity(): { x: number; z: number } {
+    return { x: this.forwardDir.x * this.speed, z: this.forwardDir.z * this.speed };
+  }
+
   /** Moves `speed·dtSec` further along the path (clamped to its end) and
    * returns that slice; `done` is true on the call that reaches the end. */
   advance(dtSec: number): { delta: Vec3; done: boolean } {
@@ -227,4 +232,21 @@ export function stepTraversal(
       ? (delta.x * requested.x + delta.y * requested.y + delta.z * requested.z) / requestedSq
       : 1;
   return { delta, ended: done || survived < MIN_SLICE_FRACTION };
+}
+
+/**
+ * What a climbing character broadcasts: the climb velocity scaled by
+ * `climbAnimFactor` (it drives the walk animation's rate), facing along
+ * the climb, or `currentYaw` when the climb has no horizontal carry.
+ */
+export function climbBroadcast(
+  climbVel: { x: number; z: number },
+  climbAnimFactor: number,
+  currentYaw: number,
+): { vel: Vec3; yaw: number } {
+  const { x, z } = climbVel;
+  return {
+    vel: { x: x * climbAnimFactor, y: 0, z: z * climbAnimFactor },
+    yaw: x !== 0 || z !== 0 ? Math.atan2(-x, -z) : currentYaw,
+  };
 }

@@ -17,6 +17,7 @@
 
 import type { Vec3 } from '@officexr/sdk';
 import { FLOOR_PROBE_RANGE } from './rules.ts';
+import { climbBroadcast } from './step-up.ts';
 import type { CharacterMovement, CharacterMoveResult } from './character-movement.ts';
 import type { BotPhysicsWorld } from '../bot/BotPhysicsWorld.ts';
 
@@ -119,10 +120,11 @@ export class BotCharacterMovement implements CharacterMovement {
     let broadcastVel: Vec3;
     let broadcastYaw: number;
     if (stepResult.climbing) {
-      const { x, z } = stepResult.climbVel;
-      const f = this.tunables.climbAnimFactor;
-      broadcastVel = { x: x * f, y: 0, z: z * f };
-      broadcastYaw = x !== 0 || z !== 0 ? Math.atan2(-x, -z) : currentYaw;
+      ({ vel: broadcastVel, yaw: broadcastYaw } = climbBroadcast(
+        stepResult.climbVel,
+        this.tunables.climbAnimFactor,
+        currentYaw,
+      ));
     } else if (moved && normalDir !== null) {
       broadcastVel = {
         x: normalDir.x * speed * stepResult.progress,

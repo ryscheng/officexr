@@ -32,7 +32,7 @@ import {
 } from '../physics/rules.ts';
 import { stepAirVelocity } from '../physics/air-control.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
-import { tryStepUp } from '../physics/step-up.ts';
+import { climbBroadcast, StepUpTraversal, stepTraversal, tryStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, isYawPitchMode, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
 import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
@@ -210,6 +210,8 @@ export function SceneFrame({
   // controller integrates gravity itself via the desired translation we
   // pass into `computeColliderMovement`.
   const verticalVelRef = useRef(0);
+  /** Active step-up climb; while set it replaces input-driven movement. */
+  const stepUpRef = useRef<StepUpTraversal | null>(null);
   // Test hook: when false, gravity is skipped (vertical velocity stays
   // at 0). The deterministic visual regression test flips this off so
   // it can pin the player to a fixed pos without the body drifting
@@ -468,6 +470,7 @@ export function SceneFrame({
       }
       stepSeated(store, selfId, body, seating, hasMoveInput || spacePressedThisFrame || autoWalkDir !== null);
       verticalVelRef.current = 0;
+      stepUpRef.current = null;
       airborneRef.current = false;
       isAirborneRef.current = false;
       wasMoving.current = false;
@@ -516,6 +519,7 @@ export function SceneFrame({
       if (warped) {
         body.setNextKinematicTranslation(self.pos);
         verticalVelRef.current = 0;
+        stepUpRef.current = null;
         // Reset jump state so a teleport doesn't leave the player
         // mid-jump with a depleted counter.
         airborneRef.current = false;
@@ -642,7 +646,8 @@ export function SceneFrame({
         // `computeColliderMovement`. The controller then resolves
         // that translation against ground colliders.
         const dtSec = dt / 1000;
-        if (gravityEnabledRef.current) {
+        let traversal = stepUpRef.current;
+        if (gravityEnabledRef.current && !traversal) {
           verticalVelRef.current += GRAVITY * dtSec;
         } else {
           verticalVelRef.current = 0;
@@ -695,6 +700,7 @@ export function SceneFrame({
           spellMoveScale > 0 &&
           jumpsRemainingRef.current > 0 &&
           !warped &&
+          !traversal &&
           gravityEnabledRef.current
         ) {
           verticalVelRef.current = jumpVelocity;
@@ -743,185 +749,189 @@ export function SceneFrame({
         // only disables the dynamics solver's penetration push;
         // movement resolution uses the query pipeline, which needs
         // this flag to skip sensors.
-        controller.computeColliderMovement(
-          bodyCollider,
-          {
+        const sweep = (desired: Vec3): Vec3 => {
+          controller.computeColliderMovement(
+            bodyCollider,
+            desired,
+            RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+          );
+          const c = controller.computedMovement();
+          return { x: c.x, y: c.y, z: c.z };
+        };
+
+        let progress = 1;
+        let horizBlocked = false;
+        let moveDelta: Vec3 = { x: 0, y: 0, z: 0 };
+        if (!traversal) {
+          const corrected = sweep({
             x: moveX,
             y: verticalVelRef.current * dtSec,
             z: moveZ,
-          },
-          RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-        );
-        const corrected = controller.computedMovement();
+          });
 
-        // Climb-aware gravity reset — the player half of the autostep
-        // pairing (see BotPhysicsWorld.step() for the bot half). While
-        // autostep lifts the body over a step face, computedGrounded()
-        // flickers false (the ball is climbing, not resting), so the
-        // grounded reset above never fires and gravity accumulates
-        // across the staircase — eventually tripping the fall-respawn
-        // gate mid-climb. When the controller moved us upward or flat
-        // (corrected.y >= 0) despite a downward integrated velocity,
-        // we're being lifted, not falling: zero the fall speed.
-        //
-        // The `< 0` guard is the difference from the bot version: bots
-        // never jump, but a player's jump ascent has POSITIVE vertical
-        // velocity and corrected.y > 0 — resetting then would kill the
-        // jump at its first frame. Falling-only reset leaves jumps
-        // untouched.
-        if (verticalVelRef.current < 0 && corrected.y >= 0) {
-          verticalVelRef.current = 0;
-        }
-
-        // Edge-trigger bilateral `collision:char-bump` events for
-        // every peer character we're newly touching. The Rapier
-        // character controller resolves movement via the query
-        // pipeline (it *slides* rather than collides), so the
-        // contact pipeline never fires `onCollisionEnter` for the
-        // bodies it walked the character past. We walk the
-        // controller's own collision list and convert any contact
-        // with another player's RigidBody into a bump event.
-        const touchedThisFrame = new Set<string>();
-        const n = controller.numComputedCollisions();
-        for (let i = 0; i < n; i++) {
-          const coll = controller.computedCollision(i);
-          if (!coll || !coll.collider) continue;
-          const otherRb = coll.collider.parent();
-          if (!otherRb) continue;
-          const otherUd = otherRb.userData as
-            | { playerId?: string }
-            | undefined;
-          const otherId = otherUd?.playerId;
-          if (!otherId || otherId === selfId) continue;
-          touchedThisFrame.add(otherId);
-          if (!bumpingPeersRef.current.has(otherId)) {
-            // `normal1` points OUT of the obstacle in world space.
-            // For self that's the direction we get pushed; for the
-            // other character it's the reverse.
-            const nrm = coll.normal1;
-            bus.emit({
-              kind: 'collision:char-bump',
-              selfId,
-              otherId,
-              normal: { x: nrm.x, z: nrm.z },
-            });
-            bus.emit({
-              kind: 'collision:char-bump',
-              selfId: otherId,
-              otherId: selfId,
-              normal: { x: -nrm.x, z: -nrm.z },
-            });
-          }
-        }
-        bumpingPeersRef.current = touchedThisFrame;
-
-        // `movementBlockThreshold` from worldSettings controls when
-        // we treat "blocked enough" as fully stopped — preserving
-        // the original behaviour where pushing into a wall snaps
-        // the walking animation back to idle. Only applies when the
-        // user is intentionally moving; gravity-only frames don't
-        // count as "blocked horizontal movement".
-        //
-        // Unified blocking decision: horizontalProgress() is shared with
-        // BotPhysicsWorld (bot path) via physics/blocking.ts — single
-        // source of truth for both human and bot movement-blocking.
-        //
-        // DIP note: SceneFrame (renderer) and BotPhysicsWorld (physics)
-        // each run their own Rapier world and gravity integration because
-        // SceneFrame lives inside the r3f Canvas with @react-three/rapier
-        // while BotPhysicsWorld is a headless Rapier instance. The full
-        // CharacterMovement interface (gravity, position application, anim
-        // derivation) is therefore still duplicated across the two paths.
-        // What IS now unified is the blocking-decision scalar:
-        // horizontalProgress replaces the old magnitude-ratio in SceneFrame
-        // and the inline dot-product in BotPhysicsWorld, so both paths
-        // agree on when "the character is blocked". To remove the remaining
-        // duplication, SceneFrame would need to be refactored onto a
-        // SceneFrameCharacterMovement impl of CharacterMovement — tracked
-        // as a future step in refactor-plan/.
-        const progress = horizontalProgress(
-          { x: corrected.x, z: corrected.z },
-          { x: moveX, z: moveZ },
-        );
-        let horizBlocked = intendsMove && progress < minProgress;
-        let moveDelta = { x: corrected.x, y: corrected.y, z: corrected.z };
-
-        // Step-up assist (shared with bots — physics/step-up.ts): a
-        // blocked, grounded, non-jumping character pushing into a
-        // climbable ledge (stair riser ≤ STEP_UP_MAX_HEIGHT) hops onto
-        // it. Rapier's autostep cannot lift the ball collider over the
-        // honest scanned 0.5 m risers, so without this the player
-        // wedges at the first step. The probe teleports the body for
-        // its sweeps and restores it; we re-apply the returned delta
-        // through the normal pipeline below.
-        // `touchedThisFrame.size === 0` (no peer contact) is
-        // load-bearing: a player blocked by another CHARACTER must
-        // bump, not climb onto their head — see the bot-side guard in
-        // BotPhysicsWorld.step() for the failure mode.
-        if (
-          horizBlocked &&
-          touchedThisFrame.size === 0 &&
-          controller.computedGrounded() &&
-          verticalVelRef.current <= 0
-        ) {
-          const hop = tryStepUp(
-            {
-              compute: (desired) => {
-                controller.computeColliderMovement(
-                  bodyCollider,
-                  desired,
-                  RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-                );
-                const c = controller.computedMovement();
-                return {
-                  x: c.x,
-                  y: c.y,
-                  z: c.z,
-                  grounded: controller.computedGrounded(),
-                };
-              },
-              getTranslation: () => {
-                const bt = body.translation();
-                return { x: bt.x, y: bt.y, z: bt.z };
-              },
-              setTranslation: (p) => {
-                body.setTranslation({ x: p.x, y: p.y, z: p.z }, true);
-                world.propagateModifiedBodyPositionsToColliders();
-              },
-              lastContactIsCharacter: () => {
-                const n = controller.numComputedCollisions();
-                for (let i = 0; i < n; i++) {
-                  const coll = controller.computedCollision(i);
-                  const otherRb = coll?.collider?.parent();
-                  const ud = otherRb?.userData as
-                    | { playerId?: string }
-                    | undefined;
-                  if (ud?.playerId) return true;
-                }
-                return false;
-              },
-            },
-            moveX,
-            moveZ,
-          );
-          if (hop) {
-            moveDelta = { x: hop.forward.x, y: hop.rise, z: hop.forward.z };
-            horizBlocked = false;
+          // Climb-aware gravity reset — the player half of the autostep
+          // pairing (see BotPhysicsWorld.step() for the bot half). While
+          // autostep lifts the body over a step face, computedGrounded()
+          // flickers false (the ball is climbing, not resting), so the
+          // grounded reset above never fires and gravity accumulates
+          // across the staircase — eventually tripping the fall-respawn
+          // gate mid-climb. When the controller moved us upward or flat
+          // (corrected.y >= 0) despite a downward integrated velocity,
+          // we're being lifted, not falling: zero the fall speed.
+          //
+          // The `< 0` guard is the difference from the bot version: bots
+          // never jump, but a player's jump ascent has POSITIVE vertical
+          // velocity and corrected.y > 0 — resetting then would kill the
+          // jump at its first frame. Falling-only reset leaves jumps
+          // untouched.
+          if (verticalVelRef.current < 0 && corrected.y >= 0) {
             verticalVelRef.current = 0;
           }
-          // The probe sweeps clobbered the controller's computed
-          // state; the grounded check at the top of the NEXT frame
-          // reads it. Re-run the frame's real sweep so the controller
-          // reflects the actual frame, not the last probe.
-          controller.computeColliderMovement(
-            bodyCollider,
-            {
-              x: moveX,
-              y: verticalVelRef.current * dtSec,
-              z: moveZ,
-            },
-            RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+
+          // Edge-trigger bilateral `collision:char-bump` events for
+          // every peer character we're newly touching. The Rapier
+          // character controller resolves movement via the query
+          // pipeline (it *slides* rather than collides), so the
+          // contact pipeline never fires `onCollisionEnter` for the
+          // bodies it walked the character past. We walk the
+          // controller's own collision list and convert any contact
+          // with another player's RigidBody into a bump event.
+          const touchedThisFrame = new Set<string>();
+          const n = controller.numComputedCollisions();
+          for (let i = 0; i < n; i++) {
+            const coll = controller.computedCollision(i);
+            if (!coll || !coll.collider) continue;
+            const otherRb = coll.collider.parent();
+            if (!otherRb) continue;
+            const otherUd = otherRb.userData as
+              | { playerId?: string }
+              | undefined;
+            const otherId = otherUd?.playerId;
+            if (!otherId || otherId === selfId) continue;
+            touchedThisFrame.add(otherId);
+            if (!bumpingPeersRef.current.has(otherId)) {
+              // `normal1` points OUT of the obstacle in world space.
+              // For self that's the direction we get pushed; for the
+              // other character it's the reverse.
+              const nrm = coll.normal1;
+              bus.emit({
+                kind: 'collision:char-bump',
+                selfId,
+                otherId,
+                normal: { x: nrm.x, z: nrm.z },
+              });
+              bus.emit({
+                kind: 'collision:char-bump',
+                selfId: otherId,
+                otherId: selfId,
+                normal: { x: -nrm.x, z: -nrm.z },
+              });
+            }
+          }
+          bumpingPeersRef.current = touchedThisFrame;
+
+          // `movementBlockThreshold` from worldSettings controls when
+          // we treat "blocked enough" as fully stopped — preserving
+          // the original behaviour where pushing into a wall snaps
+          // the walking animation back to idle. Only applies when the
+          // user is intentionally moving; gravity-only frames don't
+          // count as "blocked horizontal movement".
+          //
+          // Unified blocking decision: horizontalProgress() is shared with
+          // BotPhysicsWorld (bot path) via physics/blocking.ts — single
+          // source of truth for both human and bot movement-blocking.
+          //
+          // DIP note: SceneFrame (renderer) and BotPhysicsWorld (physics)
+          // each run their own Rapier world and gravity integration because
+          // SceneFrame lives inside the r3f Canvas with @react-three/rapier
+          // while BotPhysicsWorld is a headless Rapier instance. The full
+          // CharacterMovement interface (gravity, position application, anim
+          // derivation) is therefore still duplicated across the two paths.
+          // What IS now unified is the blocking-decision scalar:
+          // horizontalProgress replaces the old magnitude-ratio in SceneFrame
+          // and the inline dot-product in BotPhysicsWorld, so both paths
+          // agree on when "the character is blocked". To remove the remaining
+          // duplication, SceneFrame would need to be refactored onto a
+          // SceneFrameCharacterMovement impl of CharacterMovement — tracked
+          // as a future step in refactor-plan/.
+          progress = horizontalProgress(
+            { x: corrected.x, z: corrected.z },
+            { x: moveX, z: moveZ },
           );
+          horizBlocked = intendsMove && progress < minProgress;
+          moveDelta = corrected;
+
+          // Step-up assist (shared with bots — physics/step-up.ts): a
+          // blocked, grounded, non-jumping character pushing into a
+          // climbable ledge (stair riser ≤ STEP_UP_MAX_HEIGHT) starts
+          // climbing onto it. Rapier's autostep cannot lift the ball
+          // collider over the honest scanned 0.5 m risers, so without
+          // this the player wedges at the first step. The probe teleports
+          // the body for its sweeps and restores it. Not while airborne:
+          // during the landing ease the move is the decaying air
+          // velocity, which would set a near-zero climb pace.
+          // `touchedThisFrame.size === 0` (no peer contact) is
+          // load-bearing: a player blocked by another CHARACTER must
+          // bump, not climb onto their head — see the bot-side guard in
+          // BotPhysicsWorld.step() for the failure mode.
+          if (
+            horizBlocked &&
+            touchedThisFrame.size === 0 &&
+            !isAirborne &&
+            controller.computedGrounded() &&
+            verticalVelRef.current <= 0
+          ) {
+            const path = tryStepUp(
+              {
+                compute: (desired) => ({
+                  ...sweep(desired),
+                  grounded: controller.computedGrounded(),
+                }),
+                getTranslation: () => {
+                  const bt = body.translation();
+                  return { x: bt.x, y: bt.y, z: bt.z };
+                },
+                setTranslation: (p) => {
+                  body.setTranslation({ x: p.x, y: p.y, z: p.z }, true);
+                  world.propagateModifiedBodyPositionsToColliders();
+                },
+                lastContactIsCharacter: () => {
+                  const n = controller.numComputedCollisions();
+                  for (let i = 0; i < n; i++) {
+                    const coll = controller.computedCollision(i);
+                    const otherRb = coll?.collider?.parent();
+                    const ud = otherRb?.userData as
+                      | { playerId?: string }
+                      | undefined;
+                    if (ud?.playerId) return true;
+                  }
+                  return false;
+                },
+              },
+              moveX,
+              moveZ,
+            );
+            // The probe sweeps clobbered the controller's computed
+            // state; the grounded check at the top of the NEXT frame
+            // reads it. Re-run the frame's real sweep so the controller
+            // reflects the actual frame, not the last probe.
+            sweep({ x: moveX, y: verticalVelRef.current * dtSec, z: moveZ });
+            if (path) {
+              const speed =
+                (Math.hypot(moveX, moveZ) / dtSec) * stateSnapshot.worldSettings.stepUpSpeedFactor;
+              traversal = stepUpRef.current = new StepUpTraversal(path, speed);
+            }
+          }
+        }
+        // `traversal` stays set for the rest of the frame a climb ends
+        // on, so that frame still broadcasts as climbing.
+        if (traversal) {
+          const { delta, ended } = stepTraversal(traversal, dtSec, sweep);
+          moveDelta = delta;
+          verticalVelRef.current = 0;
+          if (ended) {
+            stepUpRef.current = null;
+          }
         }
 
         const t = body.translation();
@@ -958,8 +968,9 @@ export function SceneFrame({
           spawnsRef.current,
         );
         if (
-          shouldRespawnFalling(verticalVelRef.current, hasFloorUnderneath) ||
-          newPos.y < backstopThreshold
+          !traversal &&
+          (shouldRespawnFalling(verticalVelRef.current, hasFloorUnderneath) ||
+            newPos.y < backstopThreshold)
         ) {
           const r = pickRespawnPosition(spawnsRef.current);
           if (r) {
@@ -984,16 +995,22 @@ export function SceneFrame({
         // Broadcast velocity and isAirborne. While airborne, use the
         // carried air velocity so peers extrapolate the correct mid-air
         // trajectory.
+        const climb = traversal
+          ? climbBroadcast(traversal.velocity, stateSnapshot.worldSettings.climbAnimFactor, self.yaw)
+          : null;
+        const walking = intendsMove && !horizBlocked;
         const broadcastVel = isAirborne
           ? { x: airVelXRef.current, y: 0, z: airVelZRef.current }
-          : (intendsMove && !horizBlocked)
-            ? { x: dx * playerSpeed * progress, y: 0, z: dz * playerSpeed * progress }
-            : { x: 0, y: 0, z: 0 };
-        const broadcastYaw = intendsMove ? movementYaw : self.yaw;
+          : climb
+            ? climb.vel
+            : walking
+              ? { x: dx * playerSpeed * progress, y: 0, z: dz * playerSpeed * progress }
+              : { x: 0, y: 0, z: 0 };
+        const broadcastYaw = climb ? climb.yaw : intendsMove ? movementYaw : self.yaw;
 
-        if (isAirborne || (intendsMove && !horizBlocked)) {
+        if (isAirborne || climb || walking) {
           actions.setSelfPosition(newPos, broadcastVel, broadcastYaw, isAirborne);
-          isMoving = isAirborne || (intendsMove && !horizBlocked);
+          isMoving = true;
         } else {
           actions.setSelfPosition(newPos, { x: 0, y: 0, z: 0 }, broadcastYaw, false);
         }
