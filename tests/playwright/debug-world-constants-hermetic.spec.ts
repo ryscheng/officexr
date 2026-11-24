@@ -86,4 +86,20 @@ test('seeded world constants show in the panels, drive the scene and save once p
   expect(saves).toHaveLength(1);
   expect(saves[0]!.animation.walkSpeed).toBe(5);
   expect(saves[0]!.background.topColor).toBe(RED);
+
+  for (const [label, key, shownDefault, value] of [
+    ['step-up ×', 'stepUpSpeedFactor', /^0\.70*$/, 1.5],
+    ['climb anim ×', 'climbAnimFactor', /^1(\.0+)?$/, 2],
+  ] as const) {
+    const row = page.locator('label', { hasText: label }).locator('..');
+    await expect(row.getByRole('button')).toHaveText(shownDefault);
+    await row.getByRole('button').click();
+    await row.locator('input').fill(String(value));
+    await row.locator('input').press('Enter');
+    await expect.poll(async () => (await storeConstants(page))?.animation[key]).toBe(value);
+  }
+  await expect(page.getByTestId('world-constants-status')).toHaveText('Saved');
+  const last = (await savedDocs(page)).at(-1)!;
+  expect(last.animation.stepUpSpeedFactor).toBe(1.5);
+  expect(last.animation.climbAnimFactor).toBe(2);
 });

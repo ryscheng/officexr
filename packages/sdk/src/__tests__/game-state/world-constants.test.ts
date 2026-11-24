@@ -16,6 +16,8 @@ describe('WorldConstants', () => {
       runAnimSpeed: 1,
       idleAnimSpeed: 1,
       turnSpeed: 16,
+      stepUpSpeedFactor: 0.7,
+      climbAnimFactor: 1,
       charRadius: 0.4,
       proximityRadius: 3,
       proximityOuterRadius: 6,
@@ -51,6 +53,37 @@ describe('WorldConstants', () => {
       parseWorldConstants({ ...DEFAULT_WORLD_CONSTANTS, background: { ...background, horizonColor: 'peach' } }),
     ).toThrow();
   });
+});
+
+describe('stepUpSpeedFactor / climbAnimFactor', () => {
+  const withAnimation = (extra: object) => ({
+    ...DEFAULT_WORLD_CONSTANTS,
+    animation: { ...DEFAULT_WORLD_CONSTANTS.animation, ...extra },
+  });
+
+  it('documents without them parse and resolve to the defaults', () => {
+    const parsed = parseWorldConstants(DEFAULT_WORLD_CONSTANTS);
+    expect(parsed.animation.stepUpSpeedFactor).toBeUndefined();
+    expect(parsed.animation.climbAnimFactor).toBeUndefined();
+    const settings = worldSettingsFromConstants(parsed);
+    expect(settings.stepUpSpeedFactor).toBe(0.7);
+    expect(settings.climbAnimFactor).toBe(1.0);
+  });
+
+  it('provided values flow through to the settings', () => {
+    const settings = worldSettingsFromConstants(
+      parseWorldConstants(withAnimation({ stepUpSpeedFactor: 1.2, climbAnimFactor: 2 })),
+    );
+    expect(settings.stepUpSpeedFactor).toBe(1.2);
+    expect(settings.climbAnimFactor).toBe(2);
+  });
+
+  it.each([{ stepUpSpeedFactor: 0 }, { stepUpSpeedFactor: 3 }, { climbAnimFactor: 0.05 }, { climbAnimFactor: 4 }])(
+    'rejects out-of-range %o',
+    (extra) => {
+      expect(() => parseWorldConstants(withAnimation(extra))).toThrow();
+    },
+  );
 });
 
 describe('ghostAvatar', () => {

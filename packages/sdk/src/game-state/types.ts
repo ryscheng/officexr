@@ -179,6 +179,12 @@ export type AnimationSettings = {
   idleAnimSpeed: number;
   /** Maximum angular velocity for the smooth-turn animation, in rad/s. */
   turnSpeed: number;
+  /** Multiplier on the character's horizontal intent speed used while
+   * traversing a step-up. */
+  stepUpSpeedFactor: number;
+  /** Multiplier on the broadcast velocity while climbing, which sets the
+   * walk-animation rate on every client. */
+  climbAnimFactor: number;
 };
 
 /**
