@@ -32,7 +32,7 @@ import {
 } from '../physics/rules.ts';
 import { stepAirVelocity } from '../physics/air-control.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
-import { climbBroadcast, StepUpTraversal, stepTraversal, tryStepUp } from '../physics/step-up.ts';
+import { climbBroadcast, StepUpTraversal, stepTraversal, tryGaitStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, isYawPitchMode, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
 import { isStandingSpotFree, sitOnPress, stepSeated, type SeatingSource } from './seated.ts';
@@ -881,7 +881,8 @@ export function SceneFrame({
             controller.computedGrounded() &&
             verticalVelRef.current <= 0
           ) {
-            const path = tryStepUp(
+            const runningOnFoot = isRunning && !autoWalkDir && motionOut.speed === null;
+            const stepUp = tryGaitStepUp(
               {
                 compute: (desired) => ({
                   ...sweep(desired),
@@ -910,16 +911,17 @@ export function SceneFrame({
               },
               moveX,
               moveZ,
+              runningOnFoot,
             );
             // The probe sweeps clobbered the controller's computed
             // state; the grounded check at the top of the NEXT frame
             // reads it. Re-run the frame's real sweep so the controller
             // reflects the actual frame, not the last probe.
             sweep({ x: moveX, y: verticalVelRef.current * dtSec, z: moveZ });
-            if (path) {
+            if (stepUp) {
               const speed =
                 (Math.hypot(moveX, moveZ) / dtSec) * stateSnapshot.worldSettings.stepUpSpeedFactor;
-              traversal = stepUpRef.current = new StepUpTraversal(path, speed);
+              traversal = stepUpRef.current = new StepUpTraversal(stepUp.path, speed, stepUp.kind);
             }
           }
         }
@@ -996,7 +998,11 @@ export function SceneFrame({
 
         // Broadcast velocity and isAirborne. While airborne, use the
         // carried air velocity so peers extrapolate the correct mid-air
-        // trajectory.
+        // trajectory. A leap shows as airborne (the jump clip, here and
+        // on peers) but stays out of `isAirborne`, which gates jumps,
+        // the landing ease and climb starts.
+        const shownAirborne = isAirborne || traversal?.kind === 'leap';
+        isAirborneRef.current = shownAirborne;
         const climb = traversal
           ? climbBroadcast(traversal.velocity, stateSnapshot.worldSettings.climbAnimFactor, self.yaw)
           : null;
@@ -1011,7 +1017,7 @@ export function SceneFrame({
         const broadcastYaw = climb ? climb.yaw : intendsMove ? movementYaw : self.yaw;
 
         if (isAirborne || climb || walking) {
-          actions.setSelfPosition(newPos, broadcastVel, broadcastYaw, isAirborne);
+          actions.setSelfPosition(newPos, broadcastVel, broadcastYaw, shownAirborne);
           isMoving = true;
         } else {
           actions.setSelfPosition(newPos, { x: 0, y: 0, z: 0 }, broadcastYaw, false);

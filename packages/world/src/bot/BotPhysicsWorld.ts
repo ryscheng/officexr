@@ -17,7 +17,7 @@ import { horizontalProgress } from '../physics/blocking.ts';
 import {
   StepUpTraversal,
   stepTraversal,
-  tryStepUp,
+  tryGaitStepUp,
   type StepUpProbe,
 } from '../physics/step-up.ts';
 
@@ -57,6 +57,8 @@ export interface StepResult {
   /** The climb's horizontal velocity (forward dir × traversal speed);
    * zero when not climbing. */
   climbVel: { x: number; z: number };
+  /** True while the climb is a running leap over two risers. */
+  leaping: boolean;
 }
 
 /** Result of one `drainSensorEvents()` — pairs of collider tags whose
@@ -454,7 +456,7 @@ export class BotPhysicsWorld {
    * the character controller uses).
    */
   step(
-    intent: { x: number; z: number; dtSec: number },
+    intent: { x: number; z: number; dtSec: number; running?: boolean },
     stepUpSpeedFactor: number,
   ): StepResult {
     if (this.traversal) {
@@ -524,16 +526,21 @@ export class BotPhysicsWorld {
       this.verticalVel <= 0 &&
       (intent.x !== 0 || intent.z !== 0)
     ) {
-      const path = tryStepUp(this.stepUpProbe, intent.x, intent.z);
+      const climb = tryGaitStepUp(
+        this.stepUpProbe,
+        intent.x,
+        intent.z,
+        intent.running ?? false,
+      );
       // The probe sweeps clobbered the controller's computed state
       // (grounded, collisions). Re-run the frame's real sweep so
       // anything reading controller state after this point — the
       // `grounded` field below, next frame's grounded check — sees
       // the actual frame, not the last probe.
       this.sweep({ x: intent.x, y: this.verticalVel * intent.dtSec, z: intent.z });
-      if (path) {
+      if (climb) {
         const speed = (Math.hypot(intent.x, intent.z) / intent.dtSec) * stepUpSpeedFactor;
-        this.traversal = new StepUpTraversal(path, speed);
+        this.traversal = new StepUpTraversal(climb.path, speed, climb.kind);
         return this.climb(intent.dtSec);
       }
     }
@@ -545,6 +552,7 @@ export class BotPhysicsWorld {
       grounded: this.controller.computedGrounded(),
       climbing: false,
       climbVel: { x: 0, z: 0 },
+      leaping: false,
     };
   }
 
@@ -564,6 +572,7 @@ export class BotPhysicsWorld {
       grounded: true,
       climbing: true,
       climbVel: traversal.velocity,
+      leaping: traversal.kind === 'leap',
     };
   }
 

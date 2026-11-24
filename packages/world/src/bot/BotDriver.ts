@@ -393,6 +393,7 @@ export class BotDriver {
     let newPos = result.newPos;
     let vel = result.broadcastVel;
     let moved = result.moved;
+    let airborne = result.broadcastAirborne;
     // Pass `this.spawnList` so the backstop has a finite floor
     // reference even for baked-layout maps whose platforms live in
     // the GLB rather than in `worldObjects.instances` (otherwise the
@@ -409,10 +410,11 @@ export class BotDriver {
         newPos = respawnPos;
         vel = { x: 0, y: 0, z: 0 };
         moved = false;
+        airborne = false;
       }
     }
 
-    this.botActions.setSelfPosition(newPos, vel, result.broadcastYaw, false);
+    this.botActions.setSelfPosition(newPos, vel, result.broadcastYaw, airborne);
     this.flushEvents();
     this.botSync.flushPosition();
     this.botHandshake.tickTimers();

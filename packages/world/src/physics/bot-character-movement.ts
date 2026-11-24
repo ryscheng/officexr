@@ -93,7 +93,7 @@ export class BotCharacterMovement implements CharacterMovement {
 
     // 3. Step physics (gravity integrated inside BotPhysicsWorld.step).
     const stepResult = this.physics.step(
-      { x: moveDX, z: moveDZ, dtSec },
+      { x: moveDX, z: moveDZ, dtSec, running: verb === 'run' },
       this.tunables.stepUpSpeedFactor,
     );
 
@@ -111,10 +111,13 @@ export class BotCharacterMovement implements CharacterMovement {
     const moved =
       stepResult.climbing || (normalDir !== null && stepResult.progress >= minProgress);
 
-    // 7. Derive animation state: climbing always walks; otherwise verb if moved, else idle.
-    const animState: 'idle' | 'walk' | 'run' = stepResult.climbing
-      ? 'walk'
-      : moved ? (verb === 'idle' ? 'idle' : verb) : 'idle';
+    // 7. Derive animation state: a leap jumps, any other climb walks;
+    //    otherwise verb if moved, else idle.
+    const animState: CharacterMoveResult['animState'] = stepResult.leaping
+      ? 'jump'
+      : stepResult.climbing
+        ? 'walk'
+        : moved ? (verb === 'idle' ? 'idle' : verb) : 'idle';
 
     // 8. Derive broadcastVel and broadcastYaw.
     let broadcastVel: Vec3;
@@ -167,6 +170,7 @@ export class BotCharacterMovement implements CharacterMovement {
       velY,
       hasFloorUnderneath,
       isGrounded: stepResult.grounded,
+      broadcastAirborne: stepResult.leaping,
       bumps: stepResult.bumps,
     };
   }

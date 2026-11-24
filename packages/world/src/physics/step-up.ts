@@ -162,6 +162,83 @@ export function tryStepUp(
   };
 }
 
+/** A walking climb takes one riser (`step`); a running one takes two
+ * at once (`leap`), played with the jump animation. */
+export type StepUpKind = 'step' | 'leap';
+
+export interface StepUpClimb {
+  kind: StepUpKind;
+  path: StepUpPath;
+}
+
+/**
+ * The step-up for the character's gait. Walking, it is `tryStepUp`.
+ * Running, a second `tryStepUp` is probed from the first step's landing
+ * in the same direction, and when both succeed the climb is one leap
+ * over both risers. When the second riser isn't there (top of the
+ * stairs, a wall, a low ceiling, another character) it falls back to
+ * the single step. Pose is always restored.
+ */
+export function tryGaitStepUp(
+  probe: StepUpProbe,
+  dx: number,
+  dz: number,
+  running: boolean,
+  maxHeight: number = STEP_UP_MAX_HEIGHT,
+): StepUpClimb | null {
+  const first = tryStepUp(probe, dx, dz, maxHeight);
+  if (!first) {
+    return null;
+  }
+  const leap = running ? chainSecondStep(probe, first, dx, dz, maxHeight) : null;
+  return leap ? { kind: 'leap', path: leap } : { kind: 'step', path: first };
+}
+
+/** `first` extended by the step-up found from its landing, or null. */
+function chainSecondStep(
+  probe: StepUpProbe,
+  first: StepUpPath,
+  dx: number,
+  dz: number,
+  maxHeight: number,
+): StepUpPath | null {
+  const start = { ...probe.getTranslation() };
+  probe.setTranslation({
+    x: start.x + first.forward.x,
+    y: start.y + first.rise,
+    z: start.z + first.forward.z,
+  });
+  const second = tryStepUp(probe, dx, dz, maxHeight);
+  const combined = second && {
+    rise: first.rise + second.rise,
+    forward: {
+      x: first.forward.x + second.forward.x,
+      z: first.forward.z + second.forward.z,
+    },
+  };
+  const clear = combined !== null && pathIsClear(probe, start, combined);
+  probe.setTranslation(start);
+  return clear ? combined : null;
+}
+
+/** Sweeps `path` from `start` the way the traversal walks it. Each leg
+ * was probed from its own floor, so the combined rise still needs its
+ * headroom checked from the bottom step, and the carry at full height. */
+function pathIsClear(probe: StepUpProbe, start: Vec3, path: StepUpPath): boolean {
+  probe.setTranslation(start);
+  const up = probe.compute({ x: 0, y: path.rise, z: 0 });
+  if (up.y < path.rise - 0.01 || probe.lastContactIsCharacter()) {
+    return false;
+  }
+  probe.setTranslation({ x: start.x + up.x, y: start.y + up.y, z: start.z + up.z });
+  const fwd = probe.compute({ x: path.forward.x, y: 0, z: path.forward.z });
+  const forwardLen = Math.hypot(path.forward.x, path.forward.z);
+  return (
+    Math.hypot(fwd.x, fwd.z) >= forwardLen * MIN_FORWARD_FRACTION &&
+    !probe.lastContactIsCharacter()
+  );
+}
+
 /** Walks a `StepUpPath` at a constant `speed` (m/s along the path). */
 export class StepUpTraversal {
   /** Unit XZ direction of the forward carry. */
@@ -172,6 +249,7 @@ export class StepUpTraversal {
   constructor(
     private readonly path: StepUpPath,
     readonly speed: number,
+    readonly kind: StepUpKind = 'step',
   ) {
     this.forwardLen = Math.hypot(path.forward.x, path.forward.z);
     this.forwardDir =

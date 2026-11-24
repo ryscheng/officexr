@@ -23,6 +23,7 @@ import {
   StepUpTraversal,
   climbBroadcast,
   stepTraversal,
+  tryGaitStepUp,
   tryStepUp,
   type StepUpProbe,
 } from './step-up.ts';
@@ -50,7 +51,14 @@ interface Rig {
  * platform top y=2, 8 step columns 0.5 rise/run ascending toward −X,
  * landing top y=6) plus the character rig with the production
  * controller config. */
-function makeStairsRig(opts?: { wall?: boolean; ceiling?: boolean; startX?: number }): Rig {
+function makeStairsRig(opts?: {
+  wall?: boolean;
+  ceiling?: boolean;
+  /** A ceiling over the first two treads, high enough for one step
+   * from the platform but not for a step from the first tread. */
+  ceilingOverTreads?: boolean;
+  startX?: number;
+}): Rig {
   const world = new RAPIER.World({ x: 0, y: -50, z: 0 });
   world.createCollider(RAPIER.ColliderDesc.cuboid(2, 1, 2).setTranslation(6, 1, 2));
   world.createCollider(RAPIER.ColliderDesc.cuboid(2, 3, 2).setTranslation(-2, 3, 2));
@@ -67,6 +75,10 @@ function makeStairsRig(opts?: { wall?: boolean; ceiling?: boolean; startX?: numb
   }
   if (opts?.ceiling) {
     world.createCollider(RAPIER.ColliderDesc.cuboid(2, 0.1, 2).setTranslation(3, 3.0, 2));
+  }
+  if (opts?.ceilingOverTreads) {
+    // Underside at y=3.6, spanning x 3.0..4.6.
+    world.createCollider(RAPIER.ColliderDesc.cuboid(0.8, 0.1, 2).setTranslation(3.8, 3.7, 2));
   }
 
   const body = world.createRigidBody(
@@ -226,6 +238,139 @@ describe('tryStepUp on honest scanned stair colliders (real Rapier)', () => {
     const after = rig.body.translation();
     expect(after.x).toBeCloseTo(before.x, 9);
     expect(after.y).toBeCloseTo(before.y, 9);
+  });
+});
+
+/** Walk −X until the first riser blocks the character, then return. */
+function walkToFirstRiser(rig: Rig): void {
+  walkMinusX(rig, 60, false);
+}
+
+describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
+  const dx = -3 / 60;
+
+  it('a running step-up mid-staircase leaps two risers, ≈1.0 m of rise', () => {
+    const rig = makeStairsRig();
+    walkToFirstRiser(rig);
+    const climb = tryGaitStepUp(rig.probe, dx, 0, true);
+    expect(climb?.kind).toBe('leap');
+    expect(climb!.path.rise).toBeCloseTo(1.0, 1);
+    expect(climb!.path.forward.x).toBeLessThan(-0.8);
+  });
+
+  it('a walking step-up takes a single riser', () => {
+    const rig = makeStairsRig();
+    walkToFirstRiser(rig);
+    const climb = tryGaitStepUp(rig.probe, dx, 0, false);
+    expect(climb?.kind).toBe('step');
+    expect(climb!.path.rise).toBeCloseTo(0.5, 1);
+  });
+
+  it('falls back to a single step on the last riser', () => {
+    // Stand on the 7th tread (top y=5.5) against the last riser.
+    const rig = makeStairsRig({ startX: 0.9 });
+    rig.setPos({ x: 0.9, y: 5.0, z: 2 });
+    rig.world.step();
+    walkToFirstRiser(rig);
+    const climb = tryGaitStepUp(rig.probe, dx, 0, true);
+    expect(climb?.kind).toBe('step');
+    expect(climb!.path.rise).toBeCloseTo(0.5, 1);
+  });
+
+  it('refuses the second leg under a low ceiling, stepping once instead', () => {
+    const rig = makeStairsRig({ ceilingOverTreads: true });
+    walkToFirstRiser(rig);
+    const climb = tryGaitStepUp(rig.probe, dx, 0, true);
+    expect(climb?.kind).toBe('step');
+    expect(climb!.path.rise).toBeCloseTo(0.5, 1);
+  });
+
+  it('steps once when another character stands where the leap would land', () => {
+    const rig = makeStairsRig();
+    walkToFirstRiser(rig);
+    // A peer standing on the second tread, where the leap would land.
+    const peerBody = rig.world.createRigidBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(3.05, 2.5, 2),
+    );
+    const peerBall = rig.world.createCollider(
+      RAPIER.ColliderDesc.ball(0.4).setTranslation(0, 0.9, 0),
+      peerBody,
+    );
+    rig.world.step();
+    const guardedProbe: StepUpProbe = {
+      ...rig.probe,
+      lastContactIsCharacter: () => {
+        const n = rig.controller.numComputedCollisions();
+        for (let i = 0; i < n; i++) {
+          if (rig.controller.computedCollision(i)?.collider?.handle === peerBall.handle) {
+            return true;
+          }
+        }
+        return false;
+      },
+    };
+    expect(tryGaitStepUp(guardedProbe, dx, 0, true)?.kind).toBe('step');
+  });
+
+  it('leaves the probe pose unchanged, leap or not', () => {
+    for (const opts of [{}, { ceilingOverTreads: true }]) {
+      const rig = makeStairsRig(opts);
+      walkToFirstRiser(rig);
+      const before = { ...rig.body.translation() };
+      expect(tryGaitStepUp(rig.probe, dx, 0, true)).not.toBeNull();
+      const after = rig.body.translation();
+      expect(after.x).toBeCloseTo(before.x, 9);
+      expect(after.y).toBeCloseTo(before.y, 9);
+      expect(after.z).toBeCloseTo(before.z, 9);
+    }
+  });
+
+  it('a running climb walks the leap path to the top in ≈1.0 m rises, never dipping', () => {
+    const rig = makeStairsRig();
+    const dt = 1 / 60;
+    let velY = 0;
+    let traversal: StepUpTraversal | null = null;
+    const rises: number[] = [];
+    let prevY = rig.body.translation().y;
+    for (let i = 0; i < 1500 && rig.body.translation().x > -0.5; i++) {
+      let move: { x: number; y: number; z: number };
+      if (traversal) {
+        const { delta, ended } = stepTraversal(traversal, dt, (d) => rig.compute(d));
+        move = delta;
+        if (ended) {
+          traversal = null;
+        }
+      } else {
+        velY += -50 * dt;
+        const desired = { x: dx * 2, y: velY * dt, z: 0 };
+        const c = rig.compute(desired);
+        move = c;
+        if (c.grounded || c.y >= 0) {
+          velY = 0;
+        }
+        if (c.grounded && Math.abs(c.x) < Math.abs(desired.x) * 0.1) {
+          const climb = tryGaitStepUp(rig.probe, desired.x, desired.z, true);
+          if (climb) {
+            rises.push(climb.path.rise);
+            traversal = new StepUpTraversal(climb.path, (Math.abs(desired.x) / dt) * 0.7, climb.kind);
+            move = { x: 0, y: 0, z: 0 };
+          }
+        }
+      }
+      const t = rig.body.translation();
+      rig.setPos({ x: t.x + move.x, y: t.y + move.y, z: t.z + move.z });
+      rig.world.step();
+      const y = rig.body.translation().y;
+      if (traversal) {
+        expect(y).toBeGreaterThanOrEqual(prevY - 0.02);
+      }
+      prevY = y;
+    }
+    expect(rig.body.translation().y).toBeGreaterThan(5.4);
+    expect(rises).toHaveLength(4);
+    for (const rise of rises) {
+      expect(rise).toBeCloseTo(1.0, 1);
+    }
   });
 });
 

@@ -454,3 +454,89 @@ describe('BotCharacterMovement step-up climb', () => {
     );
   });
 });
+
+// Staircase fixture: the platform (top y=0) plus four 0.5 m rise / 0.5 m
+// run steps ascending +x from a face at x=0.5, then a 1 m top landing.
+const STEP_COUNT = 4;
+
+function makeStairsWorld() {
+  const physics = new BotPhysicsWorld({
+    selfId: 'test-bot',
+    startPos: { x: -1, y: FLOOR_Y + 0.05, z: 0 },
+    worldSettings: WORLD_SETTINGS,
+  });
+  const rw = rapierWorldOf(physics);
+  rw.createCollider(RAPIER.ColliderDesc.cuboid(2, 0.25, 2).setTranslation(0, -0.25, 0));
+  for (let k = 0; k < STEP_COUNT; k++) {
+    const top = (k + 1) * 0.5;
+    const halfRun = k === STEP_COUNT - 1 ? 0.75 : 0.25;
+    rw.createCollider(
+      RAPIER.ColliderDesc.cuboid(halfRun, top / 2, 2).setTranslation(0.5 + k * 0.5 + halfRun, top / 2, 0),
+    );
+  }
+  rw.step();
+  const movement = new BotCharacterMovement(physics, DEFAULT_TUNABLES);
+  stepN(movement, physics, 'stop', 10);
+  return { physics, movement };
+}
+
+/** Moves +x with `verb` until the bot stands on the top landing,
+ * recording each climb's rise and every climbing frame's result. */
+function climbStairs(verb: 'walk' | 'run') {
+  const { physics, movement } = makeStairsWorld();
+  const rises: number[] = [];
+  const climbing: CharacterMoveResult[] = [];
+  let climbStartY: number | null = null;
+  for (let i = 0; i < 600 && physics.translation().x < 3; i++) {
+    const before = physics.translation().y;
+    const result = movement[verb]({ x: 1, z: 0 }, 0, DT_SEC);
+    physics.stepWorld();
+    if (traversalOf(physics) || result.animState === 'jump' || climbStartY !== null) {
+      climbStartY ??= before;
+      if (!traversalOf(physics)) {
+        rises.push(result.newPos.y - climbStartY);
+        climbStartY = null;
+      }
+      climbing.push(result);
+    }
+  }
+  return { physics, rises, climbing };
+}
+
+describe('BotCharacterMovement running leaps', () => {
+  it('a running bot leaps the stairs two risers at a time, broadcasting airborne with the jump anim', () => {
+    const { physics, rises, climbing } = climbStairs('run');
+    expect(physics.translation().y).toBeCloseTo(STEP_COUNT * 0.5 + FLOOR_Y, 1);
+    expect(rises).toHaveLength(STEP_COUNT / 2);
+    for (const rise of rises) {
+      expect(rise).toBeCloseTo(1.0, 1);
+    }
+    for (const result of climbing) {
+      expect(result.broadcastAirborne).toBe(true);
+      expect(result.animState).toBe('jump');
+    }
+  });
+
+  it('a walking bot climbs one riser at a time on the walk anim, never airborne', () => {
+    const { physics, rises, climbing } = climbStairs('walk');
+    expect(physics.translation().y).toBeCloseTo(STEP_COUNT * 0.5 + FLOOR_Y, 1);
+    expect(rises).toHaveLength(STEP_COUNT);
+    for (const result of climbing) {
+      expect(result.broadcastAirborne).toBe(false);
+      expect(result.animState).toBe('walk');
+    }
+  });
+
+  it('a running bot at a single riser steps once, not airborne', () => {
+    const { physics, movement } = makeRiserWorld();
+    let leapt = false;
+    for (let i = 0; i < 120 && physics.translation().x < 1; i++) {
+      const result = movement.run({ x: 1, z: 0 }, 0, DT_SEC);
+      physics.stepWorld();
+      leapt ||= result.broadcastAirborne;
+    }
+    stepN(movement, physics, 'stop', 30);
+    expect(leapt).toBe(false);
+    expect(physics.translation().y).toBeCloseTo(TREAD_Y, 1);
+  });
+});
