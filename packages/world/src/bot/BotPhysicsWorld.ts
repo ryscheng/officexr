@@ -14,7 +14,12 @@ import {
   worldObjectsToColliders,
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
-import { tryStepUp, type StepUpProbe } from '../physics/step-up.ts';
+import {
+  StepUpTraversal,
+  stepTraversal,
+  tryStepUp,
+  type StepUpProbe,
+} from '../physics/step-up.ts';
 
 
 /** Per-peer kinematic mirror body the bot maintains in its own Rapier
@@ -46,6 +51,12 @@ export interface StepResult {
    * this step. Drivers can use this to gate animation-state choice
    * (no walk anim while airborne). */
   grounded: boolean;
+  /** True while a step-up traversal drives the bot (including the
+   * frame it ends on). */
+  climbing: boolean;
+  /** The climb's horizontal velocity (forward dir × traversal speed);
+   * zero when not climbing. */
+  climbVel: { x: number; z: number };
 }
 
 /** Result of one `drainSensorEvents()` — pairs of collider tags whose
@@ -110,6 +121,8 @@ export class BotPhysicsWorld {
    * — we integrate it ourselves and pass into the controller's
    * desired-translation, mirroring `SceneFrame`'s player loop. */
   private verticalVel = 0;
+  /** Active step-up climb; while set it replaces the intent sweep. */
+  private traversal: StepUpTraversal | null = null;
   private peerMirrors = new Map<PlayerId, PeerMirror>();
   /** Collider handle → tag, for the bridge routing in
    * `drainSensorEvents`. */
@@ -440,43 +453,22 @@ export class BotPhysicsWorld {
    * only suppresses the dynamics solver, not the query pipeline that
    * the character controller uses).
    */
-  step(intent: { x: number; z: number; dtSec: number }): StepResult {
+  step(
+    intent: { x: number; z: number; dtSec: number },
+    stepUpSpeedFactor: number,
+  ): StepResult {
+    if (this.traversal) {
+      return this.climb(intent.dtSec);
+    }
     // Integrate gravity into vertical velocity, then feed the full
     // 3D delta into the controller. Matches SceneFrame's pattern
     // for the local player so bots fall at the same rate.
     this.verticalVel += GRAVITY * intent.dtSec;
-    // Explicit BODY_GROUPS filter: ensures the KCC interacts with both the
-    // floor (WALL_GROUPS membership=WALL) and peer mirrors (BODY_GROUPS
-    // membership=BODY) while skipping uncategorised colliders. Without an
-    // explicit filter the JS binding passes the sentinel 0x100000001 whose
-    // low-32-bit truncation to WASM i32 = 1 (memberships=0, filter=BODY=1)
-    // → (memberships=0) & anything = 0 → always false → NO interactions
-    // detected. That sentinel was intended to signal None/all-groups in
-    // Rust, but the JS→WASM i32 truncation loses the high bit, so the
-    // WASM receives 1 instead of the None sentinel. Passing BODY_GROUPS
-    // explicitly avoids the truncation and correctly detects both floor and
-    // peer mirrors.
-    //
-    // The mirror-position clamp in syncPeers prevents mirrors from being
-    // placed inside the bot's sphere (which would cause KCC start-inside-
-    // collider undefined behavior), so this explicit filter is safe.
-    //
-    // SRP violation: step() now implicitly depends on BODY_GROUPS being
-    // the correct filter for the bot's interaction topology. If the group
-    // layout changes (new group bits, new collision rules), this must also
-    // update. Acceptable because step() is the sole physics-integration
-    // point in this class and the groups.ts file is the single authority.
-    this.controller.computeColliderMovement(
-      this.bodyCollider,
-      {
-        x: intent.x,
-        y: this.verticalVel * intent.dtSec,
-        z: intent.z,
-      },
-      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-      BODY_GROUPS,
-    );
-    const corrected = this.controller.computedMovement();
+    const corrected = this.sweep({
+      x: intent.x,
+      y: this.verticalVel * intent.dtSec,
+      z: intent.z,
+    });
 
     // Reset accumulated vertical velocity when the character controller
     // reports it is grounded OR when the corrected movement has a non-negative
@@ -509,17 +501,16 @@ export class BotPhysicsWorld {
     // Directional progress: shared with SceneFrame (human player) via
     // horizontalProgress() in physics/blocking.ts. Single source of truth for
     // the blocking decision for both bot and human paths.
-    let progress = horizontalProgress(
+    const progress = horizontalProgress(
       { x: corrected.x, z: corrected.z },
       { x: intent.x, z: intent.z },
     );
-    let finalCorrected = { x: corrected.x, y: corrected.y, z: corrected.z };
 
     // Step-up assist (shared with the player — physics/step-up.ts):
     // when horizontal movement is blocked while grounded and falling/
-    // level, probe for a climbable ledge ahead (a stair riser) and hop
-    // onto it. Rapier's autostep cannot lift a ball over the honest
-    // scanned 0.5 m risers, so this is THE climbing mechanism.
+    // level, probe for a climbable ledge ahead (a stair riser) and
+    // start climbing onto it. Rapier's autostep cannot lift a ball over
+    // the honest scanned 0.5 m risers, so this is THE climbing mechanism.
     //
     // `next.size === 0` (no peer contact this frame) is load-bearing:
     // without it a bot blocked by another CHARACTER treats the peer's
@@ -533,55 +524,92 @@ export class BotPhysicsWorld {
       this.verticalVel <= 0 &&
       (intent.x !== 0 || intent.z !== 0)
     ) {
-      const hop = tryStepUp(this.stepUpProbe, intent.x, intent.z);
-      if (hop) {
-        finalCorrected = { x: hop.x, y: hop.y, z: hop.z };
-        this.verticalVel = 0;
-        progress = horizontalProgress(
-          { x: hop.x, z: hop.z },
-          { x: intent.x, z: intent.z },
-        );
-      }
+      const path = tryStepUp(this.stepUpProbe, intent.x, intent.z);
       // The probe sweeps clobbered the controller's computed state
       // (grounded, collisions). Re-run the frame's real sweep so
       // anything reading controller state after this point — the
       // `grounded` field below, next frame's grounded check — sees
       // the actual frame, not the last probe.
-      this.controller.computeColliderMovement(
-        this.bodyCollider,
-        { x: intent.x, y: this.verticalVel * intent.dtSec, z: intent.z },
-        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-        BODY_GROUPS,
-      );
+      this.sweep({ x: intent.x, y: this.verticalVel * intent.dtSec, z: intent.z });
+      if (path) {
+        const speed = (Math.hypot(intent.x, intent.z) / intent.dtSec) * stepUpSpeedFactor;
+        this.traversal = new StepUpTraversal(path, speed);
+        return this.climb(intent.dtSec);
+      }
     }
 
     return {
-      corrected: finalCorrected,
+      corrected,
       progress,
       bumps,
       grounded: this.controller.computedGrounded(),
+      climbing: false,
+      climbVel: { x: 0, z: 0 },
     };
+  }
+
+  /** One frame of the active step-up traversal, in place of the intent
+   * sweep and gravity. */
+  private climb(dtSec: number): StepResult {
+    const traversal = this.traversal!;
+    const { delta, ended } = stepTraversal(traversal, dtSec, (d) => this.sweep(d));
+    this.verticalVel = 0;
+    if (ended) {
+      this.traversal = null;
+    }
+    return {
+      corrected: delta,
+      progress: 1,
+      bumps: [],
+      grounded: true,
+      climbing: true,
+      climbVel: {
+        x: traversal.forwardDir.x * traversal.speed,
+        z: traversal.forwardDir.z * traversal.speed,
+      },
+    };
+  }
+
+  // Explicit BODY_GROUPS filter: ensures the KCC interacts with both the
+  // floor (WALL_GROUPS membership=WALL) and peer mirrors (BODY_GROUPS
+  // membership=BODY) while skipping uncategorised colliders. Without an
+  // explicit filter the JS binding passes the sentinel 0x100000001 whose
+  // low-32-bit truncation to WASM i32 = 1 (memberships=0, filter=BODY=1)
+  // → (memberships=0) & anything = 0 → always false → NO interactions
+  // detected. That sentinel was intended to signal None/all-groups in
+  // Rust, but the JS→WASM i32 truncation loses the high bit, so the
+  // WASM receives 1 instead of the None sentinel. Passing BODY_GROUPS
+  // explicitly avoids the truncation and correctly detects both floor and
+  // peer mirrors.
+  //
+  // The mirror-position clamp in syncPeers prevents mirrors from being
+  // placed inside the bot's sphere (which would cause KCC start-inside-
+  // collider undefined behavior), so this explicit filter is safe.
+  //
+  // SRP violation: sweep() implicitly depends on BODY_GROUPS being the
+  // correct filter for the bot's interaction topology. If the group
+  // layout changes (new group bits, new collision rules), this must also
+  // update. Acceptable because sweep() is the sole controller call in
+  // this class and the groups.ts file is the single authority.
+  private sweep(desired: Vec3): Vec3 {
+    this.controller.computeColliderMovement(
+      this.bodyCollider,
+      desired,
+      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+      BODY_GROUPS,
+    );
+    const c = this.controller.computedMovement();
+    return { x: c.x, y: c.y, z: c.z };
   }
 
   /** Adapter exposing this world's controller/body pair to the shared
    * step-up assist. `setTranslation` propagates the probe pose to the
    * colliders immediately so subsequent sweeps see it. */
   private readonly stepUpProbe: StepUpProbe = {
-    compute: (desired) => {
-      this.controller.computeColliderMovement(
-        this.bodyCollider,
-        desired,
-        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-        BODY_GROUPS,
-      );
-      const c = this.controller.computedMovement();
-      return {
-        x: c.x,
-        y: c.y,
-        z: c.z,
-        grounded: this.controller.computedGrounded(),
-      };
-    },
+    compute: (desired) => ({
+      ...this.sweep(desired),
+      grounded: this.controller.computedGrounded(),
+    }),
     getTranslation: () => {
       const t = this.body.translation();
       return { x: t.x, y: t.y, z: t.z };
@@ -619,6 +647,7 @@ export class BotPhysicsWorld {
     this._lastAppliedPos = { x: pos.x, y: pos.y, z: pos.z };
     this.body.setNextKinematicTranslation({ x: pos.x, y: pos.y, z: pos.z });
     this.verticalVel = 0;
+    this.traversal = null;
   }
 
   /** Advance the simulation one Rapier step. Must be called every

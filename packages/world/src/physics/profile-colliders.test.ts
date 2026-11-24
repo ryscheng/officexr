@@ -41,6 +41,8 @@ function makeBot(startPos: { x: number; y: number; z: number }, instances: Objec
     walkSpeed: 2,
     runSpeed: 4,
     movementBlockThreshold: worldSettings.movementBlockThreshold,
+    stepUpSpeedFactor: worldSettings.stepUpSpeedFactor,
+    climbAnimFactor: worldSettings.climbAnimFactor,
   });
   const walk = (dir: { x: number; z: number }, frames: number) => {
     for (let i = 0; i < frames; i++) {

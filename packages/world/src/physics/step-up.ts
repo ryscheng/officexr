@@ -27,13 +27,14 @@
  *   3. DOWN probe: sweep back down. The character must land GROUNDED
  *      and strictly higher than it started — otherwise there was no
  *      ledge (we'd just hop in place) — abort.
- * On success the returned delta (forward + net vertical) is applied
- * through the caller's normal movement pipeline; the caller must zero
- * its integrated fall velocity (the character is grounded on the
- * ledge).
+ * On success the returned path (net rise + horizontal carry) is walked
+ * by the caller — paced by `StepUpTraversal` / `stepTraversal`, or as a
+ * one-frame delta — through its normal movement pipeline; the caller
+ * must zero its integrated fall velocity (the character is grounded on
+ * the ledge).
  *
  * The probe POSE is always restored before returning, success or not —
- * callers re-apply the delta themselves so broadcast/store/animation
+ * callers apply the movement themselves so broadcast/store/animation
  * pipelines see one consistent movement.
  *
  * DIP: this module knows nothing about Rapier, React, or which world
@@ -90,17 +91,26 @@ export interface StepUpProbe {
   lastContactIsCharacter(): boolean;
 }
 
+/** A validated step, relative to the character's current position:
+ * rise straight up by `rise`, then carry horizontally by `forward`.
+ * Walking rise-then-forward (instead of the probes' up/forward/down)
+ * keeps Y from ever dipping mid-step. */
+export interface StepUpPath {
+  rise: number;
+  forward: { x: number; z: number };
+}
+
 /**
- * Attempt a step-up in the direction of (dx, dz). Returns the movement
- * delta to apply (relative to the character's current position), or
- * `null` when no climbable ledge is there. Pose is always restored.
+ * Attempt a step-up in the direction of (dx, dz). Returns the path to
+ * the ledge, or `null` when no climbable ledge is there. Pose is always
+ * restored.
  */
 export function tryStepUp(
   probe: StepUpProbe,
   dx: number,
   dz: number,
   maxHeight: number = STEP_UP_MAX_HEIGHT,
-): Vec3 | null {
+): StepUpPath | null {
   const len = Math.hypot(dx, dz);
   if (len < 1e-9) return null;
   const start = { ...probe.getTranslation() };
@@ -145,10 +155,76 @@ export function tryStepUp(
     return null;
   }
 
-  // The applied delta is the exact sum of the three probe movements.
+  // The path's endpoint is the exact sum of the three probe movements.
   return {
-    x: up.x + fwd.x + down.x,
-    y: landedRise,
-    z: up.z + fwd.z + down.z,
+    rise: landedRise,
+    forward: { x: up.x + fwd.x + down.x, z: up.z + fwd.z + down.z },
   };
+}
+
+/** Walks a `StepUpPath` at a constant `speed` (m/s along the path). */
+export class StepUpTraversal {
+  /** Unit XZ direction of the forward carry. */
+  readonly forwardDir: { x: number; z: number };
+  private readonly forwardLen: number;
+  private travelled = 0;
+
+  constructor(
+    private readonly path: StepUpPath,
+    readonly speed: number,
+  ) {
+    this.forwardLen = Math.hypot(path.forward.x, path.forward.z);
+    this.forwardDir =
+      this.forwardLen > 0
+        ? { x: path.forward.x / this.forwardLen, z: path.forward.z / this.forwardLen }
+        : { x: 0, z: 0 };
+  }
+
+  /** Moves `speed·dtSec` further along the path (clamped to its end) and
+   * returns that slice; `done` is true on the call that reaches the end. */
+  advance(dtSec: number): { delta: Vec3; done: boolean } {
+    const length = this.path.rise + this.forwardLen;
+    const from = this.pointAt(this.travelled);
+    this.travelled = Math.min(this.travelled + this.speed * dtSec, length);
+    const to = this.pointAt(this.travelled);
+    return {
+      delta: { x: to.x - from.x, y: to.y - from.y, z: to.z - from.z },
+      done: this.travelled >= length,
+    };
+  }
+
+  private pointAt(s: number): Vec3 {
+    const carried = Math.max(0, s - this.path.rise);
+    return {
+      x: this.forwardDir.x * carried,
+      y: Math.min(s, this.path.rise),
+      z: this.forwardDir.z * carried,
+    };
+  }
+}
+
+/** Below this fraction of a slice surviving the caller's sweep, the
+ * climb is treated as obstructed and abandoned. */
+const MIN_SLICE_FRACTION = 0.5;
+
+/**
+ * One frame of a climb: advances `traversal`, sweeps the slice through
+ * the caller's controller, and returns the swept delta to apply.
+ * `ended` is true when the path is finished or the sweep cut the slice
+ * short; the caller then drops the traversal and resumes normal
+ * movement and gravity.
+ */
+export function stepTraversal(
+  traversal: StepUpTraversal,
+  dtSec: number,
+  sweep: (desired: Vec3) => Vec3,
+): { delta: Vec3; ended: boolean } {
+  const { delta: requested, done } = traversal.advance(dtSec);
+  const delta = sweep(requested);
+  const requestedSq = requested.x ** 2 + requested.y ** 2 + requested.z ** 2;
+  const survived =
+    requestedSq > 0
+      ? (delta.x * requested.x + delta.y * requested.y + delta.z * requested.z) / requestedSq
+      : 1;
+  return { delta, ended: done || survived < MIN_SLICE_FRACTION };
 }

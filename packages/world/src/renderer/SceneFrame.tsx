@@ -905,7 +905,7 @@ export function SceneFrame({
             moveZ,
           );
           if (hop) {
-            moveDelta = hop;
+            moveDelta = { x: hop.forward.x, y: hop.rise, z: hop.forward.z };
             horizBlocked = false;
             verticalVelRef.current = 0;
           }

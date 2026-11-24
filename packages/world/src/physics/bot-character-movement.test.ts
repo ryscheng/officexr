@@ -18,12 +18,15 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { BotPhysicsWorld } from '../bot/BotPhysicsWorld.ts';
 import { BotCharacterMovement } from './bot-character-movement.ts';
 import type { CharacterMoveResult } from './character-movement.ts';
+import type { StepUpTraversal } from './step-up.ts';
 
 // Default tunables used across most tests.
 const DEFAULT_TUNABLES = {
   walkSpeed: 2.0,
   runSpeed: 4.0,
   movementBlockThreshold: 0.9,
+  stepUpSpeedFactor: 0.7,
+  climbAnimFactor: 1.0,
 };
 
 // World settings matching BotPhysicsWorld constructor requirements.
@@ -336,5 +339,118 @@ describe('BotCharacterMovement', () => {
       expect(Math.abs(result.broadcastVel.z)).toBeGreaterThan(0);
       expect(Math.abs(result.broadcastVel.z)).toBeLessThan(DEFAULT_TUNABLES.runSpeed);
     });
+  });
+});
+
+// Riser fixture: the platform (top y=0) plus a 0.5 m step whose face is
+// at x=0.5, tread top y=0.5. The ball (r=0.35, centre BODY_Y=0.9 above
+// the body) rests at body y≈-0.55 on the floor, ≈-0.05 on the tread.
+const FLOOR_Y = -0.55;
+const TREAD_Y = -0.05;
+
+function makeRiserWorld(tunables = DEFAULT_TUNABLES) {
+  const physics = new BotPhysicsWorld({
+    selfId: 'test-bot',
+    startPos: { x: -1, y: FLOOR_Y + 0.05, z: 0 },
+    worldSettings: WORLD_SETTINGS,
+  });
+  const rw = rapierWorldOf(physics);
+  rw.createCollider(RAPIER.ColliderDesc.cuboid(2, 0.25, 2).setTranslation(0, -0.25, 0));
+  rw.createCollider(RAPIER.ColliderDesc.cuboid(0.75, 0.25, 2).setTranslation(1.25, 0.25, 0));
+  rw.step();
+  const movement = new BotCharacterMovement(physics, tunables);
+  stepN(movement, physics, 'stop', 10);
+  return { physics, movement };
+}
+
+function traversalOf(physics: BotPhysicsWorld): StepUpTraversal | null {
+  return (physics as unknown as { traversal: StepUpTraversal | null }).traversal;
+}
+
+/** Walk +x until a climb starts; returns that frame's result. */
+function walkUntilClimbing(movement: BotCharacterMovement, physics: BotPhysicsWorld) {
+  for (let i = 0; i < 120; i++) {
+    const result = movement.walk({ x: 1, z: 0 }, 0, DT_SEC);
+    physics.stepWorld();
+    if (traversalOf(physics)) {
+      return result;
+    }
+  }
+  throw new Error('bot never started climbing');
+}
+
+describe('BotCharacterMovement step-up climb', () => {
+  it('climbs a 0.5 m riser over several frames, never dipping, slower than flat walking', () => {
+    const { physics, movement } = makeRiserWorld();
+    walkUntilClimbing(movement, physics);
+    const startX = physics.translation().x;
+    let prevY = physics.translation().y;
+    let climbFrames = 1;
+    let risingFrames = 0;
+    while (traversalOf(physics)) {
+      movement.walk({ x: 1, z: 0 }, 0, DT_SEC);
+      physics.stepWorld();
+      const y = physics.translation().y;
+      expect(y).toBeGreaterThanOrEqual(prevY - 1e-6);
+      if (y > prevY + 1e-6) {
+        risingFrames++;
+      }
+      prevY = y;
+      climbFrames++;
+    }
+    expect(risingFrames).toBeGreaterThanOrEqual(3);
+    const climbedX = physics.translation().x - startX;
+    const flatFrames = climbedX / (DEFAULT_TUNABLES.walkSpeed * DT_SEC);
+    expect(climbFrames).toBeGreaterThan(flatFrames);
+
+    const settled = stepN(movement, physics, 'stop', 10);
+    expect(settled.isGrounded).toBe(true);
+    expect(settled.newPos.y).toBeCloseTo(TREAD_Y, 1);
+    expect(settled.newPos.x).toBeGreaterThan(0.5);
+  });
+
+  it('finishes the climb onto the tread when intent goes null mid-climb', () => {
+    const { physics, movement } = makeRiserWorld();
+    walkUntilClimbing(movement, physics);
+    const settled = stepN(movement, physics, 'stop', 90);
+    expect(traversalOf(physics)).toBeNull();
+    expect(settled.isGrounded).toBe(true);
+    expect(settled.newPos.y).toBeCloseTo(TREAD_Y, 1);
+    expect(settled.newPos.x).toBeGreaterThan(0.5);
+  });
+
+  it('teleport() mid-climb cancels the traversal', () => {
+    const { physics, movement } = makeRiserWorld();
+    walkUntilClimbing(movement, physics);
+    physics.teleport({ x: -1, y: FLOOR_Y, z: 0 });
+    expect(traversalOf(physics)).toBeNull();
+    physics.stepWorld();
+    const settled = stepN(movement, physics, 'stop', 20);
+    expect(settled.newPos.x).toBeCloseTo(-1, 3);
+    expect(settled.newPos.y).toBeCloseTo(FLOOR_Y, 1);
+  });
+
+  it('reports moved with walk anim and broadcastVel = forwardDir × speed × climbAnimFactor', () => {
+    const climbAnimFactor = 1.5;
+    const { physics, movement } = makeRiserWorld({ ...DEFAULT_TUNABLES, climbAnimFactor });
+    walkUntilClimbing(movement, physics);
+    const result = movement.stop(0, DT_SEC);
+    const traversal = traversalOf(physics)!;
+    expect(traversal).not.toBeNull();
+    expect(traversal.speed).toBeCloseTo(
+      DEFAULT_TUNABLES.walkSpeed * DEFAULT_TUNABLES.stepUpSpeedFactor,
+      9,
+    );
+    expect(result.moved).toBe(true);
+    expect(result.animState).toBe('walk');
+    expect(result.broadcastVel.x).toBeCloseTo(
+      traversal.forwardDir.x * traversal.speed * climbAnimFactor,
+      9,
+    );
+    expect(result.broadcastVel.y).toBe(0);
+    expect(result.broadcastVel.z).toBeCloseTo(
+      traversal.forwardDir.z * traversal.speed * climbAnimFactor,
+      9,
+    );
   });
 });
