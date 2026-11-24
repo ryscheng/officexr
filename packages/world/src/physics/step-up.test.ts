@@ -20,6 +20,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   STEP_UP_MAX_HEIGHT,
+  StepUpTraversal,
+  stepTraversal,
   tryStepUp,
   type StepUpProbe,
 } from './step-up.ts';
@@ -123,7 +125,7 @@ function walkMinusX(rig: Rig, frames: number, useAssist: boolean): number {
     if (useAssist && progress < 0.1 && grounded && velY <= 0) {
       const hop = tryStepUp(rig.probe, desired.x, desired.z);
       if (hop) {
-        c = { ...hop, grounded: true };
+        c = { x: hop.forward.x, y: hop.rise, z: hop.forward.z, grounded: true };
         velY = 0;
       }
     }
@@ -223,5 +225,89 @@ describe('tryStepUp on honest scanned stair colliders (real Rapier)', () => {
     const after = rig.body.translation();
     expect(after.x).toBeCloseTo(before.x, 9);
     expect(after.y).toBeCloseTo(before.y, 9);
+  });
+});
+
+describe('StepUpTraversal', () => {
+  const path = { rise: 0.5, forward: { x: -0.3, z: 0.4 } };
+
+  function walk(traversal: StepUpTraversal, dt: number) {
+    const deltas = [];
+    const dones = [];
+    for (let i = 0; i < 1000; i++) {
+      const { delta, done } = traversal.advance(dt);
+      deltas.push(delta);
+      dones.push(done);
+      if (done) break;
+    }
+    return { deltas, dones };
+  }
+
+  it('sums exactly to the path in slices no longer than speed·dt, done once', () => {
+    const speed = 1.4;
+    const dt = 1 / 60;
+    const { deltas, dones } = walk(new StepUpTraversal(path, speed), dt);
+    const sum = deltas.reduce(
+      (a, d) => ({ x: a.x + d.x, y: a.y + d.y, z: a.z + d.z }),
+      { x: 0, y: 0, z: 0 },
+    );
+    expect(sum.x).toBeCloseTo(path.forward.x, 9);
+    expect(sum.y).toBeCloseTo(path.rise, 9);
+    expect(sum.z).toBeCloseTo(path.forward.z, 9);
+    for (const d of deltas) {
+      expect(Math.hypot(d.x, d.y, d.z)).toBeLessThanOrEqual(speed * dt + 1e-12);
+    }
+    expect(dones.filter(Boolean)).toHaveLength(1);
+    expect(dones.at(-1)).toBe(true);
+  });
+
+  it('rises before it carries forward, crossing the boundary within one call', () => {
+    // 0.3 m of travel per call: call 1 rises 0.3, call 2 rises the last
+    // 0.2 then carries 0.1 forward.
+    const traversal = new StepUpTraversal(path, 0.3);
+    const first = traversal.advance(1).delta;
+    expect(first).toEqual({ x: 0, y: 0.3, z: 0 });
+    const second = traversal.advance(1).delta;
+    expect(second.y).toBeCloseTo(0.2, 9);
+    expect(Math.hypot(second.x, second.z)).toBeCloseTo(0.1, 9);
+    expect(second.x / 0.1).toBeCloseTo(traversal.forwardDir.x, 9);
+    expect(second.z / 0.1).toBeCloseTo(traversal.forwardDir.z, 9);
+  });
+
+  it('a dt covering the whole path finishes in one call', () => {
+    const { deltas, dones } = walk(new StepUpTraversal(path, 1), 10);
+    expect(dones).toEqual([true]);
+    expect(deltas[0].y).toBeCloseTo(path.rise, 9);
+    expect(deltas[0].x).toBeCloseTo(path.forward.x, 9);
+    expect(deltas[0].z).toBeCloseTo(path.forward.z, 9);
+  });
+});
+
+describe('stepTraversal', () => {
+  const path = { rise: 0.5, forward: { x: 0.45, z: 0 } };
+
+  it('returns the swept slice and keeps going while the sweep is clear', () => {
+    const traversal = new StepUpTraversal(path, 1.4);
+    const { delta, ended } = stepTraversal(traversal, 1 / 60, (d) => d);
+    expect(delta.y).toBeCloseTo(1.4 / 60, 9);
+    expect(ended).toBe(false);
+  });
+
+  it('ends when the sweep keeps under half of the slice', () => {
+    const traversal = new StepUpTraversal(path, 1.4);
+    const swept = (f: number) => (d: { x: number; y: number; z: number }) => ({
+      x: d.x * f,
+      y: d.y * f,
+      z: d.z * f,
+    });
+    expect(stepTraversal(traversal, 1 / 60, swept(0.6)).ended).toBe(false);
+    const cut = stepTraversal(traversal, 1 / 60, swept(0.4));
+    expect(cut.ended).toBe(true);
+    expect(cut.delta.y).toBeCloseTo((0.4 * 1.4) / 60, 9);
+  });
+
+  it('ends on the call that finishes the path', () => {
+    const traversal = new StepUpTraversal(path, 1);
+    expect(stepTraversal(traversal, 10, (d) => d).ended).toBe(true);
   });
 });
