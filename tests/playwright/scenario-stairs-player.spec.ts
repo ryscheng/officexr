@@ -81,12 +81,14 @@ const treadBodyY = (k: number) => SPAWN_SETTLED_BODY_Y + k * STEP_RISE;
  * jitter only (observed < 3 mm). */
 const MAX_GIVE_BACK = 0.02;
 
-/** The diagonal approach: 45° off the stair axis, toward +Z. The
- * staircase is 4 m wide (z∈[0,4]) and climbing it at 45° carries the
- * player ≈4 m across, so it starts at the −Z edge, right at the bottom
- * riser. */
-const DIAGONAL_OFFSET_DEG = 45;
-const DIAGONAL_START = { x: 4.45, y: 2.5, z: 0.1 };
+/** The diagonal approach: 35° off the stair axis, toward +Z. The
+ * staircase is 4 m wide (z∈[0,4]); the climb carries the player ≈2.9 m
+ * across, so it starts a ball radius in from the −Z edge, right at the
+ * bottom riser, and the whole trace keeps the ball on the stairs. */
+const DIAGONAL_OFFSET_DEG = 35;
+const DIAGONAL_START = { x: 4.45, y: 2.5, z: 0.45 };
+const BALL_RADIUS = 0.4;
+const STAIRS_Z = { min: 0, max: 4 };
 
 /** Window half-width around the expected flat settle. Corner rests sit
  * a bit high; nothing legitimate sits 0.45 m off. */
@@ -593,7 +595,8 @@ test('stairs: local player RUNS up the staircase two risers per leap', async ({ 
   // Peers see every leap as a jump: the self player is broadcast
   // airborne on each sample that rises.
   for (let i = 1; i < frames.length; i++) {
-    if (frames[i].y > frames[i - 1].y + 0.001) {
+    // 5 mm: solver jitter on a tread reaches ≈3 mm.
+    if (frames[i].y > frames[i - 1].y + 0.005) {
       expect(
         frames[i].airborne,
         `rising sample at y=${frames[i].y.toFixed(3)} not broadcast airborne. trace: ${trace}`,
@@ -602,14 +605,14 @@ test('stairs: local player RUNS up the staircase two risers per leap', async ({ 
   }
 });
 
-test('stairs: local player WALKS up the staircase at 45° to it', async ({ page }) => {
+test('stairs: local player WALKS up the staircase at an angle to it', async ({ page }) => {
   // Approaching at an angle the controller slides along each riser and
   // never reads as blocked; the climb must start from the riser contact.
   test.setTimeout(120_000);
 
   await bootStairsScenario(page);
   await setStepUpSpeedFactor(page, 0.35);
-  // Straight up the stairs (−X) turned 45° toward +Z.
+  // Straight up the stairs (−X) turned toward +Z.
   await setFixedCamera(page, { azimuthDeg: 90, movementYawOffsetDeg: DIAGONAL_OFFSET_DEG });
 
   await teleportSelf(page, DIAGONAL_START);
@@ -638,6 +641,8 @@ test('stairs: local player WALKS up the staircase at 45° to it', async ({ page 
   } finally {
     await page.keyboard.up('KeyW');
   }
+  // Keep tracing past key-up: the player must stay on the stairs.
+  await page.waitForTimeout(300);
   const frames = await stopFrameTrace(page);
   const trace = JSON.stringify(
     frames.map((f) => ({ x: +f.x.toFixed(2), y: +f.y.toFixed(2), z: +f.z.toFixed(2) })),
@@ -652,10 +657,19 @@ test('stairs: local player WALKS up the staircase at 45° to it', async ({ page 
     ).toBeGreaterThanOrEqual(frameMaxY - MAX_GIVE_BACK);
     frameMaxY = Math.max(frameMaxY, f.y);
   }
-  // It really went diagonally: as far across the stairs as up them.
+  for (const f of frames) {
+    expect(f.z, `ball left the stairs' side at z=${f.z.toFixed(2)}. trace: ${trace}`).toBeGreaterThanOrEqual(
+      STAIRS_Z.min + BALL_RADIUS - 0.05,
+    );
+    expect(f.z, `ball left the stairs' side at z=${f.z.toFixed(2)}. trace: ${trace}`).toBeLessThanOrEqual(
+      STAIRS_Z.max - BALL_RADIUS,
+    );
+  }
+  // It really went diagonally: across the stairs by ≈tan 35° (0.70) per
+  // metre up them.
   const across = frames[frames.length - 1].z - frames[0].z;
   const up = frames[0].x - frames[frames.length - 1].x;
-  expect(across / up, `trace: ${trace}`).toBeGreaterThan(0.8);
+  expect(across / up, `trace: ${trace}`).toBeGreaterThan(0.55);
 });
 
 test('stairs: jump and input release mid-climb — the climb finishes on the tread', async ({

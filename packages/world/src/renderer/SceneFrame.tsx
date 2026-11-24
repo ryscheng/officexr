@@ -32,7 +32,7 @@ import {
 } from '../physics/rules.ts';
 import { stepAirVelocity } from '../physics/air-control.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
-import { faceAhead } from '../physics/step-up-trigger.ts';
+import { stepUpTrigger } from '../physics/step-up-trigger.ts';
 import { climbBroadcast, StepUpTraversal, stepTraversal, tryGaitStepUp } from '../physics/step-up.ts';
 import { fixedMovementYaw, isYawPitchMode, yawFromDirection, type ViewOffsets } from './lookControls.ts';
 import { moveIntent, type AutoWalkSource, type MoveInput } from './moveIntent.ts';
@@ -866,28 +866,24 @@ export function SceneFrame({
           horizBlocked = intendsMove && progress < minProgress;
           moveDelta = corrected;
 
-          // Step-up assist (shared with bots — physics/step-up.ts): a
-          // grounded, non-jumping character that is blocked by, or
-          // pushes at up to 60° into (a diagonal approach slides along
-          // it instead of blocking), a climbable ledge (stair riser ≤
-          // STEP_UP_MAX_HEIGHT) starts climbing onto it. Rapier's autostep cannot lift the ball
-          // collider over the honest scanned 0.5 m risers, so without
-          // this the player wedges at the first step. The probe teleports
-          // the body for its sweeps and restores it. Not while airborne:
-          // during the landing ease the move is the decaying air
-          // velocity, which would set a near-zero climb pace.
-          // `touchedThisFrame.size === 0` (no peer contact) is
-          // load-bearing: a player blocked by another CHARACTER must
-          // bump, not climb onto their head — see the bot-side guard in
-          // BotPhysicsWorld.step() for the failure mode.
-          const face = intendsMove ? faceAhead(worldNormals, moveX, moveZ) : null;
-          if (
-            (horizBlocked || face !== null) &&
-            touchedThisFrame.size === 0 &&
-            !isAirborne &&
-            controller.computedGrounded() &&
-            verticalVelRef.current <= 0
-          ) {
+          // Step-up assist (shared with bots — physics/step-up.ts and
+          // physics/step-up-trigger.ts): a character blocked by, or
+          // pushing at an angle into, a climbable ledge (a stair riser
+          // ≤ STEP_UP_MAX_HEIGHT) climbs onto it. Rapier's autostep
+          // cannot lift the ball collider over the honest scanned 0.5 m
+          // risers, so without this the player wedges at the first
+          // step. The probe teleports the body for its sweeps and
+          // restores it.
+          const trigger = stepUpTrigger({
+            intent: { x: moveX, z: moveZ },
+            blocked: horizBlocked,
+            worldContactNormals: worldNormals,
+            touchingCharacter: touchedThisFrame.size > 0,
+            grounded: controller.computedGrounded(),
+            airborne: isAirborne,
+            verticalVel: verticalVelRef.current,
+          });
+          if (trigger) {
             const runningOnFoot = isRunning && !autoWalkDir && motionOut.speed === null;
             const stepUp = tryGaitStepUp(
               {
@@ -918,7 +914,7 @@ export function SceneFrame({
               },
               moveX,
               moveZ,
-              { running: runningOnFoot, face },
+              { running: runningOnFoot, face: trigger.face },
             );
             // The probe sweeps clobbered the controller's computed
             // state; the grounded check at the top of the NEXT frame

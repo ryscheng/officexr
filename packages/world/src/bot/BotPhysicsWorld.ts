@@ -14,7 +14,7 @@ import {
   worldObjectsToColliders,
 } from '../physics/rules.ts';
 import { horizontalProgress } from '../physics/blocking.ts';
-import { faceAhead } from '../physics/step-up-trigger.ts';
+import { stepUpTrigger } from '../physics/step-up-trigger.ts';
 import {
   StepUpTraversal,
   stepTraversal,
@@ -513,30 +513,29 @@ export class BotPhysicsWorld {
       { x: intent.x, z: intent.z },
     );
 
-    // Step-up assist (shared with the player — physics/step-up.ts):
-    // when horizontal movement is blocked, or pushes into a riser face
-    // at up to 60° (a diagonal approach slides along it instead of
-    // blocking), while grounded and falling/level, probe for a
-    // climbable ledge ahead (a stair riser) and start climbing onto it.
-    // Rapier's autostep cannot lift a ball over the honest scanned
-    // 0.5 m risers, so this is THE climbing mechanism.
+    // Step-up assist (shared with the player — physics/step-up.ts and
+    // the trigger in physics/step-up-trigger.ts): probe for a climbable
+    // ledge ahead (a stair riser) and start climbing onto it. Rapier's
+    // autostep cannot lift a ball over the honest scanned 0.5 m risers,
+    // so this is THE climbing mechanism.
     //
-    // `next.size === 0` (no peer contact this frame) is load-bearing:
-    // without it a bot blocked by another CHARACTER treats the peer's
-    // ball as a ledge and climbs onto their head — breaking head-on
-    // blocking (scenario-collision) and spawn-area encounters. Steps
-    // are walls; characters are not stairs.
-    const face = faceAhead(worldNormals, intent.x, intent.z);
-    if (
-      (progress < 0.1 || face !== null) &&
-      next.size === 0 &&
-      this.controller.computedGrounded() &&
-      this.verticalVel <= 0 &&
-      (intent.x !== 0 || intent.z !== 0)
-    ) {
+    // `touchingCharacter` is load-bearing: without it a bot blocked by
+    // another CHARACTER treats the peer's ball as a ledge and climbs
+    // onto their head — breaking head-on blocking (scenario-collision)
+    // and spawn-area encounters.
+    const trigger = stepUpTrigger({
+      intent,
+      blocked: progress < 0.1,
+      worldContactNormals: worldNormals,
+      touchingCharacter: next.size > 0,
+      grounded: this.controller.computedGrounded(),
+      airborne: false,
+      verticalVel: this.verticalVel,
+    });
+    if (trigger) {
       const climb = tryGaitStepUp(this.stepUpProbe, intent.x, intent.z, {
         running: intent.running ?? false,
-        face,
+        face: trigger.face,
       });
       // The probe sweeps clobbered the controller's computed state
       // (grounded, collisions). Re-run the frame's real sweep so

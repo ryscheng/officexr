@@ -28,7 +28,7 @@ import {
   type StepUpProbe,
 } from './step-up.ts';
 import { CHARACTER_CONTROLLER_SKIN } from './rules.ts';
-import { faceAhead } from './step-up-trigger.ts';
+import { faceAhead, stepUpTrigger } from './step-up-trigger.ts';
 
 beforeAll(async () => {
   await RAPIER.init();
@@ -58,6 +58,11 @@ function makeStairsRig(opts?: {
   /** A ceiling over the first two treads, high enough for one step
    * from the platform but not for a step from the first tread. */
   ceilingOverTreads?: boolean;
+  /** An overhang above the second tread that cuts a leap's combined
+   * carry short but clears the single step. */
+  overhangOverSecondTread?: boolean;
+  /** A 0.45 m block on the platform beside the wall, further along +Z. */
+  blockBesideWall?: boolean;
   startX?: number;
   /** Half-width (z) of the platform, steps, landing and wall: 2 is the
    * scenario's 4 m, wider leaves room to cross them diagonally. */
@@ -80,6 +85,14 @@ function makeStairsRig(opts?: {
   }
   if (opts?.ceiling) {
     world.createCollider(RAPIER.ColliderDesc.cuboid(2, 0.1, 2).setTranslation(3, 3.0, 2));
+  }
+  if (opts?.overhangOverSecondTread) {
+    // x 2.5..3.46, y 3.5..3.7: the leap's carry (ball y 3.0..3.8)
+    // meets its edge ≈60% of the way; the first step passes beneath.
+    world.createCollider(RAPIER.ColliderDesc.cuboid(0.48, 0.1, hw).setTranslation(2.98, 3.6, 2));
+  }
+  if (opts?.blockBesideWall) {
+    world.createCollider(RAPIER.ColliderDesc.cuboid(0.4, 0.225, 0.4).setTranslation(5.0, 2.225, 3.35));
   }
   if (opts?.ceilingOverTreads) {
     // Underside at y=3.6, spanning x 3.0..4.6.
@@ -260,7 +273,8 @@ describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
     const climb = tryGaitStepUp(rig.probe, dx, 0, { running: true });
     expect(climb?.kind).toBe('leap');
     expect(climb!.path.rise).toBeCloseTo(1.0, 1);
-    expect(climb!.path.forward.x).toBeLessThan(-0.8);
+    // Lands on the second tread (x 3.0..3.5), not balanced on its nose.
+    expect(rig.body.translation().x + climb!.path.forward.x).toBeLessThan(3.45);
   });
 
   it('a walking step-up takes a single riser', () => {
@@ -288,6 +302,46 @@ describe('tryGaitStepUp: running leaps two risers (real Rapier)', () => {
     const climb = tryGaitStepUp(rig.probe, dx, 0, { running: true });
     expect(climb?.kind).toBe('step');
     expect(climb!.path.rise).toBeCloseTo(0.5, 1);
+  });
+
+  it('steps once when an overhang would cut the leap’s combined carry short', () => {
+    const rig = makeStairsRig({ overhangOverSecondTread: true });
+    walkToFirstRiser(rig);
+    const climb = tryGaitStepUp(rig.probe, dx, 0, { running: true });
+    expect(climb?.kind).toBe('step');
+    expect(climb!.path.rise).toBeCloseTo(0.5, 1);
+  });
+
+  it('steps once when the leap’s combined carry is only 60% clear (scripted probe)', () => {
+    // In real stairs the second leg's own probes ride higher than the
+    // combined carry, so geometry that cuts only the carry is hard to
+    // build; a scripted probe pins the threshold. Calls, in order: leg 1
+    // and leg 2 (up, forward, down each), then the carry check (up,
+    // forward), which keeps 60% of the 0.9 m carry.
+    const results = [
+      { x: 0, y: 0.6, z: 0, grounded: false },
+      { x: -0.45, y: 0, z: 0, grounded: false },
+      { x: 0, y: -0.1, z: 0, grounded: true },
+      { x: 0, y: 0.6, z: 0, grounded: false },
+      { x: -0.45, y: 0, z: 0, grounded: false },
+      { x: 0, y: -0.1, z: 0, grounded: true },
+      { x: 0, y: 1.0, z: 0, grounded: false },
+      { x: -0.54, y: 0, z: 0, grounded: false },
+    ];
+    let pos = { x: 0, y: 0, z: 0 };
+    const scripted: StepUpProbe = {
+      compute: () => results.shift()!,
+      getTranslation: () => pos,
+      setTranslation: (p) => {
+        pos = { ...p };
+      },
+      lastContactIsCharacter: () => false,
+    };
+    const climb = tryGaitStepUp(scripted, -0.05, 0, { running: true });
+    expect(climb?.kind).toBe('step');
+    expect(climb!.path.rise).toBeCloseTo(0.5, 9);
+    expect(results).toHaveLength(0);
+    expect(pos).toEqual({ x: 0, y: 0, z: 0 });
   });
 
   it('steps once when another character stands where the leap would land', () => {
@@ -387,10 +441,18 @@ function pacedClimb(
       for (let k = 0; k < rig.controller.numComputedCollisions(); k++) {
         normals.push(rig.controller.computedCollision(k)!.normal1);
       }
-      const face = faceAhead(normals, move.x, move.z);
       const progress = (c.x * move.x + c.z * move.z) / (move.x ** 2 + move.z ** 2);
-      if (c.grounded && velY <= 0 && (progress < 0.1 || face)) {
-        const climb = tryGaitStepUp(rig.probe, move.x, move.z, { running, face });
+      const trigger = stepUpTrigger({
+        intent: move,
+        blocked: progress < 0.1,
+        worldContactNormals: normals,
+        touchingCharacter: false,
+        grounded: c.grounded,
+        airborne: false,
+        verticalVel: velY,
+      });
+      if (trigger) {
+        const climb = tryGaitStepUp(rig.probe, move.x, move.z, { running, face: trigger.face });
         if (climb) {
           rises.push(climb.path.rise);
           traversal = new StepUpTraversal(climb.path, (Math.hypot(move.x, move.z) / dt) * 0.7, climb.kind);
@@ -420,7 +482,7 @@ describe('diagonal stair approaches (real Rapier)', () => {
   });
 
   it('running at 45° leaps two risers at a time to the top', () => {
-    const rig = makeStairsRig({ halfWidth: 6 });
+    const rig = makeStairsRig({ halfWidth: 8 });
     const { rises, finalY } = pacedClimb(
       rig,
       { x: intentAt(45).x * 2, z: intentAt(45).z * 2 },
@@ -440,11 +502,42 @@ describe('diagonal stair approaches (real Rapier)', () => {
     expect(rig.body.translation().z - before.z).toBeGreaterThan(3);
   });
 
+  it('a probe sliding along a wall at 45° does not climb the block beside it', () => {
+    const rig = makeStairsRig({ halfWidth: 6, wall: true, blockBesideWall: true });
+    // Against the wall's face (x=4.6), short of the block (z from 2.95).
+    rig.setPos({ x: 5.01, y: 1.5, z: 2.5 });
+    rig.world.step();
+    const move = intentAt(45);
+    const face = { normal: { x: 1, z: 0 }, alignment: Math.SQRT1_2 };
+    expect(tryStepUp(rig.probe, move.x, move.z, { face })).toBeNull();
+  });
+
   it('does NOT climb a 2 m wall approached at 45°', () => {
     const rig = makeStairsRig({ halfWidth: 6, wall: true, startX: 5.5 });
     const { rises, maxY } = pacedClimb(rig, intentAt(45), false, 120);
     expect(rises).toHaveLength(0);
     expect(maxY).toBeLessThan(2.0);
+  });
+
+  it('stepUpTrigger probes when blocked or facing a riser, only grounded, level and alone', () => {
+    const riser = { x: 1, y: 0, z: 0 };
+    const frame = {
+      intent: { x: -0.05, z: 0.05 },
+      blocked: false,
+      worldContactNormals: [riser],
+      touchingCharacter: false,
+      grounded: true,
+      airborne: false,
+      verticalVel: 0,
+    };
+    expect(stepUpTrigger(frame)?.face?.alignment).toBeCloseTo(Math.SQRT1_2, 9);
+    expect(stepUpTrigger({ ...frame, worldContactNormals: [], blocked: true })).toEqual({ face: null });
+    expect(stepUpTrigger({ ...frame, worldContactNormals: [] })).toBeNull();
+    expect(stepUpTrigger({ ...frame, touchingCharacter: true })).toBeNull();
+    expect(stepUpTrigger({ ...frame, grounded: false })).toBeNull();
+    expect(stepUpTrigger({ ...frame, airborne: true })).toBeNull();
+    expect(stepUpTrigger({ ...frame, verticalVel: 1 })).toBeNull();
+    expect(stepUpTrigger({ ...frame, intent: { x: 0, z: 0 }, blocked: true })).toBeNull();
   });
 
   it('faceAhead takes faces within 60° of the intent and ignores floors and grazes', () => {
