@@ -11,7 +11,13 @@ export type AnimationConstants = {
   playerSpeed: number;
   runMultiplier: number;
   movementBlockThreshold: number;
+  // Optional so documents saved before these existed still parse.
+  stepUpSpeedFactor?: number;
+  climbAnimFactor?: number;
 };
+
+export const STEP_UP_SPEED_FACTOR_DEFAULT = 0.7;
+export const CLIMB_ANIM_FACTOR_DEFAULT = 1.0;
 
 export type ProximityConstants = {
   sensorRadius: number;
@@ -195,6 +201,8 @@ export const ZWorldConstants: z.ZodType<WorldConstants> = z.object({
     playerSpeed: positive,
     runMultiplier: z.number().min(1),
     movementBlockThreshold: z.number().min(0).max(1),
+    stepUpSpeedFactor: z.number().positive().max(2).optional(),
+    climbAnimFactor: z.number().min(0.1).max(3).optional(),
   }),
   jump: z.object({
     jumpVelocity: positive,
@@ -273,6 +281,8 @@ export function worldSettingsFromConstants(c: WorldConstants): WorldSettings {
     idleAnimSpeed: c.animation.idleSpeed,
     turnSpeed: c.animation.turnSpeed,
     movementBlockThreshold: c.animation.movementBlockThreshold,
+    stepUpSpeedFactor: c.animation.stepUpSpeedFactor ?? STEP_UP_SPEED_FACTOR_DEFAULT,
+    climbAnimFactor: c.animation.climbAnimFactor ?? CLIMB_ANIM_FACTOR_DEFAULT,
     ...c.jump,
     proximityRadius: c.proximity.sensorRadius,
     proximityOuterRadius: c.proximity.outerRadius,

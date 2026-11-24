@@ -1,6 +1,8 @@
 import React from 'react';
 import {
+  CLIMB_ANIM_FACTOR_DEFAULT,
   DEFAULT_WORLD_CONSTANTS,
+  STEP_UP_SPEED_FACTOR_DEFAULT,
   type AuxLightType,
   type JumpSettings as JumpSettingsType,
   type WorldConstants,
@@ -212,6 +214,8 @@ function AnimationPanel({ animation, setSection }: AnimationPanelProps) {
       <NumberInput label="walk (m/s)" value={animation.playerSpeed} min={0.5} max={15} step={0.1} onChange={set('playerSpeed')} />
       <NumberInput label="run × walk" value={animation.runMultiplier} min={1} max={6} step={0.1} onChange={set('runMultiplier')} />
       <NumberInput label="block thresh" value={animation.movementBlockThreshold} min={0} max={1} step={0.01} onChange={set('movementBlockThreshold')} />
+      <NumberInput label="step-up ×" value={animation.stepUpSpeedFactor ?? STEP_UP_SPEED_FACTOR_DEFAULT} min={0.1} max={2} step={0.05} onChange={set('stepUpSpeedFactor')} />
+      <NumberInput label="climb anim ×" value={animation.climbAnimFactor ?? CLIMB_ANIM_FACTOR_DEFAULT} min={0.1} max={3} step={0.05} onChange={set('climbAnimFactor')} />
     </Section>
   );
 }
